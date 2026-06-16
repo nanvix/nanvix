@@ -376,6 +376,8 @@ pub fn signal_startup_complete() {
 ///
 /// A pointer to the top of the boot kernel stack.
 ///
+// Used by x86 CPU init today; consumed by x86_64 GDT/TSS bring-up (Phase 5).
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
 pub fn get_kstack_top() -> *const u8 {
     unsafe extern "C" {
         static kstack: u8;

@@ -298,10 +298,7 @@ pub unsafe fn init() {
         idt_entry!(_do_kcall, DescriptorPrivilegeLevel::Ring3, GateType::Int32);
 
     // Load IDT.
-    (*IDTR).init(
-        idt as u64,
-        u16::try_from(IDT_SIZE).expect("wrong idt size, is it corrupted?"),
-    );
+    (*IDTR).init(idt as u64, u16::try_from(IDT_SIZE).expect("wrong idt size, is it corrupted?"));
     load()
 }
 

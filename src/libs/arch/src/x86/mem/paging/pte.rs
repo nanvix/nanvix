@@ -109,7 +109,7 @@ impl PageTableEntryFlags {
     ///
     /// A [`PageTableEntryFlags`].
     ///
-    fn from_raw_value(value: PteWord) -> Self {
+    pub(crate) fn from_raw_value(value: PteWord) -> Self {
         Self {
             present: PresentFlag::from_raw_value(value),
             read_write: ReadWriteFlag::from_raw_value(value),
@@ -131,7 +131,7 @@ impl PageTableEntryFlags {
     ///
     /// The raw value.
     ///
-    fn into_raw_value(self) -> PteWord {
+    pub(crate) fn into_raw_value(self) -> PteWord {
         let mut value: PteWord = 0;
 
         value |= self.present.into_raw_value();
@@ -299,9 +299,12 @@ impl PageTableEntry {
     /// - `None`: Otherwise.
     ///
     pub fn from_raw_value(value: PteWord) -> Option<Self> {
+        use crate::x86::mem::paging::PHYS_ADDR_MASK;
         Some(Self {
             flags: PageTableEntryFlags::from_raw_value(value),
-            frame: FrameNumber::from_raw_value(value as usize >> mem::FRAME_SHIFT)?,
+            frame: FrameNumber::from_raw_value(
+                (value & PHYS_ADDR_MASK) as usize >> mem::FRAME_SHIFT,
+            )?,
         })
     }
 

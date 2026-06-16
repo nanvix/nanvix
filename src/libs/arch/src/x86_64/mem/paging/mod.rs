@@ -1,22 +1,20 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+#![allow(dead_code, unused_imports)]
+
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-mod constants;
+mod pdpte;
+mod pml4e;
+mod table;
 
 //==================================================================================================
 // Exports
 //==================================================================================================
 
-pub mod gdt;
-#[cfg(target_arch = "x86")]
-pub mod gdtr;
-#[cfg(target_arch = "x86_64")]
-pub use crate::x86_64::mem::gdtr;
-pub mod paging;
-
-pub use constants::*;
-pub use paging::PteWord;
+pub use pdpte::*;
+pub use pml4e::*;
+pub use table::*;
