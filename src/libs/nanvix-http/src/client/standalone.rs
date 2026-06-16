@@ -491,8 +491,24 @@ impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClie
 //==================================================================================================
 
 /// Size of the I/O buffer used by the gateway bridge for reads from the
-/// connected consumer.
+/// connected consumer on Unix, where the input direction is a raw byte stream.
+#[cfg(unix)]
 const GATEWAY_BRIDGE_BUFFER_SIZE: usize = 4096;
+
+/// Number of bytes in the length prefix that frames each Windows gateway-input record.
+///
+/// See [`forward_consumer_input`] for the framing rationale: it emulates the UDS half-close
+/// that Windows named pipes lack so the guest still observes an isolated stdin EOF.
+#[cfg(windows)]
+const GATEWAY_INPUT_FRAME_HEADER_LEN: usize = ::std::mem::size_of::<u32>();
+
+/// Maximum payload size (in bytes) accepted for a single Windows gateway-input record.
+///
+/// The length prefix is attacker-controlled, so it is capped to bound the per-record allocation
+/// and prevent a malformed or malicious consumer from requesting an enormous frame (DoS). A frame
+/// exceeding this limit aborts the input relay.
+#[cfg(windows)]
+const GATEWAY_INPUT_FRAME_MAX_PAYLOAD_LEN: usize = 1 << 20;
 
 ///
 /// # Description
@@ -627,10 +643,15 @@ async fn gateway_bridge_task(endpoint: GatewayEndpoint, io: StandaloneVmIo) {
 }
 
 /// Generic bidirectional pump used by both the Unix and Windows accept
-/// paths. Reads from `reader` go to `input_tx` (guest stdin); writes to
-/// `writer` come from `output_rx` (guest stdout/stderr).
+/// paths. Input records from `reader` go to `input_tx` (guest stdin);
+/// writes to `writer` come from `output_rx` (guest stdout/stderr).
+///
+/// The input direction is decoded by [`forward_consumer_input`], whose wire
+/// format differs per platform: a raw byte stream on Unix (EOF is the UDS
+/// half-close) and a length-prefixed framing on Windows (EOF is an in-band
+/// zero-length record, since named pipes have no half-close primitive).
 async fn run_bridge<R, W>(
-    mut reader: R,
+    reader: R,
     mut writer: W,
     mut output_rx: ::tokio::sync::mpsc::Receiver<Vec<u8>>,
     input_tx: ::tokio::sync::mpsc::Sender<Vec<u8>>,
@@ -640,23 +661,7 @@ async fn run_bridge<R, W>(
 {
     // Spawn a task that reads from the connection and forwards to guest
     // stdin. This runs concurrently with the output direction below.
-    let input_handle: JoinHandle<()> = tokio::spawn(async move {
-        let mut buffer: [u8; GATEWAY_BRIDGE_BUFFER_SIZE] = [0u8; GATEWAY_BRIDGE_BUFFER_SIZE];
-        loop {
-            match reader.read(&mut buffer).await {
-                Ok(0) => break,
-                Ok(n) => {
-                    if input_tx.send(buffer[..n].to_vec()).await.is_err() {
-                        break;
-                    }
-                },
-                Err(e) => {
-                    trace!("gateway_bridge_task(): read error: {e}");
-                    break;
-                },
-            }
-        }
-    });
+    let input_handle: JoinHandle<()> = tokio::spawn(forward_consumer_input(reader, input_tx));
 
     // Forward guest output to the connection.
     while let Some(data) = output_rx.recv().await {
@@ -671,4 +676,83 @@ async fn run_bridge<R, W>(
     let _ = writer.shutdown().await;
     input_handle.abort();
     let _ = input_handle.await;
+}
+
+/// Forwards consumer input to the guest's stdin channel on Unix, where the
+/// gateway input direction is a raw byte stream. A zero-length read is the
+/// transport EOF (a UDS `shutdown(SHUT_WR)` half-close); returning from this
+/// function drops `input_tx`, which delivers EOF to the guest's stdin.
+#[cfg(unix)]
+async fn forward_consumer_input<R>(mut reader: R, input_tx: ::tokio::sync::mpsc::Sender<Vec<u8>>)
+where
+    R: ::tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    let mut buffer: [u8; GATEWAY_BRIDGE_BUFFER_SIZE] = [0u8; GATEWAY_BRIDGE_BUFFER_SIZE];
+    loop {
+        match reader.read(&mut buffer).await {
+            Ok(0) => break,
+            Ok(n) => {
+                if input_tx.send(buffer[..n].to_vec()).await.is_err() {
+                    break;
+                }
+            },
+            Err(e) => {
+                trace!("gateway_bridge_task(): read error: {e}");
+                break;
+            },
+        }
+    }
+}
+
+/// Forwards consumer input to the guest's stdin channel on Windows, where the
+/// gateway input direction is framed to emulate the UDS half-close that named
+/// pipes lack.
+///
+/// Each record is a little-endian `u32` length followed by that many payload
+/// bytes; a zero-length record is the in-band EOF marker. Decoding stops at the
+/// EOF record (or when the pipe closes), and returning from this function drops
+/// `input_tx`, which delivers EOF to the guest's stdin while the output
+/// direction stays open. Because the records share the pipe's FIFO with the
+/// preceding data, every stdin byte is guaranteed to reach the guest before the
+/// EOF is observed — there is no data/control race.
+#[cfg(windows)]
+async fn forward_consumer_input<R>(mut reader: R, input_tx: ::tokio::sync::mpsc::Sender<Vec<u8>>)
+where
+    R: ::tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    loop {
+        let mut header: [u8; GATEWAY_INPUT_FRAME_HEADER_LEN] =
+            [0u8; GATEWAY_INPUT_FRAME_HEADER_LEN];
+        if let Err(e) = reader.read_exact(&mut header).await {
+            // A clean pipe close before the next record boundary is the consumer going away;
+            // anything else is logged for diagnostics. Either way the guest's stdin is closed.
+            if e.kind() != ::std::io::ErrorKind::UnexpectedEof {
+                trace!("gateway_bridge_task(): input header read error: {e}");
+            }
+            break;
+        }
+        let payload_len: usize = u32::from_le_bytes(header) as usize;
+        if payload_len == 0 {
+            // In-band EOF record: the consumer finished writing stdin.
+            break;
+        }
+        if payload_len > GATEWAY_INPUT_FRAME_MAX_PAYLOAD_LEN {
+            // The length prefix is attacker-controlled; reject oversized frames to bound the
+            // allocation below and avoid a memory-exhaustion DoS.
+            trace!(
+                "gateway_bridge_task(): input frame too large ({} > {} bytes), aborting relay",
+                payload_len,
+                GATEWAY_INPUT_FRAME_MAX_PAYLOAD_LEN
+            );
+            break;
+        }
+        let mut payload: Vec<u8> = vec![0u8; payload_len];
+        if let Err(e) = reader.read_exact(&mut payload).await {
+            trace!("gateway_bridge_task(): input payload read error: {e}");
+            break;
+        }
+        if input_tx.send(payload).await.is_err() {
+            break;
+        }
+    }
 }

@@ -24,11 +24,16 @@ use ::nanvix::{
     },
     sandbox::UserVmIdentifier,
     syscomm::{
+        ReadExact,
         SocketStream,
         SocketType,
-        UnboundSocket,
+        WriteAll,
     },
 };
+// The socket-based gateway transport is only used on Unix; on Windows the standalone gateway is
+// exposed as a named pipe (see `GatewayStream::connect`).
+#[cfg(unix)]
+use ::nanvix::syscomm::UnboundSocket;
 use ::reqwest::{
     Client,
     StatusCode,
@@ -63,7 +68,7 @@ pub struct UserVm {
     /// Identifier assigned to this User VM by the Nanvix Daemon.
     user_vm_id: UserVmIdentifier,
     /// Socket stream wired to the User VM gateway for I/O.
-    gateway_stream: SocketStream,
+    gateway_stream: GatewayStream,
     /// Milliseconds to wait after shutting down a User VM when L2 is disabled.
     cleanup_uservm_sleep_duration_ms: u64,
     /// Milliseconds to wait after shutting down a User VM when L2 is enabled.
@@ -156,7 +161,7 @@ impl UserVm {
             SocketType::Unix
         };
 
-        let gateway_stream: SocketStream =
+        let gateway_stream: GatewayStream =
             Self::connect_to_gateway(config, response.gateway_sockaddr.as_str(), gateway_socktype)
                 .await?;
 
@@ -187,14 +192,14 @@ impl UserVm {
     ///
     /// # Return Value
     ///
-    /// Returns a connected `SocketStream` when the gateway becomes reachable before the timeout;
+    /// Returns a connected `GatewayStream` when the gateway becomes reachable before the timeout;
     /// returns an error when the retry budget is exhausted.
     ///
     async fn connect_to_gateway(
         config: &RunnerConfig,
         address: &str,
         socket_type: SocketType,
-    ) -> Result<SocketStream> {
+    ) -> Result<GatewayStream> {
         let deadline: Duration = Duration::from_millis(config.gateway_connect_timeout_ms);
         let start: Instant = Instant::now();
         let mut attempts: usize = 0;
@@ -204,10 +209,16 @@ impl UserVm {
 
         loop {
             attempts = attempts.saturating_add(1);
-            let unbound_socket: UnboundSocket = UnboundSocket::new(socket_type);
-            match unbound_socket.connect(address).await {
+            match GatewayStream::connect(socket_type, address).await {
                 Ok(stream) => return Ok(stream),
                 Err(error) => {
+                    if error.kind() == ::std::io::ErrorKind::Unsupported {
+                        let reason: String = format!(
+                            "unsupported gateway transport for address {address} (error={error})"
+                        );
+                        error!("connect_to_gateway(): {reason}");
+                        return Err(::anyhow::anyhow!(reason));
+                    }
                     let elapsed: Duration = start.elapsed();
                     debug!(
                         "connect_to_gateway(): attempt {} failed (addr={}, elapsed_ms={}, \
@@ -270,7 +281,7 @@ impl UserVm {
     ///
     /// Returns a mutable reference to the socket stream connected to the User VM gateway.
     ///
-    pub fn gateway_stream(&mut self) -> &mut SocketStream {
+    pub fn gateway_stream(&mut self) -> &mut GatewayStream {
         &mut self.gateway_stream
     }
 
@@ -513,6 +524,152 @@ impl Drop for UserVm {
                     );
                 },
             }
+        }
+    }
+}
+
+//==================================================================================================
+// Gateway Stream
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Transport-agnostic handle to the User VM gateway endpoint exposed by nanvixd.
+///
+/// The standalone gateway is a single point at which the test harness exchanges guest stdio.
+/// Its underlying transport is platform-dependent:
+///
+/// - **Unix**: a Unix-domain socket (or a TCP socket in L2 mode), wrapped in [`SocketStream`].
+/// - **Windows**: a named pipe (`\\.\pipe\...`), since Unix-domain sockets are unavailable. TCP
+///   (L2 mode) is not available on Windows, which only supports standalone deployments. Because
+///   named pipes have no half-close primitive, the input (stdin) direction is framed to emulate
+///   one: each record is a little-endian `u32` length followed by that many payload bytes, and a
+///   zero-length record signals EOF. The output direction stays a raw byte stream.
+///
+pub(crate) enum GatewayStream {
+    /// Gateway exposed via a `syscomm` socket stream (TCP, or a Unix-domain socket on Unix).
+    /// Only constructed on Unix; on Windows the gateway is always a named pipe.
+    #[cfg_attr(windows, allow(dead_code))]
+    Socket(SocketStream),
+    /// Gateway exposed via a Windows named pipe (used by the standalone deployment).
+    #[cfg(windows)]
+    Pipe(::tokio::net::windows::named_pipe::NamedPipeClient),
+}
+
+impl GatewayStream {
+    ///
+    /// # Description
+    ///
+    /// Establishes a single connection to the gateway endpoint, selecting the transport that
+    /// matches the requested socket type and host platform.
+    ///
+    /// # Parameters
+    ///
+    /// - `socket_type`: Transport requested by the caller (`Unix` for standalone, `Tcp` for L2).
+    /// - `address`: Gateway endpoint address returned by nanvixd.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a connected gateway stream on success; returns an I/O error on failure so the
+    /// caller's retry loop can decide whether to try again.
+    ///
+    pub(crate) async fn connect(socket_type: SocketType, address: &str) -> ::std::io::Result<Self> {
+        // On Windows the standalone gateway is exposed as a named pipe rather than a
+        // Unix-domain socket, which the platform does not provide. TCP (L2 mode) gateways are
+        // not supported on Windows, so reject them up front rather than falling through to the
+        // socket path and surfacing confusing connection retries/timeouts.
+        #[cfg(windows)]
+        {
+            match socket_type {
+                SocketType::Unix => {
+                    let client: ::tokio::net::windows::named_pipe::NamedPipeClient =
+                        ::tokio::net::windows::named_pipe::ClientOptions::new().open(address)?;
+                    Ok(GatewayStream::Pipe(client))
+                },
+                SocketType::Tcp => Err(::std::io::Error::new(
+                    ::std::io::ErrorKind::Unsupported,
+                    "TCP (L2 mode) gateways are not supported on Windows",
+                )),
+            }
+        }
+
+        #[cfg(unix)]
+        {
+            let stream: SocketStream = UnboundSocket::new(socket_type).connect(address).await?;
+            Ok(GatewayStream::Socket(stream))
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Writes the entire buffer to the gateway endpoint.
+    ///
+    pub(crate) async fn write_all(&mut self, buf: &[u8]) -> ::std::io::Result<()> {
+        match self {
+            GatewayStream::Socket(stream) => stream.write_all(buf).await,
+            #[cfg(windows)]
+            GatewayStream::Pipe(pipe) => {
+                use ::tokio::io::AsyncWriteExt;
+                // The Windows gateway emulates the Unix half-close with a framed input
+                // direction: each record is a little-endian `u32` length followed by that many
+                // payload bytes (see `shutdown_write` for the matching zero-length EOF record).
+                // Skip empty writes so a zero-length payload is never mistaken for the EOF record.
+                if buf.is_empty() {
+                    return Ok(());
+                }
+                let payload_len: u32 = u32::try_from(buf.len()).map_err(|_| {
+                    ::std::io::Error::new(
+                        ::std::io::ErrorKind::InvalidInput,
+                        "gateway input record exceeds u32 length",
+                    )
+                })?;
+                pipe.write_all(&payload_len.to_le_bytes()).await?;
+                pipe.write_all(buf).await
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Signals end-of-input to the gateway endpoint.
+    ///
+    /// On Unix this half-closes the write direction so the peer observes EOF on the guest's stdin.
+    ///
+    /// Windows named pipes have no half-close primitive. The gateway therefore emulates one with a
+    /// framed input direction: this writes a zero-length EOF record so the daemon-side bridge
+    /// closes the guest's stdin while the pipe stays open for reading the guest's output.
+    ///
+    pub(crate) async fn shutdown_write(&mut self) -> ::std::io::Result<()> {
+        match self {
+            GatewayStream::Socket(stream) => stream.shutdown_write().await,
+            #[cfg(windows)]
+            GatewayStream::Pipe(pipe) => {
+                use ::tokio::io::AsyncWriteExt;
+                // Zero-length record = in-band EOF marker. Flush so the bridge observes it
+                // promptly; the pipe stays open so guest output can still be read.
+                pipe.write_all(&0u32.to_le_bytes()).await?;
+                pipe.flush().await
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reads exactly enough bytes to fill the provided buffer from the gateway endpoint.
+    ///
+    pub(crate) async fn read_exact(&mut self, buf: &mut [u8]) -> ::std::io::Result<usize> {
+        match self {
+            GatewayStream::Socket(stream) => stream.read_exact(buf).await,
+            #[cfg(windows)]
+            GatewayStream::Pipe(pipe) => {
+                use ::tokio::io::AsyncReadExt;
+                pipe.read_exact(buf).await?;
+                Ok(buf.len())
+            },
         }
     }
 }

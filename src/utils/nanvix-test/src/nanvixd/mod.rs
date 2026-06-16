@@ -5,7 +5,6 @@
 // Modules
 //==================================================================================================
 
-#[cfg(unix)]
 mod http;
 mod terminal;
 
@@ -13,14 +12,15 @@ mod terminal;
 // Imports
 //==================================================================================================
 
-#[cfg(unix)]
-pub use self::http::{
-    NanvixdHttp,
-    NanvixdHttpArgs,
-};
-pub use self::terminal::{
-    NanvixdTerminal,
-    NanvixdTerminalArgs,
+pub use self::{
+    http::{
+        NanvixdHttp,
+        NanvixdHttpArgs,
+    },
+    terminal::{
+        NanvixdTerminal,
+        NanvixdTerminalArgs,
+    },
 };
 use crate::{
     config::RunnerConfig,
