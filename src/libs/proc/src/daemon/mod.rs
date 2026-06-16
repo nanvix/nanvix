@@ -176,7 +176,7 @@ impl ProcessDaemon {
     /// Initializes the process manager daemon.
     pub fn init() -> Result<Self, Error> {
         ::syslog::info!("running process manager daemon...");
-        let mypid: ProcessIdentifier = ::sys::kcall::pm::__kcall_getpid()?;
+        let mypid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
         assert_eq!(mypid, ProcessIdentifier::PROCD, "process daemon has unexpected pid");
 
         // Acquire process management capabilities.

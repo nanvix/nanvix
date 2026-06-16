@@ -69,7 +69,7 @@ pub enum WaitOutcome {
 ///
 pub fn wait(target: WaitTarget, options: i32) -> Result<WaitOutcome, Error> {
     // Retrieve process identifier of the calling process.
-    let caller: ProcessIdentifier = ::sys::kcall::pm::__kcall_getpid()?;
+    let caller: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build wait message and send it.
     let message: Message = message::wait_request(caller, target, options)?;

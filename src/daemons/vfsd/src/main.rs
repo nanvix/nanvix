@@ -56,7 +56,7 @@ use alloc::collections::{
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get pid (error={:?})", e),
     };

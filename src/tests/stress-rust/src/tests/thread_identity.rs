@@ -26,9 +26,9 @@ use ::sys::{
     },
     kcall::pm::{
         __kcall_create_thread,
-        __kcall_getpid,
         __kcall_gettid,
         __kcall_join_thread,
+        getpid_uncached,
     },
     pm::{
         ProcessIdentifier,
@@ -70,7 +70,7 @@ pub fn run() -> Result<(), StressError> {
     THREAD_IDENTITY_PID.store(0, Ordering::Relaxed);
     THREAD_IDENTITY_TID.store(0, Ordering::Relaxed);
 
-    let main_pid: ProcessIdentifier = __kcall_getpid()?;
+    let main_pid: ProcessIdentifier = getpid_uncached()?;
     let main_tid: ThreadIdentifier = __kcall_gettid()?;
 
     let stack: WorkerStack = WorkerStack::new(::config::memory_layout::USER_THREAD_STACK_SIZE)?;
@@ -146,7 +146,7 @@ extern "C" fn thread_identity_worker(_: usize) -> usize {
 ///
 /// `Ok(tag)` on success where `tag` encodes the identity completion marker.
 fn thread_identity_worker_impl() -> Result<usize, Error> {
-    let pid: ProcessIdentifier = __kcall_getpid()?;
+    let pid: ProcessIdentifier = getpid_uncached()?;
     let tid: ThreadIdentifier = __kcall_gettid()?;
 
     THREAD_IDENTITY_PID.store(usize::try_from(pid)?, Ordering::Release);

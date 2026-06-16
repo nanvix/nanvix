@@ -90,7 +90,7 @@ fn handle_ipc_request(message: Message) -> Result<bool, Error> {
 
 #[unsafe(no_mangle)]
 pub fn main() {
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
         Err(e) => panic!("failed to get pid (error={:?})", e),
     };

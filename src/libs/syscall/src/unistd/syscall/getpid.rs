@@ -20,5 +20,5 @@ use ::sys::{
 /// `getpid()` returns the process ID (PID) of the calling process.
 ///
 pub fn getpid() -> Result<ProcessIdentifier, Error> {
-    ::sys::kcall::pm::__kcall_getpid()
+    ::sys::kcall::pm::getpid()
 }

@@ -217,7 +217,7 @@ fn run_child(parent_pid: ProcessIdentifier, my_pid: ProcessIdentifier) -> Result
 
 /// Runs the descriptor-inheritance and shared-offset scenario.
 fn test_fork_descriptor_inheritance() -> Result<(), Error> {
-    let parent_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let parent_pid: ProcessIdentifier = pm::getpid_uncached()?;
 
     // Open the fixture read-only. The descriptor is allocated in the parent's table inside vfsd.
     let fd: c_int = fcntl::open(FIXTURE_PATH, RegularFileOpenFlags::read_only().into(), 0)?;
@@ -239,7 +239,7 @@ fn test_fork_descriptor_inheritance() -> Result<(), Error> {
 
     // Child: perform its checks and terminate without returning to the shared flow.
     if child_pid == ProcessIdentifier::from(0) {
-        let my_pid: ProcessIdentifier = match pm::__kcall_getpid() {
+        let my_pid: ProcessIdentifier = match pm::getpid_uncached() {
             Ok(pid) => pid,
             Err(_) => pm::__kcall_exit(CHILD_EXIT_FAIL)?,
         };

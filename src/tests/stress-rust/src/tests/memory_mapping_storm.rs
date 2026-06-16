@@ -23,7 +23,7 @@ use ::sys::{
             __kcall_mprotect,
             __kcall_munmap,
         },
-        pm::__kcall_getpid,
+        pm::getpid_uncached,
     },
     mm::{
         AccessPermission,
@@ -59,7 +59,7 @@ const MMAP_STRESS_STRIDE_BYTES: usize = 4 * KILOBYTE;
 pub fn run() -> Result<(), StressError> {
     let mut cap_guard: CapabilityGuard = CapabilityGuard::enable(Capability::MemoryManagement)?;
 
-    let pid: ProcessIdentifier = __kcall_getpid()?;
+    let pid: ProcessIdentifier = getpid_uncached()?;
 
     // Reserve address space from the unified bump allocator so we don't conflict with the heap
     // region.

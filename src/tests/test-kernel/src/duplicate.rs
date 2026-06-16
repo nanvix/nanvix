@@ -99,8 +99,12 @@ static PARENT_PID_RAW: AtomicU32 = AtomicU32::new(0);
 /// 4. Reports both observed values to the parent via IPC.
 /// 5. Spins until the parent terminates it.
 extern "C" fn child_entry(_arg: usize) -> usize {
+    // Drop the parent's cached pid inherited through the duplicated address space. Unlike fork(),
+    // the raw duplicate() primitive has no in-child choke point, so the child invalidates here.
+    pm::invalidate_cached_pid();
+
     // Recover identifiers.
-    let my_pid: ProcessIdentifier = match pm::__kcall_getpid() {
+    let my_pid: ProcessIdentifier = match pm::getpid_uncached() {
         Ok(p) => p,
         Err(_) => return 1,
     };
@@ -152,7 +156,7 @@ extern "C" fn child_entry(_arg: usize) -> usize {
 /// Runs the duplicate/CoW correctness scenario described in the module docstring.
 fn test_duplicate_cow() -> Result<(), Error> {
     // Record the parent's PID where the child can find it via CoW-shared memory.
-    let parent_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let parent_pid: ProcessIdentifier = pm::getpid_uncached()?;
     PARENT_PID_RAW.store(u32::try_from(parent_pid)?, ORDER);
 
     // Prime the shared byte with the pre-duplicate pattern.
@@ -287,7 +291,7 @@ fn test_duplicate_cow() -> Result<(), Error> {
 /// replies, so the parent's `recv()` never returns and the test fails by timing out.
 fn test_duplicate_cow_refork() -> Result<(), Error> {
     // Record the parent's PID where the children can find it via CoW-shared memory.
-    let parent_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let parent_pid: ProcessIdentifier = pm::getpid_uncached()?;
     PARENT_PID_RAW.store(u32::try_from(parent_pid)?, ORDER);
 
     // Prime the shared byte with the pre-duplicate pattern while the page is still private.

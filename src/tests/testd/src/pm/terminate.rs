@@ -99,7 +99,11 @@ fn spin() -> ! {
 /// the parent to prove that it was created and actually executed, then spins until the parent
 /// terminates it.
 extern "C" fn terminate_child_entry(_arg: usize) -> usize {
-    let my_pid: ProcessIdentifier = match pm::__kcall_getpid() {
+    // Drop the parent's cached pid inherited through the duplicated address space. Unlike fork(),
+    // the raw duplicate() primitive has no in-child choke point, so the child invalidates here.
+    pm::invalidate_cached_pid();
+
+    let my_pid: ProcessIdentifier = match pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => spin(),
     };
@@ -138,7 +142,7 @@ extern "C" fn terminate_child_entry(_arg: usize) -> usize {
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_terminate_requires_process_management_capability() -> bool {
-    let parent_pid: ProcessIdentifier = match pm::__kcall_getpid() {
+    let parent_pid: ProcessIdentifier = match pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => return false,
     };

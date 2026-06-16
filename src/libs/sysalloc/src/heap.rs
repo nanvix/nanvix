@@ -29,19 +29,13 @@ use ::sys::{
 //==================================================================================================
 
 pub struct Heap {
-    pid: ProcessIdentifier,
     base: VirtualAddress,
     size: usize,
     capacity: usize,
 }
 
 impl Heap {
-    pub fn new(
-        pid: ProcessIdentifier,
-        base: VirtualAddress,
-        size: usize,
-        capacity: usize,
-    ) -> Result<Self, Error> {
+    pub fn new(base: VirtualAddress, size: usize, capacity: usize) -> Result<Self, Error> {
         ::syslog::trace!("new(): base={:X?}, size={:X?}, capacity={:X?}", base, size, capacity);
 
         // Check if base address is page-aligned.
@@ -69,12 +63,16 @@ impl Heap {
         }
 
         // Map initial pages.
+        //
+        // Resolve the owning pid through the fork-aware cache: it is memoized to avoid a kernel
+        // transition and is invalidated in the child after fork(), so mapping always targets the
+        // current process rather than the parent this heap may have been inherited from.
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
         let start: VirtualAddress = base;
         let end: VirtualAddress = VirtualAddress::from_raw_value(base.into_raw_value() + size);
         map_range(pid, start, end)?;
 
         Ok(Self {
-            pid,
             base,
             size,
             capacity,
@@ -120,9 +118,14 @@ impl Heap {
         }
 
         // Map pages.
+        //
+        // Resolve the owning pid through the fork-aware cache: it is memoized to avoid a kernel
+        // transition and is invalidated in the child after fork(), so mapping always targets the
+        // current process rather than the parent this heap may have been inherited from.
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
         let end: VirtualAddress = self.base + self.size;
         let new_end: VirtualAddress = end + increment;
-        map_range(self.pid, end, new_end)?;
+        map_range(pid, end, new_end)?;
 
         // Update metadata.
         self.size += increment;
@@ -158,6 +161,11 @@ impl Heap {
             return Ok(());
         }
 
+        // Resolve the owning pid through the fork-aware cache: it is memoized to avoid a kernel
+        // transition and is invalidated in the child after fork(), so unmapping always targets the
+        // current process rather than the parent this heap may have been inherited from.
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
+
         // Unmap tail pages from the end backwards, stopping at the first failure so that
         // self.size always reflects the actual contiguous mapped extent.
         let base_raw: usize = self.base.into_raw_value();
@@ -166,7 +174,7 @@ impl Heap {
 
         for page in (new_end..old_end).step_by(mem::PAGE_SIZE).rev() {
             let page_addr: VirtualAddress = VirtualAddress::from_raw_value(page);
-            if let Err(error) = kcall::mm::__kcall_munmap(self.pid, page_addr) {
+            if let Err(error) = kcall::mm::__kcall_munmap(pid, page_addr) {
                 ::syslog::warn!(
                     "shrink(): failed to unmap page at {:X?}, stopping (error={:?})",
                     page_addr,
@@ -274,9 +282,19 @@ impl Drop for Heap {
             self.capacity
         );
 
+        // Resolve the owning pid through the fork-aware cache; see grow() for rationale. Drop
+        // cannot propagate errors, so skip unmapping if the pid cannot be determined.
+        let pid: ProcessIdentifier = match kcall::pm::getpid() {
+            Ok(pid) => pid,
+            Err(_error) => {
+                ::syslog::warn!("drop(): failed to query pid, skipping unmap (error={:?})", _error);
+                return;
+            },
+        };
+
         // Unmap pages.
         if let Err(_error) = unmap_range(
-            self.pid,
+            pid,
             self.base,
             VirtualAddress::from_raw_value(self.base.into_raw_value() + self.size),
         ) {

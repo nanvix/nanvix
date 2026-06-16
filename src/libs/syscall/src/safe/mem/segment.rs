@@ -42,8 +42,6 @@ use ::sys::{
 ///
 #[derive(Debug)]
 pub struct MemorySegment {
-    /// Identifier of the process that owns the segment.
-    pid: ProcessIdentifier,
     /// Base address.
     base: VirtualAddress,
     /// Capacity of the segment.
@@ -100,7 +98,11 @@ impl MemorySegment {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
-        let pid: ProcessIdentifier = kcall::pm::__kcall_getpid()?;
+        // Resolve the owning pid through the fork-aware cache: it is memoized to avoid a kernel
+        // transition and is invalidated in the child after fork(). Segments live in a
+        // process-global map that a child inherits across fork(), so mapping must always target
+        // the current process; a kcall with a foreign pid trips the kernel's capability check.
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
 
         map_range(
             pid,
@@ -109,11 +111,7 @@ impl MemorySegment {
             access,
         )?;
 
-        Ok(MemorySegment {
-            pid,
-            base,
-            capacity,
-        })
+        Ok(MemorySegment { base, capacity })
     }
 
     ///
@@ -211,8 +209,14 @@ impl MemorySegment {
             prot
         );
 
+        // Resolve the owning pid through the fork-aware cache: it is memoized to avoid a kernel
+        // transition and is invalidated in the child after fork(). Segments live in a
+        // process-global map that a child inherits across fork(), so this must always target the
+        // current process; a kcall with a foreign pid trips the kernel's capability check.
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
+
         protect_range(
-            self.pid,
+            pid,
             self.base,
             VirtualAddress::from_raw_value(self.base.into_raw_value() + self.capacity),
             prot,
@@ -224,9 +228,20 @@ impl Drop for MemorySegment {
     fn drop(&mut self) {
         ::syslog::trace!("drop(): base={:X?}, capacity={:X?}", self.base, self.capacity);
 
+        // Resolve the owning pid through the fork-aware cache; see set_protection() for
+        // rationale. Drop cannot propagate errors, so skip unmapping if the pid cannot be
+        // determined.
+        let pid: ProcessIdentifier = match kcall::pm::getpid() {
+            Ok(pid) => pid,
+            Err(_error) => {
+                ::syslog::warn!("drop(): failed to query pid, skipping unmap (error={:?})", _error);
+                return;
+            },
+        };
+
         // Unmap pages.
         if let Err(_error) = unmap_range(
-            self.pid,
+            pid,
             self.base,
             VirtualAddress::from_raw_value(self.base.into_raw_value() + self.capacity),
         ) {

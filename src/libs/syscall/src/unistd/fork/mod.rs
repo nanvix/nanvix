@@ -80,7 +80,7 @@ fn map_duplicate_error(code: ErrorCode) -> ErrorCode {
 fn sync_parent_after_fork(child: ProcessIdentifier) -> Result<(), Error> {
     // The request must carry the parent's own identity as its source so that the daemon knows which
     // process to release alongside the child.
-    let parent: ProcessIdentifier = ::sys::kcall::pm::__kcall_getpid()?;
+    let parent: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
     let request: Message = fork_sync_request(parent, child)?;
     if let Err(error) = ::sys::kcall::ipc::__kcall_send(&request) {
         ::syslog::error!("sync_parent_after_fork(): failed to send fork-sync request: {error:?}");

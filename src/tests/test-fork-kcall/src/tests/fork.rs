@@ -93,7 +93,7 @@ static PARENT_PID_RAW: AtomicU32 = AtomicU32::new(0);
 /// 3. Writes [`PATTERN_CHILD`] to [`SHARED_BYTE`], taking a private copy of the page.
 /// 4. Queries `getppid()` and reports both the observed byte and the parent PID to the parent.
 fn run_child(parent_pid: ProcessIdentifier) -> Result<(), Error> {
-    let my_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let my_pid: ProcessIdentifier = pm::getpid_uncached()?;
 
     // Barrier: block until the parent signals that its post-fork write has completed.
     ipc::__kcall_recv()?;
@@ -130,7 +130,7 @@ fn run_child(parent_pid: ProcessIdentifier) -> Result<(), Error> {
 
 /// Runs the fork copy-on-write and lineage scenario.
 fn test_fork_cow_and_lineage() -> Result<(), Error> {
-    let parent_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let parent_pid: ProcessIdentifier = pm::getpid_uncached()?;
     PARENT_PID_RAW.store(u32::try_from(parent_pid)?, ORDER);
 
     // Prime the shared byte with the pre-fork pattern.
@@ -218,6 +218,99 @@ fn test_fork_cow_and_lineage() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Process-Identifier Cache Invalidation
+//==================================================================================================
+
+/// Reports the child's cached process identifier to the parent over IPC.
+///
+/// The child resolves its identifier through [`pm::getpid`] — which, if the cache were not
+/// invalidated after `fork()`, would still hold the parent's identifier inherited through the
+/// duplicated address space. The message is sent under the child's *real* identifier (so the
+/// kernel's source-spoofing check accepts it), carrying the cached value in the payload so the
+/// parent can compare it against the child's actual pid.
+fn report_cached_pid(parent: ProcessIdentifier) -> Result<(), Error> {
+    let real_pid: ProcessIdentifier = pm::getpid_uncached()?;
+    let cached_pid: ProcessIdentifier = pm::getpid()?;
+
+    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+    payload[0..4].copy_from_slice(&i32::from(cached_pid).to_le_bytes());
+    let reply: Message = Message::new(
+        MessageSender::from(real_pid),
+        MessageReceiver::from(parent),
+        MessageType::Ipc,
+        None,
+        payload,
+    );
+    ipc::__kcall_send(&reply)?;
+
+    Ok(())
+}
+
+/// Verifies that the cached process identifier is invalidated in the child after `fork()`.
+///
+/// The parent primes the cache with its own identifier before forking. With the cache correctly
+/// invalidated in the child half of `fork()`, the child's [`pm::getpid`] must resolve to the
+/// child's own identifier — the very value the parent observed as the `fork()` return — rather than
+/// the parent's stale identifier. A regression that drops the invalidation makes the child report
+/// the parent's pid, turning this into a deterministic failure.
+fn test_fork_pid_cache_invalidation() -> Result<(), Error> {
+    // Prime the cache with the parent's identifier so a missing invalidation surfaces as the child
+    // reporting the parent's value.
+    let parent_pid: ProcessIdentifier = pm::getpid()?;
+    PARENT_PID_RAW.store(u32::try_from(parent_pid)?, ORDER);
+
+    // Fork the calling process. Both processes resume execution at this point.
+    let child_pid: ProcessIdentifier = fork::__kcall_fork()?;
+
+    if child_pid == ProcessIdentifier::from(0) {
+        let parent: ProcessIdentifier =
+            match ProcessIdentifier::try_from(PARENT_PID_RAW.load(ORDER)) {
+                Ok(pid) => pid,
+                // The freshly forked child is at a safe point to terminate; it holds no locks or
+                // resources that require explicit cleanup.
+                Err(_) => pm::__kcall_exit(CHILD_EXIT_FAIL)?,
+            };
+        let status: i32 = match report_cached_pid(parent) {
+            Ok(()) => CHILD_EXIT_OK,
+            Err(_) => CHILD_EXIT_FAIL,
+        };
+        // The child terminates here and never returns.
+        pm::__kcall_exit(status)?;
+    }
+
+    // Parent: a process identifier of zero would indicate the child path; reaching here means this
+    // is the parent.
+    assert!(child_pid != parent_pid, "child PID must differ from parent PID");
+
+    // Receive the child's report and recover the identifier it resolved through the cache.
+    let reply: Message = ipc::__kcall_recv()?;
+    assert!(reply.message_type == MessageType::Ipc, "expected IPC reply from child");
+    let child_cached_raw: i32 = i32::from_le_bytes([
+        reply.payload[0],
+        reply.payload[1],
+        reply.payload[2],
+        reply.payload[3],
+    ]);
+
+    // The child's cached identifier must equal its own pid (the fork() return observed here), which
+    // is only possible if the cache was invalidated and re-queried in the child.
+    assert!(
+        child_cached_raw == i32::from(child_pid),
+        "child getpid() returned {}; expected child pid {} (cache not invalidated after fork)",
+        child_cached_raw,
+        i32::from(child_pid)
+    );
+    // And it must not be the parent's stale identifier.
+    assert!(
+        child_cached_raw != i32::from(parent_pid),
+        "child getpid() returned the parent's pid {} (stale cache inherited across fork)",
+        i32::from(parent_pid)
+    );
+
+    Ok(())
+}
+
+//==================================================================================================
 // Public Entry Point
 //==================================================================================================
 
@@ -226,5 +319,7 @@ pub fn run() -> Result<(), Error> {
     ::syslog::info!("test-fork-kcall: starting fork() regression tests");
     test_fork_cow_and_lineage()?;
     ::syslog::info!("test-fork-kcall: PASS - fork_cow_and_lineage");
+    test_fork_pid_cache_invalidation()?;
+    ::syslog::info!("test-fork-kcall: PASS - fork_pid_cache_invalidation");
     Ok(())
 }

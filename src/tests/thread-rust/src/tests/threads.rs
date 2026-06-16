@@ -16,9 +16,9 @@ use ::sys::{
     error::Error,
     kcall::pm::{
         __kcall_create_thread,
-        __kcall_getpid,
         __kcall_gettid,
         __kcall_join_thread,
+        getpid_uncached,
     },
     pm::ThreadCreateArgs,
 };
@@ -50,7 +50,7 @@ pub fn run() -> Result<(), Error> {
 }
 
 fn test_identifiers() -> Result<(), Error> {
-    let pid = __kcall_getpid()?;
+    let pid = getpid_uncached()?;
     assert!(i32::from(pid) > 0, "process identifier must be positive");
 
     let tid = __kcall_gettid()?;

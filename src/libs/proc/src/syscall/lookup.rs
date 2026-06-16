@@ -45,7 +45,7 @@ use ::sys::{
 ///
 pub fn lookup(name: &str) -> Result<ProcessIdentifier, Error> {
     // FIXME: this should not be required.
-    let mypid: ProcessIdentifier = ::sys::kcall::pm::__kcall_getpid()?;
+    let mypid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build lookup message and send it.
     let message: Message = message::lookup_request(name, mypid)?;
