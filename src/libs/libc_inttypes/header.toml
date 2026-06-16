@@ -1,0 +1,125 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for inttypes.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/inttypes.h.
+
+file = "inttypes.h"
+brief = "Fixed-width integer types — format conversion."
+description = """
+Declares functions for greatest-width integer arithmetic and conversion,
+plus format macros for printf/scanf with fixed-width types. Implemented by
+the libc_inttypes Rust crate."""
+includes = ["stdint.h"]
+guard = "_NANVIX_INTTYPES_H"
+
+[[types]]
+text = """
+#ifndef _INTMAX_T_DEFINED
+#define _INTMAX_T_DEFINED
+typedef int64_t intmax_t;
+typedef uint64_t uintmax_t;
+#endif
+
+/** @brief Return type for imaxdiv(). */
+typedef struct {
+    intmax_t quot; /**< Quotient.  */
+    intmax_t rem;  /**< Remainder. */
+} imaxdiv_t;
+"""
+
+[[sections]]
+title = "Functions"
+functions = ["imaxabs", "imaxdiv", "strtoimax", "strtoumax"]
+
+# Format macros live outside extern "C" block — added as trailer.
+[trailer]
+text = """
+/*==================================================================================================
+ * printf Format Macros
+ *==================================================================================================*/
+
+/* Signed */
+#define PRId8 "d"
+#define PRId16 "d"
+#define PRId32 "d"
+#define PRId64 "lld"
+#define PRIdMAX "lld"
+#define PRIdPTR "d"
+
+#define PRIi8 "i"
+#define PRIi16 "i"
+#define PRIi32 "i"
+#define PRIi64 "lli"
+#define PRIiMAX "lli"
+#define PRIiPTR "i"
+
+/* Unsigned */
+#define PRIo8 "o"
+#define PRIo16 "o"
+#define PRIo32 "o"
+#define PRIo64 "llo"
+#define PRIoMAX "llo"
+#define PRIoPTR "o"
+
+#define PRIu8 "u"
+#define PRIu16 "u"
+#define PRIu32 "u"
+#define PRIu64 "llu"
+#define PRIuMAX "llu"
+#define PRIuPTR "u"
+
+#define PRIx8 "x"
+#define PRIx16 "x"
+#define PRIx32 "x"
+#define PRIx64 "llx"
+#define PRIxMAX "llx"
+#define PRIxPTR "x"
+
+#define PRIX8 "X"
+#define PRIX16 "X"
+#define PRIX32 "X"
+#define PRIX64 "llX"
+#define PRIXMAX "llX"
+#define PRIXPTR "X"
+
+/*==================================================================================================
+ * scanf Format Macros
+ *==================================================================================================*/
+
+#define SCNd8 "hhd"
+#define SCNd16 "hd"
+#define SCNd32 "d"
+#define SCNd64 "lld"
+#define SCNdMAX "lld"
+#define SCNdPTR "d"
+
+#define SCNi8 "hhi"
+#define SCNi16 "hi"
+#define SCNi32 "i"
+#define SCNi64 "lli"
+#define SCNiMAX "lli"
+#define SCNiPTR "i"
+
+#define SCNo8 "hho"
+#define SCNo16 "ho"
+#define SCNo32 "o"
+#define SCNo64 "llo"
+#define SCNoMAX "llo"
+#define SCNoPTR "o"
+
+#define SCNu8 "hhu"
+#define SCNu16 "hu"
+#define SCNu32 "u"
+#define SCNu64 "llu"
+#define SCNuMAX "llu"
+#define SCNuPTR "u"
+
+#define SCNx8 "hhx"
+#define SCNx16 "hx"
+#define SCNx32 "x"
+#define SCNx64 "llx"
+#define SCNxMAX "llx"
+#define SCNxPTR "x"
+"""
