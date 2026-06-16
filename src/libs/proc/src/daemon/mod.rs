@@ -532,9 +532,9 @@ impl ProcessDaemon {
         // Determine whether any live process can ever reap this one. Only a parent that is still
         // alive and has not itself terminated can call `waitpid()`, so a process whose parent is
         // unknown, is the kernel (which never waits), is gone, or is already a zombie can never
-        // be reaped. Retaining such a process as a zombie would leak it forever — precisely what
-        // happens to grandchildren when `init_proc` is unset and orphan adoption is a no-op — so
-        // auto-reap it instead.
+        // be reaped. Retaining such a process as a zombie would leak it forever — which is what
+        // would happen to a grandchild whose parent terminated and no init process exists to adopt
+        // it — so auto-reap it instead.
         let reaper: Option<ProcessIdentifier> = parent.filter(|parent| {
             *parent != ProcessIdentifier::KERNEL
                 && self
@@ -565,9 +565,45 @@ impl ProcessDaemon {
         Ok(())
     }
 
-    /// Re-parents the surviving children of `pid` to the init process.
+    /// Returns the process that should adopt orphaned children. Prefers the explicitly tracked init
+    /// process recorded at signup; when that workload never signed up (`init_proc` is `None`), falls
+    /// back to the init process identified by lineage — the non-daemon process whose parent is the
+    /// kernel. Returns `None` only when no such process exists, in which case orphans cannot be
+    /// adopted and their bookkeeping is dropped on their own termination.
+    ///
+    /// The well-known daemon PIDs are excluded explicitly rather than relying solely on the
+    /// name-based `is_daemon` check, because that check is unreliable here: a daemon's record name
+    /// is only populated when it signs up, and `procd` itself never signs up. `procd` observes its
+    /// own kernel-spawned creation event, so it holds a record whose parent is the kernel and whose
+    /// name is empty — which would otherwise make it the lowest-PID match and let it adopt orphans
+    /// it can never reap (`procd` does not call `waitpid()`), leaking them until shutdown.
+    fn adoptive_init(&self) -> Option<ProcessIdentifier> {
+        if let Some(init_proc) = self.init_proc {
+            return Some(init_proc);
+        }
+
+        self.processes
+            .iter()
+            .find(|(pid, record)| {
+                record.parent == Some(ProcessIdentifier::KERNEL)
+                    && record.zombie.is_none()
+                    && !matches!(
+                        **pid,
+                        ProcessIdentifier::PROCD
+                            | ProcessIdentifier::MEMD
+                            | ProcessIdentifier::VFSD
+                    )
+                    && !Self::is_daemon(&record.name)
+            })
+            .map(|(pid, _)| *pid)
+    }
+
+    /// Re-parents the surviving children of `pid` to the init process. The adoptive parent is the
+    /// init process recorded at signup, or — when that workload never signed up — the init process
+    /// identified by lineage, so surviving children are re-homed consistently and no stale parent
+    /// pointers or child lists are left behind.
     fn reparent_children(&mut self, pid: ProcessIdentifier) {
-        let init_proc: ProcessIdentifier = match self.init_proc {
+        let init_proc: ProcessIdentifier = match self.adoptive_init() {
             Some(init_proc) => init_proc,
             None => return,
         };
