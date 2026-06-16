@@ -294,8 +294,8 @@ endif
 # Verus Formal Verification
 #===================================================================================================
 
-# Path to the directory containing the Verus executable (no default; skip verification when unset).
-export VERUS_EXECUTABLE_DIR ?=
+# Path to the directory containing the Verus executable.
+export VERUS_EXECUTABLE_DIR ?= /home/ruize/verus-exp/verus/source/target-verus/release
 
 # List of crates to verify with Verus.
 VERUS_CRATES := bitmap nanvix-slab
@@ -321,6 +321,17 @@ endif
 export VERUS_VERIFY_CMD = RUSTC_BOOTSTRAP=1 RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
 	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
 	$(CARGO) verus verify --locked --no-default-features
+
+# Generic Verus verification driver (cheating detection, logging, git tracking).
+export VERUS_AI_VERIFY_SCRIPT := $(CURDIR)/scripts/verify.sh
+export VERUS_AI_DIR ?= /home/ruize/verus-ai-exp/verus-ai
+
+# Optional module scoping: `make verify-kernel MODULE=kernel::pm::thread`.
+ifneq ($(strip $(MODULE)),)
+  VERUS_MODULE_ARG := --module $(MODULE)
+else
+  VERUS_MODULE_ARG :=
+endif
 
 #===================================================================================================
 # Top-Level Targets
@@ -605,14 +616,22 @@ $(addprefix verify-,$(VERUS_CRATES)): verify-%: ensure-verus
 ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@true
 else
-	$(VERUS_VERIFY_CMD) -p $* $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+	RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
+	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+	VERUS_EXTRA_CARGO_ARGS="--locked $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)" \
+	$(VERUS_AI_VERIFY_SCRIPT) --crate $* $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-$*
 endif
 
 verify-kernel: ensure-verus
 ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@true
 else
-	$(VERUS_VERIFY_CMD) -p kernel --features "microvm trace" $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)
+	RUSTFLAGS=$(KERNEL_RUST_FLAGS) \
+	PATH="$(VERUS_PATH_PREFIX):$$PATH" \
+	VERUS_AI_DIR="$(VERUS_AI_DIR)" \
+	VERUS_EXTRA_CARGO_ARGS="--locked --features microvm,trace $(KERNEL_CARGO_FLAGS) $(KERNEL_CARGO_TARGET)" \
+	$(VERUS_AI_VERIFY_SCRIPT) --crate kernel $(VERUS_MODULE_ARG) --log-dir verus-ai-logs/verify-kernel
 endif
 
 # Fixes code linting issues.
