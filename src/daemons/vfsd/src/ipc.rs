@@ -108,8 +108,9 @@ fn resolve_owning_pid(tid: ThreadIdentifier) -> ProcessIdentifier {
         Ok(pid) => pid,
         Err(e) => {
             ::syslog::error!(
-                "failed to resolve owning process of caller thread (tid={:?}, error={:?}); \
-                 falling back to TID-derived PID",
+                "failed to resolve owning process of caller thread (tid={:?}, error={:?}); this \
+                 should not happen during normal operation (the caller stays blocked awaiting the \
+                 reply); falling back to TID-derived PID, which is correct only when TID == PID",
                 tid,
                 e
             );

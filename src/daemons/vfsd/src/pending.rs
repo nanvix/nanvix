@@ -59,6 +59,20 @@ pub(crate) struct PendingOp {
     pub kind: PendingOpKind,
 }
 
+impl PendingOp {
+    /// Returns the process to bind the VFS to when completing this operation.
+    ///
+    /// Prefers the authoritative `source_pid` recorded when the request was received (the owner of
+    /// the caller's thread as reported by the kernel). Falls back to deriving the PID from the
+    /// source TID only when no PID was recorded — a defensive case that is inert for operations
+    /// whose completion never touches per-process state, and otherwise correct only for
+    /// single-threaded callers where TID == PID.
+    fn owning_pid(&self) -> ProcessIdentifier {
+        self.source_pid
+            .unwrap_or_else(|| ProcessIdentifier::from(i32::from(self.source_tid)))
+    }
+}
+
 /// The specific hostfs operation being awaited.
 pub(crate) enum PendingOpKind {
     /// open() — response contains a remote FD; we allocate a local hostfs FD.
@@ -298,9 +312,7 @@ pub(crate) fn complete_pending_op(
     // termination path (memd killing a faulting process) cannot target a process parked in a
     // syscall. Completion therefore never resurrects an exited process — which would re-create an
     // empty placeholder and leak any host handle this op allocates (e.g. a completed open).
-    let current_pid: ProcessIdentifier = pending
-        .source_pid
-        .unwrap_or_else(|| ProcessIdentifier::from(i32::from(pending.source_tid)));
+    let current_pid: ProcessIdentifier = pending.owning_pid();
     ::vfs::fd::set_current_process(current_pid);
 
     // Validate that the response header matches the expected operation kind.
@@ -486,6 +498,13 @@ pub(crate) fn finish_getdents(op: PendingOp) {
         message::MessagePartitioner,
     };
 
+    // Bind the VFS to the requesting process before touching its per-process fd table. A getdents
+    // sweep spans multiple event-loop iterations that may interleave with other processes'
+    // requests, so the global current-process selector cannot be assumed to still point at this
+    // caller. Use the authoritative PID recorded on the pending op (see `caller_pid` in `ipc.rs`),
+    // falling back to deriving it from the source TID only if it was not recorded.
+    let current_pid: ProcessIdentifier = op.owning_pid();
+
     let PendingOpKind::Getdents {
         remote_fd,
         guest_fd,
@@ -497,14 +516,6 @@ pub(crate) fn finish_getdents(op: PendingOp) {
         unreachable!("finish_getdents invoked with non-Getdents pending op");
     };
 
-    // Bind the VFS to the requesting process before touching its per-process fd table. A getdents
-    // sweep spans multiple event-loop iterations that may interleave with other processes'
-    // requests, so the global current-process selector cannot be assumed to still point at this
-    // caller. Use the authoritative PID recorded on the pending op (see `caller_pid` in `ipc.rs`),
-    // falling back to deriving it from the source TID only if it was not recorded.
-    let current_pid: ProcessIdentifier = op
-        .source_pid
-        .unwrap_or_else(|| ProcessIdentifier::from(i32::from(op.source_tid)));
     ::vfs::fd::set_current_process(current_pid);
 
     // Persist the iteration cursor so the next getdents call resumes where this left off.
