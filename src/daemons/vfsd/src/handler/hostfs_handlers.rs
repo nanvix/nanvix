@@ -441,6 +441,7 @@ use alloc::{
 /// Returns `None` when the request was forwarded to hostfsd (the response is sent later
 /// from the event loop). Non-hostfs FDs fall through to the synchronous VFS handler.
 pub(crate) fn handle_getdents_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
@@ -479,7 +480,7 @@ pub(crate) fn handle_getdents_with_hostfs(
                 op_id,
                 PendingOp {
                     source_tid: source,
-                    source_pid: None,
+                    source_pid: Some(source_pid),
                     kind: PendingOpKind::Getdents {
                         remote_fd,
                         guest_fd: fd,
@@ -500,6 +501,7 @@ pub(crate) fn handle_getdents_with_hostfs(
 }
 
 pub(crate) fn handle_openat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     request: OpenAtRequest,
     pending: &mut PendingQueue,
@@ -524,7 +526,7 @@ pub(crate) fn handle_openat_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid: source,
-                            source_pid: None,
+                            source_pid: Some(source_pid),
                             kind: PendingOpKind::Open { path: open_path },
                         },
                     )

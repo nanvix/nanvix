@@ -13,7 +13,10 @@ use crate::{
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::syscall::{
     fcntl::message::{
@@ -69,6 +72,7 @@ pub(crate) struct AssemblerEntry {
 //==================================================================================================
 
 pub(crate) fn assemble_and_dispatch(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     header: SystemCallMessageHeader,
     part: SystemCallMessagePart,
@@ -104,7 +108,7 @@ pub(crate) fn assemble_and_dispatch(
     let parts: Vec<SystemCallMessagePart> = completed.assembler.take_parts();
 
     // Dispatch based on the header type.
-    Some(dispatch_assembled_request(source, completed.header, &parts, pending))
+    Some(dispatch_assembled_request(source_pid, source, completed.header, &parts, pending))
 }
 
 fn max_capacity_for_header(header: SystemCallMessageHeader) -> usize {
@@ -160,6 +164,7 @@ fn max_capacity_for_header(header: SystemCallMessageHeader) -> usize {
 }
 
 fn dispatch_assembled_request(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     header: SystemCallMessageHeader,
     parts: &[SystemCallMessagePart],
@@ -169,7 +174,8 @@ fn dispatch_assembled_request(
         SystemCallMessageHeader::OpenAtRequestPart => match OpenAtRequest::from_parts(parts) {
             Ok(req) => {
                 // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
-                handler::handle_openat_with_hostfs(source, req, pending).unwrap_or_default()
+                handler::handle_openat_with_hostfs(source_pid, source, req, pending)
+                    .unwrap_or_default()
             },
             Err(e) => {
                 ::syslog::error!("dispatch: openat from_parts failed (error={:?})", e);

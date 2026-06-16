@@ -47,11 +47,13 @@ use ::sys::{
 pub(crate) struct PendingOp {
     /// Thread that initiated the request (to send the response back).
     pub source_tid: ThreadIdentifier,
-    /// Process that initiated the request, recorded for operations that need a PID to transfer
-    /// data buffers (the push/pull in read/write). Like every caller PID in vfsd it is derived by
-    /// casting the caller's TID (see `caller_pid` in `ipc.rs`), so it is correct only when
-    /// TID == PID. `None` for operations that never push/pull (close, seek, etc.) and therefore
-    /// need no PID at all.
+    /// Process that initiated the request, recorded so completion can bind the VFS to the caller's
+    /// per-process state (fd table and cwd) and transfer data buffers (the push/pull in
+    /// read/write). It is the authoritative owner of the caller's thread as reported by the kernel
+    /// (see `caller_pid` in `ipc.rs`), so it is correct even for requests issued from a non-main
+    /// thread of a multi-threaded process. `Some` for every operation whose completion touches
+    /// per-process state or pushes/pulls data (open, read, write, getdents); `None` for operations
+    /// that need no PID at all (close, seek, etc.).
     pub source_pid: Option<ProcessIdentifier>,
     /// The kind of operation, which determines how to interpret the IKC response.
     pub kind: PendingOpKind,
@@ -283,13 +285,12 @@ pub(crate) fn complete_pending_op(
     response_payload: &[u8; Message::PAYLOAD_SIZE],
 ) {
     // Bind the VFS to the requesting process so that descriptor allocation (e.g. for a completed
-    // open) and directory-cursor updates land in its per-process state. Use the PID recorded on the
-    // pending op, falling back to deriving it from the source TID for operations that do not carry
-    // a PID (close, seek, etc.). Both paths rely on the same TID == PID assumption: the recorded
-    // `source_pid` is itself obtained by casting the caller's TID in `handle_ipc_message` (guest
-    // syscalls encode their source as a TID), so neither is correct for a request issued from a
-    // non-main thread of a multi-threaded process. See the TODO in `caller_pid` (ipc.rs) for the
-    // authoritative-PID fix. vfsd being single-threaded is what makes mutating this global
+    // open) and directory-cursor updates land in its per-process state. Use the authoritative PID
+    // recorded on the pending op — the owner of the caller's thread as reported by the kernel (see
+    // `caller_pid` in `ipc.rs`), correct even for a request issued from a non-main thread of a
+    // multi-threaded process. Operations whose completion does not touch per-process state (close,
+    // seek, etc.) record no PID; for them the TID-derived fallback below is inert because nothing
+    // reads the selector. vfsd being single-threaded is what makes mutating this global
     // current-process selector race-free.
     //
     // The caller is guaranteed to still be registered here: guest syscalls are synchronous, so it
@@ -495,6 +496,16 @@ pub(crate) fn finish_getdents(op: PendingOp) {
     else {
         unreachable!("finish_getdents invoked with non-Getdents pending op");
     };
+
+    // Bind the VFS to the requesting process before touching its per-process fd table. A getdents
+    // sweep spans multiple event-loop iterations that may interleave with other processes'
+    // requests, so the global current-process selector cannot be assumed to still point at this
+    // caller. Use the authoritative PID recorded on the pending op (see `caller_pid` in `ipc.rs`),
+    // falling back to deriving it from the source TID only if it was not recorded.
+    let current_pid: ProcessIdentifier = op
+        .source_pid
+        .unwrap_or_else(|| ProcessIdentifier::from(i32::from(op.source_tid)));
+    ::vfs::fd::set_current_process(current_pid);
 
     // Persist the iteration cursor so the next getdents call resumes where this left off.
     // Guard against FD reuse: if the guest FD was closed and re-bound to a different host

@@ -41,6 +41,8 @@ pub enum KcallNumber {
     GetPpid = KcallNumber::NR_GET_PPID_SYSCALL,
     /// Get thread identifier.
     GetTid = KcallNumber::NR_GET_TID_SYSCALL,
+    /// Get the process identifier that owns a given thread identifier.
+    GetPidFromTid = KcallNumber::NR_GET_PID_FROM_TID_SYSCALL,
     /// Terminate the calling process.
     Exit = KcallNumber::NR_EXIT_SYSCALL,
     /// Control capabilities.
@@ -159,6 +161,7 @@ impl KcallNumber {
     const NR_DUPLICATE_SYSCALL: u32 = 37;
     const NR_GET_PPID_SYSCALL: u32 = 38;
     const NR_EXECV_SYSCALL: u32 = 39;
+    const NR_GET_PID_FROM_TID_SYSCALL: u32 = 40;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -170,6 +173,7 @@ impl From<u32> for KcallNumber {
             Self::NR_GET_PID_SYSCALL => KcallNumber::GetPid,
             Self::NR_GET_PPID_SYSCALL => KcallNumber::GetPpid,
             Self::NR_GET_TID_SYSCALL => KcallNumber::GetTid,
+            Self::NR_GET_PID_FROM_TID_SYSCALL => KcallNumber::GetPidFromTid,
             Self::NR_EXIT_SYSCALL => KcallNumber::Exit,
             Self::NR_CAP_CTL_SYSCALL => KcallNumber::CapCtl,
             Self::NR_RESUME_SYSCALL => KcallNumber::Resume,
@@ -219,6 +223,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::GetPid => KcallNumber::NR_GET_PID_SYSCALL,
             KcallNumber::GetPpid => KcallNumber::NR_GET_PPID_SYSCALL,
             KcallNumber::GetTid => KcallNumber::NR_GET_TID_SYSCALL,
+            KcallNumber::GetPidFromTid => KcallNumber::NR_GET_PID_FROM_TID_SYSCALL,
             KcallNumber::Exit => KcallNumber::NR_EXIT_SYSCALL,
             KcallNumber::CapCtl => KcallNumber::NR_CAP_CTL_SYSCALL,
             KcallNumber::Resume => KcallNumber::NR_RESUME_SYSCALL,
@@ -274,5 +279,14 @@ mod tests {
     #[test]
     fn test_kcall_vector_avoids_linux_syscall_gate() {
         assert_ne!(KCALL_VECTOR, 0x80);
+    }
+
+    /// The `GetPidFromTid` kernel call must round-trip cleanly through its `u32` ABI value in both
+    /// directions, so the dispatcher decodes the same call that the userspace wrapper encodes.
+    #[test]
+    fn test_getpid_from_tid_roundtrips() {
+        let raw: u32 = u32::from(KcallNumber::GetPidFromTid);
+        assert_eq!(raw, KcallNumber::NR_GET_PID_FROM_TID_SYSCALL);
+        assert_eq!(KcallNumber::from(raw), KcallNumber::GetPidFromTid);
     }
 }

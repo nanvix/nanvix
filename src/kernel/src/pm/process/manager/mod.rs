@@ -2378,6 +2378,24 @@ impl ProcessManager {
         self.get_running().get_tid()
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the identifier of the process that owns the given thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread whose owning process is queried.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the identifier of the process that owns `tid` is returned. If no thread with
+    /// the given identifier exists, an error is returned instead.
+    ///
+    pub fn get_pid_from_tid(&mut self, tid: ThreadIdentifier) -> Result<ProcessIdentifier, Error> {
+        Ok(self.find_process_by_tid(tid)?.state_mut().pid())
+    }
+
     pub fn has_capability(
         &self,
         pid: ProcessIdentifier,

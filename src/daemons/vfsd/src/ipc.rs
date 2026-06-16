@@ -76,19 +76,45 @@ fn caller_tid(message: &Message) -> ThreadIdentifier {
 /// Extracts the caller's process identifier from an IPC message.
 ///
 /// Guest syscall requests encode their source as the caller's *thread* id (vfsd needs the TID to
-/// route the reply), so this almost always takes the TID branch and derives the PID by casting the
-/// TID value. That cast resolves to the correct process only for single-threaded callers where
-/// TID == PID; a request issued from a non-main thread of a multi-threaded process would be
-/// misattributed, keying its per-process VFS state (fd table and cwd) by the wrong identifier.
+/// route the reply), so this almost always takes the TID branch. The owning process cannot be
+/// recovered locally — PIDs and TIDs are drawn from independent counters and a process may be
+/// multi-threaded — so the authoritative owner is obtained from the kernel via
+/// [`__kcall_getpid_from_tid`](::sys::kcall::pm::__kcall_getpid_from_tid). This keys the caller's
+/// per-process VFS state (fd table and cwd) by the correct process even for requests issued from a
+/// non-main thread of a multi-threaded process.
 ///
-/// TODO(#2529): derive the caller PID from an authoritative value supplied by the kernel (e.g. a
-/// PID carried alongside the TID in the IPC metadata) instead of casting the TID, so
-/// multi-threaded callers are attributed to the correct process.
+/// A PID-encoded source (e.g. a message routed with a `ProcessIdentifier`, such as procd control
+/// messages) is already a process identifier and is returned as-is.
+///
+/// If the kernel lookup fails (which should not happen while the caller is blocked awaiting the
+/// reply), this falls back to deriving the PID from the raw TID value so the daemon stays live; the
+/// fallback is only ever correct for single-threaded callers where TID == PID.
 fn caller_pid(message: &Message) -> ProcessIdentifier {
     let sender: MessageSender = message.source;
     match sender.as_id() {
         Ok(pid) => pid,
-        Err(tid) => ProcessIdentifier::from(i32::from(tid)),
+        Err(tid) => resolve_owning_pid(tid),
+    }
+}
+
+/// Resolves the process that owns `tid`, asking the kernel for the authoritative mapping.
+///
+/// The caller of a synchronous filesystem syscall stays blocked awaiting vfsd's reply, so its
+/// thread is guaranteed to be alive here and the kernel lookup succeeds. The TID-cast fallback is a
+/// defensive last resort that keeps vfsd live if the lookup ever fails; it is only correct for
+/// single-threaded callers where TID == PID.
+fn resolve_owning_pid(tid: ThreadIdentifier) -> ProcessIdentifier {
+    match ::sys::kcall::pm::__kcall_getpid_from_tid(tid) {
+        Ok(pid) => pid,
+        Err(e) => {
+            ::syslog::error!(
+                "failed to resolve owning process of caller thread (tid={:?}, error={:?}); \
+                 falling back to TID-derived PID",
+                tid,
+                e
+            );
+            ProcessIdentifier::from(i32::from(tid))
+        },
     }
 }
 
@@ -213,11 +239,10 @@ pub(crate) fn handle_ipc_message(
 
     // Bind the VFS to the requesting process so that descriptor and working-directory operations
     // resolve against its per-process state. Guest syscall messages encode their source as the
-    // caller's thread id, so `source_pid` is obtained by casting that TID to a PID (see
-    // `caller_pid`). This resolves to the correct process only for single-threaded callers where
-    // TID == PID; a request from a non-main thread of a multi-threaded process would be
-    // misattributed (see the TODO in `caller_pid` for the authoritative-PID fix). vfsd being
-    // single-threaded is what makes mutating this global current-process selector race-free.
+    // caller's thread id, so `source_pid` is the authoritative owner of that thread as reported by
+    // the kernel (see `caller_pid`/`resolve_owning_pid`). This is correct even for a request issued
+    // from a non-main thread of a multi-threaded process. vfsd being single-threaded is what makes
+    // mutating this global current-process selector race-free.
     ::vfs::fd::set_current_process(source_pid);
 
     // Parse as SystemCallMessage from user processes.
@@ -345,7 +370,7 @@ pub(crate) fn handle_ipc_message(
         },
         SystemCallMessageHeader::GetDirectoryEntriesRequest => {
             if let Some(responses) =
-                handler::handle_getdents_with_hostfs(source_tid, syscall_msg, pending)
+                handler::handle_getdents_with_hostfs(source_pid, source_tid, syscall_msg, pending)
             {
                 for response in responses {
                     send_response(&response);
@@ -373,9 +398,14 @@ pub(crate) fn handle_ipc_message(
         | SystemCallMessageHeader::HostUmountRequestPart => {
             let part: SystemCallMessagePart =
                 SystemCallMessagePart::from_bytes(syscall_msg.payload);
-            if let Some(responses) =
-                assemble_and_dispatch(source_tid, syscall_msg.header, part, assemblers, pending)
-            {
+            if let Some(responses) = assemble_and_dispatch(
+                source_pid,
+                source_tid,
+                syscall_msg.header,
+                part,
+                assemblers,
+                pending,
+            ) {
                 for response in responses {
                     send_response(&response);
                 }

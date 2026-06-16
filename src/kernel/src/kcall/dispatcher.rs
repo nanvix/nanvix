@@ -67,6 +67,14 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
         // Handle `gettid()` locally.
         KcallNumber::GetTid => KcallResult::Success(<i64>::from(tid).into()),
+        // Handle `getpid_from_tid()` locally.
+        KcallNumber::GetPidFromTid => {
+            let target_tid: ThreadIdentifier = ThreadIdentifier::from(arg0 as i32);
+            match unsafe { ProcessManager::get_mut() }.get_pid_from_tid(target_tid) {
+                Ok(owner_pid) => KcallResult::Success(<i64>::from(owner_pid).into()),
+                Err(e) => KcallResult::Error(e.code.into()),
+            }
+        },
         KcallNumber::Exit => {
             // SAFETY: the calling process is not the kernel.
             let e: Error = unsafe { ProcessManager::exit(ExitStatus::from(arg0)).unwrap_err() };

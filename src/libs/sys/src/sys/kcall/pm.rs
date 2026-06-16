@@ -112,6 +112,40 @@ pub fn __kcall_gettid() -> Result<ThreadIdentifier, Error> {
 }
 
 //==================================================================================================
+// Get Process Identifier from Thread Identifier
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Gets the process identifier of the process that owns the given thread.
+///
+/// Unlike [`__kcall_getpid`], which returns the identity of the *calling* process, this resolves
+/// the owning process of an arbitrary thread. It exists so that a server (e.g. vfsd) which receives
+/// a request whose source is encoded as the caller's thread identifier can recover the caller's
+/// authoritative process identifier, rather than assuming `TID == PID`.
+///
+/// # Parameters
+///
+/// - `tid`: Thread identifier whose owning process is queried.
+///
+/// # Returns
+///
+/// Upon successful completion, the process identifier that owns `tid` is returned. Upon failure
+/// (e.g. no such thread), an error is returned instead.
+///
+#[unsafe(no_mangle)]
+pub fn __kcall_getpid_from_tid(tid: ThreadIdentifier) -> Result<ProcessIdentifier, Error> {
+    let result: i64 = kcall1!(KcallNumber::GetPidFromTid.into(), i32::from(tid) as u32);
+
+    if unlikely(result < 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to getpid_from_tid()"))
+    } else {
+        ProcessIdentifier::try_from(result)
+    }
+}
+
+//==================================================================================================
 // Exit
 //==================================================================================================
 
