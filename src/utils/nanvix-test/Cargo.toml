@@ -24,10 +24,12 @@ toml = { workspace = true }
 shell-words = { workspace = true }
 globset = { workspace = true }
 koptions = { workspace = true, features = ["std"], optional = true }
+# Control-plane HTTP client used by the test harness (cross-platform: the HTTP
+# executor now runs on Windows too, driving nanvixd in standalone HTTP mode).
+reqwest = { workspace = true, features = ["json"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
-reqwest = { workspace = true, features = ["json"] }
 
 [dev-dependencies]
 cmdline = { workspace = true, features = ["std"] }

@@ -8,7 +8,6 @@
 #[cfg(feature = "standalone")]
 mod common;
 pub mod empty;
-#[cfg(unix)]
 pub mod http;
 #[cfg(feature = "standalone")]
 pub mod snapshot_restore;

@@ -3,8 +3,10 @@
 > **Prerequisite:** You must build Nanvix before running it. See [build-windows.md](build-windows.md)
 for instructions.
 
-On Windows, `nanvixd` supports **standalone interactive mode** only (no HTTP mode). Both
-`nanvixd` and the UserVM are built natively with the WHP (Windows Hypervisor Platform) backend.
+On Windows, `nanvixd` runs in **standalone single-tenant mode**. Both `nanvixd` and the UserVM
+are built natively with the WHP (Windows Hypervisor Platform) backend. Standalone interactive
+mode (stdio attached to the console) is the primary workflow; HTTP mode is also supported with
+some limitations (see [HTTP Mode](#http-mode)).
 
 ## Quick Start
 
@@ -23,6 +25,8 @@ Run a guest application via `nanvixd` in standalone interactive mode:
   - [Enabling Host Networking](#enabling-host-networking)
   - [Mounting a Host Directory](#mounting-a-host-directory)
   - [Passing Kernel Arguments](#passing-kernel-arguments)
+- [HTTP Mode](#http-mode)
+  - [Limitations vs. Linux HTTP Mode](#limitations-vs-linux-http-mode)
 - [Logging](#logging)
 - [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)
   - [Recognised Kernel Arguments](#recognised-kernel-arguments)
@@ -155,6 +159,41 @@ To include a literal `;` in any section, escape it as `\;`:
 > [Passing Kernel Arguments](#passing-kernel-arguments)) or directly on the UserVM (see
 > [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)). They are not embedded in
 > the initrd arguments string.
+
+## HTTP Mode
+
+`nanvixd` can also expose its REST control plane over HTTP on Windows. Launch it with
+`-http-addr <addr>:<port>`:
+
+```powershell
+.\bin\nanvixd.exe -http-addr 127.0.0.1:8080
+```
+
+Clients then create, drive, and tear down User VMs through the REST API (this is the mode the
+`nanvix-test` HTTP executor uses). Guest stdio is bridged through a per-process **named pipe**
+gateway (`\\.\pipe\nanvix-standalone-gw-<pid>`) rather than the Unix-domain socket used on Linux.
+
+### Limitations vs. Linux HTTP Mode
+
+HTTP mode on Windows is intended for **single-tenant standalone** deployments. It differs from the
+Linux implementation in the following ways:
+
+- **No network-namespace isolation.** Linux isolates each guest's networking with a dedicated
+  network namespace (`netns`). Windows has no `netns` equivalent, so guests are not network
+  isolated from one another or from the host. Do not rely on Windows HTTP mode for multi-tenant
+  isolation.
+- **Named-pipe gateway.** The guest stdio gateway is a Windows named pipe instead of a
+  Unix-domain socket. TCP gateways (L2 deployments) are not available on Windows.
+- **Emulated stdin half-close.** Unix-domain sockets half-close the write direction to signal
+  end-of-input (EOF) to the guest's stdin while keeping the output direction open. Windows named
+  pipes have no half-close primitive, so the gateway emulates one with a small in-band framing on
+  the input (consumer → guest stdin) direction: each record is a little-endian `u32` length
+  followed by that many payload bytes, and a zero-length record marks EOF. The daemon-side bridge
+  closes the guest's stdin when it reads the EOF record, while the pipe stays open for guest
+  output. Because the EOF record shares the pipe's FIFO ordering with the preceding data, stdin
+  bytes always reach the guest first, so stdin-driven workloads (e.g. `echo`) behave the same as on
+  Linux. The framing is internal to the gateway transport; the guest stdout direction remains a raw
+  byte stream.
 
 ## Logging
 

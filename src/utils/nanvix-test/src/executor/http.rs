@@ -30,10 +30,6 @@ use ::log::{
     trace,
     warn,
 };
-use ::nanvix::syscomm::{
-    ReadExact,
-    WriteAll,
-};
 use ::std::{
     io::ErrorKind,
     path::Path,
@@ -117,6 +113,12 @@ pub(crate) async fn test_with_http_executor(
                 error!("test_with_http_executor(): {reason}");
                 ::anyhow::anyhow!(reason)
             })??;
+
+            // Propagate the resolved port so that the control-plane endpoint used by `UserVm::spawn`
+            // matches the port `nanvixd` actually binds to when a fallback port is selected.
+            let mut runner_config: RunnerConfig = runner_config.clone();
+            runner_config.port_num = resolved_port;
+            let runner_config: &RunnerConfig = &runner_config;
 
             let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
                 (stdout_file_path.as_path(), stderr_file_path.as_path()),
@@ -334,7 +336,7 @@ async fn collect_uservm_payload(
                 response_payload.push(byte[0]);
             },
             Err(error) => match error.kind() {
-                ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset => {
+                ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset | ErrorKind::BrokenPipe => {
                     if expect_empty_output {
                         if response_payload.is_empty() && expected_pattern.is_none() {
                             warn!(
