@@ -51,6 +51,7 @@ members = [
         "src/libs/syslog",
         "src/libs/syslog-macros",
         "src/libs/libc_assert",
+        "src/libs/libc_ctype",
         "src/libs/libc_stdlib",
         "src/libs/libc_string",
         "src/libs/cache",
@@ -212,6 +213,7 @@ sorted-vec = { path = "src/libs/sorted-vec", default-features = false }
 spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
 libc_assert = { path = "src/libs/libc_assert", default-features = false }
+libc_ctype = { path = "src/libs/libc_ctype", default-features = false }
 libc_stdlib = { path = "src/libs/libc_stdlib", default-features = false }
 libc_string = { path = "src/libs/libc_string", default-features = false }
 mmio-tag = { path = "src/libs/mmio-tag", default-features = false }

@@ -1,0 +1,37 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for ctype.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/ctype.h.
+
+file = "ctype.h"
+brief = "Character classification and conversion."
+description = """
+Declares functions for testing and mapping characters. All functions operate
+on values representable as unsigned char or the value EOF. Implemented by
+the libc_ctype Rust crate."""
+includes = []
+guard = "_NANVIX_CTYPE_H"
+
+[[sections]]
+title = "Classification"
+functions = [
+    "isalpha",
+    "isdigit",
+    "isalnum",
+    "isspace",
+    "isblank",
+    "isupper",
+    "islower",
+    "isprint",
+    "isgraph",
+    "ispunct",
+    "iscntrl",
+    "isxdigit",
+    "isascii",
+]
+
+[[sections]]
+title = "Conversion"
+functions = ["toupper", "tolower", "toascii"]
