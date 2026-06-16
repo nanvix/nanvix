@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+#![allow(clippy::type_complexity)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -24,6 +26,7 @@ use ::arch::mem::paging::{
     DirtyFlag,
     FrameNumber,
     PageCacheDisableFlag,
+    PageTableEntry,
     PageTableEntryFlags,
     PageWriteThroughFlag,
     Pml4Entry,
@@ -259,5 +262,91 @@ impl Pml4 {
             Pdpt::from_address(PdptAddress::from_raw_value(entry.frame_address())?),
             allocated_page,
         ))
+    }
+}
+
+//==================================================================================================
+// Copy-on-Write Passthrough
+//==================================================================================================
+
+impl Pml4 {
+    /// Reads the PTE for `vaddr` by walking the 4-level hierarchy.
+    ///
+    /// # Safety
+    ///
+    /// The PML4 must be valid and point to identity-mapped lower levels.
+    pub unsafe fn try_read_pte(
+        &self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<Option<PageTableEntry>, Error> {
+        match self.pdpt_for(vaddr)? {
+            Some(pdpt) => pdpt.try_read_pte(vaddr),
+            None => Ok(None),
+        }
+    }
+
+    /// Marks the user page at `vaddr` copy-on-write.
+    ///
+    /// # Safety
+    ///
+    /// The PML4 must be valid and point to identity-mapped lower levels.
+    pub unsafe fn mark_cow_page(&self, vaddr: PageAligned<VirtualAddress>) -> Result<(), Error> {
+        self.require_pdpt(vaddr)?.mark_cow_page(vaddr)
+    }
+
+    /// Clears the copy-on-write mark on the user page at `vaddr`.
+    ///
+    /// # Safety
+    ///
+    /// The PML4 must be valid and point to identity-mapped lower levels.
+    pub unsafe fn unmark_cow_page(&self, vaddr: PageAligned<VirtualAddress>) -> Result<(), Error> {
+        self.require_pdpt(vaddr)?.unmark_cow_page(vaddr)
+    }
+
+    /// Repoints the copy-on-write page at `vaddr` to `new_frame`; returns the old frame.
+    ///
+    /// # Safety
+    ///
+    /// The PML4 must be valid and point to identity-mapped lower levels.
+    pub unsafe fn replace_cow_frame_page(
+        &self,
+        vaddr: PageAligned<VirtualAddress>,
+        new_frame: FrameAddress,
+    ) -> Result<FrameAddress, Error> {
+        self.require_pdpt(vaddr)?
+            .replace_cow_frame_page(vaddr, new_frame)
+    }
+
+    /// Returns the PDPT backing `vaddr`, or `None` if the PML4 entry is absent.
+    ///
+    /// # Safety
+    ///
+    /// The PML4 must be valid and point to identity-mapped lower levels.
+    unsafe fn pdpt_for(&self, vaddr: PageAligned<VirtualAddress>) -> Result<Option<Pdpt>, Error> {
+        let pml4_idx = ::arch::mem::paging::pml4_index(vaddr.into_raw_value());
+        let entry: Pml4Entry = self
+            .0
+            .read(pml4_idx)
+            .ok_or_else(|| Error::new(ErrorCode::BadAddress, "invalid page table entry"))?;
+        if !entry.is_present() {
+            return Ok(None);
+        }
+        Ok(Some(Pdpt::from_address(PdptAddress::from_raw_value(entry.frame_address())?)))
+    }
+
+    /// Returns the PDPT backing `vaddr`, erroring if the PML4 entry is absent.
+    ///
+    /// # Safety
+    ///
+    /// The PML4 must be valid and point to identity-mapped lower levels.
+    unsafe fn require_pdpt(&self, vaddr: PageAligned<VirtualAddress>) -> Result<Pdpt, Error> {
+        match self.pdpt_for(vaddr)? {
+            Some(pdpt) => Ok(pdpt),
+            None => {
+                let reason: &str = "PML4 entry not present";
+                error!("{reason}");
+                Err(Error::new(ErrorCode::NoSuchEntry, reason))
+            },
+        }
     }
 }

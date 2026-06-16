@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+#![allow(clippy::type_complexity)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -26,6 +28,7 @@ use ::arch::mem::paging::{
     DirtyFlag,
     FrameNumber,
     PageCacheDisableFlag,
+    PageTableEntry,
     PageTableEntryFlags,
     PageWriteThroughFlag,
     PdptEntry,
@@ -114,6 +117,7 @@ impl Pdpt {
     /// Returns `(Option<PageTableStorage>, Option<(PageTableAligned<VirtualAddress>, PageTable)>)`:
     /// - The first is newly allocated PD storage (if PDPT entry was absent).
     /// - The second is a newly allocated PT (if PDE was absent).
+    ///
     /// The caller is responsible for keeping both alive.
     pub unsafe fn map_page<T: Fn() -> Result<PageTableStorage, Error>>(
         &self,
@@ -272,5 +276,90 @@ impl Pdpt {
             )?),
             allocated,
         ))
+    }
+}
+
+//==================================================================================================
+// Copy-on-Write Passthrough
+//==================================================================================================
+
+impl Pdpt {
+    /// Reads the PTE for `vaddr` by walking to the page directory.
+    ///
+    /// # Safety
+    ///
+    /// The PDPT must be valid and point to identity-mapped page directories.
+    pub unsafe fn try_read_pte(
+        &self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<Option<PageTableEntry>, Error> {
+        let pdpt_idx = ::arch::mem::paging::pdpt_index(vaddr.into_raw_value());
+        let entry: PdptEntry = self
+            .0
+            .read(pdpt_idx)
+            .ok_or_else(|| Error::new(ErrorCode::BadAddress, "invalid page table entry"))?;
+        if !entry.is_present() {
+            return Ok(None);
+        }
+        let pd: PageDirectory = PageDirectory::from_address(PageDirectoryAddress::from_raw_value(
+            entry.frame_address(),
+        )?);
+        pd.try_read_pte(vaddr)
+    }
+
+    /// Marks the user page at `vaddr` copy-on-write.
+    ///
+    /// # Safety
+    ///
+    /// The PDPT must be valid and point to identity-mapped page directories.
+    pub unsafe fn mark_cow_page(&self, vaddr: PageAligned<VirtualAddress>) -> Result<(), Error> {
+        self.page_directory_for(vaddr)?.mark_cow_page(vaddr)
+    }
+
+    /// Clears the copy-on-write mark on the user page at `vaddr`.
+    ///
+    /// # Safety
+    ///
+    /// The PDPT must be valid and point to identity-mapped page directories.
+    pub unsafe fn unmark_cow_page(&self, vaddr: PageAligned<VirtualAddress>) -> Result<(), Error> {
+        self.page_directory_for(vaddr)?.unmark_cow_page(vaddr)
+    }
+
+    /// Repoints the copy-on-write page at `vaddr` to `new_frame`; returns the old frame.
+    ///
+    /// # Safety
+    ///
+    /// The PDPT must be valid and point to identity-mapped page directories.
+    pub unsafe fn replace_cow_frame_page(
+        &self,
+        vaddr: PageAligned<VirtualAddress>,
+        new_frame: FrameAddress,
+    ) -> Result<FrameAddress, Error> {
+        self.page_directory_for(vaddr)?
+            .replace_cow_frame_page(vaddr, new_frame)
+    }
+
+    /// Resolves the page directory backing `vaddr`, erroring if the PDPT entry is absent.
+    ///
+    /// # Safety
+    ///
+    /// The PDPT must be valid and point to identity-mapped page directories.
+    unsafe fn page_directory_for(
+        &self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<PageDirectory, Error> {
+        let pdpt_idx = ::arch::mem::paging::pdpt_index(vaddr.into_raw_value());
+        let entry: PdptEntry = self
+            .0
+            .read(pdpt_idx)
+            .ok_or_else(|| Error::new(ErrorCode::BadAddress, "invalid page table entry"))?;
+        if !entry.is_present() {
+            let reason: &str = "PDPT entry not present";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        }
+        Ok(PageDirectory::from_address(PageDirectoryAddress::from_raw_value(
+            entry.frame_address(),
+        )?))
     }
 }

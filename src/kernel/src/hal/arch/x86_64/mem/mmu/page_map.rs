@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+#![allow(clippy::type_complexity)]
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -16,6 +18,7 @@ use crate::{
         PdptAddress,
         PhysicalAddress,
         Pml4Address,
+        Table,
         VirtualAddress,
     },
     mm::{
@@ -33,6 +36,7 @@ use ::arch::mem::{
         DirtyFlag,
         PageCacheDisableFlag,
         PageDirectoryEntryFlags,
+        PageTableEntry,
         PageTableEntryFlags,
         PageWriteThroughFlag,
         PresentFlag,
@@ -40,9 +44,13 @@ use ::arch::mem::{
         TableIndex,
         UserSupervisorFlag,
     },
+    PAGE_TABLE_LENGTH,
     PGTAB_ALIGNMENT,
 };
-use ::core::cell::RefCell;
+use ::core::{
+    cell::RefCell,
+    ops::ControlFlow,
+};
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -155,7 +163,7 @@ impl PageMap {
             hw_pages.push_back(PageTableStorage::Bss(pd_user_slot));
 
             // Register kernel PD and PML4 (CR3) for lazy identity mapping.
-            crate::mm::virt::identity_map::init(pd_kernel_addr, pml4_addr);
+            crate::mm::virt::identity_map::init(pd_kernel_addr, pml4_addr)?;
 
             Ok(Self {
                 pml4_paddr: pml4_addr,
@@ -499,6 +507,88 @@ impl PageMap {
     ) -> Result<PageTableAligned<VirtualAddress>, Error> {
         let aligned: usize = ::sys::mm::align_down(vaddr.into_raw_value(), PGTAB_ALIGNMENT);
         PageTableAligned::from_raw_value(aligned)
+    }
+}
+
+//==================================================================================================
+// Copy-on-Write / Iteration Support
+//==================================================================================================
+
+impl PageMap {
+    /// Reads the user page-table entry for `vaddr` (None if not mapped/present).
+    pub fn try_lookup_user_pte(
+        &self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<Option<PageTableEntry>, Error> {
+        // SAFETY: pml4_paddr is a valid PML4 address.
+        unsafe { super::pml4::Pml4::from_address(self.pml4_paddr).try_read_pte(vaddr) }
+    }
+
+    /// Marks the user page at `vaddr` copy-on-write.
+    pub fn mark_user_page_cow(&mut self, vaddr: PageAligned<VirtualAddress>) -> Result<(), Error> {
+        // SAFETY: pml4_paddr is a valid PML4 address.
+        unsafe { super::pml4::Pml4::from_address(self.pml4_paddr).mark_cow_page(vaddr) }
+    }
+
+    /// Clears the copy-on-write mark on the user page at `vaddr`.
+    pub fn unmark_user_page_cow(
+        &mut self,
+        vaddr: PageAligned<VirtualAddress>,
+    ) -> Result<(), Error> {
+        // SAFETY: pml4_paddr is a valid PML4 address.
+        unsafe { super::pml4::Pml4::from_address(self.pml4_paddr).unmark_cow_page(vaddr) }
+    }
+
+    /// Repoints the copy-on-write page at `vaddr` to `new_frame`; returns the old frame.
+    pub fn replace_user_page_cow_frame(
+        &mut self,
+        vaddr: PageAligned<VirtualAddress>,
+        new_frame: FrameAddress,
+    ) -> Result<FrameAddress, Error> {
+        // SAFETY: pml4_paddr is a valid PML4 address.
+        unsafe {
+            super::pml4::Pml4::from_address(self.pml4_paddr)
+                .replace_cow_frame_page(vaddr, new_frame)
+        }
+    }
+
+    /// Iterates all present user mappings, invoking `f(vaddr, pte)`. Returning
+    /// `Ok(ControlFlow::Break(()))` stops the walk early.
+    pub fn try_for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
+    where
+        F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<ControlFlow<()>, Error>,
+    {
+        for (pt_vaddr, storage) in self.user_page_tables.iter() {
+            let base: usize = pt_vaddr.into_raw_value();
+            // SAFETY: the page table storage is valid and identity-mapped.
+            let pt: Table<PageTableEntry> =
+                unsafe { Table::from_address(storage.as_ptr() as usize) };
+            for i in 0..PAGE_TABLE_LENGTH {
+                let idx = TableIndex::try_from(i)?;
+                // SAFETY: idx is within bounds.
+                let pte: PageTableEntry = match unsafe { pt.read(idx) } {
+                    Some(p) => p,
+                    None => continue,
+                };
+                if !pte.is_present() {
+                    continue;
+                }
+                let raw_vaddr: usize = base
+                    .checked_add(
+                        i.checked_mul(::arch::mem::PAGE_SIZE).ok_or_else(|| {
+                            Error::new(ErrorCode::BadAddress, "pte offset overflow")
+                        })?,
+                    )
+                    .ok_or_else(|| {
+                        Error::new(ErrorCode::BadAddress, "user mapping vaddr overflow")
+                    })?;
+                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+                if f(vaddr, pte)?.is_break() {
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
     }
 }
 

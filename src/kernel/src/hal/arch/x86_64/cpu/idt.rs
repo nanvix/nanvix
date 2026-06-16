@@ -178,7 +178,7 @@ impl Idt {
         idt_storage: *mut Idte,
         idtr_storage: *mut Idtr,
     ) -> Result<(), Error> {
-        if (idt_storage as usize) % mem::align_of::<Idte>() != 0 {
+        if !(idt_storage as usize).is_multiple_of(mem::align_of::<Idte>()) {
             let reason: &str = "IDT backing storage pointer is not properly aligned";
             error!("{}", reason);
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
