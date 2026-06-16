@@ -17,6 +17,10 @@ use ::arch::cpu::{
     idtr::Idtr,
 };
 use ::core::mem;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 unsafe extern "C" {
     /// Division-by-Zero Error.
@@ -129,118 +133,173 @@ pub const IDT_LEN: usize = 256;
 pub const IDT_SIZE: usize = IDT_LEN * mem::size_of::<Idte>();
 
 //==================================================================================================
+// Structures
+//==================================================================================================
+
+/// Handle to the Interrupt Descriptor Table.
+pub struct Idt;
+
+//==================================================================================================
 // Global Variables
 //==================================================================================================
 
-static mut IDT: [Idte; IDT_LEN] = unsafe { mem::zeroed() };
+/// Pointer to the platform-provided IDT backing storage.
+///
+/// Initialized by [`Idt::set_backing_storage()`] before [`init()`]. On microvm the storage
+/// is a BSS-allocated static array.
+static mut IDT: *mut Idte = core::ptr::null_mut();
 
-static mut IDTR: Idtr = unsafe { mem::zeroed() };
+/// Pointer to the platform-provided IDTR backing storage.
+static mut IDTR: *mut Idtr = core::ptr::null_mut();
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
+
+impl Idt {
+    ///
+    /// # Description
+    ///
+    /// Installs platform-provided backing storage for the IDT and IDTR. Must be called exactly
+    /// once before [`init()`].
+    ///
+    /// # Parameters
+    ///
+    /// - `idt_storage`: Pointer to at least [`IDT_LEN`] contiguous [`Idte`] slots.
+    /// - `idtr_storage`: Pointer to a single [`Idtr`].
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure both pointers are non-null, properly aligned, point to storage of
+    /// the required size, and that the backing memory outlives all IDT usage. This function must
+    /// be called at most once.
+    ///
+    pub unsafe fn set_backing_storage(
+        idt_storage: *mut Idte,
+        idtr_storage: *mut Idtr,
+    ) -> Result<(), Error> {
+        if (idt_storage as usize) % mem::align_of::<Idte>() != 0 {
+            let reason: &str = "IDT backing storage pointer is not properly aligned";
+            error!("{}", reason);
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        IDT = idt_storage;
+        IDTR = idtr_storage;
+        Ok(())
+    }
+}
 
 /// Returns a pointer to the base of the IDT.
 #[allow(dead_code)]
 pub unsafe fn idt_base() -> *const u8 {
-    IDT.as_ptr() as *const u8
+    IDT as *const u8
 }
 
 pub unsafe fn init() {
+    debug_assert!(
+        !IDT.is_null(),
+        "IDT backing storage not installed; call Idt::set_backing_storage() first"
+    );
+    debug_assert!(
+        !IDTR.is_null(),
+        "IDTR backing storage not installed; call Idt::set_backing_storage() first"
+    );
     info!("initializing idt...");
 
+    let idt: *mut Idte = IDT;
+
     // Set exception hooks.
-    IDT[EXCP_OFF as usize] =
+    *idt.add(EXCP_OFF as usize) =
         idt_entry!(_do_excp0, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 1] =
+    *idt.add(EXCP_OFF as usize + 1) =
         idt_entry!(_do_excp1, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 2] =
+    *idt.add(EXCP_OFF as usize + 2) =
         idt_entry!(_do_excp2, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 3] =
+    *idt.add(EXCP_OFF as usize + 3) =
         idt_entry!(_do_excp3, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 4] =
+    *idt.add(EXCP_OFF as usize + 4) =
         idt_entry!(_do_excp4, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 5] =
+    *idt.add(EXCP_OFF as usize + 5) =
         idt_entry!(_do_excp5, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 6] =
+    *idt.add(EXCP_OFF as usize + 6) =
         idt_entry!(_do_excp6, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 7] =
+    *idt.add(EXCP_OFF as usize + 7) =
         idt_entry!(_do_excp7, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 8] =
+    *idt.add(EXCP_OFF as usize + 8) =
         idt_entry!(_do_excp8, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 9] =
+    *idt.add(EXCP_OFF as usize + 9) =
         idt_entry!(_do_excp9, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 10] =
+    *idt.add(EXCP_OFF as usize + 10) =
         idt_entry!(_do_excp10, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 11] =
+    *idt.add(EXCP_OFF as usize + 11) =
         idt_entry!(_do_excp11, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 12] =
+    *idt.add(EXCP_OFF as usize + 12) =
         idt_entry!(_do_excp12, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 13] =
+    *idt.add(EXCP_OFF as usize + 13) =
         idt_entry!(_do_excp13, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 14] =
+    *idt.add(EXCP_OFF as usize + 14) =
         idt_entry!(_do_excp14, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
 
     // Fill reserved entries 15–31 with the generic reserved-exception hook.
-    for (_, entry) in IDT
-        .iter_mut()
-        .enumerate()
-        .skip(EXCP_OFF as usize + 15)
-        .take(17)
-    {
-        *entry = idt_entry!(_do_excp15, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
+    for i in 0..17 {
+        *idt.add(EXCP_OFF as usize + 15 + i) =
+            idt_entry!(_do_excp15, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
     }
 
     // Override with dedicated hooks for exceptions that have specific handlers.
-    IDT[EXCP_OFF as usize + 16] =
+    *idt.add(EXCP_OFF as usize + 16) =
         idt_entry!(_do_excp16, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 17] =
+    *idt.add(EXCP_OFF as usize + 17) =
         idt_entry!(_do_excp17, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 18] =
+    *idt.add(EXCP_OFF as usize + 18) =
         idt_entry!(_do_excp18, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 19] =
+    *idt.add(EXCP_OFF as usize + 19) =
         idt_entry!(_do_excp19, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 20] =
+    *idt.add(EXCP_OFF as usize + 20) =
         idt_entry!(_do_excp20, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[EXCP_OFF as usize + 30] =
+    *idt.add(EXCP_OFF as usize + 30) =
         idt_entry!(_do_excp30, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
 
     // Set hardware interrupt hooks.
-    IDT[INT_OFF as usize] =
+    *idt.add(INT_OFF as usize) =
         idt_entry!(_do_hwint0, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 1] =
+    *idt.add(INT_OFF as usize + 1) =
         idt_entry!(_do_hwint1, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 2] =
+    *idt.add(INT_OFF as usize + 2) =
         idt_entry!(_do_hwint2, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 3] =
+    *idt.add(INT_OFF as usize + 3) =
         idt_entry!(_do_hwint3, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 4] =
+    *idt.add(INT_OFF as usize + 4) =
         idt_entry!(_do_hwint4, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 5] =
+    *idt.add(INT_OFF as usize + 5) =
         idt_entry!(_do_hwint5, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 6] =
+    *idt.add(INT_OFF as usize + 6) =
         idt_entry!(_do_hwint6, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 7] =
+    *idt.add(INT_OFF as usize + 7) =
         idt_entry!(_do_hwint7, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 8] =
+    *idt.add(INT_OFF as usize + 8) =
         idt_entry!(_do_hwint8, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 9] =
+    *idt.add(INT_OFF as usize + 9) =
         idt_entry!(_do_hwint9, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 10] =
+    *idt.add(INT_OFF as usize + 10) =
         idt_entry!(_do_hwint10, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 11] =
+    *idt.add(INT_OFF as usize + 11) =
         idt_entry!(_do_hwint11, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 12] =
+    *idt.add(INT_OFF as usize + 12) =
         idt_entry!(_do_hwint12, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 13] =
+    *idt.add(INT_OFF as usize + 13) =
         idt_entry!(_do_hwint13, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 14] =
+    *idt.add(INT_OFF as usize + 14) =
         idt_entry!(_do_hwint14, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
-    IDT[INT_OFF as usize + 15] =
+    *idt.add(INT_OFF as usize + 15) =
         idt_entry!(_do_hwint15, DescriptorPrivilegeLevel::Ring0, GateType::Int32);
     // Set system call hook.
-    IDT[::sys::number::KCALL_VECTOR as usize] =
+    *idt.add(::sys::number::KCALL_VECTOR as usize) =
         idt_entry!(_do_kcall, DescriptorPrivilegeLevel::Ring3, GateType::Int32);
 
     // Load IDT.
-    IDTR.init(
-        IDT.as_ptr() as u64,
+    (*IDTR).init(
+        idt as u64,
         u16::try_from(IDT_SIZE).expect("wrong idt size, is it corrupted?"),
     );
     load()
@@ -251,6 +310,14 @@ pub unsafe fn init() {
 ///
 /// Loads the IDT.
 pub unsafe fn load() {
-    info!("loading idt (base={:p}, size={})", IDT.as_ptr(), IDT_SIZE);
-    IDTR.load();
+    debug_assert!(
+        !IDT.is_null(),
+        "IDT backing storage not installed; call Idt::set_backing_storage() first"
+    );
+    debug_assert!(
+        !IDTR.is_null(),
+        "IDTR backing storage not installed; call Idt::set_backing_storage() first"
+    );
+    info!("loading idt (base={:p}, size={})", IDT, IDT_SIZE);
+    (*IDTR).load();
 }
