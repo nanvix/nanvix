@@ -23,6 +23,7 @@ cfg_if::cfg_if! {
         pub use self::exec::{
             do_execv,
             execv_from_c,
+            execv_inherit_env_from_c,
         };
         pub mod syscall;
         pub use self::syscall::{

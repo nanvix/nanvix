@@ -28,7 +28,7 @@ use ::syslog::trace_syscall;
 /// first argument, by convention, points to the filename associated with the file being executed.
 /// The array of pointers must be terminated by a null pointer. This function is one of the exec
 /// family of functions that provide different interfaces for program execution and process
-/// replacement.
+/// replacement. Per POSIX, the new program inherits the calling process's environment.
 ///
 /// # Parameters
 ///
@@ -74,10 +74,9 @@ use ::syslog::trace_syscall;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int {
     // `PATH` search is not implemented; treat `file` as a literal path and delegate to the
-    // `execv()` path. `execv_from_c` returns only on failure; on success the process image is
-    // replaced and control does not return here.
-    let error: ::sys::error::Error =
-        unsafe { crate::unistd::execv_from_c(file, argv, ::core::ptr::null()) };
+    // environment-inheriting `execv()` path. `execv_inherit_env_from_c` returns only on failure; on
+    // success the process image is replaced and control does not return here.
+    let error: ::sys::error::Error = unsafe { crate::unistd::execv_inherit_env_from_c(file, argv) };
     unsafe {
         *__errno_location() = error.code.get();
     }

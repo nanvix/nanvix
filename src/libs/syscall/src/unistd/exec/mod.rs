@@ -118,6 +118,44 @@ fn map_executable(path: &str) -> Result<(VirtualAddress, usize, usize), Error> {
     Ok((base, size, map_len))
 }
 
+///
+/// # Description
+///
+/// Validates that a single argument or environment token can round-trip through the kernel's
+/// space-separated `execv` wire format without being silently altered.
+///
+/// Tokens are flattened by joining them with single spaces, and the new image's runtime re-splits
+/// the result on spaces. A token is therefore rejected when it:
+///
+/// - is empty, because the kernel trims surrounding whitespace and adjacent delimiters collapse, so
+///   an empty token would be dropped;
+/// - contains a space, because it would be split into two or more tokens; or
+/// - contains a NUL byte, because it would terminate the C string early and is rejected by the
+///   kernel.
+///
+/// # Parameters
+///
+/// - `token`: The argument or environment token to validate.
+///
+/// # Returns
+///
+/// `Ok(())` if the token is representable, otherwise an [`ErrorCode::InvalidArgument`] error.
+///
+fn validate_exec_token(token: &str) -> Result<(), Error> {
+    if token.is_empty() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "execv token must not be empty"));
+    }
+
+    if token.bytes().any(|byte| byte == b' ' || byte == 0) {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "execv token must not contain spaces or NUL bytes",
+        ));
+    }
+
+    Ok(())
+}
+
 //==================================================================================================
 // Public Standalone Functions
 //==================================================================================================
@@ -131,8 +169,10 @@ fn map_executable(path: &str) -> Result<(VirtualAddress, usize, usize), Error> {
 /// Because the kernel performs no filesystem I/O, this wrapper maps the target program's ELF image
 /// into the calling process's address space (via `mmap`) and hands it, together with the argument
 /// and environment vectors, to the [`__kcall_execv`] kernel call. The argument and environment
-/// vectors are flattened into space-separated strings, which the new image's runtime re-splits;
-/// tokens must therefore not contain embedded spaces.
+/// vectors are flattened into space-separated strings, which the new image's runtime re-splits. To
+/// keep that round-trip lossless, every token is validated up front (see `validate_exec_token`): a
+/// token must be non-empty and contain neither a space nor a NUL byte, otherwise
+/// [`ErrorCode::InvalidArgument`] is returned before the executable is mapped.
 ///
 /// # Parameters
 ///
@@ -151,6 +191,15 @@ pub fn do_execv(path: &str, argv: &[&str], envp: &[&str]) -> Error {
     // would otherwise flatten into an empty args string and leave the new image without a name.
     if argv.is_empty() {
         return Error::new(ErrorCode::InvalidArgument, "argv must contain at least argv[0]");
+    }
+
+    // Validate every argument and environment token before mapping the executable, so a token that
+    // cannot survive the space-separated wire format fails fast: this avoids leaking a mapping on
+    // the error path and prevents the new image from silently observing altered vectors.
+    for &token in argv.iter().chain(envp.iter()) {
+        if let Err(error) = validate_exec_token(token) {
+            return error;
+        }
     }
 
     // Map the target executable into this address space.
@@ -235,6 +284,56 @@ unsafe fn collect_c_str_array<'a>(array: *const *const c_char) -> Result<Vec<&'a
 ///
 /// # Description
 ///
+/// Parses and validates the `path` and `argv` C-ABI inputs shared by every member of the `execv`
+/// family, returning the path and the collected argument vector.
+///
+/// # Parameters
+///
+/// - `path`: NUL-terminated path of the program image to execute.
+/// - `argv`: NUL-pointer-terminated array of argument C strings.
+///
+/// # Returns
+///
+/// Upon success, the parsed `path` and argument vector are returned. Otherwise, an error is
+/// returned: [`ErrorCode::BadAddress`] if `path` or `argv` is null, or
+/// [`ErrorCode::InvalidArgument`] if `path` or an argument is not valid UTF-8.
+///
+/// # Safety
+///
+/// The caller must ensure that `path` points to a valid, NUL-terminated C string and that `argv` is
+/// non-null and points to a NUL-pointer-terminated array of valid, NUL-terminated C strings.
+///
+unsafe fn parse_path_and_argv<'a>(
+    path: *const c_char,
+    argv: *const *const c_char,
+) -> Result<(&'a str, Vec<&'a str>), Error> {
+    if path.is_null() {
+        return Err(Error::new(ErrorCode::BadAddress, "execv path pointer is null"));
+    }
+
+    // The execv family requires a non-null `argv` carrying at least `argv[0]`; a null pointer is
+    // a caller error rather than an empty argument vector.
+    if argv.is_null() {
+        return Err(Error::new(ErrorCode::BadAddress, "execv argv pointer is null"));
+    }
+
+    // SAFETY: the caller guarantees `path` is a valid, NUL-terminated C string.
+    let path: &str = match unsafe { ::core::ffi::CStr::from_ptr(path) }.to_str() {
+        Ok(path) => path,
+        Err(_) => {
+            return Err(Error::new(ErrorCode::InvalidArgument, "execv path is not valid UTF-8"))
+        },
+    };
+
+    // SAFETY: the caller upholds the array invariants documented above.
+    let argv_vec: Vec<&str> = unsafe { collect_c_str_array(argv) }?;
+
+    Ok((path, argv_vec))
+}
+
+///
+/// # Description
+///
 /// C-ABI adapter for the `execv` family: parses the `path`, `argv`, and optional `envp` C strings
 /// and replaces the calling process's image via [`do_execv`].
 ///
@@ -261,27 +360,12 @@ pub unsafe fn execv_from_c(
     argv: *const *const c_char,
     envp: *const *const c_char,
 ) -> Error {
-    if path.is_null() {
-        return Error::new(ErrorCode::BadAddress, "execv path pointer is null");
-    }
-
-    // The execv family requires a non-null `argv` carrying at least `argv[0]`; a null pointer is
-    // a caller error rather than an empty argument vector.
-    if argv.is_null() {
-        return Error::new(ErrorCode::BadAddress, "execv argv pointer is null");
-    }
-
-    // SAFETY: the caller guarantees `path` is a valid, NUL-terminated C string.
-    let path: &str = match unsafe { ::core::ffi::CStr::from_ptr(path) }.to_str() {
-        Ok(path) => path,
-        Err(_) => return Error::new(ErrorCode::InvalidArgument, "execv path is not valid UTF-8"),
-    };
-
-    // SAFETY: the caller upholds the array invariants documented above.
-    let argv_vec: Vec<&str> = match unsafe { collect_c_str_array(argv) } {
-        Ok(argv_vec) => argv_vec,
+    // SAFETY: the caller upholds the documented C-string and array invariants.
+    let (path, argv_vec): (&str, Vec<&str>) = match unsafe { parse_path_and_argv(path, argv) } {
+        Ok(parsed) => parsed,
         Err(error) => return error,
     };
+
     // SAFETY: the caller upholds the array invariants documented above.
     let envp_vec: Vec<&str> = match unsafe { collect_c_str_array(envp) } {
         Ok(envp_vec) => envp_vec,
@@ -289,4 +373,46 @@ pub unsafe fn execv_from_c(
     };
 
     do_execv(path, &argv_vec, &envp_vec)
+}
+
+///
+/// # Description
+///
+/// C-ABI adapter for the environment-inheriting members of the `execv` family (`execv`, `execvp`):
+/// parses the `path` and `argv` C strings, snapshots the calling process's current environment, and
+/// replaces the calling process's image via [`do_execv`].
+///
+/// Unlike [`execv_from_c`], which takes an explicit environment, this adapter inherits the caller's
+/// environment to honor POSIX `execv()`/`execvp()` semantics. The environment is read from the
+/// process-local environment table that also backs `getenv`/`setenv`, and is flattened into the
+/// kernel's space-separated `KEY=VALUE` form.
+///
+/// # Parameters
+///
+/// - `path`: NUL-terminated path of the program image to execute.
+/// - `argv`: NUL-pointer-terminated array of argument C strings.
+///
+/// # Returns
+///
+/// This function returns only on failure, yielding the error that prevented the replacement; on
+/// success the process image is replaced and control does not return.
+///
+/// # Safety
+///
+/// The caller must ensure that `path` points to a valid, NUL-terminated C string and that `argv` is
+/// non-null and points to a NUL-pointer-terminated array of valid, NUL-terminated C strings.
+///
+pub unsafe fn execv_inherit_env_from_c(path: *const c_char, argv: *const *const c_char) -> Error {
+    // SAFETY: the caller upholds the documented C-string and array invariants.
+    let (path, argv_vec): (&str, Vec<&str>) = match unsafe { parse_path_and_argv(path, argv) } {
+        Ok(parsed) => parsed,
+        Err(error) => return error,
+    };
+
+    // Snapshot the caller's environment so the new image inherits it (POSIX `execv`/`execvp`
+    // semantics). The owned strings outlive the borrowed token slice handed to `do_execv`.
+    let env_owned: Vec<String> = ::libc_stdlib::env_table::snapshot();
+    let env_tokens: Vec<&str> = env_owned.iter().map(String::as_str).collect();
+
+    do_execv(path, &argv_vec, &env_tokens)
 }
