@@ -289,3 +289,134 @@ Turn 8
 ────────────────────────────────────────────────────────────
 Let me run the baseline verification to confirm it passes before making changes.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | tail -40
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus-exp/verus/source/target-verus/release.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/verus-exp/verus/source/target-verus/release:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locke...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Baseline passes (exit 0; the 2 external_body are the registered alloc/alloc_as). Let me confirm the verus verified count and the tcb-allowed registration.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "verification results\|verified\|errors" verus-ai-logs/verify-bump-allocator
+
+[THINKING] The baseline shows "cached (no recompilation)" and the CHEATING_DETECTED flag is just the script catching the external_body usage for alloc and alloc_as, which are expected and allowed. The verification actually passed with exit code 0, so I need to run a clean build to see the actual timing without caching.
+[RESULT ✓] bash: === tcb-allowed ===
+  `PointsTo` (mirrors `bump_allocator`/`raw-array`). `ensures` pins the singleton's abstract
+  the §8 ghost-token attachment for the singleton frame allocator.
+  deferral as `frame::book`/`frame::alloc` (post-mutation `phys_view()`): `external_body` until
+- `src/libs/bump_allocat...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tail -40 verus-ai-logs/verify-bump-allocator/verus-logs/verus_2026-06-17_23-31-54.log
+
+[THINKING] I've confirmed that both `alloc` and `alloc_as` are properly registered in tcb-allowed.md. Now I need to check the actual verification results from the log to make sure there are no errors.
+[RESULT ✓] bash: Timestamp: 2026-06-17_23-31-54
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Finished `dev` profile [optimized + deb...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Baseline passes (exit 0, 0 admits/assumes; the 2 external_body are registered in tcb-allowed.md). 
+
+Key finding: the in-scope exec functions are `external_body` (`alloc`, `alloc_as`) or have no proof block (`align_up`, `as_mut_ptr`), so `check_proof_blocks` finds **0 inline `proof {}` blocks** to extract. The proof content already lives in named lemmas in `lib.proof.rs`.
+
+Let me check git state and read the remaining skills for source-integrity rules before minimizing.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short src/libs/bump_allocator/ ; echo "=== recent log ==="; git --no-pag
+[TOOL] bash: cd /home/ruize && sed -n '1,200p' ./verus-ai-improve/docs/skills/proof-extraction/SKILL.md >/dev/null; echo "=== verus-c
+
+[THINKING] The cached verification passed, but I need a fresh run to see the actual error counts since the cached output doesn't show those numbers. I'll do that later—for now, let me focus on understanding the actual polish work. The key thing I'm noticing is that there are no inline `proof { }` blocks in the executable code in lib.rs, so I need to look at what in-scope functions are available.
+
+Looking at the functions, `align_up` is straightforward with no proof block, `alloc` and `alloc_as` are external bodies, and `as_mut_ptr` is a trait method without a body in scope. This means the proof-extraction part finds zero extractions—all the proof content is already in the proof file as named lemmas. The `assert by` blocks inside the lemmas aren't `proof { }` blocks from exec code, so they don't count as extraction targets per the tool's definition.
+
+For the polish task focused on readability, I'm checking for redundancy: the three lemmas (`lemma_exhausted_boundary`, `lemma_alloc_transition`, `lemma_geometry`) each prove different things, so they're all necessary. Now I'm looking at whether there are any dead spec functions—non-public spec functions with zero callers that could be removed.
+
+All the spec functions I'm examining are marked `pub` and are used somewhere in the module, so the minimization skill says to keep them since they're part of the module's API. I'm also checking the assertions in `lemma_geometry` to see if any are redundant, and looking at whether the proof hints like `by(nonlinear_arith)` can be simplified. I'm diving into whether specific assertions are actually needed or if Verus can derive them automatically. The `s == a * q` assertion after the fundamental division lemma seems load-bearing since it feeds into the nonlinear arithmetic proof, but I'm being conservative here—the minimization guidance says to keep things when in doubt, so I'll take an experimental approach of removing candidates in batches and re-verifying rather than making aggressive cuts. The `lemma_alloc_transition` has an extensionality assertion that's probably necessary to bridge the structural equality in the ensures clause. I think the "do not touch unlisted functions" rule is really about not modifying other exec functions in the codebase that aren't part of the verification target — the lemmas in the proof file are fair game for minimization since they directly support the in-scope functions' specs. Given the conservative guidance and that each lemma proves a distinct property, I should keep all of them and instead focus on removing redundant assertions, hints, and debug artifacts within the proofs themselves. Let me start by experimentally testing which individual hints in lemma_geometry can be safely removed while maintaining verification. Let me check the current state of the repository first to see what I'm working with.
+[RESULT ✓] bash: === verus-constraints source integrity ===
+3:description: "Mandatory rules for writing Verus code. Covers verus! block syntax, source integrity for exec code, forbidden patterns, and assume_specification policy. Must be followed whenever producing or modifying Verus-annotated code."
+4----
+5-
+6-# Ver...
+[RESULT ✓] bash: === recent log ===
+744f3016e [verus] verify PASS (cheating detected): bump-allocator::all (cached (no recompilation), —, external_body=2)
+34ac9afbf [verus-ai] polish START: bump-allocator
+19ab43850 [verus-ai] pipeline FINISHED: arch-paging-mod
+44667a541 [verus-ai] pipeline FINISHED: arch-x86-pte
+ee3...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+spec.rs/proof.rs are freely editable; lib.rs exec must be preserved. The proof file is already tightly written, but let me empirically test for redundant hints/assertions rather than just reasoning. First, let me back up and test removing a candidate-redundant assertion.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/libs/bump_allocator/src/lib.proof.rs /tmp/lib.proof.rs.bak && cp src/libs/bump
+
+[THINKING] I can edit the proof and spec files freely while keeping lib.rs untouched. Since extraction found no inline proof blocks to remove, the minimization work focuses on the proof file. I'm going to systematically test removing candidate assertions and hints from the lemmas, starting with backing up the file and then experimenting with removals.
+
+For speed, I'll run `make verify-bump-allocator` after each batch of changes rather than waiting for a full fresh build. Let me analyze `lemma_geometry` first — the `lemma_fundamental_div_mod` call establishes that `s == a * q` given the stride-alignment relationship, and the subsequent assert captures that conclusion for use in the nonlinear arithmetic reasoning.
+
+In part (a), I'm verifying that every slot address is aligned by showing `i * s` factors as `a * (i * q)`, then using `lemma_mod_multiples_vanish` to confirm the modulo arithmetic works out to zero given the base alignment invariant.
+
+Part (b) is establishing bounds on slot addresses...
+
+Finishing the proof...
+
+For part (c), I'm asserting that distinct indices map to distinct slot addresses by using the strict inequality lemma on the multiplication—if i < j, then i*s < j*s, so the addresses differ. Both branches are necessary since we don't know the ordering of i and j. The stride must be positive (from stride ≥ unit_size > 0) for the lemma to apply.
+
+Checking the lemma overall: all the let-bindings (b, us, ss, cap) are actually used in the proofs, and every assertion serves a purpose. The proof file appears to have no redundant hints or assertions. Moving to the spec file now to see if there are any dead functions there. Verus might be able to auto-derive `s == a * q` from the fundamental division-modulo lemma combined with the invariant that `s % a == 0`, so that explicit assertion could be redundant. The multiplication lemma is less certain since it involves nonlinear arithmetic. Let me test removing the first assertion empirically and measure the verification time to see if Verus can still prove it without the hint. I'm testing whether the outer `assert(s == a * q)` is actually necessary or if the SMT solver can derive it from the lemma and invariant when the `requires` clause needs it inside the forall block.
+[RESULT ✓] bash: backed up
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Let me verify whether any spec functions are unused (checking the whole codebase since pub specs may serve dependents).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && for fn in base_of slot_ref_addr align_up_spec slot_addr is_consumed has_capacity geom
+
+[THINKING] I should verify that all the spec functions are actually being used somewhere—checking both within the bump_allocator module itself and across the broader codebase, since public specs might be called by external code like the kernel's memory management layer.
+[RESULT ✓] bash: base_of : 1 use-site(s)
+slot_ref_addr : 3 use-site(s)
+align_up_spec : 3 use-site(s)
+slot_addr : 10 use-site(s)
+is_consumed : 2 use-site(s)
+has_capacity : 17 use-site(s)
+geometry_ok : 1 use-site(s)
+spec_alloc : 5 use-site(s)
+bump_view : 5 use-site(s)
+lemma_geometry : 0 use-site(s)
+lemma_exhausted_bou...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+All spec functions are used; `lemma_geometry` and `lemma_exhausted_boundary` are uncalled but prove distinct properties and are `pub` API — per the minimization skill, keep them. Now let me empirically test removing candidate-redundant hints. Starting with `assert(s == a * q)`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] I'm checking the use-site count for `has_capacity` — it's showing 17, which might include matches from other modules, so I should narrow the search to just bump_allocator. Looking at the lemmas now, I see that `lemma_geometry` and `lemma_exhausted_boundary` have no explicit call sites, while `lemma_alloc_transition` shows one use (though the grep output got cut off).
+
+Since these uncalled lemmas prove distinct properties and are part of the public API for kernel mm dependents, I should keep them. The spec functions they reference stay used as a result. For actual minimization, I'll focus on removing redundant assertions and hints — let me start by testing whether removing the assertion `s == a * q` from `lemma_geometry` still verifies.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "Exit code|error|verification:|status:|veri

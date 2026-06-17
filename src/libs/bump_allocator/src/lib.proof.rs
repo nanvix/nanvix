@@ -35,7 +35,6 @@ pub proof fn lemma_geometry(v: BumpView)
     // `stride` is an exact multiple of `unit_align`: s == a * (s / a).
     let q: int = s / a;
     vstd::arithmetic::div_mod::lemma_fundamental_div_mod(s, a);
-    assert(s == a * q);
 
     // (a) Every slot start is `unit_align`-aligned.
     assert forall|i: int| 0 <= i < cap implies #[trigger] v.slot_addr(i) % a == 0 by {
