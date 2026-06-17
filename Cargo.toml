@@ -53,6 +53,8 @@ members = [
         "src/libs/libc_assert",
         "src/libs/libc_ctype",
         "src/libs/libc_inttypes",
+        "src/libs/libc_langinfo",
+        "src/libs/libc_locale",
         "src/libs/libc_stdlib",
         "src/libs/libc_string",
         "src/libs/cache",
@@ -216,6 +218,8 @@ static_assert = { path = "src/libs/static_assert", default-features = false }
 libc_assert = { path = "src/libs/libc_assert", default-features = false }
 libc_ctype = { path = "src/libs/libc_ctype", default-features = false }
 libc_inttypes = { path = "src/libs/libc_inttypes", default-features = false }
+libc_langinfo = { path = "src/libs/libc_langinfo", default-features = false }
+libc_locale = { path = "src/libs/libc_locale", default-features = false }
 libc_stdlib = { path = "src/libs/libc_stdlib", default-features = false }
 libc_string = { path = "src/libs/libc_string", default-features = false }
 mmio-tag = { path = "src/libs/mmio-tag", default-features = false }
