@@ -473,3 +473,21 @@ Turn 22
 Turn 23
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -iE "verification result
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+  Exit code : 0
+  verification: 6 verified, 0 errors (exit 0)
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Even the forall body and lemma call are unnecessary. Let me test fully empty bodies for all five lemmas.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] Both reduction tests passed, which means the forall structure and lemma invocation are also redundant. I can strip everything down to completely empty lemma bodies for all five lemmas and verify it still works.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -iE "verification result

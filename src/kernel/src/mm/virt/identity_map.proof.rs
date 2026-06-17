@@ -34,9 +34,6 @@ pub proof fn lemma_install_page_preserves_inv(v: IdentityMapView, page: int)
     ensures
         v.spec_install_page(page).inv(),
 {
-    assert forall|p: int| #[trigger] v.spec_install_page(page).mapped.contains(p) implies
-        spec_is_page_aligned(p) by {
-    }
 }
 
 // After `identity_map_page`'s full transition the target page is accessible, regardless of whether
