@@ -260,3 +260,7 @@ Module: phys-kframe
 [2026-06-17 23:53:02] [PROVER] Running polish...
 [2026-06-17 23:53:02] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-17 23:55:37]   ↳ prover done in 2m35s (exit=0)
+[2026-06-17 23:55:37] [PHASE] polish: no-review (2m35s)
+[2026-06-17 23:55:37] ✅ polish: PASS (0/0)
+[2026-06-17 23:55:37] [GATE] Running build: make build
+[2026-06-17 23:55:37] [GATE] Running verify: make verify
