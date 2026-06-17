@@ -119,13 +119,21 @@ impl PhysicalAddress {
         ensures
             result@ == spec_from_number(spec_frame_raw_value(frame)),
     )]
+    // VERUS REWRITE: the original `frame.into_raw_value() * mem::FRAME_SIZE` is split so the
+    // `into_raw_value()` postcondition (`0 <= self@ <= spec_max()`) lands in context *before* the
+    // overflow-bearing multiply, and `lemma_from_number_no_overflow` can be invoked between them.
+    // The bound cannot be obtained via `use_type_invariant(frame)` because `FrameNumber`'s type
+    // invariant is private to the `arch` crate (Verus: "missing type invariant function"), so the
+    // intermediate `addr_raw` binding is mandatory. Same value, same operations, same complexity.
+    // Reproducer: verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro/from_number.rs
     pub fn from_number(frame: FrameNumber) -> Self { ... }
 
-    // Total projection (under `inv()`): identifies the frame containing the address,
-    // `self@ / FRAME_SIZE` (equivalently `self@ >> FRAME_SHIFT`). `inv()` underwrites the unwrap.
+    // Total projection: identifies the frame containing the address, `self@ / FRAME_SIZE`
+    // (equivalently `self@ >> FRAME_SHIFT`). This is total for *every* address: the raw value is a
+    // `usize`, so `self@ <= usize::MAX`, and with the corrected `FrameNumber::MAX` (the number of
+    // the frame containing `MAX_ADDRESS`) the shifted index never exceeds `FrameNumber::spec_max()`,
+    // so the unwrap cannot panic. No precondition is required.
     #[verus_spec(result =>
-        requires
-            self.inv(),
         ensures
             spec_frame_raw_value(result) == spec_frame_number(self@),
     )]
@@ -210,6 +218,15 @@ impl Address for PhysicalAddress {
 
     fn into_raw_value(self) -> usize { ... }
 
+    // VERUS REWRITE (interface addition): `clone_address` is a *required* method of the
+    // `sys::mm::Address` trait, which gained it during the verus pipeline (it carries a verified
+    // contract `result@ == self@` that the bare `derive(Clone)`/`Clone::clone` supertrait cannot
+    // express — `Clone` has no Verus spec, so generic `Address` callers could not duplicate an
+    // address while retaining the abstract-value guarantee). The trait method lives in the
+    // out-of-scope `sys` crate (`src/libs/sys/src/sys/mm/address/mod.rs:88`); because
+    // `PhysicalAddress` implements `Address`, this impl method is mandatory and cannot be removed
+    // here. It is a view-preserving clone — same value, same complexity as a `Copy`. Recorded in
+    // verus-ai-logs/nanvix-phys-hal-phys-address/verification_todo.md.
     fn clone_address(&self) -> Self { ... }
 
     fn as_ptr(&self) -> *const u8 { ... }
