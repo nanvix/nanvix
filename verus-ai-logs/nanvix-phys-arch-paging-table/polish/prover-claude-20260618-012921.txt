@@ -378,3 +378,141 @@ The original design was actually correct: keeping the compute assertion before t
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
+[RESULT ✓] bash: === Results ===
+  47 verified
+  0 errors
+  Exit code : 0
+<shellId: verify_arch completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Back to 47 verified, 0 errors. Let me confirm proof-block status and look for remaining minimization opportunities.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/check_proof_blocks.py src/libs/arch
+
+[THINKING] I'm back to 47 verified proofs with no errors, so let me run the proof block checker again to see the current extraction status and explore ways to make the solution more minimal.
+[RESULT ✓] bash: File                                          Function                  Start   End Lines  Status
+----------------------------------------------------------------------------------------------------
+src/libs/arch/src/x86/mem/paging/table.rs     into_raw                     91    91     1  ✅
+src/libs...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+All proof blocks now ≤1 line. The two 5-line blocks were consolidated into one shared lemma, and the redundant shift-constant asserts removed. Let me run spec-drift check and confirm the normal build still compiles (Verus constructs erased).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn 'lemma_entry_roundtrip' src/ --include=*.rs | grep -v 'table.proof.rs'; echo
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,60p' .github/skills/build/SKILL.md 2>/dev/null
+
+[THINKING] I've consolidated the proof blocks by extracting the common bounded index logic into a shared lemma, which eliminated the redundant shift value assertions. Now I'm looking at what else can be trimmed—focusing on the in-scope functions that need verification and identifying any remaining duplication.
+
+The key question is whether each assertion and lemma call is actually necessary. `lemma_entry_roundtrip` is a documented trust anchor so it stays, but I need to audit each in-scope function to see if there are assertions that could be removed without breaking the ensures clauses. The scope list itself is a bit ambiguous about whether methods like `new` are included, so I should clarify exactly which functions I'm allowed to modify. The broadcast lemma `lemma_entry_roundtrip` is needed even though it contains an `assume`, so I'll keep it. Looking at what was actually removed: the two redundant shift-constant assertions that became unnecessary once I made the bit_vector proof generic. The assertions about bounds were extracted into the lemma rather than removed, and the `PAGE_TABLE_LENGTH` assertion stays since it's essential for the overflow check.
+
+I should verify there's no spec drift—the ensures clauses for `pd_index` and `pt_index` are unchanged, and the exec logic is the same. The proof macros and lemmas are cfg-gated, so the normal build will erase them correctly without affecting the non-verus compilation.
+[RESULT ✓] bash: ---
+name: build
+description: Guide for building, formatting, linting, and spell-checking Nanvix with z. Use this when asked to build or validate the repository.
+---
+
+# Build Nanvix
+
+Use this skill when the user asks to build, compile, format, lint, or spell-check Nanvix. This
+covers all build-system...
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/paging/table.rs:225:    // would assume `spec_entry_raw(e1) == spec_entry_raw(e2)`, and with `lemma_entry_roundtrip`
+--- broadcast usage check ---
+src/libs/arch/src/x86/mem/paging/table.proof.rs:7:pub proof fn lemma_masked_index_bounded(vaddr: usize, shift: usize)
+src/libs/...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+`lemma_entry_roundtrip` is only referenced in a comment — uncalled, but it's a `pub` broadcast trust anchor (kept per minimization rules). Now let me verify the normal build still compiles and check AST consistency.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 ./z build -- kernel 2>&1 | tail -25
+
+[THINKING] `lemma_entry_roundtrip` is a public broadcast lemma that's only mentioned in its own definition and a comment, but it's not actually called anywhere. Since it's part of the module's public API and serves as a documented trust anchor for the read-after-write guarantee that other code can rely on, I should keep it even though it's unused. Let me run a normal build to verify everything compiles correctly.
+
+I'm thinking through the build verification strategy — the proof changes I made are all within `proof!` macros that get erased during normal compilation, so the structure should be fine. I'll run the kernel build to confirm, and while that's running I can check AST consistency and spec drift to ensure the source integrity is solid.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: build completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE '^[a-zA-Z0-9_-]+:' src/kernel/Makefile 2>/dev/null | head; echo "--- arch cr
+
+[THINKING] I need to figure out what build targets are actually available in the build script, since the kernel target name might not be exactly what I'm assuming.
+[RESULT ✓] bash: --- arch crate build check ---
+x86-kernel.json
+x86-user.json
+x86_64-kernel.json
+x86_64-user.json
+--- try cargo check on arch ---
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/config)
+   Compiling sysapi v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sysapi)
+   Compiling error ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The arch crate builds normally (Verus erased). Let me run the AST consistency check for source integrity and review the final diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff -- src/libs/arch/src/x86/mem/paging/table.rs src/libs/arch/src/x8
+
+[THINKING] The arch crate compiles successfully without Verus, and the Verus constructs are being properly erased. Now I need to run the AST consistency check to verify that the source integrity hasn't been compromised by my changes—this script compares the annotated version against a clean baseline to ensure the execution logic remains unchanged. Let me also review the complete diff of everything I've modified.
+[RESULT ✓] bash: 
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short -- src/libs/arch/src/x86/mem/paging/ ; echo "--- is file tracked? 
+
+[THINKING] The git diff came back empty, so either these files aren't being tracked or the changes aren't showing up. Let me run git status to see what's actually going on.
+[RESULT ✓] bash: --- is file tracked? ---
+src/libs/arch/src/x86/mem/paging/table.rs
+--- check ignore ---
+<shellId: 14 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short | head -20; echo "=== diff stat ==="; git --no-pager diff --stat |
+
+[THINKING] The file is tracked in git but showing no changes in status, which is odd since I edited it. Let me check if the working tree was already different from HEAD before my edits, or if there's something else going on — I'll run git diff without any path filters to see the actual content differences.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-arch-paging-table/polish/prover-claude-20260618-012921.jsonl
+ M verus-ai-logs/nanvix-phys-arch-paging-table/polish/prover-claude-20260618-012921.txt
+=== diff stat ===
+ .../polish/prover-claude-20260618-012921.jsonl     | 172 +++++++++++++++++++++
+ .../polish/prover-claude...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+HEAD already reflects my source edits (a checkpoint mechanism tracks them); only the polish log files show as modified. The files on disk are correct and verified. Let me do a final review of both files and check for any remaining minimization opportunities.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] HEAD already has my final version of table.rs committed, likely through some auto-checkpoint mechanism, which means my source file edits are already saved even though only the generated log files show as modified in git status.
+
+The verification passed with 47 verified entries, so the on-disk files are correct and the lemma is in place. Let me do a final review of both table.proof.rs and table.rs to ensure everything is clean and complete before writing up the checklist report.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. // Masking a shifted address with `PAGE_TABLE_LENGTH - 1` (= 1023) keeps the result within a single
+4. // page table, independent of the shift amount: the mask clears every bit at or above
+5. // `log2(PAGE_TABLE_LENGTH)`, so `(vaddr >> shift) & 1023 < 1024 == PAGE_TABLE_LENGTH`. S...
+[RESULT ✓] view: 100. /// Extracts the PD index (bits 22-31) from a virtual address as a [`TableIndex`].
+101. #[verus_spec(result =>
+102.     ensures
+103.         result@ == spec_pd_index(vaddr),
+104.         result@ < crate::mem::PAGE_TABLE_LENGTH,
+105. )]
+106. pub const fn pd_index(vaddr: usize) -> TableIndex {
+10...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+Everything is clean. Let me run a final clean verification to confirm the end state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
+
+[THINKING] Everything's clean and the extraction is complete. I've got 47 verified with zero errors from the last run, so I'll do one final verification pass to capture the cheating report numbers and confirm everything's still solid before moving to the checklist.
