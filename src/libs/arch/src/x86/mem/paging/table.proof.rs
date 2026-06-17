@@ -1,5 +1,16 @@
 verus! {
 
+// Masking a shifted address with `PAGE_TABLE_LENGTH - 1` (= 1023) keeps the result within a single
+// page table, independent of the shift amount: the mask clears every bit at or above
+// `log2(PAGE_TABLE_LENGTH)`, so `(vaddr >> shift) & 1023 < 1024 == PAGE_TABLE_LENGTH`. Shared by
+// `pd_index` and `pt_index`, which differ only in the shift constant.
+pub proof fn lemma_masked_index_bounded(vaddr: usize, shift: usize)
+    ensures
+        ((vaddr >> shift) & 1023usize) < 1024usize,
+{
+    assert(((vaddr >> shift) & 1023usize) < 1024usize) by (bit_vector);
+}
+
 // The `TableEntry` round-trip law: decoding a freshly-encoded entry yields it back.
 // This is the abstract contract every `TableEntry` implementor must honour (`raw` is a faithful,
 // injective serialization). Stated as a broadcast lemma so callers obtain the read-after-write

@@ -265,3 +265,45 @@ verus binary exists
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus-exp/verus/source/target-verus/release.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/verus-exp/verus/source/target-verus/release:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locke...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Baseline passes (exit 0, 0 admits; the 3 external_body are the allowed ones). Let me check the constant definitions to design the shared lemma correctly.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn 'PAGE_TABLE_LENGTH\|PGTAB_SHIFT\|PAGE_SHIFT' src/libs/arch/src/ --include=*.
+
+[THINKING] The baseline compiles successfully with no recompilation needed. I'm noticing something odd with the cheating check—it reports assume=0 even though the proof file contains an assume statement, which suggests the cheating detector might be analyzing the Rust source rather than the proof file itself. There are also external_body entries showing up, and I need to trace through what those represent. Now I'm adding a proof lemma that establishes the masked index stays within bounds, then updating the index functions to call this lemma and include assertions that verify the result is always less than PAGE_TABLE_LENGTH.
+
+I'm realizing there's a type subtlety to work through — when PAGE_TABLE_LENGTH is used in the bitwise mask operation, I need to make sure Verus can connect the concrete value 1023 in the lemma with the expression `(PAGE_TABLE_LENGTH - 1)` in the actual code, accounting for whether PAGE_TABLE_LENGTH is defined as an int or nat constant.
+[RESULT ✓] bash: src/libs/arch/src/x86/mem/constants.rs:42:pub const PAGE_SHIFT: usize = 12;
+src/libs/arch/src/x86/mem/constants.rs:66:pub const PGTAB_SHIFT: usize = 22;
+src/libs/arch/src/x86/mem/constants.rs:74:pub const PGTAB_SIZE: usize = 1 << PGTAB_SHIFT;
+src/libs/arch/src/x86/mem/constants.rs:82:pub const PAGE_...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+All `usize` constants; `PAGE_TABLE_LENGTH == 1024`. Now I'll extract the duplicated bit-vector proof into a shared lemma. Let me add it to the proof file and update both functions.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I'm verifying that `PAGE_TABLE_LENGTH` calculates correctly as 1024 by dividing the page table size by the page size, and checking that subtracting 1 gives 1023 as expected for the specification lemma.
+
+Now I need to add the bit_vector lemma to the proof file and update the two functions that use it. The lemma should establish that masking with 1023 keeps the result below 1024, which works because the mask clears all but the low 10 bits, guaranteeing the result is at most 1023.
+
+Making the edits...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now let me re-run verification to confirm the extraction works.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
