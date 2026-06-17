@@ -1,11 +1,11 @@
 {
   "module": "nanvix-phys-arch-x86-pde",
-  "generated_at": "2026-06-15T14:49:05.503490",
-  "total_calls": 13,
-  "calls_with_usage": 13,
+  "generated_at": "2026-06-18T01:42:28.076483",
+  "total_calls": 14,
+  "calls_with_usage": 14,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 4971.4,
+  "total_duration_s": 5332.6,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -45,14 +45,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 596.0
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 361.2
     }
   },
   "per_role": {
     "prover": {
-      "calls": 5,
+      "calls": 6,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 3025.6
+      "duration_s": 3386.7999999999997
     },
     "dialogue-reviewer-t1": {
       "calls": 3,
@@ -386,6 +392,29 @@
           "filesModified": [
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.claude.md",
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/final-review/final_review.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-18T01:42:14.749640",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "12bc1129-fd2e-4735-a2dd-bec505266006",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/polish/prover-claude-20260618-013613.txt",
+      "duration_s": 361.2,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 326362,
+        "sessionDurationMs": 359683,
+        "codeChanges": {
+          "linesAdded": 47,
+          "linesRemoved": 9,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/polish/checklist.md"
           ]
         }
       }

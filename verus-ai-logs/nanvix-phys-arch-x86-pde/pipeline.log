@@ -303,3 +303,12 @@ Module: arch-x86-pde
 [2026-06-18 01:42:14] ✅ polish: PASS (0/0)
 [2026-06-18 01:42:14] [GATE] Running build: make build
 [2026-06-18 01:42:15] [GATE] Running verify: make verify
+[2026-06-18 01:42:28] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: arch-x86-pde
+  ✅ polish                    no-review                 6m01s
+  ──────────────────────────────────────────────────────────
+  Total: 6m14s
+============================================================
+[2026-06-18 01:42:28] [USAGE] Summary: 14 calls, 0 tokens, 1h28m52s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/usage_summary.json
