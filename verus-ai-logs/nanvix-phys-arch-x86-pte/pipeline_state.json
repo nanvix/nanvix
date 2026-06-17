@@ -2,81 +2,17 @@
   "module_name": "arch-x86-pte",
   "log_name": "nanvix-phys-arch-x86-pte",
   "source_path": "/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs",
-  "current_phase": "cheating-elimination",
-  "current_phase_idx": 4,
-  "completed_phases": [
-    "proving",
-    "cheating-elimination"
-  ],
-  "phase_results": {
-    "proving": {
-      "phase": "proving",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 608.6,
-      "review_rounds": 1
-    },
-    "cheating-elimination": {
-      "phase": "cheating-elimination",
-      "passed": true,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-RESOLVED",
-      "review_file": null,
-      "duration_s": 497.1,
-      "review_rounds": 1
-    },
-    "final-review": {
-      "verdict": "PASS",
-      "total_score": 0,
-      "max_score": 5,
-      "passed": true,
-      "duration_s": 456.1
-    }
-  },
-  "prover_session_id": "ccacf6dd-c328-4a2a-86d3-fe547a6be7c7",
-  "completed": true,
-  "base_branch": "verus-ai-prove",
-  "verus_branch": "verus-ai-prove",
-  "phase_boundary_shas": {
-    "proving": "7cb5c498cf27b36919587eecb088ec8b4686bfe4",
-    "cheating-elimination": "a662114472c2ce8b43c1b32201d3561885ea9bf7"
-  },
-  "phase_start_shas": {
-    "proving": "abc1183617668fa13d6420437fead1f98a966831",
-    "cheating-elimination": "907a0cbdab39986bd40e1e2861e8f465380118ad"
-  },
-  "phase_history": [
-    {
-      "phase": "proving",
-      "event": "start",
-      "sha": "abc1183617668fa13d6420437fead1f98a966831",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "proving",
-      "event": "end",
-      "sha": "7cb5c498cf27b36919587eecb088ec8b4686bfe4",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "cheating-elimination",
-      "event": "start",
-      "sha": "907a0cbdab39986bd40e1e2861e8f465380118ad",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "cheating-elimination",
-      "event": "end",
-      "sha": "a662114472c2ce8b43c1b32201d3561885ea9bf7",
-      "rollback_iter": 0
-    }
-  ],
+  "current_phase": "caller-analysis",
+  "current_phase_idx": 0,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
+  "completed": false,
+  "base_branch": "verus-ai-polish",
+  "verus_branch": "verus-ai-polish",
+  "phase_boundary_shas": {},
+  "phase_start_shas": {},
+  "phase_history": [],
   "rollback_counts": {},
   "rollback_context": "",
   "tcb_entry_points": null,
