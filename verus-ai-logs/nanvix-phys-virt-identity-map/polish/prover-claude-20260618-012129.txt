@@ -491,3 +491,66 @@ Even the forall body and lemma call are unnecessary. Let me test fully empty bod
 Turn 25
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -iE "verification result
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+  Exit code : 0
+  verification: 6 verified, 0 errors (exit 0)
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+All five lemmas verify with empty bodies — every proof hint was redundant. Let me confirm the lemmas aren't referenced elsewhere (to ensure I keep the right public API) and verify nothing's being silently skipped.
+[TOOL] grep: lemma_install_page_maps|lemma_install_page_monotone|lemma_install_page_preserves_inv|lemma_map_page_accessible|lemma_map_page_preserves_inv
+
+[THINKING] So all five lemmas can have completely empty bodies and still verify—Verus is automatically discharging these properties through the broadcast set axioms and open-spec unfolding. The key insight is that while the assertion bodies were redundant and can be removed, the lemmas themselves aren't redundant since they each prove distinct properties, even if Verus handles the proofs automatically.
+
+I should verify this isn't a false positive by checking the verification count: the 6 verified items (5 lemmas plus likely one module-level verification) stayed consistent when I emptied the bodies, confirming these lemmas are genuinely being verified and their ensures clauses hold automatically. Since I've only removed proof hints without changing any requires or ensures, there's no spec weakening—just pure proof minimization.
+
+Empty bodies are the right call here per the skill's guidance on removing redundancy. These lemmas still serve as documentation and named facts for future use when the external_body functions get real implementations. Now I'm counting the original assertions to quantify exactly how much redundancy was removed across all five lemmas. Finishing the count of removed assertions and proof structures. I'm tallying up 9 redundant assertions across the lemmas, plus the forall proof-hint blocks and case-split conditionals that became unnecessary. For the report, I'll frame this as assertions removed versus lemmas and hints removed to keep the accounting clear. I should verify whether these lemmas are actually referenced elsewhere in the codebase before deciding to keep them with empty bodies—if other modules depend on them as part of the public proof API, they're definitely worth preserving. Let me search for any external references to these lemma names.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs:13:pub proof fn lemma_install_page_maps(v: IdentityMapView, page: int)
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs:21:pub proof fn lemma_install_page_monotone(v: IdentityMapView, page: int)
+/home/...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+The lemmas are `pub` API (kept per skill) and only defined here. All proof hints were redundant. Let me view the final proof file and do a clean final verification.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] The public lemmas are defined but not called anywhere since the exec functions use external bodies—they're part of the module's proof API for potential future use. I've emptied all the bodies, but I need to verify these lemmas are actually being checked: Verus validates proof functions by confirming their bodies satisfy the ensures clause, so an empty body means Verus must derive the ensures from just the requires and ambient axioms.
+
+The verification reports 6 verified with 0 errors across multiple fresh runs, confirming the original proof hints were entirely redundant—exactly what proof minimization targets. I'm now double-checking the spec file for any unused spec functions, but all of them are marked public, so per the skill guidance they should be kept as part of the module's API. Let me verify the final proof file is clean and readable. I'm keeping all five lemmas since the minimization task is about removing redundant asserts within proofs, not eliminating lemmas themselves — and empty proof bodies are the correct minimized form.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. //==================================================================================================
+4. // Transition lemmas for the kernel identity map
+5. //
+6. // These lemmas carry fully discharged proof bodies (no `admit()`/`assume()`). They expose the
+7. // monotonicity / ide...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Let me confirm I only changed proof bodies (no spec/ensures drift) by diffing against the backup, and run a final clean verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== DIFF proof (backup vs now) ==="; diff /tmp/identity_map.proof.rs.bak src/ke
+
+[THINKING] The comment about fully discharged proof bodies is still accurate even with minimized empty proofs, since they're automatically discharged without any `admit()` or `assume()` calls. I'll keep the phrasing as-is since it correctly describes the state of the code.
+
+Now I need to verify that removing all these assertions and proof hints was the right approach—the task explicitly targets redundant assertions and proof hints, which these were since verification passes without them. The lemmas themselves aren't dead code since they're part of the public API. Let me run a final verification to confirm everything checks out, then I'll write up the summary report.
+[RESULT ✓] bash: === DIFF proof (backup vs now) ===
+17d16
+<     assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
+26,30d24
+<     assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
+<     assert forall|x: int| #[trigger] v.mapped.contains(x) implies
+<         v.spec_install_page(page...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Confirmed: spec file is byte-identical (no drift); only proof-body statements were removed. Let me run a final clean verification and confirm this module has zero admits.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && touch src/kernel/src/mm/virt/identity_map.proof.rs && make verify-kernel MODULE=mm::v
+
+[THINKING] The diff shows the spec file is unchanged, while the proof file had only proof-body statements removed—all the contract signatures like `requires`, `ensures`, and lemmas stayed intact. Specifically, I'm seeing assertions stripped from lemma_install_page_maps, lemma_install_page_monotone, and lemma_install_page_preserves_inv, including some nested forall blocks.
+
+Tallying up the plain assert statements removed: 1 from maps, 2 from monotone, 3 from preserves_inv, and 3 from map_page_accessible—that's 9 total. There were also 2 assert-forall proof hint blocks removed, plus some helper bindings and case-split wrappers that scaffolded the proofs. I need to finalize the counting to avoid double-counting: the 9 removed assertions include those nested inside the forall blocks, so I should present the total removed proof statements clearly—9 plain assertions across all lemmas, plus 6 additional proof-hint constructs (the 2 forall-by blocks, 2 case-splits, 1 lemma call, and 1 let binding), while noting that all 5 transition lemmas themselves are retained. Now I'll run a final verification to confirm the module has zero admits and capture the complete summary for the report.
