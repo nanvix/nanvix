@@ -242,3 +242,6 @@ PIPELINE COMPLETE: arch-paging-mod
   Total: 18m23s
 ============================================================
 [2026-06-15 15:33:57] [USAGE] Summary: 9 calls, 0 tokens, 33m00s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-mod/usage_summary.json
+[2026-06-17 23:29:53] [BRANCH] Staying on current branch: verus-ai-polish
+ERROR: Unknown phase 'polish'.
+  Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
