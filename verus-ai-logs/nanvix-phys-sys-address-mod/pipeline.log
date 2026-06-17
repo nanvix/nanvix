@@ -222,3 +222,6 @@ PIPELINE COMPLETE: sys-address-mod
   Total: 26m32s
 ============================================================
 [2026-06-15 12:06:16] [USAGE] Summary: 9 calls, 0 tokens, 48m14s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/usage_summary.json
+[2026-06-17 23:29:53] [BRANCH] Staying on current branch: verus-ai-polish
+ERROR: Unknown phase 'polish'.
+  Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
