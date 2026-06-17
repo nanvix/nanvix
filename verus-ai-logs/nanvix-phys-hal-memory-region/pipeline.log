@@ -256,3 +256,7 @@ Module: hal-memory-region
 [2026-06-18 00:57:03] [PROVER] Running polish...
 [2026-06-18 00:57:03] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 01:05:10]   ↳ prover done in 8m07s (exit=0)
+[2026-06-18 01:05:10] [PHASE] polish: no-review (8m07s)
+[2026-06-18 01:05:10] ✅ polish: PASS (0/0)
+[2026-06-18 01:05:10] [GATE] Running build: make build
+[2026-06-18 01:05:10] [GATE] Running verify: make verify
