@@ -126,8 +126,18 @@ pub unsafe fn forge_user_stack(
     *kstackp = SegmentSelector::UserData as u64;
 
     // Push User RSP on the kernel stack (iretq frame).
+    //
+    // The System V AMD64 ABI requires that, at the point control is transferred to a
+    // function's entry, `(%rsp + 8)` is a multiple of 16 (i.e. `%rsp` is congruent to 8
+    // modulo 16), reflecting the return address a `call` would have pushed. Thread entry
+    // points are dispatched directly through this forged `iretq` frame without a crt0
+    // prologue to realign the stack, so the kernel must hand them an ABI-aligned stack.
+    // The user stack top is page-aligned (congruent to 0 modulo 16), so bias it down to
+    // the nearest `8 (mod 16)` boundary. Omitting this makes compiler-emitted aligned SSE
+    // stores (e.g. `movaps`) on the entry frame fault with a #GP.
+    let user_rsp: usize = (user_stack_top & !0xf).wrapping_sub(8);
     kstackp = kstackp.offset(-1);
-    *kstackp = user_stack_top as u64;
+    *kstackp = user_rsp as u64;
 
     // Push RFLAGS on the kernel stack (iretq frame).
     let mut eflags: EflagsRegister = eflags::EflagsRegister::default();

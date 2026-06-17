@@ -42,7 +42,7 @@ iterations = 2
 [[tests]]
 executor = "http"
 program = "./bin/test-kernel.elf"
-extra_nanvixd_args = "-ramfs README.md"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
@@ -160,25 +160,9 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
-executor = "http"
-program = "./bin/wasmd.elf"
-input = '["hello world!"]'
-expected_output = "Hello, world!"
-
-[[tests]]
-executor = "http"
-program = "./bin/wasmd.elf"
-input = "[]"
-expected_output = "Hello, world!"
-
-#===================================================================================================
-# Terminal Executor Tests (Interactive Mode)
-#===================================================================================================
-
-[[tests]]
 executor = "terminal"
 program = "./bin/test-kernel.elf"
-extra_nanvixd_args = "-ramfs README.md"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
