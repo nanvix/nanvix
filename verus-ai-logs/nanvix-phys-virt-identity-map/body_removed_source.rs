@@ -315,6 +315,7 @@ fn ensure_identity_mapped_range(
 /// - [`ErrorCode::OutOfMemory`]: No BSS page table slots available.
 /// - [`ErrorCode::BadAddress`]: The allocated page table frame number is out of range.
 ///
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         identity_map_view().inv(),
@@ -363,6 +364,7 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
 /// - [`ErrorCode::InvalidArgument`]: Failed to read the PTE.
 /// - [`ErrorCode::BadAddress`]: The frame number is out of range.
 ///
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         identity_map_view().inv(),
@@ -411,6 +413,7 @@ fn ensure_pte(
 ///
 /// If the lazy mapper has not been initialized yet (boot page tables still active), this function
 /// is a no-op and returns success.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         identity_map_view().inv(),
