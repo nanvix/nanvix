@@ -175,3 +175,18 @@ No inline proof blocks exist, the proof file is empty, and the spec file has onl
 [THINKING] I'm checking the current state of the Verus file—there are no inline proof blocks, the proof section is empty, and the spec file contains just one `pub open spec fn` called `inv`. Since the minimization rules say to keep public spec functions, there's nothing obvious to remove. The functions in scope (`new`, `drop`, `base`) don't have proof blocks or redundant asserts, so I need to reconsider what the task is actually asking for.
 
 The goal is to improve readability by extracting proof blocks and minimizing redundancy while keeping verification passing. Since there are no proof blocks to extract and the spec is already minimal, there may be little to do. I should be careful about the comments though—the long block comments explaining the contracts are documentation, not obsolete proof hints, so I shouldn't remove them. Let me run the baseline verification first to establish where things stand.
+[RESULT ✓] bash: - frame.rs:1466 init: external_body
+    - frame.rs:1522 alloc: external_body
+    - frame.rs:1552 alloc_contiguous: external_body
+    - frame.rs:1573 free_count: external_body
+    - frame.rs:1591 free: external_body
+    - frame.rs:1633 book: external_body
+    - frame.rs:1654 alloc_range: external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 4
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). The "CHEATING_DETECTED" flags are from out-of-scope files (frame.rs, manager.proof.rs) plus the allowed `kframe.rs:94 new: external_body`. Let me see the verification result detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verif|error|fail|veri
+
+[THINKING] The verification passes successfully, and the "CHEATING_DETECTED" warning refers to external_body declarations in other files that are outside my scope. The kframe.rs file at line 94 shows that the new external_body is actually allowed, so I should double-check the verification output from the beginning to confirm the actual result.
