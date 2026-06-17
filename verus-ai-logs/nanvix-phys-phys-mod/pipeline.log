@@ -272,3 +272,12 @@ Module: phys-mod
 [2026-06-17 23:42:35] ✅ polish: PASS (0/0)
 [2026-06-17 23:42:35] [GATE] Running build: make build
 [2026-06-17 23:42:36] [GATE] Running verify: make verify
+[2026-06-17 23:42:44] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: phys-mod
+  ✅ polish                    no-review                 3m47s
+  ──────────────────────────────────────────────────────────
+  Total: 3m55s
+============================================================
+[2026-06-17 23:42:44] [USAGE] Summary: 13 calls, 0 tokens, 2h04m15s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/usage_summary.json

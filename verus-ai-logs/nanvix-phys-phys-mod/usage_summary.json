@@ -1,0 +1,396 @@
+{
+  "module": "nanvix-phys-phys-mod",
+  "generated_at": "2026-06-17T23:42:44.129474",
+  "total_calls": 13,
+  "calls_with_usage": 13,
+  "calls_timed_out": 0,
+  "calls_failed": 0,
+  "total_duration_s": 7455.7,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "total_tokens": 0,
+  "per_phase": {
+    "caller-analysis": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 110.8
+    },
+    "view-design": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 315.0
+    },
+    "specification": {
+      "calls": 2,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 2303.0
+    },
+    "proving": {
+      "calls": 2,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 933.9
+    },
+    "cheating-elimination": {
+      "calls": 5,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 2814.0999999999995
+    },
+    "final-review": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 751.5
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 227.4
+    }
+  },
+  "per_role": {
+    "prover": {
+      "calls": 6,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 3195.9
+    },
+    "dialogue-reviewer-t1": {
+      "calls": 3,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 1110.2
+    },
+    "cheating-fix": {
+      "calls": 3,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 2398.0999999999995
+    },
+    "review": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 751.5
+    }
+  },
+  "calls": [
+    {
+      "timestamp": "2026-06-14T00:05:19.331827",
+      "phase": "caller-analysis",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "825ca994-43ff-4dba-8b89-03766044b122",
+      "log_file": "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/caller-analysis/prover-claude-20260614-000328.txt",
+      "duration_s": 110.8,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 105062,
+        "sessionDurationMs": 109413,
+        "codeChanges": {
+          "linesAdded": 165,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/caller_analysis.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-14T00:10:34.467360",
+      "phase": "view-design",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "f6b2bc28-929f-4b0b-a815-c613b030a5ec",
+      "log_file": "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/view-design/prover-claude-20260614-000519.txt",
+      "duration_s": 315.0,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 299381,
+        "sessionDurationMs": 313508,
+        "codeChanges": {
+          "linesAdded": 446,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/view_design.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-14T00:40:24.486635",
+      "phase": "specification",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "40b69cc9-c7f1-4f81-b273-aa7023789f89",
+      "log_file": "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/specification/prover-claude-20260614-001034.txt",
+      "duration_s": 1789.9,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 1691873,
+        "sessionDurationMs": 1788485,
+        "codeChanges": {
+          "linesAdded": 425,
+          "linesRemoved": 6,
+          "filesModified": [
+            "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.rs",
+            "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.spec.rs",
+            "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/upool.rs",
+            "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/manager.rs",
+            "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/frame.rs",
+            "/home/ruize/nanvix-phy/src/kernel/src/mm/phys/mod.proof.rs",
+            "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/bugs.md",
+            "/home/ruize/nanvix-phy/verus-ai-logs/tcb-allowed.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-14T00:48:57.831979",
+      "phase": "specification",
+      "role": "dialogue-reviewer-t1",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "70d48cc9-d5b5-4c1b-aa15-fb75c9ab979d",
+      "log_file": "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/specification/dialogue-reviewer-t001-claude-20260614-004024.txt",
+      "duration_s": 513.1,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 491374,
+        "sessionDurationMs": 511930,
+        "codeChanges": {
+          "linesAdded": 192,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/specification/dialogue/turn_001_driver.md",
+            "/home/ruize/nanvix-phy/verus-ai-logs/nanvix-phys-phys-mod/specification/dialogue/STOP"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-15T00:41:15.429691",
+      "phase": "proving",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "ce449167-0d42-4481-90c3-578f8742e550",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/proving/prover-claude-20260615-003223.txt",
+      "duration_s": 531.8,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 510335,
+        "sessionDurationMs": 530415,
+        "codeChanges": {
+          "linesAdded": 24,
+          "linesRemoved": 8,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.rs",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.proof.rs.new"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-15T00:47:57.698299",
+      "phase": "proving",
+      "role": "dialogue-reviewer-t1",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "898dd90b-c404-400c-bf8a-c6928ec8a794",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/proving/dialogue-reviewer-t001-claude-20260615-004115.txt",
+      "duration_s": 402.1,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 239387,
+        "sessionDurationMs": 400714,
+        "codeChanges": {
+          "linesAdded": 118,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/proving/dialogue/STOP",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/proving/dialogue/turn_001_driver.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-15T00:51:47.380620",
+      "phase": "cheating-elimination",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "906b031f-db72-43ff-99a2-98d22beaf917",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/prover-claude-20260615-004806.txt",
+      "duration_s": 221.0,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 210993,
+        "sessionDurationMs": 219724,
+        "codeChanges": {
+          "linesAdded": 102,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/verification_todo.md",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-15T00:55:02.468749",
+      "phase": "cheating-elimination",
+      "role": "dialogue-reviewer-t1",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "47228f2b-90e6-46a8-bc61-3ee96cc1d381",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/dialogue-reviewer-t001-claude-20260615-005147.txt",
+      "duration_s": 195.0,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 184704,
+        "sessionDurationMs": 193655,
+        "codeChanges": {
+          "linesAdded": 96,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/dialogue/STOP",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/dialogue/turn_001_driver.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-15T01:21:49.375415",
+      "phase": "cheating-elimination",
+      "role": "cheating-fix",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "906b031f-db72-43ff-99a2-98d22beaf917",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/cheating-fix-claude-20260615-005502.txt",
+      "duration_s": 1606.6,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 1584664,
+        "sessionDurationMs": 2021530,
+        "codeChanges": {
+          "linesAdded": 375,
+          "linesRemoved": 17,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/verification_todo.md",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-15T01:32:15.906437",
+      "phase": "cheating-elimination",
+      "role": "cheating-fix",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "906b031f-db72-43ff-99a2-98d22beaf917",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/cheating-fix-claude-20260615-012149.txt",
+      "duration_s": 626.3,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 600936,
+        "sessionDurationMs": 2648105,
+        "codeChanges": {
+          "linesAdded": 452,
+          "linesRemoved": 54,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/verification_todo.md",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-15T01:35:01.352937",
+      "phase": "cheating-elimination",
+      "role": "cheating-fix",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "906b031f-db72-43ff-99a2-98d22beaf917",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/cheating-fix-claude-20260615-013216.txt",
+      "duration_s": 165.2,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 162359,
+        "sessionDurationMs": 2813791,
+        "codeChanges": {
+          "linesAdded": 452,
+          "linesRemoved": 54,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/verification_todo.md",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/cheating-elimination/fix_report.md",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/tcb-allowed.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-15T01:47:41.545571",
+      "phase": "final-review",
+      "role": "review",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "ccad6dee-3a26-44f5-8cdd-03de49de9125",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/review-claude-20260615-013510.txt",
+      "duration_s": 751.5,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 958422,
+        "sessionDurationMs": 749827,
+        "codeChanges": {
+          "linesAdded": 589,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.claude.md",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/final-review/final_review.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-17T23:42:35.855092",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "210c1ad7-d6c4-4b69-80f4-6a24f279ac22",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/polish/prover-claude-20260617-233848.txt",
+      "duration_s": 227.4,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 217467,
+        "sessionDurationMs": 226030,
+        "codeChanges": {
+          "linesAdded": 49,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-mod/polish/checklist.md"
+          ]
+        }
+      }
+    }
+  ]
+}
