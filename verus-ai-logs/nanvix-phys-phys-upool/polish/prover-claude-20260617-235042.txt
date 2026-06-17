@@ -212,3 +212,116 @@ Let me confirm the two `external_body` functions (`Upool::new`, `Upool::alloc`) 
 107:- `src/kernel/src/mm/phys/upool.rs::Upool::alloc` — pool allocation primitive the manager's user
 109:  `Err` arm (`free_count() == 0`). Verified when `upool` is.
 <shellId: 6 completed with exit code 0...
+[RESULT ✓] bash: - frame.rs:1466 init: external_body
+    - frame.rs:1522 alloc: external_body
+    - frame.rs:1552 alloc_contiguous: external_body
+    - frame.rs:1573 free_count: external_body
+    - frame.rs:1591 free: external_body
+    - frame.rs:1633 book: external_body
+    - frame.rs:1654 alloc_range: external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). The global `CHEATING_DETECTED` flag comes from out-of-scope `manager.proof.rs` admits and other modules' TCB-allowed `external_body`. Let me confirm the upool scope specifically has no admits/errors and review the cheating detail.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "upool" verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt 2>/dev/nul
+
+[THINKING] The verification completed successfully despite the `CHEATING_DETECTED` status, which is just a global aggregate flag across the module. The two `external_body` instances in upool.rs are on the TCB-allowed list, and the `admit` calls in manager.proof.rs fall outside upool's scope, so the actual verification passed as expected.
+
+Looking at what I've already done — there are no inline proof blocks to extract, no assertions to minimize, and the proof file is empty. The `inv` spec function is actively used throughout, so there's nothing dead to remove. The file is already in its minimal form, so there's genuinely nothing left to change while keeping verification passing. The proof file is completely empty, so there's nothing to minimize there. Let me verify the cheating details to confirm there are no admits specific to upool.
+[RESULT ✓] bash: 22:    - mm/phys/upool.rs:251 new: external_body
+23:    - mm/phys/upool.rs:289 alloc: external_body
+=== errors in log ===
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -in "verified\|errors\|verification" verus-ai-logs/verify-kernel/verus-logs/veru
+
+[THINKING] I'm looking for the specific verus verification result in the log output.
+[RESULT ✓] bash: 
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tail -30 verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-17_23-51-36.log 2>/dev/
+[RESULT ✓] bash: --> src/kernel/src/mm/phys/frame.rs:1356:17
+     |
+1356 |                 assert forall|addr: int| spec_range_frames(lo, nfr).contains(addr) implies
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1357:21
+     |
+1357 |                     frames.contain...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rin "verified, \|0 errors\|verification results\|verified," verus-ai-logs/verif
+
+[THINKING] The verification succeeded without errors, though there are some warnings from the frame module that aren't relevant here. The cached build shows no recompilation happened, so I need to search the full output more carefully to find the actual error count summary line.
+[RESULT ✓] bash: EXIT MARKER:
+6:Exit code: 0
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Verification passes (exit code 0; the global `CHEATING_DETECTED` flag is from out-of-scope `manager.proof.rs` admits and other modules — the two upool `external_body` are TCB-allowed). 
+
+My analysis of the upool module:
+- **Proof blocks**: `check_proof_blocks` found **none** — no inline `proof { ... }` blocks or loop invariants anywhere in `upool.rs`.
+- **Assertions/hints**: zero `assert`/`by`/`reveal`/lemma-call artifacts in the source, spec, or proof files.
+- **Proof file**: already empty (`verus! { }`).
+- **Spec functions**: only `UserFrame::inv` — `pub` and referenced by every method's `requires`/`ensures`, so not dead.
+- **Verification comments**: the `external_body` comments on `Upool::new`/`alloc` document the trust-boundary rationale (mirroring `tcb-allowed.md`); they are meaningful design docs, not obsolete hints or property-ID tags, so they stay.
+
+The module is already in a fully polished state — there is nothing to extract or minimize without making changes that would either be no-ops or weaken documentation. Let me write the report.
+[TOOL] bash: ls -la /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/polish/ 2>/dev/null
+
+[THINKING] The verification succeeded with exit code 0, and there are no proof blocks or redundancies to address in the upool module—it's already well-polished. I'm doing a final review to make sure I haven't overlooked anything that could be improved, starting with the documentation comments.
+
+The doc comments are original source documentation that should stay. The two `external_body` comments are meaningful trust-boundary documentation explaining the dependency contract and referencing verification_todo.md—these are legitimate and should be kept. The `inv` spec function is public and used, so it stays. The proof file is empty, which is fine.
+
+Both extraction and minimization steps legitimately result in no changes since there are zero proof blocks, zero assertions or hints, and the only spec function is already public and in use. But I'm reconsidering whether those external_body comments might be verification-related comments that should be removed under the minimization rules—specifically whether they fall into the category of obsolete proof hints or property tags that should be stripped.
+
+Actually, these aren't obsolete hints or property tags at all. They document the trust boundary rationale and mirror the tcb-allowed.md entries, which is exactly what the TCB process wants to preserve. Removing them would hurt readability and maintainability without any benefit. So I'll keep them.
+
+The module is already polished with no changes needed. Since I'm making no code modifications, the build necessarily still passes from the baseline. Let me write up the checklist documenting this outcome.
+[RESULT ✓] bash: total 248
+drwxrwxr-x 1 ruize ruize    136 Jun 17 23:50 .
+drwxrwxr-x 1 ruize ruize    498 Jun 17 23:50 ..
+-rw-rw-r-- 1 ruize ruize 232070 Jun 17 23:52 prover-claude-20260617-235042.jsonl
+-rw-rw-r-- 1 ruize ruize  20329 Jun 17 23:52 prover-claude-20260617-235042.txt
+<shellId: 12 completed with exit co...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/polish/checklist.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/polish/checklist.md with 1806 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Polish complete. Summary:
+
+The phys-upool module was **already in a fully polished state** — no changes were required.
+
+**Findings:**
+- **Proof extraction**: `check_proof_blocks.py upool.rs --all` reported *no proof blocks* and *no loop invariants*. None of the 8 in-scope exec functions contain inline `proof { ... }`.
+- **Minimization**: zero `assert`/`by`/`reveal`/lemma-call artifacts in source, spec, or proof files. `upool.proof.rs` is already empty. The lone spec fn `UserFrame::inv` is `pub` and used by every method's contract (not dead). The `external_body` comments are meaningful trust-boundary docs (mirroring `tcb-allowed.md`), not removable hints.
+
+**Verification**: `make verify-kernel MODULE=mm::phys` → exit 0. upool scope has 0 admits / 0 errors; its only cheating entries are the two TCB-allowed `external_body` functions (`new`, `alloc`). The global `CHEATING_DETECTED` flag is entirely from out-of-scope modules (`manager.proof.rs` admits, `frame.rs`), which I must not touch.
+
+Report written to `verus-ai-logs/nanvix-phys-phys-upool/polish/checklist.md`. No source files were modified, so the passing build/verification baseline is preserved.
+
+
+=== Session End ===
+Session: 46858461-f070-457b-9f48-9ad1c83a1147
+Duration: 131.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/polish/prover-claude-20260617-235042.jsonl
