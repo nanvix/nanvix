@@ -442,3 +442,48 @@ That said, I should test whether removing it still verifies—if it does, then i
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | sed -n '/
+[RESULT ✓] bash: === Results ===
+  5 verified
+  1 errors
+  Exit code : 101
+
+=== Summary (pre-guardrails; verify failed) ===
+  verification: 5 verified, 1 errors (exit 101)
+  status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+As expected, that hint is load-bearing (needed to discharge the precondition). Reverting.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] The `lemma2_to64()` call at the call-site is actually essential for satisfying the `spec_page_size() == pow2(FRAME_SHIFT)` precondition, so I need to revert my earlier change.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The call-site hint is confirmed necessary. Let me check the `arch` definitions to reason about whether the remaining bridge assertions (A/B/C) in `lemma_from_number_no_overflow` are load-bearing before testing.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_max\|FRAME_SIZE\|MAX_ADDRESS\|FRAME_SHIFT\|PAGE_SIZE" src/libs/arch/sr
+
+[THINKING] I've reverted my changes and I'm reconsidering which assertions in the lemmas are actually necessary. Looking at line 104 with the `usize::BITS` check and line 99 with the `m == usize::MAX` assertion, I'm weighing whether to remove them. The safer approach is to keep load-bearing code when uncertain, and I've already made a thorough pass through the changes.
+
+Now I've removed 7 assertions total and I'm examining `lemma_from_number_no_overflow` more carefully. I need to understand whether the assertions about `s == FRAME_SIZE` and `m == MAX_ADDRESS` are actually required for the proof of the frame number spec_max bound, or if they're redundant. Let me check how `FrameNumber::spec_max` is defined in the arch crate to reason through the dependencies.
+[RESULT ✓] bash: src/libs/arch/src/x86/cpu/cpuid.rs:36:    pub const MAX_ADDRESSABLE_IDS_SHIFT: u32 = 16;
+src/libs/arch/src/x86/cpu/cpuid.rs:38:    pub const MAX_ADDRESSABLE_IDS_MASK: u32 = 0xFF << Self::MAX_ADDRESSABLE_IDS_SHIFT;
+src/libs/arch/src/x86/mem/paging/frame/number.rs:48:    pub const MAX: usize = if mem:...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The arch definitions confirm `spec_max()` is defined in terms of `FRAME_SIZE`/`MAX_ADDRESS`, so the bridge assertions A/B/C in `lemma_from_number_no_overflow` are load-bearing — I'll keep them. Let me run a final verification to confirm the current state is clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | sed -n '/
+
+[THINKING] Looking at the architecture definitions, I see how the memory constants are set up with `MAX_ADDRESS` and `FRAME_SIZE`, and how `spec_max()` uses these values. In the lemma, the page size is being established as `arch::mem::PAGE_SIZE`.
+
+The three assertions A, B, and C are all essential here. A bridges the spec-level page size to the architecture's `FRAME_SIZE`, B connects the maximum address value to `MAX_ADDRESS`, and C is the core inequality we're proving. Since `spec_max()` is defined in terms of `FRAME_SIZE`, we need A to establish that the spec page size equals `FRAME_SIZE` for the proof to work. Similarly, B is necessary because `spec_max()` uses `MAX_ADDRESS`. So all three assertions are load-bearing and should stay.
+
+I've removed 7 redundant assertions through minimization, and the current state looks clean.
+
+Now I'm checking for spec drift—I only removed assertions inside proof lemmas and reverted one hint, so the spec file, ensures, requires clauses, and lemma signatures are all unchanged. The module verification confirms no cheating in this address module, with all admits coming from other modules. I should run a final verification to confirm the current state passes, then count the removals precisely and write up the checklist. I'm also reconsidering whether there are more redundant assertions worth removing, like the one at line 104 checking `usize::BITS == 32 || 64`—I need to verify whether `unsigned_int_max_values()` already establishes this constraint. I'm wondering whether Verus automatically knows that MAX_ADDRESS (defined as a const equal to usize::MAX) equals usize::MAX when cast to int, or if that assertion is necessary to bridge the const definition to the type system. Since it's risky to remove without being certain, I'll keep it. Now I'm ready to run the final verification and build check to confirm everything compiles.
