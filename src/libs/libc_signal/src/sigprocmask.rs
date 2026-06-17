@@ -9,6 +9,10 @@ use crate::{
     set_errno,
     signal::sigset_t,
 };
+use ::core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
 use ::sysapi::{
     errno::EINVAL,
     ffi::c_int,
@@ -41,7 +45,7 @@ const UNBLOCKABLE: sigset_t = (1u64 << (9 - 1)) | (1u64 << (19 - 1));
 /// bookkeeping: it is faithfully maintained so that callers which save and
 /// restore the mask (e.g. xz's single-threaded `mythread_sigmask`) observe
 /// consistent values, but it has no effect on signal delivery.
-static mut SIGNAL_MASK: sigset_t = 0;
+static SIGNAL_MASK: AtomicU64 = AtomicU64::new(0);
 
 //==================================================================================================
 // Standalone Functions
@@ -76,8 +80,7 @@ pub unsafe extern "C" fn sigprocmask(
     set: *const sigset_t,
     oldset: *mut sigset_t,
 ) -> c_int {
-    // SAFETY: SIGNAL_MASK is only accessed from this single-threaded library.
-    let current: sigset_t = unsafe { SIGNAL_MASK };
+    let current: sigset_t = SIGNAL_MASK.load(Ordering::Relaxed);
 
     if !oldset.is_null() {
         *oldset = current;
@@ -94,8 +97,7 @@ pub unsafe extern "C" fn sigprocmask(
                 return -1;
             },
         };
-        // SAFETY: single-threaded access to the process mask.
-        unsafe { SIGNAL_MASK = next };
+        SIGNAL_MASK.store(next, Ordering::Relaxed);
     }
 
     0

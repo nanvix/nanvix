@@ -5,11 +5,20 @@
 // Imports
 //==================================================================================================
 
-use crate::signal::{
-    sigset_t,
-    SIG_MAX,
+use crate::{
+    set_errno,
+    signal::{
+        sigset_t,
+        SIG_MAX,
+    },
 };
-use ::sysapi::ffi::c_int;
+use ::sysapi::{
+    errno::{
+        EFAULT,
+        EINVAL,
+    },
+    ffi::c_int,
+};
 
 //==================================================================================================
 // Standalone Functions
@@ -35,6 +44,8 @@ use ::sysapi::ffi::c_int;
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigemptyset(set: *mut sigset_t) -> c_int {
     if set.is_null() {
+        // POSIX: EFAULT when `set` points to invalid memory.
+        set_errno(EFAULT);
         return -1;
     }
     *set = 0;
@@ -61,6 +72,8 @@ pub unsafe extern "C" fn sigemptyset(set: *mut sigset_t) -> c_int {
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigfillset(set: *mut sigset_t) -> c_int {
     if set.is_null() {
+        // POSIX: EFAULT when `set` points to invalid memory.
+        set_errno(EFAULT);
         return -1;
     }
     *set = u64::MAX;
@@ -87,7 +100,14 @@ pub unsafe extern "C" fn sigfillset(set: *mut sigset_t) -> c_int {
 ///
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigaddset(set: *mut sigset_t, signum: c_int) -> c_int {
-    if set.is_null() || signum <= 0 || signum > SIG_MAX {
+    if set.is_null() {
+        // POSIX: EFAULT when `set` points to invalid memory.
+        set_errno(EFAULT);
+        return -1;
+    }
+    if signum <= 0 || signum > SIG_MAX {
+        // POSIX: EINVAL when `signum` is not a valid signal number.
+        set_errno(EINVAL);
         return -1;
     }
     // `signum` is validated to be in `1..=SIG_MAX`, so `(signum - 1)` is a non-negative shift
@@ -116,7 +136,14 @@ pub unsafe extern "C" fn sigaddset(set: *mut sigset_t, signum: c_int) -> c_int {
 ///
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigdelset(set: *mut sigset_t, signum: c_int) -> c_int {
-    if set.is_null() || signum <= 0 || signum > SIG_MAX {
+    if set.is_null() {
+        // POSIX: EFAULT when `set` points to invalid memory.
+        set_errno(EFAULT);
+        return -1;
+    }
+    if signum <= 0 || signum > SIG_MAX {
+        // POSIX: EINVAL when `signum` is not a valid signal number.
+        set_errno(EINVAL);
         return -1;
     }
     // `signum` is validated to be in `1..=SIG_MAX`, so `(signum - 1)` is a non-negative shift
@@ -145,7 +172,14 @@ pub unsafe extern "C" fn sigdelset(set: *mut sigset_t, signum: c_int) -> c_int {
 ///
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigismember(set: *const sigset_t, signum: c_int) -> c_int {
-    if set.is_null() || signum <= 0 || signum > SIG_MAX {
+    if set.is_null() {
+        // POSIX: EFAULT when `set` points to invalid memory.
+        set_errno(EFAULT);
+        return -1;
+    }
+    if signum <= 0 || signum > SIG_MAX {
+        // POSIX: EINVAL when `signum` is not a valid signal number.
+        set_errno(EINVAL);
         return -1;
     }
     // `signum` is validated to be in `1..=SIG_MAX`, so `(signum - 1)` is a non-negative shift
