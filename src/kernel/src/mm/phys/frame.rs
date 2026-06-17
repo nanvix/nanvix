@@ -941,7 +941,9 @@ impl Inner {
         }
         proof! {
             // The scan covered every index in `[start_fn, start_fn + nfr)` and found it free.
-            assert(start_fn + nfr - 1 < pre_nb);
+            assert(start_fn + nfr - 1 < index as int);
+            assert(pre_sb.contains(start_fn + nfr - 1) == false);
+            assert(start_fn + nfr <= pre_nb);
             assert forall|j: int| start_fn <= j < start_fn + nfr implies !pre_sb.contains(j) by {}
         }
 

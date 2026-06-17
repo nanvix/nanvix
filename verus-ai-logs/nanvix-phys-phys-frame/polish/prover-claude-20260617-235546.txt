@@ -1636,3 +1636,55 @@ Before running verification, I'm assessing the riskier trims I made: removing th
 Turn 111
 ────────────────────────────────────────────────────────────
 [TOOL] read_bash: {'delay': 240, 'shellId': 'verify-c'}
+[RESULT ✓] read_bash: === Summary ===
+  verification: 78 verified, 1 errors (exit 101)
+  cheating: assume=0 external_body=23 admit=4 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: VERIFY_FAILED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-18_00-33-5...
+
+────────────────────────────────────────────────────────────
+Turn 112
+────────────────────────────────────────────────────────────
+One error. Let me find it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -nE "error:
+
+[THINKING] Most tests are passing, but I need to track down that one failure.
+[RESULT ✓] bash: 30:error: assertion failed
+154:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+=== context ===
+error: assertion failed
+   --> src/kernel/src/mm/phys/frame.rs:944:20
+    |
+944 |             assert(start_fn + nfr - 1 < pre_nb);
+<shellId: 26 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 113
+────────────────────────────────────────────────────────────
+The trim removed the trigger that instantiates the scan-loop invariant. Let me restore the needed instantiation asserts.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see the issue now—my trim removed the intermediate asserts that establish the scan loop invariant, which Verus needs to prove the assertion at line 944. The invariant states that for all k in the range from start_fn to index, the key k is not in pre_sb and is less than pre_nb. To satisfy the failing assertion that start_fn+nfr-1 is less than pre_nb, Verus needs to instantiate this invariant at k=start_fn+nfr-1, but the trigger condition on pre_sb.contains isn't matching properly.
+
+I need to restore the assert that checks pre_sb.contains(start_fn+nfr-1)==false, which fires the trigger and instantiates the invariant at that index. This gives me both the !contains property and the k<pre_nb bound. Since the loop exits when index==end_exclusive==start_fn+nfr, I have start_fn+nfr-1 < index, satisfying the invariant's range requirement. Adding proof assertions...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 114
+────────────────────────────────────────────────────────────
+Let me re-verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
+
+[THINKING] Only one error across the batch C trims is solid progress. Let me double-check the line count on this block—it's now 7 lines, which puts it back over the 5-line threshold, though the content is tightly coupled and might warrant keeping together.
+
+I'm reconsidering whether I can trim it further by removing the redundant assertion about `start_fn+nfr<=pre_nb` (which should follow from the trigger) and the comment, which would bring it down to 5 lines. The question is whether that assertion is still needed for the booking loop to have access to it.
+
+Let me prioritize getting verification working first with the current version, then I can do a minimization pass afterward if needed.
+[RESULT ✓] bash: <command started in background with shellId: verify-c2>
+
+────────────────────────────────────────────────────────────
+Turn 115
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 240, 'shellId': 'verify-c2'}
