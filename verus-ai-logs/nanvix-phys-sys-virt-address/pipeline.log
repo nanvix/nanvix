@@ -276,3 +276,7 @@ Module: sys-virt-address
 [2026-06-18 01:07:39] [PROVER] Running polish...
 [2026-06-18 01:07:39] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 01:10:34]   ↳ prover done in 2m55s (exit=0)
+[2026-06-18 01:10:34] [PHASE] polish: no-review (2m55s)
+[2026-06-18 01:10:34] ✅ polish: PASS (0/0)
+[2026-06-18 01:10:34] [GATE] Running build: make build
+[2026-06-18 01:10:34] [GATE] Running verify: make verify
