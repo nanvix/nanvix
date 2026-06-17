@@ -59,6 +59,7 @@ pub struct PageDirectoryEntryFlags {
     page_size: PageSizeFlag,
 }
 
+#[verus_verify]
 impl PageDirectoryEntryFlags {
     ///
     /// # Description
@@ -80,7 +81,6 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
-    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_flags_new(
@@ -104,7 +104,9 @@ impl PageDirectoryEntryFlags {
         dirty: DirtyFlag,
         page_size: PageSizeFlag,
     ) -> Self { ... }
+}
 
+impl PageDirectoryEntryFlags {
     ///
     /// # Description
     ///
@@ -240,7 +242,10 @@ pub struct PageDirectoryEntry {
 impl PageDirectoryEntry {
     /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+}
 
+#[verus_verify]
+impl PageDirectoryEntry {
     ///
     /// # Description
     ///
@@ -255,14 +260,15 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
-    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_new(flags@, frame@),
             result.inv(),
     )]
     pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self { ... }
+}
 
+impl PageDirectoryEntry {
     ///
     /// # Description
     ///
@@ -341,6 +347,15 @@ impl PageDirectoryEntry {
             result as int == self@.frame * (crate::mem::FRAME_SIZE as int),
             result as int % (crate::mem::FRAME_SIZE as int) == 0,
     )]
+    // VERUS REWRITE: the original `self.frame.into_raw_value() << crate::mem::FRAME_SHIFT`
+    // (single expression) is split so the `into_raw_value()` postcondition
+    // (`0 <= self@ <= FrameNumber::spec_max()`) lands in context *before* the overflow-bearing
+    // shift, and `lemma_frame_address(raw)` can be invoked between them to discharge the
+    // no-overflow + `FRAME_SIZE`-alignment `ensures`. The operand must be named (`let raw`)
+    // because an exec call cannot appear inside `proof!`, so there is otherwise no point between
+    // the call and the shift to invoke the lemma. Same value, same operations, same time/space
+    // complexity — semantically equivalent.
+    // Reproducer: verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/repro/frame_address.rs
     pub fn frame_address(&self) -> usize { ... }
 
     ///
