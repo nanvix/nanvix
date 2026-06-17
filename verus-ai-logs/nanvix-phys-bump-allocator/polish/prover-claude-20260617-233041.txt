@@ -509,3 +509,40 @@ Turn 22
 Turn 23
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  Exit code : 0
+  verification: 6 verified, 0 errors (exit 0)
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Redundant too — `lemma_alloc_transition` body is now empty. Let me test part (c)'s strict-inequality hints.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] The `=~=` assertion in lemma_alloc_transition turned out to be redundant too—Verus handles the structural equality automatically. That brings the count to three redundant items eliminated, and now the lemma has an empty body. I should test the remaining candidates, particularly the nonlinear arithmetic assertion and lemma_mod_multiples_vanish in part (a), though those are probably necessary. I'm also checking the strict inequality conditions in part (c).
+
+For part (c), removing the strict inequality lemma calls would break the distinctness proof since slot_addr(i) ≠ slot_addr(j) depends on i*s ≠ j*s when i ≠ j, which requires s > 0—that's nonlinear and almost certainly needed. Let me test part (c) in isolation to confirm.
+[RESULT ✓] view: 38. 
+39.     // (a) Every slot start is `unit_align`-aligned.
+40.     assert forall|i: int| 0 <= i < cap implies #[trigger] v.slot_addr(i) % a == 0 by {
+41.         // i * s == a * (i * q), so slot_addr(i) == a * (i * q) + b.
+42.         assert(i * s == a * (i * q)) by (nonlinear_arith)
+43.         ...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] The `requires s == a * q` condition in the nonlinear_arith assert is satisfied by the context from `lemma_fundamental_div_mod` combined with the invariant that `s%a==0`, so removing the outer assert still allows verification. Now I'm testing whether I can simplify part (c) by replacing the conditional block with an empty proof body, though I need to think through what's actually required there.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
+
+[THINKING] I'm realizing that removing the else branch creates a problem: when i > j, the if condition is false, so no hint gets generated, and Verus has no way to prove the property for that case. The forall quantifies over all pairs of i and j, so I need to handle both the i < j and i > j scenarios.
+
+Since inequality is symmetric—slot_addr(i) ≠ slot_addr(j) is equivalent to slot_addr(j) ≠ slot_addr(i)—I should restore the else branch to ensure the hint is provided regardless of which variable is larger. Let me test this to confirm it works.

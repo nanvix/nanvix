@@ -64,8 +64,6 @@ pub proof fn lemma_geometry(v: BumpView)
     #[trigger] v.slot_addr(j)) by {
         if i < j {
             vstd::arithmetic::mul::lemma_mul_strict_inequality(i, j, s);
-        } else {
-            vstd::arithmetic::mul::lemma_mul_strict_inequality(j, i, s);
         }
     }
 }
