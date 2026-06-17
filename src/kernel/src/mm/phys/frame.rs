@@ -444,9 +444,8 @@ impl Inner {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
+        // The frame is currently allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit is set.
         proof! {
-            // The frame is currently allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit
-            // is set. Records the facts needed to discharge the postcondition's first conjuncts.
             lemma_frame_allocated(self, frame@, frame_number as int);
             assert(g_old.refcounts[frame@] == pre_rc[frame_number as int] as int);
         }
@@ -479,12 +478,11 @@ impl Inner {
                 },
             }
         } else {
+            // Still shared: only the refcount slot changed (decremented by one); the
+            // allocated/free partition is unchanged.
             proof! {
-                // Still shared: only the refcount slot changed (decremented by one); the
-                // allocated/free partition is unchanged.
-                let fnx = frame_number as int;
-                let nv = self.refcount@[fnx];
-                lemma_post_update_slot(self, frame@, fnx, nv, g_old, pre_sb, pre_nb, pre_rc);
+                let nv = self.refcount@[frame_number as int];
+                lemma_post_update_slot(self, frame@, frame_number as int, nv, g_old, pre_sb, pre_nb, pre_rc);
                 assert(nv as int == g_old.refcounts[frame@] - 1);
             }
             Ok(())
@@ -581,9 +579,9 @@ impl Inner {
         self.refcount[frame_number] = match self.refcount[frame_number].checked_add(1) {
             Some(n) => n,
             None => {
+                // Overflow: the old refcount was at its u8 maximum (255). The state is
+                // unchanged, satisfying the Err arm's refcount-saturated disjunct.
                 proof! {
-                    // Overflow: the old refcount was at its u8 maximum (255). The state is
-                    // unchanged, satisfying the Err arm's refcount-saturated disjunct.
                     lemma_view_of(self);
                     assert(self@ == g_old);
                     assert(g_old.refcounts[frame@] == 255);
@@ -595,12 +593,11 @@ impl Inner {
             },
         };
 
+        // Only the refcount slot changed (incremented by one); the allocated/free partition
+        // is unchanged.
         proof! {
-            // Only the refcount slot changed (incremented by one); the allocated/free partition
-            // is unchanged.
-            let fnx = frame_number as int;
-            let nv = self.refcount@[fnx];
-            lemma_post_update_slot(self, frame@, fnx, nv, g_old, pre_sb, pre_nb, pre_rc);
+            let nv = self.refcount@[frame_number as int];
+            lemma_post_update_slot(self, frame@, frame_number as int, nv, g_old, pre_sb, pre_nb, pre_rc);
             assert(nv as int == g_old.refcounts[frame@] + 1);
         }
 
@@ -744,9 +741,9 @@ impl Inner {
                 Ok(())
             },
             Err(error) => {
+                // `set()` failed: the bit was already set or out of range, so the frame is not
+                // free in `old(self)`.
                 proof! {
-                    // `set()` failed: the bit was already set or out of range, so the frame is not
-                    // free in `old(self)`.
                     lemma_view_of(self);
                     assert(self@ == g_old);
                     assert(!g_old.is_free(phys_addr@));
@@ -844,13 +841,7 @@ impl Inner {
         }
         proof! {
             lemma_capture_inv_facts(self, g_old, pre_sb, pre_nb, pre_rc);
-            // Region geometry (from `region.inv()`): non-empty, page-aligned endpoints.
-            assert(rsize > 0 && rstart % ps == 0 && rsize % ps == 0);
             assert(ps == 4096);
-            assert(start_fn == rstart / ps);
-            assert(nfr == rsize / ps);
-            assert(rstart <= usize::MAX as int);
-            assert(rsize <= usize::MAX as int);
             lemma_alloc_range_geometry(rstart, rsize, ps, start_fn, nfr);
         }
         let end_exclusive: usize = start_frame_number + nframes;
@@ -939,8 +930,8 @@ impl Inner {
             }
             index = index + 1;
         }
+        // The scan covered every index in `[start_fn, start_fn + nfr)` and found it free.
         proof! {
-            // The scan covered every index in `[start_fn, start_fn + nfr)` and found it free.
             assert(start_fn + nfr - 1 < index as int);
             assert(pre_sb.contains(start_fn + nfr - 1) == false);
             assert(start_fn + nfr <= pre_nb);
@@ -969,8 +960,8 @@ impl Inner {
         ))]
         for index in start_frame_number..end_exclusive {
             if let Err(error) = self.bitmap.set(index) {
+                // The bit at `index` is still clear and in range, so `set` cannot fail.
                 proof! {
-                    // The bit at `index` is still clear and in range, so `set` cannot fail.
                     assert(!BitmapView::range_set(start_fn, index as int).contains(index as int));
                     assert(!pre_sb.contains(index as int));
                     assert(false);
