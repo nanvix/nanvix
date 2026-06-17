@@ -237,3 +237,19 @@ PIPELINE COMPLETE: hal-memory-region
 [2026-06-17 23:29:52] [BRANCH] Staying on current branch: verus-ai-polish
 ERROR: Unknown phase 'polish'.
   Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
+[2026-06-18 00:57:03] [BRANCH] Staying on current branch: verus-ai-polish
+[2026-06-18 00:57:03] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/body_removed_source.rs (14904 -> 10750 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: hal-memory-region
+Source: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/region.rs
+Crate:  kernel
+Branch: verus-ai-polish (base: verus-ai-polish)
+Phases: polish → polish
+############################################################
+
+============================================================
+PHASE: polish
+Module: hal-memory-region
+============================================================
