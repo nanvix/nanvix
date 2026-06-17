@@ -3,9 +3,8 @@
 
 // FixedSizeBumpAllocator - Proofs
 //
-// Proof-function signatures for the abstract pool model. Bodies are `admit()`
-// placeholders during the specification phase; the proving phase discharges them.
-// Each lemma encodes a caller expectation from
+// Proof functions for the abstract pool model. Each lemma encodes a caller
+// expectation from
 // `verus-ai-logs/nanvix-phys-bump-allocator/caller_analysis.md`.
 
 verus! {

@@ -589,3 +589,105 @@ Now let me run the final verification to confirm the 3 removals all hold togethe
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
 
 [THINKING] The comment on line 35 correctly captures what the lemma establishes about stride being an exact multiple of unit alignment, and the `q` variable is still properly used in the requires clause. Let me run a final verification to confirm all 6 proofs check out with no errors after these three removals.
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  coverage: 3/6 exec functions h...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+6 verified, 0 errors, 0 admits/assumes. The `external_body=2` are the registered `alloc`/`alloc_as` (expected). Let me confirm the exact diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] The verification checks are passing with no errors or assumptions flagged, and the external_body allocation is registered as expected despite the cheating detection flag. Let me compare the changes to see what's actually different.
+[RESULT ✓] bash: 
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short && echo "=== diff vs backup ===" && diff /tmp/lib.proof.rs.bak src
+
+[THINKING] The git diff came back empty, which is strange—either the file isn't being tracked or something's off with how the changes are staged. Let me check the git status to see what's actually going on.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-bump-allocator/polish/prover-claude-20260617-233041.jsonl
+ M verus-ai-logs/nanvix-phys-bump-allocator/polish/prover-claude-20260617-233041.txt
+=== diff vs backup ===
+38d37
+<     assert(s == a * q);
+55,56d53
+<         // Lower bound: i * s >= 0.
+<         vstd::arithmetic:...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git ls-files src/libs/bump_allocator/src/ ; echo "=== check ignore ==="; git check-ig
+
+[THINKING] The diff confirms my three removals, but git status isn't showing lib.proof.rs as modified—it's only flagging the prover log files. This suggests lib.proof.rs might be gitignored or untracked, so I need to verify whether it's actually being tracked by git.
+[RESULT ✓] bash: src/libs/bump_allocator/src/lib.proof.rs
+src/libs/bump_allocator/src/lib.rs
+src/libs/bump_allocator/src/lib.spec.rs
+=== check ignore ===
+exit: 1
+<shellId: 25 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git diff HEAD -- src/libs/bump_allocator/src/lib.proof.rs | head -40; echo "=== stage
+
+[THINKING] The file is tracked but git diff isn't showing any changes, which is strange. Let me run git diff explicitly on that file to see what's actually there. It's possible a background prover process has stashed or committed the changes, but comparing against my /tmp backup shows my edits are definitely present in the working tree.
+[RESULT ✓] bash: === staged? ===
+=== HEAD content lines around 37 ===
+    let q: int = s / a;
+    vstd::arithmetic::div_mod::lemma_fundamental_div_mod(s, a);
+
+    // (a) Every slot start is `unit_align`-aligned.
+    assert forall|i: int| 0 <= i < cap implies #[trigger] v.slot_addr(i) % a == 0 by {
+<shellId: 26 compl...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager log --oneline -8
+
+[THINKING] Looking at the HEAD version of the file, I notice the assertion I was working with has already been removed — the code now shows the division operation followed directly by the lemma call, which matches the changes I made. It seems a commit was pushed during my session that incorporated these edits.
+
+The prover logs in git status suggest there's an automated verification harness that auto-commits changes after each verify run, so my modifications likely got captured that way. Let me check the recent git log to confirm what's been committed.
+[RESULT ✓] bash: 1fb773f76 [verus] verify PASS (cheating detected): bump-allocator::all (6 verified, 0 errors, external_body=2)
+0353ff0f7 [verus] verify FAIL: bump-allocator::all (5 verified, 1 errors)
+6a665639b [verus] verify PASS (cheating detected): bump-allocator::all (6 verified, 0 errors, external_body=2)
+a440...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+The verify harness auto-commits each run; my changes are committed and the latest commit passes (6 verified, 0 errors). Let me do a final review of both files for any stale comments referencing removed hints.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] The verify harness has auto-committed my changes, and the latest commit shows all 6 verifications passing with no errors. Now I'm doing a final review of both the proof and spec files to ensure everything is clean and consistent, checking for any stray comments that might reference removed items.
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. // FixedSizeBumpAllocator - Proofs
+5. //
+6. // Proof-function signatures for the abstract pool model. Bodies are `admit()`
+7. // placeholders during the specification phase; the proving phase discharges them.
+...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+The proof file is clean. One stale comment remains in the header — it claims bodies are `admit()` placeholders "during the specification phase," which is no longer true (proofs are discharged). I'll update it for accuracy/readability.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] I need to clean up a stale comment in the proof file header that claims the function bodies are `admit()` placeholders, when they've actually been discharged. Following the minimization guidelines, I should remove this outdated documentation. I'll make the comment edit to remove the stale reference to admit() placeholders, then re-verify since the proof file changed.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
