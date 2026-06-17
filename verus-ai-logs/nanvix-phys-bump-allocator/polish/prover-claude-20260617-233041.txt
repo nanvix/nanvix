@@ -465,3 +465,47 @@ Let me test removing the distributive assert block that establishes `(i+1)*s == 
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
+[RESULT ✓] bash: error: assertion failed
+verification results:: 5 verified, 1 errors
+error: could not compile `bump-allocator` (lib) due to 1 previous error
+  1 errors
+  Exit code : 101
+  verification: 5 verified, 1 errors (exit 101)
+  verification: 5 verified, 1 errors (exit 101)
+<shellId: 19 completed with exit co...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+The distributive assert is needed. Let me restore it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] I need to put that distributive assert block back in — I removed it but it's actually necessary.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+Now let me test the `=~=` assert in `lemma_alloc_transition` (BumpView derives ext_equal, so Verus may prove `==` automatically).
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] I'm testing whether the nonlinear_arith assertion and lemma_mod_multiples_vanish are both necessary for part (a) — the assertion provides the key equality that feeds into the lemma, so removing either would break the proof. Let me shift focus to testing part (c)'s strict condition instead.
+[RESULT ✓] view: 93. /// Backs caller invariants: *Monotone capacity* (advance by one), *Uniqueness*
+94. /// (each index handed out at most once).
+95. pub proof fn lemma_alloc_transition(v: BumpView)
+96.     requires
+97.         v.inv(),
+98.         v.has_capacity(),
+99.     ensures
+100.         v.spec_alloc().inv()...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio

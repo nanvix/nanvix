@@ -52,6 +52,9 @@ pub proof fn lemma_geometry(v: BumpView)
         &&& v.slot_addr(i) + us <= v.base + ss
     } by {
         // Upper bound: i * s + us <= (i + 1) * s <= cap * s <= ss.
+        assert((i + 1) * s == i * s + s) by {
+            vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(s, i, 1);
+        }
         vstd::arithmetic::mul::lemma_mul_inequality(i + 1, cap, s);
     }
 
@@ -101,7 +104,6 @@ pub proof fn lemma_alloc_transition(v: BumpView)
         // Configuration (everything except `allocated`) is unchanged.
         v.spec_alloc() == (BumpView { allocated: v.spec_alloc().allocated, ..v }),
 {
-    assert(v.spec_alloc() =~= (BumpView { allocated: v.spec_alloc().allocated, ..v }));
 }
 
 } // verus!
