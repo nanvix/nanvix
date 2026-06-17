@@ -16,6 +16,8 @@ use crate::vmm::kvm::pmio::{
 #[cfg(target_os = "linux")]
 use crate::vmm::microvm::kvm::vmem::VirtualMemory;
 #[cfg(target_os = "windows")]
+use crate::vmm::microvm::whp::console::AsyncConsoleWriter;
+#[cfg(target_os = "windows")]
 use crate::vmm::microvm::whp::vcpu::exit::{
     PmioAccess,
     PmioWidth,
@@ -94,6 +96,12 @@ impl Emulator {
         stderr_fn: Box<StderrFn>,
     ) -> Result<Self> {
         trace!("new()");
+        // On Windows/WHP, decouple per-byte guest console writes (port 0xE9) from the WHP
+        // partition lock held across `handle_pmio_access()`: hand bytes to a dedicated drain
+        // thread via a bounded in-process buffer so that a back-pressured host sink can never
+        // block the vCPU thread while it holds the partition lock.
+        #[cfg(target_os = "windows")]
+        let stderr_fn: Box<StderrFn> = Box::new(AsyncConsoleWriter::new(stderr_fn));
         Ok(Self {
             guest,
             vmem,
@@ -101,6 +109,23 @@ impl Emulator {
             stdout_fn,
             stderr_fn,
         })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Flushes buffered guest console output to the underlying host sink.
+    ///
+    /// On Windows this drains the asynchronous console writer's in-process buffer so that the
+    /// final bytes the guest emitted (for example the shutdown magic string) are durable on the
+    /// host sink before the VMM thread unwinds. The wait is bounded, so a starved console reader
+    /// cannot wedge VM teardown.
+    ///
+    #[cfg(target_os = "windows")]
+    pub fn flush_console(&mut self) {
+        if let Err(error) = self.stderr_fn.flush() {
+            warn!("flush_console(): failed to flush guest console (error={error:?})");
+        }
     }
 
     ///
