@@ -6,7 +6,7 @@
   "current_phase_idx": 5,
   "completed_phases": [],
   "phase_results": {},
-  "prover_session_id": null,
+  "prover_session_id": "b95e1799-f6ef-42cd-8356-808a24042ba6",
   "completed": false,
   "base_branch": "verus-ai-polish",
   "verus_branch": "verus-ai-polish",
