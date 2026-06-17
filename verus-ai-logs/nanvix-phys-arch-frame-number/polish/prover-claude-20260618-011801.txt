@@ -232,3 +232,61 @@ Turn 7
 Turn 8
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-arch 2>&1 | grep -iE "error|verified|fail|exit code|verificat
+[RESULT ✓] bash: error: postcondition not satisfied
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+verification results:: 47 verified, 1 errors
+error: could not compile `arch` (lib) due to 1 previous error
+  47 verified
+  1 errors
+  Exit code : 101
+=== Summary (pre-guardrails; verify fail...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+The proof hint is required (postcondition fails without it). Restoring it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs
+
+[THINKING] The `use_type_invariant` hint is actually necessary to maintain the postcondition that `0 <= self@ <= Self::spec_max()`, so I need to put it back in the file rather than leaving it out.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+The file is restored. Let me confirm it's byte-identical to the backup and re-run verification to confirm passing state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && diff /tmp/number.rs.bak src/libs/arch/src/x86/mem/paging/frame/number.rs && echo "IDE
+
+[THINKING] Looking at what needs to stay in the spec file: `view()` is used by the View trait implementation, `spec_max()` appears in the ensures clauses and invariant so it needs to remain public, and `inv()` is the type invariant that's actively used. The proof file turns out to be empty.
+
+Checking for cleanup opportunities: there are no redundant assertions, and the comments in the spec file are substantive design documentation rather than TODO markers or property-ID annotations, so they should stay. The proof file is structurally necessary since it's included from the main file, even though it's empty. After this analysis, the file is already quite clean—there aren't meaningful improvements to extract or minimize beyond what's already there.
+[RESULT ✓] bash: IDENTICAL-rs
+IDENTICAL-spec
+IDENTICAL-proof
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me scan all three files for any other proof artifacts (asserts, hints, `by(...)`) I might have missed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame && grep -nE "assert|proof|by\(|by\b|use_type_inva
+
+[THINKING] Looking at the spec file more carefully, I notice those verbose comments are actually design rationale explaining how the realization maps to the kernel spec—not property-ID tags or commented-out code—so they should stay according to the minimization guidelines.
+
+Now I want to be thorough and check if there are any other proof blocks, assertions, or proof hints scattered across the three files that I might have missed.
+[RESULT ✓] bash: number.rs:12:include!("number.proof.rs");
+number.rs:100:        proof! { use_type_invariant(self); }
+number.rs:114:    assert_eq!(frame_number.into_raw_value(), raw_value);
+number.rs:122:    assert_eq!(frame_number.into_raw_value(), raw_value);
+number.rs:126:/// [`FrameNumber`]. With an off-by-one [...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The `assert_eq!`/`assert!` are in `#[test]` functions (runtime Rust, out of scope), not Verus proof assertions. The file is already minimal. Let me run a final confirmation verification of the restored state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-arch 2>&1 | grep -iE "error|verified|exit code|verification:|
+
+[THINKING] The `assert_eq!` and `assert!` macros in the test functions are runtime assertions, not part of the verification logic, so they're outside the scope of what I'm looking at. That confirms my conclusion: there's just one proof block with a single line that's short enough to keep inline.
+
+No redundant assertions exist in the verified code, and the one proof hint is necessary—removing it causes the postcondition to fail. All spec functions are either public or part of trait implementations, so there's no dead code. The file is clean with no debug artifacts or leftover annotations.
+
+Since the file is already in good shape, I should run a final verification to confirm everything still passes with zero errors before wrapping up the checklist report.
