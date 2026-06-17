@@ -245,3 +245,68 @@ Now let me run the baseline verification to confirm current state passes.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-sys 2>&1 | tail -40
 
 [THINKING] Running the verification baseline with `make verify-sys`.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus-exp/verus/source/target-verus/release.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/verus-exp/verus/source/target-verus/release:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locke...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Baseline passes cleanly (0 errors, 0 admits, CLEAN). Let me thoroughly scan the in-scope files for any assertions, proof hints, or redundancy I might extract/minimize.
+[TOOL] grep: assert|proof\s*\{|by\s*\(|assume|admit|spec_addr_is_aligned|by\(nonlinear
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== callers of spec_addr_is_aligned across crate ===" && grep -rn "spec_addr_is
+
+[THINKING] The baseline verification passed cleanly with no errors and a clean status, though it used cached results rather than recompiling. Now I'm moving into the polish phase: there are no proof blocks to extract from mod.rs, and I'm checking for redundant assertions to minimize.
+
+Looking at the spec and proof files, `spec_addr_is_aligned` is public and used by the `is_aligned` ensures, so it should stay. I don't see debug artifacts like TODO comments or property-ID annotations in mod.spec.rs—just descriptive comments. The proof file is essentially empty. The module is already minimal and clean.
+
+I need to be careful about scope here: the task specifies functions in mod.rs, and virt.rs is a separate module that's out of scope. `spec_addr_is_aligned` is a distinct predicate from `crate::mm::spec_align_value`, so there's no redundancy there either. Let me reconsider the alignment predicate comment in mod.spec.rs to make sure I'm not missing anything. I should also verify the build passes and double-check that there are no proof blocks hiding in the other in-scope files by grepping for keywords like `assert`, `proof`, `by(`, `assume`, and `admit` across the module files.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/mod.spec.rs:8:pub open spec fn spec_addr_is_aligned(v: int, align: Alignment) -> bool {
+/home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address/mod.rs:138:                && aligned == spec_addr_is_aligned(self@, align),
+[RESULT ✓] bash: === callers of spec_addr_is_aligned across crate ===
+src/libs/sys/src/sys/mm/address/mod.rs:138:                && aligned == spec_addr_is_aligned(self@, align),
+src/libs/sys/src/sys/mm/address/mod.spec.rs:8:pub open spec fn spec_addr_is_aligned(v: int, align: Alignment) -> bool {
+<shellId: 5 comple...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Confirmed. The in-scope files contain:
+- **No inline proof blocks** (the three target functions are trait *declarations* with no bodies).
+- **No assertions or proof hints** to minimize.
+- `spec_addr_is_aligned` is a `pub open spec fn` actively used by `is_aligned`'s `ensures` — not dead, and `pub` spec fns must be kept per the minimization skill.
+
+There is nothing to extract or remove without weakening the spec or violating constraints. The module already verifies cleanly. Let me write the report.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/polish/checklist.md
+
+[THINKING] I've verified that there are no assertions, proof blocks, or other proof-related constructs in the in-scope files, and `spec_addr_is_aligned` is properly used by `is_aligned`'s ensures clause so it's not dead code. The proof module is empty, which means there's genuinely nothing left to extract or minimize—the module is already in a clean, minimal state and ready for integration.
+
+Since I'm not making any changes, the cached verification result remains valid, and there's no spec drift to worry about. Now I need to write the checklist report honestly documenting zero extractions and zero minimizations with a clear rationale, then output it to the checklist.md file.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/polish/checklist.md with 2066 characters
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Done. Verification passes cleanly (exit 0, **CLEAN**, 0 errors/admits) and the report is written.
+
+## Summary
+
+The polish target (`mod.rs` functions `is_aligned`, `into_raw_value`, `from_raw_value`) are **trait method declarations** with no executable bodies — concrete bodies live in the out-of-scope `virt` implementor. Consequently:
+
+- **Proof extraction: 0** — `check_proof_blocks` reports no proof blocks or loop invariants; no `proof{}`/`assert`/`by(...)` exist in any in-scope file. `mod.proof.rs` is empty.
+- **Minimization: 0** — no redundant assertions, hints, or lemmas. The lone spec fn `spec_addr_is_aligned` is `pub` and used by `is_aligned`'s `ensures` (mod.rs:138), so it stays per the minimization skill.
+
+No edits were warranted — making changes would have required weakening the spec or violating source-integrity constraints. The module is already minimal and integration-ready.
+
+Report: `verus-ai-logs/nanvix-phys-sys-address-mod/polish/checklist.md`.
+
+[THINKING] The verification already passed with exit code 0, and since I haven't made any source changes, the cached result confirms everything is working correctly. The task is complete.
+
+
+=== Session End ===
+Session: d56b728d-5916-4dd5-9e89-f007975b7087
+Duration: 146.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/polish/prover-claude-20260618-011526.jsonl
