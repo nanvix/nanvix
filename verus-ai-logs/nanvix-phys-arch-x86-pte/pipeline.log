@@ -246,3 +246,7 @@ Module: arch-x86-pte
 [2026-06-18 01:42:28] [PROVER] Running polish...
 [2026-06-18 01:42:28] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 01:46:00]   ↳ prover done in 3m31s (exit=0)
+[2026-06-18 01:46:00] [PHASE] polish: no-review (3m32s)
+[2026-06-18 01:46:00] ✅ polish: PASS (0/0)
+[2026-06-18 01:46:00] [GATE] Running build: make build
+[2026-06-18 01:46:00] [GATE] Running verify: make verify
