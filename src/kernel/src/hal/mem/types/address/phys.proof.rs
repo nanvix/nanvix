@@ -73,7 +73,6 @@ pub proof fn lemma_frame_index(
     // increasing, so this is the only solution.
     lemma2_to64();
     assert(spec_page_size() == 4096);
-    assert(pow2(shift as nat) == 4096);
     if shift < 12 {
         lemma_pow2_strictly_increases(shift as nat, 12);
         assert(false);
@@ -97,7 +96,6 @@ pub proof fn lemma_frame_index(
     // `MAX_ADDRESS % FRAME_SIZE == FRAME_SIZE - 1` for a power-of-two frame size) gives the bound.
     let s: int = spec_page_size();
     let m: int = mem::MAX_ADDRESS as int;
-    assert(s == 4096);
     assert(m == usize::MAX as int);
     // `usize::MAX % 4096 == 4095` for any `usize` width (32 or 64): `usize::MAX == 2^BITS - 1` and
     // `4096 == 2^12` divides `2^BITS`, so `MAX_ADDRESS` is the last byte of its frame and the

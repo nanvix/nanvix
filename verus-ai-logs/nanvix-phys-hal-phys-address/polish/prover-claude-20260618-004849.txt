@@ -290,3 +290,65 @@ Now let me re-verify this batch.
 [THINKING] I'm reconsidering whether that assertion on line 94 is actually necessary for the proof. The second ensures clause uses `frame_number as int <= spec_max_frame_number()`, and I can derive the relationship between `frame_number` and `raw_addr` through the division lemma and the nat-to-int casting bridge, so the explicit assertion might be redundant.
 
 Let me run verification to check if removing it causes any issues.
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Global: assume=0 external_body=23 admit=4 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Funct...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Batch 1 succeeded (3 assertions removed, 6 verified, 0 errors). Let me view the current proof file and identify more candidates.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] The first batch of redundant assertion removals went through cleanly. Now I'm moving on to identify more candidates in the proof file, starting with `lemma_from_number_no_overflow` where I can see several assertions that might be redundant.
+
+Looking at `lemma_frame_index`, there are quite a few assertions to evaluate. The `pow2(shift as nat) == 4096` assertion is tricky—it follows from the requires clause that `spec_page_size() == pow2(shift)` combined with the earlier assertion that `spec_page_size() == 4096`, but it feeds into the contradiction blocks so I should be cautious about removing it. The `assert(s == 4096)` looks like a duplicate since `s` is defined as `spec_page_size()` and we've already asserted that value, though I need to check the exact ordering in the proof.
+
+The `assert(usize::BITS == 32 || usize::BITS == 64)` is actually necessary—it comes from `unsigned_int_max_values()` and ensures the if/else branches on `usize::BITS == 32` are exhaustive, especially since the else branch needs to establish that `BITS == 64` for the compute assertions to work.
+
+For `assert(m == usize::MAX as int)`, this is establishing the relationship between `MAX_ADDRESS` and `usize::MAX`, which is needed to connect the concrete value `0xFFFF_FFFF` (or the 64-bit equivalent) back to the abstract `m`. Without this, the compute assertions that produce those hex values wouldn't be justified.
+
+In `lemma_from_number_no_overflow`, assertions A and B are likely load-bearing too—they bridge the spec-level definitions like `spec_page_size()` and `MAX_ADDRESS` to the arch-level constants like `FRAME_SIZE` and `MAX_ADDRESS`, which are needed to prove assertion C about `FrameNumber::spec_max()`.
+
+The main candidate for removal is `assert(s == 4096)` in `lemma_frame_index`, since `s` is already bound to `spec_page_size()` which equals 4096, making the assertion redundant.
+[RESULT ✓] view: 26.     let raw: int = frame@;
+27.     let s: int = spec_page_size();
+28.     let m: int = usize::MAX as int;
+29. 
+30.     assert(s == mem::FRAME_SIZE as int);
+31.     assert(m == mem::MAX_ADDRESS as int);
+32. 
+33.     // The corrected `spec_max()` is either `MAX_ADDRESS / FRAME_SIZE` or that minus ...
+[RESULT ✓] view: 70. {
+71.     // From `spec_page_size() == pow2(shift)` and `PAGE_SIZE == 4096 == pow2(12)`, the shift is
+72.     // exactly `12`, hence below `usize::BITS` on every supported target. `pow2` is strictly
+73.     // increasing, so this is the only solution.
+74.     lemma2_to64();
+75.     assert(spec_p...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Let me try batch 2: remove `assert(s == 4096)` (redundant with the earlier `spec_page_size() == 4096` plus the let-binding) and `assert(pow2(shift as nat) == 4096)` (derivable from the requires).
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I'm looking at a second batch of potential redundancies in the code. Line 100 has an assertion that `s == 4096`, but this is already covered by an earlier assertion on line 75 that checks `spec_page_size() == 4096`, and since `s` is bound to `spec_page_size()`, the later assertion is redundant. I'll remove just that one assertion first to test it out.
+
+Actually, I'm also considering removing line 76's assertion about `pow2(shift as nat) == 4096` alongside line 100. The pow2 equality should be derivable from line 75 combined with the requires clause, and the contradiction blocks that depend on it can likely work with what Verus can infer automatically. It's a bit risky since removing both at once means I'd need to bisect if it fails, but the verification runs fast enough that it's worth trying together. Let me test removing both line 100 and line 76.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | sed -n '/
