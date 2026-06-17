@@ -1,0 +1,19 @@
+Timestamp: 2026-06-18_01-15-20
+Mode: cargo
+Crate: nanvix-slab
+Directory: N/A
+Module: <all>
+Exit code: 0
+cached (no recompilation)
+—
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=1
+
+--- Full output ---
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
