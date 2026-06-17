@@ -260,3 +260,7 @@ Module: hal-phys-address
 [2026-06-18 00:48:49] [PROVER] Running polish...
 [2026-06-18 00:48:49] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 00:56:54]   ↳ prover done in 8m05s (exit=0)
+[2026-06-18 00:56:54] [PHASE] polish: no-review (8m05s)
+[2026-06-18 00:56:54] ✅ polish: PASS (0/0)
+[2026-06-18 00:56:55] [GATE] Running build: make build
+[2026-06-18 00:56:55] [GATE] Running verify: make verify
