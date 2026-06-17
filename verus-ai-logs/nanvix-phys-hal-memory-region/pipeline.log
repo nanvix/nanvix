@@ -260,3 +260,12 @@ Module: hal-memory-region
 [2026-06-18 01:05:10] ✅ polish: PASS (0/0)
 [2026-06-18 01:05:10] [GATE] Running build: make build
 [2026-06-18 01:05:10] [GATE] Running verify: make verify
+[2026-06-18 01:05:19] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: hal-memory-region
+  ✅ polish                    no-review                 8m07s
+  ──────────────────────────────────────────────────────────
+  Total: 8m15s
+============================================================
+[2026-06-18 01:05:19] [USAGE] Summary: 14 calls, 0 tokens, 1h01m54s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-memory-region/usage_summary.json
