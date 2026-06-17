@@ -264,3 +264,7 @@ Module: bump-allocator
 [2026-06-17 23:30:41] [PROVER] Running polish...
 [2026-06-17 23:30:41] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-17 23:38:36]   ↳ prover done in 7m55s (exit=0)
+[2026-06-17 23:38:36] [PHASE] polish: no-review (7m55s)
+[2026-06-17 23:38:36] ✅ polish: PASS (0/0)
+[2026-06-17 23:38:36] [GATE] Running build: make build
+[2026-06-17 23:38:36] [GATE] Running verify: make verify
