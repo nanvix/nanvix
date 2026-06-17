@@ -242,3 +242,6 @@ PIPELINE FINISHED: virt-identity-map (some phases need work)
   Total: 57m45s
 ============================================================
 [2026-06-15 13:22:02] [USAGE] Summary: 15 calls, 0 tokens, 1h48m04s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-virt-identity-map/usage_summary.json
+[2026-06-17 23:29:53] [BRANCH] Staying on current branch: verus-ai-polish
+ERROR: Unknown phase 'polish'.
+  Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
