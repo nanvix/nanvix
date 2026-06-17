@@ -277,3 +277,12 @@ Module: phys-upool
 [2026-06-17 23:52:53] ✅ polish: PASS (0/0)
 [2026-06-17 23:52:53] [GATE] Running build: make build
 [2026-06-17 23:52:53] [GATE] Running verify: make verify
+[2026-06-17 23:53:01] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: phys-upool
+  ✅ polish                    no-review                 2m11s
+  ──────────────────────────────────────────────────────────
+  Total: 2m19s
+============================================================
+[2026-06-17 23:53:01] [USAGE] Summary: 15 calls, 0 tokens, 1h32m14s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-upool/usage_summary.json
