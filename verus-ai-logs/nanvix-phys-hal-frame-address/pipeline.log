@@ -268,3 +268,12 @@ Module: hal-frame-address
 [2026-06-18 01:15:17] ✅ polish: PASS (0/0)
 [2026-06-18 01:15:17] [GATE] Running build: make build
 [2026-06-18 01:15:17] [GATE] Running verify: make verify
+[2026-06-18 01:15:25] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: hal-frame-address
+  ✅ polish                    no-review                 4m34s
+  ──────────────────────────────────────────────────────────
+  Total: 4m42s
+============================================================
+[2026-06-18 01:15:25] [USAGE] Summary: 12 calls, 0 tokens, 1h09m49s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/usage_summary.json
