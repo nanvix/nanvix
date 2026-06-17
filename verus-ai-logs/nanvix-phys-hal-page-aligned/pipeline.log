@@ -286,3 +286,12 @@ Module: hal-page-aligned
 [2026-06-18 00:48:40] ✅ polish: PASS (0/0)
 [2026-06-18 00:48:40] [GATE] Running build: make build
 [2026-06-18 00:48:40] [GATE] Running verify: make verify
+[2026-06-18 00:48:48] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: hal-page-aligned
+  ✅ polish                    no-review                 5m27s
+  ──────────────────────────────────────────────────────────
+  Total: 5m35s
+============================================================
+[2026-06-18 00:48:48] [USAGE] Summary: 14 calls, 0 tokens, 1h44m35s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-page-aligned/usage_summary.json
