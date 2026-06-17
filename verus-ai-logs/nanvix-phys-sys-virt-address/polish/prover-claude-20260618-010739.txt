@@ -306,3 +306,140 @@ Turn 10
 ────────────────────────────────────────────────────────────
 Verus is available. Let me run the baseline verification.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-sys VERUS_MODULE_ARG="--module mm::address::virt" 2>&1 | tail -40
+[RESULT ✓] bash: - from
+    - from
+    - default
+    - to_ne_bytes
+    - from_ne_bytes
+    - from
+    - from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - from
+    - try_from
+    - try_from
+    - try_from
+    - try_from
+    - fmt
+    - from
+    - from
+    - from
+    - from
+    - try_fr...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Baseline is CLEAN (exit 0, 2 verified, 0 cheating). The final review flagged `into_raw_value` as unverified — let me check the current git state to see if that's still the case, since polish assumes proving is complete.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git log --oneline -10 2>/dev/null; echo "=== status ==="; git status --short 2>/dev/n
+
+[THINKING] I need to trace through how the module argument gets passed to the verification. The coverage report shows it verified the entire sys crate rather than just the virt module, which suggests the --module flag might not have been applied correctly. Let me look at the verify.sh script to see how it handles the module argument and what VERUS_MODULE_ARG actually does in the Makefile.
+
+The baseline is clean with 2 verified functions (new and from_raw_value), so that's solid. Now for the polish phase: I need to check what's actually in scope. The task mentions four target functions, but into_raw_value was desk-rejected during the final review, so it's not something I should be adding specs for. My job is strictly to extract proof blocks and minimize redundancy while keeping everything passing. Since there are no inline proof blocks, no loop invariants, and both spec.rs and proof.rs are empty, there's nothing to extract or minimize — the code is already in its minimal form. I'm realizing the spec and proof files are genuinely empty, so there's nothing to extract or minimize—the honest report would show zero blocks extracted and zero redundancies removed. But before I finalize that, I should verify the actual state of the files and check if there's any context in the git history or neighboring modules that might reveal what I'm missing.
+[RESULT ✓] bash: 1b7bda06f [verus] verify PASS: sys::mm::address::virt (cached (no recompilation), —)
+243113d83 [verus-ai] polish START: sys-virt-address
+9a598f2b8 [verus-ai] pipeline COMPLETE: hal-platform-microvm
+dacde4cdc [verus] verify PASS (cheating detected): kernel::all (cached (no recompilation), —, admit=4 ...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The polish phase just started (commit "polish START"). Current source verifies 2 functions cleanly with empty spec/proof files. Let me confirm there are truly no proof artifacts to extract or minimize across all three files.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address && echo "=== asserts/proof/by hints/decreases ==="; grep
+
+[THINKING] The polish phase is underway for the sys-virt-address module. The verification confirms two functions are proven (new and from_raw_value), while into_raw_value remains unverified. Since the source contains no proof blocks and the spec/proof files are empty, there's essentially nothing to extract or minimize, but I want to double-check what those two verified functions represent.
+[RESULT ✓] bash: === asserts/proof/by hints/decreases ===
+virt.rs:40:::static_assert::assert_eq_size!(VirtualAddress, ::core::mem::size_of::<u32>());
+=== spec fns ===
+virt.rs:324:    closed spec fn view(&self) -> int
+=== done ===
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Confirmed. The only `assert` is a compile-time `static_assert` macro (unrelated to Verus), and the only spec fn is `view`, which is used by the in-scope `new`/`from_raw_value` ensures. Let me do a final scan for any verification-related comments or property-ID tags that minimization would remove.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/libs/sys/src/sys/mm/address && grep -nE "//.*(FUNC-|INV-|POST-|PRE-|TODO|FIXME|XXX|p
+
+[THINKING] I found two items that aren't in scope for extraction: a compile-time static assertion macro in `virt.rs:40` that's not a Verus proof, and the View implementation in `virt.rs:324` that's actively used by the `new` and `from_raw_value` ensures clauses. This means there are no inline proof blocks or loop invariants to extract.
+
+I'm also confirming that `view` is genuinely reachable—both `new` and `from_raw_value` call it through their ensures clauses. The spec and proof files are already minimal with no property-ID annotations or stray verification comments to clean up, and the doc comments in the source are original documentation, not verification artifacts. The code is already as lean as it can be.
+[RESULT ✓] bash: virt.rs:316:// Material for verification
+exit=0
+=== line counts ===
+ 330 virt.rs
+   1 virt.spec.rs
+   1 virt.proof.rs
+ 332 total
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Only a structural section-banner comment remains (`// Material for verification`), which is original source structure, not a removable artifact. The verification is already maximally lean.
+
+Let me run the build to satisfy the "build passes" done-criterion (I've made no source changes, so this confirms the baseline holds).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls z z.ps1 2>/dev/null; echo "=== build sys crate only ==="; cargo build --locked -p 
+
+[THINKING] I'm checking the verification section and finding that the only "verif" match is a structural comment banner at line 316 that marks the verification material section. Since the proof-minimization guidelines say to keep original source comments and this is part of the file's structure rather than an obsolete hint, I'm leaving it in place. The verification code is already as lean as it can be.
+
+Now I need to confirm the build passes to satisfy the completion criteria. Since I haven't made any source changes, the build state should be unchanged from the previous verified commit, but I'll run the build check to be thorough. Let me check what the build command is.
+[RESULT ✓] bash: z
+z.ps1
+=== build sys crate only ===
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.16s
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The sys crate builds in 0.16s. Since I've made no source changes, the baseline holds. Let me peek at the polish prover log to confirm there's no prior expectation I'm missing.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && tail -30 verus-ai-logs/nanvix-phys-sys-virt-address/polish/prover-claude-20260618-010
+
+[THINKING] The sys crate built successfully without any changes, so the project is in the same state as the last verified commit. Since nothing was modified, everything passes by definition. Now I'm wondering whether there are actually any meaningful improvements worth making.
+
+Let me examine the struct and impl block more carefully for any redundancy. The struct has the external derive attribute along with standard derives, and the impl block has the verus_verify attribute with spec functions for new and from_raw_value. There's no actual redundancy here—the file is already in optimal shape.
+
+Since the polish phase started with this file, I should check the prover logs to see if there was a previous attempt or plan that might inform what's expected next.
+[RESULT ✓] bash: <shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Only a structural section-banner comment remains (`// Material for verification`), which is original source structure, not a rem...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+That log is just my own current session transcript. Confirmed: nothing prior expected. 
+
+**Conclusion:** The file is already maximally lean — 0 inline proof blocks, 0 loop invariants, empty spec/proof files, no redundant assertions/hints/lemmas, and the only `spec fn view` is used by the in-scope `new`/`from_raw_value` ensures. Verification passes (2 verified, 0 errors, 0 admits) and the build passes. No changes are needed. Let me write the polish report.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/polish/checklist.md
+
+[THINKING] The file is already optimized with no room for further reduction, and all verification checks pass. Now I'm writing out the checklist report in the polish directory.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/polish/checklist.md with 2275 characters
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Done. The polish report is written to `verus-ai-logs/nanvix-phys-sys-virt-address/polish/checklist.md`.
+
+**Summary:** The file `virt.rs` was already maximally lean — no polish edits were needed.
+
+- **Proof extraction:** 0 blocks. `check_proof_blocks.py` reports no proof blocks and no loop invariants; spec/proof files are empty (`verus! { }`).
+- **Minimization:** 0 removals. The only `assert` is a compile-time `static_assert` macro (not Verus); the single `spec fn view` is live (backs `result@` in `new`/`from_raw_value` ensures); no redundant lemmas, hints, dead specs, or property-ID tags exist.
+- **Verification:** `make verify-sys` → CLEAN, exit 0 (2 verified, 0 errors, 0 admits, 0 external_body). `cargo build -p sys` → passes.
+
+Source, spec, and proof files left unchanged per the polish constraints (no extraction/minimization opportunities present).
+
+[THINKING] I've already verified the system is clean with zero errors, and since I didn't modify any source code, that state remains unchanged. I'm ready to wrap this up and give the user a summary.
+
+
+=== Session End ===
+Session: 8e70e2fb-476b-463a-ade2-f999840faa9d
+Duration: 175.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/polish/prover-claude-20260618-010739.jsonl
