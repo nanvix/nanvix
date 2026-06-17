@@ -1,0 +1,47 @@
+Timestamp: 2026-06-18_01-40-06
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+46 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+  --> src/libs/arch/src/x86/mem/paging/pde.proof.rs:16:1
+   |
+16 | pub proof fn lemma_frame_address(raw: usize)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+  --> src/libs/arch/src/x86/mem/paging/pde.proof.rs:20:9
+   |
+16 | pub proof fn lemma_frame_address(raw: usize)
+   | -------------------------------------------- at the end of the function body
+...
+20 |         (raw << crate::mem::FRAME_SHIFT) as int == raw as int * (crate::mem::FRAME_SIZE as int),
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+
+error: precondition not satisfied
+   --> src/libs/arch/src/x86/mem/paging/pde.proof.rs:41:5
+    |
+ 41 |     lemma_usize_shl_is_mul(raw, crate::mem::FRAME_SHIFT);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/vstd/bits.rs:141:17
+    |
+141 |                 x * pow2(shift as nat) <= <$uN>::MAX,
+    |                 ------------------------------------ failed precondition
+
+verification results:: 46 verified, 1 errors
+error: could not compile `arch` (lib) due to 2 previous errors

@@ -23,9 +23,6 @@ pub proof fn lemma_frame_address(raw: usize)
     let s: int = crate::mem::FRAME_SIZE as int;
     let m: int = crate::mem::MAX_ADDRESS as int;
 
-    // `pow2(FRAME_SHIFT) == FRAME_SIZE` (i.e. `pow2(12) == 4096`).
-    lemma2_to64();
-
     // The product fits in `usize`: `raw <= m / s`, and `(m / s) * s <= m`.
     lemma_mod_bound(m, s);
     lemma_fundamental_div_mod(m, s);

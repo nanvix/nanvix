@@ -420,3 +420,28 @@ Both intermediate asserts removed successfully. Now let me test removing the `po
 Turn 23
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | grep -E "verification:|errors|error:" | head
+[RESULT ✓] bash: verification results:: 47 verified, 0 errors
+  0 errors
+  verification: 47 verified, 0 errors (exit 0)
+<shellId: v2 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Now let me test whether the `lemma2_to64()` broadcast call itself is still needed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/libs/arch/src/x86/mem/paging/pde.proof.rs /tmp/pde.proof.checkpoint.rs && echo
+
+[THINKING] Removing the pow2 assert still works because lemma2_to64() broadcasts those pow2 facts anyway. I'm wondering if lemma2_to64() itself is even necessary now, or if the broadcast mechanism handles everything without it.
+[RESULT ✓] bash: saved
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | grep -E "verification:|errors|error:" | head
