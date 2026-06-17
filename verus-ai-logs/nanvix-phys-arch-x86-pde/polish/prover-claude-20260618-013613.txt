@@ -445,3 +445,63 @@ Turn 25
 Turn 26
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | grep -E "verification:|errors|error:" | head
+[RESULT ✓] bash: note: function body check: not all errors may have been reported; rerun with a higher value for --multiple-errors to find other potential errors in this function
+error: postcondition not satisfied
+error: precondition not satisfied
+verification results:: 46 verified, 1 errors
+error: could not compile...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+`lemma2_to64()` is load-bearing — revert that removal.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/pde.proof.checkpoint.rs src/libs/arch/src/x86/mem/paging/pde.proof.rs && echo
+
+[THINKING] I need to revert to the checkpoint version that includes `lemma2_to64()` but removes the asserts, since that function is critical to the current approach.
+[RESULT ✓] bash: reverted
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Reverted. Now let me review the current proof file state for comment coherence after removals.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+
+[THINKING] I'm reviewing the lemma calls currently in place to verify they're all necessary for the proof, checking through lemma2_to64, the modular bound lemma, the fundamental division-modulo property, the multiplication inequality, the nonlinear assertion, the shift-as-multiplication lemma, and the modular multiples lemma. Each of these lemma calls is essential: lemma_mod_bound provides the bound on the modulo, lemma_fundamental_div_mod establishes the division-modulo relationship, lemma_mul_inequality ensures the multiplication inequality for the requires clause, and lemma_mod_multiples_basic proves that the shifted value is divisible by s. They all feed directly into the nonlinear assert's requires or the final ensures, so they're all load-bearing and can't be removed without breaking the proof structure. I'll keep the nonlinear_arith tactic since it handles the commutativity and inequality reasoning needed here. Now I should review the current proof file to make sure the comments are consistent with the assertions I removed.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use vstd::bits::lemma_usize_shl_is_mul;
+4. use vstd::arithmetic::power2::{pow2, lemma2_to64};
+5. use vstd::arithmetic::div_mod::{
+6.     lemma_fundamental_div_mod,
+7.     lemma_mod_bound,
+8.     lemma_mod_multiples_basic,
+9. };
+10. use vstd::arithmetic::mul::lemma_mul_inequality;
+...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+The `pow2` import may now be unused since the assert referencing it was removed. Let me check.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "pow2" src/libs/arch/src/x86/mem/paging/pde.proof.rs
+
+[THINKING] I need to check whether `pow2` is still being used in the proof file since the assert that referenced it was removed. Looking through the code, `pow2` isn't directly called anymore, though some lemmas like `lemma2_to64()` and `lemma_usize_shl_is_mul` might use it internally.
+[RESULT ✓] bash: 4:use vstd::arithmetic::power2::{pow2, lemma2_to64};
+26:    // `pow2(FRAME_SHIFT) == FRAME_SIZE` (i.e. `pow2(12) == 4096`).
+43:    // `(raw << FRAME_SHIFT) == raw * pow2(FRAME_SHIFT) == raw * FRAME_SIZE`.
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+`pow2` is now only in comments — remove the unused import for cleanliness.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+
+[THINKING] I notice that `pow2` is only appearing in comments now, not in the actual code, so the import is unnecessary. Let me remove it from the import statement and just keep `lemma2_to64` to clean up the unused import warning.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | grep -iE "verification:|errors|error:|warning: un

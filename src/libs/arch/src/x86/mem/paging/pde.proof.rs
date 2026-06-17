@@ -1,7 +1,7 @@
 verus! {
 
 use vstd::bits::lemma_usize_shl_is_mul;
-use vstd::arithmetic::power2::{pow2, lemma2_to64};
+use vstd::arithmetic::power2::lemma2_to64;
 use vstd::arithmetic::div_mod::{
     lemma_fundamental_div_mod,
     lemma_mod_bound,
@@ -22,6 +22,9 @@ pub proof fn lemma_frame_address(raw: usize)
 {
     let s: int = crate::mem::FRAME_SIZE as int;
     let m: int = crate::mem::MAX_ADDRESS as int;
+
+    // `pow2(FRAME_SHIFT) == FRAME_SIZE` (i.e. `pow2(12) == 4096`).
+    lemma2_to64();
 
     // The product fits in `usize`: `raw <= m / s`, and `(m / s) * s <= m`.
     lemma_mod_bound(m, s);
