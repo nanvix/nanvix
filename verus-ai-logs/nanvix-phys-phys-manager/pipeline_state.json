@@ -2,73 +2,17 @@
   "module_name": "phys-manager",
   "log_name": "nanvix-phys-phys-manager",
   "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs",
-  "current_phase": "cheating-elimination",
-  "current_phase_idx": 4,
-  "completed_phases": [
-    "proving",
-    "cheating-elimination"
-  ],
-  "phase_results": {
-    "proving": {
-      "phase": "proving",
-      "passed": false,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "dialogue-BLOCKED",
-      "review_file": null,
-      "duration_s": 2671.1,
-      "review_rounds": 2
-    },
-    "cheating-elimination": {
-      "phase": "cheating-elimination",
-      "passed": false,
-      "scores": {},
-      "total_score": 0,
-      "max_score": 0,
-      "verdict": "FAIL-cheating",
-      "review_file": null,
-      "duration_s": 1521.7
-    }
-  },
-  "prover_session_id": "511fc3c9-9d9e-499f-9aaa-b8520b146def",
+  "current_phase": "caller-analysis",
+  "current_phase_idx": 0,
+  "completed_phases": [],
+  "phase_results": {},
+  "prover_session_id": null,
   "completed": false,
-  "base_branch": "verus-ai-prove",
-  "verus_branch": "verus-ai-prove",
-  "phase_boundary_shas": {
-    "proving": "af3ac4325b4d94d8b1b358d6d3e6f5cb1bc96db1",
-    "cheating-elimination": "22b2f42aef3181cb19256c5d57f74456309f7f88"
-  },
-  "phase_start_shas": {
-    "proving": "f019836f1a04500359e3605e456bb89cbd6bca0b",
-    "cheating-elimination": "3a0b7204c30502882370885cf4298e7d96c57726"
-  },
-  "phase_history": [
-    {
-      "phase": "proving",
-      "event": "start",
-      "sha": "f019836f1a04500359e3605e456bb89cbd6bca0b",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "proving",
-      "event": "end",
-      "sha": "af3ac4325b4d94d8b1b358d6d3e6f5cb1bc96db1",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "cheating-elimination",
-      "event": "start",
-      "sha": "3a0b7204c30502882370885cf4298e7d96c57726",
-      "rollback_iter": 0
-    },
-    {
-      "phase": "cheating-elimination",
-      "event": "end",
-      "sha": "22b2f42aef3181cb19256c5d57f74456309f7f88",
-      "rollback_iter": 0
-    }
-  ],
+  "base_branch": "verus-ai-polish",
+  "verus_branch": "verus-ai-polish",
+  "phase_boundary_shas": {},
+  "phase_start_shas": {},
+  "phase_history": [],
   "rollback_counts": {},
   "rollback_context": "",
   "tcb_entry_points": null,

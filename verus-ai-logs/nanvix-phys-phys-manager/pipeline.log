@@ -334,3 +334,6 @@ forbidden spec-weakening.
 [2026-06-15 03:10:32] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-15 03:20:39]   ↳ review done in 10m07s (exit=0)
 [2026-06-15 03:20:39] [FINAL REVIEW] Result: FAIL (0/5)
+[2026-06-17 23:29:52] [BRANCH] Staying on current branch: verus-ai-polish
+ERROR: Unknown phase 'polish'.
+  Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
