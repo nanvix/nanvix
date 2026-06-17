@@ -14,36 +14,68 @@ pub uninterp spec fn byte_at_address(ptr: int) -> u8;
 
 /// Abstract view of the frame allocator (`frame::Inner`).
 ///
-/// Captures which physical frames are currently allocated vs. free,
-/// together with a per-frame reference count that models shared
-/// ownership (e.g. copy-on-write after `share()`).
+/// Models every frame tracked by the allocator as a single map from frame
+/// address to reference count:
+///
+/// - A frame address is a key of `refcounts` iff the allocator covers it.
+/// - A covered frame is *free* iff its reference count is `0`.
+/// - A covered frame is *allocated* iff its reference count is positive; a
+///   count greater than one models shared ownership (e.g. copy-on-write after
+///   `share()`).
+///
+/// Keeping a single map (rather than separate `allocated`/`free` sets that
+/// duplicate the same information) makes the specs simpler to write and prove.
+#[verifier::ext_equal]
 pub struct FrameAllocView
 {
-    pub allocated_frames: Set<int>,
-    pub free_frames: Set<int>,
-    /// Maps each allocated frame address to its reference count.
-    /// A frame is present in the map iff it is currently allocated.
+    /// Maps each covered frame address to its reference count
+    /// (`0` = free, `> 0` = allocated).
     pub refcounts: Map<int, int>,
 }
 
 impl FrameAllocView
 {
+    /// `true` if the allocator covers (tracks) the frame at `addr`.
+    pub open spec fn is_covered(&self, addr: int) -> bool
+    {
+        self.refcounts.contains_key(addr)
+    }
+
+    /// `true` if the frame at `addr` is covered and currently allocated.
+    pub open spec fn is_allocated(&self, addr: int) -> bool
+    {
+        self.refcounts.contains_key(addr) && self.refcounts[addr] > 0
+    }
+
+    /// `true` if the frame at `addr` is covered and currently free.
+    pub open spec fn is_free(&self, addr: int) -> bool
+    {
+        self.refcounts.contains_key(addr) && self.refcounts[addr] == 0
+    }
+
+    /// `true` if no covered frame is free (every covered frame is allocated).
+    pub open spec fn no_free_frames(&self) -> bool
+    {
+        forall|addr: int| #[trigger] self.refcounts.contains_key(addr) ==> self.refcounts[addr] > 0
+    }
+
+    /// `true` if every frame address in `frames` is covered and free.
+    pub open spec fn all_free(&self, frames: Set<int>) -> bool
+    {
+        forall|addr: int| #[trigger] frames.contains(addr) ==> self.is_free(addr)
+    }
+
     pub open spec fn wf(&self) -> bool
     {
-        // Page-alignment
-        &&& forall|addr: int| self.allocated_frames.contains(addr) ==> addr % spec_page_size() == 0
-        &&& forall|addr: int| self.free_frames.contains(addr) ==> addr % spec_page_size() == 0
-        // Disjoint
-        &&& self.allocated_frames.disjoint(self.free_frames)
-        // Allocated ↔ refcount consistency: a frame is allocated iff it has a positive refcount
-        &&& forall|addr: int| #[trigger] self.allocated_frames.contains(addr) <==>
-            self.refcounts.contains_key(addr) && self.refcounts[addr] > 0
-        // Free frames have no refcount entry
-        &&& forall|addr: int| #[trigger] self.free_frames.contains(addr) ==>
-            !self.refcounts.contains_key(addr)
-        // Refcount bounded by u8 range
-        &&& forall|addr: int| self.refcounts.contains_key(addr) ==>
-            0 < self.refcounts[addr] <= 255
+        // The set of covered frames is finite (it mirrors the finite bitmap),
+        // so future proofs can count free/allocated frames via `dom().len()`.
+        &&& self.refcounts.dom().finite()
+        // Every covered frame address is page-aligned.
+        &&& forall|addr: int| #[trigger] self.refcounts.contains_key(addr) ==>
+            addr % spec_page_size() == 0
+        // Reference counts fit the u8 range (0 = free, up to 255 owners).
+        &&& forall|addr: int| #[trigger] self.refcounts.contains_key(addr) ==>
+            0 <= self.refcounts[addr] <= 255
     }
 }
 

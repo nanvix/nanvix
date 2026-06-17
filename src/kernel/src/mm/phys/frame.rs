@@ -120,16 +120,14 @@ impl Inner {
             match result {
                 Ok(frame) => {
                     &&& frame.inv()
-                    &&& old(self)@.free_frames.contains(frame@)
+                    &&& old(self)@.is_free(frame@)
                     &&& final(self)@ == FrameAllocView {
-                        allocated_frames: old(self)@.allocated_frames.insert(frame@),
-                        free_frames: old(self)@.free_frames.remove(frame@),
                         refcounts: old(self)@.refcounts.insert(frame@, 1int),
                     }
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& old(self)@.free_frames.is_empty()
+                    &&& old(self)@.no_free_frames()
                 }
             },
     )]
@@ -267,10 +265,8 @@ impl Inner {
                         let frames = Set::new(|addr: int|
                             exists|i: int| 0 <= i < count && addr == #[trigger] (base@ + i * spec_page_size())
                         );
-                        &&& frames.subset_of(old(self)@.free_frames)
+                        &&& old(self)@.all_free(frames)
                         &&& final(self)@ == FrameAllocView {
-                            allocated_frames: old(self)@.allocated_frames.union(frames),
-                            free_frames: old(self)@.free_frames.difference(frames),
                             refcounts: old(self)@.refcounts.union_prefer_right(
                                 Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
                             ),
@@ -516,30 +512,19 @@ impl Inner {
             final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& old(self)@.allocated_frames.contains(frame@)
-                    &&& old(self)@.refcounts.contains_key(frame@)
-                    &&& old(self)@.refcounts[frame@] > 0
-                    &&& if old(self)@.refcounts[frame@] == 1 {
-                        // Last reference: release frame
-                        final(self)@ == FrameAllocView {
-                            allocated_frames: old(self)@.allocated_frames.remove(frame@),
-                            free_frames: old(self)@.free_frames.insert(frame@),
-                            refcounts: old(self)@.refcounts.remove(frame@),
-                        }
-                    } else {
-                        // Still shared: decrement refcount
-                        final(self)@ == FrameAllocView {
-                            allocated_frames: old(self)@.allocated_frames,
-                            free_frames: old(self)@.free_frames,
-                            refcounts: old(self)@.refcounts.insert(
-                                frame@, old(self)@.refcounts[frame@] - 1
-                            ),
-                        }
+                    &&& old(self)@.is_allocated(frame@)
+                    // Releasing one reference simply decrements the count. When it
+                    // reaches zero the frame stays covered but becomes free, so the
+                    // map domain is unchanged in both the shared and last-owner cases.
+                    &&& final(self)@ == FrameAllocView {
+                        refcounts: old(self)@.refcounts.insert(
+                            frame@, old(self)@.refcounts[frame@] - 1
+                        ),
                     }
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& !old(self)@.allocated_frames.contains(frame@)
+                    &&& !old(self)@.is_allocated(frame@)
                 }
             },
     )]
@@ -690,11 +675,13 @@ impl Inner {
             final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& old(self)@.allocated_frames.contains(frame@)
-                    &&& old(self)@.refcounts.contains_key(frame@)
+                    &&& old(self)@.is_allocated(frame@)
+                    // The concrete `checked_add` rejects sharing at the u8 ceiling, so
+                    // success implies headroom. Stating it explicitly keeps `Ok`/`Err`
+                    // complementary and lets `final(self)@.wf()` follow directly (the new
+                    // count is `<= 255`) instead of via a contradiction with `inv()`.
+                    &&& old(self)@.refcounts[frame@] < 255
                     &&& final(self)@ == FrameAllocView {
-                        allocated_frames: old(self)@.allocated_frames,
-                        free_frames: old(self)@.free_frames,
                         refcounts: old(self)@.refcounts.insert(
                             frame@, old(self)@.refcounts[frame@] + 1
                         ),
@@ -703,9 +690,8 @@ impl Inner {
                 Err(_) => {
                     &&& final(self)@ == old(self)@
                     &&& (
-                        !old(self)@.allocated_frames.contains(frame@)
-                        || (old(self)@.refcounts.contains_key(frame@)
-                            && old(self)@.refcounts[frame@] >= 255)
+                        !old(self)@.is_allocated(frame@)
+                        || old(self)@.refcounts[frame@] >= 255
                     )
                 }
             },
@@ -834,12 +820,11 @@ impl Inner {
             self.inv(),
             match result {
                 Ok(count) => {
-                    &&& self@.allocated_frames.contains(frame@)
-                    &&& self@.refcounts.contains_key(frame@)
+                    &&& self@.is_allocated(frame@)
                     &&& count as int == self@.refcounts[frame@]
                 },
                 Err(_) => {
-                    !self@.allocated_frames.contains(frame@)
+                    !self@.is_allocated(frame@)
                 }
             },
     )]
@@ -928,16 +913,14 @@ impl Inner {
             final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& old(self)@.free_frames.contains(phys_addr@)
+                    &&& old(self)@.is_free(phys_addr@)
                     &&& final(self)@ == FrameAllocView {
-                        allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
-                        free_frames: old(self)@.free_frames.remove(phys_addr@),
                         refcounts: old(self)@.refcounts.insert(phys_addr@, 1int),
                     }
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& !old(self)@.free_frames.contains(phys_addr@)
+                    &&& !old(self)@.is_free(phys_addr@)
                 }
             },
     )]
@@ -1006,10 +989,7 @@ impl Inner {
             phys_addr.inv(),
         ensures
             self.inv(),
-            ret <==> (
-                self@.allocated_frames.contains(phys_addr@)
-                || self@.free_frames.contains(phys_addr@)
-            ),
+            ret <==> self@.is_covered(phys_addr@),
     )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
@@ -1052,10 +1032,8 @@ impl Inner {
                 let frames = frame_numbers.map(|i: int| i * spec_page_size());
                 match result {
                     Ok(()) => {
-                        &&& frames.subset_of(old(self)@.free_frames)
+                        &&& old(self)@.all_free(frames)
                         &&& final(self)@ == FrameAllocView {
-                            allocated_frames: old(self)@.allocated_frames.union(frames),
-                            free_frames: old(self)@.free_frames.difference(frames),
                             refcounts: old(self)@.refcounts.union_prefer_right(
                                 Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
                             ),
@@ -1063,7 +1041,7 @@ impl Inner {
                     },
                     Err(_) => {
                         &&& final(self)@ == old(self)@
-                        &&& !frames.subset_of(old(self)@.free_frames)
+                        &&& !old(self)@.all_free(frames)
                     },
                 }
             }),
