@@ -1,11 +1,11 @@
 {
   "module": "nanvix-phys-arch-paging-table",
-  "generated_at": "2026-06-15T14:11:24.830982",
-  "total_calls": 14,
-  "calls_with_usage": 14,
+  "generated_at": "2026-06-18T01:36:13.308701",
+  "total_calls": 15,
+  "calls_with_usage": 15,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 6662.8,
+  "total_duration_s": 7061.8,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -45,14 +45,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 818.0
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 399.0
     }
   },
   "per_role": {
     "prover": {
-      "calls": 5,
+      "calls": 6,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 2809.1
+      "duration_s": 3208.1
     },
     "dialogue-reviewer-t1": {
       "calls": 3,
@@ -440,6 +446,30 @@
           "filesModified": [
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/final-review/final_review.claude.md",
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/final-review/final_review.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-18T01:36:00.387203",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "45518b94-b918-48d8-9288-22635245825e",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/polish/prover-claude-20260618-012921.txt",
+      "duration_s": 399.0,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 378059,
+        "sessionDurationMs": 397690,
+        "codeChanges": {
+          "linesAdded": 55,
+          "linesRemoved": 19,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs",
+            "/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/polish/checklist.md"
           ]
         }
       }

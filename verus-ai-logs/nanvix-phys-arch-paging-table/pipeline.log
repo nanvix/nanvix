@@ -330,3 +330,12 @@ Module: arch-paging-table
 [2026-06-18 01:36:00] ✅ polish: PASS (0/0)
 [2026-06-18 01:36:00] [GATE] Running build: make build
 [2026-06-18 01:36:00] [GATE] Running verify: make verify
+[2026-06-18 01:36:13] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: arch-paging-table
+  ✅ polish                    no-review                 6m39s
+  ──────────────────────────────────────────────────────────
+  Total: 6m52s
+============================================================
+[2026-06-18 01:36:13] [USAGE] Summary: 15 calls, 0 tokens, 1h57m41s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-paging-table/usage_summary.json
