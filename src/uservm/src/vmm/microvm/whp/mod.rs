@@ -16,6 +16,7 @@
 // Modules
 //==================================================================================================
 
+pub mod console;
 pub mod lapic;
 pub mod partition;
 pub mod timer;
@@ -1135,6 +1136,12 @@ impl Vmm {
                 },
             }
         };
+
+        // Drain any guest console output still buffered by the asynchronous console writer to the
+        // host sink before returning, so the final bytes the guest emitted (for example the
+        // shutdown magic string) are not stranded when the VMM thread unwinds. The wait is bounded
+        // and runs off the guest's execution path, since the run loop has already exited.
+        self.inner.blocking_lock().emulator.flush_console();
 
         self.timer.lock().unwrap().stop();
 
