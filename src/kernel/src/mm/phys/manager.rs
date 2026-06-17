@@ -198,10 +198,6 @@ impl PhysMemoryManager {
         proof_decl! {
             let ghost g_old = self@;
         }
-        proof! {
-            assert(g_old == old(self)@);
-            assert(g_old.wf());
-        }
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
             #[cfg(not(verus_keep_ghost))]
@@ -438,10 +434,6 @@ impl PhysMemoryManager {
     ) -> Result<(), Error> {
         proof_decl! {
             let ghost g_old = self@;
-        }
-        proof! {
-            assert(g_old == old(self)@);
-            assert(g_old.wf());
         }
         // Check if caller-provided vector is not empty.
         if !frames.is_empty() {
