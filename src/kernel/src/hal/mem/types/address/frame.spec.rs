@@ -5,7 +5,6 @@ use crate::hal::mem::types::address::phys::{
     spec_frame_number,
     spec_from_number,
     spec_frame_raw_value,
-    spec_max_frame_number,
 };
 
 // The former `assume_specification` for `<PhysicalAddress as ::sys::mm::Address>::from_raw_value`

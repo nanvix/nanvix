@@ -18,8 +18,6 @@ pub proof fn lemma_frame_base_aligned(frame: FrameNumber)
     ensures
         spec_from_number(spec_frame_raw_value(frame)) % spec_page_size() == 0,
 {
-    // `spec_page_size()` is the transparent constant `PAGE_SIZE == 4096 > 0`.
-    assert(spec_page_size() == 4096);
     // `spec_from_number(spec_frame_raw_value(frame)) == frame@ * spec_page_size()`, a multiple of
     // `spec_page_size()`, so its remainder mod `spec_page_size()` is zero.
     lemma_mod_multiples_basic(spec_frame_raw_value(frame), spec_page_size());
@@ -33,8 +31,6 @@ pub proof fn lemma_aligned_div_mul(addr: int)
     ensures
         spec_from_number(spec_frame_number(addr)) == addr,
 {
-    // `spec_page_size()` is the transparent constant `PAGE_SIZE == 4096 > 0`.
-    assert(spec_page_size() == 4096);
     // `addr == s * (addr / s) + (addr % s)` with `addr % s == 0`, so `(addr / s) * s == addr`.
     lemma_fundamental_div_mod(addr, spec_page_size());
 }

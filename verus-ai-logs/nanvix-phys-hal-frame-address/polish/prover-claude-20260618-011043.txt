@@ -244,3 +244,114 @@ Let me run a baseline verification to confirm the file currently verifies cleanl
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -4
 
 [THINKING] I need to figure out the module path for the file at `src/kernel/src/hal/mem/types/address/frame.rs`, which translates to `hal::mem::types::address::frame`, then run the baseline verification with that module path.
+[RESULT ✓] bash: Module    : hal::mem::types::address::frame
+  Source dir : /home/ruize/nanvix-phy-specs/src/kernel/src
+  Channel   : <default>
+  Extra args: --locked --features microvm,trace -Z build-std=core,alloc,compiler_builtins -Z build-std-features=compiler-builtins-mem -Z json-target-spec --target /home/ruiz...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Baseline verifies (exit 0); the `external_body` is TCB-sanctioned. Let me confirm that and check for redundant imports/asserts.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== tcb-allowed check ==="; grep -n "from_raw_value\|frame" verus-ai-logs/tcb-a
+
+[THINKING] The baseline verification passed with exit code 0, and the "CHEATING_DETECTED" flag is expected since the `external_body` on `from_raw_value` is TCB-sanctioned according to the comments. I should verify it's listed in tcb-allowed.md, and I notice the result shows "cached (no recompilation)" so I'll need to check the actual verus log to confirm the verification details. The exit code being 0 is the important signal here.
+
+Now I'm analyzing what polish is actually needed. The proof blocks are already extracted into separate lemmas and both are under 5 lines, so no extraction work is required. For minimization, I'm checking whether the asserts in `lemma_frame_base_aligned` and `lemma_aligned_div_mul` that reference `spec_page_size() == 4096` are redundant, and I'm also looking at whether `spec_max_frame_number` is actually used anywhere in the codebase since it's imported but might be dead code. Let me verify the tcb-allowed status and trace through the imports to see what's actually being used.
+[RESULT ✓] bash: === tcb-allowed check ===
+7:- `src/kernel/src/mm/phys/frame.rs::instance` — materializes a `&'static mut Inner` from the
+11:  state to `phys_view().frames`, asserts `(*r).inv()`, and records `phys_view().initialized` —
+12:  the §8 ghost-token attachment for the singleton frame allocator.
+13:- `src/k...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "hal/mem/types/address/frame\|address/frame.rs\|from_raw_value" verus-ai-logs
+
+[THINKING] I need to dig deeper into the tcb-allowed.md file to find the specific entry for frame.rs and its from_raw_value function, particularly looking for any hal-related allowlist entries.
+[RESULT ✓] bash: 145:- `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::from_raw_value` — succeeds only
+147:- `src/kernel/src/hal/mem/types/address/frame.rs::FrameAddress::into_raw_value` — the raw value is
+214:layer is verified" rationale already used for `FrameAddress::from_raw_value`/`into_raw_value`...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+`from_raw_value` is TCB-listed. `spec_max_frame_number` is imported but unused — a removal candidate. Let me check the vstd lemma signatures to test whether the `assert(spec_page_size() == 4096)` hints are redundant.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn "pub proof fn lemma_mod_multiples_basic\|pub proof fn lemma_fundam
+
+[THINKING] Looking at the code analysis, `from_raw_value` is allowed by the TCB, so the external body is fine. I'm checking for proof extraction opportunities—both inline proof blocks are just single-line lemma calls, so there's nothing substantial to extract. For minimization, I notice `spec_max_frame_number` is imported in the spec file but never actually used in the module, making it a dead import that should be removed.
+
+I'm also examining whether the two `assert(spec_page_size() == 4096);` statements in the proof lemmas are redundant by checking the vstd lemma signatures to understand what `lemma_mod_multiples_basic` and `lemma_fundamental_div_mod` actually require. Additionally, I need to review the comments in the proof file—explanatory comments are fine, but I should remove any TODO comments, commented-out code, or property-ID annotations per the minimization guidelines.
+[RESULT ✓] bash: ./arithmetic/div_mod.rs:1339:pub proof fn lemma_fundamental_div_mod_converse(x: int, d: int, q: int, r: int)
+./arithmetic/internals/mod_internals_nonlinear.rs:41:pub proof fn lemma_fundamental_div_mod(x: int, d: int)
+=== signatures ===
+---
+<shellId: 9 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai/vstd && grep -rn -B2 -A8 "fn lemma_mod_multiples_basic\b" arithmetic/div_mod.rs; ec
+[RESULT ✓] bash: 1064-/// number produces a remainder of 0. Specifically, `(x * m) % m == 0`.
+1065-#[verifier::spinoff_prover]
+1066:pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+1067-    requires
+1068-        m > 0,
+1069-    ensures
+1070-        #[trigger] ((x * m) % m) == 0,
+1071-{
+1072-    lemma...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Let me check the `spec_from_number`/`spec_frame_number` definitions, then test whether the asserts and unused import can be removed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_from_number\|spec_frame_number\|spec_frame_raw_value\|spec_max_frame_n
+
+[THINKING] I'm seeing how the lemmas connect—specifically that `lemma_mod_multiples_basic` requires a positive modulus to guarantee that multiplying by it produces a multiple, and in the frame alignment context this gets instantiated with the page size. The assertion pinning page size to 4096 satisfies that precondition.
+
+For the second lemma, the fundamental division-modulo theorem decomposes any address into quotient and remainder parts, which is exactly what's needed to show that dividing an aligned address by page size and multiplying back recovers the original address. The question now is whether Verus can infer that the page size is nonzero without the explicit assertion, or if that assertion is actually necessary to discharge the preconditions.
+
+Since `spec_page_size()` is defined as an open spec function wrapping a verified constant, Verus should theoretically be able to see through to the constant's value. But whether it automatically evaluates that constant at the call site depends on how the constant is defined and whether Verus has enough information to reason about it. The best approach is to test empirically by removing the assertions and re-verifying to see if the proofs still go through. I should also double-check the definitions of `spec_from_number` and `spec_frame_number` to make sure I understand the full picture.
+[RESULT ✓] bash: 1:use crate::hal::mem::spec_page_size;
+16:pub open spec fn spec_frame_raw_value(frame: FrameNumber) -> int {
+21:pub open spec fn spec_max_frame_number() -> int {
+30:pub open spec fn spec_frame_number(addr_view: int) -> int {
+31:    addr_view / spec_page_size()
+35:pub open spec fn spec_from_number(fr...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Definitions confirmed. Now let me apply minimization: remove the unused `spec_max_frame_number` import and test removing the `assert(spec_page_size() == 4096)` hints. Let me check whether those asserts are load-bearing by editing and re-verifying.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.spec.rs
+
+[THINKING] I'm tracing through the module imports to understand where `spec_page_size` is defined—it's imported in phys.spec.rs from `crate::hal::mem`, but the frame module defines its own `spec_page_size` function. The key relationship I need to verify is how `spec_from_number(frame_view)` relates to `frame_view * spec_page_size()`.
+
+Now I'm identifying what can be minimized: the unused `spec_max_frame_number` import in frame.spec.rs is a clear candidate for removal, and I should test whether the `assert(spec_page_size() == 4096)` statements in both proof lemmas are actually necessary. Since both lemmas are called by the in-scope exec functions, they're not dead code themselves. The proof comments are substantive documentation rather than obsolete tags or TODOs, so I'll preserve them, though I need to be careful about updating any comments that reference the asserts if I remove them. I'll test removing the unused import and asserts together, then re-verify to catch any failures.
+
+The key question is whether Verus can automatically infer that `spec_page_size() > 0` without the explicit assert—this depends on whether `PAGE_SIZE` is visible as a concrete constant or remains opaque. I'll test this empirically by making the changes and running verification, and if it fails I can bisect to isolate which removal caused the problem.
+
+Now let me start with the unused import.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.spec.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Now let me test removing the two `assert(spec_page_size() == 4096)` hints from the proof lemmas.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.proof.rs
+
+[THINKING] I'm going to test whether the asserts are actually necessary by temporarily removing them to see if the proof still works. I need to be careful to keep the verification meaningful while I do this.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -3
