@@ -67,9 +67,6 @@ impl FrameAllocView
 
     pub open spec fn wf(&self) -> bool
     {
-        // The set of covered frames is finite (it mirrors the finite bitmap),
-        // so future proofs can count free/allocated frames via `dom().len()`.
-        &&& self.refcounts.dom().finite()
         // Every covered frame address is page-aligned.
         &&& forall|addr: int| #[trigger] self.refcounts.contains_key(addr) ==>
             addr % spec_page_size() == 0

@@ -50,7 +50,7 @@ impl BitmapView {
 
     /// Helper: Create a set of indices in range [start, end).
     pub open spec fn range_set(start: int, end: int) -> Set<int> {
-        Set::new(|i: int| start <= i < end)
+        Set::range(start, end)
     }
 
     /// Well-formedness: set_bits only contains valid indices.
@@ -82,47 +82,6 @@ impl BitmapView {
             self.has_free_range_at(start, n)
     }
 
-    /// A subset of a finite set is finite.
-    pub proof fn lemma_set_bits_finite(&self)
-        requires
-            self.wf(),
-            self.num_bits >= 0,
-        ensures
-            self.set_bits.finite(),
-    {
-        let full_range: Set<int> = vstd::set_lib::set_int_range(0, self.num_bits);
-        vstd::set_lib::lemma_int_range(0, self.num_bits);
-
-        assert(self.set_bits.subset_of(full_range)) by {
-            assert forall|i: int| #![auto] self.set_bits.contains(i) implies full_range.contains(
-                i,
-            ) by {}
-        }
-
-        vstd::set_lib::lemma_set_subset_finite(full_range, self.set_bits);
-    }
-
-    //==================================================================================================
-    // Lemmas: Finiteness
-    //==================================================================================================
-
-    /// range_set(lo, hi) is finite when lo <= hi.
-    pub proof fn lemma_range_set_finite(lo: int, hi: int)
-        requires
-            lo <= hi,
-        ensures
-            BitmapView::range_set(lo, hi).finite(),
-    {
-        vstd::set_lib::lemma_int_range(lo, hi);
-        assert(BitmapView::range_set(lo, hi) =~= vstd::set_lib::set_int_range(lo, hi)) by {
-            assert forall|i: int|
-                BitmapView::range_set(lo, hi).contains(i) == vstd::set_lib::set_int_range(
-                    lo,
-                    hi,
-                ).contains(i) by {}
-        }
-    }
-
     //==================================================================================================
     // Lemmas: Cardinality
     //==================================================================================================
@@ -134,14 +93,7 @@ impl BitmapView {
         ensures
             BitmapView::range_set(lo, hi).len() == hi - lo,
     {
-        vstd::set_lib::lemma_int_range(lo, hi);
-        assert(BitmapView::range_set(lo, hi) =~= vstd::set_lib::set_int_range(lo, hi)) by {
-            assert forall|i: int|
-                BitmapView::range_set(lo, hi).contains(i) == vstd::set_lib::set_int_range(
-                    lo,
-                    hi,
-                ).contains(i) by {}
-        }
+        broadcast use vstd::set_lib::range_set_properties;
     }
 
     //==================================================================================================
@@ -158,9 +110,9 @@ impl BitmapView {
             self.usage() <= self.num_bits - n,
     {
         let num_bits: int = self.num_bits;
-        let full_range: Set<int> = vstd::set_lib::set_int_range(0, num_bits);
+        let full_range: Set<int> = Set::range(0, num_bits);
         vstd::set_lib::lemma_int_range(0, num_bits);
-        let free_range: Set<int> = vstd::set_lib::set_int_range(p, p + n);
+        let free_range: Set<int> = Set::range(p, p + n);
         vstd::set_lib::lemma_int_range(p, p + n);
         let available_range: Set<int> = full_range.difference(free_range);
 
@@ -174,7 +126,6 @@ impl BitmapView {
             }
         }
 
-        vstd::set_lib::lemma_set_subset_finite(full_range, available_range);
         vstd::set_lib::lemma_len_subset(self.set_bits, available_range);
 
         assert(free_range.subset_of(full_range)) by {
@@ -201,7 +152,7 @@ impl BitmapView {
         ensures
             self.set_bits.insert(x).len() <= self.num_bits,
     {
-        let full_range: Set<int> = vstd::set_lib::set_int_range(0, self.num_bits);
+        let full_range: Set<int> = Set::range(0, self.num_bits);
         vstd::set_lib::lemma_int_range(0, self.num_bits);
         assert(self.set_bits.subset_of(full_range)) by {
             assert forall|i: int| #![auto] self.set_bits.contains(i) implies full_range.contains(
@@ -219,7 +170,7 @@ impl BitmapView {
         ensures
             forall|i: int| 0 <= i < self.num_bits ==> self.is_bit_set(i),
     {
-        let full_range: Set<int> = vstd::set_lib::set_int_range(0, self.num_bits);
+        let full_range: Set<int> = Set::range(0, self.num_bits);
         vstd::set_lib::lemma_int_range(0, self.num_bits);
         assert(self.set_bits.subset_of(full_range)) by {
             assert forall|i: int| #![auto] self.set_bits.contains(i) implies full_range.contains(
@@ -235,7 +186,6 @@ impl BitmapView {
                         self.set_bits.contains(j) implies reduced.contains(j) by {}
                 }
                 vstd::set_lib::lemma_len_subset(self.set_bits, reduced);
-                vstd::set_lib::lemma_set_subset_finite(full_range, reduced);
             }
         }
     }
@@ -248,7 +198,7 @@ impl BitmapView {
         ensures
             !self.is_full(),
     {
-        let full_range: Set<int> = vstd::set_lib::set_int_range(0, self.num_bits);
+        let full_range: Set<int> = Set::range(0, self.num_bits);
         vstd::set_lib::lemma_int_range(0, self.num_bits);
         assert(self.set_bits.subset_of(full_range)) by {
             assert forall|i: int| #![auto] self.set_bits.contains(i) implies full_range.contains(
@@ -348,9 +298,8 @@ impl View for Bitmap {
     closed spec fn view(&self) -> BitmapView {
         BitmapView {
             num_bits: self.number_of_bits as int,
-            set_bits: Set::new(
-                |i: int| 0 <= i < self.number_of_bits as int && Self::bit_at(self.bits@, i),
-            ),
+            set_bits: BitmapView::range_set(0, self.number_of_bits as int)
+                .filter(|i: int| Self::bit_at(self.bits@, i)),
         }
     }
 }
@@ -383,7 +332,6 @@ impl Bitmap {
         &&& self@.num_bits == self.bits@.len() * (u8::BITS as int)
         &&& self@.num_bits < u32::MAX as int
         &&& self@.wf()  // set_bits only contains valid indices
-        &&& self@.set_bits.finite()  // set_bits is finite (required for len())
         &&& self@.usage() <= self@.num_bits
         &&& self.number_of_bits as int == self@.num_bits
         &&& self.usage as int == self@.usage()
