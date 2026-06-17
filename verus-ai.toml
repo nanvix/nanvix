@@ -2,10 +2,10 @@
 # Regenerate with scripts/generate_nanvix_phys_verus_configs.py.
 
 [project]
-background = """File: `src/libs/arch/src/x86/mem/paging/table.rs`
+background = """File: `src/libs/arch/src/x86/mem/paging/pde.rs`
 
 Verification-order target functions (the only functions in scope for this module):
-`Table::write`, `TableIndex::into_raw`, `raw`, `Table::read`, `from_raw`, `pt_index`, `TableIndex`, `pd_index`, `Table::from_address`
+`PageDirectoryEntry::new`, `PageDirectoryEntryFlags::new`, `PageDirectoryEntry::is_present`, `PageDirectoryEntryFlags::is_present`, `PageDirectoryEntry::frame_address`
 
 
 Hard rules:
