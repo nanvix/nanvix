@@ -27,10 +27,6 @@ pub proof fn lemma_frame_address(raw: usize)
     lemma2_to64();
     assert(pow2(crate::mem::FRAME_SHIFT as nat) == crate::mem::FRAME_SIZE);
 
-    // `spec_max()` is either `m / s` or `m / s - 1`, hence `<= m / s`.
-    assert(FrameNumber::spec_max() <= m / s);
-    assert(raw as int <= m / s);
-
     // The product fits in `usize`: `raw <= m / s`, and `(m / s) * s <= m`.
     lemma_mod_bound(m, s);
     lemma_fundamental_div_mod(m, s);

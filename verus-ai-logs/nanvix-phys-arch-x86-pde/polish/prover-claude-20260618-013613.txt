@@ -379,3 +379,26 @@ Rather than get bogged down in the analysis, I should just test removals empiric
 Turn 19
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && time timeout 600 make verify-arch 2>&1 | tail -15
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have contracts.
+  Unverified function list written to: verus-ai-logs/v...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Verification is fast (~2.5s, content-hashed cache). Now let me minimize. First, let me test removing the two intermediate `<= m/s` assertions in `lemma_frame_address`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+
+[THINKING] I'm noticing the verification ran in 2.4 seconds and showed 47 verified with no errors, which seems unusually fast for a full re-verification—Verus might be using incremental verification or caching based on file hashes, so just touching the file without changing content wouldn't trigger a fresh check.
+
+Now I'm planning to systematically test removing each candidate assertion to see which ones are actually necessary. Since verification is quick at around 2.5 seconds, I can iterate through removals efficiently. I'm starting with the three main candidates in the lemma: the FRAME_SHIFT assertion, the FrameNumber bound check, and the raw value bound check. I need to verify that each required condition for the nonlinear arithmetic assertion can be proven from the surrounding context.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | grep -E "verification:|errors|error:" | head
