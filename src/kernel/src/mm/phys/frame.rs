@@ -191,11 +191,8 @@ impl Inner {
         match FrameAddress::from_frame_number(frame_number) {
             Ok(frame_address) => {
                 proof! {
-                    let addr = frame_address@;
-                    assert(addr == frame_addr_of(idx));
-                    lemma_frame_addr_mod_zero(idx);
-                    lemma_frame_addr_div(idx);
-                    lemma_post_reserve_one(self, addr, idx, g_old, pre_sb, pre_nb, pre_rc);
+                    assert(frame_address@ == frame_addr_of(idx));
+                    lemma_post_reserve_one_by_index(self, idx, g_old, pre_sb, pre_nb, pre_rc);
                 }
                 Ok(frame_address)
             },
@@ -934,7 +931,6 @@ impl Inner {
         proof! {
             assert(start_fn + nfr - 1 < index as int);
             assert(pre_sb.contains(start_fn + nfr - 1) == false);
-            assert(start_fn + nfr <= pre_nb);
             assert forall|j: int| start_fn <= j < start_fn + nfr implies !pre_sb.contains(j) by {}
         }
 

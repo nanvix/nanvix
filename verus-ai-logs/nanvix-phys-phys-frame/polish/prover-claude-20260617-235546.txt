@@ -1899,3 +1899,80 @@ Let me verify all the final trims.
 Turn 134
 ────────────────────────────────────────────────────────────
 [TOOL] read_bash: {'delay': 240, 'shellId': 'verify-d'}
+[RESULT ✓] read_bash: verification: 79 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=23 admit=4 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-18_00-38-29.log
+<shellId: ...
+
+────────────────────────────────────────────────────────────
+Turn 135
+────────────────────────────────────────────────────────────
+All verify (geometry asserts were auto-derivable). Let me re-check the block count.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/check_proof_blocks_patched.py src/k
+
+[THINKING] All 79 tests passed with no errors, and even the aggressive memory allocation trimming in the prologue worked as expected. Now I need to double-check the proof block count to make sure everything aligns.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs               alloc_range                 934   939     6  ⚠️  EXTRACT (>5)
+src/kernel/src/mm/phys/frame.rs               alloc                       193   199     7  ⚠️  EXTRACT (>5)
+Proof blocks: 49 total, 2 over 5 lines, 47 OK
+<shellId: 28 completed with exit code ...
+
+────────────────────────────────────────────────────────────
+Turn 136
+────────────────────────────────────────────────────────────
+Down to 2 blocks. Both are tightly coupled, but I can cleanly extract the `alloc` one with a small index-based wrapper lemma. Let me add it and trim the `alloc_range` postscan.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm down to two code blocks that exceed the size threshold. The postscan block in the alloc_range function can't be extracted because it depends on loop-local state, while the alloc-ok block contains tightly coupled helper lemmas and a reserve lemma that work together.
+
+I'm trying to trim the postscan block to 5 lines by removing the `start_fn+nfr<=pre_nb` assertion and relying on the verifier to handle it automatically—though I need to check if the booking loop entry still requires that constraint. For the alloc-ok block, I'm exploring whether I can fold the two frame_addr helper lemmas into the reserve lemma itself to reduce the overall line count.
+
+Changing the reserve lemma's interface to accept `addr == frame_addr_of(fnx)` instead of the separate alignment and division properties would work for both call sites (alloc-ok and book-ok), but it introduces risk since both places would need to establish that equality. The book-ok case already has the pieces (`addr%ps==0` and `fnx==addr/ps`), so it could derive the equality, but that's extra work. I'm deciding not to refactor the shared lemma to avoid that coupling. Instead, I'll inline the `frame_address@` variable directly in the alloc-ok proof, which gets me down to 6 lines—the four core statements (the assert, two lemmas, and the reserve call) are all necessary.
+
+These two proof blocks are tightly coupled to their execution context and already minimal, so extracting them further would just add indirection without improving readability. I'll try a couple of micro-edits—dropping the assert in postscan and inlining addr in alloc-ok—and verify once more to see if I can squeeze it down further without sacrificing clarity. Extracting a helper lemma...
+[RESULT ✓] view: 755.         spec_refcount_seq(inner) == pre_rc.update(fnx, 1u8),
+756.         g_old == view_of(pre_sb, pre_nb, pre_rc),
+757.     ensures
+758.         g_old.is_free(addr),
+759.         inner@ == (FrameAllocView { refcounts: g_old.refcounts.insert(addr, 1int) }),
+760. {
+761.     lemma_view_of_is_free...
+
+────────────────────────────────────────────────────────────
+Turn 137
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 138
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+────────────────────────────────────────────────────────────
+Turn 139
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to look at frame.rs instead since that's where the alloc-ok block is located.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 140
+────────────────────────────────────────────────────────────
+Now drop the redundant assert in the `alloc_range` postscan.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 141
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 make verify-kernel MODULE=mm::phys 2>&1 | tail -6
+[RESULT ✓] bash: <command started in background with shellId: verify-e>
+
+────────────────────────────────────────────────────────────
+Turn 142
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 240, 'shellId': 'verify-e'}

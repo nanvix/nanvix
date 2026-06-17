@@ -763,6 +763,35 @@ proof fn lemma_post_reserve_one(
     lemma_reserve_one_v(pre_sb, pre_nb, pre_rc, fnx, addr);
 }
 
+/// `lemma_post_reserve_one` keyed by the frame *index* rather than its address: the reserved frame
+/// is `frame_addr_of(idx)`. Lets `alloc`'s success arm reserve a freshly-allocated frame number
+/// without restating the address-alignment side conditions.
+proof fn lemma_post_reserve_one_by_index(
+    inner: &Inner,
+    idx: int,
+    g_old: FrameAllocView,
+    pre_sb: Set<int>,
+    pre_nb: int,
+    pre_rc: Seq<u8>,
+)
+    requires
+        spec_page_size() > 0,
+        0 <= idx < pre_nb,
+        pre_nb <= pre_rc.len(),
+        pre_rc[idx] == 0,
+        inner.bitmap@.set_bits == pre_sb.insert(idx),
+        inner.bitmap@.num_bits == pre_nb,
+        spec_refcount_seq(inner) == pre_rc.update(idx, 1u8),
+        g_old == view_of(pre_sb, pre_nb, pre_rc),
+    ensures
+        g_old.is_free(frame_addr_of(idx)),
+        inner@ == (FrameAllocView { refcounts: g_old.refcounts.insert(frame_addr_of(idx), 1int) }),
+{
+    lemma_frame_addr_mod_zero(idx);
+    lemma_frame_addr_div(idx);
+    lemma_post_reserve_one(inner, frame_addr_of(idx), idx, g_old, pre_sb, pre_nb, pre_rc);
+}
+
 /// A full bitmap (allocation failed) has no free covered frame: every in-range refcount slot is
 /// positive, so `no_free_frames()` holds on the unchanged pre-state view.
 proof fn lemma_alloc_full_no_free(
