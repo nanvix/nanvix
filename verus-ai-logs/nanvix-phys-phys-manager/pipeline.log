@@ -356,3 +356,7 @@ Module: phys-manager
 [2026-06-17 23:42:44] [PROVER] Running polish...
 [2026-06-17 23:42:44] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-17 23:50:33]   ↳ prover done in 7m49s (exit=0)
+[2026-06-17 23:50:34] [PHASE] polish: no-review (7m49s)
+[2026-06-17 23:50:34] ✅ polish: PASS (0/0)
+[2026-06-17 23:50:34] [GATE] Running build: make build
+[2026-06-17 23:50:34] [GATE] Running verify: make verify
