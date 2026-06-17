@@ -1,0 +1,161 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for stdio.h.
+
+file = "stdio.h"
+brief = "Standard input/output."
+description = '''
+Declares functions for formatted and unformatted I/O, stream management,
+and error reporting. Implemented by the libc_stdio Rust crate.'''
+includes = ["stdarg.h", "stddef.h"]
+guard = "_NANVIX_STDIO_H"
+content_order = [
+    "raw:0",
+    "types",
+    "section:0",
+    "raw:1",
+    "raw:2",
+    "section:1",
+    "section:2",
+    "raw:3",
+    "section:3",
+    "section:4",
+    "section:5",
+    "section:6",
+]
+
+[[types]]
+text = '''
+/**
+ * @brief Opaque file stream type.
+ *
+ * The internal layout matches the Rust FILE struct in libc_stdio::streams.
+ * Fields should not be accessed directly; use the accessor functions below.
+ */
+typedef struct {
+    int fd;         /**< Underlying file descriptor. */
+    int eof;        /**< End-of-file indicator.      */
+    int error;      /**< Error indicator.             */
+    int ungetc_buf; /**< Push-back character buffer.  */
+} FILE;'''
+
+[[raw_sections]]
+title = "Constants"
+text = '''
+#ifndef EOF
+#define EOF (-1)
+#endif
+
+#ifndef SEEK_SET
+#define SEEK_SET 0
+#endif
+
+#ifndef SEEK_CUR
+#define SEEK_CUR 1
+#endif
+
+#ifndef SEEK_END
+#define SEEK_END 2
+#endif
+
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
+#ifndef BUFSIZ
+#define BUFSIZ 8192
+#endif
+
+#ifndef FOPEN_MAX
+#define FOPEN_MAX 256
+#endif
+
+#ifndef FILENAME_MAX
+#define FILENAME_MAX 4096
+#endif
+
+#ifndef L_tmpnam
+#define L_tmpnam 20
+#endif
+
+#ifndef TMP_MAX
+#define TMP_MAX 10000
+#endif'''
+
+[[raw_sections]]
+title = ""
+text = '''
+/* Convenience macros matching common usage. */
+#define stdin (stdin())
+#define stdout (stdout())
+#define stderr (stderr())'''
+
+[[raw_sections]]
+title = "Stream Operations"
+text = '''
+extern FILE *fopen(const char *pathname, const char *mode);
+extern FILE *fdopen(int fd, const char *mode);
+extern int fclose(FILE *stream);
+extern int fflush(FILE *stream);
+extern void clearerr(FILE *stream);
+extern int ferror(FILE *stream);
+extern int feof(FILE *stream);
+extern int fileno(FILE *stream);
+extern int remove(const char *pathname);
+extern int rename(const char *old, const char *new);
+extern FILE *tmpfile(void);
+extern int sscanf(const char *s, const char *format, ...);
+extern int vsscanf(const char *s, const char *format, __builtin_va_list ap);
+
+/* Stream buffering modes (Nanvix streams are unbuffered). */
+#define _IOFBF 0
+#define _IOLBF 1
+#define _IONBF 2
+extern void setbuf(FILE *stream, char *buf);
+extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);'''
+
+[[raw_sections]]
+title = ""
+text = '''
+/* putc is equivalent to fputc. */
+#ifndef putc
+#define putc(c, stream) fputc((c), (stream))
+#endif'''
+
+[[sections]]
+title = "Standard Streams"
+functions = ["stdin", "stdout", "stderr"]
+
+[[sections]]
+title = "Positioning"
+functions = ["fseek", "ftell", "rewind"]
+
+[[sections]]
+title = "Character I/O"
+functions = ["fgetc", "getc", "getchar", "fputc", "putchar", "ungetc"]
+
+[[sections]]
+title = "String I/O"
+functions = ["fgets", "fputs", "puts"]
+
+[[sections]]
+title = "Block I/O"
+functions = ["fread", "fwrite"]
+
+[[sections]]
+title = "Formatted I/O"
+functions = [
+    "printf",
+    "fprintf",
+    "sprintf",
+    "snprintf",
+    "vprintf",
+    "vfprintf",
+    "vsprintf",
+    "vsnprintf",
+]
+
+[[sections]]
+title = "Error Reporting"
+functions = ["perror"]
