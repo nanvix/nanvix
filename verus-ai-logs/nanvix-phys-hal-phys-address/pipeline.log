@@ -238,3 +238,6 @@ PIPELINE FINISHED: hal-phys-address (some phases need work)
   Total: 59m49s
 ============================================================
 [2026-06-15 09:54:45] [USAGE] Summary: 14 calls, 0 tokens, 1h37m21s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/usage_summary.json
+[2026-06-17 23:29:52] [BRANCH] Staying on current branch: verus-ai-polish
+ERROR: Unknown phase 'polish'.
+  Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
