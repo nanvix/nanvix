@@ -222,3 +222,6 @@ PIPELINE COMPLETE: hal-platform-microvm
   Total: 18m49s
 ============================================================
 [2026-06-15 10:35:57] [USAGE] Summary: 9 calls, 0 tokens, 26m28s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/usage_summary.json
+[2026-06-17 23:29:52] [BRANCH] Staying on current branch: verus-ai-polish
+ERROR: Unknown phase 'polish'.
+  Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
