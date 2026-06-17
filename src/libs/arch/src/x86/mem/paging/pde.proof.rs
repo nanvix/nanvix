@@ -25,7 +25,6 @@ pub proof fn lemma_frame_address(raw: usize)
 
     // `pow2(FRAME_SHIFT) == FRAME_SIZE` (i.e. `pow2(12) == 4096`).
     lemma2_to64();
-    assert(pow2(crate::mem::FRAME_SHIFT as nat) == crate::mem::FRAME_SIZE);
 
     // The product fits in `usize`: `raw <= m / s`, and `(m / s) * s <= m`.
     lemma_mod_bound(m, s);

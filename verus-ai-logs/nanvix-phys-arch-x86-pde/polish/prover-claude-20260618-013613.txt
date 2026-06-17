@@ -402,3 +402,21 @@ Now I'm planning to systematically test removing each candidate assertion to see
 Turn 21
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | grep -E "verification:|errors|error:" | head
+[RESULT ✓] bash: verification results:: 47 verified, 0 errors
+  0 errors
+  verification: 47 verified, 0 errors (exit 0)
+<shellId: v1 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Both intermediate asserts removed successfully. Now let me test removing the `pow2 == FRAME_SIZE` assertion.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs
+
+[THINKING] I've removed the intermediate assertions and the test still passes, so now I'm testing whether I can also remove the assertion checking that pow2 equals FRAME_SIZE at line 28.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pde.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | grep -E "verification:|errors|error:" | head
