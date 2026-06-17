@@ -873,3 +873,128 @@ Batch A (medium functions) done. Let me verify — this checks all new lemmas an
 Turn 45
 ────────────────────────────────────────────────────────────
 [TOOL] read_bash: {'delay': 180, 'shellId': 'verify-a'}
+[RESULT ✓] read_bash: status: VERIFY_FAILED (continuing to guardrail checks for feedback)
+
+=== Cheating Pattern Check ===
+  Module mm::phys:
+    ⚠️  external_body: 18
+    ⚠️  admit: 4
+    ⚠️  cfg-gated exec code: 16
+  Affected functions:
+    - frame.rs:1369 instance: external_body
+    - frame.rs:1407 init: external_body
+...
+
+────────────────────────────────────────────────────────────
+Turn 46
+────────────────────────────────────────────────────────────
+Compilation error (verus didn't run). Let me find the actual error.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -nE "error\
+
+[THINKING] There's a compilation error preventing the verification from running at all. Let me dig into the actual error message to see what went wrong.
+[RESULT ✓] bash: 8:compilation/setup error (verus did not run)
+20:error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`
+28:error: could not compile `kernel` (bin "kernel") due to 1 previous error
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 47
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '9,30p'
+[RESULT ✓] bash: Cheating patterns:
+  assume=0
+  external_body=23
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in eit...
+
+────────────────────────────────────────────────────────────
+Turn 48
+────────────────────────────────────────────────────────────
+The `&mut` field can't be dereferenced in `requires`/`ensures` — I must use the existing `spec_refcount_seq`/`spec_refcount_slot` wrappers (as the existing lemmas do). Let me fix all the new lemmas.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm seeing the issue now — in the postcondition for `lemma_frame_allocated`, dereferencing `inner.refcount@` fails because `refcount` is itself a mutable reference field, and Verus requires explicit `old` or `final` disambiguation in ensures clauses. The existing spec uses helper functions like `spec_refcount_slot` to work around this, so I need to follow that pattern instead of directly dereferencing the field. I need to systematically go through all my lemmas and replace any direct `inner.refcount@` references in their requires and ensures clauses with the spec wrapper functions `spec_refcount_seq(inner)` and `spec_refcount_slot(inner, fnx)`. Let me audit each lemma to catch all instances before compilation fails on the next error. I'm working through how to handle the spec functions at the call site—since we're in a proof block with `&mut Inner`, referencing `self.refcount@` through `spec_refcount_seq` avoids any old/final issues. For the requires clauses, I need to replace `inner.refcount@.len()` with `spec_refcount_seq(inner).len()` and `inner.refcount@[k]` with `spec_refcount_seq(inner)[k]` to get the u8 value directly, rather than using `spec_refcount_slot` which returns an int. The wrapper functions solve the postcondition issue by hiding the mutable field dereference in a spec function body, so I need to update the lemmas to use `spec_refcount_seq(inner)` instead of directly accessing `inner.refcount@` in the requires clauses. Updating spec function calls in requires and ensures clauses... Now I'll apply these changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 49
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 50
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 51
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 52
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 53
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 54
+────────────────────────────────────────────────────────────
+Now the three range lemmas use `inner.refcount@` in requires. Let me fix each.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm identifying where the `inner.refcount@.len() == pre_rc.len()` condition and the forall trigger pattern appear across these three lemmas so I can remove the redundant constraints.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 55
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 56
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 57
+────────────────────────────────────────────────────────────
+Let me verify I caught all `inner.refcount@` usages in requires/ensures clauses (not bodies).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && awk 'NR>=606' src/kernel/src/mm/phys/frame.proof.rs | grep -nE "inner\.refcount@" | h
+
+[THINKING] I'm checking whether the lemma bodies still reference the old `inner.refcount@` syntax in their assertions and function calls, which should be allowed in proof code context, though I need to verify the exact usage patterns in lemma_reestablish_inv_range and the other lemmas. ed spec functions are transparent throughout the module, so the body can access the requires facts. For the ensures clause proving `internal_inv()`, I need to establish all 8 conjuncts — the asserts handle conjuncts 4, 5, 6, and 8, while conjuncts 1, 2, and 7 come from the requires, and conjunct 3 (the refcount length) follows from the transparent equality between `spec_refcount_seq(inner).len()` and `inner.refcount@.len()`. Since `internal_inv` is transparent, Verus should unfold the ensures and verify each piece. Now I should check if there are any other `inner.refcount@` or `inner.bitmap` dereferences in the ensures clauses that might cause issues.
+[RESULT ✓] bash: 221:        &&& (inner.bitmap@.set_bits.contains(k) <==> inner.refcount@[k] > 0)
+222:        &&& (!inner.bitmap@.set_bits.contains(k) <==> inner.refcount@[k] == 0)
+223:        &&& (inner.bitmap@.set_bits.contains(k) ==> 0 < inner.refcount@[k] <= 255)
+227:            assert(inner.refcount@[k] == 1u8)...
+
+────────────────────────────────────────────────────────────
+Turn 58
+────────────────────────────────────────────────────────────
+All remaining usages are in proof bodies (allowed). Let me re-run verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 make verify-kernel MODULE=mm::phys 2>&1 | tail -45
+
+[THINKING] All the remaining `inner.refcount@` references are in allowed contexts—they're either inside assertion bodies or lemma calls—so that's fine. Let me run the verification again to see if everything checks out.
+[RESULT ✓] bash: <command started in background with shellId: verify-a2>
+
+────────────────────────────────────────────────────────────
+Turn 59
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 240, 'shellId': 'verify-a2'}

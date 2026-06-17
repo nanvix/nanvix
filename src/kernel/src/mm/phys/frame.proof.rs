@@ -627,7 +627,7 @@ proof fn lemma_capture_inv_facts(
         g_old == inner@,
         pre_sb == inner.bitmap@.set_bits,
         pre_nb == inner.bitmap@.num_bits,
-        pre_rc == inner.refcount@,
+        pre_rc == spec_refcount_seq(inner),
     ensures
         spec_page_size() > 0,
         g_old == view_of(pre_sb, pre_nb, pre_rc),
@@ -658,14 +658,14 @@ proof fn lemma_frame_allocated(inner: &Inner, addr: int, fnx: int)
         inner.internal_inv(),
         addr % spec_page_size() == 0,
         fnx == addr / spec_page_size(),
-        0 <= fnx < inner.refcount@.len(),
-        inner.refcount@[fnx] != 0,
+        0 <= fnx < spec_refcount_seq(inner).len(),
+        spec_refcount_seq(inner)[fnx] != 0,
     ensures
         fnx < inner.bitmap@.num_bits,
         inner.bitmap@.set_bits.contains(fnx),
         inner@.is_allocated(addr),
         inner@.is_covered(addr),
-        inner@.refcounts[addr] == inner.refcount@[fnx] as int,
+        inner@.refcounts[addr] == spec_refcount_slot(inner, fnx),
 {
     assert(fnx < inner.bitmap@.num_bits);
     assert(inner.bitmap@.set_bits.contains(fnx));
@@ -695,7 +695,7 @@ proof fn lemma_post_update_slot(
         pre_nb <= pre_rc.len(),
         inner.bitmap@.set_bits == pre_sb,
         inner.bitmap@.num_bits == pre_nb,
-        inner.refcount@ == pre_rc.update(fnx, nv),
+        spec_refcount_seq(inner) == pre_rc.update(fnx, nv),
         g_old == view_of(pre_sb, pre_nb, pre_rc),
     ensures
         inner@ == (FrameAllocView { refcounts: g_old.refcounts.insert(addr, nv as int) }),
@@ -723,7 +723,7 @@ proof fn lemma_post_release_one(
         pre_nb <= pre_rc.len(),
         inner.bitmap@.set_bits == pre_sb.remove(fnx),
         inner.bitmap@.num_bits == pre_nb,
-        inner.refcount@ == pre_rc.update(fnx, 0u8),
+        spec_refcount_seq(inner) == pre_rc.update(fnx, 0u8),
         g_old == view_of(pre_sb, pre_nb, pre_rc),
     ensures
         inner@ == (FrameAllocView { refcounts: g_old.refcounts.insert(addr, 0int) }),
@@ -752,7 +752,7 @@ proof fn lemma_post_reserve_one(
         pre_rc[fnx] == 0,
         inner.bitmap@.set_bits == pre_sb.insert(fnx),
         inner.bitmap@.num_bits == pre_nb,
-        inner.refcount@ == pre_rc.update(fnx, 1u8),
+        spec_refcount_seq(inner) == pre_rc.update(fnx, 1u8),
         g_old == view_of(pre_sb, pre_nb, pre_rc),
     ensures
         g_old.is_free(addr),
@@ -777,7 +777,7 @@ proof fn lemma_alloc_full_no_free(
         inner.bitmap@.is_full(),
         pre_sb == inner.bitmap@.set_bits,
         pre_nb == inner.bitmap@.num_bits,
-        pre_rc == inner.refcount@,
+        pre_rc == spec_refcount_seq(inner),
         g_old == inner@,
     ensures
         g_old == view_of(pre_sb, pre_nb, pre_rc),
@@ -815,9 +815,9 @@ proof fn lemma_reestablish_inv_range(
         inner.bitmap.inv(),
         inner.bitmap@.num_bits == pre_nb,
         inner.bitmap@.set_bits == pre_sb.union(BitmapView::range_set(lo, hi)),
-        inner.refcount@.len() == pre_rc.len(),
+        spec_refcount_seq(inner).len() == pre_rc.len(),
         forall|k: int| 0 <= k < pre_rc.len() ==>
-            #[trigger] inner.refcount@[k] == (if lo <= k < hi { 1u8 } else { pre_rc[k] }),
+            #[trigger] spec_refcount_seq(inner)[k] == (if lo <= k < hi { 1u8 } else { pre_rc[k] }),
     ensures
         inner.internal_inv(),
 {
@@ -865,9 +865,9 @@ proof fn lemma_alloc_contiguous_post(
         forall|j: int| start <= j < start + count ==> !pre_sb.contains(j),
         inner.bitmap@.set_bits == pre_sb.union(BitmapView::range_set(start, start + count)),
         inner.bitmap@.num_bits == pre_nb,
-        inner.refcount@.len() == pre_rc.len(),
+        spec_refcount_seq(inner).len() == pre_rc.len(),
         forall|k: int| 0 <= k < pre_rc.len() ==>
-            #[trigger] inner.refcount@[k] == (if start <= k < start + count { 1u8 } else { pre_rc[k] }),
+            #[trigger] spec_refcount_seq(inner)[k] == (if start <= k < start + count { 1u8 } else { pre_rc[k] }),
         g_old == view_of(pre_sb, pre_nb, pre_rc),
     ensures
         ({
@@ -1071,9 +1071,9 @@ proof fn lemma_alloc_range_post(
         inner.bitmap.inv(),
         inner.bitmap@.num_bits == pre_nb,
         inner.bitmap@.set_bits == pre_sb.union(BitmapView::range_set(lo, lo + nfr)),
-        inner.refcount@.len() == pre_rc.len(),
+        spec_refcount_seq(inner).len() == pre_rc.len(),
         forall|k: int| 0 <= k < pre_rc.len() ==>
-            #[trigger] inner.refcount@[k] == (if lo <= k < lo + nfr { 1u8 } else { pre_rc[k] }),
+            #[trigger] spec_refcount_seq(inner)[k] == (if lo <= k < lo + nfr { 1u8 } else { pre_rc[k] }),
         g_old == view_of(pre_sb, pre_nb, pre_rc),
     ensures
         inner.internal_inv(),
