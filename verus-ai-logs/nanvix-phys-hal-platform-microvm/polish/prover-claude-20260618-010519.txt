@@ -264,3 +264,82 @@ Turn 8
 ────────────────────────────────────────────────────────────
 Let me run the module-scoped verification to confirm the baseline passes.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=hal::platform::microvm 2>&1 | tail -40
+[RESULT ✓] bash: 1/31 exec functions have contracts.
+  Unverified functions:
+    - setup_heap_backing_storage
+    - setup_klog_backing_storage
+    - disable_interrupts
+    - enable_interrupts
+    - wait_for_interrupt
+    - putb
+    - vmbus_write
+    - vmbus_read
+    - do_shutdown
+    - snapshot
+    - signal_startup_...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+Baseline is CLEAN (exit 0). Let me confirm where the 4 admits/external_body live — to ensure none are in my scope (`gva_to_gpa`).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rnE "admit\(\)|external_body|assume\(" src/kernel/src/hal/platform/microvm/ | g
+
+[THINKING] The verification passed cleanly, but the summary shows 4 admits and 23 external_body entries across the whole module. These are likely in functions outside the scope I'm working on, so they shouldn't block completion of the task. The admits are in other functions outside my scope, so I can't modify them. The task is asking for the in-scope function to verify cleanly, which `gva_to_gpa` already does. Let me search the module to confirm those four admits aren't related to my function.
+[RESULT ✓] bash: 
+<shellId: 5 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+No admits/external_body in my module — those counts come from the broader crate. My scope (`gva_to_gpa`) is fully clean: no proof blocks, no asserts, no hints, no dead/non-pub specs, empty proof file. Everything is already minimal.
+
+Let me verify the output directory and check the spec file has no debug artifacts to clean.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-hal-platform-microvm/ 2>/dev/null; echo "--- polish 
+
+[THINKING] The admit and external_body counts in the summary are coming from the broader crate's dependencies, not from my module itself—my `gva_to_gpa` function is clean. Let me verify against the spec file to confirm.
+
+The spec function `spec_gva_to_gpa` is public, open, and actually used in the ensures clause of the exec function, so it should stay. Looking at both files, there are no property-ID annotations, TODOs, or commented-out code cluttering them—just genuine documentation explaining the spec rationale. The proof file is empty and the spec file is already minimal. There's genuinely nothing to change here; the verification is already polished.
+[RESULT ✓] bash: total 120
+drwxrwxr-x 1 ruize ruize   440 Jun 18 01:05 .
+drwxrwxr-x 1 ruize ruize  1848 Jun 17 00:16 ..
+-rw-rw-r-- 1 ruize ruize 14490 Jun 18 01:05 body_removed_source.rs
+drwxrwxr-x 1 ruize ruize   136 Jun 17 00:16 caller-analysis
+-rw-rw-r-- 1 ruize ruize  5912 Jun 17 00:16 caller_analysis.md
+drwxrwx...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Everything is already in optimal polished state. The output directory exists. Let me write the checklist report documenting the findings.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/polish/checklist.md
+
+[THINKING] The polish directory is already in place with no debug artifacts, and the spec hasn't drifted—the verification passed cleanly. There's nothing left to extract or minimize.
+
+Now I'll write up the checklist report, being straightforward that zero blocks were extracted and zero redundancies were removed because the module was already optimized.
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/polish/checklist.md with 1799 characters
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+The verification was already in optimal polished state — no changes to source/spec/proof were needed.
+
+## Summary
+
+**Scope:** `gva_to_gpa` (only in-scope function).
+
+**Proof extraction:** Nothing to extract. `check_proof_blocks.py --all` reports *"No proof blocks found. No loop invariants found."* The function body is a single `gva` return with no inline `proof` blocks or loops.
+
+**Minimization:** Nothing redundant. No asserts/hints in scope (the only `assert` token is the unrelated `static_assert!` macro), the proof file is empty, and `spec_gva_to_gpa` is `pub` + referenced by the `ensures` — retained per the skill.
+
+**Verification:** `make verify-kernel MODULE=hal::platform::microvm` → **CLEAN**, exit 0, 0 errors/admits in module. (The crate-summary `admit=4`/`external_body=23` are out-of-scope/cfg-gated functions elsewhere in the kernel — none in `microvm/`, none touched.)
+
+**Output:** Wrote `verus-ai-logs/nanvix-phys-hal-platform-microvm/polish/checklist.md`.
+
+[THINKING] The verification passed cleanly with exit 0, so the task is complete—no source changes were needed, just the checklist report.
+
+
+=== Session End ===
+Session: 67eda191-6f02-4625-a0fb-d7265cb3124e
+Duration: 131.7s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/polish/prover-claude-20260618-010519.jsonl
