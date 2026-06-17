@@ -248,3 +248,12 @@ Module: hal-platform-microvm
 [2026-06-18 01:07:31] ✅ polish: PASS (0/0)
 [2026-06-18 01:07:31] [GATE] Running build: make build
 [2026-06-18 01:07:31] [GATE] Running verify: make verify
+[2026-06-18 01:07:39] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: hal-platform-microvm
+  ✅ polish                    no-review                 2m11s
+  ──────────────────────────────────────────────────────────
+  Total: 2m20s
+============================================================
+[2026-06-18 01:07:39] [USAGE] Summary: 10 calls, 0 tokens, 28m40s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/usage_summary.json

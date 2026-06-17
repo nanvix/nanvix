@@ -1,11 +1,11 @@
 {
   "module": "nanvix-phys-hal-platform-microvm",
-  "generated_at": "2026-06-15T10:35:57.664393",
-  "total_calls": 9,
-  "calls_with_usage": 9,
+  "generated_at": "2026-06-18T01:07:39.188583",
+  "total_calls": 10,
+  "calls_with_usage": 10,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 1588.3,
+  "total_duration_s": 1720.0,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -45,14 +45,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 462.5
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 131.7
     }
   },
   "per_role": {
     "prover": {
-      "calls": 5,
+      "calls": 6,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 502.49999999999994
+      "duration_s": 634.1999999999999
     },
     "dialogue-reviewer-t1": {
       "calls": 3,
@@ -265,6 +271,28 @@
           "filesModified": [
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.claude.md",
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/final-review/final_review.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-18T01:07:30.924874",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "67eda191-6f02-4625-a0fb-d7265cb3124e",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/polish/prover-claude-20260618-010519.txt",
+      "duration_s": 131.7,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 112211,
+        "sessionDurationMs": 130060,
+        "codeChanges": {
+          "linesAdded": 39,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-platform-microvm/polish/checklist.md"
           ]
         }
       }
