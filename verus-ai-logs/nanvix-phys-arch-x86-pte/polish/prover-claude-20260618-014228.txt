@@ -256,3 +256,23 @@ Turn 7
 ────────────────────────────────────────────────────────────
 Let me run the baseline verification to confirm everything passes before changes.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch MODULE=x86::mem::paging::pte 2>&1 | tail -40
+[RESULT ✓] bash: cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module x86::mem::paging::pte:
+    ⚠️  cfg-gated exec code: 2
+  Global: assume=0 external_body=3 admit=0 trusted=0 cfg_gate=2
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+ ...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). Let me see the full output, especially the verification result and the cfg-gate details.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch MODULE=x86::mem::paging::pte 2>&1 | head -60
+
+[THINKING] The baseline verification passes, but there's a CHEATING_DETECTED status flagged due to `external_body=3` and `cfg_gate=2` — though these are pre-existing issues in other functions outside my scope, specifically from `table.rs` which is already in the allowed list. I need to examine the full output more carefully to understand what's actually triggering the detection.
