@@ -240,7 +240,12 @@ impl PageMap {
         size: usize,
     ) {
         let dst: *mut u8 = user_dst_pa as *mut u8;
-        let result: Result<(), _> = if size.is_multiple_of(::core::mem::size_of::<u32>()) {
+        // The 32-bit fast path requires the size and both addresses to be 4-byte aligned;
+        // fall back to the byte copy otherwise (e.g. unaligned ELF segment data).
+        let use_fast: bool = size.is_multiple_of(::core::mem::size_of::<u32>())
+            && (dst as usize).is_multiple_of(::core::mem::size_of::<u32>())
+            && (kernel_src as usize).is_multiple_of(::core::mem::size_of::<u32>());
+        let result: Result<(), _> = if use_fast {
             crate::mm::virt::identity_map::phys_memcpy32(dst, kernel_src, size)
         } else {
             crate::mm::virt::identity_map::phys_memcpy(dst, kernel_src, size)
