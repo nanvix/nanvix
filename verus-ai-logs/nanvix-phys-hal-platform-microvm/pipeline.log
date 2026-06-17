@@ -244,3 +244,7 @@ Module: hal-platform-microvm
 [2026-06-18 01:05:19] [PROVER] Running polish...
 [2026-06-18 01:05:19] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 01:07:30]   ↳ prover done in 2m11s (exit=0)
+[2026-06-18 01:07:31] [PHASE] polish: no-review (2m11s)
+[2026-06-18 01:07:31] ✅ polish: PASS (0/0)
+[2026-06-18 01:07:31] [GATE] Running build: make build
+[2026-06-18 01:07:31] [GATE] Running verify: make verify
