@@ -281,3 +281,6 @@ PIPELINE FINISHED: phys-frame (some phases need work)
   Total: 3h28m51s
 ============================================================
 [2026-06-15 08:14:02] [USAGE] Summary: 20 calls, 0 tokens, 4h14m23s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/usage_summary.json
+[2026-06-17 23:29:52] [BRANCH] Staying on current branch: verus-ai-polish
+ERROR: Unknown phase 'polish'.
+  Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
