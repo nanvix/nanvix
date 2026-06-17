@@ -259,6 +259,11 @@ impl Emulator {
                                 );
                             },
                             0x40..=0x43 | 0x61 => {
+                                // PIT (8254) is not emulated here: on WHP the
+                                // periodic timer interrupt comes from the LAPIC
+                                // emulator, and channel-2 calibration is handled
+                                // inline in the WHP PMIO fast path. This slow
+                                // path only logs and ignores stray PIT writes.
                                 trace!(
                                     "handle_pmio_access(): ignoring PIT write (port={port:#06x})"
                                 );
