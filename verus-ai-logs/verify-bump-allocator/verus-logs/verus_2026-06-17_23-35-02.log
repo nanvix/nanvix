@@ -1,0 +1,31 @@
+Timestamp: 2026-06-17_23-35-02
+Mode: cargo
+Crate: bump-allocator
+Directory: N/A
+Module: <all>
+Exit code: 101
+5 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=2
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/bump_allocator)
+error: assertion failed
+  --> src/libs/bump_allocator/src/lib.proof.rs:50:48
+   |
+50 |       assert forall|i: int| 0 <= i < cap implies {
+   |  ________________________________________________^
+51 | |         &&& v.base <= #[trigger] v.slot_addr(i)
+52 | |         &&& v.slot_addr(i) + us <= v.base + ss
+53 | |     } by {
+   | |_____^ assertion failed
+
+verification results:: 5 verified, 1 errors
+error: could not compile `bump-allocator` (lib) due to 1 previous error

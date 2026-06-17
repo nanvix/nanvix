@@ -444,3 +444,24 @@ I'm thinking through the most efficient testing strategy here. Since each verifi
 Turn 17
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  0 errors
+  Exit code : 0
+  verification: 6 verified, 0 errors (exit 0)
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Also redundant. Let me test the distributive assert block in part (b).
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] Removing that lemma didn't break anything, so it was unnecessary — Verus can infer the nonnegativity from the existing constraints and the inequality relationships. Now I'm looking at the lower bound condition `v.base <= slot_addr(i)`, which simplifies to checking whether `i*s >= 0`.
+
+Let me test removing the distributive assert block that establishes `(i+1)*s == i*s + s`. This is critical for the upper bound chain, but since it's a nonlinear arithmetic fact, I'm curious whether Verus can derive it automatically or if the explicit assertion is necessary.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
