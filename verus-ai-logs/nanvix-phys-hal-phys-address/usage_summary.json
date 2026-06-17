@@ -1,11 +1,11 @@
 {
   "module": "nanvix-phys-hal-phys-address",
-  "generated_at": "2026-06-15T09:54:45.188067",
-  "total_calls": 14,
-  "calls_with_usage": 14,
+  "generated_at": "2026-06-18T00:57:03.186322",
+  "total_calls": 15,
+  "calls_with_usage": 15,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 5841.7,
+  "total_duration_s": 6327.5,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -45,14 +45,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 1076.0
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 485.8
     }
   },
   "per_role": {
     "prover": {
-      "calls": 5,
+      "calls": 6,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 2879.5
+      "duration_s": 3365.3
     },
     "dialogue-reviewer-t1": {
       "calls": 3,
@@ -415,6 +421,30 @@
           "filesModified": [
             "/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.spec.rs",
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/final-review/final_review.claude.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-18T00:56:54.881767",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "485f68eb-999b-479d-8027-99f1a6045b3b",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/polish/prover-claude-20260618-004849.txt",
+      "duration_s": 485.8,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 438496,
+        "sessionDurationMs": 484341,
+        "codeChanges": {
+          "linesAdded": 58,
+          "linesRemoved": 8,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/polish/checklist.md"
           ]
         }
       }

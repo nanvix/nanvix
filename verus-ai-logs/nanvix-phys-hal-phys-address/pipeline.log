@@ -264,3 +264,12 @@ Module: hal-phys-address
 [2026-06-18 00:56:54] ✅ polish: PASS (0/0)
 [2026-06-18 00:56:55] [GATE] Running build: make build
 [2026-06-18 00:56:55] [GATE] Running verify: make verify
+[2026-06-18 00:57:03] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: hal-phys-address
+  ✅ polish                    no-review                 8m05s
+  ──────────────────────────────────────────────────────────
+  Total: 8m14s
+============================================================
+[2026-06-18 00:57:03] [USAGE] Summary: 15 calls, 0 tokens, 1h45m27s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/usage_summary.json
