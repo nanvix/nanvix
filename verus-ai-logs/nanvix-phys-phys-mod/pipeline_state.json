@@ -2,8 +2,8 @@
   "module_name": "phys-mod",
   "log_name": "nanvix-phys-phys-mod",
   "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
+  "current_phase": "polish",
+  "current_phase_idx": 5,
   "completed_phases": [],
   "phase_results": {},
   "prover_session_id": null,
@@ -11,8 +11,17 @@
   "base_branch": "verus-ai-polish",
   "verus_branch": "verus-ai-polish",
   "phase_boundary_shas": {},
-  "phase_start_shas": {},
-  "phase_history": [],
+  "phase_start_shas": {
+    "polish": "c5f70089c2aa1725f9c43e4f814172dae5dd6426"
+  },
+  "phase_history": [
+    {
+      "phase": "polish",
+      "event": "start",
+      "sha": "c5f70089c2aa1725f9c43e4f814172dae5dd6426",
+      "rollback_iter": 0
+    }
+  ],
   "rollback_counts": {},
   "rollback_context": "",
   "tcb_entry_points": null,
