@@ -1,0 +1,195 @@
+Timestamp: 2026-06-17_16-57-44
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 0
+101 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling core v0.0.0 (/home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling verus_syn v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling autocfg v1.5.0
+   Compiling build-utils v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/build-utils)
+   Compiling verus_prettyplease v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling hashbrown v0.12.3
+   Compiling vstd v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/config)
+   Compiling kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+   Compiling indexmap v1.9.3
+   Compiling syn v2.0.117
+   Compiling synstructure v0.13.2
+   Compiling verus_state_machines_macros v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling verus_builtin_macros v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling alloc v0.0.0 (/home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+    Checking verus_builtin v0.0.0-2026-05-17-0151 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+    Checking mmio-tag v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/mmio-tag)
+    Checking cfg-if v1.0.4
+    Checking static_assert v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/static_assert)
+    Checking koptions v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/koptions)
+    Checking cmdline v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/cmdline)
+    Checking type-safe v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/type-safe)
+    Checking no_fail v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/no_fail)
+    Checking sorted-vec v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sorted-vec)
+    Checking sysapi v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sysapi)
+verification results:: 1692 verified, 0 errors
+    Checking error v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/error)
+    Checking bump-allocator v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/bump_allocator)
+verification results:: 0 verified, 0 errors
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sys)
+    Checking multibin v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/multibin)
+verification results:: 6 verified, 0 errors
+verification results:: 6 verified, 0 errors
+    Checking raw-array v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/raw-array)
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+    Checking elf v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/elf)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/bitmap)
+verification results:: 48 verified, 0 errors
+verification results:: 68 verified, 0 errors
+    Checking nanvix-slab v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/slab)
+verification results:: 35 verified, 0 errors
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/mod.spec.rs:165:9
+    |
+165 |         forall|a: int| set.contains(a) ==> self.reserved(a)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/mod.spec.rs:165:44
+    |
+165 |         forall|a: int| set.contains(a) ==> self.reserved(a)
+    |                                            ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:58:13
+   |
+58 |           &&& forall|i: int| 0 <= i < self.bitmap@.num_bits ==> (
+   |  _____________^
+59 | |             !self.bitmap@.set_bits.contains(i) <==> self.refcount@[i] == 0
+60 | |         )
+   | |_________^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:59:53
+   |
+59 |             !self.bitmap@.set_bits.contains(i) <==> self.refcount@[i] == 0
+   |                                                     ^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:456:9
+    |
+456 |         assert forall|a: int| frames.contains(a) implies covered_addrs(nb).contains(a) by {
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:456:31
+    |
+456 |         assert forall|a: int| frames.contains(a) implies covered_addrs(nb).contains(a) by {
+    |                               ^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:380:13
+    |
+380 |             assert forall|k: int| 0 <= k < pre_nb implies {
+    |             ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:381:61
+    |
+381 |                 &&& (self.bitmap@.set_bits.contains(k) <==> self.refcount@[k] > 0)
+    |                                                             ^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:445:25
+    |
+445 |                         assert forall|addr: int| frames.contains(addr) implies
+    |                         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:445:50
+    |
+445 |                         assert forall|addr: int| frames.contains(addr) implies
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:451:25
+    |
+451 |                         assert forall|addr: int|
+    |                         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:453:29
+    |
+453 | ...                   frames.contains(addr) by {
+    |                       ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1305:13
+     |
+1305 |             assert forall|k: int| 0 <= k < pre_nb implies {
+     |             ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1306:61
+     |
+1306 |                 &&& (self.bitmap@.set_bits.contains(k) <==> self.refcount@[k] > 0)
+     |                                                             ^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1349:17
+     |
+1349 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1349:42
+     |
+1349 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                                          ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1356:17
+     |
+1356 |                 assert forall|addr: int| spec_range_frames(lo, nfr).contains(addr) implies
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1357:21
+     |
+1357 |                     frames.contains(addr) by {
+     |                     ^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/frame.rs:1356:17
+     |
+1356 |                 assert forall|addr: int| spec_range_frames(lo, nfr).contains(addr) implies
+     |                 ^^^^^^
+
+verification results:: 101 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 45.22s

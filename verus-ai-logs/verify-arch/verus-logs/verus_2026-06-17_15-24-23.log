@@ -1,0 +1,37 @@
+Timestamp: 2026-06-17_15-24-23
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+error[E0308]: mismatched types
+   --> src/libs/arch/src/x86/mem/paging/table.spec.rs:116:17
+    |
+115 |             entries: Map::new(
+    |                      -------- arguments to this function are incorrect
+116 |                 |i: nat| i < crate::mem::PAGE_TABLE_LENGTH,
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Set<nat>`, found `FnSpec<(nat,), bool>`
+    |
+    = note: expected struct `vstd::set::Set<vstd::prelude::nat>`
+               found struct `vstd::prelude::FnSpec<(vstd::prelude::nat,), bool>`
+note: associated function defined here
+   --> /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/vstd/map.rs:67:26
+    |
+ 67 |     pub uninterp spec fn new(s: Set<K>, fv: spec_fn(K) -> V) -> Map<K, V>;
+    |                          ^^^
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `arch` (lib) due to 1 previous error

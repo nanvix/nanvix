@@ -1,0 +1,275 @@
+Timestamp: 2026-06-17_15-58-25
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+  --> src/kernel/src/mm/phys/manager.spec.rs:60:14
+   |
+60 |         self.free_frames.len()
+   |              ^^^^^^^^^^^ unknown field
+   |
+   = note: available field is: `refcounts`
+
+error[E0560]: struct `mm::phys::FrameAllocView` has no field named `allocated_frames`
+  --> src/kernel/src/mm/phys/manager.spec.rs:74:13
+   |
+74 |             allocated_frames: self.allocated_frames.insert(addr),
+   |             ^^^^^^^^^^^^^^^^ `mm::phys::FrameAllocView` does not have this field
+   |
+   = note: all struct fields are already assigned
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+  --> src/kernel/src/mm/phys/manager.spec.rs:74:36
+   |
+74 |             allocated_frames: self.allocated_frames.insert(addr),
+   |                                    ^^^^^^^^^^^^^^^^ unknown field
+   |
+   = note: available field is: `refcounts`
+
+error[E0560]: struct `mm::phys::FrameAllocView` has no field named `free_frames`
+  --> src/kernel/src/mm/phys/manager.spec.rs:75:13
+   |
+75 |             free_frames: self.free_frames.remove(addr),
+   |             ^^^^^^^^^^^ `mm::phys::FrameAllocView` does not have this field
+   |
+   = note: all struct fields are already assigned
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+  --> src/kernel/src/mm/phys/manager.spec.rs:75:31
+   |
+75 |             free_frames: self.free_frames.remove(addr),
+   |                               ^^^^^^^^^^^ unknown field
+   |
+   = note: available field is: `refcounts`
+
+error[E0308]: mismatched types
+   --> src/kernel/src/mm/phys/manager.spec.rs:114:5
+    |
+113 | pub open spec fn user_addr_set(frames: Seq<UserFrame>) -> Set<int> {
+    |                                                           -------- expected `vstd::set::Set<vstd::prelude::int>` because of return type
+114 |     Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Set<int>`, found `Option<Set<int>>`
+    |
+    = note: expected struct `vstd::set::Set<_>`
+                 found enum `core::option::Option<vstd::set::Set<_>>`
+help: consider using `Option::expect` to unwrap the `core::option::Option<vstd::set::Set<vstd::prelude::int>>` value, panicking if the value is an `Option::None`
+    |
+114 |     Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a).expect("REASON")
+    |                                                                                          +++++++++++++++++
+
+error[E0308]: mismatched types
+   --> src/kernel/src/mm/phys/manager.spec.rs:119:5
+    |
+118 | pub open spec fn kernel_addr_set(frames: Seq<KernelFrame>) -> Set<int> {
+    |                                                               -------- expected `vstd::set::Set<vstd::prelude::int>` because of return type
+119 |     Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `Set<int>`, found `Option<Set<int>>`
+    |
+    = note: expected struct `vstd::set::Set<_>`
+                 found enum `core::option::Option<vstd::set::Set<_>>`
+help: consider using `Option::expect` to unwrap the `core::option::Option<vstd::set::Set<vstd::prelude::int>>` value, panicking if the value is an `Option::None`
+    |
+119 |     Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a).expect("REASON")
+    |                                                                                          +++++++++++++++++
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+  --> src/kernel/src/mm/phys/manager.proof.rs:31:13
+   |
+31 |         pre.free_frames.contains(addr),
+   |             ^^^^^^^^^^^ unknown field
+   |
+   = note: available field is: `refcounts`
+
+error: use of deprecated method `vstd::set::Set::<A>::finite`: Every Set is always finite, so this is always true.
+  --> src/kernel/src/mm/phys/manager.proof.rs:89:31
+   |
+89 |         user_addr_set(frames).finite(),
+   |                               ^^^^^^
+   |
+   = note: `-D deprecated` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(deprecated)]`
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:125:44
+    |
+125 |     assert(v.book_all(Set::<int>::empty()).allocated_frames =~= v.allocated_frames);
+    |                                            ^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:125:67
+    |
+125 |     assert(v.book_all(Set::<int>::empty()).allocated_frames =~= v.allocated_frames);
+    |                                                                   ^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:126:44
+    |
+126 |     assert(v.book_all(Set::<int>::empty()).free_frames =~= v.free_frames);
+    |                                            ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:126:62
+    |
+126 |     assert(v.book_all(Set::<int>::empty()).free_frames =~= v.free_frames);
+    |                                                              ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:137:39
+    |
+137 |     assert(v.book_all(s).alloc_one(a).allocated_frames
+    |                                       ^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:138:37
+    |
+138 |         =~= v.book_all(s.insert(a)).allocated_frames);
+    |                                     ^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:139:39
+    |
+139 |     assert(v.book_all(s).alloc_one(a).free_frames =~= v.book_all(s.insert(a)).free_frames);
+    |                                       ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:139:79
+    |
+139 |     assert(v.book_all(s).alloc_one(a).free_frames =~= v.book_all(s.insert(a)).free_frames);
+    |                                                                               ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error: use of deprecated method `vstd::set::Set::<A>::finite`: Every Set is always finite, so this is always true.
+   --> src/kernel/src/mm/phys/manager.proof.rs:151:31
+    |
+151 |     &&& user_addr_set(frames).finite()
+    |                               ^^^^^^
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:179:15
+    |
+179 |         mview.free_frames.contains(uf@),
+    |               ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:188:18
+    |
+188 |     assert(mview.free_frames =~= g_old.free_frames.difference(s));
+    |                  ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:188:40
+    |
+188 |     assert(mview.free_frames =~= g_old.free_frames.difference(s));
+    |                                        ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:189:18
+    |
+189 |     assert(g_old.free_frames.contains(uf@) && !s.contains(uf@));
+    |                  ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.proof.rs:200:67
+    |
+200 |     assert forall|x: int| #[trigger] s2.contains(x) implies g_old.free_frames.contains(x) by {
+    |                                                                   ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.rs:288:36
+    |
+288 |                     &&& old(self)@.free_frames.contains(uf@)
+    |                                    ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/manager.rs:370:36
+    |
+370 |                     &&& old(self)@.free_frames.contains(kf@)
+    |                                    ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/upool.rs:157:61
+    |
+157 |                     &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+    |                                                             ^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/upool.rs:160:62
+    |
+160 |                     ||| !crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+    |                                                              ^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/upool.rs:186:61
+    |
+186 |                     &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+    |                                                             ^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `allocated_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/upool.rs:189:64
+    |
+189 |                 Err(_) => !crate::mm::phys::phys_view().frames.allocated_frames.contains(self@),
+    |                                                                ^^^^^^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+error[E0609]: no field `free_frames` on type `mm::phys::FrameAllocView`
+   --> src/kernel/src/mm/phys/upool.rs:280:36
+    |
+280 |                     &&& old(self)@.free_frames.contains(uf@)
+    |                                    ^^^^^^^^^^^ unknown field
+    |
+    = note: available field is: `refcounts`
+
+Some errors have detailed explanations: E0308, E0560, E0609.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `kernel` (bin "kernel") due to 30 previous errors

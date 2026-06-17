@@ -1,0 +1,47 @@
+Timestamp: 2026-06-17_15-22-02
+Mode: cargo
+Crate: sys
+Directory: N/A
+Module: <all>
+Exit code: 0
+6 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=0
+
+--- Full output ---
+   Compiling compiler_builtins v0.1.160 (/home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins)
+   Compiling proc-macro2 v1.0.106
+   Compiling core v0.0.0 (/home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core)
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling verus_syn v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling autocfg v1.5.0
+   Compiling build-utils v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/build-utils)
+   Compiling verus_prettyplease v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling hashbrown v0.12.3
+   Compiling vstd v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/config)
+   Compiling indexmap v1.9.3
+   Compiling syn v2.0.117
+   Compiling synstructure v0.13.2
+   Compiling verus_state_machines_macros v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling verus_builtin_macros v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling alloc v0.0.0 (/home/ruize/.rustup/toolchains/1.96.0-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/alloc)
+    Checking mmio-tag v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/mmio-tag)
+    Checking static_assert v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/static_assert)
+    Checking cfg-if v1.0.4
+    Checking verus_builtin v0.0.0-2026-05-17-0151 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+    Checking sysapi v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sysapi)
+verification results:: 1692 verified, 0 errors
+    Checking error v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/error)
+verification results:: 0 verified, 0 errors
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sys)
+verification results:: 6 verified, 0 errors
+    Finished `dev` profile [optimized + debuginfo] target(s) in 34.75s

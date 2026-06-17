@@ -1,0 +1,76 @@
+Timestamp: 2026-06-17_15-26-23
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+35 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+   Compiling config v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/config)
+   Compiling kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+    Checking cmdline v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/cmdline)
+    Checking no_fail v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/no_fail)
+    Checking type-safe v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/type-safe)
+    Checking sorted-vec v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sorted-vec)
+    Checking koptions v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/koptions)
+    Checking sysapi v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sysapi)
+    Checking error v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/error)
+verification results:: 0 verified, 0 errors
+    Checking sys v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/sys)
+    Checking multibin v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/multibin)
+verification results:: 6 verified, 0 errors
+    Checking raw-array v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/raw-array)
+    Checking elf v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/elf)
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/bitmap)
+verification results:: 48 verified, 0 errors
+verification results:: 68 verified, 0 errors
+    Checking nanvix-slab v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/slab)
+verification results:: 35 verified, 0 errors
+error[E0425]: cannot find value `group_set_axioms` in module `vstd::set`
+   --> src/kernel/src/mm/phys/manager.proof.rs:92:30
+    |
+ 92 |     broadcast use vstd::set::group_set_axioms;
+    |                              ^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/vstd/set.rs:592:1
+    |
+592 | pub broadcast group group_set_lemmas {
+    | ------------------------------------ similarly named function `group_set_lemmas` defined here
+    |
+help: a function with a similar name exists
+    |
+ 92 -     broadcast use vstd::set::group_set_axioms;
+ 92 +     broadcast use vstd::set::group_set_lemmas;
+    |
+
+error[E0425]: cannot find value `group_set_axioms` in module `vstd::set`
+   --> src/kernel/src/mm/phys/manager.proof.rs:183:30
+    |
+183 |     broadcast use vstd::set::group_set_axioms;
+    |                              ^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/git/checkouts/verus-e4ebf515fa1de14c/2769117/source/vstd/set.rs:592:1
+    |
+592 | pub broadcast group group_set_lemmas {
+    | ------------------------------------ similarly named function `group_set_lemmas` defined here
+    |
+help: a function with a similar name exists
+    |
+183 -     broadcast use vstd::set::group_set_axioms;
+183 +     broadcast use vstd::set::group_set_lemmas;
+    |
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `kernel` (bin "kernel") due to 2 previous errors

@@ -1,0 +1,26 @@
+Timestamp: 2026-06-16_22-02-24
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+error: unsupported for bit-vector: expression conversion UnaryOpr(IntegerTypeBound(UnsignedMax, Exec), SpannedTyped { span: Span { raw_span: "ANY", id: 881, data: [13294352243488154557, 19578664257949371], as_string: "src/kernel/src/hal/mem/types/address/phys.proof.rs:106:12: 106:22 (#0)" }, typ: Int(USize), x: UnaryOpr(IntegerTypeBound(ArchWordBits, Exec), SpannedTyped { span: Span { raw_span: "ANY", id: 880, data: [13294352243488154557, 19578664257949371], as_string: "src/kernel/src/hal/mem/types/address/phys.proof.rs:106:12: 106:22 (#0)" }, typ: Int(Int), x: Const(Int(0)) }) })
+   --> src/kernel/src/hal/mem/types/address/phys.proof.rs:106:12
+    |
+106 |     assert(usize::MAX % 4096 == 4095) by (bit_vector);
+    |            ^^^^^^^^^^
+
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

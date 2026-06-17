@@ -1,0 +1,79 @@
+Timestamp: 2026-06-17_15-23-01
+Mode: cargo
+Crate: bitmap
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=0
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=5
+
+--- Full output ---
+    Checking raw-array v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/raw-array)
+verification results:: 0 verified, 0 errors
+    Checking bitmap v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/bitmap)
+error: use of deprecated method `vstd::set::Set::<A>::finite`: Every Set is always finite, so this is always true.
+   --> src/libs/bitmap/src/lib.proof.rs:225:32
+    |
+225 |             new_self@.set_bits.finite(),
+    |                                ^^^^^^
+    |
+    = note: `-D deprecated` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(deprecated)]`
+
+error: use of deprecated method `vstd::set::Set::<A>::finite`: Every Set is always finite, so this is always true.
+   --> src/libs/bitmap/src/lib.proof.rs:259:32
+    |
+259 |             new_self@.set_bits.finite(),
+    |                                ^^^^^^
+
+error: use of deprecated method `vstd::set::Set::<A>::finite`: Every Set is always finite, so this is always true.
+   --> src/libs/bitmap/src/lib.proof.rs:395:28
+    |
+395 |             self@.set_bits.finite(),
+    |                            ^^^^^^
+
+error[E0599]: no associated function or constant named `lemma_range_set_finite` found for struct `BitmapView` in the current scope
+   --> src/libs/bitmap/src/lib.proof.rs:405:21
+    |
+405 |         BitmapView::lemma_range_set_finite(start as int, start + size);
+    |                     ^^^^^^^^^^^^^^^^^^^^^^ associated function or constant not found in `BitmapView`
+    |
+   ::: src/libs/bitmap/src/lib.spec.rs:16:1
+    |
+ 16 | pub struct BitmapView {
+    | --------------------- associated function or constant `lemma_range_set_finite` not found for this struct
+    |
+help: there is an associated function `lemma_range_set_len` with a similar name
+    |
+405 -         BitmapView::lemma_range_set_finite(start as int, start + size);
+405 +         BitmapView::lemma_range_set_len(start as int, start + size);
+    |
+
+error: use of deprecated method `vstd::set::Set::<A>::finite`: Every Set is always finite, so this is always true.
+   --> src/libs/bitmap/src/lib.proof.rs:466:37
+    |
+466 |             loop_old_self@.set_bits.finite(),
+    |                                     ^^^^^^
+
+error: use of deprecated method `vstd::set::Set::<A>::finite`: Every Set is always finite, so this is always true.
+   --> src/libs/bitmap/src/lib.proof.rs:479:28
+    |
+479 |             self@.set_bits.finite(),
+    |                            ^^^^^^
+
+error: use of deprecated method `vstd::set::Set::<A>::finite`: Every Set is always finite, so this is always true.
+   --> src/libs/bitmap/src/lib.proof.rs:639:28
+    |
+639 |         &&& self@.set_bits.finite()
+    |                            ^^^^^^
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `bitmap` (lib) due to 7 previous errors

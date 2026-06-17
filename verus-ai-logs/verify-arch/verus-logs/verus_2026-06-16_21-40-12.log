@@ -1,0 +1,33 @@
+Timestamp: 2026-06-16_21-40-12
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+0 verified
+compilation/setup error (verus did not run)
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+error[E0308]: `if` and `else` have incompatible types
+  --> src/libs/arch/src/x86/mem/paging/frame/number.spec.rs:36:13
+   |
+33 | /         (if mem::MAX_ADDRESS % mem::FRAME_SIZE == mem::FRAME_SIZE - 1 {
+34 | |             mem::MAX_ADDRESS / mem::FRAME_SIZE
+   | |             ---------------------------------- expected because of this
+35 | |         } else {
+36 | |             mem::MAX_ADDRESS / mem::FRAME_SIZE - 1
+   | |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `usize`, found `int`
+37 | |         }) as nat
+   | |__________- `if` and `else` have incompatible types
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `arch` (lib) due to 1 previous error

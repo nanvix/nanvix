@@ -1,0 +1,32 @@
+Timestamp: 2026-06-16_21-41-13
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+47 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+error: precondition not satisfied
+   --> src/libs/arch/src/x86/mem/paging/pde.proof.rs:33:5
+    |
+ 33 |     lemma_mul_inequality(raw as int, m / s - 1, s);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: /home/ruize/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/vstd-0.0.0-2026-05-31-0205/arithmetic/mul.rs:166:9
+    |
+166 |         x <= y,
+    |         ------ failed precondition
+
+verification results:: 47 verified, 1 errors
+error: could not compile `arch` (lib) due to 1 previous error
