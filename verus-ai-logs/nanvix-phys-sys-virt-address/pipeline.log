@@ -280,3 +280,12 @@ Module: sys-virt-address
 [2026-06-18 01:10:34] ✅ polish: PASS (0/0)
 [2026-06-18 01:10:34] [GATE] Running build: make build
 [2026-06-18 01:10:34] [GATE] Running verify: make verify
+[2026-06-18 01:10:43] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: sys-virt-address
+  ✅ polish                    no-review                 2m55s
+  ──────────────────────────────────────────────────────────
+  Total: 3m03s
+============================================================
+[2026-06-18 01:10:43] [USAGE] Summary: 12 calls, 0 tokens, 1h03m42s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-virt-address/usage_summary.json
