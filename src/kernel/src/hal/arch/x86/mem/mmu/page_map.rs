@@ -182,6 +182,17 @@ impl PageMap {
             kernel_page_tables.push_back(entry.clone());
         }
 
+        // Propagate every present kernel PDE into the new address space. The loop above only
+        // installs the page tables tracked in `kernel_page_tables`, but the lazy identity mapper
+        // (`identity_map::init`) pre-allocates additional kernel page tables across the whole
+        // `[0, MEMORY_SIZE)` identity-map window. Those PDEs must be visible under the new
+        // process's CR3, otherwise kernel-mode accesses to identity-mapped kernel memory (e.g. a
+        // freshly allocated kernel stack whose frame lies in such a region) fault while the
+        // process is current. The shared page tables make later PTE installs visible to every
+        // synced address space. On x86_64 this is implicit (the whole kernel range hangs off a
+        // single shared top-level entry), so this step is x86-specific.
+        crate::mm::virt::identity_map::sync_kernel_pdes(pd_paddr)?;
+
         Ok(Self {
             pd_paddr,
             _hw_pages: hw_pages,
