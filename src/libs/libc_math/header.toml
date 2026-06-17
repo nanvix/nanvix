@@ -1,0 +1,227 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for math.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/math.h.
+
+file = "math.h"
+brief = "Mathematical functions."
+description = """
+Declares software floating-point math functions covering trigonometric,
+exponential, logarithmic, rounding, and classification operations.
+Implemented by the libc_math Rust crate."""
+includes = []
+guard = "_NANVIX_MATH_H"
+content_order = [
+    "raw:2",      # Real-floating types (float_t, double_t).
+    "macros",
+    "raw:0",
+    "raw:4",      # Error-handling macros (MATH_ERRNO, MATH_ERREXCEPT, math_errhandling).
+    "section:0",
+    "raw:1",
+    "raw:3",      # Comparison macros (isgreater, isless, ...).
+    "section:1",
+    "section:9",
+    "section:2",
+    "section:3",
+    "section:4",
+    "section:5",
+    "section:6",
+    "section:7",
+    "section:8",
+    "section:10",
+]
+
+[[macros]]
+name = "HUGE_VAL"
+value = "(__builtin_huge_val())"
+guard = "HUGE_VAL"
+
+[[macros]]
+name = "HUGE_VALF"
+value = "(__builtin_huge_valf())"
+guard = "HUGE_VALF"
+
+[[macros]]
+name = "HUGE_VALL"
+value = "(__builtin_huge_vall())"
+guard = "HUGE_VALL"
+
+[[macros]]
+name = "INFINITY"
+value = "(__builtin_inff())"
+guard = "INFINITY"
+
+[[macros]]
+name = "NAN"
+value = "(__builtin_nanf(\"\"))"
+guard = "NAN"
+
+[[raw_sections]]
+title = "Floating-Point Classification Constants"
+text = """
+#define FP_NAN 0
+#define FP_INFINITE 1
+#define FP_ZERO 2
+#define FP_SUBNORMAL 3
+#define FP_NORMAL 4
+
+/* Values returned by ilogb() for a zero or NaN argument. */
+#define FP_ILOGB0 (-2147483647 - 1)
+#define FP_ILOGBNAN 2147483647
+"""
+
+[[sections]]
+title = "Classification Functions (internal)"
+functions = [
+    "__fpclassifyf",
+    "__fpclassifyd",
+    "__isnanf",
+    "__isnand",
+    "__isinff",
+    "__isinfd",
+    "__signbitf",
+    "__signbitd",
+]
+
+# Classification macros are inserted as a raw section.
+[[raw_sections]]
+title = "Classification Macros"
+text = """
+#define fpclassify(x) (sizeof(x) == sizeof(float) ? __fpclassifyf(x) : __fpclassifyd(x))
+
+#define isnan(x) (sizeof(x) == sizeof(float) ? __isnanf(x) : __isnand(x))
+
+#define isinf(x) (sizeof(x) == sizeof(float) ? __isinff(x) : __isinfd(x))
+
+#define signbit(x) (sizeof(x) == sizeof(float) ? __signbitf(x) : __signbitd(x))
+
+#define isfinite(x) __builtin_isfinite(x)
+#define isnormal(x) __builtin_isnormal(x)
+"""
+
+[[sections]]
+title = "Trigonometric Functions"
+functions = ["sin", "cos", "tan", "sinf", "cosf", "tanf"]
+
+[[sections]]
+title = "Inverse Trigonometric Functions"
+functions = [
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "asinf",
+    "acosf",
+    "atanf",
+    "atan2f",
+]
+
+[[sections]]
+title = "Exponential and Logarithmic Functions"
+functions = [
+    "exp",
+    "exp2",
+    "log",
+    "log2",
+    "log10",
+    "pow",
+    "expm1",
+    "log1p",
+    "lrint",
+    "erf",
+    "erfc",
+    "lgamma",
+    "tgamma",
+    "gamma",
+    "nextafter",
+    "remainder",
+    "expf",
+    "exp2f",
+    "logf",
+    "log2f",
+    "log10f",
+    "powf",
+]
+
+[[sections]]
+title = "Square Root and Cube Root"
+functions = ["sqrt", "cbrt", "hypot", "sqrtf", "cbrtf", "hypotf"]
+
+[[sections]]
+title = "Rounding and Truncation"
+functions = [
+    "ceil",
+    "floor",
+    "round",
+    "trunc",
+    "ceilf",
+    "floorf",
+    "roundf",
+    "truncf",
+]
+
+[[sections]]
+title = "Absolute Value and Remainder"
+functions = ["fabs", "fmod", "fabsf", "fmodf"]
+
+[[sections]]
+title = "Floating-Point Manipulation"
+functions = [
+    "copysign",
+    "ldexp",
+    "scalbn",
+    "frexp",
+    "modf",
+    "copysignf",
+    "ldexpf",
+    "scalbnf",
+    "frexpf",
+    "modff",
+]
+
+[[sections]]
+title = "Min / Max"
+functions = ["fmin", "fmax", "fminf", "fmaxf"]
+
+[[sections]]
+title = "Hyperbolic Functions"
+functions = ["sinh", "cosh", "tanh", "asinh", "acosh", "atanh"]
+
+[[sections]]
+title = "Fused Multiply-Add"
+functions = ["fma", "fmaf"]
+
+# POSIX <math.h> shall define the real-floating types float_t and double_t.
+# On x86-64 (FLT_EVAL_METHOD == 0) these are float and double, respectively.
+[[raw_sections]]
+title = "Real-Floating Types"
+text = """
+typedef float float_t;
+typedef double double_t;
+"""
+
+# POSIX <math.h> relational macros. They compare their operands without raising
+# the invalid floating-point exception when an operand is NaN.
+[[raw_sections]]
+title = "Comparison Macros"
+text = """
+#define isgreater(x, y) __builtin_isgreater(x, y)
+#define isgreaterequal(x, y) __builtin_isgreaterequal(x, y)
+#define isless(x, y) __builtin_isless(x, y)
+#define islessequal(x, y) __builtin_islessequal(x, y)
+#define islessgreater(x, y) __builtin_islessgreater(x, y)
+#define isunordered(x, y) __builtin_isunordered(x, y)
+"""
+
+# POSIX <math.h> error-handling macros. The MATH_ERRNO and MATH_ERREXCEPT macros
+# must be defined, but this implementation reports neither errno-based domain and
+# range errors nor floating-point exceptions, so math_errhandling evaluates to 0.
+[[raw_sections]]
+title = "Error Handling"
+text = """
+#define MATH_ERRNO 1
+#define MATH_ERREXCEPT 2
+#define math_errhandling 0
+"""

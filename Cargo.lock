@@ -1682,6 +1682,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_math"
+version = "0.16.87"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_stdlib"
 version = "0.16.87"
 dependencies = [
