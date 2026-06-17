@@ -238,3 +238,7 @@ Module: arch-frame-number
 [2026-06-18 01:18:01] [PROVER] Running polish...
 [2026-06-18 01:18:01] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 01:21:16]   ↳ prover done in 3m15s (exit=0)
+[2026-06-18 01:21:16] [PHASE] polish: no-review (3m15s)
+[2026-06-18 01:21:16] ✅ polish: PASS (0/0)
+[2026-06-18 01:21:16] [GATE] Running build: make build
+[2026-06-18 01:21:16] [GATE] Running verify: make verify
