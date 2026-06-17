@@ -691,3 +691,86 @@ The proof file is clean. One stale comment remains in the header — it claims b
 Turn 37
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  Exit code : 0
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=2 admit=0 trusted=0 no_decreases=0 cfg_gate=0
+  status: CHEATING_DETECTED
+<she...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+Still 6 verified, 0 errors. Now let me confirm the normal (non-Verus) build still compiles, since the task requires "build passes". The spec/proof files are cfg-gated out of normal builds, but I'll verify.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cargo build -p bump-allocator 2>&1 | tail -15
+
+[THINKING] I've got 6 verified with no errors, which is good. Now I need to make sure the regular build passes too—the task requires both verus verification and a successful build. Since I only modified proof and spec files that are gated out during compilation, the standard cargo build should still work fine.
+[RESULT ✓] bash: Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling verus_syn v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#2769117b)
+   Compiling autocfg v1.5.0
+   Compiling verus_prettyplease v0.0.0-2026-05-31-0205 (https://github.com/verus-lang/verus?rev=2769117b6#...
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Build passes. Now let me write the polish report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-bump-allocator/polish/ 2>/dev/null && echo "dir exists" 
+
+[THINKING] The build is working, so now I'm creating the polish report checklist. Let me verify the output directory is set up properly, then I'll document what I've accomplished—specifically that there were no inline proof blocks to extract since the proof content is already organized into named lemmas.
+
+For the minimization section, I found 2 redundant assertions to remove and 1 redundant lemma hint, plus I cleaned up a stale comment in the header that incorrectly mentioned admit() placeholders.
+[RESULT ✓] bash: prover-claude-20260617-233041.jsonl
+prover-claude-20260617-233041.txt
+dir exists
+<shellId: 30 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && test -f verus-ai-logs/nanvix-phys-bump-allocator/polish/checklist.md && echo EXISTS |
+[RESULT ✓] bash: MISSING
+<shellId: 31 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/polish/checklist.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/polish/checklist.md with 2361 characters
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+Let me clean up temp files and do a final confirmation of state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -f /tmp/lib.proof.rs.bak /tmp/lib.spec.rs.bak; echo "=== final lib.rs untouched? =
+
+[THINKING] I'll clean up the temporary backup files and do a final verification to confirm everything is working correctly.
+[RESULT ✓] bash: === final lib.rs untouched? ===
+(empty above = lib.rs unchanged)
+=== final verify status (cached) ===
+adea0a008 [verus] verify PASS (cheating detected): bump-allocator::all (6 verified, 0 errors, external_body=2)
+<shellId: 32 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Polish complete. Summary:
+
+**Proof Extraction** — `check_proof_blocks.py` found **0 inline `proof {}` blocks** in `lib.rs`. The in-scope exec functions (`alloc`/`alloc_as`) are registered `external_body` and `align_up`/`as_mut_ptr` have no proof blocks; all proof logic already lives in named lemmas in `lib.proof.rs`. Nothing to extract.
+
+**Minimization** (verified after each change, bisecting failures):
+- Removed 2 redundant assertions: `assert(s == a * q)` and the `=~=` assert in `lemma_alloc_transition` (now empty body, proven via derived `ext_equal`).
+- Removed 1 redundant hint: `lemma_mul_nonnegative(i, s)`.
+- Cleaned a stale header comment falsely claiming bodies are `admit()` placeholders.
+- Confirmed the remaining nonlinear-arith hints are load-bearing (re-broke verification when dropped → restored).
+- Kept all `pub` spec fns (referenced) and the uncalled-but-distinct `lemma_geometry`/`lemma_exhausted_boundary` per minimization rules.
+
+**Result:** `make verify-bump-allocator` → **6 verified, 0 errors** (0 admits/assumes; the 2 `external_body` are registered in `tcb-allowed.md`). `cargo build -p bump-allocator` succeeds. `lib.rs` exec code untouched. Report written to `verus-ai-logs/nanvix-phys-bump-allocator/polish/checklist.md`.
+
+
+=== Session End ===
+Session: dda88788-9dd1-4400-b8ee-7628847e768f
+Duration: 475.1s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/polish/prover-claude-20260617-233041.jsonl
