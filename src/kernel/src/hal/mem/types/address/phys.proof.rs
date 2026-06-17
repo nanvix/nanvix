@@ -81,7 +81,6 @@ pub proof fn lemma_frame_index(
         lemma_pow2_strictly_increases(12, shift as nat);
         assert(false);
     }
-    assert(shift == 12);
 
     // `raw_addr >> shift == raw_addr / 2^shift == raw_addr / spec_page_size()`.
     lemma_usize_shr_is_div(raw_addr, shift);
@@ -113,7 +112,6 @@ pub proof fn lemma_frame_index(
     }
     assert(m % s == s - 1);
     assert(spec_max_frame_number() == m / s);
-    assert(raw_addr as int <= m);
     lemma_div_is_ordered(raw_addr as int, m, s);
 }
 

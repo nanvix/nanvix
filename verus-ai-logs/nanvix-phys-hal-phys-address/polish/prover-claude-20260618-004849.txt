@@ -352,3 +352,62 @@ Actually, I'm also considering removing line 76's assertion about `pow2(shift as
 Turn 13
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | sed -n '/
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Global: assume=0 external_body=23 admit=4 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Funct...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Batch 2 succeeded (5 assertions removed total). Batch 3: remove `assert(shift == 12)` (the contradiction blocks already rule out other cases) and `assert(raw_addr as int <= m)` (automatic since `raw_addr` is `usize` and `m == usize::MAX`).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "assert(shift == 12);\|assert(raw_addr as int <= m);" src/kernel/src/hal/mem/
+
+[THINKING] Batch 2 is done with 2 more assertions removed, bringing the total to 5. Now I'm looking at a third batch of candidates in lemma_frame_index, starting with line 85's shift assertion. The contradiction blocks should rule out shift being less than or greater than 12, leaving shift equal to 12 as the only possibility—though I need to verify how Verus handles the assert(false) branches and whether it properly infers the remaining constraint.
+
+I'm also checking whether shift==12 is actually needed downstream. The lemma_usize_shr_is_div call requires shift < 64, which we already have, and the frame number calculation depends on pow2(shift) equaling 4096, which follows from the spec_page_size requirement. So the explicit assertion might be redundant, but it could be load-bearing for the proof connection—risky to remove without testing.
+
+For the other candidates: line 106's assertion about usize::BITS is needed for exhaustiveness, lines 116-117 are tied to the spec_max_frame_number bound, and line 118 is a precondition check. The ensures clause for frame_number requires it to equal raw_addr divided by spec_page_size, which I verified works without the explicit assert I removed earlier. Since pow2(shift) equals 4096 through the requires and line 75, the shift==12 assertion shouldn't be necessary for that derivation. Lines 116 and 117 are essential though—they establish the modulo condition needed to select the correct branch for spec_max_frame_number. So I'll test removing just lines 85 and 118 to see if they're actually needed.
+[RESULT ✓] bash: 84:    assert(shift == 12);
+116:    assert(raw_addr as int <= m);
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[RESULT ✓] view: 76.     if shift < 12 {
+77.         lemma_pow2_strictly_increases(shift as nat, 12);
+78.         assert(false);
+79.     }
+80.     if shift > 12 {
+81.         lemma_pow2_strictly_increases(12, shift as nat);
+82.         assert(false);
+83.     }
+84.     assert(shift == 12);
+85. 
+86.     // `raw_addr >...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] I'm working through whether the assertion on shift being 12 is actually necessary. The lemma for right-shifting requires shift < 64, which is satisfied, but I need to check if the assertion is needed to connect pow2(shift) to the concrete value 4096 at the bridge point. Looking at how frame_number relates to raw_addr divided by the spec page size, it seems the assertion might not be strictly required since we're working with pow2(shift) symbolically.
+
+Let me test by removing both assertions and see if the proof still goes through.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | sed -n '/
