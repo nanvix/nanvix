@@ -1,11 +1,11 @@
 {
   "module": "nanvix-phys-sys-address-mod",
-  "generated_at": "2026-06-15T12:06:16.896247",
-  "total_calls": 9,
-  "calls_with_usage": 9,
+  "generated_at": "2026-06-18T01:18:00.923736",
+  "total_calls": 10,
+  "calls_with_usage": 10,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 2894.2,
+  "total_duration_s": 3040.8,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -45,14 +45,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 377.9
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 146.6
     }
   },
   "per_role": {
     "prover": {
-      "calls": 5,
+      "calls": 6,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 1834.8999999999999
+      "duration_s": 1981.4999999999998
     },
     "dialogue-reviewer-t1": {
       "calls": 3,
@@ -271,6 +277,28 @@
           "filesModified": [
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.claude.md",
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/final-review/final_review.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-18T01:17:52.634172",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "d56b728d-5916-4dd5-9e89-f007975b7087",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/polish/prover-claude-20260618-011526.txt",
+      "duration_s": 146.6,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 137832,
+        "sessionDurationMs": 145244,
+        "codeChanges": {
+          "linesAdded": 42,
+          "linesRemoved": 0,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-sys-address-mod/polish/checklist.md"
           ]
         }
       }
