@@ -197,6 +197,7 @@ pub static ARGV: AtomicPtr<*const u8> = AtomicPtr::new(::core::ptr::null_mut());
 // installs makes IRET "return" to `_do_start` with `argp` in EDX and `envp`
 // in ECX. The stub aligns the stack to the i386 SysV ABI requirement
 // (ESP = 0 mod 16 before the CALL instruction) and dispatches to `_start`.
+#[cfg(target_arch = "x86")]
 core::arch::global_asm!(
     r#"
     .extern _start
@@ -239,6 +240,12 @@ core::arch::global_asm!(
     1:  jmp 1b
     "#
 );
+
+// x86_64 kernel-entry stub. The kernel passes `argp` in RDI and `envp` in RSI
+// (SysV ABI first and second arguments); the stub aligns the stack and calls
+// `_start`. Lives in a dedicated module to keep the 64-bit assembly isolated.
+#[cfg(target_arch = "x86_64")]
+mod crt0_x86_64;
 
 //==================================================================================================
 // Rust Entry Point

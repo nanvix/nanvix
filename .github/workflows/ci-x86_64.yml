@@ -1,0 +1,231 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Nanvix CI/CD (x86_64)"
+
+on:
+  workflow_dispatch:
+
+  pull_request:
+    types:
+      - 'opened'
+      - 'synchronize'
+      - 'reopened'
+      - 'ready_for_review'
+    branches:
+      - 'dev'
+
+  push:
+    branches:
+      - 'dev'
+      - 'feature-kernel-x64'
+
+# Cancel previous running actions for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
+
+env:
+  TARGET_ARCH: "x86_64"
+
+jobs:
+
+  # ==========================================================================================
+  # Stage 1: Lint (GitHub-Hosted Runners)
+  # ==========================================================================================
+
+  # Lint is config-dependent (features differ per deployment-type) but does NOT
+  # depend on build-type (debug vs release). Run lint once per unique
+  # deployment-type. Only microvm is supported on x86_64.
+  lint:
+    name: "Lint (x86_64, microvm, ${{ matrix.deployment-type }})"
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        deployment-type: [single-process, multi-process]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    if: |
+      github.event_name == 'workflow_dispatch' || (
+        github.event_name != 'push' ||
+        github.event.head_commit == null ||
+        !startsWith(github.event.head_commit.message, 'Merge ') ||
+        github.ref != 'refs/heads/dev'
+      ) && (
+        github.event_name != 'pull_request' ||
+        !github.event.pull_request.draft
+      )
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: "Setup"
+      uses: ./.github/actions/native-setup
+      with:
+        components: "clippy"
+
+    - name: "Lint"
+      shell: bash
+      run: |
+        ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- lint-check \
+          MACHINE=microvm \
+          TARGET=x86_64 \
+          LOG_LEVEL=trace \
+          VERBOSE=yes \
+          BUILD_OPT=no \
+          "DEPLOYMENT_MODE=${{ matrix.deployment-type }}"
+
+  # ==========================================================================================
+  # Stage 2: Build & Unit Test (GitHub-Hosted Runners)
+  # ==========================================================================================
+
+  # Each matrix entry builds on a GitHub-hosted runner using Docker. Integration
+  # tests run in a separate ci-test job that depends on completion of the entire
+  # ci-build matrix.
+  ci-build:
+    name: "Build (x86_64, ${{ matrix.build-type }}, microvm, ${{ matrix.deployment-type }})"
+    needs: [lint]
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: [debug, release]
+        deployment-type: [single-process, multi-process]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    if: |
+      github.event_name == 'workflow_dispatch' || (
+        github.event_name != 'push' ||
+        github.event.head_commit == null ||
+        !startsWith(github.event.head_commit.message, 'Merge ') ||
+        github.ref != 'refs/heads/dev'
+      ) && (
+        github.event_name != 'pull_request' ||
+        !github.event.pull_request.draft
+      )
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: "Setup"
+      uses: ./.github/actions/native-setup
+
+    - name: "Setup sccache"
+      uses: Mozilla-Actions/sccache-action@v0.0.9
+      with:
+        version: "v0.10.0"
+
+    - name: "Build & Unit Test"
+      shell: bash
+      env:
+        LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
+        RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
+        BUILD_TARGETS: ${{ matrix.build-type == 'release' && 'all run-unit-tests release' || 'all run-unit-tests' }}
+      run: |
+        ./z build --toolchain-dir "${RUNNER_TEMP}/toolchain" -- ${BUILD_TARGETS} \
+          MACHINE=microvm \
+          TARGET=x86_64 \
+          "LOG_LEVEL=${LOG_LEVEL}" \
+          VERBOSE=yes \
+          BUILD_OPT=yes \
+          ${RELEASE_FLAG} \
+          "DEPLOYMENT_MODE=${{ matrix.deployment-type }}"
+
+    - name: "Upload Build Artifacts"
+      uses: actions/upload-artifact@v7
+      with:
+        name: ci-x64-build-${{ matrix.build-type }}-microvm-${{ matrix.deployment-type }}
+        overwrite: true
+        retention-days: 1
+        path: |
+          bin/
+          images/
+          lib/
+          sysroot-${{ matrix.build-type }}/
+
+    - name: "Upload logs in case of failures"
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: nanvix-x64-ci-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-microvm-${{ matrix.deployment-type }}
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err
+
+  # ==========================================================================================
+  # Stage 3: Integration Test (GitHub-Hosted Runners with KVM)
+  # ==========================================================================================
+
+  ci-test:
+    name: "Test (x86_64, ${{ matrix.build-type }}, microvm, ${{ matrix.deployment-type }})"
+    needs: [ci-build]
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: [debug, release]
+        deployment-type: [single-process, multi-process]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: "Setup KVM"
+      uses: ./.github/actions/setup-kvm
+
+    - name: "Download Build Artifacts"
+      uses: actions/download-artifact@v7
+      with:
+        name: ci-x64-build-${{ matrix.build-type }}-microvm-${{ matrix.deployment-type }}
+        path: .
+
+    - name: "Make binaries executable"
+      shell: bash
+      run: chmod +x bin/*.elf 2>/dev/null || true
+
+    - name: "Recreate sysroot symlink"
+      shell: bash
+      run: |
+        rm -f sysroot
+        ln -sfn "sysroot-${{ matrix.build-type }}" sysroot
+
+    - name: "Integration Test"
+      shell: bash
+      env:
+        RUST_LOG: info
+      run: |
+        set -Eeuo pipefail
+
+        case "${{ matrix.deployment-type }}" in
+          single-process) TEST_CONFIG="test/test-single_process-x86_64.toml" ;;
+          multi-process)  TEST_CONFIG="test/test-multi_process-x86_64.toml" ;;
+          *)
+            echo "::error::Unknown deployment type: ${{ matrix.deployment-type }}"
+            exit 1
+            ;;
+        esac
+
+        echo "Running: ./bin/nanvix-test.elf ${TEST_CONFIG}"
+        ./bin/nanvix-test.elf "${TEST_CONFIG}"
+
+    - name: "Upload logs in case of failures"
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: nanvix-x64-integration-logs-${{ github.event.pull_request.number || github.run_number }}-${{ matrix.build-type }}-microvm-${{ matrix.deployment-type }}
+        overwrite: 'true'
+        path: |
+          logs/
+          **/*.log
+          **/*.out
+          **/*.err

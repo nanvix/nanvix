@@ -94,9 +94,6 @@ global_asm!(
     ".global __context_switch",
     ".global __leave_kernel",
     ".global __leave_kernel_to_user_mode",
-    ".global __phys_memcpy",
-    ".global __phys_memcpy32",
-    ".global __phys_memset32",
 
     // =================================================================
     // Macros
@@ -441,65 +438,6 @@ global_asm!(
 
     "__leave_kernel:",
     "    iretq",
-
-    // =================================================================
-    // __phys_memcpy()
-    // =================================================================
-    //
-    // Physical memory copy (byte at a time, identity mapped).
-    //
-    // void __phys_memcpy(void *dest, const void *src, size_t size);
-    // RDI = dest, RSI = src, RDX = size
-    //
-    "__phys_memcpy:",
-    "    movq %rdx, %rcx",
-    "    test %rcx, %rcx",
-    "    jz __phys_memcpy.done",
-    "    cld",
-    "    rep movsb",
-    "__phys_memcpy.done:",
-    "    ret",
-
-    // =================================================================
-    // __phys_memcpy32()
-    // =================================================================
-    //
-    // Physical memory copy (32-bit word at a time, identity mapped).
-    //
-    "__phys_memcpy32:",
-    "    movq %rdx, %rcx",
-    "    shrq $2, %rcx",
-    "    test %rcx, %rcx",
-    "    jz __phys_memcpy32.done",
-    "    cld",
-    "    rep movsl",
-    "__phys_memcpy32.done:",
-    "    ret",
-
-    // =================================================================
-    // __phys_memset32()
-    // =================================================================
-    //
-    // Fills a physical memory region with a given value using 32-bit
-    // stores. Region must be identity mapped. Size must be a multiple
-    // of 4 bytes.
-    //
-    // void __phys_memset32(void *dest, int value, size_t size);
-    // RDI = dest, RSI = value, RDX = size (in bytes)
-    //
-    "__phys_memset32:",
-    // Replicate byte value across all 4 bytes of %eax.
-    "    movzbl %sil, %eax",
-    "    imull $0x01010101, %eax, %eax",
-    // Convert size in bytes to dword count.
-    "    movq %rdx, %rcx",
-    "    shrq $2, %rcx",
-    "    test %rcx, %rcx",
-    "    jz __phys_memset32.done",
-    "    cld",
-    "    rep stosl",
-    "__phys_memset32.done:",
-    "    ret",
 
     // =================================================================
     // Const Operands

@@ -12,7 +12,6 @@
 #![allow(internal_features)]
 #![feature(allocator_api)] // kheap uses this.
 #![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
-#![feature(linked_list_cursors)] // vmem uses this.
 #![feature(linked_list_remove)] // vmem uses this.
 #![feature(linked_list_retain)] // vmem uses this.
 #![feature(never_type)] // exit() uses this.
@@ -45,7 +44,10 @@ use crate::{
     kimage::KernelImage,
     kmod::KernelModule,
     mm::{
-        elf::Elf32Fhdr,
+        elf::{
+            detect_elf_class,
+            ElfClass,
+        },
         VirtMemoryManager,
         Vmem,
     },
@@ -283,7 +285,13 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &mut LinkedList<KernelModule
 
         // SAFETY: `kmod.start()` points to a valid, page-aligned ELF image loaded by the
         // bootloader that remains in memory for the lifetime of the kernel.
-        let elf: &Elf32Fhdr = unsafe { Elf32Fhdr::from_address(kmod.start().into_raw_value()) };
+        let elf_class: ElfClass = match detect_elf_class(kmod.start().into_raw_value()) {
+            Ok(ec) => ec,
+            Err(err) => {
+                warn!("failed to detect ELF class: {:?}", err);
+                continue;
+            },
+        };
         let pid: ProcessIdentifier = {
             // Split command line into arguments and environment variables in place.
             // A single `;` separates args from env; `\;` is a literal `;`.
@@ -294,7 +302,8 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &mut LinkedList<KernelModule
             // Capture compacted length before create_process borrows args/env.
             let compacted_len: usize = args.len() + env.len();
 
-            let result: Result<ProcessIdentifier, Error> = pm.create_process(mm, elf, args, env);
+            let result: Result<ProcessIdentifier, Error> =
+                pm.create_process(mm, elf_class, args, env);
 
             // Update the tracked length so that a subsequent cmdline() call returns the
             // compacted content without stale trailing bytes.

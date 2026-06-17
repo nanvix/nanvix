@@ -12,9 +12,26 @@ ENTRY(_do_start)
 PAGE_SIZE = 0x1000;
 
 /*
+ * Platform base address.
+ *
+ * Physical address at which the VMM loads the guest binary.
+ */
+PLATFORM_BASE_ADDR = @PLATFORM_BASE_ADDR@;
+
+/*
  * Boot Address
  */
-BOOT_ADDR = 0x00100000;
+BOOT_ADDR = 0x00100000 + PLATFORM_BASE_ADDR;
+
+/*
+ * Trampoline Address
+ *
+ * Low physical address (16-bit addressable) where the real-mode BSP entry
+ * (_do_start) lives. The VMM's reset64 starts the guest in real mode at this
+ * address; the trampoline transitions real -> protected -> long mode and jumps
+ * to _do_start64 in .bootstrap.
+ */
+TRAMPOLINE_ADDR = @TRAMPOLINE_ADDR@;
 
 /*
  * Machine Reserved Space
@@ -24,14 +41,31 @@ BOOT_ADDR = 0x00100000;
  */
 MACHINE_RESERVED = @MACHINE_RESERVED@;
 
+ASSERT(TRAMPOLINE_ADDR >= PLATFORM_BASE_ADDR, "PLATFORM_BASE_ADDR exceeds TRAMPOLINE_ADDR")
+
 SECTIONS
 {
+	/* Start at the platform/VMM-defined load base. */
+	. = PLATFORM_BASE_ADDR;
+
+	/* Pad with zeroes up to the trampoline address. */
+	.zero : {
+		. = ABSOLUTE(TRAMPOLINE_ADDR);
+	} = 0
+
+	/* Trampoline section (16-bit real-mode BSP entry, placed low so 16-bit
+	 * addressing reaches the trampoline GDT pointer). */
+	.trampoline :
+	{
+		KEEP(*(.trampoline))
+	}
+
 	. = BOOT_ADDR;
 
 	__KERNEL_START = .;
 	__TEXT_START = .;
 
-	/* Bootstrap section. */
+	/* Bootstrap section (32-bit -> 64-bit transition and 64-bit BSP entry). */
 	.bootstrap :
 	{
 		__BOOTSTRAP_START = .;

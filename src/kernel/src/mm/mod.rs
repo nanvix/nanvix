@@ -14,7 +14,7 @@
 pub mod elf;
 mod kernel_vas;
 pub(crate) mod phys;
-mod virt;
+pub(crate) mod virt;
 
 //==================================================================================================
 // Exports

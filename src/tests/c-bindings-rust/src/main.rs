@@ -71,7 +71,10 @@ use core::mem::size_of;
 const _: () = assert!(size_of::<c_char>() == 1);
 const _: () = assert!(size_of::<c_short>() == 2);
 const _: () = assert!(size_of::<c_int>() == 4);
+#[cfg(target_arch = "x86")]
 const _: () = assert!(size_of::<c_long>() == 4);
+#[cfg(target_arch = "x86_64")]
+const _: () = assert!(size_of::<c_long>() == 8);
 const _: () = assert!(size_of::<c_longlong>() == 8);
 const _: () = assert!(size_of::<f32>() == 4);
 const _: () = assert!(size_of::<f64>() == 8);
@@ -83,7 +86,10 @@ const _: () = assert!(size_of::<f64>() == 8);
 const _: () = assert!(size_of::<c_uchar>() == 1);
 const _: () = assert!(size_of::<c_ushort>() == 2);
 const _: () = assert!(size_of::<c_uint>() == 4);
+#[cfg(target_arch = "x86")]
 const _: () = assert!(size_of::<c_ulong>() == 4);
+#[cfg(target_arch = "x86_64")]
+const _: () = assert!(size_of::<c_ulong>() == 8);
 const _: () = assert!(size_of::<c_ulonglong>() == 8);
 
 //==================================================================================================

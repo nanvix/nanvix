@@ -24,18 +24,29 @@ const CLEAR_BSS: u32 = if cfg!(feature = "microvm") { 0 } else { 1 };
 // Bootstrap Section — BSP Entry Point
 //==================================================================================================
 
-// _do_start (entered directly in 64-bit long mode from the VMM).
+// _do_start64 (entered from the trampoline after the 32-bit → 64-bit transition).
 global_asm!(
     r#".section .bootstrap,"ax",@progbits"#,
 
+    ".code64",
     ".align 8",
-    ".globl _do_start",
-    "_do_start:",
+    ".globl _do_start64",
+    "_do_start64:",
 
-    // RAX and RBX registers store boot information. Save them before
-    // they are overwritten.
-    "    movq %rax, %r12",
-    "    movq %rbx, %r13",
+    // Reload data segment registers with the 64-bit GDT data selector (0x10).
+    "    movw  $0x10, %ax",
+    "    movw  %ax, %ds",
+    "    movw  %ax, %es",
+    "    movw  $0x00, %ax",
+    "    movw  %ax, %fs",
+    "    movw  %ax, %gs",
+    "    movw  $0x10, %ax",
+    "    movw  %ax, %ss",
+
+    // Boot information was saved to ESI (=RAX) and EDI (=RBX) by the 32-bit
+    // trampoline code. Move them to callee-saved R12/R13 before BSS is cleared.
+    "    movq %rsi, %r12",
+    "    movq %rdi, %r13",
 
     // Fill BSS section with zeros (skipped on microvm backends; see CLEAR_BSS).
     ".if {CLEAR_BSS}",

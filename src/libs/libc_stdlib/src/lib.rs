@@ -29,8 +29,9 @@
     not(target_pointer_width = "32"),
     forbid(clippy::cast_possible_truncation)
 )]
-// Features
-#![feature(stmt_expr_attributes)] // Used in `malloc_usable_size()`.
+// The 32-bit truncation cast in `malloc_usable_size` carries an expression-level
+// `#[allow]`, which needs this feature; on 64-bit that branch is cfg'd out.
+#![cfg_attr(target_pointer_width = "32", feature(stmt_expr_attributes))]
 
 //==================================================================================================
 // Modules

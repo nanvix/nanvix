@@ -527,7 +527,10 @@ impl From<i16> for SysConfigValue {
 
 impl From<i32> for SysConfigValue {
     fn from(value: i32) -> Self {
-        Self { value }
+        Self {
+            #[allow(clippy::useless_conversion)]
+            value: value.into(),
+        }
     }
 }
 
@@ -559,6 +562,9 @@ impl From<u16> for SysConfigValue {
     }
 }
 
+// On x86_64 c_long is i64, making u32→c_long infallible;
+// on x86 c_long is i32, so the conversion IS fallible.
+#[allow(clippy::unnecessary_fallible_conversions)]
 impl TryFrom<u32> for SysConfigValue {
     type Error = Error;
 

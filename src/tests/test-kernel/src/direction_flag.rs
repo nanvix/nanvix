@@ -79,23 +79,42 @@ fn clear_df() {
     }
 }
 
-/// Reads the current value of the direction flag from EFLAGS.
+/// Reads the current value of the direction flag from EFLAGS/RFLAGS.
 ///
 /// Returns `true` if DF=1 (backwards), `false` if DF=0 (forwards).
 #[inline(never)]
 fn read_df() -> bool {
-    let eflags: u32;
-    // SAFETY: Reading EFLAGS via pushfd/pop is safe in user mode.
-    unsafe {
-        core::arch::asm!(
-            "pushfd",
-            "pop {out:e}",
-            out = out(reg) eflags,
-            options(att_syntax),
-        );
-    }
     const DF_BIT: u32 = 1 << 10;
-    (eflags & DF_BIT) != 0
+
+    #[cfg(target_pointer_width = "32")]
+    {
+        let eflags: u32;
+        // SAFETY: Reading EFLAGS via pushfd/pop is safe in user mode.
+        unsafe {
+            core::arch::asm!(
+                "pushfd",
+                "pop {out:e}",
+                out = out(reg) eflags,
+                options(att_syntax),
+            );
+        }
+        (eflags & DF_BIT) != 0
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    {
+        let rflags: u64;
+        // SAFETY: Reading RFLAGS via pushfq/pop is safe in user mode.
+        unsafe {
+            core::arch::asm!(
+                "pushfq",
+                "pop {out:r}",
+                out = out(reg) rflags,
+                options(att_syntax),
+            );
+        }
+        (rflags as u32 & DF_BIT) != 0
+    }
 }
 
 //==================================================================================================

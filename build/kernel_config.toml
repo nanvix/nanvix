@@ -35,7 +35,7 @@ kernel_watermark = 64
 # - Must be a multiple of the page size.
 # - Must be at least two pages (one guard page + one usable page).
 # - Must not exceed the size of a page table.
-kstack_size = 65536
+kstack_size = 131072
 
 # Kernel stack guard watermark pattern (repeated 32-bit word).
 # The bottom page of each kernel stack is filled with this pattern at boot. If a stack overflow

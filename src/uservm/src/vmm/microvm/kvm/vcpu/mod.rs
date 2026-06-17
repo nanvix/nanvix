@@ -8,6 +8,7 @@
 mod exit;
 mod fpu;
 mod msr;
+mod reset64;
 
 //==================================================================================================
 // Exports
@@ -31,6 +32,7 @@ use crate::vmm::kvm::{
             MsrsState,
         },
     },
+    vmem::VirtualMemory,
 };
 use ::anyhow::Result;
 use ::arch::{
@@ -287,9 +289,30 @@ impl VirtualProcessor {
     ///
     /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
     ///
-    pub fn reset(&mut self, rip: u64, rax: u64, rbx: u64) -> Result<()> {
-        trace!("reset(): rip={rip:#010x}, rax={rax:#010x}, rbx={rbx:#010x}");
+    pub fn reset(
+        &mut self,
+        rip: u64,
+        rax: u64,
+        rbx: u64,
+        is_64bit: bool,
+        vmem: &mut VirtualMemory,
+    ) -> Result<()> {
+        trace!("reset(): rip={rip:#010x}, rax={rax:#010x}, rbx={rbx:#010x}, is_64bit={is_64bit}");
 
+        if is_64bit {
+            self.reset_64bit(rip, rax, rbx, vmem)?;
+        } else {
+            self.reset_32bit(rip, rax, rbx)?;
+        }
+
+        // Processor is now online.
+        self.online = true;
+
+        Ok(())
+    }
+
+    /// Resets the virtual processor for a 32-bit guest.
+    fn reset_32bit(&mut self, rip: u64, rax: u64, rbx: u64) -> Result<()> {
         // Reset system registers.
         let mut vcpu_sregs: kvm_sregs = self.fd.get_sregs()?;
         vcpu_sregs.cs.base = 0;
@@ -303,9 +326,6 @@ impl VirtualProcessor {
         vcpu_regs.rbx = rbx;
         vcpu_regs.rflags = RFLAGS_INTERRUPT_ENABLE;
         self.fd.set_regs(&vcpu_regs)?;
-
-        // Processor is now online.
-        self.online = true;
 
         Ok(())
     }

@@ -65,7 +65,11 @@ pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
 ///
 /// Log2 [`PGTAB_SIZE`].
 ///
+#[cfg(target_arch = "x86")]
 pub const PGTAB_SHIFT: usize = 22;
+/// Log2 [`PGTAB_SIZE`].
+#[cfg(target_arch = "x86_64")]
+pub const PGTAB_SHIFT: usize = 21;
 
 ///
 /// # Description
@@ -121,7 +125,11 @@ pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
 ///
 /// Alignment for a page table.
 ///
+#[cfg(target_arch = "x86")]
 pub const PGTAB_ALIGNMENT: Alignment = Alignment::Align4194304;
+/// Alignment for a page table.
+#[cfg(target_arch = "x86_64")]
+pub const PGTAB_ALIGNMENT: Alignment = Alignment::Align2097152;
 
 ///
 /// # Description

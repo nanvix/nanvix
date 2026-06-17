@@ -6,7 +6,11 @@
 //==================================================================================================
 
 pub mod pvclock;
+// The 16/32-bit boot entry is x86-only; x86_64 boots directly in long mode via the
+// arch boot path (hal/arch/x86_64/asm/start.rs) set up by the VMM's reset64.
+#[cfg(target_arch = "x86")]
 mod start;
+#[cfg(target_arch = "x86")]
 mod start16;
 
 //==================================================================================================
@@ -376,6 +380,8 @@ pub fn signal_startup_complete() {
 ///
 /// A pointer to the top of the boot kernel stack.
 ///
+// Used by x86 CPU init today; consumed by x86_64 GDT/TSS bring-up (Phase 5).
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
 pub fn get_kstack_top() -> *const u8 {
     unsafe extern "C" {
         static kstack: u8;
@@ -431,6 +437,7 @@ pub fn gva_to_gpa(gva: usize) -> usize {
 /// The physical address corresponding to the given virtual address.
 ///
 #[inline(always)]
+#[allow(dead_code)] // identity helper; callers re-wired during x86_64 bring-up
 pub fn virt_to_phys(vaddr: usize) -> usize {
     vaddr
 }
@@ -470,6 +477,7 @@ pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
 /// `true` if the entire region lies within physical memory, `false` otherwise.
 ///
 #[inline(always)]
+#[allow(dead_code)] // validation helper; not on the current boot path
 pub fn is_valid_physical_region(start: usize, size: usize) -> bool {
     // Reject zero-length regions.
     if size == 0 {

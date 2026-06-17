@@ -112,6 +112,22 @@ impl From<ExitStatus> for u32 {
     }
 }
 
+#[cfg(target_pointer_width = "64")]
+#[allow(clippy::as_conversions)]
+impl From<ExitStatus> for usize {
+    fn from(code: ExitStatus) -> Self {
+        code.0 as usize
+    }
+}
+
+#[cfg(target_pointer_width = "64")]
+#[allow(clippy::as_conversions)]
+impl From<ExitStatus> for u32 {
+    fn from(code: ExitStatus) -> Self {
+        code.0
+    }
+}
+
 impl From<ErrorCode> for ExitStatus {
     fn from(error: ErrorCode) -> Self {
         Self(error.into())

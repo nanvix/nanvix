@@ -286,6 +286,7 @@ pub fn __kcall_terminate(pid: ProcessIdentifier) -> Result<(), Error> {
 // Create Thread
 //==================================================================================================
 
+#[cfg(target_arch = "x86")]
 ::core::arch::global_asm!(
     r#"
     .global _do_start_thread
@@ -352,6 +353,10 @@ pub fn __kcall_terminate(pid: ProcessIdentifier) -> Result<(), Error> {
     1: jmp 1b
     "#
 );
+
+#[cfg(target_arch = "x86_64")]
+#[path = "pm_x86_64.rs"]
+mod pm_x86_64_asm;
 
 ///
 /// # Description

@@ -175,7 +175,7 @@ const SPARSE_PAGE_SIZE: usize = ::arch::mem::PAGE_SIZE;
 const SPARSE_MEMORY_SIZE_FIELD: usize = mem::size_of::<u64>();
 
 /// Byte size of a page-index entry (`u32`) in the sparse snapshot format.
-const SPARSE_PAGE_INDEX_SIZE: usize = ::arch::mem::paging::PageTableEntry::SIZE;
+const SPARSE_PAGE_INDEX_SIZE: usize = mem::size_of::<u32>();
 
 /// WHP GPA mapping flags: Read | Write | Execute.
 const GPA_RWX: WHV_MAP_GPA_RANGE_FLAGS = WHV_MAP_GPA_RANGE_FLAGS(

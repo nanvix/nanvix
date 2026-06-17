@@ -1476,7 +1476,6 @@ jobs:
         id: release-archive
         uses: ./.github/actions/release-package
         with:
-          target-arch: "${{ matrix.target-arch }}"
           machine-type: "${{ matrix.machine-type }}"
           deployment-type: "${{ matrix.deployment-type }}"
           memory-size: "${{ matrix.memory-size }}"
@@ -1542,7 +1541,7 @@ jobs:
         shell: bash
         run: |
           commit_id="${GITHUB_SHA}"
-          archive_name="nanvix-windows-${{ matrix.target-arch }}-${{ matrix.machine-type }}-standalone-release-${{ matrix.memory-size }}mb-${commit_id}.zip"
+          archive_name="nanvix-windows-${{ matrix.machine-type }}-standalone-release-${{ matrix.memory-size }}mb-${commit_id}.zip"
 
           # Create the zip archive from the downloaded Windows binaries.
           cd windows-bin

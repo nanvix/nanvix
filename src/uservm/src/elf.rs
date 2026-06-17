@@ -14,6 +14,9 @@
 use ::anyhow::Result;
 use ::core::ptr;
 use ::elf::elf32::{
+    EI_NIDENT,
+    ELFCLASS32,
+    ELFCLASS64,
     EM_386,
     ET_EXEC,
     Elf32Fhdr,
@@ -25,6 +28,9 @@ use ::log::{
     trace,
 };
 use ::std::mem;
+
+#[path = "elf64.rs"]
+mod elf64;
 
 ///
 /// # Description
@@ -90,6 +96,26 @@ impl MemoryFootprint {
 pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
     trace!("memory_footprint(): source_len={}", source.len());
 
+    // Need at least EI_NIDENT bytes to determine ELF class.
+    if source.len() < EI_NIDENT {
+        let reason: &str = "buffer too small for ELF identification";
+        error!("memory_footprint(): {reason} (len={})", source.len());
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Dispatch based on ELF class.
+    match source[4] {
+        ELFCLASS32 => memory_footprint_32(source),
+        ELFCLASS64 => elf64::memory_footprint_64(source),
+        _ => {
+            let reason: &str = "invalid elf class";
+            error!("memory_footprint(): {reason} (class={})", source[4]);
+            Err(anyhow::anyhow!(reason))
+        },
+    }
+}
+
+fn memory_footprint_32(source: &[u8]) -> Result<MemoryFootprint> {
     let source_len: usize = source.len();
     let fh_size: usize = mem::size_of::<Elf32Fhdr>();
 
@@ -106,7 +132,6 @@ pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
 
     // Validate ELF header.
     if let Err(reason) = ehdr.validate() {
-        error!("memory_footprint(): {reason}");
         return Err(anyhow::anyhow!(reason));
     }
 
@@ -256,6 +281,26 @@ pub unsafe fn load(
         destination, source
     );
 
+    // Read the ELF class byte to dispatch.
+    let elf_class: u8 = *source.add(4);
+
+    match elf_class {
+        ELFCLASS32 => load_32(destination, source, max_offset),
+        ELFCLASS64 => elf64::load_64(destination, source, max_offset),
+        _ => {
+            let reason: String = "invalid elf class".to_string();
+            error!("load(): {reason} (class={elf_class})");
+            Err(anyhow::anyhow!(reason))
+        },
+    }
+}
+
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn load_32(
+    destination: *mut std::ffi::c_void,
+    source: *const u8,
+    max_offset: usize,
+) -> Result<(usize, usize, usize)> {
     let mut first_address: usize = usize::MAX;
     let mut last_address: usize = 0;
 
@@ -267,7 +312,6 @@ pub unsafe fn load(
 
     // Validate ELF header.
     if let Err(reason) = ehdr.validate() {
-        error!("load(): {reason}");
         return Err(anyhow::anyhow!(reason));
     }
 

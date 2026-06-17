@@ -38,7 +38,12 @@ pub mod system {
     pub const DEFAULT_SYSTEM_NAME: &str = "nanvix";
 
     /// Default target architecture name.
+    #[cfg(target_arch = "x86")]
     pub const DEFAULT_TARGET_NAME: &str = "x86";
+
+    /// Default target architecture name.
+    #[cfg(target_arch = "x86_64")]
+    pub const DEFAULT_TARGET_NAME: &str = "x86_64";
 
     cfg_if::cfg_if! {
         if #[cfg(feature = "microvm")] {

@@ -1,0 +1,262 @@
+[runner]
+nanvixd_binary_path = "./bin/nanvixd.elf"
+working_directory = "."
+log_directory = "logs"
+tmp_directory = "/tmp"
+ipv4_addr = "127.0.0.1"
+port_num = 9999
+hwloc_file_path = ""
+l2_enabled = false
+fatal = true
+toolchain_path = "toolchain"
+sysroot_path = "./sysroot"
+nanvixd_shutdown_attempts_max = 10
+nanvixd_shutdown_retry_interval_ms = 100
+nanvixd_ready_attempts_max = 50
+nanvixd_ready_retry_interval_ms = 100
+netns_pool_size = 0
+cleanup_uservm_sleep_duration_ms = 10
+cleanup_l2_uservm_sleep_duration_ms = 100
+stream_collection_timeout_ms = 300000
+tcp_cleanup_max_wait_seconds = 70
+tcp_cleanup_poll_interval_seconds = 2
+gateway_connect_max_attempts = 100
+gateway_connect_initial_backoff_ms = 10
+gateway_connect_max_backoff_ms = 500
+gateway_connect_timeout_ms = 15000
+
+[[tests]]
+executor = "empty"
+name = "empty/1"
+iterations = 1
+
+[[tests]]
+executor = "empty"
+name = "empty/2"
+iterations = 2
+
+#===================================================================================================
+# HTTP Executor Tests (Non-Interactive Mode)
+#===================================================================================================
+
+[[tests]]
+executor = "http"
+program = "./bin/test-kernel.elf"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+
+# NOTE: vfs-test is only built in standalone deployment mode.
+# [[tests]]
+# executor = "http"
+# program = "./bin/vfs-test.elf"
+# extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
+# input = "[]"
+# expect_empty_output = true
+# runs_on = ["microvm"]
+
+# NOTE: C/C++ tests are excluded on x86_64 because the C cross-compiler
+# (x86_64-nanvix-gcc) is not yet available. Only Rust guest binaries are tested.
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/echo-c.elf"
+# input = "hello world!"
+# expected_output = "hello world!"
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/echo-cpp.elf"
+# input = '["hello world!"]'
+# expected_output = "hello world!"
+
+[[tests]]
+executor = "http"
+program = "./bin/echo-rust-nostd.elf"
+input = '["hello world!"]'
+expected_output = "hello world!"
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/hello-c.elf"
+# input = "[]"
+# expected_output = "Hello, world from C!"
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/hello-cpp.elf"
+# input = "[]"
+# expected_output = "Hello, world from C++!"
+
+[[tests]]
+executor = "http"
+program = "./bin/linux-app.elf"
+input = "[]"
+expected_output = "ok"
+
+# NOTE: dlfcn-c is excluded on x86_64 because the Nanvix ELF loader
+# only supports R_386_* relocations. x86_64 support (R_X86_64_*) requires
+# changes to src/libs/elf and src/libs/syscall/src/dlfcn.
+# [[tests]]
+# executor = "http"
+# program = "./bin/dlfcn-c.elf"
+# input = "[]"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/file-c.elf"
+# input = "[]"
+# expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/file-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/thread-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/stress-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/thread-c.elf"
+# input = "[]"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/network-c.elf"
+# input = "[]"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/misc-c.elf"
+# program_args = ";NANVIX_TEST=1"
+# input = "[]"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "http"
+# program = "./bin/memory-c.elf"
+# input = "[]"
+# expected_output = "ok"
+
+[[tests]]
+executor = "http"
+program = "./bin/arch-rust.elf"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/test-kernel.elf"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 13
+
+# NOTE: vfs-test is only built in standalone deployment mode.
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/vfs-test.elf"
+# extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
+# input = "[]"
+# expect_empty_output = true
+# runs_on = ["microvm"]
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/echo-c.elf"
+# input = "hello world"
+# expected_output = "hello world"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/echo-cpp.elf"
+# input = "hello world"
+# expected_output = "hello world"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/echo-rust-nostd.elf"
+input = "hello world"
+expected_output = "hello world"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/hello-c.elf"
+# expected_output = "Hello, world from C!"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/hello-cpp.elf"
+# expected_output = "Hello, world from C++!"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/linux-app.elf"
+expected_output = "ok"
+
+# NOTE: dlfcn-c excluded on x86_64 (see note above).
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/dlfcn-c.elf"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/file-c.elf"
+# expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/file-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/thread-rust.elf"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/stress-rust.elf"
+expected_output = "ok"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/thread-c.elf"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/network-c.elf"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/misc-c.elf"
+# program_args = ";NANVIX_TEST=1"
+# expected_output = "ok"
+
+# [[tests]]
+# executor = "terminal"
+# program = "./bin/memory-c.elf"
+# expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/arch-rust.elf"
+expected_output = "ok"
