@@ -245,3 +245,19 @@ Module: bump-allocator
 [2026-06-17 23:29:51] [BRANCH] Staying on current branch: verus-ai-polish
 ERROR: Unknown phase 'polish'.
   Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
+[2026-06-17 23:30:41] [BRANCH] Staying on current branch: verus-ai-polish
+[2026-06-17 23:30:41] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-bump-allocator/body_removed_source.rs (16623 -> 12872 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: bump-allocator
+Source: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.rs
+Crate:  bump-allocator
+Branch: verus-ai-polish (base: verus-ai-polish)
+Phases: polish → polish
+############################################################
+
+============================================================
+PHASE: polish
+Module: bump-allocator
+============================================================
