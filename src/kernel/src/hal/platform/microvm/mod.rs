@@ -6,7 +6,11 @@
 //==================================================================================================
 
 pub mod pvclock;
+// The 16/32-bit boot entry is x86-only; x86_64 boots directly in long mode via the
+// arch boot path (hal/arch/x86_64/asm/start.rs) set up by the VMM's reset64.
+#[cfg(target_arch = "x86")]
 mod start;
+#[cfg(target_arch = "x86")]
 mod start16;
 
 //==================================================================================================
