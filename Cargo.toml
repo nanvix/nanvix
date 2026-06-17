@@ -160,7 +160,7 @@ hostfs-api = { path = "src/libs/hostfs-api", default-features = false }
 hostfsd = { path = "src/daemons/hostfsd", default-features = false }
 hwloc = { path = "src/libs/hwloc", default-features = false }
 kvm-bindings = "0.14.0"
-kvm-ioctls = "0.24.0"
+kvm-ioctls = "0.25.0"
 libc = "0.2.186"
 linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.32"
