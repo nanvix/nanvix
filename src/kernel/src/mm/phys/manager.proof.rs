@@ -215,7 +215,6 @@ pub proof fn lemma_user_bulk_step(
     // `mview == g_old.book_all(s)`, so `mview.free_set() == g_old.free_set().difference(s)`.
     // `uf@` being free in `mview` therefore means it is free in `g_old` and not yet in `s`.
     lemma_book_all_free_set(g_old, s);
-    assert(mview.free_set() =~= g_old.free_set().difference(s));
     assert(g_old.is_free(uf@));
 
     lemma_user_addr_set_push(frames, uf);

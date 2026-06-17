@@ -1,0 +1,160 @@
+Timestamp: 2026-06-17_23-48-25
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: mm::phys
+Exit code: 0
+67 verified
+0 errors
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module mm::phys
+
+note: verifying module mm::phys::frame
+
+note: verifying module mm::phys::kframe
+
+note: verifying module mm::phys::manager
+
+note: verifying module mm::phys::upool
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/mod.spec.rs:165:9
+    |
+165 |         forall|a: int| set.contains(a) ==> self.reserved(a)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/mod.spec.rs:165:44
+    |
+165 |         forall|a: int| set.contains(a) ==> self.reserved(a)
+    |                                            ^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+  --> src/kernel/src/mm/phys/frame.proof.rs:58:13
+   |
+58 |           &&& forall|i: int| 0 <= i < self.bitmap@.num_bits ==> (
+   |  _____________^
+59 | |             !self.bitmap@.set_bits.contains(i) <==> self.refcount@[i] == 0
+60 | |         )
+   | |_________^
+
+note:   trigger 1 of 1:
+  --> src/kernel/src/mm/phys/frame.proof.rs:59:53
+   |
+59 |             !self.bitmap@.set_bits.contains(i) <==> self.refcount@[i] == 0
+   |                                                     ^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.proof.rs:455:9
+    |
+455 |         assert forall|a: int| frames.contains(a) implies covered_addrs(nb).contains(a) by {
+    |         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.proof.rs:455:31
+    |
+455 |         assert forall|a: int| frames.contains(a) implies covered_addrs(nb).contains(a) by {
+    |                               ^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:380:13
+    |
+380 |             assert forall|k: int| 0 <= k < pre_nb implies {
+    |             ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:381:61
+    |
+381 |                 &&& (self.bitmap@.set_bits.contains(k) <==> self.refcount@[k] > 0)
+    |                                                             ^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:445:25
+    |
+445 |                         assert forall|addr: int| frames.contains(addr) implies
+    |                         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:445:50
+    |
+445 |                         assert forall|addr: int| frames.contains(addr) implies
+    |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+   --> src/kernel/src/mm/phys/frame.rs:451:25
+    |
+451 |                         assert forall|addr: int|
+    |                         ^^^^^^
+
+note:   trigger 1 of 1:
+   --> src/kernel/src/mm/phys/frame.rs:453:29
+    |
+453 | ...                   frames.contains(addr) by {
+    |                       ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1305:13
+     |
+1305 |             assert forall|k: int| 0 <= k < pre_nb implies {
+     |             ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1306:61
+     |
+1306 |                 &&& (self.bitmap@.set_bits.contains(k) <==> self.refcount@[k] > 0)
+     |                                                             ^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1349:17
+     |
+1349 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1349:42
+     |
+1349 |                 assert forall|addr: int| frames.contains(addr) implies
+     |                                          ^^^^^^^^^^^^^^^^^^^^^
+
+note: automatically chose triggers for this expression:
+    --> src/kernel/src/mm/phys/frame.rs:1356:17
+     |
+1356 |                 assert forall|addr: int| spec_range_frames(lo, nfr).contains(addr) implies
+     |                 ^^^^^^
+
+note:   trigger 1 of 1:
+    --> src/kernel/src/mm/phys/frame.rs:1357:21
+     |
+1357 |                     frames.contains(addr) by {
+     |                     ^^^^^^^^^^^^^^^^^^^^^
+
+note: Verus printed one or more automatically chosen quantifier triggers
+      because it had low confidence in the chosen triggers.
+      To suppress these messages, do one of the following:
+        (1) manually annotate a single desired trigger using #[trigger]
+            (example: forall|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j)),
+        (2) manually annotate multiple desired triggers using #![trigger ...]
+            (example: forall|i: int| #![trigger f(i)] #![trigger g(i)] f(i) && g(i)),
+        (3) accept the automatically chosen trigger using #![auto]
+            (example: forall|i: int, j: int| #![auto] f(i) && g(i) && h(j))
+        (4) use the --triggers-mode silent command-line option to suppress all printing of triggers.
+      (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;
+      the theorem prover instantiates a quantifier whenever some expression matches the
+      pattern specified by one of the quantifier's triggers.)
+    --> src/kernel/src/mm/phys/frame.rs:1356:17
+     |
+1356 |                 assert forall|addr: int| spec_range_frames(lo, nfr).contains(addr) implies
+     |                 ^^^^^^
+
+verification results:: 67 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 3.78s
