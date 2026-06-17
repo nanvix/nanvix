@@ -227,3 +227,155 @@ Let me run the baseline verification for the arch crate.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | tail -40
 
 [THINKING] Running the baseline verification now.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus-exp/verus/source/target-verus/release.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/verus-exp/verus/source/target-verus/release:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locke...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Baseline passes (exit 0). The `CHEATING_DETECTED` flag is crate-wide (3 pre-existing `external_body` + 2 `cfg_gate` in other files). Let me confirm none are in `pde.rs`.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null | grep -i pd
+
+[THINKING] The baseline passes verification with exit code 0 and shows cached results. The "CHEATING_DETECTED" status appears because there are pre-existing external_body and cfg_gate entries in the crate that aren't in scope for this task, so I can confirm the verification is actually passing.
+[RESULT ✓] bash: exit: 1
+=== grep in pde files ===
+<shellId: 6 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+No cheating patterns in scope. Baseline is clean. 
+
+Proof extraction is already complete — both inline blocks are single-line lemma calls. Now let me focus on minimization of the proof file. Let me understand the constants and `spec_max` first.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SHIFT\|FRAME_SIZE\|MAX_ADDRESS" src/libs/arch/src/mem/mod.rs 2>/dev/n
+
+[THINKING] The baseline looks clean with no cheating patterns in the PDE files. Now I need to focus on two things: extracting proof blocks and minimizing redundancy. The inline proof blocks are already single-line lemma calls, so there's nothing to extract there. I should examine the proof file for redundant assertions and hints, and check the spec file for any dead functions.
+
+Looking at the spec file, most of the defined functions like `spec_present_set`, `spec_rw_set`, and others are used within the View implementation and `spec_pde_flags_new`, so they're not dead. The `PdeFlagsView` struct and `PdeView` are both used. I need to check whether `PageDirectoryEntryFlags::inv` is actually referenced anywhere—it's marked `pub` but appears to be vacuous, always returning true, and I'm not seeing it called in the PageDirectoryEntry invariant.
+
+For the minimization work, I should focus on the proof file `lemma_frame_address` and look for redundant assertions and lemma calls. There are several asserts checking bounds and frame size calculations, plus multiple lemma invocations that might be unnecessary. Let me identify which assertions and lemma calls can be removed without breaking the proof. I should test removing those intermediate asserts empirically since verification takes time. Let me try dropping the three plain asserts on lines 28, 31, and 32 while keeping the lemma calls, then re-verify to see if the proof still holds. The key question is whether `pow2(12) == 4096` needs to be explicitly asserted or if `lemma2_to64` already provides that connection.
+[RESULT ✓] bash: === spec_max ===
+grep: src/libs/arch/src/x86/mem/paging/frame*.rs: No such file or directory
+<shellId: 7 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SHIFT\|FRAME_SIZE\|MAX_ADDRESS" src/libs/arch/src/mem/ 2>/dev/null | 
+[RESULT ✓] bash: === spec_max def ===
+src/libs/arch/src/x86/mem/paging/frame/number.rs
+src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+src/libs/arch/src/x86/mem/paging/pde.proof.rs
+src/libs/arch/src/x86/mem/paging/pde.rs
+src/libs/arch/src/x86/mem/paging/pde.spec.rs
+src/libs/arch/src/x86/mem/paging/pte.spec.rs
+...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.spec.rs
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "FRAME_SHIFT\s*:\|FRAME_SIZE\s*:\|MAX_ADDRESS\s*:\|const FRAME_SHIFT\|const 
+[RESULT ✓] view: 20. //==================================================================================================
+21. 
+22. impl FrameNumber {
+23.     // Interpreted bound: the largest representable frame index, mirroring the exec constant
+24.     // `FrameNumber::MAX`. Defined (not `uninterp`) so the binding...
+[RESULT ✓] bash: src/libs/arch/src/x86/cpu/cpuid.rs:36:    pub const MAX_ADDRESSABLE_IDS_SHIFT: u32 = 16;
+src/libs/arch/src/x86/cpu/cpuid.rs:38:    pub const MAX_ADDRESSABLE_IDS_MASK: u32 = 0xFF << Self::MAX_ADDRESSABLE_IDS_SHIFT;
+src/libs/arch/src/x86/mem/paging/frame/number.rs:42:    /// overflowing `usize` when `...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Now let me check the signature of `lemma_usize_shl_is_mul` to understand which hints are load-bearing.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rn "pub proof fn lemma_usize_shl_is_mul" vstd/bits.rs; sed -n '/pub proof 
+
+[THINKING] I'm working through the math on the address bounds. Since `MAX_ADDRESS` equals `usize::MAX` (2^64-1) and the frame size is 4096, the modulo operation leaves a remainder of 4095, which is exactly `frame_size - 1`. This means `spec_max()` simplifies to `MAX_ADDRESS / FRAME_SIZE`, and the constraint that `spec_max() <= m/s` holds under these conditions.
+
+Now I'm looking at the `lemma_frame_address` proof and thinking about how to minimize it. I want to strip out redundant intermediate assertions and unnecessary hints, then verify after each batch of removals to see what's actually needed. I'll start with an aggressive minimal version and work backward if verification fails, rather than trying to guess what's essential upfront. Before diving in, I should time how long a full verification takes to understand the feedback loop I'm working with.
+
+Looking at the proof structure, I need to understand what each lemma call is actually proving. The key goal is showing that `(raw << FRAME_SHIFT) == raw * FRAME_SIZE`, and I'm checking whether `lemma_usize_shl_is_mul` is the right tool for this or if it has preconditions about overflow that might complicate things. Let me examine that lemma's signature to see what constraints it imposes.
+[RESULT ✓] bash: 
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rln "lemma_usize_shl_is_mul" vstd/ ; echo "==="; grep -rn -A12 "lemma_usiz
+[RESULT ✓] bash: vstd/bits.rs
+===
+vstd/bits.rs:179:lemma_shl_is_mul!(lemma_usize_shl_is_mul, lemma_usize_pow2_no_overflow, usize);
+vstd/bits.rs-180-
+vstd/bits.rs-181-macro_rules! lemma_mul_pow2_le_max_iff_max_shr {
+vstd/bits.rs-182-    ($name:ident, $shr_is_div:ident, $uN:ty) => {
+vstd/bits.rs-183-        #[cfg(veru...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && sed -n '/macro_rules! lemma_shl_is_mul/,/^}/p' vstd/bits.rs | head -50
+[RESULT ✓] bash: macro_rules! lemma_shl_is_mul {
+    ($name:ident, $no_overflow:ident, $uN:ty) => {
+        #[cfg(verus_keep_ghost)]
+        verus! {
+        #[doc = "Proof that for x and n of type "]
+        #[doc = stringify!($uN)]
+        #[doc = ", shifting x left by n is equivalent to multiplication of x by 2^n...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rn -A8 "pub proof fn lemma_mul_inequality" vstd/arithmetic/mul.rs | head -
+
+[THINKING] The `lemma_usize_shl_is_mul` function needs the shift to be within valid bounds and requires that multiplying by the power of 2 doesn't overflow. That's why I need to prove `raw * s <= m`—to satisfy the no-overflow precondition, since `s` equals `FRAME_SIZE` which is `pow2(FRAME_SHIFT)` and `m` is `MAX_ADDR`.
+
+The proof strategy chains together several facts: first establishing that `pow2(FRAME_SHIFT) == FRAME_SIZE`, then using nonlinear arithmetic to show `raw * s <= m` by leveraging that `raw <= m/s` and applying division-modulo properties. The key question now is which assertions are actually necessary to discharge the lemma's precondition versus which ones are redundant. The lemma signatures matter here—specifically, `lemma_mul_inequality` requires `raw <= m/s` as a precondition, so line 32's assert feeds directly into that call and likely can't be removed. Line 31 might be more expendable if the intermediate step isn't strictly necessary for the proof flow.
+[RESULT ✓] bash: === mod_multiples_basic ===
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && grep -rn "fn lemma_mul_inequality" vstd/arithmetic/mul.rs; grep -rn "fn lemma_mo
+[RESULT ✓] bash: 164:pub broadcast proof fn lemma_mul_inequality(x: int, y: int, z: int)
+248:pub broadcast proof fn lemma_mul_inequality_converse(x: int, y: int, z: int)
+489:pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
+1066:pub broadcast proof fn lemma_mod_multiples_basic(x: int, m: int)
+1234:pro...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && sed -n '164,180p' vstd/arithmetic/mul.rs; echo "=== mod_multiples_basic ==="; se
+[RESULT ✓] bash: pub broadcast proof fn lemma_mul_inequality(x: int, y: int, z: int)
+    requires
+        x <= y,
+        z >= 0,
+    ensures
+        #[trigger] (x * z) <= #[trigger] (y * z),
+{
+    lemma_mul_induction_auto(z, |u: int| u >= 0 ==> x * u <= y * u);
+}
+
+/// Proof that since `x < y` and `z > 0`, `x * z < ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Let me measure a real (non-cached) verification time by touching the proof file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/libs/arch/src/x86/mem/paging/pde.proof.rs /tmp/pde.proof.rs.bak && cp src/libs
+
+[THINKING] I'm working through the proof structure to see which parts are essential. The key question is whether the precondition for `lemma_mul_inequality` — that `raw <= m/s` — can be proven without the assert at line 32, since it already has `raw <= sp` available in the context.
+
+Rather than get bogged down in the analysis, I should just test removals empirically. The proof is already fairly tight and well-commented, so I'll try removing the most likely redundant assertions one at a time and verify. Before diving in, let me reconsider the actual task: extract proof blocks over 5 lines (none exist) and minimize by removing redundant assertions and dead spec functions. In the proof file, the intermediate asserts in `lemma_frame_address` are candidates, and I should check whether the spec functions like `PageDirectoryEntryFlags::inv` are actually used anywhere. I'll measure the verification time with a forced recompile.
+[RESULT ✓] bash: backed up + touched
+<shellId: 16 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && time timeout 600 make verify-arch 2>&1 | tail -15
