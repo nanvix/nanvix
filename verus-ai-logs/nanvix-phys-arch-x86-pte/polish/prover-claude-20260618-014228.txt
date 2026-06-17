@@ -276,3 +276,74 @@ Verification passes (exit 0). Let me see the full output, especially the verific
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch MODULE=x86::mem::paging::pte 2>&1 | head -60
 
 [THINKING] The baseline verification passes, but there's a CHEATING_DETECTED status flagged due to `external_body=3` and `cfg_gate=2` — though these are pre-existing issues in other functions outside my scope, specifically from `table.rs` which is already in the allowed list. I need to examine the full output more carefully to understand what's actually triggering the detection.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus-exp/verus/source/target-verus/release.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/verus-exp/verus/source/target-verus/release:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locke...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null | head -60; 
+
+[THINKING] The verification is cached, so I'm checking the cfg-gate details and the actual verus log to confirm there are zero errors or admits. The "CHEATING_DETECTED" flag is coming from cfg_gate=2 and external_body=3, where external_body=3 is globally allowed across the arch crate in table.rs entries, but cfg_gate=2 is specifically in the pte module. I need to look at the cheating-detail file to understand what cfg_gate=2 represents.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:27 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:201 read: external_body
+    - x86/mem/paging/table.rs:238 write: external_body
+=== verus log tail ===
+Timestamp: 2026-06-18_01-43-37
+Mode: cargo
+Crate: ...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+[TOOL] grep: cfg|proof!|assert|verus_spec|verus_verify
+
+[THINKING] I'm looking at where the cheating detection is coming from—it seems the external_body assumptions are being set by modules outside my scope like table.rs, and the verification is cached so it returns success. The "CHEATING_DETECTED" status is being driven by these out-of-scope modules rather than anything in the pte module itself.
+
+Since the verus verification exits with 0 errors and no admits, the baseline is actually passing. Now I need to locate the cfg_gate=2 blocks in pte.rs to understand what code is being gated there.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs:9:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs:11:#[cfg(verus_keep_ghost)]
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs:44:#[verus_verify]
+/home/ruize/nanvix-...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Only one inline proof block exists (1 line — keep inline per rules), and all spec functions are `pub` and referenced. The only minimization candidate is the single proof hint in `PageTableEntry::new`. Let me test whether it's actually needed.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/libs/arch/src/x86/mem/paging/pte.rs /tmp/pte.rs.bak && echo "backup made"
+
+[THINKING] The cfg-gates at lines 9 and 11 are just the normal includes for spec and proof files, so the CHEATING_DETECTED status is coming from pre-existing out-of-scope items that aren't my problem. For my actual task, there's only one proof block to consider—a single-line `proof!` macro at line 314—which falls under the 1-3 line threshold for keeping inline rather than extracting.
+
+On minimization, there are no redundant assertions in the in-scope functions, and all spec functions are `pub open spec` so I'm keeping them. The key question is whether the `proof! { use_type_invariant(frame); }` is actually needed or just a redundant hint—it establishes the FrameNumber type invariant to satisfy the `inv()` ensures clause, so I should test removing it to see if Verus can verify without it.
+[RESULT ✓] bash: backup made
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] view: 305.     /// A [`PageTableEntry`].
+306.     ///
+307.     #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+308.     #[verus_spec(result =>
+309.         ensures
+310.             result@ == spec_pte_new(flags@, frame@),
+311.             result.inv(),
+312.     )]
+313.     pub fn ne...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me test removing the proof hint to see if it's redundant.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch MODULE=x86::mem::paging::pte 2>&1 | grep -A3 "=== Result

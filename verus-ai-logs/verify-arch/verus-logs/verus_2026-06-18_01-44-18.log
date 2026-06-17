@@ -1,0 +1,32 @@
+Timestamp: 2026-06-18_01-44-18
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: x86::mem::paging::pte
+Exit code: 101
+5 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+note: verifying module x86::mem::paging::pte
+
+error: postcondition not satisfied
+   --> src/libs/arch/src/x86/mem/paging/pte.rs:311:13
+    |
+311 |             result.inv(),
+    |             ^^^^^^^^^^^^ failed this postcondition
+...
+314 |         Self { flags, frame }
+    |         --------------------- at the end of the function body
+
+verification results:: 5 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `arch` (lib) due to 1 previous error

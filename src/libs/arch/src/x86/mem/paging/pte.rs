@@ -311,7 +311,6 @@ impl PageTableEntry {
             result.inv(),
     )]
     pub fn new(flags: PageTableEntryFlags, frame: FrameNumber) -> Self {
-        proof! { use_type_invariant(frame); }
         Self { flags, frame }
     }
 
