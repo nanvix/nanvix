@@ -402,3 +402,67 @@ Actually, I need to think through whether these are truly redundant. The first c
 Turn 20
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verification results|
+[RESULT ✓] bash: verification results:: 67 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  verification: 67 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+6 redundant assertions removed so far. Let me check whether two more intermediate asserts are needed. First let me check the `lemma_to_set_insert_commutes` signature to understand the push lemma proof.
+[TOOL] bash: cd /home/ruize && grep -rn "spec fn is_free\|fn is_free\|pub open spec fn is_free" nanvix-phy-specs/src/kernel/src/mm/ph
+
+[THINKING] Those redundant length assertions are gone. Now I'm looking at some intermediate assertions in the lemma_user_bulk_step function to see if I can safely remove a few more of those without breaking anything — specifically checking whether the free set operations and membership checks are actually necessary or if they're just restating what's already been established. I'm weighing whether line 218's assert is actually necessary or if the lemma already provides enough information for Verus to connect mview.free_set() to the difference through the equality mview == book_all(s). The assert acts as a bridge via extensionality, but it might be redundant given what the lemma already ensures. I've already removed six assertions successfully, so I'm tempted to try dropping this one too, though it's risky since the substitution might depend on it. Let me test removing just line 218 and revert if verification fails, but honestly I should probably be conservative here and stop optimizing to avoid destabilizing the proof.
+
+I'm also considering whether the intermediate assert in lemma_user_addr_set_push about the sequence equivalence is load-bearing or if lemma_to_set_insert_commutes already handles it. Let me check that lemma's signature to decide whether I can safely remove that assert as well.
+[RESULT ✓] bash: nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs:51:    pub open spec fn is_free(&self, addr: int) -> bool
+---to_set_insert---
+/home/ruize/verus-ai-exp/verus-ai/vstd/seq_lib.rs:1147:    pub broadcast proof fn lemma_to_set_insert_commutes(sq: Seq<A>, elt: A)
+<shellId: 11 completed with exit code 0...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/seq_lib.rs
+[RESULT ✓] view: 1147.     pub broadcast proof fn lemma_to_set_insert_commutes(sq: Seq<A>, elt: A)
+1148.         requires
+1149.         ensures
+1150.             #[trigger] (sq + seq![elt]).to_set() =~= sq.to_set().insert(elt),
+1151.     {
+1152.         broadcast use crate::vstd::group_vstd_default;
+1153.         br...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The push lemma's asserts are load-bearing. Let me test one more candidate: the `mview.free_set()` bridge assert at line 216.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm using a lemma that shows converting a sequence with an inserted element to a set is equivalent to inserting that element into the original sequence's set. The intermediate assertion bridges the push operation to sequence concatenation so the lemma's conversion matches what happens when pushing to the sequence.
+
+This connection is necessary because the user address set calculation chains through push operations and set conversions, ultimately needing to equal the original set with the new address inserted. The push-to-concatenation bridge is critical for this equivalence to hold, so I'm keeping all the assertions in lemma_user_addr_set_push.
+
+Now I'm testing whether line 218 in lemma_user_bulk_step can be removed—the assertion connecting the modified view's free set to the difference of the old free set. I suspect it's actually necessary since the next assertion depends on it, but I'll test removing it anyway to verify.
+[RESULT ✓] view: 213. 
+214.     let s = user_addr_set(frames);
+215.     // `mview == g_old.book_all(s)`, so `mview.free_set() == g_old.free_set().difference(s)`.
+216.     // `uf@` being free in `mview` therefore means it is free in `g_old` and not yet in `s`.
+217.     lemma_book_all_free_set(g_old, s);
+218.     asse...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm testing whether I can remove the intermediate assertion at line 219, since the precondition from line 218 combined with the mview.is_free check should already establish what's needed for the goal at line 220. The assertion at 220 requires g_old.free_set().contains(uf@), which should follow from line 218.
+
+Since these assertions are tightly interdependent and verification takes minutes per run, I'll batch test this by removing 219 and seeing if it passes—if so, that's seven fewer assertions to maintain.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verification results|
