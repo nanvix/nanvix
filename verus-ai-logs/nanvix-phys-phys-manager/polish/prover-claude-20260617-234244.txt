@@ -352,3 +352,53 @@ Turn 16
 Turn 17
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verification results|
+[RESULT ✓] bash: verification results:: 67 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  verification: 67 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 9 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+4 redundant assertions removed (0 errors). Now let me attempt minimization in the proof file. Let me test removing two length-bookkeeping asserts in `lemma_user_bulk_step` that may be derivable.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I've successfully removed those redundant assertion blocks with no errors, eliminating 4 unnecessary assertions in the process. Now I'm scanning through the proof file lemmas to identify more redundancy, particularly looking at assertions that follow broadcast statements—though I need to be careful since some might be essential for triggering `=~=` extensionality. Let me examine the candidates, starting with `lemma_user_addr_set_empty` around line 84.
+
+The `=~=` assertion here is actually needed to satisfy the ensures clause through extensionality, so I'll keep it. Moving through the other lemmas, `lemma_user_addr_set_push` has several assertions that form a delicate proof chain, so I'll be conservative there. Similarly, `lemma_book_all_empty` and `lemma_book_all_alloc_one` both rely on extensionality assertions that can't be removed. In `lemma_user_bulk_step`, there are multiple assertions building up the proof—I'm examining whether some intermediate ones are redundant, but given how interconnected they are with the lemma calls that follow, I should be cautious about removing anything.
+
+Looking at the specific candidates here, the assertion about `g_old.free_set().contains(uf@) && !s.contains(uf@)` might be derivable from earlier steps, and the length assertions could potentially be inferred. But the proof-minimization skill emphasizes being conservative when in doubt, so I'll focus on the clearest wins rather than risk breaking a delicate proof structure.
+
+For the count==0 path, both lemmas are actually load-bearing—I need `lemma_user_addr_set_empty` to establish that an empty set has length zero, and `lemma_book_all_empty` to show that booking an empty set leaves the state unchanged. Removing either would break the postcondition verification, so I'll keep them both.
+
+Now I'm looking at whether I can safely trim some of the intermediate asserts in `lemma_user_bulk_step`. The ones about the free set containment, the sequence length increment, and the frames push operation feel like they might be derivable from the surrounding logic. Let me try removing those three and see if the proof still holds—if it breaks, I can revert quickly.
+
+I should also check `lemma_user_addr_set_push` more carefully. The chain of asserts there builds up to the final result about set insertion, and I need to verify whether each step is actually necessary or if some are redundant given what the lemmas already establish. The assertion about the sequence concatenation might be implied by the lemma call that follows it.
+
+Given that re-verification takes time, I'll be strategic and test removal of just the most confident candidates — those two length assertions in `lemma_user_bulk_step` — since the length properties should follow from the set insertion and sequence operations already being proven. If that batch passes, I can incrementally test the others.
+[RESULT ✓] view: 196. /// extended handle sequence.
+197. pub proof fn lemma_user_bulk_step(
+198.     g_old: FrameAllocView,
+199.     mview: FrameAllocView,
+200.     frames: Seq<UserFrame>,
+201.     uf: UserFrame,
+202. )
+203.     requires
+204.         user_bulk_inv(g_old, mview, frames),
+205.         mview.is_free(uf...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] I'm testing whether I can remove some of these assertions since Verus likely already knows that pushing to a sequence increases its length by one. Let me start conservatively by removing just line 229 and re-verifying, then potentially batch-remove both 228 and 229 together if that works.
+
+Actually, I need to think through whether these are truly redundant. The first clause of `user_bulk_inv` requires that the user address set length equals the frames sequence length. Since the user address set is derived from inserting `uf@` into the existing set, and the frames sequence is extended by pushing `uf`, I need to verify that both grow by exactly one. The precondition gives me that the original set and sequence have equal length, and the insert and push operations each add one element—but Verus needs to know that `uf@` isn't already in the set to apply the insert-length lemma, which is what line 220 establishes. So lines 228 and 229 might actually be necessary to chain these facts together, even if individually they seem obvious.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verification results|

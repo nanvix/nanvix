@@ -224,9 +224,6 @@ pub proof fn lemma_user_bulk_step(
 
     let s2 = user_addr_set(frames.push(uf));
     assert(s2 =~= s.insert(uf@));
-    // Distinctness: `uf@ ∉ s`, so the cardinality grows by exactly one.
-    assert(s2.len() == s.len() + 1);
-    assert(frames.push(uf).len() == frames.len() + 1);
     // Every address in the enlarged set was free in `g_old`.
     assert(g_old.all_free(s2)) by {
         assert forall|x: int| #[trigger] s2.contains(x) implies g_old.is_free(x) by {
