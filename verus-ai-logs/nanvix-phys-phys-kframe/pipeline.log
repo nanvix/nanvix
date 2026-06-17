@@ -238,3 +238,6 @@ PIPELINE FINISHED: phys-kframe (some phases need work)
   Total: 37m53s
 ============================================================
 [2026-06-15 04:45:11] [USAGE] Summary: 12 calls, 0 tokens, 59m36s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-kframe/usage_summary.json
+[2026-06-17 23:29:52] [BRANCH] Staying on current branch: verus-ai-polish
+ERROR: Unknown phase 'polish'.
+  Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
