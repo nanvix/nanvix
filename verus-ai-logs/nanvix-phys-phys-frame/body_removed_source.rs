@@ -120,16 +120,14 @@ impl Inner {
             match result {
                 Ok(frame) => {
                     &&& frame.inv()
-                    &&& old(self)@.free_frames.contains(frame@)
+                    &&& old(self)@.is_free(frame@)
                     &&& final(self)@ == FrameAllocView {
-                        allocated_frames: old(self)@.allocated_frames.insert(frame@),
-                        free_frames: old(self)@.free_frames.remove(frame@),
                         refcounts: old(self)@.refcounts.insert(frame@, 1int),
                     }
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& old(self)@.free_frames.is_empty()
+                    &&& old(self)@.no_free_frames()
                 }
             },
     )]
@@ -159,15 +157,15 @@ impl Inner {
                 Ok(base) => {
                     &&& base.inv()
                     &&& ({
-                        let frames = Set::new(|addr: int|
-                            exists|i: int| 0 <= i < count && addr == #[trigger] (base@ + i * spec_page_size())
+                        let frame_indices = Set::range(0, count as int);
+                        let frames = frame_indices.map_by(
+                            |i: int| base@ + i * spec_page_size(),
+                            |addr: int| (addr - base@) / spec_page_size(),
                         );
-                        &&& frames.subset_of(old(self)@.free_frames)
+                        &&& old(self)@.all_free(frames)
                         &&& final(self)@ == FrameAllocView {
-                            allocated_frames: old(self)@.allocated_frames.union(frames),
-                            free_frames: old(self)@.free_frames.difference(frames),
                             refcounts: old(self)@.refcounts.union_prefer_right(
-                                Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+                                Map::new(frames, |addr: int| 1int)
                             ),
                         }
                     })
@@ -200,30 +198,19 @@ impl Inner {
             final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& old(self)@.allocated_frames.contains(frame@)
-                    &&& old(self)@.refcounts.contains_key(frame@)
-                    &&& old(self)@.refcounts[frame@] > 0
-                    &&& if old(self)@.refcounts[frame@] == 1 {
-                        // Last reference: release frame
-                        final(self)@ == FrameAllocView {
-                            allocated_frames: old(self)@.allocated_frames.remove(frame@),
-                            free_frames: old(self)@.free_frames.insert(frame@),
-                            refcounts: old(self)@.refcounts.remove(frame@),
-                        }
-                    } else {
-                        // Still shared: decrement refcount
-                        final(self)@ == FrameAllocView {
-                            allocated_frames: old(self)@.allocated_frames,
-                            free_frames: old(self)@.free_frames,
-                            refcounts: old(self)@.refcounts.insert(
-                                frame@, old(self)@.refcounts[frame@] - 1
-                            ),
-                        }
+                    &&& old(self)@.is_allocated(frame@)
+                    // Releasing one reference simply decrements the count. When it
+                    // reaches zero the frame stays covered but becomes free, so the
+                    // map domain is unchanged in both the shared and last-owner cases.
+                    &&& final(self)@ == FrameAllocView {
+                        refcounts: old(self)@.refcounts.insert(
+                            frame@, old(self)@.refcounts[frame@] - 1
+                        ),
                     }
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& !old(self)@.allocated_frames.contains(frame@)
+                    &&& !old(self)@.is_allocated(frame@)
                 }
             },
     )]
@@ -254,11 +241,13 @@ impl Inner {
             final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& old(self)@.allocated_frames.contains(frame@)
-                    &&& old(self)@.refcounts.contains_key(frame@)
+                    &&& old(self)@.is_allocated(frame@)
+                    // The concrete `checked_add` rejects sharing at the u8 ceiling, so
+                    // success implies headroom. Stating it explicitly keeps `Ok`/`Err`
+                    // complementary and lets `final(self)@.wf()` follow directly (the new
+                    // count is `<= 255`) instead of via a contradiction with `inv()`.
+                    &&& old(self)@.refcounts[frame@] < 255
                     &&& final(self)@ == FrameAllocView {
-                        allocated_frames: old(self)@.allocated_frames,
-                        free_frames: old(self)@.free_frames,
                         refcounts: old(self)@.refcounts.insert(
                             frame@, old(self)@.refcounts[frame@] + 1
                         ),
@@ -266,11 +255,7 @@ impl Inner {
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& (
-                        !old(self)@.allocated_frames.contains(frame@)
-                        || (old(self)@.refcounts.contains_key(frame@)
-                            && old(self)@.refcounts[frame@] >= 255)
-                    )
+                    &&& old(self)@.is_allocated(frame@) ==> old(self)@.refcounts[frame@] >= 255
                 }
             },
     )]
@@ -297,12 +282,11 @@ impl Inner {
             self.inv(),
             match result {
                 Ok(count) => {
-                    &&& self@.allocated_frames.contains(frame@)
-                    &&& self@.refcounts.contains_key(frame@)
+                    &&& self@.is_allocated(frame@)
                     &&& count as int == self@.refcounts[frame@]
                 },
                 Err(_) => {
-                    !self@.allocated_frames.contains(frame@)
+                    !self@.is_allocated(frame@)
                 }
             },
     )]
@@ -329,16 +313,14 @@ impl Inner {
             final(self).inv(),
             match result {
                 Ok(()) => {
-                    &&& old(self)@.free_frames.contains(phys_addr@)
+                    &&& old(self)@.is_free(phys_addr@)
                     &&& final(self)@ == FrameAllocView {
-                        allocated_frames: old(self)@.allocated_frames.insert(phys_addr@),
-                        free_frames: old(self)@.free_frames.remove(phys_addr@),
                         refcounts: old(self)@.refcounts.insert(phys_addr@, 1int),
                     }
                 },
                 Err(_) => {
                     &&& final(self)@ == old(self)@
-                    &&& !old(self)@.free_frames.contains(phys_addr@)
+                    &&& !old(self)@.is_free(phys_addr@)
                 }
             },
     )]
@@ -359,10 +341,7 @@ impl Inner {
             phys_addr.inv(),
         ensures
             self.inv(),
-            ret <==> (
-                self@.allocated_frames.contains(phys_addr@)
-                || self@.free_frames.contains(phys_addr@)
-            ),
+            ret <==> self@.is_covered(phys_addr@),
     )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool { ... }
 
@@ -388,22 +367,20 @@ impl Inner {
             ({
                 let start_frame_number = region@.start / spec_page_size();
                 let end_frame_number = (region@.start + region@.size) / spec_page_size();
-                let frame_numbers = vstd::set_lib::set_int_range(start_frame_number, end_frame_number);
+                let frame_numbers = Set::range(start_frame_number, end_frame_number);
                 let frames = frame_numbers.map(|i: int| i * spec_page_size());
                 match result {
                     Ok(()) => {
-                        &&& frames.subset_of(old(self)@.free_frames)
+                        &&& old(self)@.all_free(frames)
                         &&& final(self)@ == FrameAllocView {
-                            allocated_frames: old(self)@.allocated_frames.union(frames),
-                            free_frames: old(self)@.free_frames.difference(frames),
                             refcounts: old(self)@.refcounts.union_prefer_right(
-                                Map::new(|addr: int| frames.contains(addr), |addr: int| 1int)
+                                Map::new(frames, |addr: int| 1int)
                             ),
                         }
                     },
                     Err(_) => {
                         &&& final(self)@ == old(self)@
-                        &&& !frames.subset_of(old(self)@.free_frames)
+                        &&& !old(self)@.all_free(frames)
                     },
                 }
             }),
@@ -490,9 +467,9 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> { ... }
         match result {
             Ok(frame) => {
                 &&& frame.inv()
-                &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@)
+                &&& crate::mm::phys::phys_view().frames.is_allocated(frame@)
             },
-            Err(_) => crate::mm::phys::phys_view().frames.free_frames.is_empty(),
+            Err(_) => crate::mm::phys::phys_view().frames.no_free_frames(),
         },
 )]
 pub(super) fn alloc() -> Result<FrameAddress, Error> { ... }
@@ -592,7 +569,7 @@ pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool { ... 
     ensures
         match result {
             Ok(()) => crate::mm::phys::phys_view().frames.reserved(phys_addr@),
-            Err(_) => !crate::mm::phys::phys_view().frames.free_frames.contains(phys_addr@),
+            Err(_) => !crate::mm::phys::phys_view().frames.is_free(phys_addr@),
         },
 )]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> { ... }
@@ -621,13 +598,14 @@ pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Re
 // allocated; the per-frame reference-count increment lives in the global partition and is pinned
 // to `phys_view().frames` in the proving phase. `external_body` until the free-function layer is
 // verified.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         frame.inv(),
     ensures
         match result {
-            Ok(()) => crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@),
-            Err(_) => !crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@)
+            Ok(()) => crate::mm::phys::phys_view().frames.is_allocated(frame@),
+            Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(frame@)
                 || crate::mm::phys::phys_view().frames.refcounts[frame@] >= 255,
         },
 )]
@@ -637,16 +615,17 @@ pub(super) fn share(frame: FrameAddress) -> Result<(), Error> { ... }
 // Dependency contract: singleton wrapper around `Inner::refcount`. Reads the current reference
 // count of the frame from the global partition (`phys_view().frames`); pure, no mutation.
 // `external_body` until the free-function layer is verified.
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     requires
         frame.inv(),
     ensures
         match result {
             Ok(count) => {
-                &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@)
+                &&& crate::mm::phys::phys_view().frames.is_allocated(frame@)
                 &&& count as int == crate::mm::phys::phys_view().frames.refcounts[frame@]
             },
-            Err(_) => !crate::mm::phys::phys_view().frames.allocated_frames.contains(frame@),
+            Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(frame@),
         },
 )]
 pub(super) fn refcount(frame: FrameAddress) -> Result<u8, Error> { ... }
