@@ -4,7 +4,9 @@
   "source_path": "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/kframe.rs",
   "current_phase": "polish",
   "current_phase_idx": 5,
-  "completed_phases": [],
+  "completed_phases": [
+    "polish"
+  ],
   "phase_results": {
     "polish": {
       "phase": "polish",
@@ -19,7 +21,7 @@
     }
   },
   "prover_session_id": "fa546c02-127e-4279-bed1-bc10b6a07dc6",
-  "completed": false,
+  "completed": true,
   "base_branch": "verus-ai-polish",
   "verus_branch": "verus-ai-polish",
   "phase_boundary_shas": {
