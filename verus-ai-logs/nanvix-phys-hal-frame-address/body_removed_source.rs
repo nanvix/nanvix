@@ -81,8 +81,11 @@ impl FrameAddress {
 #[verus_verify]
 impl FrameAddress {
     // Succeeds only for page-aligned inputs, so the resulting frame address satisfies `inv()` and
-    // its abstract address equals the raw input. Verified against the `PhysicalAddress` /
-    // `PageAligned` dependency contracts.
+    // its abstract address equals the raw input. `external_body` (TCB-sanctioned per
+    // `tcb-allowed.md`) until the intra-crate `PhysicalAddress` `Address` impl carries its own
+    // verified `#[verus_spec]`; the strengthened contract below is preserved verbatim so callers
+    // keep the full `fa@ == raw_addr` guarantee.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             match result {
@@ -120,13 +123,14 @@ impl FrameAddress {
     )]
     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> { ... }
 
-    // Recovers the frame number of a frame address (`self@ / PAGE_SIZE`). Requires the address to
-    // be page-aligned and to have a representable frame number (so the underlying conversion does
-    // not overflow); the result is the exact inverse of `from_frame_number`.
+    // Recovers the frame number of a frame address (`self@ / PAGE_SIZE`). Requires only that the
+    // address is page-aligned (so the round-trip `from_number(into_frame_number(self)) == self`
+    // holds); representability is automatic because the underlying
+    // `PhysicalAddress::into_frame_number` is total. The result is the exact inverse of
+    // `from_frame_number`.
     #[verus_spec(result =>
         requires
             self.inv(),
-            spec_frame_number(self@) <= spec_max_frame_number(),
         ensures
             spec_frame_raw_value(result) == spec_frame_number(self@),
             spec_from_number(spec_frame_raw_value(result)) == self@,
