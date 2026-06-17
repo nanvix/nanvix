@@ -1,0 +1,228 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for langinfo.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/langinfo.h.
+
+file = "langinfo.h"
+brief = "Language information constants."
+description = """
+Declares nl_langinfo() and the nl_item constants used to query locale-specific
+data. Only the C/POSIX locale is supported. Implemented by the libc_langinfo
+Rust crate."""
+includes = []
+guard = "_NANVIX_LANGINFO_H"
+
+[[types]]
+text = """
+#ifndef _NL_ITEM_DEFINED
+#define _NL_ITEM_DEFINED
+/** @brief Identifier for an item of locale-specific data. */
+typedef int nl_item;
+#endif
+"""
+
+[[macros]]
+name = "CODESET"
+value = "0"
+
+[[macros]]
+name = "D_T_FMT"
+value = "1"
+
+[[macros]]
+name = "D_FMT"
+value = "2"
+
+[[macros]]
+name = "T_FMT"
+value = "3"
+
+[[macros]]
+name = "T_FMT_AMPM"
+value = "4"
+
+[[macros]]
+name = "AM_STR"
+value = "5"
+
+[[macros]]
+name = "PM_STR"
+value = "6"
+
+[[macros]]
+name = "DAY_1"
+value = "7"
+
+[[macros]]
+name = "DAY_2"
+value = "8"
+
+[[macros]]
+name = "DAY_3"
+value = "9"
+
+[[macros]]
+name = "DAY_4"
+value = "10"
+
+[[macros]]
+name = "DAY_5"
+value = "11"
+
+[[macros]]
+name = "DAY_6"
+value = "12"
+
+[[macros]]
+name = "DAY_7"
+value = "13"
+
+[[macros]]
+name = "ABDAY_1"
+value = "14"
+
+[[macros]]
+name = "ABDAY_2"
+value = "15"
+
+[[macros]]
+name = "ABDAY_3"
+value = "16"
+
+[[macros]]
+name = "ABDAY_4"
+value = "17"
+
+[[macros]]
+name = "ABDAY_5"
+value = "18"
+
+[[macros]]
+name = "ABDAY_6"
+value = "19"
+
+[[macros]]
+name = "ABDAY_7"
+value = "20"
+
+[[macros]]
+name = "MON_1"
+value = "21"
+
+[[macros]]
+name = "MON_2"
+value = "22"
+
+[[macros]]
+name = "MON_3"
+value = "23"
+
+[[macros]]
+name = "MON_4"
+value = "24"
+
+[[macros]]
+name = "MON_5"
+value = "25"
+
+[[macros]]
+name = "MON_6"
+value = "26"
+
+[[macros]]
+name = "MON_7"
+value = "27"
+
+[[macros]]
+name = "MON_8"
+value = "28"
+
+[[macros]]
+name = "MON_9"
+value = "29"
+
+[[macros]]
+name = "MON_10"
+value = "30"
+
+[[macros]]
+name = "MON_11"
+value = "31"
+
+[[macros]]
+name = "MON_12"
+value = "32"
+
+[[macros]]
+name = "ABMON_1"
+value = "33"
+
+[[macros]]
+name = "ABMON_2"
+value = "34"
+
+[[macros]]
+name = "ABMON_3"
+value = "35"
+
+[[macros]]
+name = "ABMON_4"
+value = "36"
+
+[[macros]]
+name = "ABMON_5"
+value = "37"
+
+[[macros]]
+name = "ABMON_6"
+value = "38"
+
+[[macros]]
+name = "ABMON_7"
+value = "39"
+
+[[macros]]
+name = "ABMON_8"
+value = "40"
+
+[[macros]]
+name = "ABMON_9"
+value = "41"
+
+[[macros]]
+name = "ABMON_10"
+value = "42"
+
+[[macros]]
+name = "ABMON_11"
+value = "43"
+
+[[macros]]
+name = "ABMON_12"
+value = "44"
+
+[[macros]]
+name = "RADIXCHAR"
+value = "45"
+
+[[macros]]
+name = "THOUSEP"
+value = "46"
+
+[[macros]]
+name = "YESEXPR"
+value = "47"
+
+[[macros]]
+name = "NOEXPR"
+value = "48"
+
+[[macros]]
+name = "CRNCYSTR"
+value = "49"
+
+[[sections]]
+title = "Functions"
+functions = ["nl_langinfo"]
