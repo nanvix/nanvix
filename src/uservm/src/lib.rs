@@ -128,6 +128,7 @@ use ::tokio::{
         },
     },
     task::JoinHandle,
+    time::timeout,
 };
 
 //==================================================================================================
@@ -154,6 +155,19 @@ pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
 /// Maximum number messages that can be queued in a channel.
 ///
 pub const CHANNEL_CAPACITY: usize = 1024;
+
+///
+/// # Description
+///
+/// Grace period for a post-vCPU teardown worker (the orchestrator task or the memory thread) to
+/// finish once the guest has exited. These workers only need to observe the shutdown signal and
+/// unwind, so they normally terminate near-instantly; bounding the join guarantees that a worker
+/// which fails to terminate cannot keep the VMM task — and therefore the uservm/`nanvixd` process —
+/// alive forever. The in-process shutdown watchdog in [`standalone::StandaloneVmHandle`] only fires
+/// after this VMM task completes, so without this bound a wedged teardown worker would leave
+/// `nanvixd` hung with no stdout and no exit (the rare standalone interactive boot/teardown wedge).
+///
+const TEARDOWN_JOIN_GRACE: Duration = Duration::from_secs(5);
 
 //==================================================================================================
 // UserVmArgs
@@ -368,7 +382,7 @@ impl UserVm {
             add_credit_fn(guest.clone(), vmem.clone(), microvm.ikc_notifier()),
             args.counters.clone(),
         );
-        let memory_thread: JoinHandle<()> = memory_thread.spawn();
+        let mut memory_thread: JoinHandle<()> = memory_thread.spawn();
 
         let vmm_thread: JoinHandle<Result<u16>> = Vmm::spawn(microvm.clone());
 
@@ -404,7 +418,7 @@ impl UserVm {
             shutdown_vcpu_fn(microvm.clone()),
         );
 
-        let orchestrator_thread_handle: JoinHandle<Result<()>> = orchestrator_thread.spawn();
+        let mut orchestrator_thread_handle: JoinHandle<Result<()>> = orchestrator_thread.spawn();
 
         #[cfg(feature = "profile-time")]
         #[allow(clippy::cast_possible_truncation)]
@@ -419,14 +433,43 @@ impl UserVm {
             },
         };
 
-        if let Err(error) = orchestrator_thread_handle.await {
-            error!("spawn(): failed to join orchestrator thread (error={error:?})");
-            // Don't bail, in order to cleanup the other the other tasks properly.
+        // The guest/vCPU has exited (`vmm_thread` resolved above). The orchestrator and memory
+        // worker tasks should now observe the shutdown signal and unwind promptly, so bound each
+        // join with a grace period: a worker that fails to terminate must not keep this VMM task —
+        // and therefore the uservm/`nanvixd` process — alive forever (the shutdown watchdog in
+        // `standalone::StandaloneVmHandle` only fires once this task completes). If a join exceeds
+        // the grace period, abort the task; the guest is already gone, so its only remaining work is
+        // cleanup that is safe to drop.
+        match timeout(TEARDOWN_JOIN_GRACE, &mut orchestrator_thread_handle).await {
+            // Joined; the orchestrator's run result is intentionally not propagated, matching the
+            // prior behavior of this teardown path.
+            Ok(Ok(_)) => {},
+            Ok(Err(error)) => {
+                error!("spawn(): failed to join orchestrator thread (error={error:?})");
+            },
+            Err(_elapsed) => {
+                warn!(
+                    "spawn(): orchestrator thread did not terminate within {:?} after guest exit; \
+                     aborting to avoid wedging VM teardown",
+                    TEARDOWN_JOIN_GRACE
+                );
+                orchestrator_thread_handle.abort();
+            },
         }
 
-        if let Err(error) = memory_thread.await {
-            error!("spawn(): error joining memory thread (error={error:?})");
-            // Don't bail, in order to cleanup the other the other tasks properly.
+        match timeout(TEARDOWN_JOIN_GRACE, &mut memory_thread).await {
+            Ok(Ok(())) => {},
+            Ok(Err(error)) => {
+                error!("spawn(): error joining memory thread (error={error:?})");
+            },
+            Err(_elapsed) => {
+                warn!(
+                    "spawn(): memory thread did not terminate within {:?} after guest exit; \
+                     aborting to avoid wedging VM teardown",
+                    TEARDOWN_JOIN_GRACE
+                );
+                memory_thread.abort();
+            },
         }
 
         #[cfg(feature = "profile-time")]
