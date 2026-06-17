@@ -584,3 +584,88 @@ Let me do a final confirmation of the scoped diff and a clean verification run.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff --stat && echo "=== FINAL VERIFY ===" && timeout 900 make verify-
 
 [THINKING] Let me do a final check that the module verification still passes and review the git diff to confirm only the intended files were modified.
+[RESULT ✓] bash: .../polish/prover-claude-20260617-234244.jsonl     | 84 ++++++++++++++++++++++
+ .../polish/prover-claude-20260617-234244.txt       | 68 ++++++++++++++++++
+ 2 files changed, 152 insertions(+)
+=== FINAL VERIFY ===
+  verification: cached (no recompilation), — (exit 0)
+  cheating: assume=0 external_body...
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+The diff stat only shows log files — let me check git status for the source files (they may be tracked differently).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager status --short | head -30; echo "=== check tracked ==="; git ls-files 
+
+[THINKING] The git diff is only showing the prover log files being appended to, not the actual source files I edited like manager.rs and manager.proof.rs. That's odd — either those files are gitignored or the diff is comparing against a different state. Let me check git status to see what's actually going on.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-manager/polish/prover-claude-20260617-234244.jsonl
+ M verus-ai-logs/nanvix-phys-phys-manager/polish/prover-claude-20260617-234244.txt
+=== check tracked ===
+src/kernel/src/mm/phys/manager.proof.rs
+src/kernel/src/mm/phys/manager.rs
+<shellId: 18 completed with exit code...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff -- src/kernel/src/mm/phys/manager.rs src/kernel/src/mm/phys/manag
+
+[THINKING] Something's off with git status — the files I edited show as unmodified even though I made changes to manager.rs and manager.proof.rs. Let me run git diff on those specific files to see what's actually different from HEAD, since either the working tree was already in this state or there's something odd with the index.
+[RESULT ✓] bash: === diff vs HEAD lines count ===
+0
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== HEAD has lemma_user_bulk_start? ==="; git --no-pager show HEAD:src/kernel/s
+
+[THINKING] The git diff shows no changes to manager.rs, but I can see my edits in the file view—like the lemma_user_bulk_start call and removed asserts. Either the repo was already in this exact state before I started, or a previous session committed these same changes and I've just recreated them. Let me check the git log to see if that's what happened.
+[RESULT ✓] bash: === HEAD has lemma_user_bulk_start? ===
+176:pub proof fn lemma_user_bulk_start(
+=== working tree has it? ===
+176:pub proof fn lemma_user_bulk_start(
+=== git log recent ===
+8961fc993 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilation), —, admit=4 external_body=23 cfg_...
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+The make target auto-commits after each passing verification — so all my edits are committed (HEAD = `8961fc993` includes `lemma_user_bulk_start`). Let me confirm the final state includes all removals and the checklist exists.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== removed asserts gone? (should be empty) ==="; grep -n "assert(g_old == old(
+
+[THINKING] Ah, so the verification harness automatically commits after each successful run — that's why HEAD already has my changes. The commit from the last verify pass captured everything, so my edits are already in the repository.
+
+Now I need to double-check that checklist.md is present and untracked, and confirm the final committed state has all eight assert removals in place.
+[RESULT ✓] bash: === removed asserts gone? (should be empty) ===
+(end)
+=== checklist exists? ===
+-rw-rw-r-- 1 ruize ruize 2705 Jun 17 23:49 verus-ai-logs/nanvix-phys-phys-manager/polish/checklist.md
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+All removals confirmed and the report is written. 
+
+## Summary
+
+Polished `mm::phys::manager` for integration readability — verification passes with **0 errors** and **no new admits/external_body** (`admit=4, external_body=23`, unchanged from baseline).
+
+**Proof Extraction (1 block):**
+- The 6-line post-`check_user_watermark` block in `alloc_many_user_frames` → new `lemma_user_bulk_start` in `manager.proof.rs`. Call site is now a single lemma call.
+- Remaining 9 proof blocks are all ≤5 lines (confirmed by `check_proof_blocks`). The 3 tool-flagged ">5 clauses" items are loop *invariants* (not extractable blocks); the kernel ones reference `old(self)@` so can't move into a spec fn.
+
+**Minimization (8 redundant asserts removed):**
+- 2 seed asserts each in `alloc_many_user_frames` / `alloc_many_kernel_frames` (`g_old == old(self)@`, `g_old.wf()`).
+- 4 derivable asserts in `lemma_user_bulk_step` (length bookkeeping, the `contains`/`!contains` intermediate, and the `free_set` difference bridge).
+- No dead or duplicate lemmas found.
+
+Report written to `verus-ai-logs/nanvix-phys-phys-manager/polish/checklist.md`. All edits were auto-committed by the verify harness (HEAD `8961fc993`).
+
+
+=== Session End ===
+Session: a24c1d9f-d6a2-4bcd-bd38-edd1448d49fd
+Duration: 469.6s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-manager/polish/prover-claude-20260617-234244.jsonl
