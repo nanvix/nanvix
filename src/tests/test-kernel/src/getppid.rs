@@ -95,8 +95,12 @@ static PARENT_PID_RAW: AtomicU32 = AtomicU32::new(0);
 /// 3. Calls `getppid()` and reports the raw result back to the parent via IPC.
 /// 4. Spins until the parent terminates it.
 extern "C" fn child_entry(_arg: usize) -> usize {
+    // Drop the parent's cached pid inherited through the duplicated address space. Unlike fork(),
+    // the raw duplicate() primitive has no in-child choke point, so the child invalidates here.
+    pm::invalidate_cached_pid();
+
     // Recover identifiers.
-    let my_pid: ProcessIdentifier = match pm::__kcall_getpid() {
+    let my_pid: ProcessIdentifier = match pm::getpid_uncached() {
         Ok(p) => p,
         Err(_) => return CHILD_ERR_GETPID,
     };
@@ -149,7 +153,7 @@ extern "C" fn child_entry(_arg: usize) -> usize {
 /// through the `getppid()` kernel call.
 fn test_getppid_reports_parent() -> Result<(), Error> {
     // Record the parent's PID where the child can find it via CoW-shared memory.
-    let parent_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let parent_pid: ProcessIdentifier = pm::getpid_uncached()?;
     PARENT_PID_RAW.store(u32::try_from(parent_pid)?, ORDER);
 
     // Allocate a page-aligned stack for the child's main thread.

@@ -168,7 +168,7 @@ fn join_child_thread(tid: ThreadIdentifier) -> Result<(), Error> {
 /// A tuple of (pid, main_tid).
 ///
 fn store_caller_ids() -> Result<(ProcessIdentifier, ThreadIdentifier), Error> {
-    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let pid: ProcessIdentifier = pm::getpid_uncached()?;
     let pid_raw: u32 = u32::try_from(pid)?;
     SELF_PID.store(pid_raw, ORDER);
 
@@ -766,7 +766,7 @@ fn test_multi_round() -> Result<(), Error> {
 fn test_self_push_rejected() -> Result<(), Error> {
     ::syslog::info!("test_self_push_rejected: starting");
 
-    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let pid: ProcessIdentifier = pm::getpid_uncached()?;
     let tid: ThreadIdentifier = pm::__kcall_gettid()?;
 
     let payload: [u8; 4] = [0x01, 0x02, 0x03, 0x04];
@@ -804,7 +804,7 @@ fn test_self_push_rejected() -> Result<(), Error> {
 fn test_self_pull_rejected() -> Result<(), Error> {
     ::syslog::info!("test_self_pull_rejected: starting");
 
-    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let pid: ProcessIdentifier = pm::getpid_uncached()?;
     let tid: ThreadIdentifier = pm::__kcall_gettid()?;
 
     let mut recv_buf: [u8; 4] = [0u8; 4];
@@ -877,7 +877,7 @@ fn test_reverse_direction() -> Result<(), Error> {
     let child_tid: ThreadIdentifier = spawn_child_thread(puller_thread_reverse, stack_base)?;
 
     // Retrieve our own PID for the push call.
-    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let pid: ProcessIdentifier = pm::getpid_uncached()?;
 
     // Push data to the child thread.
     ipc::__kcall_push(pid, child_tid, &TEST_PAYLOAD_16)?;
@@ -1443,7 +1443,7 @@ fn test_independent_pairs() -> Result<(), Error> {
 
     ::syslog::info!("test_independent_pairs: starting (pairs={})", NUM_PAIRS);
 
-    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let pid: ProcessIdentifier = pm::getpid_uncached()?;
     let pid_raw: u32 = u32::try_from(pid)?;
     SELF_PID.store(pid_raw, ORDER);
     TRANSFER_SIZE.store(TRANSFER as u32, ORDER);
@@ -1824,7 +1824,7 @@ fn test_reverse_asymmetric() -> Result<(), Error> {
     let child_tid: ThreadIdentifier =
         spawn_child_thread(puller_thread_reverse_asymmetric, stack_base)?;
 
-    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let pid: ProcessIdentifier = pm::getpid_uncached()?;
 
     // Push only 4 bytes to the child that expects up to 16.
     let payload: [u8; 4] = [0xA1, 0xB2, 0xC3, 0xD4];
@@ -2194,7 +2194,7 @@ fn test_stress_concurrent_pairs() -> Result<(), Error> {
         TRANSFER
     );
 
-    let pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let pid: ProcessIdentifier = pm::getpid_uncached()?;
     let pid_raw: u32 = u32::try_from(pid)?;
     SELF_PID.store(pid_raw, ORDER);
     TRANSFER_SIZE.store(TRANSFER as u32, ORDER);

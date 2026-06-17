@@ -30,6 +30,10 @@ use crate::{
 };
 use ::core::{
     hint::unlikely,
+    sync::atomic::{
+        AtomicI32,
+        Ordering,
+    },
     time::Duration,
 };
 
@@ -37,18 +41,34 @@ use ::core::{
 // Get Process Identifier
 //==================================================================================================
 
+/// Sentinel stored in [`CACHED_PID`] meaning "not yet cached". Every valid process identifier is
+/// non-negative, so a negative value can never be mistaken for a real pid.
+const PID_UNCACHED: i32 = -1;
+
+/// Process-global cache of the calling process's identifier.
+///
+/// `getpid()` is invariant for the lifetime of a process and identical across all of its threads
+/// (the kernel resolves it per process, not per thread), so it can be memoized to avoid a kernel
+/// transition on every query. The cache lives in the process address space and is therefore
+/// duplicated into a child by `fork()`; the child half of `__kcall_fork()` invalidates it (see
+/// [`invalidate_cached_pid`]) so the child re-queries its own identity rather than reusing the
+/// parent's.
+static CACHED_PID: AtomicI32 = AtomicI32::new(PID_UNCACHED);
+
 ///
 /// # Description
 ///
-/// Gets the process identifier of the calling process.
+/// Issues the raw `getpid()` kernel call, bypassing the cache.
+///
+/// This is the private primitive shared by the public [`getpid`] (cached) and [`getpid_uncached`]
+/// (uncached) wrappers. It always incurs a kernel transition.
 ///
 /// # Returns
 ///
 /// Upon successful completion, the process identifier of the calling process is returned. Upon
 /// failure, an error is returned instead.
 ///
-#[unsafe(no_mangle)]
-pub fn __kcall_getpid() -> Result<ProcessIdentifier, Error> {
+fn __kcall_getpid() -> Result<ProcessIdentifier, Error> {
     let result: i64 = kcall0!(KcallNumber::GetPid.into());
 
     // NOTE: errors are unlikely because getpid() always succeeds for a valid calling process.
@@ -57,6 +77,74 @@ pub fn __kcall_getpid() -> Result<ProcessIdentifier, Error> {
     } else {
         ProcessIdentifier::try_from(result)
     }
+}
+
+///
+/// # Description
+///
+/// Gets the process identifier of the calling process, serving a memoized value when available.
+///
+/// The kernel is queried only on the first call per process image; subsequent calls return the
+/// cached value without a kernel transition. The cache is invalidated by the child half of
+/// `fork()`, so the returned identifier always reflects the *current* process even after a fork.
+/// This is the preferred way to obtain the calling process's identifier.
+///
+/// # Returns
+///
+/// Upon successful completion, the process identifier of the calling process is returned. Upon
+/// failure, an error is returned instead.
+///
+pub fn getpid() -> Result<ProcessIdentifier, Error> {
+    // Fast path: return the memoized identifier without a kernel transition.
+    let cached: i32 = CACHED_PID.load(Ordering::Relaxed);
+    if cached != PID_UNCACHED {
+        return Ok(ProcessIdentifier::from(cached));
+    }
+
+    // Cold path: query the kernel once and memoize the result. Concurrent threads of the same
+    // process all resolve to the same identifier, so a benign race that stores it twice is
+    // harmless.
+    let pid: ProcessIdentifier = __kcall_getpid()?;
+    CACHED_PID.store(pid.into(), Ordering::Relaxed);
+    Ok(pid)
+}
+
+///
+/// # Description
+///
+/// Gets the process identifier of the calling process by always querying the kernel, bypassing the
+/// cache.
+///
+/// Prefer [`getpid`] in production code. This uncached variant exists for low-level callers that
+/// must observe the kernel's current identity directly — most notably code that creates children
+/// through the raw `__kcall_duplicate()` primitive, which does not pass through the cache
+/// invalidation performed by the child half of `__kcall_fork()` and therefore cannot rely on the
+/// cached value being fresh in the child.
+///
+/// # Returns
+///
+/// Upon successful completion, the process identifier of the calling process is returned. Upon
+/// failure, an error is returned instead.
+///
+pub fn getpid_uncached() -> Result<ProcessIdentifier, Error> {
+    __kcall_getpid()
+}
+
+///
+/// # Description
+///
+/// Invalidates the cached process identifier so that the next [`getpid`] call re-queries the
+/// kernel.
+///
+/// The child half of `__kcall_fork()` invokes this automatically. Callers that create a child
+/// through the raw `__kcall_duplicate()` primitive instead — which has no in-child choke point —
+/// must invoke it themselves as the child's first action; otherwise the child inherits the parent's
+/// cached identifier through the duplicated address space and would issue kernel calls under the
+/// parent's identity. A process's identifier is otherwise stable for its whole lifetime, so no
+/// other caller needs this.
+///
+pub fn invalidate_cached_pid() {
+    CACHED_PID.store(PID_UNCACHED, Ordering::Relaxed);
 }
 
 //==================================================================================================

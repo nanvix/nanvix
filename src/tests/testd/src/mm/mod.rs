@@ -54,7 +54,7 @@ fn test_mmap_munmap() -> bool {
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -98,7 +98,7 @@ fn test_mmap_write_munmap() -> bool {
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -158,7 +158,7 @@ fn test_mmap_munmap_many_times_inplace() -> bool {
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -204,7 +204,7 @@ fn test_mmap_munmap_many_times_rolling() -> bool {
         _ => return false,
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -252,7 +252,7 @@ fn test_mmap_munmap_return_zeros() -> bool {
         return false;
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => return false,
     };
@@ -325,7 +325,7 @@ fn test_mmap_multi_page() -> bool {
         return false;
     }
 
-    let mypid: ProcessIdentifier = match ::sys::kcall::pm::__kcall_getpid() {
+    let mypid: ProcessIdentifier = match ::sys::kcall::pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => return false,
     };

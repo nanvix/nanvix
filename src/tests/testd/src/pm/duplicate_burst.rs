@@ -107,6 +107,9 @@ fn spin() -> ! {
 /// whole burst (`duplicate()` refuses a caller that owns special resources such as a non-empty
 /// mailbox). It simply spins, yielding the processor, until the parent terminates it.
 extern "C" fn burst_child_entry(_arg: usize) -> usize {
+    // Drop the parent's cached pid inherited through the duplicated address space. Unlike fork(),
+    // the raw duplicate() primitive has no in-child choke point, so the child invalidates here.
+    pm::invalidate_cached_pid();
     spin()
 }
 
@@ -125,7 +128,7 @@ extern "C" fn burst_child_entry(_arg: usize) -> usize {
 /// If the test passed, `true` is returned. Otherwise, `false` is returned instead.
 ///
 fn test_duplicate_burst() -> bool {
-    let parent_pid: ProcessIdentifier = match pm::__kcall_getpid() {
+    let parent_pid: ProcessIdentifier = match pm::getpid_uncached() {
         Ok(pid) => pid,
         Err(_) => return false,
     };

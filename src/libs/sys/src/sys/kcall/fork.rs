@@ -113,6 +113,12 @@ pub fn __kcall_fork() -> Result<ProcessIdentifier, Error> {
         // Child path. The fork stack was never touched (the child runs on its private copy of the
         // parent's stack), and the shared static storage requires no cleanup, so simply report a
         // process identifier of zero to the caller.
+        //
+        // Invalidate the cached process identifier first: the child inherited the parent's cached
+        // pid through the duplicated address space, so it must be dropped here — the single,
+        // lowest-level choke point common to every fork caller — before any code resolves the
+        // identity of the freshly created child.
+        crate::kcall::pm::invalidate_cached_pid();
         return Ok(ProcessIdentifier::from(0));
     }
 

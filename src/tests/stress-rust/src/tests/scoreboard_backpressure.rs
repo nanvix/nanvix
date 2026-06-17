@@ -36,8 +36,8 @@ use ::sys::{
         },
         pm::{
             __kcall_create_thread,
-            __kcall_getpid,
             __kcall_join_thread,
+            getpid_uncached,
         },
         sched::__kcall_sched_yield,
     },
@@ -196,7 +196,7 @@ extern "C" fn scoreboard_pressure_worker(worker_id: usize) -> usize {
 /// Propagates failures from kernel calls or address calculations.
 ///
 fn scoreboard_pressure_worker_impl(worker_id: usize) -> Result<usize, Error> {
-    let pid: ProcessIdentifier = __kcall_getpid()?;
+    let pid: ProcessIdentifier = getpid_uncached()?;
     let region_base: usize = worker_region_base(worker_id)?;
 
     for iteration in 0..SCOREBOARD_PRESSURE_ITERATIONS {

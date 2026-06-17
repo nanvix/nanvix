@@ -206,7 +206,7 @@ fn test_child_mutations_isolated() -> Result<(), Error> {
 
 /// Verifies that a parent's mutations after `fork()` are not visible to the child.
 fn test_parent_mutations_isolated() -> Result<(), Error> {
-    let parent: ProcessIdentifier = pm::__kcall_getpid()?;
+    let parent: ProcessIdentifier = pm::getpid_uncached()?;
     assert!(
         do_setenv(b"FORK_PMOD\0", b"original\0", OVERWRITE) == 0,
         "setenv() failed before fork()"

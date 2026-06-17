@@ -140,7 +140,7 @@ fn release_child(parent: ProcessIdentifier, child: ProcessIdentifier) -> Result<
 /// so init can later release and reap the adopted orphan. The kernel validates the sender field, so
 /// the message is sent from the caller's own PID.
 fn report_pid(to: ProcessIdentifier, pid: ProcessIdentifier) -> Result<(), Error> {
-    let from: ProcessIdentifier = pm::__kcall_getpid()?;
+    let from: ProcessIdentifier = pm::getpid_uncached()?;
     let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     payload[0..4].copy_from_slice(&i32::from(pid).to_le_bytes());
     let report: Message = Message::new(
@@ -201,7 +201,7 @@ fn test_einval_rejects_bad_options() -> Result<(), Error> {
 
 /// Verifies the non-blocking poll, blocking reap, exit-status decoding and post-reap `ECHILD`.
 fn test_wnohang_then_reap() -> Result<(), Error> {
-    let parent: ProcessIdentifier = pm::__kcall_getpid()?;
+    let parent: ProcessIdentifier = pm::getpid_uncached()?;
     let child: ProcessIdentifier = spawn_blocked_child(CHILD_STATUS_A)?;
 
     // The child is alive (blocked on its barrier): a non-blocking poll must report nothing ready.
@@ -245,7 +245,7 @@ fn test_wnohang_then_reap() -> Result<(), Error> {
 
 /// Verifies that `wait()` reaps any child and that draining all children ends with `ECHILD`.
 fn test_wait_any_drains_children() -> Result<(), Error> {
-    let parent: ProcessIdentifier = pm::__kcall_getpid()?;
+    let parent: ProcessIdentifier = pm::getpid_uncached()?;
     let child_a: ProcessIdentifier = spawn_blocked_child(CHILD_STATUS_B)?;
     let child_b: ProcessIdentifier = spawn_blocked_child(CHILD_STATUS_C)?;
 
@@ -312,7 +312,7 @@ fn test_wait_any_drains_children() -> Result<(), Error> {
 /// intervening `fork()` returns (the fork-sync handshake), so it is always present in the
 /// intermediate child's child list when that child terminates.
 fn test_orphan_adopted_by_init() -> Result<(), Error> {
-    let init: ProcessIdentifier = pm::__kcall_getpid()?;
+    let init: ProcessIdentifier = pm::getpid_uncached()?;
 
     let ret: pid_t = bindings::fork::fork();
     if ret == 0 {

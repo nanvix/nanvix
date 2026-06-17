@@ -28,13 +28,11 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    kcall,
     mm::{
         self,
         Address,
         VirtualAddress,
     },
-    pm::ProcessIdentifier,
 };
 use ::talc::*;
 
@@ -61,13 +59,8 @@ struct NanvixOomHandler {
 }
 
 impl NanvixOomHandler {
-    fn new(
-        pid: ProcessIdentifier,
-        base: VirtualAddress,
-        size: usize,
-        capacity: usize,
-    ) -> Result<Talc<Self>, Error> {
-        let heap: Heap = Heap::new(pid, base, size, capacity)?;
+    fn new(base: VirtualAddress, size: usize, capacity: usize) -> Result<Talc<Self>, Error> {
+        let heap: Heap = Heap::new(base, size, capacity)?;
 
         let oom_handler: NanvixOomHandler = Self { heap, span: None };
 
@@ -215,8 +208,6 @@ impl OomHandler for NanvixOomHandler {
 ///
 #[allow(static_mut_refs)]
 pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
-    let pid: ProcessIdentifier = kcall::pm::__kcall_getpid()?;
-
     let size: usize = PAGE_SIZE;
 
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
@@ -225,7 +216,7 @@ pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
         return Err(Error::new(ErrorCode::ResourceBusy, "heap already initialized"));
     }
 
-    *locked_heap = Some(NanvixOomHandler::new(pid, base, size, capacity)?);
+    *locked_heap = Some(NanvixOomHandler::new(base, size, capacity)?);
 
     Ok(())
 }

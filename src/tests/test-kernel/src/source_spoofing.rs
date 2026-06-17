@@ -54,7 +54,7 @@ use ::sys::{
 /// (negative) TID-encoded identity, so the kernel must reject the send with
 /// [`ErrorCode::OperationNotPermitted`] instead of delivering the forged message.
 fn test_reject_spoofed_source() -> Result<(), Error> {
-    let my_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let my_pid: ProcessIdentifier = pm::getpid_uncached()?;
 
     // Impersonate a privileged daemon other than ourselves. In the test-kernel environment this
     // process runs as PROCD, so forge VFSD; if it ever runs as VFSD, forge PROCD instead. Either
@@ -96,7 +96,7 @@ fn test_reject_spoofed_source() -> Result<(), Error> {
 /// Verifies that a send carrying the caller's legitimate PID-encoded source still succeeds and is
 /// delivered intact, ensuring the spoof rejection does not reject well-formed messages.
 fn test_allow_legitimate_source() -> Result<(), Error> {
-    let my_pid: ProcessIdentifier = pm::__kcall_getpid()?;
+    let my_pid: ProcessIdentifier = pm::getpid_uncached()?;
 
     // A message from ourselves to ourselves carries a legitimate source and must be accepted.
     const PAYLOAD_MARKER: u8 = 0xA5;
