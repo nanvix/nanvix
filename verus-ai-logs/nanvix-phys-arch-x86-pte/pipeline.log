@@ -250,3 +250,12 @@ Module: arch-x86-pte
 [2026-06-18 01:46:00] ✅ polish: PASS (0/0)
 [2026-06-18 01:46:00] [GATE] Running build: make build
 [2026-06-18 01:46:00] [GATE] Running verify: make verify
+[2026-06-18 01:46:13] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: arch-x86-pte
+  ✅ polish                    no-review                 3m32s
+  ──────────────────────────────────────────────────────────
+  Total: 3m45s
+============================================================
+[2026-06-18 01:46:13] [USAGE] Summary: 10 calls, 0 tokens, 44m40s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/usage_summary.json

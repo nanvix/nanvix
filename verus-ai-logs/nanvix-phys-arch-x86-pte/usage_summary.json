@@ -1,11 +1,11 @@
 {
   "module": "nanvix-phys-arch-x86-pte",
-  "generated_at": "2026-06-15T15:15:34.133938",
-  "total_calls": 9,
-  "calls_with_usage": 9,
+  "generated_at": "2026-06-18T01:46:13.186989",
+  "total_calls": 10,
+  "calls_with_usage": 10,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 2468.7,
+  "total_duration_s": 2680.7,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -45,14 +45,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 455.9
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 212.0
     }
   },
   "per_role": {
     "prover": {
-      "calls": 5,
+      "calls": 6,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 942.9000000000001
+      "duration_s": 1154.9
     },
     "dialogue-reviewer-t1": {
       "calls": 3,
@@ -270,6 +276,29 @@
           "filesModified": [
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/final-review/final_review.claude.md",
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/final-review/final_review.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-18T01:46:00.275857",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "83a4de7a-c45d-413b-ab0d-fccff7102f23",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/polish/prover-claude-20260618-014228.txt",
+      "duration_s": 212.0,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 199898,
+        "sessionDurationMs": 210545,
+        "codeChanges": {
+          "linesAdded": 43,
+          "linesRemoved": 1,
+          "filesModified": [
+            "/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/polish/checklist.md"
           ]
         }
       }
