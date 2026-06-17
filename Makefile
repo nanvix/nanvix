@@ -295,7 +295,9 @@ endif
 #===================================================================================================
 
 # Path to the directory containing the Verus executable.
-export VERUS_EXECUTABLE_DIR ?= /home/ruize/toolchain/verus
+# Pinned to the locally built Verus (git rev 2769117b6, version 0.2026.06.10.2769117),
+# which matches the vstd git pin in Cargo.toml. Override via the environment if needed.
+export VERUS_EXECUTABLE_DIR ?= /home/ruize/verus-exp/verus/source/target-verus/release
 
 # List of crates to verify with Verus.
 VERUS_CRATES := bitmap sys nanvix-slab bump-allocator arch
