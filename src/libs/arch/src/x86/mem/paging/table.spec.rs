@@ -113,7 +113,7 @@ impl<E: TableEntry> View for Table<E> {
         TableView {
             addr: self.base as nat,
             entries: Map::new(
-                |i: nat| i < crate::mem::PAGE_TABLE_LENGTH,
+                Set::range(0, crate::mem::PAGE_TABLE_LENGTH as nat),
                 |i: nat| spec_table_read::<E>(self.base as nat, i),
             ),
         }
