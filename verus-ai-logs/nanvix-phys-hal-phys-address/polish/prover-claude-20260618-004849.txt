@@ -487,3 +487,209 @@ The three assertions A, B, and C are all essential here. A bridges the spec-leve
 I've removed 7 redundant assertions through minimization, and the current state looks clean.
 
 Now I'm checking for spec drift—I only removed assertions inside proof lemmas and reverted one hint, so the spec file, ensures, requires clauses, and lemma signatures are all unchanged. The module verification confirms no cheating in this address module, with all admits coming from other modules. I should run a final verification to confirm the current state passes, then count the removals precisely and write up the checklist. I'm also reconsidering whether there are more redundant assertions worth removing, like the one at line 104 checking `usize::BITS == 32 || 64`—I need to verify whether `unsigned_int_max_values()` already establishes this constraint. I'm wondering whether Verus automatically knows that MAX_ADDRESS (defined as a const equal to usize::MAX) equals usize::MAX when cast to int, or if that assertion is necessary to bridge the const definition to the type system. Since it's risky to remove without being certain, I'll keep it. Now I'm ready to run the final verification and build check to confirm everything compiles.
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Global: assume=0 external_body=23 admit=4 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Funct...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Final state is clean: 6 verified, 0 errors, no cheating in module, no admits/external_body in our files. Let me review the complete diff and run a standard build to confirm "build passes".
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff --stat src/kernel/src/hal/mem/types/address/; echo "=== FULL DIFF
+
+[THINKING] The verification shows 6 clean checks with no errors and no cheating detected in the module—the `admit=4` global comes from outside code that's out of scope. Now I need to verify that the in-scope functions themselves have no admits and confirm the build compiles successfully.
+
+Since `make verify-kernel` already ran with exit 0, the verification and build both passed. Let me review the diff of my changes to ensure I haven't altered any exec logic or spec signatures—I only removed proof helper assertions and reverted one hint, so the source integrity is intact. I'll document the final diff and run a standard build before writing up the checklist.
+[RESULT ✓] bash: === FULL DIFF ===
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short src/kernel/src/hal/mem/types/address/ 2>&1 | head; echo "=== is it
+
+[THINKING] The git diff came back empty, which suggests the file might not be tracked yet or there's something off with the working tree state. Let me check what git status shows to understand what's actually changed.
+[RESULT ✓] bash: === is it gitignored? ===
+exit: 1
+=== diff vs backup ===
+36d35
+<     assert(raw <= m / s);
+77d75
+<     assert(pow2(shift as nat) == 4096);
+86d83
+<     assert(shift == 12);
+94d90
+<     assert(frame_number as int == spec_frame_number(addr@));
+102d97
+<     assert(s == 4096);
+120d114
+<     assert(raw_ad...
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+The diff vs backup confirms exactly 7 redundant assertions removed from `phys.proof.rs`, and `phys.rs` is unchanged (hint reverted). Let me confirm git tracking and run a standard kernel build.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git ls-files --error-unmatch src/kernel/src/hal/mem/types/address/phys.proof.rs 2>&1 
+
+[THINKING] The diff shows 7 assertions were removed from phys.proof.rs while phys.rs itself is unchanged. Git status isn't showing any changes even though the file clearly differs from the backup, which is puzzling—I need to investigate whether git is actually tracking these files or if there's something else going on.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.proof.rs
+=== git status porcelain (whole repo, filtered) ===
+ M verus-ai-logs/nanvix-phys-hal-phys-address/polish/prover-claude-20260618-004849.jsonl
+ M verus-ai-logs/nanvix-phys-hal-phys-address/polish/prover-claude-20260618-004849.txt
+<shellId: 19 complete...
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== git diff (no path) proof file ==="; git --no-pager diff -- src/kernel/src/h
+
+[THINKING] The file shows as tracked in git but git diff isn't picking up the changes I see in the backup comparison, which is puzzling. Let me verify what's actually in git diff for this specific file and figure out why the assertions seem to have disappeared between my backup and what git is tracking.
+[RESULT ✓] bash: === git diff (no path) proof file ===
+=== HEAD version vs current (lines count) ===
+0
+<shellId: 20 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+Interesting — the result matches a known-good committed state (git diff empty), confirming this is the canonical minimized form. The session-start working tree had 7 extra assertions (per my backup), which I removed. Let me confirm all three files are clean and run a standard kernel build to confirm "build passes" outside the verus toolchain.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== phys.rs and phys.spec.rs vs HEAD (should be empty) ==="; git --no-pager dif
+
+[THINKING] I'm realizing there's a discrepancy here—the HEAD version doesn't have those assertions, but my backup from the start of this session does. The git diff shows nothing between current and HEAD, which means they're identical, yet the backup clearly had the assertions that are now missing.
+
+The most likely explanation is that HEAD already represents a minimized version from a previous commit, and the working tree at session start had local uncommitted changes that added the assertions back in. My edits removed them, which coincidentally restored the HEAD state. It's an odd coincidence, but it actually confirms this is a known-good minimized form.
+
+Let me verify the other phys files match HEAD too to get a complete picture of the working tree state.
+[RESULT ✓] bash: === phys.rs and phys.spec.rs vs HEAD (should be empty) ===
+=== confirm phys.rs vs backup unchanged ===
+phys.rs UNCHANGED
+phys.spec.rs UNCHANGED
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Both `phys.rs` and `phys.spec.rs` are unchanged. Only `phys.proof.rs` was minimized. Now let me run a standard kernel build to confirm the build passes outside the verus pipeline.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 ./z build -- kernel 2>&1 | tail -25
+
+[THINKING] The file changes look good—phys.rs and phys.spec.rs are untouched while phys.proof.rs has been stripped down to match HEAD. Now I'm running a standard kernel build to verify everything compiles successfully.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 22 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^[a-zA-Z0-9_-]+:" Makefile | grep -iE "kernel|build|all" | head -30
+
+[THINKING] I'm realizing the `./z build -- kernel` target doesn't actually exist in the Makefile, so I need to check what the available build targets are to find the correct one.
+[RESULT ✓] bash: 413:all: all-nanvix
+418:all-nanvix: \
+426:all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
+429:all-nanvix: all-nanvix-shim
+433:all-nanvix: standalone-images
+438:all-nanvix: all-nanvix-bench
+460:clean: clean-host-binaries clean-nanvixd clean-uservm clean-nanv...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "kernel" Makefile | grep -iE "cargo|build|\.elf|target/|CARGO" | head -20; e
+
+[THINKING] I need to figure out the actual kernel build target since it's not just "kernel". Looking at the verify-kernel target around line 626 might give me clues about how the kernel gets compiled. Let me search through the build system to find where the kernel crate is actually built, whether it's through `make all-nanvix` or a direct kernel crate build.
+[RESULT ✓] bash: 222:export KERNEL_CARGO_TARGET := --target $(TARGETS_DIR)/$(TARGET)-kernel.json
+234:    #   - kernel.elf retains .symtab (resolvable by the guest profiler)
+262:# Kernel cargo commands explicitly unset RUSTC_WRAPPER to disable sccache.  The kernel uses a custom
+855:# Seed directory used to build the ...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -nE "^[a-zA-Z0-9_.-]+:" build/make/kernel.mk 2>/dev/null | head -20
+[RESULT ✓] bash: 10:all-kernel: init
+26:check-kernel:
+29:format-kernel:
+32:format-check-kernel:
+35:clean-kernel:
+39:rust-lint-kernel:
+42:rust-lint-check-kernel:
+51:all-test-kernel: init
+61:run-kernel-tests: all-test-kernel all-uservm
+67:check-test-kernel:
+70:clean-test-kernel:
+<shellId: 25 completed with exit code 0...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+The kernel build target is `all-kernel`. Let me run it to confirm the standard (non-verus) build passes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make all-kernel 2>&1 | tail -25
+
+[THINKING] I need to run the build command for the kernel using `make all-kernel` or the build script.
+[RESULT ✓] bash: mkdir -p /home/ruize/nanvix-phy-specs/bin
+mkdir -p /home/ruize/nanvix-phy-specs/lib
+mkdir -p /home/ruize/nanvix-phy-specs/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-features  -Z build-std=core,alloc,compile...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Standard build passes (kernel.elf produced). Let me confirm there are no admits/external_body/assume in the three phys files specifically (the global counts are from out-of-scope modules).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== admit/assume/external_body in phys files ==="; grep -nE "admit\(|assume\(|e
+
+[THINKING] The kernel build completed successfully and produced kernel.elf. I'm verifying that our scope has no admits—the module check confirmed no cheating in hal::mem::types::address::phys, and our files contain no admit/external_body/assume directives. The four global admits are from other modules outside our scope. Let me verify the three phys files specifically to make sure they're clean.
+[RESULT ✓] bash: === admit/assume/external_body in phys files ===
+NONE FOUND
+=== final proof block check ===
+
+File                                          Function                  Start   End Lines  Status
+----------------------------------------------------------------------------------------------------
+/home/ru...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Everything is clean: no admits/assume/external_body, both inline proof blocks ≤5 lines (already delegate to named lemmas), 7 redundant assertions removed, verification passes (6 verified, 0 errors), and the standard build passes. Now let me write the polish report.
+[TOOL] bash: mkdir -p /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/polish && ls /home/ruize/nanvix-phy-spe
+
+[THINKING] Everything checks out cleanly—no problematic assertions in the physical files, the proof blocks are concise with just lemma calls, and I've removed seven redundant assertions. Verification passed with no errors. Now I'm creating the polish directory and writing the checklist report to the specified location. All the proof-helper lemmas are essential—removing any of them breaks verification. The four spec functions are all public and used by other modules, so they can't be eliminated either. Now I'll create the checklist documenting these findings.
+[RESULT ✓] bash: prover-claude-20260618-004849.jsonl
+prover-claude-20260618-004849.txt
+<shellId: 28 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/polish/checklist.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/polish/checklist.md with 3245 characters
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Done. Summary of the polish:
+
+**Proof extraction:** Nothing to extract — both inline proof blocks (`from_number`: 3 lines, `into_frame_number`: 4 lines) are ≤5 lines and already delegate to named lemmas (`lemma_from_number_no_overflow`, `lemma_frame_index`).
+
+**Minimization:** Removed **7 redundant assertions** from `phys.proof.rs` (goal-restatements, derivable bounds, and a contradiction-implied fact). Kept all load-bearing lemma calls — verified by testing removal of the call-site `lemma2_to64()` (failed → reverted). No dead spec functions (all `pub`, consumed by `frame.*`). `phys.rs`/`phys.spec.rs` untouched; no spec drift.
+
+**Verification:** `make verify-kernel MODULE=hal::mem::types::address::phys` → 6 verified, 0 errors, CLEAN (no assume/admit/external_body). `make all-kernel` build passes.
+
+Report written to `verus-ai-logs/nanvix-phys-hal-phys-address/polish/checklist.md`.
+
+[THINKING] The task is complete. I've verified everything is in a consistent final state, and there are no temporary files left in the repo to clean up.
+
+
+=== Session End ===
+Session: 485f68eb-999b-479d-8027-99f1a6045b3b
+Duration: 485.8s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-phys-address/polish/prover-claude-20260618-004849.jsonl
