@@ -223,3 +223,67 @@ One proof block exceeds 5 lines (228–233 in `alloc_many_user_frames`). Let me 
 [THINKING] I'm identifying a proof block spanning lines 228-233 in the `alloc_many_user_frames` function that needs extraction into a lemma, separate from the loop invariants which aren't part of this refactoring task. Let me examine that specific proof block.
 
 The block calls `lemma_manager_attached(self)` to establish that `self@` equals the physical view's frames, then asserts that `self@` remains unchanged as `g_old` after the `check_user_watermark` call, and finally asserts that `g_old` satisfies the user allocation condition. The key insight is that `lemma_manager_attached` links the self reference to the global physical state, which allows the proof to connect `check_user_watermark`'s postcondition about free count to the invariant that `self@.user_alloc_ok(count)` holds. I'm designing a proof function that takes a reference to the memory manager and establishes the user bulk invariant. The key insight is that by passing `m: &PhysMemoryManager` instead of `self`, I can call `lemma_manager_attached(m)` to connect the manager's state to the global physical view, then use the postcondition from `check_user_watermark` to prove the allocation is valid. Since `count > 0` is already established by the time we reach this point, the lemma can assert the allocation condition unconditionally. So I need to verify that the lemma preconditions hold at the call site: `self@ == g_old` is automatically true since self hasn't changed, the free count condition comes from the `check_user_watermark` postcondition, and `frames@.len() == 0` still holds because the early returns and checks don't mutate frames. I'll extract this into a lemma call. For the other proof blocks, the 5-line block at `alloc_kernel_frame` is tightly coupled to its context so I'll keep it inline, and I'm starting to look at another proof block in the count==0 path. The two loop invariants in the kernel frame allocation are nearly identical, sharing the same core clauses about the old state, well-formedness, and address bounds. I could consolidate them into a spec predicate to reduce redundancy, but that gets complicated with references to `old(self)@`. For now, I'll stick to what the task explicitly asks: extract the proof block over 5 lines into a lemma and minimize redundant assertions. Let me run the baseline verification to confirm everything passes first, then check the tcb-allowed list to see which functions are already marked as external_body.
+[RESULT ✓] bash: - frame.rs:1466 init: external_body
+    - frame.rs:1522 alloc: external_body
+    - frame.rs:1552 alloc_contiguous: external_body
+    - frame.rs:1573 free_count: external_body
+    - frame.rs:1591 free: external_body
+    - frame.rs:1633 book: external_body
+    - frame.rs:1654 alloc_range: external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+Baseline verifies (exit 0; the "CHEATING_DETECTED" is just the pre-existing trust-boundary admit/external_body inventory). Let me confirm the actual Verus pass result.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE "verification results|verified|errors|error:" verus-ai-logs/verify-kernel/ve
+
+[THINKING] The baseline passes verification, and the "CHEATING_DETECTED" flags point to pre-existing trust boundary admits and external bodies that are already documented in tcb-allowed.md—my focus is on improving readability rather than removing them. The lemmas in manager.proof.rs are also pre-existing trust-boundary proofs that I need to work with.
+[RESULT ✓] bash: 
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/ | head; echo "---"; grep -riE "verifica
+[RESULT ✓] bash: verus_2026-06-17_23-44-05.log
+cheating-detail.txt
+verus_2026-06-17_23-42-41.log
+coverage-unverified.txt
+verus_2026-06-17_23-42-20.log
+verus_2026-06-17_23-40-18.log
+verus_2026-06-17_23-38-42.log
+verus_2026-06-17_17-10-16.log
+verus_2026-06-17_17-07-59.log
+verus_2026-06-17_16-57-44.log
+---
+verus-ai-log...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Baseline confirmed: **101 verified, 0 errors**. Now let me extract the 6-line proof block (228–233) into a named lemma. First I'll add the lemma to the proof file.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs
+
+[THINKING] The baseline verification passed cleanly with no errors. Now I'm moving into the polish phase and setting up a reusable verification command that leverages caching so subsequent runs after edits will re-verify efficiently. My plan is to extract the proof block from the `alloc_many_user_frames` function into a standalone named lemma to improve modularity.
+
+For minimization, I'm examining several candidates for redundant assertions. The assertions at lines 201-204 in `alloc_many_user_frames` that establish `g_old == old(self)@` and `g_old.wf()` might be seeding the loop invariant, so I need to test whether they're actually necessary or can be removed. The same pattern appears in `alloc_many_kernel_frames` around lines 445-448. After extracting the proof block, some assertions will move into the lemma or become unnecessary. I'll do the extraction first, then test incrementally to see what can be safely minimized.
+
+For the extraction lemma design, after `check_user_watermark(count)?` succeeds, I have the free count constraint in scope, and the lemma needs to establish that the manager is attached and the allocation is valid.
+
+Defining the extracted lemma... I need to verify that `frames@.len() == 0` holds at the call site, which it does since we checked for non-empty frames earlier and returned if needed. The lemma takes `count` as a natural number, and passing `count as nat` satisfies the loop invariant's requirement that `count > 0 ==> g_old.user_alloc_ok(count as nat)`. For the loop invariant to establish correctly, I need `g_old.wf()` and `self@.wf()`, both of which follow from the function's requires clause and the fact that `self@ == g_old`, with the earlier assertion at line 203 confirming `g_old.wf()`.
+
+Now I'm going to extract this into a lemma. I'll place it after `lemma_user_bulk_base` in the proof file since that's what it depends on, and I'll use `nat` for the `count` parameter to keep it spec-level. Let me write the lemma with a doc comment and then update the call site.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Now update the call site in `manager.rs`:
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/manager.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Let me verify the extraction works before moving on to minimization.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-kernel MODULE=mm::phys 2>&1 | grep -iE "verification results|

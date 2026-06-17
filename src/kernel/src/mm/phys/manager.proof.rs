@@ -169,6 +169,28 @@ pub proof fn lemma_user_bulk_base(g_old: FrameAllocView, frames: Seq<UserFrame>)
     lemma_book_all_empty(g_old);
 }
 
+/// Entry into the user bulk-allocation loop, just after `check_user_watermark` succeeded. The
+/// watermark postcondition is stated over the global `phys_view().frames`; the global-token
+/// attachment ties it back to `m@ == g_old`, yielding `user_alloc_ok(count)`. With the still-empty
+/// `frames`, the loop invariant holds for the untouched partition.
+pub proof fn lemma_user_bulk_start(
+    m: &PhysMemoryManager,
+    g_old: FrameAllocView,
+    frames: Seq<UserFrame>,
+    count: nat,
+)
+    requires
+        m@ == g_old,
+        frames.len() == 0,
+        phys_view().frames.free_count() >= count + spec_kernel_watermark(),
+    ensures
+        g_old.user_alloc_ok(count),
+        user_bulk_inv(g_old, g_old, frames),
+{
+    lemma_manager_attached(m);
+    lemma_user_bulk_base(g_old, frames);
+}
+
 /// Inductive step: one successful `Upool::alloc` (which moved the currently-free `uf@` from
 /// free to allocated, i.e. `mview -> mview.alloc_one(uf@)`) preserves the invariant for the
 /// extended handle sequence.
