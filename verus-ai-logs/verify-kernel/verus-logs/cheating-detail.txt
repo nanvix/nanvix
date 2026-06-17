@@ -1,24 +1,24 @@
     - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
-    - mm/phys/frame.rs:1408 instance: external_body
-    - mm/phys/frame.rs:1446 init: external_body
-    - mm/phys/frame.rs:1502 alloc: external_body
-    - mm/phys/frame.rs:1532 alloc_contiguous: external_body
-    - mm/phys/frame.rs:1553 free_count: external_body
-    - mm/phys/frame.rs:1571 free: external_body
-    - mm/phys/frame.rs:1613 book: external_body
-    - mm/phys/frame.rs:1634 alloc_range: external_body
-    - mm/phys/frame.rs:1654 share: external_body
-    - mm/phys/frame.rs:1675 refcount: external_body
+    - mm/phys/frame.rs:1428 instance: external_body
+    - mm/phys/frame.rs:1466 init: external_body
+    - mm/phys/frame.rs:1522 alloc: external_body
+    - mm/phys/frame.rs:1552 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1573 free_count: external_body
+    - mm/phys/frame.rs:1591 free: external_body
+    - mm/phys/frame.rs:1633 book: external_body
+    - mm/phys/frame.rs:1654 alloc_range: external_body
+    - mm/phys/frame.rs:1674 share: external_body
+    - mm/phys/frame.rs:1695 refcount: external_body
     - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit
     - mm/phys/manager.proof.rs:40 lemma_kernel_alloc_contiguous: admit
-    - mm/phys/manager.proof.rs:210 lemma_user_bulk_err_restored: admit
+    - mm/phys/manager.proof.rs:221 lemma_user_bulk_err_restored: admit
     - mm/phys/manager.rs:104 init: external_body
     - mm/phys/manager.rs:529 kernel_watermark: external_body
     - mm/phys/mod.rs:73 book_physical_memory_regions: external_body
     - mm/phys/mod.rs:103 book_mmio_regions: external_body
-    - mm/phys/mod.spec.rs:69 ExLinkedList (struct): external_type_spec
+    - mm/phys/mod.spec.rs:98 ExLinkedList (struct): external_type_spec
     - mm/phys/upool.rs:251 new: external_body
     - mm/phys/upool.rs:289 alloc: external_body
     - mm/virt/identity_map.rs:534 ensure_pt: external_body
