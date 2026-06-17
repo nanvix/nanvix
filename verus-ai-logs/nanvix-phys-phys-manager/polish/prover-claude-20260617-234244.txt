@@ -505,3 +505,14 @@ Now I'm noticing that the two kernel loop invariants are nearly identical, with 
 However, the challenge is that some clauses reference `old(self)@`, which can't be captured in a standalone spec function. Extracting only the other clauses would split the invariant awkwardly and hurt readability. The user_bulk loop already does this well with the `user_bulk_inv` predicate, but the kernel loops have this structural limitation. Since the duplication is inherent to the cleanup-loop pattern and extraction would make things worse, I'll leave them as-is.
 
 Now I need to run the full build and verification to confirm everything passes with zero errors and no new admits introduced, keeping in mind the four pre-existing trust-boundary lemmas that are allowed to stay.
+[RESULT ✓] bash: cheating: assume=0 external_body=23 admit=4 trusted=0 no_decreases=0 cfg_gate=19
+  cheating: assume=0 external_body=23 admit=4 trusted=0 no_decreases=0 cfg_gate=19
+  status: CHEATING_DETECTED
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel 2>&1 | grep -iE "verification:|verified|coverage:|sta
+
+[THINKING] I need to look at the full verification summary to see what results came back from the test run.
