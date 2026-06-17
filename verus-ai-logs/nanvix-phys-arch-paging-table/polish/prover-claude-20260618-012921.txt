@@ -340,3 +340,16 @@ Actually, I realize the lemma needs to know `PAGE_TABLE_LENGTH == 1024` to compu
 Turn 13
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
+[RESULT ✓] bash: === Results ===
+  45 verified
+  2 errors
+  Exit code : 101
+<shellId: verify_arch completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+Folding broke it (2 errors). Let me see the errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
+
+[THINKING] I'm getting two errors now — the folding approach isn't working, likely because the call site can't connect the `index` variable to what the lemma guarantees, or the lemma's chain of computation and bitvector reasoning fails to establish the postcondition. Let me check what the errors are saying.
