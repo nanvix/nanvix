@@ -6,7 +6,8 @@
 //==================================================================================================
 
 // Attributes
-#![cfg_attr(not(feature = "std"), no_std)]
+// Use no_std except during tests so the Rust test harness (which requires std) can run.
+#![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 // Lints
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::cast_possible_truncation)]
@@ -38,7 +39,7 @@ pub mod sigset;
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "std"))]
+#[cfg(not(any(feature = "std", test)))]
 use ::sysapi::errno::__errno_location;
 use ::sysapi::ffi::c_int;
 
@@ -55,7 +56,7 @@ use ::sysapi::ffi::c_int;
 ///
 /// - `code`: Error code to be written to `errno`.
 ///
-#[cfg(not(feature = "std"))]
+#[cfg(not(any(feature = "std", test)))]
 #[inline(always)]
 fn set_errno(code: c_int) {
     // SAFETY: `__errno_location()` returns a valid pointer to `errno`.
@@ -69,6 +70,6 @@ fn set_errno(code: c_int) {
 /// The C `errno` location is not linkable into the host test binary, so this is a no-op. The guest
 /// never compiles this variant; only the unit tests exercise it, and they assert on return values
 /// rather than on `errno`.
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", test))]
 #[inline(always)]
 fn set_errno(_code: c_int) {}
