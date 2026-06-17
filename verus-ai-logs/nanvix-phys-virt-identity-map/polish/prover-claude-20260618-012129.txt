@@ -443,3 +443,33 @@ verus! {
 Turn 20
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -iE "verification result
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors (partial verification with `--verify-*`)
+  0 errors
+  Exit code : 0
+    ⚠️  external_body: 3
+  Global: assume=0 external_body=23 admit=4 trusted=0 cfg_gate=19
+  verification: 6 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=23 admit=4 trust...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+All lemmas pass with bodies emptied except `lemma_install_page_preserves_inv`. Let me push further: test whether that lemma's inner assert and the `map_page_preserves_inv` lemma call are also removable.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/kernel/src/mm/virt/identity_map.proof.rs /tmp/proof_pass1.rs && echo "saved pa
+
+[THINKING] The minimized version passes all checks, which means most of the redundant assertions were unnecessary—only the forall loop in `lemma_install_page_preserves_inv` with its inner conditional assert turned out to be essential. I'm now verifying whether that inner assert is actually required or if the forall alone would suffice.
+[RESULT ✓] bash: saved pass1
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -iE "verification result
