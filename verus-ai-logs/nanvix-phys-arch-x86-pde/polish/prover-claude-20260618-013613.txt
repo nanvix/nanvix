@@ -505,3 +505,40 @@ Turn 30
 Turn 31
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | grep -iE "verification:|errors|error:|warning: un
+[RESULT ✓] bash: verification results:: 47 verified, 0 errors
+  0 errors
+  verification: 47 verified, 0 errors (exit 0)
+<shellId: v4 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+Verifies cleanly with no unused-import warnings. Let me confirm the spec file is untouched (no spec drift) and review the final diff.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== spec.rs diff (should be empty) ==="; diff /tmp/pde.spec.rs.bak src/libs/arc
+
+[THINKING] The verification still passes cleanly. Looking at the VERUS REWRITE comment in pde.rs around line 420-428, I need to distinguish between obsolete proof hints that should be removed and substantive source comments that should stay. This comment explains the reasoning behind the code split, which is a legitimate integration detail rather than a stale verification artifact, so I'll keep it.
+
+For dead spec functions, I'm checking whether any non-public spec functions exist with zero callers. All the spec functions in pde.spec.rs are marked `pub open spec fn`, so there's nothing to remove there. The skill is clear about keeping public spec functions since they may be part of the module's API for dependents. Even the `PageDirectoryEntryFlags::inv` function that returns `true` stays because it's public.
+
+Now I'm looking at the exec code in pde.rs to see if there are any redundant proof hints that need cleaning up. I need to verify that the build passes and confirm no specs were weakened. The verify-arch command should be sufficient since it compiles and verifies the crate, and I've only removed asserts and hints without changing any function signatures or ensures clauses. Let me do a final check that the spec file remains unchanged.
+[RESULT ✓] bash: === spec.rs diff (should be empty) ===
+NO CHANGES to spec
+=== pde.rs diff (should be empty) ===
+NO CHANGES to pde.rs
+=== proof.rs diff ===
+4c4
+< use vstd::arithmetic::power2::{pow2, lemma2_to64};
+---
+> use vstd::arithmetic::power2::lemma2_to64;
+28,32d27
+<     assert(pow2(crate::mem::FRAME_SHIFT as n...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+Changes are surgical: removed 3 redundant assertions + 1 now-unused import. Spec and exec files untouched (no spec drift). Let me run a final clean verification.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch 2>&1 | tail -20
+
+[THINKING] The changes are minimal—I removed the unused `pow2` import and three redundant assertions. The spec file and pde.rs remain unchanged, so there's no spec drift. All spec functions are public, so I'm keeping them per the skill guidelines, and I've confirmed there are no truly dead non-public functions or redundant lemmas in the proof file.
+
+The comment at line 26 explaining the pow2 relationship is still accurate since it describes what lemma2_to64() provides. I've also verified that all five `requires` clauses in the assert block are necessary for the nonlinear solver to work, so trimming them isn't worth the risk. I'm satisfied with the minimization and ready to run a final verification to confirm there are no errors or admits remaining.
