@@ -5,12 +5,26 @@
   "current_phase": "polish",
   "current_phase_idx": 5,
   "completed_phases": [],
-  "phase_results": {},
+  "phase_results": {
+    "polish": {
+      "phase": "polish",
+      "passed": true,
+      "scores": {},
+      "total_score": 0,
+      "max_score": 0,
+      "verdict": "no-review",
+      "review_file": null,
+      "duration_s": 2839.2,
+      "review_rounds": 0
+    }
+  },
   "prover_session_id": "b0efc4de-388f-473d-b78b-af20e4266bd3",
   "completed": false,
   "base_branch": "verus-ai-polish",
   "verus_branch": "verus-ai-polish",
-  "phase_boundary_shas": {},
+  "phase_boundary_shas": {
+    "polish": "c8aef504a3dfa71065388d87fb098d9561ad3734"
+  },
   "phase_start_shas": {
     "polish": "a2651ab99a5db3f59a942097357afdf61b16e1cd"
   },
@@ -19,6 +33,12 @@
       "phase": "polish",
       "event": "start",
       "sha": "a2651ab99a5db3f59a942097357afdf61b16e1cd",
+      "rollback_iter": 0
+    },
+    {
+      "phase": "polish",
+      "event": "end",
+      "sha": "c8aef504a3dfa71065388d87fb098d9561ad3734",
       "rollback_iter": 0
     }
   ],
