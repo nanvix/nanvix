@@ -307,3 +307,36 @@ Turn 11
 ────────────────────────────────────────────────────────────
 Now let me re-run verification to confirm the extraction works.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
+[RESULT ✓] bash: === Results ===
+  47 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have contrac...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+47 verified, 0 errors. Extraction works and the redundant shift-constant asserts are gone. Now let me improve the design further: fold the `PAGE_TABLE_LENGTH == 1024` fact into the lemma so both call sites drop their inline compute assert (better minimization).
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] The extraction succeeded with 47 verified entries and no errors, so I've removed the redundant shift assertions. Now I'm re-running the proof block checker to make sure nothing exceeds the 5-line limit, then reviewing what else can be minimized. Looking at the remaining proof blocks, the one in `into_raw` at line 91 is just a single line that's necessary.
+
+For `pd_index` and `pt_index`, I have the `PAGE_TABLE_LENGTH == 1024` assertion and the lemma call, both single lines. I'm wondering if the assertion is actually redundant—the lemma already gives me the bounded result, so maybe Verus can infer the connection without explicitly asserting the constant value. Let me test removing it to see if verification still passes.
+
+Actually, I realize the lemma needs to know `PAGE_TABLE_LENGTH == 1024` to compute the mask correctly, since `PAGE_TABLE_LENGTH - 1 == 1023`. Rather than having each call site assert this, I could redesign the lemma to include the constant fact in its ensures clause, so the mask is computed with the known value baked in. That way the call sites get the bounded result directly without needing their own compute assertions. I'm working through the type casting issue between the spec and exec contexts. The ensures clause needs to match the exec definition of `index` exactly, accounting for how `PAGE_TABLE_LENGTH - 1` is cast to usize in both places. Inside the lemma I'll assert that `PAGE_TABLE_LENGTH == 1024`, then use bit_vector to prove the masked value is bounded, and finally connect that back to the ensures clause by showing the bitwise AND with the cast constant produces the same usize value.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus

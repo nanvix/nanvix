@@ -1,0 +1,33 @@
+Timestamp: 2026-06-18_01-33-03
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+45 verified
+2 errors
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+error: possible arithmetic underflow/overflow
+   --> src/libs/arch/src/x86/mem/paging/table.rs:108:61
+    |
+108 |     let index: usize = (vaddr >> crate::mem::PGTAB_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
+    |                                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: possible arithmetic underflow/overflow
+   --> src/libs/arch/src/x86/mem/paging/table.rs:121:60
+    |
+121 |     let index: usize = (vaddr >> crate::mem::PAGE_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
+    |                                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+verification results:: 45 verified, 2 errors
+error: could not compile `arch` (lib) due to 2 previous errors
