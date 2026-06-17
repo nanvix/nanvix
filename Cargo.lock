@@ -1696,6 +1696,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_signal"
+version = "0.16.90"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_stdlib"
 version = "0.16.90"
 dependencies = [
