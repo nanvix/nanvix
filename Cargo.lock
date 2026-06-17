@@ -1689,6 +1689,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_setjmp"
+version = "0.16.88"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_stdlib"
 version = "0.16.88"
 dependencies = [
