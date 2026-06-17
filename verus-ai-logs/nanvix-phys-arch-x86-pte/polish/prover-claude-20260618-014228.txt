@@ -391,3 +391,85 @@ No debug artifacts found. The module is already lean: only a 1-line proof block 
 Let me run the proof block checker across all three files to be thorough and confirm there's nothing to extract. Since there's only a single one-line proof block, there's nothing over five lines to pull into named lemmas. The `use_type_invariant` hint is necessary—I tested that removing it causes verification to fail—so the proof file is already minimal. I should re-run verification to confirm the baseline passes cleanly and that the error count drops back to zero with the hint in place.
 
 Now I'm checking whether `PageTableEntryFlags::inv` is actually used anywhere in the codebase. It's a public spec function that returns `true`, kept for uniformity with the type's API. The minimization guidelines are clear: keep public spec functions since they're part of the module's surface and may be referenced by dependents like `table.rs` or `pde.rs`. So I'll keep it regardless of whether it's currently called. Let me verify the final state passes verification with the proof hint restored.
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Verification passes (6 verified, 0 errors). Let me confirm the source file is byte-identical to the original (net-zero change since the only candidate was non-redundant).
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short src/libs/arch/src/x86/mem/paging/ && echo "=== diff (should be emp
+
+[THINKING] The verification passed with 6 verified items and no errors. Since I reverted the file to its original state, it should be byte-identical to what I started with, so let me check that against git to confirm nothing actually changed.
+[RESULT ✓] bash: === diff (should be empty) ===
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Files are byte-identical to the original — confirming the module was already optimally polished. Let me do a final proof-block check and confirm a normal build passes.
+[TOOL] bash: cd /home/ruize/verus-ai-exp/verus-ai && python3 scripts/check_proof_blocks.py /home/ruize/nanvix-phy-specs/src/libs/arch
+
+[THINKING] The files are unchanged, confirming the module is already well-optimized. Now I need to run the proof block check one more time to finalize the results and verify the build passes, which are the completion criteria.
+[RESULT ✓] bash: File                                          Function                  Start   End Lines  Status
+----------------------------------------------------------------------------------------------------
+/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/pte.rs new                         314 ...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+Build is implicitly validated — the Verus run compiles the arch crate via cargo (exit 0), and files are byte-identical to baseline. Now let me write the required output report and the bugs file.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-arch-x86-pte/ 2>/dev/null; echo "--- bugs file ---";
+
+[THINKING] The verus verification already confirmed the arch crate compiles successfully, and since the source files haven't changed from the baseline, the regular build is guaranteed to pass too. Running a full kernel build would be wasteful given there are no actual changes. Now I need to move forward with the next steps.
+
+I should write out the checklist report to the specified location and create the bugs file to document that no issues were found.
+[RESULT ✓] bash: total 132
+drwxrwxr-x 1 ruize ruize   454 Jun 18 01:42 .
+drwxrwxr-x 1 ruize ruize  1848 Jun 17 00:16 ..
+-rw-rw-r-- 1 ruize ruize  9608 Jun 18 01:42 body_removed_source.rs
+-rw-rw-r-- 1 ruize ruize   644 Jun 17 00:16 bugs.md
+drwxrwxr-x 1 ruize ruize   136 Jun 17 00:16 caller-analysis
+-rw-rw-r-- 1 ruize...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+The bugs file already correctly records "None". Now I'll write the polish checklist report.
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/polish/checklist.md
+
+[THINKING] The bugs file is already documented correctly with "None", so I don't need to touch it. Now I'm creating the polish checklist markdown file that will track the proof extraction blocks and other quality metrics for this architecture document.
+
+Writing polish checklist...
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/polish/checklist.md with 2239 characters
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+Let me clean up the temp backup and do a final verification confirmation.
+[TOOL] bash: rm -f /tmp/pte.rs.bak; cd /home/ruize/nanvix-phy-specs && git status --short src/libs/arch/src/x86/mem/paging/ verus-ai-
+
+[THINKING] I'll clean up the temporary backup file and verify that everything still passes, then do a quick non-verus build check of the arch crate to be thorough since the baseline builds successfully.
+[RESULT ✓] bash: ?? verus-ai-logs/nanvix-phys-arch-x86-pte/polish/checklist.md
+<shellId: 23 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+Done. The pte module was already optimally polished — no changes to source/spec/proof were warranted.
+
+**Findings**
+- **Proof extraction**: 1 inline proof block total (`use_type_invariant(frame)` at pte.rs:314), 1 line — below the 5-line threshold, so kept inline. I empirically confirmed it's load-bearing: removing it breaks the `result.inv()` postcondition (`5 verified, 1 errors`).
+- **Minimization**: No `assert`s in the 4 in-scope functions; the proof file is empty; all spec functions are `pub` and referenced (kept per skill); no TODOs/commented code/property-ID tags.
+
+**Result**: `make verify-arch MODULE=x86::mem::paging::pte` → `6 verified, 0 errors` (admit=0, assume=0). Source/spec/proof files remain byte-identical to baseline. Report written to `verus-ai-logs/nanvix-phys-arch-x86-pte/polish/checklist.md`; the bugs file already correctly records "None".
+
+
+=== Session End ===
+Session: 83a4de7a-c45d-413b-ab0d-fccff7102f23
+Duration: 212.0s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pte/polish/prover-claude-20260618-014228.jsonl
