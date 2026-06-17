@@ -190,18 +190,63 @@ impl DynamicLibrary {
                 for phdr in elf.program_headers.iter() {
                     // Check if program header is loadable.
                     if phdr.p_type == goblin::elf::program_header::PT_LOAD {
-                        // Skip zero-size loadable segments. They contribute nothing to the
+                        // Skip empty loadable segments. They contribute nothing to the
                         // in-memory image, and mapping a zero-capacity region would fail.
                         // Some linkers (e.g. lld at higher optimization levels) emit an empty
                         // PT_LOAD as section-alignment padding between the text and data
-                        // segments; a conforming loader ignores such entries.
+                        // segments; a conforming loader ignores such entries. A valid PT_LOAD
+                        // satisfies p_filesz <= p_memsz, so p_memsz == 0 implies p_filesz == 0.
+                        // Reject the inconsistent p_memsz == 0 && p_filesz != 0 case instead of
+                        // silently dropping the on-disk bytes it claims to carry.
                         if phdr.p_memsz == 0 {
+                            if phdr.p_filesz != 0 {
+                                let reason: &str = "PT_LOAD has p_memsz == 0 but non-zero p_filesz";
+                                ::syslog::warn!(
+                                    "load(): {reason} (vaddr={:#x}, filesz={})",
+                                    phdr.p_vaddr,
+                                    phdr.p_filesz
+                                );
+                                return Err(Error::new(ErrorCode::BadFile, reason));
+                            }
+
                             ::syslog::debug!(
-                                "load(): skipping zero-size PT_LOAD (vaddr={:#x})",
+                                "load(): skipping empty PT_LOAD (vaddr={:#x})",
                                 phdr.p_vaddr
                             );
                             continue;
                         }
+
+                        // A valid PT_LOAD satisfies p_filesz <= p_memsz. Reject the
+                        // inconsistent case instead of deferring it to MemorySegment::load().
+                        if phdr.p_filesz > phdr.p_memsz {
+                            let reason: &str = "PT_LOAD has p_filesz greater than p_memsz";
+                            ::syslog::warn!(
+                                "load(): {reason} (vaddr={:#x}, filesz={}, memsz={})",
+                                phdr.p_vaddr,
+                                phdr.p_filesz,
+                                phdr.p_memsz
+                            );
+                            return Err(Error::new(ErrorCode::BadFile, reason));
+                        }
+
+                        // Validate that the on-disk range [p_offset, p_offset + p_filesz)
+                        // lies within the file before using it to slice bytes[...]. This
+                        // guards against overflow and out-of-range panics on malformed ELFs.
+                        let file_end: usize = phdr
+                            .p_offset
+                            .checked_add(phdr.p_filesz)
+                            .filter(|end| *end <= bytes.len() as u64)
+                            .map(|end| end as usize)
+                            .ok_or_else(|| {
+                                let reason: &str = "PT_LOAD file range out of bounds";
+                                ::syslog::warn!(
+                                    "load(): {reason} (offset={}, filesz={}, file_size={})",
+                                    phdr.p_offset,
+                                    phdr.p_filesz,
+                                    bytes.len()
+                                );
+                                Error::new(ErrorCode::BadFile, reason)
+                            })?;
 
                         ::syslog::debug!(
                             "load(): loadable program header (vaddr={:#x}, paddr={:#x}, \
@@ -255,11 +300,7 @@ impl DynamicLibrary {
                         // Create memory segment.
                         let mut segment: MemorySegment =
                             MemorySegment::new(base, capacity, AccessPermission::RDWR)?;
-                        segment.load(
-                            offset,
-                            &bytes
-                                [phdr.p_offset as usize..(phdr.p_offset + phdr.p_filesz) as usize],
-                        )?;
+                        segment.load(offset, &bytes[phdr.p_offset as usize..file_end])?;
 
                         segments.push(segment);
                     }
