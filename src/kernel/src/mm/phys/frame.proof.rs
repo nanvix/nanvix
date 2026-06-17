@@ -228,8 +228,7 @@ proof fn lemma_covered_iff(inner: &Inner, addr: int)
 /// The refcount-map value at a covered address equals the underlying refcount slot.
 proof fn lemma_refcount_value(inner: &Inner, addr: int)
     requires
-        inner.internal_inv(),
-        inner@.is_covered(addr),
+        inner@.refcounts.contains_key(addr),
     ensures
         inner@.refcounts[addr] == spec_refcount_slot(inner, addr / spec_page_size()),
 {
