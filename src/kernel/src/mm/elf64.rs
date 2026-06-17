@@ -18,10 +18,12 @@ use crate::{
         VirtualAddress,
     },
     mm::{
+        phys::UserFrame,
         VirtMemoryManager,
         Vmem,
     },
 };
+use ::alloc::vec::Vec;
 use ::arch::{
     mem,
     mem::PAGE_ALIGNMENT,
@@ -91,6 +93,9 @@ fn do_elf64_load(
     let phdrs: &[Elf64Phdr] =
         unsafe { core::slice::from_raw_parts(phdr_base, elf.e_phnum as usize) };
 
+    // Scratch buffer reused across pages to satisfy `alloc_upages` (which drains it).
+    let mut uframe_buf: Vec<UserFrame> = Vec::with_capacity(1);
+
     // Load segments.
     for phdr in phdrs {
         if phdr.p_type != PT_LOAD {
@@ -157,8 +162,8 @@ fn do_elf64_load(
 
             // Check if we should perform the allocation.
             if !dry_run {
-                // Allocate page.
-                mm.alloc_upages(vmem, vaddr, 1, access, true)?;
+                // Allocate and map the page (clearing it for any BSS portion).
+                mm.alloc_upages(vmem, vaddr, access, true, 1, &mut uframe_buf)?;
             }
 
             // Update last address.

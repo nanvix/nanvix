@@ -30,7 +30,7 @@ use crate::{
         platform,
     },
     mm::{
-        elf::Elf32Fhdr,
+        elf::ElfClass,
         kstack::KernelStack,
         ustack::UserStack,
         VirtMemoryManager,
@@ -523,7 +523,7 @@ impl ProcessManager {
     pub fn create_process(
         &mut self,
         mm: &mut VirtMemoryManager,
-        elf: &Elf32Fhdr,
+        elf_class: ElfClass,
         args: &str,
         env: &str,
     ) -> Result<ProcessIdentifier, Error> {
@@ -564,7 +564,7 @@ impl ProcessManager {
             &self.tm,
             self.get_running().state().vmem(),
             tid,
-            |mm, vmem| mm.load_elf(vmem, elf),
+            |mm, vmem| mm.load_elf(vmem, elf_class),
             args,
             env,
             self.interrupt_capable,

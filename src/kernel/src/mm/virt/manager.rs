@@ -18,10 +18,7 @@ use crate::{
         },
     },
     mm::{
-        elf::{
-            self,
-            Elf32Fhdr,
-        },
+        elf,
         phys::{
             KernelFrame,
             PhysMemoryManager,
@@ -797,9 +794,12 @@ impl VirtMemoryManager {
     pub fn load_elf(
         &mut self,
         vmem: &mut Vmem,
-        elf: &Elf32Fhdr,
+        elf_class: elf::ElfClass,
     ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error> {
-        elf::elf32_load(self, vmem, elf)
+        match elf_class {
+            elf::ElfClass::Elf32(elf) => elf::elf32_load(self, vmem, elf),
+            elf::ElfClass::Elf64(elf) => elf::elf64_load(self, vmem, elf),
+        }
     }
 
     ///

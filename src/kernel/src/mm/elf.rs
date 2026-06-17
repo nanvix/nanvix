@@ -42,6 +42,14 @@ use ::core::{
 pub use ::elf::elf32::Elf32Fhdr;
 use ::elf::elf32::{
     Elf32Phdr,
+    EI_CLASS,
+    EI_NIDENT,
+    ELFCLASS32,
+    ELFCLASS64,
+    ELFMAG0,
+    ELFMAG1,
+    ELFMAG2,
+    ELFMAG3,
     ET_DYN,
     ET_EXEC,
     PF_R,
@@ -63,6 +71,45 @@ use ::sys::{
         Alignment,
     },
 };
+
+//==================================================================================================
+// ELF64 Support
+//==================================================================================================
+
+#[path = "elf64.rs"]
+pub mod elf64;
+pub use elf64::{
+    elf64_load,
+    Elf64Fhdr,
+};
+
+/// Detected ELF class at a given memory address.
+#[derive(Clone, Copy)]
+pub enum ElfClass {
+    /// A 32-bit ELF image.
+    Elf32(&'static Elf32Fhdr),
+    /// A 64-bit ELF image.
+    Elf64(&'static Elf64Fhdr),
+}
+
+/// Detects the ELF class (32-bit or 64-bit) at the given address.
+pub fn detect_elf_class(addr: usize) -> Result<ElfClass, Error> {
+    let ident: &[u8; EI_NIDENT] = unsafe { &*(addr as *const [u8; EI_NIDENT]) };
+
+    // Validate magic.
+    if ident[0] != ELFMAG0 || ident[1] != ELFMAG1 || ident[2] != ELFMAG2 || ident[3] != ELFMAG3 {
+        return Err(Error::new(ErrorCode::BadFile, "invalid ELF magic"));
+    }
+
+    match ident[EI_CLASS] {
+        // SAFETY: the magic check above validated the header bytes and `addr` points to a valid,
+        // page-aligned ELF image loaded by the bootloader that remains in memory for the lifetime
+        // of the kernel.
+        ELFCLASS32 => Ok(ElfClass::Elf32(unsafe { Elf32Fhdr::from_address(addr) })),
+        ELFCLASS64 => Ok(ElfClass::Elf64(unsafe { Elf64Fhdr::from_address(addr) })),
+        _ => Err(Error::new(ErrorCode::BadFile, "unsupported ELF class")),
+    }
+}
 
 //==================================================================================================
 // Constants
