@@ -242,3 +242,12 @@ Module: arch-frame-number
 [2026-06-18 01:21:16] ✅ polish: PASS (0/0)
 [2026-06-18 01:21:16] [GATE] Running build: make build
 [2026-06-18 01:21:16] [GATE] Running verify: make verify
+[2026-06-18 01:21:29] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: arch-frame-number
+  ✅ polish                    no-review                 3m15s
+  ──────────────────────────────────────────────────────────
+  Total: 3m28s
+============================================================
+[2026-06-18 01:21:29] [USAGE] Summary: 12 calls, 0 tokens, 1h22m44s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/usage_summary.json
