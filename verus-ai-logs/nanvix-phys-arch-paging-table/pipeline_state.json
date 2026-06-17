@@ -2,8 +2,8 @@
   "module_name": "arch-paging-table",
   "log_name": "nanvix-phys-arch-paging-table",
   "source_path": "/home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs",
-  "current_phase": "caller-analysis",
-  "current_phase_idx": 0,
+  "current_phase": "polish",
+  "current_phase_idx": 5,
   "completed_phases": [],
   "phase_results": {},
   "prover_session_id": null,
@@ -11,8 +11,17 @@
   "base_branch": "verus-ai-polish",
   "verus_branch": "verus-ai-polish",
   "phase_boundary_shas": {},
-  "phase_start_shas": {},
-  "phase_history": [],
+  "phase_start_shas": {
+    "polish": "2d799c4a78dc858192ffdd57f8a5b134925435fb"
+  },
+  "phase_history": [
+    {
+      "phase": "polish",
+      "event": "start",
+      "sha": "2d799c4a78dc858192ffdd57f8a5b134925435fb",
+      "rollback_iter": 0
+    }
+  ],
   "rollback_counts": {},
   "rollback_context": "",
   "tcb_entry_points": null,
