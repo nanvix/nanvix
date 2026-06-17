@@ -280,3 +280,74 @@ Let me run the baseline verification for this module. This may take a while.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -40
 
 [THINKING] I'm checking the module path `hal::mem::types::region` and running the baseline verification, then I'll review the pipeline.log to see what's already been completed and confirm we're working with the right module.
+[RESULT ✓] bash: === Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::region.
+  Global: assume=0 external_body=23 admit=4 trusted=0 cfg_gate=19
+  Detail: verus-ai-logs/verify-kernel/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  4/28 exec functions have contracts.
+  Unverif...
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Baseline is CLEAN (0 errors, no cheating in this module). Let me check the polish dir and pipeline log to understand expectations.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la verus-ai-logs/nanvix-phys-hal-memory-region/polish/ 2>/dev/null; echo "---PIPE
+
+[THINKING] The baseline checks out cleanly with all four in-scope functions properly contracted and the module verifying successfully. The global kernel counts show some activity elsewhere, but our specific module in hal::mem::types::region is completely clean with no issues detected. Now I'm moving through the polish checklist—proof extraction came up empty since there are no proof blocks to extract, and I'm working through the minimization phase.
+
+For redundant assertions and lemmas, there's nothing to trim since the proof file is empty. The spec functions like `spec_set_cache_policy` and `is_page_aligned` are all public and actively used by dependents like `mm::phys`, so they should stay. The real question is whether to remove that `// VERUS REWRITE` comment block in `MemoryRegion::start` around lines 210-220—it's a verification artifact, but the verus-constraints skill explicitly forbids using `// VERUS REWRITE` markers, which creates a tension I need to resolve. I see the tension now. The `clone_address()` call is necessary for verification to work—reverting it would break the postcondition. But the 11-line comment explaining the Verus limitation is exactly the kind of verbose artifact that hurts readability. The right move is to condense it into a brief, one-line note that preserves the essential "why" without the minimal-reproducer essay. This keeps the rationale discoverable for future developers while improving integration readability, and it doesn't weaken verification since comments don't affect proof checking. Removing the verbose `// VERUS REWRITE` tag makes sense since the skill discourages that annotation, and I can preserve the essential rationale in a brief comment instead. Looking at the other three functions, they only have clean documentation comments with no verification artifacts. Since the spec functions are all public, I'll keep them per the minimization guidelines, and the scope of this task is limited to the exec functions anyway. I'm checking whether those spec functions are actually used elsewhere in the kernel, but since they're all public and the skill requires preserving public functions, I'll keep them regardless. The only legitimate change is removing that verbose VERUS REWRITE comment in `MemoryRegion::start` since it's a verification artifact, not an original source comment, and the minimization skill explicitly permits removing unnecessary verification-related comments.
+
+Actually, I should be more careful here. The source integrity rules say to preserve comments by default, but the minimization skill carves out an exception for verification-related comments. The safest approach is to condense rather than fully remove—keeping a brief explanation of why the code is written this way prevents someone from naively reverting it to a simpler form that breaks verification, while still removing the verbose essay and the discouraged `// VERUS REWRITE` tag. This balances readability improvement with preserving the essential rationale.
+
+Let me check the pipeline log and polish directory to see what the expectations are, then make the edit.
+[RESULT ✓] bash: total 308
+drwxrwxr-x 1 ruize ruize    136 Jun 18 00:57 .
+drwxrwxr-x 1 ruize ruize    440 Jun 18 00:57 ..
+-rw-rw-r-- 1 ruize ruize 294429 Jun 18 00:59 prover-claude-20260618-005703.jsonl
+-rw-rw-r-- 1 ruize ruize  20389 Jun 18 00:59 prover-claude-20260618-005703.txt
+---PIPELINE TAIL---
+===============...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Let me do a thorough final scan for any proof blocks/assertions across all three files and check spec-function usage for the report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types && echo "=== proof!/assert/proof_with in region.rs ==="; gr
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem && echo "=== spec_set_cache_policy usage ==="; grep -rn "spec_set
+
+[THINKING] I'm in the polish phase now, so let me verify there are no proof blocks scattered across the three files and check if any spec functions are being referenced for the report.
+[RESULT ✓] bash: === proof!/assert/proof_with in region.rs ===
+=== lemma/proof fn in proof.rs ===
+(none = empty)
+<shellId: 12 completed with exit code 0>
+[RESULT ✓] bash: === spec_set_cache_policy usage ===
+./types/region.spec.rs:38:    pub open spec fn spec_set_cache_policy(self, policy: MmioCachePolicy) -> MemoryRegionView {
+=== is_page_aligned usage ===
+=== wf() usage (region view) ===
+=== inv() referencing ===
+<shellId: 13 completed with exit code 1>
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Confirmed: no proof blocks, no assertions, empty proof file. All spec functions are `pub` (kept per minimization rules; the seemingly-unused `wf`/`is_page_aligned` are used inside `inv`, and `spec_set_cache_policy` belongs to the out-of-scope `set_cache_policy`).
+
+The only minimization opportunity is the verbose 11-line `// VERUS REWRITE` essay in `MemoryRegion::start` — a verification-related comment the minimization skill targets, and the `// VERUS REWRITE` tag is discouraged by verus-constraints. I'll condense it to a concise rationale (keeping the essential "don't revert to `clone()`" signal) rather than delete it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/region.rs
+
+[THINKING] Looking at the proof file and the functions in question, I notice there are no proof blocks or assertions anywhere, and several public spec functions like `spec_set_cache_policy`, `is_page_aligned`, `wf`, and `inv` are defined but never actually called—they're only present at their definition points. Since these are marked `pub`, they're likely part of the module's public API for dependents, so they should be kept despite having zero internal callers.
+
+Actually, let me reconsider: `wf` and `is_page_aligned` are used inside the `inv` definitions in the spec file—my grep excluded the spec file, so they appeared unused when they're actually called internally. And `inv` itself is a public spec function that's part of the API contract, so it should stay. The only genuinely unused public function is `spec_set_cache_policy`, which is an abstract transition for the concrete `set_cache_policy` method.
+
+Since `set_cache_policy` is out of scope, I can't remove its spec helper without touching its verification material. So I'm keeping all the public spec functions.
+
+The real minimization opportunity is that verbose `// VERUS REWRITE` comment block in `MemoryRegion::start`. It's an 11-line explanation of why we use `Address::clone_address` instead of `Clone::clone`—the key point being that only the former has a Verus spec that satisfies the postcondition. I can condense this into a tight 3-line comment that captures the essential reasoning without the extra verbosity.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/region.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+Now let me re-run verification to confirm everything still passes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::region 2>&1 | tail -25
