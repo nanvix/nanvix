@@ -353,3 +353,28 @@ Folding broke it (2 errors). Let me see the errors.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
 
 [THINKING] I'm getting two errors now — the folding approach isn't working, likely because the call site can't connect the `index` variable to what the lemma guarantees, or the lemma's chain of computation and bitvector reasoning fails to establish the postcondition. Let me check what the errors are saying.
+[RESULT ✓] bash: error: possible arithmetic underflow/overflow
+   --> src/libs/arch/src/x86/mem/paging/table.rs:108:61
+108 |     let index: usize = (vaddr >> crate::mem::PGTAB_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
+error: possible arithmetic underflow/overflow
+   --> src/libs/arch/src/x86/mem/paging/table.rs:...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+The compute assert before `let` is needed for the exec subtraction's overflow check. Let me revert to the working design (compute before `let`, simple lemma).
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs
+
+[THINKING] I see the issue now—the arithmetic underflow on `PAGE_TABLE_LENGTH - 1` happens because Verus needs proof that `PAGE_TABLE_LENGTH >= 1` before it can safely compute the subtraction in usize. The inline assertion that was checking `PAGE_TABLE_LENGTH == 1024` before the `let index` line provided that proof through computation, but it's been removed, leaving the underflow unproven.
+
+The original design was actually correct: keeping the compute assertion before the `let` statement handles the overflow check for the exec subtraction, while the lemma separately proves the bitwise mask result stays within bounds. I should revert to that structure and simplify the lemma's ensures clause to just `< 1024` rather than trying to fold everything into one complex ensures.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/table.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-arch VERUS_EXECUTABLE_DIR=/home/ruize/verus-exp/verus/source/target-verus
