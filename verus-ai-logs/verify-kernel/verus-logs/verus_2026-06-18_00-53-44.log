@@ -1,0 +1,34 @@
+Timestamp: 2026-06-18_00-53-44
+Mode: cargo
+Crate: kernel
+Directory: N/A
+Module: hal::mem::types::address::phys
+Exit code: 101
+5 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=23
+  admit=4
+  trusted=0
+  no_decreases=0
+  cfg_gate=19
+
+--- Full output ---
+    Checking kernel v0.16.17 (/home/ruize/nanvix-phy-specs/src/kernel)
+note: verifying module hal::mem::types::address::phys
+
+error: precondition not satisfied
+   --> src/kernel/src/hal/mem/types/address/phys.rs:171:13
+    |
+171 |             lemma_frame_index(self, raw_addr, mem::FRAME_SHIFT, frame_number);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+   ::: src/kernel/src/hal/mem/types/address/phys.proof.rs:65:9
+    |
+ 65 |         spec_page_size() == pow2(shift as nat),
+    |         -------------------------------------- failed precondition
+
+verification results:: 5 verified, 1 errors (partial verification with `--verify-*`)
+error: could not compile `kernel` (bin "kernel") due to 1 previous error

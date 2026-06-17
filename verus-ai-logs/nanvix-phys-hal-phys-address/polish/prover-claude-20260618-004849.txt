@@ -411,3 +411,34 @@ Let me test by removing both assertions and see if the proof still goes through.
 Turn 17
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | sed -n '/
+[RESULT ✓] bash: === Results ===
+  6 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating detected in module hal::mem::types::address::phys.
+  Global: assume=0 external_body=23 admit=4 trusted=0 cfg_gate=19
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+Batch 3 passed (7 assertions removed). Let me test whether the call-site `lemma2_to64()` hint in `into_frame_number` is redundant (the lemma calls it internally too).
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs
+
+[THINKING] Batch 3 is done, bringing the total removed assertions to 7. I'm evaluating a few more candidates—the assertion checking that `usize::BITS` is either 32 or 64 looks necessary for exhaustiveness in the conditional logic, and the one comparing `m` to `usize::MAX` is tied to the 32-bit branch requirement, so both should stay. I'll keep the bridge assertion on line 91 as well, but I'm still considering line 75.
+
+The assertion on `spec_page_size()` returning 4096 is definitely needed. For the lemmas in `lemma_from_number_no_overflow`, the requires clauses and the nonlinear_arith hints are all load-bearing—removing them would likely break the solver. The proof lemmas themselves (`lemma_mod_bound`, `lemma_fundamental_div_mod`, `lemma_mul_inequality`) are all essential too. Similarly, in `lemma_frame_index`, all the supporting lemmas appear necessary for the proof to go through.
+
+I'm reconsidering whether line 104 (`usize::BITS == 32 || usize::BITS == 64`) can be removed, but it's probably needed to establish that BITS==64 in the else branch, so I'll keep it.
+
+Now I'm looking at the inline proof blocks in phys.rs. The `from_number` call is straightforward—just one lemma. For `into_frame_number`, I need to figure out whether `lemma2_to64()` is redundant given that `lemma_frame_index` already calls it internally. The issue is that `lemma_frame_index` requires `spec_page_size() == pow2(shift as nat)` as a precondition, and establishing that at the call site likely requires `lemma2_to64()` to prove the pow2 values and that `spec_page_size() == pow2(FRAME_SHIFT)`. So the call-site lemma2_to64() is doing real work to satisfy the precondition, not just duplicating internal work.
+
+That said, I should test whether removing it still verifies—if it does, then it's a redundant hint worth eliminating. Let me try removing the call-site `vstd::arithmetic::power2::lemma2_to64();` from the `into_frame_number` block as batch 4 and see if verification passes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | sed -n '/

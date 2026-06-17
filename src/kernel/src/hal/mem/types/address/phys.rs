@@ -168,7 +168,6 @@ impl PhysicalAddress {
         let raw_addr: usize = self.0.into_raw_value();
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
         proof! {
-            vstd::arithmetic::power2::lemma2_to64();
             lemma_frame_index(self, raw_addr, mem::FRAME_SHIFT, frame_number);
         }
         // The unwrap never panics: `frame_number == self@ / FRAME_SIZE <= FrameNumber::MAX` for
