@@ -1,11 +1,11 @@
 {
   "module": "nanvix-phys-phys-frame",
-  "generated_at": "2026-06-15T08:14:02.205247",
-  "total_calls": 20,
-  "calls_with_usage": 20,
+  "generated_at": "2026-06-18T00:43:13.640746",
+  "total_calls": 21,
+  "calls_with_usage": 21,
   "calls_timed_out": 0,
   "calls_failed": 0,
-  "total_duration_s": 15263.3,
+  "total_duration_s": 18102.3,
   "total_input_tokens": 0,
   "total_output_tokens": 0,
   "total_tokens": 0,
@@ -45,14 +45,20 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "duration_s": 782.6
+    },
+    "polish": {
+      "calls": 1,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "duration_s": 2839.0
     }
   },
   "per_role": {
     "prover": {
-      "calls": 5,
+      "calls": 6,
       "input_tokens": 0,
       "output_tokens": 0,
-      "duration_s": 5024.599999999999
+      "duration_s": 7863.599999999999
     },
     "dialogue-reviewer-t1": {
       "calls": 3,
@@ -577,6 +583,31 @@
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.gpt53codex.md",
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.claude.md",
             "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/final-review/final_review.md"
+          ]
+        }
+      }
+    },
+    {
+      "timestamp": "2026-06-18T00:43:05.256383",
+      "phase": "polish",
+      "role": "prover",
+      "model": "claude-opus-4.8",
+      "exit_code": 0,
+      "session_id": "b0efc4de-388f-473d-b78b-af20e4266bd3",
+      "log_file": "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/polish/prover-claude-20260617-235546.txt",
+      "duration_s": 2839.0,
+      "usage": {
+        "premiumRequests": 15,
+        "totalApiDurationMs": 2788842,
+        "sessionDurationMs": 2837672,
+        "codeChanges": {
+          "linesAdded": 773,
+          "linesRemoved": 508,
+          "filesModified": [
+            "/home/ruize/.copilot/session-state/b0efc4de-388f-473d-b78b-af20e4266bd3/plan.md",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs",
+            "/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs",
+            "/home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/polish/checklist.md"
           ]
         }
       }

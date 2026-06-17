@@ -307,3 +307,12 @@ Module: phys-frame
 [2026-06-18 00:43:05] ✅ polish: PASS (0/0)
 [2026-06-18 00:43:05] [GATE] Running build: make build
 [2026-06-18 00:43:05] [GATE] Running verify: make verify
+[2026-06-18 00:43:13] [GATE] ✅ Build + Verify passed after polish
+
+============================================================
+PIPELINE COMPLETE: phys-frame
+  ✅ polish                    no-review                47m19s
+  ──────────────────────────────────────────────────────────
+  Total: 47m27s
+============================================================
+[2026-06-18 00:43:13] [USAGE] Summary: 21 calls, 0 tokens, 5h01m42s total → /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-phys-frame/usage_summary.json
