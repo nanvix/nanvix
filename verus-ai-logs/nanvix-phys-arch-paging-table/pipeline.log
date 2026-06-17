@@ -326,3 +326,7 @@ Module: arch-paging-table
 [2026-06-18 01:29:21] [PROVER] Running polish...
 [2026-06-18 01:29:21] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 01:36:00]   ↳ prover done in 6m38s (exit=0)
+[2026-06-18 01:36:00] [PHASE] polish: no-review (6m39s)
+[2026-06-18 01:36:00] ✅ polish: PASS (0/0)
+[2026-06-18 01:36:00] [GATE] Running build: make build
+[2026-06-18 01:36:00] [GATE] Running verify: make verify
