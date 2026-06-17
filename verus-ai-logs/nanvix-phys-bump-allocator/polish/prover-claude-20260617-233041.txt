@@ -420,3 +420,27 @@ Since these uncalled lemmas prove distinct properties and are part of the public
 Turn 15
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "Exit code|error|verification:|status:|veri
+[RESULT ✓] bash: verification results:: 6 verified, 0 errors
+  6 verified
+  0 errors
+  Exit code : 0
+  Unverified function list written to: verus-ai-logs/verify-bump-allocator/verus-logs/coverage-unverified.txt
+  verification: 6 verified, 0 errors (exit 0)
+  status: CHEATING_DETECTED
+<shellId: 17 completed with exit...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Removing `assert(s == a * q)` still verifies (6 verified, 0 errors) — it was redundant. Let me test the remaining arithmetic hints. I'll test the lower-bound hint next.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] The verification passed with 6 verified and 0 errors after removing that assertion, confirming it was unnecessary. The CHEATING_DETECTED flag is just the external_body=2 condition, so that's accounted for. Now I'm moving on to test other potentially redundant hints, starting with the multiplication lemma in part (b) that establishes the lower bound.
+
+I'm thinking through the most efficient testing strategy here. Since each verification takes around 180 seconds, I could batch-test multiple hints at once and bisect if something breaks, but that risks losing clarity on what actually caused a failure. I'm leaning toward testing them one at a time for the riskier ones—particularly the nonlinear arithmetic hints, which are most likely to be essential. The multiplication lemmas for bounds are good candidates to check next, though the lower bound hint might be harder for Verus to infer on its own. Let me start by removing the nonnegative product lemma and see if the lower bound still verifies.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio

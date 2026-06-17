@@ -51,8 +51,6 @@ pub proof fn lemma_geometry(v: BumpView)
         &&& v.base <= #[trigger] v.slot_addr(i)
         &&& v.slot_addr(i) + us <= v.base + ss
     } by {
-        // Lower bound: i * s >= 0.
-        vstd::arithmetic::mul::lemma_mul_nonnegative(i, s);
         // Upper bound: i * s + us <= (i + 1) * s <= cap * s <= ss.
         assert((i + 1) * s == i * s + s) by {
             vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way(s, i, 1);
