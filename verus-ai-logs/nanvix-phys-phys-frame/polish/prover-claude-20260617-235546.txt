@@ -998,3 +998,321 @@ All remaining usages are in proof bodies (allowed). Let me re-run verification.
 Turn 59
 ────────────────────────────────────────────────────────────
 [TOOL] read_bash: {'delay': 240, 'shellId': 'verify-a2'}
+[RESULT ✓] read_bash: ⚠️  admit: 4
+    ⚠️  cfg-gated exec code: 16
+  Affected functions:
+    - frame.rs:1369 instance: external_body
+    - frame.rs:1407 init: external_body
+    - frame.rs:1463 alloc: external_body
+    - frame.rs:1493 alloc_contiguous: external_body
+    - frame.rs:1514 free_count: external_body
+    - fram...
+
+────────────────────────────────────────────────────────────
+Turn 60
+────────────────────────────────────────────────────────────
+Verus ran: 78 verified, 1 error. Let me find it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs grep -nE "error:
+
+[THINKING] Verus ran successfully with 78 verified entries, though there's one error I need to track down.
+[RESULT ✓] bash: 30:error: assertion failed
+31:    --> src/kernel/src/mm/phys/frame.proof.rs:1094:54
+49:  --> src/kernel/src/mm/phys/frame.proof.rs:58:13
+58:  --> src/kernel/src/mm/phys/frame.proof.rs:59:53
+64:   --> src/kernel/src/mm/phys/frame.proof.rs:455:9
+70:   --> src/kernel/src/mm/phys/frame.proof.rs:455:31
+7...
+
+────────────────────────────────────────────────────────────
+Turn 61
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/*.log | head -1 | xargs sed -n '28,50p'
+[RESULT ✓] bash: note: verifying module mm::phys::upool
+
+error: assertion failed
+    --> src/kernel/src/mm/phys/frame.proof.rs:1094:54
+     |
+1094 |     assert forall|x: int| pre_sb.contains(x) implies 0 <= x < pre_nb by {}
+     |                                                      ^^^^^^^^^^^^^^^ assertion failed
+...
+
+────────────────────────────────────────────────────────────
+Turn 62
+────────────────────────────────────────────────────────────
+The copied assert `pre_sb.contains(x) ==> 0 <= x < pre_nb` needs `set_bits ⊆ [0, num_bits)` from `bitmap.inv()`. Let me check the BitmapView invariant.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec fn inv\|set_bits\|num_bits\|spec fn is_full\|spec fn range_set\|is_bit
+
+[THINKING] I'm spotting an issue in the lemma_alloc_range_post assertion at line 1094 where I'm asserting that all elements in pre_sb fall within the range [0, pre_nb), but this assertion was copied from the original code where it held because the bitmap invariant guaranteed set_bits stayed within bounds. In my version, I'm missing that invariant guarantee.
+
+Looking at the connection: pre_sb is a subset of the union that forms set_bits, and bitmap.inv() should give me set_bits ⊆ [0, num_bits), so transitively pre_sb ⊆ [0, pre_nb). But Verus isn't automatically deriving this chain of subset relationships from the bitmap invariant. I need to figure out whether this assertion is even necessary for lemma_reserve_range_v, or if I should be proving the subset relationship explicitly rather than asserting it. I'm considering whether to add an explicit derivation that `pre_sb ⊆ [0,pre_nb)` using the bitmap invariant and set membership properties, or just try removing the assert entirely to see if the lemma verifies without it. The safest approach is probably to test removing it first, since the rest of the lemma body might not actually depend on it.
+[RESULT ✓] bash: src/libs/bitmap/src/lib.proof.rs:93:    /// Setting a byte bit reflects in set_bits.
+src/libs/bitmap/src/lib.proof.rs:96:            self@.num_bits > 0,
+src/libs/bitmap/src/lib.proof.rs:97:            self@.num_bits == self.bits@.len() * (u8::BITS as int),
+src/libs/bitmap/src/lib.proof.rs:98:       ...
+
+────────────────────────────────────────────────────────────
+Turn 63
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec fn inv\|set_bits.*num_bits\|contains.*num_bits\|pub open spec fn inv\|
+[RESULT ✓] bash: src/libs/bitmap/src/lib.spec.rs:58:        forall|i: int| self.set_bits.contains(i) ==> 0 <= i < self.num_bits
+src/libs/bitmap/src/lib.spec.rs:153:            self.set_bits.insert(x).len() <= self.num_bits,
+src/libs/bitmap/src/lib.spec.rs:323:    pub open spec fn inv(&self) -> bool {
+=== BitmapView ...
+
+────────────────────────────────────────────────────────────
+Turn 64
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '52,60p;320,340p' src/libs/bitmap/src/lib.spec.rs
+
+[THINKING] Looking at the well-formedness specification on line 58, I see it's constraining the set_bits to only contain valid indices within the range [0, num_bits). Now I need to check whether the invariant function defined at line 323 actually includes this property to ensure consistency.
+[RESULT ✓] bash: pub open spec fn range_set(start: int, end: int) -> Set<int> {
+        Set::range(start, end)
+    }
+
+    /// Well-formedness: set_bits only contains valid indices.
+    pub open spec fn wf(&self) -> bool {
+        forall|i: int| self.set_bits.contains(i) ==> 0 <= i < self.num_bits
+    }
+
+        }
+  ...
+
+────────────────────────────────────────────────────────────
+Turn 65
+────────────────────────────────────────────────────────────
+`bitmap.inv()` gives `set_bits ⊆ [0, num_bits)`. The copied empty-proof assert needs a hint. Let me fix it in `lemma_alloc_range_post`.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] I'm realizing that `inv()` at line 323 refers to the Bitmap's inverse method from the exec struct, while `self@.wf()` gives me the BitmapView's well-formedness property. My lemma needs to work with `inner.bitmap.inv()` specifically, which chains to `inner.bitmap@.wf()` and establishes that all set bits fall within the valid range `[0, num_bits)`. Now I need to apply this constraint in the lemma body to show that set_bits is properly bounded.
+
+To prove the assertion that `pre_sb.contains(x) ==> 0<=x<pre_nb`, I can chain together: `pre_sb` is a subset of the union (which includes `inner.bitmap@.set_bits`), the bitmap's invariant guarantees `set_bits ⊆ [0, num_bits)`, and `num_bits == pre_nb`. Rather than relying on the old context's internal invariant like the original code did, I can derive this directly by asserting the containment relationship and letting Verus propagate the bounds through the bitmap's well-formedness property.
+
+I should also scan the rest of the lemma for other empty-proof asserts that depended on the old context — the one at line 1094 is the main culprit, but there are also empty proofs in `lemma_capture_inv_facts` for tail-zero and representability that rely on `internal_inv` being transparent.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 66
+────────────────────────────────────────────────────────────
+Batch A medium call sites verified (the 1 error was the uncalled `lemma_alloc_range_post`, now fixed). Now Batch B — update `alloc`, `alloc_contiguous`, `alloc_range`. Let me re-read their current state.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I see that `lemma_alloc_range_post` isn't actually being called yet since it's part of batch B, but Verus is still verifying it standalone and found an error there. The fix should address that issue. Looking back at the batch A call sites—share, refcount, free, and book—those showed 78 verified with just that 1 error in `lemma_alloc_range`, so once that's fixed, those should all be good.
+
+Now I need to move on to batch B and update the call sites in the complex functions: `alloc`, `alloc_contiguous`, and `alloc_range`. Let me check the current line numbers since my edits to the medium functions shifted things around. The order in the file is `alloc` (134), `alloc_contiguous` (291), `free` (554), `share` (719), `refcount` (851), `book` (951), `is_covered` (1028), and `alloc_range` (1083). Since I edited `free`, `share`, `refcount`, and `book`, the line numbers for `alloc` and `alloc_contiguous` should be unchanged, but `alloc_range` will have shifted. Let me pull up the current state of these three functions and identify the blocks that need updating.
+[RESULT ✓] view: 134.     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+135.         proof_decl! {
+136.             let ghost g_old = self@;
+137.             let ghost pre_sb = self.bitmap@.set_bits;
+138.             let ghost pre_nb = self.bitmap@.num_bits;
+139.             let ghost pre_rc = self.refcount@;...
+
+────────────────────────────────────────────────────────────
+Turn 67
+────────────────────────────────────────────────────────────
+Now let me update `alloc`'s three blocks.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm updating the allocation function mapping: the prologue section maps to lemma_capture_inv_facts, the error case to lemma_alloc_full_no_free, and the success case to lemma_post_reserve_one. For the success path, I need to establish that the address equals the frame address derived from the index, which involves checking the modular arithmetic relationship.
+
+Writing proof structure... Writing proof block... So the caller needs to prove `g_old == self@` to satisfy the requires, and after `bitmap.alloc()` returns Err, Verus should track that self is unchanged, making that proof available. The lemma's postcondition `self@ == g_old` then follows directly from what the caller already proved, plus the lemma gives us the `no_free_frames` guarantee.
+
+For the alloc-prologue section, I'm calling `lemma_capture_inv_facts` to extract the invariant facts from the old state, passing in the ghost-captured values for `g_old`, `pre_sb`, `pre_nb`, and `pre_rc`. Since self remains unchanged through the failed allocation, all the requires are derivable from what the original code asserts, and the lemma's ensures provide the six facts needed downstream.
+
+Now I need to verify the refcount requirement — `pre_rc == spec_refcount_seq(inner)` — but the caller has `pre_rc = self.refcount@`, and since `spec_refcount_seq(self) == self.refcount@`, this checks out. Let me proceed with the alloc edits across the prologue, error, and success paths.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 68
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 69
+────────────────────────────────────────────────────────────
+Now `alloc_contiguous`. Let me view its current state.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the `alloc_contiguous` function now.
+[RESULT ✓] view: 287.         if count > self.bitmap.number_of_bits() {
+288.             let reason: &str = "requested range exceeds bitmap size";
+289.             #[cfg(not(verus_keep_ghost))]
+290.             error!("{reason} (count={count})");
+291.             return Err(Error::new(ErrorCode::OutOfMemory, reason)...
+
+────────────────────────────────────────────────────────────
+Turn 70
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm tracking how my edits to the `alloc` function shifted the line numbers downstream—the prologue replacement removed about 31 lines and added 12, while the alloc-ok change removed 15 and added 7, so `alloc` shrank by roughly 27 lines total, which means `alloc_contiguous` moved up from its original position.
+[RESULT ✓] view: 263.             },
+264.     )]
+265.     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+266.         proof_decl! {
+267.             let ghost g_old = self@;
+268.             let ghost pre_sb = self.bitmap@.set_bits;
+269.             let ghost pre_nb = self.bitmap@.num_...
+
+────────────────────────────────────────────────────────────
+Turn 71
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm reorganizing the proof structure by moving the alloc_contiguous prologue into a separate lemma about capturing invariant facts, then extracting the invariant reestablishment block and the post-condition verification into their own lemmas. I need to check where these sections ended up after the shifts and locate the loop and Ok branch handling.
+[RESULT ✓] view: 340.                     }),
+341.             decreases frame_number + count - i,
+342.         ))]
+343.         for i in frame_number..frame_number + count {
+344.             #[cfg(not(verus_keep_ghost))]
+345.             debug_assert_eq!(self.refcount[i], 0);
+346.             self.refcount[i] = 1;
+...
+
+────────────────────────────────────────────────────────────
+Turn 72
+────────────────────────────────────────────────────────────
+Now make the three `alloc_contiguous` edits (prologue, inv re-establishment, Ok arm).
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm mapping out the edits for alloc_contiguous: the prologue section becomes lemma_capture_inv_facts, the invariant block becomes lemma_reestablish_inv_range, and the postcondition block becomes lemma_alloc_contiguous_post. For the invariant lemma, I need to establish self.internal_inv() and ensure the required preconditions like spec_page_size()>0 and the bounds constraints are satisfied.
+
+The loop invariant provides all the necessary postconditions: the bitmap's set_bits match the union of the pre-state bits and the allocated range, the bitmap and refcount lengths are preserved, the refcount values are updated correctly for the allocated range, and the bitmap invariant holds. I'm calling lemma_reestablish_inv_range with start and start+count as the lo and hi parameters.
+
+The captured foralls about representability and tail-zero properties persist after the loops, so they're available as facts. I'm replacing the 32-line ac-inv block with a 3-line proof that invokes the lemma. The ac-repr block can stay for now since it establishes frame address bounds, though it might become redundant once the representability forall from capture is fully utilized. Now I need to handle the ac-ok block by invoking lemma_alloc_contiguous_post, which requires the base address, bounds checks, and the preconditions I've already established. The frames closure matches the contract's specification, and the base address derivation from `from_frame_number` checks out — `frame_number@` equals `start` from line 400, so `base == start * ps == frame_addr_of(start)`. Now I need to make the three edits to `alloc_contiguous`.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 73
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 74
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 75
+────────────────────────────────────────────────────────────
+Now `alloc_range`. Let me view its current state.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking for the alloc_range function to check its current implementation.
+[RESULT ✓] view: 995.                 #[cfg(not(verus_keep_ghost))]
+996.                 let uncovered_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
+997.                 let reason: &str = "frame index not covered by the bitmap";
+998.                 #[cfg(not(verus_keep_ghost))]
+999.                 error!("...
+
+────────────────────────────────────────────────────────────
+Turn 76
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to look at the alloc_range prologue and check the uncovered block in that range.
+[RESULT ✓] view: 955.                 rstart == region@.start,
+956.                 rsize == region@.size,
+957.                 rstart / ps == start_fn,
+958.                 (rstart + rsize) / ps == start_fn + nfr,
+959.                 start_frame_number <= index,
+960.                 index <= end_exclusive,
+961.   ...
+
+────────────────────────────────────────────────────────────
+Turn 77
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 912.             let ghost start_fn = start_frame_number as int;
+913.             let ghost nfr = nframes as int;
+914.         }
+915.         proof! {
+916.             lemma_view_of(self);
+917.             assert(spec_refcount_seq(self) == pre_rc);
+918.             assert(g_old == view_of(pre_sb, pr...
+
+────────────────────────────────────────────────────────────
+Turn 78
+────────────────────────────────────────────────────────────
+Now `alloc_range` — prologue, uncovered-scan, and allocated-scan blocks.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm mapping out the edits needed for the alloc_range section, breaking it into four parts: establishing the prologue with geometry lemmas and their requirements, handling the uncovered range case, the allocated range case, and then the epilogue with the post-condition lemma. Completing the proof block...
+
+The prologue is down to about 9 lines now, which is much tighter than before. The geometry assertions are establishing what the lemma requires, and some might be automatically derived. I'm keeping them for now to be explicit. The `ps == spec_page_size()` check is trivial since ps is already the ghost value, but the `ps == 4096` assertion is necessary because the lemma requires that specific page size, and since the original code passes this assertion, it's derivable from the architecture constants.
+
+Now looking at the second part: the ar-uncovered case needs to invoke lemma_range_uncovered_not_all_free. The lemma requires the internal invariant, the page size constant, the old ghost state, the frame number calculations from the loop invariant, and the fact that the current index is beyond the number of bits. This establishes that not all frames are free, which matches what the function's error case needs to ensure.
+
+I'm verifying that `0 <= start_fn` is available from the loop invariant (start_fn comes from start_frame_number which is a usize, so it's non-negative), and the range condition `start_fn <= index < start_fn + nfr` comes directly from the loop bounds. Everything checks out, so I'm ready to call the lemma with these preconditions satisfied.
+
+Calling the lemma...
+
+Now I'm checking the postcondition: the lemma ensures the frame range isn't all free, which matches what the Err branch needs to prove. The frame numbers and addresses align correctly since rstart equals region@.start and rsize equals region@.size.
+
+For the allocated case, I need a similar lemma that handles when bits are set in the bitmap. The preconditions are the same internal invariant and frame range setup, plus I need to verify that the index is within bounds and that the bitmap actually has that bit set. The loop has already passed the bounds check, so index is definitely less than num_bits, and the bitmap test confirms the bit is set. Now I'm reviewing the prologue replacement strategy — lemma_capture_inv_facts handles the view and g_old setup internally, and since the loop invariant uses self.refcount@ directly rather than spec_refcount_seq, the equality pre_rc == spec_refcount_seq(self) is already available as an input precondition. I'm ready to make the three edits to alloc_range: the prologue, the uncovered case, and the allocated case.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 79
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 80
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 81
+────────────────────────────────────────────────────────────
+Now let me view and replace the `alloc_range` epilogue.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1042.                 forall|k: int| 0 <= k < pre_rc.len() ==>
+1043.                     #[trigger] self.refcount@[k] == (if start_fn <= k < index as int {
+1044.                         1u8
+1045.                     } else {
+1046.                         pre_rc[k]
+1047.                     }),
+1048....
+
+────────────────────────────────────────────────────────────
+Turn 82
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1130.                 }
+1131.             }
+1132.             // Every requested frame was free in old(self): in-range, clear bit ⇒ refcount 0.
+1133.             assert forall|addr: int| #[trigger] frames.contains(addr) implies {
+1134.                 &&& addr % spec_page_size() == 0
+1135.          ...
+
+────────────────────────────────────────────────────────────
+Turn 83
+────────────────────────────────────────────────────────────
+Now replace the large `alloc_range` epilogue.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to replace the epilogue section with a call to lemma_alloc_range_post, passing in the parameters self, rstart, rsize, ps, and several others including lo set to start_fn. The preconditions I need to verify are that ps equals the spec page size, that ps is positive (which follows from the spec page size being positive), and that rstart divided by ps equals lo.
+
+Continuing with the remaining preconditions: the range geometry requires (rstart+rsize)/ps equals lo+nfr, lo must be non-negative (since start_fn is non-negative), nfr must be at least 1, and lo+nfr cannot exceed pre_nb. I also need to establish that pre_nb doesn't exceed the refcount length, verify the four capture foralls, and confirm that no pages in the range are already booked. The booking loop invariants provide that the bitmap is valid, num_bits matches pre_nb, set_bits equals the union of pre_sb with the newly allocated range, the refcount sequence length matches pre_rc, and the refcount forall holds after the loop completes. Finally, g_old must equal the view_of from the capture. All these conditions are available, and the lemma ensures internal_inv holds, all frames in the range are free, and the view equality is reconstructed.
+
+Writing the proof block... The post-scan block establishes the preconditions needed for the lemma, including that the range is available and the bitmap is clear, and these facts persist through to the epilogue. Now I need to replace the epilogue section itself, which spans about 90 lines.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 84
+────────────────────────────────────────────────────────────
+Batch B done. Let me verify the complex functions now.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+
+[THINKING] I need to handle the `is_covered` function next—it's a trim operation on a 9-line block, so I should include it in this verification pass. Let me trim that section now and then run verification across batch B (alloc, alloc_contiguous, alloc_range).
+[RESULT ✓] bash: <command started in background with shellId: verify-b>
+
+────────────────────────────────────────────────────────────
+Turn 85
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 240, 'shellId': 'verify-b'}

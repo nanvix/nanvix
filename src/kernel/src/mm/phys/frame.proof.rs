@@ -1091,7 +1091,9 @@ proof fn lemma_alloc_range_post(
         vstd::map::group_map_lemmas,
         vstd::map_lib::group_map_properties;
     lemma_view_of(inner);
-    assert forall|x: int| pre_sb.contains(x) implies 0 <= x < pre_nb by {}
+    assert forall|x: int| pre_sb.contains(x) implies 0 <= x < pre_nb by {
+        assert(inner.bitmap@.set_bits.contains(x));
+    }
     lemma_reserve_range_v(pre_sb, pre_nb, pre_rc, inner.refcount@, lo, nfr);
     let frame_numbers = Set::range(rstart / ps, (rstart + rsize) / ps);
     let frames = frame_numbers.map(|i: int| i * spec_page_size());
