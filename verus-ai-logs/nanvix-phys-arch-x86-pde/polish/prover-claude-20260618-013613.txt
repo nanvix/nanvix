@@ -542,3 +542,67 @@ Changes are surgical: removed 3 redundant assertions + 1 now-unused import. Spec
 [THINKING] The changes are minimal—I removed the unused `pow2` import and three redundant assertions. The spec file and pde.rs remain unchanged, so there's no spec drift. All spec functions are public, so I'm keeping them per the skill guidelines, and I've confirmed there are no truly dead non-public functions or redundant lemmas in the proof file.
 
 The comment at line 26 explaining the pow2 relationship is still accurate since it describes what lemma2_to64() provides. I've also verified that all five `requires` clauses in the assert block are necessary for the nonlinear solver to work, so trimming them isn't worth the risk. I'm satisfied with the minimization and ready to run a final verification to confirm there are no errors or admits remaining.
+[RESULT ✓] bash: === Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  cheating: assume=0 external_body=3 admit=0 trusted=0 no_decreases=0 cfg_gate=2
+  Detail: verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt
+
+=== Function Coverage ===
+  18/525 exec functions have ...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, `admit=0`, no cheating patterns in `pde`). The pre-existing `external_body=3`/`cfg_gate=2` are in other arch files, unchanged. Now let me write the polish report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-arch-x86-pde/polish/ 2>/dev/null; mkdir -p verus-ai-logs
+
+[THINKING] Verification checks out with no issues — those external references were already present elsewhere. Now I'm moving on to write up the checklist report and verify the polish directory is in place.
+[RESULT ✓] bash: prover-claude-20260618-013613.jsonl
+prover-claude-20260618-013613.txt
+ok
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/polish/checklist.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/polish/checklist.md with 2407 characters
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+Let me clean up temp files and do a final confirmation of the proof-block state.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && rm -f /tmp/pde.proof.rs.bak /tmp/pde.spec.rs.bak /tmp/pde.rs.bak /tmp/pde.proof.check
+
+[THINKING] I'm cleaning up the temporary backup files and verifying that the proof block check still passes with my changes.
+[RESULT ✓] bash: cleaned
+=== final proof-block check ===
+----------------------------------------------------------------------------------------------------
+src/libs/arch/src/x86/mem/paging/pde.rs       new                         318   318     1  ✅
+src/libs/arch/src/x86/mem/paging/pde.rs       frame_address       ...
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Polish complete. Verification passes with **47 verified, 0 errors** (`admit=0`, no cheating in scope).
+
+**Proof extraction:** Nothing to extract — the only non-trivial proof was already a named lemma (`lemma_frame_address`). Both remaining inline blocks are single-line lemma calls (≤5 lines).
+
+**Minimization** (all in `pde.proof.rs`):
+- Removed 3 redundant assertions in `lemma_frame_address` (the `pow2==FRAME_SIZE` bridge + two intermediate `<= m/s` bounds — Verus derives them via the broadcast `lemma2_to64()` and `spec_max`'s open definition).
+- Removed the now-unused `pow2` import.
+
+I verified each remaining lemma call is load-bearing (removal-tested `lemma2_to64()` → fails → reverted). `pde.spec.rs` and `pde.rs` are byte-for-byte unchanged (no spec drift); all spec functions are `pub` API and kept per the skill.
+
+Report written to `verus-ai-logs/nanvix-phys-arch-x86-pde/polish/checklist.md`.
+
+
+=== Session End ===
+Session: 12bc1129-fd2e-4735-a2dd-bec505266006
+Duration: 361.2s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-x86-pde/polish/prover-claude-20260618-013613.jsonl
