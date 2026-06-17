@@ -154,10 +154,10 @@ impl UserFrame {
                 Ok(uf) => {
                     &&& uf@ == self@
                     &&& uf.inv()
-                    &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+                    &&& crate::mm::phys::phys_view().frames.is_allocated(self@)
                 },
                 Err(_) => {
-                    ||| !crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+                    ||| !crate::mm::phys::phys_view().frames.is_allocated(self@)
                     ||| crate::mm::phys::phys_view().frames.refcounts[self@] >= 255
                 },
             },
@@ -183,10 +183,10 @@ impl UserFrame {
         ensures
             match result {
                 Ok(count) => {
-                    &&& crate::mm::phys::phys_view().frames.allocated_frames.contains(self@)
+                    &&& crate::mm::phys::phys_view().frames.is_allocated(self@)
                     &&& count as int == crate::mm::phys::phys_view().frames.refcounts[self@]
                 },
-                Err(_) => !crate::mm::phys::phys_view().frames.allocated_frames.contains(self@),
+                Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(self@),
             },
     )]
     pub fn refcount(&self) -> Result<u8, Error> {
@@ -277,7 +277,7 @@ impl Upool {
             final(self)@.wf(),
             match result {
                 Ok(uf) => {
-                    &&& old(self)@.free_frames.contains(uf@)
+                    &&& old(self)@.is_free(uf@)
                     &&& final(self)@ == old(self)@.alloc_one(uf@)
                 },
                 Err(_) => {

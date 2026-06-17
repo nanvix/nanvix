@@ -28,7 +28,7 @@ pub proof fn lemma_kernel_alloc_one(pre: FrameAllocView, post: FrameAllocView, a
     requires
         pre.wf(),
     ensures
-        pre.free_frames.contains(addr),
+        pre.is_free(addr),
         post == pre.alloc_one(addr),
         post.wf(),
 {
@@ -86,10 +86,9 @@ pub proof fn lemma_user_addr_set_empty(frames: Seq<UserFrame>)
         frames.len() == 0,
     ensures
         user_addr_set(frames) == Set::<int>::empty(),
-        user_addr_set(frames).finite(),
         user_addr_set(frames).len() == 0,
 {
-    broadcast use vstd::set::group_set_axioms;
+    broadcast use vstd::set::group_set_lemmas;
     assert(user_addr_set(frames) =~= Set::<int>::empty());
 }
 
@@ -98,23 +97,14 @@ pub proof fn lemma_user_addr_set_push(frames: Seq<UserFrame>, uf: UserFrame)
     ensures
         user_addr_set(frames.push(uf)) =~= user_addr_set(frames).insert(uf@),
 {
-    let extended = frames.push(uf);
-    assert forall|a: int| #[trigger] user_addr_set(extended).contains(a) implies
-        user_addr_set(frames).insert(uf@).contains(a) by {
-        let i = choose|i: int| #![trigger extended[i]@] 0 <= i < extended.len() && extended[i]@ == a;
-        if i < frames.len() {
-            assert(frames[i]@ == a);
-        }
-    }
-    assert forall|a: int| #[trigger] user_addr_set(frames).insert(uf@).contains(a) implies
-        user_addr_set(extended).contains(a) by {
-        if a == uf@ {
-            assert(extended[frames.len() as int]@ == a);
-        } else {
-            let i = choose|i: int| #![trigger frames[i]@] 0 <= i < frames.len() && frames[i]@ == a;
-            assert(extended[i]@ == a);
-        }
-    }
+    broadcast use vstd::seq_lib::group_seq_lib_default;
+    let me = frames.map_values(|x: UserFrame| x@);
+    // `map_values` commutes with `push`, and pushing an element appends a singleton.
+    frames.lemma_push_map_commute(|x: UserFrame| x@, uf);
+    assert(frames.push(uf).map_values(|x: UserFrame| x@) =~= me.push(uf@));
+    assert(me.push(uf@) =~= me + seq![uf@]);
+    Seq::lemma_to_set_insert_commutes(me, uf@);
+    assert(user_addr_set(frames.push(uf)) =~= user_addr_set(frames).insert(uf@));
 }
 
 /// Reserving the empty set leaves the partition unchanged.
@@ -122,8 +112,10 @@ pub proof fn lemma_book_all_empty(v: FrameAllocView)
     ensures
         v.book_all(Set::<int>::empty()) == v,
 {
-    assert(v.book_all(Set::<int>::empty()).allocated_frames =~= v.allocated_frames);
-    assert(v.book_all(Set::<int>::empty()).free_frames =~= v.free_frames);
+    broadcast use
+        vstd::set::group_set_lemmas,
+        vstd::map::group_map_lemmas,
+        vstd::map_lib::group_map_properties;
     assert(v.book_all(Set::<int>::empty()).refcounts =~= v.refcounts);
 }
 
@@ -134,10 +126,23 @@ pub proof fn lemma_book_all_alloc_one(v: FrameAllocView, s: Set<int>, a: int)
     ensures
         v.book_all(s).alloc_one(a) == v.book_all(s.insert(a)),
 {
-    assert(v.book_all(s).alloc_one(a).allocated_frames
-        =~= v.book_all(s.insert(a)).allocated_frames);
-    assert(v.book_all(s).alloc_one(a).free_frames =~= v.book_all(s.insert(a)).free_frames);
+    broadcast use
+        vstd::set::group_set_lemmas,
+        vstd::map::group_map_lemmas,
+        vstd::map_lib::group_map_properties;
     assert(v.book_all(s).alloc_one(a).refcounts =~= v.book_all(s.insert(a)).refcounts);
+}
+
+/// The free set after booking `s` is exactly the old free set minus `s`: booking flips each
+/// covered frame in `s` from refcount 0 to 1, and adds no new free frames.
+pub proof fn lemma_book_all_free_set(g: FrameAllocView, s: Set<int>)
+    ensures
+        g.book_all(s).free_set() =~= g.free_set().difference(s),
+{
+    broadcast use
+        vstd::set::group_set_lemmas,
+        vstd::map::group_map_lemmas,
+        vstd::map_lib::group_map_properties;
 }
 
 /// Loop invariant for the user bulk-allocation loop: the handles accumulated so far own a
@@ -148,7 +153,6 @@ pub open spec fn user_bulk_inv(
     mview: FrameAllocView,
     frames: Seq<UserFrame>,
 ) -> bool {
-    &&& user_addr_set(frames).finite()
     &&& user_addr_set(frames).len() == frames.len()
     &&& g_old.all_free(user_addr_set(frames))
     &&& mview == g_old.book_all(user_addr_set(frames))
@@ -176,17 +180,22 @@ pub proof fn lemma_user_bulk_step(
 )
     requires
         user_bulk_inv(g_old, mview, frames),
-        mview.free_frames.contains(uf@),
+        mview.is_free(uf@),
     ensures
         user_bulk_inv(g_old, mview.alloc_one(uf@), frames.push(uf)),
 {
-    broadcast use vstd::set::group_set_axioms;
+    broadcast use
+        vstd::set::group_set_lemmas,
+        vstd::map::group_map_lemmas,
+        vstd::map_lib::group_map_properties;
 
     let s = user_addr_set(frames);
-    // `mview == g_old.book_all(s)`, so `mview.free_frames == g_old.free_frames.difference(s)`.
+    // `mview == g_old.book_all(s)`, so `mview.free_set() == g_old.free_set().difference(s)`.
     // `uf@` being free in `mview` therefore means it is free in `g_old` and not yet in `s`.
-    assert(mview.free_frames =~= g_old.free_frames.difference(s));
-    assert(g_old.free_frames.contains(uf@) && !s.contains(uf@));
+    lemma_book_all_free_set(g_old, s);
+    assert(mview.free_set() =~= g_old.free_set().difference(s));
+    assert(g_old.free_set().contains(uf@) && !s.contains(uf@));
+    assert(g_old.is_free(uf@));
 
     lemma_user_addr_set_push(frames, uf);
     lemma_book_all_alloc_one(g_old, s, uf@);
@@ -197,9 +206,11 @@ pub proof fn lemma_user_bulk_step(
     assert(s2.len() == s.len() + 1);
     assert(frames.push(uf).len() == frames.len() + 1);
     // Every address in the enlarged set was free in `g_old`.
-    assert forall|x: int| #[trigger] s2.contains(x) implies g_old.free_frames.contains(x) by {
-        if x != uf@ {
-            assert(s.contains(x));
+    assert(g_old.all_free(s2)) by {
+        assert forall|x: int| #[trigger] s2.contains(x) implies g_old.is_free(x) by {
+            if x != uf@ {
+                assert(s.contains(x));
+            }
         }
     }
 }

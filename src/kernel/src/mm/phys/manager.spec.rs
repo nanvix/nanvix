@@ -54,10 +54,15 @@ pub uninterp spec fn spec_kernel_watermark() -> nat;
 //==================================================================================================
 
 impl FrameAllocView {
+    /// The set of currently-free covered frames (refcount 0). Models `frame::free_frames`.
+    pub open spec fn free_set(self) -> Set<int> {
+        self.refcounts.dom().filter(|a: int| self.refcounts[a] == 0)
+    }
+
     /// Number of frames currently free, i.e. available to hand out. This is the single quantity
     /// the kernel watermark reads. Models `frame::free_count()`.
     pub open spec fn free_count(self) -> nat {
-        self.free_frames.len()
+        self.free_set().len()
     }
 
     /// A user allocation of `count` frames is admissible: fulfilling it would still leave at
@@ -67,12 +72,10 @@ impl FrameAllocView {
         self.free_count() >= count + spec_kernel_watermark()
     }
 
-    /// Allocate a single currently-free frame `addr`: move it from `free_frames` to
-    /// `allocated_frames` with refcount 1. (Equivalent to `book_all(set![addr])`.)
+    /// Allocate a single currently-free frame `addr`: set its reference count to 1. (Equivalent
+    /// to `book_all(set![addr])`.)
     pub open spec fn alloc_one(self, addr: int) -> FrameAllocView {
         FrameAllocView {
-            allocated_frames: self.allocated_frames.insert(addr),
-            free_frames: self.free_frames.remove(addr),
             refcounts: self.refcounts.insert(addr, 1int),
         }
     }
@@ -111,12 +114,12 @@ impl PhysMemoryManager {
 
 /// The set of physical frame addresses owned by a sequence of user-frame handles.
 pub open spec fn user_addr_set(frames: Seq<UserFrame>) -> Set<int> {
-    Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a)
+    frames.map_values(|uf: UserFrame| uf@).to_set()
 }
 
 /// The set of physical frame addresses owned by a sequence of kernel-frame handles.
 pub open spec fn kernel_addr_set(frames: Seq<KernelFrame>) -> Set<int> {
-    Set::new(|a: int| exists|i: int| 0 <= i < frames.len() && #[trigger] frames[i]@ == a)
+    frames.map_values(|kf: KernelFrame| kf@).to_set()
 }
 
 /// The first `count` kernel-frame handles in `frames` occupy a physically contiguous, page-aligned

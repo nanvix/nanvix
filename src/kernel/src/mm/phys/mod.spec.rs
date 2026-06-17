@@ -151,13 +151,13 @@ impl FrameAllocView {
     /// The allocator tracks (covers) the frame at `addr` — it is one of the frames this
     /// allocator knows about, allocated or free. Models `frame::is_covered`.
     pub open spec fn covers(self, addr: int) -> bool {
-        self.allocated_frames.contains(addr) || self.free_frames.contains(addr)
+        self.is_covered(addr)
     }
 
-    /// The frame at `addr` is reserved: present in the allocated set, hence `alloc()` can
-    /// never return it. This is the core caller-visible fact a "booked" frame satisfies.
+    /// The frame at `addr` is reserved: it has a positive reference count, hence `alloc()`
+    /// can never return it. This is the core caller-visible fact a "booked" frame satisfies.
     pub open spec fn reserved(self, addr: int) -> bool {
-        self.allocated_frames.contains(addr)
+        self.is_allocated(addr)
     }
 
     /// Every frame address in `set` is reserved.
@@ -165,20 +165,12 @@ impl FrameAllocView {
         forall|a: int| set.contains(a) ==> self.reserved(a)
     }
 
-    /// Every frame address in `set` is currently free (booking precondition: a range can be
-    /// booked only if it is entirely free).
-    pub open spec fn all_free(self, set: Set<int>) -> bool {
-        forall|a: int| #[trigger] set.contains(a) ==> self.free_frames.contains(a)
-    }
-
-    /// Reserve every frame in `set` (each assumed free in `self`): move it from
-    /// `free_frames` to `allocated_frames` with refcount 1.
+    /// Reserve every frame in `set` (each assumed free in `self`): set its reference count
+    /// to 1. Covered-but-free frames keep their domain entry; the count flips from 0 to 1.
     pub open spec fn book_all(self, set: Set<int>) -> FrameAllocView {
         FrameAllocView {
-            allocated_frames: self.allocated_frames.union(set),
-            free_frames: self.free_frames.difference(set),
             refcounts: self.refcounts.union_prefer_right(
-                Map::new(|a: int| set.contains(a), |a: int| 1int),
+                Map::new(set, |a: int| 1int),
             ),
         }
     }

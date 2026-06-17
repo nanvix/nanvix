@@ -285,7 +285,7 @@ impl PhysMemoryManager {
             match result {
                 Ok(uf) => {
                     &&& old(self)@.user_alloc_ok(1)
-                    &&& old(self)@.free_frames.contains(uf@)
+                    &&& old(self)@.is_free(uf@)
                     &&& final(self)@ == old(self)@.alloc_one(uf@)
                 },
                 Err(_) => {
@@ -367,7 +367,7 @@ impl PhysMemoryManager {
             final(self).inv(),
             match result {
                 Ok(kf) => {
-                    &&& old(self)@.free_frames.contains(kf@)
+                    &&& old(self)@.is_free(kf@)
                     &&& final(self)@ == old(self)@.alloc_one(kf@)
                 },
                 Err(_) => final(self)@ == old(self)@,
