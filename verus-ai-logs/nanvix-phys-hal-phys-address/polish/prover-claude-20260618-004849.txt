@@ -224,3 +224,69 @@ Let me run the baseline verification for this module to confirm it passes before
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | tail -40
 
 [THINKING] I need to figure out what module path the verifier expects for the `--module` argument. Based on the example given, it looks like the format should be something like `hal::mem::types::address::phys` for our file. Let me run the baseline verification with that module path.
+[RESULT ✓] bash: 1138 |         assert forall|addr: int| spec_range_frames(lo, nfr).contains(addr) implies
+     |         ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  ✅ No cheating dete...
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+Baseline passes (exit 0, CLEAN, module clean). Both proof blocks are already ≤5 lines (just lemma calls), so no extraction is needed — they're already extracted. The work is best-effort minimization on the proof-file lemmas. Let me check spec function usage and back up files first.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p /home/ruize/.copilot/session-state/485f68eb-999b-479d-8027-99f1a6045b3b/file
+
+[THINKING] The baseline verification passes cleanly with no recompilation needed. The cheating detection shows some global admits (4 total), but the module-level check confirms there's no cheating in the address module itself, and our file doesn't contain any admits anyway.
+
+Now I need to think about minimization. The inline proofs are already short (3-4 lines), so no extraction is needed. For minimization, I should look at removing redundant assertions and proof hints from the lemmas that support the in-scope functions. The lemmas `lemma_from_number_no_overflow` and `lemma_frame_index` are proof helpers directly supporting the target functions, so I can minimize their assertions while keeping the core logic intact.
+
+All the spec functions are public and actively used throughout the module, so none should be removed. My best approach is to carefully analyze the assertions in each lemma, try removing redundant ones in batches, and re-verify after each change to ensure nothing breaks. I'm evaluating which asserts are actually necessary for the proof to go through. The key ones seem to be the relationships between the spec values and their concrete counterparts, plus the critical inequality about `spec_max()`. The `assert(raw <= m / s)` might be derivable from the precondition and earlier facts, but removing it risks breaking the nonlinear arithmetic solver's ability to complete the proof. I should take a conservative approach and test removing asserts one at a time rather than in batches, since each verification attempt is relatively cheap with caching. I'm looking at the `lemma_frame_index` function to identify which asserts might be redundant. The function establishes that `shift == 12` through proof-by-contradiction with the `lemma_pow2_strictly_increases` lemma, then converts the frame number calculation and sets up variables for the nonlinear arithmetic proof. I need to examine whether some of these intermediate assertions—like the repeated `assert(s == 4096)` or the bit-width checks—are actually necessary for the proof to go through. I'm concerned about the fragility of these nonlinear proofs—removing the wrong assertion could break verification and create a time sink. Let me focus on the core task: I've already confirmed there are no proof blocks exceeding 5 lines to extract, so I'll do a careful best-effort pass at minimizing redundant assertions with re-verification. First, I should test how long a clean verification actually takes by touching the source file, then back up the three files before experimenting with changes.
+[RESULT ✓] bash: backed up
+=== spec_page_size def ===
+src/kernel/src/hal/mem/types/address/frame.rs:43:pub open spec fn spec_page_size() -> int {
+<shellId: 8 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '35,60p' src/kernel/src/hal/mem/types/address/frame.rs; echo "=== usages of ea
+[RESULT ✓] bash: #[cfg(verus_keep_ghost)]
+verus! {
+
+// The architectural page size, delegating to the `arch` crate's verified `PAGE_SIZE` constant.
+// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+// that `arch` carries a real verified spec for `PAGE_SIZE`, that plac...
+
+────────────────────────────────────────────────────────────
+Turn 9
+────────────────────────────────────────────────────────────
+All four spec functions are `pub` and consumed by `frame.spec.rs`/`frame.proof.rs` — part of the module API, so none are dead. Minimization is limited to redundant assertions/hints in the proof-file lemmas. Let me try a first batch: removing assertions that merely restate goals or are derivable, then re-verify.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs
+
+[THINKING] All the spec functions in `phys.spec.rs` are public and actively used by `frame.spec.rs`, so there's nothing dead to remove there. The real opportunity for minimization lies in trimming redundant assertions and unnecessary proof hints from the lemmas in the proof file itself.
+
+I need to empirically test which assertions are actually required versus which ones are just scaffolding. Let me start by analyzing the `lemma_from_number_no_overflow` lemma to identify which assertions and lemma calls are truly essential for the proof versus which ones the solver could derive on its own.
+
+The key insight is that assertion D (`raw <= m / s`) is likely needed as a precondition for `lemma_mul_inequality`, but I should verify whether the intermediate assertions about FRAME_SIZE and PAGE_SIZE relationships are actually being used by the nonlinear arithmetic solver or if they're just noise. Let me batch-remove the most suspicious ones and test. I'm going to systematically test removing the most obviously redundant assertions. I'll start with three candidates: the assert in lemma_from_number_no_overflow that restates a precondition, and the two "goal restatement" asserts in lemma_frame_index that just echo back the ensures clauses that Verus should already be able to derive from the lemmas. Let me batch these removals and re-verify to see if the proof still holds.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/hal/mem/types/address/phys.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 10
+────────────────────────────────────────────────────────────
+Now let me re-verify this batch.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-kernel MODULE=hal::mem::types::address::phys 2>&1 | sed -n '/
+
+[THINKING] I'm reconsidering whether that assertion on line 94 is actually necessary for the proof. The second ensures clause uses `frame_number as int <= spec_max_frame_number()`, and I can derive the relationship between `frame_number` and `raw_addr` through the division lemma and the nat-to-int casting bridge, so the explicit assertion might be redundant.
+
+Let me run verification to check if removing it causes any issues.
