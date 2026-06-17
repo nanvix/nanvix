@@ -1,0 +1,30 @@
+Timestamp: 2026-06-18_01-19-25
+Mode: cargo
+Crate: arch
+Directory: N/A
+Module: <all>
+Exit code: 101
+47 verified
+1 errors
+
+Cheating patterns:
+  assume=0
+  external_body=3
+  admit=0
+  trusted=0
+  no_decreases=0
+  cfg_gate=2
+
+--- Full output ---
+    Checking arch v0.16.17 (/home/ruize/nanvix-phy-specs/src/libs/arch)
+error: postcondition not satisfied
+   --> src/libs/arch/src/x86/mem/paging/frame/number.rs:97:13
+    |
+ 97 |             0 <= self@ <= Self::spec_max(),
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ failed this postcondition
+...
+100 |         self.0
+    |         ------ at the end of the function body
+
+verification results:: 47 verified, 1 errors
+error: could not compile `arch` (lib) due to 1 previous error

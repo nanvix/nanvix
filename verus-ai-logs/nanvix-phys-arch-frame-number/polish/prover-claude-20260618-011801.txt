@@ -191,3 +191,44 @@ Now let me establish the verification baseline before making changes.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-arch 2>&1 | tail -40
 
 [THINKING] I'm reviewing the proof blocks and minimization opportunities in the codebase. The proof block is just one line, so it stays inline without extraction. Now I'm checking the spec files for redundant assertions, hints, and unused spec functions that could be cleaned up.
+[RESULT ✓] bash: Using Verus installation at /home/ruize/verus-exp/verus/source/target-verus/release.
+RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" \
+PATH="/home/ruize/verus-exp/verus/source/target-verus/release:$PATH" \
+VERUS_AI_DIR="/home/ruize/verus-ai-exp/verus-ai" \
+VERUS_EXTRA_CARGO_ARGS="--locke...
+
+────────────────────────────────────────────────────────────
+Turn 5
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cat verus-ai-logs/verify-arch/verus-logs/cheating-detail.txt 2>/dev/null | head -30; 
+
+[THINKING] The verification cached successfully with exit code 0, so no recompilation happened. The external_body count of 3 is from pre-existing code in other files, not the current scope. The "CHEATING_DETECTED" flag is tied to those external bodies, but what matters is that there are no actual errors and the exit code confirms success.
+[RESULT ✓] bash: - x86/mem/paging/mod.rs:80 invlpg: external_body
+    - x86/mem/paging/table.proof.rs:16 lemma_entry_roundtrip: assume
+    - x86/mem/paging/table.rs:209 read: external_body
+    - x86/mem/paging/table.rs:246 write: external_body
+=== check number.rs in scope ===
+src/libs/arch/src/x86/mem/paging/frame/n...
+
+────────────────────────────────────────────────────────────
+Turn 6
+────────────────────────────────────────────────────────────
+Baseline passes (exit 0); the cheats are in other out-of-scope files. Our `number.rs` has only one 1-line proof block. Let me test whether that single proof hint (`use_type_invariant`) is actually required, since minimization should remove redundant hints.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/libs/arch/src/x86/mem/paging/frame/number.rs /tmp/number.rs.bak && cp src/libs
+
+[THINKING] The cheating patterns are actually in other files, so number.rs is clean. The baseline verification passed, but since it was cached, I need to force a re-verification to ensure my changes actually get tested.
+
+For the polish work, there's not much to do here. The proof file is empty, there are no assertions or debug artifacts to clean up, and the spec functions are all public and used. The only question is whether the `use_type_invariant` call in the proof hint is actually necessary — it's needed to expose the type invariant for the ensures clause, so it should stay. I should test whether that single proof hint is actually necessary for verification to pass, since if it's redundant, I can remove it to minimize the code.
+[RESULT ✓] bash: backed up
+<shellId: 6 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 7
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 8
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 900 make verify-arch 2>&1 | grep -iE "error|verified|fail|exit code|verificat

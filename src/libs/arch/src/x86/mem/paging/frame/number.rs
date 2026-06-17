@@ -97,7 +97,6 @@ impl FrameNumber {
             0 <= self@ <= Self::spec_max(),
     )]
     pub fn into_raw_value(self) -> usize {
-        proof! { use_type_invariant(self); }
         self.0
     }
 }
