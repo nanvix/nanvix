@@ -347,3 +347,47 @@ Now let me test removing the proof hint to see if it's redundant.
 Turn 14
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch MODULE=x86::mem::paging::pte 2>&1 | grep -A3 "=== Result
+[RESULT ✓] bash: === Results ===
+  5 verified
+  1 errors
+  Exit code : 101
+=== errors? ===
+5 verified
+1 errors
+  admit=0
+error: postcondition not satisfied
+    |             ^^^^^^^^^^^^ failed this postcondition
+verification results:: 5 verified, 1 errors (partial verification with `--verify-*`)
+error: could not co...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+Confirmed: the proof hint is required (postcondition `result.inv()` fails without it). It's not redundant. Reverting.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp /tmp/pte.rs.bak src/libs/arch/src/x86/mem/paging/pte.rs && grep -n "use_type_invar
+
+[THINKING] The `proof! { use_type_invariant(frame); }` macro call is actually essential—without it, the postcondition fails to verify. I need to keep it in place rather than removing it.
+[RESULT ✓] bash: 314:        proof! { use_type_invariant(frame); }
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Reverted. Now let me check the spec/proof files for debug artifacts (TODO comments, property-ID annotations, commented-out code) per the minimization skill.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging && grep -nE "TODO|FIXME|XXX|FUNC-POST|INV-[0-9]|PROP-|/
+
+[THINKING] Now I'm reconsidering what needs to be minimized in the spec file. Since spec and proof files are freely editable, I should check for dead spec functions—though they're all marked `pub open spec` so they should be kept per the guidelines. I'm also looking for debug artifacts like TODO comments, commented-out code, and property-ID annotations that need to be removed.
+[RESULT ✓] bash: === exit grep done ===
+<shellId: 18 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+No debug artifacts found. The module is already lean: only a 1-line proof block (must stay inline), the single proof hint is required, all spec functions are `pub` and referenced, and the proof file is empty. Let me confirm verification passes after the revert.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 600 make verify-arch MODULE=x86::mem::paging::pte 2>&1 | grep -A3 "=== Result
+
+[THINKING] I'm checking whether `spec_cow_set` is actually used—it's defined in pte.spec.rs and appears in the View, so it's needed. The imported flag projections like `spec_present_set` are also used in View and in `spec_pte_flags_new`, so those are fine too.
+
+Let me run the proof block checker across all three files to be thorough and confirm there's nothing to extract. Since there's only a single one-line proof block, there's nothing over five lines to pull into named lemmas. The `use_type_invariant` hint is necessary—I tested that removing it causes verification to fail—so the proof file is already minimal. I should re-run verification to confirm the baseline passes cleanly and that the error count drops back to zero with the hint in place.
+
+Now I'm checking whether `PageTableEntryFlags::inv` is actually used anywhere in the codebase. It's a public spec function that returns `true`, kept for uniformity with the type's API. The minimization guidelines are clear: keep public spec functions since they're part of the module's surface and may be referenced by dependents like `table.rs` or `pde.rs`. So I'll keep it regardless of whether it's currently called. Let me verify the final state passes verification with the proof hint restored.
