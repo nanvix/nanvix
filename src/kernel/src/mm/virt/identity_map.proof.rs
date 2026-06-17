@@ -14,7 +14,6 @@ pub proof fn lemma_install_page_maps(v: IdentityMapView, page: int)
     ensures
         v.spec_install_page(page).mapped.contains(page),
 {
-    assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
 }
 
 // Installing a page never removes an already-mapped page (monotonicity: once mapped, stays
@@ -23,11 +22,6 @@ pub proof fn lemma_install_page_monotone(v: IdentityMapView, page: int)
     ensures
         v.mapped.subset_of(v.spec_install_page(page).mapped),
 {
-    assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
-    assert forall|x: int| #[trigger] v.mapped.contains(x) implies
-        v.spec_install_page(page).mapped.contains(x) by {
-        assert(v.mapped.insert(page).contains(x));
-    }
 }
 
 // Installing a page preserves well-formedness when the new page is page-aligned and the mapper is
@@ -40,10 +34,8 @@ pub proof fn lemma_install_page_preserves_inv(v: IdentityMapView, page: int)
     ensures
         v.spec_install_page(page).inv(),
 {
-    let v2 = v.spec_install_page(page);
-    assert(v2.mapped =~= v.mapped.insert(page));
-    assert forall|p: int| #[trigger] v2.mapped.contains(p) implies spec_is_page_aligned(p) by {
-        assert(v.mapped.insert(page).contains(p));
+    assert forall|p: int| #[trigger] v.spec_install_page(page).mapped.contains(p) implies
+        spec_is_page_aligned(p) by {
         if p != page {
             assert(v.mapped.contains(p));
         }
@@ -56,11 +48,6 @@ pub proof fn lemma_map_page_accessible(v: IdentityMapView, page: int)
     ensures
         v.spec_map_page(page).accessible(page),
 {
-    if v.initialized {
-        assert(v.spec_map_page(page) == v.spec_install_page(page));
-        assert(v.spec_install_page(page).mapped =~= v.mapped.insert(page));
-        assert(v.spec_install_page(page).mapped.contains(page));
-    }
 }
 
 // `spec_map_page` preserves well-formedness for a page-aligned target.

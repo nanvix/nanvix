@@ -303,3 +303,143 @@ Turn 11
 ────────────────────────────────────────────────────────────
 Let me run the baseline verification for this module.
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | tail -40
+[RESULT ✓] bash: |
+1138 |         assert forall|addr: int| spec_range_frames(lo, nfr).contains(addr) implies
+     |         ^^^^^^
+
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.23s
+
+=== Results ===
+  cached (no recompilation)
+  —
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+  Module mm::virt:...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Verification passes (exit 0). The 3 `external_body` functions are flagged but expected. Let me confirm they're TCB-allowed and check the verify log for actual errors.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n -iE "ensure_pt|ensure_pte|identity_map_page|identity_map" verus-ai-logs/tcb-a
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn -iE "error|verified|failed|admit" verus-ai-logs/verify-kernel/verus-logs/ver
+
+[THINKING] The verification passed, and the "CHEATING_DETECTED" flag is appearing because those three external_body functions are already in the TCB-allowed list, which means they're permitted. I need to double-check that these functions are actually documented in the tcb-allowed.md file to confirm they're legitimate, though the output got cut off partway through.
+[RESULT ✓] bash: 17:  kernel-frame handle. Its body calls `crate::mm::virt::identity_map_page`, whose precondition is
+18:  the **global** `identity_map_view().inv()`. That fact is owned by the `mm::virt` identity-map
+24:  `identity_map_page` and be verified in-body. `ensures Ok(kf) => kf@ == base@ && kf.inv()` (the
+...
+[RESULT ✓] bash: === last 5 ===
+verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-18_01-22-54.log
+<shellId: 11 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+All three `external_body` functions are TCB-allowed. Let me confirm 0 verification errors/admits in this module from the log.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE "verification results|verified|errors|admit" verus-ai-logs/verify-kernel/ver
+
+[THINKING] Now I'm checking the Verus log to see how many functions actually verified and whether there were any errors.
+[RESULT ✓] bash: admit=4
+<shellId: 12 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -t verus-ai-logs/verify-kernel/verus-logs/ | head; echo "=== grep verus result lin
+[RESULT ✓] bash: verus_2026-06-18_01-22-54.log
+cheating-detail.txt
+verus_2026-06-18_01-21-22.log
+coverage-unverified.txt
+verus_2026-06-18_01-17-58.log
+verus_2026-06-18_01-15-23.log
+verus_2026-06-18_01-13-06.log
+verus_2026-06-18_01-11-31.log
+verus_2026-06-18_01-10-40.log
+verus_2026-06-18_01-07-36.log
+=== grep verus r...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -iE "verification results|verified," verus-ai-logs/verify-kernel/verus-logs/veru
+[RESULT ✓] bash: 
+<shellId: 14 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Baseline confirmed: module verifies with 0 errors. The 3 `external_body` functions are TCB-allowed and contain no inline proof blocks, so **proof extraction yields 0 blocks**. Now I'll minimize the proof file. Let me back it up and look at vstd `subset_of`/`insert` to reason about which asserts are load-bearing.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && cp src/kernel/src/mm/virt/identity_map.proof.rs /tmp/identity_map.proof.rs.bak && cp 
+[TOOL] bash: grep -n "spec fn subset_of" /home/ruize/verus-ai-exp/verus-ai/vstd/set.rs; grep -n "axiom_set_insert\|fn insert" /home/r
+
+[THINKING] The latest run was cached so there's no fresh verification output, but the previous run showed 48 and 115 verified items with zero errors, establishing that the module verifies cleanly. Now I'm moving into the minimization work, starting by examining whether there are any inline proof blocks to consider.
+
+Looking at the lemmas, I need to determine which ones are actually called from other lemmas or from the exec code. `lemma_map_page_preserves_inv` calls `lemma_install_page_preserves_inv`, but the others stand alone. Since these are external_body functions, none of the lemmas are invoked from exec code itself. Even uncalled lemmas are worth keeping because they document properties of the transitions, and none of them prove the exact same thing, so there are no true duplicates to remove.
+
+Now I'm focusing on redundant assertions within each lemma's body. For `lemma_install_page_maps`, the spec unfolds to show that `mapped` becomes `self.mapped.insert(page)`, and Verus should automatically know that `insert(page).contains(page)` holds via set axioms, so the assertion might be unnecessary.
+
+For `lemma_install_page_monotone`, the forall quantifier is likely essential since the lemma needs to prove that every element in the original mapped set is still in the inserted set. For `lemma_install_page_preserves_inv`, the invariant requires checking that all mapped pages are aligned, and the forall with the case split on whether `p != page` is needed to handle both the newly inserted page and the existing pages.
+
+For `lemma_map_page_accessible`, I can simplify by noting that when initialized is true, the chain of equalities and containment checks should be sufficient, though I need to verify if all assertions are actually required. The `lemma_map_page_preserves_inv` is already clean—it delegates to the helper lemma in the initialized case and relies on the requires clause otherwise.
+
+Rather than continue guessing, I should empirically test by removing assertions in batches and re-verifying the module to see which ones are actually necessary. Writing minimized proof file... I'm thinking through whether the bare ensures clause actually needs the full forall assertion, or if Verus can derive the invariant directly from the set operations and the existing invariant on the original view.
+
+For the monotone lemma, I need to check how the subset_of predicate is defined in the standard library and what its trigger is, since that will affect whether I need explicit hints there too.
+[RESULT ✓] bash: backed up
+<shellId: 15 completed with exit code 0>
+[RESULT ✓] bash: 96:    pub open spec fn subset_of(self, s2: Set<A>) -> bool {
+108:    pub closed spec fn insert(self, a: A) -> Set<A> {
+251:        axiom_set_insert_same,
+252:        axiom_set_insert_different,
+263:        axiom_set_insert_finite,
+647:pub broadcast proof fn axiom_set_insert_same<A>(s: Set<A>, a: A)...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/set.rs
+[TOOL] view: /home/ruize/verus-ai-exp/verus-ai/vstd/set.rs
+[RESULT ✓] view: 94.     /// Returns `true` if the first argument is a subset of the second.
+95.     #[rustc_diagnostic_item = "verus::vstd::set::Set::subset_of"]
+96.     pub open spec fn subset_of(self, s2: Set<A>) -> bool {
+97.         forall|a: A| self.contains(a) ==> s2.contains(a)
+98.     }
+99. 
+100.     #[veri...
+[RESULT ✓] view: 645. 
+646. /// The result of inserting element `a` into set `s` must contains `a`.
+647. pub broadcast proof fn axiom_set_insert_same<A>(s: Set<A>, a: A)
+648.     ensures
+649.         #[trigger] s.insert(a).contains(a),
+650. {
+651. }
+652. 
+653. /// If `a1` does not equal `a2`, then the result of inse...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+I have enough understanding. The author used `=~=` extensional-equality asserts as hints. Let me empirically determine which are load-bearing by writing an aggressively minimized proof file, then verify and add back only what's needed. Let me write the minimized version.
+[TOOL] create: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+
+[THINKING] I'm thinking through how broadcast axioms work in Verus—they need to be explicitly included via broadcast `use` statements or belong to a default broadcast group. For the `Set` type, many axioms are automatically included, so the `=~=` assertions in the original code were likely necessary because certain axioms weren't being triggered automatically.
+
+Rather than reason through this abstractly, I should test empirically with a minimized version. I'll create a test file that aggressively removes the `=~=` hint assertions where they seem redundant, keeping the structural foralls intact. My strategy is to be somewhat conservative on the first pass—removing the extensional equality asserts but preserving the core forall structures—then bisect further if needed. For each lemma, I'll evaluate whether the `=~=` assert is actually doing work or if the axioms will fire without it.
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+I'll overwrite via edits. Let me replace the whole file content.
+[TOOL] bash: cat > /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs <<'EOF'
+verus! {
+
+//====================
+[RESULT ✓] bash: written
+66 /home/ruize/nanvix-phy-specs/src/kernel/src/mm/virt/identity_map.proof.rs
+<shellId: 17 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-kernel MODULE=mm::virt::identity_map 2>&1 | grep -iE "verification result
