@@ -34,7 +34,22 @@ pub struct FrameNumber(usize);
 #[verus_verify]
 impl FrameNumber {
     /// The maximum frame number.
-    pub const MAX: usize = mem::MAX_ADDRESS / mem::FRAME_SIZE - 1;
+    ///
+    /// This is the number of the highest frame whose entire extent fits within the addressable
+    /// space `[0, MAX_ADDRESS]`. A frame `f` spans the byte range
+    /// `[f * FRAME_SIZE, (f + 1) * FRAME_SIZE - 1]`, so the last fully-addressable frame is
+    /// `(MAX_ADDRESS + 1) / FRAME_SIZE - 1`. That expression is rewritten below to avoid
+    /// overflowing `usize` when `MAX_ADDRESS == usize::MAX`:
+    ///
+    /// - If `MAX_ADDRESS` is the last byte of its frame (`MAX_ADDRESS % FRAME_SIZE ==
+    ///   FRAME_SIZE - 1`), that top frame is wholly addressable and is therefore the maximum.
+    /// - Otherwise the top frame is only partially addressable, so the preceding frame is the
+    ///   maximum.
+    pub const MAX: usize = if mem::MAX_ADDRESS % mem::FRAME_SIZE == mem::FRAME_SIZE - 1 {
+        mem::MAX_ADDRESS / mem::FRAME_SIZE
+    } else {
+        mem::MAX_ADDRESS / mem::FRAME_SIZE - 1
+    };
 
     #[verus_spec(ensures Self::NULL@ == 0)]
     pub const NULL: Self = Self(0);
@@ -89,3 +104,8 @@ fn test_frame_number_from_raw_value_zero() { ... }
 /// Tests if [`FrameNumber::from_raw_value()`] successfully constructs the maximum frame number.
 #[test]
 fn test_frame_number_from_raw_value_max() { ... }
+
+/// Regression test: the frame that contains the top-of-space address must be representable as a
+/// [`FrameNumber`]. With an off-by-one [`FrameNumber::MAX`], converting such an address panicked.
+#[test]
+fn test_frame_number_top_of_space_is_representable() { ... }

@@ -219,3 +219,19 @@ Module: arch-frame-number
 [2026-06-17 23:29:53] [BRANCH] Staying on current branch: verus-ai-polish
 ERROR: Unknown phase 'polish'.
   Valid phases: caller-analysis, view-design, specification, proving, cheating-elimination, final-review
+[2026-06-18 01:18:01] [BRANCH] Staying on current branch: verus-ai-polish
+[2026-06-18 01:18:01] [ABSTRACTION] Body-removed source: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-arch-frame-number/body_removed_source.rs (4667 -> 3941 bytes)
+
+############################################################
+VERUS AI VERIFICATION PIPELINE
+Module: arch-frame-number
+Source: /home/ruize/nanvix-phy-specs/src/libs/arch/src/x86/mem/paging/frame/number.rs
+Crate:  arch
+Branch: verus-ai-polish (base: verus-ai-polish)
+Phases: polish → polish
+############################################################
+
+============================================================
+PHASE: polish
+Module: arch-frame-number
+============================================================
