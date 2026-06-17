@@ -355,3 +355,210 @@ Turn 15
 Turn 16
 ────────────────────────────────────────────────────────────
 [TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1200 make verify-kernel MODULE=hal::mem::types::address::frame 2>&1 | tail -3
+[RESULT ✓] bash: note: verifying module hal::mem::types::address::frame
+
+verification results:: 5 verified, 0 errors (partial verification with `--verify-*`)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 2.89s
+
+=== Results ===
+  5 verified
+  0 errors
+  Exit code : 0
+
+=== Cheating Pattern Check ===
+...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Both asserts were redundant — verification passes with **5 verified, 0 errors**. The `external_body` flag is the TCB-sanctioned `from_raw_value` (allowed). Let me confirm the diff is exactly what I intended and check for spec drift.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git --no-pager diff -- src/kernel/src/hal/mem/types/address/frame.spec.rs src/kernel/
+
+[THINKING] The redundant assertions have been removed and the code recompiled successfully with 5 verifications and no errors. The `external_body` flagged with "CHEATING_DETECTED" is actually sanctioned and expected, so that's fine. I'm double-checking that the spec_page_size() comment in frame.rs is still accurate.
+
+Looking at what else might be redundant: the proof file lemmas are lean, and the spec file now contains just the import and meaningful documentation about why `assume_specification` was removed—that's a design decision worth keeping, not just a stale TODO. The comments in frame.rs explaining why `spec_page_size` is defined that way are also meaningful and should stay. The `proof!` calls in `from_frame_number` and `into_frame_number` are necessary since they discharge postconditions. Now I'm verifying whether `lemma_aligned_div_mul`'s ensures clause is actually being used by `into_frame_number` to satisfy its own postconditions. I'm verifying the changes against the spec to ensure no contracts were weakened—I only removed redundant assertions and an unused import, not any `requires`/`ensures`/`invariant` clauses. Let me run a quick diff to confirm the modifications match my intent.
+[RESULT ✓] bash: 
+<shellId: 13 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short 2>&1 | head; echo "=== check tracked ==="; git ls-files src/kernel
+
+[THINKING] The diff is empty, which suggests these files might not be tracked by git or the changes aren't showing up in the working tree—maybe they're gitignored. Let me run git status to see what's actually going on.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-hal-frame-address/polish/prover-claude-20260618-011043.jsonl
+ M verus-ai-logs/nanvix-phys-hal-frame-address/polish/prover-claude-20260618-011043.txt
+=== check tracked ===
+src/kernel/src/hal/mem/types/address/aligned/mod.rs
+src/kernel/src/hal/mem/types/address/aligned/page...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+Git diff is empty but my edits should be there. Let me re-check the actual file contents.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "spec_max_frame_number\|assert(spec_page_size" src/kernel/src/hal/mem/types/a
+
+[THINKING] Something's off here — git status shows only the jsonl and txt files as modified, but I expected to see changes in frame.spec.rs and frame.proof.rs. Either my edits didn't actually get applied, or there's something else going on with the repository state. Let me check the files directly to see if my changes are actually there.
+[RESULT ✓] bash: exit: 1
+=== git diff stat ===
+ .../polish/prover-claude-20260618-011043.jsonl     | 73 ++++++++++++++++++++++
+ .../polish/prover-claude-20260618-011043.txt       | 44 +++++++++++++
+ 2 files changed, 117 insertions(+)
+<shellId: 15 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls -la src/kernel/src/hal/mem/types/address/frame.* ; echo "=== git show HEAD version
+
+[THINKING] The grep results confirm my edits are actually in the files, but git diff shows no changes for those files — which means the committed version already had my edits, or something's off with how I'm comparing. Let me think through this more carefully: the baseline I originally read definitely had those lines, so either the working tree matches HEAD in a way I'm not expecting, or there's something else going on with the git state.
+
+I should check if these files are symlinks, which could explain the discrepancy.
+[RESULT ✓] bash: -rw-rw-r-- 1 ruize ruize 1683 Jun 18 01:13 src/kernel/src/hal/mem/types/address/frame.proof.rs
+-rw-rw-r-- 1 ruize ruize 5616 Jun 17 00:16 src/kernel/src/hal/mem/types/address/frame.rs
+-rw-rw-r-- 1 ruize ruize  801 Jun 18 01:12 src/kernel/src/hal/mem/types/address/frame.spec.rs
+=== git show HEAD vers...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== HEAD frame.spec.rs ==="; git --no-pager show HEAD:src/kernel/src/hal/mem/ty
+
+[THINKING] The search for `spec_max_frame_number` in the HEAD version of frame.spec.rs came up empty, which is strange. Let me pull up the full content of that file to see what's actually there.
+[RESULT ✓] bash: === HEAD frame.spec.rs ===
+// Spec helpers for `FrameAddress` are shared with the `phys` sibling module: a frame's abstract
+// state is the physical address (`int`), its frame number is `self@ / spec_page_size()`, and its
+// base address is `frame_index * spec_page_size()`.
+use crate::hal::mem::type...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+The verify script auto-commits successful runs. My edits were committed as `2ed669597`. Let me confirm that commit contains exactly my intended changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== commit time ==="; git --no-pager show -s --format='%ci %s' 2ed669597; echo 
+
+[THINKING] I'm realizing there's a discrepancy between what I saw in the working tree file and what's actually in the HEAD commit. The version I initially read contained `spec_max_frame_number` and some asserts, but HEAD doesn't have those—so either I misread the original file or there's something off about what I'm comparing.
+
+Actually, I think I've got it: the verification pipeline must auto-commit successful results. When I ran `make verify-kernel` and it passed, the script likely committed my changes as that `2ed669597` commit. That would explain why the working tree is now clean and why the files match HEAD—my edits got automatically committed by the verification process. Let me check the commit timestamp to confirm this theory.
+[RESULT ✓] bash: === commit time ===
+2026-06-18 01:13:11 +0800 [verus] verify PASS (cheating detected): kernel::hal::mem::types::address::frame (5 verified, 0 errors, admit=4 external_body=23 cfg_gate=19)
+=== diff of that commit (source files only) ===
+commit 2ed669597daba2ccc0a43644d9be2f7bdbf5a896
+Author: Ruize Ta...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+The auto-commit contains exactly my intended changes. Let me confirm there are no admits in this module's scope and then run a kernel build to satisfy the "build passes" requirement.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && echo "=== module cheating detail ==="; grep -n "address/frame" verus-ai-logs/verify-k
+
+[THINKING] The auto-commit captured exactly what I intended—removing those assertion statements and their comments from the proof lemmas, plus cleaning up the unused import. Verification shows 5 verified with no errors, and the "cheating detected" flag is just the TCB-sanctioned external_body annotation on from_raw_value that was already present in the baseline.
+
+I'm confirming there are no admits introduced in this module specifically—the per-module report shows only the external_body and cfg-gated code, no admits. The global admit count of 4 comes from other modules, which is fine since the task requires zero admits in scope. The verify step already compiled the kernel crate successfully, which essentially confirms the build passes, though I should consider whether running the full kernel build would be necessary for complete verification.
+[RESULT ✓] bash: === module cheating detail ===
+1:    - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
+=== admits referencing frame module ===
+<shellId: 19 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Only the sanctioned `external_body` remains in this module; no admits. Now let me run the kernel build to confirm it passes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 ./z build -- kernel 2>&1 | tail -25
+
+[THINKING] The frame module checks out—just the one sanctioned `external_body` workaround on `from_raw_value`, nothing else. Now I'm kicking off a kernel build to verify everything compiles cleanly.
+[RESULT ✓] bash: [INFO]  Build parameters: kernel
+make: *** No rule to make target 'kernel'.  Stop.
+[ERROR] Build failed.
+<shellId: 20 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "^all-kernel\|^kernel\|^all:\|all-kernel:" Makefile | head; echo "=== z build
+
+[THINKING] I'm seeing a mismatch between the build target I'm trying to use and what's actually available. The error indicates there's no `kernel` target, so I need to check what the actual build targets are in the z build system.
+[RESULT ✓] bash: 413:all: all-nanvix
+=== z build help/targets ===
+422:	all-kernel \
+626:verify-kernel: ensure-verus
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -n "all-kernel" Makefile | head; echo "==="; sed -n '413,470p' Makefile
+[RESULT ✓] bash: 422:	all-kernel \
+===
+all: all-nanvix
+	@$(MAKE_QUIET) update-sysroot-link
+	@$(MAKE_QUIET) dump-sccache-stats
+
+# Builds all Nanvix components.
+all-nanvix: \
+	init \
+	all-guest-staticlibs \
+	all-guest-binaries \
+	all-kernel \
+	all-snapshot
+
+ifneq ($(strip $(filter $(MACHINE),microvm)),)
+all-nanvix: al...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+The target is `all-kernel`. Let me build it.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 ./z build -- all-kernel 2>&1 | tail -25
+[RESULT ✓] bash: [INFO]  Build parameters: all-kernel
+mkdir -p /home/ruize/nanvix-phy-specs/bin
+mkdir -p /home/ruize/nanvix-phy-specs/lib
+mkdir -p /home/ruize/nanvix-phy-specs/logs
+RUSTC_WRAPPER= RUSTFLAGS="-C relocation-model=static -C prefer-dynamic=no" /home/ruize/.cargo/bin/cargo build --locked --no-default-feat...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Build passes. Let me write the polish report.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && ls verus-ai-logs/nanvix-phys-hal-frame-address/polish/ 2>/dev/null
+
+[THINKING] The build is working. Now I'm putting together the checklist report for the polish directory. Looking at the work completed: the proof extraction found no blocks to extract since both inline proofs are single-line lemma calls that are already short enough, so they stay in place. For minimization, I've removed two redundant assertions so far.
+[RESULT ✓] bash: prover-claude-20260618-011043.jsonl
+prover-claude-20260618-011043.txt
+<shellId: 24 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] create: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/polish/checklist.md
+[RESULT ✓] create: Created file /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/polish/checklist.md with 2162 characters
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Done. Polish complete and verified.
+
+**Proof Extraction:** Nothing to extract — `check_proof_blocks` found only 2 inline blocks, both single-line lemma calls (`lemma_frame_base_aligned`, `lemma_aligned_div_mul`) already living in `frame.proof.rs`.
+
+**Minimization (in `frame.proof.rs` / `frame.spec.rs`):**
+- Removed 2 redundant `assert(spec_page_size() == 4096)` hints — Verus discharges the div/mod lemmas without them since `spec_page_size()` is the transparent `arch::mem::PAGE_SIZE`.
+- Removed the unused `spec_max_frame_number` import.
+- Removed the 2 stale comments tied to the deleted asserts.
+
+No `requires`/`ensures`/`invariant`/`view`/`inv` touched → no spec drift. Unlisted functions untouched.
+
+**Results:**
+- `make verify-kernel MODULE=hal::mem::types::address::frame`: **5 verified, 0 errors**, no admits in scope (only the TCB-listed `external_body` on `from_raw_value`).
+- `./z build -- all-kernel`: **Build complete**.
+- Report written to `verus-ai-logs/nanvix-phys-hal-frame-address/polish/checklist.md`.
+
+Note: the verify pipeline auto-committed the source changes as `2ed669597`.
+
+[THINKING] The verify script has already auto-committed the source changes and the build is passing, so the main work is done. I'm checking whether the report file itself needs to be committed, but since it's just a log artifact and the task doesn't require it, I can leave it as is.
+
+
+=== Session End ===
+Session: e3777352-485d-444e-a011-752b48aed4b8
+Duration: 274.3s
+Exit code: 0
+JSONL log: /home/ruize/nanvix-phy-specs/verus-ai-logs/nanvix-phys-hal-frame-address/polish/prover-claude-20260618-011043.jsonl
