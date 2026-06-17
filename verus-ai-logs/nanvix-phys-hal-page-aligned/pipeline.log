@@ -282,3 +282,7 @@ Module: hal-page-aligned
 [2026-06-18 00:43:13] [PROVER] Running polish...
 [2026-06-18 00:43:13] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 00:48:40]   ↳ prover done in 5m26s (exit=0)
+[2026-06-18 00:48:40] [PHASE] polish: no-review (5m26s)
+[2026-06-18 00:48:40] ✅ polish: PASS (0/0)
+[2026-06-18 00:48:40] [GATE] Running build: make build
+[2026-06-18 00:48:40] [GATE] Running verify: make verify
