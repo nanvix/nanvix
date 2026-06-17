@@ -546,3 +546,46 @@ Turn 26
 [THINKING] I'm realizing that removing the else branch creates a problem: when i > j, the if condition is false, so no hint gets generated, and Verus has no way to prove the property for that case. The forall quantifies over all pairs of i and j, so I need to handle both the i < j and i > j scenarios.
 
 Since inequality is symmetric—slot_addr(i) ≠ slot_addr(j) is equivalent to slot_addr(j) ≠ slot_addr(i)—I should restore the else branch to ensure the hint is provided regardless of which variable is larger. Let me test this to confirm it works.
+[RESULT ✓] bash: error: assertion failed
+verification results:: 5 verified, 1 errors
+error: could not compile `bump-allocator` (lib) due to 1 previous error
+  Exit code : 101
+  verification: 5 verified, 1 errors (exit 101)
+  verification: 5 verified, 1 errors (exit 101)
+<shellId: 21 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+The else branch is needed. Let me restore it.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+Let me view the current proof file state and run a final clean verification.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/libs/bump_allocator/src/lib.proof.rs
+
+[THINKING] I'm testing whether the lemma about modular arithmetic and the nonlinear arithmetic assertion are both essential to the proof, starting by checking if removing the modular lemma causes a failure.
+
+After reviewing the three redundant items I've identified (the equality assertion, the nonnegativity lemma, and the spec allocation assertion), I should verify the current state with the else branch restored still compiles. I also need to check if any comments that referenced the removed hints are now orphaned, and confirm the spec file itself is clean of debug artifacts—the structural comments like `// (a)`, `// (b)` in the invariant are genuinely documenting the proof structure, so those should stay.
+[RESULT ✓] view: 22. pub proof fn lemma_geometry(v: BumpView)
+23.     requires
+24.         v.inv(),
+25.     ensures
+26.         v.geometry_ok(),
+27. {
+28.     let a: int = v.unit_align as int;
+29.     let s: int = v.stride as int;
+30.     let b: int = v.base as int;
+31.     let us: int = v.unit_size as int;
+32.     ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+Now let me run the final verification to confirm the 3 removals all hold together.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && make verify-bump-allocator 2>&1 | grep -E "verification results|Exit code|verificatio
+
+[THINKING] The comment on line 35 correctly captures what the lemma establishes about stride being an exact multiple of unit alignment, and the `q` variable is still properly used in the requires clause. Let me run a final verification to confirm all 6 proofs check out with no errors after these three removals.
