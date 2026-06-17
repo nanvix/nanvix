@@ -300,3 +300,576 @@ Turn 9
 ────────────────────────────────────────────────────────────
 Turn 10
 ────────────────────────────────────────────────────────────
+Now let me read the source file in full while verification runs.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1. // Copyright(c) The Maintainers of Nanvix.
+2. // Licensed under the MIT License.
+3. 
+4. //! Frame allocator — module-level singleton.
+5. //!
+6. //! The frame allocator is backed by a [`Bitmap`] and exposed as free functions over a
+7. //! singleton so every in-kernel caller goes through the same s...
+
+────────────────────────────────────────────────────────────
+Turn 11
+────────────────────────────────────────────────────────────
+Verification finished quickly. Let me check the baseline result.
+[TOOL] read_bash: {'shellId': 'verify-baseline', 'delay': 5}
+
+[THINKING] The baseline verification finished surprisingly quickly—let me check what the output shows.
+[RESULT ✓] read_bash: - frame.rs:1466 init: external_body
+    - frame.rs:1522 alloc: external_body
+    - frame.rs:1552 alloc_contiguous: external_body
+    - frame.rs:1573 free_count: external_body
+    - frame.rs:1591 free: external_body
+    - frame.rs:1633 book: external_body
+    - frame.rs:1654 alloc_range: external_bod...
+
+────────────────────────────────────────────────────────────
+Turn 12
+────────────────────────────────────────────────────────────
+Verification passes (exit 0, cached). The external_body functions at 1466+ are the pre-existing singleton wrappers (out of scope); the proof blocks I need to extract are all in the `Inner::*` methods. Let me read the spec and proof files, plus the proof-block regions.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.spec.rs
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+
+[THINKING] Looking at the cached output, I'm seeing external_body markers scattered throughout the codebase in various files like manager.rs and kframe.rs, but when I focus on frame.rs specifically, there are several functions flagged with external_body: init, alloc, alloc_contiguous, free_count, free, book, alloc_range, share, and refcount. This is odd because these appear to be top-level functions in frame.rs that shouldn't be marked as external_body according to the task description.
+
+Actually, I think I'm seeing the distinction now — there are two layers here. The external_body markers at lines 1466-1695 are the free functions (singleton wrappers) like init, alloc, free, etc., which call instance() and delegate to the Inner implementation methods. But the task lists these same free functions as in-scope verification targets, yet they're showing up as external_body in the baseline. The tcb-allowed.md only permits instance as an allowed external_body, so this discrepancy is puzzling.
+
+Wait, I need to reconsider what I'm looking at. The baseline output shows "CHEATING_DETECTED" status, which means the current state has admits and external_body scattered across multiple modules (manager, kframe, upool, mod). My actual scope is just frame.rs, and the task is to polish it while keeping verification passing. So the pre-existing external_body in frame.rs might be something I need to address, but I should focus on whether frame.rs itself has problematic external_body markers that shouldn't be there.
+
+Let me step back and look at what's actually in the source code around those line ranges to understand the current state properly. The verification is passing with exit code 0, so the baseline is solid. The pre-existing admits in manager.proof.rs are outside my scope—I just need to ensure my changes to frame.rs don't introduce new errors or admits. Let me examine the proof and spec files first to understand the structure, then dive into the detailed proof blocks in frame.rs.
+[RESULT ✓] view: File too large to read at once (22.8 KB). Consider using the grep tool to search within the file, or view with view_range to read specific sections.
+[RESULT ✓] view: 1. verus! {
+2. 
+3. impl Inner {
+4.     pub open spec fn inv(&self) -> bool
+5.     {
+6.         &&& self@.wf()
+7.         &&& self.internal_inv()
+8.     }
+9. }
+10. 
+11. // =================================================================================================
+12. // Dependency contracts for...
+
+────────────────────────────────────────────────────────────
+Turn 13
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 1. verus! {
+2. 
+3. use super::FrameAllocView;
+4. use ::bitmap::BitmapView;
+5. use crate::hal::mem::spec_page_size;
+6. use crate::hal::mem::spec_max_frame_number;
+7. use vstd::map::*;
+8. 
+9. /// Helper: convert a bitmap index to a frame (physical) address.
+10. pub open spec fn frame_addr_of(i: int) -...
+
+────────────────────────────────────────────────────────────
+Turn 14
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 200.         inner.internal_inv(),
+201.         addr % spec_page_size() != 0,
+202.     ensures
+203.         !inner@.is_covered(addr),
+204. {
+205.     broadcast use vstd::set_lib::group_set_lib_default, vstd::map::group_map_lemmas;
+206.     if inner@.is_covered(addr) {
+207.         let i = addr_to_fr...
+
+────────────────────────────────────────────────────────────
+Turn 15
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 420.     nb: int,
+421.     rc: Seq<u8>,
+422.     rc2: Seq<u8>,
+423.     start: int,
+424.     count: int,
+425. )
+426.     requires
+427.         spec_page_size() > 0,
+428.         0 <= start,
+429.         count > 0,
+430.         start + count <= nb,
+431.         nb <= rc.len(),
+432.         rc2.len() ...
+
+────────────────────────────────────────────────────────────
+Turn 16
+────────────────────────────────────────────────────────────
+Now let me read the `Inner::*` methods with their proof blocks. Let me read in chunks.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm examining the proof blocks within the Inner methods of the main source file, mapping out where they appear in the alloc and alloc_contiguous functions.
+[RESULT ✓] view: 103. #[verus_verify]
+104. impl Inner {
+105.     ///
+106.     /// # Description
+107.     ///
+108.     /// Allocates a frame.
+109.     ///
+110.     /// # Returns
+111.     ///
+112.     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
+113.     /// returned inst...
+
+────────────────────────────────────────────────────────────
+Turn 17
+────────────────────────────────────────────────────────────
+Let me read the remaining functions with proof blocks.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm noticing a tension between the existing code style using `proof!` and `proof_decl!` macros versus the constraint to write new code in `verus! { }` blocks. The source files also use attribute-style annotations like `#[verus_verify]` and `#[verus_spec]`, which creates a question about how to handle this inconsistency when adding new code.
+
+My approach would be to extract large proof blocks into separate lemmas in the `.proof.rs` file (using `verus! { }` blocks), then replace the inline proof with a call to that lemma. The tricky part is managing the ghost state—variables like `pre_sb`, `pre_nb`, `pre_rc`, and `g_old` would need to be passed as arguments to the lemma, and I'd need to handle how `self` is borrowed and accessed in the proof context.
+
+The real challenge with extraction is getting the `requires` and `ensures` clauses right so that the lemma exports exactly the facts the call site needs downstream. Since proof blocks often establish intermediate facts used later in the function, and the exec code mutates `self` between blocks, the ghost snapshots and current state differ at each point. I need to be strategic about which blocks to extract and ensure each lemma's contract preserves verification. The real challenge is that these proof blocks are tightly coupled to the execution context—they capture facts about `self` at specific mutation points and thread component equalities from method postconditions. Rather than extracting blindly, I should design lemmas that take the component equalities as hypotheses (which the call site already knows) and produce the final view equality or target fact. Let me read through the remaining functions to understand the full pattern before committing to an extraction strategy.
+[RESULT ✓] view: 260.     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
+261.     /// an error is returned instead.
+262.     ///
+263.     #[verus_spec(result =>
+264.         requires
+265.             old(self).inv(),
+266.             count > 0,
+267.         ensures
+268. ...
+
+────────────────────────────────────────────────────────────
+Turn 18
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 520.     /// Frees a frame that was previously allocated.
+521.     ///
+522.     /// # Parameters
+523.     ///
+524.     /// - `frame`: Address of the frame to free.
+525.     ///
+526.     /// # Returns
+527.     ///
+528.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned ins...
+
+────────────────────────────────────────────────────────────
+Turn 19
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 720.         let frame_number: usize = frame.into_frame_number().into_raw_value();
+721.         proof_decl! {
+722.             let ghost g_old = self@;
+723.             let ghost pre_sb = self.bitmap@.set_bits;
+724.             let ghost pre_nb = self.bitmap@.num_bits;
+725.             let ghost pre...
+
+────────────────────────────────────────────────────────────
+Turn 20
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 925.     ///
+926.     /// - `phys_addr`: Physical address of the frame to book.
+927.     ///
+928.     /// # Returns
+929.     ///
+930.     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
+931.     ///
+932.     #[verus_spec(result =>
+933.         requires
+934.       ...
+
+────────────────────────────────────────────────────────────
+Turn 21
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1100.         proof! {
+1101.             lemma_view_of(self);
+1102.             assert(spec_refcount_seq(self) == pre_rc);
+1103.             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+1104.             // Region geometry (from `region.inv()`): non-empty, page-aligned endpoints.
+1105.         ...
+
+────────────────────────────────────────────────────────────
+Turn 22
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 1310.                 if lo <= k < hi {
+1311.                     assert(BitmapView::range_set(lo, hi).contains(k));
+1312.                     assert(self.refcount@[k] == 1u8);
+1313.                 } else {
+1314.                     assert(!BitmapView::range_set(lo, hi).contains(k));
+1315.         ...
+
+────────────────────────────────────────────────────────────
+Turn 23
+────────────────────────────────────────────────────────────
+I now have a thorough understanding. Let me check git state and set up tracking before making changes.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && git status --short && echo "---BRANCH---" && git branch --show-current && echo "---LA
+
+[THINKING] I'm seeing how the verification structure works—the exec code uses `proof!` macros and `#[verus_spec]` attributes, while the `.proof.rs` file contains `verus!` blocks with `proof fn` definitions. My extraction strategy is to convert each large `proof!` block from the exec code into a corresponding `proof fn` lemma in the proof file.
+
+The tricky part is handling the data dependencies: these proof blocks read `self` (a `&mut Inner`), reference local ghost variables like `g_old`, `pre_sb`, `pre_nb`, `pre_rc`, `idx`, and `start`, plus `frame` parameters. I need to thread all of this through as lemma arguments. Since Verus will auto-reborrow `&mut Inner` to `&Inner` in proof contexts, passing `self` to a lemma expecting `&Inner` should work fine.
+
+Rather than extract every proof block individually, I'm noticing they follow common patterns—particularly a "view setup" prologue that appears across functions like `alloc`, `alloc_contiguous`, `free`, `share`, `book`, and `alloc_range`. This prologue typically calls `lemma_view_of`, asserts the refcount sequence, and sets up ghost state.
+
+I could consolidate this into a single lemma like `lemma_capture_view` that takes the inner reference, the captured ghost state (`g_old`, `pre_sb`, `pre_nb`, `pre_rc`), and establishes the invariants in one shot. The subtlety is that `spec_refcount_seq(self) == pre_rc` might be automatically true by definition (since `pre_rc` was captured as `self.refcount@`), so I need to check whether that assert is even necessary or if it's redundant.
+
+For a more robust approach, I should extract large proof blocks into lemmas by capturing the full program state as `requires` and listing all the meaningful asserts as `ensures`. This is safer than trying to minimize the contract, since over-specifying is fine as long as the lemma can prove everything from what's required.
+
+The transformation is straightforward mechanically—replace `self` with `inner` and wrap the block body in a lemma—but the real challenge is determining what goes into `requires` and `ensures`. The requires needs to include the invariant, ghost relationships from capture, and postconditions from prior exec calls. The ensures should cover the asserts that matter downstream, though some reference local bindings that would need lifting. Given there are 30+ blocks to handle this way, it's a significant undertaking.
+
+I'm realizing I should step back and think about whether extracting every block over 5 lines is the right approach, or if I should focus on correctness and keeping verification passing. Looking at the actual code, there's massive redundancy across blocks—the view-setup prologue appears in alloc, alloc_contiguous, free, share, book, and alloc_range with nearly identical logic. The out-of-bounds checks in free, share, and refcount are also identical. Rather than extracting each block individually, I could extract these common patterns into reusable lemmas that multiple call sites invoke, which would both reduce redundancy and satisfy the extraction requirement while being much safer to verify. I'm settling on a pragmatic approach: instead of trying to extract all 37 redundant blocks perfectly, I'll design a set of bridge lemmas that capture the recurring multi-line reasoning patterns and serve both extraction and minimization goals. The key insight is that many blocks follow the same structure—establishing the view, asserting preconditions, and reconstructing invariants—so I can create lemmas that abstract these patterns and then call them from each function rather than duplicating the logic inline. `pre_rc == spec_refcount_seq(inner)` as a requires clause creates a problem: since `spec_refcount_seq` is closed, the caller can't unfold it to prove the equality holds. But wait — the existing code already does this assertion and it works, which means `spec_refcount_seq` must be visible within the same module even though it's marked closed, so the definition can be revealed locally.
+
+If I write a lemma with that requires clause, the caller passing `pre_rc = self.refcount@` would need to prove `self.refcount@ == spec_refcount_seq(self)`, which holds because the body is visible in-module. I could simplify by having the lemma require `pre_rc == inner.refcount@` directly and phrase the ensures in terms of `inner.refcount@` and `inner.bitmap@`, letting equalities propagate to the call site's variables.
+
+I'm overthinking this — let me step back and figure out what level of effort actually makes sense here. Now I'm designing lemmas for each function block, starting with the `Inner::share` method. The first block handles the prologue and arithmetic setup—extracting the frame address, converting the frame number, and establishing key invariants like the address alignment and the relationship between the frame number and address division. This block also verifies that the allocation contains the given address and captures the ghost state before any mutations.
+
+The challenge is that `addr` and `fnx` are local bindings derived from exec values with their own specifications, so I'm parameterizing the lemma to accept these as ghost arguments along with the preconditions they must satisfy. The lemma then establishes the connection between the old ghost state and the view representation, confirms the refcount sequence matches, and provides the allocation membership fact.
+
+Defining lemma_share_prologue...
+
+But wait—if I move the arithmetic assertions into the lemma's requires, the caller still needs to prove them before invoking the lemma, which means those same arithmetic lemmas get called at the call site anyway. So extraction doesn't actually eliminate the work, just relocates the lemma_view_of and lemma_alloc_contains calls.
+
+The real issue is that establishing `fnx == addr/spec_page_size()` requires the arithmetic lemmas inline, and making that a precondition just pushes the same proof obligation to the caller. These prologue blocks are deeply tied to the exec context—the `frame` and `frame_number` values—so they resist full extraction. I could split this differently: keep the arithmetic work inline to establish `fnx == addr/ps`, then extract only the pure derivation of the view facts into a lemma, which would at least reduce the inline block size without losing the coupling to exec context.
+
+Let me step back and reconsider the actual goal here. The check_proof_blocks tool reports `proof!` blocks, not `proof_decl!` ones—the ghost capture block at 135-139 wasn't in the output, so I should focus on the `proof!` blocks. The real strategy should be to extract the large, mostly-pure reasoning blocks—especially the range epilogues and per-arm view-reconstruction logic—into lemmas parameterized by the ghost component values.
+
+The key insight is that the view reconstruction parts (bitmap/refcount mutation followed by rebuilding `self@` and applying transition lemmas) are mostly pure and extractable. I can create a lemma that takes the pre-state components and the inner reference, asserts the component equalities that the caller knows, and then applies the transition lemmas to establish the postcondition about the new frame allocator view.
+
+At the call site, after invoking this lemma, the ensures clause directly gives me the updated view without needing inline asserts, since the caller's context already implies the lemma's requirements from the bitmap operation's postcondition. The prologue still needs to stay partly inline to establish the arithmetic facts like `fnx == addr/ps` and alignment, but these are computed once and reused. So the structure becomes a trimmed prologue that establishes the necessary invariants and a single epilogue lemma call that handles the view reconstruction.
+
+I'm realizing I need to extract the clearly-pure blocks into lemmas while keeping tightly-coupled prologue arithmetic inline, even if it stretches past the 5-line guideline — the skill allows judgment for genuinely coupled blocks. Let me work through this systematically, function by function, extracting what's cleanly extractable and documenting the rest. Before diving in, I should check how long verification takes for a single change to understand my time budget. I'm looking at the `is_covered` function's proof block and seeing the arithmetic pattern: establishing that the address is non-negative, page-aligned, and correctly converted to a frame number, then applying the covered lemma. I'm thinking about extracting this into a standalone lemma that takes the inner state, address, and frame index, requires the invariants and arithmetic properties, and ensures the equivalence between `is_covered` and the bitmap bounds check. The challenge is that the actual call site needs to thread these values through correctly. The asserts are currently passing, so the supporting facts are already in context—I can keep `assert(i == addr/ps)` and rely on `lemma_div_pos_is_pos` if needed. Rather than continue refining individual blocks speculatively, I should measure the actual verification time baseline first to understand what I'm working with, then focus on extracting the largest, clearest pure blocks like the alloc_range epilogue and alloc_contiguous Ok-arm into separate lemmas where the value is obvious. I'm weighing whether to extract all lemmas at once or batch them by function complexity—the tradeoff is diagnosis difficulty versus time savings. I've decided to go with batches: first the medium functions (share, refcount, is_covered, free, book) and their shared lemmas, then the complex allocation functions. Before diving in, I'll time a verify cycle with a trivial change to calibrate, then start designing the shared lemmas by examining the overlapping blocks in free and share.
+
+Now I'm working through the first shared lemma about frame allocation state—tracing through the preconditions and invariants to establish that at this point in the free function, we've already verified the frame number is valid, the refcount is nonzero, and we can derive that the frame number is within bounds, the bit is set, and the address is allocated. The key insight is that `g_old.refcounts[addr]` equals the pre-state refcount value because we haven't mutated anything yet. The tail-zero property of `internal_inv` ensures that since `refcount@[fnx] != 0` and `fnx < refcount.len()`, we must have `fnx < num_bits`. Since `internal_inv` is defined in the same module (proof.rs), its body is transparent within that context, so the lemma can reason about it directly. I should follow the existing pattern with `lemma_internal_inv_facts` to expose these invariant properties, and leverage the fact that `lemma_alloc_contains` already requires `internal_inv` and establishes the `is_allocated` condition.
+
+The lemma's preconditions just capture the current state before any mutations occur, and it establishes five key facts about the refcount and bitmap. Since `refcount` is a private field of `Inner` but proof.rs is in the same module, I can access `inner.refcount@` and `inner.bitmap@` directly. This shared lemma will work cleanly for both the `free` and `share` paths.
+
+Now I'm looking at the second shared lemma that handles the single-slot refcount update and its corresponding view change. After decrementing `self.refcount[frame_number]`, the lemma captures the new refcount value and asserts that the updated refcount sequence matches the pre-state with that single slot modified. Writing proof code... The existing assert proves that Verus can handle the equality check, so the precondition should work the same way at the call site. I'll keep the assert if needed for safety, but likely won't require it.
+
+These two shared lemmas are solid and will significantly reduce duplication across the free and share operations. Time to stop analyzing and start implementing—I'll set up a plan with todos, add the shared and per-function lemmas to proof.rs, then update call sites function by function, verifying in batches to catch issues early and track timing.
+
+Let me check the current git status first so I can revert if something goes wrong.
+[RESULT ✓] bash: M verus-ai-logs/nanvix-phys-phys-frame/polish/prover-claude-20260617-235546.jsonl
+ M verus-ai-logs/nanvix-phys-phys-frame/polish/prover-claude-20260617-235546.txt
+---BRANCH---
+verus-ai-polish
+---LAST COMMIT---
+26bf0e8e8 [verus] verify PASS (cheating detected): kernel::mm::phys (cached (no recompilat...
+
+────────────────────────────────────────────────────────────
+Turn 24
+────────────────────────────────────────────────────────────
+Let me set up tracking and a backup, then begin implementation.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && mkdir -p /home/ruize/.copilot/session-state/b0efc4de-388f-473d-b78b-af20e4266bd3/file
+
+[THINKING] I'm on the `verus-ai-polish` branch and frame.rs verification is passing—the "cheating detected" warnings are from other files like manager.proof.rs that have pre-existing admits and external_body declarations. I'll back up the three files I'm modifying so I can easily diff and revert if needed, then start implementing the changes and let the first verification run show me the timing.
+
+Now I'm creating a plan document to organize the work and track my todos.
+[RESULT ✓] bash: backed up
+ok
+<shellId: 10 completed with exit code 0>
+
+────────────────────────────────────────────────────────────
+Turn 25
+────────────────────────────────────────────────────────────
+[TOOL] sql: {'description': 'Create extraction tracking table', 'query': "CREATE TABLE block
+[RESULT ✓] sql: Executed 2 statement(s):
+
+1. CREATE
+   Schema operation completed successfully.
+
+2. INSERT
+   41 row(s) inserted. Last inserted row ID: 41.
+
+────────────────────────────────────────────────────────────
+Turn 26
+────────────────────────────────────────────────────────────
+Let me examine the FrameAddress / PageAligned specs to know which arithmetic facts are automatic.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "into_frame_number\|fn inv\|into_raw_value\|from_frame_number\|spec_page_siz
+
+[THINKING] I'm verifying how lemmas defined in the `verus!{}` blocks can be called from `proof!{}` blocks—the existing code already does this with calls like `lemma_view_of(self)` and `lemma_alloc_contains(self, addr)`, so the pattern is established. There's an important consideration about the design that I need to think through more carefully before writing out the lemmas. Defining lemma signatures... The `spec_refcount_slot` function is transparent, so the equivalence with `inner.refcount@[i]` holds automatically. My lemma's ensures clauses use the triggers on `inner.bitmap@.set_bits.contains(i)`, which should match correctly in the proof body since the closed specs are transparent there. At the call site in the alloc-prologue, I invoke the lemma to capture these facts, and downstream code can reference the ghost captures `pre_sb`, `pre_rc`, and `g_old` because they're established as equal to `self.bitmap@.set_bits`, `self.refcount@`, and `self@` respectively through the proof declarations.
+
+The key question is whether Verus automatically derives and propagates the facts about the ghost values past mutations. At the prologue point before any mutation, `self.bitmap@.set_bits == pre_sb` and `self.refcount@ == pre_rc` both hold, so the lemma's ensures about the current self can be rewritten into facts purely about the ghost values. Since `pre_sb` and `pre_rc` never change, those facts remain valid forever downstream, but Verus needs to perform the rewrite substitution to establish them.
+
+The original code explicitly asserts the facts in terms of `pre_sb` and `pre_rc`, which forces Verus to make that conversion. If my lemma ensures are phrased in terms of the current self-components, the caller would need to re-assert in ghost terms, or I should phrase the lemma's ensures directly in terms of the snapshot parameters. I'll refactor the lemma to take the ghost snapshots as parameters and ensure facts directly about them.
+
+Defining the lemma signature... For the free/share/book/refcount prologues, I need a lighter lemma that captures the view equality and refcount sequence without the full forall invariant. I'm sketching a lemma that takes the address and frame number, verifies the arithmetic constraints from the frame invariant, then establishes the view equality and calls the appropriate contains lemma (alloc or free depending on the operation).
+
+The key question is whether Verus can automatically derive the page-alignment and division properties from `frame.inv()` when checking preconditions, or if the caller still needs explicit asserts to guide the solver. The existing code asserts these facts, suggesting they're derivable but may need the hint—I should check whether moving them into lemma preconditions changes the proof burden. I'm realizing this needs iterative verification cycles, so let me be pragmatic and prioritize the highest-value extractions first — the pure lemmas with the clearest boundaries like `lemma_post_update_slot`, `lemma_post_reserve_one`, and `lemma_alloc_contiguous_post` — then verify and iterate based on what the compiler tells me, rather than trying to get everything perfect upfront.
+
+Now I'm comparing the alloc-ok and book-ok blocks to see if they can share a single lemma that proves the postcondition holds after a successful reservation. Extracting the shared lemma that both paths need... At the call site, I need to establish that `addr % ps == 0` and `idx == addr/ps` from the assertion `addr == frame_addr_of(idx)` using the frame address lemmas, then invoke the reserve lemma with the known preconditions (the refcount was clear, the bitmap and refcount updates match the postconditions). This collapses the original 15-line proof down to about 5 lines, though I'm still checking whether the caller needs to assert `pre_rc[idx]==0` inline or if that's already established.
+
+Actually, the forall from `capture_inv_facts` should handle it automatically — since the bitmap was clear before allocation, the invariant gives us that the refcount was zero, and Verus should trigger on the `!pre_sb.contains(idx)` fact. So no inline assert needed.
+
+Now I'm going to write out all the lemmas to proof.rs and then update the call sites. I also need to handle the release case similarly, setting up the postcondition assertions for the freed state. Now I'm establishing that `pre_rc[fnx]==1` by working backwards from the post-release state where the refcount becomes 0, which means the pre-release value must have been 1. With this fact confirmed, I can write a lemma that ties together the view transformation: after releasing a frame, the inner state matches a FrameAllocView where the refcount for that address is set to 0, using the earlier lemma about view construction and the release operation.
+
+At the call site, I'm invoking this lemma with the specific frame address and frame number, then asserting that `g_old.refcounts[addr]==1` to satisfy the postcondition requirement. This assertion is provable because the earlier frame allocation lemma established that `g_old.refcounts[addr]` equals `pre_rc[fnx]`, and I've now derived that `pre_rc[fnx]==1`. The postcondition needs this equality to verify that inserting 0 at the address is equivalent to inserting `old@.refcounts[addr]-1`.
+
+For the share-overflow case, I'm setting up a similar proof structure where the state remains unchanged because the checked_add failed. The key assertion here is that `g_old.refcounts[addr]==255`, which follows from the same chain: the frame allocation lemma gives us `g_old.refcounts[addr]==pre_rc[fnx]`, and since checked_add returned None, the refcount must have been at its maximum value of 255. The function's error postcondition requires that for allocated frames, the refcount stays at or above 255, which this satisfies.
+
+I'm debating whether to extract this into a separate lemma or keep it inline. The lemma would just call `lemma_view_of` to establish `self@ == g_old`, but most of the reasoning about the refcount value needs to stay at the call site anyway since it references the specific address and frame number. Keeping it inline as a short proof block seems cleaner than creating a one-liner lemma.
+
+The same logic applies to the book-err case — I can trim the redundant assertions and keep the essential reasoning inline in a 4-line proof block rather than extracting it. So my revised plan is to trim these blocks inline instead of extracting them into separate lemmas.
+
+Now I'm reconsidering which blocks actually warrant extraction versus trimming. The real candidates for extraction are the large pure lemmas and the ones that appear in multiple places where extraction would eliminate genuine duplication. The shared lemmas like `lemma_post_update_slot`, `lemma_post_reserve_one`, and `lemma_frame_allocated` are clear wins since they appear in multiple branches. The massive blocks like `lemma_alloc_contiguous_post` and `lemma_alloc_range_post` are also worth extracting due to their size. For `lemma_reestablish_inv_range`, I notice the ac-inv and ar-epilogue sections both contain similar invariant re-establishment logic, so there might be a shared extraction opportunity there.
+
+The range-related lemmas for uncovered and allocated cases are large and similar enough that they could be unified into a single parameterized lemma. For the smaller blocks, I'm looking at which ones can be trimmed down to five lines or less versus which ones genuinely need extraction. The prologue blocks across share, free, and book are around twelve lines each, so trimming them to five lines would require extracting the view and contains logic into a shared helper. The challenge is that each branch uses a different contains lemma, so I'd need to create separate view-capture helpers rather than one unified prologue. I'm consolidating the view capture and allocation check into a single lemma that takes the address and frame number as parameters, which should keep the proof block down to 5 lines. The key question is whether the alignment requirement `addr % page_size == 0` is automatically satisfied by the frame invariant or needs an explicit assertion. I'm also trying to understand why `lemma_div_pos_is_pos` is necessary when the frame number specification should directly establish that `fnx == addr / page_size`.
+
+Rather than continuing to analyze, I should just write out all the new lemmas into the proof file and test them iteratively. I'm planning to append them before the closing brace at line 608. For the complex ones like `lemma_alloc_full_no_free`, I need to establish that when bitmap allocation fails, the bitmap is full, the refcount sequence matches the pre-state, and the global state is unchanged, then use those facts to prove no free frames exist. Completing the lemma body by asserting that `is_full()` guarantees `set_bits.contains(i)` for all valid indices, then calling `lemma_view_of_no_free` to derive the final result. The call site passes the necessary preconditions to instantiate this lemma.
+
+Now for the shared lemma that reestablishes the invariant across a range — I'm setting up the proof by splitting cases on whether an index falls within the allocated range, using the bitmap's range_set to characterize which bits are set and verifying the refcount correspondence holds in both the modified and unmodified regions. Defining lemma signature... I'm realizing the core issue: the lemma would need the unpacked pre-state invariant facts as requires, but the caller doesn't have those facts readily available—they'd need to unpack `old(self).internal_inv()` first, which is awkward in proof context. The booking loop invariant doesn't even include `self.internal_inv()`, so after the loop I only have the booking-loop postconditions available to work with, not a full pre-state Inner reference to extract facts from. I should extend lemma_capture_inv_facts to export two additional facts about the tail-zero property and frame address representability, since these are directly derivable from internal_inv. Once these six facts are established in the prologue, they'll persist as ghost facts about the immutable pre-state values, so the re-establishment lemma can rely on them as preconditions that the caller already satisfies.
+
+Now I'm defining lemma_reestablish_inv_range with the proper requires clause...
+
+Establishing the invariant by verifying that the bitmap's set bits match the refcount conditions across all indices, with special handling for the range [lo, hi) that gets incremented to 1. Now I'm verifying that the tail-zero conjunct holds for indices beyond the bitmap. For Verus to accept the internal_inv conclusion, each conjunct needs to check out—the representability constraint is key since it requires the forall to match num_bits, which equals pre_nb, and the requires clause gives us exactly that range. I'm thinking through how to structure the lemmas: lemma_reestablish_inv_range handles the invariant re-establishment, then lemma_alloc_range_post wraps that and adds the view reconstruction on top. For alloc_contiguous, the invariant re-establishment and view reconstruction are separate phases, but in alloc_range they're intertwined, so I need to handle both together.
+
+The view reconstruction logic is similar between the two functions—both use reserve_range and set matching—but the frame definitions differ enough that keeping them separate is clearer. I'm going to start with the simpler, shared lemmas first and work through the medium-complexity functions before tackling the complex ones. Writing lemmas for the prologue captures, frame allocation checks, and slot updates...
+
+Actually, I'm reconsidering the prologue lemmas. The 12-line prologue appears in free, share, and book, so I should consolidate it into a single lemma that captures the view without assuming a specific contains predicate. I can make one lemma that takes the inner state and returns the view, then the prologue becomes much shorter—just the frame number arithmetic, the view capture call, and the contains assertion. That gets it down to around 6 lines, which is still a bit long but more manageable than duplicating the whole thing.
+
+But I need to verify whether the frame number calculation is automatic from the FrameAddress spec. If `into_frame_number` already guarantees that the frame number equals the address divided by page size, I can drop the explicit arithmetic lemma and assertion, cutting the prologue down to 4 lines. Let me check the FrameAddress and PageAligned specs to see what's already guaranteed.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/aligned/page.rs:65:    fn into_raw_value(self) -> usize {
+src/kernel/src/hal/mem/types/address/aligned/page.rs:66:        self.0.into_raw_value()
+src/kernel/src/hal/mem/types/address/aligned/page.rs:203:        PageAligned::from_address(PhysicalAddress::from_raw_...
+
+────────────────────────────────────────────────────────────
+Turn 27
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '40,160p' src/kernel/src/hal/mem/types/address/frame.rs
+
+[THINKING] I'm checking the specifications for FrameAddress's conversion methods between frame numbers and their internal representation.
+[RESULT ✓] bash: // Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
+// that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and this
+// definition names the same concrete value the proofs already relied on.
+pub open spec fn spec_page...
+
+────────────────────────────────────────────────────────────
+Turn 28
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "spec_frame_number\|spec_frame_raw_value\|spec_from_number" src/kernel/src/h
+
+[THINKING] I'm tracing through the relationship between `into_frame_number()` and `into_raw_value()` to understand how frame numbers map to raw values through division by page size, and I need to verify the exact definition of `spec_frame_number` to confirm this pattern.
+[RESULT ✓] bash: src/kernel/src/hal/mem/types/address/phys.spec.rs:16:pub open spec fn spec_frame_raw_value(frame: FrameNumber) -> int {
+src/kernel/src/hal/mem/types/address/phys.spec.rs:30:pub open spec fn spec_frame_number(addr_view: int) -> int {
+src/kernel/src/hal/mem/types/address/phys.spec.rs:35:pub open spec ...
+
+────────────────────────────────────────────────────────────
+Turn 29
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && sed -n '1,45p' src/kernel/src/hal/mem/types/address/phys.spec.rs
+[RESULT ✓] bash: use crate::hal::mem::spec_page_size;
+use vstd::arithmetic::power2::pow2;
+
+verus! {
+
+// =================================================================================================
+// Abstract models of frame-number quantities, realized by the verified `arch` crate.
+//
+// `FrameNumber` is a newt...
+
+────────────────────────────────────────────────────────────
+Turn 30
+────────────────────────────────────────────────────────────
+Let me look at FrameAllocView and its `wf`, plus the bitmap `is_full`/`range_set` specs I'll rely on.
+[TOOL] grep: wf|is_covered|is_free|is_allocated|all_free|no_free_frames|struct FrameAllocView|FrameAllocView
+
+[THINKING] I'm tracing through the conversion chain where `into_frame_number()` converts a frame to a FrameNumber, then `into_raw_value()` extracts the underlying usize value, which when cast to int should equal the frame number divided by the page size.
+
+The key question is whether the assertion `fnx == addr / spec_page_size()` follows automatically from the specs or requires an explicit lemma about division being non-negative. Since the original code passes the assertion, the conversion chain works, but I need to determine if Verus can infer that `addr/ps >= 0` without `lemma_div_pos_is_pos` as a hint, or if the spec's guarantee that `frame@ == addr/ps` is sufficient to establish the equality. I'm realizing the prologue can be drastically simplified since the key invariants—that `addr % ps == 0` and `fnx == addr / ps`—are automatically derivable from the frame's invariant. Instead of manually asserting these with helper lemmas, I can create a single capture lemma that establishes the view equality and refcount constraint, then just call the allocation containment lemma. This collapses the entire prologue down to two lemma calls. Each proof block redefines its own locals, so that's fine. The prologues can be trimmed down to about three lines. The key insight is that the exec call `let frame_number: usize = frame.into_frame_number().into_raw_value()` automatically gives us the postcondition `frame_number as int == addr/ps` through Verus's tracking of the temporary's spec value, so I don't need to assert it explicitly as long as I keep the exec call itself. Now I'm reconsidering the whole approach — many of these "trim-inline" blocks become trivially small once I apply this simplification. Before diving into the full rewrite, I should reconsider whether I even need `lemma_capture_view` at all, since after calling `lemma_view_of(self)`, Verus should already know the relationship between `self@` and the view function applied to its components. I can drop the capture lemma entirely and just inline the view assertion. For the alloc prologue, I need to figure out whether the internal invariant foralls are automatically available from the old state's transparent invariant, or if I need a separate lemma to extract them for downstream reasoning about pre_rc and the set_bits containment. So the decision is to keep `lemma_capture_inv_facts` that exports the pre-state facts along with the tail-zero and representability foralls needed downstream. The alloc_range prologue will call it to make those facts available for the epilogue's `lemma_reestablish_inv_range`, while the other operations (free, share, book, refcount, is_covered) can trim their prologues since they only need the view and contains checks. The representability forall about frame addresses needs to be extracted from the transparent `internal_inv` in the proof, which makes it available for `lemma_capture_inv_facts` to export.
+
+Writing lemma_capture_inv_facts... Adding explicit assertions...
+
+Now I'm thinking through what the lemma_alloc_range_post needs to prove. The function postcondition requires establishing that the old state had all those frames free, the new state has the refcounts updated correctly with the union, and both the well-formedness and internal invariant hold for the final state. I need to figure out where the well-formedness proof comes from since the epilogue seems to focus on internal_inv but the full inv() requires both.
+[RESULT ✓] grep: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:123:                    &&& old(self)@.is_free(frame@)
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:124:                    &&& final(self)@ == FrameAllocView {
+/home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs:1...
+
+────────────────────────────────────────────────────────────
+Turn 31
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rln "struct FrameAllocView\|fn wf\|fn is_covered\|fn all_free\|fn no_free_frame
+
+[THINKING] I need to locate where FrameAllocView and its associated methods like wf, is_covered, and is_free are actually defined, since the task specifies these as existing definitions I shouldn't modify. Let me search through the codebase to find them.
+[RESULT ✓] bash: src/kernel/src/mm/phys/mod.spec.rs
+src/kernel/src/mm/phys/frame.rs
+---
+src/kernel/src/mm/phys/mod.spec.rs:29:pub struct FrameAllocView
+src/kernel/src/mm/phys/mod.spec.rs:39:    pub open spec fn is_covered(&self, addr: int) -> bool
+src/kernel/src/mm/phys/mod.spec.rs:45:    pub open spec fn is_allocat...
+
+────────────────────────────────────────────────────────────
+Turn 32
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/mod.spec.rs
+[RESULT ✓] view: 25. ///
+26. /// Keeping a single map (rather than separate `allocated`/`free` sets that
+27. /// duplicate the same information) makes the specs simpler to write and prove.
+28. #[verifier::ext_equal]
+29. pub struct FrameAllocView
+30. {
+31.     /// Maps each covered frame address to its reference coun...
+
+────────────────────────────────────────────────────────────
+Turn 33
+────────────────────────────────────────────────────────────
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && grep -rn "wf()\|\.wf\b\|fn.*wf\|inv()" src/kernel/src/mm/phys/frame.proof.rs; echo "=
+
+[THINKING] I see that `wf` ensures the final state satisfies both `wf()` and `internal_inv()`, which are combined in the `inv()` definition from spec.rs. For the range epilogue, I need `self@.wf()` to hold. Now I'm checking whether the alloc_range and alloc_contiguous epilogues actually prove `wf` in addition to `internal_inv`.
+
+Looking at the original ar-epilogue, after reconstructing the view with `self@ == FrameAllocView{...}`, the function ensures `final(self).inv()`. The `internal_inv()` part is established, but I'm trying to figure out whether `self@.wf()` follows automatically from `internal_inv()` via some lemma or transparent reasoning, or if there's an explicit proof step I'm missing.
+
+Actually, thinking about it more carefully — `self@.wf()` requires all covered addresses to be page-aligned and refcounts in [0,255]. From `internal_inv()`, every covered address is `frame_addr_of(i)` which is a multiple of the page size, and refcount slots are u8 values. So `self@.wf()` should follow directly from the view definition combined with `internal_inv()`. Verus might derive this automatically, or there could be a helper lemma somewhere. Let me search the frame proof for any wf-related lemmas.
+[RESULT ✓] bash: 47:        &&& self.bitmap.inv()
+181:/// `view()`/`internal_inv()` already use.
+200:        inner.internal_inv(),
+217:        inner.internal_inv(),
+241:        inner.internal_inv(),
+265:        inner.internal_inv(),
+506:/// `internal_inv()` only as an opaque predicate) can use it on captured compone...
+
+────────────────────────────────────────────────────────────
+Turn 34
+────────────────────────────────────────────────────────────
+I have a complete design. Let me write a plan file, then add all the lemmas to `frame.proof.rs`.
+[TOOL] create: /home/ruize/.copilot/session-state/b0efc4de-388f-473d-b78b-af20e4266bd3/plan.md
+
+[THINKING] I'm noticing that the `inv()` function definition combines the well-formedness check with an internal invariant, and when Verus encounters `final(self).inv()` in the ensures clause, it must be automatically unfolding this to derive the `wf()` part without an explicit proof step in the frame proof blocks.
+
+The mechanism likely relies on how the view is constructed — the covered addresses are inherently page-aligned through the frame address mapping structure, and the refcounts come directly from a sequence bounded by 0-255, so these constraints are satisfied by construction rather than needing separate justification. This means when I extract the proof, as long as I preserve the internal invariant and the view reconstruction, the well-formedness should follow the same way.
+
+The real concern is whether the broadcast statements active in the original proof block are necessary for the SMT to derive wf. If they are, I need to ensure those broadcasts are available in the extracted lemma's context, or the postcondition check might fail. Let me trace through what broadcasts are in scope and whether they'd still apply after extraction. So the simple functions (free, share, book, alloc) don't use broadcasts in their post blocks yet still ensure inv() with wf, which means wf must follow from internal_inv and view equality alone. For alloc_contiguous and alloc_range, the broadcasts are there for set matching, not for wf itself, so the same derivation should work. The real question is whether any view constructed with the internal_inv constraints automatically satisfies wf — that's probably a general fact I can rely on rather than proving wf separately in each lemma. So for the simple slot updates like free-else and share-else, I only need to prove the view equality in the extracted lemma—internal_inv and wf are preserved automatically by Verus at the call site. For the range loops that modify many slots, I'll need explicit re-establishment of internal_inv. The key insight is that single-slot mutations like decrementing a refcount that stays positive preserve internal_inv automatically, whereas bulk changes require explicit proof.
+
+Now I'm ready to write out the full set of lemmas: lemma_capture_inv_facts for the prologues that gather the initial facts, and lemma_frame_allocated for the free and share paths that preserve the allocation invariants. Writing lemma signature... I'm verifying the logic for the uncovered case: `lemma_covered_iff` establishes that a frame is covered if and only if its index falls within the bitmap's range, so when `index >= num_bits`, the frame is definitely uncovered and not free. I need to ensure `start_fn >= 0` holds since `start_fn = rstart / ps` and `rstart >= 0`. Now I'm looking at the allocated case where the bitmap test returns true, setting up similar assertions about frame addresses and ranges. Finishing the lemma proof... Writing the lemma signature... I'm working through where the geometry constraints come from—the region's start and size are bounded by usize limits, which should flow from the region invariant or the view itself, though I might need explicit asserts to satisfy the lemma's requires. Now I'm moving on to design the two big lemmas that extract the inline proof bodies: lemma_alloc_contiguous_post and lemma_alloc_range_post, which will be lengthy but straightforward mechanical translations using the ghost self parameter.
+
+Writing lemma proof bodies... I need to establish that the precondition linking the bitmap state to refcount state holds—specifically that any frame not in the bitmap has a zero refcount. This follows from the invariant captured during the prologue, so I'll add it as a requires clause. Now I'm ready to write out the full lemma with all its preconditions and the proof body, translating the inline verification into a standalone lemma that takes the necessary parameters. Continuing the proof by establishing that the frames set matches the specification range, then verifying that each frame address is properly aligned, within bounds, and has a zero reference count before allocation. I'm verifying the preconditions for the all_free lemma—checking that the address range constraints hold, particularly that `0 <= start+i < pre_nb` where `i` comes from the frame set. The indices fall within the expected bounds since `i` is in `[0,count)` and `start+count <= pre_nb`. At the call site, this simplifies to just asserting that the base address equals the frame address of the start position, which the FrameAddress spec guarantees, reducing the proof from 72 lines down to 4.
+
+Now I'm tackling the largest lemma—the range post-condition, which needs to re-establish the internal invariant alongside the view reconstruction and set matching. This one takes the range parameters (start address, size, page size) and the frame bounds, and will verify that the allocation maintains all the invariant properties.
+
+Writing lemma signature... Writing proof logic... Calling the lemma to verify all frames are free, then asserting that the frame map equals the spec range frames map, and confirming the refcounts match the union of the old refcounts with the new frame allocations. The view assertion follows from these pieces — the bitmap's set bits are the union of the previous bitmap and the newly allocated range, so applying the reserve lemma to the refcount gives us the expected union structure.
+
+The actual call site is remarkably compact now, just three lines invoking the post-condition lemma with the computed frame range. But I need to check how the ensures clause handles the frame mapping since the function contract uses a let binding for frames.
+
+Looking at the substitution: rstart maps to region@.start and rsize to region@.size, so the frame range calculation rstart/ps through (rstart+rsize)/ps exactly matches the contract's start_frame_number and end_frame_number. The map closure over frame indices is identical too, so Verus should recognize them as syntactically equivalent after substitution.
+
+I should also make sure lemma_reestablish_inv_range includes the broadcast use for range_set reasoning, and I'm passing the representability forall as a requires clause. Now I need to work through lemma_frame_allocated and lemma_refcount_allocated.
+
+Writing lemma_frame_allocated... Completing the proof block with assertions for the bitmap and refcount checks, then calling the lemma to establish the allocation invariants. At the call site for free-alloc, I'm passing the frame address and number to the lemma, which is satisfied by the preceding `if` check that confirmed the refcount is nonzero and the frame number is in bounds.
+
+Now for the refcount function itself, I need to prove is_allocated and establish that the refcount value matches what's returned. I could reuse lemma_frame_allocated, but the refcount function doesn't capture the ghost state variables that lemma needs, so I'll need either a simpler variant or to add those ghosts to the function signature.
+
+Let me create a cleaner version of lemma_frame_allocated that works directly with the inner state without requiring pre-captured ghost equalities. This lemma takes the inner state, address, and frame index, then proves the frame is allocated and the refcount value matches what's stored in the refcount array. The issue is that after the lemma establishes the fact in terms of `self@` and `self.refcount@`, those ghost variables get mutated, so the frozen version using `g_old` and `pre_rc` won't automatically survive. I need to explicitly assert the frozen-ghost version at the call site to lock it in before any mutations happen.
+
+Now I'm checking whether the downstream assertions in free-else and share-else actually depend on this frozen fact — they do, since they reference `g_old.refcounts[addr]` directly. So the explicit assert is necessary. I'm going to write out all the new lemmas into proof.rs as one big addition before the closing brace, then update each call site function by function and verify in batches. I should also verify that the vstd lemmas I'm referencing actually exist — they're already used elsewhere in the file, so they're available. For the is_covered block, I'll keep it inline rather than extracting it into a separate lemma. I'm splitting the verification into two batches to manage complexity: first I'll update the medium-function call sites (share, refcount, is_covered, free, book), then tackle the more complex allocation functions. This way if batch 1 fails, the original complex functions remain untouched, making debugging easier. The lemmas will all be defined upfront in proof.rs even if unused initially—Verus verifies them standalone, and any bugs surface immediately. Now I'll write out all the lemmas as one block before the closing brace.
+[RESULT ✓] create: Created file /home/ruize/.copilot/session-state/b0efc4de-388f-473d-b78b-af20e4266bd3/plan.md with 2038 characters
+
+────────────────────────────────────────────────────────────
+Turn 35
+────────────────────────────────────────────────────────────
+Now let me add all the extraction lemmas to `frame.proof.rs`, inserting before the final closing brace.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] view: 600.         view_of(sb, nb, rc).all_free(frames),
+601. {
+602.     let v = view_of(sb, nb, rc);
+603.     assert forall|addr: int| #[trigger] frames.contains(addr) implies v.is_free(addr) by {
+604.         lemma_view_of_is_free(sb, nb, rc, addr / spec_page_size(), addr);
+605.     }
+606. }
+607. 
+608. ...
+
+────────────────────────────────────────────────────────────
+Turn 36
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.proof.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 37
+────────────────────────────────────────────────────────────
+Now let me update call sites. Starting with `share` — extracting the allocated-check and slot-update blocks.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm going through the medium functions one by one to update their call sites. Starting with `share`, I need to trim several blocks (prologue, out-of-bounds, refcount zero, overflow, and else) while extracting two sections into lemmas for frame allocation and post-update slot logic. I'm deciding whether to aggressively trim the prologue now or keep it mostly intact and defer minimization to later. The key question is whether Verus will automatically infer facts like `fnx == addr / spec_page_size()` from the frame's invariants and postconditions, or if I need to keep those assertions explicit. Since verification is the ultimate check, I'll go ahead with a moderately aggressive trim—removing the redundant `addr >= 0` check and relying on the invariants—then verify and add back anything that breaks. I'm realizing that downstream blocks like share-oob and share-rc0 rely on the relationship `fnx == frame@/ps` to connect the bitmap check to the is_allocated predicate. The lemma_alloc_contains gives an iff: `is_allocated(frame@) <==> (0<=frame@/ps<nb && set_bits.contains(frame@/ps))`. So when I prove `!set_bits.contains(fnx)`, Verus needs to know `fnx == frame@/ps` to conclude `!is_allocated(frame@)` and satisfy the Err case's vacuous implication. This relationship either persists automatically from the frame_number spec (which guarantees `frame_number as int == frame@ / spec_page_size()`), or I need to keep an explicit assert to make it available downstream. Trimming the proof block...
+
+I'm deciding to focus on extracting the large blocks first by replacing them with lemma calls, keeping the prologues and small blocks unchanged to verify the lemmas work correctly. Once that passes, I can minimize the smaller blocks in a second pass. This staged approach reduces risk by isolating whether the lemmas themselves are sound before optimizing further.
+
+For the prologue replacements in alloc, alloc_contiguous, and alloc_range, I need to swap the inline lemma_internal_inv_facts calls with lemma_capture_inv_facts, which actually exports more facts (tail-zero and representability) so downstream assertions will still have what they need.
+
+Now I'm going to work through the medium functions (share, refcount, free, book) first—these don't have prologue replacements, just the marked block extractions. Then I'll handle the complex functions (alloc, ac, ar) with both prologue swaps and block extractions. I'll verify after each batch to catch any lemma bugs early.
+
+Let me pull the exact text for the share-alloc and share-else blocks to start the edits. Refining the proof block...
+
+I need to verify that the precondition `self.refcount@ == pre_rc.update(fnx, nv)` will be satisfied by Verus automatically, since it's the same statement the original assert was checking. The precondition should be provable the same way. I also need to confirm the bounds requirements — that `fnx < pre_nb` carries through from the earlier lemma_frame_allocated call, and that the frame number constraints are satisfied.
+
+For the overflow case, I'm trimming the proof block by removing the intermediate variable assignments and directly using `frame@` in the refcount assertion, relying on the earlier share-alloc lemma to establish that `g_old.refcounts[frame@] == 255`.
+
+Now I'm planning to batch the edits for the `share` function across its independent regions—the alloc, overflow, and else branches—while keeping the prologue intact since it establishes facts needed by the oob and rc0 cases, and the `g_old` binding is required by the else branch's lemma_post_update_slot.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 38
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 39
+────────────────────────────────────────────────────────────
+Now `refcount` — extract the final allocated check.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the proof for the refcount-final section, replacing it with lemma_frame_allocated and asserting that the frame's refcount is non-zero, the index is within bounds, the bit is set in the bitmap, and the frame is allocated.
+
+Now I need to verify that lemma_frame_allocated has the right preconditions—it requires the frame address to be page-aligned and the frame number to equal the address divided by page size. The refcount function doesn't explicitly require frame.inv(), only self.inv(), but there's an earlier alignment check at line 857 that rejects unaligned addresses, so after that point frame@ is guaranteed to be page-aligned. The refcount-arith block establishes this alignment property and computes the frame number as the address divided by spec_page_size(). The lemma_frame_allocated postcondition establishes that the frame is allocated and its refcount matches the value we're returning. Since the function returns the refcount at that frame number, and the lemma guarantees the refcount in the abstract state equals the concrete value, the return satisfies the postcondition. The refcount-arith block stays because it establishes the alignment property and calls lemma_alloc_contains, which the subsequent oob and rc0 checks depend on to verify the frame isn't allocated. Now I'll update refcount-final.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 40
+────────────────────────────────────────────────────────────
+Now `free` — extract allocated check, release, and slot-update blocks.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm looking at the `free` function and identifying the key blocks: the allocation proof section starting around line 604, the success case around 634, and the else branch around 658. Let me pull up the exact text to see what we're working with after the recent edits.
+
+For the allocation proof block, I'm replacing the verbose assertion chain with a single lemma call that consolidates all the frame allocation facts, then asserting the refcount value directly. For the success case, I'm simplifying the proof by removing intermediate variable bindings and streamlining the bitmap state assertions.
+
+Now I'm verifying the preconditions for the lemma — specifically that after decrementing the refcount to zero, the refcount sequence matches the expected update, and that the bitmap's set bits correctly reflect the removal of the frame number. Simplifying the proof block...
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 41
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 42
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 43
+────────────────────────────────────────────────────────────
+Now `book` — extract the reserve block and trim the error block.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm working through the proof for the `book` function, establishing the preconditions that the bit was clear before the set operation and verifying the frame was free in the previous state by checking the bounds and confirming it's not in the set. I'm working through the preconditions for `lemma_post_reserve_one`, checking that each required fact is derivable from the current context. The key ones are that `pre_rc[fnx]==0` follows from the bitmap's set operation confirming the bit was clear and the internal invariant linking cleared bits to zero refcounts, and that the frame number is in range from the set operation's postcondition. I'm verifying that the precondition check at the call site has the same context as the original assertions, so it should pass.
+
+Now I'm looking at the error case in the book proof. The `set()` call failed because the bit was already set or out of range, which means the frame isn't free. I can trim the error proof block down to just the essential steps: calling `lemma_view_of` to establish the view, asserting that the current state matches the old state, and asserting that the frame is not free based on the failed set operation and the lemma linking free frames to cleared bits.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 44
+────────────────────────────────────────────────────────────
+Batch A (medium functions) done. Let me verify — this checks all new lemmas and the medium call sites.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 make verify-kernel MODULE=mm::phys 2>&1 | tail -50
+
+[THINKING] I'm running verification on Batch A to check that the lemmas compile and the medium-sized call sites work correctly—this is the first uncached run so it might take a moment. Before proceeding, I need to double-check the lemmas in proof.rs for any obvious issues, particularly `lemma_post_update_slot` which requires the refcount to match the pre-refcount after applying the update, and I'm tracing through the share-else case to verify the refcount state after the assignment. Let me do a quick syntax check on the edits to make sure the braces are balanced, then run the verification with a generous timeout.
+[RESULT ✓] bash: <command started in background with shellId: verify-a>
+
+────────────────────────────────────────────────────────────
+Turn 45
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 180, 'shellId': 'verify-a'}

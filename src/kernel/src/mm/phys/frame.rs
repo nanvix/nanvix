@@ -604,16 +604,8 @@ impl Inner {
         proof! {
             // The frame is currently allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit
             // is set. Records the facts needed to discharge the postcondition's first conjuncts.
-            let addr = frame@;
-            let fnx = frame_number as int;
-            assert(self.refcount@[fnx] != 0);
-            assert(fnx < self.bitmap@.num_bits);
-            assert(self.bitmap@.set_bits.contains(fnx));
-            lemma_alloc_contains(self, addr);
-            assert(self@.is_allocated(addr));  // bit set + lemma_alloc_contains
-            assert(self@.is_covered(addr));
-            lemma_refcount_value(self, addr);
-            assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
+            lemma_frame_allocated(self, frame@, frame_number as int);
+            assert(g_old.refcounts[frame@] == pre_rc[frame_number as int] as int);
         }
 
         self.refcount[frame_number] -= 1;
@@ -632,15 +624,8 @@ impl Inner {
             match self.bitmap.clear(frame_number) {
                 Ok(()) => {
                     proof! {
-                        let addr = frame@;
-                        let fnx = frame_number as int;
-                        lemma_view_of(self);
-                        assert(self.bitmap@.set_bits == pre_sb.remove(fnx));
-                        assert(self.bitmap@.num_bits == pre_nb);
-                        assert(spec_refcount_seq(self) == pre_rc.update(fnx, 0u8));
-                        assert(self@ == view_of(pre_sb.remove(fnx), pre_nb, pre_rc.update(fnx, 0u8)));
-                        lemma_release_one_v(pre_sb, pre_nb, pre_rc, fnx, addr);
-                        assert(g_old.refcounts[addr] == 1);
+                        lemma_post_release_one(self, frame@, frame_number as int, g_old, pre_sb, pre_nb, pre_rc);
+                        assert(g_old.refcounts[frame@] == 1);
                     }
                     Ok(())
                 },
@@ -658,16 +643,10 @@ impl Inner {
             proof! {
                 // Still shared: only the refcount slot changed (decremented by one); the
                 // allocated/free partition is unchanged.
-                let addr = frame@;
                 let fnx = frame_number as int;
                 let nv = self.refcount@[fnx];
-                lemma_view_of(self);
-                assert(self.bitmap@.set_bits == pre_sb);
-                assert(self.bitmap@.num_bits == pre_nb);
-                assert(spec_refcount_seq(self) == pre_rc.update(fnx, nv));
-                assert(self@ == view_of(pre_sb, pre_nb, pre_rc.update(fnx, nv)));
-                lemma_update_refcount_v(pre_sb, pre_nb, pre_rc, fnx, addr, nv);
-                assert(nv as int == g_old.refcounts[addr] - 1);
+                lemma_post_update_slot(self, frame@, fnx, nv, g_old, pre_sb, pre_nb, pre_rc);
+                assert(nv as int == g_old.refcounts[frame@] - 1);
             }
             Ok(())
         }
@@ -769,16 +748,8 @@ impl Inner {
 
         proof! {
             // The frame is allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit is set.
-            let addr = frame@;
-            let fnx = frame_number as int;
-            assert(self.refcount@[fnx] != 0);
-            assert(fnx < self.bitmap@.num_bits);
-            assert(self.bitmap@.set_bits.contains(fnx));
-            lemma_alloc_contains(self, addr);
-            assert(self@.is_allocated(addr));  // bit set + lemma_alloc_contains
-            assert(self@.is_covered(addr));
-            lemma_refcount_value(self, addr);
-            assert(g_old.refcounts[addr] == pre_rc[fnx] as int);
+            lemma_frame_allocated(self, frame@, frame_number as int);
+            assert(g_old.refcounts[frame@] == pre_rc[frame_number as int] as int);
         }
 
         self.refcount[frame_number] = match self.refcount[frame_number].checked_add(1) {
@@ -787,12 +758,9 @@ impl Inner {
                 proof! {
                     // Overflow: the old refcount was at its u8 maximum (255). The state is
                     // unchanged, satisfying the Err arm's refcount-saturated disjunct.
-                    let addr = frame@;
-                    let fnx = frame_number as int;
                     lemma_view_of(self);
-                    assert(spec_refcount_seq(self) == pre_rc);
                     assert(self@ == g_old);
-                    assert(g_old.refcounts[addr] == 255);
+                    assert(g_old.refcounts[frame@] == 255);
                 }
                 let reason: &str = "frame reference count overflow";
                 #[cfg(not(verus_keep_ghost))]
@@ -804,16 +772,10 @@ impl Inner {
         proof! {
             // Only the refcount slot changed (incremented by one); the allocated/free partition
             // is unchanged.
-            let addr = frame@;
             let fnx = frame_number as int;
             let nv = self.refcount@[fnx];
-            lemma_view_of(self);
-            assert(self.bitmap@.set_bits == pre_sb);
-            assert(self.bitmap@.num_bits == pre_nb);
-            assert(spec_refcount_seq(self) == pre_rc.update(fnx, nv));
-            assert(self@ == view_of(pre_sb, pre_nb, pre_rc.update(fnx, nv)));
-            lemma_update_refcount_v(pre_sb, pre_nb, pre_rc, fnx, addr, nv);
-            assert(nv as int == g_old.refcounts[addr] + 1);
+            lemma_post_update_slot(self, frame@, fnx, nv, g_old, pre_sb, pre_nb, pre_rc);
+            assert(nv as int == g_old.refcounts[frame@] + 1);
         }
 
         Ok(())
@@ -905,13 +867,7 @@ impl Inner {
         proof! {
             // refcount[i] != 0 and i < refcount.len(); tail-zero forces i < num_bits, so the
             // bit is set, the frame is allocated, and its refcount-map value is the slot value.
-            let i = frame_number as int;
-            assert(self.refcount@[i] != 0);
-            assert(i < self.bitmap@.num_bits);
-            assert(self.bitmap@.set_bits.contains(i));
-            assert(self@.is_allocated(frame@));
-            assert(self@.is_covered(frame@));
-            lemma_refcount_value(self, frame@);
+            lemma_frame_allocated(self, frame@, frame_number as int);
         }
         Ok(self.refcount[frame_number])
     }
@@ -974,32 +930,17 @@ impl Inner {
                 debug_assert_eq!(self.refcount[frame_number], 0);
                 self.refcount[frame_number] = 1;
                 proof! {
-                    let addr = phys_addr@;
-                    let fnx = frame_number as int;
-                    lemma_view_of(self);
-                    // The bit was clear before `set()`, so the frame was free in `old(self)`.
-                    assert(0 <= fnx < pre_nb);
-                    assert(!pre_sb.contains(fnx));
-                    assert(pre_rc[fnx] == 0);
-                    lemma_view_of_is_free(pre_sb, pre_nb, pre_rc, fnx, addr);
-                    assert(g_old.is_free(addr));
-                    assert(self.bitmap@.set_bits == pre_sb.insert(fnx));
-                    assert(self.bitmap@.num_bits == pre_nb);
-                    assert(spec_refcount_seq(self) == pre_rc.update(fnx, 1u8));
-                    assert(self@ == view_of(pre_sb.insert(fnx), pre_nb, pre_rc.update(fnx, 1u8)));
-                    lemma_reserve_one_v(pre_sb, pre_nb, pre_rc, fnx, addr);
+                    lemma_post_reserve_one(self, phys_addr@, frame_number as int, g_old, pre_sb, pre_nb, pre_rc);
                 }
                 Ok(())
             },
             Err(error) => {
                 proof! {
-                    let addr = phys_addr@;
-                    lemma_view_of(self);
-                    assert(spec_refcount_seq(self) == pre_rc);
-                    assert(self@ == g_old);
                     // `set()` failed: the bit was already set or out of range, so the frame is not
                     // free in `old(self)`.
-                    assert(!g_old.is_free(addr));
+                    lemma_view_of(self);
+                    assert(self@ == g_old);
+                    assert(!g_old.is_free(phys_addr@));
                 }
                 #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (phys_addr={phys_addr:?})");
