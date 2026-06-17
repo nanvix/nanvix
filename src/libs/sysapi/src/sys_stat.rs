@@ -168,7 +168,7 @@ pub enum StatError {
 
 /// File status structure.
 #[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct stat {
     /// Device ID.
     pub st_dev: dev_t,
@@ -197,7 +197,8 @@ pub struct stat {
     /// Number of blocks allocated.
     pub st_blocks: blkcnt_t,
 }
-::static_assert::assert_eq_size!(stat, stat::SIZE);
+// The serialized size (stat::SIZE) is the packed wire format without padding.
+// The in-memory size (sizeof stat) may differ due to alignment padding on 64-bit targets.
 
 impl stat {
     /// Size of the device ID field.
@@ -216,16 +217,16 @@ impl stat {
     const SIZE_OF_ST_RDEV: usize = size_of::<dev_t>();
     /// Size of the file size field.
     const SIZE_OF_ST_SIZE: usize = size_of::<off_t>();
-    /// Size of the last access time field.
-    const SIZE_OF_ST_ATIM: usize = size_of::<timespec>();
-    /// Size of the last modification time field.
-    const SIZE_OF_ST_MTIM: usize = size_of::<timespec>();
-    /// Size of the last status change time field.
-    const SIZE_OF_ST_CTIM: usize = size_of::<timespec>();
-    /// Size of the block size field.
-    const SIZE_OF_ST_BLKSIZE: usize = size_of::<blksize_t>();
-    /// Size of the number of blocks allocated field.
-    const SIZE_OF_ST_BLOCKS: usize = size_of::<blkcnt_t>();
+    /// Wire size of the last access time field (always 16 bytes for IPC).
+    const SIZE_OF_ST_ATIM: usize = timespec::WIRE_SIZE;
+    /// Wire size of the last modification time field (always 16 bytes for IPC).
+    const SIZE_OF_ST_MTIM: usize = timespec::WIRE_SIZE;
+    /// Wire size of the last status change time field (always 16 bytes for IPC).
+    const SIZE_OF_ST_CTIM: usize = timespec::WIRE_SIZE;
+    /// Wire size of the block size field (always 8 bytes for IPC, c_long→i64).
+    const SIZE_OF_ST_BLKSIZE: usize = size_of::<i64>();
+    /// Wire size of the number of blocks allocated field (always 8 bytes for IPC, c_long→i64).
+    const SIZE_OF_ST_BLOCKS: usize = size_of::<i64>();
     /// Offset of the device ID field.
     const OFFSET_OF_ST_DEV: usize = 0;
     /// Offset of the file serial number field.
@@ -253,7 +254,8 @@ impl stat {
     /// Offset of the number of blocks allocated field.
     const OFFSET_OF_ST_BLOCKS: usize = Self::OFFSET_OF_ST_BLKSIZE + Self::SIZE_OF_ST_BLKSIZE;
 
-    /// Size of the structure.
+    /// Serialized (wire-format) size of the structure. Always 104 bytes regardless of target,
+    /// ensuring IPC compatibility between x86 guests and x86_64 hosts.
     pub const SIZE: usize = Self::SIZE_OF_ST_DEV
         + Self::SIZE_OF_ST_INO
         + Self::SIZE_OF_ST_MODE
@@ -316,13 +318,15 @@ impl stat {
         bytes[Self::OFFSET_OF_ST_CTIM..Self::OFFSET_OF_ST_CTIM + Self::SIZE_OF_ST_CTIM]
             .copy_from_slice(&self.st_ctim.to_bytes());
 
-        // Convert block size field.
+        // Convert block size field (already 64-bit: blksize_t = c_longlong).
+        let blksize_bytes = self.st_blksize.to_ne_bytes();
         bytes[Self::OFFSET_OF_ST_BLKSIZE..Self::OFFSET_OF_ST_BLKSIZE + Self::SIZE_OF_ST_BLKSIZE]
-            .copy_from_slice(&self.st_blksize.to_ne_bytes());
+            .copy_from_slice(&blksize_bytes);
 
-        // Convert number of blocks allocated field.
+        // Convert number of blocks allocated field (already 64-bit: blkcnt_t = c_longlong).
+        let blocks_bytes = self.st_blocks.to_ne_bytes();
         bytes[Self::OFFSET_OF_ST_BLOCKS..Self::OFFSET_OF_ST_BLOCKS + Self::SIZE_OF_ST_BLOCKS]
-            .copy_from_slice(&self.st_blocks.to_ne_bytes());
+            .copy_from_slice(&blocks_bytes);
 
         bytes
     }
@@ -408,20 +412,22 @@ impl stat {
         )
         .map_err(|_| StatError::FailedToParseCtim)?;
 
-        // Parse block size field.
-        let st_blksize: blksize_t = blksize_t::from_ne_bytes(
+        // Parse block size field (always read as i64, then truncate to blksize_t).
+        #[cfg_attr(target_arch = "x86_64", allow(clippy::unnecessary_cast))]
+        let st_blksize: blksize_t = i64::from_ne_bytes(
             bytes
                 [Self::OFFSET_OF_ST_BLKSIZE..Self::OFFSET_OF_ST_BLKSIZE + Self::SIZE_OF_ST_BLKSIZE]
                 .try_into()
                 .map_err(|_| StatError::FailedToParseBlksize)?,
-        );
+        ) as blksize_t;
 
-        // Parse number of blocks allocated field.
-        let st_blocks: blkcnt_t = blkcnt_t::from_ne_bytes(
+        // Parse number of blocks allocated field (always read as i64, then truncate to blkcnt_t).
+        #[cfg_attr(target_arch = "x86_64", allow(clippy::unnecessary_cast))]
+        let st_blocks: blkcnt_t = i64::from_ne_bytes(
             bytes[Self::OFFSET_OF_ST_BLOCKS..Self::OFFSET_OF_ST_BLOCKS + Self::SIZE_OF_ST_BLOCKS]
                 .try_into()
                 .map_err(|_| StatError::FailedToParseBlocks)?,
-        );
+        ) as blkcnt_t;
 
         Ok(Self {
             st_dev,

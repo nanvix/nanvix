@@ -47,8 +47,8 @@ pub struct SelectRequest {
     pub writefds: Option<fd_set>,
     /// Error/exception file descriptors of interest.
     pub errorfds: Option<fd_set>,
-    /// Timeout.
-    pub timeout: Option<timeval>,
+    /// Timeout, encoded in `timeval`'s fixed-width wire format for cross-architecture IPC.
+    pub timeout: Option<[u8; timeval::WIRE_SIZE]>,
     /// Required padding.
     _padding: [u8; Self::PADDING_SIZE],
 }
@@ -64,7 +64,7 @@ impl SelectRequest {
         - mem::size_of::<Option<fd_set>>()
         - mem::size_of::<Option<fd_set>>()
         - mem::size_of::<Option<fd_set>>()
-        - mem::size_of::<Option<timeval>>();
+        - mem::size_of::<Option<[u8; timeval::WIRE_SIZE]>>();
 
     /// Creates a new `SelectRequest`.
     fn new(
@@ -79,7 +79,7 @@ impl SelectRequest {
             readfds: readfds.as_ref().map(|fd_set| **fd_set),
             writefds: writefds.as_ref().map(|fd_set| **fd_set),
             errorfds: errorfds.as_ref().map(|fd_set| **fd_set),
-            timeout: *timeout,
+            timeout: timeout.as_ref().map(|tv| tv.to_bytes()),
             _padding: [0; Self::PADDING_SIZE],
         }
     }

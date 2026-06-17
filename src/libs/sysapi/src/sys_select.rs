@@ -25,10 +25,10 @@ use ::core::mem::size_of;
 //==================================================================================================
 
 /// Microseconds in a second.
-const MICROSECONDS_PER_SECOND: i32 = 1_000_000;
+const MICROSECONDS_PER_SECOND: suseconds_t = 1_000_000;
 
 /// Nanoseconds in a second.
-const NANOSECONDS_PER_SECOND: i32 = 1_000_000_000;
+const NANOSECONDS_PER_SECOND: suseconds_t = 1_000_000_000;
 
 /// Maximum number of file descriptors tracked by [`fd_set`].
 pub const FD_SETSIZE: usize = 64;
@@ -295,6 +295,76 @@ pub struct timeval {
     pub tv_sec: time_t,
     /// Nano-seconds.
     pub tv_usec: suseconds_t,
+}
+
+/// Errors that can occur when serializing or deserializing a [`timeval`] wire payload.
+#[derive(Debug, Clone, Copy)]
+pub enum TimevalError {
+    /// Error code indicating an invalid array size.
+    InvalidArraySize,
+    /// Error code indicating failure to parse `tv_sec` field.
+    FailedToParseTvSec,
+    /// Error code indicating failure to parse `tv_usec` field.
+    FailedToParseTvUsec,
+}
+
+impl timeval {
+    /// Size of the seconds field.
+    const SIZE_OF_TV_SEC: usize = size_of::<time_t>();
+    /// Offset of the seconds field.
+    const OFFSET_OF_TV_SEC: usize = 0;
+    /// Offset of the micro-seconds field.
+    const OFFSET_OF_TV_USEC: usize = Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC;
+
+    /// Wire format always uses i64 (8 bytes) for `tv_usec`, ensuring IPC compatibility
+    /// between x86 guests (`c_long=i32`) and x86_64 hosts (`c_long=i64`).
+    const WIRE_SIZE_OF_TV_USEC: usize = size_of::<i64>();
+    /// Wire format size for IPC serialization (always 16 bytes).
+    pub const WIRE_SIZE: usize = Self::SIZE_OF_TV_SEC + Self::WIRE_SIZE_OF_TV_USEC;
+
+    /// Converts a `timeval` structure to a wire-format byte array.
+    pub fn to_bytes(&self) -> [u8; Self::WIRE_SIZE] {
+        let mut bytes: [u8; Self::WIRE_SIZE] = [0; Self::WIRE_SIZE];
+
+        // Convert seconds field.
+        bytes[Self::OFFSET_OF_TV_SEC..Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC]
+            .copy_from_slice(&self.tv_sec.to_ne_bytes());
+
+        // Convert micro-seconds field (always as i64 for IPC compatibility).
+        // Cast is needed on x86 (c_long=i32→i64) but is a no-op on x86_64 (c_long=i64).
+        #[cfg_attr(target_arch = "x86_64", allow(clippy::unnecessary_cast))]
+        let usec_bytes = (self.tv_usec as i64).to_ne_bytes();
+        bytes[Self::OFFSET_OF_TV_USEC..Self::OFFSET_OF_TV_USEC + Self::WIRE_SIZE_OF_TV_USEC]
+            .copy_from_slice(&usec_bytes);
+
+        bytes
+    }
+
+    /// Tries to convert a `timeval` structure from a wire-format byte array.
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, TimevalError> {
+        // Check if the array has the correct wire size.
+        if bytes.len() != Self::WIRE_SIZE {
+            return Err(TimevalError::InvalidArraySize);
+        }
+
+        // Parse seconds field.
+        let tv_sec: time_t = time_t::from_ne_bytes(
+            bytes[Self::OFFSET_OF_TV_SEC..Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC]
+                .try_into()
+                .map_err(|_| TimevalError::FailedToParseTvSec)?,
+        );
+
+        // Parse micro-seconds field (always read as i64, then truncate to suseconds_t).
+        // Cast is needed on x86 (i64→c_long=i32) but is a no-op on x86_64 (i64→c_long=i64).
+        #[cfg_attr(target_arch = "x86_64", allow(clippy::unnecessary_cast))]
+        let tv_usec: suseconds_t = i64::from_ne_bytes(
+            bytes[Self::OFFSET_OF_TV_USEC..Self::OFFSET_OF_TV_USEC + Self::WIRE_SIZE_OF_TV_USEC]
+                .try_into()
+                .map_err(|_| TimevalError::FailedToParseTvUsec)?,
+        ) as suseconds_t;
+
+        Ok(Self { tv_sec, tv_usec })
+    }
 }
 
 /// Errors that can occur when converting a `timeval` to a `timespec`.

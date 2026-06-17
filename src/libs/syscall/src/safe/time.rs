@@ -168,7 +168,7 @@ impl From<Time> for timespec {
     fn from(time: Time) -> Self {
         timespec {
             tv_sec: time.0.seconds() as i64,
-            tv_nsec: time.0.nanoseconds() as i32,
+            tv_nsec: time.0.nanoseconds() as sysapi::ffi::c_long,
         }
     }
 }

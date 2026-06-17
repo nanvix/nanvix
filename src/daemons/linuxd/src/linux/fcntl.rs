@@ -368,6 +368,7 @@ pub fn do_renameat<T>(
 // do_fstatat
 //==================================================================================================
 
+#[cfg_attr(target_arch = "x86_64", allow(clippy::useless_conversion))]
 pub fn do_fstat_at<T>(
     syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
@@ -575,6 +576,7 @@ pub fn do_posix_fadvise<T>(
 // do_fstat()
 //==================================================================================================
 
+#[cfg_attr(target_arch = "x86_64", allow(clippy::useless_conversion))]
 pub fn do_fstat<T>(
     syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,

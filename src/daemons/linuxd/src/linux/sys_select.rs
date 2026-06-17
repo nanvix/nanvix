@@ -31,6 +31,7 @@ use ::sys::{
 };
 use ::sysapi::sys_select::{
     fd_set,
+    timeval,
     FdSetError,
     FD_SETSIZE,
 };
@@ -67,7 +68,8 @@ pub fn do_select<T>(
         tv_sec: 0,
         tv_usec: 0,
     };
-    let timeout_ptr: *mut libc::timeval = if let Some(tv) = request.timeout {
+    let timeout_ptr: *mut libc::timeval = if let Some(bytes) = request.timeout {
+        let tv: timeval = timeval::try_from_bytes(&bytes).unwrap_or_default();
         timeout_storage.tv_sec = tv.tv_sec as libc::time_t;
         timeout_storage.tv_usec = tv.tv_usec as libc::suseconds_t;
         &mut timeout_storage
