@@ -264,3 +264,7 @@ Module: virt-identity-map
 [2026-06-18 01:21:29] [PROVER] Running polish...
 [2026-06-18 01:21:29] [COPILOT] Running: copilot --model claude-opus-4.8 ...
 [2026-06-18 01:29:12]   ↳ prover done in 7m43s (exit=0)
+[2026-06-18 01:29:13] [PHASE] polish: no-review (7m43s)
+[2026-06-18 01:29:13] ✅ polish: PASS (0/0)
+[2026-06-18 01:29:13] [GATE] Running build: make build
+[2026-06-18 01:29:13] [GATE] Running verify: make verify
