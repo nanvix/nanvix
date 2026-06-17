@@ -158,14 +158,7 @@ impl Inner {
         };
         proof_decl! { let ghost idx = frame_number as int; }
         proof! {
-            // `alloc` set a previously-clear, in-range bit; refcount is not yet mutated.
-            assert(0 <= idx < pre_nb);
-            assert(!pre_sb.contains(idx));
-            assert(self.bitmap@.set_bits == pre_sb.insert(idx));
-            assert(self.bitmap@.num_bits == pre_nb);
-            assert(spec_refcount_seq(self) == pre_rc);
-            // Representability: `num_bits` (= `pre_nb`) is unchanged, and `idx < pre_nb`, so the
-            // forall from `lemma_index_representable` gives `idx <= spec_max`.
+            // Representability of the new in-range index (from the captured invariant).
             assert(frame_addr_of(idx) <= usize::MAX as int);
             assert(idx <= spec_max_frame_number());
         }
@@ -180,9 +173,7 @@ impl Inner {
             Some(frame_number) => frame_number,
             None => {
                 proof! {
-                    // `None` would require `idx > spec_max`, but `idx <= spec_max` was established
-                    // above (representability of every in-range index). Unreachable.
-                    assert(frame_addr_of(idx) <= usize::MAX as int);
+                    // `None` requires `idx > spec_max`, contradicting representability. Unreachable.
                     assert(idx <= spec_max_frame_number());
                     assert(false);
                 }
@@ -298,18 +289,9 @@ impl Inner {
             },
         };
         proof_decl! { let ghost start = frame_number as int; }
+        // `alloc_range` Ok guarantees the booked range was entirely clear beforehand.
         proof! {
-            assert(0 <= start < pre_nb);
-            assert(start + count as int <= pre_nb);
-            assert(self.bitmap@.set_bits
-                == pre_sb.union(BitmapView::range_set(start, start + count as int)));
-            assert(self.bitmap@.num_bits == pre_nb);
-            assert(spec_refcount_seq(self) == pre_rc);
-            // `alloc_range` Ok guarantees the booked range was entirely clear beforehand.
-            assert(old(self).bitmap@.all_bits_unset_in_range(start, start + count as int));
-            assert(old(self).bitmap@.set_bits == pre_sb);
-            assert forall|j: int| start <= j < start + count as int implies
-                !pre_sb.contains(j) by {
+            assert forall|j: int| start <= j < start + count as int implies !pre_sb.contains(j) by {
                 assert(!old(self).bitmap@.is_bit_set(j));
             }
         }
@@ -434,26 +416,15 @@ impl Inner {
             let ghost pre_rc = self.refcount@;
         }
         proof! {
-            let addr = frame@;
-            let fnx = frame_number as int;
-            assert(addr >= 0);
-            assert(addr % spec_page_size() == 0);
-            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
-            assert(fnx == addr / spec_page_size());
             lemma_view_of(self);
-            assert(spec_refcount_seq(self) == pre_rc);
             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
-            lemma_alloc_contains(self, addr);
+            lemma_alloc_contains(self, frame@);
         }
 
         if frame_number >= self.refcount.len() {
             proof! {
-                // frame_number >= refcount.len() >= num_bits, and set_bits ⊆ [0, num_bits),
-                // so the bit is clear and the frame is not allocated.
-                let fnx = frame_number as int;
-                assert(fnx >= self.refcount@.len());
-                assert(self.refcount@.len() >= self.bitmap@.num_bits);
-                assert(!self.bitmap@.set_bits.contains(fnx));
+                // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
+                assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame number out of bounds";
             #[cfg(not(verus_keep_ghost))]
@@ -465,9 +436,7 @@ impl Inner {
         if self.refcount[frame_number] == 0 {
             proof! {
                 // refcount[fnx] == 0, so the bit is clear (internal_inv), hence not allocated.
-                let fnx = frame_number as int;
-                assert(self.refcount@[fnx] == 0);
-                assert(!self.bitmap@.set_bits.contains(fnx));
+                assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame is already free";
             #[cfg(not(verus_keep_ghost))]
@@ -487,13 +456,9 @@ impl Inner {
         // Only release the bit in the bitmap when the last owner releases the frame.
         if self.refcount[frame_number] == 0 {
             proof! {
-                // Post-decrement refcount is 0, so the old refcount was 1. The decrement only
-                // touched the refcount slot; the bitmap bit is still set and in range, so
-                // `clear` cannot fail (its Err arm is unreachable).
-                let fnx = frame_number as int;
-                assert(self.bitmap@.set_bits == pre_sb);
-                assert(pre_sb.contains(fnx));
-                assert(fnx < self.bitmap@.num_bits);
+                // The bit is still set and in range, so `clear` cannot fail.
+                assert(self.bitmap@.set_bits.contains(frame_number as int));
+                assert((frame_number as int) < self.bitmap@.num_bits);
             }
             match self.bitmap.clear(frame_number) {
                 Ok(()) => {
@@ -578,26 +543,15 @@ impl Inner {
             let ghost pre_rc = self.refcount@;
         }
         proof! {
-            let addr = frame@;
-            let fnx = frame_number as int;
-            assert(addr >= 0);
-            assert(addr % spec_page_size() == 0);
-            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
-            assert(fnx == addr / spec_page_size());
             lemma_view_of(self);
-            assert(spec_refcount_seq(self) == pre_rc);
             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
-            lemma_alloc_contains(self, addr);
+            lemma_alloc_contains(self, frame@);
         }
 
         if frame_number >= self.refcount.len() {
             proof! {
-                // frame_number >= refcount.len() >= num_bits, and set_bits ⊆ [0, num_bits),
-                // so the bit is clear and the frame is not allocated.
-                let fnx = frame_number as int;
-                assert(fnx >= self.refcount@.len());
-                assert(self.refcount@.len() >= self.bitmap@.num_bits);
-                assert(!self.bitmap@.set_bits.contains(fnx));
+                // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
+                assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame number out of bounds";
             #[cfg(not(verus_keep_ghost))]
@@ -610,9 +564,7 @@ impl Inner {
         if self.refcount[frame_number] == 0 {
             proof! {
                 // refcount[fnx] == 0, so the bit is clear (internal_inv), hence not allocated.
-                let fnx = frame_number as int;
-                assert(self.refcount@[fnx] == 0);
-                assert(!self.bitmap@.set_bits.contains(fnx));
+                assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "cannot share an unallocated frame";
             #[cfg(not(verus_keep_ghost))]
@@ -702,22 +654,14 @@ impl Inner {
         }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
         proof! {
-            let addr = frame@;
-            let i = frame_number as int;
-            assert(addr >= 0);
-            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
-            assert(i == addr / spec_page_size());
-            lemma_alloc_contains(self, addr);
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(frame@, spec_page_size());
+            lemma_alloc_contains(self, frame@);
         }
 
         if frame_number >= self.refcount.len() {
             proof! {
-                // frame_number >= refcount.len() >= num_bits, and set_bits ⊆ [0, num_bits),
-                // so the bit is clear and the frame is not allocated.
-                let i = frame_number as int;
-                assert(i >= self.refcount@.len());
-                assert(self.refcount@.len() >= self.bitmap@.num_bits);
-                assert(!self.bitmap@.set_bits.contains(i));
+                // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
+                assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame number out of bounds";
             #[cfg(not(verus_keep_ghost))]
@@ -728,9 +672,7 @@ impl Inner {
         if self.refcount[frame_number] == 0 {
             proof! {
                 // refcount[i] == 0, so the bit is clear (internal_inv), hence not allocated.
-                let i = frame_number as int;
-                assert(self.refcount@[i] == 0);
-                assert(!self.bitmap@.set_bits.contains(i));
+                assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame is not allocated";
             #[cfg(not(verus_keep_ghost))]
@@ -787,16 +729,9 @@ impl Inner {
             let ghost pre_rc = self.refcount@;
         }
         proof! {
-            let addr = phys_addr@;
-            let fnx = frame_number as int;
-            assert(addr >= 0);
-            assert(addr % spec_page_size() == 0);
-            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
-            assert(fnx == addr / spec_page_size());
             lemma_view_of(self);
-            assert(spec_refcount_seq(self) == pre_rc);
             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
-            lemma_free_contains(self, addr);
+            lemma_free_contains(self, phys_addr@);
         }
         match self.bitmap.set(frame_number) {
             Ok(()) => {
@@ -844,13 +779,8 @@ impl Inner {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         let nbits: usize = self.bitmap.number_of_bits();
         proof! {
-            let addr = phys_addr@;
-            let i = frame_number as int;
-            assert(addr >= 0);
-            assert(addr % spec_page_size() == 0);
-            assert(i == addr / spec_page_size());
-            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(addr, spec_page_size());
-            lemma_covered_iff(self, addr);
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(phys_addr@, spec_page_size());
+            lemma_covered_iff(self, phys_addr@);
         }
         frame_number < nbits
     }
@@ -975,8 +905,6 @@ impl Inner {
                 Ok(false) => {
                     proof! {
                         // Record coverage of `index` so the loop invariant extends to `index + 1`.
-                        assert(index < self.bitmap@.num_bits);
-                        assert(!self.bitmap@.is_bit_set(index as int));
                         assert(!pre_sb.contains(index as int));
                         assert((index as int) < pre_nb);
                     }
@@ -1012,19 +940,9 @@ impl Inner {
             index = index + 1;
         }
         proof! {
-            // The loop ran to completion, so every index in `[start_fn, end_exclusive)` is
-            // covered and free; the coverage invariant therefore extends to the whole range.
-            assert(index == end_exclusive);
-            assert(start_fn <= start_fn + nfr - 1);
-            assert(start_fn + nfr - 1 < index as int);
-            // Instantiate the coverage invariant at the last index of the range.
-            assert(pre_sb.contains(start_fn + nfr - 1) == false);
+            // The scan covered every index in `[start_fn, start_fn + nfr)` and found it free.
             assert(start_fn + nfr - 1 < pre_nb);
-            // Every requested index is in range and free; the range fits the bitmap.
-            assert(start_fn + nfr <= pre_nb);
-            assert(pre_nb <= pre_rc.len());
-            assert forall|j: int| start_fn <= j < start_fn + nfr implies
-                !pre_sb.contains(j) by {}
+            assert forall|j: int| start_fn <= j < start_fn + nfr implies !pre_sb.contains(j) by {}
         }
 
         // Book all frames in the range.
@@ -1050,11 +968,9 @@ impl Inner {
         for index in start_frame_number..end_exclusive {
             if let Err(error) = self.bitmap.set(index) {
                 proof! {
-                    // `index < num_bits` and the bit is still clear, so `set` cannot fail.
-                    assert(index < self.bitmap@.num_bits);
+                    // The bit at `index` is still clear and in range, so `set` cannot fail.
                     assert(!BitmapView::range_set(start_fn, index as int).contains(index as int));
                     assert(!pre_sb.contains(index as int));
-                    assert(!self.bitmap@.is_bit_set(index as int));
                     assert(false);
                 }
                 #[cfg(not(verus_keep_ghost))]

@@ -1,14 +1,14 @@
     - hal/mem/types/address/frame.rs:102 from_raw_value: external_body
-    - mm/phys/frame.rs:1112 instance: external_body
-    - mm/phys/frame.rs:1150 init: external_body
-    - mm/phys/frame.rs:1206 alloc: external_body
-    - mm/phys/frame.rs:1236 alloc_contiguous: external_body
-    - mm/phys/frame.rs:1257 free_count: external_body
-    - mm/phys/frame.rs:1275 free: external_body
-    - mm/phys/frame.rs:1317 book: external_body
-    - mm/phys/frame.rs:1338 alloc_range: external_body
-    - mm/phys/frame.rs:1358 share: external_body
-    - mm/phys/frame.rs:1379 refcount: external_body
+    - mm/phys/frame.rs:1028 instance: external_body
+    - mm/phys/frame.rs:1066 init: external_body
+    - mm/phys/frame.rs:1122 alloc: external_body
+    - mm/phys/frame.rs:1152 alloc_contiguous: external_body
+    - mm/phys/frame.rs:1173 free_count: external_body
+    - mm/phys/frame.rs:1191 free: external_body
+    - mm/phys/frame.rs:1233 book: external_body
+    - mm/phys/frame.rs:1254 alloc_range: external_body
+    - mm/phys/frame.rs:1274 share: external_body
+    - mm/phys/frame.rs:1295 refcount: external_body
     - mm/phys/kframe.rs:94 new: external_body
     - mm/phys/manager.proof.rs:12 lemma_manager_attached: admit
     - mm/phys/manager.proof.rs:27 lemma_kernel_alloc_one: admit

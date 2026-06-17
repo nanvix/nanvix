@@ -1316,3 +1316,323 @@ Batch B done. Let me verify the complex functions now.
 Turn 85
 ────────────────────────────────────────────────────────────
 [TOOL] read_bash: {'delay': 240, 'shellId': 'verify-b'}
+[RESULT ✓] read_bash: === Summary ===
+  verification: 79 verified, 0 errors (exit 0)
+  cheating: assume=0 external_body=23 admit=4 trusted=0 no_decreases=0 cfg_gate=19
+  coverage: 40/45 exec functions have contracts
+  status: CHEATING_DETECTED
+
+Log written to: verus-ai-logs/verify-kernel/verus-logs/verus_2026-06-18_00-26...
+
+────────────────────────────────────────────────────────────
+Turn 86
+────────────────────────────────────────────────────────────
+All 79 verify, 0 errors. The "CHEATING_DETECTED" is only the pre-existing external_body/admit in other modules (count unchanged from baseline: external_body=23, admit=4). Let me re-check remaining over-threshold blocks.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && python3 /home/ruize/verus-ai-exp/verus-ai/scripts/check_proof_blocks_patched.py src/k
+
+[THINKING] All 79 verifications passed with no errors, and the "CHEATING_DETECTED" flags are from pre-existing code in other modules—my changes didn't introduce any new external_body or admit references. I'm now checking that the current cheating count matches the baseline of 23 external_body and 4 admit.
+
+Now I'm moving to Batch C to minimize redundant asserts and hints in the small and prologue blocks, then extract and trim the remaining over-threshold blocks like is_covered and the prologues for free/share/book/refcount. I'll update the SQL tracking and re-run the proof block checker to see what still needs work.
+[RESULT ✓] bash: src/kernel/src/mm/phys/frame.rs               alloc                       182   188     7  ⚠️  EXTRACT (>5)
+src/kernel/src/mm/phys/frame.rs               free                        517   524     8  ⚠️  EXTRACT (>5)
+src/kernel/src/mm/phys/frame.rs               share                       594   601 ...
+
+────────────────────────────────────────────────────────────
+Turn 87
+────────────────────────────────────────────────────────────
+Good progress — down from 37 to 25 over-threshold blocks (the 3 "loop invariants" are `invariant` clauses, not proof blocks, so out of scope). Now Batch C: minimize remaining blocks. Let me view the prologue regions.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I've reduced the over-threshold proof blocks from 37 down to 25 by clarifying that loop invariant clauses aren't extraction targets—those are part of the loop specification itself, separate from the actual proof blocks I'm looking for. Now I'm examining what's left in those 25 remaining blocks, starting with the ones in the alloc section around lines 182-188.
+
+Looking at the breakdown, many of these are the prologue sections and smaller blocks I deferred earlier—the free/share/book prologues, out-of-bounds blocks, reference count zero blocks, and clearguard sections. These are my trim-inline candidates for Batch C. My plan is to aggressively compress each category: trim the prologues from 12 lines down to about 3 by removing redundant arithmetic assertions while keeping the essential lemma views and containment checks, then do the same for the oob blocks, rc0 blocks, clearguard, and the alloc-setbit/alloc-none sections. I need to systematically view these regions to see their current state and identify exactly which blocks need trimming.
+[RESULT ✓] view: 430.         proof_decl! {
+431.             let ghost g_old = self@;
+432.             let ghost pre_sb = self.bitmap@.set_bits;
+433.             let ghost pre_nb = self.bitmap@.num_bits;
+434.             let ghost pre_rc = self.refcount@;
+435.         }
+436.         proof! {
+437.             let add...
+
+────────────────────────────────────────────────────────────
+Turn 88
+────────────────────────────────────────────────────────────
+Let me view the other prologues and small blocks to trim.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm trimming down the prologue to keep only the essential facts: the relationship between `g_old` and the view of the pre-state, the lemma result about allocated blocks, and the alignment properties that follow from the frame invariant.
+
+For the small blocks (oob, rc0, clearguard), I'm removing redundant `let` bindings and comments, keeping only the critical asserts that can't be automatically derived—like the bit containment check that's actually the proof goal.
+
+The key insight is that `!set_bits.contains(fnx)` is what matters downstream for proving the frame isn't allocated, so I'll keep that assert and maybe the intermediate `refcount.len() >= num_bits` if Verus needs it, but drop the obviously redundant ones like `addr >= 0` and duplicate `fnx` definitions.
+
+I'm going to do a systematic pass across all the functions at once, being conservative about what to remove—keeping load-bearing asserts and only cutting the clearly unnecessary ones—then verify the whole thing together rather than piecemeal.
+
+Trimming the free prologue down to just the essential lines and the oob block to keep only the two critical asserts while inlining `frame_number as int` directly... I need to extract and refactor the largest blocks rather than just trim them. The prologues in free, share, and book are all around 12 lines, and there are several larger blocks in alloc_contiguous and alloc_range that exceed the threshold. Let me start by viewing those specific regions to understand what can be extracted or simplified.
+[RESULT ✓] view: 575.             let ghost g_old = self@;
+576.             let ghost pre_sb = self.bitmap@.set_bits;
+577.             let ghost pre_nb = self.bitmap@.num_bits;
+578.             let ghost pre_rc = self.refcount@;
+579.         }
+580.         proof! {
+581.             let addr = frame@;
+582.           ...
+
+────────────────────────────────────────────────────────────
+Turn 89
+────────────────────────────────────────────────────────────
+Now let me trim the prologues and small blocks. Starting with `free`'s prologue and OOB/rc0/clearguard blocks.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm identifying that the free and share prologue blocks are identical, so I need to trim them down to three lines and make them distinct. I'm also removing redundant variable declarations and assertions from their out-of-bounds and reference count blocks, then differentiating the free prologue from the share prologue. Adding error handling and validation logic... I'm wrestling with the line count limit for the proof block — moving the comment outside keeps the proof itself under 5 lines, but I need to decide whether to keep the explanatory comments at all since they're verification-focused rather than source comments. The trade-off is between readability and staying within the tool's constraints.
+
+Looking at the bigger picture, the real wins are extracting the large proof blocks (89, 72, 32, 22 lines), which I've already done. For the remaining 6-15 line blocks, I should focus on trimming redundant asserts and extracting shared logic where it makes sense. The three identical prologues in free/share/book are a good candidate — I can create a shared lemma for the view capture part that all three use, which would both reduce duplication and get them under the threshold. Finishing the prologue with the assertion and lemma call brings it to 5 lines, which stays under the threshold. For free/share operations, I'll use this inline approach instead of creating a wrapper lemma. The frame invariant automatically provides the page alignment requirement that lemma_alloc_contains needs, and downstream code can derive the frame number equivalence from the specs, so the assertion establishing `g_old == view_of(...)` gives everything needed for the subsequent lemmas.
+
+Now I'm reconsidering the oob block — I have two assertions checking the refcount length and that the bit isn't set, but the second is really the goal. The first might be auto-derived from the internal invariant, so I could potentially drop it and keep the block under 5 lines.
+
+For the rc0 block, I'm writing a similar proof that checks the bit isn't set, using the fact that refcount[fnx] == 0 combined with the internal invariant to establish that the bit must be clear.
+
+For clearguard, I'm setting up the preconditions for bitmap.clear by asserting that the bitmap hasn't changed yet (set_bits still equals pre_sb), that the bit is set in that snapshot, and that the frame number is within bounds. These facts come from lemma_frame_allocated which was called earlier, so Verus might be able to derive them automatically without explicit assertions. Finishing the assertion about num_bits from the lemma, then moving on to trim the three largest prologues (free, share, and book) by removing redundant precondition checks and guard blocks, starting with the free region.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 90
+────────────────────────────────────────────────────────────
+Now `share`'s prologue, OOB, and rc0 blocks.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the prologue, out-of-bounds section, and release candidate 0 from lines 580-621, I'm trimming this down similarly to what I did before.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 91
+────────────────────────────────────────────────────────────
+Now let me view `refcount`, `book`, and `is_covered` current state.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the refcount variable around lines 700-740, the book section spanning 790-820, and the is_covered logic in lines 846-855.
+[RESULT ✓] view: 690.                 assert(!self.bitmap@.set_bits.contains(i));
+691.             }
+692.             let reason: &str = "frame number out of bounds";
+693.             #[cfg(not(verus_keep_ghost))]
+694.             error!("{reason} (frame={frame:?})");
+695.             return Err(Error::new(ErrorCode...
+
+────────────────────────────────────────────────────────────
+Turn 92
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 668.             let reason: &str = "unaligned frame address";
+669.             #[cfg(not(verus_keep_ghost))]
+670.             error!("{reason} (frame={frame:?})");
+671.             return Err(Error::new(ErrorCode::BadAddress, reason));
+672.         }
+673.         let frame_number: usize = frame.int...
+
+────────────────────────────────────────────────────────────
+Turn 93
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the refcount-arith block to understand how the address alignment constraint gets established — it asserts addr>=0 and uses division lemmas to set i==addr/ps. The key insight is that refcount's contract doesn't automatically require frame.inv(), so the frame alignment condition frame@%ps==0 actually comes from the unaligned check that happens later in the code. Trimming the refcount block down to just the essential call to lemma_alloc_contains, since the precondition addr%ps==0 is already established by the unaligned check and into_frame_number's call confirms frame.inv() is satisfied at that point. Trimming the proof block further by removing the intermediate variable assignments and keeping just the essential lemmas — asserting that frame@ is non-negative, calling lemma_div_pos_is_pos to establish the division is valid, and then lemma_alloc_contains to verify the allocation. But now I'm questioning whether lemma_div_pos_is_pos is actually needed, since lemma_alloc_contains only requires the internal invariant and addr%ps==0, not the non-negativity of the division itself. Simplifying the proof blocks...
+[RESULT ✓] view: 785.                     lemma_view_of(self);
+786.                     assert(self@ == g_old);
+787.                     assert(!g_old.is_free(phys_addr@));
+788.                 }
+789.                 #[cfg(not(verus_keep_ghost))]
+790.                 error!("{error:?} (phys_addr={phys_addr:?})");
+79...
+
+────────────────────────────────────────────────────────────
+Turn 94
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 768.             assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
+769.             lemma_free_contains(self, addr);
+770.         }
+771.         match self.bitmap.set(frame_number) {
+772.             Ok(()) => {
+773.                 #[cfg(not(verus_keep_ghost))]
+774.                 debug_assert_eq!...
+
+────────────────────────────────────────────────────────────
+Turn 95
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 757.             let ghost pre_rc = self.refcount@;
+758.         }
+759.         proof! {
+760.             let addr = phys_addr@;
+761.             let fnx = frame_number as int;
+762.             assert(addr >= 0);
+763.             assert(addr % spec_page_size() == 0);
+764.             vstd::arithmeti...
+
+────────────────────────────────────────────────────────────
+Turn 96
+────────────────────────────────────────────────────────────
+Now trim `book` prologue, `is_covered`, and `refcount` blocks.
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm trimming several sections of the proof code to make them more concise. The book prologue gets condensed to focus on the key lemmas and assertions, while the is_covered section is being similarly streamlined.
+
+For is_covered, I'm verifying that the proof can rely on automatic derivations—the alignment property `addr%ps==0` comes from the invariant, and `i==addr/ps` follows automatically from the frame number conversion. The lemma_covered_iff establishes the equivalence between is_covered and the bounds check on the frame number, so I can remove the explicit assertions about addr being non-negative and the modulo being zero since those are handled implicitly.
+
+For refcount-arith, I'm simplifying to just call lemma_alloc_contains, which is what's actually needed after the unaligned check. The division lemma was likely there to support the `i==addr/ps` equality, but that's now automatic from the into_frame_number conversion, so it can be removed.
+
+For refcount-oob and refcount-rc0, I'm adding assertions that the frame number isn't in the bitmap's set bits—in the first case because the frame number exceeds the bitmap length, and in the second because the refcount being zero means the bit must be clear by the internal invariant.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 97
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 98
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 99
+────────────────────────────────────────────────────────────
+Now let me view the remaining `alloc`, `alloc_contiguous`, `alloc_range` small blocks.
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I need to work through the remaining code blocks that exceed the length threshold across three functions: alloc has several sections to trim including the setbit and none blocks, alloc_contiguous needs the setrange block compressed, and alloc_range has a prologue and another section to address.
+[RESULT ✓] view: 154.                 #[cfg(not(verus_keep_ghost))]
+155.                 error!("{error:?}");
+156.                 return Err(error);
+157.             },
+158.         };
+159.         proof_decl! { let ghost idx = frame_number as int; }
+160.         proof! {
+161.             // `alloc` set a previousl...
+
+────────────────────────────────────────────────────────────
+Turn 100
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the `alloc-setbit` function, I'm establishing the preconditions needed for the subsequent lemma: verifying the index is within bounds, confirming it's not already in the set, tracking how the set changes with the insertion, and ensuring the reference count sequence and representability constraints hold. The postconditions from bitmap.alloc already give me the facts I need (idx in range, bit was clear, updated bitmap), so those asserts at 162-166 are redundant. The representability constraints come from the capture invariant forall, and I need to check whether FrameNumber::from_raw_value's precondition (idx<=spec_max) is automatically satisfied or requires an explicit assert to guide the proof. The forall trigger on `frame_addr_of(i)` means that asserting `frame_addr_of(idx) <= usize::MAX` will fire the instantiation and automatically give me `idx <= spec_max` as well, so I only need that one assert in the proof block. The None arm can still assert `idx <= spec_max` separately if needed for clarity. I'm going to trim the alloc-none block down to 4 lines to match the size constraints, then move on to handling the alloc_contiguous setrange and alloc_range blocks.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 101
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the alloc_contiguous function and the setrange block in the 301-315 range, then examining the broader context around lines 296-340.
+[RESULT ✓] view: 293.             assert(0 <= start < pre_nb);
+294.             assert(start + count as int <= pre_nb);
+295.             assert(self.bitmap@.set_bits
+296.                 == pre_sb.union(BitmapView::range_set(start, start + count as int)));
+297.             assert(self.bitmap@.num_bits == pre_nb);
+29...
+
+────────────────────────────────────────────────────────────
+Turn 102
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] view: 287.                 error!("{error:?} (count={count})");
+288.                 return Err(error);
+289.             },
+290.         };
+291.         proof_decl! { let ghost start = frame_number as int; }
+292.         proof! {
+293.             assert(0 <= start < pre_nb);
+294.             assert(start ...
+
+────────────────────────────────────────────────────────────
+Turn 103
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm looking at the loop invariant conditions that need to hold at the start of the booking loop: the start index must be within bounds, the count can't exceed the available space, the set of bits should equal the union of the previous set with the current range, and crucially, the range being booked must currently be clear of any existing bits.
+
+Most of these conditions follow automatically from the `alloc_range` postcondition, but the forall statement proving that all bits in the range are unset requires explicit reasoning about the bitmap state — it's not trivial enough for the solver to handle automatically, so I need to keep that assertion with its proof while trimming away the redundant auto-verified conditions. Counting lines to get the proof block under 5 lines by removing the inline comment and keeping only the essential assert hint. The forall-with-by is tightly coupled to the loop invariant, so extracting it to a lemma would be awkward. I'll trim redundant parts and move comments outside the block to stay within the line limit. I need to verify that the loop invariant conditions are automatically satisfied by the alloc_range postcondition, so I can safely remove the redundant asserts. The bounds `0 <= start < pre_nb` and `start + count <= pre_nb` should follow directly from alloc_range's guarantees about the allocated range. Let me check the remaining blocks of alloc_range to see what else needs trimming.
+[RESULT ✓] view: 910.                 error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
+911.                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
+912.             }
+913.             match self.bitmap.test(index) {
+914.                 Ok(false) => {
+915.              ...
+
+────────────────────────────────────────────────────────────
+Turn 104
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the ar-scanfree block, I'm establishing the loop invariant conditions for when a bit is not set: the index stays within bounds, the bit isn't set in either the current or previous state, and these constraints extend the existing scan loop invariant that tracks all previously examined bits.
+
+I'm trimming the proof block down to just the two assertions that actually extend the invariant—removing the redundant checks that Verus can derive automatically from the if-condition and test result. The key assertions are that the index isn't in the pre-scan set (which follows from the test showing the bit is unset plus the loop invariant that set_bits equals pre_sb) and that the index stays below the pre-scan bound (from the bounds check plus the loop invariant).
+
+Now I'm moving on to examine the ar-postscan and ar-setfail blocks.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 105
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 106
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking for the ar-postscan and ar-setfail blocks to examine what they contain.
+[RESULT ✓] view: 968.                 self.refcount@.len() == pre_rc.len(),
+969.                 forall|j: int| start_fn <= j < start_fn + nfr ==> !pre_sb.contains(j),
+970.                 forall|k: int| 0 <= k < pre_rc.len() ==>
+971.                     #[trigger] self.refcount@[k] == (if start_fn <= k < index as i...
+
+────────────────────────────────────────────────────────────
+Turn 107
+────────────────────────────────────────────────────────────
+[TOOL] view: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] I'm looking at the unreachable proof block for when bitmap.set fails—it's currently 8 lines but I can trim it down to 4 by keeping just the essential assertions that establish set can't fail given the preconditions, then the unreachable assertion. I'm trying to figure out which assertions are essential to prove the Err branch is unreachable. The key insight is that set() can only fail if its preconditions are violated—specifically if the index is out of range or the bit is already set. Since I've established both that the index is within bounds and the bit is clear, set() must succeed. I could keep the proof block lean by asserting just the index bound and the bit-clear condition, but Verus might need the intermediate facts about range_set and pre_sb to derive that the bit is actually clear. So I'm balancing between keeping enough hints for Verus to verify the contradiction versus keeping the proof concise. Trimming the proof block further by removing the redundant `is_bit_set` assertion since it's derivable from the two `contains` checks, bringing it down to 5 lines with just the essential contradictions needed to establish that `set()` cannot fail. I need to locate the postscan block that comes before the booking loop invariant to verify the preconditions are properly established.
+[RESULT ✓] view: 937.                     return Err(err);
+938.                 },
+939.             }
+940.             index = index + 1;
+941.         }
+942.         proof! {
+943.             // The loop ran to completion, so every index in `[start_fn, end_exclusive)` is
+944.             // covered and free; the cov...
+
+────────────────────────────────────────────────────────────
+Turn 108
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+
+[THINKING] Looking at the ar-postscan block, I'm establishing three key facts needed for the booking loop invariant and lemma_alloc_range_post: that the final number of free ranges doesn't exceed the pre-scan count, that the pre-scan count is within bounds of the range collection, and that no previously scanned indices appear in the set. The critical insight is that the first constraint comes directly from the scan loop invariant at its termination point. Trimming the proof block...
+
+The key insight is that `start_fn + nfr - 1 < pre_nb` instantiates the loop invariant at the boundary, which automatically gives us `start_fn + nfr <= pre_nb`. The `pre_nb <= pre_rc.len()` constraint comes from the capture and doesn't need explicit assertion. Now I need to apply similar reasoning to the postscan and setfail edits, and verify the booking loop invariant on entry—specifically that `start_fn + nfr <= pre_nb` holds and that the bitmap union correctly represents the range from `start_fn` to the current index.
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 109
+────────────────────────────────────────────────────────────
+[TOOL] edit: /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs
+[RESULT ✓] edit: File /home/ruize/nanvix-phy-specs/src/kernel/src/mm/phys/frame.rs updated with changes.
+
+────────────────────────────────────────────────────────────
+Turn 110
+────────────────────────────────────────────────────────────
+Now let me verify all the Batch C minimizations.
+[TOOL] bash: cd /home/ruize/nanvix-phy-specs && timeout 1800 make verify-kernel MODULE=mm::phys 2>&1 | tail -8
+
+[THINKING] I'm checking the remaining uncovered blocks in the proof — the alloc_range case was already handled with the lemma replacement, and the bitmap bounds check block got replaced too. There are still a few small unreachable error arms scattered in alloc_contiguous, from_frame_number, and the alloc_range test, but those are minor enough to leave for now.
+
+Before running verification, I'm assessing the riskier trims I made: removing the address alignment and frame index assertions from the free/share prologues, collapsing the out-of-bounds and refcount-zero blocks into a single containment check, trimming the refcount arithmetic down to just the lemma, and removing bitmap postcondition restatements from the alloc-setbit block. Most of these carry medium risk since they rely on lemmas or auto-availability to fill the gaps. Let me run the verification and fix any failures that surface.
+[RESULT ✓] bash: <command started in background with shellId: verify-c>
+
+────────────────────────────────────────────────────────────
+Turn 111
+────────────────────────────────────────────────────────────
+[TOOL] read_bash: {'delay': 240, 'shellId': 'verify-c'}
