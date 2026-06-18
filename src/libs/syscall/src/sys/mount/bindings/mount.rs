@@ -52,6 +52,8 @@ use ::syslog::trace_syscall;
 ///
 #[trace_syscall]
 #[unsafe(no_mangle)]
+// `flags as u64` widens `c_ulong` (u32) on x86 but is an identity cast on x86_64 (c_ulong = u64).
+#[cfg_attr(target_arch = "x86_64", allow(clippy::unnecessary_cast))]
 pub unsafe extern "C" fn mount(
     source: *const c_char,
     target: *const c_char,

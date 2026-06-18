@@ -25,10 +25,10 @@ use ::core::mem::size_of;
 //==================================================================================================
 
 /// Microseconds in a second.
-const MICROSECONDS_PER_SECOND: i32 = 1_000_000;
+const MICROSECONDS_PER_SECOND: suseconds_t = 1_000_000;
 
 /// Nanoseconds in a second.
-const NANOSECONDS_PER_SECOND: i32 = 1_000_000_000;
+const NANOSECONDS_PER_SECOND: suseconds_t = 1_000_000_000;
 
 /// Maximum number of file descriptors tracked by [`fd_set`].
 pub const FD_SETSIZE: usize = 64;
@@ -278,6 +278,59 @@ impl fd_set {
             (*fd_set).zero();
         }
     }
+
+    /// Fixed-width size of the wire encoding produced by [`fd_set::to_bytes()`].
+    ///
+    /// This is independent of the width of [`c_ulong`] (4 bytes on x86 ILP32 guests, 8 bytes on
+    /// x86_64 LP64 hosts), so the on-the-wire representation is identical across targets.
+    pub const WIRE_SIZE: usize = FD_SET_WORD_COUNT * size_of::<c_ulong>();
+
+    ///
+    /// # Description
+    ///
+    /// Serializes the file descriptor set into its fixed-width wire representation.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a byte array holding the wire encoding of the file descriptor set.
+    ///
+    pub fn to_bytes(&self) -> [u8; Self::WIRE_SIZE] {
+        let mut bytes: [u8; Self::WIRE_SIZE] = [0; Self::WIRE_SIZE];
+        // Operate through a raw pointer to avoid creating an unaligned reference to a packed field.
+        let base: *const c_ulong = ::core::ptr::addr_of!(self.fds_bits) as *const c_ulong;
+        for index in 0..FD_SET_WORD_COUNT {
+            // SAFETY: `index` is within the bounds of `fds_bits`.
+            let word: c_ulong = unsafe { base.add(index).read_unaligned() };
+            let offset: usize = index * size_of::<c_ulong>();
+            bytes[offset..offset + size_of::<c_ulong>()].copy_from_slice(&word.to_ne_bytes());
+        }
+        bytes
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Deserializes a file descriptor set from the fixed-width wire representation produced by
+    /// [`fd_set::to_bytes()`].
+    ///
+    /// # Parameters
+    ///
+    /// - `bytes`: Wire encoding of the file descriptor set.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the reconstructed file descriptor set.
+    ///
+    pub fn from_bytes(bytes: [u8; Self::WIRE_SIZE]) -> Self {
+        let mut fds_bits: [c_ulong; FD_SET_WORD_COUNT] = [0; FD_SET_WORD_COUNT];
+        for (index, word) in fds_bits.iter_mut().enumerate() {
+            let offset: usize = index * size_of::<c_ulong>();
+            let mut buffer: [u8; size_of::<c_ulong>()] = [0; size_of::<c_ulong>()];
+            buffer.copy_from_slice(&bytes[offset..offset + size_of::<c_ulong>()]);
+            *word = c_ulong::from_ne_bytes(buffer);
+        }
+        Self { fds_bits }
+    }
 }
 
 impl Default for fd_set {
@@ -295,6 +348,82 @@ pub struct timeval {
     pub tv_sec: time_t,
     /// Nano-seconds.
     pub tv_usec: suseconds_t,
+}
+
+/// Errors that can occur when serializing or deserializing a [`timeval`] wire payload.
+#[derive(Debug, Clone, Copy)]
+pub enum TimevalError {
+    /// Error code indicating an invalid array size.
+    InvalidArraySize,
+    /// Error code indicating failure to parse `tv_sec` field.
+    FailedToParseTvSec,
+    /// Error code indicating failure to parse `tv_usec` field.
+    FailedToParseTvUsec,
+}
+
+impl timeval {
+    /// Size of the seconds field.
+    const SIZE_OF_TV_SEC: usize = size_of::<time_t>();
+    /// Offset of the seconds field.
+    const OFFSET_OF_TV_SEC: usize = 0;
+    /// Offset of the micro-seconds field.
+    const OFFSET_OF_TV_USEC: usize = Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC;
+
+    /// Wire format always uses i64 (8 bytes) for `tv_usec`, ensuring IPC compatibility
+    /// between x86 guests (`c_long=i32`) and x86_64 hosts (`c_long=i64`).
+    const WIRE_SIZE_OF_TV_USEC: usize = size_of::<i64>();
+    /// Wire format size for IPC serialization (always 16 bytes).
+    pub const WIRE_SIZE: usize = Self::SIZE_OF_TV_SEC + Self::WIRE_SIZE_OF_TV_USEC;
+
+    /// Converts a `timeval` structure to a wire-format byte array.
+    pub fn to_bytes(&self) -> [u8; Self::WIRE_SIZE] {
+        let mut bytes: [u8; Self::WIRE_SIZE] = [0; Self::WIRE_SIZE];
+
+        // Convert seconds field.
+        bytes[Self::OFFSET_OF_TV_SEC..Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC]
+            .copy_from_slice(&self.tv_sec.to_ne_bytes());
+
+        // Convert micro-seconds field (always as i64 for IPC compatibility).
+        // Cast is needed on x86 (c_long=i32→i64) but is a no-op on x86_64 (c_long=i64).
+        #[cfg_attr(target_arch = "x86_64", allow(clippy::unnecessary_cast))]
+        let usec_bytes = (self.tv_usec as i64).to_ne_bytes();
+        bytes[Self::OFFSET_OF_TV_USEC..Self::OFFSET_OF_TV_USEC + Self::WIRE_SIZE_OF_TV_USEC]
+            .copy_from_slice(&usec_bytes);
+
+        bytes
+    }
+
+    /// Tries to convert a `timeval` structure from a wire-format byte array.
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, TimevalError> {
+        // Check if the array has the correct wire size.
+        if bytes.len() != Self::WIRE_SIZE {
+            return Err(TimevalError::InvalidArraySize);
+        }
+
+        // Parse seconds field.
+        let tv_sec: time_t = time_t::from_ne_bytes(
+            bytes[Self::OFFSET_OF_TV_SEC..Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC]
+                .try_into()
+                .map_err(|_| TimevalError::FailedToParseTvSec)?,
+        );
+
+        // Parse micro-seconds field (always read as i64, then convert to suseconds_t).
+        // The checked conversion rejects out-of-range values instead of silently wrapping on
+        // 32-bit targets where suseconds_t (c_long) is narrower than the i64 wire value.
+        let raw_tv_usec: i64 = i64::from_ne_bytes(
+            bytes[Self::OFFSET_OF_TV_USEC..Self::OFFSET_OF_TV_USEC + Self::WIRE_SIZE_OF_TV_USEC]
+                .try_into()
+                .map_err(|_| TimevalError::FailedToParseTvUsec)?,
+        );
+        #[cfg_attr(
+            target_arch = "x86_64",
+            allow(clippy::unnecessary_fallible_conversions)
+        )]
+        let tv_usec: suseconds_t =
+            suseconds_t::try_from(raw_tv_usec).map_err(|_| TimevalError::FailedToParseTvUsec)?;
+
+        Ok(Self { tv_sec, tv_usec })
+    }
 }
 
 /// Errors that can occur when converting a `timeval` to a `timespec`.

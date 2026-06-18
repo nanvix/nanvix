@@ -33,6 +33,7 @@ impl From<LibcTimeSpec> for libc::timespec {
     }
 }
 
+#[cfg_attr(target_arch = "x86_64", allow(clippy::useless_conversion))]
 impl TryFrom<LibcTimeSpec> for timespec {
     type Error = Error;
 
@@ -47,6 +48,7 @@ impl TryFrom<LibcTimeSpec> for timespec {
     }
 }
 
+#[cfg_attr(target_arch = "x86_64", allow(clippy::useless_conversion))]
 impl From<timespec> for LibcTimeSpec {
     fn from(tp: timespec) -> Self {
         LibcTimeSpec(libc::timespec {

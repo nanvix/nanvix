@@ -168,7 +168,11 @@ pub(crate) fn handle_fchown(source: ThreadIdentifier, msg: SystemCallMessage) ->
 }
 
 pub(crate) fn handle_futimens(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {
-    let req: UpdateFileAccessTimeRequest = UpdateFileAccessTimeRequest::from_bytes(msg.payload);
+    let req: UpdateFileAccessTimeRequest =
+        match UpdateFileAccessTimeRequest::from_bytes(msg.payload) {
+            Ok(req) => req,
+            Err(e) => return build_error(source, e.code),
+        };
     let fd: i32 = req.fd;
     // futimens is a no-op in our VFS.
     ::syslog::trace!("handle_futimens(): stubbed (fd={})", fd);

@@ -72,8 +72,8 @@ impl UpdateFileAccessTimeAtRequest {
     const SIZE_OF_FLAG: usize = mem::size_of::<i32>();
     /// Sizes of 'path length' field.
     const SIZE_OF_PATH_LENGTH: usize = mem::size_of::<u32>();
-    /// Sizes of 'access time' field.
-    const SIZE_OF_TIMES: usize = 2 * mem::size_of::<timespec>();
+    /// Sizes of 'access time' field (wire format: always 2 * 16 = 32 bytes).
+    const SIZE_OF_TIMES: usize = 2 * timespec::WIRE_SIZE;
     /// Offsets to 'directory file descriptor' field.
     const OFFSET_TO_DIRFD: usize = 0;
     /// Offsets to 'flags' field.
@@ -206,11 +206,11 @@ impl MessageDeserializer for UpdateFileAccessTimeAtRequest {
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid path length"))?,
         ) as usize;
 
-        // Deserialize access time.
+        // Deserialize access time (using wire format size).
         let mut times: [timespec; 2] = [timespec::default(); 2];
         for (i, time) in times.iter_mut().enumerate() {
-            let offset: usize = Self::OFFSET_TO_TIMES + i * mem::size_of::<timespec>();
-            *time = timespec::try_from_bytes(&bytes[offset..(offset + mem::size_of::<timespec>())])
+            let offset: usize = Self::OFFSET_TO_TIMES + i * timespec::WIRE_SIZE;
+            *time = timespec::try_from_bytes(&bytes[offset..(offset + timespec::WIRE_SIZE)])
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid time"))?;
         }
 

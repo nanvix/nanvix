@@ -243,8 +243,8 @@ pub struct FileStatAtResponse {
 }
 
 impl FileStatAtResponse {
-    /// Size of file status field.
-    const SIZE_OF_STAT: usize = mem::size_of::<stat>();
+    /// Size of file status field (serialized wire format, not in-memory layout).
+    const SIZE_OF_STAT: usize = stat::SIZE;
 
     ///
     /// # Description
