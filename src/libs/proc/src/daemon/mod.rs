@@ -236,13 +236,16 @@ impl ProcessDaemon {
                             continue;
                         },
                         MessageType::ProcessCreationEvent => {
-                            if let Err(e) = self.handle_process_creation_event(message) {
-                                ::syslog::error!(
-                                    "failed to handle process creation event (error={:?})",
-                                    e
-                                );
+                            match self.handle_process_creation_event(message) {
+                                Ok(Some(status)) => return status,
+                                Ok(None) => continue,
+                                Err(e) => {
+                                    ::syslog::error!(
+                                        "failed to handle process creation event (error={:?})",
+                                        e
+                                    );
+                                },
                             }
-                            continue;
                         },
                     }
                 },
@@ -254,7 +257,7 @@ impl ProcessDaemon {
     /// Handles a process-creation scheduling event published by the kernel. The kernel emits this
     /// event whenever a process forks a child, allowing the daemon to record the parent/child
     /// relationship without the parent having to register the child explicitly.
-    fn handle_process_creation_event(&mut self, message: Message) -> Result<(), Error> {
+    fn handle_process_creation_event(&mut self, message: Message) -> Result<Option<i32>, Error> {
         // Deserialize the process-creation information.
         let raw_info: [u8; ::core::mem::size_of::<ProcessCreationInfo>()] = message.payload
             [0..::core::mem::size_of::<ProcessCreationInfo>()]
@@ -352,8 +355,15 @@ impl ProcessDaemon {
         // while it was still unknown and buffered the exit status. Now that the child's lineage is
         // recorded and its fork-clone has been dispatched to the filesystem daemon above, reclaim
         // its filesystem state (ordered after the fork-clone, so the snapshot is taken before it is
-        // torn down) and finalize the termination, so a parent blocked in `waitpid()` receives the
-        // exit status instead of blocking forever on a child that can never terminate again.
+        // torn down) and finalize the termination through the same decision logic as
+        // `handle_process_termination_event()`. Routing through the shared helper is essential: a
+        // kernel-spawned process (the init process or a daemon) can be buffered too — its `Signup`
+        // may not have been processed when its termination arrived — so the buffered termination
+        // must trigger init-driven shutdown or daemon deregistration/crash shutdown rather than be
+        // auto-reaped as if it were an ordinary forked child. This also answers a parent blocked in
+        // `waitpid()` instead of leaving it blocked forever on a child that can never terminate
+        // again. A returned shutdown status is propagated to the caller so the daemon can bring the
+        // system down.
         if let Some(pos) = self
             .early_terminations
             .iter()
@@ -365,12 +375,10 @@ impl ProcessDaemon {
                 child,
                 status
             );
-            self.pending_fork_syncs.retain(|(c, _)| *c != child);
-            self.notify_process_exit(child);
-            self.finalize_forked_child_termination(child, status)?;
+            return self.finalize_known_termination(child, status);
         }
 
-        Ok(())
+        Ok(None)
     }
 
     /// Handles a process-termination scheduling event.
@@ -441,6 +449,28 @@ impl ProcessDaemon {
             return Ok(None);
         }
 
+        // Lineage is known: dispatch the termination through the shared decision logic, which
+        // routes init-process and daemon terminations to shutdown/deregistration and ordinary
+        // forked children to auto-reaping. The same helper is used by the early-termination replay
+        // in `handle_process_creation_event()`, so a buffered termination of a kernel-spawned
+        // process (init or a daemon) is handled identically rather than being mistaken for a
+        // forked child.
+        self.finalize_known_termination(pid, status)
+    }
+
+    /// Applies the termination decision for a process `pid` whose lineage is already known, sharing
+    /// one code path between the termination handler and the early-termination replay in
+    /// `handle_process_creation_event()`. Reclaims the process's filesystem state, drops its stale
+    /// fork-sync and blocked-wait bookkeeping, and then routes the termination according to the
+    /// process's role: the init process triggers system shutdown (propagating its exit status), a
+    /// daemon is deregistered (triggering a crash shutdown only on a non-zero status), and an
+    /// ordinary forked child is finalized via [`Self::finalize_forked_child_termination`]. Returns
+    /// `Some(status)` when the termination must bring the system down, otherwise `None`.
+    fn finalize_known_termination(
+        &mut self,
+        pid: ProcessIdentifier,
+        status: i32,
+    ) -> Result<Option<i32>, Error> {
         // Drop any stale fork-sync bookkeeping and notify the filesystem daemon to reclaim the
         // process's per-process state (open file descriptors and working directory). Unlike the
         // fork-clone notification — which is skipped for kernel-spawned processes that have no
@@ -463,10 +493,24 @@ impl ProcessDaemon {
             // that: only its termination triggers shutdown. Otherwise — most workloads never sign
             // up — fall back to lineage: the process whose recorded parent is the kernel is the
             // init process. Requiring the parent to be the kernel (rather than merely absent)
-            // prevents a forked child from spuriously triggering a system-wide shutdown.
+            // prevents a forked child from spuriously triggering a system-wide shutdown. The
+            // well-known daemon PIDs are excluded explicitly because a daemon is also spawned
+            // directly by the kernel, and the name-based `is_daemon` check above is unreliable
+            // until the daemon signs up: a buffered termination replayed before the daemon's
+            // `Signup` was processed has an empty name, so without this exclusion it would match
+            // the lineage fallback and spuriously bring the system down. This mirrors the
+            // daemon-PID exclusion in `adoptive_init()`.
             let is_init: bool = match self.init_proc {
                 Some(init_proc) => init_proc == pid,
-                None => record.parent == Some(ProcessIdentifier::KERNEL),
+                None => {
+                    record.parent == Some(ProcessIdentifier::KERNEL)
+                        && !matches!(
+                            pid,
+                            ProcessIdentifier::PROCD
+                                | ProcessIdentifier::MEMD
+                                | ProcessIdentifier::VFSD
+                        )
+                },
             };
 
             // A daemon terminated — not a shutdown trigger (unless it crashed).
@@ -503,10 +547,9 @@ impl ProcessDaemon {
             return Ok(None);
         }
 
-        // Unreachable in practice: the early-termination buffer check at the top of this function
-        // returns for any pid that is not yet in the registry, so a process reaching this point is
-        // always known and was handled by one of the branches above. Return without action as a
-        // safe guard rather than panicking.
+        // Unreachable in practice: a termination is finalized only once the process's lineage is
+        // recorded, so the process is always present in the registry and was handled by one of the
+        // branches above. Return without action as a safe guard rather than panicking.
         Ok(None)
     }
 
