@@ -16,10 +16,13 @@
 
 use ::alloc::alloc::Layout;
 use ::arch::mem::PAGE_SIZE;
-use ::core::sync::atomic::{
-    AtomicU32,
-    AtomicU8,
-    Ordering,
+use ::core::{
+    sync::atomic::{
+        AtomicU32,
+        AtomicU8,
+        Ordering,
+    },
+    time::Duration,
 };
 use ::sys::{
     error::{
@@ -40,9 +43,12 @@ use ::sys::{
     mm::VirtualAddress,
     pm::{
         Capability,
+        ConditionAddress,
+        MutexAddress,
         ProcessIdentifier,
         ThreadCreateArgs,
     },
+    time::SystemTime,
 };
 
 //==================================================================================================
@@ -72,6 +78,20 @@ const CHILD_STACK_SIZE: usize = 4 * PAGE_SIZE;
 /// requests on the basis of their invalid `user_fn`/`user_stack_base` fields.
 const DUMMY_STACK_SIZE: usize = 8192;
 
+/// Timeout used for the condition-variable waits performed by [`exercise_mutex_condvar`].  No
+/// other thread in the same process signals the condition, so each wait is expected to elapse and
+/// report [`ErrorCode::OperationTimedOut`].  Chosen long enough to avoid a premature return on a
+/// loaded host, yet short enough to keep the test responsive.
+const COND_WAIT_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Status byte sent by the child when it successfully exercised the inherited mutex and condition
+/// variable.
+const MC_CHILD_OK: u8 = 1;
+
+/// Status byte sent by the child when it failed to exercise the inherited synchronization
+/// primitives.
+const MC_CHILD_FAIL: u8 = 0;
+
 //==================================================================================================
 // Global State
 //==================================================================================================
@@ -83,6 +103,16 @@ static SHARED_BYTE: AtomicU8 = AtomicU8::new(0);
 /// Parent process identifier, written before `duplicate()` so that the child can recover it
 /// from the inherited (copy-on-write) memory image.
 static PARENT_PID_RAW: AtomicU32 = AtomicU32::new(0);
+
+/// Backing storage whose *address* identifies the duplicate-test mutex to the kernel.  The kernel
+/// keys synchronization objects by their user-space address only and never dereferences this
+/// storage, so a single zero byte is sufficient.  Duplicated copy-on-write into the child, giving
+/// it the same address but an independent, process-private kernel mutex object.
+static MC_MUTEX_SLOT: u8 = 0;
+
+/// Backing storage whose *address* identifies the duplicate-test condition variable, mirroring
+/// [`MC_MUTEX_SLOT`].
+static MC_COND_SLOT: u8 = 0;
 
 //==================================================================================================
 // Child Entry Point
@@ -437,6 +467,311 @@ fn test_duplicate_cow_refork() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Mutex / Condition-Variable Duplication Test
+//==================================================================================================
+
+/// Returns the kernel mutex address identified by [`MC_MUTEX_SLOT`].
+fn mc_mutex_addr() -> MutexAddress {
+    let ptr: *const u8 = &raw const MC_MUTEX_SLOT;
+    MutexAddress::from(ptr as usize)
+}
+
+/// Returns the kernel condition-variable address identified by [`MC_COND_SLOT`].
+fn mc_cond_addr() -> ConditionAddress {
+    let ptr: *const u8 = &raw const MC_COND_SLOT;
+    ConditionAddress::from(ptr as usize)
+}
+
+/// Computes an absolute deadline [`COND_WAIT_TIMEOUT`] in the future from the monotonic clock.
+fn cond_wait_deadline() -> Result<SystemTime, Error> {
+    let mut now: SystemTime = SystemTime::default();
+    pm::__kcall_gettime(&mut now)?;
+    now.checked_add_duration(&COND_WAIT_TIMEOUT)
+        .ok_or_else(|| Error::new(ErrorCode::ValueOutOfRange, "condition wait deadline overflow"))
+}
+
+/// Drives the process-private mutex and condition variable identified by [`MC_MUTEX_SLOT`] and
+/// [`MC_COND_SLOT`], proving they are functional in the calling process.
+///
+/// Performs a canonical lock / wait / unlock / signal cycle:
+///
+/// 1. Locks the mutex.  A duplicated process must be able to acquire it without deadlocking.
+/// 2. Reads the mutex-guarded byte [`SHARED_BYTE`] under the lock and remembers it.
+/// 3. Waits on the condition variable with [`COND_WAIT_TIMEOUT`].  Because no other thread in this
+///    process signals it, the wait must elapse and report [`ErrorCode::OperationTimedOut`].  This
+///    also proves the mutex/condition coupling: the kernel atomically releases the mutex on entry
+///    and reacquires it before returning.
+/// 4. Writes `write_value` to the guarded byte, still under the reacquired lock, taking a private
+///    copy-on-write page.
+/// 5. Unlocks the mutex.
+/// 6. Signals the condition variable.  With no waiters, exactly zero threads must be awakened.
+///
+/// Returns the value observed in step 2.
+fn exercise_mutex_condvar(write_value: u8) -> Result<u8, Error> {
+    let mutex: MutexAddress = mc_mutex_addr();
+    let cond: ConditionAddress = mc_cond_addr();
+
+    // Step 1: acquire the inherited mutex.
+    pm::__kcall_lock_mutex(mutex, None)?;
+
+    // Step 2: observe the guarded data under the lock.
+    let observed: u8 = SHARED_BYTE.load(ORDER);
+
+    // Step 3: wait on the condition variable; with no signaler in this process it must time out.
+    let deadline: SystemTime = cond_wait_deadline()?;
+    match pm::__kcall_wait_cond(cond, mutex, Some(deadline)) {
+        Err(e) if e.code == ErrorCode::OperationTimedOut => {},
+        Err(e) => return Err(Error::new(e.code, "wait_cond returned an unexpected error")),
+        Ok(()) => {
+            return Err(Error::new(
+                ErrorCode::OperationNotPermitted,
+                "wait_cond returned without a signal; expected a timeout",
+            ))
+        },
+    }
+
+    // Step 4: take a private copy of the guarded data, still holding the reacquired lock.
+    SHARED_BYTE.store(write_value, ORDER);
+
+    // Step 5: release the mutex.
+    pm::__kcall_unlock_mutex(mutex)?;
+
+    // Step 6: signal the condition variable; with no waiters, zero threads must wake.
+    let awakened: usize = pm::__kcall_signal_cond(cond, false)?;
+    if awakened != 0 {
+        return Err(Error::new(
+            ErrorCode::OperationNotPermitted,
+            "signal_cond awakened a thread when none were waiting",
+        ));
+    }
+
+    Ok(observed)
+}
+
+/// Entry point for the child spawned by [`test_duplicate_mutex_condvar`].
+///
+/// The child invalidates the inherited pid cache, synchronizes with the parent over IPC, drives
+/// the inherited mutex and condition variable, and reports the outcome back to the parent.  It then
+/// spins until the parent terminates it (mirroring [`child_entry`]).
+extern "C" fn child_entry_mutex_condvar(_arg: usize) -> usize {
+    // Drop the parent's cached pid inherited through the duplicated address space.
+    pm::invalidate_cached_pid();
+
+    // Run the child scenario.  Its result is reported to the parent over IPC inside the helper and
+    // the parent drives termination regardless, so any error here is intentionally discarded.
+    let _ = child_mutex_condvar_report();
+
+    // Spin until the parent terminates us.
+    loop {
+        let _ = sched::__kcall_sched_yield();
+    }
+}
+
+/// Synchronizes with the parent, drives the inherited synchronization primitives, and reports the
+/// result to the parent over IPC.
+///
+/// The payload carries a status byte ([`MC_CHILD_OK`] or [`MC_CHILD_FAIL`]) followed by the byte
+/// observed before and after the child's own write, so a failure surfaces as a deterministic
+/// assertion in the parent rather than as a hang.
+fn child_mutex_condvar_report() -> Result<(), Error> {
+    let my_pid: ProcessIdentifier = pm::getpid_uncached()?;
+    let parent_pid: ProcessIdentifier = ProcessIdentifier::try_from(PARENT_PID_RAW.load(ORDER))?;
+
+    // Barrier: block until the parent signals that its post-duplicate write has completed.
+    ipc::__kcall_recv()?;
+
+    // Drive the inherited mutex and condition variable, taking a private copy via PATTERN_CHILD.
+    let (status, observed_before, observed_after): (u8, u8, u8) =
+        match exercise_mutex_condvar(PATTERN_CHILD) {
+            Ok(observed) => (MC_CHILD_OK, observed, SHARED_BYTE.load(ORDER)),
+            Err(_) => (MC_CHILD_FAIL, 0, 0),
+        };
+
+    // Report observations to the parent.
+    let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+    payload[0] = status;
+    payload[1] = observed_before;
+    payload[2] = observed_after;
+    let reply: Message = Message::new(
+        MessageSender::from(my_pid),
+        MessageReceiver::from(parent_pid),
+        MessageType::Ipc,
+        None,
+        payload,
+    );
+    ipc::__kcall_send(&reply)?;
+
+    Ok(())
+}
+
+/// Verifies that a process owning a mutex and a condition variable is correctly duplicated by
+/// `duplicate()`, conforming to the POSIX `fork()` contract
+/// (<https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html>).
+///
+/// POSIX requires the child to be a single-threaded replica of the calling thread and its entire
+/// address space, "possibly including the states of mutexes and other resources", and that the
+/// parent and child be able to execute independently afterwards.  It further specifies that, for a
+/// non-process-shared lock *held* by the parent at fork time, any operation by the child on that
+/// lock is undefined behavior.  This test therefore stays within the well-defined regime: the
+/// parent establishes and exercises the mutex and condition variable but does **not** hold the
+/// lock across `duplicate()`.  After duplication, each process independently drives its own
+/// process-private mutex and condition variable through a full lock / wait / unlock / signal cycle.
+///
+/// The mutex-guarded byte additionally validates the POSIX MAP_PRIVATE (copy-on-write) data rules:
+/// the value written before `duplicate()` is visible to the child, while each side's later writes
+/// remain private to itself.
+///
+/// Sequence:
+///
+/// 1. The parent primes the guarded byte with [`PATTERN_INIT`] and exercises the mutex and
+///    condition variable once (registering and releasing them) before duplicating.
+/// 2. `duplicate()` creates the child, which runs [`child_entry_mutex_condvar`].
+/// 3. The parent drives its own mutex and condition variable, writing [`PATTERN_PARENT`], then
+///    releases the child over IPC.
+/// 4. The child drives its inherited mutex and condition variable, observing the guarded byte
+///    (which must still read [`PATTERN_INIT`]) and writing [`PATTERN_CHILD`].
+/// 5. The parent asserts the child succeeded, that copy-on-write isolation held in both
+///    directions, and tears the child down.
+fn test_duplicate_mutex_condvar() -> Result<(), Error> {
+    // Record the parent's PID where the child can find it via copy-on-write memory.
+    let parent_pid: ProcessIdentifier = pm::getpid_uncached()?;
+    PARENT_PID_RAW.store(u32::try_from(parent_pid)?, ORDER);
+
+    // Prime the guarded byte with the pre-duplicate pattern while the page is still private.
+    SHARED_BYTE.store(PATTERN_INIT, ORDER);
+
+    // Establish ownership of the mutex and condition variable in the parent before duplicating: a
+    // lock/unlock pair plus a no-waiter signal registers and exercises them.  The lock is released
+    // here so that the child never operates on a parent-held non-process-shared lock, which POSIX
+    // declares to be undefined behavior.
+    pm::__kcall_lock_mutex(mc_mutex_addr(), None)?;
+    pm::__kcall_unlock_mutex(mc_mutex_addr())?;
+    let _: usize = pm::__kcall_signal_cond(mc_cond_addr(), false)?;
+
+    // Allocate a page-aligned stack for the child's main thread.
+    let layout: Layout = Layout::from_size_align(CHILD_STACK_SIZE, PAGE_SIZE)
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "bad stack layout"))?;
+    // SAFETY: layout has non-zero size.
+    let stack_ptr: *mut u8 = unsafe { ::alloc::alloc::alloc(layout) };
+    if stack_ptr.is_null() {
+        return Err(Error::new(ErrorCode::OutOfMemory, "failed to allocate child stack"));
+    }
+    let stack_base: VirtualAddress = VirtualAddress::from_raw_value(stack_ptr as usize);
+
+    let args: ThreadCreateArgs = ThreadCreateArgs {
+        user_fn: VirtualAddress::from_raw_value(child_entry_mutex_condvar as *const () as usize),
+        user_fn_arg0: 0,
+        user_fn_arg1: 0,
+        user_stack_base: stack_base,
+        user_stack_size: CHILD_STACK_SIZE,
+        user_tda: None,
+    };
+
+    // Duplicate the calling process.
+    let child_pid: ProcessIdentifier = pm::__kcall_duplicate(&args)?;
+
+    // Run the observation scenario, capturing its result so the child and its stack are always
+    // reclaimed afterwards.
+    let scenario: Result<(), Error> = (|| {
+        assert!(child_pid != parent_pid, "child_pid must differ from parent_pid");
+
+        // The parent drives its own independent mutex and condition variable, taking a private copy
+        // via PATTERN_PARENT.
+        let parent_observed_before: u8 = exercise_mutex_condvar(PATTERN_PARENT)?;
+        assert!(
+            parent_observed_before == PATTERN_INIT,
+            "parent observed {:#x} before its own write; expected {:#x}",
+            parent_observed_before,
+            PATTERN_INIT
+        );
+
+        // Release the child to perform its observation and write.
+        let go: Message = Message::new(
+            MessageSender::from(parent_pid),
+            MessageReceiver::from(child_pid),
+            MessageType::Ipc,
+            None,
+            [0u8; Message::PAYLOAD_SIZE],
+        );
+        ipc::__kcall_send(&go)?;
+
+        // Receive the child's report.
+        let reply: Message = ipc::__kcall_recv()?;
+        let reply_type: MessageType = { reply.message_type };
+        assert!(reply_type == MessageType::Ipc, "expected IPC reply");
+
+        let child_status: u8 = reply.payload[0];
+        let child_observed_before: u8 = reply.payload[1];
+        let child_observed_after: u8 = reply.payload[2];
+        let parent_observed: u8 = SHARED_BYTE.load(ORDER);
+
+        // The child must have driven the inherited mutex and condition variable successfully.
+        assert!(
+            child_status == MC_CHILD_OK,
+            "child failed to exercise the inherited mutex/condition variable (status={:#x})",
+            child_status
+        );
+        // CoW invariant 1: the parent's post-duplicate write is invisible to the child.
+        assert!(
+            child_observed_before == PATTERN_INIT,
+            "child observed {:#x} before its own write; expected {:#x} (parent->child isolation \
+             broken)",
+            child_observed_before,
+            PATTERN_INIT
+        );
+        // The child's own write under the lock must be visible to itself.
+        assert!(
+            child_observed_after == PATTERN_CHILD,
+            "child observed {:#x} after its own write; expected {:#x}",
+            child_observed_after,
+            PATTERN_CHILD
+        );
+        // CoW invariant 2: the child's write is invisible to the parent.
+        assert!(
+            parent_observed == PATTERN_PARENT,
+            "parent observed {:#x} after child's write; expected {:#x} (child->parent isolation \
+             broken)",
+            parent_observed,
+            PATTERN_PARENT
+        );
+
+        Ok(())
+    })();
+
+    // Acquire the process-management capability to terminate the child, tear it down, then release
+    // it.  Mirrors the teardown used by the other duplicate tests: the capability is released only
+    // when this path acquired it, and `ResourceBusy` means it is already held.
+    let acquired: Result<bool, Error> =
+        match pm::__kcall_capctl(Capability::ProcessManagement, true) {
+            Ok(()) => Ok(true),
+            Err(e) if e.code == ErrorCode::ResourceBusy => Ok(false),
+            Err(e) => Err(e),
+        };
+    let teardown: Result<(), Error> = match acquired {
+        Ok(acquired) => {
+            let terminate: Result<(), Error> = pm::__kcall_terminate(child_pid);
+            let release: Result<(), Error> = if acquired {
+                pm::__kcall_capctl(Capability::ProcessManagement, false)
+            } else {
+                Ok(())
+            };
+            terminate.and(release)
+        },
+        Err(e) => Err(e),
+    };
+
+    // Reclaim the child stack only once teardown confirmed the child was terminated; otherwise the
+    // child may still be running on it, so leak the stack rather than risk a use-after-free.
+    if teardown.is_ok() {
+        // SAFETY: `stack_ptr`/`layout` came from the matching `alloc::alloc::alloc` above and the
+        // child has been terminated, so it no longer references these stack pages.
+        unsafe { ::alloc::alloc::dealloc(stack_ptr, layout) };
+    }
+
+    scenario.and(teardown)
+}
+
+//==================================================================================================
 // Public Entry Point
 //==================================================================================================
 
@@ -455,6 +790,9 @@ pub fn run() -> Result<(), Error> {
 
     test_duplicate_cow_refork()?;
     ::syslog::info!("test-kernel: duplicate: PASS - duplicate_cow_refork");
+
+    test_duplicate_mutex_condvar()?;
+    ::syslog::info!("test-kernel: duplicate: PASS - duplicate_mutex_condvar");
 
     ::syslog::info!("test-kernel: duplicate: all tests passed");
 
