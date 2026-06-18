@@ -50,19 +50,21 @@ pub fn pthread_mutex_init(
     mutex: &mut pthread_mutex_t,
     attr: &pthread_mutexattr_t,
 ) -> Result<(), Error> {
-    // Check if mutex is not initialized.
-    if let Entry::Vacant(entry) = MUTEXES
+    // Register (or re-register) the mutex's attributes.
+    //
+    // Initialization is idempotent: an existing entry for this address is overwritten rather than
+    // rejected. This mirrors the kernel, which keeps mutexes in a per-process table and lazily
+    // (re)creates them on access (`Process::get_mutex` uses `or_insert_with`). It is also what
+    // makes `fork()` work: the kernel intentionally drops the child's inherited mutexes and
+    // recreates them lazily, but this userspace registry is inherited through copy-on-write
+    // memory, so a child that re-initializes a mutex (e.g. CPython rebuilding its GIL in
+    // `PyOS_AfterFork_Child`) would otherwise observe a stale, already-registered entry and fail.
+    // POSIX leaves re-initialization of an initialized mutex undefined and glibc/musl tolerate it;
+    // Nanvix defines it as "reset", consistent with its lazy, kernel-backed model.
+    MUTEXES
         .lock()
-        .entry(mutex as *const pthread_mutex_t as usize)
-    {
-        // Mutex was is not initialized.
-        entry.insert(*attr);
-        Ok(())
-    } else {
-        let reason: &str = "mutex is not initialized";
-        ::syslog::warn!("pthread_mutex_init(): {}", reason);
-        Err(Error::new(ErrorCode::InvalidArgument, reason))
-    }
+        .insert(mutex as *const pthread_mutex_t as usize, *attr);
+    Ok(())
 }
 
 pub fn pthread_mutex_destroy(mutex: &mut pthread_mutex_t) -> Result<(), Error> {
