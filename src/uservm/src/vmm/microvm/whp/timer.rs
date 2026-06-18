@@ -14,6 +14,8 @@ use ::std::{
         Arc,
         Condvar,
         Mutex,
+        MutexGuard,
+        WaitTimeoutResult,
     },
     thread::{
         self,
@@ -99,20 +101,20 @@ impl Timer {
 
         // Clear the stop flag before (re)starting the timer thread.
         {
-            let (lock, _cvar) = &*self.stop;
+            let (lock, _cvar): &(Mutex<bool>, Condvar) = &self.stop;
             *lock.lock().unwrap() = false;
         }
 
-        let stop = self.stop.clone();
-        let partition = self.partition;
-        let period = Duration::from_micros(period_us);
+        let stop: Arc<(Mutex<bool>, Condvar)> = self.stop.clone();
+        let partition: WHV_PARTITION_HANDLE = self.partition;
+        let period: Duration = Duration::from_micros(period_us);
 
         self.thread = Some(thread::spawn(move || {
             // Request 1 ms timer resolution so the periodic wait is reasonably accurate.
             unsafe { timeBeginPeriod(1) };
 
-            let (lock, cvar) = &*stop;
-            let mut stopped = lock.lock().unwrap();
+            let (lock, cvar): &(Mutex<bool>, Condvar) = &stop;
+            let mut stopped: MutexGuard<'_, bool> = lock.lock().unwrap();
             while !*stopped {
                 // Interruptible wait: returns early (without timing out) when `stop()`
                 // notifies, so teardown does not block for the rest of the tick period.
@@ -120,7 +122,7 @@ impl Timer {
                 // timeout internally, keeping the tick cadence stable. It reports
                 // `timed_out() == false` only when `stop()` set the flag; a `true` result
                 // means the full period elapsed and it is time to fire a pvclock cancel.
-                let (guard, result) = cvar
+                let (guard, result): (MutexGuard<'_, bool>, WaitTimeoutResult) = cvar
                     .wait_timeout_while(stopped, period, |stopped| !*stopped)
                     .unwrap();
                 if !result.timed_out() {
@@ -132,7 +134,8 @@ impl Timer {
                 // SAFETY: `partition` is a valid WHP partition handle that outlives
                 // the timer thread (the Vmm struct owns both).
                 unsafe {
-                    let _ = WHvCancelRunVirtualProcessor(partition, 0, 0);
+                    let _: Result<(), windows::core::Error> =
+                        WHvCancelRunVirtualProcessor(partition, 0, 0);
                 }
                 stopped = lock.lock().unwrap();
             }
