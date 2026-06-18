@@ -890,7 +890,7 @@ impl WorkerThreadHandle {
                 unistd::do_lseek(&syscall_table, source, request)
             },
             SystemCallMessageHeader::SelectRequest => {
-                let request: SelectRequest = SelectRequest::from_bytes(message.payload);
+                let request: SelectRequest = SelectRequest::from_bytes(message.payload)?;
                 sys_select::do_select(&syscall_table, source, request)
             },
             SystemCallMessageHeader::SendSocketRequest => {
@@ -908,7 +908,7 @@ impl WorkerThreadHandle {
             },
             SystemCallMessageHeader::UpdateFileAccessTimeRequest => {
                 let request: UpdateFileAccessTimeRequest =
-                    UpdateFileAccessTimeRequest::from_bytes(message.payload);
+                    UpdateFileAccessTimeRequest::from_bytes(message.payload)?;
                 fcntl::do_futimens(&syscall_table, source, request)
             },
             SystemCallMessageHeader::PipeRequest => {

@@ -132,7 +132,7 @@ pub fn select(
         match message.header {
             // Response was successfully parsed.
             SystemCallMessageHeader::SelectResponse => {
-                let response: SelectResponse = SelectResponse::from_bytes(message.payload);
+                let response: SelectResponse = SelectResponse::from_bytes(message.payload)?;
 
                 for (fd_set, dest) in [
                     (response.readfds.as_ref(), readfds),

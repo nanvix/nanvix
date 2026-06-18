@@ -34,7 +34,6 @@ use ::config::memory_layout::{
 };
 use ::core::mem::size_of;
 
-#[cfg(target_pointer_width = "32")]
 use crate::sys_uio::iovec;
 
 //==================================================================================================
@@ -119,7 +118,7 @@ pub type uid_t = c_uint;
 
 /// Thread attributes.
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct pthread_attr_t {
     pub is_initialized: c_int,
     pub stackaddr: *mut c_void,
@@ -131,7 +130,8 @@ pub struct pthread_attr_t {
     pub cputime_clock_allowed: c_int,
     pub detachstate: c_int,
 }
-::static_assert::assert_eq_size!(pthread_attr_t, pthread_attr_t::_SIZE);
+// No `assert_eq_size!`: the serialized size may differ from `sizeof` on 64-bit targets due to
+// alignment padding.
 
 impl pthread_attr_t {
     /// Size of the `is_initialized` field.
@@ -188,14 +188,15 @@ impl Default for pthread_attr_t {
 /// Condition variable attributes.
 ///
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct pthread_condattr_t {
     /// Whether the condition variable attributes are initialized.
     is_initialized: c_int,
     /// Clock used for timeouts.
     clock: clock_t,
 }
-::static_assert::assert_eq_size!(pthread_condattr_t, pthread_condattr_t::SIZE);
+// No `assert_eq_size!`: the serialized size may differ from `sizeof` on 64-bit targets due to
+// alignment padding.
 
 impl pthread_condattr_t {
     // Size of the `is_initialized` field.
@@ -433,6 +434,26 @@ impl msghdr {
         + Self::SIZE_OF_MSG_CONTROL
         + Self::SIZE_OF_MSG_CONTROLLEN
         + Self::SIZE_OF_MSG_FLAGS;
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+#[cfg(target_pointer_width = "64")]
+pub struct msghdr {
+    /// Optional address.
+    pub msg_name: *mut c_void,
+    // Size of the address.
+    pub msg_namelen: socklen_t,
+    // Scatter/gather array of message blocks.
+    pub msg_iov: *mut iovec,
+    /// Number of member in `msg_iov`.
+    pub msg_iovlen: size_t,
+    /// Ancillary data.
+    pub msg_control: *mut c_void,
+    /// Ancillary data buffer length.
+    pub msg_controllen: size_t,
+    /// Flags.
+    pub msg_flags: c_int,
 }
 
 /// Header for ancililary data data objects in msg_control buffer in `msghdr`.

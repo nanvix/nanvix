@@ -49,6 +49,7 @@ pub mod clock_ids {
 // TODO: define tms structure here.
 
 /// Errors for the `timespec` structure.
+#[derive(Debug)]
 pub enum TimespecError {
     /// Error code indicating an invalid array size.
     InvalidArraySize,
@@ -79,27 +80,37 @@ impl timespec {
     /// Offset of the nano-seconds field.
     const OFFSET_OF_TV_NSEC: usize = Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC;
 
+    /// In-memory size (matches `repr(C, packed)` layout, varies by target).
     const SIZE: usize = Self::SIZE_OF_TV_SEC + Self::SIZE_OF_TV_NSEC;
 
-    /// Converts a time spec structure to a byte array.
-    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-        let mut bytes: [u8; Self::SIZE] = [0; Self::SIZE];
+    /// Wire format always uses i64 (8 bytes) for tv_nsec, ensuring IPC compatibility
+    /// between x86 guests (c_long=i32) and x86_64 hosts (c_long=i64).
+    const WIRE_SIZE_OF_TV_NSEC: usize = size_of::<i64>();
+    /// Wire format size for IPC serialization (always 16 bytes).
+    pub const WIRE_SIZE: usize = Self::SIZE_OF_TV_SEC + Self::WIRE_SIZE_OF_TV_NSEC;
+
+    /// Converts a time spec structure to a wire-format byte array.
+    pub fn to_bytes(&self) -> [u8; Self::WIRE_SIZE] {
+        let mut bytes: [u8; Self::WIRE_SIZE] = [0; Self::WIRE_SIZE];
 
         // Convert seconds field.
         bytes[Self::OFFSET_OF_TV_SEC..Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC]
             .copy_from_slice(&self.tv_sec.to_ne_bytes());
 
-        // Convert nano-seconds field.
-        bytes[Self::OFFSET_OF_TV_NSEC..Self::OFFSET_OF_TV_NSEC + Self::SIZE_OF_TV_NSEC]
-            .copy_from_slice(&self.tv_nsec.to_ne_bytes());
+        // Convert nano-seconds field (always as i64 for IPC compatibility).
+        // Cast is needed on x86 (c_long=i32→i64) but is a no-op on x86_64 (c_long=i64).
+        #[cfg_attr(target_arch = "x86_64", allow(clippy::unnecessary_cast))]
+        let nsec_bytes = (self.tv_nsec as i64).to_ne_bytes();
+        bytes[Self::OFFSET_OF_TV_NSEC..Self::OFFSET_OF_TV_NSEC + Self::WIRE_SIZE_OF_TV_NSEC]
+            .copy_from_slice(&nsec_bytes);
 
         bytes
     }
 
-    /// Tries to convert a time spec structure from a byte array.
+    /// Tries to convert a time spec structure from a wire-format byte array.
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, TimespecError> {
-        // Check if the array has the correct size.
-        if bytes.len() != Self::SIZE {
+        // Check if the array has the correct wire size.
+        if bytes.len() != Self::WIRE_SIZE {
             return Err(TimespecError::InvalidArraySize);
         }
 
@@ -110,12 +121,20 @@ impl timespec {
                 .map_err(|_| TimespecError::FailedToParseTvSec)?,
         );
 
-        // Parse nano-seconds field.
-        let tv_nsec: c_long = c_long::from_ne_bytes(
-            bytes[Self::OFFSET_OF_TV_NSEC..Self::OFFSET_OF_TV_NSEC + Self::SIZE_OF_TV_NSEC]
+        // Parse nano-seconds field (always read as i64, then convert to c_long).
+        // The checked conversion rejects out-of-range values instead of silently wrapping on
+        // 32-bit targets where c_long is narrower than the i64 wire value.
+        let raw_tv_nsec: i64 = i64::from_ne_bytes(
+            bytes[Self::OFFSET_OF_TV_NSEC..Self::OFFSET_OF_TV_NSEC + Self::WIRE_SIZE_OF_TV_NSEC]
                 .try_into()
                 .map_err(|_| TimespecError::FailedToParseTvNsec)?,
         );
+        #[cfg_attr(
+            target_arch = "x86_64",
+            allow(clippy::unnecessary_fallible_conversions)
+        )]
+        let tv_nsec: c_long =
+            c_long::try_from(raw_tv_nsec).map_err(|_| TimespecError::FailedToParseTvNsec)?;
 
         Ok(Self { tv_sec, tv_nsec })
     }
