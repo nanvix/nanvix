@@ -57,6 +57,7 @@ members = [
         "src/libs/libc_locale",
         "src/libs/libc_setjmp",
         "src/libs/libc_signal",
+        "src/libs/libc_stdio",
         "src/libs/libc_stdlib",
         "src/libs/libc_math",
         "src/libs/libc_string",
@@ -226,6 +227,7 @@ libc_locale = { path = "src/libs/libc_locale", default-features = false }
 libc_setjmp = { path = "src/libs/libc_setjmp", default-features = false }
 libc_math = { path = "src/libs/libc_math", default-features = false }
 libc_signal = { path = "src/libs/libc_signal", default-features = false }
+libc_stdio = { path = "src/libs/libc_stdio", default-features = false }
 libc_stdlib = { path = "src/libs/libc_stdlib", default-features = false }
 libc_string = { path = "src/libs/libc_string", default-features = false }
 mmio-tag = { path = "src/libs/mmio-tag", default-features = false }

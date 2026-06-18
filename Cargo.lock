@@ -1703,6 +1703,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_stdio"
+version = "0.16.96"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_stdlib"
 version = "0.16.97"
 dependencies = [
