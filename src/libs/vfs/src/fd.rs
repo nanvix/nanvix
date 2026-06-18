@@ -42,6 +42,7 @@ use ::sysapi::{
     fcntl::{
         file_control_request,
         file_creation_flags,
+        file_status_flags,
     },
     ffi::c_int,
     sys_stat::{
@@ -193,6 +194,8 @@ pub enum VfsFileHandle {
     /// Remote file opened through the host filesystem daemon (hostfsd).
     /// Operations on this handle must be forwarded via IKC by the caller (vfsd).
     HostFs(HostFsHandle),
+    /// One end of a POSIX unnamed pipe.
+    Pipe(crate::pipe::PipeEnd),
 }
 
 /// Handle for a file opened on the host filesystem via hostfsd.
@@ -312,6 +315,8 @@ impl VfsFileHandle {
             VfsFileHandle::DirectRead(handle) => Ok(handle.read(buf)),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
+            // Pipes are served by vfsd through the dedicated non-blocking primitives.
+            VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -322,6 +327,8 @@ impl VfsFileHandle {
             VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
+            // Pipes are served by vfsd through the dedicated non-blocking primitives.
+            VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -335,6 +342,8 @@ impl VfsFileHandle {
             VfsFileHandle::DirectRead(handle) => handle.seek(offset, whence),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
+            // A pipe is not seekable (`ESPIPE`); the daemon rejects seeks before reaching here.
+            VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -345,6 +354,7 @@ impl VfsFileHandle {
             VfsFileHandle::DirectRead(handle) => Ok(handle.size() as u64),
             VfsFileHandle::Directory(_) => Ok(0),
             VfsFileHandle::HostFs(_) => Ok(0),
+            VfsFileHandle::Pipe(_) => Ok(0),
         }
     }
 
@@ -369,6 +379,14 @@ impl VfsFileHandle {
             _ => None,
         }
     }
+
+    /// Returns the pipe end if this handle is one end of a pipe.
+    pub fn pipe_end(&self) -> Option<&crate::pipe::PipeEnd> {
+        match self {
+            VfsFileHandle::Pipe(end) => Some(end),
+            _ => None,
+        }
+    }
 }
 
 //==================================================================================================
@@ -390,6 +408,11 @@ struct VfsEntry {
     handle: VfsFileHandle,
     /// POSIX-compliant virtual file position (may exceed file size).
     virtual_pos: off_t,
+    /// Open file status flags (the mutable subset settable via `fcntl(F_SETFL)`).
+    ///
+    /// Only `O_NONBLOCK` is honored today; it is consulted by vfsd's pipe read/write handlers to
+    /// choose `EAGAIN` over blocking. Non-pipe descriptors are unaffected because they never block.
+    status_flags: c_int,
 }
 
 // SAFETY: VfsEntry contains FAT filesystem types that use `Cell` internally
@@ -530,6 +553,7 @@ fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
             state.slots[i] = Some(Arc::new(Mutex::new(VfsEntry {
                 handle,
                 virtual_pos: 0,
+                status_flags: 0,
             })));
             return Ok(VFS_FD_BASE + i as c_int);
         }
@@ -612,6 +636,28 @@ pub fn vfs_fork_clone(
     Ok(())
 }
 
+/// Pipe count-to-zero transitions surfaced by [`vfs_process_exit`].
+///
+/// Each entry records that the exiting process held the final reference to one end of a pipe, so
+/// that end's reference count dropped to zero when its open file description was released. vfsd
+/// uses these to run the corresponding wakeup (EOF for readers when a write end vanishes, `EPIPE`
+/// for writers when a read end vanishes).
+pub struct PipeClosure {
+    /// Stable identity of the affected pipe.
+    pub pipe_id: u64,
+    /// Whether the released end was the write end (`true`) or the read end (`false`).
+    pub was_write: bool,
+}
+
+/// Resources surfaced by [`vfs_process_exit`] that the daemon must act on after a process exits.
+pub struct ProcessExitReclaim {
+    /// Remote file descriptors of host-backed descriptions for which the process held the final
+    /// reference. Each must be closed on hostfsd or the remote handle leaks.
+    pub orphaned_hostfs_fds: Vec<i32>,
+    /// Pipe ends whose reference count reached zero because the process held the final reference.
+    pub pipe_closures: Vec<PipeClosure>,
+}
+
 /// Reclaims the per-process filesystem state of a terminated process.
 ///
 /// Drops `pid`'s recorded state, releasing its references to the open file descriptions it held.
@@ -619,12 +665,13 @@ pub fn vfs_fork_clone(
 /// descriptions, and prevents the per-process table from growing without bound. Reclaiming an
 /// unknown `pid` is a no-op.
 ///
-/// Returns the remote file descriptors of any host-backed open file descriptions for which `pid`
-/// held the final reference. The caller (vfsd) must forward a close for each of these to hostfsd:
-/// because the process is gone it can no longer close them itself, and the VFS has no other way to
-/// release a remote handle. Descriptions still shared with a surviving process are not returned.
-#[must_use = "the returned remote fds must be closed on hostfsd or they leak"]
-pub fn vfs_process_exit(pid: ProcessIdentifier) -> Vec<i32> {
+/// Returns the resources the daemon must act on: the remote file descriptors of any host-backed
+/// open file descriptions for which `pid` held the final reference (which it must close on hostfsd,
+/// because the process is gone and can no longer close them itself), and the pipe ends whose
+/// reference count reached zero (so the daemon can fire EOF/`EPIPE` wakeups for any suspended
+/// counterparts). Descriptions still shared with a surviving process are not returned.
+#[must_use = "the returned hostfs fds must be closed and pipe closures must trigger wakeups"]
+pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
     // Detach the process's state while holding the registry lock, but defer dropping it until the
     // lock is released. Dropping an open file description may run backend teardown; deferring keeps
     // the registry lock from ever nesting with backend locks, matching `vfs_close`.
@@ -634,23 +681,37 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> Vec<i32> {
         procs.remove(&pid)
     };
     let Some(state) = removed else {
-        return Vec::new();
+        return ProcessExitReclaim {
+            orphaned_hostfs_fds: Vec::new(),
+            pipe_closures: Vec::new(),
+        };
     };
     // The process has been removed from the registry, so an `Arc` strong count of one means no
     // surviving descriptor — in this or any other process — still shares the open file description.
-    // Its remote handle must therefore be closed on hostfsd. As the sole owner, the lock below is
+    // A host-backed handle must therefore be closed on hostfsd, and a pipe end's count drops to
+    // zero (which the dropped end's `Drop` applies just below). As the sole owner, the lock is
     // uncontended.
     let mut orphaned: Vec<i32> = Vec::new();
+    let mut pipe_closures: Vec<PipeClosure> = Vec::new();
     for open_file in state.slots.into_iter().flatten() {
         if Arc::strong_count(&open_file) != 1 {
             continue;
         }
-        if let VfsFileHandle::HostFs(h) = &open_file.lock().handle {
-            orphaned.push(h.remote_fd());
+        match &open_file.lock().handle {
+            VfsFileHandle::HostFs(h) => orphaned.push(h.remote_fd()),
+            VfsFileHandle::Pipe(end) => pipe_closures.push(PipeClosure {
+                pipe_id: end.pipe_id(),
+                was_write: end.is_write(),
+            }),
+            _ => {},
         }
-        // `open_file` is dropped here, after the registry lock has been released.
+        // `open_file` is dropped here, after the registry lock has been released; the pipe end's
+        // `Drop` decrements its reader/writer count as part of that.
     }
-    orphaned
+    ProcessExitReclaim {
+        orphaned_hostfs_fds: orphaned,
+        pipe_closures,
+    }
 }
 
 /// Reports whether `fd` is the last descriptor referencing its open file description.
@@ -671,6 +732,30 @@ pub fn vfs_hostfs_is_last_ref(fd: c_int) -> bool {
         // The table holds exactly one reference, so a strong count of one means no other descriptor
         // shares this open file description.
         Some(entry) => Arc::strong_count(entry) == 1,
+        None => false,
+    }
+}
+
+/// Reports whether closing `fd` would drop the final reference to a pipe end.
+///
+/// Returns `true` when `fd` refers to a pipe end and the current process holds the only descriptor
+/// for that end's open file description, so closing it (or the owning process exiting) decrements
+/// the pipe's reader/writer count to zero. Returns `false` when other descriptors still share the
+/// end (for example in a forked child), when `fd` is not a pipe, or when `fd` is invalid. This does
+/// not modify the descriptor table.
+pub fn vfs_pipe_is_last_ref(fd: c_int) -> bool {
+    let Ok(idx) = fd_index(fd) else {
+        return false;
+    };
+    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
+    let Some(state) = procs.get(&current_pid()) else {
+        return false;
+    };
+    match state.slots.get(idx).and_then(|slot| slot.as_ref()) {
+        Some(entry) => {
+            // Must be a pipe and the sole reference for closing to drive the count to zero.
+            Arc::strong_count(entry) == 1 && matches!(&entry.lock().handle, VfsFileHandle::Pipe(_))
+        },
         None => false,
     }
 }
@@ -734,6 +819,97 @@ pub fn vfs_hostfs_set_readdir_offset(fd: c_int, offset: u32) -> bool {
             true
         },
         _ => false,
+    }
+}
+
+//==================================================================================================
+// Pipe FD Helpers
+//==================================================================================================
+
+/// Re-exported pipe outcome types so the daemon can match on them without importing
+/// [`crate::pipe`] directly.
+pub use crate::pipe::{
+    PipeReadOutcome,
+    PipeWriteOutcome,
+};
+
+/// Creates a pipe and allocates its read and write file descriptors in the current process.
+///
+/// Returns `(read_fd, write_fd)`. The two descriptors share a single pipe buffer with the reader
+/// and writer counts both initialized to one.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::TooManyOpenFiles`] when the descriptor table cannot accommodate both ends.
+/// If only the read end could be allocated, it is released before returning so that no half-open
+/// pipe is left behind.
+pub fn vfs_pipe() -> Result<(c_int, c_int), Fat32Error> {
+    let (read_end, write_end): (crate::pipe::PipeEnd, crate::pipe::PipeEnd) =
+        crate::pipe::PipeEnd::new_pair();
+    let read_fd: c_int = alloc_fd(VfsFileHandle::Pipe(read_end))?;
+    match alloc_fd(VfsFileHandle::Pipe(write_end)) {
+        Ok(write_fd) => Ok((read_fd, write_fd)),
+        Err(e) => {
+            // Releasing the read end drops its `PipeEnd`, decrementing the reader count; the write
+            // end was already dropped when `alloc_fd` consumed and failed on it. No half-open pipe
+            // survives.
+            let _ = vfs_close(read_fd);
+            Err(e)
+        },
+    }
+}
+
+/// Returns a pipe descriptor's identity and direction, or `None` if `fd` is not a pipe.
+///
+/// The returned tuple is `(pipe_id, is_write)`. vfsd uses `pipe_id` to key its blocked-request
+/// queues and `is_write` to enforce I/O direction.
+pub fn vfs_pipe_id(fd: c_int) -> Option<(u64, bool)> {
+    let file: OpenFile = entry_arc(fd).ok()?;
+    let guard = file.lock();
+    let end: &crate::pipe::PipeEnd = guard.handle.pipe_end()?;
+    Some((end.pipe_id(), end.is_write()))
+}
+
+/// Attempts a non-blocking read from a pipe read end.
+///
+/// On [`PipeReadOutcome::Read(n)`](PipeReadOutcome::Read), `n` bytes of space were freed, so vfsd
+/// must try to revive a suspended writer.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidFd`] if `fd` is not a pipe or if it is the write end (reading the
+/// write end is rejected, mirroring `EBADF`).
+pub fn vfs_pipe_read(fd: c_int, buf: &mut [u8]) -> Result<PipeReadOutcome, Fat32Error> {
+    let file: OpenFile = entry_arc(fd)?;
+    let guard = file.lock();
+    let end: &crate::pipe::PipeEnd = guard.handle.pipe_end().ok_or(Fat32Error::InvalidFd)?;
+    end.read(buf).map_err(|_| Fat32Error::InvalidFd)
+}
+
+/// Attempts a non-blocking write to a pipe write end, honoring `PIPE_BUF` atomicity.
+///
+/// On [`PipeWriteOutcome::Wrote(n)`](PipeWriteOutcome::Wrote), `n` bytes became available, so vfsd
+/// must try to revive a suspended reader.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidFd`] if `fd` is not a pipe or if it is the read end (writing the
+/// read end is rejected, mirroring `EBADF`).
+pub fn vfs_pipe_write(fd: c_int, buf: &[u8]) -> Result<PipeWriteOutcome, Fat32Error> {
+    let file: OpenFile = entry_arc(fd)?;
+    let guard = file.lock();
+    let end: &crate::pipe::PipeEnd = guard.handle.pipe_end().ok_or(Fat32Error::InvalidFd)?;
+    end.write(buf).map_err(|_| Fat32Error::InvalidFd)
+}
+
+/// Returns the open file status flags for `fd` (as reported by `fcntl(F_GETFL)`).
+///
+/// Returns `0` if `fd` is invalid, which is harmless: callers consult this only to decide whether
+/// `O_NONBLOCK` is set, and a missing descriptor will fail the surrounding operation anyway.
+pub fn vfs_get_status_flags(fd: c_int) -> c_int {
+    match entry_arc(fd) {
+        Ok(file) => file.lock().status_flags,
+        Err(_) => 0,
     }
 }
 
@@ -967,11 +1143,44 @@ fn populate_stat_fields(buf: &mut ::sysapi::sys_stat::stat, size: u64, is_dir: b
     };
 }
 
+/// Populates stat fields for a pipe (FIFO) descriptor.
+///
+/// A pipe has no name, size, or on-disk blocks: `st_mode` carries `S_IFIFO` with owner read/write
+/// permissions and `st_size` is `0`, matching POSIX expectations for an unnamed pipe. `st_ino`
+/// carries the pipe's unique identity, and `st_dev` a synthetic pipefs device distinct from the
+/// VFS file device, so distinct pipes report distinct `(st_dev, st_ino)` pairs that never collide
+/// with regular files — mirroring how a real pipefs assigns one inode per pipe.
+fn populate_pipe_stat_fields(buf: &mut ::sysapi::sys_stat::stat, pipe_id: u64) {
+    // Fixed epoch timestamp: 2024-01-01T00:00:00Z (1704067200).
+    const FIXED_EPOCH: i64 = 1_704_067_200;
+
+    buf.st_size = 0;
+    buf.st_nlink = 1;
+    buf.st_dev = 2; // Synthetic pipefs device ID, distinct from the VFS file device (1).
+    buf.st_ino = pipe_id;
+    buf.st_mode = file_type::S_IFIFO | file_mode::S_IRUSR | file_mode::S_IWUSR;
+    buf.st_blksize = STAT_BLOCK_SIZE;
+    buf.st_blocks = 0;
+    buf.st_atim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
+    buf.st_mtim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
+    buf.st_ctim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
+}
+
 /// Gets file status for a VFS file descriptor.
 pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
     let file: OpenFile = entry_arc(fd)?;
     let mut guard = file.lock();
     let entry: &mut VfsEntry = &mut guard;
+    let pipe_id: Option<u64> = entry.handle.pipe_end().map(|end| end.pipe_id());
     let is_dir: bool = matches!(&entry.handle, VfsFileHandle::Directory(_));
     let size: u64 = entry.handle.size()?;
 
@@ -980,7 +1189,11 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
 
-    populate_stat_fields(buf, size, is_dir);
+    if let Some(pipe_id) = pipe_id {
+        populate_pipe_stat_fields(buf, pipe_id);
+    } else {
+        populate_stat_fields(buf, size, is_dir);
+    }
 
     Ok(())
 }
@@ -1155,7 +1368,9 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
             }
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-        VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
+        VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) | VfsFileHandle::Pipe(_) => {
+            Err(Fat32Error::NotSupported)
+        },
     }
 }
 
@@ -1197,7 +1412,9 @@ pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Er
             Ok(())
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-        VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
+        VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) | VfsFileHandle::Pipe(_) => {
+            Err(Fat32Error::NotSupported)
+        },
     }
 }
 
@@ -1210,9 +1427,10 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     let entry: &mut VfsEntry = &mut guard;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => file.flush(),
-        VfsFileHandle::DirectRead(_) | VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) => {
-            Ok(())
-        },
+        VfsFileHandle::DirectRead(_)
+        | VfsFileHandle::Directory(_)
+        | VfsFileHandle::HostFs(_)
+        | VfsFileHandle::Pipe(_) => Ok(()),
     }
 }
 
@@ -1318,18 +1536,24 @@ pub fn vfs_accessat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
 
 /// File control operation on a VFS file descriptor.
 ///
-/// Only `F_GETFL` and `F_SETFL` are supported (as no-ops for FAT32).
-/// Other commands return `NotSupported`.
-pub fn vfs_fcntl(fd: c_int, cmd: c_int) -> Result<c_int, Fat32Error> {
-    // Verify the fd is valid.
-    let _file: OpenFile = entry_arc(fd)?;
+/// Supports the file-descriptor flag commands (`F_GETFD`/`F_SETFD`, which have no effect because
+/// the VFS implements no close-on-exec) and the file-status-flag commands (`F_GETFL`/`F_SETFL`).
+/// `F_SETFL` stores the mutable status-flag subset (currently only `O_NONBLOCK`) on the open file
+/// description; `F_GETFL` returns it. Other commands return [`Fat32Error::NotSupported`].
+pub fn vfs_fcntl(fd: c_int, cmd: c_int, arg: c_int) -> Result<c_int, Fat32Error> {
+    let file: OpenFile = entry_arc(fd)?;
 
     match cmd {
         file_control_request::F_GETFD => Ok(0), // No FD flags (no close-on-exec for VFS).
         file_control_request::F_SETFD => Ok(0), // Accept but ignore (no close-on-exec).
-        file_control_request::F_GETFL => Ok(0), // No meaningful flags for FAT32.
-        file_control_request::F_SETFL => Ok(0), // Accept but ignore (no O_NONBLOCK etc.).
-        _ => Err(Fat32Error::NotSupported),     // Other commands not supported.
+        file_control_request::F_GETFL => Ok(file.lock().status_flags),
+        file_control_request::F_SETFL => {
+            // Persist only the mutable status-flag subset (currently `O_NONBLOCK`). The remaining
+            // bits (access mode, creation flags) are not changeable via `F_SETFL` per POSIX.
+            file.lock().status_flags = arg & file_status_flags::O_NONBLOCK;
+            Ok(0)
+        },
+        _ => Err(Fat32Error::NotSupported), // Other commands not supported.
     }
 }
 
@@ -2127,5 +2351,156 @@ mod tests {
         );
 
         forget_processes(&[parent, child]);
+    }
+
+    // -- pipe descriptor tests ---------------------------------------------------
+
+    /// Tests that `vfs_pipe` allocates two descriptors with correct directions and shared identity.
+    #[test]
+    fn pipe_allocates_read_and_write_ends() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7101);
+        set_current_process(pid);
+
+        let (read_fd, write_fd): (c_int, c_int) = vfs_pipe().expect("pipe creation should succeed");
+        let (rid, r_is_write): (u64, bool) =
+            vfs_pipe_id(read_fd).expect("read fd should be a pipe");
+        let (wid, w_is_write): (u64, bool) =
+            vfs_pipe_id(write_fd).expect("write fd should be a pipe");
+        assert_eq!(rid, wid, "both ends share one pipe identity");
+        assert!(!r_is_write, "read_fd must be the read end");
+        assert!(w_is_write, "write_fd must be the write end");
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests the non-blocking read/write outcome matrix and direction enforcement on a pipe.
+    #[test]
+    fn pipe_read_write_outcomes() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7111);
+        set_current_process(pid);
+
+        let (read_fd, write_fd): (c_int, c_int) = vfs_pipe().expect("pipe creation should succeed");
+
+        // Empty pipe with an open writer: a read would block.
+        let mut buf: [u8; 8] = [0u8; 8];
+        assert!(
+            matches!(vfs_pipe_read(read_fd, &mut buf), Ok(PipeReadOutcome::WouldBlock)),
+            "an empty pipe with a writer should block reads"
+        );
+
+        // Write then read back.
+        assert!(
+            matches!(vfs_pipe_write(write_fd, &[1, 2, 3]), Ok(PipeWriteOutcome::Wrote(3))),
+            "a write into a pipe with space should succeed"
+        );
+        match vfs_pipe_read(read_fd, &mut buf) {
+            Ok(PipeReadOutcome::Read(n)) => {
+                assert_eq!(n, 3, "should read the 3 written bytes");
+                assert_eq!(&buf[..3], &[1, 2, 3], "read bytes should match");
+            },
+            _ => panic!("expected a successful read"),
+        }
+
+        // Direction enforcement.
+        assert!(vfs_pipe_read(write_fd, &mut buf).is_err(), "reading the write end is rejected");
+        assert!(vfs_pipe_write(read_fd, &[0]).is_err(), "writing the read end is rejected");
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests EOF after the write end closes and a broken pipe after the read end closes.
+    #[test]
+    fn pipe_eof_and_broken_pipe() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7121);
+        set_current_process(pid);
+
+        // EOF: close the write end, the read end then reports EOF.
+        let (read_fd, write_fd): (c_int, c_int) = vfs_pipe().expect("pipe creation should succeed");
+        assert!(vfs_pipe_is_last_ref(write_fd), "the sole write descriptor is the last reference");
+        vfs_close(write_fd).expect("closing the write end should succeed");
+        let mut buf: [u8; 4] = [0u8; 4];
+        assert!(
+            matches!(vfs_pipe_read(read_fd, &mut buf), Ok(PipeReadOutcome::Eof)),
+            "after the writer closes, the empty pipe reports EOF"
+        );
+        vfs_close(read_fd).expect("closing the read end should succeed");
+
+        // Broken pipe: close the read end, a write then reports a broken pipe.
+        let (read_fd2, write_fd2): (c_int, c_int) =
+            vfs_pipe().expect("pipe creation should succeed");
+        vfs_close(read_fd2).expect("closing the read end should succeed");
+        assert!(
+            matches!(vfs_pipe_write(write_fd2, &[9]), Ok(PipeWriteOutcome::BrokenPipe)),
+            "writing with no readers reports a broken pipe"
+        );
+        vfs_close(write_fd2).expect("closing the write end should succeed");
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that `F_SETFL` stores `O_NONBLOCK` and `F_GETFL`/`vfs_get_status_flags` read it back.
+    #[test]
+    fn pipe_nonblock_status_flags_round_trip() {
+        use ::sysapi::fcntl::{
+            file_control_request,
+            file_status_flags,
+        };
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7131);
+        set_current_process(pid);
+
+        let (read_fd, write_fd): (c_int, c_int) = vfs_pipe().expect("pipe creation should succeed");
+        assert_eq!(vfs_get_status_flags(read_fd), 0, "flags default to zero");
+
+        vfs_fcntl(read_fd, file_control_request::F_SETFL, file_status_flags::O_NONBLOCK)
+            .expect("F_SETFL should succeed");
+        assert_eq!(
+            vfs_get_status_flags(read_fd),
+            file_status_flags::O_NONBLOCK,
+            "O_NONBLOCK should be stored"
+        );
+        assert_eq!(
+            vfs_fcntl(read_fd, file_control_request::F_GETFL, 0).expect("F_GETFL should succeed"),
+            file_status_flags::O_NONBLOCK,
+            "F_GETFL returns the stored flags"
+        );
+        // Status flags are per open file description: the write end is unaffected.
+        assert_eq!(vfs_get_status_flags(write_fd), 0, "the write end is unaffected");
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that process exit surfaces pipe count-to-zero transitions for the process's own ends.
+    #[test]
+    fn pipe_process_exit_reports_closures() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7141);
+        set_current_process(pid);
+
+        let (read_fd, write_fd): (c_int, c_int) = vfs_pipe().expect("pipe creation should succeed");
+        let (pipe_id, _): (u64, bool) = vfs_pipe_id(read_fd).expect("read fd should be a pipe");
+        // Both ends stay open in this single process, so it holds the only reference to each.
+        let _ = write_fd;
+
+        let reclaim: ProcessExitReclaim = vfs_process_exit(pid);
+        assert!(reclaim.orphaned_hostfs_fds.is_empty(), "no hostfs fds were opened");
+        assert_eq!(reclaim.pipe_closures.len(), 2, "both ends are last references at exit");
+        assert!(
+            reclaim.pipe_closures.iter().all(|c| c.pipe_id == pipe_id),
+            "closures must target our pipe"
+        );
+        assert!(
+            reclaim.pipe_closures.iter().any(|c| c.was_write),
+            "the write end closure is reported"
+        );
+        assert!(
+            reclaim.pipe_closures.iter().any(|c| !c.was_write),
+            "the read end closure is reported"
+        );
+
+        forget_processes(&[pid]);
     }
 }

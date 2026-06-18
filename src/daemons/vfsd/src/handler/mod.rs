@@ -8,6 +8,7 @@
 mod hostfs_handlers;
 mod long;
 mod mount_handler;
+pub(crate) mod pipe;
 mod readwrite;
 mod short;
 

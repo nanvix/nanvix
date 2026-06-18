@@ -30,6 +30,7 @@ use crate::{
         PendingOpKind,
         PendingQueue,
     },
+    pipe_wait::PipeWaitTable,
 };
 use ::sys::{
     error::ErrorCode,
@@ -59,9 +60,25 @@ pub(crate) fn handle_close_with_hostfs(
     source: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
+    pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
     let req: CloseRequest = CloseRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
+
+    // Pipe close: if this drops the last reference to an end, fire the matching wakeup so any
+    // suspended counterparts observe EOF (write end gone) or `EPIPE` (read end gone).
+    if let Some((pipe_id, is_write)) = ::vfs::fd::vfs_pipe_id(fd) {
+        let last_ref: bool = ::vfs::fd::vfs_pipe_is_last_ref(fd);
+        let response: Message = super::short::handle_close(source, msg);
+        if last_ref {
+            if is_write {
+                super::pipe::wake_all_readers_eof(pipe_id, pipe_wait);
+            } else {
+                super::pipe::fail_all_writers_epipe(pipe_id, pipe_wait);
+            }
+        }
+        return Some(response);
+    }
 
     if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
         // A forked child may share this open file description with its parent. Only forward the
@@ -113,6 +130,11 @@ pub(crate) fn handle_seek_with_hostfs(
 ) -> Option<Message> {
     let req: SeekRequest = SeekRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
+
+    // A pipe is not seekable: report `ESPIPE` without touching the buffer.
+    if ::vfs::fd::vfs_pipe_id(fd).is_some() {
+        return Some(build_error(source, ErrorCode::IllegalSeek));
+    }
 
     if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
         if !pending.has_capacity() {
@@ -310,9 +332,23 @@ pub(crate) fn handle_read_with_hostfs(
     source_tid: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
+    pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
     let req: ReadRequest = ReadRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
+
+    // Pipe read end: served by the pipe handler (which may park the caller).
+    if let Some((pipe_id, is_write)) = ::vfs::fd::vfs_pipe_id(fd) {
+        return super::pipe::handle_pipe_read(
+            source_pid,
+            source_tid,
+            fd,
+            req.count as usize,
+            is_write,
+            pipe_id,
+            pipe_wait,
+        );
+    }
 
     if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
         if !pending.has_capacity() {
@@ -351,9 +387,23 @@ pub(crate) fn handle_write_with_hostfs(
     source_tid: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
+    pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
     let req: WriteRequest = WriteRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
+
+    // Pipe write end: served by the pipe handler (which may park the caller).
+    if let Some((pipe_id, is_write)) = ::vfs::fd::vfs_pipe_id(fd) {
+        return super::pipe::handle_pipe_write(
+            source_pid,
+            source_tid,
+            fd,
+            req.count as usize,
+            is_write,
+            pipe_id,
+            pipe_wait,
+        );
+    }
 
     if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
         if !pending.has_capacity() {

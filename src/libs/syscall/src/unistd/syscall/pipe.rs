@@ -5,24 +5,21 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::{
-    Error,
-    ErrorCode,
+use crate::{
+    unistd::message::{
+        PipeRequest,
+        PipeResponse,
+    },
+    SystemCallMessage,
+    SystemCallMessageHeader,
 };
-#[cfg(not(feature = "standalone"))]
-use {
-    crate::{
-        unistd::message::{
-            PipeRequest,
-            PipeResponse,
-        },
-        SystemCallMessage,
-        SystemCallMessageHeader,
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
     },
-    ::sys::{
-        ipc::Message,
-        pm::ThreadIdentifier,
-    },
+    ipc::Message,
+    pm::ThreadIdentifier,
 };
 
 //==================================================================================================
@@ -32,15 +29,32 @@ use {
 pub fn pipe() -> Result<[i32; 2], Error> {
     ::syslog::trace!("pipe()");
 
-    // In standalone mode, pipe is not available (no linuxd).
+    // In standalone mode, route the request to the guest-side vfsd daemon.
     #[cfg(feature = "standalone")]
     {
-        Err(Error::new(ErrorCode::OperationNotSupported, "pipe not available in standalone mode"))
+        pipe_vfsd()
     }
 
-    // Forward to linuxd via IPC.
+    // Otherwise, forward to linuxd via IKC.
     #[cfg(not(feature = "standalone"))]
     pipe_linuxd()
+}
+
+/// Sends a `pipe` request to vfsd via IPC and parses the response.
+///
+/// Mirrors the short-syscall convention used by `close`: send the request, then receive the reply.
+/// vfsd allocates the shared pipe buffer and the two descriptors and returns them.
+#[cfg(feature = "standalone")]
+fn pipe_vfsd() -> Result<[i32; 2], Error> {
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+
+    // Build request and send it to vfsd over local IPC.
+    let request: Message = PipeRequest::build(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
+    ::sys::kcall::ipc::__kcall_send(&request)?;
+
+    // Receive response.
+    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    parse_pipe_response(response)
 }
 
 /// Forwards a `pipe` request to linuxd via IPC.
@@ -54,7 +68,12 @@ fn pipe_linuxd() -> Result<[i32; 2], Error> {
 
     // Receive response.
     let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    parse_pipe_response(response)
+}
 
+/// Parses a `pipe` response, mapping a non-zero status onto an error code and otherwise extracting
+/// the read/write descriptors from the [`PipeResponse`].
+fn parse_pipe_response(response: Message) -> Result<[i32; 2], Error> {
     // Check whether system call succeeded or not.
     if response.status != 0 {
         // System call failed, parse error code and return it.
