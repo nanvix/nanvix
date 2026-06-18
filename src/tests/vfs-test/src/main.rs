@@ -766,28 +766,28 @@ fn test_fcntl_fd_flags() -> Result<(), Error> {
     let fd: i32 = vfs::fd::vfs_open("/fcn/fc.txt", 0).map_err(|e| fat_err(e, "open fc.txt fd"))?;
 
     // F_GETFD should succeed and return 0.
-    let flags: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFD)
+    let flags: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFD, 0)
         .map_err(|e| fat_err(e, "fcntl F_GETFD"))?;
     if flags != 0 {
         return Err(Error::new(ErrorCode::InvalidArgument, "F_GETFD should return 0"));
     }
 
     // F_SETFD should succeed and return 0.
-    let result: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_SETFD)
+    let result: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_SETFD, 0)
         .map_err(|e| fat_err(e, "fcntl F_SETFD"))?;
     if result != 0 {
         return Err(Error::new(ErrorCode::InvalidArgument, "F_SETFD should return 0"));
     }
 
     // F_GETFL and F_SETFL should still work.
-    let fl: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFL)
+    let fl: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFL, 0)
         .map_err(|e| fat_err(e, "fcntl F_GETFL"))?;
     if fl != 0 {
         return Err(Error::new(ErrorCode::InvalidArgument, "F_GETFL should return 0"));
     }
 
     // An unsupported command (e.g. F_DUPFD) should fail.
-    if vfs::fd::vfs_fcntl(fd, file_control_request::F_DUPFD).is_ok() {
+    if vfs::fd::vfs_fcntl(fd, file_control_request::F_DUPFD, 0).is_ok() {
         return Err(Error::new(ErrorCode::InvalidArgument, "F_DUPFD should fail on VFS"));
     }
 
