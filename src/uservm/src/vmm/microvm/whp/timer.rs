@@ -12,10 +12,8 @@ use ::log::trace;
 use ::std::{
     sync::{
         Arc,
-        atomic::{
-            AtomicBool,
-            Ordering,
-        },
+        Condvar,
+        Mutex,
     },
     thread::{
         self,
@@ -51,11 +49,20 @@ unsafe extern "system" {
 /// `WHvCancelRunVirtualProcessor` to cause a `Canceled` exit. The VMM
 /// loop uses these exits to update `system_time` on the pvclock page.
 ///
+/// The inter-tick wait is **interruptible**: the thread waits on a
+/// [`Condvar`] with the tick period as a timeout, rather than calling
+/// `thread::sleep`. This lets [`Timer::stop`] wake the thread (and thus
+/// return from `join`) immediately, instead of blocking for the
+/// remainder of the current tick. A non-interruptible `thread::sleep`
+/// made VM teardown stall for up to a full tick period (~10 ms),
+/// inflating measured boot latency.
+///
 pub struct Timer {
     /// WHP partition handle (for `WHvCancelRunVirtualProcessor`).
     partition: WHV_PARTITION_HANDLE,
-    /// Flag used to signal the timer thread to stop.
-    stop: Arc<AtomicBool>,
+    /// Shared stop flag (`true` once the timer should exit) and the
+    /// [`Condvar`] used to wake the timer thread promptly on stop.
+    stop: Arc<(Mutex<bool>, Condvar)>,
     /// Handle to the background timer thread (if running).
     thread: Option<JoinHandle<()>>,
 }
@@ -74,7 +81,7 @@ impl Timer {
     pub fn new(partition: WHV_PARTITION_HANDLE) -> Self {
         Self {
             partition,
-            stop: Arc::new(AtomicBool::new(false)),
+            stop: Arc::new((Mutex::new(false), Condvar::new())),
             thread: None,
         }
     }
@@ -89,26 +96,45 @@ impl Timer {
         }
 
         trace!("Timer::start(): period_us={period_us}");
-        self.stop.store(false, Ordering::Relaxed);
+
+        // Clear the stop flag before (re)starting the timer thread.
+        {
+            let (lock, _cvar) = &*self.stop;
+            *lock.lock().unwrap() = false;
+        }
 
         let stop = self.stop.clone();
         let partition = self.partition;
         let period = Duration::from_micros(period_us);
 
         self.thread = Some(thread::spawn(move || {
-            // Set Windows timer resolution to 1ms for accurate sleep.
+            // Request 1 ms timer resolution so the periodic wait is reasonably accurate.
             unsafe { timeBeginPeriod(1) };
 
-            while !stop.load(Ordering::Relaxed) {
-                thread::sleep(period);
-                if stop.load(Ordering::Relaxed) {
+            let (lock, cvar) = &*stop;
+            let mut stopped = lock.lock().unwrap();
+            while !*stopped {
+                // Interruptible wait: returns early (without timing out) when `stop()`
+                // notifies, so teardown does not block for the rest of the tick period.
+                // `wait_timeout_while` absorbs spurious wakeups and adjusts the remaining
+                // timeout internally, keeping the tick cadence stable. It reports
+                // `timed_out() == false` only when `stop()` set the flag; a `true` result
+                // means the full period elapsed and it is time to fire a pvclock cancel.
+                let (guard, result) = cvar
+                    .wait_timeout_while(stopped, period, |stopped| !*stopped)
+                    .unwrap();
+                if !result.timed_out() {
+                    // Woken by `stop()`.
                     break;
                 }
+                // Period elapsed: release the lock while cancelling so `stop()` can proceed.
+                drop(guard);
                 // SAFETY: `partition` is a valid WHP partition handle that outlives
                 // the timer thread (the Vmm struct owns both).
                 unsafe {
                     let _ = WHvCancelRunVirtualProcessor(partition, 0, 0);
                 }
+                stopped = lock.lock().unwrap();
             }
 
             unsafe { timeEndPeriod(1) };
@@ -117,10 +143,18 @@ impl Timer {
     }
 
     /// Stops the timer thread, waiting for it to finish.
+    ///
+    /// Signals the stop flag and notifies the timer thread so it wakes from its
+    /// interruptible wait immediately; `join` therefore returns without blocking
+    /// for the remainder of the current tick.
     pub fn stop(&mut self) {
         if let Some(thread) = self.thread.take() {
             trace!("Timer::stop()");
-            self.stop.store(true, Ordering::Relaxed);
+            let (lock, cvar) = &*self.stop;
+            {
+                *lock.lock().unwrap() = true;
+            }
+            cvar.notify_all();
             let _ = thread.join();
         }
     }
