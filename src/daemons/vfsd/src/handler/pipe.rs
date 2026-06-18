@@ -1,0 +1,476 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//! Pipe operation handlers.
+//!
+//! These functions create pipes and service `read`/`write`/`close` on pipe descriptors, parking
+//! callers that would block and reviving them from the complementary operation. They mirror the
+//! MINIX VFS `suspend`/`revive` model on vfsd's single-threaded event loop: a parked reader stays
+//! blocked inside its `__kcall_pull`, and a parked writer inside its `__kcall_recv`, until the
+//! counterpart makes progress (or the pipe transitions to EOF/broken).
+
+extern crate alloc;
+
+use crate::{
+    error::{
+        build_error,
+        fat32_to_error_code,
+        send_response,
+    },
+    pipe_wait::{
+        BlockedReader,
+        BlockedWriter,
+        PipeWaitTable,
+    },
+};
+use ::arch::mem::PAGE_SIZE;
+use ::sys::{
+    error::ErrorCode,
+    ipc::{
+        Message,
+        MessageType,
+    },
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
+};
+use ::syscall::unistd::message::{
+    PipeResponse,
+    ReadResponse,
+    WriteResponse,
+};
+use ::vfs::fd::{
+    set_current_process,
+    vfs_get_status_flags,
+    vfs_pipe,
+    vfs_pipe_read,
+    vfs_pipe_write,
+    PipeReadOutcome,
+    PipeWriteOutcome,
+};
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Maximum number of bytes transferred in a single pipe read/write request.
+///
+/// Matches the page-aligned chunk size the syscall layer uses, so a single request never exceeds
+/// this. It must stay within `PIPE_BUF` so that each request is performed atomically.
+const PIPE_BULK_SIZE: usize = PAGE_SIZE;
+
+/// Compile-time guarantee that a single pipe request is always atomic.
+///
+/// Keeping `PIPE_BULK_SIZE` within `PIPE_BUF` ensures a write never splits across a `PIPE_BUF`
+/// boundary and so never interleaves with another writer's data (POSIX pipe-write atomicity), and
+/// keeps the partial-write path in [`handle_pipe_write`] unreachable. If a platform's `PAGE_SIZE`
+/// ever exceeds `PIPE_BUF`, raise `PIPE_BUF` rather than relaxing this bound.
+const _: () = assert!(PIPE_BULK_SIZE <= ::vfs::pipe::PIPE_BUF);
+
+/// Static buffer used for pipe data transfers.
+///
+/// Safety: vfsd is single-threaded (one message at a time), so there is never concurrent access.
+/// Each access below is a momentary borrow that is released before any callee that also touches the
+/// buffer runs.
+static mut PIPE_BULK_BUFFER: [u8; PIPE_BULK_SIZE] = [0u8; PIPE_BULK_SIZE];
+
+//==================================================================================================
+// Helpers
+//==================================================================================================
+
+/// Returns `true` if the open file description for `fd` has `O_NONBLOCK` set.
+fn is_nonblocking(fd: i32) -> bool {
+    vfs_get_status_flags(fd) & ::sysapi::fcntl::file_status_flags::O_NONBLOCK != 0
+}
+
+/// Pushes an empty buffer to `(pid, tid)` to release a caller blocked in `__kcall_pull`.
+fn push_empty(pid: ProcessIdentifier, tid: ThreadIdentifier) {
+    if let Err(e) = ::sys::kcall::ipc::__kcall_push(pid, tid, &[]) {
+        ::syslog::error!("pipe: unblock push failed (error={:?})", e);
+    }
+}
+
+/// Builds a `ReadResponse` carrying `n` (the bytes already pushed to the caller).
+fn read_response(tid: ThreadIdentifier, n: usize) -> Message {
+    ReadResponse::build(
+        tid,
+        n as i32,
+        [0u8; ReadResponse::BUFFER_SIZE],
+        ProcessIdentifier::VFSD,
+        MessageType::Ipc,
+    )
+}
+
+/// Builds a `WriteResponse` carrying `n` (the bytes accepted into the pipe).
+fn write_response(tid: ThreadIdentifier, n: usize) -> Message {
+    WriteResponse::build(tid, n as i32, ProcessIdentifier::VFSD, MessageType::Ipc)
+}
+
+/// Outcome of attempting to serve a reader from the pipe buffer.
+///
+/// The data push to the caller (for [`Served`](ServeOutcome::Served), [`Eof`](ServeOutcome::Eof),
+/// and [`Error`](ServeOutcome::Error)) is performed inside [`try_serve_reader`]; only
+/// [`WouldBlock`](ServeOutcome::WouldBlock) leaves the caller blocked in `__kcall_pull`.
+enum ServeOutcome {
+    /// Pushed `N` bytes to the caller (`N > 0`).
+    Served(usize),
+    /// Pushed an empty buffer; the caller must receive end-of-file.
+    Eof,
+    /// No data available; the caller is still blocked in `__kcall_pull`.
+    WouldBlock,
+    /// The descriptor was not a readable pipe end; pushed an empty buffer.
+    Error,
+}
+
+/// Attempts a non-blocking read of `fd` into the shared buffer and, on success, pushes the bytes to
+/// the caller. The current process must already be set to the caller's process.
+fn try_serve_reader(
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    fd: i32,
+    count: usize,
+) -> ServeOutcome {
+    let cap: usize = count.min(PIPE_BULK_SIZE);
+    // SAFETY: single-threaded; the borrow is released when this function returns, and the only
+    // callee touched while it is held (`__kcall_push`) does not access the buffer itself.
+    let buf: &mut [u8] = unsafe { &mut PIPE_BULK_BUFFER[..cap] };
+    match vfs_pipe_read(fd, buf) {
+        Ok(PipeReadOutcome::Read(n)) => {
+            if let Err(e) = ::sys::kcall::ipc::__kcall_push(pid, tid, &buf[..n]) {
+                ::syslog::error!("pipe read: push failed (error={:?})", e);
+                return ServeOutcome::Error;
+            }
+            ServeOutcome::Served(n)
+        },
+        Ok(PipeReadOutcome::Eof) => {
+            push_empty(pid, tid);
+            ServeOutcome::Eof
+        },
+        Ok(PipeReadOutcome::WouldBlock) => ServeOutcome::WouldBlock,
+        Err(_) => {
+            push_empty(pid, tid);
+            ServeOutcome::Error
+        },
+    }
+}
+
+//==================================================================================================
+// Create
+//==================================================================================================
+
+/// Handles a `pipe()` request: allocates a pipe and its two descriptors in the caller's process.
+///
+/// The current process is bound by the dispatcher before this runs, so the descriptors land in the
+/// caller's table.
+pub(crate) fn handle_pipe_create(source: ThreadIdentifier) -> Message {
+    match vfs_pipe() {
+        Ok((read_fd, write_fd)) => {
+            ::syslog::trace!("pipe(): read_fd={}, write_fd={}", read_fd, write_fd);
+            PipeResponse::build(
+                source,
+                read_fd,
+                write_fd,
+                ProcessIdentifier::VFSD,
+                MessageType::Ipc,
+            )
+        },
+        Err(e) => build_error(source, fat32_to_error_code(&e)),
+    }
+}
+
+//==================================================================================================
+// Read
+//==================================================================================================
+
+/// Handles a `read()` on a pipe read end.
+///
+/// Returns `Some(response)` when the request completes immediately (data available, EOF, `EAGAIN`,
+/// or error) and `None` when the caller is parked (it stays blocked in `__kcall_pull` until a
+/// writer or a close revives it).
+pub(crate) fn handle_pipe_read(
+    source_pid: ProcessIdentifier,
+    source_tid: ThreadIdentifier,
+    fd: i32,
+    count: usize,
+    is_write: bool,
+    pipe_id: u64,
+    pipe_wait: &mut PipeWaitTable,
+) -> Option<Message> {
+    // Reading the write end is rejected with `EBADF`, regardless of `count`. The caller is blocked
+    // in `__kcall_pull`, so release it before sending the error response.
+    if is_write {
+        push_empty(source_pid, source_tid);
+        return Some(build_error(source_tid, ErrorCode::BadFile));
+    }
+
+    // A zero-length read returns immediately without blocking.
+    if count == 0 {
+        push_empty(source_pid, source_tid);
+        return Some(read_response(source_tid, 0));
+    }
+
+    match try_serve_reader(source_pid, source_tid, fd, count) {
+        ServeOutcome::Served(n) => {
+            // Freed buffer space: a suspended writer may now make progress.
+            rebalance(pipe_id, pipe_wait);
+            Some(read_response(source_tid, n))
+        },
+        ServeOutcome::Eof => Some(read_response(source_tid, 0)),
+        ServeOutcome::WouldBlock => {
+            if is_nonblocking(fd) {
+                // The caller is blocked in `__kcall_pull`; release it before the error response.
+                push_empty(source_pid, source_tid);
+                Some(build_error(source_tid, ErrorCode::TryAgain))
+            } else {
+                pipe_wait.park_reader(
+                    pipe_id,
+                    BlockedReader {
+                        source_tid,
+                        source_pid,
+                        fd,
+                        count,
+                    },
+                );
+                None
+            }
+        },
+        ServeOutcome::Error => Some(build_error(source_tid, ErrorCode::BadFile)),
+    }
+}
+
+//==================================================================================================
+// Write
+//==================================================================================================
+
+/// Handles a `write()` on a pipe write end.
+///
+/// Pulls the caller's bytes immediately (releasing its `__kcall_push`), buffers what it can, and
+/// either answers now or parks the caller (which stays blocked in `__kcall_recv`) until a reader
+/// drains space or all readers close.
+pub(crate) fn handle_pipe_write(
+    source_pid: ProcessIdentifier,
+    source_tid: ThreadIdentifier,
+    fd: i32,
+    count: usize,
+    is_write: bool,
+    pipe_id: u64,
+    pipe_wait: &mut PipeWaitTable,
+) -> Option<Message> {
+    let cap: usize = count.min(PIPE_BULK_SIZE);
+
+    // Pull the caller's data first; this releases the client's blocking `__kcall_push`.
+    let pulled: usize = {
+        // SAFETY: single-threaded; the borrow is released at the end of this block.
+        let buf: &mut [u8] = unsafe { &mut PIPE_BULK_BUFFER[..cap] };
+        match ::sys::kcall::ipc::__kcall_pull(source_pid, source_tid, buf) {
+            Ok(p) => p.min(cap),
+            Err(e) => {
+                ::syslog::error!("pipe write: pull failed (error={:?})", e);
+                return Some(build_error(source_tid, ErrorCode::IoErr));
+            },
+        }
+    };
+
+    // Writing the read end is rejected with `EBADF`. The pull above already drained the client's
+    // `__kcall_push`, so no data transfer is left dangling.
+    if !is_write {
+        return Some(build_error(source_tid, ErrorCode::BadFile));
+    }
+
+    // A zero-length write returns 0 without testing for a broken pipe (POSIX-permitted leniency).
+    if pulled == 0 {
+        return Some(write_response(source_tid, 0));
+    }
+
+    // SAFETY: single-threaded; this momentary borrow is not held across any buffer-touching call.
+    let outcome: Result<PipeWriteOutcome, ::vfs::Fat32Error> =
+        vfs_pipe_write(fd, unsafe { &PIPE_BULK_BUFFER[..pulled] });
+
+    match outcome {
+        Ok(PipeWriteOutcome::Wrote(n)) if n >= pulled => {
+            // Everything fit: data is available, so revive any suspended readers.
+            rebalance(pipe_id, pipe_wait);
+            Some(write_response(source_tid, pulled))
+        },
+        Ok(PipeWriteOutcome::Wrote(n)) => {
+            // Partial write (only reachable for requests larger than PIPE_BUF, which the atomicity
+            // bound above rules out today). The `n` bytes that fit are already buffered, so revive
+            // readers for them either way.
+            if is_nonblocking(fd) {
+                // POSIX: a non-blocking write transfers what fits and returns immediately.
+                rebalance(pipe_id, pipe_wait);
+                Some(write_response(source_tid, n))
+            } else {
+                // Park the remainder and let reviving readers drain space until it completes.
+                // SAFETY: single-threaded; momentary borrow copied into an owned vector.
+                let data: alloc::vec::Vec<u8> = unsafe { PIPE_BULK_BUFFER[..pulled].to_vec() };
+                pipe_wait.park_writer(
+                    pipe_id,
+                    BlockedWriter {
+                        source_tid,
+                        source_pid,
+                        fd,
+                        data,
+                        written: n,
+                        total: pulled,
+                    },
+                );
+                rebalance(pipe_id, pipe_wait);
+                None
+            }
+        },
+        Ok(PipeWriteOutcome::WouldBlock) => {
+            if is_nonblocking(fd) {
+                Some(build_error(source_tid, ErrorCode::TryAgain))
+            } else {
+                // SAFETY: single-threaded; momentary borrow copied into an owned vector.
+                let data: alloc::vec::Vec<u8> = unsafe { PIPE_BULK_BUFFER[..pulled].to_vec() };
+                pipe_wait.park_writer(
+                    pipe_id,
+                    BlockedWriter {
+                        source_tid,
+                        source_pid,
+                        fd,
+                        data,
+                        written: 0,
+                        total: pulled,
+                    },
+                );
+                None
+            }
+        },
+        Ok(PipeWriteOutcome::BrokenPipe) => Some(build_error(source_tid, ErrorCode::BrokenPipe)),
+        Err(_) => Some(build_error(source_tid, ErrorCode::BadFile)),
+    }
+}
+
+//==================================================================================================
+// Revive / Wakeups
+//==================================================================================================
+
+/// Drains as many suspended readers as the buffer allows, pushing data and answering each.
+///
+/// Returns `true` if any reader was answered (used to drive [`rebalance`] to a fixpoint).
+fn wake_readers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) -> bool {
+    let mut progress: bool = false;
+    while let Some((pid, tid, fd, count)) = pipe_wait.front_reader(pipe_id) {
+        set_current_process(pid);
+        match try_serve_reader(pid, tid, fd, count) {
+            ServeOutcome::Served(n) => {
+                pipe_wait.pop_reader(pipe_id);
+                send_response(&read_response(tid, n));
+                progress = true;
+            },
+            ServeOutcome::Eof => {
+                pipe_wait.pop_reader(pipe_id);
+                send_response(&read_response(tid, 0));
+                progress = true;
+            },
+            ServeOutcome::WouldBlock => break,
+            ServeOutcome::Error => {
+                pipe_wait.pop_reader(pipe_id);
+                send_response(&build_error(tid, ErrorCode::BadFile));
+                progress = true;
+            },
+        }
+    }
+    progress
+}
+
+/// Advances as many suspended writers as the buffer allows, completing or re-parking each.
+///
+/// Returns `true` if any writer completed or made progress.
+fn wake_writers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) -> bool {
+    let mut progress: bool = false;
+    while let Some((pid, fd)) = pipe_wait.front_writer_meta(pipe_id) {
+        set_current_process(pid);
+
+        // Attempt to buffer the writer's remaining bytes.
+        let outcome: Result<PipeWriteOutcome, ::vfs::Fat32Error> = {
+            let w: &crate::pipe_wait::BlockedWriter = match pipe_wait.front_writer(pipe_id) {
+                Some(w) => w,
+                None => break,
+            };
+            vfs_pipe_write(fd, &w.data[w.written..])
+        };
+
+        match outcome {
+            Ok(PipeWriteOutcome::Wrote(n)) => {
+                let (done, tid, total): (bool, ThreadIdentifier, usize) = {
+                    let w: &mut crate::pipe_wait::BlockedWriter =
+                        match pipe_wait.front_writer_mut(pipe_id) {
+                            Some(w) => w,
+                            None => break,
+                        };
+                    w.written += n;
+                    (w.written >= w.data.len(), w.source_tid, w.total)
+                };
+                if done {
+                    pipe_wait.pop_writer(pipe_id);
+                    send_response(&write_response(tid, total));
+                    progress = true;
+                } else {
+                    progress |= n > 0;
+                    // Buffer is full again; the writer remains parked with its remainder.
+                    break;
+                }
+            },
+            Ok(PipeWriteOutcome::WouldBlock) => break,
+            Ok(PipeWriteOutcome::BrokenPipe) => {
+                let tid: ThreadIdentifier = match pipe_wait.front_writer(pipe_id) {
+                    Some(w) => w.source_tid,
+                    None => break,
+                };
+                pipe_wait.pop_writer(pipe_id);
+                send_response(&build_error(tid, ErrorCode::BrokenPipe));
+                progress = true;
+            },
+            Err(_) => {
+                let tid: ThreadIdentifier = match pipe_wait.front_writer(pipe_id) {
+                    Some(w) => w.source_tid,
+                    None => break,
+                };
+                pipe_wait.pop_writer(pipe_id);
+                send_response(&build_error(tid, ErrorCode::BadFile));
+                progress = true;
+            },
+        }
+    }
+    progress
+}
+
+/// Drives the complementary wakeups to a fixpoint after a pipe buffer mutation.
+///
+/// Reviving writers adds data (which may free a reader to run) and reviving readers frees space
+/// (which may let a writer run); the loop terminates once neither side can make further progress.
+fn rebalance(pipe_id: u64, pipe_wait: &mut PipeWaitTable) {
+    loop {
+        let writers_progressed: bool = wake_writers(pipe_id, pipe_wait);
+        let readers_progressed: bool = wake_readers(pipe_id, pipe_wait);
+        if !writers_progressed && !readers_progressed {
+            break;
+        }
+    }
+}
+
+/// Wakes all readers suspended on `pipe_id` with end-of-file.
+///
+/// Invoked when the last write end closes (or its owner exits): every parked reader is answered
+/// with a zero-length read.
+pub(crate) fn wake_all_readers_eof(pipe_id: u64, pipe_wait: &mut PipeWaitTable) {
+    for reader in pipe_wait.drain_readers(pipe_id) {
+        push_empty(reader.source_pid, reader.source_tid);
+        send_response(&read_response(reader.source_tid, 0));
+    }
+}
+
+/// Fails all writers suspended on `pipe_id` with `EPIPE`.
+///
+/// Invoked when the last read end closes (or its owner exits): every parked writer is answered with
+/// a broken-pipe error.
+pub(crate) fn fail_all_writers_epipe(pipe_id: u64, pipe_wait: &mut PipeWaitTable) {
+    for writer in pipe_wait.drain_writers(pipe_id) {
+        send_response(&build_error(writer.source_tid, ErrorCode::BrokenPipe));
+    }
+}

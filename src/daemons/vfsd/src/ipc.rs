@@ -17,6 +17,7 @@ use crate::{
     handler,
     hostfs,
     pending::PendingQueue,
+    pipe_wait::PipeWaitTable,
 };
 use ::proc::{
     ForkCloneMessage,
@@ -96,7 +97,7 @@ fn caller_pid(message: &Message) -> ProcessIdentifier {
 // SystemMessage Handler (procd shutdown)
 //==================================================================================================
 
-fn handle_system_message(message: Message) -> Result<bool, Error> {
+fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Result<bool, Error> {
     // State-mutating process-management messages are privileged: only procd may direct them. The
     // caller (handle_ipc_message) routes here only when the message source is procd, which is the
     // runtime gate. Note that this trusts `message.source`: the kernel currently only *logs* an
@@ -150,12 +151,24 @@ fn handle_system_message(message: Message) -> Result<bool, Error> {
                     let exit: ProcessExitMessage = ProcessExitMessage::from_bytes(pm_msg.payload);
                     let pid: ProcessIdentifier = exit.pid;
                     // Reclaim the terminated process's per-process filesystem state, dropping its
-                    // open file descriptors so that surviving siblings retain correct last-reference
+                    // open file descriptors so that surviving siblings keep correct last-reference
                     // accounting. Any host-backed descriptors for which the process held the final
                     // reference can no longer be closed by the process itself, so close them on
-                    // hostfsd here to avoid leaking remote handles.
-                    let orphaned: Vec<i32> = ::vfs::fd::vfs_process_exit(pid);
-                    for remote_fd in orphaned {
+                    // hostfsd here to avoid leaking remote handles. Pipe ends for which it held the
+                    // final reference have their counts drop to zero, which must fire EOF/`EPIPE`
+                    // wakeups for any suspended counterparts.
+                    let reclaim: ::vfs::fd::ProcessExitReclaim = ::vfs::fd::vfs_process_exit(pid);
+                    // First discard any requests this process had parked: there is no longer a
+                    // client to answer, so they must not be revived by the wakeups below.
+                    pipe_wait.purge_pid(pid);
+                    for closure in reclaim.pipe_closures {
+                        if closure.was_write {
+                            handler::pipe::wake_all_readers_eof(closure.pipe_id, pipe_wait);
+                        } else {
+                            handler::pipe::fail_all_writers_epipe(closure.pipe_id, pipe_wait);
+                        }
+                    }
+                    for remote_fd in reclaim.orphaned_hostfs_fds {
                         // Fire-and-forget close: the requesting process is gone, so there is no
                         // caller to acknowledge. As in the leak-avoidance path in `complete_open`,
                         // the request is tagged with the `FIRE_AND_FORGET` sentinel op_id and no
@@ -202,13 +215,14 @@ pub(crate) fn handle_ipc_message(
     message: Message,
     assemblers: &mut BTreeMap<(i32, u16), AssemblerEntry>,
     pending: &mut PendingQueue,
+    pipe_wait: &mut PipeWaitTable,
 ) -> Result<bool, Error> {
     let source_tid: ThreadIdentifier = caller_tid(&message);
     let source_pid: ProcessIdentifier = caller_pid(&message);
 
     // Route messages from the process manager daemon (PROCD).
     if source_pid == ProcessIdentifier::PROCD {
-        return handle_system_message(message);
+        return handle_system_message(message, pipe_wait);
     }
 
     // Bind the VFS to the requesting process so that descriptor and working-directory operations
@@ -236,7 +250,7 @@ pub(crate) fn handle_ipc_message(
         //==========================================================================================
         SystemCallMessageHeader::CloseRequest => {
             if let Some(response) =
-                handler::handle_close_with_hostfs(source_tid, syscall_msg, pending)
+                handler::handle_close_with_hostfs(source_tid, syscall_msg, pending, pipe_wait)
             {
                 send_response(&response);
             }
@@ -296,19 +310,35 @@ pub(crate) fn handle_ipc_message(
         },
 
         //==========================================================================================
+        // Pipe creation: single message request, single message response.
+        //==========================================================================================
+        SystemCallMessageHeader::PipeRequest => {
+            let response: Message = handler::pipe::handle_pipe_create(source_tid);
+            send_response(&response);
+        },
+
+        //==========================================================================================
         // Read/Write: single message request + bulk data via push/pull.
         //==========================================================================================
         SystemCallMessageHeader::ReadRequest => {
-            if let Some(response) =
-                handler::handle_read_with_hostfs(source_pid, source_tid, syscall_msg, pending)
-            {
+            if let Some(response) = handler::handle_read_with_hostfs(
+                source_pid,
+                source_tid,
+                syscall_msg,
+                pending,
+                pipe_wait,
+            ) {
                 send_response(&response);
             }
         },
         SystemCallMessageHeader::WriteRequest => {
-            if let Some(response) =
-                handler::handle_write_with_hostfs(source_pid, source_tid, syscall_msg, pending)
-            {
+            if let Some(response) = handler::handle_write_with_hostfs(
+                source_pid,
+                source_tid,
+                syscall_msg,
+                pending,
+                pipe_wait,
+            ) {
                 send_response(&response);
             }
         },

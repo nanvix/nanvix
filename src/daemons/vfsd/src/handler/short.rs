@@ -132,7 +132,8 @@ pub(crate) fn handle_fcntl(source: ThreadIdentifier, msg: SystemCallMessage) -> 
     let req: FileControlRequest = FileControlRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
     let cmd: i32 = req.cmd;
-    match ::vfs::fd::vfs_fcntl(fd, cmd) {
+    let arg: i32 = req.arg;
+    match ::vfs::fd::vfs_fcntl(fd, cmd, arg) {
         Ok(ret) => {
             FileControlResponse::build(source, ret, ProcessIdentifier::VFSD, MessageType::Ipc)
         },

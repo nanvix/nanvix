@@ -19,6 +19,7 @@ mod hostfs;
 mod init;
 mod ipc;
 mod pending;
+mod pipe_wait;
 
 //==================================================================================================
 // Imports
@@ -121,6 +122,9 @@ pub fn main() {
     // Pending hostfs operations awaiting IKC responses.
     let mut pending: pending::PendingQueue = pending::PendingQueue::new();
 
+    // Suspended pipe readers/writers awaiting their complementary operation.
+    let mut pipe_wait: pipe_wait::PipeWaitTable = pipe_wait::PipeWaitTable::new();
+
     // In-flight multi-part hostfs *response* assembler, paired with the op_id
     // extracted eagerly from part 0 so a discarded stream can be cancelled (the
     // pending op would otherwise sit until the eviction timer fires).
@@ -152,7 +156,7 @@ pub fn main() {
 
     // Process any messages that were buffered during the signup phase.
     while let Some(message) = buffered_messages.pop_front() {
-        match ipc::handle_ipc_message(message, &mut assemblers, &mut pending) {
+        match ipc::handle_ipc_message(message, &mut assemblers, &mut pending, &mut pipe_wait) {
             Ok(true) => {
                 let e = ::sys::kcall::pm::__kcall_exit(0);
                 ::syslog::error!("failed to shutdown vfsd (error={:?})", e);
@@ -171,7 +175,12 @@ pub fn main() {
         match ::sys::kcall::ipc::__kcall_recv() {
             Ok(message) => match message.message_type {
                 MessageType::Ipc => {
-                    match ipc::handle_ipc_message(message, &mut assemblers, &mut pending) {
+                    match ipc::handle_ipc_message(
+                        message,
+                        &mut assemblers,
+                        &mut pending,
+                        &mut pipe_wait,
+                    ) {
                         Ok(true) => break,
                         Ok(false) => {},
                         Err(e) => {
