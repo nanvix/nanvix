@@ -42,6 +42,10 @@ use ::sysapi::{
     fcntl::{
         file_control_request,
         file_creation_flags,
+        file_descriptor_flags::{
+            FD_CLOEXEC,
+            FD_CLOFORK,
+        },
         file_status_flags,
     },
     ffi::c_int,
@@ -196,6 +200,18 @@ pub enum VfsFileHandle {
     HostFs(HostFsHandle),
     /// One end of a POSIX unnamed pipe.
     Pipe(crate::pipe::PipeEnd),
+    /// Routing token for a console stream (stdin/stdout/stderr).
+    ///
+    /// This is not a real handle: it carries no buffer and performs no I/O. It only lets vfsd own
+    /// the descriptor slot and its per-descriptor flags while console I/O is routed elsewhere. No
+    /// production path constructs this variant yet (that lands in a later plan).
+    Console(ConsoleHandle),
+    /// Routing token for a socket, holding the descriptor assigned by `networkd`.
+    ///
+    /// Socket I/O is not served by vfsd; like [`VfsFileHandle::HostFs`] this token only stores the
+    /// remote descriptor so vfsd can own the slot and its per-descriptor flags. No production path
+    /// constructs this variant yet (that lands in a later plan).
+    Socket(SocketHandle),
 }
 
 /// Handle for a file opened on the host filesystem via hostfsd.
@@ -262,6 +278,65 @@ impl HostFsHandle {
     }
 }
 
+/// Identifies which standard console stream a [`ConsoleHandle`] represents.
+///
+/// A console-backed descriptor performs no I/O of its own; the stream identity is the only state it
+/// needs so that `fstat` can synthesize a stable device identity in a later plan.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConsoleStream {
+    /// Standard input (descriptor 0).
+    Stdin,
+    /// Standard output (descriptor 1).
+    Stdout,
+    /// Standard error (descriptor 2).
+    Stderr,
+}
+
+/// Routing token for a console-backed descriptor.
+///
+/// A console handle records which standard stream the descriptor represents but holds no buffer and
+/// performs no I/O. It exists so that vfsd can own the descriptor slot and its per-descriptor flags
+/// while the actual console I/O is routed elsewhere.
+pub struct ConsoleHandle {
+    /// Which standard stream this descriptor represents.
+    stream: ConsoleStream,
+}
+
+impl ConsoleHandle {
+    /// Creates a console handle for the given standard stream.
+    pub fn new(stream: ConsoleStream) -> Self {
+        Self { stream }
+    }
+
+    /// Returns the standard stream this handle represents.
+    pub fn stream(&self) -> ConsoleStream {
+        self.stream
+    }
+}
+
+/// Routing token for a socket-backed descriptor.
+///
+/// A socket handle stores the descriptor that `networkd` assigned to the socket (its remote fd),
+/// analogous to [`HostFsHandle::remote_fd`]. Socket I/O is not served by vfsd; this token only lets
+/// vfsd own the descriptor slot and its per-descriptor flags. Closing the remote descriptor when the
+/// last reference is dropped is wired in a later plan.
+pub struct SocketHandle {
+    /// Descriptor assigned by `networkd` (the remote fd).
+    remote_fd: i32,
+}
+
+impl SocketHandle {
+    /// Creates a socket handle for the given `networkd` descriptor.
+    pub fn new(remote_fd: i32) -> Self {
+        Self { remote_fd }
+    }
+
+    /// Returns the `networkd` descriptor (remote fd) backing this socket.
+    pub fn remote_fd(&self) -> i32 {
+        self.remote_fd
+    }
+}
+
 /// Handle for an open directory.
 ///
 /// Stores the resolved path and lazily-loaded directory entries.
@@ -317,6 +392,8 @@ impl VfsFileHandle {
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
             // Pipes are served by vfsd through the dedicated non-blocking primitives.
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
+            // Console and socket tokens are inert routing markers; vfsd serves no I/O on them.
+            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -329,6 +406,8 @@ impl VfsFileHandle {
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
             // Pipes are served by vfsd through the dedicated non-blocking primitives.
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
+            // Console and socket tokens are inert routing markers; vfsd serves no I/O on them.
+            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -344,6 +423,8 @@ impl VfsFileHandle {
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
             // A pipe is not seekable (`ESPIPE`); the daemon rejects seeks before reaching here.
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
+            // Console and socket tokens are inert routing markers; vfsd serves no I/O on them.
+            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
         }
     }
 
@@ -355,6 +436,8 @@ impl VfsFileHandle {
             VfsFileHandle::Directory(_) => Ok(0),
             VfsFileHandle::HostFs(_) => Ok(0),
             VfsFileHandle::Pipe(_) => Ok(0),
+            // Console and socket tokens have no size of their own.
+            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Ok(0),
         }
     }
 
@@ -429,6 +512,74 @@ unsafe impl Send for VfsEntry {}
 /// between a parent and its child.
 type OpenFile = Arc<Mutex<VfsEntry>>;
 
+/// Per-descriptor flags carried by a single file-descriptor slot.
+///
+/// These hold the POSIX `fcntl(F_GETFD/F_SETFD)` descriptor flags — `FD_CLOEXEC` and `FD_CLOFORK`.
+/// They are stored on the slot rather than on the shared [`VfsEntry`] because POSIX requires them to
+/// be *per descriptor*, not per open file description: two descriptors that share one description
+/// through `dup` (or `fork`) each carry an independent copy, so setting `FD_CLOEXEC` on one must not
+/// affect the other.
+///
+/// The default is empty (no flags set), so a freshly allocated descriptor behaves exactly as it did
+/// before these flags existed. The flags are stored and cloned but not yet acted upon — honoring
+/// `FD_CLOFORK` at fork and `FD_CLOEXEC` at exec lands in later plans.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct FdFlags(c_int);
+
+impl FdFlags {
+    /// Returns whether the close-on-exec (`FD_CLOEXEC`) flag is set.
+    pub const fn close_on_exec(self) -> bool {
+        self.0 & FD_CLOEXEC != 0
+    }
+
+    /// Returns whether the close-on-fork (`FD_CLOFORK`) flag is set.
+    pub const fn close_on_fork(self) -> bool {
+        self.0 & FD_CLOFORK != 0
+    }
+
+    /// Sets or clears the close-on-exec (`FD_CLOEXEC`) flag.
+    pub fn set_close_on_exec(&mut self, enable: bool) {
+        self.set(FD_CLOEXEC, enable);
+    }
+
+    /// Sets or clears the close-on-fork (`FD_CLOFORK`) flag.
+    pub fn set_close_on_fork(&mut self, enable: bool) {
+        self.set(FD_CLOFORK, enable);
+    }
+
+    /// Sets or clears `flag` according to `enable`.
+    fn set(&mut self, flag: c_int, enable: bool) {
+        if enable {
+            self.0 |= flag;
+        } else {
+            self.0 &= !flag;
+        }
+    }
+}
+
+/// A single file-descriptor slot: a reference to an open file description plus the per-descriptor
+/// flags that belong to this descriptor alone.
+///
+/// The flags live here, not on the shared [`VfsEntry`], so that descriptors which share one open
+/// file description through `dup` or `fork` keep independent `FD_CLOEXEC`/`FD_CLOFORK` settings.
+#[derive(Clone)]
+struct Slot {
+    /// The shared open file description this descriptor refers to.
+    file: OpenFile,
+    /// Per-descriptor flags (`FD_CLOEXEC`, `FD_CLOFORK`).
+    fd_flags: FdFlags,
+}
+
+impl Slot {
+    /// Creates a slot referring to `file` with default (empty) descriptor flags.
+    fn new(file: OpenFile) -> Self {
+        Self {
+            file,
+            fd_flags: FdFlags::default(),
+        }
+    }
+}
+
 /// Per-process VFS state: the open file descriptor table and the current working directory.
 ///
 /// Each process is given its own descriptor table so that closing a descriptor in one process does
@@ -437,7 +588,7 @@ type OpenFile = Arc<Mutex<VfsEntry>>;
 /// the parent's open file descriptions, while the working directory is deep-copied.
 struct ProcessState {
     /// File descriptor slots indexed by `(fd - VFS_FD_BASE)`.
-    slots: Vec<Option<OpenFile>>,
+    slots: Vec<Option<Slot>>,
     /// Current working directory (always absolute, never ends with "/").
     cwd: String,
 }
@@ -453,8 +604,10 @@ impl ProcessState {
 
     /// Creates a copy of this state for a freshly forked child.
     ///
-    /// The descriptor slots are cloned as shared references to the same open file descriptions,
-    /// so the parent and child share file offsets. The working directory is deep-copied.
+    /// Each descriptor slot is cloned: the open file description is shared as a reference (so the
+    /// parent and child share file offsets) while the per-descriptor flags are copied, giving the
+    /// child its own independent `FD_CLOEXEC`/`FD_CLOFORK` settings. The working directory is
+    /// deep-copied.
     fn fork(&self) -> Self {
         Self {
             slots: self.slots.clone(),
@@ -539,7 +692,8 @@ fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
     state
         .slots
         .get(idx)
-        .and_then(|slot| slot.clone())
+        .and_then(|slot| slot.as_ref())
+        .map(|slot| slot.file.clone())
         .ok_or(Fat32Error::InvalidFd)
 }
 
@@ -550,11 +704,12 @@ fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
     let state: &mut ProcessState = procs.entry(current_pid()).or_insert_with(ProcessState::new);
     for i in 0..VFS_MAX_OPEN_FILES {
         if state.slots[i].is_none() {
-            state.slots[i] = Some(Arc::new(Mutex::new(VfsEntry {
+            let file: OpenFile = Arc::new(Mutex::new(VfsEntry {
                 handle,
                 virtual_pos: 0,
                 status_flags: 0,
-            })));
+            }));
+            state.slots[i] = Some(Slot::new(file));
             return Ok(VFS_FD_BASE + i as c_int);
         }
     }
@@ -693,20 +848,27 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
     // uncontended.
     let mut orphaned: Vec<i32> = Vec::new();
     let mut pipe_closures: Vec<PipeClosure> = Vec::new();
-    for open_file in state.slots.into_iter().flatten() {
-        if Arc::strong_count(&open_file) != 1 {
+    for slot in state.slots.into_iter().flatten() {
+        if Arc::strong_count(&slot.file) != 1 {
             continue;
         }
-        match &open_file.lock().handle {
+        match &slot.file.lock().handle {
             VfsFileHandle::HostFs(h) => orphaned.push(h.remote_fd()),
             VfsFileHandle::Pipe(end) => pipe_closures.push(PipeClosure {
                 pipe_id: end.pipe_id(),
                 was_write: end.is_write(),
             }),
+            // A console token holds no external resource, so it contributes nothing to reclaim.
+            VfsFileHandle::Console(_) => {},
+            // A socket token holds the `networkd` descriptor, but closing it on last reference is
+            // wired in a later plan; nothing is reclaimed here yet. This arm must stay distinct so
+            // a socket is never mistaken for a hostfs or pipe handle.
+            VfsFileHandle::Socket(_) => {},
             _ => {},
         }
-        // `open_file` is dropped here, after the registry lock has been released; the pipe end's
-        // `Drop` decrements its reader/writer count as part of that.
+        // `slot` — and the open file description it holds — is dropped here, after the registry lock
+        // has been released; the pipe end's `Drop` decrements its reader/writer count as part of
+        // that.
     }
     ProcessExitReclaim {
         orphaned_hostfs_fds: orphaned,
@@ -731,7 +893,7 @@ pub fn vfs_hostfs_is_last_ref(fd: c_int) -> bool {
     match state.slots.get(idx).and_then(|slot| slot.as_ref()) {
         // The table holds exactly one reference, so a strong count of one means no other descriptor
         // shares this open file description.
-        Some(entry) => Arc::strong_count(entry) == 1,
+        Some(slot) => Arc::strong_count(&slot.file) == 1,
         None => false,
     }
 }
@@ -752,9 +914,10 @@ pub fn vfs_pipe_is_last_ref(fd: c_int) -> bool {
         return false;
     };
     match state.slots.get(idx).and_then(|slot| slot.as_ref()) {
-        Some(entry) => {
+        Some(slot) => {
             // Must be a pipe and the sole reference for closing to drive the count to zero.
-            Arc::strong_count(entry) == 1 && matches!(&entry.lock().handle, VfsFileHandle::Pipe(_))
+            Arc::strong_count(&slot.file) == 1
+                && matches!(&slot.file.lock().handle, VfsFileHandle::Pipe(_))
         },
         None => false,
     }
@@ -911,6 +1074,42 @@ pub fn vfs_get_status_flags(fd: c_int) -> c_int {
         Ok(file) => file.lock().status_flags,
         Err(_) => 0,
     }
+}
+
+//==================================================================================================
+// Per-Descriptor Flag Helpers
+//==================================================================================================
+
+/// Returns the per-descriptor flags (`FD_CLOEXEC`/`FD_CLOFORK`) recorded for `fd` in the current
+/// process, or `None` if `fd` is invalid or refers to no open descriptor.
+///
+/// These are distinct from the open file status flags read by [`vfs_get_status_flags`]: they are
+/// stored per descriptor, so descriptors that share one open file description through `dup` or
+/// `fork` report them independently.
+pub fn vfs_get_fd_flags(fd: c_int) -> Option<FdFlags> {
+    let idx: usize = fd_index(fd).ok()?;
+    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
+    let state: &ProcessState = procs.get(&current_pid())?;
+    Some(state.slots.get(idx)?.as_ref()?.fd_flags)
+}
+
+/// Sets the per-descriptor flags (`FD_CLOEXEC`/`FD_CLOFORK`) for `fd` in the current process.
+///
+/// Returns [`Fat32Error::InvalidFd`] if `fd` is invalid or refers to no open descriptor. Because the
+/// flags are stored per descriptor, updating one descriptor does not affect another that shares the
+/// same open file description.
+pub fn vfs_set_fd_flags(fd: c_int, flags: FdFlags) -> Result<(), Fat32Error> {
+    let idx: usize = fd_index(fd)?;
+    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+        PROCESSES.lock();
+    let state: &mut ProcessState = procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
+    let slot: &mut Slot = state
+        .slots
+        .get_mut(idx)
+        .and_then(|slot| slot.as_mut())
+        .ok_or(Fat32Error::InvalidFd)?;
+    slot.fd_flags = flags;
+    Ok(())
 }
 
 //==================================================================================================
@@ -1205,17 +1404,18 @@ pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
     // description until the lock is released. Its drop may run backend teardown (e.g. `File::drop`,
     // which takes a global VFS lock); deferring keeps the registry lock from ever nesting with
     // backend locks.
-    let removed: Option<OpenFile> = {
+    let removed: Option<Slot> = {
         let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
             PROCESSES.lock();
         let state: &mut ProcessState =
             procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
-        let slot: &mut Option<OpenFile> = state.slots.get_mut(idx).ok_or(Fat32Error::InvalidFd)?;
+        let slot: &mut Option<Slot> = state.slots.get_mut(idx).ok_or(Fat32Error::InvalidFd)?;
         slot.take()
     };
     match removed {
-        // The open file description is dropped here, after the registry lock has been released.
-        Some(_open_file) => Ok(()),
+        // The slot — and the open file description it holds — is dropped here, after the registry
+        // lock has been released.
+        Some(_slot) => Ok(()),
         None => Err(Fat32Error::InvalidFd),
     }
 }
@@ -1368,9 +1568,11 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
             }
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-        VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) | VfsFileHandle::Pipe(_) => {
-            Err(Fat32Error::NotSupported)
-        },
+        VfsFileHandle::Directory(_)
+        | VfsFileHandle::HostFs(_)
+        | VfsFileHandle::Pipe(_)
+        | VfsFileHandle::Console(_)
+        | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
     }
 }
 
@@ -1412,9 +1614,11 @@ pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Er
             Ok(())
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-        VfsFileHandle::Directory(_) | VfsFileHandle::HostFs(_) | VfsFileHandle::Pipe(_) => {
-            Err(Fat32Error::NotSupported)
-        },
+        VfsFileHandle::Directory(_)
+        | VfsFileHandle::HostFs(_)
+        | VfsFileHandle::Pipe(_)
+        | VfsFileHandle::Console(_)
+        | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
     }
 }
 
@@ -1430,7 +1634,9 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
         VfsFileHandle::DirectRead(_)
         | VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
-        | VfsFileHandle::Pipe(_) => Ok(()),
+        | VfsFileHandle::Pipe(_)
+        | VfsFileHandle::Console(_)
+        | VfsFileHandle::Socket(_) => Ok(()),
     }
 }
 
@@ -2067,7 +2273,7 @@ mod tests {
         let procs = PROCESSES.lock();
         let state = procs.get(&pid)?;
         let idx: usize = (fd - VFS_FD_BASE) as usize;
-        let entry: OpenFile = state.slots.get(idx)?.clone()?;
+        let entry: OpenFile = state.slots.get(idx)?.as_ref()?.file.clone();
         let pos: off_t = entry.lock().virtual_pos;
         Some(pos)
     }
@@ -2078,8 +2284,8 @@ mod tests {
         let procs = PROCESSES.lock();
         if let Some(state) = procs.get(&pid) {
             let idx: usize = (fd - VFS_FD_BASE) as usize;
-            if let Some(Some(entry)) = state.slots.get(idx) {
-                entry.lock().virtual_pos = pos;
+            if let Some(Some(slot)) = state.slots.get(idx) {
+                slot.file.lock().virtual_pos = pos;
             }
         }
     }
@@ -2499,6 +2705,180 @@ mod tests {
         assert!(
             reclaim.pipe_closures.iter().any(|c| !c.was_write),
             "the read end closure is reported"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    // -- console/socket token and per-descriptor flag tests ----------------------
+
+    /// Tests that [`FdFlags`] defaults to empty and that each flag can be set and cleared
+    /// independently of the other.
+    #[test]
+    fn fd_flags_set_and_clear() {
+        // A default descriptor carries no flags.
+        let mut flags: FdFlags = FdFlags::default();
+        assert!(!flags.close_on_exec(), "close-on-exec defaults to off");
+        assert!(!flags.close_on_fork(), "close-on-fork defaults to off");
+
+        // Setting one flag must not disturb the other.
+        flags.set_close_on_exec(true);
+        assert!(flags.close_on_exec(), "close-on-exec should be set");
+        assert!(!flags.close_on_fork(), "close-on-fork must remain off");
+
+        flags.set_close_on_fork(true);
+        assert!(flags.close_on_exec(), "close-on-exec must remain set");
+        assert!(flags.close_on_fork(), "close-on-fork should be set");
+
+        // Clearing one flag must not disturb the other.
+        flags.set_close_on_exec(false);
+        assert!(!flags.close_on_exec(), "close-on-exec should be cleared");
+        assert!(flags.close_on_fork(), "close-on-fork must remain set");
+    }
+
+    /// Tests that a [`ConsoleHandle`] reports the standard stream it was created for.
+    #[test]
+    fn console_handle_tracks_stream() {
+        for stream in [
+            ConsoleStream::Stdin,
+            ConsoleStream::Stdout,
+            ConsoleStream::Stderr,
+        ] {
+            let handle: ConsoleHandle = ConsoleHandle::new(stream);
+            assert_eq!(handle.stream(), stream, "console handle should report its stream");
+        }
+    }
+
+    /// Tests that a [`SocketHandle`] reports the `networkd` descriptor it was created for.
+    #[test]
+    fn socket_handle_tracks_remote_fd() {
+        let handle: SocketHandle = SocketHandle::new(7);
+        assert_eq!(handle.remote_fd(), 7, "socket handle should report its networkd descriptor");
+    }
+
+    /// Tests that `fork()` copies a slot's per-descriptor flags into the child and that the copies
+    /// are independent, so changing the child's flags does not affect the parent's. This is the
+    /// per-descriptor semantics the later close-on-exec/close-on-fork plans depend on.
+    #[test]
+    fn fork_copies_independent_descriptor_flags() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7201), ProcessIdentifier::from(0x7202));
+
+        // Parent allocates a console-backed descriptor and marks it close-on-exec and close-on-fork.
+        set_current_process(parent);
+        let fd: c_int = alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+            .expect("console alloc should succeed");
+        assert_eq!(vfs_get_fd_flags(fd), Some(FdFlags::default()), "flags default to empty");
+        let mut flags: FdFlags = FdFlags::default();
+        flags.set_close_on_exec(true);
+        flags.set_close_on_fork(true);
+        vfs_set_fd_flags(fd, flags).expect("setting flags should succeed");
+
+        // Fork: the child inherits a copy of the descriptor's flags.
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+        set_current_process(child);
+        let child_flags: FdFlags = vfs_get_fd_flags(fd).expect("child should inherit the slot");
+        assert!(child_flags.close_on_exec(), "child inherits close-on-exec");
+        assert!(child_flags.close_on_fork(), "child inherits close-on-fork");
+
+        // The flags are per descriptor: clearing the child's must leave the parent's untouched.
+        vfs_set_fd_flags(fd, FdFlags::default()).expect("clearing child flags should succeed");
+        assert_eq!(vfs_get_fd_flags(fd), Some(FdFlags::default()), "child flags should be cleared");
+        set_current_process(parent);
+        let parent_flags: FdFlags = vfs_get_fd_flags(fd).expect("parent slot should remain");
+        assert!(parent_flags.close_on_exec(), "parent close-on-exec must be unchanged");
+        assert!(parent_flags.close_on_fork(), "parent close-on-fork must be unchanged");
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Documents the deferred `F_SETFD`/`F_GETFD` round trip tracked by
+    /// <https://github.com/nanvix/nanvix/issues/2604>.
+    #[test]
+    #[ignore = "TODO(#2604): wire vfs_fcntl(F_GETFD/F_SETFD) to FdFlags"]
+    fn fcntl_fd_flags_round_trip() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7221);
+        set_current_process(pid);
+
+        let fd: c_int = alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+            .expect("console alloc should succeed");
+        let raw_flags: c_int = FD_CLOEXEC | FD_CLOFORK;
+
+        vfs_fcntl(fd, file_control_request::F_SETFD, raw_flags)
+            .expect("F_SETFD should store descriptor flags");
+        assert_eq!(
+            vfs_fcntl(fd, file_control_request::F_GETFD, 0).expect("F_GETFD should succeed"),
+            raw_flags,
+            "F_GETFD should return the flags stored by F_SETFD"
+        );
+
+        let stored_flags: FdFlags = vfs_get_fd_flags(fd).expect("fd flags should be recorded");
+        assert!(stored_flags.close_on_exec(), "FD_CLOEXEC should be recorded");
+        assert!(stored_flags.close_on_fork(), "FD_CLOFORK should be recorded");
+
+        forget_processes(&[pid]);
+    }
+
+    /// Documents that `F_SETFD` must update only the addressed descriptor, as tracked by
+    /// <https://github.com/nanvix/nanvix/issues/2604>.
+    #[test]
+    #[ignore = "TODO(#2604): wire vfs_fcntl(F_GETFD/F_SETFD) to FdFlags"]
+    fn fcntl_fd_flags_are_per_descriptor_after_fork() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7231), ProcessIdentifier::from(0x7232));
+
+        set_current_process(parent);
+        let fd: c_int = alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+            .expect("console alloc should succeed");
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+
+        set_current_process(child);
+        vfs_fcntl(fd, file_control_request::F_SETFD, FD_CLOEXEC)
+            .expect("child F_SETFD should succeed");
+        assert_eq!(
+            vfs_fcntl(fd, file_control_request::F_GETFD, 0).expect("child F_GETFD should succeed"),
+            FD_CLOEXEC,
+            "child should see its own descriptor flag"
+        );
+
+        set_current_process(parent);
+        assert_eq!(
+            vfs_fcntl(fd, file_control_request::F_GETFD, 0).expect("parent F_GETFD should succeed"),
+            0,
+            "parent descriptor flags should remain unchanged"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that a lone console or socket token contributes nothing to [`ProcessExitReclaim`] at
+    /// process exit: a console holds no external resource, and a socket's `networkd` descriptor is
+    /// closed by a later plan rather than reclaimed here. Crucially, neither is mistaken for a
+    /// hostfs or pipe handle.
+    #[test]
+    fn process_exit_reclaims_nothing_for_console_and_socket() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7211);
+        set_current_process(pid);
+
+        // A console token and a socket token, each the sole reference held by this process.
+        alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stderr)))
+            .expect("console alloc should succeed");
+        alloc_fd(VfsFileHandle::Socket(SocketHandle::new(99)))
+            .expect("socket alloc should succeed");
+
+        // Exit must reclaim neither a hostfs descriptor nor a pipe end for these inert tokens.
+        let reclaim: ProcessExitReclaim = vfs_process_exit(pid);
+        assert!(
+            reclaim.orphaned_hostfs_fds.is_empty(),
+            "console and socket tokens own no hostfs descriptor"
+        );
+        assert!(
+            reclaim.pipe_closures.is_empty(),
+            "console and socket tokens trigger no pipe closures"
         );
 
         forget_processes(&[pid]);
