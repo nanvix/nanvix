@@ -74,6 +74,9 @@ pub mod mount;
 /// Path-resolution cache used by the mount table.
 mod path_cache;
 
+/// In-memory pipe buffers for POSIX unnamed pipes.
+pub mod pipe;
+
 /// Global VFS state management.
 pub mod state;
 
