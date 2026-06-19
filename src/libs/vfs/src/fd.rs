@@ -32,6 +32,7 @@ use ::config::fds::{
     VFS_MAX_OPEN_FILES,
 };
 use ::core::sync::atomic::{
+    AtomicBool,
     AtomicI32,
     Ordering,
 };
@@ -60,7 +61,12 @@ use ::sysapi::{
         uid_t,
     },
     time::timespec,
-    unistd::file_seek,
+    unistd::{
+        file_seek,
+        STDERR_FILENO,
+        STDIN_FILENO,
+        STDOUT_FILENO,
+    },
 };
 
 //==================================================================================================
@@ -586,19 +592,41 @@ impl Slot {
 /// not affect another, and its own working directory so that `chdir()` is process-local. `fork()`
 /// gives the child a copy of this state: the descriptor slots are cloned as shared references to
 /// the parent's open file descriptions, while the working directory is deep-copied.
+///
+/// The slot table is a flat map keyed by the raw descriptor number, so it can hold both the low
+/// console descriptors (`0`/`1`/`2`, seeded by [`vfs_seed_root_console`]) and the high VFS range
+/// allocated by [`alloc_fd`] in the same structure. Only the storage is flat: [`alloc_fd`] still
+/// hands out descriptors in `[VFS_FD_BASE, VFS_FD_BASE + VFS_MAX_OPEN_FILES)` and the descriptor
+/// operations below still resolve only that high range, so numbering and routing are unchanged.
 struct ProcessState {
-    /// File descriptor slots indexed by `(fd - VFS_FD_BASE)`.
-    slots: Vec<Option<Slot>>,
+    /// File descriptor slots keyed by the raw file descriptor number.
+    slots: BTreeMap<c_int, Slot>,
     /// Current working directory (always absolute, never ends with "/").
     cwd: String,
+    /// Whether this state has been explicitly initialized rather than lazily conjured.
+    ///
+    /// A freshly created state is an uninitialized *placeholder*: [`set_current_process`] inserts
+    /// one the first time it sees a pid, so that a forked child whose first request races ahead of
+    /// its fork-clone notification has somewhere to record an early `chdir`. A state becomes
+    /// initialized — *active* — when [`vfs_seed_root_console`] seeds the root, when [`fork`] clones
+    /// a child, or when [`alloc_fd`] allocates a descriptor. [`vfs_fork_clone`] overwrites a child
+    /// entry only while it is still a placeholder, replacing the descriptor-count test that the
+    /// removed `is_empty` predicate used: a seeded state may legitimately hold console descriptors
+    /// and an active state may have closed all of them, so "holds no descriptors" can no longer
+    /// stand in for "safe to overwrite."
+    ///
+    /// [`fork`]: ProcessState::fork
+    initialized: bool,
 }
 
 impl ProcessState {
-    /// Creates a new, empty per-process state whose working directory defaults to [`DEFAULT_CWD`].
+    /// Creates a new, uninitialized placeholder state whose working directory defaults to
+    /// [`DEFAULT_CWD`] and whose descriptor table is empty.
     fn new() -> Self {
         Self {
-            slots: alloc::vec![None; VFS_MAX_OPEN_FILES],
+            slots: BTreeMap::new(),
             cwd: String::from(DEFAULT_CWD),
+            initialized: false,
         }
     }
 
@@ -607,22 +635,14 @@ impl ProcessState {
     /// Each descriptor slot is cloned: the open file description is shared as a reference (so the
     /// parent and child share file offsets) while the per-descriptor flags are copied, giving the
     /// child its own independent `FD_CLOEXEC`/`FD_CLOFORK` settings. The working directory is
-    /// deep-copied.
+    /// deep-copied. The child is born *active*: a forked process is a real process, never an
+    /// overwritable placeholder.
     fn fork(&self) -> Self {
         Self {
             slots: self.slots.clone(),
             cwd: self.cwd.clone(),
+            initialized: true,
         }
-    }
-
-    /// Reports whether this state holds no open file descriptors.
-    ///
-    /// A freshly created [`ProcessState`] is empty until a descriptor is allocated. This is used to
-    /// recognize the placeholder state that [`set_current_process`] inserts lazily when a request
-    /// arrives for a process the VFS has not seen before, so that a later fork-clone may safely
-    /// overwrite it without orphaning any host-backed remote handles.
-    fn is_empty(&self) -> bool {
-        self.slots.iter().all(Option::is_none)
     }
 }
 
@@ -644,6 +664,20 @@ static CURRENT_PID: AtomicI32 = AtomicI32::new(0);
 #[inline]
 fn current_pid() -> ProcessIdentifier {
     ProcessIdentifier::from(CURRENT_PID.load(Ordering::Relaxed))
+}
+
+/// Returns the identifier assigned to the root/init process.
+///
+/// The kernel creates the fixed daemon set first (`procd`, `memd`, then `vfsd`) and assigns the
+/// boot workload the next pid. Keeping this derivation local avoids treating whichever process
+/// happens to issue the first VFS request as the root, which would break the fork-race placeholder
+/// path that [`vfs_fork_clone`] preserves.
+///
+/// TODO(#2610): replace this positional derivation with an authoritative root pid — a dedicated
+/// `ProcessIdentifier::INIT` constant or a value supplied by `procd` — instead of hardcoding
+/// `VFSD_RAW + 1`, which silently breaks if the daemon spawn order changes.
+fn root_process_identifier() -> ProcessIdentifier {
+    ProcessIdentifier::from(ProcessIdentifier::VFSD_RAW + 1)
 }
 
 /// Selects the process on whose behalf subsequent VFS operations are performed.
@@ -672,27 +706,29 @@ pub(crate) fn current_cwd() -> String {
         .unwrap_or_else(|| String::from("/"))
 }
 
-/// Translates a file descriptor into a slot index, validating its range.
-fn fd_index(fd: c_int) -> Result<usize, Fat32Error> {
-    if fd < VFS_FD_BASE {
-        return Err(Fat32Error::InvalidFd);
+/// Validates that `fd` falls within the VFS descriptor range.
+///
+/// vfsd now stores the console descriptors (`0`/`1`/`2`) alongside the high VFS range in a single
+/// flat table, but it serves no I/O on the console slots: those still flow `libposix → kernel` by
+/// number. Its descriptor operations therefore resolve only the high range, exactly as they did
+/// before the storage was generalized, so a descriptor below [`VFS_FD_BASE`] (or past the range)
+/// is rejected here.
+fn check_vfs_fd(fd: c_int) -> Result<(), Fat32Error> {
+    if is_vfs_fd(fd) {
+        Ok(())
+    } else {
+        Err(Fat32Error::InvalidFd)
     }
-    let idx: usize = (fd - VFS_FD_BASE) as usize;
-    if idx >= VFS_MAX_OPEN_FILES {
-        return Err(Fat32Error::InvalidFd);
-    }
-    Ok(idx)
 }
 
 /// Returns a shared reference to the open file description for `fd` in the current process.
 fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
-    let idx: usize = fd_index(fd)?;
+    check_vfs_fd(fd)?;
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let state: &ProcessState = procs.get(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
     state
         .slots
-        .get(idx)
-        .and_then(|slot| slot.as_ref())
+        .get(&fd)
         .map(|slot| slot.file.clone())
         .ok_or(Fat32Error::InvalidFd)
 }
@@ -702,18 +738,22 @@ fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.entry(current_pid()).or_insert_with(ProcessState::new);
-    for i in 0..VFS_MAX_OPEN_FILES {
-        if state.slots[i].is_none() {
-            let file: OpenFile = Arc::new(Mutex::new(VfsEntry {
-                handle,
-                virtual_pos: 0,
-                status_flags: 0,
-            }));
-            state.slots[i] = Some(Slot::new(file));
-            return Ok(VFS_FD_BASE + i as c_int);
-        }
-    }
-    Err(Fat32Error::TooManyOpenFiles)
+    // Find the lowest free descriptor in the high VFS range. Console descriptors live at low keys
+    // in the same flat table but are never handed out here, so numbering is unchanged.
+    let fd: c_int = (0..VFS_MAX_OPEN_FILES)
+        .map(|i| VFS_FD_BASE + i as c_int)
+        .find(|fd| !state.slots.contains_key(fd))
+        .ok_or(Fat32Error::TooManyOpenFiles)?;
+    let file: OpenFile = Arc::new(Mutex::new(VfsEntry {
+        handle,
+        virtual_pos: 0,
+        status_flags: 0,
+    }));
+    state.slots.insert(fd, Slot::new(file));
+    // Allocating a descriptor graduates a lazily-inserted placeholder into an active state: a
+    // process holding a real descriptor must never be overwritten by a later fork-clone.
+    state.initialized = true;
+    Ok(fd)
 }
 
 /// Records the current working directory for the process the VFS is operating on behalf of.
@@ -734,7 +774,10 @@ pub(crate) fn set_current_cwd(cwd: String) {
 ///
 /// The child inherits a copy of the parent's open file descriptors — sharing the underlying open
 /// file descriptions, and therefore file offsets, as POSIX requires — together with a private copy
-/// of the parent's current working directory.
+/// of the parent's current working directory. The child's console descriptors (`0`/`1`/`2`) are
+/// cloned like any other slot, so the standard streams the root process was seeded with flow down
+/// every fork. A descriptor flagged `FD_CLOFORK` is the one exception: it is dropped in the child
+/// rather than cloned, per POSIX close-on-fork semantics.
 ///
 /// `procd` owns process lifecycle: it registers every process with the VFS when the process is
 /// created and is the only component permitted to do so. A fork is therefore always cloned from a
@@ -745,16 +788,18 @@ pub(crate) fn set_current_cwd(cwd: String) {
 /// - [`Fat32Error::NotFound`] if `parent` has no recorded state. Because `procd` registers a
 ///   process before it can ever fork, a missing parent is a lifecycle contract violation rather
 ///   than a recoverable condition, and the child is left unregistered. The `child` state is
-///   examined before the `parent`, so a `child` that already holds open descriptors yields
-///   [`Fat32Error::AlreadyExists`] even when `parent` is missing as well.
-/// - [`Fat32Error::AlreadyExists`] if `child` already has recorded state that holds open file
-///   descriptors. A forked child must be a fresh process; overwriting a populated table would drop
-///   its open file descriptions and leak any host-backed remote handles they hold. The caller must
-///   reclaim that state first (e.g., via [`vfs_process_exit`]). An empty placeholder state — which
-///   [`set_current_process`] inserts lazily when the child's first request races ahead of this
-///   fork-clone notification — holds no descriptors and is overwritten in place; any working
-///   directory the child set via `chdir` before the notification arrived is preserved rather than
-///   reverted to the parent's.
+///   examined before the `parent`, so an *active* `child` yields [`Fat32Error::AlreadyExists`]
+///   even when `parent` is missing as well.
+/// - [`Fat32Error::AlreadyExists`] if `child` already has an *active* recorded state. A forked
+///   child must be a fresh process; overwriting an active table would drop its open file
+///   descriptions and leak any host-backed remote handles they hold. The caller must reclaim that
+///   state first (e.g., via [`vfs_process_exit`]). Activeness — not a descriptor count — is the
+///   test: a state is active once it has been seeded, cloned, or has allocated a descriptor, so a
+///   process that closed all of its descriptors is still protected. An uninitialized placeholder
+///   state — which [`set_current_process`] inserts lazily when the child's first request races
+///   ahead of this fork-clone notification — is overwritten in place; any working directory the
+///   child set via `chdir` before the notification arrived is preserved rather than reverted to
+///   the parent's.
 pub fn vfs_fork_clone(
     parent: ProcessIdentifier,
     child: ProcessIdentifier,
@@ -762,17 +807,19 @@ pub fn vfs_fork_clone(
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     // The child's first request can reach the VFS before procd's fork-clone notification, in which
-    // case `set_current_process` has already inserted an empty placeholder state for it. That
-    // placeholder holds no descriptors, so it is safe to overwrite. Refuse only when the existing
-    // state actually holds open descriptors, since clobbering those would orphan any host-backed
-    // remote handles they reference.
+    // case `set_current_process` has already inserted an uninitialized placeholder state for it.
+    // Such a placeholder is safe to overwrite. Refuse only when the existing state is active, since
+    // clobbering a real table would orphan any host-backed remote handles its descriptors
+    // reference. Activeness — rather than "holds no descriptors" — is the guard, so a seeded state
+    // holding only console descriptors and an active state that has closed all of its descriptors
+    // are each classified correctly.
     //
     // The placeholder can still carry a working directory: the racing child may have issued a
     // `chdir` before this notification arrived. Capture a directory that differs from the default
     // so the clone below keeps the child's own cwd instead of reverting it to the parent's.
     let mut child_cwd: Option<String> = None;
     if let Some(existing) = procs.get(&child) {
-        if !existing.is_empty() {
+        if existing.initialized {
             return Err(Fat32Error::AlreadyExists);
         }
         if existing.cwd != DEFAULT_CWD {
@@ -783,12 +830,73 @@ pub fn vfs_fork_clone(
     // sole authority for doing so, so forking from an unregistered parent is a contract violation:
     // surface it rather than fabricating a default child that would mask the bug.
     let mut child_state: ProcessState = procs.get(&parent).ok_or(Fat32Error::NotFound)?.fork();
+    // Honor close-on-fork: a descriptor flagged `FD_CLOFORK` in the parent is not inherited, so
+    // drop it from the freshly cloned child table. The standard streams `0`/`1`/`2` are not flagged
+    // by default, so they survive the fork.
+    child_state
+        .slots
+        .retain(|_fd, slot| !slot.fd_flags.close_on_fork());
     // Honor a working directory the child established before the fork-clone notification arrived.
     if let Some(cwd) = child_cwd {
         child_state.cwd = cwd;
     }
     procs.insert(child, child_state);
     Ok(())
+}
+
+/// Tracks whether the root process's console descriptors have been seeded.
+///
+/// Seeding the root is a one-time event: [`vfs_seed_root_console`] reads and sets this only after
+/// verifying that the target pid is the root. Non-root calls are no-ops and do not consume the
+/// latch, which is what keeps a racing child placeholder overwritable until its fork-clone arrives.
+/// It is process-global, so any unit test that drives seeding must serialize on `FORK_TEST_GUARD`
+/// and reset it on cleanup.
+static ROOT_CONSOLE_SEEDED: AtomicBool = AtomicBool::new(false);
+
+/// Seeds the root process's standard console descriptors (`0`/`1`/`2`) and marks its state active.
+///
+/// The root process is the one process not born from a fork: the kernel spawns it directly, so it
+/// never receives its standard streams through [`vfs_fork_clone`] the way every other process does.
+/// This installs a [`ConsoleHandle`] for stdin, stdout, and stderr into `pid`'s descriptor table so
+/// that vfsd becomes the authoritative bookkeeper of those slots and forks propagate them onward.
+///
+/// The seeding is behavior-preserving: the console slots are inert routing tokens (vfsd serves no
+/// I/O on them — console `read`/`write` still flow `libposix → kernel` by number), and [`alloc_fd`]
+/// continues to hand out descriptors only in the high `[VFS_FD_BASE, …)` range, so `open` numbering
+/// is untouched.
+///
+/// The call is idempotent and root-only. vfsd may invoke it both on regular syscall dispatch and
+/// when a fork-clone notification names a parent; non-root pids are ignored without consuming the
+/// one-shot latch, so a forked child whose first request races ahead of its clone remains an
+/// overwritable placeholder. A child receives `0`/`1`/`2` only through [`vfs_fork_clone`].
+pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
+    if pid != root_process_identifier() {
+        return;
+    }
+    // One-shot: only the root's first call has any effect. Every later root call observes the flag
+    // already set and returns immediately.
+    if ROOT_CONSOLE_SEEDED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+        PROCESSES.lock();
+    let state: &mut ProcessState = procs.entry(pid).or_insert_with(ProcessState::new);
+    for (fd, stream) in [
+        (STDIN_FILENO, ConsoleStream::Stdin),
+        (STDOUT_FILENO, ConsoleStream::Stdout),
+        (STDERR_FILENO, ConsoleStream::Stderr),
+    ] {
+        let file: OpenFile = Arc::new(Mutex::new(VfsEntry {
+            handle: VfsFileHandle::Console(ConsoleHandle::new(stream)),
+            virtual_pos: 0,
+            status_flags: 0,
+        }));
+        state.slots.insert(fd, Slot::new(file));
+    }
+    // The root is now a real, active process: its state must never be mistaken for an overwritable
+    // placeholder. (The root is never the target of a fork-clone, but marking it keeps the
+    // placeholder/active invariant uniform across every code path.)
+    state.initialized = true;
 }
 
 /// Pipe count-to-zero transitions surfaced by [`vfs_process_exit`].
@@ -848,7 +956,7 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
     // uncontended.
     let mut orphaned: Vec<i32> = Vec::new();
     let mut pipe_closures: Vec<PipeClosure> = Vec::new();
-    for slot in state.slots.into_iter().flatten() {
+    for slot in state.slots.into_values() {
         if Arc::strong_count(&slot.file) != 1 {
             continue;
         }
@@ -883,14 +991,14 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
 /// `false` if other descriptors — for example in a forked child — still share it, or if `fd` is
 /// invalid. This does not modify the descriptor table.
 pub fn vfs_hostfs_is_last_ref(fd: c_int) -> bool {
-    let Ok(idx) = fd_index(fd) else {
+    if check_vfs_fd(fd).is_err() {
         return false;
-    };
+    }
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let Some(state) = procs.get(&current_pid()) else {
         return false;
     };
-    match state.slots.get(idx).and_then(|slot| slot.as_ref()) {
+    match state.slots.get(&fd) {
         // The table holds exactly one reference, so a strong count of one means no other descriptor
         // shares this open file description.
         Some(slot) => Arc::strong_count(&slot.file) == 1,
@@ -906,14 +1014,14 @@ pub fn vfs_hostfs_is_last_ref(fd: c_int) -> bool {
 /// end (for example in a forked child), when `fd` is not a pipe, or when `fd` is invalid. This does
 /// not modify the descriptor table.
 pub fn vfs_pipe_is_last_ref(fd: c_int) -> bool {
-    let Ok(idx) = fd_index(fd) else {
+    if check_vfs_fd(fd).is_err() {
         return false;
-    };
+    }
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let Some(state) = procs.get(&current_pid()) else {
         return false;
     };
-    match state.slots.get(idx).and_then(|slot| slot.as_ref()) {
+    match state.slots.get(&fd) {
         Some(slot) => {
             // Must be a pipe and the sole reference for closing to drive the count to zero.
             Arc::strong_count(&slot.file) == 1
@@ -1087,10 +1195,10 @@ pub fn vfs_get_status_flags(fd: c_int) -> c_int {
 /// stored per descriptor, so descriptors that share one open file description through `dup` or
 /// `fork` report them independently.
 pub fn vfs_get_fd_flags(fd: c_int) -> Option<FdFlags> {
-    let idx: usize = fd_index(fd).ok()?;
+    check_vfs_fd(fd).ok()?;
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let state: &ProcessState = procs.get(&current_pid())?;
-    Some(state.slots.get(idx)?.as_ref()?.fd_flags)
+    Some(state.slots.get(&fd)?.fd_flags)
 }
 
 /// Sets the per-descriptor flags (`FD_CLOEXEC`/`FD_CLOFORK`) for `fd` in the current process.
@@ -1099,15 +1207,11 @@ pub fn vfs_get_fd_flags(fd: c_int) -> Option<FdFlags> {
 /// flags are stored per descriptor, updating one descriptor does not affect another that shares the
 /// same open file description.
 pub fn vfs_set_fd_flags(fd: c_int, flags: FdFlags) -> Result<(), Fat32Error> {
-    let idx: usize = fd_index(fd)?;
+    check_vfs_fd(fd)?;
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
-    let slot: &mut Slot = state
-        .slots
-        .get_mut(idx)
-        .and_then(|slot| slot.as_mut())
-        .ok_or(Fat32Error::InvalidFd)?;
+    let slot: &mut Slot = state.slots.get_mut(&fd).ok_or(Fat32Error::InvalidFd)?;
     slot.fd_flags = flags;
     Ok(())
 }
@@ -1399,7 +1503,7 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
 
 /// Closes a VFS file descriptor.
 pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
-    let idx: usize = fd_index(fd)?;
+    check_vfs_fd(fd)?;
     // Detach the descriptor while holding the registry lock, but defer dropping the open file
     // description until the lock is released. Its drop may run backend teardown (e.g. `File::drop`,
     // which takes a global VFS lock); deferring keeps the registry lock from ever nesting with
@@ -1409,8 +1513,7 @@ pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
             PROCESSES.lock();
         let state: &mut ProcessState =
             procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
-        let slot: &mut Option<Slot> = state.slots.get_mut(idx).ok_or(Fat32Error::InvalidFd)?;
-        slot.take()
+        state.slots.remove(&fd)
     };
     match removed {
         // The slot — and the open file description it holds — is dropped here, after the registry
@@ -2263,7 +2366,7 @@ mod tests {
         PROCESSES
             .lock()
             .get(&pid)
-            .map(|state| state.slots.iter().filter(|slot| slot.is_some()).count())
+            .map(|state| state.slots.len())
             .unwrap_or(0)
     }
 
@@ -2272,8 +2375,7 @@ mod tests {
     fn fd_virtual_pos(pid: ProcessIdentifier, fd: c_int) -> Option<off_t> {
         let procs = PROCESSES.lock();
         let state = procs.get(&pid)?;
-        let idx: usize = (fd - VFS_FD_BASE) as usize;
-        let entry: OpenFile = state.slots.get(idx)?.as_ref()?.file.clone();
+        let entry: OpenFile = state.slots.get(&fd)?.file.clone();
         let pos: off_t = entry.lock().virtual_pos;
         Some(pos)
     }
@@ -2283,8 +2385,7 @@ mod tests {
     fn set_fd_virtual_pos(pid: ProcessIdentifier, fd: c_int, pos: off_t) {
         let procs = PROCESSES.lock();
         if let Some(state) = procs.get(&pid) {
-            let idx: usize = (fd - VFS_FD_BASE) as usize;
-            if let Some(Some(slot)) = state.slots.get(idx) {
+            if let Some(slot) = state.slots.get(&fd) {
                 slot.file.lock().virtual_pos = pos;
             }
         }
@@ -2297,6 +2398,8 @@ mod tests {
             procs.remove(pid);
         }
         CURRENT_PID.store(0, Ordering::Relaxed);
+        // Clear the one-shot root-seeding latch so a later test starts from a pristine state.
+        ROOT_CONSOLE_SEEDED.store(false, Ordering::Relaxed);
     }
 
     /// Tests that `fork()` gives the child a copy of the parent's open descriptors.
@@ -2759,20 +2862,23 @@ mod tests {
     /// Tests that `fork()` copies a slot's per-descriptor flags into the child and that the copies
     /// are independent, so changing the child's flags does not affect the parent's. This is the
     /// per-descriptor semantics the later close-on-exec/close-on-fork plans depend on.
+    ///
+    /// Close-on-exec is used here rather than close-on-fork precisely because a close-on-fork slot
+    /// is now *dropped* by the clone (see [`fork_drops_close_on_fork_slots`]), so it would not
+    /// survive to have its flags inspected in the child.
     #[test]
     fn fork_copies_independent_descriptor_flags() {
         let _guard = FORK_TEST_GUARD.lock();
         let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
             (ProcessIdentifier::from(0x7201), ProcessIdentifier::from(0x7202));
 
-        // Parent allocates a console-backed descriptor and marks it close-on-exec and close-on-fork.
+        // Parent allocates a console-backed descriptor and marks it close-on-exec.
         set_current_process(parent);
         let fd: c_int = alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
             .expect("console alloc should succeed");
         assert_eq!(vfs_get_fd_flags(fd), Some(FdFlags::default()), "flags default to empty");
         let mut flags: FdFlags = FdFlags::default();
         flags.set_close_on_exec(true);
-        flags.set_close_on_fork(true);
         vfs_set_fd_flags(fd, flags).expect("setting flags should succeed");
 
         // Fork: the child inherits a copy of the descriptor's flags.
@@ -2780,7 +2886,7 @@ mod tests {
         set_current_process(child);
         let child_flags: FdFlags = vfs_get_fd_flags(fd).expect("child should inherit the slot");
         assert!(child_flags.close_on_exec(), "child inherits close-on-exec");
-        assert!(child_flags.close_on_fork(), "child inherits close-on-fork");
+        assert!(!child_flags.close_on_fork(), "child must not gain close-on-fork");
 
         // The flags are per descriptor: clearing the child's must leave the parent's untouched.
         vfs_set_fd_flags(fd, FdFlags::default()).expect("clearing child flags should succeed");
@@ -2788,7 +2894,46 @@ mod tests {
         set_current_process(parent);
         let parent_flags: FdFlags = vfs_get_fd_flags(fd).expect("parent slot should remain");
         assert!(parent_flags.close_on_exec(), "parent close-on-exec must be unchanged");
-        assert!(parent_flags.close_on_fork(), "parent close-on-fork must be unchanged");
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that `fork()` drops descriptors flagged close-on-fork (`FD_CLOFORK`) from the child
+    /// while cloning every other slot. This is the close-on-fork semantics this plan wires in: a
+    /// flagged slot is not inherited, but an unflagged one — including the standard streams — is.
+    #[test]
+    fn fork_drops_close_on_fork_slots() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7241), ProcessIdentifier::from(0x7242));
+
+        set_current_process(parent);
+        // One descriptor flagged close-on-fork, one left unflagged.
+        let clofork_fd: c_int =
+            alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+                .expect("console alloc should succeed");
+        let kept_fd: c_int =
+            vfs_alloc_hostfs(70, false, None).expect("hostfs alloc should succeed");
+        let mut clofork: FdFlags = FdFlags::default();
+        clofork.set_close_on_fork(true);
+        vfs_set_fd_flags(clofork_fd, clofork).expect("setting close-on-fork should succeed");
+
+        // Fork: the flagged descriptor is dropped in the child; the unflagged one is inherited.
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+        set_current_process(child);
+        assert_eq!(vfs_get_fd_flags(clofork_fd), None, "close-on-fork descriptor must be dropped");
+        assert_eq!(
+            vfs_hostfs_remote_fd(kept_fd),
+            Some(70),
+            "an unflagged descriptor must still be inherited"
+        );
+
+        // The parent keeps both descriptors: close-on-fork affects only the child.
+        set_current_process(parent);
+        assert!(
+            vfs_get_fd_flags(clofork_fd).is_some(),
+            "parent retains its close-on-fork descriptor"
+        );
 
         forget_processes(&[parent, child]);
     }
@@ -2882,5 +3027,177 @@ mod tests {
         );
 
         forget_processes(&[pid]);
+    }
+
+    // -- root console seeding tests ----------------------------------------------
+
+    /// Tests that seeding the root installs console tokens at descriptors `0`/`1`/`2` carrying the
+    /// matching stream identity, and marks the root's state active. This is what makes vfsd the
+    /// authoritative bookkeeper of the standard streams.
+    #[test]
+    fn seed_root_console_installs_stdio() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+
+        vfs_seed_root_console(root);
+
+        let procs = PROCESSES.lock();
+        let state = procs
+            .get(&root)
+            .expect("root state should exist after seeding");
+        assert!(state.initialized, "a seeded root must be active");
+        assert_eq!(state.slots.len(), 3, "seeding installs exactly the three standard streams");
+        for (fd, expected) in [
+            (STDIN_FILENO, ConsoleStream::Stdin),
+            (STDOUT_FILENO, ConsoleStream::Stdout),
+            (STDERR_FILENO, ConsoleStream::Stderr),
+        ] {
+            let slot = state
+                .slots
+                .get(&fd)
+                .expect("console slot should be installed");
+            match &slot.file.lock().handle {
+                VfsFileHandle::Console(h) => {
+                    assert_eq!(
+                        h.stream(),
+                        expected,
+                        "console slot should carry its stream identity"
+                    )
+                },
+                _ => panic!("descriptor {fd} should be a console token"),
+            }
+            assert_eq!(slot.fd_flags, FdFlags::default(), "console slots are not close-on-fork");
+        }
+        drop(procs);
+
+        forget_processes(&[root]);
+    }
+
+    /// Tests that root-console seeding runs exactly once: the one-shot guard makes a second call —
+    /// even for a different pid — a no-op that registers nothing. This is what guarantees a forked
+    /// child, which reaches vfsd only after the root, is never seeded directly.
+    #[test]
+    fn seed_runs_once() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        let other: ProcessIdentifier = ProcessIdentifier::from(ProcessIdentifier::VFSD_RAW + 2);
+
+        vfs_seed_root_console(root);
+        // A second seeding attempt (here for a different pid) must do nothing at all.
+        vfs_seed_root_console(other);
+
+        assert_eq!(registry_open_fd_count(root), 3, "root keeps its three console descriptors");
+        assert!(
+            PROCESSES.lock().get(&other).is_none(),
+            "a second seeding attempt must not register or seed another process"
+        );
+
+        forget_processes(&[root, other]);
+    }
+
+    /// Tests that a forked child whose first request races ahead of the fork-clone notification is
+    /// not seeded directly. The non-root seeding attempt must leave the child as an uninitialized
+    /// placeholder and must not consume the root's one-shot latch; once the root is seeded, the
+    /// fork-clone overwrites the placeholder and installs the shared console slots in the child.
+    #[test]
+    fn racing_child_seed_attempt_remains_placeholder() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        let child: ProcessIdentifier = ProcessIdentifier::from(ProcessIdentifier::VFSD_RAW + 2);
+
+        // This mirrors vfsd's syscall path for a child request that arrives before procd's
+        // fork-clone notification: bind the child, then try the root-seeding hook.
+        set_current_process(child);
+        vfs_seed_root_console(child);
+        {
+            let procs = PROCESSES.lock();
+            let child_state = procs.get(&child).expect("child placeholder should exist");
+            assert!(
+                !child_state.initialized,
+                "a non-root seeding attempt must not activate the racing child"
+            );
+            assert!(child_state.slots.is_empty(), "racing child must not receive console slots");
+            assert!(
+                procs.get(&root).is_none(),
+                "non-root seeding must not create the root state as a side effect"
+            );
+        }
+
+        // Now vfsd learns the root pid (e.g., through the fork-clone parent) and seeds it. The
+        // clone must overwrite the still-uninitialized child placeholder.
+        vfs_seed_root_console(root);
+        vfs_fork_clone(root, child).expect("fork clone over racing placeholder should succeed");
+
+        let procs = PROCESSES.lock();
+        let root_state = procs.get(&root).expect("root state should exist");
+        let child_state = procs.get(&child).expect("child state should exist");
+        assert!(child_state.initialized, "fork-cloned child should be active");
+        for fd in [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO] {
+            let root_slot = root_state.slots.get(&fd).expect("root console slot");
+            let child_slot = child_state.slots.get(&fd).expect("child console slot");
+            assert!(
+                Arc::ptr_eq(&root_slot.file, &child_slot.file),
+                "child descriptor {fd} must inherit the root's console slot through fork-clone"
+            );
+        }
+        drop(procs);
+
+        forget_processes(&[root, child]);
+    }
+
+    /// Tests that a forked child's console descriptors are the very same open file descriptions as
+    /// the root's — `Arc`-shared, not freshly created — so the standard streams keep POSIX shared
+    /// offsets across a fork. Root-only seeding plus cloning is the sole path by which a child
+    /// receives `0`/`1`/`2`.
+    #[test]
+    fn fork_shares_console_slots_with_parent() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        let child: ProcessIdentifier = ProcessIdentifier::from(ProcessIdentifier::VFSD_RAW + 2);
+
+        vfs_seed_root_console(root);
+        vfs_fork_clone(root, child).expect("fork clone should succeed");
+
+        let procs = PROCESSES.lock();
+        let root_state = procs.get(&root).expect("root state should exist");
+        let child_state = procs.get(&child).expect("child state should exist");
+        for fd in [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO] {
+            let root_slot = root_state.slots.get(&fd).expect("root console slot");
+            let child_slot = child_state.slots.get(&fd).expect("child console slot");
+            assert!(
+                Arc::ptr_eq(&root_slot.file, &child_slot.file),
+                "child descriptor {fd} must share the root's open file description, not a fresh \
+                 one"
+            );
+        }
+        drop(procs);
+
+        forget_processes(&[root, child]);
+    }
+
+    /// Tests that an active child that has closed every descriptor is still not overwritten by a
+    /// fork-clone. The explicit active marker — not a descriptor count — guards the table, so an
+    /// initialized-but-empty state is correctly refused where the old `is_empty` predicate would
+    /// have clobbered it.
+    #[test]
+    fn fork_into_active_child_with_no_descriptors_is_rejected() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7331), ProcessIdentifier::from(0x7332));
+
+        // The child becomes active by allocating a descriptor, then closes it: its table is empty
+        // but it remains a real, initialized process.
+        set_current_process(child);
+        let fd: c_int = vfs_alloc_hostfs(71, false, None).expect("alloc should succeed");
+        vfs_close(fd).expect("close should succeed");
+        assert_eq!(registry_open_fd_count(child), 0, "child holds no descriptors after closing");
+
+        // Forking onto it must still be refused: an active state is never an overwritable
+        // placeholder, even with an empty table.
+        let err: Fat32Error =
+            vfs_fork_clone(parent, child).expect_err("fork into active child should fail");
+        assert_eq!(err, Fat32Error::AlreadyExists, "active child must be rejected even when empty");
+
+        forget_processes(&[parent, child]);
     }
 }

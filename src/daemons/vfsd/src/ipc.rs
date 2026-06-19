@@ -126,6 +126,10 @@ fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Res
                     let fork_clone: ForkCloneMessage = ForkCloneMessage::from_bytes(pm_msg.payload);
                     let parent: ProcessIdentifier = fork_clone.parent;
                     let child: ProcessIdentifier = fork_clone.child;
+                    // If this is the root's first VFS-visible event, seed its console descriptors
+                    // before cloning so the child inherits them. The helper is root-only, so this
+                    // is a no-op for ordinary fork-clone notifications.
+                    ::vfs::fd::vfs_seed_root_console(parent);
                     // Duplicate the parent's filesystem state onto the child: its open file
                     // descriptors (sharing the underlying open file descriptions, and therefore
                     // file offsets, as POSIX requires) together with a private copy of its current
@@ -233,6 +237,11 @@ pub(crate) fn handle_ipc_message(
     // misattributed (see the TODO in `caller_pid` for the authoritative-PID fix). vfsd being
     // single-threaded is what makes mutating this global current-process selector race-free.
     ::vfs::fd::set_current_process(source_pid);
+
+    // Seed the root process's standard console descriptors (0/1/2) if this request is from the
+    // root. The helper is root-only and idempotent: a racing child request remains a placeholder,
+    // and later children inherit 0/1/2 through `vfs_fork_clone` instead.
+    ::vfs::fd::vfs_seed_root_console(source_pid);
 
     // Parse as SystemCallMessage from user processes.
     let syscall_msg: SystemCallMessage = match SystemCallMessage::try_from_bytes(message.payload) {
