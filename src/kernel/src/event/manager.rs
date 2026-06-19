@@ -70,10 +70,11 @@ use ::sys::{
 
 static mut MANAGER: Option<EventManager> = None;
 
-/// Size, in bytes, of the payload carried by a scheduling-event notification. All scheduling
-/// notifications serialize to a fixed-size payload.
-const SCHEDULING_INFO_SIZE: usize = mem::size_of::<ProcessTerminationInfo>();
-::static_assert::assert_eq_size!(ProcessCreationInfo, SCHEDULING_INFO_SIZE);
+// A scheduling-event notification serializes its info structure into the head of the message
+// payload. The two info structures have different serialized sizes, so each is copied using its
+// own length; assert here that both fit within the payload.
+::static_assert::assert_eq!(mem::size_of::<ProcessTerminationInfo>() <= Message::PAYLOAD_SIZE);
+::static_assert::assert_eq!(mem::size_of::<ProcessCreationInfo>() <= Message::PAYLOAD_SIZE);
 
 ///
 /// # Description
@@ -534,17 +535,21 @@ impl EventManagerInner {
                     if (scheduling & (1 << slot)) != 0 {
                         if let Some((_ev, notification)) = self.pending_scheduling[slot].pop_front()
                         {
-                            // Derive the delivered message type and payload bytes from the
-                            // notification variant.
-                            let (message_type, info_bytes): (
-                                MessageType,
-                                [u8; SCHEDULING_INFO_SIZE],
-                            ) = match notification {
+                            // Serialize the notification into the head of the message payload. The
+                            // two notification variants have different serialized sizes, so each is
+                            // copied using its own length.
+                            let mut payload: [u8; Message::PAYLOAD_SIZE] =
+                                [0u8; Message::PAYLOAD_SIZE];
+                            let message_type: MessageType = match notification {
                                 SchedulingNotification::Termination(info) => {
-                                    (MessageType::ProcessTerminationEvent, info.to_ne_bytes())
+                                    let info_bytes = info.to_ne_bytes();
+                                    payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
+                                    MessageType::ProcessTerminationEvent
                                 },
                                 SchedulingNotification::Creation(info) => {
-                                    (MessageType::ProcessCreationEvent, info.to_ne_bytes())
+                                    let info_bytes = info.to_ne_bytes();
+                                    payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
+                                    MessageType::ProcessCreationEvent
                                 },
                             };
 
@@ -553,12 +558,7 @@ impl EventManagerInner {
                                 destination: MessageReceiver::from(pid),
                                 message_type,
                                 status: 0,
-                                payload: {
-                                    let mut payload: [u8; Message::PAYLOAD_SIZE] =
-                                        [0u8; Message::PAYLOAD_SIZE];
-                                    payload[0..SCHEDULING_INFO_SIZE].copy_from_slice(&info_bytes);
-                                    payload
-                                },
+                                payload,
                             };
 
                             // Advance the round-robin cursor past the sub-queue just delivered

@@ -35,6 +35,8 @@ use ::sys::{
         Event,
         EventCtrlRequest,
         ProcessCreationInfo,
+        ProcessRole,
+        ProcessTerminationInfo,
         SchedulingEvent,
     },
     ipc::{
@@ -145,9 +147,9 @@ struct BlockedWaiter {
 pub struct ProcessDaemon {
     // FIXME: auto-signup process on process creation.
     processes: BTreeMap<ProcessIdentifier, ProcessRecord>,
-    /// Process identifier of the init process, recorded when the non-daemon boot workload signs
-    /// up. Remains `None` when that workload never signs up, in which case the termination handler
-    /// decides shutdown from lineage (the process whose parent is the kernel).
+    /// Process identifier of the init process, recorded from the role the kernel carries in the
+    /// process-creation event. Used only to re-parent orphaned children; the shutdown decision is
+    /// made authoritatively from the role carried in the termination event, not from this field.
     init_proc: Option<ProcessIdentifier>,
     /// Fork-sync requests awaiting the fork-clone dispatch, stored as `(child, parent)` pairs that
     /// map a child to the blocked parent. Populated when a fork-sync request arrives before the
@@ -266,9 +268,23 @@ impl ProcessDaemon {
         let child: ProcessIdentifier = info.pid;
         let parent: ProcessIdentifier = info.parent;
 
-        ::syslog::info!("process created (child={:?}, parent={:?})", child, parent);
+        ::syslog::info!(
+            "process created (child={:?}, parent={:?}, role={:?})",
+            child,
+            parent,
+            info.role
+        );
 
         self.record_child_lineage(parent, child);
+
+        // The kernel assigns the role authoritatively at spawn time. Record the init process the
+        // first time its creation is observed, so orphaned children can be re-parented to it even
+        // when the boot workload never signs up. Only the first init process is recorded; it is
+        // cleared when that process terminates (which also triggers system shutdown).
+        if info.role == ProcessRole::Init && self.init_proc.is_none() {
+            ::syslog::info!("recording init process (pid={:?})", child);
+            self.init_proc = Some(child);
+        }
 
         // The kernel spawns daemons and the init process directly (parent is the kernel), so
         // there is no parent filesystem state to inherit: skip the fork-clone notification for
@@ -365,8 +381,7 @@ impl ProcessDaemon {
                 child,
                 status
             );
-            self.pending_fork_syncs.retain(|(c, _)| *c != child);
-            self.notify_process_exit(child);
+            self.cleanup_terminated(child);
             self.finalize_forked_child_termination(child, status)?;
         }
 
@@ -375,139 +390,117 @@ impl ProcessDaemon {
 
     /// Handles a process-termination scheduling event.
     ///
-    /// Determines whether the terminating process is the boot/init workload (created directly by
-    /// the kernel) or a runtime-spawned child, so that only termination of the former triggers
-    /// system shutdown. Re-parents any surviving children to the init process and notifies the
-    /// filesystem daemon to reclaim the process's per-process state.
+    /// Routes the termination on the role assigned authoritatively by the kernel, which spawns the
+    /// init process and the daemons directly and owns the well-known daemon process identifiers:
+    /// the init process triggers system shutdown, a daemon is deregistered (a non-zero status is a
+    /// crash and also triggers shutdown), and a forked user process is reaped. Because the role and
+    /// parent are carried in the event, procd no longer reconstructs them from prior, race-prone
+    /// state.
     fn handle_process_termination_event(&mut self, message: Message) -> Result<Option<i32>, Error> {
-        // Deserialize process identifier.
-        let raw_pid_bytes: [u8; 4] = match message.payload[0..4].try_into() {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                let reason: &str = "invalid process termination message payload";
-                ::syslog::error!("handle_process_termination_event(): {reason:?}");
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        // Deserialize the authoritative termination information published by the kernel.
+        let raw_info: [u8; ::core::mem::size_of::<ProcessTerminationInfo>()] =
+            match message.payload[0..::core::mem::size_of::<ProcessTerminationInfo>()].try_into() {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    let reason: &str = "invalid process termination message payload";
+                    ::syslog::error!("handle_process_termination_event(): {reason:?}");
+                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                },
+            };
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::from_ne_bytes(raw_info);
+        let pid: ProcessIdentifier = info.pid;
+        let status: i32 = info.status.as_u32() as i32;
+
+        ::syslog::info!(
+            "process terminated (pid={:?}, parent={:?}, role={:?}, status={:?})",
+            pid,
+            info.parent,
+            info.role,
+            status
+        );
+
+        match info.role {
+            // The init process terminated — initiate shutdown and propagate its exit status.
+            ProcessRole::Init => {
+                ::syslog::info!("init process terminated (pid={:?}, status={:?})", pid, status);
+                self.cleanup_terminated(pid);
+                self.processes.remove(&pid);
+                self.init_proc = None;
+                Ok(Some(status))
             },
-        };
-        let pid: ProcessIdentifier = ProcessIdentifier::from(i32::from_le_bytes(raw_pid_bytes));
 
-        ::syslog::info!("received scheduling event (pid={:?})", pid);
-
-        // Deserialize process status.
-        let status: i32 = i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
-        ::syslog::info!("process terminated (pid={:?}, status={:?})", pid, status);
-
-        // The kernel normally publishes a process's creation event before its termination event
-        // (the `ProcessCreation` scheduling slot is drained ahead of `ProcessTermination`), so a
-        // termination usually arrives with the child's lineage already recorded. It can still
-        // arrive while the lineage is unknown in the residual case where the creation event could
-        // not be delivered yet (e.g. the scheduling-event queue was momentarily full and the
-        // creation was requeued). The same applies when the child sent its `Signup` before its
-        // creation event was processed: such a record exists (with its name) yet still has no
-        // recorded parent, so re-parenting, reaping, and waking a blocked waiter cannot be resolved
-        // correctly yet, and processing the termination immediately would let the later creation
-        // event recreate the record with no buffered status to replay. Buffer the `(pid, status)`
-        // and defer every side effect — filesystem-state reclamation, re-parenting, reaping, and
-        // waking a blocked waiter — until the creation event records the child's lineage and
-        // `handle_process_creation_event()` replays it. This guarantees the exit status is never
-        // dropped and a parent blocked in `waitpid()` is always answered. The creation event is
-        // guaranteed to follow: the kernel buffers it at fork time and the main loop re-publishes
-        // it until it is delivered. Deferring the filesystem-exit notification also keeps it
-        // ordered after the fork-clone that the creation handler dispatches, so the child's
-        // filesystem snapshot is taken before it is reclaimed.
-        //
-        // A process whose identity is already established without lineage is exempt: the init
-        // process (tracked in `init_proc`) and daemons (identified by name) make their termination
-        // decisions — shutdown and deregistration — without a recorded parent, so they are handled
-        // immediately rather than buffered.
-        let lineage_pending: bool = match self.processes.get(&pid) {
-            None => true,
-            Some(record) => {
-                record.parent.is_none()
-                    && self.init_proc != Some(pid)
-                    && !Self::is_daemon(&record.name)
+            // A daemon terminated — deregister it. A non-zero status means the daemon crashed,
+            // which triggers a system-wide shutdown.
+            ProcessRole::Daemon => {
+                ::syslog::info!("deregistering daemon (pid={:?}, status={:?})", pid, status);
+                self.cleanup_terminated(pid);
+                self.processes.remove(&pid);
+                if status != 0 {
+                    ::syslog::error!(
+                        "critical daemon (pid={:?}) terminated with non-zero status {} — \
+                         triggering shutdown",
+                        pid,
+                        status
+                    );
+                    return Ok(Some(status));
+                }
+                Ok(None)
             },
-        };
-        if lineage_pending {
-            ::syslog::info!(
-                "termination observed before creation (pid={:?}, status={:?}) — buffering",
-                pid,
-                status
-            );
-            // Replace any stale entry for this pid before recording the new status, preserving an
-            // at-most-one-entry-per-pid invariant across pid reuse.
-            self.early_terminations.retain(|(p, _)| *p != pid);
-            self.early_terminations.push((pid, status));
-            return Ok(None);
+
+            // A forked user process terminated. Finalizing it re-parents its surviving children,
+            // reaps its zombie children, and either retains it as a reapable zombie or drops it —
+            // all of which require the child's lineage to be recorded. The kernel normally
+            // publishes a process's creation event before its termination event, so the lineage is
+            // usually already recorded; it can still be missing when the creation event has not been
+            // delivered yet (e.g. the scheduling-event queue was momentarily full and the creation
+            // was requeued), or when the process signed up before its creation event was processed
+            // (its record exists with a name but no recorded parent). Buffer the `(pid, status)` and
+            // defer every side effect — filesystem-state reclamation, re-parenting, reaping, and
+            // waking a blocked waiter — until the creation event records the lineage and
+            // `handle_process_creation_event()` replays it. The creation event is guaranteed to
+            // follow: the kernel buffers it at fork time and the main loop re-publishes it until it
+            // is delivered. Deferring the filesystem-exit notification also keeps it ordered after
+            // the fork-clone that the creation handler dispatches, so the child's filesystem
+            // snapshot is taken before it is reclaimed.
+            ProcessRole::User => {
+                let record_ready: bool = self
+                    .processes
+                    .get(&pid)
+                    .map(|record| record.parent.is_some())
+                    .unwrap_or(false);
+                if !record_ready {
+                    ::syslog::info!(
+                        "termination observed before creation (pid={:?}, status={:?}) — buffering",
+                        pid,
+                        status
+                    );
+                    // Replace any stale entry for this pid before recording the new status,
+                    // preserving an at-most-one-entry-per-pid invariant across pid reuse.
+                    self.early_terminations.retain(|(p, _)| *p != pid);
+                    self.early_terminations.push((pid, status));
+                    return Ok(None);
+                }
+
+                self.cleanup_terminated(pid);
+                self.finalize_forked_child_termination(pid, status)?;
+                Ok(None)
+            },
         }
+    }
 
-        // Drop any stale fork-sync bookkeeping and notify the filesystem daemon to reclaim the
-        // process's per-process state (open file descriptors and working directory). Unlike the
-        // fork-clone notification — which is skipped for kernel-spawned processes that have no
-        // parent state to inherit — this is sent for every terminating process: daemons and the
-        // init process accumulate their own filesystem state lazily as they open files, and that
-        // state must be reclaimed too. The notification is a no-op in the filesystem daemon for a
-        // process that never registered any state, so the extra message is harmless.
+    /// Drops bookkeeping owned by a terminated process and notifies the filesystem daemon to
+    /// reclaim its per-process state (open file descriptors and working directory). The filesystem
+    /// notification is sent for every terminating process — daemons and the init process accumulate
+    /// their own filesystem state lazily as they open files, and that state must be reclaimed too;
+    /// it is a no-op in the filesystem daemon for a process that never registered any state.
+    fn cleanup_terminated(&mut self, pid: ProcessIdentifier) {
+        // Drop any stale fork-sync bookkeeping for the terminating process.
         self.pending_fork_syncs.retain(|(child, _)| *child != pid);
         // Drop any blocked-wait bookkeeping owned by the terminating process. A process that was
         // itself parked in `waitpid()` can never be answered once it is gone, so leaving its entry
         // behind would leak memory and strand a stale waiter.
         self.blocked.retain(|waiter| waiter.waiter != pid);
         self.notify_process_exit(pid);
-
-        // Look up the terminating process in the registry.
-        if let Some(record) = self.processes.get(&pid) {
-            let name: String = record.name.clone();
-            // The boot/init workload is the non-daemon process created directly by the kernel.
-            // If it has signed up, its identity is recorded reliably in `init_proc`, so prefer
-            // that: only its termination triggers shutdown. Otherwise — most workloads never sign
-            // up — fall back to lineage: the process whose recorded parent is the kernel is the
-            // init process. Requiring the parent to be the kernel (rather than merely absent)
-            // prevents a forked child from spuriously triggering a system-wide shutdown.
-            let is_init: bool = match self.init_proc {
-                Some(init_proc) => init_proc == pid,
-                None => record.parent == Some(ProcessIdentifier::KERNEL),
-            };
-
-            // A daemon terminated — not a shutdown trigger (unless it crashed).
-            if Self::is_daemon(&name) {
-                ::syslog::info!("deregistering daemon (pid={:?}, name={:?})", pid, name);
-                self.processes.remove(&pid);
-                if status != 0 {
-                    ::syslog::error!(
-                        "critical daemon {:?} terminated with non-zero status {} — triggering \
-                         shutdown",
-                        name,
-                        status
-                    );
-                    return Ok(Some(status));
-                }
-                return Ok(None);
-            }
-
-            // The init process terminated — initiate shutdown and propagate its exit status.
-            if is_init {
-                ::syslog::info!("init process terminated (pid={:?}, status={:?})", pid, status);
-                self.processes.remove(&pid);
-                self.init_proc = None;
-                return Ok(Some(status));
-            }
-
-            // A forked child terminated. Finalize it through the shared helper, which auto-reaps
-            // its zombie children, re-parents its live children, and either retains it as a reapable
-            // zombie (waking a blocked parent) or drops it. The same finalization runs when a
-            // child's creation event is observed only after its termination event, so it lives in a
-            // shared helper rather than being duplicated here.
-            self.finalize_forked_child_termination(pid, status)?;
-
-            return Ok(None);
-        }
-
-        // Unreachable in practice: the early-termination buffer check at the top of this function
-        // returns for any pid that is not yet in the registry, so a process reaching this point is
-        // always known and was handled by one of the branches above. Return without action as a
-        // safe guard rather than panicking.
-        Ok(None)
     }
 
     /// Finalizes the termination of a forked child `pid` whose lineage is known. Auto-reaps any of
@@ -565,43 +558,19 @@ impl ProcessDaemon {
         Ok(())
     }
 
-    /// Returns the process that should adopt orphaned children. Prefers the explicitly tracked init
-    /// process recorded at signup; when that workload never signed up (`init_proc` is `None`), falls
-    /// back to the init process identified by lineage — the non-daemon process whose parent is the
-    /// kernel. Returns `None` only when no such process exists, in which case orphans cannot be
-    /// adopted and their bookkeeping is dropped on their own termination.
-    ///
-    /// The well-known daemon PIDs are excluded explicitly rather than relying solely on the
-    /// name-based `is_daemon` check, because that check is unreliable here: a daemon's record name
-    /// is only populated when it signs up, and `procd` itself never signs up. `procd` observes its
-    /// own kernel-spawned creation event, so it holds a record whose parent is the kernel and whose
-    /// name is empty — which would otherwise make it the lowest-PID match and let it adopt orphans
-    /// it can never reap (`procd` does not call `waitpid()`), leaking them until shutdown.
+    /// Returns the process that should adopt orphaned children: the init process, recorded from
+    /// the role the kernel carries in its process-creation event. Returns `None` only before the
+    /// init process's creation event has been observed, in which case orphans are not re-parented;
+    /// each is dropped when it later terminates, since its parent is gone and no live process can
+    /// reap it.
     fn adoptive_init(&self) -> Option<ProcessIdentifier> {
-        if let Some(init_proc) = self.init_proc {
-            return Some(init_proc);
-        }
-
-        self.processes
-            .iter()
-            .find(|(pid, record)| {
-                record.parent == Some(ProcessIdentifier::KERNEL)
-                    && record.zombie.is_none()
-                    && !matches!(
-                        **pid,
-                        ProcessIdentifier::PROCD
-                            | ProcessIdentifier::MEMD
-                            | ProcessIdentifier::VFSD
-                    )
-                    && !Self::is_daemon(&record.name)
-            })
-            .map(|(pid, _)| *pid)
+        self.init_proc
     }
 
-    /// Re-parents the surviving children of `pid` to the init process. The adoptive parent is the
-    /// init process recorded at signup, or — when that workload never signed up — the init process
-    /// identified by lineage, so surviving children are re-homed consistently and no stale parent
-    /// pointers or child lists are left behind.
+    /// Re-parents the surviving children of `pid` to the init process, recorded from the role the
+    /// kernel carries in its process-creation event. When no init process is known (its creation
+    /// event has not been observed yet), the children are left in place; each is dropped when it
+    /// later terminates, since its parent is gone and no one can reap it.
     fn reparent_children(&mut self, pid: ProcessIdentifier) {
         let init_proc: ProcessIdentifier = match self.adoptive_init() {
             Some(init_proc) => init_proc,
@@ -765,9 +734,9 @@ impl ProcessDaemon {
         self.processes.remove(&child);
     }
 
-    /// Returns `true` if `name` belongs to a system daemon that should not trigger shutdown.
+    /// Returns `true` if `name` belongs to a guest system daemon that should not trigger shutdown.
     fn is_daemon(name: &str) -> bool {
-        ::config::daemons::DAEMON_NAMES.contains(&name)
+        ::config::daemons::is_system_daemon(name)
     }
 
     fn handle_ipc_message(&mut self, message: Message) -> Result<(), Error> {
@@ -839,9 +808,10 @@ impl ProcessDaemon {
                     }
 
                     ::syslog::info!("signing up process (pid={:?}, name={:?})", pid, s.as_bytes());
-                    let is_daemon: bool = Self::is_daemon(&s);
                     // Preserve any existing lineage (parent/children) that may have been recorded
-                    // by a process-creation event before this signup. Only update the process name.
+                    // by a process-creation event before this signup. Only update the process name:
+                    // the init process and daemons are identified authoritatively by the role the
+                    // kernel carries in their scheduling events, so signup never decides identity.
                     match self.processes.get_mut(&pid) {
                         Some(record) => {
                             record.name = s;
@@ -849,29 +819,6 @@ impl ProcessDaemon {
                         None => {
                             self.processes.insert(pid, ProcessRecord::new(s, None));
                         },
-                    }
-                    // The boot/init workload is the non-daemon process spawned directly by the
-                    // kernel. Its name is known reliably here (unlike at process-creation time), so
-                    // record it as the init process. This gives the termination handler an explicit
-                    // identity to match, rather than relying on the parent==kernel lineage fallback.
-                    //
-                    // Only record the first such process and never overwrite an init identity that
-                    // is already known: a later non-daemon signup (e.g. a forked child that signs
-                    // up before its process-creation event is observed, when its parent is not yet
-                    // recorded) must not displace the real init PID, or the termination handler
-                    // would make incorrect shutdown decisions.
-                    if !is_daemon && self.init_proc.is_none() {
-                        let parented_by_kernel: bool = self
-                            .processes
-                            .get(&pid)
-                            .map(|record| {
-                                record.parent.is_none()
-                                    || record.parent == Some(ProcessIdentifier::KERNEL)
-                            })
-                            .unwrap_or(true);
-                        if parented_by_kernel {
-                            self.init_proc = Some(pid);
-                        }
                     }
                     message::signup_response(destination, pid, 0)
                 },
@@ -911,20 +858,6 @@ impl ProcessDaemon {
                 self.processes
                     .insert(child, ProcessRecord::new(child_name, Some(parent)));
             },
-        }
-
-        // A process that signs up before its process-creation event is observed has no recorded
-        // parent yet, so a non-daemon signup may have tentatively recorded it as the init process.
-        // If this creation event now reveals a genuine (non-kernel) parent, the process was in fact
-        // forked and is not init: clear the tentative identity so it is not later misclassified as
-        // init on termination and made to trigger a spurious system-wide shutdown.
-        if parent != ProcessIdentifier::KERNEL && self.init_proc == Some(child) {
-            ::syslog::info!(
-                "clearing tentative init identity for forked child (child={:?}, parent={:?})",
-                child,
-                parent
-            );
-            self.init_proc = None;
         }
 
         // Append the child to the parent's list of children.

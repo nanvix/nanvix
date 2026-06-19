@@ -14,7 +14,6 @@ use crate::{
     pm::ProcessManager,
 };
 use ::sys::{
-    event::ProcessTerminationInfo,
     pm::ProcessIdentifier,
     ExitStatus,
 };
@@ -77,17 +76,17 @@ pub fn kcall_handler() -> ExitStatus {
         let mut harvested_process: bool = false;
         match pm!().harvest_zombies(mm!()) {
             Ok(None) => {},
-            Ok(Some((pid, status))) => {
+            Ok(Some(info)) => {
                 // Check if the process manager daemon (PROCD) terminated.
-                if pid == ProcessIdentifier::PROCD {
+                if info.pid == ProcessIdentifier::PROCD {
                     // It was, so we should shutdown.
-                    break status;
+                    break info.status;
                 }
                 // Record the termination so the main loop can publish a process-termination
                 // scheduling event below. Buffering it (rather than notifying inline) lets the
                 // same retry/backpressure as process creation apply, so termination events are not
                 // silently lost when the scheduling-event queue is momentarily full.
-                pm!().push_pending_termination(ProcessTerminationInfo::new(pid, status));
+                pm!().push_pending_termination(info);
                 harvested_process = true;
             },
             Err(e) => {
@@ -160,8 +159,8 @@ pub fn kcall_handler() -> ExitStatus {
         }
     };
 
-    while let Ok(Some((pid, status))) = pm!().harvest_zombies(mm!()) {
-        info!("harvested zombie process: pid={:?}, status={:?}", pid, status);
+    while let Ok(Some(info)) = pm!().harvest_zombies(mm!()) {
+        info!("harvested zombie process: pid={:?}, status={:?}", info.pid, info.status);
     }
 
     status
