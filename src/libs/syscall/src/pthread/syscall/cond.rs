@@ -81,20 +81,16 @@ pub fn pthread_cond_init(
     cond: &mut pthread_cond_t,
     attr: &pthread_condattr_t,
 ) -> Result<(), Error> {
-    // Check if condition variable is not initialized.
-    if let Entry::Vacant(entry) = CONDITIONS
+    // Register (or re-register) the condition variable's attributes.
+    //
+    // Initialization is idempotent for the same reasons as `pthread_mutex_init`: it matches the
+    // kernel's lazy, per-process recreation model and keeps the userspace registry consistent
+    // across `fork()`, where the child inherits this map through copy-on-write memory while the
+    // kernel deliberately drops and lazily recreates the underlying objects.
+    CONDITIONS
         .lock()
-        .entry(cond as *const pthread_cond_t as usize)
-    {
-        // Condition variable is not initialized.
-        entry.insert(*attr);
-        Ok(())
-    } else {
-        // Condition variable is already initialized.
-        let reason: &str = "condition variable is already initialized";
-        ::syslog::warn!("pthread_cond_init(): {}", reason);
-        Err(Error::new(ErrorCode::ResourceBusy, reason))
-    }
+        .insert(cond as *const pthread_cond_t as usize, *attr);
+    Ok(())
 }
 
 pub fn pthread_cond_destroy(cond: &mut pthread_cond_t) -> Result<(), Error> {
