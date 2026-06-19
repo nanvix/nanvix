@@ -29,7 +29,10 @@ use ::sysapi::ffi::c_int;
 
 pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
     ::syslog::trace!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
-    let backend_fd: i32 = crate::fdtable::resolve_vfs(fd, "fcntl")?;
+    // Flag queries and the F_DUPFD duplication family are served by vfsd on the slot it owns, so
+    // they are addressed by the flat descriptor — for console descriptors too, whose slot vfsd owns
+    // even though their I/O is routed to the kernel by stream number.
+    let backend_fd: i32 = crate::fdtable::resolve_table_op(fd, "fcntl")?;
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
@@ -47,7 +50,7 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
     let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
 
     // Check whether system call succeeded or not.
-    if response.status == -1 {
+    if response.status != 0 {
         ::syslog::warn!(
             "fcntl(): failed (fd={:?}, cmd={:?}, arg={:?}, status={:?})",
             fd,
@@ -85,6 +88,14 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
             SystemCallMessageHeader::FileControlResponse => {
                 let message: FileControlResponse = FileControlResponse::from_bytes(message.payload);
                 let ret: c_int = message.ret;
+                // A duplication command (`F_DUPFD` and its close-on-exec/close-on-fork variants)
+                // returns a freshly allocated descriptor. Drop any cached resolution for that
+                // number so its first use re-resolves against vfsd's table rather than answering
+                // from an entry that described the number's previous occupant.
+                #[cfg(feature = "standalone")]
+                if is_dup_command(cmd) && ret >= 0 {
+                    crate::fdtable::invalidate(ret);
+                }
                 Ok(ret)
             },
             // Response was not successfully parsed.
@@ -100,4 +111,17 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
             },
         }
     }
+}
+
+/// Returns whether `cmd` is one of the descriptor-duplication `fcntl` commands (`F_DUPFD` and its
+/// close-on-exec / close-on-fork variants), which allocate a new descriptor rather than querying or
+/// setting a flag.
+#[cfg(feature = "standalone")]
+fn is_dup_command(cmd: i32) -> bool {
+    use ::sysapi::fcntl::file_control_request::{
+        F_DUPFD,
+        F_DUPFD_CLOEXEC,
+        F_DUPFD_CLOFORK,
+    };
+    matches!(cmd, F_DUPFD | F_DUPFD_CLOEXEC | F_DUPFD_CLOFORK)
 }

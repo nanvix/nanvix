@@ -37,9 +37,9 @@ use sysapi::sys_stat;
 pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
     ::syslog::trace!("fstat(): fd={:?}", fd);
 
-    // In standalone mode, route by the descriptor's resolved backend. Console descriptors get a
-    // synthesized character-device stat so that common libc patterns (isatty, buffering heuristics)
-    // continue to work.
+    // In standalone mode, route by the descriptor's resolved backend. Both vfsd-served objects and
+    // console descriptors are answered by vfsd from the slot it owns; the console reports as a
+    // character device with a stable, dup-shared identity synthesized by vfsd.
     let backend_fd: i32 = {
         #[cfg(feature = "standalone")]
         {
@@ -48,31 +48,11 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
                 Route,
             };
             match resolve(fd) {
-                // VFS-backed descriptors fall through to the vfsd stat path below.
-                Some(res) if res.route == Route::Vfs => res.backend_fd,
-                // The console reports as a character device.
-                Some(res) if res.route == Route::Console => {
-                    use ::sysapi::sys_stat::{
-                        file_mode,
-                        file_type,
-                    };
-                    // SAFETY: zeroes all bytes of `buf` before field assignment.
-                    unsafe {
-                        ::core::ptr::write_bytes(buf, 0, 1);
-                    }
-                    buf.st_mode = file_type::S_IFCHR | file_mode::S_IRUSR | file_mode::S_IWUSR;
-                    // Block size matches the page-sized granularity of push/pull kernel calls.
-                    buf.st_blksize = ::arch::mem::PAGE_SIZE as i64;
-                    // Timestamp set to Unix epoch (1970-01-01T00:00:00 UTC).
-                    let ts = ::sysapi::time::timespec {
-                        tv_sec: 0,
-                        tv_nsec: 0,
-                    };
-                    buf.st_atim = ts;
-                    buf.st_mtim = ts;
-                    buf.st_ctim = ts;
-                    return Ok(());
-                },
+                // A vfsd-served object or a console descriptor: vfsd answers `fstat` from the slot
+                // it owns, addressed by the caller-facing flat descriptor. For a console this is the
+                // slot number, not the stream number used to route I/O — the slot is the operand,
+                // so a `dup`'d console descriptor shares its source's character-device identity.
+                Some(res) if matches!(res.route, Route::Vfs | Route::Console) => fd,
                 // Sockets and unroutable descriptors have no stat here.
                 _ => {
                     ::syslog::warn!("fstat(): bad file descriptor fd={fd} in standalone mode");

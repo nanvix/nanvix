@@ -8,6 +8,8 @@
 mod _exit;
 mod chdir;
 mod close;
+mod dup;
+mod dup2;
 mod faccessat;
 mod fchdir;
 mod fchown;
@@ -47,6 +49,8 @@ pub use self::{
     _exit::_exit,
     chdir::chdir,
     close::close,
+    dup::dup,
+    dup2::dup2,
     faccessat::faccessat,
     fchdir::fchdir,
     fchown::fchown,

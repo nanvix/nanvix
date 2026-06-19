@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::errno::__errno_location;
-use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
 use ::syslog::trace_syscall;
 
@@ -48,10 +47,14 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dup(fd: c_int) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/587
-    ::syslog::debug!("dup(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
+    match crate::unistd::dup(fd) {
+        Ok(newfd) => newfd,
+        Err(error) => {
+            ::syslog::warn!("dup(): failed ({:?})", error);
+            unsafe {
+                *__errno_location() = error.code.get();
+            }
+            -1
+        },
     }
-    -1
 }

@@ -530,6 +530,30 @@ type OpenFile = Arc<Mutex<VfsEntry>>;
 pub struct FdFlags(c_int);
 
 impl FdFlags {
+    /// Builds the descriptor flags from a raw `fcntl(F_SETFD)` argument, rejecting any bit outside
+    /// the recognized set (`FD_CLOEXEC`, `FD_CLOFORK`).
+    ///
+    /// POSIX requires `fcntl(F_SETFD)` to fail with `EINVAL` when an unsupported descriptor-flag bit
+    /// is set rather than silently masking it. Rejecting here keeps this layer in agreement with the
+    /// syscall-side validation in `syscall::safe::FileDescriptorFlags` and prevents a later
+    /// `F_GETFD` from reporting flags the caller never set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fat32Error::InvalidArgument`] if `raw` sets any bit other than `FD_CLOEXEC` or
+    /// `FD_CLOFORK`.
+    pub fn try_from_bits(raw: c_int) -> Result<Self, Fat32Error> {
+        if raw & !(FD_CLOEXEC | FD_CLOFORK) != 0 {
+            return Err(Fat32Error::InvalidArgument);
+        }
+        Ok(Self(raw))
+    }
+
+    /// Returns the raw flag bits, as reported by `fcntl(F_GETFD)`.
+    pub const fn bits(self) -> c_int {
+        self.0
+    }
+
     /// Returns whether the close-on-exec (`FD_CLOEXEC`) flag is set.
     pub const fn close_on_exec(self) -> bool {
         self.0 & FD_CLOEXEC != 0
@@ -1568,12 +1592,55 @@ fn populate_pipe_stat_fields(buf: &mut ::sysapi::sys_stat::stat, pipe_id: u64) {
     };
 }
 
+/// Populates stat fields for a console-backed descriptor (a character device).
+///
+/// A console stream reports as a character device (`S_IFCHR`) with a stable identity: a synthetic
+/// console `st_dev` distinct from the VFS file device (1) and the pipefs device (2), and an `st_ino`
+/// derived from the stream so the three standard streams have distinct, stable inodes. Because the
+/// inode follows the stream rather than the slot, a `dup`'d console descriptor reports the same
+/// `(st_dev, st_ino)` as its source, matching POSIX shared-identity expectations. A console carries
+/// no size or on-disk blocks, so both are zero.
+fn populate_console_stat_fields(buf: &mut ::sysapi::sys_stat::stat, stream: ConsoleStream) {
+    // Fixed epoch timestamp: 2024-01-01T00:00:00Z (1704067200).
+    const FIXED_EPOCH: i64 = 1_704_067_200;
+
+    // Stable per-stream inode: stdin/stdout/stderr get distinct values that a duplicate inherits.
+    let ino: u64 = match stream {
+        ConsoleStream::Stdin => 1,
+        ConsoleStream::Stdout => 2,
+        ConsoleStream::Stderr => 3,
+    };
+    buf.st_size = 0;
+    buf.st_nlink = 1;
+    buf.st_dev = 3; // Synthetic console device, distinct from VFS file (1) and pipefs (2).
+    buf.st_ino = ino;
+    buf.st_mode = file_type::S_IFCHR | file_mode::S_IRUSR | file_mode::S_IWUSR;
+    buf.st_blksize = STAT_BLOCK_SIZE;
+    buf.st_blocks = 0;
+    buf.st_atim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
+    buf.st_mtim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
+    buf.st_ctim = timespec {
+        tv_sec: FIXED_EPOCH,
+        tv_nsec: 0,
+    };
+}
+
 /// Gets file status for a VFS file descriptor.
 pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
     let file: OpenFile = entry_arc(fd)?;
     let mut guard = file.lock();
     let entry: &mut VfsEntry = &mut guard;
     let pipe_id: Option<u64> = entry.handle.pipe_end().map(|end| end.pipe_id());
+    let console_stream: Option<ConsoleStream> = match &entry.handle {
+        VfsFileHandle::Console(h) => Some(h.stream()),
+        _ => None,
+    };
     let is_dir: bool = matches!(&entry.handle, VfsFileHandle::Directory(_));
     let size: u64 = entry.handle.size()?;
 
@@ -1582,7 +1649,11 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
 
-    if let Some(pipe_id) = pipe_id {
+    if let Some(stream) = console_stream {
+        // A console descriptor is a character device with a stable, dup-shared identity; the kernel
+        // does not serve `fstat` on the console, so vfsd synthesizes it from the slot it owns.
+        populate_console_stat_fields(buf, stream);
+    } else if let Some(pipe_id) = pipe_id {
         populate_pipe_stat_fields(buf, pipe_id);
     } else {
         populate_stat_fields(buf, size, is_dir);
@@ -1618,6 +1689,116 @@ pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
         Some(_slot) => Ok(()),
         None => Err(Fat32Error::InvalidFd),
     }
+}
+
+/// Duplicates a descriptor into the lowest free slot at or above `min_fd`.
+///
+/// The new descriptor refers to the *same* open file description as `oldfd` — the shared [`Arc`] is
+/// cloned, so the two descriptors share one file offset and status flags, exactly as POSIX `dup`
+/// and `fcntl(F_DUPFD)` require. The duplicate carries its own per-descriptor flags with
+/// `FD_CLOEXEC` cleared, because POSIX mandates that a duplicate start with close-on-exec off; the
+/// source descriptor's flags are untouched. Allocation is lowest-free within the flat namespace and
+/// bounded below the reserved socket range, so the returned number is the smallest free one that is
+/// at least `min_fd`.
+///
+/// This is the single primitive behind both `dup` (`min_fd == 0`) and `fcntl(F_DUPFD, arg)`
+/// (`min_fd == arg`).
+///
+/// # Errors
+///
+/// - [`Fat32Error::InvalidFd`] if `oldfd` refers to no open descriptor in the current process.
+/// - [`Fat32Error::InvalidArgument`] if `min_fd` is negative.
+/// - [`Fat32Error::TooManyOpenFiles`] if no free descriptor at or above `min_fd` exists below the
+///   reserved socket range.
+pub fn vfs_dup_from(oldfd: c_int, min_fd: c_int) -> Result<c_int, Fat32Error> {
+    if min_fd < 0 {
+        return Err(Fat32Error::InvalidArgument);
+    }
+
+    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+        PROCESSES.lock();
+    let state: &mut ProcessState = procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
+    // Clone the source's shared open file description; the duplicate aliases it (shared offset).
+    let file: OpenFile = state
+        .slots
+        .get(&oldfd)
+        .map(|slot| slot.file.clone())
+        .ok_or(Fat32Error::InvalidFd)?;
+    // Lowest free descriptor at or above `min_fd`, bounded below the reserved socket range so a
+    // duplicate can never collide with a networkd-owned socket descriptor.
+    let fd: c_int = (min_fd..SOCKET_FD_BASE)
+        .find(|candidate| !state.slots.contains_key(candidate))
+        .ok_or(Fat32Error::TooManyOpenFiles)?;
+    // `Slot::new` starts from default (empty) per-descriptor flags, so `FD_CLOEXEC` is cleared on
+    // the duplicate while the source slot's flags are left untouched.
+    state.slots.insert(fd, Slot::new(file));
+    // Duplicating a descriptor graduates a lazily-inserted placeholder into an active state and
+    // mutates the table; advance the coherence generation.
+    state.initialized = true;
+    state.bump_generation();
+    Ok(fd)
+}
+
+/// Duplicates `oldfd` into the lowest free descriptor (POSIX `dup`).
+///
+/// Equivalent to [`vfs_dup_from`] with a minimum of `0`: the new descriptor is the lowest free
+/// number in the flat namespace and aliases `oldfd`'s open file description with `FD_CLOEXEC`
+/// cleared.
+pub fn vfs_dup(oldfd: c_int) -> Result<c_int, Fat32Error> {
+    vfs_dup_from(oldfd, 0)
+}
+
+/// Re-points `newfd` at `oldfd`'s open file description (POSIX `dup2`).
+///
+/// After a successful call `newfd` aliases the same open file description as `oldfd` — sharing its
+/// offset and status flags — and carries its own per-descriptor flags with `FD_CLOEXEC` cleared.
+/// `dup2(fd, fd)` is a no-op that returns `fd`, provided `fd` is open. When `newfd` was already
+/// open, its previous slot is dropped here, but the caller must first capture any last-reference
+/// reclaim it owes (a host-backed remote close, or a pipe EOF/`EPIPE` wakeup) exactly as it would
+/// for [`vfs_close`]; this routine performs only the table mutation.
+///
+/// The displaced open file description is dropped *after* the registry lock is released, mirroring
+/// [`vfs_close`], so backend teardown never nests under the registry lock.
+///
+/// # Errors
+///
+/// - [`Fat32Error::InvalidFd`] if `oldfd` refers to no open descriptor, or if `newfd` is negative
+///   or falls in the reserved socket range (where vfsd may not place a descriptor).
+pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
+    // `newfd` must be a legal descriptor number outside the reserved socket range.
+    if !(0..SOCKET_FD_BASE).contains(&newfd) {
+        return Err(Fat32Error::InvalidFd);
+    }
+    // Re-point the slot while holding the registry lock, but defer dropping the displaced open file
+    // description until the lock is released: its drop may run backend teardown (e.g. `File::drop`,
+    // which takes a global VFS lock), and deferring keeps the registry lock from nesting with
+    // backend locks — the same discipline as `vfs_close`.
+    let displaced: Option<Slot> = {
+        let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+            PROCESSES.lock();
+        let state: &mut ProcessState =
+            procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
+        // `oldfd` must be open.
+        let file: OpenFile = state
+            .slots
+            .get(&oldfd)
+            .map(|slot| slot.file.clone())
+            .ok_or(Fat32Error::InvalidFd)?;
+        // `dup2(fd, fd)` returns `fd` without disturbing the slot or the generation.
+        if oldfd == newfd {
+            return Ok(newfd);
+        }
+        // Re-point `newfd` at `oldfd`'s description with fresh per-descriptor flags (`FD_CLOEXEC`
+        // cleared); the previous occupant, if any, is returned for deferred drop.
+        let displaced: Option<Slot> = state.slots.insert(newfd, Slot::new(file));
+        state.initialized = true;
+        state.bump_generation();
+        displaced
+    };
+    // The displaced slot — and the open file description it held — is dropped here, after the
+    // registry lock has been released.
+    drop(displaced);
+    Ok(newfd)
 }
 
 /// Gets file status for a path through the VFS.
@@ -1942,21 +2123,34 @@ pub fn vfs_accessat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
 
 /// File control operation on a VFS file descriptor.
 ///
-/// Supports the file-descriptor flag commands (`F_GETFD`/`F_SETFD`, which have no effect because
-/// the VFS implements no close-on-exec) and the file-status-flag commands (`F_GETFL`/`F_SETFL`).
-/// `F_SETFL` stores the mutable status-flag subset (currently only `O_NONBLOCK`) on the open file
-/// description; `F_GETFL` returns it. Other commands return [`Fat32Error::NotSupported`].
+/// Serves the per-descriptor flag commands and the open-file status-flag commands directly from the
+/// state vfsd owns:
+///
+/// - `F_GETFD`/`F_SETFD` read and write the per-descriptor flags (`FD_CLOEXEC`, `FD_CLOFORK`) stored
+///   on the slot. Because these flags live per descriptor, setting them on one descriptor never
+///   affects another that shares the same open file description through `dup` or `fork`.
+/// - `F_GETFL`/`F_SETFL` read and write the open-file status flags. `F_SETFL` stores only the
+///   mutable subset (currently `O_NONBLOCK`); the access-mode and creation bits are not changeable
+///   per POSIX.
+///
+/// The duplication command `F_DUPFD` is *not* handled here: it is a slot-table allocation that the
+/// daemon routes to [`vfs_dup_from`]. Any other command returns [`Fat32Error::NotSupported`].
 pub fn vfs_fcntl(fd: c_int, cmd: c_int, arg: c_int) -> Result<c_int, Fat32Error> {
-    let file: OpenFile = entry_arc(fd)?;
-
     match cmd {
-        file_control_request::F_GETFD => Ok(0), // No FD flags (no close-on-exec for VFS).
-        file_control_request::F_SETFD => Ok(0), // Accept but ignore (no close-on-exec).
-        file_control_request::F_GETFL => Ok(file.lock().status_flags),
+        // Per-descriptor flags live on the slot, so duplicates keep independent close-on-exec /
+        // close-on-fork settings.
+        file_control_request::F_GETFD => {
+            Ok(vfs_get_fd_flags(fd).ok_or(Fat32Error::InvalidFd)?.bits())
+        },
+        file_control_request::F_SETFD => {
+            vfs_set_fd_flags(fd, FdFlags::try_from_bits(arg)?)?;
+            Ok(0)
+        },
+        file_control_request::F_GETFL => Ok(entry_arc(fd)?.lock().status_flags),
         file_control_request::F_SETFL => {
             // Persist only the mutable status-flag subset (currently `O_NONBLOCK`). The remaining
             // bits (access mode, creation flags) are not changeable via `F_SETFL` per POSIX.
-            file.lock().status_flags = arg & file_status_flags::O_NONBLOCK;
+            entry_arc(fd)?.lock().status_flags = arg & file_status_flags::O_NONBLOCK;
             Ok(0)
         },
         _ => Err(Fat32Error::NotSupported), // Other commands not supported.
@@ -3039,6 +3233,30 @@ mod tests {
         assert!(flags.close_on_fork(), "close-on-fork must remain set");
     }
 
+    /// Tests that [`FdFlags::try_from_bits`] accepts the recognized descriptor-flag bits and rejects
+    /// any bit outside `FD_CLOEXEC`/`FD_CLOFORK` with [`Fat32Error::InvalidArgument`], matching POSIX
+    /// `fcntl(F_SETFD)` `EINVAL` semantics rather than silently masking unknown bits.
+    #[test]
+    fn fd_flags_try_from_bits_validates() {
+        use ::sysapi::fcntl::file_descriptor_flags::{
+            FD_CLOEXEC,
+            FD_CLOFORK,
+        };
+
+        // Recognized bits — alone and combined — are accepted and round-trip exactly.
+        assert_eq!(FdFlags::try_from_bits(0).map(FdFlags::bits), Ok(0));
+        assert_eq!(FdFlags::try_from_bits(FD_CLOEXEC).map(FdFlags::bits), Ok(FD_CLOEXEC));
+        assert_eq!(FdFlags::try_from_bits(FD_CLOFORK).map(FdFlags::bits), Ok(FD_CLOFORK));
+        assert_eq!(
+            FdFlags::try_from_bits(FD_CLOEXEC | FD_CLOFORK).map(FdFlags::bits),
+            Ok(FD_CLOEXEC | FD_CLOFORK),
+        );
+
+        // Any bit outside the recognized set is rejected, even alongside a recognized bit.
+        assert_eq!(FdFlags::try_from_bits(0x4), Err(Fat32Error::InvalidArgument));
+        assert_eq!(FdFlags::try_from_bits(FD_CLOEXEC | 0x4), Err(Fat32Error::InvalidArgument));
+    }
+
     /// Tests that a [`ConsoleHandle`] reports the standard stream it was created for.
     #[test]
     fn console_handle_tracks_stream() {
@@ -3145,10 +3363,9 @@ mod tests {
         forget_processes(&[parent, child]);
     }
 
-    /// Documents the deferred `F_SETFD`/`F_GETFD` round trip tracked by
-    /// <https://github.com/nanvix/nanvix/issues/2604>.
+    /// Tests that `F_SETFD` stores the per-descriptor flags and `F_GETFD` reads them back
+    /// (<https://github.com/nanvix/nanvix/issues/2604>).
     #[test]
-    #[ignore = "TODO(#2604): wire vfs_fcntl(F_GETFD/F_SETFD) to FdFlags"]
     fn fcntl_fd_flags_round_trip() {
         let _guard = FORK_TEST_GUARD.lock();
         let pid: ProcessIdentifier = ProcessIdentifier::from(0x7221);
@@ -3173,10 +3390,9 @@ mod tests {
         forget_processes(&[pid]);
     }
 
-    /// Documents that `F_SETFD` must update only the addressed descriptor, as tracked by
-    /// <https://github.com/nanvix/nanvix/issues/2604>.
+    /// Tests that `F_SETFD` updates only the addressed descriptor, so a forked child and its parent
+    /// keep independent flags (<https://github.com/nanvix/nanvix/issues/2604>).
     #[test]
-    #[ignore = "TODO(#2604): wire vfs_fcntl(F_GETFD/F_SETFD) to FdFlags"]
     fn fcntl_fd_flags_are_per_descriptor_after_fork() {
         let _guard = FORK_TEST_GUARD.lock();
         let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
@@ -3406,5 +3622,209 @@ mod tests {
         assert_eq!(err, Fat32Error::AlreadyExists, "active child must be rejected even when empty");
 
         forget_processes(&[parent, child]);
+    }
+
+    // -- dup / dup2 / F_DUPFD slot-table tests ------------------------------------
+
+    /// Tests that `vfs_dup` aliases the source's open file description into the lowest free slot and
+    /// that the duplicate starts with `FD_CLOEXEC` cleared without disturbing the source's flags.
+    #[test]
+    fn dup_aliases_description_and_clears_cloexec() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7501);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_alloc_hostfs(60, false, None).expect("alloc");
+        // Mark the source close-on-exec so we can prove the duplicate does not inherit it.
+        let mut flags: FdFlags = FdFlags::default();
+        flags.set_close_on_exec(true);
+        vfs_set_fd_flags(fd, flags).expect("set source flags");
+
+        let dup_fd: c_int = vfs_dup(fd).expect("dup");
+        assert_eq!(dup_fd, fd + 1, "dup returns the lowest free descriptor");
+
+        // The duplicate shares the source's open file description (same offset).
+        {
+            let procs = PROCESSES.lock();
+            let state = procs.get(&pid).expect("state");
+            assert!(
+                Arc::ptr_eq(&state.slots[&fd].file, &state.slots[&dup_fd].file),
+                "dup must alias the same open file description"
+            );
+        }
+        // POSIX: the duplicate has close-on-exec cleared; the source keeps its own flag.
+        assert!(
+            !vfs_get_fd_flags(dup_fd).expect("dup flags").close_on_exec(),
+            "a dup'd descriptor must start with FD_CLOEXEC cleared"
+        );
+        assert!(
+            vfs_get_fd_flags(fd).expect("source flags").close_on_exec(),
+            "the source descriptor's flags must be unaffected by dup"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that `vfs_dup_from` (the `fcntl(F_DUPFD, arg)` primitive) allocates the lowest free
+    /// descriptor at or above the requested minimum.
+    #[test]
+    fn dup_from_allocates_at_or_above_min() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7502);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_alloc_hostfs(61, false, None).expect("alloc");
+        // Request a duplicate no lower than 10; nothing is allocated there yet, so it lands on 10.
+        let high: c_int = vfs_dup_from(fd, 10).expect("dup_from");
+        assert_eq!(high, 10, "F_DUPFD must return the lowest free fd >= arg");
+        // A second request with the same floor skips the now-occupied 10 and lands on 11.
+        let higher: c_int = vfs_dup_from(fd, 10).expect("dup_from again");
+        assert_eq!(higher, 11, "the next duplicate skips the occupied floor");
+        assert!(
+            Arc::ptr_eq(&entry_arc(fd).unwrap(), &entry_arc(high).unwrap()),
+            "F_DUPFD must alias the same open file description"
+        );
+
+        assert_eq!(
+            vfs_dup_from(fd, -1).unwrap_err(),
+            Fat32Error::InvalidArgument,
+            "F_DUPFD with a negative floor must be rejected"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that `vfs_dup2` re-points `newfd` at `oldfd`'s description across backends and that the
+    /// previous occupant of `newfd` is released.
+    #[test]
+    fn dup2_repoints_across_backends() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7503);
+        set_current_process(pid);
+
+        // A console descriptor and an independent host-backed file descriptor.
+        let console_fd: c_int =
+            alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+                .expect("console alloc");
+        let file_fd: c_int = vfs_alloc_hostfs(62, false, None).expect("file alloc");
+        // The file is the sole reference before dup2.
+        assert!(vfs_hostfs_is_last_ref(file_fd), "file should be the last reference pre-dup2");
+
+        // dup2(file_fd, console_fd): the console slot now aliases the file's description — the
+        // cross-backend redirection the old split model could not express.
+        let ret: c_int = vfs_dup2(file_fd, console_fd).expect("dup2");
+        assert_eq!(ret, console_fd, "dup2 returns newfd");
+        assert!(
+            Arc::ptr_eq(&entry_arc(file_fd).unwrap(), &entry_arc(console_fd).unwrap()),
+            "newfd must alias oldfd's open file description after dup2"
+        );
+        // Resolution now reports the former console descriptor as a vfsd-served file.
+        assert_eq!(
+            vfs_resolve(console_fd),
+            Some((VfsRoute::Vfs, console_fd)),
+            "the redirected descriptor must resolve to the file backend"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that `dup2(fd, fd)` is a no-op that returns `fd` and leaves the table generation
+    /// unchanged, while `dup2` with an invalid `oldfd` or an out-of-range `newfd` is rejected.
+    #[test]
+    fn dup2_noop_and_invalid_arguments() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7504);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_alloc_hostfs(63, false, None).expect("alloc");
+        let before: u64 = vfs_current_generation();
+        assert_eq!(vfs_dup2(fd, fd).expect("dup2 self"), fd, "dup2(fd, fd) returns fd");
+        assert_eq!(
+            vfs_current_generation(),
+            before,
+            "a no-op dup2 must not advance the generation"
+        );
+
+        // An invalid source descriptor is rejected.
+        assert_eq!(vfs_dup2(4096, fd).unwrap_err(), Fat32Error::InvalidFd, "bad oldfd rejected");
+        // A newfd in the reserved socket range is rejected.
+        assert_eq!(
+            vfs_dup2(fd, SOCKET_FD_BASE).unwrap_err(),
+            Fat32Error::InvalidFd,
+            "newfd in the socket range is rejected"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that when `dup2` displaces the last reference to a host-backed description, that
+    /// reference is dropped so the caller (vfsd) becomes responsible for reclaiming the remote
+    /// handle. The replaced slot must no longer reference the old description.
+    #[test]
+    fn dup2_releases_displaced_last_reference() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7505);
+        set_current_process(pid);
+
+        let src_fd: c_int = vfs_alloc_hostfs(64, false, None).expect("src alloc");
+        let victim_fd: c_int = vfs_alloc_hostfs(65, false, None).expect("victim alloc");
+        // The victim is the only reference to remote fd 65, so the daemon would inspect it for
+        // reclaim before calling dup2.
+        assert!(vfs_hostfs_is_last_ref(victim_fd), "victim is the last reference pre-dup2");
+        assert_eq!(vfs_hostfs_remote_fd(victim_fd), Some(65));
+
+        vfs_dup2(src_fd, victim_fd).expect("dup2");
+        // The victim slot now points at the source's remote fd, and the displaced description is
+        // gone (its Arc was dropped by dup2).
+        assert_eq!(
+            vfs_hostfs_remote_fd(victim_fd),
+            Some(64),
+            "the displaced slot must now alias the source's remote handle"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    // -- console fstat tests ------------------------------------------------------
+
+    /// Tests that `vfs_fstat` reports a console descriptor as a character device with a stable
+    /// identity, and that a `dup`'d console descriptor shares that identity.
+    #[test]
+    fn fstat_console_reports_stable_character_device() {
+        use ::sysapi::sys_stat::file_type;
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7507);
+        set_current_process(pid);
+
+        let console_fd: c_int =
+            alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+                .expect("console alloc");
+
+        let mut st: ::sysapi::sys_stat::stat = Default::default();
+        vfs_fstat(console_fd, &mut st).expect("fstat console");
+        assert_eq!(
+            st.st_mode & file_type::S_IFMT,
+            file_type::S_IFCHR,
+            "a console descriptor must report as a character device"
+        );
+        assert_eq!(st.st_size, 0, "a console has no size");
+        let (dev, ino): (_, _) = (st.st_dev, st.st_ino);
+
+        // fstat is stable across calls.
+        let mut st2: ::sysapi::sys_stat::stat = Default::default();
+        vfs_fstat(console_fd, &mut st2).expect("fstat console again");
+        assert_eq!((st2.st_dev, st2.st_ino), (dev, ino), "console identity must be stable");
+
+        // A dup'd console descriptor shares the same identity.
+        let dup_fd: c_int = vfs_dup(console_fd).expect("dup console");
+        let mut st3: ::sysapi::sys_stat::stat = Default::default();
+        vfs_fstat(dup_fd, &mut st3).expect("fstat dup'd console");
+        assert_eq!(
+            (st3.st_dev, st3.st_ino),
+            (dev, ino),
+            "a dup'd console descriptor must share its source's identity"
+        );
+
+        forget_processes(&[pid]);
     }
 }

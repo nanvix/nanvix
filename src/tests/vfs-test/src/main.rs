@@ -43,6 +43,7 @@ use ::sysapi::{
     fcntl::{
         file_control_request,
         file_creation_flags,
+        file_descriptor_flags,
     },
     sys_stat::{
         file_type,
@@ -90,6 +91,7 @@ pub fn main() -> Result<(), Error> {
     test_fstat_directory_and_timestamps()?;
     test_stat_timestamps()?;
     test_fcntl_fd_flags()?;
+    test_dup()?;
     test_resolve_path()?;
     test_chmod()?;
     test_fchmodat()?;
@@ -782,6 +784,17 @@ fn test_fcntl_fd_flags() -> Result<(), Error> {
         return Err(Error::new(ErrorCode::InvalidArgument, "F_SETFD should return 0"));
     }
 
+    // F_SETFD must reject descriptor-flag bits outside the recognized {FD_CLOEXEC, FD_CLOFORK} set
+    // rather than silently masking them, matching POSIX `EINVAL` semantics. 0x4 is the lowest such
+    // bit; it is rejected even when combined with a recognized flag.
+    let unsupported: i32 = file_descriptor_flags::FD_CLOEXEC | 0x4;
+    if vfs::fd::vfs_fcntl(fd, file_control_request::F_SETFD, unsupported).is_ok() {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "F_SETFD must reject unsupported descriptor-flag bits",
+        ));
+    }
+
     // F_GETFL and F_SETFL should still work.
     let fl: i32 = vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFL, 0)
         .map_err(|e| fat_err(e, "fcntl F_GETFL"))?;
@@ -789,7 +802,8 @@ fn test_fcntl_fd_flags() -> Result<(), Error> {
         return Err(Error::new(ErrorCode::InvalidArgument, "F_GETFL should return 0"));
     }
 
-    // An unsupported command (e.g. F_DUPFD) should fail.
+    // F_DUPFD is a slot-table allocation that the daemon routes to `vfs_dup_from`, not a flag
+    // query, so `vfs_fcntl` itself does not handle it and rejects it here.
     if vfs::fd::vfs_fcntl(fd, file_control_request::F_DUPFD, 0).is_ok() {
         return Err(Error::new(ErrorCode::InvalidArgument, "F_DUPFD should fail on VFS"));
     }
@@ -801,6 +815,107 @@ fn test_fcntl_fd_flags() -> Result<(), Error> {
     vfs::unmount("/fcn").map_err(|e| fat_err(e, "unmount /fcn"))?;
 
     ::syslog::info!("vfs-test: test_fcntl_fd_flags passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: dup / dup2 / F_DUPFD
+//==================================================================================================
+
+/// Tests that `vfs_dup`, `vfs_dup_from`, and `vfs_dup2` duplicate descriptors authoritatively on the
+/// flat slot table: the duplicate aliases the source's open file description (so the file offset is
+/// shared), starts with close-on-exec cleared without disturbing the source, honors the `F_DUPFD`
+/// minimum, and re-points an existing descriptor with `dup2`.
+fn test_dup() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_dup begin");
+
+    vfs::create_mount("/dup", 128 * 1024).map_err(|e| fat_err(e, "create_mount /dup failed"))?;
+
+    // Seed a file with known content.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/dup/d.txt")
+            .map_err(|e| fat_err(e, "create d.txt"))?;
+        file.write(b"DUPDATA")
+            .map_err(|e| fat_err(e, "write d.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush d.txt"))?;
+    }
+
+    let fd: i32 = vfs::fd::vfs_open("/dup/d.txt", 0).map_err(|e| fat_err(e, "open d.txt"))?;
+
+    // Read the first three bytes; the open file description's offset is now at 3.
+    let mut head: [u8; 3] = [0; 3];
+    let n: u32 = vfs::fd::vfs_read(fd, &mut head).map_err(|e| fat_err(e, "read head"))?;
+    if n != 3 || &head != b"DUP" {
+        return Err(Error::new(ErrorCode::InvalidArgument, "initial read mismatch"));
+    }
+
+    // Mark the source close-on-exec so we can prove the duplicate does not inherit it.
+    vfs::fd::vfs_fcntl(fd, file_control_request::F_SETFD, file_descriptor_flags::FD_CLOEXEC)
+        .map_err(|e| fat_err(e, "set CLOEXEC on source"))?;
+
+    // dup() aliases the same open file description, so reading the duplicate continues from the
+    // shared offset and returns the remainder of the file.
+    let dup_fd: i32 = vfs::fd::vfs_dup(fd).map_err(|e| fat_err(e, "vfs_dup"))?;
+    if dup_fd == fd {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dup must allocate a distinct fd"));
+    }
+    let mut tail: [u8; 4] = [0; 4];
+    let m: u32 =
+        vfs::fd::vfs_read(dup_fd, &mut tail).map_err(|e| fat_err(e, "read tail via dup"))?;
+    if m != 4 || &tail != b"DATA" {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dup must share the file offset"));
+    }
+
+    // The duplicate starts with close-on-exec cleared; the source keeps its own flag.
+    if vfs::fd::vfs_fcntl(dup_fd, file_control_request::F_GETFD, 0)
+        .map_err(|e| fat_err(e, "getfd dup"))?
+        != 0
+    {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dup must clear FD_CLOEXEC"));
+    }
+    if vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFD, 0)
+        .map_err(|e| fat_err(e, "getfd source"))?
+        & file_descriptor_flags::FD_CLOEXEC
+        == 0
+    {
+        return Err(Error::new(ErrorCode::InvalidArgument, "source must keep FD_CLOEXEC"));
+    }
+
+    // F_DUPFD-style allocation returns the lowest free descriptor at or above the floor.
+    let high: i32 = vfs::fd::vfs_dup_from(fd, 100).map_err(|e| fat_err(e, "vfs_dup_from"))?;
+    if high < 100 {
+        return Err(Error::new(ErrorCode::InvalidArgument, "F_DUPFD must honor the minimum fd"));
+    }
+    if vfs::fd::vfs_dup_from(fd, -1) != Err(vfs::Fat32Error::InvalidArgument) {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "F_DUPFD must reject a negative minimum fd",
+        ));
+    }
+
+    // dup2 re-points an existing descriptor: the previously open file is closed and `other` now
+    // aliases the source's description. dup2(fd, fd) is a no-op that returns fd.
+    let other: i32 =
+        vfs::fd::vfs_open("/dup/d.txt", 0).map_err(|e| fat_err(e, "open d.txt again"))?;
+    let ret: i32 = vfs::fd::vfs_dup2(fd, other).map_err(|e| fat_err(e, "vfs_dup2"))?;
+    if ret != other {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dup2 must return newfd"));
+    }
+    if vfs::fd::vfs_dup2(fd, fd).map_err(|e| fat_err(e, "vfs_dup2 self"))? != fd {
+        return Err(Error::new(ErrorCode::InvalidArgument, "dup2(fd, fd) must return fd"));
+    }
+
+    // Clean up descriptors and the mount.
+    for descriptor in [fd, dup_fd, high, other] {
+        let _ = vfs::fd::vfs_close(descriptor);
+    }
+    vfs::unlink("/dup/d.txt").map_err(|e| fat_err(e, "unlink d.txt"))?;
+    vfs::unmount("/dup").map_err(|e| fat_err(e, "unmount /dup"))?;
+
+    ::syslog::info!("vfs-test: test_dup passed");
     Ok(())
 }
 

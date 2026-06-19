@@ -280,6 +280,8 @@ pub enum SystemCallMessageHeader {
     HostFsReadDirResponsePart,
     ResolveFdRequest,
     ResolveFdResponse,
+    Dup2Request,
+    Dup2Response,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -444,6 +446,8 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == HostFsPathStatResponse as u16 => Ok(HostFsPathStatResponse),
             x if x == ResolveFdRequest as u16 => Ok(ResolveFdRequest),
             x if x == ResolveFdResponse as u16 => Ok(ResolveFdResponse),
+            x if x == Dup2Request as u16 => Ok(Dup2Request),
+            x if x == Dup2Response as u16 => Ok(Dup2Response),
             _ => Err(()),
         }
     }
