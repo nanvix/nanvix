@@ -98,11 +98,20 @@ impl MemorySegment {
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
-        // Resolve the owning pid through the fork-aware cache: it is memoized to avoid a kernel
-        // transition and is invalidated in the child after fork(). Segments live in a
-        // process-global map that a child inherits across fork(), so mapping must always target
-        // the current process; a kcall with a foreign pid trips the kernel's capability check.
-        let pid: ProcessIdentifier = kcall::pm::getpid()?;
+        // Resolve the owning pid with an UNCACHED kernel query. The kernel rejects an mmap whose
+        // target pid differs from the calling process (its memory-management capability check), so a
+        // mapping must always name the current process. The cached getpid() offers no guarantee
+        // here: the pid cache is a per-link-unit `static`, and a C-linked image ends up with several
+        // independent copies of it (cpython, for example, links libposix.a and libnvx_crt0.a, each
+        // compiled with its own `sys` crate and therefore its own cache). fork() can invalidate only
+        // the copy in its own link unit, so it cannot guarantee that the copy this mapping consults
+        // was refreshed; that copy may still hold the parent's pid inherited through copy-on-write
+        // memory. Querying the kernel directly is independent of every cached copy.
+        //
+        // Tracked by https://github.com/nanvix/nanvix/issues/2622: once a process image is
+        // guaranteed to carry a single, unified pid cache that fork() invalidates, restore the
+        // cached getpid() here.
+        let pid: ProcessIdentifier = kcall::pm::getpid_uncached()?;
 
         map_range(
             pid,
@@ -209,11 +218,9 @@ impl MemorySegment {
             prot
         );
 
-        // Resolve the owning pid through the fork-aware cache: it is memoized to avoid a kernel
-        // transition and is invalidated in the child after fork(). Segments live in a
-        // process-global map that a child inherits across fork(), so this must always target the
-        // current process; a kcall with a foreign pid trips the kernel's capability check.
-        let pid: ProcessIdentifier = kcall::pm::getpid()?;
+        // Resolve the owning pid with an UNCACHED kernel query; see new() for why the cached
+        // getpid() cannot be trusted for a capability-sensitive mapping.
+        let pid: ProcessIdentifier = kcall::pm::getpid_uncached()?;
 
         protect_range(
             pid,
@@ -228,10 +235,9 @@ impl Drop for MemorySegment {
     fn drop(&mut self) {
         ::syslog::trace!("drop(): base={:X?}, capacity={:X?}", self.base, self.capacity);
 
-        // Resolve the owning pid through the fork-aware cache; see set_protection() for
-        // rationale. Drop cannot propagate errors, so skip unmapping if the pid cannot be
-        // determined.
-        let pid: ProcessIdentifier = match kcall::pm::getpid() {
+        // Resolve the owning pid with an UNCACHED kernel query; see new() for the rationale. Drop
+        // cannot propagate errors, so skip unmapping if the pid cannot be determined.
+        let pid: ProcessIdentifier = match kcall::pm::getpid_uncached() {
             Ok(pid) => pid,
             Err(_error) => {
                 ::syslog::warn!("drop(): failed to query pid, skipping unmap (error={:?})", _error);
