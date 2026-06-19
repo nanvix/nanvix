@@ -62,6 +62,12 @@ impl Heap {
             return Err(Error::new(ErrorCode::BadAddress, "capacity is too small"));
         }
 
+        // Check if size is page-aligned.
+        if !mm::is_aligned(size, PAGE_ALIGNMENT) {
+            ::syslog::warn!("new(): unaligned size");
+            return Err(Error::new(ErrorCode::BadAddress, "unaligned size"));
+        }
+
         // Map initial pages.
         //
         // Resolve the owning pid with an UNCACHED kernel query. The kernel rejects an mmap whose
