@@ -18,7 +18,6 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -124,7 +123,7 @@ mod tests {
         let nmemb: c_size_t = 16;
         let size: c_size_t = 8;
         let total: usize = (nmemb * size) as usize;
-        let p = unsafe { calloc(nmemb, size) } as *mut u8;
+        let p = unsafe { calloc(nmemb, size) }.cast::<u8>();
         assert!(!p.is_null());
         unsafe {
             for i in 0..total {

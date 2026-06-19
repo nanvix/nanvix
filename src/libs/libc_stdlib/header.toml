@@ -8,10 +8,73 @@
 file = "stdlib.h"
 brief = "General utilities."
 description = """
-Declares memory allocation and environment interfaces implemented by the
-libc_stdlib Rust crate."""
-includes = ["stddef.h"]
+Declares memory allocation, string conversion, integer arithmetic, searching
+and sorting, pseudo-random sequence generation, environment, and process
+control interfaces implemented by the libc_stdlib Rust crate."""
+includes = ["stddef.h", "sys/wait.h", "fcntl.h"]
 guard = "_NANVIX_STDLIB_H"
+content_order = [
+    "macros",
+    "types",
+    "section:0",
+    "section:1",
+    "section:2",
+    "section:3",
+    "section:4",
+    "section:5",
+    "section:6",
+    "section:7",
+    "section:8",
+    "section:9",
+]
+
+[[macros]]
+name = "EXIT_SUCCESS"
+value = "0"
+comment = "Successful termination for exit()."
+guard = "EXIT_SUCCESS"
+
+[[macros]]
+name = "EXIT_FAILURE"
+value = "1"
+comment = "Unsuccessful termination for exit()."
+guard = "EXIT_FAILURE"
+
+[[macros]]
+name = "RAND_MAX"
+value = "32767"
+comment = "Maximum value returned by rand()."
+guard = "RAND_MAX"
+
+[[macros]]
+name = "MB_CUR_MAX"
+value = "((size_t)1)"
+comment = "Maximum number of bytes in a character for the current locale."
+guard = "MB_CUR_MAX"
+
+[[types]]
+text = """
+/** @brief Structure type returned by the div() function. */
+typedef struct {
+    int quot; /**< Quotient.  */
+    int rem;  /**< Remainder. */
+} div_t;"""
+
+[[types]]
+text = """
+/** @brief Structure type returned by the ldiv() function. */
+typedef struct {
+    long quot; /**< Quotient.  */
+    long rem;  /**< Remainder. */
+} ldiv_t;"""
+
+[[types]]
+text = """
+/** @brief Structure type returned by the lldiv() function. */
+typedef struct {
+    long long quot; /**< Quotient.  */
+    long long rem;  /**< Remainder. */
+} lldiv_t;"""
 
 [[sections]]
 title = "Memory Allocation"
@@ -20,10 +83,135 @@ functions = [
     "free",
     "calloc",
     "realloc",
+    "reallocarray",
     "aligned_alloc",
     "posix_memalign",
 ]
 
 [[sections]]
+title = "String Conversion"
+functions = [
+    "atof",
+    "atoi",
+    "atol",
+    "atoll",
+    "strtod",
+    "strtof",
+    "strtold",
+    "strtol",
+    "strtoll",
+    "strtoul",
+    "strtoull",
+]
+
+[[sections]]
+title = "Integer Arithmetic"
+functions = ["abs", "labs", "llabs", "div", "ldiv", "lldiv"]
+
+[[sections]]
+title = "Searching and Sorting"
+functions = ["bsearch", "qsort", "qsort_r"]
+
+[[sections]]
+title = "Pseudo-Random Sequence Generation"
+functions = ["rand", "srand"]
+
+[[sections]]
 title = "Environment"
-functions = ["getenv", "setenv", "unsetenv"]
+functions = [
+    "getenv",
+    "secure_getenv",
+    "setenv",
+    "unsetenv",
+    "putenv",
+    "getsubopt",
+]
+
+[[sections]]
+title = "Process Control"
+functions = [
+    "_Exit",
+    "abort",
+    "at_quick_exit",
+    "atexit",
+    "exit",
+    "quick_exit",
+    "system",
+]
+
+[[sections]]
+title = "Multibyte Conversion"
+functions = ["mblen", "mbtowc", "mbstowcs", "wctomb", "wcstombs"]
+
+[[sections]]
+title = "Temporary Files and Terminals"
+functions = [
+    "mkdtemp",
+    "mkostemp",
+    "mkstemp",
+    "posix_openpt",
+    "ptsname",
+    "ptsname_r",
+    "unlockpt",
+    "grantpt",
+]
+
+[[sections]]
+title = "Path Utilities"
+functions = ["realpath"]
+
+[overrides]
+_Exit = '''
+extern _Noreturn void _Exit(int status);'''
+abort = '''
+extern _Noreturn void abort(void);'''
+exit = '''
+extern _Noreturn void exit(int status);'''
+quick_exit = '''
+extern _Noreturn void quick_exit(int status);'''
+strtod = '''
+extern double strtod(const char *restrict nptr, char **restrict endptr);'''
+strtof = '''
+extern float strtof(const char *restrict nptr, char **restrict endptr);'''
+strtold = '''
+extern double strtold(const char *restrict nptr, char **restrict endptr);'''
+strtol = '''
+extern long strtol(const char *restrict nptr, char **restrict endptr, int base);'''
+strtoll = '''
+extern long long strtoll(const char *restrict nptr, char **restrict endptr, int base);'''
+strtoul = '''
+extern unsigned long strtoul(const char *restrict nptr, char **restrict endptr, int base);'''
+strtoull = '''
+extern unsigned long long strtoull(const char *restrict nptr, char **restrict endptr, int base);'''
+getsubopt = '''
+extern int getsubopt(char **restrict optionp, char *const *restrict tokens, char **restrict valuep);'''
+qsort_r = '''
+extern void qsort_r(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *, void *), void *arg);'''
+mbtowc = '''
+extern int mbtowc(wchar_t *restrict pwc, const char *restrict s, size_t n);'''
+mblen = '''
+extern int mblen(const char *s, size_t n);'''
+wctomb = '''
+extern int wctomb(char *s, wchar_t wc);'''
+mbstowcs = '''
+extern size_t mbstowcs(wchar_t *restrict dst, const char *restrict src, size_t n);'''
+wcstombs = '''
+extern size_t wcstombs(char *restrict dst, const wchar_t *restrict src, size_t n);'''
+mkdtemp = '''
+extern char *mkdtemp(char *template);'''
+mkostemp = '''
+extern int mkostemp(char *template, int flags);'''
+mkstemp = '''
+extern int mkstemp(char *template);'''
+posix_openpt = '''
+extern int posix_openpt(int flags);'''
+ptsname = '''
+extern char *ptsname(int fildes);'''
+ptsname_r = '''
+extern int ptsname_r(int fildes, char *name, size_t namesize);'''
+unlockpt = '''
+extern int unlockpt(int fildes);'''
+grantpt = '''
+extern int grantpt(int fildes);'''
+realpath = '''
+extern char *realpath(const char *restrict path, char *restrict resolved_path);'''

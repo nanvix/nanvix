@@ -17,7 +17,6 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -80,7 +79,6 @@ mod tests {
     use super::realloc;
     use crate::set_errno;
     use ::sysapi::{
-        errno::EINVAL,
         ffi::{
             c_int,
             c_void,
@@ -120,36 +118,44 @@ mod tests {
     fn realloc_grow_and_shrink() {
         // Allocate initial block.
         let initial: c_size_t = 32;
-        let p = unsafe { realloc(core::ptr::null_mut(), initial) } as *mut u8;
+        let p = unsafe { realloc(core::ptr::null_mut(), initial) }.cast::<u8>();
         assert!(!p.is_null());
         unsafe {
-            for i in 0..initial {
-                p.add(i).write(i as u8);
+            for i in 0..initial as usize {
+                p.add(i).write(u8::try_from(i).unwrap_or_default());
             }
         }
         // Grow block.
         let grown: c_size_t = 64;
-        let p2 = unsafe { realloc(p as *mut c_void, grown) } as *mut u8;
+        let p2 = unsafe { realloc(p.cast::<c_void>(), grown) }.cast::<u8>();
         assert!(!p2.is_null());
         unsafe {
-            for i in 0..initial {
-                assert_eq!(p2.add(i).read(), i as u8, "realloc data mismatch at {i} after grow");
+            for i in 0..initial as usize {
+                assert_eq!(
+                    p2.add(i).read(),
+                    u8::try_from(i).unwrap_or_default(),
+                    "realloc data mismatch at {i} after grow"
+                );
             }
-            for i in initial..grown {
-                p2.add(i).write(i as u8);
+            for i in initial as usize..grown as usize {
+                p2.add(i).write(u8::try_from(i).unwrap_or_default());
             }
         }
         // Shrink block.
         let shrunk: c_size_t = 16;
-        let p3 = unsafe { realloc(p2 as *mut c_void, shrunk) } as *mut u8;
+        let p3 = unsafe { realloc(p2.cast::<c_void>(), shrunk) }.cast::<u8>();
         assert!(!p3.is_null());
         unsafe {
-            for i in 0..shrunk {
-                assert_eq!(p3.add(i).read(), i as u8, "realloc data mismatch at {i} after shrink");
+            for i in 0..shrunk as usize {
+                assert_eq!(
+                    p3.add(i).read(),
+                    u8::try_from(i).unwrap_or_default(),
+                    "realloc data mismatch at {i} after shrink"
+                );
             }
         }
         unsafe {
-            crate::free(p3 as *mut c_void);
+            crate::free(p3.cast::<c_void>());
         }
     }
 }

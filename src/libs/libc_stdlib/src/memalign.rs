@@ -6,16 +6,18 @@
 //==================================================================================================
 
 use crate::{
-    aligned_alloc::aligned_alloc,
+    block_header::BlockHeader,
     set_errno,
 };
 use ::core::ptr::null_mut;
 use ::sysapi::{
-    errno::EINVAL,
+    errno::{
+        EINVAL,
+        ENOMEM,
+    },
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -29,7 +31,7 @@ use ::syslog::warn;
 ///
 /// `memalign()` is the legacy SVID / BSD alignment allocator. Unlike `aligned_alloc()` it does
 /// not require `size` to be a multiple of `alignment`; the only constraint enforced here is that
-/// `alignment` is a power of two, which the backing allocator requires.
+/// `alignment` is a power of two that the backing allocator supports, which is validated up front.
 ///
 /// # Parameters
 ///
@@ -49,10 +51,11 @@ use ::syslog::warn;
 /// embedded runtime when extension `.so`s are loaded.
 ///
 /// The allocation itself is delegated to [`aligned_alloc()`], which shares the same backing
-/// allocator. `memalign()` keeps its own argument validation up front so that an invalid
-/// (non-power-of-two) alignment fails with `EINVAL` -- the error `memalign()` is specified to
-/// return -- rather than the `ENOMEM` that the allocator would surface for the same input, and so
-/// that diagnostics are attributed to `memalign()`.
+/// allocator. `memalign()` keeps its own argument validation up front so that an unsupported
+/// alignment (one that is not a power of two, or that exceeds the allocator's maximum) fails with
+/// `EINVAL` -- the error `memalign()` is specified to return -- rather than the `ENOMEM` that the
+/// allocator would surface for the same input, and so that diagnostics are attributed to
+/// `memalign()`.
 ///
 /// # Safety
 ///
@@ -82,19 +85,25 @@ pub unsafe extern "C" fn memalign(alignment: c_size_t, size: c_size_t) -> *mut c
         return null_mut();
     }
 
-    // Check for invalid alignment. memalign() requires a power-of-two alignment and is specified
-    // to fail with EINVAL otherwise; validating here (instead of letting the allocator reject it
-    // with ENOMEM) preserves that contract.
-    if !(alignment as usize).is_power_of_two() {
+    // Check for invalid alignment. memalign() requires a power-of-two alignment that the backing
+    // allocator can satisfy and is specified to fail with EINVAL otherwise; validating here
+    // (instead of letting the allocator reject it with ENOMEM) preserves that contract. This also
+    // rejects power-of-two alignments above the allocator's maximum, which would otherwise surface
+    // as ENOMEM from the allocation below.
+    if !BlockHeader::supports_alignment(alignment as usize) {
         warn!("memalign(): invalid alignment (alignment={alignment:?}, size={size:?})");
         set_errno(EINVAL);
         return null_mut();
     }
 
-    // Delegate the allocation to aligned_alloc(), which shares the same backing allocator. The
-    // arguments are already validated above, so any failure here is a genuine out-of-memory
-    // condition for which aligned_alloc() sets errno appropriately.
-    aligned_alloc(alignment, size)
+    let ptr: *mut u8 = BlockHeader::alloc(size as usize, Some(alignment as usize));
+    if ptr.is_null() {
+        warn!("memalign(): allocation failed (alignment={alignment:?}, size={size:?})");
+        set_errno(ENOMEM);
+        return null_mut();
+    }
+
+    ptr.cast::<c_void>()
 }
 
 #[cfg(all(test, feature = "std"))]
@@ -137,10 +146,20 @@ mod tests {
     }
 
     #[test]
+    fn alignment_above_maximum() {
+        // A power-of-two alignment beyond the allocator's maximum must fail with EINVAL rather
+        // than the ENOMEM the allocator would otherwise surface.
+        set_errno(0);
+        let p = unsafe { memalign(8192, 128) };
+        assert!(p.is_null());
+        assert_eq!(get_errno(), EINVAL);
+    }
+
+    #[test]
     fn valid_allocation() {
         let alignment: c_size_t = 128;
         let size: c_size_t = 130; // not a multiple of alignment
-        let p = unsafe { memalign(alignment, size) } as *mut u8;
+        let p = unsafe { memalign(alignment, size) }.cast::<u8>();
         assert!(!p.is_null());
         let addr = p as usize;
         assert_eq!(addr & (alignment as usize - 1), 0, "pointer {addr:#x} not {alignment}-aligned");

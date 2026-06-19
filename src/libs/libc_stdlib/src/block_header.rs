@@ -17,7 +17,6 @@ use ::core::{
         null_mut,
     },
 };
-use ::syslog::warn;
 
 //==================================================================================================
 // Constants
@@ -61,6 +60,11 @@ pub(crate) struct BlockHeader {
 //==================================================================================================
 
 impl BlockHeader {
+    /// Returns `true` if `alignment` is supported by this allocator.
+    pub(crate) fn supports_alignment(alignment: usize) -> bool {
+        alignment.is_power_of_two() && alignment <= MAX_ALIGNMENT
+    }
+
     /// # Description
     ///
     /// Allocates a block of memory.
@@ -94,7 +98,7 @@ impl BlockHeader {
         let alignment: usize = alignment.unwrap_or(1);
 
         // Validate alignment invariants so that free() can trust the header.
-        if !alignment.is_power_of_two() || alignment > MAX_ALIGNMENT {
+        if !Self::supports_alignment(alignment) {
             warn!("alloc(): invalid alignment (alignment={alignment:?}, size={size:?})");
             return null_mut();
         }

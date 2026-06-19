@@ -18,7 +18,6 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -77,10 +76,7 @@ mod tests {
     use crate::set_errno;
     use ::sysapi::{
         errno::EINVAL,
-        ffi::{
-            c_int,
-            c_void,
-        },
+        ffi::c_int,
         sys_types::c_size_t,
     };
 

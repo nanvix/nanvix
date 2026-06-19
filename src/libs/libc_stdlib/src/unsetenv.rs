@@ -51,7 +51,7 @@ use ::sysapi::{
 pub unsafe extern "C" fn unsetenv(name: *const c_char) -> c_int {
     // Check if `name` is null.
     if name.is_null() {
-        ::syslog::warn!("unsetenv(): name is null");
+        warn!("unsetenv(): name is null");
         set_errno(EINVAL);
         return -1;
     }
@@ -60,7 +60,7 @@ pub unsafe extern "C" fn unsetenv(name: *const c_char) -> c_int {
     let name_str: &str = match ffi::CStr::from_ptr(name).to_str() {
         Ok(s) => s,
         Err(_) => {
-            ::syslog::warn!("unsetenv(): invalid name (name={name:?})");
+            warn!("unsetenv(): invalid name (name={name:?})");
             set_errno(EINVAL);
             return -1;
         },
@@ -68,7 +68,7 @@ pub unsafe extern "C" fn unsetenv(name: *const c_char) -> c_int {
 
     // Empty name or name containing '=' is invalid per POSIX.
     if name_str.is_empty() || name_str.contains('=') {
-        ::syslog::warn!("unsetenv(): invalid name (name={name_str:?})");
+        warn!("unsetenv(): invalid name (name={name_str:?})");
         set_errno(EINVAL);
         return -1;
     }
