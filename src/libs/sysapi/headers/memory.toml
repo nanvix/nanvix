@@ -1,0 +1,12 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for memory.h.
+
+file = "memory.h"
+brief = "Legacy alias for <string.h>."
+description = '''
+'''
+includes = ["string.h"]
+guard = "_NANVIX_MEMORY_H"
+extern_c = false

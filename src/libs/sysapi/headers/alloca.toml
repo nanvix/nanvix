@@ -1,0 +1,24 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for alloca.h.
+
+file = "alloca.h"
+brief = "Stack allocation."
+description = '''
+`alloca()` allocates memory in the caller's stack frame; the storage is freed
+automatically when the calling function returns. It maps directly to the
+compiler builtin.'''
+includes = ["stddef.h"]
+guard = "_NANVIX_ALLOCA_H"
+extern_c = false
+content_order = [
+    "raw:0",
+]
+
+[[raw_sections]]
+title = ""
+text = '''
+#ifndef alloca
+#define alloca(size) __builtin_alloca(size)
+#endif'''

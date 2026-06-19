@@ -1,0 +1,40 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for pwd.h.
+
+file = "pwd.h"
+brief = "Password database."
+description = '''
+The `passwd` layout mirrors the Rust definition in the sysapi crate (pwd.rs).'''
+includes = ["sys/types.h"]
+guard = "_NANVIX_PWD_H"
+scan_crates = ["posix"]
+content_order = [
+    "raw:0",
+    "section:0",
+]
+
+[[raw_sections]]
+title = ""
+text = '''
+/** @brief Password database entry. */
+struct passwd {
+    char *pw_name;   /**< User name.            */
+    char *pw_passwd; /**< Encrypted password.   */
+    uid_t pw_uid;    /**< User ID.              */
+    gid_t pw_gid;    /**< Group ID.             */
+    char *pw_gecos;  /**< Real name / comment.  */
+    char *pw_dir;    /**< Home directory.       */
+    char *pw_shell;  /**< Login shell.          */
+};'''
+
+[[sections]]
+title = ""
+functions = ["getpwuid", "getpwnam"]
+
+[overrides]
+getpwuid = '''
+extern struct passwd *getpwuid(uid_t uid);'''
+getpwnam = '''
+extern struct passwd *getpwnam(const char *name);'''

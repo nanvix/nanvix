@@ -1,0 +1,44 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/param.h.
+
+file = "sys/param.h"
+brief = "Legacy system parameters and helper macros."
+description = '''
+'''
+includes = ["limits.h", "sys/types.h"]
+guard = "_NANVIX_SYS_PARAM_H"
+content_order = [
+    "raw:0",
+    "raw:1",
+]
+
+[[raw_sections]]
+title = "Limits"
+text = '''
+#ifndef MAXPATHLEN
+#ifdef PATH_MAX
+#define MAXPATHLEN PATH_MAX
+#else
+#define MAXPATHLEN 4096
+#endif
+#endif
+
+#ifndef NBBY
+#define NBBY 8 /**< Number of bits in a byte. */
+#endif'''
+
+[[raw_sections]]
+title = "Helper macros"
+text = '''
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+
+#define howmany(x, y) (((x) + ((y) - 1)) / (y))
+#define roundup(x, y) ((((x) + ((y) - 1)) / (y)) * (y))
+#define powerof2(x) ((((x) - 1) & (x)) == 0)'''

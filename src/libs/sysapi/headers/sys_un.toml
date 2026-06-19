@@ -1,0 +1,29 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/un.h.
+# The sockaddr_un layout mirrors src/libs/sysapi/src/sys_un.rs.
+
+file = "sys/un.h"
+brief = "UNIX domain socket address."
+description = """
+Declares the UNIX-domain socket address structure. The layout mirrors the Rust
+definition in the sysapi crate (sys_un.rs)."""
+includes = ["sys/socket.h"]
+guard = "_NANVIX_SYS_UN_H"
+content_order = ["macros", "types:0"]
+
+[[macros]]
+name = "SUNPATHLEN"
+value = "14"
+comment = "Size of the sun_path field."
+
+[[types]]
+text = """
+/** @brief UNIX domain socket address. */
+struct sockaddr_un {
+    unsigned char sun_len;     /**< Total length.   */
+    sa_family_t sun_family;    /**< Address family. */
+    char sun_path[SUNPATHLEN]; /**< Socket path.    */
+};
+"""

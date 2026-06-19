@@ -1,0 +1,41 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for utime.h.
+
+file = "utime.h"
+brief = "File access and modification times."
+description = '''
+Declares the legacy `utime()` interface and its `utimbuf` structure. The
+layout mirrors the Rust definition in the sysapi crate (utime.rs).'''
+includes = ["sys/types.h"]
+guard = "_NANVIX_UTIME_H"
+content_order = [
+    "raw:0",
+    "raw:1",
+]
+
+[[raw_sections]]
+title = "Structures"
+text = '''
+/**
+ * @brief File access and modification times.
+ */
+struct utimbuf {
+    time_t actime;  /**< Access time.       */
+    time_t modtime; /**< Modification time. */
+};'''
+
+[[raw_sections]]
+title = "Functions"
+text = '''
+/**
+ * @brief Sets the access and modification times of a file.
+ *
+ * @param filename Path of the target file.
+ * @param times    Desired access and modification times, or NULL for the
+ *                 current time.
+ *
+ * @returns Zero on success, or -1 on failure with `errno` set.
+ */
+extern int utime(const char *filename, const struct utimbuf *times);'''

@@ -1,0 +1,42 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sched.h.
+# Constants and the sched_param layout mirror src/libs/sysapi/src/sched.rs.
+
+file = "sched.h"
+brief = "Execution scheduling."
+description = """
+Declares the scheduling policy constants and the sched_param structure used to
+get and set scheduling parameters. Mirrors the Rust definitions in the sysapi
+crate (sched.rs)."""
+guard = "_NANVIX_SCHED_H"
+scan_crates = ["syscall"]
+content_order = ["macros", "types:0", "section:0"]
+
+[[macros]]
+name = "SCHED_OTHER"
+value = "0"
+comment = "Another scheduling policy."
+
+[[macros]]
+name = "SCHED_FIFO"
+value = "1"
+comment = "First in-first out scheduling policy."
+
+[[macros]]
+name = "SCHED_RR"
+value = "2"
+comment = "Round-robin scheduling policy."
+
+[[types]]
+text = """
+/** @brief Scheduling parameters. */
+struct sched_param {
+    int sched_priority; /**< Process or thread execution scheduling priority. */
+};
+"""
+
+[[sections]]
+title = "Scheduling"
+functions = ["sched_yield"]

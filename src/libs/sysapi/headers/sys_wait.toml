@@ -1,0 +1,41 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/wait.h.
+
+file = "sys/wait.h"
+brief = "Process-termination wait interface."
+description = '''
+'''
+includes = ["sys/types.h"]
+guard = "_NANVIX_SYS_WAIT_H"
+scan_crates = ["syscall"]
+content_order = [
+    "raw:0",
+    "raw:1",
+    "section:0",
+]
+
+[[raw_sections]]
+title = "Options"
+text = '''
+#define WNOHANG 1
+#define WUNTRACED 2'''
+
+[[raw_sections]]
+title = "Status-decoding macros"
+text = '''
+#define WIFEXITED(status) (((status) & 0x7f) == 0)
+#define WEXITSTATUS(status) (((status) >> 8) & 0xff)
+#define WIFSIGNALED(status) (((status) & 0x7f) != 0 && ((status) & 0x7f) != 0x7f)
+#define WTERMSIG(status) ((status) & 0x7f)
+#define WIFSTOPPED(status) (((status) & 0xff) == 0x7f)
+#define WSTOPSIG(status) WEXITSTATUS(status)'''
+
+[[sections]]
+title = "Functions"
+functions = ["waitpid", "wait"]
+
+[overrides]
+wait = '''
+extern pid_t wait(int *status);'''

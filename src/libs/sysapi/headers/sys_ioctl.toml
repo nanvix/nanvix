@@ -1,0 +1,44 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/ioctl.h.
+
+file = "sys/ioctl.h"
+brief = "Device control operations."
+description = '''
+Declares `ioctl()` and the terminal window-size request used by interactive
+ports. Nanvix has no interactive terminal in standalone mode, so the
+terminal requests fail; the definitions exist so such ports compile and link.'''
+guard = "_NANVIX_SYS_IOCTL_H"
+scan_crates = ["posix"]
+content_order = [
+    "raw:0",
+    "raw:1",
+    "section:0",
+]
+
+[[raw_sections]]
+title = "Structures"
+text = '''
+/** @brief Terminal window size. */
+struct winsize {
+    unsigned short ws_row;    /**< Rows, in characters.    */
+    unsigned short ws_col;    /**< Columns, in characters. */
+    unsigned short ws_xpixel; /**< Horizontal size, pixels. */
+    unsigned short ws_ypixel; /**< Vertical size, pixels.   */
+};'''
+
+[[raw_sections]]
+title = "Requests"
+text = '''
+#define TIOCGWINSZ 0x5413
+#define TIOCSWINSZ 0x5414
+#define FIONREAD 0x541b'''
+
+[[sections]]
+title = "Functions"
+functions = ["ioctl"]
+
+[overrides]
+ioctl = '''
+extern int ioctl(int fd, unsigned long request, ...);'''

@@ -1,0 +1,40 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for ftw.h.
+
+file = "ftw.h"
+brief = "File-tree-walk interface."
+description = '''
+'''
+includes = ["sys/stat.h", "sys/types.h"]
+guard = "_NANVIX_FTW_H"
+content_order = [
+    "raw:0",
+    "raw:1",
+]
+
+[[raw_sections]]
+title = "Type-flag values passed to the callback"
+text = '''
+#define FTW_F 0   /**< Regular file.                 */
+#define FTW_D 1   /**< Directory.                    */
+#define FTW_DNR 2 /**< Directory that cannot be read. */
+#define FTW_NS 3  /**< Stat failed.                  */
+#define FTW_SL 4  /**< Symbolic link.                */'''
+
+[[raw_sections]]
+title = "Functions"
+text = '''
+/**
+ * @brief Walks the file tree rooted at @p path, invoking @p fn for each entry.
+ *
+ * @param path    Root of the tree to walk.
+ * @param fn      Callback invoked per entry with its path, stat data, and a type flag.
+ * @param nopenfd Maximum number of directory streams kept open simultaneously.
+ *
+ * @returns Zero on success, the callback's non-zero return, or -1 on error.
+ */
+extern int ftw(
+    const char *path, int (*fn)(const char *fpath, const struct stat *sb, int typeflag),
+    int nopenfd);'''

@@ -1,0 +1,27 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for ieeefp.h.
+
+file = "ieeefp.h"
+brief = "Legacy IEEE floating-point predicates."
+description = '''
+Provides the historical `finite()` predicates in terms of the C99
+`isfinite` classification macro from <math.h>.'''
+includes = ["math.h"]
+guard = "_NANVIX_IEEEFP_H"
+extern_c = false
+content_order = [
+    "raw:0",
+]
+
+[[raw_sections]]
+title = ""
+text = '''
+#ifndef finite
+#define finite(x) isfinite(x)
+#endif
+
+#ifndef finitef
+#define finitef(x) isfinite(x)
+#endif'''

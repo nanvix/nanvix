@@ -1,0 +1,14 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/_stdint.h.
+
+file = "sys/_stdint.h"
+brief = "Compatibility shim for newlib's internal `<sys/_stdint.h>`."
+description = '''
+Some ports (e.g. QuickJS) include the newlib-internal `<sys/_stdint.h>`
+directly to obtain the fixed-width integer types. Nanvix declares those types
+in `<stdint.h>`, so forward to it.'''
+includes = ["stdint.h"]
+guard = "_NANVIX_SYS__STDINT_H"
+extern_c = false

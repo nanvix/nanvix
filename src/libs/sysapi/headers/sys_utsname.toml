@@ -1,0 +1,36 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/utsname.h.
+# The utsname layout mirrors src/libs/syscall/src/sys/utsname/mod.rs; uname() is
+# generated from the posix crate.
+
+file = "sys/utsname.h"
+brief = "System name structure."
+description = """
+Declares the utsname structure and the uname() interface. The layout mirrors
+the Rust definition in the syscall crate (sys/utsname)."""
+guard = "_NANVIX_SYS_UTSNAME_H"
+scan_crates = ["posix"]
+content_order = ["macros", "types:0", "section:0"]
+
+[[macros]]
+name = "_UTSNAME_LENGTH"
+value = "64"
+comment = "Length of each utsname field."
+
+[[types]]
+text = """
+/** @brief System name structure. */
+struct utsname {
+    char sysname[_UTSNAME_LENGTH];  /**< Operating system name.   */
+    char nodename[_UTSNAME_LENGTH]; /**< Network node name.       */
+    char release[_UTSNAME_LENGTH];  /**< Operating system release.*/
+    char version[_UTSNAME_LENGTH];  /**< Operating system version.*/
+    char machine[_UTSNAME_LENGTH];  /**< Hardware identifier.     */
+};
+"""
+
+[[sections]]
+title = "System Information"
+functions = ["uname"]

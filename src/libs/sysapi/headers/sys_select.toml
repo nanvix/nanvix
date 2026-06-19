@@ -1,0 +1,55 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/select.h.
+
+file = "sys/select.h"
+brief = "Synchronous I/O multiplexing."
+description = '''
+Declares `fd_set`, the `FD_*` manipulation macros, and `select()`. The
+`fd_set` layout mirrors the Rust definition in the sysapi crate
+(sys_select.rs).'''
+includes = ["sys/time.h", "sys/types.h"]
+guard = "_NANVIX_SYS_SELECT_H"
+scan_crates = ["syscall"]
+content_order = [
+    "types",
+    "raw:0",
+    "section:0",
+]
+
+[[types]]
+text = '''
+#define FD_SETSIZE 64
+
+#define _NANVIX_NFDBITS (8 * (int)sizeof(unsigned long))
+
+/** @brief A set of file descriptors. */
+typedef struct {
+    unsigned long fds_bits[FD_SETSIZE / (8 * sizeof(unsigned long))];
+} fd_set;'''
+
+[[raw_sections]]
+title = "Manipulation macros"
+text = '''
+#define FD_ZERO(set)                                                                               \
+    do {                                                                                           \
+        unsigned int _i;                                                                           \
+        for (_i = 0; _i < sizeof(fd_set) / sizeof(unsigned long); _i++)                            \
+            ((fd_set *)(set))->fds_bits[_i] = 0;                                                   \
+    } while (0)
+#define FD_SET(fd, set)                                                                            \
+    ((set)->fds_bits[(fd) / _NANVIX_NFDBITS] |= (1UL << ((fd) % _NANVIX_NFDBITS)))
+#define FD_CLR(fd, set)                                                                            \
+    ((set)->fds_bits[(fd) / _NANVIX_NFDBITS] &= ~(1UL << ((fd) % _NANVIX_NFDBITS)))
+#define FD_ISSET(fd, set)                                                                          \
+    (((set)->fds_bits[(fd) / _NANVIX_NFDBITS] & (1UL << ((fd) % _NANVIX_NFDBITS))) != 0)'''
+
+[[sections]]
+title = "Functions"
+functions = ["select"]
+
+[overrides]
+select = '''
+extern int select(
+    int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);'''

@@ -1,0 +1,83 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/mman.h.
+# Constants mirror src/libs/sysapi/src/sys_mman.rs; the function prototypes are
+# generated from the extern "C" signatures in the syscall crate.
+
+file = "sys/mman.h"
+brief = "Memory management declarations."
+description = """
+Declares the memory-mapping protection and flag constants and the mmap/munmap
+interfaces. Constants mirror the Rust definitions in the sysapi crate
+(sys_mman.rs)."""
+includes = ["sys/types.h"]
+guard = "_NANVIX_SYS_MMAN_H"
+scan_crates = ["syscall"]
+content_order = ["macros", "raw:0", "section:0", "section:1", "section:2"]
+
+[[macros]]
+name = "PROT_NONE"
+value = "0x0"
+comment = "Page cannot be accessed."
+
+[[macros]]
+name = "PROT_READ"
+value = "0x1"
+comment = "Page can be read."
+
+[[macros]]
+name = "PROT_WRITE"
+value = "0x2"
+comment = "Page can be written."
+
+[[macros]]
+name = "PROT_EXEC"
+value = "0x4"
+comment = "Page can be executed."
+
+[[macros]]
+name = "MAP_SHARED"
+value = "0x01"
+comment = "Share changes."
+
+[[macros]]
+name = "MAP_PRIVATE"
+value = "0x02"
+comment = "Changes are private."
+
+[[macros]]
+name = "MAP_FIXED"
+value = "0x10"
+comment = "Interpret the address exactly."
+
+[[macros]]
+name = "MAP_ANONYMOUS"
+value = "0x20"
+comment = "Anonymous mapping (not backed by a file)."
+
+[[raw_sections]]
+title = ""
+text = """
+/** @brief Returned by mmap() on failure. */
+#define MAP_FAILED ((void *)-1)
+"""
+
+[[sections]]
+title = "Memory Mapping"
+functions = ["mmap", "munmap"]
+
+[overrides]
+mmap = "extern void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset);"
+munmap = "extern int munmap(void *addr, size_t length);"
+mprotect = "extern int mprotect(void *addr, size_t length, int prot);"
+mlock = "extern int mlock(const void *addr, size_t len);"
+munlock = "extern int munlock(const void *addr, size_t len);"
+
+[[sections]]
+title = "Memory Protection"
+functions = ["mprotect"]
+
+[[sections]]
+title = "Memory Locking"
+functions = ["mlock", "munlock"]
