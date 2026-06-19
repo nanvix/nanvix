@@ -91,6 +91,7 @@ use ::sys::{
     event::{
         Event,
         ProcessCreationInfo,
+        ProcessRole,
         ProcessTerminationInfo,
     },
     ipc::{
@@ -588,8 +589,11 @@ impl ProcessManager {
             // Record the creation so the kernel main loop can publish a process-creation
             // scheduling event. Notifying subscribers here is unsafe because the process manager is
             // mutably borrowed; deferring to the main loop avoids re-entrant access.
-            self.pending_creations
-                .push_back(ProcessCreationInfo::new(pid, parent_pid));
+            self.pending_creations.push_back(ProcessCreationInfo::new(
+                pid,
+                parent_pid,
+                ProcessRole::classify(pid, parent_pid),
+            ));
 
             Ok(pid)
         }))
@@ -966,8 +970,11 @@ impl ProcessManager {
             // Record the creation so the kernel main loop can publish a process-creation
             // scheduling event. Notifying subscribers here is unsafe because the process manager is
             // mutably borrowed; deferring to the main loop avoids re-entrant access.
-            self.pending_creations
-                .push_back(ProcessCreationInfo::new(child_pid, pid));
+            self.pending_creations.push_back(ProcessCreationInfo::new(
+                child_pid,
+                pid,
+                ProcessRole::classify(child_pid, pid),
+            ));
 
             Ok(child_pid)
         }))
@@ -2599,8 +2606,8 @@ impl ProcessManager {
                 }
             }
             match self.harvest_zombies(mm) {
-                Ok(Some((pid, status))) => {
-                    self.push_pending_termination(ProcessTerminationInfo::new(pid, status));
+                Ok(Some(info)) => {
+                    self.push_pending_termination(info);
                     reaped += 1;
                 },
                 Ok(None) => break,
@@ -2737,7 +2744,7 @@ impl ProcessManager {
     pub fn harvest_zombies(
         &mut self,
         mm: &mut VirtMemoryManager,
-    ) -> Result<Option<(ProcessIdentifier, ExitStatus)>, Error> {
+    ) -> Result<Option<ProcessTerminationInfo>, Error> {
         let (mut zombie_threads, mut state, status): (
             VecDeque<ZombieThread>,
             Box<ProcessState>,
@@ -2801,7 +2808,13 @@ impl ProcessManager {
             );
         }
 
-        Ok(Some((state.pid(), status)))
+        // Build the authoritative termination record. The parent and role are known to the kernel,
+        // which spawns the init process and the daemons directly and owns the well-known daemon
+        // process identifiers, so subscribers do not have to re-infer them from race-prone state.
+        let pid: ProcessIdentifier = state.pid();
+        let parent: ProcessIdentifier = state.ppid();
+        let role: ProcessRole = ProcessRole::classify(pid, parent);
+        Ok(Some(ProcessTerminationInfo::new(pid, status, parent, role)))
     }
 
     ///

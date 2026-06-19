@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use super::ProcessRole;
 use crate::pm::ProcessIdentifier;
 use ::core::fmt::Debug;
 
@@ -23,8 +24,10 @@ pub struct ProcessCreationInfo {
     pub pid: ProcessIdentifier,
     /// Identifier of the process that created it.
     pub parent: ProcessIdentifier,
+    /// Role of the newly created process.
+    pub role: ProcessRole,
 }
-::static_assert::assert_eq_size!(ProcessCreationInfo, 8);
+::static_assert::assert_eq_size!(ProcessCreationInfo, 12);
 ::static_assert::assert_eq_align!(ProcessCreationInfo, 4);
 
 //==================================================================================================
@@ -41,13 +44,14 @@ impl ProcessCreationInfo {
     ///
     /// - `pid`: Identifier of the newly created process.
     /// - `parent`: Identifier of the process that created it.
+    /// - `role`: Role of the newly created process.
     ///
     /// # Returns
     ///
     /// The new [`ProcessCreationInfo`].
     ///
-    pub fn new(pid: ProcessIdentifier, parent: ProcessIdentifier) -> Self {
-        Self { pid, parent }
+    pub fn new(pid: ProcessIdentifier, parent: ProcessIdentifier, role: ProcessRole) -> Self {
+        Self { pid, parent, role }
     }
 
     ///
@@ -72,6 +76,10 @@ impl ProcessCreationInfo {
 
         bytes[offset..offset + core::mem::size_of::<ProcessIdentifier>()]
             .copy_from_slice(&self.parent.to_ne_bytes());
+        offset += core::mem::size_of::<ProcessIdentifier>();
+
+        bytes[offset..offset + core::mem::size_of::<u32>()]
+            .copy_from_slice(&self.role.to_u32().to_ne_bytes());
 
         bytes
     }
@@ -107,7 +115,34 @@ impl ProcessCreationInfo {
             bytes[offset + 2],
             bytes[offset + 3],
         ]);
+        offset += core::mem::size_of::<ProcessIdentifier>();
 
-        Self { pid, parent }
+        let role: ProcessRole = ProcessRole::from_u32(u32::from_ne_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+        ]));
+
+        Self { pid, parent, role }
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn creation_info_round_trip() {
+        let info: ProcessCreationInfo = ProcessCreationInfo::new(
+            ProcessIdentifier::from(5),
+            ProcessIdentifier::from(4),
+            ProcessRole::Init,
+        );
+        assert_eq!(ProcessCreationInfo::from_ne_bytes(info.to_ne_bytes()), info);
     }
 }
