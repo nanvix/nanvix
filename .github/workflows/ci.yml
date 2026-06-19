@@ -76,7 +76,7 @@ jobs:
       benchmark-linux: ${{ steps.check-linux.outputs.available }}
       benchmark-windows: ${{ steps.check-windows.outputs.available }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Check Linux Runners"
         id: check-linux
@@ -249,7 +249,7 @@ jobs:
       )
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Setup"
         uses: ./.github/actions/native-setup
@@ -311,7 +311,7 @@ jobs:
       )
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Setup"
         uses: ./.github/actions/native-setup
@@ -364,7 +364,7 @@ jobs:
       )
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Setup"
         uses: ./.github/actions/native-setup
@@ -427,7 +427,7 @@ jobs:
       )
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Setup"
         uses: ./.github/actions/native-setup
@@ -512,7 +512,7 @@ jobs:
       USER: root
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Setup"
         uses: ./.github/actions/native-setup
@@ -588,7 +588,7 @@ jobs:
       )
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Install Rust Toolchain"
         shell: pwsh
@@ -633,7 +633,7 @@ jobs:
       )
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Install Rust Toolchain"
         shell: pwsh
@@ -679,7 +679,7 @@ jobs:
       )
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Install Rust Toolchain"
         shell: pwsh
@@ -727,7 +727,7 @@ jobs:
       MACHINE_TYPE: ${{ matrix.machine-type }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Install Rust Toolchain"
         shell: pwsh
@@ -801,7 +801,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Download Build Artifacts"
         uses: actions/download-artifact@v8
@@ -962,7 +962,7 @@ jobs:
             sudo rm -rf "${GITHUB_WORKSPACE}/images"
           fi
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Isolate Cargo Home"
         shell: bash
@@ -1106,7 +1106,7 @@ jobs:
     if: ${{ !cancelled() && needs.benchmark-gate-windows.outputs.should-run == 'true' }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Restore Directory Symlinks as Junctions"
         shell: pwsh
@@ -1265,7 +1265,7 @@ jobs:
       issues: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Use the deploy SSH key so that benchmark-persist can push results
           # to the dev branch (the deploy key is a bypass actor for branch
@@ -1356,10 +1356,10 @@ jobs:
       issues: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: github.ref_name != 'dev'
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: github.ref_name == 'dev'
         with:
           # Use the deploy SSH key so that benchmark-persist can push results
@@ -1463,7 +1463,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Download CI Build Artifacts"
         uses: actions/download-artifact@v8
@@ -1528,7 +1528,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Download Windows Build Artifacts"
         uses: actions/download-artifact@v8
@@ -1578,7 +1578,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: "Publish Release"
         uses: ./.github/actions/publish-release
@@ -1704,7 +1704,7 @@ jobs:
 
     steps:
       - name: "Checkout repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
           fetch-depth: 0
@@ -1727,7 +1727,7 @@ jobs:
 
     steps:
       - name: "Checkout repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
           fetch-depth: 0

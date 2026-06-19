@@ -44,7 +44,7 @@ jobs:
       merge_commit_count: ${{ steps.merge_check.outputs.merge_commit_count }}
     steps:
       - name: "Checkout (full history; prefer PR head on PRs)"
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
