@@ -1591,7 +1591,7 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     Ok(())
 }
 
-/// Closes a VFS file descriptor.
+/// Closes a descriptor held in the process's flat slot table.
 ///
 /// In the flat namespace any descriptor present in the process's slot table can be closed by its
 /// raw number, including a low console slot — freeing it for the lowest-free allocator to reuse.

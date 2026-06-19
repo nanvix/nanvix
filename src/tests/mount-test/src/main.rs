@@ -35,6 +35,7 @@ mod file_ops;
 mod fs_ops;
 mod mount_lifecycle;
 mod readdir_ops;
+mod stdio_reuse;
 mod symlink_ops;
 
 //==================================================================================================
@@ -70,6 +71,9 @@ pub fn main() -> Result<(), Error> {
 
     // Phase 3.7: Invalid-dirfd rejection for hostfs-routed *at() operations.
     dirfd_reject::test()?;
+
+    // Phase 3.8: Standard descriptor close/reuse semantics under the flat namespace.
+    stdio_reuse::test()?;
 
     // Phase 4: Cross-filesystem consistency tests (RAMFS vs HostFS).
     cross_fs::test()?;

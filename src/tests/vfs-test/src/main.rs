@@ -497,7 +497,10 @@ fn test_open_directory() -> Result<(), Error> {
 
     // The returned fd should resolve to a vfsd-served descriptor.
     if vfs::fd::vfs_resolve(fd) != Some((vfs::fd::VfsRoute::Vfs, fd)) {
-        return Err(Error::new(ErrorCode::InvalidArgument, "fd should be a VFS fd"));
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "fd should resolve to a vfsd-served descriptor",
+        ));
     }
 
     // Reading from a directory handle should fail.
