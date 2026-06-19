@@ -139,9 +139,11 @@ pub(crate) fn handle_getdents(source: ThreadIdentifier, msg: SystemCallMessage) 
 pub(crate) fn handle_openat(source: ThreadIdentifier, request: OpenAtRequest) -> Vec<Message> {
     match ::vfs::fd::vfs_openat(request.dirfd, &request.pathname, request.flags) {
         Ok(fd) => {
+            let epoch: u64 = ::vfs::fd::vfs_current_generation();
             vec![OpenAtResponse::build(
                 source,
                 fd,
+                epoch,
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
             )]

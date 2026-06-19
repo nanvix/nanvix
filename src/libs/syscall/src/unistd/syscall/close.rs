@@ -33,26 +33,39 @@ use ::sys::{
 //==================================================================================================
 
 pub fn close(fd: i32) -> Result<(), Error> {
-    // In standalone mode, route based on fd type.
+    // In standalone mode, route based on the descriptor's resolved backend.
     #[cfg(feature = "standalone")]
     {
-        if crate::is_vfs_fd(fd) {
-            return close_ipc(fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
-        }
-        use ::sysapi::unistd::{
-            STDERR_FILENO,
-            STDIN_FILENO,
-            STDOUT_FILENO,
+        use crate::fdtable::{
+            resolve,
+            Route,
         };
-        if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-            return Ok(());
+        let result: Result<(), Error> = match resolve(fd) {
+            Some(res) => match res.route {
+                // VFS-backed descriptors are closed by vfsd.
+                Route::Vfs => {
+                    close_ipc(res.backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)
+                },
+                // Console descriptors alias the kernel streams and own no resource to release here.
+                Route::Console => Ok(()),
+                // Sockets are closed by networkd.
+                Route::Socket => {
+                    close_ipc(res.backend_fd, crate::NETWORK_DESTINATION, MessageType::Ikc)
+                },
+            },
+            // Unknown fd: no handler available.
+            None => {
+                ::syslog::warn!("close(): bad file descriptor fd={fd}");
+                Err(Error::new(ErrorCode::BadFile, "bad file descriptor"))
+            },
+        };
+        // Drop any cached resolution once the descriptor is gone, so a number later reused by a
+        // different backend is never answered from a stale entry. Only a successful close frees the
+        // descriptor; a failed close leaves it open, so its resolution stays valid.
+        if result.is_ok() {
+            crate::fdtable::invalidate(fd);
         }
-        if crate::is_socket_fd(fd) {
-            return close_ipc(fd, crate::NETWORK_DESTINATION, MessageType::Ikc);
-        }
-        // Unknown fd: no handler available.
-        ::syslog::warn!("close(): bad file descriptor fd={fd}");
-        Err(Error::new(ErrorCode::BadFile, "bad file descriptor"))
+        result
     }
 
     #[cfg(not(feature = "standalone"))]

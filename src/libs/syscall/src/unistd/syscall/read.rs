@@ -167,26 +167,43 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // Special case: stdin always goes through IKC to kernel, even in standalone mode.
+    // In standalone mode, route by the descriptor's resolved backend. The resolution memoizes the
+    // number rules used before the cache existed, so the dispatch is identical to inspecting the
+    // descriptor number directly.
     #[cfg(feature = "standalone")]
-    if fd == STDIN_FILENO {
-        return read_ipc(
-            fd,
-            buffer,
-            crate::LINUXD,
-            MessageType::Ikc,
-            ProcessIdentifier::KERNEL,
-            ThreadIdentifier::KERNEL,
-        );
+    {
+        use crate::fdtable::{
+            resolve,
+            Route,
+        };
+        match resolve(fd) {
+            // stdin reads flow directly to the kernel over IKC.
+            Some(res) if res.route == Route::Console && res.backend_fd == STDIN_FILENO => read_ipc(
+                res.backend_fd,
+                buffer,
+                crate::LINUXD,
+                MessageType::Ikc,
+                ProcessIdentifier::KERNEL,
+                ThreadIdentifier::KERNEL,
+            ),
+            // VFS-backed descriptors go to vfsd.
+            Some(res) if res.route == Route::Vfs => read_ipc(
+                res.backend_fd,
+                buffer,
+                crate::VFS_DESTINATION,
+                crate::VFS_MESSAGE_TYPE,
+                crate::VFS_PUSH_PULL_PID,
+                crate::VFS_PUSH_PULL_TID,
+            ),
+            // stdout/stderr, sockets, and unroutable descriptors are not readable here.
+            _ => {
+                ::syslog::warn!("read(): bad file descriptor fd={fd} in standalone mode");
+                Err(Error::new(ErrorCode::BadFile, "read: fd is not a VFS fd in standalone mode"))
+            },
+        }
     }
 
-    // In standalone mode, only VFS file descriptors should be routed to vfsd.
-    #[cfg(feature = "standalone")]
-    if !crate::is_vfs_fd(fd) {
-        ::syslog::warn!("read(): bad file descriptor fd={fd} in standalone mode");
-        return Err(Error::new(ErrorCode::BadFile, "read: fd is not a VFS fd in standalone mode"));
-    }
-
+    #[cfg(not(feature = "standalone"))]
     read_ipc(
         fd,
         buffer,

@@ -46,22 +46,37 @@ use ::sysapi::sys_types::{
 pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), Error> {
     ::syslog::trace!("fchown(): fd={:?}, owner={:?}, group={:?}", fd, owner, group);
 
-    // In standalone mode, only VFS file descriptors should be routed to vfsd.
-    #[cfg(feature = "standalone")]
-    if !crate::is_vfs_fd(fd) {
-        ::syslog::warn!("fchown(): bad file descriptor fd={fd} in standalone mode");
-        return Err(Error::new(
-            ErrorCode::BadFile,
-            "fchown: fd is not a VFS fd in standalone mode",
-        ));
-    }
+    // In standalone mode, only VFS-backed descriptors are routable here.
+    let backend_fd: RawFileDescriptor = {
+        #[cfg(feature = "standalone")]
+        {
+            use crate::fdtable::{
+                resolve,
+                Route,
+            };
+            match resolve(fd) {
+                Some(res) if res.route == Route::Vfs => res.backend_fd,
+                _ => {
+                    ::syslog::warn!("fchown(): bad file descriptor fd={fd} in standalone mode");
+                    return Err(Error::new(
+                        ErrorCode::BadFile,
+                        "fchown: fd is not a VFS fd in standalone mode",
+                    ));
+                },
+            }
+        }
+        #[cfg(not(feature = "standalone"))]
+        {
+            fd
+        }
+    };
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
     let request: Message = FileChownRequest::build(
         tid,
-        fd,
+        backend_fd,
         owner,
         group,
         crate::VFS_DESTINATION,

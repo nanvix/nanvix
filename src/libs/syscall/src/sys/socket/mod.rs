@@ -431,8 +431,7 @@ mod test {
     #[test]
     fn test_ipv4_socket_addr_into_sockaddr() {
         let expected_addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new([192, 168, 1, 1]), 80);
-        let test_addr: sockaddr =
-            sockaddr::try_from(&expected_addr).expect("socket address conversion should succeed");
+        let test_addr: sockaddr = sockaddr::from(&expected_addr);
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
     }
 
@@ -454,8 +453,7 @@ mod test {
     #[test]
     fn test_socket_addr_into_sockaddr() {
         let expected_addr: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new([192, 168, 1, 1]), 80);
-        let test_addr: sockaddr =
-            sockaddr::try_from(&SocketAddr::V4(expected_addr)).expect("conversion should succeed");
+        let test_addr: sockaddr = sockaddr::from(&SocketAddr::V4(expected_addr));
         assert_eq!(expected_addr, SocketAddrV4::from(&test_addr));
     }
 
@@ -480,7 +478,7 @@ mod test {
                 let mut path: [u8; SUNPATHLEN] = [0; SUNPATHLEN];
                 let bytes = "/tmp/socket".as_bytes();
                 path[..bytes.len()].copy_from_slice(bytes);
-                path
+                path.map(|b| b as i8)
             },
         };
         let expected_addr: SocketAddrUnix = SocketAddrUnix::new("/tmp/socket");
@@ -491,8 +489,7 @@ mod test {
     #[test]
     fn test_unix_socket_addr_into_sockaddr() {
         let expected_addr: SocketAddrUnix = SocketAddrUnix::new("/tmp/socket");
-        let test_addr: sockaddr =
-            sockaddr::try_from(&expected_addr).expect("socket address conversion should succeed");
+        let test_addr: sockaddr = sockaddr::from(&expected_addr);
         assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
     }
 

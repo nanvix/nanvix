@@ -51,29 +51,41 @@ use ::sysapi::sys_types::{
 pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pread(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // POSIX requires pread on a non-seekable fd (pipe/stdio) to return ESPIPE.
-    #[cfg(feature = "standalone")]
-    {
-        use ::sysapi::unistd::{
-            STDERR_FILENO,
-            STDIN_FILENO,
-            STDOUT_FILENO,
-        };
-
-        if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-            ::syslog::warn!(
-                "pread(): illegal seek on stdio (fd={fd}, buffer={buffer:?}, offset={offset})",
-            );
-            return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
+    // POSIX requires pread on a non-seekable fd (pipe/stdio) to return ESPIPE. In standalone mode,
+    // route by the descriptor's resolved backend.
+    let backend_fd: RawFileDescriptor = {
+        #[cfg(feature = "standalone")]
+        {
+            use crate::fdtable::{
+                resolve,
+                Route,
+            };
+            match resolve(fd) {
+                // VFS-backed descriptors fall through to the vfsd read path below.
+                Some(res) if res.route == Route::Vfs => res.backend_fd,
+                // The console (stdin/stdout/stderr) is not seekable.
+                Some(res) if res.route == Route::Console => {
+                    ::syslog::warn!(
+                        "pread(): illegal seek on stdio (fd={fd}, buffer={buffer:?}, \
+                         offset={offset})",
+                    );
+                    return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
+                },
+                // Sockets and unroutable descriptors are not readable here.
+                _ => {
+                    ::syslog::warn!("pread(): bad file descriptor fd={fd} in standalone mode");
+                    return Err(Error::new(
+                        ErrorCode::BadFile,
+                        "pread: fd is not a VFS fd in standalone mode",
+                    ));
+                },
+            }
         }
-    }
-
-    // In standalone mode, only VFS file descriptors should be routed to vfsd.
-    #[cfg(feature = "standalone")]
-    if !crate::is_vfs_fd(fd) {
-        ::syslog::warn!("pread(): bad file descriptor fd={fd} in standalone mode");
-        return Err(Error::new(ErrorCode::BadFile, "pread: fd is not a VFS fd in standalone mode"));
-    }
+        #[cfg(not(feature = "standalone"))]
+        {
+            fd
+        }
+    };
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
@@ -87,7 +99,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
         // Build request and send it.
         let request: Message = PartialReadRequest::build(
             tid,
-            fd,
+            backend_fd,
             chunk_size as c_size_t,
             offset + buffer_offset as off_t,
             crate::VFS_DESTINATION,

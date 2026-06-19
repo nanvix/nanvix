@@ -137,26 +137,48 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         ::syslog::trace!("write(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // Special case: stdout/stderr always go through IKC to kernel, even in standalone mode.
+    // In standalone mode, route by the descriptor's resolved backend. The resolution memoizes the
+    // number rules used before the cache existed, so the dispatch is identical to inspecting the
+    // descriptor number directly.
     #[cfg(feature = "standalone")]
-    if fd == STDOUT_FILENO || fd == STDERR_FILENO {
-        return write_ipc(
-            fd,
-            buffer,
-            crate::LINUXD,
-            MessageType::Ikc,
-            ProcessIdentifier::KERNEL,
-            ThreadIdentifier::KERNEL,
-        );
+    {
+        use crate::fdtable::{
+            resolve,
+            Route,
+        };
+        match resolve(fd) {
+            // stdout/stderr writes flow directly to the kernel over IKC.
+            Some(res)
+                if res.route == Route::Console
+                    && (res.backend_fd == STDOUT_FILENO || res.backend_fd == STDERR_FILENO) =>
+            {
+                write_ipc(
+                    res.backend_fd,
+                    buffer,
+                    crate::LINUXD,
+                    MessageType::Ikc,
+                    ProcessIdentifier::KERNEL,
+                    ThreadIdentifier::KERNEL,
+                )
+            },
+            // VFS-backed descriptors go to vfsd.
+            Some(res) if res.route == Route::Vfs => write_ipc(
+                res.backend_fd,
+                buffer,
+                crate::VFS_DESTINATION,
+                crate::VFS_MESSAGE_TYPE,
+                crate::VFS_PUSH_PULL_PID,
+                crate::VFS_PUSH_PULL_TID,
+            ),
+            // stdin, sockets, and unroutable descriptors are not writable here.
+            _ => {
+                ::syslog::warn!("write(): bad file descriptor fd={fd} in standalone mode");
+                Err(Error::new(ErrorCode::BadFile, "write: fd is not a VFS fd in standalone mode"))
+            },
+        }
     }
 
-    // In standalone mode, only VFS file descriptors should be routed to vfsd.
-    #[cfg(feature = "standalone")]
-    if !crate::is_vfs_fd(fd) {
-        ::syslog::warn!("write(): bad file descriptor fd={fd} in standalone mode");
-        return Err(Error::new(ErrorCode::BadFile, "write: fd is not a VFS fd in standalone mode"));
-    }
-
+    #[cfg(not(feature = "standalone"))]
     write_ipc(
         fd,
         buffer,

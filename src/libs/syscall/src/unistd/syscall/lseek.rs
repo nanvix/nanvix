@@ -34,36 +34,48 @@ use ::sysapi::{
 pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_t, Error> {
     ::syslog::trace!("lseek(): fd={:?}, offset={}, whence={}", fd, offset, whence);
 
-    // POSIX requires lseek on a pipe/FIFO/socket/stdio fd to return ESPIPE.
-    #[cfg(feature = "standalone")]
-    {
-        use ::sysapi::unistd::{
-            STDERR_FILENO,
-            STDIN_FILENO,
-            STDOUT_FILENO,
-        };
-
-        if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-            ::syslog::warn!(
-                "lseek(): illegal seek on stdio (fd={fd:?}, offset={offset}, whence={whence})",
-            );
-            return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
+    // POSIX requires lseek on a pipe/FIFO/socket/stdio fd to return ESPIPE. In standalone mode,
+    // route by the descriptor's resolved backend.
+    let backend_fd: RawFileDescriptor = {
+        #[cfg(feature = "standalone")]
+        {
+            use crate::fdtable::{
+                resolve,
+                Route,
+            };
+            match resolve(fd) {
+                // VFS-backed descriptors fall through to the vfsd seek path below.
+                Some(res) if res.route == Route::Vfs => res.backend_fd,
+                // Seeking the console (stdin/stdout/stderr) is an illegal seek.
+                Some(res) if res.route == Route::Console => {
+                    ::syslog::warn!(
+                        "lseek(): illegal seek on stdio (fd={fd:?}, offset={offset}, \
+                         whence={whence})",
+                    );
+                    return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
+                },
+                // Sockets and unroutable descriptors are not seekable here.
+                _ => {
+                    ::syslog::warn!("lseek(): bad file descriptor fd={fd} in standalone mode");
+                    return Err(Error::new(
+                        ErrorCode::BadFile,
+                        "lseek: fd is not a VFS fd in standalone mode",
+                    ));
+                },
+            }
         }
-    }
-
-    // In standalone mode, only VFS file descriptors should be routed to vfsd.
-    #[cfg(feature = "standalone")]
-    if !crate::is_vfs_fd(fd) {
-        ::syslog::warn!("lseek(): bad file descriptor fd={fd} in standalone mode");
-        return Err(Error::new(ErrorCode::BadFile, "lseek: fd is not a VFS fd in standalone mode"));
-    }
+        #[cfg(not(feature = "standalone"))]
+        {
+            fd
+        }
+    };
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = SeekRequest::build(
         tid,
-        fd,
+        backend_fd,
         offset,
         whence,
         crate::VFS_DESTINATION,
