@@ -1,0 +1,22 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for string.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/string.h.
+
+file = "string.h"
+brief = "String and memory operations."
+description = """
+Declares byte-string length and memory manipulation routines implemented by
+the libc_string Rust crate."""
+includes = ["stddef.h"]
+guard = "_NANVIX_STRING_H"
+
+[[sections]]
+title = "Memory Operations"
+functions = ["memcpy", "memmove", "memset", "memcmp"]
+
+[[sections]]
+title = "String Operations"
+functions = ["strlen"]

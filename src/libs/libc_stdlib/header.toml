@@ -1,0 +1,29 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for stdlib.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/stdlib.h.
+
+file = "stdlib.h"
+brief = "General utilities."
+description = """
+Declares memory allocation and environment interfaces implemented by the
+libc_stdlib Rust crate."""
+includes = ["stddef.h"]
+guard = "_NANVIX_STDLIB_H"
+
+[[sections]]
+title = "Memory Allocation"
+functions = [
+    "malloc",
+    "free",
+    "calloc",
+    "realloc",
+    "aligned_alloc",
+    "posix_memalign",
+]
+
+[[sections]]
+title = "Environment"
+functions = ["getenv", "setenv", "unsetenv"]

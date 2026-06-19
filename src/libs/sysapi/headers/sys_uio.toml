@@ -1,0 +1,29 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/uio.h.
+# The iovec layout mirrors src/libs/sysapi/src/sys_uio.rs; prototypes are
+# generated from the posix crate.
+
+file = "sys/uio.h"
+brief = "Vectored I/O."
+description = """
+Declares the iovec structure and the scatter/gather I/O interfaces. The layout
+mirrors the Rust definition in the sysapi crate (sys_uio.rs)."""
+includes = ["sys/types.h"]
+guard = "_NANVIX_SYS_UIO_H"
+scan_crates = ["posix"]
+content_order = ["types:0", "section:0"]
+
+[[types]]
+text = """
+/** @brief An I/O vector. */
+struct iovec {
+    void *iov_base; /**< Base address of the buffer.  */
+    size_t iov_len; /**< Length of the buffer.        */
+};
+"""
+
+[[sections]]
+title = "Vectored I/O"
+functions = ["readv", "writev", "preadv", "pwritev"]

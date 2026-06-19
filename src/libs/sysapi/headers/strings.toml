@@ -1,0 +1,25 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for strings.h.
+
+file = "strings.h"
+brief = "Legacy BSD string operations."
+description = '''
+'''
+includes = ["stddef.h"]
+guard = "_NANVIX_STRINGS_H"
+scan_crates = ["libc_string"]
+content_order = ["section:0"]
+
+[[sections]]
+title = ""
+functions = ["strcasecmp", "strncasecmp", "bcmp", "bcopy", "bzero", "ffs"]
+
+[overrides]
+strcasecmp = "extern int strcasecmp(const char *s1, const char *s2);"
+strncasecmp = "extern int strncasecmp(const char *s1, const char *s2, size_t n);"
+bcmp = "extern int bcmp(const void *s1, const void *s2, size_t n);"
+bcopy = "extern void bcopy(const void *src, void *dest, size_t n);"
+bzero = "extern void bzero(void *s, size_t n);"
+ffs = "extern int ffs(int i);"

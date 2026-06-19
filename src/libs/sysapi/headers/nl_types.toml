@@ -1,0 +1,28 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for nl_types.h.
+
+file = "nl_types.h"
+brief = "Message catalog and language information types."
+description = '''
+'''
+guard = "_NANVIX_NL_TYPES_H"
+content_order = [
+    "types",
+    "raw:0",
+]
+
+[[types]]
+text = '''
+/** @brief Type used by nl_langinfo() to identify a locale item. */
+typedef int nl_item;
+
+/** @brief Message catalog descriptor. */
+typedef void *nl_catd;'''
+
+[[raw_sections]]
+title = "Constants"
+text = '''
+#define NL_SETD 1
+#define NL_CAT_LOCALE 1'''

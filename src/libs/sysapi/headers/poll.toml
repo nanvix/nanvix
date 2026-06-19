@@ -1,0 +1,48 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for poll.h.
+
+file = "poll.h"
+brief = "Synchronous I/O multiplexing via poll()."
+description = '''
+The `pollfd` layout mirrors the Rust definition in the sysapi crate
+(poll.rs).'''
+guard = "_NANVIX_POLL_H"
+scan_crates = ["syscall"]
+content_order = [
+    "types",
+    "raw:0",
+    "section:0",
+]
+
+[[types]]
+text = '''
+typedef unsigned int nfds_t;
+
+/** @brief A descriptor to be polled. */
+struct pollfd {
+    int fd;        /**< File descriptor.        */
+    short events;  /**< Requested events.       */
+    short revents; /**< Returned events.        */
+};'''
+
+[[raw_sections]]
+title = "Event flags"
+text = '''
+#define POLLIN 0x0001
+#define POLLPRI 0x0002
+#define POLLOUT 0x0004
+#define POLLERR 0x0008
+#define POLLHUP 0x0010
+#define POLLNVAL 0x0020
+#define POLLRDNORM POLLIN
+#define POLLWRNORM POLLOUT'''
+
+[[sections]]
+title = "Functions"
+functions = ["poll"]
+
+[overrides]
+poll = '''
+extern int poll(struct pollfd *fds, nfds_t nfds, int timeout);'''

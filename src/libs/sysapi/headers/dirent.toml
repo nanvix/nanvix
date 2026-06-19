@@ -1,0 +1,87 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for dirent.h.
+# Constants and layouts mirror src/libs/sysapi/src/dirent.rs; prototypes are
+# generated from the syscall crate.
+
+file = "dirent.h"
+brief = "Directory entries."
+description = """
+Declares the directory-stream type, the directory-entry structures, and the
+directory-traversal interfaces. The layouts mirror the Rust definitions in the
+sysapi crate (dirent.rs)."""
+includes = ["sys/types.h", "limits.h"]
+guard = "_NANVIX_DIRENT_H"
+scan_crates = ["syscall"]
+content_order = ["macros", "types:0", "section:0"]
+
+[[macros]]
+name = "DT_UNKNOWN"
+value = "0"
+comment = "Unknown file type."
+
+[[macros]]
+name = "DT_FIFO"
+value = "1"
+comment = "FIFO."
+
+[[macros]]
+name = "DT_CHR"
+value = "2"
+comment = "Character device."
+
+[[macros]]
+name = "DT_DIR"
+value = "4"
+comment = "Directory."
+
+[[macros]]
+name = "DT_BLK"
+value = "6"
+comment = "Block device."
+
+[[macros]]
+name = "DT_REG"
+value = "8"
+comment = "Regular file."
+
+[[macros]]
+name = "DT_LNK"
+value = "10"
+comment = "Symbolic link."
+
+[[macros]]
+name = "DT_SOCK"
+value = "12"
+comment = "Socket."
+
+[[types]]
+text = """
+/** @brief Directory stream type. */
+typedef struct __dirstream DIR;
+
+/** @brief Directory entry. */
+struct dirent {
+    ino_t d_ino;                /**< File serial number.                  */
+    char d_name[NAME_MAX + 1];  /**< Null-terminated file name.           */
+};
+
+/** @brief Extended (Nanvix) directory entry. */
+struct posix_dent {
+    ino_t d_ino;                /**< File serial number.                  */
+    reclen_t d_reclen;          /**< Length of this entry.                */
+    unsigned char d_type;       /**< File type.                           */
+    char d_name[NAME_MAX + 1];  /**< Null-terminated file name.           */
+    char d_pad[1];              /**< Padding.                             */
+};
+"""
+
+[[sections]]
+title = "Directory Operations"
+functions = ["opendir", "readdir", "closedir"]
+
+# opendir's Rust binding spells its path argument `*const i8`; declare the
+# standard POSIX prototype so C callers can pass a `const char *`.
+[overrides]
+opendir = "extern DIR *opendir(const char *dirname);"

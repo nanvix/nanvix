@@ -1,0 +1,27 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for malloc.h.
+# Prototypes are generated from the extern "C" signatures in the libc_stdlib
+# crate (the same definitions that back <stdlib.h>).
+
+file = "malloc.h"
+brief = "Memory allocation."
+description = """
+Declares the memory-allocation interfaces, including the malloc_usable_size()
+extension. The prototypes are generated from the libc_stdlib Rust crate."""
+includes = ["stddef.h"]
+guard = "_NANVIX_MALLOC_H"
+scan_crates = ["libc_stdlib"]
+content_order = ["section:0"]
+
+[[sections]]
+title = "Memory Allocation"
+functions = [
+    "malloc",
+    "free",
+    "calloc",
+    "realloc",
+    "aligned_alloc",
+    "malloc_usable_size",
+]

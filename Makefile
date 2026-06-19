@@ -354,7 +354,7 @@ ifeq ($(IS_WINDOWS),yes)
 WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http nanvix-sandbox-cache syscomm
 ALL_HOST_RUST_LIBS := $(filter-out $(WINDOWS_EXCLUDED_HOST_RLIBS),$(ALL_HOST_RUST_LIBS))
 endif
-ALL_HOST_UTILS := echo-client mkimage mkramfs strace
+ALL_HOST_UTILS := echo-client gen-headers mkimage mkramfs strace
 # linuxd is only needed for multi-process and L2 deployments (Linux-only).
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 ALL_HOST_DAEMONS := linuxd
@@ -430,7 +430,12 @@ all-nanvix: all-nanvix-bench
 endif
 
 # Performs local initialization.
-init: init-repo
+#
+# Regenerate the bundled C headers from the libc_* Rust crate sources so that
+# include/*.h stays in sync with every build. gen-headers only rewrites a
+# header when its rendered contents change, so this is a no-op on incremental
+# builds where the libc sources are unchanged.
+init: init-repo gen-headers
 
 init-repo:
 	$(MKDIR_CMD) $(BINARIES_DIR)
@@ -714,6 +719,7 @@ format: \
 
 # Checks for code formatting issues.
 format-check: \
+	gen-headers-check \
 	rust-format-check \
 	python-format-check
 
@@ -798,6 +804,16 @@ python-lint: python-init
 # Runs Python unit tests for the build backend (z.py).
 test-python: python-init
 	@$(PYTHON_VENV_PYTHON) -m unittest discover -s tests -p "test_*.py" $(PY_VERBOSE)
+
+# Generates C headers from Rust libc crate sources.
+.PHONY: gen-headers
+gen-headers:
+	@$(CARGO) run --locked --quiet -p gen-headers
+
+# Checks that generated C headers are up to date.
+.PHONY: gen-headers-check
+gen-headers-check:
+	@$(CARGO) run --locked --quiet -p gen-headers -- --check
 
 # Checks for linting issues in shell scripts.
 shell-lint-check:

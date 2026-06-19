@@ -1,0 +1,22 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "gen-headers"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Generates C headers from Nanvix libc_* Rust crate sources"
+homepage.workspace = true
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true, features = ["derive", "std"] }
+syn = { version = "2", features = ["full"] }
+toml = { workspace = true }
+
+[lints]
+workspace = true

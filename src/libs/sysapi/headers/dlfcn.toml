@@ -1,0 +1,58 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for dlfcn.h.
+# Constants and the Dl_info_t layout mirror src/libs/posix/src/dlfcn/mod.rs and
+# src/libs/syscall/src/dlfcn/mod.rs; prototypes are generated from the posix
+# crate.
+
+file = "dlfcn.h"
+brief = "Dynamic linking."
+description = """
+Declares the dynamic-linking-loader constants, the symbol-information structure,
+and the dlopen()-family interfaces. The constants and layout mirror the Rust
+definitions in the posix and syscall crates (dlfcn)."""
+includes = ["stdint.h"]
+guard = "_NANVIX_DLFCN_H"
+scan_crates = ["posix"]
+content_order = ["macros", "types:0", "section:0"]
+
+[[macros]]
+name = "RTLD_LAZY"
+value = "0x1"
+comment = "Relocations are performed at an implementation-defined time."
+
+[[macros]]
+name = "RTLD_NOW"
+value = "0x2"
+comment = "Relocations are performed when the object is loaded."
+
+[[macros]]
+name = "RTLD_GLOBAL"
+value = "0x4"
+comment = "Symbols are available for relocation processing of other objects."
+
+[[macros]]
+name = "RTLD_LOCAL"
+value = "0x0"
+comment = "Symbols are not made available to other objects."
+
+[[macros]]
+name = "RTLD_DEFAULT"
+value = "((void *)0)"
+comment = "Pseudo-handle: search the global (default) symbol scope."
+
+[[types]]
+text = """
+/** @brief Symbol information returned by dladdr(). */
+typedef struct {
+    const char *dli_fname; /**< Pathname of the mapped object.       */
+    void *dli_fbase;       /**< Base address of the mapped object.   */
+    const char *dli_sname; /**< Name of the nearest symbol.          */
+    void *dli_saddr;       /**< Exact address of the symbol.         */
+} Dl_info_t;
+"""
+
+[[sections]]
+title = "Dynamic Linking"
+functions = ["dlopen", "dlsym", "dlclose", "dlerror", "dladdr"]

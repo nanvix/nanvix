@@ -1,0 +1,79 @@
+/*
+ * Copyright(c) The Maintainers of Nanvix.
+ * Licensed under the MIT License.
+ */
+
+#ifndef _NANVIX_SYS_TYPES_H
+#define _NANVIX_SYS_TYPES_H
+
+/**
+ * @file sys/types.h
+ * @brief System data types.
+ *
+ * Declares the primitive system data types. The layouts mirror the Rust
+ * definitions in the sysapi crate (sys_types.rs).
+ */
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*==================================================================================================
+ * Types
+ *==================================================================================================*/
+
+/* Time types — guarded to coexist with <time.h>. */
+#ifndef _TIME_T_DEFINED
+#define _TIME_T_DEFINED
+typedef long long time_t;
+#endif
+
+#ifndef _CLOCK_T_DEFINED
+#define _CLOCK_T_DEFINED
+typedef long long clock_t;
+#endif
+
+#ifndef _CLOCKID_T_DEFINED
+#define _CLOCKID_T_DEFINED
+typedef int clockid_t;
+#endif
+
+/* A count of bytes or an error indication (companion of size_t). */
+#ifndef _SSIZE_T_DEFINED
+#define _SSIZE_T_DEFINED
+typedef int ssize_t;
+#endif
+
+/* File-system and process types. */
+typedef long long blkcnt_t;          /**< File block counts.              */
+typedef long long blksize_t;         /**< Block sizes.                    */
+typedef unsigned long long dev_t;    /**< Device IDs.                     */
+typedef unsigned int gid_t;          /**< Group IDs.                      */
+typedef unsigned long long ino_t;    /**< File serial numbers.            */
+typedef unsigned int mode_t;         /**< File attributes.                */
+typedef unsigned long long nlink_t;  /**< Link counts.                    */
+typedef long long off_t;             /**< File sizes and offsets.         */
+typedef int pid_t;                   /**< Process and process group IDs.  */
+typedef unsigned short reclen_t;     /**< Directory entry lengths.        */
+typedef unsigned int uid_t;          /**< User IDs.                       */
+typedef long suseconds_t;            /**< Time in microseconds.           */
+
+/* POSIX threads scalar types (opaque identifiers). */
+typedef unsigned int pthread_t;        /**< Thread identifier.            */
+typedef unsigned int pthread_cond_t;   /**< Condition variable.           */
+typedef unsigned int pthread_key_t;    /**< Thread-specific data key.     */
+typedef unsigned int pthread_mutex_t;  /**< Mutex.                        */
+typedef unsigned int pthread_rwlock_t; /**< Read-write lock.              */
+
+#ifdef __cplusplus
+}
+#endif
+
+/* Expose fd_set / select() transitively, as common platforms do. Placed after
+ * the type definitions; the include guard makes the back-reference a no-op. */
+#include <sys/select.h>
+
+#endif /* _NANVIX_SYS_TYPES_H */

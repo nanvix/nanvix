@@ -106,6 +106,7 @@ members = [
         "src/uservm",
         "src/user/hello-rust-nostd",
         "src/utils/echo-client",
+        "src/utils/gen-headers",
         "src/utils/mkimage",
         "src/utils/mkramfs",
         "src/utils/nanvix-bench",
