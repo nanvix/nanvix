@@ -228,6 +228,38 @@ pub(crate) fn resolve_vfs(fd: i32, _syscall_name: &str) -> Result<i32, Error> {
     Ok(fd)
 }
 
+/// Resolves `fd` for an operation that `vfsd` serves on its flat slot table itself — the descriptor
+/// flag and identity queries (`fcntl(F_GETFD/F_SETFD/F_GETFL/F_SETFL)`, `fstat`) and the descriptor
+/// duplication family (`dup`/`dup2`/`fcntl(F_DUPFD)`).
+///
+/// Unlike [`resolve_vfs`], this accepts a console descriptor as well as a `vfsd`-served one, and it
+/// returns the *caller-facing flat descriptor* rather than the resolved `backend_fd`. That
+/// distinction matters for the console: its `backend_fd` is the standard stream number used to
+/// route I/O to the kernel, but these operations act on the slot `vfsd` owns, which is addressed by
+/// the flat number. Sockets and unknown descriptors are rejected (socket participation in this
+/// table lands in a later plan).
+#[cfg(feature = "standalone")]
+pub(crate) fn resolve_table_op(fd: i32, syscall_name: &str) -> Result<i32, Error> {
+    use ::sys::error::ErrorCode;
+
+    match resolve(fd) {
+        Some(resolution) if matches!(resolution.route, Route::Vfs | Route::Console) => Ok(fd),
+        _ => {
+            ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
+            Err(Error::new(ErrorCode::BadFile, "fd is not a vfsd table descriptor"))
+        },
+    }
+}
+
+/// Resolves `fd` for a `vfsd` flat-table operation in hosted mode.
+///
+/// Non-standalone builds route these syscalls to `linuxd`, which interprets the caller-facing
+/// descriptor directly, so the descriptor is returned unchanged.
+#[cfg(not(feature = "standalone"))]
+pub(crate) fn resolve_table_op(fd: i32, _syscall_name: &str) -> Result<i32, Error> {
+    Ok(fd)
+}
+
 /// Records the resolution learned for `fd` from a backend response, stamped with the `epoch` the
 /// backend reported.
 ///
@@ -471,6 +503,20 @@ mod tests {
 
         let backend_fd: i32 = resolve_vfs(7, "test").expect("hosted resolve_vfs should succeed");
         assert_eq!(backend_fd, 7, "hosted mode must pass raw descriptors through");
+
+        clear();
+    }
+
+    /// Tests that hosted builds pass a flat-table operation's descriptor through unchanged, leaving
+    /// interpretation to linuxd.
+    #[test]
+    fn hosted_resolve_table_op_returns_raw_fd() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        let backend_fd: i32 =
+            resolve_table_op(9, "test").expect("hosted resolve_table_op should succeed");
+        assert_eq!(backend_fd, 9, "hosted mode must pass raw descriptors through");
 
         clear();
     }

@@ -167,16 +167,52 @@ pub(crate) fn handle_fadvise(source: ThreadIdentifier, msg: SystemCallMessage) -
 }
 
 pub(crate) fn handle_fcntl(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {
+    use ::sysapi::fcntl::file_control_request::{
+        F_DUPFD,
+        F_DUPFD_CLOEXEC,
+        F_DUPFD_CLOFORK,
+    };
+
     let req: FileControlRequest = FileControlRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
     let cmd: i32 = req.cmd;
     let arg: i32 = req.arg;
-    match ::vfs::fd::vfs_fcntl(fd, cmd, arg) {
+    // The duplication commands are slot-table allocations rather than flag queries: route them to
+    // the shared `dup` primitive, which aliases `fd`'s open file description into the lowest free
+    // descriptor at or above `arg`. The close-on-exec / close-on-fork variants set the matching
+    // per-descriptor flag on the freshly allocated duplicate (which otherwise starts cleared).
+    let result: Result<i32, ::vfs::Fat32Error> = match cmd {
+        F_DUPFD => ::vfs::fd::vfs_dup_from(fd, arg),
+        F_DUPFD_CLOEXEC => dup_from_with_flag(fd, arg, true, false),
+        F_DUPFD_CLOFORK => dup_from_with_flag(fd, arg, false, true),
+        _ => ::vfs::fd::vfs_fcntl(fd, cmd, arg),
+    };
+    match result {
         Ok(ret) => {
             FileControlResponse::build(source, ret, ProcessIdentifier::VFSD, MessageType::Ipc)
         },
         Err(e) => build_error(source, fat32_to_error_code(&e)),
     }
+}
+
+/// Duplicates `fd` into the lowest free descriptor at or above `min_fd`, then sets the requested
+/// per-descriptor flags on the duplicate.
+///
+/// This backs the `F_DUPFD_CLOEXEC` / `F_DUPFD_CLOFORK` `fcntl` commands, which differ from plain
+/// `F_DUPFD` only in that the new descriptor is born with close-on-exec or close-on-fork set rather
+/// than cleared.
+fn dup_from_with_flag(
+    fd: i32,
+    min_fd: i32,
+    close_on_exec: bool,
+    close_on_fork: bool,
+) -> Result<i32, ::vfs::Fat32Error> {
+    let new_fd: i32 = ::vfs::fd::vfs_dup_from(fd, min_fd)?;
+    let mut flags: ::vfs::fd::FdFlags = ::vfs::fd::FdFlags::default();
+    flags.set_close_on_exec(close_on_exec);
+    flags.set_close_on_fork(close_on_fork);
+    ::vfs::fd::vfs_set_fd_flags(new_fd, flags)?;
+    Ok(new_fd)
 }
 
 pub(crate) fn handle_fchmod(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {

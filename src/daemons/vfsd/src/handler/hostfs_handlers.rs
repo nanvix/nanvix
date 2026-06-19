@@ -23,7 +23,10 @@
 extern crate alloc;
 
 use crate::{
-    error::build_error,
+    error::{
+        build_error,
+        fat32_to_error_code,
+    },
     hostfs,
     pending::{
         PendingOp,
@@ -34,7 +37,10 @@ use crate::{
 };
 use ::sys::{
     error::ErrorCode,
-    ipc::Message,
+    ipc::{
+        Message,
+        MessageType,
+    },
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -43,6 +49,8 @@ use ::sys::{
 use ::syscall::{
     unistd::message::{
         CloseRequest,
+        Dup2Request,
+        Dup2Response,
         FileSyncRequest,
         FileTruncateRequest,
         ReadRequest,
@@ -121,6 +129,77 @@ pub(crate) fn handle_close_with_hostfs(
     }
 
     Some(super::short::handle_close(source, msg))
+}
+
+/// Handles `dup2(oldfd, newfd)` as an authoritative slot-table operation.
+///
+/// `newfd` is re-pointed at `oldfd`'s open file description, which works uniformly across every
+/// backend — including the cross-backend redirections the old split descriptor model could not
+/// express (e.g. `dup2(file_fd, 1)` so a subsequent `write(1)` lands in the file). The descriptor
+/// previously held by `newfd` is closed with the *same* last-reference accounting as a real
+/// `close`: a displaced pipe end fires its EOF/`EPIPE` wakeup, and a displaced host-backed last
+/// reference has its remote handle closed on hostfsd. That remote close is fire-and-forget — POSIX
+/// specifies that `dup2`'s implicit close ignores errors — so no pending op is registered and the
+/// main loop discards hostfsd's acknowledgement via the `FIRE_AND_FORGET` sentinel.
+///
+/// Because the remote reclaim never blocks, this returns a response synchronously rather than
+/// deferring like the hostfs-aware close path.
+pub(crate) fn handle_dup2(
+    source: ThreadIdentifier,
+    msg: SystemCallMessage,
+    pipe_wait: &mut PipeWaitTable,
+) -> Message {
+    let req: Dup2Request = Dup2Request::from_bytes(msg.payload);
+    let oldfd: i32 = req.oldfd;
+    let newfd: i32 = req.newfd;
+
+    // POSIX: an invalid source descriptor fails with `EBADF` and leaves `newfd` untouched.
+    if ::vfs::fd::vfs_resolve(oldfd).is_none() {
+        return build_error(source, ErrorCode::BadFile);
+    }
+
+    // `dup2(fd, fd)` returns `fd` and performs no implicit close.
+    if oldfd == newfd {
+        return Dup2Response::build(source, newfd, ProcessIdentifier::VFSD, MessageType::Ipc);
+    }
+
+    // Capture whatever last-reference reclaim the descriptor displaced from `newfd` owes — exactly
+    // as a close of `newfd` would — before re-pointing the slot. If `newfd` already aliases
+    // `oldfd`'s description it is not a last reference, so nothing is reclaimed.
+    let displaced_pipe: Option<(u64, bool)> =
+        ::vfs::fd::vfs_pipe_id(newfd).filter(|_| ::vfs::fd::vfs_pipe_is_last_ref(newfd));
+    let displaced_hostfs: Option<i32> =
+        ::vfs::fd::vfs_hostfs_remote_fd(newfd).filter(|_| ::vfs::fd::vfs_hostfs_is_last_ref(newfd));
+
+    // Perform the authoritative table mutation: `newfd` now aliases `oldfd`'s description. This
+    // drops the displaced description locally; its external reclaim is performed below.
+    if let Err(e) = ::vfs::fd::vfs_dup2(oldfd, newfd) {
+        return build_error(source, fat32_to_error_code(&e));
+    }
+
+    // A displaced pipe end fires the same EOF/`EPIPE` wakeup that closing it would.
+    if let Some((pipe_id, was_write)) = displaced_pipe {
+        if was_write {
+            super::pipe::wake_all_readers_eof(pipe_id, pipe_wait);
+        } else {
+            super::pipe::fail_all_writers_epipe(pipe_id, pipe_wait);
+        }
+    }
+
+    // A displaced host-backed last reference must have its remote handle closed so it does not leak.
+    if let Some(remote_fd) = displaced_hostfs {
+        if let Err(e) =
+            hostfs::send_close_request(remote_fd, ::hostfs_api::OperationId::FIRE_AND_FORGET)
+        {
+            ::syslog::warn!(
+                "dup2: failed to close displaced hostfs handle (remote_fd={}, error={:?})",
+                remote_fd,
+                e
+            );
+        }
+    }
+
+    Dup2Response::build(source, newfd, ProcessIdentifier::VFSD, MessageType::Ipc)
 }
 
 pub(crate) fn handle_seek_with_hostfs(

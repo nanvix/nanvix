@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::errno::__errno_location;
-use ::sys::error::ErrorCode;
 use ::sysapi::ffi::c_int;
 use ::syslog::trace_syscall;
 
@@ -40,6 +39,13 @@ use ::syslog::trace_syscall;
 /// `-1` and sets `errno` to indicate the error. Common error conditions include invalid file
 /// descriptor, `newfd` out of range, or system resource limitations.
 ///
+/// # Availability
+///
+/// This function is available only in standalone mode, where vfsd owns the flat descriptor table
+/// that `dup2()` re-points. In hosted mode it returns `-1` with `errno` set to `ENOSYS`. This
+/// differs from `dup()`, which is expressed as `fcntl(fd, F_DUPFD, 0)` and is therefore served by
+/// linuxd in hosted mode; naming an exact target slot, as `dup2()` does, has no linuxd equivalent.
+///
 /// # Safety
 ///
 /// This function is unsafe because it may dereference raw pointers and modify global state.
@@ -52,10 +58,14 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dup2(oldfd: c_int, newfd: c_int) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/354
-    ::syslog::debug!("dup2(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
+    match crate::unistd::dup2(oldfd, newfd) {
+        Ok(fd) => fd,
+        Err(error) => {
+            ::syslog::warn!("dup2(): failed ({:?})", error);
+            unsafe {
+                *__errno_location() = error.code.get();
+            }
+            -1
+        },
     }
-    -1
 }

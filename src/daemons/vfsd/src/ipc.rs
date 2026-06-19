@@ -268,6 +268,10 @@ pub(crate) fn handle_ipc_message(
             let response: Message = handler::handle_resolve_fd(source_tid, syscall_msg);
             send_response(&response);
         },
+        SystemCallMessageHeader::Dup2Request => {
+            let response: Message = handler::handle_dup2(source_tid, syscall_msg, pipe_wait);
+            send_response(&response);
+        },
         SystemCallMessageHeader::SeekRequest => {
             if let Some(response) =
                 handler::handle_seek_with_hostfs(source_tid, syscall_msg, pending)

@@ -30,6 +30,8 @@ cfg_if::cfg_if! {
             faccessat,
             chdir,
             close,
+            dup,
+            dup2,
             _exit,
             fdatasync,
             fchown,

@@ -7,6 +7,7 @@
 
 mod chdir;
 mod close;
+mod dup2;
 mod faccessat;
 mod fchdir;
 mod fchown;
@@ -39,6 +40,10 @@ pub use self::{
     close::{
         CloseRequest,
         CloseResponse,
+    },
+    dup2::{
+        Dup2Request,
+        Dup2Response,
     },
     faccessat::{
         FileAccessAtRequest,
