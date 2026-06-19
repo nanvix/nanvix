@@ -29,8 +29,39 @@
 // Modules
 //==================================================================================================
 
+pub mod bcmp;
+pub mod bcopy;
+pub mod bzero;
+pub mod ffs;
+pub mod memccpy;
+pub mod memchr;
 pub mod memcmp;
 pub mod memcpy;
 pub mod memmove;
+pub mod memrchr;
 pub mod memset;
+pub mod strcasecmp;
+pub mod strcat;
+pub mod strchr;
+pub mod strcmp;
+pub mod strcpy;
+pub mod strcspn;
+pub mod strdup;
+pub mod strerror;
+pub mod strerror_r;
+pub mod strlcat;
+pub mod strlcpy;
 pub mod strlen;
+pub mod strncasecmp;
+pub mod strncat;
+pub mod strncmp;
+pub mod strncpy;
+pub mod strndup;
+pub mod strnlen;
+pub mod strpbrk;
+pub mod strrchr;
+pub mod strsep;
+pub mod strspn;
+pub mod strstr;
+pub mod strtok;
+pub mod strtok_r;

@@ -11,9 +11,15 @@
 // Imports
 //==================================================================================================
 
-use ::core::mem::align_of;
+use ::core::mem::{
+    align_of,
+    size_of,
+};
 use ::sysapi::{
-    ffi::c_char,
+    ffi::{
+        c_char,
+        c_uchar,
+    },
     sys_types::c_size_t,
 };
 
@@ -44,20 +50,46 @@ use ::sysapi::{
 /// - It performs raw pointer dereferencing and arithmetic.
 /// - It reads from the memory region pointed to by `s` without bounds checking.
 ///
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn strlen(s: *const c_char) -> c_size_t {
     debug_assert!(!s.is_null(), "strlen(): null pointer");
-    debug_assert!((s as usize) < isize::MAX as usize, "strlen(): pointer too large");
     debug_assert!(
         (s as usize).is_multiple_of(align_of::<c_char>()),
         "strlen(): pointer is not properly aligned"
     );
 
-    let mut i: c_size_t = 0;
-    while *s.add(i as usize) != 0 {
+    const WORD_SIZE: usize = size_of::<usize>();
+    // 0x0101...01 and 0x8080...80, used for word-at-a-time zero-byte detection.
+    const ONES: usize = usize::MAX / 0xFF;
+    const HIGH_BITS: usize = ONES << 7;
+
+    let bytes: *const c_uchar = s.cast::<c_uchar>();
+    let s_addr: usize = bytes as usize;
+    let mut i: usize = 0;
+
+    // Scan leading bytes until the pointer is word-aligned.
+    while ((s_addr + i) & (WORD_SIZE - 1)) != 0 {
+        if *bytes.add(i) == 0 {
+            return c_size_t::try_from(i).unwrap_or(c_size_t::MAX);
+        }
         i += 1;
     }
-    i
+
+    // Scan a word at a time. A word contains a zero byte iff
+    // `(w - ONES) & !w & HIGH_BITS` is non-zero.
+    loop {
+        let w: usize = *bytes.add(i).cast::<usize>();
+        if w.wrapping_sub(ONES) & !w & HIGH_BITS != 0 {
+            let mut j: usize = 0;
+            while j < WORD_SIZE {
+                if *bytes.add(i + j) == 0 {
+                    return c_size_t::try_from(i + j).unwrap_or(c_size_t::MAX);
+                }
+                j += 1;
+            }
+        }
+        i += WORD_SIZE;
+    }
 }
 
 #[cfg(all(test, feature = "std"))]

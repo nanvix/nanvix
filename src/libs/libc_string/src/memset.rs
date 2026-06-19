@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use ::core::mem::align_of;
+use ::core::mem::{
+    align_of,
+    size_of,
+};
 use ::sysapi::{
     ffi::{
         c_int,
@@ -50,7 +53,7 @@ use ::sysapi::{
 ///
 /// Violating any of these conditions results in undefined behavior.
 ///
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn memset(ptr: *mut c_void, val: c_int, len: c_size_t) -> *mut c_void {
     debug_assert!(!ptr.is_null(), "memset(): null pointer");
     debug_assert!((len as usize) < isize::MAX as usize, "memset(): length too large");
@@ -62,7 +65,25 @@ pub unsafe extern "C" fn memset(ptr: *mut c_void, val: c_int, len: c_size_t) -> 
     let dst: *mut c_uchar = ptr.cast::<c_uchar>();
     let byte: c_uchar = (val & 0xFF) as c_uchar;
     let len: usize = len as usize;
-    let mut i: usize = 0;
+
+    const WORD_SIZE: usize = size_of::<usize>();
+    let d_addr: usize = dst as usize;
+    // Broadcast the fill byte across a full machine word (0x01010101... * byte).
+    let word: usize = (byte as usize).wrapping_mul(usize::MAX / 0xFF);
+
+    // Fill leading bytes until the destination is word-aligned.
+    let mut offset: usize = 0;
+    while ((d_addr + offset) & (WORD_SIZE - 1)) != 0 && offset < len {
+        *dst.add(offset) = byte;
+        offset += 1;
+    }
+    // Bulk fill a word at a time.
+    let mut i: usize = offset;
+    while i + WORD_SIZE <= len {
+        *dst.add(i).cast::<usize>() = word;
+        i += WORD_SIZE;
+    }
+    // Fill the trailing bytes.
     while i < len {
         *dst.add(i) = byte;
         i += 1;
