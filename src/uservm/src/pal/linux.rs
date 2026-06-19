@@ -27,6 +27,8 @@ use ::std::{
     ptr,
     slice,
 };
+use ::sys::ipc::IkcFrame;
+use ::tokio::sync::mpsc::Sender;
 
 //==================================================================================================
 // Structures
@@ -546,6 +548,65 @@ fn page_size() -> usize {
         size
     });
     *PAGE_SIZE
+}
+
+//==================================================================================================
+// IKC Stdout Sink
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Hands guest IKC (application/stdout) frames to the asynchronous I/O consumer over a bounded
+/// channel.
+///
+/// On Linux/KVM the frame is sent directly on the bounded channel: a full channel applies
+/// back-pressure by blocking the caller, as before. The KVM backend does not hold a partition-wide
+/// lock across the guest I/O exit, so this blocking does not freeze the guest (contrast with the
+/// Windows/WHP path; see issue #2603 and the Windows `IkcStdoutSink`).
+///
+pub struct IkcStdoutSink {
+    /// Bounded channel used to forward IKC frames to the asynchronous I/O consumer.
+    queue: Sender<IkcFrame>,
+}
+
+impl IkcStdoutSink {
+    ///
+    /// # Description
+    ///
+    /// Builds a sink around the bounded `queue`.
+    ///
+    /// # Parameters
+    ///
+    /// - `queue`: Bounded channel used to forward IKC frames to the asynchronous I/O consumer.
+    ///
+    /// # Returns
+    ///
+    /// A new [`IkcStdoutSink`].
+    ///
+    pub fn new(queue: Sender<IkcFrame>) -> Self {
+        Self { queue }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Forwards a single IKC frame to the consumer, blocking the caller while the bounded channel
+    /// is full (back-pressure).
+    ///
+    /// # Parameters
+    ///
+    /// - `frame`: IKC frame emitted by the guest.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` once the frame has been accepted, or an error if the consumer has gone away.
+    ///
+    pub fn send(&self, frame: IkcFrame) -> Result<()> {
+        self.queue
+            .blocking_send(frame)
+            .map_err(|e| ::anyhow::anyhow!("channel closed: {e}"))
+    }
 }
 
 //==================================================================================================
