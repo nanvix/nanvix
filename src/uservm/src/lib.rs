@@ -829,6 +829,14 @@ pub fn build_input_fn(
 /// A boxed closure compatible with the VMM's stdout handler implementation.
 ///
 pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
+    // On Windows/WHP the closure below runs on the vCPU thread while it holds the WHP partition
+    // lock (held across `Emulator::handle_pmio_access()`). Sending directly on the bounded channel
+    // there would block the vCPU thread under the lock whenever the asynchronous consumer is
+    // momentarily starved, freezing the guest (issue #2603). `IkcStdoutSink` interposes a dedicated
+    // forwarding thread on Windows so the under-lock enqueue never blocks (lossless hand-off;
+    // back-pressure applied off the partition lock). On Linux the frames are sent directly.
+    let sink: crate::pal::IkcStdoutSink = crate::pal::IkcStdoutSink::new(queue);
+
     // Output function used for emulating I/O port writes.
     let output =
         move |vm: &Arc<Mutex<VirtualMemory>>, envelope: &::sys::ipc::VmBusMessage| -> Result<()> {
@@ -858,7 +866,7 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
                 );
 
                 trace!("output(): forwarding message to system VM");
-                if let Err(e) = queue.blocking_send(IkcFrame::Message(message)) {
+                if let Err(e) = sink.send(IkcFrame::Message(message)) {
                     let reason: String = format!("failed to send message: {e:?}");
                     error!("output(): {reason}");
                     anyhow::bail!(reason);
@@ -892,7 +900,7 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
                 let bulk: DataChunk = DataChunk::new(header, data);
 
                 trace!("output(): forwarding data chunk transfer ({data_len} bytes)");
-                if let Err(e) = queue.blocking_send(IkcFrame::Bulk(bulk)) {
+                if let Err(e) = sink.send(IkcFrame::Bulk(bulk)) {
                     let reason: String = format!("failed to send data chunk transfer: {e:?}");
                     error!("output(): {reason}");
                     anyhow::bail!(reason);
