@@ -28,8 +28,8 @@ pub enum ProcessRole {
     /// The init process: the non-daemon process spawned directly by the kernel. Its termination
     /// triggers system shutdown.
     Init = 0,
-    /// A system daemon spawned directly by the kernel and identified by a well-known process
-    /// identifier. Its termination deregisters it (and triggers a crash shutdown on failure).
+    /// A system daemon spawned directly by the kernel and recognized by the kernel at spawn time.
+    /// Its termination deregisters it (and triggers a crash shutdown on failure).
     Daemon = 1,
     /// A user process forked from another process. Its termination is reaped.
     User = 2,
@@ -39,26 +39,25 @@ impl ProcessRole {
     ///
     /// # Description
     ///
-    /// Classifies a process from its identifier and the identifier of its parent. This is the
-    /// authoritative classification owned by the kernel, which spawns the init process and the
-    /// daemons directly and owns the well-known daemon process identifiers.
+    /// Classifies a process from the identifier of its parent and whether the kernel spawned it as
+    /// a system daemon. This is the authoritative classification owned by the kernel, which spawns
+    /// the init process and the daemons directly and therefore knows which is which — independent of
+    /// the process identifiers they happen to receive.
     ///
     /// # Parameters
     ///
-    /// - `pid`: Identifier of the process to classify.
     /// - `parent`: Identifier of the parent of the process to classify.
+    /// - `is_daemon`: Whether the kernel spawned the process as a system daemon.
     ///
     /// # Returns
     ///
     /// The role of the process.
     ///
-    pub fn classify(pid: ProcessIdentifier, parent: ProcessIdentifier) -> Self {
-        if pid == ProcessIdentifier::PROCD
-            || pid == ProcessIdentifier::MEMD
-            || pid == ProcessIdentifier::VFSD
-        {
-            // A well-known daemon process identifier. The daemon check takes precedence over the
-            // lineage check below, because daemons are also spawned directly by the kernel.
+    pub fn classify(parent: ProcessIdentifier, is_daemon: bool) -> Self {
+        if is_daemon {
+            // A system daemon spawned directly by the kernel. The daemon check takes precedence
+            // over the lineage check below, because daemons are also spawned directly by the
+            // kernel.
             Self::Daemon
         } else if parent == ProcessIdentifier::KERNEL {
             // A non-daemon process spawned directly by the kernel is the init process.
@@ -242,32 +241,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn classify_daemon_by_well_known_pid() {
-        assert_eq!(
-            ProcessRole::classify(ProcessIdentifier::MEMD, ProcessIdentifier::KERNEL),
-            ProcessRole::Daemon
-        );
-        assert_eq!(
-            ProcessRole::classify(ProcessIdentifier::VFSD, ProcessIdentifier::KERNEL),
-            ProcessRole::Daemon
-        );
-        assert_eq!(
-            ProcessRole::classify(ProcessIdentifier::PROCD, ProcessIdentifier::KERNEL),
-            ProcessRole::Daemon
-        );
+    fn classify_daemon_when_flagged() {
+        // A daemon is classified as such regardless of its parent or identifier.
+        assert_eq!(ProcessRole::classify(ProcessIdentifier::KERNEL, true), ProcessRole::Daemon);
+        assert_eq!(ProcessRole::classify(ProcessIdentifier::from(4), true), ProcessRole::Daemon);
     }
 
     #[test]
     fn classify_init_by_kernel_lineage() {
-        let pid: ProcessIdentifier = ProcessIdentifier::from(4);
-        assert_eq!(ProcessRole::classify(pid, ProcessIdentifier::KERNEL), ProcessRole::Init);
+        assert_eq!(ProcessRole::classify(ProcessIdentifier::KERNEL, false), ProcessRole::Init);
     }
 
     #[test]
     fn classify_user_by_non_kernel_parent() {
-        let pid: ProcessIdentifier = ProcessIdentifier::from(5);
         let parent: ProcessIdentifier = ProcessIdentifier::from(4);
-        assert_eq!(ProcessRole::classify(pid, parent), ProcessRole::User);
+        assert_eq!(ProcessRole::classify(parent, false), ProcessRole::User);
     }
 
     #[test]

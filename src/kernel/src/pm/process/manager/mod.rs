@@ -191,6 +191,12 @@ pub struct ProcessManager {
     /// momentarily saturated. Bounded by the number of live processes, which is itself capped at
     /// [`config::kernel::MAX_PROCESSES`].
     pending_terminations: VecDeque<ProcessTerminationInfo>,
+    /// Process identifiers of the system daemons the kernel spawned directly (procd, memd, and the
+    /// like), recognized by program name at spawn time. Used to classify a process's
+    /// [`ProcessRole`] authoritatively even when a daemon occupies a process identifier that another
+    /// deployment would assign to the init workload — e.g. a deployment without a separate VFS
+    /// daemon lets the workload take the VFS daemon's conventional identifier.
+    daemon_pids: Vec<ProcessIdentifier>,
 }
 
 impl ProcessManager {
@@ -232,7 +238,17 @@ impl ProcessManager {
             deferred_exec_vmem: Vec::new(),
             pending_creations: VecDeque::new(),
             pending_terminations: VecDeque::new(),
+            daemon_pids: Vec::new(),
         }
+    }
+
+    /// Classifies the [`ProcessRole`] of a process from its identifier and parent, using the set of
+    /// daemon identifiers recorded at spawn time. A process the kernel spawned as a system daemon is
+    /// always [`ProcessRole::Daemon`], regardless of the identifier it received; a non-daemon
+    /// process spawned by the kernel is the init process; anything else was forked by a user
+    /// process.
+    fn classify_role(&self, pid: ProcessIdentifier, parent: ProcessIdentifier) -> ProcessRole {
+        ProcessRole::classify(parent, self.daemon_pids.contains(&pid))
     }
 
     ///
@@ -575,6 +591,13 @@ impl ProcessManager {
         // NOTE: if we fail beyond this point we need to free page mappings.
         //==============================================================
 
+        // Recognize a kernel-spawned system daemon by its program name (the first token of the
+        // command-line arguments) so it is classified as a daemon regardless of the process
+        // identifier it receives. This keeps daemon identification correct for deployments that
+        // omit a daemon and let the init workload take that daemon's conventional identifier.
+        let is_daemon: bool =
+            ::config::daemons::is_system_daemon(args.split_whitespace().next().unwrap_or(""));
+
         Ok(no_fail!(ProcessIdentifier, {
             // Commit the next process and thread identifiers now that all fallible operations have succeeded.
             self.next_pid = next_pid;
@@ -586,14 +609,18 @@ impl ProcessManager {
             // Add process to the queue of ready processes.
             self.ready.push_back(process);
 
+            // Remember daemon identifiers so a process's role can be classified authoritatively
+            // later (e.g. at termination), when only its identifier is available.
+            if is_daemon {
+                self.daemon_pids.push(pid);
+            }
+
             // Record the creation so the kernel main loop can publish a process-creation
             // scheduling event. Notifying subscribers here is unsafe because the process manager is
             // mutably borrowed; deferring to the main loop avoids re-entrant access.
-            self.pending_creations.push_back(ProcessCreationInfo::new(
-                pid,
-                parent_pid,
-                ProcessRole::classify(pid, parent_pid),
-            ));
+            let role: ProcessRole = self.classify_role(pid, parent_pid);
+            self.pending_creations
+                .push_back(ProcessCreationInfo::new(pid, parent_pid, role));
 
             Ok(pid)
         }))
@@ -969,12 +996,11 @@ impl ProcessManager {
 
             // Record the creation so the kernel main loop can publish a process-creation
             // scheduling event. Notifying subscribers here is unsafe because the process manager is
-            // mutably borrowed; deferring to the main loop avoids re-entrant access.
-            self.pending_creations.push_back(ProcessCreationInfo::new(
-                child_pid,
-                pid,
-                ProcessRole::classify(child_pid, pid),
-            ));
+            // mutably borrowed; deferring to the main loop avoids re-entrant access. A forked child
+            // is never a system daemon, so it is classified from its parent's lineage.
+            let role: ProcessRole = self.classify_role(child_pid, pid);
+            self.pending_creations
+                .push_back(ProcessCreationInfo::new(child_pid, pid, role));
 
             Ok(child_pid)
         }))
@@ -2809,11 +2835,11 @@ impl ProcessManager {
         }
 
         // Build the authoritative termination record. The parent and role are known to the kernel,
-        // which spawns the init process and the daemons directly and owns the well-known daemon
-        // process identifiers, so subscribers do not have to re-infer them from race-prone state.
+        // which spawns the init process and the daemons directly and recorded which identifiers are
+        // daemons at spawn time, so subscribers do not have to re-infer them from race-prone state.
         let pid: ProcessIdentifier = state.pid();
         let parent: ProcessIdentifier = state.ppid();
-        let role: ProcessRole = ProcessRole::classify(pid, parent);
+        let role: ProcessRole = self.classify_role(pid, parent);
         Ok(Some(ProcessTerminationInfo::new(pid, status, parent, role)))
     }
 

@@ -734,9 +734,9 @@ impl ProcessDaemon {
         self.processes.remove(&child);
     }
 
-    /// Returns `true` if `name` belongs to a system daemon that should not trigger shutdown.
+    /// Returns `true` if `name` belongs to a guest system daemon that should not trigger shutdown.
     fn is_daemon(name: &str) -> bool {
-        ::config::daemons::DAEMON_NAMES.contains(&name)
+        ::config::daemons::is_system_daemon(name)
     }
 
     fn handle_ipc_message(&mut self, message: Message) -> Result<(), Error> {
