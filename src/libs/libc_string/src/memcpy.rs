@@ -63,7 +63,7 @@ use ::sysapi::{
 ///
 /// Violating any of these conditions results in undefined behavior.
 ///
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn memcpy(
     dest: *mut c_void,
     src: *const c_void,

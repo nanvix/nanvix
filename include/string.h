@@ -24,16 +24,39 @@ extern "C" {
  * Memory Operations
  *==================================================================================================*/
 
+extern void *memccpy(void *dest, const void *src, int c, size_t n);
+extern void *memchr(const void *s, int c, size_t n);
+extern int memcmp(const void *ptr1, const void *ptr2, size_t len);
 extern void *memcpy(void *dest, const void *src, size_t len);
 extern void *memmove(void *dest, const void *src, size_t len);
 extern void *memset(void *ptr, int val, size_t len);
-extern int memcmp(const void *ptr1, const void *ptr2, size_t len);
 
 /*==================================================================================================
  * String Operations
  *==================================================================================================*/
 
+extern char *strcat(char *dest, const char *src);
+extern char *strchr(const char *s, int c);
+extern int strcmp(const char *s1, const char *s2);
+extern char *strcpy(char *dest, const char *src);
+extern size_t strcspn(const char *s, const char *reject);
+extern char *strdup(const char *s);
+extern char *strerror(int errnum);
+extern int strerror_r(int errnum, char *buf, size_t buflen);
+extern size_t strlcat(char *dest, const char *src, size_t size);
+extern size_t strlcpy(char *dest, const char *src, size_t size);
 extern size_t strlen(const char *s);
+extern char *strncat(char *dest, const char *src, size_t n);
+extern int strncmp(const char *s1, const char *s2, size_t n);
+extern char *strncpy(char *dest, const char *src, size_t n);
+extern char *strndup(const char *s, size_t n);
+extern size_t strnlen(const char *s, size_t maxlen);
+extern char *strpbrk(const char *s, const char *accept);
+extern char *strrchr(const char *s, int c);
+extern size_t strspn(const char *s, const char *accept);
+extern char *strstr(const char *haystack, const char *needle);
+extern char *strtok(char *s, const char *delim);
+extern char *strtok_r(char *s, const char *delim, char **saveptr);
 
 #ifdef __cplusplus
 }

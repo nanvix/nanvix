@@ -56,7 +56,7 @@ use ::sysapi::{
 /// - `len` does not exceed `isize::MAX`.
 /// - `dest` and `src` are properly aligned for `c_uchar` access.
 ///
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn memmove(
     dest: *mut c_void,
     src: *const c_void,

@@ -65,7 +65,7 @@ use ::sysapi::{
 ///
 /// Violating any of these conditions results in undefined behavior.
 ///
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn memcmp(ptr1: *const c_void, ptr2: *const c_void, len: c_size_t) -> c_int {
     debug_assert!(!ptr1.is_null(), "memcmp(): null pointer");
     debug_assert!(!ptr2.is_null(), "memcmp(): null pointer");
