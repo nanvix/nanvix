@@ -714,9 +714,11 @@ fn complete_open(
     let is_dir: bool = resp.is_dir != 0;
     match ::vfs::fd::vfs_alloc_hostfs(resp.fd, is_dir, if is_dir { Some(path) } else { None }) {
         Ok(local_fd) => {
+            let epoch: u64 = ::vfs::fd::vfs_current_generation();
             let msg: Message = OpenAtResponse::build(
                 source_tid,
                 local_fd,
+                epoch,
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
             );

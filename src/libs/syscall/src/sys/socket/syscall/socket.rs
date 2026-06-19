@@ -58,9 +58,17 @@ pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Res
                 SystemCallMessageHeader::CreateSocketResponse => {
                     let response: CreateSocketResponse =
                         CreateSocketResponse::from_bytes(message.payload);
+                    let sockfd: c_int = response.sockfd;
+
+                    // Seed the resolution cache so the new socket resolves from the cache rather
+                    // than by number. Sockets carry no vfsd table generation, so the epoch is 0.
+                    #[cfg(feature = "standalone")]
+                    if sockfd >= 0 {
+                        crate::fdtable::record(sockfd, crate::fdtable::Route::Socket, sockfd, 0);
+                    }
 
                     // Return system call result.
-                    Ok(response.sockfd)
+                    Ok(sockfd)
                 },
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },

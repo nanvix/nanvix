@@ -91,6 +91,13 @@ pub mod stdlib;
 #[cfg(feature = "syscall")]
 pub(crate) mod path;
 
+/// Client-side file-descriptor resolution cache.
+///
+/// Compiled for standalone routing (where descriptor numbers encode their backend) and for the
+/// crate's own unit tests, which exercise the cache logic without the `standalone` feature.
+#[cfg(any(feature = "standalone", test))]
+pub(crate) mod fdtable;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;

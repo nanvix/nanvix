@@ -617,6 +617,16 @@ struct ProcessState {
     ///
     /// [`fork`]: ProcessState::fork
     initialized: bool,
+    /// Monotonic generation counter, bumped on every descriptor-table mutation (`open`, `close`,
+    /// and per-descriptor flag changes).
+    ///
+    /// libposix's resolution cache records the generation each cached entry was learned at and uses
+    /// it as a coherence epoch: once descriptor numbers stop encoding their backend (a later plan),
+    /// an entry older than the table's current generation is treated as stale and re-resolved. The
+    /// counter is plumbed and returned with descriptor responses now so the coherence substrate is
+    /// in place; in this plan routing still follows the descriptor number, so the epoch never alters
+    /// a routing decision.
+    generation: u64,
 }
 
 impl ProcessState {
@@ -627,6 +637,7 @@ impl ProcessState {
             slots: BTreeMap::new(),
             cwd: String::from(DEFAULT_CWD),
             initialized: false,
+            generation: 0,
         }
     }
 
@@ -642,7 +653,20 @@ impl ProcessState {
             slots: self.slots.clone(),
             cwd: self.cwd.clone(),
             initialized: true,
+            // The child's table starts as an exact copy of the parent's, so it inherits the
+            // parent's generation: any entry libposix cached against the parent is equally coherent
+            // for the child until the child mutates its own table.
+            generation: self.generation,
         }
+    }
+
+    /// Advances the descriptor-table generation, marking every previously cached resolution as
+    /// potentially stale. Called on each table-mutating operation.
+    fn bump_generation(&mut self) {
+        // Saturate rather than wrap so the generation stays monotonic: a wrap back to `0` could
+        // make a stale cached epoch compare equal to a fresh one once coherence becomes
+        // load-bearing. Saturating at `u64::MAX` is unreachable in practice.
+        self.generation = self.generation.saturating_add(1);
     }
 }
 
@@ -753,6 +777,8 @@ fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
     // Allocating a descriptor graduates a lazily-inserted placeholder into an active state: a
     // process holding a real descriptor must never be overwritten by a later fork-clone.
     state.initialized = true;
+    // Allocating a descriptor mutates the table; advance the coherence generation.
+    state.bump_generation();
     Ok(fd)
 }
 
@@ -833,9 +859,15 @@ pub fn vfs_fork_clone(
     // Honor close-on-fork: a descriptor flagged `FD_CLOFORK` in the parent is not inherited, so
     // drop it from the freshly cloned child table. The standard streams `0`/`1`/`2` are not flagged
     // by default, so they survive the fork.
+    let pre_filter_len: usize = child_state.slots.len();
     child_state
         .slots
         .retain(|_fd, slot| !slot.fd_flags.close_on_fork());
+    // `retain()` is the only table mutation here, so bump the generation at most once and only when
+    // it actually dropped a descriptor.
+    if child_state.slots.len() != pre_filter_len {
+        child_state.bump_generation();
+    }
     // Honor a working directory the child established before the fork-clone notification arrived.
     if let Some(cwd) = child_cwd {
         child_state.cwd = cwd;
@@ -897,6 +929,7 @@ pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
     // placeholder. (The root is never the target of a fork-clone, but marking it keeps the
     // placeholder/active invariant uniform across every code path.)
     state.initialized = true;
+    state.bump_generation();
 }
 
 /// Pipe count-to-zero transitions surfaced by [`vfs_process_exit`].
@@ -1211,9 +1244,32 @@ pub fn vfs_set_fd_flags(fd: c_int, flags: FdFlags) -> Result<(), Fat32Error> {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
-    let slot: &mut Slot = state.slots.get_mut(&fd).ok_or(Fat32Error::InvalidFd)?;
-    slot.fd_flags = flags;
+    {
+        let slot: &mut Slot = state.slots.get_mut(&fd).ok_or(Fat32Error::InvalidFd)?;
+        slot.fd_flags = flags;
+    }
+    // Changing a descriptor's flags mutates the table; advance the coherence generation.
+    state.bump_generation();
     Ok(())
+}
+
+//==================================================================================================
+// Coherence Generation
+//==================================================================================================
+
+/// Returns the current descriptor-table generation of the process the VFS is operating on behalf of,
+/// or `0` if it has no recorded state yet.
+///
+/// vfsd returns this value with descriptor-allocating responses (e.g. `openat`) so that libposix can
+/// stamp each cache entry with the generation it was learned at. The counter is advanced by every
+/// table-mutating operation, so a stale entry can later be recognized by comparing its stored
+/// generation against this one.
+pub fn vfs_current_generation() -> u64 {
+    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
+    procs
+        .get(&current_pid())
+        .map(|state| state.generation)
+        .unwrap_or(0)
 }
 
 //==================================================================================================
@@ -1513,7 +1569,12 @@ pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
             PROCESSES.lock();
         let state: &mut ProcessState =
             procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
-        state.slots.remove(&fd)
+        let removed: Option<Slot> = state.slots.remove(&fd);
+        // Removing a descriptor mutates the table; advance the coherence generation.
+        if removed.is_some() {
+            state.bump_generation();
+        }
+        removed
     };
     match removed {
         // The slot — and the open file description it holds — is dropped here, after the registry
@@ -2326,7 +2387,7 @@ mod tests {
     /// Tests that VFS FD base is outside linuxd range.
     #[test]
     fn vfs_fd_base_is_high() {
-        assert!(VFS_FD_BASE >= 1024, "VFS FD base should be >= 1024 to avoid linuxd conflicts");
+        const { assert!(VFS_FD_BASE >= 1024, "VFS FD base should be >= 1024 to avoid linuxd conflicts") };
     }
 
     /// Tests is_vfs_fd with FDs in range.
@@ -2370,6 +2431,11 @@ mod tests {
             .unwrap_or(0)
     }
 
+    /// Returns the descriptor-table generation recorded for a process, or `None` if it has no state.
+    fn registry_generation(pid: ProcessIdentifier) -> Option<u64> {
+        PROCESSES.lock().get(&pid).map(|state| state.generation)
+    }
+
     /// Reads the virtual position of a process's descriptor through its shared open file
     /// description.
     fn fd_virtual_pos(pid: ProcessIdentifier, fd: c_int) -> Option<off_t> {
@@ -2400,6 +2466,47 @@ mod tests {
         CURRENT_PID.store(0, Ordering::Relaxed);
         // Clear the one-shot root-seeding latch so a later test starts from a pristine state.
         ROOT_CONSOLE_SEEDED.store(false, Ordering::Relaxed);
+    }
+
+    /// Tests that the descriptor-table generation advances on every table mutation (open, flag
+    /// change, close) and is inherited by a forked child.
+    #[test]
+    fn generation_advances_on_table_mutations() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7101), ProcessIdentifier::from(0x7102));
+
+        set_current_process(parent);
+        let start: u64 = vfs_current_generation();
+
+        // Allocating a descriptor (open) advances the generation.
+        let fd: c_int = vfs_alloc_hostfs(50, false, None).expect("alloc should succeed");
+        let after_open: u64 = vfs_current_generation();
+        assert!(after_open > start, "open must advance the generation");
+
+        // A per-descriptor flag change advances the generation.
+        let mut flags: FdFlags = FdFlags::default();
+        flags.set_close_on_exec(true);
+        vfs_set_fd_flags(fd, flags).expect("set fd flags should succeed");
+        let after_flags: u64 = vfs_current_generation();
+        assert!(after_flags > after_open, "a flag change must advance the generation");
+
+        // A forked child inherits the parent's current generation.
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+        assert_eq!(
+            registry_generation(child),
+            Some(after_flags),
+            "the child must inherit the parent's generation"
+        );
+
+        // Closing a descriptor advances the generation. Closing through the child (the parent still
+        // holds the shared open file description) exercises the bump without last-reference
+        // teardown.
+        set_current_process(child);
+        vfs_close(fd).expect("close should succeed");
+        assert!(vfs_current_generation() > after_flags, "close must advance the generation");
+
+        forget_processes(&[parent, child]);
     }
 
     /// Tests that `fork()` gives the child a copy of the parent's open descriptors.
@@ -2917,11 +3024,18 @@ mod tests {
         let mut clofork: FdFlags = FdFlags::default();
         clofork.set_close_on_fork(true);
         vfs_set_fd_flags(clofork_fd, clofork).expect("setting close-on-fork should succeed");
+        let parent_generation: u64 =
+            registry_generation(parent).expect("parent generation should be recorded");
 
         // Fork: the flagged descriptor is dropped in the child; the unflagged one is inherited.
         vfs_fork_clone(parent, child).expect("fork clone should succeed");
         set_current_process(child);
         assert_eq!(vfs_get_fd_flags(clofork_fd), None, "close-on-fork descriptor must be dropped");
+        assert!(
+            registry_generation(child).expect("child generation should be recorded")
+                > parent_generation,
+            "dropping a close-on-fork descriptor must advance the child's generation"
+        );
         assert_eq!(
             vfs_hostfs_remote_fd(kept_fd),
             Some(70),

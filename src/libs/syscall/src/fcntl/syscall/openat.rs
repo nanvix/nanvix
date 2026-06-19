@@ -91,9 +91,24 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
                 SystemCallMessageHeader::OpenAtResponse => {
                     // Parse response.
                     let response: OpenAtResponse = OpenAtResponse::from_bytes(message.payload);
+                    let fd: c_int = response.ret;
+
+                    // Seed the resolution cache with the descriptor vfsd just handed back, stamped
+                    // with the table generation vfsd reported, so later descriptor syscalls resolve
+                    // it from the cache instead of re-deriving it from the number.
+                    #[cfg(feature = "standalone")]
+                    if fd >= 0 {
+                        // `OpenAtResponse` is `#[repr(C, packed)]`, so `epoch` is not guaranteed to
+                        // be aligned. Read it through a raw pointer to avoid forming an unaligned
+                        // reference, which is undefined behavior on targets that fault on misaligned
+                        // loads.
+                        let epoch: u64 =
+                            unsafe { ::core::ptr::addr_of!(response.epoch).read_unaligned() };
+                        crate::fdtable::record(fd, crate::fdtable::Route::Vfs, fd, epoch);
+                    }
 
                     // Return file descriptor.
-                    Ok(response.ret)
+                    Ok(fd)
                 },
                 // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),

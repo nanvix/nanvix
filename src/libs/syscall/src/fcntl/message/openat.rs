@@ -239,16 +239,24 @@ impl MessagePartitioner for OpenAtRequest {
 #[repr(C, packed)]
 pub struct OpenAtResponse {
     pub ret: i32,
+    /// The `vfsd` descriptor-table generation at the time this descriptor was returned.
+    ///
+    /// libposix stamps the resolution-cache entry for `ret` with this epoch so that a later plan
+    /// can recognize a stale entry once descriptor numbers no longer encode their backend. Hosted
+    /// (`linuxd`) responses, which have no `vfsd` table, report `0`.
+    pub epoch: u64,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(OpenAtResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl OpenAtResponse {
-    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize =
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u64>();
 
-    pub fn new(ret: i32) -> Self {
+    pub fn new(ret: i32, epoch: u64) -> Self {
         Self {
             ret,
+            epoch,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -264,10 +272,11 @@ impl OpenAtResponse {
     pub fn build(
         tid: ThreadIdentifier,
         ret: i32,
+        epoch: u64,
         source: ProcessIdentifier,
         message_type: MessageType,
     ) -> Message {
-        let message: OpenAtResponse = OpenAtResponse::new(ret);
+        let message: OpenAtResponse = OpenAtResponse::new(ret, epoch);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::OpenAtResponse, message.into_bytes());
         let message: Message = Message::new(

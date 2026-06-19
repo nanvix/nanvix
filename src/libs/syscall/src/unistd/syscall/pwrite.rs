@@ -51,32 +51,41 @@ use ::sysapi::sys_types::{
 pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // POSIX requires pwrite on a non-seekable fd (pipe/stdio) to return ESPIPE.
-    #[cfg(feature = "standalone")]
-    {
-        use ::sysapi::unistd::{
-            STDERR_FILENO,
-            STDIN_FILENO,
-            STDOUT_FILENO,
-        };
-
-        if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-            ::syslog::warn!(
-                "pwrite(): illegal seek on stdio (fd={fd:?}, buffer={buffer:?}, offset={offset})",
-            );
-            return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
+    // POSIX requires pwrite on a non-seekable fd (pipe/stdio) to return ESPIPE. In standalone mode,
+    // route by the descriptor's resolved backend.
+    let backend_fd: RawFileDescriptor = {
+        #[cfg(feature = "standalone")]
+        {
+            use crate::fdtable::{
+                resolve,
+                Route,
+            };
+            match resolve(fd) {
+                // VFS-backed descriptors fall through to the vfsd write path below.
+                Some(res) if res.route == Route::Vfs => res.backend_fd,
+                // The console (stdin/stdout/stderr) is not seekable.
+                Some(res) if res.route == Route::Console => {
+                    ::syslog::warn!(
+                        "pwrite(): illegal seek on stdio (fd={fd:?}, buffer={buffer:?}, \
+                         offset={offset})",
+                    );
+                    return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
+                },
+                // Sockets and unroutable descriptors are not writable here.
+                _ => {
+                    ::syslog::warn!("pwrite(): bad file descriptor fd={fd} in standalone mode");
+                    return Err(Error::new(
+                        ErrorCode::BadFile,
+                        "pwrite: fd is not a VFS fd in standalone mode",
+                    ));
+                },
+            }
         }
-    }
-
-    // In standalone mode, only VFS file descriptors should be routed to vfsd.
-    #[cfg(feature = "standalone")]
-    if !crate::is_vfs_fd(fd) {
-        ::syslog::warn!("pwrite(): bad file descriptor fd={fd} in standalone mode");
-        return Err(Error::new(
-            ErrorCode::BadFile,
-            "pwrite: fd is not a VFS fd in standalone mode",
-        ));
-    }
+        #[cfg(not(feature = "standalone"))]
+        {
+            fd
+        }
+    };
 
     let mut total_written: c_size_t = 0;
     let mut buffer_offset: usize = 0;
@@ -93,7 +102,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
         // Build request and send it.
         let request: Message = PartialWriteRequest::build(
             tid,
-            fd,
+            backend_fd,
             chunk_size as c_size_t,
             offset + buffer_offset as off_t,
             chunk,

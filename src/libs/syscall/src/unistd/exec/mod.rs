@@ -227,7 +227,8 @@ pub fn do_execv(path: &str, argv: &[&str], envp: &[&str]) -> Error {
         env_len: env.len(),
     };
 
-    // Issue the kernel call. On success it never returns; only a failure surfaces here.
+    // Issue the kernel call. On success it never returns and the new image gets fresh BSS; on
+    // failure, the old image keeps running and must retain its descriptor-resolution cache.
     let error: Error = __kcall_execv(&exec_args);
 
     // The image was not replaced: release the mapping holding it before returning the error.

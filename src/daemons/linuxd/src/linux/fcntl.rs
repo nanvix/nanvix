@@ -199,6 +199,8 @@ pub fn do_openat<T>(
             Ok(vec![OpenAtResponse::build(
                 tid,
                 fd,
+                // Hosted opens have no vfsd descriptor table; report epoch 0.
+                0,
                 ::syscall::LINUXD,
                 MessageType::Ikc,
             )])

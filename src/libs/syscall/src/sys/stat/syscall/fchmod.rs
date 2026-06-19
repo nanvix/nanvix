@@ -42,21 +42,41 @@ use sysapi::sys_types::mode_t;
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
-    // In standalone mode, only VFS file descriptors should be routed to vfsd.
-    #[cfg(feature = "standalone")]
-    if !crate::is_vfs_fd(fd) {
-        ::syslog::warn!("fchmod(): bad file descriptor fd={fd} in standalone mode");
-        return Err(Error::new(
-            ErrorCode::BadFile,
-            "fchmod: fd is not a VFS fd in standalone mode",
-        ));
-    }
+    // In standalone mode, only VFS-backed descriptors are routable here.
+    let backend_fd: RawFileDescriptor = {
+        #[cfg(feature = "standalone")]
+        {
+            use crate::fdtable::{
+                resolve,
+                Route,
+            };
+            match resolve(fd) {
+                Some(res) if res.route == Route::Vfs => res.backend_fd,
+                _ => {
+                    ::syslog::warn!("fchmod(): bad file descriptor fd={fd} in standalone mode");
+                    return Err(Error::new(
+                        ErrorCode::BadFile,
+                        "fchmod: fd is not a VFS fd in standalone mode",
+                    ));
+                },
+            }
+        }
+        #[cfg(not(feature = "standalone"))]
+        {
+            fd
+        }
+    };
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
-    let request: Message =
-        FileChmodRequest::build(tid, fd, mode, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
+    let request: Message = FileChmodRequest::build(
+        tid,
+        backend_fd,
+        mode,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    );
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
