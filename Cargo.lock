@@ -1748,6 +1748,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_wchar"
+version = "0.16.103"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "linux-app"
 version = "0.16.106"
 dependencies = [
