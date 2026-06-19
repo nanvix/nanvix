@@ -335,7 +335,7 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config
 ALL_GUEST_DAEMONS := memd procd vfsd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test mount-multipart-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd snapshot-test execv-test execv-target execv-big-target
+ALL_GUEST_TESTS := testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test mount-multipart-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd snapshot-test execv-test execv-target execv-big-target pipe-dup2-rust socket-fork-rust fork-exec-vfsd-test fork-exec-vfsd-target
 # dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
 # relocation model produces R_X86_64_32 relocations incompatible with PIE.
 ifneq ($(TARGET),x86_64)
@@ -882,7 +882,7 @@ STANDALONE_NO_DAEMON_TESTS := test-kernel
 # not have a standalone .initrd of their own. The execv targets are loaded at runtime by
 # execv-test (the small target as `/target` in execv-test.img, the large target as `/target` in
 # execv-big-test.img).
-STANDALONE_RAMFS_ONLY_BINARIES := execv-target execv-big-target
+STANDALONE_RAMFS_ONLY_BINARIES := execv-target execv-big-target fork-exec-vfsd-target
 
 # Standalone binaries that manage VFS locally and must NOT include vfsd in their
 # .initrd image (vfsd would claim the RAMFS MMIO region before the benchmark).
