@@ -41,12 +41,13 @@ use ::sysapi::time::timespec;
 ///
 pub fn futimens(fd: RawFileDescriptor, times: &[timespec; 2]) -> Result<(), Error> {
     ::syslog::warn!("futimens(): fd={:?}, times={:?}", fd, times);
+    let backend_fd: RawFileDescriptor = crate::fdtable::resolve_vfs(fd, "futimens")?;
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = UpdateFileAccessTimeRequest::build(
         tid,
-        fd,
+        backend_fd,
         times,
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,

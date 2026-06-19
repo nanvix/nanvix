@@ -36,11 +36,12 @@ use ::sysapi::ffi::c_int;
 ///
 pub fn fchdir(fd: c_int) -> Result<(), Error> {
     ::syslog::trace!("fchdir(): fd={:?}", fd);
+    let backend_fd: c_int = crate::fdtable::resolve_vfs(fd, "fchdir")?;
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it
     let request: Message =
-        FileChdirRequest::build(tid, fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
+        FileChdirRequest::build(tid, backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

@@ -62,11 +62,12 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
         GetDirectoryEntriesResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+    let backend_fd: c_int = crate::fdtable::resolve_vfs(fd, "posix_getdents")?;
 
     // Build request message.
     let request: Message = GetDirectoryEntriesRequest::build(
         tid,
-        fd,
+        backend_fd,
         count,
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,

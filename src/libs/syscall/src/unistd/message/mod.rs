@@ -23,6 +23,7 @@ mod pread;
 mod pwrite;
 mod read;
 mod readlinkat;
+mod resolve_fd;
 mod symlinkat;
 mod write;
 
@@ -102,6 +103,10 @@ pub use self::{
     readlinkat::{
         ReadLinkAtRequest,
         ReadLinkAtResponse,
+    },
+    resolve_fd::{
+        ResolveFdRequest,
+        ResolveFdResponse,
     },
     symlinkat::{
         SymbolicLinkAtRequest,

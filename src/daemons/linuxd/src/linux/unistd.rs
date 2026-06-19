@@ -794,7 +794,8 @@ pub fn do_pipe<T>(
             let write_fd: i32 = fds[1];
 
             debug!("pipe(): read_fd={read_fd:?}, write_fd={write_fd:?}");
-            Ok(PipeResponse::build(tid, read_fd, write_fd, ::syscall::LINUXD, MessageType::Ikc))
+            // Hosted pipes have no vfsd table, so the coherence epoch is 0.
+            Ok(PipeResponse::build(tid, read_fd, write_fd, 0, ::syscall::LINUXD, MessageType::Ikc))
         },
         ret => {
             let errno: i32 = unsafe { *libc::__errno_location() };

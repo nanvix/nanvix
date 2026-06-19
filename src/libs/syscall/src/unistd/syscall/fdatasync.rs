@@ -39,11 +39,16 @@ use ::sys::{
 ///
 pub fn fdatasync(fd: RawFileDescriptor) -> Result<(), Error> {
     ::syslog::trace!("fdatasync(): fd={:?}", fd);
+    let backend_fd: RawFileDescriptor = crate::fdtable::resolve_vfs(fd, "fdatasync")?;
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message =
-        FileDataSyncRequest::build(tid, fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
+    let request: Message = FileDataSyncRequest::build(
+        tid,
+        backend_fd,
+        crate::VFS_DESTINATION,
+        crate::VFS_MESSAGE_TYPE,
+    );
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.

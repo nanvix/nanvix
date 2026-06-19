@@ -495,9 +495,12 @@ fn test_open_directory() -> Result<(), Error> {
     let fd: i32 = vfs::fd::vfs_open("/odir/sub", file_creation_flags::O_DIRECTORY)
         .map_err(|e| fat_err(e, "vfs_open O_DIRECTORY failed"))?;
 
-    // The returned fd should be a VFS fd.
-    if !vfs::fd::is_vfs_fd(fd) {
-        return Err(Error::new(ErrorCode::InvalidArgument, "fd should be a VFS fd"));
+    // The returned fd should resolve to a vfsd-served descriptor.
+    if vfs::fd::vfs_resolve(fd) != Some((vfs::fd::VfsRoute::Vfs, fd)) {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "fd should resolve to a vfsd-served descriptor",
+        ));
     }
 
     // Reading from a directory handle should fail.
@@ -837,12 +840,13 @@ fn test_resolve_path() -> Result<(), Error> {
         return Err(Error::new(ErrorCode::InvalidArgument, "dirfd path mismatch"));
     }
 
-    // Non-VFS fd should return None.
-    if vfs::fd::vfs_resolve_path(3, "file.txt").is_some() {
-        return Err(Error::new(ErrorCode::InvalidArgument, "non-VFS fd should return None"));
-    }
-
+    // A descriptor with no slot should return None. Under the flat namespace this is determined by
+    // the slot's handle type, not a number range: close the directory fd so it is absent, then it
+    // no longer resolves.
     vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
+    if vfs::fd::vfs_resolve_path(dir_fd, "file.txt").is_some() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "absent fd should return None"));
+    }
 
     // Clean up.
     vfs::chdir("/").map_err(|e| fat_err(e, "chdir / failed"))?;

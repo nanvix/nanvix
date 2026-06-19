@@ -43,14 +43,23 @@ pub fn close(fd: i32) -> Result<(), Error> {
         let result: Result<(), Error> = match resolve(fd) {
             Some(res) => match res.route {
                 // VFS-backed descriptors are closed by vfsd.
-                Route::Vfs => {
-                    close_ipc(res.backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)
+                Route::Vfs => close_ipc(
+                    res.backend_fd,
+                    crate::VFS_DESTINATION,
+                    crate::VFS_MESSAGE_TYPE,
+                    false,
+                ),
+                // When a guest vfsd exists, a console descriptor also occupies a slot in vfsd's
+                // flat table; closing one must release that slot so the descriptor number can be
+                // reused. When no guest vfsd exists (direct-ELF standalone), resolve() routes the
+                // stream to the console by number and there is no slot to free, so the close is a
+                // no-op: the request cannot be delivered and that delivery failure is tolerated.
+                Route::Console => {
+                    close_ipc(res.backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE, true)
                 },
-                // Console descriptors alias the kernel streams and own no resource to release here.
-                Route::Console => Ok(()),
                 // Sockets are closed by networkd.
                 Route::Socket => {
-                    close_ipc(res.backend_fd, crate::NETWORK_DESTINATION, MessageType::Ikc)
+                    close_ipc(res.backend_fd, crate::NETWORK_DESTINATION, MessageType::Ikc, false)
                 },
             },
             // Unknown fd: no handler available.
@@ -70,21 +79,43 @@ pub fn close(fd: i32) -> Result<(), Error> {
 
     #[cfg(not(feature = "standalone"))]
     {
-        close_ipc(fd, crate::LINUXD, MessageType::Ikc)
+        close_ipc(fd, crate::LINUXD, MessageType::Ikc, false)
     }
 }
 
 /// Forwards a `close` request via IPC to the given destination.
+///
+/// When `tolerate_missing_backend` is set, a failure to deliver the request (no such backend
+/// process) is reported as success rather than an error. This is used for console descriptors,
+/// which own no local resource: in a run mode with no guest vfsd there is no flat-table slot to
+/// release, so closing one is a no-op. The backend's own response is always honored, so a genuine
+/// error returned by a reachable backend still propagates.
 fn close_ipc(
     fd: i32,
     destination: ProcessIdentifier,
     message_type: MessageType,
+    tolerate_missing_backend: bool,
 ) -> Result<(), Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+    let tid: ThreadIdentifier = match ::sys::kcall::pm::__kcall_gettid() {
+        Ok(tid) => tid,
+        Err(error) => {
+            return if tolerate_missing_backend {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        },
+    };
 
     // Build request and send it.
     let request: Message = CloseRequest::build(tid, fd, destination, message_type);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    if let Err(error) = ::sys::kcall::ipc::__kcall_send(&request) {
+        return if tolerate_missing_backend {
+            Ok(())
+        } else {
+            Err(error)
+        };
+    }
 
     // Receive response.
     let response: Message = ::sys::kcall::ipc::__kcall_recv()?;

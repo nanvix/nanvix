@@ -29,12 +29,13 @@ use ::sysapi::ffi::c_int;
 
 pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
     ::syslog::trace!("fcntl(): fd={:?}, cmd={:?}, arg={:?}", fd, cmd, arg);
+    let backend_fd: i32 = crate::fdtable::resolve_vfs(fd, "fcntl")?;
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = FileControlRequest::build(
         tid,
-        fd,
+        backend_fd,
         cmd,
         arg.unwrap_or(0),
         crate::VFS_DESTINATION,

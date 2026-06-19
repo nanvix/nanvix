@@ -42,12 +42,13 @@ use sysapi::sys_types::off_t;
 ///
 pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Result<(), Error> {
     ::syslog::trace!("posix_fallocate(): fd={:?}, offset={:?}, len={:?}", fd, offset, len);
+    let backend_fd: RawFileDescriptor = crate::fdtable::resolve_vfs(fd, "posix_fallocate")?;
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = FileSpaceControlRequest::build(
         tid,
-        fd,
+        backend_fd,
         offset,
         len,
         crate::VFS_DESTINATION,
