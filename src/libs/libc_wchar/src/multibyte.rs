@@ -185,7 +185,8 @@ pub unsafe extern "C" fn mbtowc(pwc: *mut wchar_t, s: *const c_char, n: usize) -
 }
 
 /// Determines the number of bytes in the multibyte character pointed to by `s`. Equivalent to
-/// `mbtowc(NULL, s, n)` for the stateless UTF-8 encoding.
+/// `mbtowc(NULL, s, n)` for the byte-oriented C/POSIX locale, where each non-null byte is a
+/// complete single-byte character.
 ///
 /// # Safety
 ///
@@ -326,8 +327,9 @@ pub unsafe extern "C" fn mbrlen(s: *const c_char, n: usize, ps: *mut mbstate_t) 
     }
 }
 
-/// Restartable conversion of a single wide character to its multibyte representation. UTF-8 is
-/// stateless, so `ps` is only consulted to honour the null-`s` reset convention.
+/// Restartable conversion of a single wide character to its multibyte representation. The
+/// byte-oriented C/POSIX locale is single-byte and stateless, so `ps` is ignored apart from
+/// honouring the null-`s` reset convention.
 ///
 /// # Safety
 ///
