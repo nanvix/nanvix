@@ -216,13 +216,21 @@ struct EventManagerInner {
     pending_exceptions:
         [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>; usize::BITS as usize],
     scheduling_owner: Option<ProcessIdentifier>,
-    pending_scheduling:
-        [LinkedList<(EventDescriptor, SchedulingNotification)>; SchedulingEvent::NUMBER_EVENTS],
-    /// Round-robin cursor selecting which scheduling sub-queue is scanned first on the next
-    /// delivery. Advanced past a sub-queue each time an event is delivered from it, so successive
-    /// deliveries alternate between sub-queues and neither process-creation nor process-termination
-    /// events can starve the other.
-    scheduling_cursor: usize,
+    /// Pending scheduling-event notifications delivered in strict FIFO order. A single
+    /// totally-ordered queue (rather than per-event-type sub-queues drained round-robin) guarantees
+    /// that a process's creation event is delivered before its termination event: the kernel main
+    /// loop publishes a process's creation ahead of its termination, and a process is always created
+    /// before it terminates, so the creation is enqueued before the termination and FIFO delivery
+    /// preserves that order. This per-process creation-before-termination invariant lets the
+    /// scheduling-event owner (`procd`) record a child's lineage from its creation before handling
+    /// its termination, with no out-of-order reconciliation.
+    ///
+    /// Each entry also carries the global [`EventDescriptor`] stamped at generation time. Delivery
+    /// does not consult it today, because this single FIFO queue already yields insertion order
+    /// (hence event-id order); it is retained for uniformity with the interrupt and exception
+    /// queues, which likewise stamp every entry, and for the planned unified FIFO-by-event-id
+    /// delivery tracked in #2558.
+    pending_scheduling: LinkedList<(EventDescriptor, SchedulingNotification)>,
 }
 
 impl EventManagerInner {
@@ -505,69 +513,43 @@ impl EventManagerInner {
 
             // Check if any scheduling events were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 2 {
-                // Deliver scheduling events with a round-robin sub-queue scan rather than a fixed
-                // priority, so neither process-creation nor process-termination events can starve
-                // the other. The scan starts at `scheduling_cursor`, which is advanced past a
-                // sub-queue each time an event is delivered from it (below). Because the cursor
-                // advances on delivery rather than on event generation, successive deliveries
-                // alternate between sub-queues even while a subscriber drains an already-queued
-                // backlog with no new events being generated: a sustained stream of one event class
-                // cannot indefinitely delay delivery of the other. The scan returns on the first
-                // hit, so at most one scheduling event is delivered per call.
-                //
-                // Delivery order is an optimization, not a correctness requirement: this scan does
-                // not prefer creations, so a termination can be delivered before a creation that is
-                // queued at the same time (including on the first delivery, when the cursor still
-                // starts at slot 0). `procd` records a child's lineage from its creation event;
-                // if it instead observes an orphan termination first, it buffers the exit status in
-                // `early_terminations` and reconciles it once the creation arrives. Publishing
-                // creations ahead of terminations in the kernel main loop only biases delivery
-                // toward the creation-first order and keeps that buffering window small in the
-                // common case, while the round-robin here guarantees terminations are never starved
-                // behind a continuous burst of creations (and vice versa).
-                //
-                // FIXME(#2558): this round-robin only approximates fairness. Replacing it with
-                // FIFO delivery ordered by the global event id stamped on each queued entry would
-                // be structurally starvation-free without cursor bookkeeping. Tracked as follow-up
-                // work.
-                for k in 0..SchedulingEvent::NUMBER_EVENTS {
-                    let slot: usize = (self.scheduling_cursor + k) % SchedulingEvent::NUMBER_EVENTS;
-                    if (scheduling & (1 << slot)) != 0 {
-                        if let Some((_ev, notification)) = self.pending_scheduling[slot].pop_front()
-                        {
-                            // Serialize the notification into the head of the message payload. The
-                            // two notification variants have different serialized sizes, so each is
-                            // copied using its own length.
-                            let mut payload: [u8; Message::PAYLOAD_SIZE] =
-                                [0u8; Message::PAYLOAD_SIZE];
-                            let message_type: MessageType = match notification {
-                                SchedulingNotification::Termination(info) => {
-                                    let info_bytes = info.to_ne_bytes();
-                                    payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
-                                    MessageType::ProcessTerminationEvent
-                                },
-                                SchedulingNotification::Creation(info) => {
-                                    let info_bytes = info.to_ne_bytes();
-                                    payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
-                                    MessageType::ProcessCreationEvent
-                                },
-                            };
+                // Deliver scheduling events in strict FIFO order from a single totally-ordered
+                // queue. Because the kernel main loop publishes a process's creation event before
+                // its termination event, and a process is always created before it terminates, the
+                // creation is enqueued ahead of the termination; FIFO delivery therefore guarantees
+                // that the owner (`procd`) observes a process's creation before its termination, so
+                // it can record the child's lineage before handling the termination with no
+                // out-of-order reconciliation. The non-zero `scheduling` mask means the calling
+                // process owns the scheduling-event class. The scan returns on the first entry, so
+                // at most one scheduling event is delivered per call.
+                if scheduling != 0 {
+                    if let Some((_ev, notification)) = self.pending_scheduling.pop_front() {
+                        // Serialize the notification into the head of the message payload. The
+                        // two notification variants have different serialized sizes, so each is
+                        // copied using its own length.
+                        let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
+                        let message_type: MessageType = match notification {
+                            SchedulingNotification::Termination(info) => {
+                                let info_bytes = info.to_ne_bytes();
+                                payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
+                                MessageType::ProcessTerminationEvent
+                            },
+                            SchedulingNotification::Creation(info) => {
+                                let info_bytes = info.to_ne_bytes();
+                                payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
+                                MessageType::ProcessCreationEvent
+                            },
+                        };
 
-                            let message: Message = Message {
-                                source: MessageSender::from(ProcessIdentifier::KERNEL),
-                                destination: MessageReceiver::from(pid),
-                                message_type,
-                                status: 0,
-                                payload,
-                            };
+                        let message: Message = Message {
+                            source: MessageSender::from(ProcessIdentifier::KERNEL),
+                            destination: MessageReceiver::from(pid),
+                            message_type,
+                            status: 0,
+                            payload,
+                        };
 
-                            // Advance the round-robin cursor past the sub-queue just delivered
-                            // from, so the next delivery scans the other sub-queue first and the
-                            // two sub-queues take turns.
-                            self.scheduling_cursor = (slot + 1) % SchedulingEvent::NUMBER_EVENTS;
-
-                            return Ok(Some(message));
-                        }
+                        return Ok(Some(message));
                     }
                 }
             }
@@ -803,12 +785,13 @@ impl EventManagerInner {
         notification: SchedulingNotification,
     ) -> Result<(), Error> {
         let event: SchedulingEvent = notification.event();
-        let idx: usize = event as usize;
 
-        // Buffer the notification for delivery. The queue is bounded by the maximum number of
-        // processes so that pending entries cannot accumulate without limit while no subscriber
-        // drains them; once the queue is full, further notifications are dropped.
-        if self.pending_scheduling[idx].len() >= ::config::kernel::MAX_PROCESSES {
+        // Buffer the notification for delivery in a single FIFO queue. The queue is bounded so that
+        // pending entries cannot accumulate without limit while no subscriber drains them; once the
+        // queue is full, further notifications are dropped. The bound is twice the maximum number of
+        // processes because each process can have at most one creation and one termination
+        // notification awaiting delivery at the same time.
+        if self.pending_scheduling.len() >= 2 * ::config::kernel::MAX_PROCESSES {
             let reason: &str = "scheduling-event queue is full";
             error!("reason={:?}, event={:?}", reason, event);
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
@@ -816,7 +799,7 @@ impl EventManagerInner {
 
         self.nevents += 1;
         let eventid: EventDescriptor = EventDescriptor::new(self.nevents, Event::from(event));
-        self.pending_scheduling[idx].push_back((eventid, notification));
+        self.pending_scheduling.push_back((eventid, notification));
 
         // Wake the owning process if the scheduling-event class is currently owned. When there is
         // no owner yet, the notification stays buffered and is delivered once a subscriber
@@ -828,7 +811,7 @@ impl EventManagerInner {
                     // Waking the owner failed. Remove the notification we just buffered so that no
                     // error path of this function leaves a partially-delivered entry behind. This
                     // lets callers safely retry without risking a duplicate buffered event.
-                    self.pending_scheduling[idx].pop_back();
+                    self.pending_scheduling.pop_back();
                     return Err(e);
                 }
             },
@@ -1338,11 +1321,8 @@ pub fn init() -> Result<(), Error> {
         *entry = None;
     }
 
-    let mut pending_scheduling: [LinkedList<(EventDescriptor, SchedulingNotification)>;
-        SchedulingEvent::NUMBER_EVENTS] = unsafe { mem::zeroed() };
-    for list in pending_scheduling.iter_mut() {
-        *list = LinkedList::default();
-    }
+    let pending_scheduling: LinkedList<(EventDescriptor, SchedulingNotification)> =
+        LinkedList::default();
 
     let scheduling_owner: Option<ProcessIdentifier> = None;
 
@@ -1394,7 +1374,6 @@ pub fn init() -> Result<(), Error> {
         exception_ownership,
         pending_scheduling,
         scheduling_owner,
-        scheduling_cursor: 0,
         waiting_threads: VecDeque::new(),
         wait: Some(Condvar::new()),
     });

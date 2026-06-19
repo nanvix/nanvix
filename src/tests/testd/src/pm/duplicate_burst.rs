@@ -15,7 +15,7 @@
 //! time this test runs `procd` already owns the scheduling-event class and drains creation and
 //! termination events asynchronously. A rapid burst of `duplicate()` calls therefore produces
 //! events faster than `procd` can consume them, exercising the kernel-side buffering
-//! (`pending_creations`, `pending_terminations`, the per-event `pending_scheduling` queues, and
+//! (`pending_creations`, `pending_terminations`, the single FIFO `pending_scheduling` queue, and
 //! zombie harvesting). If that buffering were insufficient, events would be lost or the kernel
 //! would become unstable under the burst.
 //!
@@ -26,24 +26,28 @@
 //! required because `duplicate()` refuses a caller that owns special resources (including a
 //! non-empty mailbox). Tearing each child down with [`__kcall_terminate`] confirms that the kernel
 //! tracked every burst-created process — a child lost to a buffer overflow would fail with
-//! `NoSuchProcess`.
+//! `NoSuchProcess`. Reaping each child with `waitpid()` then confirms that `procd` observed the
+//! raw-duplicate child's process-creation event before its process-termination event and recorded
+//! the child as reapable under the parent.
 //!
-//! ## Reaping between rounds
+//! ## Reaping after termination
 //!
 //! `terminate()` only marks a child as a zombie; the child's thread slot is not released until the
-//! kernel's idle-loop harvester reaps that zombie. The harvester runs only when no user process is
-//! runnable, so a parent that bursts without ever yielding would accumulate un-reaped zombies and
-//! exhaust the system-wide thread limit (`MAX_THREADS`) after a few rounds. To keep the live thread
-//! count bounded and the test deterministic, the parent yields the processor once at the end of
-//! each round. Because the burst performs no IPC, the parent is then the only runnable user
-//! process, so the kernel idle thread is scheduled and drains every pending zombie before the next
-//! round begins.
+//! kernel's idle-loop harvester reaps that zombie and publishes a termination scheduling event.
+//! Blocking in `wait()` after each termination makes that path deterministic: the parent sleeps,
+//! the kernel harvests the child, `procd` receives the creation and termination events, and the
+//! wait reply proves that the child was recorded as reapable before the next burst starts.
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 use ::arch::mem::PAGE_SIZE;
+use ::proc::{
+    wait,
+    WaitOutcome,
+    WaitTarget,
+};
 use ::sys::{
     kcall::{
         mm,
@@ -195,15 +199,19 @@ fn test_duplicate_burst() -> bool {
             }
         }
 
-        // Phase 3: yield the processor so the kernel's idle-loop harvester reaps this round's
-        // zombies before the next round starts. terminate() above only zombified the children; the
-        // harvester is what actually releases each child's thread slot, and it runs only when no
-        // user process is runnable. Without this yield the parent never quiesces during the burst,
-        // so the zombies accumulate across rounds and eventually exhaust the system-wide thread
-        // limit (`MAX_THREADS`). Because the burst performs no IPC, the parent is the only runnable
-        // user process here, so a single yield is enough for the kernel idle thread to drain every
-        // pending zombie.
-        let _ = sched::__kcall_sched_yield();
+        // Phase 3: reap every child through procd. Raw duplicate() does not perform the fork-sync
+        // handshake, so the parent can terminate children before procd has drained their
+        // process-creation scheduling events. waitpid() returning each child PID confirms that the
+        // FIFO scheduling-event stream delivered every creation before its matching termination,
+        // letting procd record the child's lineage before finalizing its exit status.
+        if success {
+            for child in children.iter().flatten() {
+                match wait(WaitTarget::Pid(*child), 0) {
+                    Ok(WaitOutcome::Reaped { child: reaped, .. }) if reaped == *child => {},
+                    _ => success = false,
+                }
+            }
+        }
 
         // Phase 4: reclaim the stack mappings owned by the parent. `mmap()` reserves `STACK_PAGES`
         // pages per stack in a single call, but `munmap()` unmaps a single page at a time, so every

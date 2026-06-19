@@ -169,18 +169,6 @@ pub struct ProcessDaemon {
     /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
     /// answered later, when a `ProcessTermination` event for a matching child arrives.
     blocked: Vec<BlockedWaiter>,
-    /// Terminations observed before the corresponding process-creation event, stored as
-    /// `(pid, status)` pairs. The kernel publishes creation events ahead of termination events in
-    /// its main loop, so lineage is usually recorded before the termination arrives. A termination
-    /// can still be observed first for two reasons: the creation event may not have been
-    /// delivered yet (e.g. the scheduling-event queue was momentarily full and the creation was
-    /// requeued), and even when both are already queued the kernel scans the creation and
-    /// termination sub-queues round-robin, so it may deliver the termination first. In either case
-    /// procd can learn that a child died while the child is still unknown. The status is buffered
-    /// here and replayed once the creation event records the child's lineage, so the exit status
-    /// is never dropped and a parent blocked in `waitpid()` is always answered. A `Vec` suffices
-    /// because only a handful of terminations are ever pending reconciliation at once.
-    early_terminations: Vec<(ProcessIdentifier, i32)>,
 }
 
 impl ProcessDaemon {
@@ -211,7 +199,6 @@ impl ProcessDaemon {
             pending_fork_syncs: Vec::new(),
             pending_execs: Vec::new(),
             blocked: Vec::new(),
-            early_terminations: Vec::new(),
         })
     }
 
@@ -371,30 +358,6 @@ impl ProcessDaemon {
             }
         }
 
-        // Replay a termination that was observed before this creation event. The kernel normally
-        // publishes creations ahead of terminations, but a termination can still arrive first when
-        // the creation event could not be delivered yet (e.g. the scheduling-event queue was
-        // momentarily full and the creation was requeued), so procd may have seen this child die
-        // while it was still unknown and buffered the exit status. Now that the child's lineage is
-        // recorded and its fork-clone has been dispatched to the filesystem daemon above, reclaim
-        // its filesystem state (ordered after the fork-clone, so the snapshot is taken before it is
-        // torn down) and finalize the termination, so a parent blocked in `waitpid()` receives the
-        // exit status instead of blocking forever on a child that can never terminate again.
-        if let Some(pos) = self
-            .early_terminations
-            .iter()
-            .position(|(p, _)| *p == child)
-        {
-            let (_, status) = self.early_terminations.swap_remove(pos);
-            ::syslog::info!(
-                "reconciling buffered termination (child={:?}, status={:?})",
-                child,
-                status
-            );
-            self.cleanup_terminated(child);
-            self.finalize_forked_child_termination(child, status)?;
-        }
-
         Ok(())
     }
 
@@ -459,38 +422,13 @@ impl ProcessDaemon {
 
             // A forked user process terminated. Finalizing it re-parents its surviving children,
             // reaps its zombie children, and either retains it as a reapable zombie or drops it —
-            // all of which require the child's lineage to be recorded. The kernel normally
-            // publishes a process's creation event before its termination event, so the lineage is
-            // usually already recorded; it can still be missing when the creation event has not been
-            // delivered yet (e.g. the scheduling-event queue was momentarily full and the creation
-            // was requeued), or when the process signed up before its creation event was processed
-            // (its record exists with a name but no recorded parent). Buffer the `(pid, status)` and
-            // defer every side effect — filesystem-state reclamation, re-parenting, reaping, and
-            // waking a blocked waiter — until the creation event records the lineage and
-            // `handle_process_creation_event()` replays it. The creation event is guaranteed to
-            // follow: the kernel buffers it at fork time and the main loop re-publishes it until it
-            // is delivered. Deferring the filesystem-exit notification also keeps it ordered after
-            // the fork-clone that the creation handler dispatches, so the child's filesystem
-            // snapshot is taken before it is reclaimed.
+            // all of which require the child's lineage to be recorded. The kernel guarantees that a
+            // process's creation event is delivered before its termination event (a single FIFO
+            // scheduling-event queue), so by the time this termination is handled the creation event
+            // has already recorded the child's lineage. The filesystem-exit notification issued by
+            // `cleanup_terminated()` is therefore ordered after the fork-clone that the creation
+            // handler dispatched, so the child's filesystem snapshot is taken before it is reclaimed.
             ProcessRole::User => {
-                let record_ready: bool = self
-                    .processes
-                    .get(&pid)
-                    .map(|record| record.parent.is_some())
-                    .unwrap_or(false);
-                if !record_ready {
-                    ::syslog::info!(
-                        "termination observed before creation (pid={:?}, status={:?}) — buffering",
-                        pid,
-                        status
-                    );
-                    // Replace any stale entry for this pid before recording the new status,
-                    // preserving an at-most-one-entry-per-pid invariant across pid reuse.
-                    self.early_terminations.retain(|(p, _)| *p != pid);
-                    self.early_terminations.push((pid, status));
-                    return Ok(None);
-                }
-
                 self.cleanup_terminated(pid);
                 self.finalize_forked_child_termination(pid, status)?;
                 Ok(None)
@@ -523,8 +461,7 @@ impl ProcessDaemon {
     /// until shutdown), re-parents its surviving live children to the init process, then decides
     /// reapability: if a live parent can still reap it, it is retained as a zombie and a parent
     /// already blocked in `waitpid()` is woken; otherwise it is dropped rather than left as an
-    /// unreapable zombie. Shared by the termination handler and the early-termination reconciliation
-    /// in `handle_process_creation_event()`.
+    /// unreapable zombie.
     fn finalize_forked_child_termination(
         &mut self,
         pid: ProcessIdentifier,

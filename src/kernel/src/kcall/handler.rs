@@ -95,14 +95,13 @@ pub fn kcall_handler() -> ExitStatus {
         }
 
         // Publish process-creation scheduling events before process-termination events. A process
-        // is always created before it terminates, so draining creations first biases delivery
-        // toward a child's creation reaching `procd` ahead of its termination: when it does,
-        // `procd` records the child's lineage from the creation event before acting on the
-        // termination, keeping the termination off its `early_terminations` reconciliation path.
-        // This is only a bias, not a guarantee: `EventManager::try_wait()` scans the creation and
-        // termination sub-queues round-robin, so a termination can still be delivered ahead of a
-        // queued creation (which `procd` reconciles). Each pending record is drained while no
-        // reference to the process manager is held, so subscribers can be woken safely.
+        // is always created before it terminates, so draining creations first enqueues a child's
+        // creation ahead of its termination in the event manager's single FIFO scheduling-event
+        // queue. Because that queue is delivered in strict FIFO order, `procd` is guaranteed to
+        // observe a child's creation before its termination, so it records the child's lineage from
+        // the creation event before acting on the termination — no out-of-order reconciliation is
+        // needed. Each pending record is drained while no reference to the process manager is held,
+        // so subscribers can be woken safely.
         let mut notified_creation: bool = false;
         while let Some(info) = pm!().take_pending_creation() {
             // SAFETY: the calling process does not hold a reference to the inner state of the
@@ -123,9 +122,12 @@ pub fn kcall_handler() -> ExitStatus {
         }
 
         // Publish process-termination scheduling events for harvested processes after attempting to
-        // publish any pending creations. This preserves creation-before-termination ordering when
-        // both events can be delivered; under backpressure (e.g., the creation scheduling queue is
-        // full), terminations may still be published and `procd` may need to reconcile them.
+        // publish any pending creations. Draining terminations after creations enqueues each
+        // termination behind the matching creation in the event manager's single FIFO
+        // scheduling-event queue, so `procd` always observes a creation before the matching
+        // termination. The ordering also holds under backpressure: the shared queue fills while
+        // draining creations above, so a termination whose creation could not be enqueued simply
+        // fails to enqueue too and is requeued for a later iteration.
         let mut notified_termination: bool = false;
         while let Some(info) = pm!().take_pending_termination() {
             // SAFETY: the calling process does not hold a reference to the inner state of the
