@@ -93,9 +93,8 @@ pub(crate) mod path;
 
 /// Client-side file-descriptor resolution cache.
 ///
-/// Compiled for standalone routing (where descriptor numbers encode their backend) and for the
-/// crate's own unit tests, which exercise the cache logic without the `standalone` feature.
-#[cfg(any(feature = "standalone", test))]
+/// Compiled for descriptor syscalls that need VFS routing helpers and for standalone cache tests.
+#[cfg(any(feature = "syscall", feature = "standalone", test))]
 pub(crate) mod fdtable;
 
 // Safe wrappers.
@@ -108,7 +107,6 @@ pub mod safe;
 
 pub use ::config::fds::{
     is_socket_fd,
-    is_vfs_fd,
     SOCKET_FD_BASE,
 };
 use ::core::{
@@ -280,6 +278,8 @@ pub enum SystemCallMessageHeader {
     // values of existing variants (this enum is `#[repr(u16)]` with implicit,
     // sequential discriminants used directly as IPC/IKC message tags).
     HostFsReadDirResponsePart,
+    ResolveFdRequest,
+    ResolveFdResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -442,6 +442,8 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == HostFsPathStatRequest as u16 => Ok(HostFsPathStatRequest),
             x if x == HostFsPathStatRequestPart as u16 => Ok(HostFsPathStatRequestPart),
             x if x == HostFsPathStatResponse as u16 => Ok(HostFsPathStatResponse),
+            x if x == ResolveFdRequest as u16 => Ok(ResolveFdRequest),
+            x if x == ResolveFdResponse as u16 => Ok(ResolveFdResponse),
             _ => Err(()),
         }
     }

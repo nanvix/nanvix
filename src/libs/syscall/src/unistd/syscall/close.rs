@@ -46,8 +46,11 @@ pub fn close(fd: i32) -> Result<(), Error> {
                 Route::Vfs => {
                     close_ipc(res.backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)
                 },
-                // Console descriptors alias the kernel streams and own no resource to release here.
-                Route::Console => Ok(()),
+                // Console descriptors still occupy slots in vfsd's flat table; closing one must
+                // release that slot so the descriptor number can be reused.
+                Route::Console => {
+                    close_ipc(res.backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)
+                },
                 // Sockets are closed by networkd.
                 Route::Socket => {
                     close_ipc(res.backend_fd, crate::NETWORK_DESTINATION, MessageType::Ikc)

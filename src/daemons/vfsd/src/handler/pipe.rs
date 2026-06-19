@@ -166,11 +166,15 @@ fn try_serve_reader(
 pub(crate) fn handle_pipe_create(source: ThreadIdentifier) -> Message {
     match vfs_pipe() {
         Ok((read_fd, write_fd)) => {
+            // Both descriptors are allocated by the same `vfs_pipe` table mutation, so they share
+            // the post-mutation generation; report it so libposix stamps both cache entries.
+            let epoch: u64 = ::vfs::fd::vfs_current_generation();
             ::syslog::trace!("pipe(): read_fd={}, write_fd={}", read_fd, write_fd);
             PipeResponse::build(
                 source,
                 read_fd,
                 write_fd,
+                epoch,
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
             )

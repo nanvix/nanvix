@@ -90,12 +90,38 @@ fn parse_pipe_response(response: Message) -> Result<[i32; 2], Error> {
                     // Parse response.
                     let response: PipeResponse = PipeResponse::from_bytes(message.payload);
 
-                    ::syslog::trace!(
-                        "pipe(): read_fd={:?}, write_fd={:?}",
-                        { response.read_fd },
-                        { response.write_fd },
-                    );
-                    Ok([response.read_fd, response.write_fd])
+                    let read_fd: i32 = response.read_fd;
+                    let write_fd: i32 = response.write_fd;
+                    ::syslog::trace!("pipe(): read_fd={read_fd:?}, write_fd={write_fd:?}");
+
+                    // Seed the resolution cache so both pipe ends resolve from the cache rather than
+                    // by number. They are vfsd-served descriptors carrying the table generation they
+                    // were allocated at. (Hosted pipes report epoch 0 and are not cached.)
+                    #[cfg(feature = "standalone")]
+                    {
+                        // `PipeResponse` is `#[repr(C, packed)]`, so read `epoch` through a raw
+                        // pointer to avoid forming an unaligned reference.
+                        let epoch: u64 =
+                            unsafe { ::core::ptr::addr_of!(response.epoch).read_unaligned() };
+                        if read_fd >= 0 {
+                            crate::fdtable::record(
+                                read_fd,
+                                crate::fdtable::Route::Vfs,
+                                read_fd,
+                                epoch,
+                            );
+                        }
+                        if write_fd >= 0 {
+                            crate::fdtable::record(
+                                write_fd,
+                                crate::fdtable::Route::Vfs,
+                                write_fd,
+                                epoch,
+                            );
+                        }
+                    }
+
+                    Ok([read_fd, write_fd])
                 },
                 // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),

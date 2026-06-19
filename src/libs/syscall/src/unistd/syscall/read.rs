@@ -167,9 +167,8 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // In standalone mode, route by the descriptor's resolved backend. The resolution memoizes the
-    // number rules used before the cache existed, so the dispatch is identical to inspecting the
-    // descriptor number directly.
+    // In standalone mode, route by the descriptor's resolved backend so flat descriptors are
+    // dispatched through vfsd's authoritative table.
     #[cfg(feature = "standalone")]
     {
         use crate::fdtable::{

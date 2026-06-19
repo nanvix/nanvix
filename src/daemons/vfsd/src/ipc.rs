@@ -264,6 +264,10 @@ pub(crate) fn handle_ipc_message(
                 send_response(&response);
             }
         },
+        SystemCallMessageHeader::ResolveFdRequest => {
+            let response: Message = handler::handle_resolve_fd(source_tid, syscall_msg);
+            send_response(&response);
+        },
         SystemCallMessageHeader::SeekRequest => {
             if let Some(response) =
                 handler::handle_seek_with_hostfs(source_tid, syscall_msg, pending)

@@ -43,12 +43,13 @@ use ::sysapi::{
 ///
 pub fn ftruncate(fd: c_int, length: off_t) -> Result<(), Error> {
     ::syslog::debug!("ftruncate(): fd={}, length={}", fd, length);
+    let backend_fd: c_int = crate::fdtable::resolve_vfs(fd, "ftruncate")?;
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = FileTruncateRequest::build(
         tid,
-        fd,
+        backend_fd,
         length,
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,

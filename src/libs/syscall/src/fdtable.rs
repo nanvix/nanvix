@@ -3,29 +3,39 @@
 
 //! Client-side file-descriptor resolution cache.
 //!
-//! In standalone mode a descriptor's number encodes the backend that serves it: `0`/`1`/`2` are the
-//! console (kernel), the high `[VFS_FD_BASE, …)` range is `vfsd`, and `[SOCKET_FD_BASE, …)` is
-//! `networkd`. Every descriptor system call therefore decided where to route by inspecting the
-//! number directly.
+//! Under the flat namespace a descriptor's number no longer encodes its backend: `open` hands out
+//! the lowest free number (typically a small one), so a value like `4` could be a regular file, a
+//! pipe end, a directory, or a host file. One range keeps a fixed meaning in the interim:
+//! `[SOCKET_FD_BASE, …)` is always a `networkd` socket. Every lower descriptor is whatever `vfsd`'s
+//! authoritative slot table says it is.
 //!
-//! This module memoizes that decision behind a single seam, [`resolve`], so that routing is asked
-//! for rather than recomputed inline at each call site. The cache maps a descriptor to its
-//! [`Route`] and the descriptor number the route's backend expects ([`Resolution::backend_fd`]),
-//! together with the `vfsd` table generation the entry was learned at (its *epoch*).
+//! This module routes a descriptor through a single seam, [`resolve`]. The answer comes from, in
+//! order: a coherent cache entry; the fixed socket range ([`derive`], no round-trip); otherwise an
+//! authoritative query to `vfsd` ([`resolve_via_vfsd`]). If no guest `vfsd` exists in the current
+//! run mode, the standard streams fall back to the kernel console by number. A descriptor created
+//! locally (`open`, `pipe`, `socket`) or learned from `vfsd` is recorded, so the `vfsd` query is
+//! reached only on a genuine miss or after an entry goes stale.
 //!
-//! The cache is **behavior-preserving** here: every entry agrees with the number rules it is seeded
-//! from (see [`derive`]), so a resolution answers exactly as the old number-keyed code did. The
-//! epoch is plumbed and checked ([`is_coherent`]) but inert — because the route still follows the
-//! number, no generation can change a routing decision. It is the coherence substrate a later plan
-//! activates once descriptor numbers stop encoding their backend and a stale entry could otherwise
-//! route I/O to the wrong place.
+//! Coherence is load-bearing here. Each entry carries the `vfsd` table generation it was learned at
+//! (its *epoch*), and [`EXPECTED_EPOCH`] tracks the newest generation this process has observed from
+//! `vfsd`. An entry older than that ([`is_coherent`]) is treated as stale and re-resolved, so a
+//! number reused for a different backend can never be answered from an outdated entry.
 
+#[cfg(any(feature = "standalone", test))]
 use ::alloc::collections::BTreeMap;
-use ::config::fds::{
-    is_socket_fd,
-    is_vfs_fd,
+#[cfg(any(feature = "standalone", test))]
+use ::config::fds::is_socket_fd;
+#[cfg(test)]
+use ::core::sync::atomic::AtomicBool;
+#[cfg(any(feature = "standalone", test))]
+use ::core::sync::atomic::{
+    AtomicU64,
+    Ordering,
 };
+#[cfg(any(feature = "standalone", test))]
 use ::spin::Mutex;
+use ::sys::error::Error;
+#[cfg(any(feature = "standalone", test))]
 use ::sysapi::unistd::{
     STDERR_FILENO,
     STDIN_FILENO,
@@ -37,6 +47,7 @@ use ::sysapi::unistd::{
 //==================================================================================================
 
 /// The backend that serves a descriptor's operations.
+#[cfg(any(feature = "standalone", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Route {
     /// A console stream (`stdin`/`stdout`/`stderr`); I/O flows directly to the kernel.
@@ -50,9 +61,11 @@ pub(crate) enum Route {
 /// A resolved routing decision: which backend serves a descriptor and the descriptor number that
 /// backend expects.
 ///
-/// In this plan `backend_fd` always equals the descriptor passed to [`resolve`], because numbers
-/// are not yet remapped onto a flat namespace; it is carried so call sites already address their
-/// backend through it when a later plan makes the two diverge.
+/// `backend_fd` may differ from the descriptor passed to [`resolve`]: a console descriptor reports
+/// the standard stream number it aliases (`0`/`1`/`2`), and a socket reports the descriptor
+/// `networkd` assigned. Call sites address their backend through `backend_fd` rather than the
+/// caller-facing number.
+#[cfg(any(feature = "standalone", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Resolution {
     /// The backend that serves the descriptor.
@@ -62,6 +75,7 @@ pub(crate) struct Resolution {
 }
 
 /// A cached resolution together with the `vfsd` table generation it was learned at.
+#[cfg(any(feature = "standalone", test))]
 #[derive(Debug, Clone, Copy)]
 struct CacheEntry {
     /// The backend that serves the descriptor.
@@ -70,6 +84,18 @@ struct CacheEntry {
     backend_fd: i32,
     /// The `vfsd` table generation this entry was learned at (its coherence epoch).
     epoch: u64,
+}
+
+/// Outcome of asking `vfsd` for an authoritative descriptor route.
+#[cfg(any(feature = "standalone", test))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VfsdResolution {
+    /// `vfsd` returned an authoritative route.
+    Hit(Resolution),
+    /// `vfsd` answered and reported that the descriptor has no slot.
+    BadFile,
+    /// The query could not be delivered or answered because no `vfsd` is available.
+    Unavailable,
 }
 
 //==================================================================================================
@@ -81,25 +107,35 @@ struct CacheEntry {
 /// Guarded by a [`spin::Mutex`] held only for the duration of a single map operation so the hot
 /// `read`/`write` path is never blocked on anything but a peer lookup, and never allocates on a
 /// resolve.
+#[cfg(any(feature = "standalone", test))]
 static CACHE: Mutex<BTreeMap<i32, CacheEntry>> = Mutex::new(BTreeMap::new());
+
+/// The newest `vfsd` table generation this process has observed.
+///
+/// Every `vfsd` answer that carries a generation ([`record`] from `open`/`pipe`, and the
+/// resolution query) advances this through [`observe_epoch`]. A cache entry learned at an older
+/// generation is stale ([`is_coherent`]) and must be re-resolved, because the descriptor it
+/// describes may since have been closed and the number reused for a different backend.
+#[cfg(any(feature = "standalone", test))]
+static EXPECTED_EPOCH: AtomicU64 = AtomicU64::new(0);
+
+/// Records that `vfsd` has advanced its table generation to at least `epoch`.
+///
+/// Monotonic via a max, so an out-of-order or duplicated response can never move the observed
+/// generation backwards and resurrect a stale entry.
+#[cfg(any(feature = "standalone", test))]
+fn observe_epoch(epoch: u64) {
+    EXPECTED_EPOCH.fetch_max(epoch, Ordering::Relaxed);
+}
 
 /// Derives the routing decision implied by a descriptor number alone.
 ///
-/// This encodes the number rules that governed routing before the cache existed and is what every
-/// cache entry is seeded from, so a resolve answers identically whether it hits the cache or falls
-/// back here. Returns `None` for a number that belongs to no backend range.
+/// Only the reserved socket range owned by `networkd` is answered here. Every lower descriptor,
+/// including `0`/`1`/`2`, is flat namespace state owned by `vfsd` and must be resolved there so a
+/// closed standard descriptor can be reused by a non-console object.
+#[cfg(any(feature = "standalone", test))]
 fn derive(fd: i32) -> Option<Resolution> {
-    if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
-        Some(Resolution {
-            route: Route::Console,
-            backend_fd: fd,
-        })
-    } else if is_vfs_fd(fd) {
-        Some(Resolution {
-            route: Route::Vfs,
-            backend_fd: fd,
-        })
-    } else if is_socket_fd(fd) {
+    if is_socket_fd(fd) {
         Some(Resolution {
             route: Route::Socket,
             backend_fd: fd,
@@ -109,22 +145,39 @@ fn derive(fd: i32) -> Option<Resolution> {
     }
 }
 
-/// Reports whether a cache entry learned at `_entry_epoch` is still coherent with the authoritative
+/// Derives the fallback console route for run modes that have no guest `vfsd`.
+#[cfg(any(feature = "standalone", test))]
+fn derive_console(fd: i32) -> Option<Resolution> {
+    if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
+        Some(Resolution {
+            route: Route::Console,
+            backend_fd: fd,
+        })
+    } else {
+        None
+    }
+}
+
+/// Reports whether a cache entry learned at `entry_epoch` is still coherent with the authoritative
 /// `vfsd` table.
 ///
-/// Inert in this plan: a descriptor's route is implied by its number, which never goes stale, so an
-/// entry is coherent regardless of the generation it was learned at. A later plan replaces this with
-/// a comparison against the live `vfsd` generation, at which point the epoch becomes load-bearing
-/// and a mismatch forces re-resolution.
-fn is_coherent(_entry_epoch: u64) -> bool {
-    true
+/// An entry is coherent only if it was learned no earlier than the newest generation this process
+/// has observed from `vfsd`. A descriptor-table mutation advances that generation, so an entry that
+/// predates the latest one is treated as stale and re-resolved, guaranteeing a reused number is
+/// never answered from an entry that described its previous occupant.
+#[cfg(any(feature = "standalone", test))]
+fn is_coherent(entry_epoch: u64) -> bool {
+    entry_epoch >= EXPECTED_EPOCH.load(Ordering::Relaxed)
 }
 
 /// Resolves a descriptor to its backend route.
 ///
-/// This is the hot-path lookup used by every descriptor system call. A cached entry is returned
-/// when present and coherent; otherwise the decision is derived from the descriptor number. The
-/// lookup is allocation-free and holds the cache lock only across a single map probe.
+/// This is the hot-path lookup used by every descriptor system call. The answer comes from, in
+/// order: a cached entry that is still coherent; the fixed socket number range ([`derive`], no
+/// round-trip); otherwise an authoritative query to `vfsd` ([`resolve_via_vfsd`]).
+/// A cache hit on a coherent entry holds the lock only across a single map probe and never
+/// round-trips, so tight `read`/`write` loops stay local.
+#[cfg(any(feature = "standalone", test))]
 pub(crate) fn resolve(fd: i32) -> Option<Resolution> {
     {
         let cache: ::spin::MutexGuard<'_, BTreeMap<i32, CacheEntry>> = CACHE.lock();
@@ -137,15 +190,54 @@ pub(crate) fn resolve(fd: i32) -> Option<Resolution> {
             }
         }
     }
-    derive(fd)
+    // The fixed ranges answer without a round-trip; everything else is the authority's to decide.
+    if let Some(resolution) = derive(fd) {
+        return Some(resolution);
+    }
+    match resolve_via_vfsd(fd) {
+        VfsdResolution::Hit(resolution) => Some(resolution),
+        VfsdResolution::BadFile => None,
+        VfsdResolution::Unavailable => derive_console(fd),
+    }
+}
+
+/// Resolves `fd` and returns the descriptor expected by `vfsd`.
+///
+/// In standalone mode, fd-taking VFS syscalls must reject console, socket, and invalid descriptors
+/// rather than sending the caller-facing number directly to `vfsd`. In hosted mode descriptors are
+/// still interpreted by `linuxd`, so the raw descriptor is already the backend descriptor.
+#[cfg(feature = "standalone")]
+pub(crate) fn resolve_vfs(fd: i32, syscall_name: &str) -> Result<i32, Error> {
+    use ::sys::error::ErrorCode;
+
+    match resolve(fd) {
+        Some(resolution) if resolution.route == Route::Vfs => Ok(resolution.backend_fd),
+        _ => {
+            ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
+            Err(Error::new(ErrorCode::BadFile, "fd is not a VFS fd"))
+        },
+    }
+}
+
+/// Resolves `fd` and returns the descriptor expected by the VFS backend.
+///
+/// Non-standalone builds route these syscalls to `linuxd`, which interprets the caller-facing
+/// descriptor directly.
+#[cfg(not(feature = "standalone"))]
+pub(crate) fn resolve_vfs(fd: i32, _syscall_name: &str) -> Result<i32, Error> {
+    Ok(fd)
 }
 
 /// Records the resolution learned for `fd` from a backend response, stamped with the `epoch` the
 /// backend reported.
 ///
-/// Called when a descriptor is created (`open`/`socket`) so the cache holds an authoritative entry
-/// rather than relying on re-derivation. An existing entry for `fd` is replaced.
+/// Called when a descriptor is created (`open`/`pipe`/`socket`) or learned from a `vfsd` resolution
+/// so the cache holds an authoritative entry rather than re-querying on every use. The reported
+/// generation also advances [`EXPECTED_EPOCH`], so an entry recorded now is coherent against the
+/// table state that produced it. An existing entry for `fd` is replaced.
+#[cfg(any(feature = "standalone", test))]
 pub(crate) fn record(fd: i32, route: Route, backend_fd: i32, epoch: u64) {
+    observe_epoch(epoch);
     CACHE.lock().insert(
         fd,
         CacheEntry {
@@ -156,18 +248,127 @@ pub(crate) fn record(fd: i32, route: Route, backend_fd: i32, epoch: u64) {
     );
 }
 
+/// Queries `vfsd` for the authoritative route of `fd` and records the answer.
+///
+/// Reached only when the cache misses (or holds a stale entry) and the number is not in the fixed
+/// socket range — i.e. for a `vfsd`-owned descriptor that this process did not itself create, or
+/// one whose entry went stale. The answer is recorded so subsequent uses hit the cache. Returns
+/// `None` if `vfsd` reports no slot for `fd` (an invalid descriptor).
+#[cfg(all(feature = "standalone", not(test)))]
+fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
+    use crate::{
+        unistd::message::{
+            ResolveFdRequest,
+            ResolveFdResponse,
+        },
+        SystemCallMessage,
+        SystemCallMessageHeader,
+    };
+    use ::sys::{
+        ipc::Message,
+        pm::ThreadIdentifier,
+    };
+
+    let tid: ThreadIdentifier = match ::sys::kcall::pm::__kcall_gettid() {
+        Ok(tid) => tid,
+        Err(_) => return VfsdResolution::Unavailable,
+    };
+    let pid: ::sys::pm::ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+        Ok(pid) => pid,
+        Err(_) => return VfsdResolution::Unavailable,
+    };
+
+    // Send the resolution query to vfsd and await its authoritative answer.
+    let request: Message =
+        ResolveFdRequest::build(tid, pid, fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
+    if ::sys::kcall::ipc::__kcall_send(&request).is_err() {
+        return VfsdResolution::Unavailable;
+    }
+    let response: Message = match ::sys::kcall::ipc::__kcall_recv() {
+        Ok(response) => response,
+        Err(_) => return VfsdResolution::Unavailable,
+    };
+
+    // A non-zero status means vfsd holds no slot for this descriptor: it is unroutable.
+    if response.status != 0 {
+        return VfsdResolution::BadFile;
+    }
+
+    let message: SystemCallMessage = match SystemCallMessage::try_from_bytes(response.payload) {
+        Ok(message) => message,
+        Err(_) => return VfsdResolution::BadFile,
+    };
+    let resolved: ResolveFdResponse = match message.header {
+        SystemCallMessageHeader::ResolveFdResponse => {
+            ResolveFdResponse::from_bytes(message.payload)
+        },
+        _ => {
+            ::syslog::warn!("resolve_via_vfsd(): unexpected response header (fd={fd})");
+            return VfsdResolution::BadFile;
+        },
+    };
+    // `ResolveFdResponse` is `#[repr(C, packed)]`, so read each field through a raw pointer to avoid
+    // forming an unaligned reference (undefined behavior on targets that fault on misaligned loads).
+    let route_tag: u32 = unsafe { ::core::ptr::addr_of!(resolved.route).read_unaligned() };
+    let backend_fd: i32 = unsafe { ::core::ptr::addr_of!(resolved.backend_fd).read_unaligned() };
+    let epoch: u64 = unsafe { ::core::ptr::addr_of!(resolved.epoch).read_unaligned() };
+    let route: Route = match route_tag {
+        ResolveFdResponse::ROUTE_CONSOLE => Route::Console,
+        ResolveFdResponse::ROUTE_VFS => Route::Vfs,
+        ResolveFdResponse::ROUTE_SOCKET => Route::Socket,
+        other => {
+            ::syslog::warn!("resolve_via_vfsd(): unknown route tag {other} (fd={fd})");
+            return VfsdResolution::BadFile;
+        },
+    };
+    record(fd, route, backend_fd, epoch);
+    VfsdResolution::Hit(Resolution { route, backend_fd })
+}
+
+/// Test stand-in for the `vfsd` resolution query.
+///
+/// Host unit tests run without the `standalone` feature, so they cannot perform the real IPC. This
+/// reads the descriptor's authoritative route from [`MOCK_VFSD`], which a test populates to model
+/// `vfsd`'s table, and records it exactly as the production path would.
+#[cfg(test)]
+fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
+    if MOCK_VFSD_UNAVAILABLE.load(Ordering::Relaxed) {
+        return VfsdResolution::Unavailable;
+    }
+    let Some((route, backend_fd, epoch)) = MOCK_VFSD.lock().get(&fd).copied() else {
+        return VfsdResolution::BadFile;
+    };
+    record(fd, route, backend_fd, epoch);
+    VfsdResolution::Hit(Resolution { route, backend_fd })
+}
+
+/// Test model of `vfsd`'s authoritative slot table, consulted by the test [`resolve_via_vfsd`].
+#[cfg(test)]
+static MOCK_VFSD: Mutex<BTreeMap<i32, (Route, i32, u64)>> = Mutex::new(BTreeMap::new());
+
+/// Test switch that models a run mode without a guest `vfsd`.
+#[cfg(test)]
+static MOCK_VFSD_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+
 /// Drops any cached resolution for `fd`.
 ///
 /// Called when a descriptor is destroyed (`close`) so a number later reused by a different backend
 /// cannot be answered from a stale entry.
+#[cfg(any(feature = "standalone", test))]
 pub(crate) fn invalidate(fd: i32) {
     CACHE.lock().remove(&fd);
 }
 
-/// Drops every cached resolution.
+/// Drops every cached resolution and resets the coherence and mock state.
+///
+/// Restores the process-global statics to their initial values so each test starts from a pristine
+/// cache, observed generation, and modeled `vfsd` table.
 #[cfg(test)]
 fn clear() {
     CACHE.lock().clear();
+    EXPECTED_EPOCH.store(0, Ordering::Relaxed);
+    MOCK_VFSD.lock().clear();
+    MOCK_VFSD_UNAVAILABLE.store(false, Ordering::Relaxed);
 }
 
 //==================================================================================================
@@ -177,97 +378,166 @@ fn clear() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::config::fds::{
-        SOCKET_FD_BASE,
-        VFS_FD_BASE,
-    };
+    use ::config::fds::SOCKET_FD_BASE;
 
-    /// Serializes the cache tests: they share the process-global [`CACHE`], so they must not run
-    /// concurrently with one another.
+    /// Serializes the cache tests: they share the process-global [`CACHE`], [`EXPECTED_EPOCH`], and
+    /// [`MOCK_VFSD`], so they must not run concurrently with one another.
     static CACHE_TEST_GUARD: Mutex<()> = Mutex::new(());
 
-    /// Tests that a descriptor with no cached entry resolves by the number rules.
+    /// Seeds the modeled `vfsd` table for the duration of a test.
+    fn mock_vfsd(fd: i32, route: Route, backend_fd: i32, epoch: u64) {
+        MOCK_VFSD.lock().insert(fd, (route, backend_fd, epoch));
+    }
+
+    /// Tests that only the reserved socket range resolves without consulting `vfsd`. A low flat
+    /// number with nothing cached or modeled in `vfsd` is unroutable.
     #[test]
-    fn derive_seeds_from_number_rules() {
+    fn derive_routes_socket_by_number() {
         let _guard = CACHE_TEST_GUARD.lock();
         clear();
 
         assert_eq!(
-            resolve(STDIN_FILENO),
-            Some(Resolution {
-                route: Route::Console,
-                backend_fd: STDIN_FILENO
-            }),
-            "stdin must route to the console"
-        );
-        assert_eq!(
-            resolve(STDOUT_FILENO).map(|r| r.route),
-            Some(Route::Console),
-            "stdout must route to the console"
-        );
-        assert_eq!(
-            resolve(STDERR_FILENO).map(|r| r.route),
-            Some(Route::Console),
-            "stderr must route to the console"
-        );
-        assert_eq!(
-            resolve(VFS_FD_BASE),
-            Some(Resolution {
-                route: Route::Vfs,
-                backend_fd: VFS_FD_BASE
-            }),
-            "a high descriptor must route to vfsd"
-        );
-        assert_eq!(
             resolve(SOCKET_FD_BASE).map(|r| r.route),
             Some(Route::Socket),
-            "a socket descriptor must route to networkd"
+            "a socket descriptor must route to networkd by number"
         );
-        assert_eq!(resolve(7), None, "a descriptor in no backend range is unroutable");
+        // Low flat numbers are not a fixed range; with no cache entry and no vfsd slot they are
+        // unroutable rather than silently assumed to be console or vfsd files.
+        for fd in [0, 1, 2, 4] {
+            assert_eq!(resolve(fd), None, "an unknown flat descriptor must be unroutable");
+        }
 
         clear();
     }
 
-    /// Tests that a recorded entry is returned by `resolve`, overriding number-rule derivation.
+    /// Tests that standard descriptors are flat slots whose console route comes from `vfsd`, not
+    /// from their number.
+    #[test]
+    fn standard_descriptor_consults_vfsd() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        mock_vfsd(1, Route::Console, 1, 3);
+        assert_eq!(
+            resolve(1),
+            Some(Resolution {
+                route: Route::Console,
+                backend_fd: 1
+            }),
+            "a standard descriptor must resolve through vfsd's flat table"
+        );
+
+        clear();
+    }
+
+    /// Tests that a present `vfsd` owns standard descriptor validity: an authoritative bad-fd
+    /// answer must not fall back to the console by number.
+    #[test]
+    fn standard_descriptor_bad_file_does_not_fallback() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        assert_eq!(resolve(STDOUT_FILENO), None, "vfsd bad-fd must stay authoritative");
+
+        clear();
+    }
+
+    /// Tests the direct-ELF run mode where no guest `vfsd` is available: standard descriptors still
+    /// route to the kernel console so stdout/stderr tests can report results.
+    #[test]
+    fn standard_descriptor_falls_back_when_vfsd_unavailable() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        MOCK_VFSD_UNAVAILABLE.store(true, Ordering::Relaxed);
+        assert_eq!(
+            resolve(STDOUT_FILENO),
+            Some(Resolution {
+                route: Route::Console,
+                backend_fd: STDOUT_FILENO
+            }),
+            "stdio must fall back to the kernel console when no vfsd exists"
+        );
+        assert_eq!(resolve(4), None, "non-stdio flat descriptors do not fall back");
+
+        clear();
+    }
+
+    /// Tests that hosted builds leave VFS descriptor interpretation to linuxd.
+    #[test]
+    fn hosted_resolve_vfs_returns_raw_fd() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        let backend_fd: i32 = resolve_vfs(7, "test").expect("hosted resolve_vfs should succeed");
+        assert_eq!(backend_fd, 7, "hosted mode must pass raw descriptors through");
+
+        clear();
+    }
+
+    /// Tests that a recorded entry is returned by `resolve` without a `vfsd` round-trip, and that
+    /// `backend_fd` may differ from the caller-facing descriptor.
     #[test]
     fn record_then_resolve_hits_cache() {
         let _guard = CACHE_TEST_GUARD.lock();
         clear();
 
-        // A number that derives to nothing still resolves once recorded, proving the cache — not the
-        // number — is consulted first, and that `backend_fd` may differ from the descriptor.
-        record(7, Route::Vfs, VFS_FD_BASE + 5, 1);
+        // Model a contradictory vfsd answer to prove a coherent cache hit never consults it.
+        mock_vfsd(4, Route::Socket, 999, 0);
+        record(4, Route::Vfs, 41, 0);
         assert_eq!(
-            resolve(7),
+            resolve(4),
             Some(Resolution {
                 route: Route::Vfs,
-                backend_fd: VFS_FD_BASE + 5
+                backend_fd: 41
             }),
-            "a recorded entry must win over number-rule derivation"
+            "a coherent recorded entry must be returned without querying vfsd"
         );
 
         clear();
     }
 
-    /// Tests that `invalidate` drops a single entry, after which resolution falls back to the number
-    /// rules.
+    /// Tests that a cache miss on a flat descriptor consults `vfsd`, returns its authoritative
+    /// answer, and caches it so the next use hits the cache.
+    #[test]
+    fn cache_miss_consults_vfsd() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        mock_vfsd(5, Route::Vfs, 5, 7);
+        assert_eq!(
+            resolve(5),
+            Some(Resolution {
+                route: Route::Vfs,
+                backend_fd: 5
+            }),
+            "a cache miss on a flat descriptor must consult vfsd"
+        );
+        // The answer is now cached at the reported epoch, so removing the vfsd model leaves the hot
+        // path intact.
+        MOCK_VFSD.lock().clear();
+        assert_eq!(
+            resolve(5).map(|r| r.route),
+            Some(Route::Vfs),
+            "the resolved descriptor must now hit the cache"
+        );
+
+        clear();
+    }
+
+    /// Tests that `invalidate` drops a single entry, after which resolution re-consults `vfsd`.
     #[test]
     fn invalidate_drops_entry() {
         let _guard = CACHE_TEST_GUARD.lock();
         clear();
 
-        record(VFS_FD_BASE, Route::Vfs, VFS_FD_BASE, 3);
-        invalidate(VFS_FD_BASE);
-        // Re-derives to the same answer here, but from the number rather than the dropped entry.
-        assert_eq!(
-            resolve(VFS_FD_BASE).map(|r| r.route),
-            Some(Route::Vfs),
-            "after invalidation the descriptor re-derives from its number"
-        );
-        // A recorded-only number reverts to unroutable once invalidated.
-        record(7, Route::Socket, 7, 3);
-        invalidate(7);
-        assert_eq!(resolve(7), None, "an invalidated recorded-only entry is gone");
+        mock_vfsd(6, Route::Vfs, 6, 2);
+        assert!(resolve(6).is_some(), "the descriptor resolves and is cached");
+        invalidate(6);
+        // With the entry gone, the next resolve falls through to vfsd again rather than answering
+        // from the dropped entry.
+        MOCK_VFSD.lock().clear();
+        assert_eq!(resolve(6), None, "an invalidated entry must not survive as a stale answer");
 
         clear();
     }
@@ -278,29 +548,61 @@ mod tests {
         let _guard = CACHE_TEST_GUARD.lock();
         clear();
 
-        record(7, Route::Vfs, 7, 1);
-        record(8, Route::Socket, 8, 1);
+        record(4, Route::Vfs, 4, 1);
+        record(5, Route::Vfs, 5, 1);
         clear();
-        assert_eq!(resolve(7), None, "clear must drop recorded entries");
-        assert_eq!(resolve(8), None, "clear must drop recorded entries");
+        assert_eq!(resolve(4), None, "clear must drop recorded entries");
+        assert_eq!(resolve(5), None, "clear must drop recorded entries");
 
         clear();
     }
 
-    /// Tests that the epoch is inert: a descriptor's route does not depend on the generation its
-    /// entry was learned at.
+    /// Tests the stale-route hazard the flat namespace introduces: an entry learned at an older
+    /// generation must be refetched once `vfsd`'s table advances, and the fresh backend used — never
+    /// the entry that described the number's previous occupant.
     #[test]
-    fn epoch_does_not_change_routing() {
+    fn stale_entry_is_refetched_from_vfsd() {
         let _guard = CACHE_TEST_GUARD.lock();
         clear();
 
-        record(VFS_FD_BASE, Route::Vfs, VFS_FD_BASE, 1);
-        let early: Option<Route> = resolve(VFS_FD_BASE).map(|r| r.route);
-        // Re-learn the same descriptor at a much newer generation.
-        record(VFS_FD_BASE, Route::Vfs, VFS_FD_BASE, 9_999);
-        let late: Option<Route> = resolve(VFS_FD_BASE).map(|r| r.route);
-        assert_eq!(early, Some(Route::Vfs));
-        assert_eq!(early, late, "bumping the epoch must not change the routing decision");
+        // Descriptor 4 is learned as a vfsd file at generation 1.
+        record(4, Route::Vfs, 4, 1);
+        assert_eq!(resolve(4).map(|r| r.route), Some(Route::Vfs), "initially a vfsd file");
+
+        // A later table mutation (e.g. another open) advances the observed generation, and the
+        // number has since been reused for a different backend in vfsd's table.
+        record(9, Route::Vfs, 9, 5);
+        mock_vfsd(4, Route::Socket, 4, 5);
+
+        // The stale entry must not be used: resolution refetches and reflects the new backend.
+        assert_eq!(
+            resolve(4),
+            Some(Resolution {
+                route: Route::Socket,
+                backend_fd: 4
+            }),
+            "a stale entry must be refetched, not trusted"
+        );
+
+        clear();
+    }
+
+    /// Tests that a coherent entry is never refetched: once the observed generation matches the
+    /// entry's epoch, the hot path answers from the cache even if `vfsd` would say otherwise.
+    #[test]
+    fn coherent_entry_skips_vfsd() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        // Entry and observed generation agree at 5.
+        record(4, Route::Vfs, 4, 5);
+        // A contradictory vfsd model would change the answer if it were consulted.
+        mock_vfsd(4, Route::Socket, 4, 5);
+        assert_eq!(
+            resolve(4).map(|r| r.route),
+            Some(Route::Vfs),
+            "a coherent entry must be served from the cache without a vfsd round-trip"
+        );
 
         clear();
     }

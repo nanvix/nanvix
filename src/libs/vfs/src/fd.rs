@@ -27,10 +27,7 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
-use ::config::fds::{
-    VFS_FD_BASE,
-    VFS_MAX_OPEN_FILES,
-};
+use ::config::fds::SOCKET_FD_BASE;
 use ::core::sync::atomic::{
     AtomicBool,
     AtomicI32,
@@ -593,11 +590,12 @@ impl Slot {
 /// gives the child a copy of this state: the descriptor slots are cloned as shared references to
 /// the parent's open file descriptions, while the working directory is deep-copied.
 ///
-/// The slot table is a flat map keyed by the raw descriptor number, so it can hold both the low
-/// console descriptors (`0`/`1`/`2`, seeded by [`vfs_seed_root_console`]) and the high VFS range
-/// allocated by [`alloc_fd`] in the same structure. Only the storage is flat: [`alloc_fd`] still
-/// hands out descriptors in `[VFS_FD_BASE, VFS_FD_BASE + VFS_MAX_OPEN_FILES)` and the descriptor
-/// operations below still resolve only that high range, so numbering and routing are unchanged.
+/// The slot table is a flat map keyed by the raw descriptor number: it holds the low console
+/// descriptors (`0`/`1`/`2`, seeded by [`vfs_seed_root_console`]) and the descriptors handed out by
+/// [`alloc_fd`] in one structure. [`alloc_fd`] allocates the lowest free number across that whole
+/// namespace, so the first `open` in a fresh process returns `3` and a freed number is reused
+/// before any higher one. A descriptor number therefore no longer encodes its backend; vfsd answers
+/// what each number is through [`vfs_resolve`].
 struct ProcessState {
     /// File descriptor slots keyed by the raw file descriptor number.
     slots: BTreeMap<c_int, Slot>,
@@ -730,24 +728,14 @@ pub(crate) fn current_cwd() -> String {
         .unwrap_or_else(|| String::from("/"))
 }
 
-/// Validates that `fd` falls within the VFS descriptor range.
-///
-/// vfsd now stores the console descriptors (`0`/`1`/`2`) alongside the high VFS range in a single
-/// flat table, but it serves no I/O on the console slots: those still flow `libposix → kernel` by
-/// number. Its descriptor operations therefore resolve only the high range, exactly as they did
-/// before the storage was generalized, so a descriptor below [`VFS_FD_BASE`] (or past the range)
-/// is rejected here.
-fn check_vfs_fd(fd: c_int) -> Result<(), Fat32Error> {
-    if is_vfs_fd(fd) {
-        Ok(())
-    } else {
-        Err(Fat32Error::InvalidFd)
-    }
-}
-
 /// Returns a shared reference to the open file description for `fd` in the current process.
+///
+/// Indexing is flat: the descriptor number is the slot key directly, so the low console slots
+/// (`0`/`1`/`2`) and the descriptors handed out by [`alloc_fd`] are looked up the same way. A
+/// descriptor with no slot in the current process is rejected. vfsd serves no I/O on console or
+/// socket tokens; the I/O methods on [`VfsFileHandle`] reject those handles, so this accessor does
+/// not need to special-case them.
 fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
-    check_vfs_fd(fd)?;
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let state: &ProcessState = procs.get(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
     state
@@ -758,15 +746,24 @@ fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
 }
 
 /// Allocates a new file descriptor for the given handle in the current process.
+///
+/// Allocation is flat and lowest-free: the descriptor is the smallest non-negative number not
+/// already present in the process's slot table. Console descriptors `0`/`1`/`2` occupy low keys in
+/// that same table, so the first `open` in a fresh process returns `3`, and a number freed by
+/// `close` is reused before any higher one — matching POSIX.
+///
+/// The search stops below [`SOCKET_FD_BASE`], so a VFS descriptor can never be handed out inside the
+/// `networkd`-owned socket range. This is the interim reservation that lets the flat namespace ship
+/// before sockets are unified into this table; it is removed once `networkd` joins the flat
+/// namespace.
 fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.entry(current_pid()).or_insert_with(ProcessState::new);
-    // Find the lowest free descriptor in the high VFS range. Console descriptors live at low keys
-    // in the same flat table but are never handed out here, so numbering is unchanged.
-    let fd: c_int = (0..VFS_MAX_OPEN_FILES)
-        .map(|i| VFS_FD_BASE + i as c_int)
-        .find(|fd| !state.slots.contains_key(fd))
+    // Lowest free descriptor across the whole flat namespace, bounded below the reserved socket
+    // range so an allocated number can never collide with a networkd-owned socket descriptor.
+    let fd: c_int = (0..SOCKET_FD_BASE)
+        .find(|candidate| !state.slots.contains_key(candidate))
         .ok_or(Fat32Error::TooManyOpenFiles)?;
     let file: OpenFile = Arc::new(Mutex::new(VfsEntry {
         handle,
@@ -892,10 +889,10 @@ static ROOT_CONSOLE_SEEDED: AtomicBool = AtomicBool::new(false);
 /// This installs a [`ConsoleHandle`] for stdin, stdout, and stderr into `pid`'s descriptor table so
 /// that vfsd becomes the authoritative bookkeeper of those slots and forks propagate them onward.
 ///
-/// The seeding is behavior-preserving: the console slots are inert routing tokens (vfsd serves no
-/// I/O on them — console `read`/`write` still flow `libposix → kernel` by number), and [`alloc_fd`]
-/// continues to hand out descriptors only in the high `[VFS_FD_BASE, …)` range, so `open` numbering
-/// is untouched.
+/// The console slots are inert routing tokens: vfsd serves no I/O on them, but it is the authority
+/// that tells libposix to route console `read`/`write` to the kernel. They occupy descriptors
+/// `0`/`1`/`2` in the flat table, so the lowest-free [`alloc_fd`] hands the first `open` descriptor
+/// `3`.
 ///
 /// The call is idempotent and root-only. vfsd may invoke it both on regular syscall dispatch and
 /// when a fork-clone notification names a parent; non-root pids are ignored without consuming the
@@ -1024,9 +1021,6 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
 /// `false` if other descriptors — for example in a forked child — still share it, or if `fd` is
 /// invalid. This does not modify the descriptor table.
 pub fn vfs_hostfs_is_last_ref(fd: c_int) -> bool {
-    if check_vfs_fd(fd).is_err() {
-        return false;
-    }
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let Some(state) = procs.get(&current_pid()) else {
         return false;
@@ -1047,9 +1041,6 @@ pub fn vfs_hostfs_is_last_ref(fd: c_int) -> bool {
 /// end (for example in a forked child), when `fd` is not a pipe, or when `fd` is invalid. This does
 /// not modify the descriptor table.
 pub fn vfs_pipe_is_last_ref(fd: c_int) -> bool {
-    if check_vfs_fd(fd).is_err() {
-        return false;
-    }
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let Some(state) = procs.get(&current_pid()) else {
         return false;
@@ -1228,7 +1219,6 @@ pub fn vfs_get_status_flags(fd: c_int) -> c_int {
 /// stored per descriptor, so descriptors that share one open file description through `dup` or
 /// `fork` report them independently.
 pub fn vfs_get_fd_flags(fd: c_int) -> Option<FdFlags> {
-    check_vfs_fd(fd).ok()?;
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let state: &ProcessState = procs.get(&current_pid())?;
     Some(state.slots.get(&fd)?.fd_flags)
@@ -1240,7 +1230,6 @@ pub fn vfs_get_fd_flags(fd: c_int) -> Option<FdFlags> {
 /// flags are stored per descriptor, updating one descriptor does not affect another that shares the
 /// same open file description.
 pub fn vfs_set_fd_flags(fd: c_int, flags: FdFlags) -> Result<(), Fat32Error> {
-    check_vfs_fd(fd)?;
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.get_mut(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
@@ -1281,20 +1270,67 @@ pub fn is_vfs_path(path: &str) -> bool {
     fat32_backend::exists(path)
 }
 
-/// Returns `true` if the given file descriptor belongs to the VFS.
-pub fn is_vfs_fd(fd: c_int) -> bool {
-    ::config::fds::is_vfs_fd(fd)
+/// The backend a descriptor's slot is bound to, as reported by [`vfs_resolve`].
+///
+/// vfsd is the routing authority once descriptor numbers no longer encode their backend: it answers
+/// what a flat number like `4` actually is — a console stream, a vfsd-served object, or a socket —
+/// from its authoritative slot table.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VfsRoute {
+    /// A console stream; the `backend_fd` is the standard stream number (`0`/`1`/`2`).
+    Console,
+    /// A vfsd-served object (regular file, directory, host file, or pipe end).
+    Vfs,
+    /// A socket; the `backend_fd` is the descriptor `networkd` assigned.
+    Socket,
+}
+
+/// Resolves a flat descriptor to its backend route and the descriptor that backend expects.
+///
+/// This is the authoritative answer libposix consults on a resolution-cache miss once numbers stop
+/// encoding their backend. The route follows the slot's handle: a console token reports
+/// [`VfsRoute::Console`] and the stream number it stands for, a socket token reports
+/// [`VfsRoute::Socket`] and its `networkd` descriptor, and every vfsd-served handle reports
+/// [`VfsRoute::Vfs`] addressed by the raw descriptor. Returns `None` if the current process holds no
+/// slot for `fd`.
+pub fn vfs_resolve(fd: c_int) -> Option<(VfsRoute, c_int)> {
+    // Clone the shared open file description out from under the registry lock, then inspect its
+    // handle without nesting the registry lock under the per-entry lock.
+    let file: OpenFile = {
+        let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+            PROCESSES.lock();
+        procs.get(&current_pid())?.slots.get(&fd)?.file.clone()
+    };
+    let guard = file.lock();
+    let resolution: (VfsRoute, c_int) = match &guard.handle {
+        VfsFileHandle::Console(h) => (
+            VfsRoute::Console,
+            match h.stream() {
+                ConsoleStream::Stdin => STDIN_FILENO,
+                ConsoleStream::Stdout => STDOUT_FILENO,
+                ConsoleStream::Stderr => STDERR_FILENO,
+            },
+        ),
+        VfsFileHandle::Socket(h) => (VfsRoute::Socket, h.remote_fd()),
+        // Every other handle is served by vfsd, addressed by the raw descriptor.
+        VfsFileHandle::Fat32(_)
+        | VfsFileHandle::DirectRead(_)
+        | VfsFileHandle::Directory(_)
+        | VfsFileHandle::HostFs(_)
+        | VfsFileHandle::Pipe(_) => (VfsRoute::Vfs, fd),
+    };
+    Some(resolution)
 }
 
 /// Resolves a `dirfd` + `path` pair into an absolute VFS path.
 ///
 /// If `path` is absolute, it is returned as-is (dirfd is ignored per POSIX).
 /// If `dirfd` is `AT_FDCWD`, the path is resolved against the VFS current
-/// working directory. If `dirfd` is a VFS directory fd, the path is resolved
+/// working directory. If `dirfd` is a directory descriptor, the path is resolved
 /// relative to that directory's path.
 ///
-/// Returns `None` if `dirfd` is not a VFS fd and not `AT_FDCWD`, indicating
-/// that VFS cannot handle this request.
+/// Returns `None` if `dirfd` is neither `AT_FDCWD` nor a directory descriptor of the current
+/// process, indicating that VFS cannot handle this request.
 ///
 /// # Limitations
 ///
@@ -1321,11 +1357,9 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
         };
     }
 
-    // Relative path with a VFS directory fd: resolve against that directory.
-    if !is_vfs_fd(dirfd) {
-        return None;
-    }
-
+    // Relative path with a directory descriptor: resolve against that directory. Validity is the
+    // slot's handle type, not the descriptor number — a non-directory or absent descriptor yields
+    // `None` below rather than being pre-screened by a number range.
     let file: OpenFile = entry_arc(dirfd).ok()?;
     let guard = file.lock();
     let dir_path: &str = match &guard.handle {
@@ -1558,8 +1592,10 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
 }
 
 /// Closes a VFS file descriptor.
+///
+/// In the flat namespace any descriptor present in the process's slot table can be closed by its
+/// raw number, including a low console slot — freeing it for the lowest-free allocator to reuse.
 pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
-    check_vfs_fd(fd)?;
     // Detach the descriptor while holding the registry lock, but defer dropping the open file
     // description until the lock is released. Its drop may run backend teardown (e.g. `File::drop`,
     // which takes a global VFS lock); deferring keeps the registry lock from ever nesting with
@@ -2382,33 +2418,90 @@ mod tests {
         assert_eq!(size, 100);
     }
 
-    // -- FD range tests ----------------------------------------------------------
+    // -- flat allocation & resolution tests --------------------------------------
 
-    /// Tests that VFS FD base is outside linuxd range.
+    /// Tests that allocation is flat and lowest-free: descriptors are handed out from `0` upward and
+    /// a freed number is reused before any higher one. No descriptor ever falls in the reserved
+    /// socket range.
     #[test]
-    fn vfs_fd_base_is_high() {
-        const { assert!(VFS_FD_BASE >= 1024, "VFS FD base should be >= 1024 to avoid linuxd conflicts") };
+    fn alloc_is_lowest_free_and_below_socket_range() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7401);
+        set_current_process(pid);
+
+        // A fresh process with no console seeded allocates from 0 upward.
+        let a: c_int = vfs_alloc_hostfs(10, false, None).expect("alloc a");
+        let b: c_int = vfs_alloc_hostfs(11, false, None).expect("alloc b");
+        let c: c_int = vfs_alloc_hostfs(12, false, None).expect("alloc c");
+        assert_eq!((a, b, c), (0, 1, 2), "flat allocation hands out the lowest free numbers");
+        assert!(
+            [a, b, c].iter().all(|fd| !::config::fds::is_socket_fd(*fd)),
+            "an allocated descriptor must never fall in the reserved socket range"
+        );
+
+        // Freeing the middle descriptor makes it the lowest free, so the next alloc reuses it.
+        vfs_close(b).expect("close b");
+        let d: c_int = vfs_alloc_hostfs(13, false, None).expect("alloc d");
+        assert_eq!(d, b, "a freed number is reused before any higher one");
+
+        forget_processes(&[pid]);
     }
 
-    /// Tests is_vfs_fd with FDs in range.
+    /// Tests that the first `open` in a process whose console slots are seeded returns `3`, because
+    /// `0`/`1`/`2` are occupied by the standard streams — the POSIX lowest-free expectation.
     #[test]
-    fn is_vfs_fd_in_range() {
-        assert!(is_vfs_fd(VFS_FD_BASE), "base FD should be a VFS FD");
-        assert!(
-            is_vfs_fd(VFS_FD_BASE + VFS_MAX_OPEN_FILES as c_int - 1),
-            "last FD should be a VFS FD"
-        );
+    fn first_open_after_console_seed_returns_three() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+
+        vfs_seed_root_console(root);
+        set_current_process(root);
+        let fd: c_int = vfs_alloc_hostfs(20, false, None).expect("alloc after seed");
+        assert_eq!(fd, 3, "console occupies 0/1/2, so the first open returns 3");
+
+        // Closing stdin frees slot 0, which the lowest-free allocator then reuses ahead of 4.
+        vfs_close(STDIN_FILENO).expect("close stdin");
+        let reused: c_int = vfs_alloc_hostfs(21, false, None).expect("alloc after closing stdin");
+        assert_eq!(reused, STDIN_FILENO, "closing stdin makes 0 the lowest free number");
+
+        forget_processes(&[root]);
     }
 
-    /// Tests is_vfs_fd with FDs out of range.
+    /// Tests that [`vfs_resolve`] answers a descriptor's backend from its slot handle: a console
+    /// token reports its stream number, a socket token its networkd descriptor, and every
+    /// vfsd-served handle the raw descriptor. An absent descriptor resolves to `None`.
     #[test]
-    fn is_vfs_fd_out_of_range() {
-        assert!(!is_vfs_fd(0), "FD 0 should not be a VFS FD");
-        assert!(!is_vfs_fd(VFS_FD_BASE - 1), "FD below base should not be a VFS FD");
-        assert!(
-            !is_vfs_fd(VFS_FD_BASE + VFS_MAX_OPEN_FILES as c_int),
-            "FD past max should not be a VFS FD"
+    fn vfs_resolve_reports_backend_by_handle() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7411);
+        set_current_process(pid);
+
+        let console_fd: c_int =
+            alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+                .expect("console alloc");
+        let socket_fd: c_int =
+            alloc_fd(VfsFileHandle::Socket(SocketHandle::new(77))).expect("socket alloc");
+        let file_fd: c_int = vfs_alloc_hostfs(30, false, None).expect("hostfs alloc");
+
+        // The console token's backend is its stream number (stdout = 1), not its slot number.
+        assert_eq!(
+            vfs_resolve(console_fd),
+            Some((VfsRoute::Console, STDOUT_FILENO)),
+            "a console token resolves to its stream number"
         );
+        assert_eq!(
+            vfs_resolve(socket_fd),
+            Some((VfsRoute::Socket, 77)),
+            "a socket token resolves to its networkd descriptor"
+        );
+        assert_eq!(
+            vfs_resolve(file_fd),
+            Some((VfsRoute::Vfs, file_fd)),
+            "a vfsd-served handle resolves to its raw descriptor"
+        );
+        assert_eq!(vfs_resolve(4096), None, "an absent descriptor resolves to None");
+
+        forget_processes(&[pid]);
     }
 
     // -- fork() per-process descriptor table tests -------------------------------

@@ -10,6 +10,7 @@ use crate::error::{
     fat32_to_error_code,
 };
 use ::sys::{
+    error::ErrorCode,
     ipc::{
         Message,
         MessageType,
@@ -47,11 +48,14 @@ use ::syscall::{
         FileSyncResponse,
         FileTruncateRequest,
         FileTruncateResponse,
+        ResolveFdRequest,
+        ResolveFdResponse,
         SeekRequest,
         SeekResponse,
     },
     SystemCallMessage,
 };
+use ::vfs::fd::VfsRoute;
 
 //==================================================================================================
 // Short Request Handlers
@@ -63,6 +67,40 @@ pub(crate) fn handle_close(source: ThreadIdentifier, msg: SystemCallMessage) -> 
     match ::vfs::fd::vfs_close(fd) {
         Ok(()) => CloseResponse::build(source, 0, ProcessIdentifier::VFSD, MessageType::Ipc),
         Err(e) => build_error(source, fat32_to_error_code(&e)),
+    }
+}
+
+/// Handles a descriptor-resolution query: reports the authoritative backend of a flat descriptor.
+///
+/// libposix sends this on a resolution-cache miss once descriptor numbers no longer encode their
+/// backend. The answer is taken from vfsd's slot table via [`vfs_resolve`](::vfs::fd::vfs_resolve):
+/// the backend route, the descriptor that backend expects, and the current table generation (the
+/// coherence epoch). A descriptor with no slot is reported as a bad file descriptor.
+pub(crate) fn handle_resolve_fd(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {
+    let req: ResolveFdRequest = ResolveFdRequest::from_bytes(msg.payload);
+    let pid: ProcessIdentifier = req.pid;
+    let fd: i32 = req.fd;
+    ::vfs::fd::set_current_process(pid);
+    ::vfs::fd::vfs_seed_root_console(pid);
+    match ::vfs::fd::vfs_resolve(fd) {
+        Some((route, backend_fd)) => {
+            let wire_route: u32 = match route {
+                VfsRoute::Console => ResolveFdResponse::ROUTE_CONSOLE,
+                VfsRoute::Vfs => ResolveFdResponse::ROUTE_VFS,
+                VfsRoute::Socket => ResolveFdResponse::ROUTE_SOCKET,
+            };
+            let epoch: u64 = ::vfs::fd::vfs_current_generation();
+            ResolveFdResponse::build(
+                source,
+                wire_route,
+                backend_fd,
+                epoch,
+                ProcessIdentifier::VFSD,
+                MessageType::Ipc,
+            )
+        },
+        // No slot for this descriptor in the caller's table: it is unroutable.
+        None => build_error(source, ErrorCode::BadFile),
     }
 }
 

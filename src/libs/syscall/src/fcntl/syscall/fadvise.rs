@@ -55,12 +55,13 @@ pub fn posix_fadvise(
         len,
         advice
     );
+    let backend_fd: RawFileDescriptor = crate::fdtable::resolve_vfs(fd, "posix_fadvise")?;
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
     let request: Message = FileAdvisoryInformationRequest::build(
         tid,
-        fd,
+        backend_fd,
         offset,
         len,
         advice,
