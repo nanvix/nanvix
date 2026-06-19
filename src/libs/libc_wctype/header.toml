@@ -1,0 +1,106 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for wctype.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/wctype.h.
+
+file = "wctype.h"
+brief = "Wide character classification and conversion."
+description = """
+Declares functions for testing and mapping wide characters. Implemented by
+the libc_wctype Rust crate."""
+includes = ["locale.h"]
+guard = "_NANVIX_WCTYPE_H"
+content_order = ["types", "macros", "section:0", "section:1", "section:2"]
+
+[[types]]
+text = """
+#ifndef _WINT_T_DEFINED
+#define _WINT_T_DEFINED
+typedef int wint_t;
+#endif
+
+#ifndef _WCTRANS_T_DEFINED
+#define _WCTRANS_T_DEFINED
+typedef int wctrans_t;
+#endif
+
+#ifndef _WCTYPE_T_DEFINED
+#define _WCTYPE_T_DEFINED
+typedef int wctype_t;
+#endif
+"""
+
+[[macros]]
+name = "WEOF"
+value = "((wint_t)(-1))"
+guard = "WEOF"
+
+[[sections]]
+title = "Classification"
+functions = [
+    "iswalpha",
+    "iswalpha_l",
+    "iswdigit",
+    "iswdigit_l",
+    "iswalnum",
+    "iswalnum_l",
+    "iswspace",
+    "iswspace_l",
+    "iswblank",
+    "iswblank_l",
+    "iswupper",
+    "iswupper_l",
+    "iswlower",
+    "iswlower_l",
+    "iswprint",
+    "iswprint_l",
+    "iswgraph",
+    "iswgraph_l",
+    "iswpunct",
+    "iswpunct_l",
+    "iswcntrl",
+    "iswcntrl_l",
+    "iswxdigit",
+    "iswxdigit_l",
+    "iswctype",
+    "iswctype_l",
+]
+
+[[sections]]
+title = "Conversion"
+functions = [
+    "towupper",
+    "towupper_l",
+    "towlower",
+    "towlower_l",
+    "towctrans",
+    "towctrans_l",
+]
+
+[[sections]]
+title = "Descriptors"
+functions = ["wctrans", "wctrans_l", "wctype", "wctype_l"]
+
+[overrides]
+iswalnum_l = "extern int iswalnum_l(wint_t wc, locale_t locale);"
+iswalpha_l = "extern int iswalpha_l(wint_t wc, locale_t locale);"
+iswblank_l = "extern int iswblank_l(wint_t wc, locale_t locale);"
+iswcntrl_l = "extern int iswcntrl_l(wint_t wc, locale_t locale);"
+iswctype_l = "extern int iswctype_l(wint_t wc, wctype_t charclass, locale_t locale);"
+iswdigit_l = "extern int iswdigit_l(wint_t wc, locale_t locale);"
+iswgraph_l = "extern int iswgraph_l(wint_t wc, locale_t locale);"
+iswlower_l = "extern int iswlower_l(wint_t wc, locale_t locale);"
+iswprint_l = "extern int iswprint_l(wint_t wc, locale_t locale);"
+iswpunct_l = "extern int iswpunct_l(wint_t wc, locale_t locale);"
+iswspace_l = "extern int iswspace_l(wint_t wc, locale_t locale);"
+iswupper_l = "extern int iswupper_l(wint_t wc, locale_t locale);"
+iswxdigit_l = "extern int iswxdigit_l(wint_t wc, locale_t locale);"
+towctrans_l = "extern wint_t towctrans_l(wint_t wc, wctrans_t desc, locale_t locale);"
+towlower_l = "extern wint_t towlower_l(wint_t wc, locale_t locale);"
+towupper_l = "extern wint_t towupper_l(wint_t wc, locale_t locale);"
+wctrans = "extern wctrans_t wctrans(const char *charclass);"
+wctrans_l = "extern wctrans_t wctrans_l(const char *charclass, locale_t locale);"
+wctype = "extern wctype_t wctype(const char *property);"
+wctype_l = "extern wctype_t wctype_l(const char *property, locale_t locale);"

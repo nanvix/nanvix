@@ -63,6 +63,7 @@ members = [
         "src/libs/libc_string",
         "src/libs/libc_time",
         "src/libs/libc_wchar",
+        "src/libs/libc_wctype",
         "src/libs/cache",
         "src/libs/cmdline",
         "src/libs/koptions",
@@ -234,6 +235,7 @@ libc_stdlib = { path = "src/libs/libc_stdlib", default-features = false }
 libc_string = { path = "src/libs/libc_string", default-features = false }
 libc_time = { path = "src/libs/libc_time", default-features = false }
 libc_wchar = { path = "src/libs/libc_wchar", default-features = false }
+libc_wctype = { path = "src/libs/libc_wctype", default-features = false }
 mmio-tag = { path = "src/libs/mmio-tag", default-features = false }
 sys = { path = "src/libs/sys", default-features = false }
 sysapi = { path = "src/libs/sysapi", default-features = false }

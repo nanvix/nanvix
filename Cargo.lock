@@ -1748,8 +1748,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "libc_wchar"
-version = "0.16.103"
+name = "libc_wctype"
+version = "0.16.106"
 dependencies = [
  "sysapi",
 ]

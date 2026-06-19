@@ -8,8 +8,8 @@
 /// Conversion state for the restartable multibyte functions.
 ///
 /// The layout mirrors the conventional `glibc` definition: a pending-byte counter followed by a
-/// four-byte holding buffer. For the stateless UTF-8 encoding the only state that needs to persist
-/// across calls is the prefix of an incomplete multibyte sequence.
+/// four-byte holding buffer. The byte-oriented C/POSIX locale is single-byte and stateless, so no
+/// state actually persists across calls; the fields are retained only for ABI compatibility.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct mbstate_t {
