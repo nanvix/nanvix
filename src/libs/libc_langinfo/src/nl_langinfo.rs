@@ -99,7 +99,8 @@ static ABMONTHS: [&[u8]; 12] = [
 /// # Returns
 ///
 /// A pointer to a null-terminated string describing `item`. Unrecognized items yield an empty
-/// string. The codeset is reported as UTF-8 to match the libc multibyte conversions.
+/// string. The codeset is reported as ISO-8859-1 to match the byte-oriented C/POSIX locale
+/// multibyte conversions.
 ///
 /// # Safety
 ///
@@ -109,7 +110,7 @@ static ABMONTHS: [&[u8]; 12] = [
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub extern "C" fn nl_langinfo(item: nl_item) -> *mut c_char {
     let s: &'static [u8] = match item {
-        CODESET => b"UTF-8\0",
+        CODESET => b"ISO-8859-1\0",
         D_T_FMT => b"%a %b %e %H:%M:%S %Y\0",
         D_FMT => b"%m/%d/%y\0",
         T_FMT => b"%H:%M:%S\0",
@@ -179,8 +180,8 @@ mod test {
     }
 
     #[test]
-    fn test_codeset_is_utf8() {
-        assert!(c_str_eq(nl_langinfo(CODESET), b"UTF-8"));
+    fn test_codeset_is_iso_8859_1() {
+        assert!(c_str_eq(nl_langinfo(CODESET), b"ISO-8859-1"));
     }
 
     #[test]

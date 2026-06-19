@@ -43,6 +43,11 @@ value = "6"
 
 [[types]]
 text = """
+#ifndef _LOCALE_T_DEFINED
+#define _LOCALE_T_DEFINED
+typedef void *locale_t;
+#endif
+
 /** @brief Locale-specific numeric formatting information. */
 struct lconv {
     char *decimal_point;     /**< Decimal point character.            */
