@@ -18,7 +18,6 @@ use ::sysapi::{
     ffi::c_void,
     sys_types::c_size_t,
 };
-use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -61,11 +60,18 @@ pub unsafe extern "C" fn aligned_alloc(alignment: c_size_t, size: c_size_t) -> *
         return null_mut();
     }
 
-    // Check for null alignment.
-    if alignment == 0 {
-        // Zero-size alignments have implementation-defined behavior,
-        // thus log a warning message and return null.
-        warn!("aligned_alloc(): zero-size alignment (alignment={alignment:?}, size={size:?})");
+    // Check for invalid alignment.
+    if !BlockHeader::supports_alignment(alignment as usize) {
+        warn!("aligned_alloc(): invalid alignment (alignment={alignment:?}, size={size:?})");
+        set_errno(EINVAL);
+        return null_mut();
+    }
+
+    if !size.is_multiple_of(alignment) {
+        warn!(
+            "aligned_alloc(): size is not a multiple of alignment (alignment={alignment:?}, \
+             size={size:?})"
+        );
         set_errno(EINVAL);
         return null_mut();
     }
@@ -86,10 +92,7 @@ mod tests {
     use super::aligned_alloc;
     use crate::set_errno;
     use ::sysapi::{
-        errno::{
-            EINVAL,
-            ENOMEM,
-        },
+        errno::EINVAL,
         ffi::c_int,
         sys_types::c_size_t,
     };
@@ -119,7 +122,7 @@ mod tests {
     fn valid_allocation_multiple() {
         let alignment: c_size_t = 64;
         let size: c_size_t = 256; // multiple of alignment
-        let p = unsafe { aligned_alloc(alignment, size) } as *mut u8;
+        let p = unsafe { aligned_alloc(alignment, size) }.cast::<u8>();
         assert!(!p.is_null());
         let addr = p as usize;
         assert_eq!(addr & (alignment as usize - 1), 0, "pointer {addr:#x} not {alignment}-aligned");
@@ -129,15 +132,12 @@ mod tests {
     }
 
     #[test]
-    fn valid_allocation_non_multiple() {
+    fn size_not_multiple_of_alignment_fails() {
+        set_errno(0);
         let alignment: c_size_t = 64;
         let size: c_size_t = 130; // not a multiple of alignment
-        let p = unsafe { aligned_alloc(alignment, size) } as *mut u8;
-        assert!(!p.is_null());
-        let addr = p as usize;
-        assert_eq!(addr & (alignment as usize - 1), 0, "pointer {addr:#x} not {alignment}-aligned");
-        unsafe {
-            crate::free(p.cast());
-        }
+        let p = unsafe { aligned_alloc(alignment, size) }.cast::<u8>();
+        assert!(p.is_null());
+        assert_eq!(get_errno(), EINVAL);
     }
 }

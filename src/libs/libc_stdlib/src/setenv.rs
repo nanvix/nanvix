@@ -60,14 +60,14 @@ pub unsafe extern "C" fn setenv(
 ) -> c_int {
     // Check if `name` is null.
     if name.is_null() {
-        ::syslog::warn!("setenv(): name is null");
+        warn!("setenv(): name is null");
         set_errno(EINVAL);
         return -1;
     }
 
     // Check if `value` is null.
     if value.is_null() {
-        ::syslog::warn!("setenv(): value is null");
+        warn!("setenv(): value is null");
         set_errno(EINVAL);
         return -1;
     }
@@ -76,7 +76,7 @@ pub unsafe extern "C" fn setenv(
     let name_str: &str = match ffi::CStr::from_ptr(name).to_str() {
         Ok(s) => s,
         Err(_) => {
-            ::syslog::warn!("setenv(): invalid name (name={name:?})");
+            warn!("setenv(): invalid name (name={name:?})");
             set_errno(EINVAL);
             return -1;
         },
@@ -91,10 +91,7 @@ pub unsafe extern "C" fn setenv(
     match env_table::set(name_str, value_bytes, should_overwrite) {
         Ok(_) => 0,
         Err(()) => {
-            ::syslog::warn!(
-                "setenv(): failed (name={name_str:?}, value_len={})",
-                value_bytes.len()
-            );
+            warn!("setenv(): failed (name={name_str:?}, value_len={})", value_bytes.len());
             set_errno(EINVAL);
             -1
         },

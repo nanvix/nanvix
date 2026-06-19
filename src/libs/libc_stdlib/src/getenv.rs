@@ -43,7 +43,7 @@ use ::sysapi::ffi::c_char;
 pub unsafe extern "C" fn getenv(name: *const c_char) -> *mut c_char {
     // Check if `name` is null.
     if name.is_null() {
-        ::syslog::warn!("getenv(): name is null");
+        warn!("getenv(): name is null");
         return ::core::ptr::null_mut();
     }
 
@@ -51,14 +51,14 @@ pub unsafe extern "C" fn getenv(name: *const c_char) -> *mut c_char {
     let name_str: &str = match ffi::CStr::from_ptr(name).to_str() {
         Ok(s) => s,
         Err(_) => {
-            ::syslog::warn!("getenv(): invalid name (name={name:?})");
+            warn!("getenv(): invalid name (name={name:?})");
             return ::core::ptr::null_mut();
         },
     };
 
     // Empty name or name containing '=' is invalid per POSIX.
     if name_str.is_empty() || name_str.contains('=') {
-        ::syslog::warn!("getenv(): invalid name (name={name_str:?})");
+        warn!("getenv(): invalid name (name={name_str:?})");
         return ::core::ptr::null_mut();
     }
 

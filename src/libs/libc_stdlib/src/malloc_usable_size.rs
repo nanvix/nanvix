@@ -61,27 +61,16 @@ pub unsafe extern "C" fn malloc_usable_size(ptr: *mut c_void) -> c_size_t {
 
     let size: usize = BlockHeader::usable_size(ptr.cast::<u8>());
 
-    cfg_if::cfg_if! {
-        if #[cfg(target_pointer_width = "32")] {
-        // On all 32-bit platforms, the following cast is safe.
-            #[allow(clippy::cast_possible_truncation)]
-            size as c_size_t
-        } else if #[cfg(test)] {
-            // When testing, the following cast is acceptable.
-            size.try_into().unwrap_or(c_size_t::MAX)
-        } else {
-            compile_error!("malloc_usable_size is only supported on 32-bit platforms");
-        }
-    }
+    // `c_size_t` may be narrower than `usize` (it is on the 64-bit host used for unit testing), so
+    // saturate on the practically unreachable overflow rather than truncating. On 32-bit targets the
+    // value always fits and the conversion is exact.
+    size.try_into().unwrap_or(c_size_t::MAX)
 }
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::malloc_usable_size;
-    use ::sysapi::{
-        ffi::c_void,
-        sys_types::c_size_t,
-    };
+    use ::sysapi::sys_types::c_size_t;
 
     #[test]
     fn null_pointer_returns_zero() {
@@ -114,11 +103,11 @@ mod tests {
 
     #[test]
     fn aligned_alloc_and_query() {
-        let p = unsafe { crate::aligned_alloc(128, 300) };
+        let p = unsafe { crate::aligned_alloc(128, 384) };
         assert!(!p.is_null());
         let sz = unsafe { malloc_usable_size(p) };
-        assert!(sz as usize >= 300);
-        assert_eq!(sz, 300);
+        assert!(sz as usize >= 384);
+        assert_eq!(sz, 384);
         unsafe { crate::free(p) };
     }
 }

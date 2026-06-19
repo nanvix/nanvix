@@ -38,5 +38,6 @@ use ::sysapi::ffi::c_int;
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn fflush(_stream: *mut FILE) -> c_int {
     // No-op: this implementation uses unbuffered I/O.
+    // TODO (#2631): implement real flush semantics once `libc_stdio` supports stream buffering.
     0
 }

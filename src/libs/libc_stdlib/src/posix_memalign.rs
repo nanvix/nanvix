@@ -17,7 +17,6 @@ use ::sysapi::{
     },
     sys_types::c_size_t,
 };
-use ::syslog::warn;
 
 //==================================================================================================
 // Standalone Functions
@@ -104,7 +103,6 @@ pub unsafe extern "C" fn posix_memalign(
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
-    use super::posix_memalign;
     use crate::set_errno;
     use ::sysapi::{
         errno::EINVAL,

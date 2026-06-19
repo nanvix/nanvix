@@ -32,10 +32,16 @@ pub type SetenvCallback = fn(&str, &[u8]);
 
 /// A single environment variable entry.
 struct EnvEntry {
-    /// Variable name.
-    key: String,
-    /// Null-terminated "KEY=VALUE" C string for pointer stability from `getenv()`.
-    raw: Vec<u8>,
+    /// Storage for the null-terminated `KEY=VALUE` C string.
+    storage: EnvStorage,
+}
+
+/// Storage backing for an environment variable entry.
+enum EnvStorage {
+    /// Owned storage used by `setenv()` and process startup initialization.
+    Owned(Vec<u8>),
+    /// Caller-owned storage installed by `putenv()`.
+    Borrowed(usize),
 }
 
 //==================================================================================================
@@ -128,10 +134,8 @@ pub unsafe fn init_from_raw(envp: *const *const c_char) {
 pub fn get(key: &str) -> *const c_char {
     let table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
     for entry in table.iter() {
-        if entry.key == key {
-            // Return pointer to the value portion, which starts after "KEY=".
-            let offset: usize = entry.key.len() + 1;
-            return entry.raw[offset..].as_ptr().cast::<c_char>();
+        if let Some(value_ptr) = entry.value_ptr_if_key(key) {
+            return value_ptr;
         }
     }
     ::core::ptr::null()
@@ -165,9 +169,9 @@ pub fn set(key: &str, value: &[u8], overwrite: bool) -> Result<bool, ()> {
 
     // Check if the key already exists.
     for entry in table.iter_mut() {
-        if entry.key == key {
+        if entry.matches_key(key) {
             if overwrite {
-                entry.raw = make_raw(key, value);
+                *entry = EnvEntry::owned(key, value);
                 // Release the lock before invoking the callback.
                 drop(table);
                 invoke_setenv_callback(key, value);
@@ -196,7 +200,53 @@ pub fn set(key: &str, value: &[u8], overwrite: bool) -> Result<bool, ()> {
 ///
 pub fn unset(key: &str) {
     let mut table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
-    table.retain(|entry| entry.key != key);
+    table.retain(|entry| !entry.matches_key(key));
+}
+
+///
+/// # Description
+///
+/// Installs a caller-owned `KEY=VALUE` string in the environment.
+///
+/// # Parameters
+///
+/// - `string`: Pointer to the caller-owned null-terminated environment string.
+///
+/// # Returns
+///
+/// `Ok(())` if the entry was installed, or `Err(())` if the string is not of the form
+/// `KEY=VALUE` with a non-empty UTF-8 key.
+///
+/// # Safety
+///
+/// `string` must be a valid null-terminated C string. The caller must keep the storage valid while
+/// it remains part of the environment.
+///
+#[allow(clippy::result_unit_err)]
+pub unsafe fn put_raw(string: *mut c_char) -> Result<(), ()> {
+    let bytes: &[u8] = ffi::CStr::from_ptr(string).to_bytes();
+    let Some(eq_pos) = bytes.iter().position(|&b| b == b'=') else {
+        return Err(());
+    };
+    if eq_pos == 0 {
+        return Err(());
+    }
+    let key: &str = ::core::str::from_utf8(&bytes[..eq_pos]).map_err(|_| ())?;
+    let value: &[u8] = &bytes[eq_pos + 1..];
+
+    let mut table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
+    for entry in table.iter_mut() {
+        if entry.matches_key(key) {
+            *entry = EnvEntry::borrowed(string);
+            drop(table);
+            invoke_setenv_callback(key, value);
+            return Ok(());
+        }
+    }
+    table.push(EnvEntry::borrowed(string));
+    drop(table);
+    invoke_setenv_callback(key, value);
+    Ok(())
 }
 
 ///
@@ -221,7 +271,8 @@ pub fn snapshot() -> Vec<String> {
     let mut out: Vec<String> = Vec::with_capacity(table.len());
     for entry in table.iter() {
         // `raw` is a NUL-terminated "KEY=VALUE" C string; drop the trailing NUL before decoding.
-        let bytes: &[u8] = &entry.raw[..entry.raw.len().saturating_sub(1)];
+        let bytes: &[u8] = entry.raw_bytes_with_nul();
+        let bytes: &[u8] = &bytes[..bytes.len().saturating_sub(1)];
         if let Ok(token) = ::core::str::from_utf8(bytes) {
             out.push(String::from(token));
         }
@@ -268,22 +319,69 @@ fn make_raw(key: &str, value: &[u8]) -> Vec<u8> {
 
 /// Inserts a new entry into the table.
 fn insert_entry(table: &mut Vec<EnvEntry>, key: &str, value: &[u8]) {
-    let raw: Vec<u8> = make_raw(key, value);
-    table.push(EnvEntry {
-        key: String::from(key),
-        raw,
-    });
+    table.push(EnvEntry::owned(key, value));
 }
 
 /// Inserts or updates an entry in the table. If `key` already exists, its value is replaced.
 fn upsert_entry(table: &mut Vec<EnvEntry>, key: &str, value: &[u8]) {
     for entry in table.iter_mut() {
-        if entry.key == key {
-            entry.raw = make_raw(key, value);
+        if entry.matches_key(key) {
+            *entry = EnvEntry::owned(key, value);
             return;
         }
     }
     insert_entry(table, key, value);
+}
+
+impl EnvEntry {
+    /// Creates an owned environment entry.
+    fn owned(key: &str, value: &[u8]) -> Self {
+        Self {
+            storage: EnvStorage::Owned(make_raw(key, value)),
+        }
+    }
+
+    /// Creates a borrowed environment entry.
+    fn borrowed(ptr: *mut c_char) -> Self {
+        Self {
+            storage: EnvStorage::Borrowed(ptr as usize),
+        }
+    }
+
+    /// Returns the raw null-terminated `KEY=VALUE` bytes.
+    fn raw_bytes_with_nul(&self) -> &[u8] {
+        match &self.storage {
+            EnvStorage::Owned(raw) => raw,
+            EnvStorage::Borrowed(addr) => unsafe {
+                ffi::CStr::from_ptr((*addr) as *const c_char).to_bytes_with_nul()
+            },
+        }
+    }
+
+    /// Returns the offset of the value if this entry currently names `key`.
+    fn value_offset_if_key(&self, key: &str) -> Option<usize> {
+        let bytes: &[u8] = self.raw_bytes_with_nul();
+        let eq_pos: usize = bytes.iter().position(|&b| b == b'=')?;
+        if ::core::str::from_utf8(&bytes[..eq_pos]).ok()? == key {
+            Some(eq_pos + 1)
+        } else {
+            None
+        }
+    }
+
+    /// Returns `true` if this entry currently names `key`.
+    fn matches_key(&self, key: &str) -> bool {
+        self.value_offset_if_key(key).is_some()
+    }
+
+    /// Returns the value pointer if this entry currently names `key`.
+    fn value_ptr_if_key(&self, key: &str) -> Option<*const c_char> {
+        let offset: usize = self.value_offset_if_key(key)?;
+        match &self.storage {
+            EnvStorage::Owned(raw) => Some(raw[offset..].as_ptr().cast::<c_char>()),
+            EnvStorage::Borrowed(addr) => Some((*addr + offset) as *const c_char),
+        }
+    }
 }
 
 //==================================================================================================
