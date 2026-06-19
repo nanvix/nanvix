@@ -5,6 +5,7 @@
 // Modules
 //==================================================================================================
 
+mod exec;
 mod fork_clone;
 mod fork_sync;
 mod lookup;
@@ -17,6 +18,7 @@ mod wait;
 // Exports
 //==================================================================================================
 
+pub use exec::*;
 pub use fork_clone::*;
 pub use fork_sync::*;
 pub use lookup::*;
@@ -78,6 +80,13 @@ pub enum ProcessManagementMessageHeader {
     /// Process-exit notification (used to notify other daemons to reclaim a terminated process's
     /// per-process state).
     ProcessExit = 13,
+    /// Exec notification (a freshly `exec`'d process asks the process manager daemon to apply
+    /// close-on-exec to its inherited descriptor table, and the process manager daemon relays this
+    /// to the filesystem daemon).
+    Exec = 14,
+    /// Exec acknowledgement (the filesystem daemon confirms close-on-exec was applied, and the
+    /// process manager daemon releases the held process).
+    ExecAck = 15,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -96,6 +105,8 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             11 => Ok(ProcessManagementMessageHeader::ForkSync),
             12 => Ok(ProcessManagementMessageHeader::ForkSyncAck),
             13 => Ok(ProcessManagementMessageHeader::ProcessExit),
+            14 => Ok(ProcessManagementMessageHeader::Exec),
+            15 => Ok(ProcessManagementMessageHeader::ExecAck),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -115,6 +126,8 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::ForkSync => 11,
             ProcessManagementMessageHeader::ForkSyncAck => 12,
             ProcessManagementMessageHeader::ProcessExit => 13,
+            ProcessManagementMessageHeader::Exec => 14,
+            ProcessManagementMessageHeader::ExecAck => 15,
         }
     }
 }

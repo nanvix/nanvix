@@ -417,3 +417,194 @@ pub unsafe fn execv_inherit_env_from_c(path: *const c_char, argv: *const *const 
 
     do_execv(path, &argv_vec, &env_tokens)
 }
+
+//==================================================================================================
+// Exec Startup Barrier
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Synchronizes a freshly started image with the process daemons before it runs `main`, applying
+/// the close-on-exec half of POSIX `execv()` semantics.
+///
+/// A successful `execv()` never returns: the kernel replaces the image in place and transfers
+/// control to the new image's `crt0`, which calls this. Two facts make a barrier necessary here.
+/// First, the per-process descriptor table lives in `vfsd` and survives the image replacement, but
+/// `vfsd` is not told the `exec` happened, so its `FD_CLOEXEC` descriptors are still present.
+/// Second, this image's resolution cache was wiped along with BSS, so it must be rebuilt against the
+/// post-close-on-exec table — never the pre-`exec` one.
+///
+/// This requests that the process manager daemon hold the calling process until `vfsd` has dropped
+/// its `FD_CLOEXEC` descriptors, then proceeds. Because the daemon releases the process only after
+/// that close-on-exec has been applied, the empty cache is afterwards rebuilt lazily on first use
+/// (each miss resolves authoritatively against `vfsd`) and a descriptor flagged `FD_CLOEXEC` is
+/// provably gone before this image can observe it.
+///
+/// The barrier is best-effort: the image has already been replaced and an `exec` cannot be undone,
+/// so any failure to reach the daemons is logged and tolerated rather than blocking `main` forever.
+///
+/// This runs at the start of every standalone image — both a genuine `exec` and a fresh process
+/// start. For a fresh start there are no `FD_CLOEXEC` descriptors to drop, so the round-trip is a
+/// harmless no-op against an empty or console-only table. The process manager daemon itself (and
+/// any minimal deployment whose root image runs as pid `PROCD`) has no distinct peer to query, so
+/// it skips the barrier entirely rather than address the request to itself.
+///
+#[cfg(feature = "standalone")]
+pub fn exec_startup_barrier() {
+    use ::proc::{
+        exec_request,
+        ExecAckMessage,
+        ProcessManagementMessage,
+        ProcessManagementMessageHeader,
+    };
+    use ::sys::{
+        ipc::{
+            Message,
+            MessageType,
+            SystemMessage,
+            SystemMessageHeader,
+        },
+        pm::ProcessIdentifier,
+    };
+
+    // Identify ourselves so the barrier names the right subject and the process manager daemon can
+    // release us by pid.
+    let pid: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+        Ok(pid) => pid,
+        Err(error) => {
+            ::syslog::warn!("exec_startup_barrier(): failed to get pid: {error:?}");
+            return;
+        },
+    };
+
+    // If this image is itself the process manager daemon, there is no distinct peer to synchronize
+    // with: the request below is addressed to `PROCD`, which is our own pid, so it would loop
+    // straight back to us instead of eliciting an independent acknowledgement — and a process
+    // parked in this barrier cannot service its own mailbox to produce one, so the wait could never
+    // complete. This also covers minimal deployments where the root image runs as pid `PROCD` with
+    // no separate daemon. In either case there is no foreign descriptor table to reconcile, so the
+    // barrier is a no-op.
+    if pid == ProcessIdentifier::PROCD {
+        return;
+    }
+
+    // Announce the image start to the process manager daemon and ask to be held until the
+    // filesystem daemon has applied close-on-exec to our inherited descriptor table.
+    let request: Message = match exec_request(pid, ProcessIdentifier::PROCD, pid) {
+        Ok(request) => request,
+        Err(error) => {
+            ::syslog::warn!("exec_startup_barrier(): failed to build exec request: {error:?}");
+            return;
+        },
+    };
+    if let Err(error) = ::sys::kcall::ipc::__kcall_send(&request) {
+        ::syslog::warn!("exec_startup_barrier(): failed to send exec request: {error:?}");
+        return;
+    }
+
+    // Wait for the process manager daemon to release us. `execv` succeeds only when the kernel can
+    // replace the image, and procd answers an exec request exactly once — with success once vfsd
+    // has applied close-on-exec, or with a failure status if the relay could not be dispatched — so
+    // exactly one acknowledgement is expected, and it is the only message in flight before `main`.
+    //
+    // The wait is therefore a single receive: validate the reply and proceed. The image has already
+    // been replaced and the exec cannot be undone, so a malformed, misdelivered, or failing reply
+    // is logged and tolerated rather than retried. A retry loop would be unsafe here, not just
+    // unhelpful: crt0 has no non-blocking or timed receive primitive, so a second receive after an
+    // unexpected first message would block with nothing left to deliver. The self-addressed case
+    // (this image is `PROCD`) is already excluded above, so a separate procd is guaranteed to be
+    // the sender; a genuinely silent procd is a daemon-crash scenario beyond what the barrier can
+    // recover, exactly as for the fork barrier this mirrors.
+    let message: Message = match ::sys::kcall::ipc::__kcall_recv() {
+        Ok(message) => message,
+        Err(error) => {
+            ::syslog::warn!("exec_startup_barrier(): failed to receive exec ack: {error:?}");
+            return;
+        },
+    };
+
+    let sender = message.source;
+    let source: ProcessIdentifier = match sender.as_id() {
+        Ok(source) => source,
+        Err(tid) => {
+            ::syslog::warn!(
+                "exec_startup_barrier(): unexpected non-process message source while awaiting \
+                 exec ack (tid={tid:?})"
+            );
+            return;
+        },
+    };
+    if source != ProcessIdentifier::PROCD {
+        ::syslog::warn!(
+            "exec_startup_barrier(): unexpected message source while awaiting exec ack \
+             (source={source:?})"
+        );
+        return;
+    }
+    if !matches!(message.message_type, MessageType::Ipc) {
+        ::syslog::warn!(
+            "exec_startup_barrier(): unexpected message type while awaiting exec ack ({:?})",
+            message.message_type
+        );
+        return;
+    }
+    let system_message: SystemMessage = match SystemMessage::from_bytes(message.payload) {
+        Ok(system_message) => system_message,
+        Err(error) => {
+            ::syslog::warn!("exec_startup_barrier(): malformed system message: {error:?}");
+            return;
+        },
+    };
+    if !matches!(system_message.header, SystemMessageHeader::ProcessManagement) {
+        ::syslog::warn!(
+            "exec_startup_barrier(): unexpected system message while awaiting exec ack ({:?})",
+            system_message.header
+        );
+        return;
+    }
+    let pm_message: ProcessManagementMessage =
+        match ProcessManagementMessage::from_bytes(system_message.payload) {
+            Ok(pm_message) => pm_message,
+            Err(error) => {
+                ::syslog::warn!("exec_startup_barrier(): malformed process message: {error:?}");
+                return;
+            },
+        };
+    match pm_message.header {
+        ProcessManagementMessageHeader::ExecAck => {
+            let ack: ExecAckMessage = ExecAckMessage::from_bytes(pm_message.payload);
+            let ack_pid: ProcessIdentifier = ack.pid;
+            if ack_pid != pid {
+                ::syslog::warn!(
+                    "exec_startup_barrier(): exec ack named another process (expected={pid:?}, \
+                     got={:?})",
+                    ack_pid
+                );
+                return;
+            }
+            let status: i32 = ack.status;
+            if status != ExecAckMessage::STATUS_SUCCESS {
+                ::syslog::warn!(
+                    "exec_startup_barrier(): barrier reported failure (status={status})"
+                );
+            }
+        },
+        header => {
+            ::syslog::warn!(
+                "exec_startup_barrier(): unexpected process message while awaiting exec ack \
+                 ({header:?})"
+            );
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// In run modes without a guest `vfsd`/`procd`, descriptors are interpreted directly by the host
+/// and there is no flat descriptor table to synchronize with, so the exec startup barrier is a
+/// no-op.
+///
+#[cfg(not(feature = "standalone"))]
+pub fn exec_startup_barrier() {}

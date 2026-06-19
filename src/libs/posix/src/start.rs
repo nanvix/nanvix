@@ -180,6 +180,14 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
         __nanvix_env_init(environ as *const *const c_char);
     }
 
+    // Synchronize with the process daemons before any application code runs. A successful `execv`
+    // replaces the image in place and transfers control here without notifying `vfsd`, so the
+    // inherited descriptor table still carries its `FD_CLOEXEC` descriptors and this image's
+    // resolution cache was wiped with BSS. The barrier holds this process until `vfsd` has dropped
+    // those descriptors, so the cache — rebuilt lazily on first use — observes the
+    // post-close-on-exec table. In run modes without a guest `vfsd`, this is a no-op.
+    ::syscall::unistd::exec_startup_barrier();
+
     // Dispatch into the application's `main` via the binary-supplied
     // trampoline.  `__nanvix_main` is `nvx-crt0::__nanvix_main`, which
     // selects between the C and Rust trampoline at the binary's link

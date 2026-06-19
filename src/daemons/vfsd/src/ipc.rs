@@ -20,6 +20,8 @@ use crate::{
     pipe_wait::PipeWaitTable,
 };
 use ::proc::{
+    exec_ack,
+    ExecMessage,
     ForkCloneMessage,
     ProcessExitMessage,
     ProcessManagementMessage,
@@ -192,6 +194,65 @@ fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Res
                         }
                     }
                     ::syslog::info!("reclaimed filesystem state (pid={:?})", pid);
+                    Ok(false)
+                },
+                ProcessManagementMessageHeader::Exec => {
+                    let exec: ExecMessage = ExecMessage::from_bytes(pm_msg.payload);
+                    let pid: ProcessIdentifier = exec.pid;
+                    // Bind the VFS to the exec'ing process and seed the root console if this is the
+                    // root's first VFS-visible event, mirroring the fork-clone and syscall paths so
+                    // close-on-exec is applied against a consistent table. The seed helper is
+                    // root-only and idempotent.
+                    ::vfs::fd::set_current_process(pid);
+                    ::vfs::fd::vfs_seed_root_console(pid);
+                    // Drop the process's `FD_CLOEXEC` descriptors, leaving the survivors in place.
+                    // Each last-reference drop must fire the same side effects as `close`: a
+                    // host-backed handle for which this process held the final reference is closed
+                    // on hostfsd, and a pipe end whose count reaches zero wakes its suspended
+                    // counterpart (readers see EOF, writers see `EPIPE`). The process stays alive,
+                    // so its parked pipe requests are NOT purged.
+                    let reclaim: ::vfs::fd::ProcessExitReclaim = ::vfs::fd::vfs_exec_cloexec(pid);
+                    for closure in reclaim.pipe_closures {
+                        if closure.was_write {
+                            handler::pipe::wake_all_readers_eof(closure.pipe_id, pipe_wait);
+                        } else {
+                            handler::pipe::fail_all_writers_epipe(closure.pipe_id, pipe_wait);
+                        }
+                    }
+                    for remote_fd in reclaim.orphaned_hostfs_fds {
+                        // Fire-and-forget close: the descriptor is gone from the exec'd image, so
+                        // there is no caller to acknowledge, exactly as on process exit.
+                        if let Err(e) = hostfs::send_close_request(
+                            remote_fd,
+                            ::hostfs_api::OperationId::FIRE_AND_FORGET,
+                        ) {
+                            ::syslog::warn!(
+                                "failed to close orphaned hostfs fd on exec (pid={:?}, \
+                                 remote_fd={}, error={:?})",
+                                pid,
+                                remote_fd,
+                                e
+                            );
+                        }
+                    }
+                    // Acknowledge the process manager daemon that close-on-exec has been applied, so
+                    // it can release the held process. The acknowledgement is necessarily ordered
+                    // after the table mutation above, so the released image's cache rebuild observes
+                    // the post-close-on-exec table.
+                    match exec_ack(
+                        ProcessIdentifier::VFSD,
+                        ProcessIdentifier::PROCD,
+                        pid,
+                        ::proc::ExecAckMessage::STATUS_SUCCESS,
+                    ) {
+                        Ok(ack) => send_response(&ack),
+                        Err(e) => ::syslog::error!(
+                            "failed to build exec acknowledgement (pid={:?}, error={:?})",
+                            pid,
+                            e
+                        ),
+                    }
+                    ::syslog::info!("applied close-on-exec (pid={:?})", pid);
                     Ok(false)
                 },
                 _ => {

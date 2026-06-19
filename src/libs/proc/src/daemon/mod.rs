@@ -8,6 +8,7 @@
 use crate::{
     identity::ProcessIdentity,
     message,
+    ExecAckMessage,
     ForkSyncAckMessage,
     ForkSyncMessage,
     LookupMessage,
@@ -157,6 +158,14 @@ pub struct ProcessDaemon {
     /// used rather than a map because only a handful of fork operations are ever pending
     /// concurrently, so a linear scan is cheaper than the overhead of an ordered map.
     pending_fork_syncs: Vec<(ProcessIdentifier, ProcessIdentifier)>,
+    /// Processes held at the exec synchronization barrier, awaiting the filesystem daemon's
+    /// acknowledgement that close-on-exec has been applied to their inherited descriptor table.
+    /// Populated when a freshly `exec`'d process requests the barrier and the close-on-exec
+    /// notification is dispatched to the filesystem daemon; drained when that daemon acknowledges,
+    /// at which point the process is released. A `Vec` is used rather than a map because only a
+    /// handful of exec operations are ever pending concurrently, so a linear scan is cheaper than
+    /// the overhead of an ordered map.
+    pending_execs: Vec<ProcessIdentifier>,
     /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
     /// answered later, when a `ProcessTermination` event for a matching child arrives.
     blocked: Vec<BlockedWaiter>,
@@ -200,6 +209,7 @@ impl ProcessDaemon {
             processes: BTreeMap::new(),
             init_proc: None,
             pending_fork_syncs: Vec::new(),
+            pending_execs: Vec::new(),
             blocked: Vec::new(),
             early_terminations: Vec::new(),
         })
@@ -496,6 +506,10 @@ impl ProcessDaemon {
     fn cleanup_terminated(&mut self, pid: ProcessIdentifier) {
         // Drop any stale fork-sync bookkeeping for the terminating process.
         self.pending_fork_syncs.retain(|(child, _)| *child != pid);
+        // Drop any exec-barrier bookkeeping owned by the terminating process. A process that died
+        // while held at the exec barrier can never be released, so leaving its entry behind would
+        // strand it and leak the slot across pid reuse.
+        self.pending_execs.retain(|process| *process != pid);
         // Drop any blocked-wait bookkeeping owned by the terminating process. A process that was
         // itself parked in `waitpid()` can never be answered once it is gone, so leaving its entry
         // behind would leak memory and strand a stale waiter.
@@ -773,6 +787,26 @@ impl ProcessDaemon {
                     let message: ForkSyncMessage = ForkSyncMessage::from_bytes(message.payload);
                     self.handle_fork_sync(destination, message.child);
                 },
+                ProcessManagementMessageHeader::Exec => {
+                    // A freshly `exec`'d process announces that it has replaced its image. The
+                    // source is attributed by the kernel, so the subject is the source itself: a
+                    // process can only ever request the barrier for itself, never for another.
+                    self.handle_exec_sync(destination);
+                },
+                ProcessManagementMessageHeader::ExecAck => {
+                    // The filesystem daemon confirms whether close-on-exec was applied. Only it may
+                    // drive this acknowledgement; one from any other source is a forgery that could
+                    // release a process before its descriptors were dropped, so it is dropped
+                    // without effect. The daemon's outcome (`status`) is forwarded unchanged to the
+                    // held process so that a best-effort failure can be signalled rather than masked
+                    // as success.
+                    if destination == ProcessIdentifier::VFSD {
+                        let ack: ExecAckMessage = ExecAckMessage::from_bytes(message.payload);
+                        self.handle_exec_ack(ack.pid, ack.status);
+                    } else {
+                        ::syslog::warn!("dropping forged exec-ack (source={:?})", destination);
+                    }
+                },
                 ProcessManagementMessageHeader::Wait => {
                     let message: WaitMessage = WaitMessage::from_bytes(message.payload);
                     // The reply is deferred (no send here) when the waiter blocks; it is produced
@@ -1023,6 +1057,110 @@ impl ProcessDaemon {
                     "notify_process_exit: failed to build process-exit request (pid={:?}, \
                      error={:?})",
                     pid,
+                    e
+                );
+            },
+        }
+    }
+
+    /// Handles an exec-sync request from a freshly `exec`'d `process` whose new image must be held
+    /// until the filesystem daemon has applied close-on-exec to its inherited descriptor table.
+    ///
+    /// Relays the close-on-exec request to the filesystem daemon and records the process as
+    /// awaiting that daemon's acknowledgement, which `handle_exec_ack()` resolves. If the relay
+    /// could not be dispatched, the process is released immediately with a failure acknowledgement:
+    /// its image has already been replaced and the `exec` cannot be undone, so it proceeds on a
+    /// best-effort basis rather than blocking forever on an acknowledgement that will never come.
+    fn handle_exec_sync(&mut self, process: ProcessIdentifier) {
+        ::syslog::info!("exec-sync request (process={:?})", process);
+        if self.notify_exec(process) {
+            // Replace any stale entry for this process before recording the new one, preserving the
+            // at-most-one-pending-exec-per-process invariant across pid reuse.
+            self.pending_execs.retain(|p| *p != process);
+            self.pending_execs.push(process);
+        } else {
+            ::syslog::warn!(
+                "exec close-on-exec not dispatched, failing exec-sync (process={:?})",
+                process
+            );
+            self.release_exec_sync(process, ErrorCode::TryAgain.get());
+        }
+    }
+
+    /// Notifies the filesystem daemon to apply close-on-exec to `process`'s descriptor table,
+    /// mirroring how `notify_fork_clone` dispatches a fork-clone.
+    ///
+    /// Returns `true` if the request was handed to the kernel for delivery, and `false` if it could
+    /// not be built or sent. The daemon does not block on an acknowledgement here: the filesystem
+    /// daemon's acknowledgement is delivered asynchronously and resolved in `handle_exec_ack()`,
+    /// so that the receive path never risks swallowing an unrelated message.
+    fn notify_exec(&self, process: ProcessIdentifier) -> bool {
+        match message::exec_request(ProcessIdentifier::PROCD, ProcessIdentifier::VFSD, process) {
+            Ok(request) => match ::sys::kcall::ipc::__kcall_send(&request) {
+                Ok(()) => true,
+                Err(e) => {
+                    ::syslog::warn!(
+                        "notify_exec: failed to notify vfsd to apply close-on-exec (process={:?}, \
+                         error={:?})",
+                        process,
+                        e
+                    );
+                    false
+                },
+            },
+            Err(e) => {
+                ::syslog::warn!(
+                    "notify_exec: failed to build exec request (process={:?}, error={:?})",
+                    process,
+                    e
+                );
+                false
+            },
+        }
+    }
+
+    /// Handles an exec acknowledgement from the filesystem daemon, releasing the held `process`
+    /// whose close-on-exec has now been resolved with outcome `status`.
+    ///
+    /// Only a process recorded as awaiting acknowledgement is released, so a stale or duplicated
+    /// acknowledgement — or one naming a process that never requested the barrier — cannot release
+    /// a process spuriously. The filesystem daemon's `status` is forwarded unchanged to the
+    /// released process: `0` reports that close-on-exec was applied, while a non-zero code lets the
+    /// process proceed on a best-effort basis after the daemon could not complete it.
+    fn handle_exec_ack(&mut self, process: ProcessIdentifier, status: i32) {
+        if let Some(pos) = self.pending_execs.iter().position(|p| *p == process) {
+            self.pending_execs.swap_remove(pos);
+            self.release_exec_sync(process, status);
+        } else {
+            ::syslog::warn!(
+                "ignoring exec-ack for process not awaiting the barrier (process={:?})",
+                process
+            );
+        }
+    }
+
+    /// Releases a `process` held at the exec barrier by acknowledging it with `status`. A `0`
+    /// status releases it after close-on-exec has been applied; a non-zero status releases it on a
+    /// best-effort basis after the barrier could not be completed.
+    fn release_exec_sync(&self, process: ProcessIdentifier, status: i32) {
+        match message::exec_ack(ProcessIdentifier::PROCD, process, process, status) {
+            Ok(ack) => {
+                if let Err(e) = ::sys::kcall::ipc::__kcall_send(&ack) {
+                    ::syslog::warn!(
+                        "release_exec_sync: failed to acknowledge (process={:?}, status={:?}, \
+                         error={:?})",
+                        process,
+                        status,
+                        e
+                    );
+                }
+            },
+            Err(e) => {
+                ::syslog::warn!(
+                    "release_exec_sync: failed to build acknowledgement (process={:?}, \
+                     status={:?}, error={:?})",
+                    process,
+                    status,
                     e
                 );
             },
