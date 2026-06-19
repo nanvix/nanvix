@@ -91,3 +91,29 @@ pub use streams::{
     stdout,
     FILE,
 };
+
+//==================================================================================================
+// Test Support
+//==================================================================================================
+
+// The MSVC C runtime used for Windows host unit tests does not export the glibc/musl
+// `__errno_location` symbol used by the guest libc build, so provide a thread-local test shim.
+#[cfg(all(test, feature = "std", target_os = "windows"))]
+mod windows_errno_shim {
+    use ::core::cell::Cell;
+    use ::sysapi::ffi::c_int;
+
+    std::thread_local! {
+        static ERRNO: Cell<c_int> = const { Cell::new(0) };
+    }
+
+    /// Host-only definition of `__errno_location` for Windows `std` unit tests.
+    ///
+    /// # Safety
+    ///
+    /// The returned pointer is valid for the lifetime of the calling thread.
+    #[unsafe(no_mangle)]
+    unsafe extern "C" fn __errno_location() -> *mut c_int {
+        ERRNO.with(Cell::as_ptr)
+    }
+}
