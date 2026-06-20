@@ -22,6 +22,7 @@ cfg_if::cfg_if! {
         pub mod exec;
         pub use self::exec::{
             do_execv,
+            exec_startup_barrier,
             execv_from_c,
             execv_inherit_env_from_c,
         };

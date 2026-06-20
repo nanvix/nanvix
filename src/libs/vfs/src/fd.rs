@@ -1038,6 +1038,100 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
     }
 }
 
+/// Applies close-on-exec to a process's descriptor table when it replaces its image.
+///
+/// Walks `pid`'s slot table and drops every descriptor whose per-descriptor flags carry
+/// `FD_CLOEXEC`, leaving the surviving descriptors at their original numbers. Each dropped slot
+/// runs the same last-reference accounting as [`vfs_process_exit`]: a host-backed description for
+/// which `pid` held the final reference is surfaced for closing on hostfsd, and a pipe end whose
+/// reference count reaches zero is surfaced so the daemon can fire the EOF/`EPIPE` wakeup for any
+/// suspended counterpart. Descriptions still shared with a surviving descriptor — in this process
+/// (for example a non-`FD_CLOEXEC` `dup` sibling) or another (a forked relative) — are not
+/// reclaimed.
+///
+/// The table generation is bumped once when at least one descriptor is dropped, so the new image's
+/// resolution cache (rebuilt after this returns) observes the post-close-on-exec table rather than
+/// the pre-exec one. Unlike [`vfs_process_exit`], the process itself is retained: only its
+/// close-on-exec descriptors are removed. Applying close-on-exec to an unknown `pid`, or to one
+/// with no `FD_CLOEXEC` descriptor, is a no-op that reclaims nothing.
+///
+/// The barrier in the process manager daemon guarantees this runs before the new image issues any
+/// descriptor operation, so a descriptor flagged `FD_CLOEXEC` is provably gone before the new image
+/// can observe it.
+#[must_use = "the returned hostfs fds must be closed and pipe closures must trigger wakeups"]
+pub fn vfs_exec_cloexec(pid: ProcessIdentifier) -> ProcessExitReclaim {
+    // Detach the close-on-exec slots while holding the registry lock, but defer dropping the open
+    // file descriptions they hold until the lock is released. Dropping a description may run
+    // backend teardown; deferring keeps the registry lock from ever nesting with backend locks,
+    // matching `vfs_close` and `vfs_process_exit`.
+    let removed_slots: Vec<Slot> = {
+        let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+            PROCESSES.lock();
+        let Some(state) = procs.get_mut(&pid) else {
+            return ProcessExitReclaim {
+                orphaned_hostfs_fds: Vec::new(),
+                pipe_closures: Vec::new(),
+            };
+        };
+        // Identify the close-on-exec descriptors first, then remove them. Collecting the numbers up
+        // front avoids mutating the map while iterating it.
+        let cloexec_fds: Vec<c_int> = state
+            .slots
+            .iter()
+            .filter(|(_, slot)| slot.fd_flags.close_on_exec())
+            .map(|(fd, _)| *fd)
+            .collect();
+        if cloexec_fds.is_empty() {
+            return ProcessExitReclaim {
+                orphaned_hostfs_fds: Vec::new(),
+                pipe_closures: Vec::new(),
+            };
+        }
+        let mut removed: Vec<Slot> = Vec::with_capacity(cloexec_fds.len());
+        for fd in cloexec_fds {
+            if let Some(slot) = state.slots.remove(&fd) {
+                removed.push(slot);
+            }
+        }
+        // The removals are the only table mutation here, so bump the generation exactly once now
+        // that at least one descriptor was dropped.
+        state.bump_generation();
+        removed
+    };
+    // The registry lock has been released and the removed slots are owned here, so an `Arc` strong
+    // count of one means no surviving descriptor — in this or any other process — still shares the
+    // open file description, exactly as in `vfs_process_exit`. A host-backed handle must therefore
+    // be closed on hostfsd, and a pipe end's count drops to zero (which the dropped end's `Drop`
+    // applies as each slot leaves scope below).
+    let mut orphaned: Vec<i32> = Vec::new();
+    let mut pipe_closures: Vec<PipeClosure> = Vec::new();
+    for slot in removed_slots {
+        if Arc::strong_count(&slot.file) != 1 {
+            continue;
+        }
+        match &slot.file.lock().handle {
+            VfsFileHandle::HostFs(h) => orphaned.push(h.remote_fd()),
+            VfsFileHandle::Pipe(end) => pipe_closures.push(PipeClosure {
+                pipe_id: end.pipe_id(),
+                was_write: end.is_write(),
+            }),
+            // A console token holds no external resource, so it contributes nothing to reclaim.
+            VfsFileHandle::Console(_) => {},
+            // A socket token holds the `networkd` descriptor, but closing it on last reference is
+            // wired in a later plan; nothing is reclaimed here yet. This arm must stay distinct so
+            // a socket is never mistaken for a hostfs or pipe handle.
+            VfsFileHandle::Socket(_) => {},
+            _ => {},
+        }
+        // `slot` — and the open file description it holds — is dropped here, after the registry lock
+        // has been released; a pipe end's `Drop` decrements its reader/writer count as part of that.
+    }
+    ProcessExitReclaim {
+        orphaned_hostfs_fds: orphaned,
+        pipe_closures,
+    }
+}
+
 /// Reports whether `fd` is the last descriptor referencing its open file description.
 ///
 /// Returns `true` if closing `fd` in the current process would drop the final reference to the
@@ -3361,6 +3455,162 @@ mod tests {
         );
 
         forget_processes(&[parent, child]);
+    }
+
+    /// Tests that applying close-on-exec drops only the descriptors flagged `FD_CLOEXEC`, leaves
+    /// every other descriptor at its number, and advances the table generation so the new image's
+    /// cache is rebuilt against the post-close-on-exec table.
+    #[test]
+    fn exec_cloexec_drops_flagged_and_keeps_others() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7261);
+        set_current_process(pid);
+
+        // One descriptor flagged close-on-exec, one left unflagged.
+        let cloexec_fd: c_int =
+            alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+                .expect("console alloc should succeed");
+        let kept_fd: c_int =
+            alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stderr)))
+                .expect("console alloc should succeed");
+        let mut cloexec: FdFlags = FdFlags::default();
+        cloexec.set_close_on_exec(true);
+        vfs_set_fd_flags(cloexec_fd, cloexec).expect("setting close-on-exec should succeed");
+        let generation_before: u64 =
+            registry_generation(pid).expect("generation should be recorded");
+
+        // A console token holds no external resource, so nothing is reclaimed.
+        let reclaim: ProcessExitReclaim = vfs_exec_cloexec(pid);
+        assert!(reclaim.orphaned_hostfs_fds.is_empty(), "console drop orphans no hostfs fd");
+        assert!(reclaim.pipe_closures.is_empty(), "console drop closes no pipe end");
+
+        // The flagged descriptor is gone; the unflagged one survives at its number.
+        assert_eq!(vfs_get_fd_flags(cloexec_fd), None, "close-on-exec descriptor must be dropped");
+        assert!(vfs_resolve(cloexec_fd).is_none(), "the dropped descriptor must not resolve");
+        assert!(vfs_get_fd_flags(kept_fd).is_some(), "an unflagged descriptor must survive");
+        assert!(vfs_resolve(kept_fd).is_some(), "the surviving descriptor must still resolve");
+        assert!(
+            registry_generation(pid).expect("generation should be recorded") > generation_before,
+            "dropping a close-on-exec descriptor must advance the generation"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that applying close-on-exec runs the same last-reference accounting as `close`: a
+    /// host-backed descriptor for which the process held the final reference is surfaced for
+    /// closing on hostfsd, and a pipe end whose count reaches zero is surfaced so the daemon can
+    /// wake its counterpart.
+    #[test]
+    fn exec_cloexec_reports_pipe_and_hostfs_reclaim() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7262);
+        set_current_process(pid);
+
+        // A pipe whose write end is flagged close-on-exec; the read end stays unflagged.
+        let (read_fd, write_fd): (c_int, c_int) = vfs_pipe().expect("pipe creation should succeed");
+        let (pipe_id, _): (u64, bool) = vfs_pipe_id(write_fd).expect("write fd should be a pipe");
+        let mut cloexec: FdFlags = FdFlags::default();
+        cloexec.set_close_on_exec(true);
+        vfs_set_fd_flags(write_fd, cloexec).expect("setting close-on-exec should succeed");
+        // A host-backed descriptor, also flagged close-on-exec, for which this process is the sole
+        // reference.
+        let hostfs_fd: c_int =
+            vfs_alloc_hostfs(70, false, None).expect("hostfs alloc should succeed");
+        vfs_set_fd_flags(hostfs_fd, cloexec).expect("setting close-on-exec should succeed");
+
+        let reclaim: ProcessExitReclaim = vfs_exec_cloexec(pid);
+        assert_eq!(
+            reclaim.orphaned_hostfs_fds.len(),
+            1,
+            "the host-backed descriptor's remote fd must be reclaimed"
+        );
+        assert_eq!(reclaim.orphaned_hostfs_fds[0], 70, "the reclaimed remote fd must be 70");
+        assert_eq!(reclaim.pipe_closures.len(), 1, "exactly the write end is reclaimed");
+        assert_eq!(reclaim.pipe_closures[0].pipe_id, pipe_id, "the closure targets our pipe");
+        assert!(reclaim.pipe_closures[0].was_write, "the reclaimed end is the write end");
+
+        // The read end survives because it was not flagged.
+        assert!(vfs_resolve(read_fd).is_some(), "the unflagged read end must survive");
+        assert_eq!(vfs_get_fd_flags(write_fd), None, "the flagged write end must be dropped");
+        assert_eq!(
+            vfs_get_fd_flags(hostfs_fd),
+            None,
+            "the flagged hostfs descriptor must be dropped"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that applying close-on-exec to a process with no flagged descriptor is a no-op: every
+    /// descriptor survives, nothing is reclaimed, and the generation is left unchanged.
+    #[test]
+    fn exec_cloexec_without_flagged_is_noop() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7263);
+        set_current_process(pid);
+
+        let fd: c_int = alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+            .expect("console alloc should succeed");
+        let generation_before: u64 =
+            registry_generation(pid).expect("generation should be recorded");
+
+        let reclaim: ProcessExitReclaim = vfs_exec_cloexec(pid);
+        assert!(reclaim.orphaned_hostfs_fds.is_empty(), "nothing is reclaimed");
+        assert!(reclaim.pipe_closures.is_empty(), "nothing is reclaimed");
+        assert!(vfs_resolve(fd).is_some(), "the unflagged descriptor survives");
+        assert_eq!(
+            registry_generation(pid).expect("generation should be recorded"),
+            generation_before,
+            "a no-op must not advance the generation"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that applying close-on-exec to an unregistered process reclaims nothing and does not
+    /// panic.
+    #[test]
+    fn exec_cloexec_unknown_pid_is_noop() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7264);
+        // Deliberately leave the process unregistered.
+        let reclaim: ProcessExitReclaim = vfs_exec_cloexec(pid);
+        assert!(reclaim.orphaned_hostfs_fds.is_empty(), "an unknown process reclaims nothing");
+        assert!(reclaim.pipe_closures.is_empty(), "an unknown process reclaims nothing");
+    }
+
+    /// Tests that close-on-exec last-reference accounting respects shared open file descriptions: a
+    /// host-backed description still referenced by a surviving `dup` sibling is not reclaimed when
+    /// its close-on-exec alias is dropped.
+    #[test]
+    fn exec_cloexec_shared_description_not_reclaimed() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7265);
+        set_current_process(pid);
+
+        // A host-backed descriptor duplicated onto a second number: the two share one description.
+        let hostfs_fd: c_int =
+            vfs_alloc_hostfs(71, false, None).expect("hostfs alloc should succeed");
+        let dup_fd: c_int = vfs_dup(hostfs_fd).expect("dup should succeed");
+        // Flag only the original close-on-exec; the dup sibling stays unflagged.
+        let mut cloexec: FdFlags = FdFlags::default();
+        cloexec.set_close_on_exec(true);
+        vfs_set_fd_flags(hostfs_fd, cloexec).expect("setting close-on-exec should succeed");
+
+        let reclaim: ProcessExitReclaim = vfs_exec_cloexec(pid);
+        assert!(
+            reclaim.orphaned_hostfs_fds.is_empty(),
+            "a description still held by a dup sibling must not be reclaimed"
+        );
+        assert_eq!(vfs_get_fd_flags(hostfs_fd), None, "the flagged alias must be dropped");
+        assert_eq!(
+            vfs_hostfs_remote_fd(dup_fd),
+            Some(71),
+            "the surviving dup sibling must keep the description"
+        );
+
+        forget_processes(&[pid]);
     }
 
     /// Tests that `F_SETFD` stores the per-descriptor flags and `F_GETFD` reads them back
