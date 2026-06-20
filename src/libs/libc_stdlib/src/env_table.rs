@@ -392,16 +392,30 @@ impl EnvEntry {
 mod test {
     use super::*;
 
-    /// Clears all entries so each test starts with a clean table.
-    fn clear() {
-        let mut table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
-        table.clear();
+    /// Serializes the tests in this module. Every test exercises the same process-global
+    /// environment table (and `setenv` callback), so under the default multi-threaded test harness
+    /// one test's mutation — for example clearing the table — could race against another test's assertions
+    /// (e.g. wiping a key between a sibling test's write and its read). Holding this guard for the
+    /// whole body of each test forces them to run serially against the shared state. A spinlock is
+    /// used (rather than `std::sync::Mutex`) so that a panicking test cannot poison the lock and
+    /// turn a single failure into a cascade across the others.
+    static TEST_GUARD: Mutex<()> = Mutex::new(());
+
+    /// Acquires the shared [`TEST_GUARD`] and resets the global environment table, giving the
+    /// calling test exclusive access to a clean table. The returned guard must be held for the
+    /// duration of the test, so callers must bind it (e.g. `let _guard = setup();`); dropping it
+    /// immediately would release the lock and re-expose the race.
+    #[must_use]
+    fn setup() -> spin::MutexGuard<'static, ()> {
+        let guard: spin::MutexGuard<'static, ()> = TEST_GUARD.lock();
+        ENV_TABLE.lock().clear();
+        guard
     }
 
     /// Tests that setting and getting a variable returns the correct value.
     #[test]
     fn test_set_and_get() {
-        clear();
+        let _guard = setup();
         assert_eq!(set("TEST_KEY_1", b"hello", true), Ok(true));
         let ptr: *const c_char = get("TEST_KEY_1");
         assert!(!ptr.is_null());
@@ -412,7 +426,7 @@ mod test {
     /// Tests that getting a non-existent variable returns null.
     #[test]
     fn test_get_missing() {
-        clear();
+        let _guard = setup();
         let ptr: *const c_char = get("TEST_NONEXISTENT");
         assert!(ptr.is_null());
     }
@@ -420,7 +434,7 @@ mod test {
     /// Tests that overwrite=false preserves an existing variable.
     #[test]
     fn test_set_no_overwrite_existing() {
-        clear();
+        let _guard = setup();
         assert_eq!(set("TEST_KEY_2", b"first", true), Ok(true));
         assert_eq!(set("TEST_KEY_2", b"second", false), Ok(false));
         let ptr: *const c_char = get("TEST_KEY_2");
@@ -431,7 +445,7 @@ mod test {
     /// Tests that overwrite=true replaces an existing variable.
     #[test]
     fn test_set_overwrite_existing() {
-        clear();
+        let _guard = setup();
         assert_eq!(set("TEST_KEY_3", b"first", true), Ok(true));
         assert_eq!(set("TEST_KEY_3", b"second", true), Ok(true));
         let ptr: *const c_char = get("TEST_KEY_3");
@@ -442,7 +456,7 @@ mod test {
     /// Tests that set returns Ok(true) for a new variable regardless of overwrite flag.
     #[test]
     fn test_set_new_variable_no_overwrite() {
-        clear();
+        let _guard = setup();
         assert_eq!(set("TEST_KEY_4", b"value", false), Ok(true));
         let ptr: *const c_char = get("TEST_KEY_4");
         assert!(!ptr.is_null());
@@ -451,19 +465,21 @@ mod test {
     /// Tests that setting a variable with an empty key fails.
     #[test]
     fn test_set_empty_key() {
+        let _guard = setup();
         assert!(set("", b"value", true).is_err());
     }
 
     /// Tests that setting a variable with '=' in the key fails.
     #[test]
     fn test_set_key_with_equals() {
+        let _guard = setup();
         assert!(set("BAD=KEY", b"value", true).is_err());
     }
 
     /// Tests that unset removes a variable.
     #[test]
     fn test_unset() {
-        clear();
+        let _guard = setup();
         assert_eq!(set("TEST_KEY_5", b"value", true), Ok(true));
         unset("TEST_KEY_5");
         let ptr: *const c_char = get("TEST_KEY_5");
@@ -473,14 +489,14 @@ mod test {
     /// Tests that unset on a non-existent variable is a no-op.
     #[test]
     fn test_unset_missing() {
-        clear();
+        let _guard = setup();
         unset("TEST_KEY_NEVER_SET");
     }
 
     /// Tests that `snapshot` serializes entries as `KEY=VALUE` tokens.
     #[test]
     fn test_snapshot() {
-        clear();
+        let _guard = setup();
         assert_eq!(set("SNAPSHOT_KEY_A", b"one", true), Ok(true));
         assert_eq!(set("SNAPSHOT_KEY_B", b"two", true), Ok(true));
         let snap: Vec<String> = snapshot();
@@ -491,7 +507,7 @@ mod test {
     /// Tests that a value containing '=' is stored and retrieved correctly.
     #[test]
     fn test_value_with_equals() {
-        clear();
+        let _guard = setup();
         assert_eq!(set("TEST_KEY_EQ", b"a=b=c", true), Ok(true));
         let ptr: *const c_char = get("TEST_KEY_EQ");
         assert!(!ptr.is_null());
@@ -502,7 +518,7 @@ mod test {
     /// Tests that `init_from_raw` populates the table from a C-style `envp`.
     #[test]
     fn test_init_from_raw() {
-        clear();
+        let _guard = setup();
         let entries: [&[u8]; 3] = [b"FOO=bar\0", b"BAZ=qux\0", b"\0"];
         let ptrs: [*const c_char; 3] = [
             entries[0].as_ptr().cast::<c_char>(),
@@ -525,7 +541,7 @@ mod test {
     /// Tests that `init_from_raw` with a null pointer is a no-op.
     #[test]
     fn test_init_from_raw_null() {
-        clear();
+        let _guard = setup();
         unsafe {
             init_from_raw(::core::ptr::null());
         }
@@ -547,7 +563,7 @@ mod test {
             CALL_COUNT.fetch_add(1, Ordering::Relaxed);
         }
 
-        clear();
+        let _guard = setup();
         CALL_COUNT.store(0, Ordering::Relaxed);
         register_setenv_callback(counting_callback);
 
@@ -571,7 +587,7 @@ mod test {
     /// Tests that `init_from_raw` deduplicates keys, with later entries overriding earlier ones.
     #[test]
     fn test_init_from_raw_dedup() {
-        clear();
+        let _guard = setup();
         let entries: [&[u8]; 4] = [b"DUP=first\0", b"OTHER=val\0", b"DUP=second\0", b"\0"];
         let ptrs: [*const c_char; 4] = [
             entries[0].as_ptr().cast::<c_char>(),
@@ -591,7 +607,7 @@ mod test {
     /// Tests that non-UTF-8 values (e.g., 0xFF) are accepted and preserved.
     #[test]
     fn test_set_non_utf8_value() {
-        clear();
+        let _guard = setup();
         assert_eq!(set("BYTES_KEY", b"\xff", true), Ok(true));
         let ptr: *const c_char = get("BYTES_KEY");
         assert!(!ptr.is_null());
@@ -602,13 +618,14 @@ mod test {
     /// Tests that values containing interior NUL bytes are rejected.
     #[test]
     fn test_set_interior_nul_rejected() {
+        let _guard = setup();
         assert!(set("NUL_KEY", b"a\0b", true).is_err());
     }
 
     /// Tests that `init_from_raw` preserves non-UTF-8 values.
     #[test]
     fn test_init_from_raw_non_utf8_value() {
-        clear();
+        let _guard = setup();
         let entry: &[u8] = b"BIN=\xff\xfe\0";
         let ptrs: [*const c_char; 2] = [entry.as_ptr().cast::<c_char>(), ::core::ptr::null()];
         unsafe {
