@@ -230,18 +230,24 @@ pub fn do_push(
 
     // Search for a matching pending pull request. A pull matches if the puller is the destination
     // and the puller is waiting for data from the caller.
-    let match_idx: Option<usize> = pending_pulls.iter().position(|pull| {
-        pull.src_pid == caller_pid
-            && pull.src_tid == caller_tid
-            && pull.pid == dst_pid
-            && pull.tid == dst_tid
-    });
+    //
+    // Thread identifiers are globally unique and never recycled, so the (src_tid, dst_tid) pair
+    // identifies the rendezvous unambiguously and the process identifiers are redundant for
+    // matching. Keying on the thread identifiers alone keeps the rendezvous working when a
+    // counterpart's process identifier cannot be derived from its thread identifier — e.g. a
+    // thread reached via fork()+execv(), whose main-thread tid no longer equals its pid, so a peer
+    // such as vfsd that derives the destination pid by casting the tid supplies a mismatched
+    // `dst_pid`. The authoritative process identifiers stored in the matched entry are still used
+    // for the cross-process copy below.
+    let match_idx: Option<usize> = pending_pulls
+        .iter()
+        .position(|pull| pull.src_tid == caller_tid && pull.tid == dst_tid);
 
     if let Some(idx) = match_idx {
         // Found a matching pull: the destination is already waiting for our data.
         // NOTE: `swap_remove` is O(1) but does not preserve insertion order. This is acceptable
         // because the rendezvous protocol is strictly 1:1: at most one pending push (or pull)
-        // can exist for a given (caller_pid, caller_tid, dst_pid, dst_tid) tuple at any time.
+        // can exist for a given (caller_tid, dst_tid) pair at any time.
         // Multiple concurrent pushes from the same thread to the same destination are not
         // supported and would require FIFO ordering if ever needed.
         let pull_req: PendingPull = pending_pulls.swap_remove(idx);
@@ -372,18 +378,24 @@ pub fn do_pull(
 
     // Search for a matching pending push request. A push matches if the pusher is the expected
     // source and the pusher is targeting the caller.
-    let match_idx: Option<usize> = pending_pushes.iter().position(|push| {
-        push.pid == src_pid
-            && push.tid == src_tid
-            && push.dst_pid == caller_pid
-            && push.dst_tid == caller_tid
-    });
+    //
+    // Thread identifiers are globally unique and never recycled, so the (src_tid, dst_tid) pair
+    // identifies the rendezvous unambiguously and the process identifiers are redundant for
+    // matching. Keying on the thread identifiers alone keeps the rendezvous working when a
+    // counterpart's process identifier cannot be derived from its thread identifier — e.g. a
+    // thread reached via fork()+execv(), whose main-thread tid no longer equals its pid, so a peer
+    // such as vfsd that derives the source pid by casting the tid supplies a mismatched `src_pid`.
+    // The authoritative process identifiers stored in the matched entry are still used for the
+    // cross-process copy below.
+    let match_idx: Option<usize> = pending_pushes
+        .iter()
+        .position(|push| push.tid == src_tid && push.dst_tid == caller_tid);
 
     if let Some(idx) = match_idx {
         // Found a matching push: the source is already waiting to send data.
         // NOTE: `swap_remove` is O(1) but does not preserve insertion order. This is acceptable
         // because the rendezvous protocol is strictly 1:1: at most one pending push (or pull)
-        // can exist for a given (caller_pid, caller_tid, dst_pid, dst_tid) tuple at any time.
+        // can exist for a given (caller_tid, dst_tid) pair at any time.
         // Multiple concurrent pulls from the same thread to the same source are not
         // supported and would require FIFO ordering if ever needed.
         let push_req: PendingPush = pending_pushes.swap_remove(idx);
