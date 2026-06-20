@@ -114,18 +114,24 @@ impl DlOpenMode {
     const VALID_MASK: i32 = DLOPEN_MODE_LAZY_BIT | DLOPEN_MODE_NOW_BIT | DLOPEN_MODE_GLOBAL_BIT;
 
     /// Creates a `DlOpenMode` from a raw integer, returning `None` if any
-    /// invalid bits are set or if neither `LAZY` nor `NOW` is specified.
+    /// invalid bits are set or if no recognized flag is specified.
     ///
-    /// NOTE: `LAZY | NOW` is accepted (POSIX says this is undefined behavior;
-    /// glibc treats it as `NOW`). Since Nanvix always resolves eagerly, this
-    /// combination is harmless.
+    /// NOTE: `LAZY | NOW` is accepted (POSIX leaves this combination
+    /// unspecified; glibc treats it as `NOW`). Since Nanvix always resolves
+    /// eagerly, this combination is harmless. `GLOBAL` on its own is likewise
+    /// tolerated: POSIX makes the binding-mode bit optional (`mode` "may" have
+    /// `RTLD_LAZY`/`RTLD_NOW`, and no error is defined for their absence), so
+    /// accepting `dlopen(provider, RTLD_GLOBAL)` and loading it eagerly is
+    /// conforming. Note that glibc and musl reject a mode without
+    /// `RTLD_LAZY`/`RTLD_NOW`, so portable callers should pass
+    /// `RTLD_NOW | RTLD_GLOBAL`.
     pub fn from_raw(raw: i32) -> Option<Self> {
         // Reject unknown bits.
         if raw & !Self::VALID_MASK != 0 {
             return None;
         }
-        // At least one of LAZY or NOW must be set.
-        if raw & (Self::LAZY.0 | Self::NOW.0) == 0 {
+        // At least one recognized flag (LAZY, NOW, or GLOBAL) must be set.
+        if raw & (Self::LAZY.0 | Self::NOW.0 | Self::GLOBAL.0) == 0 {
             return None;
         }
         Some(DlOpenMode(raw))
