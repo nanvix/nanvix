@@ -11,9 +11,11 @@
 // Imports
 //==================================================================================================
 
-use ::core::mem::align_of;
 use ::sysapi::{
-    ffi::c_char,
+    ffi::{
+        c_char,
+        c_uchar,
+    },
     sys_types::c_size_t,
 };
 
@@ -44,20 +46,19 @@ use ::sysapi::{
 /// - It performs raw pointer dereferencing and arithmetic.
 /// - It reads from the memory region pointed to by `s` without bounds checking.
 ///
-#[unsafe(no_mangle)]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn strlen(s: *const c_char) -> c_size_t {
     debug_assert!(!s.is_null(), "strlen(): null pointer");
-    debug_assert!((s as usize) < isize::MAX as usize, "strlen(): pointer too large");
-    debug_assert!(
-        (s as usize).is_multiple_of(align_of::<c_char>()),
-        "strlen(): pointer is not properly aligned"
-    );
 
-    let mut i: c_size_t = 0;
-    while *s.add(i as usize) != 0 {
+    let bytes: *const c_uchar = s.cast::<c_uchar>();
+    let mut i: usize = 0;
+
+    // Scan one byte at a time so that no memory beyond the terminating null byte is ever read.
+    while *bytes.add(i) != 0 {
         i += 1;
     }
-    i
+
+    c_size_t::try_from(i).unwrap_or(c_size_t::MAX)
 }
 
 #[cfg(all(test, feature = "std"))]
