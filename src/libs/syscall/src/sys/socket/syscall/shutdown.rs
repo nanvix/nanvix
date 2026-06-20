@@ -30,6 +30,9 @@ use ::sysapi::ffi::c_int;
 pub fn shutdown(sockfd: c_int, how: Shutdown) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
+    // Address networkd by the descriptor it assigned: the caller passes a flat descriptor.
+    let sockfd = crate::fdtable::resolve_socket(sockfd, "shutdown")?;
+
     // Build request and send it.
     let request: Message = ShutdownSocketRequest::build(tid, sockfd, how);
     ::sys::kcall::ipc::__kcall_send(&request)?;

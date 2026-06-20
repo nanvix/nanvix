@@ -58,17 +58,26 @@ pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Res
                 SystemCallMessageHeader::CreateSocketResponse => {
                     let response: CreateSocketResponse =
                         CreateSocketResponse::from_bytes(message.payload);
-                    let sockfd: c_int = response.sockfd;
+                    let remote_fd: c_int = response.sockfd;
 
-                    // Seed the resolution cache so the new socket resolves from the cache rather
-                    // than by number. Sockets carry no vfsd table generation, so the epoch is 0.
+                    // Under the flat namespace, `networkd` owns the endpoint (the remote fd) while
+                    // `vfsd` allocates the application-visible flat descriptor that routes to it.
+                    // The flat slot is recorded in the resolution cache so socket I/O reaches
+                    // `networkd` directly by `remote_fd`.
                     #[cfg(feature = "standalone")]
-                    if sockfd >= 0 {
-                        crate::fdtable::record(sockfd, crate::fdtable::Route::Socket, sockfd, 0);
+                    {
+                        if remote_fd < 0 {
+                            Ok(remote_fd)
+                        } else {
+                            super::register_socket_slot(remote_fd)
+                        }
                     }
-
-                    // Return system call result.
-                    Ok(sockfd)
+                    // Hosted mode has no guest `vfsd`: the backend numbers the descriptor and the
+                    // application sees it directly.
+                    #[cfg(not(feature = "standalone"))]
+                    {
+                        Ok(remote_fd)
+                    }
                 },
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },

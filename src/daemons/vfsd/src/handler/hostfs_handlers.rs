@@ -128,6 +128,26 @@ pub(crate) fn handle_close_with_hostfs(
         return None;
     }
 
+    // Socket close: the slot is a flat descriptor vfsd owns, but the endpoint lives in networkd.
+    // Capture whether this drops the last reference before releasing the slot; if so, forward the
+    // endpoint close to networkd so the remote descriptor does not leak. The networkd close is
+    // fire-and-forget, so the response is returned synchronously.
+    if let Some(remote_fd) = ::vfs::fd::vfs_socket_remote_fd(fd) {
+        let last_ref: bool = ::vfs::fd::vfs_socket_is_last_ref(fd);
+        let response: Message = super::short::handle_close(source, msg);
+        if last_ref {
+            if let Err(e) = crate::networkd::send_close_request(remote_fd) {
+                ::syslog::warn!(
+                    "socket close: failed to forward endpoint close to networkd (remote_fd={}, \
+                     error={:?})",
+                    remote_fd,
+                    e
+                );
+            }
+        }
+        return Some(response);
+    }
+
     Some(super::short::handle_close(source, msg))
 }
 
@@ -170,6 +190,8 @@ pub(crate) fn handle_dup2(
         ::vfs::fd::vfs_pipe_id(newfd).filter(|_| ::vfs::fd::vfs_pipe_is_last_ref(newfd));
     let displaced_hostfs: Option<i32> =
         ::vfs::fd::vfs_hostfs_remote_fd(newfd).filter(|_| ::vfs::fd::vfs_hostfs_is_last_ref(newfd));
+    let displaced_socket: Option<i32> =
+        ::vfs::fd::vfs_socket_remote_fd(newfd).filter(|_| ::vfs::fd::vfs_socket_is_last_ref(newfd));
 
     // Perform the authoritative table mutation: `newfd` now aliases `oldfd`'s description. This
     // drops the displaced description locally; its external reclaim is performed below.
@@ -193,6 +215,17 @@ pub(crate) fn handle_dup2(
         {
             ::syslog::warn!(
                 "dup2: failed to close displaced hostfs handle (remote_fd={}, error={:?})",
+                remote_fd,
+                e
+            );
+        }
+    }
+
+    // A displaced socket last reference must have its networkd endpoint closed so it does not leak.
+    if let Some(remote_fd) = displaced_socket {
+        if let Err(e) = crate::networkd::send_close_request(remote_fd) {
+            ::syslog::warn!(
+                "dup2: failed to close displaced socket endpoint (remote_fd={}, error={:?})",
                 remote_fd,
                 e
             );

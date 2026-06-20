@@ -18,6 +18,7 @@ mod handler;
 mod hostfs;
 mod init;
 mod ipc;
+mod networkd;
 mod pending;
 mod pipe_wait;
 
@@ -194,6 +195,12 @@ pub fn main() {
                         ::syscall::SystemCallMessage::try_from_bytes(message.payload)
                     {
                         let header: SystemCallMessageHeader = syscall_msg.header;
+                        // networkd acknowledges a forwarded socket-endpoint close with an IKC
+                        // `CloseResponse`. That close is fire-and-forget — vfsd does not wait on it
+                        // — so the acknowledgement is expected and silently discarded.
+                        if header == SystemCallMessageHeader::CloseResponse {
+                            continue;
+                        }
                         // Multi-part response stream: assemble parts before dispatch.
                         // The op_id is *not* at the standard payload[2..6] offset for
                         // these messages (those bytes carry SystemCallMessagePart

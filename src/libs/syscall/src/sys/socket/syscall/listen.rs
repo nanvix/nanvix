@@ -27,6 +27,9 @@ use ::sysapi::ffi::c_int;
 pub fn listen(sockfd: c_int, backlog: c_int) -> Result<(), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
+    // Address networkd by the descriptor it assigned: the caller passes a flat descriptor.
+    let sockfd = crate::fdtable::resolve_socket(sockfd, "listen")?;
+
     // Build request and send it.
     let request: Message = ListenSocketRequest::build(tid, sockfd, backlog);
     ::sys::kcall::ipc::__kcall_send(&request)?;

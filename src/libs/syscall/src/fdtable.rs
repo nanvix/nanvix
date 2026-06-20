@@ -5,16 +5,15 @@
 //!
 //! Under the flat namespace a descriptor's number no longer encodes its backend: `open` hands out
 //! the lowest free number (typically a small one), so a value like `4` could be a regular file, a
-//! pipe end, a directory, or a host file. One range keeps a fixed meaning in the interim:
-//! `[SOCKET_FD_BASE, …)` is always a `networkd` socket. Every lower descriptor is whatever `vfsd`'s
+//! pipe end, a directory, a host file, or a socket. Every descriptor is whatever `vfsd`'s
 //! authoritative slot table says it is.
 //!
 //! This module routes a descriptor through a single seam, [`resolve`]. The answer comes from, in
-//! order: a coherent cache entry; the fixed socket range ([`derive`], no round-trip); otherwise an
-//! authoritative query to `vfsd` ([`resolve_via_vfsd`]). If no guest `vfsd` exists in the current
-//! run mode, the standard streams fall back to the kernel console by number. A descriptor created
-//! locally (`open`, `pipe`, `socket`) or learned from `vfsd` is recorded, so the `vfsd` query is
-//! reached only on a genuine miss or after an entry goes stale.
+//! order: a coherent cache entry; otherwise an authoritative query to `vfsd` ([`resolve_via_vfsd`]).
+//! If no guest `vfsd` exists in the current run mode, the standard streams fall back to the kernel
+//! console by number. A descriptor created locally (`open`, `pipe`, `socket`) or learned from
+//! `vfsd` is recorded, so the `vfsd` query is reached only on a genuine miss or after an entry goes
+//! stale.
 //!
 //! Coherence is load-bearing here. Each entry carries the `vfsd` table generation it was learned at
 //! (its *epoch*), and [`EXPECTED_EPOCH`] tracks the newest generation this process has observed from
@@ -23,8 +22,6 @@
 
 #[cfg(any(feature = "standalone", test))]
 use ::alloc::collections::BTreeMap;
-#[cfg(any(feature = "standalone", test))]
-use ::config::fds::is_socket_fd;
 #[cfg(test)]
 use ::core::sync::atomic::AtomicBool;
 #[cfg(any(feature = "standalone", test))]
@@ -128,23 +125,6 @@ fn observe_epoch(epoch: u64) {
     EXPECTED_EPOCH.fetch_max(epoch, Ordering::Relaxed);
 }
 
-/// Derives the routing decision implied by a descriptor number alone.
-///
-/// Only the reserved socket range owned by `networkd` is answered here. Every lower descriptor,
-/// including `0`/`1`/`2`, is flat namespace state owned by `vfsd` and must be resolved there so a
-/// closed standard descriptor can be reused by a non-console object.
-#[cfg(any(feature = "standalone", test))]
-fn derive(fd: i32) -> Option<Resolution> {
-    if is_socket_fd(fd) {
-        Some(Resolution {
-            route: Route::Socket,
-            backend_fd: fd,
-        })
-    } else {
-        None
-    }
-}
-
 /// Derives the fallback console route for run modes that have no guest `vfsd`.
 #[cfg(any(feature = "standalone", test))]
 fn derive_console(fd: i32) -> Option<Resolution> {
@@ -173,8 +153,8 @@ fn is_coherent(entry_epoch: u64) -> bool {
 /// Resolves a descriptor to its backend route.
 ///
 /// This is the hot-path lookup used by every descriptor system call. The answer comes from, in
-/// order: a cached entry that is still coherent; the fixed socket number range ([`derive`], no
-/// round-trip); otherwise an authoritative query to `vfsd` ([`resolve_via_vfsd`]).
+/// order: a cached entry that is still coherent; otherwise an authoritative query to `vfsd`
+/// ([`resolve_via_vfsd`]).
 /// A cache hit on a coherent entry holds the lock only across a single map probe and never
 /// round-trips, so tight `read`/`write` loops stay local.
 #[cfg(any(feature = "standalone", test))]
@@ -190,10 +170,8 @@ pub(crate) fn resolve(fd: i32) -> Option<Resolution> {
             }
         }
     }
-    // The fixed ranges answer without a round-trip; everything else is the authority's to decide.
-    if let Some(resolution) = derive(fd) {
-        return Some(resolution);
-    }
+    // The cache missed or went stale; the authority decides, falling back to the console by number
+    // only when no guest `vfsd` is available to answer.
     match resolve_via_vfsd(fd) {
         VfsdResolution::Hit(resolution) => Some(resolution),
         VfsdResolution::BadFile => None,
@@ -225,6 +203,34 @@ pub(crate) fn resolve_vfs(fd: i32, syscall_name: &str) -> Result<i32, Error> {
 /// descriptor directly.
 #[cfg(not(feature = "standalone"))]
 pub(crate) fn resolve_vfs(fd: i32, _syscall_name: &str) -> Result<i32, Error> {
+    Ok(fd)
+}
+
+/// Resolves `fd` and returns the `networkd` descriptor backing the socket.
+///
+/// Socket I/O syscalls take a flat descriptor but must address `networkd` by the descriptor it
+/// assigned (the backend fd). In standalone mode this consults the resolution cache (querying
+/// `vfsd` on a miss); a descriptor that is not a socket is rejected with `ENOTSOCK`. The flat
+/// descriptor never reaches `networkd`.
+#[cfg(feature = "standalone")]
+pub(crate) fn resolve_socket(fd: i32, syscall_name: &str) -> Result<i32, Error> {
+    use ::sys::error::ErrorCode;
+
+    match resolve(fd) {
+        Some(resolution) if resolution.route == Route::Socket => Ok(resolution.backend_fd),
+        _ => {
+            ::syslog::warn!("{syscall_name}(): not a socket fd={fd}");
+            Err(Error::new(ErrorCode::NotSocketFile, "fd is not a socket"))
+        },
+    }
+}
+
+/// Resolves `fd` to the descriptor expected by the socket backend in hosted mode.
+///
+/// Non-standalone builds route socket syscalls to the host, which interprets the caller-facing
+/// descriptor directly, so the descriptor is returned unchanged.
+#[cfg(not(feature = "standalone"))]
+pub(crate) fn resolve_socket(fd: i32, _syscall_name: &str) -> Result<i32, Error> {
     Ok(fd)
 }
 
@@ -282,10 +288,10 @@ pub(crate) fn record(fd: i32, route: Route, backend_fd: i32, epoch: u64) {
 
 /// Queries `vfsd` for the authoritative route of `fd` and records the answer.
 ///
-/// Reached only when the cache misses (or holds a stale entry) and the number is not in the fixed
-/// socket range — i.e. for a `vfsd`-owned descriptor that this process did not itself create, or
-/// one whose entry went stale. The answer is recorded so subsequent uses hit the cache. Returns
-/// `None` if `vfsd` reports no slot for `fd` (an invalid descriptor).
+/// Reached only when the cache misses (or holds a stale entry) — i.e. for a `vfsd`-owned descriptor
+/// that this process did not itself create, or one whose entry went stale. The answer is recorded
+/// so subsequent uses hit the cache. Returns `None` if `vfsd` reports no slot for `fd` (an invalid
+/// descriptor).
 #[cfg(all(feature = "standalone", not(test)))]
 fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
     use crate::{
@@ -410,7 +416,6 @@ fn clear() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::config::fds::SOCKET_FD_BASE;
 
     /// Serializes the cache tests: they share the process-global [`CACHE`], [`EXPECTED_EPOCH`], and
     /// [`MOCK_VFSD`], so they must not run concurrently with one another.
@@ -421,21 +426,28 @@ mod tests {
         MOCK_VFSD.lock().insert(fd, (route, backend_fd, epoch));
     }
 
-    /// Tests that only the reserved socket range resolves without consulting `vfsd`. A low flat
-    /// number with nothing cached or modeled in `vfsd` is unroutable.
+    /// Tests that a socket descriptor is a flat slot resolved through `vfsd` like any other object:
+    /// its number carries no meaning, and `vfsd` reports the `Socket` route together with the
+    /// `networkd` descriptor it routes to. A flat number with nothing cached or modeled in `vfsd`
+    /// is unroutable.
     #[test]
-    fn derive_routes_socket_by_number() {
+    fn socket_resolves_via_vfsd() {
         let _guard = CACHE_TEST_GUARD.lock();
         clear();
 
+        // vfsd owns the socket slot and reports the networkd descriptor it routes to.
+        mock_vfsd(4, Route::Socket, 2050, 1);
         assert_eq!(
-            resolve(SOCKET_FD_BASE).map(|r| r.route),
-            Some(Route::Socket),
-            "a socket descriptor must route to networkd by number"
+            resolve(4),
+            Some(Resolution {
+                route: Route::Socket,
+                backend_fd: 2050
+            }),
+            "a socket descriptor must resolve through vfsd's flat table to its networkd descriptor"
         );
-        // Low flat numbers are not a fixed range; with no cache entry and no vfsd slot they are
-        // unroutable rather than silently assumed to be console or vfsd files.
-        for fd in [0, 1, 2, 4] {
+        // Flat numbers are not a fixed range; with no cache entry and no vfsd slot they are
+        // unroutable rather than silently assumed to be a socket, console, or vfsd file.
+        for fd in [0, 1, 2, 5] {
             assert_eq!(resolve(fd), None, "an unknown flat descriptor must be unroutable");
         }
 
@@ -517,6 +529,20 @@ mod tests {
         let backend_fd: i32 =
             resolve_table_op(9, "test").expect("hosted resolve_table_op should succeed");
         assert_eq!(backend_fd, 9, "hosted mode must pass raw descriptors through");
+
+        clear();
+    }
+
+    /// Tests that hosted builds leave socket descriptor interpretation to the host backend, passing
+    /// the descriptor through unchanged.
+    #[test]
+    fn hosted_resolve_socket_returns_raw_fd() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        let backend_fd: i32 =
+            resolve_socket(11, "test").expect("hosted resolve_socket should succeed");
+        assert_eq!(backend_fd, 11, "hosted mode must pass raw descriptors through");
 
         clear();
     }

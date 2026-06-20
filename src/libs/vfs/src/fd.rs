@@ -22,12 +22,14 @@
 
 use crate::fat32_backend;
 use ::alloc::{
-    collections::BTreeMap,
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
     string::String,
     sync::Arc,
     vec::Vec,
 };
-use ::config::fds::SOCKET_FD_BASE;
 use ::core::sync::atomic::{
     AtomicBool,
     AtomicI32,
@@ -212,8 +214,8 @@ pub enum VfsFileHandle {
     /// Routing token for a socket, holding the descriptor assigned by `networkd`.
     ///
     /// Socket I/O is not served by vfsd; like [`VfsFileHandle::HostFs`] this token only stores the
-    /// remote descriptor so vfsd can own the slot and its per-descriptor flags. No production path
-    /// constructs this variant yet (that lands in a later plan).
+    /// remote descriptor so vfsd can own the slot and its per-descriptor flags. vfsd closes the
+    /// remote descriptor on `networkd` when the last reference to the slot is dropped.
     Socket(SocketHandle),
 }
 
@@ -321,8 +323,8 @@ impl ConsoleHandle {
 ///
 /// A socket handle stores the descriptor that `networkd` assigned to the socket (its remote fd),
 /// analogous to [`HostFsHandle::remote_fd`]. Socket I/O is not served by vfsd; this token only lets
-/// vfsd own the descriptor slot and its per-descriptor flags. Closing the remote descriptor when the
-/// last reference is dropped is wired in a later plan.
+/// vfsd own the descriptor slot and its per-descriptor flags. vfsd closes the remote descriptor on
+/// `networkd` when the last reference to the slot is dropped.
 pub struct SocketHandle {
     /// Descriptor assigned by `networkd` (the remote fd).
     remote_fd: i32,
@@ -769,6 +771,13 @@ fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
         .ok_or(Fat32Error::InvalidFd)
 }
 
+/// Upper bound (exclusive) of the flat per-process descriptor namespace.
+///
+/// The allocator hands out the lowest free descriptor in `[0, MAX_OPEN_FDS)`. Every object —
+/// sockets, regular files, pipes, and console streams — draws from this single range, so there is
+/// no carved-out sub-range. Exhausting it yields [`Fat32Error::TooManyOpenFiles`].
+const MAX_OPEN_FDS: c_int = 2048;
+
 /// Allocates a new file descriptor for the given handle in the current process.
 ///
 /// Allocation is flat and lowest-free: the descriptor is the smallest non-negative number not
@@ -776,17 +785,17 @@ fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
 /// that same table, so the first `open` in a fresh process returns `3`, and a number freed by
 /// `close` is reused before any higher one — matching POSIX.
 ///
-/// The search stops below [`SOCKET_FD_BASE`], so a VFS descriptor can never be handed out inside the
-/// `networkd`-owned socket range. This is the interim reservation that lets the flat namespace ship
-/// before sockets are unified into this table; it is removed once `networkd` joins the flat
-/// namespace.
+/// The search spans the whole flat namespace `[0, MAX_OPEN_FDS)`: sockets, files, pipes, and
+/// console streams all draw from this single range, with no carved-out sub-range. A socket's
+/// application-visible number is therefore the lowest free flat descriptor like any other object,
+/// while the `networkd` descriptor that backs it lives in `networkd`'s own space and is invisible
+/// here.
 fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.entry(current_pid()).or_insert_with(ProcessState::new);
-    // Lowest free descriptor across the whole flat namespace, bounded below the reserved socket
-    // range so an allocated number can never collide with a networkd-owned socket descriptor.
-    let fd: c_int = (0..SOCKET_FD_BASE)
+    // Lowest free descriptor across the whole flat namespace.
+    let fd: c_int = (0..MAX_OPEN_FDS)
         .find(|candidate| !state.slots.contains_key(candidate))
         .ok_or(Fat32Error::TooManyOpenFiles)?;
     let file: OpenFile = Arc::new(Mutex::new(VfsEntry {
@@ -971,6 +980,9 @@ pub struct ProcessExitReclaim {
     /// Remote file descriptors of host-backed descriptions for which the process held the final
     /// reference. Each must be closed on hostfsd or the remote handle leaks.
     pub orphaned_hostfs_fds: Vec<i32>,
+    /// `networkd` descriptors of socket slots for which the process held the final reference. Each
+    /// must be closed on `networkd` or the socket endpoint leaks.
+    pub orphaned_socket_fds: Vec<i32>,
     /// Pipe ends whose reference count reached zero because the process held the final reference.
     pub pipe_closures: Vec<PipeClosure>,
 }
@@ -984,10 +996,13 @@ pub struct ProcessExitReclaim {
 ///
 /// Returns the resources the daemon must act on: the remote file descriptors of any host-backed
 /// open file descriptions for which `pid` held the final reference (which it must close on hostfsd,
-/// because the process is gone and can no longer close them itself), and the pipe ends whose
-/// reference count reached zero (so the daemon can fire EOF/`EPIPE` wakeups for any suspended
-/// counterparts). Descriptions still shared with a surviving process are not returned.
-#[must_use = "the returned hostfs fds must be closed and pipe closures must trigger wakeups"]
+/// because the process is gone and can no longer close them itself), the `networkd` descriptors of
+/// any socket slots for which `pid` held the final reference (which it must close on `networkd` for
+/// the same reason), and the pipe ends whose reference count reached zero (so the daemon can fire
+/// EOF/`EPIPE` wakeups for any suspended counterparts). Descriptions still shared with a surviving
+/// process are not returned.
+#[must_use = "the returned hostfs and socket fds must be closed and pipe closures must trigger \
+              wakeups"]
 pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
     // Detach the process's state while holding the registry lock, but defer dropping it until the
     // lock is released. Dropping an open file description may run backend teardown; deferring keeps
@@ -1000,6 +1015,7 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
     let Some(state) = removed else {
         return ProcessExitReclaim {
             orphaned_hostfs_fds: Vec::new(),
+            orphaned_socket_fds: Vec::new(),
             pipe_closures: Vec::new(),
         };
     };
@@ -1008,10 +1024,20 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
     // A host-backed handle must therefore be closed on hostfsd, and a pipe end's count drops to
     // zero (which the dropped end's `Drop` applies just below). As the sole owner, the lock is
     // uncontended.
+    let removed_slots: Vec<Slot> = state.slots.into_values().collect();
+    let mut removed_ref_counts: BTreeMap<*const Mutex<VfsEntry>, usize> = BTreeMap::new();
+    for slot in &removed_slots {
+        let file_id: *const Mutex<VfsEntry> = Arc::as_ptr(&slot.file);
+        *removed_ref_counts.entry(file_id).or_insert(0) += 1;
+    }
     let mut orphaned: Vec<i32> = Vec::new();
+    let mut orphaned_sockets: Vec<i32> = Vec::new();
+    let mut seen_files: BTreeSet<*const Mutex<VfsEntry>> = BTreeSet::new();
     let mut pipe_closures: Vec<PipeClosure> = Vec::new();
-    for slot in state.slots.into_values() {
-        if Arc::strong_count(&slot.file) != 1 {
+    for slot in removed_slots {
+        let file_id: *const Mutex<VfsEntry> = Arc::as_ptr(&slot.file);
+        let removed_refs: usize = *removed_ref_counts.get(&file_id).unwrap_or(&0);
+        if !seen_files.insert(file_id) || Arc::strong_count(&slot.file) != removed_refs {
             continue;
         }
         match &slot.file.lock().handle {
@@ -1022,10 +1048,10 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
             }),
             // A console token holds no external resource, so it contributes nothing to reclaim.
             VfsFileHandle::Console(_) => {},
-            // A socket token holds the `networkd` descriptor, but closing it on last reference is
-            // wired in a later plan; nothing is reclaimed here yet. This arm must stay distinct so
-            // a socket is never mistaken for a hostfs or pipe handle.
-            VfsFileHandle::Socket(_) => {},
+            // A socket token holds the `networkd` descriptor: as the final reference, the endpoint
+            // must be closed on `networkd` so it does not leak. This arm must stay distinct so a
+            // socket is never mistaken for a hostfs or pipe handle.
+            VfsFileHandle::Socket(h) => orphaned_sockets.push(h.remote_fd()),
             _ => {},
         }
         // `slot` — and the open file description it holds — is dropped here, after the registry lock
@@ -1034,6 +1060,7 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
     }
     ProcessExitReclaim {
         orphaned_hostfs_fds: orphaned,
+        orphaned_socket_fds: orphaned_sockets,
         pipe_closures,
     }
 }
@@ -1043,7 +1070,8 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
 /// Walks `pid`'s slot table and drops every descriptor whose per-descriptor flags carry
 /// `FD_CLOEXEC`, leaving the surviving descriptors at their original numbers. Each dropped slot
 /// runs the same last-reference accounting as [`vfs_process_exit`]: a host-backed description for
-/// which `pid` held the final reference is surfaced for closing on hostfsd, and a pipe end whose
+/// which `pid` held the final reference is surfaced for closing on hostfsd, a socket slot for which
+/// `pid` held the final reference is surfaced for closing on `networkd`, and a pipe end whose
 /// reference count reaches zero is surfaced so the daemon can fire the EOF/`EPIPE` wakeup for any
 /// suspended counterpart. Descriptions still shared with a surviving descriptor — in this process
 /// (for example a non-`FD_CLOEXEC` `dup` sibling) or another (a forked relative) — are not
@@ -1058,7 +1086,8 @@ pub fn vfs_process_exit(pid: ProcessIdentifier) -> ProcessExitReclaim {
 /// The barrier in the process manager daemon guarantees this runs before the new image issues any
 /// descriptor operation, so a descriptor flagged `FD_CLOEXEC` is provably gone before the new image
 /// can observe it.
-#[must_use = "the returned hostfs fds must be closed and pipe closures must trigger wakeups"]
+#[must_use = "the returned hostfs and socket fds must be closed and pipe closures must trigger \
+              wakeups"]
 pub fn vfs_exec_cloexec(pid: ProcessIdentifier) -> ProcessExitReclaim {
     // Detach the close-on-exec slots while holding the registry lock, but defer dropping the open
     // file descriptions they hold until the lock is released. Dropping a description may run
@@ -1070,6 +1099,7 @@ pub fn vfs_exec_cloexec(pid: ProcessIdentifier) -> ProcessExitReclaim {
         let Some(state) = procs.get_mut(&pid) else {
             return ProcessExitReclaim {
                 orphaned_hostfs_fds: Vec::new(),
+                orphaned_socket_fds: Vec::new(),
                 pipe_closures: Vec::new(),
             };
         };
@@ -1084,6 +1114,7 @@ pub fn vfs_exec_cloexec(pid: ProcessIdentifier) -> ProcessExitReclaim {
         if cloexec_fds.is_empty() {
             return ProcessExitReclaim {
                 orphaned_hostfs_fds: Vec::new(),
+                orphaned_socket_fds: Vec::new(),
                 pipe_closures: Vec::new(),
             };
         }
@@ -1103,10 +1134,19 @@ pub fn vfs_exec_cloexec(pid: ProcessIdentifier) -> ProcessExitReclaim {
     // open file description, exactly as in `vfs_process_exit`. A host-backed handle must therefore
     // be closed on hostfsd, and a pipe end's count drops to zero (which the dropped end's `Drop`
     // applies as each slot leaves scope below).
+    let mut removed_ref_counts: BTreeMap<*const Mutex<VfsEntry>, usize> = BTreeMap::new();
+    for slot in &removed_slots {
+        let file_id: *const Mutex<VfsEntry> = Arc::as_ptr(&slot.file);
+        *removed_ref_counts.entry(file_id).or_insert(0) += 1;
+    }
     let mut orphaned: Vec<i32> = Vec::new();
+    let mut orphaned_sockets: Vec<i32> = Vec::new();
+    let mut seen_files: BTreeSet<*const Mutex<VfsEntry>> = BTreeSet::new();
     let mut pipe_closures: Vec<PipeClosure> = Vec::new();
     for slot in removed_slots {
-        if Arc::strong_count(&slot.file) != 1 {
+        let file_id: *const Mutex<VfsEntry> = Arc::as_ptr(&slot.file);
+        let removed_refs: usize = *removed_ref_counts.get(&file_id).unwrap_or(&0);
+        if !seen_files.insert(file_id) || Arc::strong_count(&slot.file) != removed_refs {
             continue;
         }
         match &slot.file.lock().handle {
@@ -1117,10 +1157,10 @@ pub fn vfs_exec_cloexec(pid: ProcessIdentifier) -> ProcessExitReclaim {
             }),
             // A console token holds no external resource, so it contributes nothing to reclaim.
             VfsFileHandle::Console(_) => {},
-            // A socket token holds the `networkd` descriptor, but closing it on last reference is
-            // wired in a later plan; nothing is reclaimed here yet. This arm must stay distinct so
-            // a socket is never mistaken for a hostfs or pipe handle.
-            VfsFileHandle::Socket(_) => {},
+            // A socket token holds the `networkd` descriptor: as the final reference, the endpoint
+            // must be closed on `networkd` so it does not leak. This arm must stay distinct so a
+            // socket is never mistaken for a hostfs or pipe handle.
+            VfsFileHandle::Socket(h) => orphaned_sockets.push(h.remote_fd()),
             _ => {},
         }
         // `slot` — and the open file description it holds — is dropped here, after the registry lock
@@ -1128,6 +1168,7 @@ pub fn vfs_exec_cloexec(pid: ProcessIdentifier) -> ProcessExitReclaim {
     }
     ProcessExitReclaim {
         orphaned_hostfs_fds: orphaned,
+        orphaned_socket_fds: orphaned_sockets,
         pipe_closures,
     }
 }
@@ -1232,6 +1273,58 @@ pub fn vfs_hostfs_set_readdir_offset(fd: c_int, offset: u32) -> bool {
             true
         },
         _ => false,
+    }
+}
+
+//==================================================================================================
+// Socket FD Helpers
+//==================================================================================================
+
+/// Allocates a flat descriptor slot for a socket endpoint that `networkd` already created.
+///
+/// This is the second step of socket creation: once `networkd` returns the endpoint's remote
+/// descriptor, libposix asks vfsd to bind it to a flat slot via this function. The returned
+/// descriptor is the lowest free flat number — the same allocation every other object goes through
+/// — and the slot holds a [`SocketHandle`] so vfsd owns the socket's per-descriptor flags and its
+/// place in `fork`/`exec`/`close` accounting. Socket I/O still flows directly to `networkd`, keyed
+/// off `remote_fd`.
+pub fn vfs_register_socket(remote_fd: i32) -> Result<c_int, Fat32Error> {
+    alloc_fd(VfsFileHandle::Socket(SocketHandle::new(remote_fd)))
+}
+
+/// Returns the `networkd` descriptor backing a socket file descriptor, or `None` if `fd` is not a
+/// socket slot in the current process.
+///
+/// vfsd uses this to forward a last-reference socket close to `networkd`, the socket analogue of
+/// [`vfs_hostfs_remote_fd`].
+pub fn vfs_socket_remote_fd(fd: c_int) -> Option<i32> {
+    let file: OpenFile = entry_arc(fd).ok()?;
+    let guard = file.lock();
+    match &guard.handle {
+        VfsFileHandle::Socket(h) => Some(h.remote_fd()),
+        _ => None,
+    }
+}
+
+/// Reports whether closing `fd` would drop the final reference to a socket endpoint.
+///
+/// Returns `true` when `fd` refers to a socket slot and the current process holds the only
+/// descriptor for that endpoint's open file description, so closing it (or the owning process
+/// exiting) must close the `networkd` endpoint. Returns `false` when other descriptors still share
+/// it (for example in a forked child), when `fd` is not a socket, or when `fd` is invalid. This
+/// does not modify the descriptor table.
+pub fn vfs_socket_is_last_ref(fd: c_int) -> bool {
+    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
+    let Some(state) = procs.get(&current_pid()) else {
+        return false;
+    };
+    match state.slots.get(&fd) {
+        Some(slot) => {
+            // Must be a socket and the sole reference for closing to release the endpoint.
+            Arc::strong_count(&slot.file) == 1
+                && matches!(&slot.file.lock().handle, VfsFileHandle::Socket(_))
+        },
+        None => false,
     }
 }
 
@@ -1791,9 +1884,8 @@ pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
 /// cloned, so the two descriptors share one file offset and status flags, exactly as POSIX `dup`
 /// and `fcntl(F_DUPFD)` require. The duplicate carries its own per-descriptor flags with
 /// `FD_CLOEXEC` cleared, because POSIX mandates that a duplicate start with close-on-exec off; the
-/// source descriptor's flags are untouched. Allocation is lowest-free within the flat namespace and
-/// bounded below the reserved socket range, so the returned number is the smallest free one that is
-/// at least `min_fd`.
+/// source descriptor's flags are untouched. Allocation is lowest-free within the flat namespace, so
+/// the returned number is the smallest free one that is at least `min_fd`.
 ///
 /// This is the single primitive behind both `dup` (`min_fd == 0`) and `fcntl(F_DUPFD, arg)`
 /// (`min_fd == arg`).
@@ -1802,8 +1894,8 @@ pub fn vfs_close(fd: c_int) -> Result<(), Fat32Error> {
 ///
 /// - [`Fat32Error::InvalidFd`] if `oldfd` refers to no open descriptor in the current process.
 /// - [`Fat32Error::InvalidArgument`] if `min_fd` is negative.
-/// - [`Fat32Error::TooManyOpenFiles`] if no free descriptor at or above `min_fd` exists below the
-///   reserved socket range.
+/// - [`Fat32Error::TooManyOpenFiles`] if no free descriptor at or above `min_fd` exists within the
+///   flat namespace.
 pub fn vfs_dup_from(oldfd: c_int, min_fd: c_int) -> Result<c_int, Fat32Error> {
     if min_fd < 0 {
         return Err(Fat32Error::InvalidArgument);
@@ -1818,9 +1910,8 @@ pub fn vfs_dup_from(oldfd: c_int, min_fd: c_int) -> Result<c_int, Fat32Error> {
         .get(&oldfd)
         .map(|slot| slot.file.clone())
         .ok_or(Fat32Error::InvalidFd)?;
-    // Lowest free descriptor at or above `min_fd`, bounded below the reserved socket range so a
-    // duplicate can never collide with a networkd-owned socket descriptor.
-    let fd: c_int = (min_fd..SOCKET_FD_BASE)
+    // Lowest free descriptor at or above `min_fd` within the flat namespace.
+    let fd: c_int = (min_fd..MAX_OPEN_FDS)
         .find(|candidate| !state.slots.contains_key(candidate))
         .ok_or(Fat32Error::TooManyOpenFiles)?;
     // `Slot::new` starts from default (empty) per-descriptor flags, so `FD_CLOEXEC` is cleared on
@@ -1857,10 +1948,10 @@ pub fn vfs_dup(oldfd: c_int) -> Result<c_int, Fat32Error> {
 /// # Errors
 ///
 /// - [`Fat32Error::InvalidFd`] if `oldfd` refers to no open descriptor, or if `newfd` is negative
-///   or falls in the reserved socket range (where vfsd may not place a descriptor).
+///   or outside the flat namespace.
 pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
-    // `newfd` must be a legal descriptor number outside the reserved socket range.
-    if !(0..SOCKET_FD_BASE).contains(&newfd) {
+    // `newfd` must be a legal descriptor number within the flat namespace.
+    if !(0..MAX_OPEN_FDS).contains(&newfd) {
         return Err(Fat32Error::InvalidFd);
     }
     // Re-point the slot while holding the registry lock, but defer dropping the displaced open file
@@ -2709,10 +2800,10 @@ mod tests {
     // -- flat allocation & resolution tests --------------------------------------
 
     /// Tests that allocation is flat and lowest-free: descriptors are handed out from `0` upward and
-    /// a freed number is reused before any higher one. No descriptor ever falls in the reserved
-    /// socket range.
+    /// a freed number is reused before any higher one. Every object draws from one flat range, so an
+    /// allocated descriptor is simply the smallest free number.
     #[test]
-    fn alloc_is_lowest_free_and_below_socket_range() {
+    fn alloc_is_lowest_free() {
         let _guard = FORK_TEST_GUARD.lock();
         let pid: ProcessIdentifier = ProcessIdentifier::from(0x7401);
         set_current_process(pid);
@@ -2723,8 +2814,8 @@ mod tests {
         let c: c_int = vfs_alloc_hostfs(12, false, None).expect("alloc c");
         assert_eq!((a, b, c), (0, 1, 2), "flat allocation hands out the lowest free numbers");
         assert!(
-            [a, b, c].iter().all(|fd| !::config::fds::is_socket_fd(*fd)),
-            "an allocated descriptor must never fall in the reserved socket range"
+            [a, b, c].iter().all(|fd| (0..MAX_OPEN_FDS).contains(fd)),
+            "an allocated descriptor must fall within the flat namespace"
         );
 
         // Freeing the middle descriptor makes it the lowest free, so the next alloc reuses it.
@@ -3371,6 +3462,93 @@ mod tests {
         assert_eq!(handle.remote_fd(), 7, "socket handle should report its networkd descriptor");
     }
 
+    /// Tests that [`vfs_register_socket`] allocates a flat slot bound to a socket token, so the
+    /// descriptor resolves to the `networkd` descriptor it routes to, is reported as a socket, and
+    /// is the last reference when held alone.
+    #[test]
+    fn register_socket_allocates_flat_slot() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7220);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_register_socket(2050).expect("register socket should succeed");
+        // The first allocation in a fresh process is the lowest free flat number.
+        assert_eq!(fd, 0, "a socket is allocated the lowest free flat descriptor");
+        assert_eq!(
+            vfs_resolve(fd),
+            Some((VfsRoute::Socket, 2050)),
+            "a socket slot resolves to its networkd descriptor"
+        );
+        assert_eq!(vfs_socket_remote_fd(fd), Some(2050), "the socket reports its remote fd");
+        assert!(vfs_socket_is_last_ref(fd), "the sole reference is the last reference");
+        // A non-socket descriptor is not reported as a socket.
+        let file_fd: c_int = vfs_alloc_hostfs(70, false, None).expect("alloc file");
+        assert_eq!(vfs_socket_remote_fd(file_fd), None, "a hostfs descriptor is not a socket");
+        assert!(!vfs_socket_is_last_ref(file_fd), "a non-socket is never a socket last reference");
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that a close-on-exec socket is released at exec: its `networkd` descriptor is surfaced
+    /// in [`ProcessExitReclaim::orphaned_socket_fds`] so the daemon closes the endpoint, while a
+    /// non-close-on-exec socket survives at its original number.
+    #[test]
+    fn exec_cloexec_reclaims_socket() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7221);
+        set_current_process(pid);
+
+        // A close-on-exec socket and a surviving socket.
+        let cloexec_fd: c_int = vfs_register_socket(2060).expect("register cloexec socket");
+        let mut flags: FdFlags = FdFlags::default();
+        flags.set_close_on_exec(true);
+        vfs_set_fd_flags(cloexec_fd, flags).expect("set close-on-exec");
+        let survivor_fd: c_int = vfs_register_socket(2061).expect("register surviving socket");
+
+        let reclaim: ProcessExitReclaim = vfs_exec_cloexec(pid);
+        assert_eq!(reclaim.orphaned_socket_fds.len(), 1, "only the cloexec socket is reclaimed");
+        assert_eq!(
+            reclaim.orphaned_socket_fds[0], 2060,
+            "the cloexec socket's networkd descriptor is surfaced for closing"
+        );
+        // The surviving socket is still resolvable at its original number.
+        assert_eq!(
+            vfs_resolve(survivor_fd),
+            Some((VfsRoute::Socket, 2061)),
+            "a non-cloexec socket survives exec"
+        );
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that close-on-exec reports a duplicated socket endpoint only once when every alias is
+    /// flagged close-on-exec. The daemon sends one close per reported `networkd` descriptor, so a
+    /// shared socket open-file description must not surface duplicate reclaim records.
+    #[test]
+    fn exec_cloexec_reclaims_duplicated_socket_once() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7222);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_register_socket(2062).expect("register socket");
+        let dup_fd: c_int = vfs_dup(fd).expect("dup socket");
+        let mut cloexec: FdFlags = FdFlags::default();
+        cloexec.set_close_on_exec(true);
+        vfs_set_fd_flags(fd, cloexec).expect("set close-on-exec on original");
+        vfs_set_fd_flags(dup_fd, cloexec).expect("set close-on-exec on duplicate");
+
+        let reclaim: ProcessExitReclaim = vfs_exec_cloexec(pid);
+        assert_eq!(
+            reclaim.orphaned_socket_fds,
+            [2062],
+            "a duplicated socket endpoint must be reclaimed exactly once"
+        );
+        assert_eq!(vfs_get_fd_flags(fd), None, "the original alias is dropped");
+        assert_eq!(vfs_get_fd_flags(dup_fd), None, "the duplicate alias is dropped");
+
+        forget_processes(&[pid]);
+    }
+
     /// Tests that `fork()` copies a slot's per-descriptor flags into the child and that the copies
     /// are independent, so changing the child's flags does not affect the parent's. This is the
     /// per-descriptor semantics the later close-on-exec/close-on-fork plans depend on.
@@ -3672,12 +3850,12 @@ mod tests {
         forget_processes(&[parent, child]);
     }
 
-    /// Tests that a lone console or socket token contributes nothing to [`ProcessExitReclaim`] at
-    /// process exit: a console holds no external resource, and a socket's `networkd` descriptor is
-    /// closed by a later plan rather than reclaimed here. Crucially, neither is mistaken for a
-    /// hostfs or pipe handle.
+    /// Tests that at process exit a lone socket token surfaces its `networkd` descriptor in
+    /// [`ProcessExitReclaim::orphaned_socket_fds`] (so the daemon closes the endpoint), while a lone
+    /// console token contributes nothing. Crucially, neither is mistaken for a hostfs or pipe
+    /// handle.
     #[test]
-    fn process_exit_reclaims_nothing_for_console_and_socket() {
+    fn process_exit_reclaims_socket_and_nothing_for_console() {
         let _guard = FORK_TEST_GUARD.lock();
         let pid: ProcessIdentifier = ProcessIdentifier::from(0x7211);
         set_current_process(pid);
@@ -3688,7 +3866,8 @@ mod tests {
         alloc_fd(VfsFileHandle::Socket(SocketHandle::new(99)))
             .expect("socket alloc should succeed");
 
-        // Exit must reclaim neither a hostfs descriptor nor a pipe end for these inert tokens.
+        // Exit reclaims the socket's networkd descriptor as the sole reference, and nothing for the
+        // inert console token or for hostfs/pipe handles.
         let reclaim: ProcessExitReclaim = vfs_process_exit(pid);
         assert!(
             reclaim.orphaned_hostfs_fds.is_empty(),
@@ -3698,8 +3877,135 @@ mod tests {
             reclaim.pipe_closures.is_empty(),
             "console and socket tokens trigger no pipe closures"
         );
+        assert_eq!(
+            reclaim.orphaned_socket_fds.len(),
+            1,
+            "exactly one socket descriptor is reclaimed"
+        );
+        assert_eq!(
+            reclaim.orphaned_socket_fds[0], 99,
+            "a sole-reference socket surfaces its networkd descriptor for closing"
+        );
 
         forget_processes(&[pid]);
+    }
+
+    /// Tests that process exit reports a duplicated socket endpoint only once. A `dup` sibling
+    /// shares the same open-file description, so vfsd must not ask `networkd` to close the same
+    /// remote endpoint once per descriptor slot when the process exits with both aliases live.
+    #[test]
+    fn process_exit_reclaims_duplicated_socket_once() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7212);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_register_socket(100).expect("register socket");
+        let dup_fd: c_int = vfs_dup(fd).expect("dup socket");
+
+        let reclaim: ProcessExitReclaim = vfs_process_exit(pid);
+        assert_eq!(
+            reclaim.orphaned_socket_fds,
+            [100],
+            "a duplicated socket endpoint must be reclaimed exactly once"
+        );
+        assert!(reclaim.orphaned_hostfs_fds.is_empty(), "no hostfs fds were opened");
+        assert!(reclaim.pipe_closures.is_empty(), "no pipe ends were opened");
+        let _ = dup_fd;
+
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that a socket inherited across `fork()` is reference-counted, not shared: a child
+    /// closing its inherited copy must not tear down the parent's socket endpoint. This is the core
+    /// regression guard for `nanvix/nanvix#2609`. Before the child closes, neither process is the
+    /// last reference (so vfsd would not forward the close to `networkd`); once the child has
+    /// closed, the parent is the sole, last reference and its socket remains fully resolvable.
+    #[test]
+    fn fork_socket_close_is_isolated() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7231), ProcessIdentifier::from(0x7232));
+
+        // Parent creates a socket; it is the sole reference before the fork.
+        set_current_process(parent);
+        let fd: c_int = vfs_register_socket(2070).expect("register socket should succeed");
+        assert!(vfs_socket_is_last_ref(fd), "the only descriptor is the last reference");
+
+        // Fork: parent and child now share the same socket open-file description.
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+        set_current_process(parent);
+        assert!(!vfs_socket_is_last_ref(fd), "parent must not be the last reference after fork");
+        set_current_process(child);
+        assert!(!vfs_socket_is_last_ref(fd), "child must not be the last reference after fork");
+
+        // The child closes its inherited copy. Because it is not the last reference, vfsd would not
+        // forward the endpoint close to `networkd`, so the parent's socket survives.
+        vfs_close(fd).expect("child close should succeed");
+        assert_eq!(vfs_socket_remote_fd(fd), None, "the child's socket descriptor is gone");
+
+        // The parent's socket is untouched and is now the sole, last reference.
+        set_current_process(parent);
+        assert_eq!(
+            vfs_socket_remote_fd(fd),
+            Some(2070),
+            "the parent's socket must survive the child's close (nanvix/nanvix#2609)"
+        );
+        assert!(
+            vfs_socket_is_last_ref(fd),
+            "the parent becomes the last reference once the child has closed"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that a child exiting while it still holds an inherited socket does not close the shared
+    /// endpoint: `vfs_process_exit` surfaces no orphaned socket because the parent still references
+    /// it. Only when the last holder (the parent) exits is the endpoint reclaimed — exactly once —
+    /// so there is neither a premature close (`nanvix/nanvix#2609`) nor a leak. This covers the
+    /// issue's "implicitly when the child exits" case, which the explicit-close acceptance test does
+    /// not exercise.
+    #[test]
+    fn fork_socket_child_exit_preserves_parent() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7241), ProcessIdentifier::from(0x7242));
+
+        // Parent creates a socket and forks; the child inherits a shared reference.
+        set_current_process(parent);
+        let fd: c_int = vfs_register_socket(2071).expect("register socket should succeed");
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+
+        // The child exits without closing its inherited socket. The endpoint must not be orphaned,
+        // because the parent still holds a reference to it.
+        let child_reclaim: ProcessExitReclaim = vfs_process_exit(child);
+        assert!(
+            child_reclaim.orphaned_socket_fds.is_empty(),
+            "a child exiting while the parent holds the socket must not close the endpoint \
+             (nanvix/nanvix#2609)"
+        );
+
+        // The parent's socket is intact and is now the sole, last reference.
+        set_current_process(parent);
+        assert_eq!(
+            vfs_socket_remote_fd(fd),
+            Some(2071),
+            "the parent's socket must survive the child's exit"
+        );
+        assert!(
+            vfs_socket_is_last_ref(fd),
+            "the parent is the last reference after the child exits"
+        );
+
+        // When the last holder exits, the endpoint is reclaimed exactly once so `networkd` closes
+        // it — no leak.
+        let parent_reclaim: ProcessExitReclaim = vfs_process_exit(parent);
+        assert_eq!(
+            parent_reclaim.orphaned_socket_fds,
+            [2071],
+            "the last holder's exit closes the endpoint exactly once (no leak)"
+        );
+
+        forget_processes(&[parent, child]);
     }
 
     // -- root console seeding tests ----------------------------------------------
@@ -3997,11 +4303,11 @@ mod tests {
 
         // An invalid source descriptor is rejected.
         assert_eq!(vfs_dup2(4096, fd).unwrap_err(), Fat32Error::InvalidFd, "bad oldfd rejected");
-        // A newfd in the reserved socket range is rejected.
+        // A newfd outside the flat namespace is rejected.
         assert_eq!(
-            vfs_dup2(fd, SOCKET_FD_BASE).unwrap_err(),
+            vfs_dup2(fd, MAX_OPEN_FDS).unwrap_err(),
             Fat32Error::InvalidFd,
-            "newfd in the socket range is rejected"
+            "newfd outside the flat namespace is rejected"
         );
 
         forget_processes(&[pid]);

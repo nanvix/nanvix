@@ -34,6 +34,9 @@ use ::sysapi::{
 pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<usize, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
+    // Address networkd by the descriptor it assigned: the caller passes a flat descriptor.
+    let sockfd = crate::fdtable::resolve_socket(sockfd, "send")?;
+
     // Check if count is invalid.
     if buffer.is_empty() {
         return Err(Error::new(ErrorCode::InvalidArgument, "buffer length is zero"));
