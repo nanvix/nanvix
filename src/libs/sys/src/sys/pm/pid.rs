@@ -84,6 +84,21 @@ impl ProcessIdentifier {
     /// Identifier of the VFS daemon process.
     pub const VFSD: ProcessIdentifier = ProcessIdentifier(Self::VFSD_RAW);
 
+    /// Raw identifier for the init process.
+    ///
+    /// The kernel spawns the fixed daemon set (`procd`, `memd`, `vfsd`) before the boot workload,
+    /// so the init/root process — the first process not born from a fork — is assigned the pid that
+    /// immediately follows [`Self::VFSD_RAW`].
+    pub const INIT_RAW: i32 = Self::VFSD_RAW + 1;
+
+    /// Identifier of the init process.
+    ///
+    /// This is the root of the process tree: the one process the kernel creates directly rather
+    /// than through a fork, and therefore the authoritative source for the root identity. It is
+    /// named `INIT` (not `INITD`) to avoid colliding with the `ThreadIdentifier::INITD` thread
+    /// identifier, which holds a different value.
+    pub const INIT: ProcessIdentifier = ProcessIdentifier(Self::INIT_RAW);
+
     /// Error message for conversion failures.
     const PARSE_ERROR_MESSAGE: &'static str = "invalid process identifier";
 

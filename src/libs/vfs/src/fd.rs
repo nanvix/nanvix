@@ -716,16 +716,14 @@ fn current_pid() -> ProcessIdentifier {
 
 /// Returns the identifier assigned to the root/init process.
 ///
-/// The kernel creates the fixed daemon set first (`procd`, `memd`, then `vfsd`) and assigns the
-/// boot workload the next pid. Keeping this derivation local avoids treating whichever process
-/// happens to issue the first VFS request as the root, which would break the fork-race placeholder
-/// path that [`vfs_fork_clone`] preserves.
-///
-/// TODO(#2610): replace this positional derivation with an authoritative root pid — a dedicated
-/// `ProcessIdentifier::INIT` constant or a value supplied by `procd` — instead of hardcoding
-/// `VFSD_RAW + 1`, which silently breaks if the daemon spawn order changes.
+/// The root identity comes from a single authoritative definition, [`ProcessIdentifier::INIT`]:
+/// the kernel creates the fixed daemon set first (`procd`, `memd`, then `vfsd`) and assigns the
+/// boot workload the next pid. Deriving the root from that constant — rather than recomputing
+/// `VFSD_RAW + 1` here — keeps the boot-order assumption in one place and avoids treating whichever
+/// process happens to issue the first VFS request as the root, which would break the fork-race
+/// placeholder path that [`vfs_fork_clone`] preserves.
 fn root_process_identifier() -> ProcessIdentifier {
-    ProcessIdentifier::from(ProcessIdentifier::VFSD_RAW + 1)
+    ProcessIdentifier::INIT
 }
 
 /// Selects the process on whose behalf subsequent VFS operations are performed.
