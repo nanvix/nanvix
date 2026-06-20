@@ -57,9 +57,12 @@ pub fn close(fd: i32) -> Result<(), Error> {
                 Route::Console => {
                     close_ipc(res.backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE, true)
                 },
-                // Sockets are closed by networkd.
+                // A socket occupies a flat slot owned by vfsd: closing it releases that slot, and
+                // vfsd forwards the endpoint close to networkd when the last reference is dropped.
+                // The slot is addressed by the caller-facing flat descriptor, not the networkd
+                // descriptor `backend_fd` routes I/O to.
                 Route::Socket => {
-                    close_ipc(res.backend_fd, crate::NETWORK_DESTINATION, MessageType::Ikc, false)
+                    close_ipc(fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE, false)
                 },
             },
             // Unknown fd: no handler available.

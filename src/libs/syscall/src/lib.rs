@@ -105,10 +105,7 @@ pub mod safe;
 // Imports
 //==================================================================================================
 
-pub use ::config::fds::{
-    is_socket_fd,
-    SOCKET_FD_BASE,
-};
+pub use ::config::fds::SOCKET_FD_BASE;
 use ::core::{
     convert::TryFrom,
     mem,
@@ -282,6 +279,8 @@ pub enum SystemCallMessageHeader {
     ResolveFdResponse,
     Dup2Request,
     Dup2Response,
+    RegisterSocketRequest,
+    RegisterSocketResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -448,6 +447,8 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == ResolveFdResponse as u16 => Ok(ResolveFdResponse),
             x if x == Dup2Request as u16 => Ok(Dup2Request),
             x if x == Dup2Response as u16 => Ok(Dup2Response),
+            x if x == RegisterSocketRequest as u16 => Ok(RegisterSocketRequest),
+            x if x == RegisterSocketResponse as u16 => Ok(RegisterSocketResponse),
             _ => Err(()),
         }
     }

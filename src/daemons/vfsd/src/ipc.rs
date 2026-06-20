@@ -16,6 +16,7 @@ use crate::{
     },
     handler,
     hostfs,
+    networkd,
     pending::PendingQueue,
     pipe_wait::PipeWaitTable,
 };
@@ -193,6 +194,20 @@ fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Res
                             );
                         }
                     }
+                    for remote_fd in reclaim.orphaned_socket_fds {
+                        // Fire-and-forget close of the socket endpoint on networkd: the process is
+                        // gone and cannot close it itself, mirroring the hostfs orphan-close above.
+                        // networkd's acknowledgement is discarded by the main event loop.
+                        if let Err(e) = networkd::send_close_request(remote_fd) {
+                            ::syslog::warn!(
+                                "failed to close orphaned socket fd on process exit (pid={:?}, \
+                                 remote_fd={}, error={:?})",
+                                pid,
+                                remote_fd,
+                                e
+                            );
+                        }
+                    }
                     ::syslog::info!("reclaimed filesystem state (pid={:?})", pid);
                     Ok(false)
                 },
@@ -228,6 +243,19 @@ fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Res
                         ) {
                             ::syslog::warn!(
                                 "failed to close orphaned hostfs fd on exec (pid={:?}, \
+                                 remote_fd={}, error={:?})",
+                                pid,
+                                remote_fd,
+                                e
+                            );
+                        }
+                    }
+                    for remote_fd in reclaim.orphaned_socket_fds {
+                        // A `FD_CLOEXEC` socket is released at exec: forward its endpoint close to
+                        // networkd, fire-and-forget, mirroring the hostfs orphan-close above.
+                        if let Err(e) = networkd::send_close_request(remote_fd) {
+                            ::syslog::warn!(
+                                "failed to close orphaned socket fd on exec (pid={:?}, \
                                  remote_fd={}, error={:?})",
                                 pid,
                                 remote_fd,
@@ -327,6 +355,10 @@ pub(crate) fn handle_ipc_message(
         },
         SystemCallMessageHeader::ResolveFdRequest => {
             let response: Message = handler::handle_resolve_fd(source_tid, syscall_msg);
+            send_response(&response);
+        },
+        SystemCallMessageHeader::RegisterSocketRequest => {
+            let response: Message = handler::handle_register_socket(source_tid, syscall_msg);
             send_response(&response);
         },
         SystemCallMessageHeader::Dup2Request => {

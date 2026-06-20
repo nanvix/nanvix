@@ -48,6 +48,8 @@ use ::syscall::{
         FileSyncResponse,
         FileTruncateRequest,
         FileTruncateResponse,
+        RegisterSocketRequest,
+        RegisterSocketResponse,
         ResolveFdRequest,
         ResolveFdResponse,
         SeekRequest,
@@ -101,6 +103,30 @@ pub(crate) fn handle_resolve_fd(source: ThreadIdentifier, msg: SystemCallMessage
         },
         // No slot for this descriptor in the caller's table: it is unroutable.
         None => build_error(source, ErrorCode::BadFile),
+    }
+}
+
+/// Allocates a flat descriptor slot for a socket endpoint that `networkd` already created.
+///
+/// libposix sends this as the second step of socket creation: `networkd` owns the endpoint, and
+/// vfsd binds it to the lowest free flat descriptor so the socket joins the flat namespace like any
+/// other object. The response carries that flat descriptor and the current table generation (the
+/// coherence epoch) so the caller can seed its resolution cache with a coherent entry.
+pub(crate) fn handle_register_socket(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {
+    let req: RegisterSocketRequest = RegisterSocketRequest::from_bytes(msg.payload);
+    let remote_fd: i32 = req.remote_fd;
+    match ::vfs::fd::vfs_register_socket(remote_fd) {
+        Ok(fd) => {
+            let epoch: u64 = ::vfs::fd::vfs_current_generation();
+            RegisterSocketResponse::build(
+                source,
+                fd,
+                epoch,
+                ProcessIdentifier::VFSD,
+                MessageType::Ipc,
+            )
+        },
+        Err(e) => build_error(source, fat32_to_error_code(&e)),
     }
 }
 

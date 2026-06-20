@@ -33,8 +33,12 @@ use ::sysapi::ffi::c_int;
 pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
+    // Address `networkd` by the descriptor it assigned to the listening socket: the caller passes a
+    // flat descriptor, which resolves to the backend (`networkd`) fd.
+    let backend_fd: c_int = crate::fdtable::resolve_socket(sockfd, "accept")?;
+
     // Build request and send it.
-    let request: Message = AcceptSocketRequest::build(tid, sockfd);
+    let request: Message = AcceptSocketRequest::build(tid, backend_fd);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
@@ -56,8 +60,24 @@ pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
                 SystemCallMessageHeader::AcceptSocketResponse => {
                     let response: AcceptSocketResponse =
                         AcceptSocketResponse::from_bytes(message.payload);
+                    let remote_fd: c_int = response.sockfd;
+                    let sockaddr: SocketAddr = SocketAddr::try_from(&response.sockaddr)?;
 
-                    Ok((response.sockfd, SocketAddr::try_from(&response.sockaddr)?))
+                    // `networkd` created the accepted endpoint (the remote fd); `vfsd` allocates the
+                    // application-visible flat descriptor that routes to it.
+                    #[cfg(feature = "standalone")]
+                    {
+                        if remote_fd < 0 {
+                            Ok((remote_fd, sockaddr))
+                        } else {
+                            let fd: c_int = super::register_socket_slot(remote_fd)?;
+                            Ok((fd, sockaddr))
+                        }
+                    }
+                    #[cfg(not(feature = "standalone"))]
+                    {
+                        Ok((remote_fd, sockaddr))
+                    }
                 },
                 // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),

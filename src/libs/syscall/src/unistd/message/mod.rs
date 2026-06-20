@@ -24,6 +24,7 @@ mod pread;
 mod pwrite;
 mod read;
 mod readlinkat;
+mod register_socket;
 mod resolve_fd;
 mod symlinkat;
 mod write;
@@ -108,6 +109,10 @@ pub use self::{
     readlinkat::{
         ReadLinkAtRequest,
         ReadLinkAtResponse,
+    },
+    register_socket::{
+        RegisterSocketRequest,
+        RegisterSocketResponse,
     },
     resolve_fd::{
         ResolveFdRequest,

@@ -33,6 +33,9 @@ pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
 
     let sockaddr: sockaddr = sockaddr::from(sockaddr);
 
+    // Address networkd by the descriptor it assigned: the caller passes a flat descriptor.
+    let sockfd = crate::fdtable::resolve_socket(sockfd, "bind")?;
+
     // Build request and send it.
     let request: Message = BindSocketRequest::build(tid, sockfd, &sockaddr);
     ::sys::kcall::ipc::__kcall_send(&request)?;

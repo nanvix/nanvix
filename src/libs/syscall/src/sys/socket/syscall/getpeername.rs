@@ -49,6 +49,9 @@ pub fn getpeername(sockfd: c_int, sockaddr: &mut SocketAddr) -> Result<(), Error
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
+    // Address networkd by the descriptor it assigned: the caller passes a flat descriptor.
+    let sockfd = crate::fdtable::resolve_socket(sockfd, "getpeername")?;
+
     // Build request and send it.
     let request: Message = GetPeerNameRequest::build(tid, sockfd);
     ::sys::kcall::ipc::__kcall_send(&request)?;

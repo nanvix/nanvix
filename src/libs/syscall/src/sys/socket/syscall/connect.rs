@@ -53,6 +53,9 @@ pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
 
     let (sockaddr, socklen): (sockaddr, socklen_t) = From::<&SocketAddr>::from(sockaddr);
 
+    // Address networkd by the descriptor it assigned: the caller passes a flat descriptor.
+    let sockfd = crate::fdtable::resolve_socket(sockfd, "connect")?;
+
     // Build request and send it.
     let request: Message = ConnectSocketRequest::build(tid, sockfd, &sockaddr, socklen);
     ::sys::kcall::ipc::__kcall_send(&request)?;

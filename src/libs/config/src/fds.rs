@@ -7,15 +7,11 @@
 // File Descriptor Ranges
 //==================================================================================================
 
-/// Base file descriptor number for socket handles managed by networkd.
+/// Base value of `networkd`'s internal socket descriptor space.
 ///
-/// Socket file descriptors occupy the range `[SOCKET_FD_BASE, ..)`. Under the flat descriptor
-/// namespace, vfsd-served descriptors are allocated lowest-free below this base, so this range stays
-/// reserved for `networkd` and never collides with a vfsd descriptor (the interim reservation until
-/// sockets are unified into the flat table).
+/// `networkd` numbers the endpoints it owns by offsetting its host-side descriptors by this base.
+/// These numbers are an implementation detail of `networkd` and are never seen by applications:
+/// under the flat descriptor namespace, `vfsd` owns each socket's application-visible slot and a
+/// socket is allocated the lowest free flat descriptor like any other object. This base only keeps
+/// `networkd`'s own descriptor space from clashing with the standard streams it inherits.
 pub const SOCKET_FD_BASE: i32 = 2048;
-
-/// Returns `true` if the given file descriptor belongs to the socket fd range.
-pub fn is_socket_fd(fd: i32) -> bool {
-    fd >= SOCKET_FD_BASE
-}
