@@ -10,9 +10,10 @@
  * @file sys/ioctl.h
  * @brief Device control operations.
  *
- * Declares `ioctl()` and the terminal window-size request used by interactive
- * ports. Nanvix has no interactive terminal in standalone mode, so the
- * terminal requests fail; the definitions exist so such ports compile and link.
+ * Declares `ioctl()` and the terminal-control requests used by interactive
+ * ports. In standalone mode the terminal-attribute and window-size requests
+ * (`TCGETS`/`TCSETS`/`TIOCGWINSZ`/`TIOCSWINSZ`) are served by the vfsd console
+ * backend; hosted deployments have no guest terminal device and ignore them.
  */
 
 #ifdef __cplusplus
@@ -35,6 +36,8 @@ struct winsize {
  * Requests
  *==================================================================================================*/
 
+#define TCGETS 0x5401
+#define TCSETS 0x5402
 #define TIOCGWINSZ 0x5413
 #define TIOCSWINSZ 0x5414
 #define FIONREAD 0x541b

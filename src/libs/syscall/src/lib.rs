@@ -322,6 +322,8 @@ pub enum SystemCallMessageHeader {
     Dup2Response,
     RegisterSocketRequest,
     RegisterSocketResponse,
+    TtyControlRequest,
+    TtyControlResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -490,6 +492,8 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == Dup2Response as u16 => Ok(Dup2Response),
             x if x == RegisterSocketRequest as u16 => Ok(RegisterSocketRequest),
             x if x == RegisterSocketResponse as u16 => Ok(RegisterSocketResponse),
+            x if x == TtyControlRequest as u16 => Ok(TtyControlRequest),
+            x if x == TtyControlResponse as u16 => Ok(TtyControlResponse),
             _ => Err(()),
         }
     }

@@ -454,6 +454,15 @@ pub(crate) fn handle_ipc_message(
         },
 
         //==========================================================================================
+        // Terminal control: single message request + termios/winsize via push/pull.
+        //==========================================================================================
+        SystemCallMessageHeader::TtyControlRequest => {
+            let response: Message =
+                handler::handle_tty_control(source_pid, source_tid, syscall_msg);
+            send_response(&response);
+        },
+
+        //==========================================================================================
         // Partial read/write: inline data in message payload.
         //==========================================================================================
         SystemCallMessageHeader::PartialReadRequest => {

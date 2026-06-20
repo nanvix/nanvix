@@ -7,15 +7,49 @@
 
 #[cfg(feature = "syscall")]
 mod bindings {
-    use ::sysapi::ffi::c_int;
+    use crate::errno::__errno_location;
+    use ::sysapi::ffi::{
+        c_int,
+        c_ulong,
+        c_void,
+    };
     use ::syslog::trace_syscall;
 
-    #[allow(clippy::missing_safety_doc)]
+    ///
+    /// # Description
+    ///
+    /// Performs a control operation on the device referred to by `fd`. Terminal-control requests
+    /// (`TCGETS`/`TCSETS`/`TIOCGWINSZ`/`TIOCSWINSZ`) on a console descriptor are routed to the vfsd
+    /// console backend; every other request returns `0` without acting.
+    ///
+    /// # Parameters
+    ///
+    /// - `fd`: File descriptor.
+    /// - `request`: Device-dependent request code.
+    /// - `arg`: Pointer to the request's argument (a `struct termios` or `struct winsize` for the
+    ///   terminal requests).
+    ///
+    /// # Returns
+    ///
+    /// On success, returns `0`. On failure, returns `-1` and sets `errno` to indicate the error.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences a raw pointer supplied by a foreign caller.
+    /// It is safe to call when, for a terminal-control request, `arg` points to a valid object of
+    /// the type the request expects.
+    ///
     #[unsafe(no_mangle)]
     #[trace_syscall]
-    pub extern "C" fn ioctl(_fd: c_int, _request: c_int, _arg: *mut c_int) -> c_int {
-        // TODO: https://github.com/nanvix/nanvix/issues/351
-        ::syslog::debug!("ioctl(): not implemented, ignoring");
-        0
+    pub unsafe extern "C" fn ioctl(fd: c_int, request: c_ulong, arg: *mut c_void) -> c_int {
+        match unsafe { ::syscall::sys::ioctl::ioctl(fd, request as c_int, arg) } {
+            Ok(ret) => ret,
+            Err(error) => {
+                unsafe {
+                    *__errno_location() = error.code.get();
+                }
+                -1
+            },
+        }
     }
 }

@@ -97,7 +97,7 @@ pub unsafe extern "C" fn pclose(stream: *mut c_void) -> c_int {
 /// # Parameters
 ///
 /// - `fd`: File descriptor referring to a terminal device.
-/// - `termios_p`: Pointer to a buffer where the terminal attributes would be stored on success.
+/// - `termios_p`: Pointer to a buffer where the terminal attributes are stored on success.
 ///
 /// # Returns
 ///
@@ -105,22 +105,38 @@ pub unsafe extern "C" fn pclose(stream: *mut c_void) -> c_int {
 ///
 /// # Notes
 ///
-/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
-/// A future implementation should query the underlying TTY driver and populate the termios
-/// structure accordingly.
+/// In standalone mode this is `ioctl(fd, TCGETS, termios_p)`, backed by the vfsd console terminal.
+/// Hosted deployments have no guest terminal device, so the call fails with `ENOSYS`.
 ///
 /// # Safety
 ///
 /// This function is unsafe because it dereferences raw pointers supplied by foreign callers. It is
-/// safe to call this function if `termios_p` is either null or a valid, writable buffer large
-/// enough to hold a termios structure in a future, fully implemented version.
+/// safe to call this function if `termios_p` points to a valid, writable `struct termios`.
 ///
 #[unsafe(no_mangle)]
 #[trace_libcall]
 pub unsafe extern "C" fn tcgetattr(fd: c_int, termios_p: *mut c_void) -> c_int {
-    ::syslog::debug!("tcgetattr(): not implemented");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    -1
+    #[cfg(feature = "standalone")]
+    {
+        match unsafe { ::syscall::sys::ioctl::ioctl(fd, ::sysapi::sys_ioctl::TCGETS, termios_p) } {
+            Ok(_) => 0,
+            Err(error) => {
+                unsafe {
+                    *__errno_location() = error.code.get();
+                }
+                -1
+            },
+        }
+    }
+    #[cfg(not(feature = "standalone"))]
+    {
+        let _ = (fd, termios_p);
+        ::syslog::debug!("tcgetattr(): not implemented");
+        unsafe {
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
+        }
+        -1
+    }
 }
 
 ///
@@ -141,15 +157,15 @@ pub unsafe extern "C" fn tcgetattr(fd: c_int, termios_p: *mut c_void) -> c_int {
 ///
 /// # Notes
 ///
-/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
-/// A future implementation should validate the requested attributes and apply them atomically to
-/// the underlying TTY driver.
+/// In standalone mode this is `ioctl(fd, TCSETS, termios_p)`, backed by the vfsd console terminal.
+/// The console has no output queue to drain or input queue to flush, so `optional_actions` modes
+/// (`TCSANOW`/`TCSADRAIN`/`TCSAFLUSH`) are equivalent and the change is applied immediately. Hosted
+/// deployments have no guest terminal device, so the call fails with `ENOSYS`.
 ///
 /// # Safety
 ///
 /// This function is unsafe because it dereferences raw pointers supplied by foreign callers. It is
-/// safe to call this function if `termios_p` is either null or a valid, readable buffer containing
-/// a termios structure in a future, fully implemented version.
+/// safe to call this function if `termios_p` points to a valid, readable `struct termios`.
 ///
 #[unsafe(no_mangle)]
 #[trace_libcall]
@@ -158,9 +174,40 @@ pub unsafe extern "C" fn tcsetattr(
     optional_actions: c_int,
     termios_p: *const c_void,
 ) -> c_int {
-    ::syslog::debug!("tcsetattr(): not implemented");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    -1
+    #[cfg(feature = "standalone")]
+    {
+        match optional_actions {
+            ::sysapi::termios::TCSANOW
+            | ::sysapi::termios::TCSADRAIN
+            | ::sysapi::termios::TCSAFLUSH => {},
+            _ => {
+                unsafe {
+                    *__errno_location() = ErrorCode::InvalidArgument.get();
+                }
+                return -1;
+            },
+        }
+        match unsafe {
+            ::syscall::sys::ioctl::ioctl(fd, ::sysapi::sys_ioctl::TCSETS, termios_p as *mut c_void)
+        } {
+            Ok(_) => 0,
+            Err(error) => {
+                unsafe {
+                    *__errno_location() = error.code.get();
+                }
+                -1
+            },
+        }
+    }
+    #[cfg(not(feature = "standalone"))]
+    {
+        let _ = (fd, optional_actions, termios_p);
+        ::syslog::debug!("tcsetattr(): not implemented");
+        unsafe {
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
+        }
+        -1
+    }
 }
 
 ///

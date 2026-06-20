@@ -55,6 +55,9 @@ pub mod sched;
 /// Standard type definitions.
 pub mod stddef;
 
+/// Device control operations.
+pub mod sys_ioctl;
+
 /// Memory management operations.
 pub mod sys_mman;
 
@@ -84,6 +87,9 @@ pub mod sys_un;
 
 /// Process termination status.
 pub mod sys_wait;
+
+/// General terminal interface.
+pub mod termios;
 
 /// Time types.
 pub mod time;

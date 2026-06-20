@@ -49,6 +49,7 @@ use ::sysapi::{
         file_status_flags,
     },
     ffi::c_int,
+    sys_ioctl::Winsize,
     sys_stat::{
         file_mode,
         file_type,
@@ -59,6 +60,7 @@ use ::sysapi::{
         off_t,
         uid_t,
     },
+    termios::Termios,
     time::timespec,
     unistd::{
         file_seek,
@@ -297,25 +299,68 @@ pub enum ConsoleStream {
     Stderr,
 }
 
+/// Shared terminal device state backing the console streams.
+///
+/// Terminal attributes belong to the console *device*, not to an individual descriptor: the three
+/// standard streams (and every descriptor duplicated or forked from them) observe one consistent
+/// `termios`/`winsize`. This object is therefore held behind an [`Arc`] that all console handles
+/// share, so a `tcsetattr` through one console descriptor is visible through another and is
+/// inherited across `fork`/`dup`.
+#[derive(Clone, Copy, Debug)]
+pub struct TerminalState {
+    /// Terminal attributes (`tcgetattr`/`tcsetattr`, `TCGETS`/`TCSETS`).
+    pub termios: Termios,
+    /// Terminal window size (`TIOCGWINSZ`/`TIOCSWINSZ`).
+    pub winsize: Winsize,
+}
+
+impl Default for TerminalState {
+    fn default() -> Self {
+        Self {
+            termios: Termios::console_default(),
+            winsize: Winsize::console_default(),
+        }
+    }
+}
+
 /// Routing token for a console-backed descriptor.
 ///
-/// A console handle records which standard stream the descriptor represents but holds no buffer and
-/// performs no I/O. It exists so that vfsd can own the descriptor slot and its per-descriptor flags
-/// while the actual console I/O is routed elsewhere.
+/// A console handle records which standard stream the descriptor represents and a reference to the
+/// shared terminal device state, but holds no buffer and performs no I/O. It exists so that vfsd can
+/// own the descriptor slot, its per-descriptor flags, and the terminal attributes while the actual
+/// console I/O is routed elsewhere.
 pub struct ConsoleHandle {
     /// Which standard stream this descriptor represents.
     stream: ConsoleStream,
+    /// Shared terminal device state, referenced by every console descriptor.
+    terminal: Arc<Mutex<TerminalState>>,
 }
 
 impl ConsoleHandle {
-    /// Creates a console handle for the given standard stream.
+    /// Creates a console handle for the given standard stream with its own fresh terminal state.
+    ///
+    /// Use [`ConsoleHandle::with_terminal`] when several handles must share one terminal device, as
+    /// the standard streams do.
     pub fn new(stream: ConsoleStream) -> Self {
-        Self { stream }
+        Self::with_terminal(stream, Arc::new(Mutex::new(TerminalState::default())))
+    }
+
+    /// Creates a console handle for the given standard stream that references `terminal`.
+    ///
+    /// The three standard streams are created this way from a single shared terminal object so that
+    /// they observe one consistent `termios`/`winsize`.
+    pub fn with_terminal(stream: ConsoleStream, terminal: Arc<Mutex<TerminalState>>) -> Self {
+        Self { stream, terminal }
     }
 
     /// Returns the standard stream this handle represents.
     pub fn stream(&self) -> ConsoleStream {
         self.stream
+    }
+
+    /// Returns a reference to the shared terminal device state.
+    pub fn terminal(&self) -> &Arc<Mutex<TerminalState>> {
+        &self.terminal
     }
 }
 
@@ -941,13 +986,17 @@ pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.entry(pid).or_insert_with(ProcessState::new);
+    // The three standard streams share one terminal device, so they reference a single shared
+    // terminal-state object. A `tcsetattr` through any of them is therefore visible through the
+    // others, and the shared object flows down every `fork`/`dup` with the descriptor slots.
+    let terminal: Arc<Mutex<TerminalState>> = Arc::new(Mutex::new(TerminalState::default()));
     for (fd, stream) in [
         (STDIN_FILENO, ConsoleStream::Stdin),
         (STDOUT_FILENO, ConsoleStream::Stdout),
         (STDERR_FILENO, ConsoleStream::Stderr),
     ] {
         let file: OpenFile = Arc::new(Mutex::new(VfsEntry {
-            handle: VfsFileHandle::Console(ConsoleHandle::new(stream)),
+            handle: VfsFileHandle::Console(ConsoleHandle::with_terminal(stream, terminal.clone())),
             virtual_pos: 0,
             status_flags: 0,
         }));
@@ -2204,11 +2253,80 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     }
 }
 
-/// Checks if a VFS file descriptor refers to a terminal.
+/// Checks if a descriptor refers to a terminal.
 ///
-/// VFS file descriptors are never terminals.
-pub fn vfs_isatty(_fd: c_int) -> bool {
-    false
+/// A descriptor is a terminal if and only if its slot in the current process resolves to the
+/// console backend. This makes `isatty` authoritative against the flat slot table: a duplicate of a
+/// console descriptor answers `true`, while a regular file, pipe, or socket answers `false`. A
+/// descriptor with no slot answers `false` (the caller maps the absent slot to `EBADF`).
+pub fn vfs_isatty(fd: c_int) -> bool {
+    matches!(vfs_resolve(fd), Some((VfsRoute::Console, _)))
+}
+
+/// Error from a terminal-control query on a descriptor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TtyError {
+    /// The descriptor has no slot in the current process (maps to `EBADF`).
+    BadFd,
+    /// The descriptor is valid but does not refer to a terminal (maps to `ENOTTY`).
+    NotTty,
+}
+
+/// Returns the shared terminal device state of `fd` when it is a console descriptor.
+///
+/// The shared [`Arc`] is cloned out from under the registry lock and the per-entry lock is released
+/// before it is returned, so the caller may lock the terminal without nesting registry or entry
+/// locks. A descriptor with no slot yields [`TtyError::BadFd`]; a non-console descriptor yields
+/// [`TtyError::NotTty`].
+fn console_terminal(fd: c_int) -> Result<Arc<Mutex<TerminalState>>, TtyError> {
+    let file: OpenFile = {
+        let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+            PROCESSES.lock();
+        procs
+            .get(&current_pid())
+            .ok_or(TtyError::BadFd)?
+            .slots
+            .get(&fd)
+            .ok_or(TtyError::BadFd)?
+            .file
+            .clone()
+    };
+    let guard = file.lock();
+    match &guard.handle {
+        VfsFileHandle::Console(h) => Ok(h.terminal().clone()),
+        _ => Err(TtyError::NotTty),
+    }
+}
+
+/// Reads the terminal attributes of the console descriptor `fd` (`TCGETS`/`tcgetattr`).
+pub fn vfs_tty_get_termios(fd: c_int) -> Result<Termios, TtyError> {
+    let terminal: Arc<Mutex<TerminalState>> = console_terminal(fd)?;
+    let termios: Termios = terminal.lock().termios;
+    Ok(termios)
+}
+
+/// Replaces the terminal attributes of the console descriptor `fd` (`TCSETS`/`tcsetattr`).
+///
+/// The new attributes are stored on the shared terminal object, so the change is observed by every
+/// console descriptor that references it, including descriptors in forked children.
+pub fn vfs_tty_set_termios(fd: c_int, termios: Termios) -> Result<(), TtyError> {
+    let terminal: Arc<Mutex<TerminalState>> = console_terminal(fd)?;
+    terminal.lock().termios = termios;
+    Ok(())
+}
+
+/// Reads the window size of the console descriptor `fd` (`TIOCGWINSZ`).
+pub fn vfs_tty_get_winsize(fd: c_int) -> Result<Winsize, TtyError> {
+    let terminal: Arc<Mutex<TerminalState>> = console_terminal(fd)?;
+    let winsize: Winsize = terminal.lock().winsize;
+    Ok(winsize)
+}
+
+/// Replaces the window size of the console descriptor `fd` (`TIOCSWINSZ`).
+pub fn vfs_tty_set_winsize(fd: c_int, winsize: Winsize) -> Result<(), TtyError> {
+    let terminal: Arc<Mutex<TerminalState>> = console_terminal(fd)?;
+    terminal.lock().winsize = winsize;
+    Ok(())
 }
 
 /// Reads from a VFS file descriptor at a given offset without changing position.
@@ -3451,6 +3569,172 @@ mod tests {
             let handle: ConsoleHandle = ConsoleHandle::new(stream);
             assert_eq!(handle.stream(), stream, "console handle should report its stream");
         }
+    }
+
+    /// Tests that a console descriptor serves the default terminal attributes (canonical mode with
+    /// echo) and that a `tcsetattr`-style update round-trips through a subsequent `tcgetattr`.
+    #[test]
+    fn tty_termios_round_trips_via_console_descriptor() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        vfs_seed_root_console(root);
+        set_current_process(root);
+
+        // The default attributes enable canonical line editing with echo.
+        let default: Termios = vfs_tty_get_termios(STDIN_FILENO).expect("console get termios");
+        assert_ne!(
+            default.c_lflag & ::sysapi::termios::ICANON,
+            0,
+            "the default attributes enable canonical mode"
+        );
+        assert_ne!(
+            default.c_lflag & ::sysapi::termios::ECHO,
+            0,
+            "the default attributes enable echo"
+        );
+
+        // A modified copy is stored and read back unchanged.
+        let mut modified: Termios = default;
+        modified.c_lflag &= !(::sysapi::termios::ICANON | ::sysapi::termios::ECHO);
+        modified.c_cc[::sysapi::termios::VMIN] = 4;
+        vfs_tty_set_termios(STDIN_FILENO, modified).expect("console set termios");
+        assert_eq!(
+            vfs_tty_get_termios(STDIN_FILENO),
+            Ok(modified),
+            "the modified attributes must round-trip"
+        );
+
+        forget_processes(&[root]);
+    }
+
+    /// Tests that the terminal attributes are shared across the standard streams: a change made
+    /// through one console descriptor is visible through the others, because they reference one
+    /// shared terminal object.
+    #[test]
+    fn tty_attributes_shared_across_standard_streams() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        vfs_seed_root_console(root);
+        set_current_process(root);
+
+        let mut attrs: Termios = vfs_tty_get_termios(STDOUT_FILENO).expect("get via stdout");
+        attrs.c_lflag &= !::sysapi::termios::ECHO;
+        vfs_tty_set_termios(STDOUT_FILENO, attrs).expect("set via stdout");
+
+        // `tcsetattr(1, ...)` is observable via `tcgetattr(0, ...)` and `tcgetattr(2, ...)`.
+        assert_eq!(
+            vfs_tty_get_termios(STDIN_FILENO),
+            Ok(attrs),
+            "stdin observes a change made through stdout"
+        );
+        assert_eq!(
+            vfs_tty_get_termios(STDERR_FILENO),
+            Ok(attrs),
+            "stderr observes a change made through stdout"
+        );
+
+        forget_processes(&[root]);
+    }
+
+    /// Tests that a forked child observes the parent's terminal attributes, because the shared
+    /// terminal object flows down the fork with the console descriptor slots.
+    #[test]
+    fn tty_attributes_inherited_across_fork() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        let child: ProcessIdentifier = ProcessIdentifier::from(0x7444);
+        vfs_seed_root_console(root);
+        set_current_process(root);
+        vfs_fork_clone(root, child).expect("fork clone should succeed");
+
+        // The parent changes the terminal attributes after the fork.
+        let mut attrs: Termios = vfs_tty_get_termios(STDOUT_FILENO).expect("parent get");
+        attrs.c_cc[::sysapi::termios::VMIN] = 7;
+        vfs_tty_set_termios(STDOUT_FILENO, attrs).expect("parent set");
+
+        // The child observes the parent's change through its inherited console descriptors.
+        set_current_process(child);
+        assert_eq!(
+            vfs_tty_get_termios(STDIN_FILENO),
+            Ok(attrs),
+            "the child inherits the parent's shared terminal"
+        );
+
+        forget_processes(&[root, child]);
+    }
+
+    /// Tests that the window size round-trips and is shared across console descriptors, starting
+    /// from the console default.
+    #[test]
+    fn tty_winsize_round_trips_and_is_shared() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        vfs_seed_root_console(root);
+        set_current_process(root);
+
+        assert_eq!(
+            vfs_tty_get_winsize(STDIN_FILENO),
+            Ok(Winsize::console_default()),
+            "a console reports the default window size"
+        );
+
+        let resized: Winsize = Winsize {
+            ws_row: 40,
+            ws_col: 100,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        vfs_tty_set_winsize(STDOUT_FILENO, resized).expect("set winsize via stdout");
+        assert_eq!(
+            vfs_tty_get_winsize(STDIN_FILENO),
+            Ok(resized),
+            "the window size is shared across the standard streams"
+        );
+
+        forget_processes(&[root]);
+    }
+
+    /// Tests that `isatty` and the terminal-control queries are authoritative against the slot
+    /// table: a console descriptor (and a duplicate of one) is a terminal, while a regular file, a
+    /// socket, and an absent descriptor are not, and the queries map a non-terminal to `ENOTTY` and
+    /// an absent descriptor to `EBADF`.
+    #[test]
+    fn isatty_and_tty_control_are_authoritative() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        vfs_seed_root_console(root);
+        set_current_process(root);
+
+        let file_fd: c_int = vfs_alloc_hostfs(50, false, None).expect("hostfs alloc");
+        let socket_fd: c_int = vfs_register_socket(2060).expect("socket register");
+
+        assert!(vfs_isatty(STDIN_FILENO), "a console descriptor is a terminal");
+        assert!(!vfs_isatty(file_fd), "a regular file is not a terminal");
+        assert!(!vfs_isatty(socket_fd), "a socket is not a terminal");
+        assert!(!vfs_isatty(4096), "an absent descriptor is not a terminal");
+
+        // A duplicate of a console descriptor remains a terminal.
+        let dup_fd: c_int = vfs_dup(STDOUT_FILENO).expect("dup console");
+        assert!(vfs_isatty(dup_fd), "a duplicate of a console descriptor is a terminal");
+
+        // Terminal-control queries distinguish a valid non-terminal from an absent descriptor.
+        assert_eq!(
+            vfs_tty_get_termios(file_fd),
+            Err(TtyError::NotTty),
+            "a terminal query on a regular file is ENOTTY"
+        );
+        assert_eq!(
+            vfs_tty_get_termios(socket_fd),
+            Err(TtyError::NotTty),
+            "a terminal query on a socket is ENOTTY"
+        );
+        assert_eq!(
+            vfs_tty_get_termios(4096),
+            Err(TtyError::BadFd),
+            "a terminal query on an absent descriptor is EBADF"
+        );
+
+        forget_processes(&[root]);
     }
 
     /// Tests that a [`SocketHandle`] reports the `networkd` descriptor it was created for.

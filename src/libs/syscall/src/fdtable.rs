@@ -266,6 +266,31 @@ pub(crate) fn resolve_table_op(fd: i32, _syscall_name: &str) -> Result<i32, Erro
     Ok(fd)
 }
 
+/// Resolves `fd` for a terminal-control `ioctl` request (`TCGETS`/`TCSETS`/`TIOCGWINSZ`/
+/// `TIOCSWINSZ`) and returns the flat descriptor `vfsd` expects.
+///
+/// A descriptor is a terminal only when it resolves to the console backend. A console descriptor is
+/// accepted and returned unchanged (vfsd owns the terminal state keyed by the flat number); a valid
+/// non-console descriptor is rejected with `ENOTTY`; an unknown descriptor is rejected with `EBADF`.
+/// This is the ioctl counterpart of [`resolve_socket`] and [`resolve_vfs`], the "new resolver arm"
+/// for terminal probing.
+#[cfg(feature = "standalone")]
+pub(crate) fn resolve_tty(fd: i32, syscall_name: &str) -> Result<i32, Error> {
+    use ::sys::error::ErrorCode;
+
+    match resolve(fd) {
+        Some(resolution) if resolution.route == Route::Console => Ok(fd),
+        Some(_) => {
+            ::syslog::warn!("{syscall_name}(): fd is not a terminal fd={fd}");
+            Err(Error::new(ErrorCode::NotTerminal, "fd is not a terminal"))
+        },
+        None => {
+            ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
+            Err(Error::new(ErrorCode::BadFile, "fd is not a valid descriptor"))
+        },
+    }
+}
+
 /// Records the resolution learned for `fd` from a backend response, stamped with the `epoch` the
 /// backend reported.
 ///

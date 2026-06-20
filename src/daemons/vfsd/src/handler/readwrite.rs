@@ -21,7 +21,21 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
+use ::sysapi::{
+    sys_ioctl::{
+        Winsize,
+        TCGETS,
+        TCSETS,
+        TIOCGWINSZ,
+        TIOCSWINSZ,
+    },
+    termios::Termios,
+};
 use ::syscall::{
+    sys::ioctl::message::{
+        TtyControlRequest,
+        TtyControlResponse,
+    },
     unistd::message::{
         PartialReadRequest,
         PartialReadResponse,
@@ -34,6 +48,8 @@ use ::syscall::{
     },
     SystemCallMessage,
 };
+use ::vfs::fd::TtyError;
+
 //==================================================================================================
 // Constants
 //==================================================================================================
@@ -188,4 +204,128 @@ pub(crate) fn handle_pwrite(source: ThreadIdentifier, msg: SystemCallMessage) ->
         },
         Err(e) => build_error(source, fat32_to_error_code(&e)),
     }
+}
+
+//==================================================================================================
+// Terminal-Control Handler (push/pull bulk transfer of termios/winsize)
+//==================================================================================================
+
+/// Maps a terminal-control error to the matching POSIX error code.
+fn tty_error_code(error: TtyError) -> ErrorCode {
+    match error {
+        // An unknown descriptor is a bad file descriptor.
+        TtyError::BadFd => ErrorCode::BadFile,
+        // A valid non-terminal descriptor is not a typewriter.
+        TtyError::NotTty => ErrorCode::NotTerminal,
+    }
+}
+
+/// Handles a terminal-control `ioctl` (`TCGETS`/`TCSETS`/`TIOCGWINSZ`/`TIOCSWINSZ`).
+///
+/// The `termios`/`winsize` payload is transferred out of band via the push/pull rendezvous, the same
+/// way `read`/`write` carry their bulk data: a *get* fetches the attributes from the shared console
+/// terminal and pushes them to the caller, while a *set* pulls the attributes from the caller and
+/// stores them. As with `read`/`write`, an error path still completes the rendezvous (an empty push
+/// to release a *get* caller blocked in `__kcall_pull`) before the error response is sent, so the
+/// caller never deadlocks.
+pub(crate) fn handle_tty_control(
+    source_pid: ProcessIdentifier,
+    source_tid: ThreadIdentifier,
+    msg: SystemCallMessage,
+) -> Message {
+    let req: TtyControlRequest = TtyControlRequest::from_bytes(msg.payload);
+    let fd: i32 = req.fd;
+    let request: i32 = req.request;
+    let len: usize = req.len as usize;
+
+    match request {
+        // Set requests pull the payload from the caller, then store it on the shared terminal.
+        TCSETS | TIOCSWINSZ => {
+            // The console payload never exceeds a `termios`; cap the pull at its size.
+            let mut buf: [u8; Termios::SIZE] = [0u8; Termios::SIZE];
+            let pull_len: usize = if len > buf.len() { buf.len() } else { len };
+            match ::sys::kcall::ipc::__kcall_pull(source_pid, source_tid, &mut buf[..pull_len]) {
+                Ok(pulled) => {
+                    let outcome: Result<(), ErrorCode> = if request == TCSETS {
+                        let termios: Termios = Termios::from_bytes(&buf[..pulled]);
+                        ::vfs::fd::vfs_tty_set_termios(fd, termios).map_err(tty_error_code)
+                    } else {
+                        let winsize: Winsize = Winsize::from_bytes(&buf[..pulled]);
+                        ::vfs::fd::vfs_tty_set_winsize(fd, winsize).map_err(tty_error_code)
+                    };
+                    match outcome {
+                        Ok(()) => TtyControlResponse::build(
+                            source_tid,
+                            0,
+                            ProcessIdentifier::VFSD,
+                            MessageType::Ipc,
+                        ),
+                        Err(code) => build_error(source_tid, code),
+                    }
+                },
+                Err(e) => {
+                    ::syslog::error!("handle_tty_control(): pull failed (error={:?})", e);
+                    build_error(source_tid, ErrorCode::IoErr)
+                },
+            }
+        },
+        // Get requests fetch the payload from the shared terminal, then push it to the caller.
+        TCGETS | TIOCGWINSZ => {
+            let mut buf: [u8; Termios::SIZE] = [0u8; Termios::SIZE];
+            let payload: Result<usize, ErrorCode> = if request == TCGETS {
+                ::vfs::fd::vfs_tty_get_termios(fd)
+                    .map(|termios| copy_into(&mut buf, &termios.to_bytes()))
+                    .map_err(tty_error_code)
+            } else {
+                ::vfs::fd::vfs_tty_get_winsize(fd)
+                    .map(|winsize| copy_into(&mut buf, winsize.as_bytes()))
+                    .map_err(tty_error_code)
+            };
+            match payload {
+                Ok(n) => {
+                    if let Err(e) =
+                        ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &buf[..n])
+                    {
+                        ::syslog::error!("handle_tty_control(): push failed (error={:?})", e);
+                        return build_error(source_tid, ErrorCode::IoErr);
+                    }
+                    TtyControlResponse::build(
+                        source_tid,
+                        0,
+                        ProcessIdentifier::VFSD,
+                        MessageType::Ipc,
+                    )
+                },
+                Err(code) => {
+                    // The caller is blocked in `__kcall_pull`; release it with an empty push before
+                    // reporting the error, otherwise it deadlocks.
+                    if let Err(push_err) =
+                        ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[])
+                    {
+                        ::syslog::error!(
+                            "handle_tty_control(): unblock push failed (error={:?})",
+                            push_err
+                        );
+                    }
+                    build_error(source_tid, code)
+                },
+            }
+        },
+        // No other request reaches vfsd: the client forwards only terminal-control requests.
+        other => {
+            ::syslog::warn!("handle_tty_control(): unsupported request {other:#x}");
+            build_error(source_tid, ErrorCode::NotTerminal)
+        },
+    }
+}
+
+/// Copies `src` into the front of `dst` and returns the number of bytes copied.
+fn copy_into(dst: &mut [u8], src: &[u8]) -> usize {
+    let n: usize = if src.len() < dst.len() {
+        src.len()
+    } else {
+        dst.len()
+    };
+    dst[..n].copy_from_slice(&src[..n]);
+    n
 }
