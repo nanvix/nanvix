@@ -139,13 +139,18 @@ extern int getentropy(void *buffer, size_t length);
 extern int symlink(const char *target, const char *linkpath);
 
 /*==================================================================================================
- * Command-Line Option Parsing
+ * Command-Line Option Parsing State
  *==================================================================================================*/
 
 extern char *optarg;
 extern int optind;
 extern int opterr;
 extern int optopt;
+
+/*==================================================================================================
+ * Command-Line Option Parsing
+ *==================================================================================================*/
+
 extern int getopt(int argc, char *const argv[], const char *optstring);
 
 #ifdef __cplusplus
