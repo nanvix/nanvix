@@ -96,6 +96,8 @@ members = [
         "src/tests/mount-multipart-test",
         "src/tests/network-rust",
         "src/tests/pipe-dup2-rust",
+        "src/tests/fork-exec-vfsd-test",
+        "src/tests/fork-exec-vfsd-target",
         "src/tests/setenv-rust",
         "src/tests/snapshot-test",
         "src/tests/stress-rust",

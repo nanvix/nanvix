@@ -281,8 +281,21 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
+executor = "http"
+program = "./bin/fork-exec-vfsd-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/fork-exec-vfsd-test.img"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
 executor = "terminal"
 program = "./bin/pipe-dup2-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/fork-exec-vfsd-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/fork-exec-vfsd-test.img"
 expected_output = "ok"
 
 #===================================================================================================
