@@ -3915,6 +3915,99 @@ mod tests {
         forget_processes(&[pid]);
     }
 
+    /// Tests that a socket inherited across `fork()` is reference-counted, not shared: a child
+    /// closing its inherited copy must not tear down the parent's socket endpoint. This is the core
+    /// regression guard for `nanvix/nanvix#2609`. Before the child closes, neither process is the
+    /// last reference (so vfsd would not forward the close to `networkd`); once the child has
+    /// closed, the parent is the sole, last reference and its socket remains fully resolvable.
+    #[test]
+    fn fork_socket_close_is_isolated() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7231), ProcessIdentifier::from(0x7232));
+
+        // Parent creates a socket; it is the sole reference before the fork.
+        set_current_process(parent);
+        let fd: c_int = vfs_register_socket(2070).expect("register socket should succeed");
+        assert!(vfs_socket_is_last_ref(fd), "the only descriptor is the last reference");
+
+        // Fork: parent and child now share the same socket open-file description.
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+        set_current_process(parent);
+        assert!(!vfs_socket_is_last_ref(fd), "parent must not be the last reference after fork");
+        set_current_process(child);
+        assert!(!vfs_socket_is_last_ref(fd), "child must not be the last reference after fork");
+
+        // The child closes its inherited copy. Because it is not the last reference, vfsd would not
+        // forward the endpoint close to `networkd`, so the parent's socket survives.
+        vfs_close(fd).expect("child close should succeed");
+        assert_eq!(vfs_socket_remote_fd(fd), None, "the child's socket descriptor is gone");
+
+        // The parent's socket is untouched and is now the sole, last reference.
+        set_current_process(parent);
+        assert_eq!(
+            vfs_socket_remote_fd(fd),
+            Some(2070),
+            "the parent's socket must survive the child's close (nanvix/nanvix#2609)"
+        );
+        assert!(
+            vfs_socket_is_last_ref(fd),
+            "the parent becomes the last reference once the child has closed"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
+    /// Tests that a child exiting while it still holds an inherited socket does not close the shared
+    /// endpoint: `vfs_process_exit` surfaces no orphaned socket because the parent still references
+    /// it. Only when the last holder (the parent) exits is the endpoint reclaimed — exactly once —
+    /// so there is neither a premature close (`nanvix/nanvix#2609`) nor a leak. This covers the
+    /// issue's "implicitly when the child exits" case, which the explicit-close acceptance test does
+    /// not exercise.
+    #[test]
+    fn fork_socket_child_exit_preserves_parent() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7241), ProcessIdentifier::from(0x7242));
+
+        // Parent creates a socket and forks; the child inherits a shared reference.
+        set_current_process(parent);
+        let fd: c_int = vfs_register_socket(2071).expect("register socket should succeed");
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+
+        // The child exits without closing its inherited socket. The endpoint must not be orphaned,
+        // because the parent still holds a reference to it.
+        let child_reclaim: ProcessExitReclaim = vfs_process_exit(child);
+        assert!(
+            child_reclaim.orphaned_socket_fds.is_empty(),
+            "a child exiting while the parent holds the socket must not close the endpoint \
+             (nanvix/nanvix#2609)"
+        );
+
+        // The parent's socket is intact and is now the sole, last reference.
+        set_current_process(parent);
+        assert_eq!(
+            vfs_socket_remote_fd(fd),
+            Some(2071),
+            "the parent's socket must survive the child's exit"
+        );
+        assert!(
+            vfs_socket_is_last_ref(fd),
+            "the parent is the last reference after the child exits"
+        );
+
+        // When the last holder exits, the endpoint is reclaimed exactly once so `networkd` closes
+        // it — no leak.
+        let parent_reclaim: ProcessExitReclaim = vfs_process_exit(parent);
+        assert_eq!(
+            parent_reclaim.orphaned_socket_fds,
+            [2071],
+            "the last holder's exit closes the endpoint exactly once (no leak)"
+        );
+
+        forget_processes(&[parent, child]);
+    }
+
     // -- root console seeding tests ----------------------------------------------
 
     /// Tests that seeding the root installs console tokens at descriptors `0`/`1`/`2` carrying the
