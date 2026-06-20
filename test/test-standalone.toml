@@ -292,6 +292,16 @@ extra_nanvixd_args = "-ramfs ./bin/fork-exec-vfsd-test.img"
 input = "[]"
 expected_output = "ok"
 
+# Acceptance test for socket reference-counting across fork() (nanvix/nanvix#2609).
+# FAILS until sockets are reference-counted across fork(): a child closing its
+# inherited copy currently destroys the parent's socket.
+[[tests]]
+executor = "http"
+program = "./bin/socket-fork-rust.initrd"
+extra_nanvixd_args = "-allow-host-networking"
+input = "[]"
+expected_output = "ok"
+
 [[tests]]
 executor = "terminal"
 program = "./bin/pipe-dup2-rust.initrd"
@@ -301,6 +311,12 @@ expected_output = "ok"
 executor = "terminal"
 program = "./bin/fork-exec-vfsd-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-vfsd-test.img"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/socket-fork-rust.initrd"
+extra_nanvixd_args = "-allow-host-networking"
 expected_output = "ok"
 
 #===================================================================================================
