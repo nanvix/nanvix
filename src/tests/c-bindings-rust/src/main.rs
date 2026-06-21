@@ -143,6 +143,7 @@ const _: () = assert!(size_of::<sched_param>() == size_of::<c_int>());
 // could trigger LLVM LTO type-mismatch failures. The linker only needs to resolve the symbol
 // address; the actual calling convention is irrelevant here.
 unsafe extern "C" {
+    static __nanvix_sys_cached_pid: u8;
     static __errno_location: u8;
     static _exit: u8;
     static accept: u8;
@@ -283,7 +284,8 @@ unsafe impl Sync for SymAddr {}
 
 /// Force the linker to retain all syscall symbols by referencing their addresses.
 #[used]
-static SYSCALL_SYMBOLS: [SymAddr; 129] = [
+static SYSCALL_SYMBOLS: [SymAddr; 130] = [
+    SymAddr(&raw const __nanvix_sys_cached_pid),
     SymAddr(&raw const __errno_location),
     SymAddr(&raw const _exit),
     SymAddr(&raw const accept),

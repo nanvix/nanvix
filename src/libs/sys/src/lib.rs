@@ -10,6 +10,7 @@
 #![forbid(clippy::large_stack_arrays)]
 #![cfg_attr(feature = "kcall", feature(never_type))] // exit() uses this.
 #![cfg_attr(feature = "kcall", feature(likely_unlikely))] // Branch hints for unlikely error paths.
+#![cfg_attr(feature = "kcall", feature(linkage))] // Unified per-image getpid() cache (CACHED_PID).
 #![cfg_attr(not(feature = "std"), no_std)]
 
 //==================================================================================================

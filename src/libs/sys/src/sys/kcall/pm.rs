@@ -53,6 +53,18 @@ const PID_UNCACHED: i32 = -1;
 /// duplicated into a child by `fork()`; the child half of `__kcall_fork()` invalidates it (see
 /// [`invalidate_cached_pid`]) so the child re-queries its own identity rather than reusing the
 /// parent's.
+///
+/// The cache is a single, per-process-image instance. A C-linked guest image links several
+/// independently-compiled static archives (e.g. `libposix.a` and `libnvx_crt0.a`), each embedding
+/// its own compilation of this crate; without a shared symbol every archive would carry a private
+/// `CACHED_PID`, and a `fork()` invalidation in one archive would not refresh the copy another
+/// archive reads (it could still serve the parent's pid inherited through copy-on-write memory).
+/// Giving the storage a stable export name with `weak` linkage collapses those per-archive copies
+/// into one instance at link time, so a single invalidation reliably refreshes every reader. The
+/// `weak` linkage lets the duplicate definitions merge instead of colliding, and is harmless for a
+/// single-compilation Rust binary, where only one definition exists.
+#[unsafe(export_name = "__nanvix_sys_cached_pid")]
+#[linkage = "weak"]
 static CACHED_PID: AtomicI32 = AtomicI32::new(PID_UNCACHED);
 
 ///
