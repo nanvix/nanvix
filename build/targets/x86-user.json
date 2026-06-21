@@ -15,7 +15,9 @@
 		"gnu-lld": [
 			"-nostdlib",
 			"--entry=_do_start",
-			"-melf_i386"
+			"-melf_i386",
+			"-z",
+			"norelro"
 		]
 	},
 	"executables": true,

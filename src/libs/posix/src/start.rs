@@ -71,6 +71,33 @@ unsafe extern "C" {
     fn __nanvix_env_init(envp: *const *const c_char);
 }
 
+// Constructor / destructor array bounds, provided by the guest linker script
+// (`build/user/linker/x86/user.ld`).  Only referenced when the `init-array`
+// feature is enabled (the in-tree `nanvix_libc` bundle); a default `libposix`
+// build neither walks these arrays nor requires the linker to define their
+// bound symbols, so consumers with their own linker scripts keep linking
+// unchanged.  Nanvix ships no crtbegin/crtend, so the `.preinit_array` /
+// `.init_array` / `.fini_array` bounds come from `user.ld`.  They are addressed
+// only via `&raw const` (their value is never read); each marks a section
+// boundary.
+#[cfg(feature = "init-array")]
+unsafe extern "C" {
+    static __preinit_array_start: u8;
+    static __preinit_array_end: u8;
+    static __init_array_start: u8;
+    static __init_array_end: u8;
+    static __fini_array_start: u8;
+    static __fini_array_end: u8;
+}
+
+/// Signature of a constructor / destructor entry stored in the
+/// `.preinit_array` / `.init_array` / `.fini_array` sections.  Modern
+/// toolchains (clang/gcc emitting `.init_array`) store `void (*)(void)`
+/// pointers; matching relibc's `relibc_start`, Nanvix invokes them with no
+/// arguments.
+#[cfg(feature = "init-array")]
+type InitArrayEntry = unsafe extern "C" fn();
+
 //==================================================================================================
 // Global Variables
 //==================================================================================================
@@ -188,11 +215,35 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     // post-close-on-exec table. In run modes without a guest `vfsd`, this is a no-op.
     ::syscall::unistd::exec_startup_barrier();
 
+    // Run global constructors before entering `main`.  `.preinit_array` runs
+    // first, then `.init_array` (relibc's `relibc_start` pattern).  Done after
+    // the heap (runtime_init) and the environment table are up, because a
+    // constructor may allocate or read the environment.
+    //
+    // Gated on the `init-array` feature: only the in-tree `nanvix_libc` bundle
+    // (paired with `nvx-crt0/init-array`) walks these arrays.  A default
+    // `libposix` build keeps the historical behaviour where the `c-main`
+    // trampoline runs the GCC-style `_init` / `_fini` hooks instead.
+    #[cfg(feature = "init-array")]
+    unsafe {
+        run_init_array(&raw const __preinit_array_start, &raw const __preinit_array_end);
+        run_init_array(&raw const __init_array_start, &raw const __init_array_end);
+    }
+
     // Dispatch into the application's `main` via the binary-supplied
     // trampoline.  `__nanvix_main` is `nvx-crt0::__nanvix_main`, which
     // selects between the C and Rust trampoline at the binary's link
     // based on which crt0 feature is active.
     let status: i32 = unsafe { __nanvix_main(argc, argv_ptr) };
+
+    // Run global destructors after `main` returns, in REVERSE registration
+    // order, before the heap is torn down (a destructor may still allocate or
+    // free).  Mirrors the constructor walk above and is gated on the same
+    // `init-array` feature.
+    #[cfg(feature = "init-array")]
+    unsafe {
+        run_fini_array(&raw const __fini_array_start, &raw const __fini_array_end);
+    }
 
     // Tear down the runtime.  `argv` / `env` are leaked above (see the
     // comment at their declaration) so no Vec destructors run here
@@ -202,6 +253,64 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     // Exit the process.  Never returns under normal circumstances.
     let Err(error) = ::sys::kcall::pm::__kcall_exit(status);
     panic!("__nanvix_libc_start_main(): exit kcall returned (error={error:?})");
+}
+
+//==================================================================================================
+// Constructor / Destructor Arrays
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Runs every function pointer in a `.preinit_array` / `.init_array` section,
+/// in ascending (registration) order.  Used for global constructors.
+///
+/// # Parameters
+///
+/// - `start`: Address of the first entry (the `__*_array_start` linker symbol).
+/// - `end`: Address one past the last entry (the `__*_array_end` linker symbol).
+///
+/// # Safety
+///
+/// `start` and `end` must bound a contiguous, properly-aligned array of
+/// `InitArrayEntry` function pointers (guaranteed by `user.ld`), and each entry
+/// must be a valid, relocated function pointer safe to call with no arguments.
+///
+#[cfg(feature = "init-array")]
+unsafe fn run_init_array(start: *const u8, end: *const u8) {
+    let mut entry: *const InitArrayEntry = start as *const InitArrayEntry;
+    let end: *const InitArrayEntry = end as *const InitArrayEntry;
+    while entry < end {
+        let func: InitArrayEntry = unsafe { *entry };
+        unsafe { func() };
+        entry = unsafe { entry.add(1) };
+    }
+}
+
+///
+/// # Description
+///
+/// Runs every function pointer in a `.fini_array` section, in DESCENDING order
+/// (the reverse of registration), as required for global destructors.
+///
+/// # Parameters
+///
+/// - `start`: Address of the first entry (the `__fini_array_start` linker symbol).
+/// - `end`: Address one past the last entry (the `__fini_array_end` linker symbol).
+///
+/// # Safety
+///
+/// Same invariants as [`run_init_array`].
+///
+#[cfg(feature = "init-array")]
+unsafe fn run_fini_array(start: *const u8, end: *const u8) {
+    let start: *const InitArrayEntry = start as *const InitArrayEntry;
+    let mut entry: *const InitArrayEntry = end as *const InitArrayEntry;
+    while entry > start {
+        entry = unsafe { entry.sub(1) };
+        let func: InitArrayEntry = unsafe { *entry };
+        unsafe { func() };
+    }
 }
 
 //==================================================================================================

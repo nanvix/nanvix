@@ -2346,6 +2346,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanvix_libc"
+version = "0.17.2"
+dependencies = [
+ "libc_assert",
+ "libc_ctype",
+ "libc_inttypes",
+ "libc_langinfo",
+ "libc_locale",
+ "libc_setjmp",
+ "libc_signal",
+ "libc_stdio",
+ "libc_stdlib",
+ "libc_string",
+ "libc_time",
+ "libc_wchar",
+ "libc_wctype",
+ "nvx",
+ "posix",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syslog",
+]
+
+[[package]]
+name = "nanvix_libm"
+version = "0.17.2"
+dependencies = [
+ "libc_math",
+ "nvx",
+]
+
+[[package]]
 name = "nanvixd"
 version = "0.17.2"
 dependencies = [

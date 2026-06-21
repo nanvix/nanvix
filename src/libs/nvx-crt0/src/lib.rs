@@ -298,8 +298,13 @@ pub unsafe extern "C" fn _start(argp: *mut c_char, envp: *mut c_char) -> ! {
 /// dispatch into the application's entry point.
 ///
 /// In `c-main` mode (cpython, hello-c, smoke, ...), this calls the
-/// standard `extern "C" fn main(int, char **)` plus the legacy `_init` /
-/// `_fini` constructor / destructor hooks expected by GCC-style toolchains.
+/// standard `extern "C" fn main(int, char **)`.  By default it also invokes
+/// the legacy GCC-style `_init` / `_fini` constructor / destructor hooks
+/// around `main`, preserving the historical contract that C consumers rely
+/// on.  When the `init-array` feature is enabled — as it is for the in-tree
+/// `nanvix_libc` bundle — those hooks are dropped and global constructors /
+/// destructors are instead run by `__nanvix_libc_start_main`, which walks
+/// `.init_array` / `.fini_array` around this trampoline.
 ///
 /// In `rust-main` mode (every Rust no_std binary in this workspace),
 /// this publishes the parsed `argc` / `argv` into [`ARGC`] / [`ARGV`]
@@ -317,9 +322,10 @@ pub unsafe extern "C" fn _start(argp: *mut c_char, envp: *mut c_char) -> ! {
 ///
 /// # Safety
 ///
-/// This function dereferences the foreign `argv` pointer and calls into
-/// foreign `main` / `_init` / `_fini` provided by the application
-/// (resolved at link time).
+/// This function dereferences the foreign `argv` pointer and calls into the
+/// foreign `main` (and, unless the `init-array` feature is enabled, the
+/// foreign `_init` / `_fini`) provided by the application (resolved at link
+/// time).
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn __nanvix_main(argc: i32, argv: *const *const u8) -> i32 {
@@ -327,16 +333,35 @@ pub unsafe extern "C" fn __nanvix_main(argc: i32, argv: *const *const u8) -> i32
         if #[cfg(feature = "c-main")] {
             unsafe extern "C" {
                 fn main(argc: i32, argv: *const *const u8) -> i32;
-                fn _init();
-                fn _fini();
             }
-            let _ = argc;
-            let _ = argv;
-            unsafe {
-                _init();
-                let ret: i32 = main(argc, argv);
-                _fini();
-                ret
+            cfg_if::cfg_if! {
+                if #[cfg(feature = "init-array")] {
+                    // Global constructors / destructors are run separately by
+                    // `__nanvix_libc_start_main` (libposix start.rs), which
+                    // walks `.init_array` / `.fini_array` around this
+                    // trampoline.  Matches the in-tree `nanvix_libc` bundle,
+                    // which ships no crti/crtn/crtbegin/crtend and therefore
+                    // provides no `_init` / `_fini`.
+                    unsafe { main(argc, argv) }
+                } else {
+                    // Default (backward-compatible) path: invoke the legacy
+                    // GCC-style `_init` / `_fini` constructor / destructor
+                    // hooks (provided by the application's crti/crtn) around
+                    // `main`, preserving the historical contract for C
+                    // consumers that depend on it.
+                    unsafe extern "C" {
+                        fn _init();
+                        fn _fini();
+                    }
+                    let _ = argc;
+                    let _ = argv;
+                    unsafe {
+                        _init();
+                        let ret: i32 = main(argc, argv);
+                        _fini();
+                        ret
+                    }
+                }
             }
         } else {
             unsafe extern "Rust" {

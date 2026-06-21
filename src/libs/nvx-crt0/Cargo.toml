@@ -47,7 +47,10 @@ sysalloc = { workspace = true, optional = true }
 # uses `--no-default-features`), so `libnvx_crt0.a` does NOT carry
 # `libposix` or `sysalloc` objects — `__nanvix_libc_start_main` is
 # resolved from the separately-built `libposix.a` at the cpython link.
-posix = { workspace = true, default-features = false, features = ["allocator", "syscall"], optional = true }
+posix = { workspace = true, default-features = false, features = [
+    "allocator",
+    "syscall",
+], optional = true }
 
 [features]
 # Default to `c-main` so a vanilla `cargo build -p nvx-crt0` succeeds without
@@ -57,6 +60,14 @@ posix = { workspace = true, default-features = false, features = ["allocator", "
 default = ["c-main"]
 c-main = []
 rust-main = []
+
+# `init-array` switches the `c-main` trampoline from the legacy GCC-style
+# `_init` / `_fini` constructor / destructor hooks to relying on
+# `__nanvix_libc_start_main` walking `.init_array` / `.fini_array`.  Off by
+# default so existing C consumers keep the `_init` / `_fini` contract; enabled
+# for the in-tree `nanvix_libc` bundle's `crt0.o`, which ships no
+# crti/crtn/crtbegin/crtend and pairs with `posix/init-array`.
+init-array = []
 
 # `provides-allocator` makes this crate force `sysalloc`'s
 # `#[global_allocator]` into the binary's link graph (via `extern crate

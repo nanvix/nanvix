@@ -43,6 +43,12 @@ default = ["runtime"]
 # `sysalloc` transitive dep.  See the `Cargo.toml` of `nvx-crt0` for
 # the cpython staticlib build path that exercises this.
 runtime = ["dep:sysalloc"]
+# `weak-panic` gives the `#[panic_handler]` weak linkage.  Off by default so a
+# binary that links `nvx` once keeps a single strong `rust_begin_unwind`.
+# Enabled by the in-tree `nanvix_libc` / `nanvix_libm` staticlib bundle, where
+# `nvx` lands in more than one archive and the duplicate strong panic symbols
+# would otherwise have to be resolved with `-z muldefs` at the final link.
+weak-panic = []
 rustc-dep-of-std = [
     "alloc",
     "core",

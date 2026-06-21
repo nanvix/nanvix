@@ -1,0 +1,89 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix_libc"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Nanvix C Standard Library (combined staticlib)"
+homepage.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+libc_assert = { workspace = true }
+libc_ctype = { workspace = true }
+libc_inttypes = { workspace = true }
+libc_langinfo = { workspace = true }
+libc_locale = { workspace = true }
+# NOTE: the math routines (`libc_math`) are deliberately NOT pulled in here — they
+# are shipped as the separate `libm.a` archive (the `nanvix_libm` crate), mirroring
+# the GCC + newlib split of `libc.a` / `libm.a`. `libc.a` references no math
+# symbols, so the two archives are independent.
+libc_setjmp = { workspace = true }
+libc_signal = { workspace = true }
+libc_stdio = { workspace = true }
+libc_stdlib = { workspace = true }
+libc_string = { workspace = true }
+libc_time = { workspace = true }
+libc_wchar = { workspace = true }
+libc_wctype = { workspace = true }
+# Backend runtime providers: the `#[panic_handler]` (nvx), the
+# `#[global_allocator]` (sysalloc), and the POSIX system-call backend (posix:
+# `open`/`read`/`write`/`__nanvix_libc_start_main` + the in-memory VFS). All are
+# gated behind the `backend-nanvix` feature so a consumer that supplies its own
+# backend can build with `--no-default-features`.
+#
+# `posix` is pulled in HERE (rather than merged as a separate `libposix.a` via
+# `ar`) so the entire C library + backend is compiled in ONE cargo invocation.
+# Cargo then unifies every shared transitive dependency (sysalloc, libc_stdlib,
+# sys, nvx, syslog) to a SINGLE instance each, which structurally prevents the
+# duplicate-`sysalloc`/duplicate-`HEAP` class of bugs that the previous
+# two-staticlib merge produced (crt0 initialised one `HEAP`, the global
+# allocator read another).
+nvx = { workspace = true, optional = true, features = ["weak-panic"] }
+sysalloc = { workspace = true, optional = true }
+posix = { workspace = true, optional = true, features = [
+    "syscall",
+    "allocator",
+    "c-main",
+    "init-array",
+] }
+sysapi = { workspace = true }
+syslog = { workspace = true, default-features = true }
+sys = { workspace = true }
+
+[features]
+default = ["staticlib", "backend-nanvix"]
+staticlib = []
+std = []
+
+# Default Nanvix runtime backend: pulls in the `#[panic_handler]` (nvx), the
+# `#[global_allocator]` (sysalloc), and the POSIX syscall backend (posix) so the
+# produced static archive is a complete, self-contained libc.a.
+backend-nanvix = ["dep:nvx", "dep:sysalloc", "dep:posix"]
+# Host/custom backend: the final link must supply panic + allocator + crt0.
+# Building a staticlib with this and without `backend-nanvix` requires the
+# consumer to provide the runtime trio at link time.
+backend-host = []
+
+# Standalone deployment: routes stdout/stderr to the debug kcall and file I/O to
+# the in-memory VFS. Forwarded to the `posix` backend (the libc functions
+# themselves have no standalone-specific behaviour).
+standalone = ["posix?/standalone"]
+
+# Logging — forwarded to the `posix` backend so the shared `syslog` (used by both
+# `posix` and `sysalloc` in the now-unified dependency graph) is compiled at the
+# same level it had under the previous separate `libposix.a` build.
+trace = ["posix?/trace"]
+debug = ["posix?/debug"]
+info = ["posix?/info"]
+warn = ["posix?/warn"]
+error = ["posix?/error"]
+panic = ["posix?/panic"]
+
+[lints]
+workspace = true

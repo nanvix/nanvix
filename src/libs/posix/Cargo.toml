@@ -41,6 +41,16 @@ syscall = ["syslog", "syscall/dlfcn"]
 standalone = ["syscall/standalone"]
 std = []
 
+# `init-array` makes `__nanvix_libc_start_main` run global constructors /
+# destructors by walking the `.preinit_array` / `.init_array` / `.fini_array`
+# sections (bounded by the `__*_array_{start,end}` symbols from `user.ld`).
+# Off by default: a default `libposix` neither references those linker symbols
+# nor walks the arrays, so consumers with their own linker scripts keep linking
+# unchanged and rely on the `nvx-crt0` `c-main` trampoline's legacy `_init` /
+# `_fini` hooks.  Enabled (together with `nvx-crt0/init-array`) by the in-tree
+# `nanvix_libc` bundle.
+init-array = []
+
 # `c-main` gates the link-time errno wiring used by C executables (cpython,
 # numpy, ...).  When enabled, `syscall/staticlib` switches
 # `__errno_location()` from a self-contained local errno to an `extern fn

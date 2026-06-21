@@ -1,0 +1,45 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "nanvix_libm"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Nanvix C Math Library (libm.a)"
+homepage.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# The pure-computational math routines (sin/cos/pow/sqrt/...). `libc_math` is
+# self-contained: it uses no heap, no syscalls and no errno, so `libm.a` shares
+# no runtime state with `libc.a`.
+libc_math = { workspace = true }
+# Runtime support: the `#[panic_handler]`. `nvx` is pinned to
+# `default-features = false` (workspace), so its `runtime` feature — and the
+# transitive `sysalloc`/`alloc` deps + `#[global_allocator]` it would pull in —
+# stay disabled. `libm.a` therefore carries NO `sysalloc`, which is what keeps it
+# free of the duplicate-allocator hazard when linked next to `libc.a`. The
+# `weak-panic` feature gives the panic handler weak linkage so its
+# `rust_begin_unwind` collapses with the copy in `libc.a` at the final link.
+nvx = { workspace = true, features = ["weak-panic"] }
+
+[features]
+default = []
+# Enables the use of the Rust Standard Library.
+std = []
+
+# Logging — forwarded to `nvx`/`syslog` so the panic handler logs at the same
+# level the rest of the build is compiled with.
+trace = ["nvx/trace"]
+debug = ["nvx/debug"]
+info = ["nvx/info"]
+warn = ["nvx/warn"]
+error = ["nvx/error"]
+panic = ["nvx/panic"]
+
+[lints]
+workspace = true
