@@ -28,6 +28,12 @@ config = { workspace = true }
 num_enum = { workspace = true }
 spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 syscall = { workspace = true, features = ["syscall", "dlfcn"] }
+# `libc_stdio` provides the stdio stream accessors (stdin/stdout/stderr) and the
+# FILE API advertised by the sysroot `<stdio.h>`.  It is force-linked into the
+# `libposix.a` staticlib via the `c-main` feature so that C executables resolve
+# these symbols against the self-consistent `libc_stdio` FILE model rather than
+# newlib's.  See the `c-main` feature note below.
+libc_stdio = { workspace = true, optional = true }
 static_assert = { workspace = true }
 sysapi = { workspace = true }
 sysalloc = { workspace = true, optional = true }
@@ -51,7 +57,13 @@ std = []
 # default.  Rust no_std binaries that depend on `posix` via cargo opt out
 # with `default-features = false` so they keep the self-contained errno
 # variant (no newlib in their link).
-c-main = ["syscall/staticlib"]
+#
+# It also force-links `libc_stdio`, so that `libposix.a` carries the stdio
+# stream accessors (`stdin`/`stdout`/`stderr`) and the rest of the FILE API
+# that the sysroot `<stdio.h>` advertises.  Without this, standalone C
+# programs that use buffered stdio fail to link with undefined references to
+# `stdin`/`stdout`/`stderr`.
+c-main = ["syscall/staticlib", "dep:libc_stdio"]
 
 # Logging
 trace = ["syslog/trace"]

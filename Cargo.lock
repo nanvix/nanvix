@@ -2582,6 +2582,7 @@ version = "0.16.123"
 dependencies = [
  "cfg-if",
  "config",
+ "libc_stdio",
  "num_enum",
  "nvx",
  "spin",

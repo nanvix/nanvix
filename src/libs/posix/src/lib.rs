@@ -16,6 +16,14 @@ extern crate nvx;
 
 extern crate alloc;
 
+// Force-link `libc_stdio` into the `libposix.a` staticlib (the `c-main`
+// flavour consumed by C executables) so that its `#[no_mangle]` stdio
+// symbols — the `stdin`/`stdout`/`stderr` stream accessors and the FILE
+// API advertised by the sysroot `<stdio.h>` — are bundled.  This mirrors
+// how `syscall` force-links `libc_stdlib` for the staticlib build.
+#[cfg(feature = "c-main")]
+extern crate libc_stdio;
+
 #[cfg(feature = "syscall")]
 extern crate syslog;
 
