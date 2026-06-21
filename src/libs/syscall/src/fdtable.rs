@@ -71,6 +71,22 @@ pub(crate) struct Resolution {
     pub backend_fd: i32,
 }
 
+/// Result of resolving a descriptor specifically for console I/O.
+#[cfg(feature = "standalone")]
+pub(crate) enum ConsoleLookup {
+    /// The descriptor is a console stream.
+    Console {
+        /// The standard stream number (`0`/`1`/`2`) represented by the descriptor.
+        backend_fd: i32,
+        /// Whether the descriptor is backed by an authoritative vfsd slot.
+        via_vfsd: bool,
+    },
+    /// The descriptor exists, but is not a console stream.
+    Other,
+    /// The descriptor does not exist.
+    BadFile,
+}
+
 /// A cached resolution together with the `vfsd` table generation it was learned at.
 #[cfg(any(feature = "standalone", test))]
 #[derive(Debug, Clone, Copy)]
@@ -176,6 +192,44 @@ pub(crate) fn resolve(fd: i32) -> Option<Resolution> {
         VfsdResolution::Hit(resolution) => Some(resolution),
         VfsdResolution::BadFile => None,
         VfsdResolution::Unavailable => derive_console(fd),
+    }
+}
+
+/// Resolves `fd` for console I/O and reports whether vfsd owns the descriptor slot.
+#[cfg(feature = "standalone")]
+pub(crate) fn resolve_console(fd: i32) -> ConsoleLookup {
+    {
+        let cache: ::spin::MutexGuard<'_, BTreeMap<i32, CacheEntry>> = CACHE.lock();
+        if let Some(entry) = cache.get(&fd) {
+            if is_coherent(entry.epoch) {
+                return if entry.route == Route::Console {
+                    ConsoleLookup::Console {
+                        backend_fd: entry.backend_fd,
+                        via_vfsd: true,
+                    }
+                } else {
+                    ConsoleLookup::Other
+                };
+            }
+        }
+    }
+
+    match resolve_via_vfsd(fd) {
+        VfsdResolution::Hit(resolution) if resolution.route == Route::Console => {
+            ConsoleLookup::Console {
+                backend_fd: resolution.backend_fd,
+                via_vfsd: true,
+            }
+        },
+        VfsdResolution::Hit(_) => ConsoleLookup::Other,
+        VfsdResolution::BadFile => ConsoleLookup::BadFile,
+        VfsdResolution::Unavailable => match derive_console(fd) {
+            Some(resolution) => ConsoleLookup::Console {
+                backend_fd: resolution.backend_fd,
+                via_vfsd: false,
+            },
+            None => ConsoleLookup::BadFile,
+        },
     }
 }
 

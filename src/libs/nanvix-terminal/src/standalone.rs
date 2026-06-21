@@ -50,6 +50,103 @@ const IO_BUFFER_SIZE: usize = 4096;
 const STDIN_CHANNEL_CAPACITY: usize = 4096;
 
 //==================================================================================================
+// Host Raw Mode
+//==================================================================================================
+
+/// Guard that places the host terminal in raw input mode while the guest runs.
+///
+/// In standalone mode the guest's vfsd console backend owns the terminal line discipline (canonical
+/// editing, echo, special characters). For that to be authoritative, the host terminal must stop
+/// cooking input: canonical mode, echo, signal generation, and input CR/NL translation are disabled
+/// so keystrokes reach the guest verbatim. Output post-processing (e.g. `ONLCR`) is intentionally
+/// left enabled, because guest *program* output bypasses the guest line discipline and still relies
+/// on the host to render newlines.
+///
+/// The switch is a no-op unless host stdin is a real terminal, so piped or redirected input (tests,
+/// scripts, HTTP mode) is forwarded byte-for-byte and unaffected. The previous attributes are
+/// restored when the guard drops, i.e. when the guest exits.
+struct RawModeGuard {
+    /// The terminal attributes to restore on drop; `None` when no switch was performed.
+    #[cfg(unix)]
+    saved: Option<::libc::termios>,
+}
+
+impl RawModeGuard {
+    /// Switches host stdin to raw input mode when it is a terminal, returning a restoring guard.
+    #[cfg(unix)]
+    fn new() -> Self {
+        // Only switch a real terminal; leave piped/redirected stdin untouched.
+        // SAFETY: `isatty` only inspects the descriptor and is always safe to call.
+        if unsafe { ::libc::isatty(::libc::STDIN_FILENO) } != 1 {
+            return Self { saved: None };
+        }
+        // SAFETY: `termios` is a plain C struct; a zeroed value is a valid initial state that
+        // `tcgetattr` fully overwrites.
+        let mut termios: ::libc::termios = unsafe { ::std::mem::zeroed() };
+        // SAFETY: `termios` points to a valid, owned structure for the duration of the call.
+        if unsafe { ::libc::tcgetattr(::libc::STDIN_FILENO, &mut termios) } != 0 {
+            warn!("standalone: failed to read host terminal attributes; leaving cooked mode");
+            return Self { saved: None };
+        }
+        let saved: ::libc::termios = termios;
+        Self::make_raw_input(&mut termios);
+        // SAFETY: `termios` points to a valid, owned structure for the duration of the call.
+        if unsafe { ::libc::tcsetattr(::libc::STDIN_FILENO, ::libc::TCSANOW, &termios) } != 0 {
+            warn!("standalone: failed to set host terminal to raw mode; leaving cooked mode");
+            return Self { saved: None };
+        }
+        info!("standalone: host terminal switched to raw input mode");
+        Self { saved: Some(saved) }
+    }
+
+    /// Non-Unix hosts do not expose POSIX termios; the switch is a no-op there.
+    #[cfg(not(unix))]
+    fn new() -> Self {
+        Self {}
+    }
+
+    /// Clears the input-cooking, echo, and signal flags, leaving output post-processing intact.
+    #[cfg(unix)]
+    fn make_raw_input(termios: &mut ::libc::termios) {
+        // Disable canonical mode, echo, signal generation (`^C`/`^Z`), and extended input
+        // processing so the guest line discipline is authoritative for editing, echo, and special
+        // characters.
+        termios.c_lflag &= !(::libc::ICANON
+            | ::libc::ECHO
+            | ::libc::ECHOE
+            | ::libc::ECHOK
+            | ::libc::ECHONL
+            | ::libc::ISIG
+            | ::libc::IEXTEN);
+        // Disable input CR/NL translation, flow control, and break handling so bytes reach the
+        // guest verbatim; the guest maps CR to NL itself (`ICRNL` in its own termios).
+        termios.c_iflag &= !(::libc::ICRNL
+            | ::libc::INLCR
+            | ::libc::IGNCR
+            | ::libc::IXON
+            | ::libc::IXOFF
+            | ::libc::BRKINT
+            | ::libc::ISTRIP
+            | ::libc::INPCK);
+        // Deliver each byte as soon as it is typed.
+        termios.c_cc[::libc::VMIN] = 1;
+        termios.c_cc[::libc::VTIME] = 0;
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(saved) = self.saved {
+            // SAFETY: `saved` is a valid termios previously read from this same terminal.
+            unsafe {
+                ::libc::tcsetattr(::libc::STDIN_FILENO, ::libc::TCSANOW, &saved);
+            }
+        }
+    }
+}
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -109,6 +206,12 @@ impl Terminal {
         guest_binary_args: &str,
     ) -> Result<i32> {
         info!("spawning VM in standalone terminal mode");
+
+        // Put the host terminal in raw mode for the lifetime of the guest so its in-vfsd line
+        // discipline is authoritative for canonical editing, echo, and special characters. The
+        // guard restores the previous attributes on drop (guest exit). It is a no-op unless host
+        // stdin is a terminal, so piped/redirected input (tests, scripts) is forwarded verbatim.
+        let _raw_mode: RawModeGuard = RawModeGuard::new();
 
         let initrd_args: Option<String> = if guest_binary_args.is_empty() {
             None

@@ -68,6 +68,9 @@ pub mod fd;
 /// High-level file handle and OpenOptions builder.
 pub mod file;
 
+/// Terminal line discipline backing the vfsd console device.
+pub mod line_discipline;
+
 /// Mount table and path resolution.
 pub mod mount;
 

@@ -9,9 +9,13 @@ use crate::error::{
     build_error,
     fat32_to_error_code,
 };
+use ::alloc::vec::Vec;
 use ::arch::mem::PAGE_SIZE;
 use ::sys::{
-    error::ErrorCode,
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::{
         Message,
         MessageType,
@@ -22,6 +26,7 @@ use ::sys::{
     },
 };
 use ::sysapi::{
+    fcntl::file_status_flags,
     sys_ioctl::{
         Winsize,
         TCGETS,
@@ -29,7 +34,12 @@ use ::sysapi::{
         TIOCGWINSZ,
         TIOCSWINSZ,
     },
+    sys_types::c_size_t,
     termios::Termios,
+    unistd::{
+        STDIN_FILENO,
+        STDOUT_FILENO,
+    },
 };
 use ::syscall::{
     sys::ioctl::message::{
@@ -48,7 +58,13 @@ use ::syscall::{
     },
     SystemCallMessage,
 };
-use ::vfs::fd::TtyError;
+use ::vfs::{
+    fd::{
+        ConsoleStream,
+        TtyError,
+    },
+    line_discipline::ConsoleReadOutcome,
+};
 
 //==================================================================================================
 // Constants
@@ -62,6 +78,15 @@ const MAX_BULK_TRANSFER_SIZE: usize = PAGE_SIZE;
 /// Safety: vfsd processes one request at a time (single-threaded message loop),
 /// so there is no concurrent access to this buffer.
 static mut BULK_BUFFER: [u8; MAX_BULK_TRANSFER_SIZE] = [0u8; MAX_BULK_TRANSFER_SIZE];
+
+/// Number of raw host-console bytes fetched from the kernel per blocking fetch.
+///
+/// Reading a small chunk (rather than a single byte) per round-trip lets a burst of buffered or
+/// pasted input — and piped input in tests — be cooked in one kernel exchange. Interactive,
+/// per-keystroke input still arrives one byte at a time regardless, since the host delivers each
+/// keystroke as it is typed. Over-reading is safe: surplus bytes are buffered by the line
+/// discipline and served to later reads.
+const CONSOLE_RAW_READ_SIZE: usize = 256;
 
 //==================================================================================================
 // Read/Write Handlers (with push/pull bulk data transfer)
@@ -115,6 +140,79 @@ pub(crate) fn handle_read(
     }
 }
 
+/// Handles a `read()` on a console descriptor.
+///
+/// Cooked input already buffered in the line discipline is served without blocking. When none is
+/// available and the descriptor is blocking, this fetches raw input from the host console and feeds
+/// it through the line discipline until a readable unit (a canonical line, a raw byte, or EOF)
+/// becomes available.
+///
+/// The host console protocol is synchronous and demand-driven — the host blocks until input arrives
+/// and delivers it only in response to an explicit request — and vfsd is single-threaded, so this
+/// fetch necessarily blocks the event loop while waiting for the user. Requests from other clients
+/// that arrive meanwhile are queued (never lost) and are serviced as soon as the read completes.
+/// Crucially, the raw fetch does not consume the kernel's acknowledgement with a nested
+/// `__kcall_recv()` (which could dequeue an unrelated request from the shared mailbox); those
+/// acknowledgements are drained by the main event loop instead.
+pub(crate) fn handle_console_read(
+    source_pid: ProcessIdentifier,
+    source_tid: ThreadIdentifier,
+    fd: i32,
+    stream: ConsoleStream,
+    count: usize,
+) -> Message {
+    if stream != ConsoleStream::Stdin {
+        let _ = push_to_reader(source_pid, source_tid, &[], "console read");
+        return build_error(source_tid, ErrorCode::BadFile);
+    }
+
+    let buf_size: usize = count.min(MAX_BULK_TRANSFER_SIZE);
+    // Safety: vfsd is single-threaded; no concurrent access to BULK_BUFFER.
+    let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
+
+    loop {
+        match ::vfs::fd::vfs_console_read(fd, buf) {
+            Ok(ConsoleReadOutcome::Read(n)) => {
+                if let Err(code) = push_to_reader(source_pid, source_tid, &buf[..n], "console read")
+                {
+                    return build_error(source_tid, code);
+                }
+                return ReadResponse::build(
+                    source_tid,
+                    n as i32,
+                    [0u8; ReadResponse::BUFFER_SIZE],
+                    ProcessIdentifier::VFSD,
+                    MessageType::Ipc,
+                );
+            },
+            Ok(ConsoleReadOutcome::Eof) => {
+                let _ = push_to_reader(source_pid, source_tid, &[], "console read");
+                return ReadResponse::build(
+                    source_tid,
+                    0,
+                    [0u8; ReadResponse::BUFFER_SIZE],
+                    ProcessIdentifier::VFSD,
+                    MessageType::Ipc,
+                );
+            },
+            Ok(ConsoleReadOutcome::WouldBlock) => {
+                if is_nonblocking(fd) {
+                    let _ = push_to_reader(source_pid, source_tid, &[], "console read");
+                    return build_error(source_tid, ErrorCode::TryAgain);
+                }
+                if let Err(code) = feed_console_input(fd) {
+                    let _ = push_to_reader(source_pid, source_tid, &[], "console read");
+                    return build_error(source_tid, code);
+                }
+            },
+            Err(error) => {
+                let _ = push_to_reader(source_pid, source_tid, &[], "console read");
+                return build_error(source_tid, tty_error_code(error));
+            },
+        }
+    }
+}
+
 pub(crate) fn handle_write(
     source_pid: ProcessIdentifier,
     source_tid: ThreadIdentifier,
@@ -153,6 +251,94 @@ pub(crate) fn handle_write(
             build_error(source_tid, ErrorCode::IoErr)
         },
     }
+}
+
+/// Returns `true` if the open file description for `fd` has `O_NONBLOCK` set.
+fn is_nonblocking(fd: i32) -> bool {
+    ::vfs::fd::vfs_get_status_flags(fd) & file_status_flags::O_NONBLOCK != 0
+}
+
+/// Pushes data to a reader blocked in `__kcall_pull`.
+fn push_to_reader(
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    data: &[u8],
+    context: &'static str,
+) -> Result<(), ErrorCode> {
+    if let Err(error) = ::sys::kcall::ipc::__kcall_push(pid, tid, data) {
+        ::syslog::error!("{context}: push failed (error={:?})", error);
+        return Err(ErrorCode::IoErr);
+    }
+    Ok(())
+}
+
+/// Feeds a chunk of raw host-console input through the line discipline.
+///
+/// Fetches up to [`CONSOLE_RAW_READ_SIZE`] raw bytes from the kernel console, cooks them through the
+/// line discipline, and writes back any bytes the discipline wants echoed. A zero-length fetch means
+/// end-of-file, which is signalled to the discipline. Echo failures are non-fatal and only logged.
+fn feed_console_input(fd: i32) -> Result<(), ErrorCode> {
+    let mut raw: [u8; CONSOLE_RAW_READ_SIZE] = [0u8; CONSOLE_RAW_READ_SIZE];
+    let n: usize = kernel_read_stdin(&mut raw).map_err(|error| error.code)?;
+    if n == 0 {
+        return ::vfs::fd::vfs_console_push_eof(fd).map_err(tty_error_code);
+    }
+
+    let echo: Vec<u8> = ::vfs::fd::vfs_console_push_input(fd, &raw[..n]).map_err(tty_error_code)?;
+    if !echo.is_empty() {
+        if let Err(error) = kernel_write_console(STDOUT_FILENO, &echo) {
+            ::syslog::warn!("console read: failed to echo input (error={:?})", error);
+        }
+    }
+
+    Ok(())
+}
+
+/// Reads raw input from the kernel console stdin stream.
+///
+/// Sends a `ReadRequest` to the kernel console and pulls the delivered bytes. The pulled byte count
+/// is authoritative: the host always completes the pull (with `0` bytes on end-of-file). The
+/// kernel's matching `ReadResponse` acknowledgement is intentionally left in vfsd's mailbox for the
+/// main event loop to discard, rather than consumed here with a nested `__kcall_recv()` that could
+/// instead dequeue an unrelated guest request (the mailbox is shared by the whole process).
+fn kernel_read_stdin(buf: &mut [u8]) -> Result<usize, Error> {
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+    let request: Message = ReadRequest::build(
+        tid,
+        STDIN_FILENO,
+        buf.len() as c_size_t,
+        ProcessIdentifier::KERNEL,
+        MessageType::Ikc,
+    );
+    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let bytes_pulled: usize =
+        ::sys::kcall::ipc::__kcall_pull(ProcessIdentifier::KERNEL, ThreadIdentifier::KERNEL, buf)?;
+    Ok(bytes_pulled)
+}
+
+/// Writes bytes to the kernel console output stream (used to echo cooked input).
+///
+/// Like [`kernel_read_stdin`], the kernel's `WriteResponse` acknowledgement is left in vfsd's
+/// mailbox for the main event loop to discard rather than consumed with a nested `__kcall_recv()`,
+/// which could otherwise dequeue an unrelated guest request from the shared mailbox.
+fn kernel_write_console(fd: i32, buf: &[u8]) -> Result<(), Error> {
+    if buf.is_empty() {
+        return Ok(());
+    }
+
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+    let empty_buf: [u8; WriteRequest::BUFFER_SIZE] = [0u8; WriteRequest::BUFFER_SIZE];
+    let request: Message = WriteRequest::build(
+        tid,
+        fd,
+        buf.len() as c_size_t,
+        empty_buf,
+        ProcessIdentifier::KERNEL,
+        MessageType::Ikc,
+    );
+    ::sys::kcall::ipc::__kcall_send(&request)?;
+    ::sys::kcall::ipc::__kcall_push(ProcessIdentifier::KERNEL, ThreadIdentifier::KERNEL, buf)?;
+    Ok(())
 }
 
 //==================================================================================================

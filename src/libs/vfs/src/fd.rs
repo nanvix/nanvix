@@ -20,7 +20,13 @@
 // Imports
 //==================================================================================================
 
-use crate::fat32_backend;
+use crate::{
+    fat32_backend,
+    line_discipline::{
+        ConsoleReadOutcome,
+        LineDiscipline,
+    },
+};
 use ::alloc::{
     collections::{
         BTreeMap,
@@ -209,9 +215,8 @@ pub enum VfsFileHandle {
     Pipe(crate::pipe::PipeEnd),
     /// Routing token for a console stream (stdin/stdout/stderr).
     ///
-    /// This is not a real handle: it carries no buffer and performs no I/O. It only lets vfsd own
-    /// the descriptor slot and its per-descriptor flags while console I/O is routed elsewhere. No
-    /// production path constructs this variant yet (that lands in a later plan).
+    /// The handle lets vfsd own the descriptor slot, its per-descriptor flags, and the shared
+    /// console line discipline. The daemon still drives host I/O around this token.
     Console(ConsoleHandle),
     /// Routing token for a socket, holding the descriptor assigned by `networkd`.
     ///
@@ -299,57 +304,34 @@ pub enum ConsoleStream {
     Stderr,
 }
 
-/// Shared terminal device state backing the console streams.
-///
-/// Terminal attributes belong to the console *device*, not to an individual descriptor: the three
-/// standard streams (and every descriptor duplicated or forked from them) observe one consistent
-/// `termios`/`winsize`. This object is therefore held behind an [`Arc`] that all console handles
-/// share, so a `tcsetattr` through one console descriptor is visible through another and is
-/// inherited across `fork`/`dup`.
-#[derive(Clone, Copy, Debug)]
-pub struct TerminalState {
-    /// Terminal attributes (`tcgetattr`/`tcsetattr`, `TCGETS`/`TCSETS`).
-    pub termios: Termios,
-    /// Terminal window size (`TIOCGWINSZ`/`TIOCSWINSZ`).
-    pub winsize: Winsize,
-}
-
-impl Default for TerminalState {
-    fn default() -> Self {
-        Self {
-            termios: Termios::console_default(),
-            winsize: Winsize::console_default(),
-        }
-    }
-}
-
 /// Routing token for a console-backed descriptor.
 ///
 /// A console handle records which standard stream the descriptor represents and a reference to the
-/// shared terminal device state, but holds no buffer and performs no I/O. It exists so that vfsd can
-/// own the descriptor slot, its per-descriptor flags, and the terminal attributes while the actual
-/// console I/O is routed elsewhere.
+/// shared line discipline (terminal attributes plus cooked input), but performs no I/O of its own.
+/// It exists so that vfsd can own the descriptor slot, its per-descriptor flags, and the terminal
+/// device state while the actual console I/O is driven from the daemon.
 pub struct ConsoleHandle {
     /// Which standard stream this descriptor represents.
     stream: ConsoleStream,
-    /// Shared terminal device state, referenced by every console descriptor.
-    terminal: Arc<Mutex<TerminalState>>,
+    /// Shared line discipline (terminal attributes and cooked input), referenced by every console
+    /// descriptor of the device.
+    terminal: Arc<Mutex<LineDiscipline>>,
 }
 
 impl ConsoleHandle {
-    /// Creates a console handle for the given standard stream with its own fresh terminal state.
+    /// Creates a console handle for the given standard stream with its own fresh line discipline.
     ///
     /// Use [`ConsoleHandle::with_terminal`] when several handles must share one terminal device, as
     /// the standard streams do.
     pub fn new(stream: ConsoleStream) -> Self {
-        Self::with_terminal(stream, Arc::new(Mutex::new(TerminalState::default())))
+        Self::with_terminal(stream, Arc::new(Mutex::new(LineDiscipline::default())))
     }
 
     /// Creates a console handle for the given standard stream that references `terminal`.
     ///
-    /// The three standard streams are created this way from a single shared terminal object so that
-    /// they observe one consistent `termios`/`winsize`.
-    pub fn with_terminal(stream: ConsoleStream, terminal: Arc<Mutex<TerminalState>>) -> Self {
+    /// The three standard streams are created this way from a single shared line discipline so that
+    /// they observe one consistent `termios`/`winsize` and one shared input buffer.
+    pub fn with_terminal(stream: ConsoleStream, terminal: Arc<Mutex<LineDiscipline>>) -> Self {
         Self { stream, terminal }
     }
 
@@ -358,8 +340,8 @@ impl ConsoleHandle {
         self.stream
     }
 
-    /// Returns a reference to the shared terminal device state.
-    pub fn terminal(&self) -> &Arc<Mutex<TerminalState>> {
+    /// Returns a reference to the shared line discipline backing this console descriptor.
+    pub fn terminal(&self) -> &Arc<Mutex<LineDiscipline>> {
         &self.terminal
     }
 }
@@ -989,7 +971,7 @@ pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
     // The three standard streams share one terminal device, so they reference a single shared
     // terminal-state object. A `tcsetattr` through any of them is therefore visible through the
     // others, and the shared object flows down every `fork`/`dup` with the descriptor slots.
-    let terminal: Arc<Mutex<TerminalState>> = Arc::new(Mutex::new(TerminalState::default()));
+    let terminal: Arc<Mutex<LineDiscipline>> = Arc::new(Mutex::new(LineDiscipline::default()));
     for (fd, stream) in [
         (STDIN_FILENO, ConsoleStream::Stdin),
         (STDOUT_FILENO, ConsoleStream::Stdout),
@@ -2278,7 +2260,7 @@ pub enum TtyError {
 /// before it is returned, so the caller may lock the terminal without nesting registry or entry
 /// locks. A descriptor with no slot yields [`TtyError::BadFd`]; a non-console descriptor yields
 /// [`TtyError::NotTty`].
-fn console_terminal(fd: c_int) -> Result<Arc<Mutex<TerminalState>>, TtyError> {
+fn console_handle(fd: c_int) -> Result<(ConsoleStream, Arc<Mutex<LineDiscipline>>), TtyError> {
     let file: OpenFile = {
         let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
             PROCESSES.lock();
@@ -2293,14 +2275,23 @@ fn console_terminal(fd: c_int) -> Result<Arc<Mutex<TerminalState>>, TtyError> {
     };
     let guard = file.lock();
     match &guard.handle {
-        VfsFileHandle::Console(h) => Ok(h.terminal().clone()),
+        VfsFileHandle::Console(h) => Ok((h.stream(), h.terminal().clone())),
         _ => Err(TtyError::NotTty),
     }
 }
 
+/// Returns the console stream represented by descriptor `fd`.
+pub fn vfs_console_stream(fd: c_int) -> Result<ConsoleStream, TtyError> {
+    console_handle(fd).map(|(stream, _)| stream)
+}
+
+fn console_terminal(fd: c_int) -> Result<Arc<Mutex<LineDiscipline>>, TtyError> {
+    console_handle(fd).map(|(_, terminal)| terminal)
+}
+
 /// Reads the terminal attributes of the console descriptor `fd` (`TCGETS`/`tcgetattr`).
 pub fn vfs_tty_get_termios(fd: c_int) -> Result<Termios, TtyError> {
-    let terminal: Arc<Mutex<TerminalState>> = console_terminal(fd)?;
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
     let termios: Termios = terminal.lock().termios;
     Ok(termios)
 }
@@ -2310,23 +2301,44 @@ pub fn vfs_tty_get_termios(fd: c_int) -> Result<Termios, TtyError> {
 /// The new attributes are stored on the shared terminal object, so the change is observed by every
 /// console descriptor that references it, including descriptors in forked children.
 pub fn vfs_tty_set_termios(fd: c_int, termios: Termios) -> Result<(), TtyError> {
-    let terminal: Arc<Mutex<TerminalState>> = console_terminal(fd)?;
-    terminal.lock().termios = termios;
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
+    terminal.lock().set_termios(termios);
     Ok(())
 }
 
 /// Reads the window size of the console descriptor `fd` (`TIOCGWINSZ`).
 pub fn vfs_tty_get_winsize(fd: c_int) -> Result<Winsize, TtyError> {
-    let terminal: Arc<Mutex<TerminalState>> = console_terminal(fd)?;
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
     let winsize: Winsize = terminal.lock().winsize;
     Ok(winsize)
 }
 
 /// Replaces the window size of the console descriptor `fd` (`TIOCSWINSZ`).
 pub fn vfs_tty_set_winsize(fd: c_int, winsize: Winsize) -> Result<(), TtyError> {
-    let terminal: Arc<Mutex<TerminalState>> = console_terminal(fd)?;
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
     terminal.lock().winsize = winsize;
     Ok(())
+}
+
+/// Feeds raw input bytes into the console line discipline and returns bytes to echo.
+pub fn vfs_console_push_input(fd: c_int, input: &[u8]) -> Result<Vec<u8>, TtyError> {
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
+    let echo: Vec<u8> = terminal.lock().push_input(input);
+    Ok(echo)
+}
+
+/// Signals end-of-input on the raw console stream.
+pub fn vfs_console_push_eof(fd: c_int) -> Result<(), TtyError> {
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
+    terminal.lock().push_eof();
+    Ok(())
+}
+
+/// Attempts a non-blocking read from the console line discipline.
+pub fn vfs_console_read(fd: c_int, buf: &mut [u8]) -> Result<ConsoleReadOutcome, TtyError> {
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
+    let outcome: ConsoleReadOutcome = terminal.lock().read(buf);
+    Ok(outcome)
 }
 
 /// Reads from a VFS file descriptor at a given offset without changing position.
@@ -3632,6 +3644,29 @@ mod tests {
             Ok(attrs),
             "stderr observes a change made through stdout"
         );
+
+        forget_processes(&[root]);
+    }
+
+    /// Tests that the shared console line discipline is reachable through console descriptors.
+    #[test]
+    fn console_line_discipline_is_shared_across_standard_streams() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        vfs_seed_root_console(root);
+        set_current_process(root);
+
+        let echo: Vec<u8> =
+            vfs_console_push_input(STDIN_FILENO, b"ab\n").expect("push console input");
+        assert_eq!(echo, b"ab\r\n", "canonical input is echoed through the discipline");
+
+        let mut buf: [u8; 8] = [0u8; 8];
+        assert_eq!(
+            vfs_console_read(STDERR_FILENO, &mut buf),
+            Ok(ConsoleReadOutcome::Read(3)),
+            "all standard streams share one console input queue"
+        );
+        assert_eq!(&buf[..3], b"ab\n");
 
         forget_processes(&[root]);
     }

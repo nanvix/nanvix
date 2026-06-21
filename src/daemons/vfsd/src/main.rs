@@ -201,6 +201,17 @@ pub fn main() {
                         if header == SystemCallMessageHeader::CloseResponse {
                             continue;
                         }
+                        // The console line-discipline backend fetches raw input and echoes output
+                        // through synchronous kernel-console exchanges (see vfsd's
+                        // `handle_console_read`). It deliberately does not consume the kernel's
+                        // `ReadResponse`/`WriteResponse` acknowledgement inline — a nested
+                        // `__kcall_recv()` there could dequeue an unrelated guest request from the
+                        // shared mailbox — so those acknowledgements surface here and are discarded.
+                        if header == SystemCallMessageHeader::ReadResponse
+                            || header == SystemCallMessageHeader::WriteResponse
+                        {
+                            continue;
+                        }
                         // Multi-part response stream: assemble parts before dispatch.
                         // The op_id is *not* at the standard payload[2..6] offset for
                         // these messages (those bytes carry SystemCallMessagePart
