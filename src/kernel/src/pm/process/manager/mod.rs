@@ -1187,10 +1187,10 @@ impl ProcessManager {
         if self.try_wakeup_thread(tid) {
             Ok(())
         } else {
-            // The target thread may have legitimately exited while an IPC wakeup was still in
-            // flight (e.g. a short-lived forked applet that was already reaped). This is an
-            // expected, benign race, so it is logged at TRACE rather than ERROR while still
-            // returning NoSuchEntry for callers to handle.
+            // The wakeup target may legitimately no longer be sleeping by the time we deliver the
+            // notification (e.g., it already woke/timed out, or it exited and was reaped while an
+            // IPC wakeup was still in flight). This is an expected race, so it is logged at TRACE
+            // rather than ERROR while still returning NoSuchEntry for callers to handle.
             let reason: &str = "thread not found";
             trace!("{reason} (tid={tid:?})");
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
