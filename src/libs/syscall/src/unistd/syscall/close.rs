@@ -36,34 +36,22 @@ pub fn close(fd: i32) -> Result<(), Error> {
     // In standalone mode, route based on the descriptor's resolved backend.
     #[cfg(feature = "standalone")]
     {
-        use crate::fdtable::{
-            resolve,
-            Route,
+        use crate::{
+            close_route::{
+                close_target,
+                CloseTarget,
+            },
+            fdtable::resolve,
         };
         let result: Result<(), Error> = match resolve(fd) {
-            Some(res) => match res.route {
-                // VFS-backed descriptors are closed by vfsd.
-                Route::Vfs => close_ipc(
-                    res.backend_fd,
-                    crate::VFS_DESTINATION,
-                    crate::VFS_MESSAGE_TYPE,
-                    false,
-                ),
-                // When a guest vfsd exists, a console descriptor also occupies a slot in vfsd's
-                // flat table; closing one must release that slot so the descriptor number can be
-                // reused. When no guest vfsd exists (direct-ELF standalone), resolve() routes the
-                // stream to the console by number and there is no slot to free, so the close is a
-                // no-op: the request cannot be delivered and that delivery failure is tolerated.
-                Route::Console => {
-                    close_ipc(res.backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE, true)
-                },
-                // A socket occupies a flat slot owned by vfsd: closing it releases that slot, and
-                // vfsd forwards the endpoint close to networkd when the last reference is dropped.
-                // The slot is addressed by the caller-facing flat descriptor, not the networkd
-                // descriptor `backend_fd` routes I/O to.
-                Route::Socket => {
-                    close_ipc(fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE, false)
-                },
+            Some(res) => {
+                let target: CloseTarget = close_target(fd, res);
+                close_ipc(
+                    target.fd,
+                    target.destination,
+                    target.message_type,
+                    target.tolerate_missing_backend,
+                )
             },
             // Unknown fd: no handler available.
             None => {
@@ -85,7 +73,6 @@ pub fn close(fd: i32) -> Result<(), Error> {
         close_ipc(fd, crate::LINUXD, MessageType::Ikc, false)
     }
 }
-
 /// Forwards a `close` request via IPC to the given destination.
 ///
 /// When `tolerate_missing_backend` is set, a failure to deliver the request (no such backend
@@ -141,7 +128,6 @@ fn close_ipc(
         }
     }
 }
-
 pub mod bindings {
     use crate::errno::__errno_location;
     use ::sysapi::ffi::c_int;

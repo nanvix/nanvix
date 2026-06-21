@@ -507,6 +507,45 @@ mod tests {
         clear();
     }
 
+    /// Tests the descriptor distinction the console `close` path depends on. A console alias minted
+    /// by `fcntl(F_DUPFD)` — e.g. a shell parking stdout at fd 10 while it redirects — resolves to
+    /// the console route but reports the *stream number* (`1`) as its `backend_fd`, not its flat
+    /// slot (`10`). Because that stream number is also the live console's own flat slot, closing
+    /// the alias by `backend_fd` would free the live console and orphan the alias, so `close` must
+    /// address vfsd's slot by the caller-facing flat descriptor, never by `backend_fd`.
+    #[test]
+    fn console_alias_resolves_by_stream_number_not_slot() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        const ALIAS_FD: i32 = 10;
+        // The live console stdout: its flat slot and stream number coincide at 1.
+        mock_vfsd(STDOUT_FILENO, Route::Console, STDOUT_FILENO, 1);
+        // The alias parked at fd 10 by fcntl(F_DUPFD): a distinct slot that still streams to
+        // stdout.
+        mock_vfsd(ALIAS_FD, Route::Console, STDOUT_FILENO, 1);
+
+        let alias: Resolution = resolve(ALIAS_FD).expect("the alias must resolve");
+        assert_eq!(alias.route, Route::Console, "an alias of a console stream is still a console");
+        assert_eq!(
+            alias.backend_fd, STDOUT_FILENO,
+            "a console alias reports its stream number as backend_fd, not its flat slot"
+        );
+        // The crux of the close fix: backend_fd (the stream number) is the live console's own slot,
+        // so it must not be used as the slot key when closing the alias.
+        assert_ne!(
+            alias.backend_fd, ALIAS_FD,
+            "the alias's stream number must differ from its flat slot"
+        );
+        assert_eq!(
+            resolve(STDOUT_FILENO).map(|r| r.backend_fd),
+            Some(STDOUT_FILENO),
+            "backend_fd collides with the live console's own flat slot"
+        );
+
+        clear();
+    }
+
     /// Tests that hosted builds leave VFS descriptor interpretation to linuxd.
     #[test]
     fn hosted_resolve_vfs_returns_raw_fd() {

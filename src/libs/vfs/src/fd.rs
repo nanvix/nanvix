@@ -4341,6 +4341,63 @@ mod tests {
         forget_processes(&[pid]);
     }
 
+    /// Reproduces the ash I/O-redirection save/restore dance on the console:
+    ///   savedfd = fcntl(1, F_DUPFD, 10);  // park the console stdout
+    ///   dup2(file, 1);                    // redirect stdout to a file
+    ///   dup2(savedfd, 1);                 // restore stdout to the console
+    ///   close(savedfd);                   // drop the parked alias
+    /// After the dance, fd 1 must resolve back to the console.
+    #[test]
+    fn dup2_console_save_restore_dance_restores_console() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7506);
+        set_current_process(pid);
+
+        // Seed console stdin/stdout so stdout lands on fd 1 (the lowest free numbers).
+        let stdin_fd: c_int =
+            alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdin)))
+                .expect("stdin alloc");
+        assert_eq!(stdin_fd, STDIN_FILENO);
+        let stdout_fd: c_int =
+            alloc_fd(VfsFileHandle::Console(ConsoleHandle::new(ConsoleStream::Stdout)))
+                .expect("stdout alloc");
+        assert_eq!(stdout_fd, STDOUT_FILENO, "console stdout must be fd 1");
+
+        // A file to redirect into.
+        let file_fd: c_int = vfs_alloc_hostfs(70, false, None).expect("file alloc");
+
+        // savedfd = fcntl(1, F_DUPFD, 10): park the console stdout above the low range.
+        let saved_fd: c_int = vfs_dup_from(stdout_fd, 10).expect("savefd");
+        assert_eq!(saved_fd, 10);
+        assert_eq!(
+            vfs_resolve(saved_fd),
+            Some((VfsRoute::Console, STDOUT_FILENO)),
+            "the parked fd must alias the console"
+        );
+
+        // dup2(file, 1): redirect stdout to the file.
+        vfs_dup2(file_fd, stdout_fd).expect("redirect");
+        assert_eq!(
+            vfs_resolve(stdout_fd).map(|(r, _)| r),
+            Some(VfsRoute::Vfs),
+            "fd 1 must route to the file while redirected"
+        );
+
+        // dup2(savedfd, 1): restore stdout to the console.
+        vfs_dup2(saved_fd, stdout_fd).expect("restore");
+        // close(savedfd): drop the parked alias.
+        vfs_close(saved_fd).expect("close saved");
+
+        // fd 1 must once again route to the console.
+        assert_eq!(
+            vfs_resolve(stdout_fd),
+            Some((VfsRoute::Console, STDOUT_FILENO)),
+            "after restore+close, fd 1 must resolve back to the console"
+        );
+
+        forget_processes(&[pid]);
+    }
+
     // -- console fstat tests ------------------------------------------------------
 
     /// Tests that `vfs_fstat` reports a console descriptor as a character device with a stable

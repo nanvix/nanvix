@@ -97,6 +97,10 @@ pub(crate) mod path;
 #[cfg(any(feature = "syscall", feature = "standalone", test))]
 pub(crate) mod fdtable;
 
+/// Backend selection for resolved `close()` requests.
+#[cfg(any(feature = "standalone", test))]
+pub(crate) mod close_route;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;
