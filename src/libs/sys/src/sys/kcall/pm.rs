@@ -212,6 +212,41 @@ pub fn __kcall_gettid() -> Result<ThreadIdentifier, Error> {
 }
 
 //==================================================================================================
+// Resolve Thread Identifier to Process Identifier
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Resolves a thread identifier to the identifier of the process that owns it.
+///
+/// This is the authoritative inverse of the historical `TID == PID` coincidence. A process reached
+/// via `fork()` + `execv()` keeps its process identifier but is assigned a new main-thread
+/// identifier, so its main-thread thread identifier no longer equals its process identifier.
+/// Privileged servers that attribute requests to a process by identity (e.g. vfsd, which keys its
+/// per-process file-descriptor table and working directory by PID) use this to recover the
+/// authoritative PID from a request's TID rather than casting the TID.
+///
+/// # Parameters
+///
+/// - `tid`: Identifier of the thread whose owning process is sought.
+///
+/// # Returns
+///
+/// Upon successful completion, the identifier of the process that owns `tid` is returned. Upon
+/// failure (e.g. no live thread bears that identifier), an error is returned instead.
+///
+pub fn __kcall_getpid_by_tid(tid: ThreadIdentifier) -> Result<ProcessIdentifier, Error> {
+    let result: i64 = kcall1!(KcallNumber::GetPidByTid.into(), u32::try_from(tid)?);
+
+    if unlikely(result < 0) {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to getpid_by_tid()"))
+    } else {
+        ProcessIdentifier::try_from(result)
+    }
+}
+
+//==================================================================================================
 // Exit
 //==================================================================================================
 

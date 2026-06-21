@@ -113,6 +113,8 @@ pub enum KcallNumber {
     Duplicate = KcallNumber::NR_DUPLICATE_SYSCALL,
     /// Replaces the image of the calling process.
     Execv = KcallNumber::NR_EXECV_SYSCALL,
+    /// Resolves a thread identifier to the identifier of its owning process.
+    GetPidByTid = KcallNumber::NR_GET_PID_BY_TID_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -159,6 +161,7 @@ impl KcallNumber {
     const NR_DUPLICATE_SYSCALL: u32 = 37;
     const NR_GET_PPID_SYSCALL: u32 = 38;
     const NR_EXECV_SYSCALL: u32 = 39;
+    const NR_GET_PID_BY_TID_SYSCALL: u32 = 40;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -206,6 +209,7 @@ impl From<u32> for KcallNumber {
             Self::NR_DETACH_THREAD_SYSCALL => KcallNumber::DetachThread,
             Self::NR_DUPLICATE_SYSCALL => KcallNumber::Duplicate,
             Self::NR_EXECV_SYSCALL => KcallNumber::Execv,
+            Self::NR_GET_PID_BY_TID_SYSCALL => KcallNumber::GetPidByTid,
             _ => KcallNumber::Invalid,
         }
     }
@@ -255,6 +259,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::DetachThread => KcallNumber::NR_DETACH_THREAD_SYSCALL,
             KcallNumber::Duplicate => KcallNumber::NR_DUPLICATE_SYSCALL,
             KcallNumber::Execv => KcallNumber::NR_EXECV_SYSCALL,
+            KcallNumber::GetPidByTid => KcallNumber::NR_GET_PID_BY_TID_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }

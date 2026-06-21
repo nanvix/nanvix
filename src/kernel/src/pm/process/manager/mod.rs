@@ -2247,6 +2247,34 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Resolves a thread identifier to the identifier of the process that owns it.
+    ///
+    /// This is the authoritative inverse of the historical `TID == PID` coincidence. A process
+    /// reached via `fork()` + `execv()` keeps its process identifier but is assigned a new
+    /// main-thread identifier, so its main-thread `tid` no longer equals its `pid`. Callers that
+    /// must attribute a request to the owning process — most notably vfsd, which keys per-process
+    /// state by `pid` — use this to recover the authoritative `pid` from the request's `tid`.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread whose owning process is sought.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the identifier of the process that owns `tid` is returned. Otherwise, an error
+    /// is returned.
+    ///
+    pub fn try_get_pid_by_tid(
+        &mut self,
+        tid: ThreadIdentifier,
+    ) -> Result<ProcessIdentifier, Error> {
+        let mut process: ProcessRefMut<'_> = self.find_process_by_tid(tid)?;
+        Ok(process.state_mut().pid())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Finds a thread.
     ///
     /// # Arguments
