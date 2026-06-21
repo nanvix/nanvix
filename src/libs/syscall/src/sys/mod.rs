@@ -22,6 +22,9 @@ pub use crate::{
 // Modules
 //==================================================================================================
 
+/// Device control operations.
+pub mod ioctl;
+
 /// Memory management operations.
 pub mod mman;
 

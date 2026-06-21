@@ -10,10 +10,11 @@
  * @file termios.h
  * @brief General terminal interface.
  *
- * Declares `struct termios` and the terminal-attribute interfaces. Nanvix has
- * no interactive terminal device in standalone mode, so `tcgetattr`/`tcsetattr`
- * report that the descriptor is not a terminal; the definitions exist so that
- * ports with an interactive mode (e.g. the QuickJS REPL) compile and link.
+ * Declares `struct termios` and the terminal-attribute interfaces. In standalone
+ * mode `tcgetattr`/`tcsetattr` are served by the vfsd console backend; hosted
+ * deployments have no guest terminal device, so they fail with `ENOSYS`. The
+ * definitions let ports with an interactive mode (e.g. the QuickJS REPL) compile
+ * and link.
  */
 
 #include <sys/types.h>

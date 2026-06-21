@@ -10,6 +10,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+#[cfg(not(feature = "standalone"))]
 use ::sysapi::unistd::{
     STDERR_FILENO,
     STDIN_FILENO,
@@ -37,15 +38,43 @@ use ::sysapi::unistd::{
 pub fn isatty(fd: RawFileDescriptor) -> Result<bool, Error> {
     ::syslog::trace!("isatty(): fd={}", fd);
 
-    match fd {
-        STDIN_FILENO | STDOUT_FILENO | STDERR_FILENO => Ok(true),
-        fd if fd > 0 => {
-            ::syslog::trace!("isatty(): file descriptor is not a terminal (fd={})", fd);
-            Ok(false)
-        },
-        _ => {
-            ::syslog::trace!("isatty(): invalid file descriptor (fd={})", fd);
-            Err(Error::new(ErrorCode::BadFile, "invalid file descriptor"))
-        },
+    // In standalone mode, vfsd's flat slot table is authoritative: a descriptor is a terminal if and
+    // only if it resolves to the console backend, so a duplicated or redirected console descriptor
+    // answers correctly rather than being judged by its number. An unresolvable descriptor is
+    // rejected with `EBADF`.
+    #[cfg(feature = "standalone")]
+    {
+        use crate::fdtable::{
+            resolve,
+            Route,
+        };
+        match resolve(fd) {
+            Some(resolution) if resolution.route == Route::Console => Ok(true),
+            Some(_) => {
+                ::syslog::trace!("isatty(): file descriptor is not a terminal (fd={})", fd);
+                Ok(false)
+            },
+            None => {
+                ::syslog::trace!("isatty(): invalid file descriptor (fd={})", fd);
+                Err(Error::new(ErrorCode::BadFile, "invalid file descriptor"))
+            },
+        }
+    }
+
+    // Hosted deployments interpret descriptors on the host and have no guest vfsd to consult, so the
+    // standard streams are the terminals.
+    #[cfg(not(feature = "standalone"))]
+    {
+        match fd {
+            STDIN_FILENO | STDOUT_FILENO | STDERR_FILENO => Ok(true),
+            fd if fd > 0 => {
+                ::syslog::trace!("isatty(): file descriptor is not a terminal (fd={})", fd);
+                Ok(false)
+            },
+            _ => {
+                ::syslog::trace!("isatty(): invalid file descriptor (fd={})", fd);
+                Err(Error::new(ErrorCode::BadFile, "invalid file descriptor"))
+            },
+        }
     }
 }
