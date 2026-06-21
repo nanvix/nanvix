@@ -242,26 +242,12 @@ pub fn do_fork() -> Result<pid_t, ErrorCode> {
             panic!("do_fork(): child exit kcall returned (error={exit_error:?})");
         }
 
-        // Defensively refresh the child's cached process identifier.
-        //
-        // The child inherits `CACHED_PID` (holding the *parent's* pid) through copy-on-write
-        // memory. `__kcall_fork()` already clears this crate instance's copy at the start of the
-        // child path, and the kernel always reports the child's own identity — there is no window
-        // in which `getpid()` returns the parent's pid — so the next cached query re-resolves to
-        // the child regardless. This post-handshake clear is a low-cost safety net for the
-        // libc-side identity cache; it adds at most one kernel transition per fork.
-        //
-        // It is NOT the capability fix. `CACHED_PID` is a per-link-unit static, so a process image
-        // that links several independently-compiled copies of this crate (e.g. a C program linking
-        // `libposix.a` and `libnvx_crt0.a`) carries multiple instances that no single invalidation
-        // can reach. The capability-sensitive callers — `mmap`/`mprotect`/`munmap` in
-        // `MemorySegment` and the heap allocator — therefore resolve the owning pid with
-        // `getpid_uncached()` and never trust this cache for the kernel's `pid != caller_pid` check.
-        //
-        // Tracked by https://github.com/nanvix/nanvix/issues/2622: once a single unified pid cache
-        // is guaranteed per image, this defensive re-invalidation can be dropped.
-        ::sys::kcall::pm::invalidate_cached_pid();
-
+        // No cache refresh is needed here: the child inherited the parent's `CACHED_PID` through
+        // copy-on-write memory, but `__kcall_fork()` already invalidated it on the child path — at
+        // the single, lowest-level choke point common to every fork caller — before returning here.
+        // `CACHED_PID` is one unified per-image instance, so that single invalidation reaches every
+        // reader (including the capability-sensitive `mmap`/`mprotect`/`munmap` callers), and the
+        // next `getpid()` re-resolves to the child's own identity.
         Ok(0)
     } else {
         // Parent: ask the daemon to duplicate our descriptors onto the child, and block until it

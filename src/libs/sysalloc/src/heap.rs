@@ -70,20 +70,12 @@ impl Heap {
 
         // Map initial pages.
         //
-        // Resolve the owning pid with an UNCACHED kernel query. The kernel rejects an mmap whose
-        // target pid differs from the calling process (its memory-management capability check), so a
-        // mapping must always name the current process. The cached getpid() offers no guarantee
-        // here: the pid cache is a per-link-unit `static`, and a C-linked image ends up with several
-        // independent copies of it (cpython, for example, links libposix.a and libnvx_crt0.a, each
-        // compiled with its own `sys` crate and therefore its own cache). fork() can invalidate only
-        // the copy in its own link unit, so it cannot guarantee that the copy this mapping consults
-        // was refreshed; that copy may still hold the parent's pid inherited through copy-on-write
-        // memory. Querying the kernel directly is independent of every cached copy.
-        //
-        // Tracked by https://github.com/nanvix/nanvix/issues/2622: once a process image is
-        // guaranteed to carry a single, unified pid cache that fork() invalidates, restore the
-        // cached getpid() here.
-        let pid: ProcessIdentifier = kcall::pm::getpid_uncached()?;
+        // Resolve the owning pid. The kernel rejects an mmap whose target pid differs from the
+        // calling process (its memory-management capability check), so the mapping must name the
+        // current process. The cached getpid() is correct here: CACHED_PID is a single per-image
+        // instance, and every fork path invalidates it, so a forked child re-resolves to its own
+        // identity before mapping.
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
         let start: VirtualAddress = base;
         let end: VirtualAddress = VirtualAddress::from_raw_value(base.into_raw_value() + size);
         map_range(pid, start, end)?;
@@ -135,9 +127,9 @@ impl Heap {
 
         // Map pages.
         //
-        // Resolve the owning pid with an UNCACHED kernel query; see new() for why the cached
-        // getpid() cannot be trusted for a capability-sensitive mapping.
-        let pid: ProcessIdentifier = kcall::pm::getpid_uncached()?;
+        // Resolve the owning pid; see new() for why the cached getpid() is correct for a
+        // capability-sensitive mapping.
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
         let end: VirtualAddress = self.base + self.size;
         let new_end: VirtualAddress = end + increment;
         map_range(pid, end, new_end)?;
@@ -176,9 +168,9 @@ impl Heap {
             return Ok(());
         }
 
-        // Resolve the owning pid with an UNCACHED kernel query; see new() for why the cached
-        // getpid() cannot be trusted for a capability-sensitive unmapping.
-        let pid: ProcessIdentifier = kcall::pm::getpid_uncached()?;
+        // Resolve the owning pid; see new() for why the cached getpid() is correct for a
+        // capability-sensitive unmapping.
+        let pid: ProcessIdentifier = kcall::pm::getpid()?;
 
         // Unmap tail pages from the end backwards, stopping at the first failure so that
         // self.size always reflects the actual contiguous mapped extent.
@@ -296,9 +288,9 @@ impl Drop for Heap {
             self.capacity
         );
 
-        // Resolve the owning pid with an UNCACHED kernel query; see new() for the rationale. Drop
-        // cannot propagate errors, so skip unmapping if the pid cannot be determined.
-        let pid: ProcessIdentifier = match kcall::pm::getpid_uncached() {
+        // Resolve the owning pid; see new() for the rationale. Drop cannot propagate errors, so
+        // skip unmapping if the pid cannot be determined.
+        let pid: ProcessIdentifier = match kcall::pm::getpid() {
             Ok(pid) => pid,
             Err(_error) => {
                 ::syslog::warn!("drop(): failed to query pid, skipping unmap (error={:?})", _error);
