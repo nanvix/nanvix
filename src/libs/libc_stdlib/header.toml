@@ -118,14 +118,7 @@ functions = ["rand", "srand"]
 
 [[sections]]
 title = "Environment"
-functions = [
-    "getenv",
-    "secure_getenv",
-    "setenv",
-    "unsetenv",
-    "putenv",
-    "getsubopt",
-]
+functions = ["getenv", "secure_getenv", "setenv", "unsetenv", "putenv"]
 
 [[sections]]
 title = "Process Control"
@@ -144,17 +137,8 @@ title = "Multibyte Conversion"
 functions = ["mblen", "mbtowc", "mbstowcs", "wctomb", "wcstombs"]
 
 [[sections]]
-title = "Temporary Files and Terminals"
-functions = [
-    "mkdtemp",
-    "mkostemp",
-    "mkstemp",
-    "posix_openpt",
-    "ptsname",
-    "ptsname_r",
-    "unlockpt",
-    "grantpt",
-]
+title = "Temporary Files"
+functions = ["mkstemp"]
 
 [[sections]]
 title = "Path Utilities"
@@ -183,8 +167,6 @@ strtoul = '''
 extern unsigned long strtoul(const char *restrict nptr, char **restrict endptr, int base);'''
 strtoull = '''
 extern unsigned long long strtoull(const char *restrict nptr, char **restrict endptr, int base);'''
-getsubopt = '''
-extern int getsubopt(char **restrict optionp, char *const *restrict tokens, char **restrict valuep);'''
 qsort_r = '''
 extern void qsort_r(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *, void *), void *arg);'''
 mbtowc = '''
@@ -197,21 +179,7 @@ mbstowcs = '''
 extern size_t mbstowcs(wchar_t *restrict dst, const char *restrict src, size_t n);'''
 wcstombs = '''
 extern size_t wcstombs(char *restrict dst, const wchar_t *restrict src, size_t n);'''
-mkdtemp = '''
-extern char *mkdtemp(char *template);'''
-mkostemp = '''
-extern int mkostemp(char *template, int flags);'''
 mkstemp = '''
 extern int mkstemp(char *template);'''
-posix_openpt = '''
-extern int posix_openpt(int flags);'''
-ptsname = '''
-extern char *ptsname(int fildes);'''
-ptsname_r = '''
-extern int ptsname_r(int fildes, char *name, size_t namesize);'''
-unlockpt = '''
-extern int unlockpt(int fildes);'''
-grantpt = '''
-extern int grantpt(int fildes);'''
 realpath = '''
 extern char *realpath(const char *restrict path, char *restrict resolved_path);'''
