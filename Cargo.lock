@@ -3653,6 +3653,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread-vfs-test"
+version = "0.16.130"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "config",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "tinystr"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
