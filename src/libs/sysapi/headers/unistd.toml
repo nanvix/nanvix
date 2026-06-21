@@ -12,13 +12,7 @@ interfaces. Constants mirror the Rust definitions in the sysapi crate
 includes = ["stddef.h", "sys/types.h"]
 guard = "_NANVIX_UNISTD_H"
 scan_crates = ["syscall"]
-content_order = [
-    "raw:0",
-    "raw:1",
-    "section:0",
-    "raw:2",
-    "raw:3",
-]
+content_order = ["raw:0", "raw:1", "section:0", "raw:2", "raw:3", "section:1"]
 
 [[raw_sections]]
 title = "Constants"
@@ -117,14 +111,34 @@ extern int getentropy(void *buffer, size_t length);
 extern int symlink(const char *target, const char *linkpath);'''
 
 [[raw_sections]]
-title = "Command-Line Option Parsing"
+title = "Command-Line Option Parsing State"
 text = '''
 extern char *optarg;
 extern int optind;
 extern int opterr;
-extern int optopt;
-extern int getopt(int argc, char *const argv[], const char *optstring);'''
+extern int optopt;'''
 
 [[sections]]
 title = "User and Group Identification"
-functions = ["getpid", "getuid", "geteuid", "getgid", "getegid", "setuid", "seteuid", "setgid", "setegid", "gethostname", "chown", "fchown"]
+functions = [
+    "getpid",
+    "getuid",
+    "geteuid",
+    "getgid",
+    "getegid",
+    "setuid",
+    "seteuid",
+    "setgid",
+    "setegid",
+    "gethostname",
+    "chown",
+    "fchown",
+]
+
+[[sections]]
+title = "Command-Line Option Parsing"
+functions = ["getopt"]
+
+[overrides]
+getopt = '''
+extern int getopt(int argc, char *const argv[], const char *optstring);'''

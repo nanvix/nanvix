@@ -30,14 +30,22 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod syscalls;
         pub use self::syscalls::{
+            mlock::mlock,
             mmap::mmap,
             mmap_reserve,
             mprotect::mprotect,
+            munlock::munlock,
             munmap::munmap,
         };
-        pub mod bindings;
     }
 }
+
+// The `mlock()`/`munlock()` bindings are pure no-ops whose only behavior is host-testable argument
+// validation, so the `bindings` module is compiled whenever the `syscall` feature, the `std`
+// feature, or `test` is enabled. The kernel-call bindings it contains (`mmap`, `mprotect`,
+// `munmap`) remain individually gated behind the `syscall` feature.
+#[cfg(any(feature = "syscall", feature = "std", test))]
+pub mod bindings;
 
 //==================================================================================================
 // Imports
