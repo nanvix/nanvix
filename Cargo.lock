@@ -960,6 +960,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "fork-exec-write-target"
+version = "0.16.129"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
+name = "fork-exec-write-test"
+version = "0.16.129"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "form_urlencoded"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

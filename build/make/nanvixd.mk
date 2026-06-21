@@ -60,6 +60,12 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/fork-exec-vfsd-test-seed
 	@cp -f $(BINARIES_DIR)/fork-exec-vfsd-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-vfsd-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-vfsd-test.img $(BINARIES_DIR)/fork-exec-vfsd-test-seed/
+	# Build the ramfs image for the fork()+execv()+write test. It contains the target program at the
+	# filesystem root as "target"; fork-exec-write-test forks and the child execs it, after which the
+	# target writes /exec_write.out -- a write whose visibility to the parent the caller checks.
+	@mkdir -p $(BINARIES_DIR)/fork-exec-write-test-seed
+	@cp -f $(BINARIES_DIR)/fork-exec-write-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-write-test-seed/target
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-write-test.img $(BINARIES_DIR)/fork-exec-write-test-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments (Linux only).
