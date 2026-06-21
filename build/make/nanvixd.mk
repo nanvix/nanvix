@@ -66,6 +66,12 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/fork-exec-write-test-seed
 	@cp -f $(BINARIES_DIR)/fork-exec-write-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-write-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-write-test.img $(BINARIES_DIR)/fork-exec-write-test-seed/
+	# Build the ramfs image for the multi-threaded VFS attribution test (nanvix/nanvix#2529). It is
+	# seeded with /input.dat (the payload a secondary thread reads through a descriptor the main
+	# thread opened); the test creates /output.dat at runtime and reads it back.
+	@mkdir -p $(BINARIES_DIR)/thread-vfs-test-seed
+	@printf 'THREAD-VFS-2529-PAYLOAD' > $(BINARIES_DIR)/thread-vfs-test-seed/input.dat
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/thread-vfs-test.img $(BINARIES_DIR)/thread-vfs-test-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments (Linux only).
