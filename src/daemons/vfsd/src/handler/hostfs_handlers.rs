@@ -449,6 +449,16 @@ pub(crate) fn handle_read_with_hostfs(
     let req: ReadRequest = ReadRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
+    if let Ok(stream) = ::vfs::fd::vfs_console_stream(fd) {
+        return Some(super::readwrite::handle_console_read(
+            source_pid,
+            source_tid,
+            fd,
+            stream,
+            req.count as usize,
+        ));
+    }
+
     // Pipe read end: served by the pipe handler (which may park the caller).
     if let Some((pipe_id, is_write)) = ::vfs::fd::vfs_pipe_id(fd) {
         return super::pipe::handle_pipe_read(
