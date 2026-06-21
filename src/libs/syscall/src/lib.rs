@@ -124,6 +124,43 @@ use ::sys::{
 };
 
 //==================================================================================================
+// Boot-Order Invariants
+//==================================================================================================
+
+// Boot-order invariant for the init/root process identifier.
+//
+// The kernel spawns the guest daemon set (`procd`, `memd`, `vfsd`) on a contiguous pid block
+// immediately after the kernel process, then assigns the init/root workload the pid that follows
+// the daemon set. The VFS derives the root identity from `ProcessIdentifier::INIT` on that basis,
+// so pin the layout with a compile-time check: a daemon renumbering, or a change to the guest
+// daemon set, becomes a build error instead of silently re-pointing the root at the wrong process.
+//
+// This lives in `syscall` (rather than nearer the kernel or VFS) because `syscall` already carries
+// the `standalone` deployment feature, and the fixed three-daemon layout pinned below is the
+// standalone deployment's boot contract — other deployment modes spawn a different guest set.
+#[cfg(feature = "standalone")]
+mod boot_order_invariants {
+    use ::sys::pm::ProcessIdentifier;
+
+    ::static_assert::assert_eq!(ProcessIdentifier::PROCD_RAW == ProcessIdentifier::KERNEL_RAW + 1);
+    ::static_assert::assert_eq!(ProcessIdentifier::MEMD_RAW == ProcessIdentifier::PROCD_RAW + 1);
+    ::static_assert::assert_eq!(ProcessIdentifier::VFSD_RAW == ProcessIdentifier::MEMD_RAW + 1);
+    ::static_assert::assert_eq!(ProcessIdentifier::INIT_RAW == ProcessIdentifier::VFSD_RAW + 1);
+    // The init workload follows the *entire* guest daemon set, so the number of guest daemon names
+    // must equal the number of guest daemon pids reserved above. Adding a daemon to
+    // `GUEST_DAEMON_NAMES` without reserving a pid here (or vice versa) is a compile error.
+    ::static_assert::assert_eq!(
+        ::config::daemons::GUEST_DAEMON_NAMES.len()
+            == [
+                ProcessIdentifier::PROCD_RAW,
+                ProcessIdentifier::MEMD_RAW,
+                ProcessIdentifier::VFSD_RAW,
+            ]
+            .len()
+    );
+}
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
