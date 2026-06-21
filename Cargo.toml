@@ -98,6 +98,8 @@ members = [
         "src/tests/pipe-dup2-rust",
         "src/tests/fork-exec-vfsd-test",
         "src/tests/fork-exec-vfsd-target",
+        "src/tests/fork-exec-write-test",
+        "src/tests/fork-exec-write-target",
         "src/tests/socket-fork-rust",
         "src/tests/setenv-rust",
         "src/tests/snapshot-test",

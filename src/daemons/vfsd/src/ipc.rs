@@ -79,20 +79,37 @@ fn caller_tid(message: &Message) -> ThreadIdentifier {
 
 /// Extracts the caller's process identifier from an IPC message.
 ///
-/// Guest syscall requests encode their source as the caller's *thread* id (vfsd needs the TID to
-/// route the reply), so this almost always takes the TID branch and derives the PID by casting the
-/// TID value. That cast resolves to the correct process only for single-threaded callers where
-/// TID == PID; a request issued from a non-main thread of a multi-threaded process would be
-/// misattributed, keying its per-process VFS state (fd table and cwd) by the wrong identifier.
+/// A PID-encoded source (a daemon or the kernel) is authoritative and is returned as-is. Guest
+/// syscall requests instead encode their source as the caller's *thread* id, because vfsd needs the
+/// TID to route the reply. The owning PID is then recovered from an authoritative kernel lookup
+/// ([`__kcall_getpid_by_tid`](::sys::kcall::pm::__kcall_getpid_by_tid)) rather than by casting the
+/// TID: a process reached via `fork()` + `execv()` keeps its PID but is assigned a new main-thread
+/// TID, so `TID != PID` and a cast would key the request's per-process VFS state (fd table and cwd)
+/// under a phantom process — losing a child's writes after it exits and corrupting I/O on inherited
+/// descriptors (nanvix/nanvix#2650, #2637, #2529). The same lookup also attributes a request from a
+/// non-main thread of a multi-threaded caller to the correct process.
 ///
-/// TODO(#2529): derive the caller PID from an authoritative value supplied by the kernel (e.g. a
-/// PID carried alongside the TID in the IPC metadata) instead of casting the TID, so
-/// multi-threaded callers are attributed to the correct process.
+/// If the kernel cannot resolve the TID (which should not happen for an in-flight request, whose
+/// thread is blocked awaiting this reply), the legacy TID-cast is used as a fallback so the request
+/// is still answered rather than dropped.
 fn caller_pid(message: &Message) -> ProcessIdentifier {
     let sender: MessageSender = message.source;
     match sender.as_id() {
+        // A PID-encoded source (daemon/kernel peer) is already authoritative.
         Ok(pid) => pid,
-        Err(tid) => ProcessIdentifier::from(i32::from(tid)),
+        // A TID-encoded source is a guest syscall request: recover the owning PID authoritatively.
+        Err(tid) => match ::sys::kcall::pm::__kcall_getpid_by_tid(tid) {
+            Ok(pid) => pid,
+            Err(error) => {
+                ::syslog::warn!(
+                    "caller_pid(): kernel TID->PID resolution failed (tid={:?}, error={:?}); \
+                     falling back to TID cast",
+                    tid,
+                    error
+                );
+                ProcessIdentifier::from(i32::from(tid))
+            },
+        },
     }
 }
 
