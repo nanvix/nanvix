@@ -128,7 +128,6 @@ extern char *secure_getenv(const char *name);
 extern int setenv(const char *name, const char *value, int overwrite);
 extern int unsetenv(const char *name);
 extern int putenv(char *string);
-extern int getsubopt(char **restrict optionp, char *const *restrict tokens, char **restrict valuep);
 
 /*==================================================================================================
  * Process Control
@@ -153,17 +152,10 @@ extern int wctomb(char *s, wchar_t wc);
 extern size_t wcstombs(char *restrict dst, const wchar_t *restrict src, size_t n);
 
 /*==================================================================================================
- * Temporary Files and Terminals
+ * Temporary Files
  *==================================================================================================*/
 
-extern char *mkdtemp(char *template);
-extern int mkostemp(char *template, int flags);
 extern int mkstemp(char *template);
-extern int posix_openpt(int flags);
-extern char *ptsname(int fildes);
-extern int ptsname_r(int fildes, char *name, size_t namesize);
-extern int unlockpt(int fildes);
-extern int grantpt(int fildes);
 
 /*==================================================================================================
  * Path Utilities

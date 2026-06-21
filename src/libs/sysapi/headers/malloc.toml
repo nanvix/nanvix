@@ -23,5 +23,6 @@ functions = [
     "calloc",
     "realloc",
     "aligned_alloc",
+    "memalign",
     "malloc_usable_size",
 ]

@@ -29,6 +29,7 @@ extern void *memchr(const void *s, int c, size_t n);
 extern int memcmp(const void *ptr1, const void *ptr2, size_t len);
 extern void *memcpy(void *dest, const void *src, size_t len);
 extern void *memmove(void *dest, const void *src, size_t len);
+extern void *memrchr(const void *s, int c, size_t n);
 extern void *memset(void *ptr, int val, size_t len);
 
 /*==================================================================================================
@@ -53,6 +54,7 @@ extern char *strndup(const char *s, size_t n);
 extern size_t strnlen(const char *s, size_t maxlen);
 extern char *strpbrk(const char *s, const char *accept);
 extern char *strrchr(const char *s, int c);
+extern char *strsep(char **stringp, const char *delim);
 extern size_t strspn(const char *s, const char *accept);
 extern char *strstr(const char *haystack, const char *needle);
 extern char *strtok(char *s, const char *delim);

@@ -15,7 +15,7 @@ guard = "_NANVIX_STRING_H"
 
 [[sections]]
 title = "Memory Operations"
-functions = ["memccpy", "memchr", "memcmp", "memcpy", "memmove", "memset"]
+functions = ["memccpy", "memchr", "memcmp", "memcpy", "memmove", "memrchr", "memset"]
 
 [[sections]]
 title = "String Operations"
@@ -38,6 +38,7 @@ functions = [
     "strnlen",
     "strpbrk",
     "strrchr",
+    "strsep",
     "strspn",
     "strstr",
     "strtok",
