@@ -300,6 +300,23 @@ program = "./bin/fork-exec-write-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-write-test.img"
 expected_output = "ok"
 
+# Acceptance test for multi-threaded VFS per-process state attribution (nanvix/nanvix#2529).
+# A secondary (non-main) thread performs read/write on descriptors the main thread opened. FAILS
+# while vfsd derives the caller PID by casting the request's TID: the non-main thread's distinct
+# TID maps to a phantom process whose descriptor table is empty, so the I/O returns EBADF.
+[[tests]]
+executor = "http"
+program = "./bin/thread-vfs-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/thread-vfs-test.img"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/thread-vfs-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/thread-vfs-test.img"
+expected_output = "ok"
+
 # Acceptance test for socket reference-counting across fork() (nanvix/nanvix#2609).
 # FAILS until sockets are reference-counted across fork(): a child closing its
 # inherited copy currently destroys the parent's socket.
