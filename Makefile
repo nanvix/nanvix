@@ -113,7 +113,11 @@ endif
 # sccache server crashes inside Docker BuildKit containers (see #1395).
 # The `override` directive ensures this takes effect even when SCCACHE is
 # passed on the command line (e.g., from Dockerfile.build).
-NO_SCCACHE_GOALS := check format format-check lint lint-check spellcheck spellcheck-fix verify help clean distclean
+NO_SCCACHE_GOALS := \
+	check format format-check \
+	lint lint-check \
+	spellcheck spellcheck-fix \
+	verify help clean distclean
 
 # On Windows (MSYS/Git-for-Windows sh), `which` returns POSIX paths (e.g.
 # /c/Users/...) that native Windows tools cannot resolve.  Pipe through
@@ -329,13 +333,35 @@ export VERUS_KERNEL_FEATURES := microvm trace
 #===================================================================================================
 
 ALL_GUEST_STATIC_LIBS := posix nvx-crt0
-ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time libc_wchar libc_wctype mmio-tag multiimage vfs-bench-common
-ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions proc raw-array nanvix-slab sorted-vec static_assert libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time libc_wchar libc_wctype syslog-macros syslog sys mmio-tag syscall vfs
+ALL_GUEST_RUST_LIBS := \
+	arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe \
+	koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi \
+	syscall sysalloc syslog-macros syslog sys \
+	libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math \
+	libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time \
+	libc_wchar libc_wctype \
+	mmio-tag multiimage vfs-bench-common
+ALL_GUEST_RUST_LIBS_TEST_LIST := \
+	arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe \
+	koptions proc raw-array nanvix-slab sorted-vec static_assert \
+	libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math \
+	libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time \
+	libc_wchar libc_wctype \
+	syslog-macros syslog sys mmio-tag syscall vfs
 
 ALL_GUEST_DAEMONS := memd procd vfsd
-ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
+ALL_GUEST_BENCHMARKS := \
+	echo-rust-nostd noop-rust-nostd snapshot-rust-nostd \
+	vfs-bench-nostd mount-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault linux-app arch-rust vfs-test misc-rust memory-rust network-rust c-bindings-rust mount-test mount-multipart-test cmdline-len-rust env-rust-nostd cmdline-env-rust-nostd snapshot-test execv-test execv-target execv-big-target pipe-dup2-rust fork-exec-vfsd-test fork-exec-vfsd-target fork-exec-write-test fork-exec-write-target thread-vfs-test socket-fork-rust
+ALL_GUEST_TESTS := \
+	testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall \
+	waitpid-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault \
+	linux-app arch-rust vfs-test misc-rust memory-rust network-rust \
+	c-bindings-rust mount-test mount-multipart-test cmdline-len-rust \
+	env-rust-nostd cmdline-env-rust-nostd snapshot-test execv-test execv-target \
+	execv-big-target pipe-dup2-rust fork-exec-vfsd-test fork-exec-vfsd-target \
+	fork-exec-write-test fork-exec-write-target thread-vfs-test socket-fork-rust
 # dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
 # relocation model produces R_X86_64_32 relocations incompatible with PIE.
 ifneq ($(TARGET),x86_64)
@@ -346,7 +372,10 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
-ALL_HOST_RUST_LIBS := control-plane-api hostfsd hwloc multibin multiimage net-backend profiler nanvix nanvix-http nanvix-sandbox nanvix-sandbox-cache nanvix-sandbox-config nanvix-terminal syscomm user-vm-api
+ALL_HOST_RUST_LIBS := \
+	control-plane-api hostfsd hwloc multibin multiimage net-backend profiler \
+	nanvix nanvix-http nanvix-sandbox nanvix-sandbox-cache nanvix-sandbox-config \
+	nanvix-terminal syscomm user-vm-api
 # Host rlibs excluded on Windows:
 #  - nanvix-http, nanvix-sandbox-cache: depend on Unix-only APIs.
 #  - syscomm: test code references cfg(unix)-gated SocketAddr::Unix variant.

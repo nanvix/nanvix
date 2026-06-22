@@ -16,7 +16,13 @@ MISC_RUST_FEATURES := $(strip $(MISC_RUST_FEATURES))
 MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_FEATURES)")
 
 # Guest binaries that support standalone deployment mode.
-STANDALONE_GUEST_BINARIES := file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust setenv-rust linux-app thread-rust stress-rust arch-rust mount-test mount-multipart-test mount-bench-nostd cmdline-len-rust network-rust execv-test execv-target execv-big-target pipe-dup2-rust fork-exec-vfsd-test fork-exec-vfsd-target fork-exec-write-test fork-exec-write-target thread-vfs-test socket-fork-rust
+STANDALONE_GUEST_BINARIES := \
+	file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust \
+	setenv-rust linux-app thread-rust stress-rust arch-rust mount-test \
+	mount-multipart-test mount-bench-nostd cmdline-len-rust network-rust \
+	execv-test execv-target execv-big-target pipe-dup2-rust fork-exec-vfsd-test \
+	fork-exec-vfsd-target fork-exec-write-test fork-exec-write-target \
+	thread-vfs-test socket-fork-rust
 
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
