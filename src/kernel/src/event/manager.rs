@@ -216,20 +216,21 @@ struct EventManagerInner {
     pending_exceptions:
         [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>; usize::BITS as usize],
     scheduling_owner: Option<ProcessIdentifier>,
-    /// Pending scheduling-event notifications delivered in strict FIFO order. A single
+    /// Pending scheduling-event notifications delivered in FIFO order by global event id. A single
     /// totally-ordered queue (rather than per-event-type sub-queues drained round-robin) guarantees
     /// that a process's creation event is delivered before its termination event: the kernel main
     /// loop publishes a process's creation ahead of its termination, and a process is always created
-    /// before it terminates, so the creation is enqueued before the termination and FIFO delivery
-    /// preserves that order. This per-process creation-before-termination invariant lets the
+    /// before it terminates, so the creation is enqueued before the termination and carries the
+    /// smaller event id. This per-process creation-before-termination invariant lets the
     /// scheduling-event owner (`procd`) record a child's lineage from its creation before handling
     /// its termination, with no out-of-order reconciliation.
     ///
-    /// Each entry also carries the global [`EventDescriptor`] stamped at generation time. Delivery
-    /// does not consult it today, because this single FIFO queue already yields insertion order
-    /// (hence event-id order); it is retained for uniformity with the interrupt and exception
-    /// queues, which likewise stamp every entry, and for the planned unified FIFO-by-event-id
-    /// delivery tracked in #2558.
+    /// Each entry carries the global [`EventDescriptor`] stamped at generation time. The queue is
+    /// maintained in event-id order: notifications are appended with monotonically increasing ids
+    /// (`notify_scheduling()`) and removals preserve relative order, so the smallest id is always at
+    /// the front and delivery (`try_wait()`) pops the front in O(1). A debug assertion guards that
+    /// id-order invariant. Broadening explicit FIFO-by-event-id delivery across the interrupt and
+    /// exception queues is tracked in #2558.
     pending_scheduling: LinkedList<(EventDescriptor, SchedulingNotification)>,
 }
 
@@ -513,17 +514,25 @@ impl EventManagerInner {
 
             // Check if any scheduling events were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 2 {
-                // Deliver scheduling events in strict FIFO order from a single totally-ordered
-                // queue. Because the kernel main loop publishes a process's creation event before
-                // its termination event, and a process is always created before it terminates, the
-                // creation is enqueued ahead of the termination; FIFO delivery therefore guarantees
-                // that the owner (`procd`) observes a process's creation before its termination, so
-                // it can record the child's lineage before handling the termination with no
-                // out-of-order reconciliation. The non-zero `scheduling` mask means the calling
-                // process owns the scheduling-event class. The scan returns on the first entry, so
-                // at most one scheduling event is delivered per call.
+                // Deliver scheduling events in FIFO order by global event id. Every pending entry
+                // is stamped with a monotonically increasing `EventDescriptor` id at generation time
+                // (`notify_scheduling()`) and appended to the queue, and removals preserve relative
+                // order, so the queue is always sorted by id and the smallest id sits at the front.
+                // Delivering the front entry therefore honors the true arrival order of events in
+                // O(1). Because the kernel main loop publishes a process's creation event before its
+                // termination event, and a process is always created before it terminates, the
+                // creation carries the smaller id and is enqueued ahead of the termination; the
+                // owner (`procd`) thus observes a process's creation before its termination and can
+                // record the child's lineage before handling the termination with no out-of-order
+                // reconciliation. The non-zero `scheduling` mask means the calling process owns the
+                // scheduling-event class. At most one scheduling event is delivered per call.
                 if scheduling != 0 {
-                    if let Some((_ev, notification)) = self.pending_scheduling.pop_front() {
+                    debug_assert!(
+                        self.pending_scheduling_is_ordered(),
+                        "scheduling-event queue is not ordered by event id"
+                    );
+
+                    if let Some((_eventid, notification)) = self.pending_scheduling.pop_front() {
                         // Serialize the notification into the head of the message payload. The
                         // two notification variants have different serialized sizes, so each is
                         // copied using its own length.
@@ -565,6 +574,22 @@ impl EventManagerInner {
             Ok(None) => Ok(None),
             Err(e) => Err(e),
         }
+    }
+
+    fn pending_scheduling_is_ordered(&self) -> bool {
+        let mut previous: Option<usize> = None;
+
+        for (eventid, _) in self.pending_scheduling.iter() {
+            let current: usize = eventid.id();
+            if let Some(previous_id) = previous {
+                if previous_id > current {
+                    return false;
+                }
+            }
+            previous = Some(current);
+        }
+
+        true
     }
 
     ///
