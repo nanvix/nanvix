@@ -22,7 +22,8 @@ STANDALONE_GUEST_BINARIES := \
 	mount-multipart-test mount-bench-nostd cmdline-len-rust network-rust \
 	execv-test execv-target execv-big-target pipe-dup2-rust fork-exec-vfsd-test \
 	fork-exec-vfsd-target fork-exec-write-test fork-exec-write-target \
-	thread-vfs-test fork-exec-loop-test fork-exec-loop-target socket-fork-rust
+	thread-vfs-test fork-exec-loop-test fork-exec-loop-target socket-fork-rust \
+	fork-exec-pipe-bulk-test fork-exec-pipe-bulk-target
 
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
