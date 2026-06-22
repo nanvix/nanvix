@@ -408,7 +408,8 @@ ALL_GUEST_TESTS := \
 	execv-big-target pipe-dup2-rust fork-exec-vfsd-test fork-exec-vfsd-target \
 	fork-exec-write-test fork-exec-write-target thread-vfs-test \
 	fork-exec-loop-test fork-exec-loop-target socket-fork-rust \
-	fork-exec-pipe-bulk-test fork-exec-pipe-bulk-target
+	fork-exec-pipe-bulk-test fork-exec-pipe-bulk-target \
+	fork-exec-pipe-loop-test fork-exec-pipe-loop-target
 # dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
 # relocation model produces R_X86_64_32 relocations incompatible with PIE.
 ifneq ($(TARGET),x86_64)
@@ -990,7 +991,7 @@ STANDALONE_NO_DAEMON_TESTS := test-kernel
 # not have a standalone .initrd of their own. The execv targets are loaded at runtime by
 # execv-test (the small target as `/target` in execv-test.img, the large target as `/target` in
 # execv-big-test.img).
-STANDALONE_RAMFS_ONLY_BINARIES := execv-target execv-big-target fork-exec-vfsd-target fork-exec-write-target fork-exec-loop-target fork-exec-pipe-bulk-target
+STANDALONE_RAMFS_ONLY_BINARIES := execv-target execv-big-target fork-exec-vfsd-target fork-exec-write-target fork-exec-loop-target fork-exec-pipe-bulk-target fork-exec-pipe-loop-target
 
 # Standalone binaries that manage VFS locally and must NOT include vfsd in their
 # .initrd image (vfsd would claim the RAMFS MMIO region before the benchmark).
