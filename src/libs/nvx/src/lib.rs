@@ -8,6 +8,10 @@
 #![deny(clippy::all)]
 #![forbid(clippy::large_stack_frames)]
 #![forbid(clippy::large_stack_arrays)]
+// The `linkage` attribute is only needed when the `weak-panic` feature gives the
+// panic handler weak linkage (see `panic.rs`); gate the nightly feature on it so
+// default builds do not enable an otherwise-unused unstable feature.
+#![cfg_attr(feature = "weak-panic", feature(linkage))]
 #![no_std]
 
 //! Nanvix guest runtime helpers.

@@ -2,4 +2,5 @@
 channel = "nightly-2026-05-21"
 components = [
     "rust-src",
+    "llvm-tools",
 ]

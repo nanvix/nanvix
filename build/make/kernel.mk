@@ -13,13 +13,22 @@ all-kernel: init
 ifeq ($(PROFILER),yes)
 	# Strip .debug_* but keep .symtab for guest profiler symbol resolution.
 	# See src/uservm/src/guest_profiler/README.md for setup prerequisites.
+	#
+	# Stripping is an optional size optimization (the profiler only needs
+	# .symtab, which is preserved regardless). Each strip tool is therefore
+	# invoked as part of the `if` condition so that a tool which is present but
+	# non-functional — e.g. `rust-objcopy` installed via cargo-binutils while the
+	# `llvm-tools` rustup component (the actual `llvm-objcopy`) is missing — falls
+	# through to the next candidate or the warning instead of failing the build.
 	$(CP_CMD) $(BINARIES_DIR)/kernel.elf $(BINARIES_DIR)/kernel.elf.debug
-	@if command -v rust-objcopy >/dev/null 2>&1; then \
-		rust-objcopy --strip-debug "$(BINARIES_DIR)/kernel.elf"; \
-	elif command -v objcopy >/dev/null 2>&1; then \
-		objcopy --strip-debug "$(BINARIES_DIR)/kernel.elf"; \
+	@if command -v rust-objcopy >/dev/null 2>&1 && rust-objcopy --strip-debug "$(BINARIES_DIR)/kernel.elf" 2>/dev/null; then \
+		: ; \
+	elif command -v llvm-objcopy >/dev/null 2>&1 && llvm-objcopy --strip-debug "$(BINARIES_DIR)/kernel.elf" 2>/dev/null; then \
+		: ; \
+	elif command -v objcopy >/dev/null 2>&1 && objcopy --strip-debug "$(BINARIES_DIR)/kernel.elf" 2>/dev/null; then \
+		: ; \
 	else \
-		echo "WARNING: objcopy not found, kernel.elf retains debug sections (~1.4 MB extra)"; \
+		echo "WARNING: could not strip debug sections (no working objcopy); kernel.elf retains debug sections (~1.4 MB extra)"; \
 	fi
 endif
 

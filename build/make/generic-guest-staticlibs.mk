@@ -37,8 +37,46 @@ GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$
 # `sysalloc` in transitively.  Cargo unifies all of these into a single
 # compilation per binary, so they do not consume the sysroot copy and
 # do not hit the duplicate-`sysalloc` scenario.
-GUEST_STATICLIB_FEATURES_nvx-crt0 := c-main forwarding-allocator $(LOG_LEVEL)
+# The `init-array` feature switches the `c-main` trampoline from the legacy
+# `_init` / `_fini` hooks to relying on `posix/init-array`
+# (`__nanvix_libc_start_main` walking `.init_array` / `.fini_array`).  Both
+# halves are enabled together for the bundle: `crt0.o` here and `libc.a` via
+# `nanvix_libc`'s `posix` dependency.
+GUEST_STATICLIB_FEATURES_nvx-crt0 := c-main forwarding-allocator init-array $(LOG_LEVEL)
 GUEST_STATICLIB_FEATURES_nvx-crt0 := $(strip $(GUEST_STATICLIB_FEATURES_nvx-crt0))
+
+# nanvix_libc is the C library aggregator that produces the deliverable libc.a.
+# It now ALSO pulls the POSIX syscall backend (`posix`) in via its
+# `backend-nanvix` feature, so a SINGLE `cargo build -p nanvix_libc` compiles the
+# complete C library + backend together. Cargo unifies every shared transitive
+# dependency (sysalloc, libc_stdlib, sys, nvx, syslog) to ONE instance, which
+# structurally prevents the duplicate-`sysalloc`/duplicate-`HEAP` bug the old
+# separate-build + `ar`-merge produced. It therefore takes the DEFAULT feature
+# set ($(LOG_LEVEL) [+ standalone]); its `standalone` feature forwards to
+# `posix/standalone`.
+#
+# (No `GUEST_STATICLIB_FEATURES_nanvix_libc` override: it must use the default
+# bundle so `standalone` reaches the embedded `posix` backend.)
+
+# nanvix_libm produces libm.a (libc_math + the nvx panic handler). It has no
+# standalone-specific behaviour and pulls no syscall backend, so it takes ONLY
+# the log level (never the `standalone` feature, which it does not define).
+GUEST_STATICLIB_FEATURES_nanvix_libm := $(LOG_LEVEL)
+GUEST_STATICLIB_FEATURES_nanvix_libm := $(strip $(GUEST_STATICLIB_FEATURES_nanvix_libm))
+
+# posix is the standalone Nanvix syscall backend (libposix.a), shipped for
+# out-of-tree C consumers that link it alongside their own libc. It takes an
+# EXPLICIT feature override — identical to the default `$(LOG_LEVEL) [+ standalone]`
+# set, and KEEPING posix's defaults (`syscall allocator c-main`; no
+# `--no-default-features`) — for ONE reason: to force posix into the per-package
+# build group so its `libposix.a` is compiled on its OWN, separately from
+# `nanvix_libc`. `nanvix_libc` depends on `posix` with `init-array`; a combined
+# `cargo build -p posix -p nanvix_libc` would unify features and bake
+# `init-array` into `libposix.a`, imposing a `.preinit/.init/.fini_array`
+# linker-script contract on those out-of-tree consumers. Building posix alone
+# keeps `libposix.a` on the legacy `_init`/`_fini` contract, exactly as before.
+GUEST_STATICLIB_FEATURES_posix := $(GUEST_STATICLIB_FEATURES)
+GUEST_STATICLIB_FEATURES_posix := $(strip $(GUEST_STATICLIB_FEATURES_posix))
 
 # Returns the cargo `--features "..."` arg for the given package, falling
 # back to the default $(GUEST_STATICLIB_CARGO_FEATURES) when no override is
@@ -49,6 +87,14 @@ GUEST_STATICLIB_PKG_FEATURES = $(if $(GUEST_STATICLIB_FEATURES_$(1)),--features 
 # `nvx-crt0` -> `libnvx_crt0.a`). This helper normalises the package name
 # for `cp` / `rm` paths against the cargo target dir.
 guest_staticlib_artifact = lib$(subst -,_,$(1)).a
+
+# Destination (staged) name in LIBRARIES_DIR. Defaults to the cargo output name,
+# EXCEPT the two aggregator staticlibs are staged under their conventional `-l`
+# names: `nanvix_libc` -> `libc.a` (embeds the POSIX backend) and `nanvix_libm`
+# -> `libm.a` (the math archive). There is no separate `libnanvix_libc.a` or
+# `libnanvix_libm.a`; `posix` still produces the standalone `libposix.a` for
+# out-of-tree consumers that link it with their own libc.
+guest_staticlib_staged = $(if $(filter nanvix_libc,$(1)),libc.a,$(if $(filter nanvix_libm,$(1)),libm.a,$(call guest_staticlib_artifact,$(1))))
 
 # Per-package crate-type override. Some packages keep `crate-type = ["lib"]`
 # only in `Cargo.toml` (so they can be used as a normal cargo dep without
@@ -68,7 +114,7 @@ GUEST_STATICLIB_CARGO_BUILD = $(if $(GUEST_STATICLIB_CRATE_TYPE_$(1)),$(subst ca
 define GUEST_STATICLIB_RULES
 all-guest-staticlib-$(1): init
 	$(call GUEST_STATICLIB_CARGO_BUILD,$(1)) -p $(1) $(call GUEST_STATICLIB_PKG_FEATURES,$(1))
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(call guest_staticlib_artifact,$(1)) $(LIBRARIES_DIR)/$(call guest_staticlib_artifact,$(1))
+	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(call guest_staticlib_artifact,$(1)) $(LIBRARIES_DIR)/$(call guest_staticlib_staged,$(1))
 
 check-guest-staticlib-$(1):
 	@$(GUEST_CARGO_CHECK_CMD) -p $(1)
@@ -82,7 +128,7 @@ format-check-guest-staticlib-$(1):
 
 clean-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
-	$(RM_CMD) $(LIBRARIES_DIR)/$(call guest_staticlib_artifact,$(1))
+	$(RM_CMD) $(LIBRARIES_DIR)/$(call guest_staticlib_staged,$(1))
 
 rust-lint-guest-staticlib-$(1):
 	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(call GUEST_STATICLIB_PKG_FEATURES,$(1)) --fix --allow-dirty --allow-no-vcs
@@ -124,7 +170,13 @@ all-guest-staticlibs: init
 	$(if $(_GUEST_STATICLIB_PKGS_DEFAULT),$(GUEST_CARGO_BUILD_CMD) $(_GUEST_STATICLIB_PKGS_DEFAULT) $(GUEST_STATICLIB_CARGO_FEATURES))
 	$(foreach pkg,$(_GUEST_STATICLIB_PKGS_OVERRIDE),$(call _OVERRIDE_BUILD_CMD,$(pkg)) &&) true
 	@for pkg in $(ALL_GUEST_STATIC_LIBS); do \
-		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/lib$$(echo $$pkg | sed 's/-/_/g').a $(LIBRARIES_DIR)/lib$$(echo $$pkg | sed 's/-/_/g').a; \
+		src=lib$$(echo $$pkg | sed 's/-/_/g').a; \
+		case "$$pkg" in \
+			nanvix_libc) dst=libc.a;; \
+			nanvix_libm) dst=libm.a;; \
+			*) dst=$$src;; \
+		esac; \
+		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$$src $(LIBRARIES_DIR)/$$dst; \
 	done
 
 check-guest-staticlibs:

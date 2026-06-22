@@ -51,6 +51,40 @@ SECTIONS
 		KEEP(*crtend*.o(.dtors))
 	}
 
+	/*
+	 * Constructor / destructor arrays (the primary ctor/dtor mechanism).
+	 *
+	 * `__nanvix_libc_start_main` (libposix start.rs) walks `.preinit_array`
+	 * then `.init_array` before calling `main`, and `.fini_array` (in reverse)
+	 * after `main` returns.  The bound symbols below are provided HERE — not by
+	 * GCC crtbegin/crtend — because Nanvix ships no crti/crtn/crtbegin/crtend.
+	 * These sections hold relocated function pointers, so they must live in the
+	 * writable LOAD segment (with .data/.ctors/.dtors) where the PIE relocator
+	 * fixes them up.
+	 */
+	.preinit_array : ALIGN(4)
+	{
+		PROVIDE_HIDDEN(__preinit_array_start = .);
+		KEEP(*(.preinit_array))
+		PROVIDE_HIDDEN(__preinit_array_end = .);
+	}
+
+	.init_array : ALIGN(4)
+	{
+		PROVIDE_HIDDEN(__init_array_start = .);
+		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+		KEEP(*(.init_array))
+		PROVIDE_HIDDEN(__init_array_end = .);
+	}
+
+	.fini_array : ALIGN(4)
+	{
+		PROVIDE_HIDDEN(__fini_array_start = .);
+		KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
+		KEEP(*(.fini_array))
+		PROVIDE_HIDDEN(__fini_array_end = .);
+	}
+
 	/* Uninitialized data section. */
 	.bss :
 	{

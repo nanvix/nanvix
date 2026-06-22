@@ -19,7 +19,18 @@ use syslog::{
 // Standalone Functions
 //==================================================================================================
 
+// When built with the opt-in `weak-panic` feature, the panic handler is given
+// **weak** linkage so the `rust_begin_unwind` entry emitted into each separate
+// Nanvix static archive (`libc.a`, `libm.a`) collapses to a single definition
+// at the final guest link instead of colliding as multiple *strong* symbols
+// (which would otherwise force `-z muldefs` / `--allow-multiple-definition`).
+//
+// The feature is OFF by default: a regular guest binary links `nvx` exactly
+// once and therefore keeps a single strong panic handler, unchanged from the
+// historical behaviour.  Only the in-tree `nanvix_libc` / `nanvix_libm`
+// staticlib bundle (which links `nvx` into more than one archive) enables it.
 #[panic_handler]
+#[cfg_attr(feature = "weak-panic", linkage = "weak")]
 pub fn panic_implementation(info: &::core::panic::PanicInfo<'_>) -> ! {
     // Extract panic information.
     let (file, line) = match info.location() {
