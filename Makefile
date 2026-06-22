@@ -330,7 +330,7 @@ export VERUS_KERNEL_FEATURES := microvm trace
 
 ALL_GUEST_STATIC_LIBS := posix nvx-crt0
 ALL_GUEST_RUST_LIBS := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi syscall sysalloc syslog-macros syslog sys libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time libc_wchar libc_wctype mmio-tag multiimage vfs-bench-common
-ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions proc raw-array nanvix-slab sorted-vec static_assert libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time libc_wchar libc_wctype syslog-macros syslog mmio-tag syscall vfs
+ALL_GUEST_RUST_LIBS_TEST_LIST := arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe koptions proc raw-array nanvix-slab sorted-vec static_assert libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time libc_wchar libc_wctype syslog-macros syslog sys mmio-tag syscall vfs
 
 ALL_GUEST_DAEMONS := memd procd vfsd
 ALL_GUEST_BENCHMARKS := echo-rust-nostd noop-rust-nostd snapshot-rust-nostd vfs-bench-nostd mount-bench-nostd
