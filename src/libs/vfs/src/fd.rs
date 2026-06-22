@@ -4167,6 +4167,55 @@ mod tests {
         forget_processes(&[parent, child]);
     }
 
+    /// Tests that `F_SETFD` updates only the addressed descriptor, so two descriptors that share a
+    /// single open file description through `dup` keep independent flags: a later update to one
+    /// never mutates the other (<https://github.com/nanvix/nanvix/issues/2604>).
+    #[test]
+    fn fcntl_fd_flags_are_per_descriptor_after_dup() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7521);
+        set_current_process(pid);
+
+        // `dup` aliases the source's open file description, so both descriptors address the same
+        // underlying file — the precondition for proving the flags stay per descriptor.
+        let fd: c_int = vfs_alloc_hostfs(65, false, None).expect("alloc should succeed");
+        let dup_fd: c_int = vfs_dup(fd).expect("dup should succeed");
+        assert!(
+            Arc::ptr_eq(&entry_arc(fd).unwrap(), &entry_arc(dup_fd).unwrap()),
+            "dup must alias the same open file description"
+        );
+
+        // Updating the duplicate must not surface on the source descriptor.
+        vfs_fcntl(dup_fd, file_control_request::F_SETFD, FD_CLOFORK)
+            .expect("F_SETFD on the duplicate should succeed");
+        assert_eq!(
+            vfs_fcntl(dup_fd, file_control_request::F_GETFD, 0).expect("duplicate F_GETFD"),
+            FD_CLOFORK,
+            "the duplicate should report its own descriptor flag"
+        );
+        assert_eq!(
+            vfs_fcntl(fd, file_control_request::F_GETFD, 0).expect("source F_GETFD"),
+            0,
+            "the source descriptor must be unaffected by the duplicate's F_SETFD"
+        );
+
+        // The reverse holds too: updating the source leaves the duplicate's flag intact.
+        vfs_fcntl(fd, file_control_request::F_SETFD, FD_CLOEXEC)
+            .expect("F_SETFD on the source should succeed");
+        assert_eq!(
+            vfs_fcntl(fd, file_control_request::F_GETFD, 0).expect("source F_GETFD"),
+            FD_CLOEXEC,
+            "the source should report its own descriptor flag"
+        );
+        assert_eq!(
+            vfs_fcntl(dup_fd, file_control_request::F_GETFD, 0).expect("duplicate F_GETFD"),
+            FD_CLOFORK,
+            "the duplicate's descriptor flag must be unaffected by the source's F_SETFD"
+        );
+
+        forget_processes(&[pid]);
+    }
+
     /// Tests that at process exit a lone socket token surfaces its `networkd` descriptor in
     /// [`ProcessExitReclaim::orphaned_socket_fds`] (so the daemon closes the endpoint), while a lone
     /// console token contributes nothing. Crucially, neither is mistaken for a hostfs or pipe

@@ -92,6 +92,7 @@ pub fn main() -> Result<(), Error> {
     test_stat_timestamps()?;
     test_fcntl_fd_flags()?;
     test_dup()?;
+    test_fcntl_fd_flags_dup_independence()?;
     test_resolve_path()?;
     test_chmod()?;
     test_fchmodat()?;
@@ -916,6 +917,98 @@ fn test_dup() -> Result<(), Error> {
     vfs::unmount("/dup").map_err(|e| fat_err(e, "unmount /dup"))?;
 
     ::syslog::info!("vfs-test: test_dup passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Test: Fcntl F_GETFD/F_SETFD per-descriptor flags across dup
+//==================================================================================================
+
+/// Tests that `F_SETFD` round-trips non-zero descriptor flags through `F_GETFD`, and that two
+/// descriptors sharing one open file description via `dup` keep independent flags, so updating one
+/// never mutates the other (<https://github.com/nanvix/nanvix/issues/2604>).
+fn test_fcntl_fd_flags_dup_independence() -> Result<(), Error> {
+    ::syslog::info!("vfs-test: test_fcntl_fd_flags_dup_independence begin");
+
+    vfs::create_mount("/fcd", 128 * 1024).map_err(|e| fat_err(e, "create_mount /fcd failed"))?;
+
+    // Create and open a file.
+    {
+        let mut file: vfs::File = vfs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open("/fcd/fc.txt")
+            .map_err(|e| fat_err(e, "create fc.txt"))?;
+        file.write(b"fcntl dup test")
+            .map_err(|e| fat_err(e, "write fc.txt"))?;
+        file.flush().map_err(|e| fat_err(e, "flush fc.txt"))?;
+    }
+
+    let fd: i32 = vfs::fd::vfs_open("/fcd/fc.txt", 0).map_err(|e| fat_err(e, "open fc.txt"))?;
+
+    // Non-zero round-trip: F_SETFD must store the supported descriptor flags and F_GETFD must read
+    // them back exactly, both individually and combined.
+    for raw in [
+        file_descriptor_flags::FD_CLOEXEC,
+        file_descriptor_flags::FD_CLOFORK,
+        file_descriptor_flags::FD_CLOEXEC | file_descriptor_flags::FD_CLOFORK,
+    ] {
+        vfs::fd::vfs_fcntl(fd, file_control_request::F_SETFD, raw)
+            .map_err(|e| fat_err(e, "F_SETFD round-trip"))?;
+        if vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFD, 0)
+            .map_err(|e| fat_err(e, "F_GETFD round-trip"))?
+            != raw
+        {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "F_GETFD must return the flags stored by F_SETFD",
+            ));
+        }
+    }
+
+    // Leave the source descriptor with close-on-exec set for the independence checks below.
+    vfs::fd::vfs_fcntl(fd, file_control_request::F_SETFD, file_descriptor_flags::FD_CLOEXEC)
+        .map_err(|e| fat_err(e, "reset source flags"))?;
+
+    // Duplicate the descriptor. The two descriptors share one open file description; `test_dup`
+    // already covers that the duplicate is born with empty flags, so this test goes straight to the
+    // property it owns: that *later* F_SETFD updates stay per descriptor.
+    let dup_fd: i32 = vfs::fd::vfs_dup(fd).map_err(|e| fat_err(e, "vfs_dup"))?;
+
+    // Updating the duplicate must not surface on the source descriptor.
+    vfs::fd::vfs_fcntl(dup_fd, file_control_request::F_SETFD, file_descriptor_flags::FD_CLOFORK)
+        .map_err(|e| fat_err(e, "setfd dup"))?;
+    if vfs::fd::vfs_fcntl(fd, file_control_request::F_GETFD, 0)
+        .map_err(|e| fat_err(e, "getfd source after dup setfd"))?
+        != file_descriptor_flags::FD_CLOEXEC
+    {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "the source flags must be unchanged by the duplicate's F_SETFD",
+        ));
+    }
+
+    // The reverse also holds: updating the source leaves the duplicate untouched.
+    vfs::fd::vfs_fcntl(fd, file_control_request::F_SETFD, 0)
+        .map_err(|e| fat_err(e, "clear source flags"))?;
+    if vfs::fd::vfs_fcntl(dup_fd, file_control_request::F_GETFD, 0)
+        .map_err(|e| fat_err(e, "getfd dup after source clear"))?
+        != file_descriptor_flags::FD_CLOFORK
+    {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "the duplicate flags must be unchanged by the source's F_SETFD",
+        ));
+    }
+
+    // Clean up.
+    for descriptor in [fd, dup_fd] {
+        let _ = vfs::fd::vfs_close(descriptor);
+    }
+    vfs::unlink("/fcd/fc.txt").map_err(|e| fat_err(e, "unlink fc.txt"))?;
+    vfs::unmount("/fcd").map_err(|e| fat_err(e, "unmount /fcd"))?;
+
+    ::syslog::info!("vfs-test: test_fcntl_fd_flags_dup_independence passed");
     Ok(())
 }
 
