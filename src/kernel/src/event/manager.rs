@@ -215,24 +215,29 @@ impl Drop for EventOwnership {
 
 struct EventManagerInner {
     interrupt_capable: bool,
-    nevents: usize,
+    /// Full-width monotonic counter incremented once per generated event. Its value at generation
+    /// time is the event's sequence number, stamped alongside the [`EventDescriptor`] in each
+    /// pending queue and used as the FIFO ordering key in `try_wait()`. It is `u64` so that ordering
+    /// never wraps on the kernel's 32-bit target, where the truncated [`EventDescriptor`] id would
+    /// otherwise overflow its narrow field (see issue #2674).
+    nevents: u64,
     wait: Option<Condvar>,
     waiting_threads: VecDeque<(ProcessIdentifier, ThreadIdentifier)>,
     interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
-    pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize],
+    pending_interrupts: [LinkedList<(u64, EventDescriptor)>; usize::BITS as usize],
     exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
-    pending_exceptions:
-        [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>; usize::BITS as usize],
+    pending_exceptions: [LinkedList<(u64, EventDescriptor, ExceptionEventInformation, Condvar)>;
+        usize::BITS as usize],
     scheduling_owner: Option<ProcessIdentifier>,
-    /// Pending scheduling-event notifications delivered in FIFO order by global event id. The
+    /// Pending scheduling-event notifications delivered in FIFO order by event sequence number. The
     /// kernel main loop publishes a process's creation before its termination, so FIFO delivery lets
     /// the owner observe the child's lineage before handling its exit.
     ///
-    /// Each entry carries the global [`EventDescriptor`] stamped at generation time. The queue is
-    /// maintained in event-id order: notifications are appended with monotonically increasing ids
-    /// (`notify_scheduling()`) and removals preserve relative order, so delivery (`try_wait()`) pops
-    /// the smallest id in O(1).
-    pending_scheduling: LinkedList<(EventDescriptor, SchedulingNotification)>,
+    /// Each entry pairs the full-width sequence number stamped at generation time with its
+    /// [`EventDescriptor`]. The queue is maintained in sequence order: notifications are appended
+    /// with monotonically increasing sequence numbers (`notify_scheduling()`) and removals preserve
+    /// relative order, so delivery (`try_wait()`) pops the smallest sequence number in O(1).
+    pending_scheduling: LinkedList<(u64, EventDescriptor, SchedulingNotification)>,
 }
 
 impl EventManagerInner {
@@ -464,13 +469,11 @@ impl EventManagerInner {
     ) -> Result<Option<Message>, Error> {
         for i in 0..Self::NUMBER_EVENTS {
             // Check if any interrupts were triggered.
-            if (self.nevents + i).is_multiple_of(Self::NUMBER_EVENTS) {
+            if (self.nevents + i as u64).is_multiple_of(Self::NUMBER_EVENTS as u64) {
                 // Deliver the oldest eligible interrupt first. This prevents a continuously
                 // refilled low-numbered bit from starving an older high-numbered one.
                 let selected: Option<usize> = Self::smallest_pending_front(interrupts, |bit| {
-                    self.pending_interrupts[bit]
-                        .front()
-                        .map(EventDescriptor::id)
+                    self.pending_interrupts[bit].front().map(|(seq, _)| *seq)
                 });
                 if let Some(idx) = selected {
                     if let Some(_event) = self.pending_interrupts[idx].pop_front() {
@@ -486,23 +489,23 @@ impl EventManagerInner {
             }
 
             // Check if any exceptions were triggered.
-            if ((self.nevents + i) % Self::NUMBER_EVENTS) == 1 {
-                // Deliver the oldest eligible exception first, using the same FIFO-by-event-id rule
+            if ((self.nevents + i as u64) % Self::NUMBER_EVENTS as u64) == 1 {
+                // Deliver the oldest eligible exception first, using the same FIFO-by-sequence rule
                 // as interrupts.
                 let selected: Option<usize> = Self::smallest_pending_front(exceptions, |bit| {
                     self.pending_exceptions[bit]
                         .front()
-                        .map(|(evdesc, _, _)| evdesc.id())
+                        .map(|(seq, _, _, _)| *seq)
                 });
                 if let Some(idx) = selected {
                     if let Some(entry) = self.pending_exceptions[idx].pop_front() {
                         let mut info: EventInformation = EventInformation::default();
-                        info.id = entry.0.clone();
-                        info.pid = entry.1.pid;
-                        info.number = Some(entry.1.info.num() as usize);
-                        info.code = Some(entry.1.info.code() as usize);
-                        info.address = Some(entry.1.info.addr() as usize);
-                        info.instruction = Some(entry.1.info.instruction() as usize);
+                        info.id = entry.1.clone();
+                        info.pid = entry.2.pid;
+                        info.number = Some(entry.2.info.num() as usize);
+                        info.code = Some(entry.2.info.code() as usize);
+                        info.address = Some(entry.2.info.addr() as usize);
+                        info.instruction = Some(entry.2.info.instruction() as usize);
 
                         let mut message: Message = Message::from(info);
                         message.destination = MessageReceiver::from(pid);
@@ -516,16 +519,18 @@ impl EventManagerInner {
             }
 
             // Check if any scheduling events were triggered.
-            if ((self.nevents + i) % Self::NUMBER_EVENTS) == 2 {
-                // Scheduling events are already kept in FIFO-by-event-id order. The non-zero
+            if ((self.nevents + i as u64) % Self::NUMBER_EVENTS as u64) == 2 {
+                // Scheduling events are already kept in FIFO-by-sequence order. The non-zero
                 // `scheduling` mask means the caller owns the scheduling-event class.
                 if scheduling != 0 {
                     debug_assert!(
                         self.pending_scheduling_is_ordered(),
-                        "scheduling-event queue is not ordered by event id"
+                        "scheduling-event queue is not ordered by sequence number"
                     );
 
-                    if let Some((_eventid, notification)) = self.pending_scheduling.pop_front() {
+                    if let Some((_seq, _descriptor, notification)) =
+                        self.pending_scheduling.pop_front()
+                    {
                         // Serialize the notification into the head of the message payload. The
                         // two notification variants have different serialized sizes, so each is
                         // copied using its own length.
@@ -558,7 +563,8 @@ impl EventManagerInner {
         }
 
         // FIXME(#2558): IPC can still starve under a sustained exception / interrupt rate. The
-        // in-class scans above are FIFO by event id, but IPC is only checked after event classes.
+        // in-class scans above are FIFO by sequence number, but IPC is only checked after event
+        // classes.
 
         // Check if any messages were delivered.
         match ProcessManager::try_recv(tid) {
@@ -569,12 +575,12 @@ impl EventManagerInner {
     }
 
     fn pending_scheduling_is_ordered(&self) -> bool {
-        let mut previous: Option<usize> = None;
+        let mut previous: Option<u64> = None;
 
-        for (eventid, _) in self.pending_scheduling.iter() {
-            let current: usize = eventid.id();
-            if let Some(previous_id) = previous {
-                if previous_id > current {
+        for (seq, _descriptor, _) in self.pending_scheduling.iter() {
+            let current: u64 = *seq;
+            if let Some(previous_seq) = previous {
+                if previous_seq > current {
                     return false;
                 }
             }
@@ -587,19 +593,20 @@ impl EventManagerInner {
     ///
     /// # Description
     ///
-    /// Selects the queue that should deliver next under FIFO-by-event-id ordering: among the bits
-    /// set in `mask`, returns the index whose pending-queue head carries the smallest global event
-    /// id, or [`None`] when no selected bit has a pending entry.
+    /// Selects the queue that should deliver next under FIFO-by-sequence ordering: among the bits
+    /// set in `mask`, returns the index whose pending-queue head carries the smallest event
+    /// sequence number, or [`None`] when no selected bit has a pending entry.
     ///
-    /// Delivering the smallest-id head first makes per-class delivery starvation-free: every queued
-    /// event has a fixed position in the global id order and is therefore served within a bounded
-    /// number of calls, regardless of which bit it occupies. This replaces the previous bit-0-first
-    /// scan, in which a continuously refilled low-numbered bit could starve a higher-numbered one.
+    /// Delivering the smallest-sequence head first makes per-class delivery starvation-free: every
+    /// queued event has a fixed position in the global sequence order and is therefore served within
+    /// a bounded number of calls, regardless of which bit it occupies. The sequence number is the
+    /// full-width `nevents` value stamped at generation time, so ordering is stable even where the
+    /// truncated [`EventDescriptor`] id would wrap on the kernel's 32-bit target (see issue #2674).
     ///
     /// # Parameters
     ///
     /// - `mask`: Bit mask of queues eligible for delivery.
-    /// - `front_id`: Returns the global event id at the head of the queue for a given bit, or
+    /// - `front_seq`: Returns the event sequence number at the head of the queue for a given bit, or
     ///   [`None`] when that queue is empty.
     ///
     /// # Returns
@@ -607,14 +614,14 @@ impl EventManagerInner {
     /// The index of the queue to deliver from, or [`None`] when no eligible queue has a pending
     /// entry.
     ///
-    fn smallest_pending_front<F>(mask: usize, mut front_id: F) -> Option<usize>
+    fn smallest_pending_front<F>(mask: usize, mut front_seq: F) -> Option<usize>
     where
-        F: FnMut(usize) -> Option<usize>,
+        F: FnMut(usize) -> Option<u64>,
     {
         (0..usize::BITS as usize)
             .filter(|&bit| (mask & (1usize << bit)) != 0)
-            .filter_map(|bit| front_id(bit).map(|id| (bit, id)))
-            .min_by_key(|&(_, id)| id)
+            .filter_map(|bit| front_seq(bit).map(|seq| (bit, seq)))
+            .min_by_key(|&(_, seq)| seq)
             .map(|(bit, _)| bit)
     }
 
@@ -659,9 +666,9 @@ impl EventManagerInner {
         // Search and remove event from pending exceptions by full descriptor (id + event).
         if let Some(entry) = self.pending_exceptions[idx]
             .iter()
-            .position(|(pending_evdesc, _info, _resume)| *pending_evdesc == evdesc)
+            .position(|(_seq, pending_evdesc, _info, _resume)| *pending_evdesc == evdesc)
         {
-            let (_eventinfo, excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
+            let (_seq, _eventinfo, excpinfo, resume) = self.pending_exceptions[idx].remove(entry);
 
             if let Err(error) = resume.notify_thread(excpinfo.tid) {
                 // The faulting thread may have already been terminated by the exception owner .
@@ -705,8 +712,8 @@ impl EventManagerInner {
         self.nevents += 1;
         let idx: usize = interrupts.trailing_zeros() as usize;
         let ev = Event::from(sys::event::InterruptEvent::try_from(idx)?);
-        let eventid: EventDescriptor = EventDescriptor::new(self.nevents, ev);
-        self.pending_interrupts[idx].push_back(eventid);
+        let descriptor: EventDescriptor = EventDescriptor::new(self.nevents as usize, ev);
+        self.pending_interrupts[idx].push_back((self.nevents, descriptor));
 
         // Get interrupt owner.
         let pid: ProcessIdentifier = match self.interrupt_ownership[idx] {
@@ -759,10 +766,11 @@ impl EventManagerInner {
         self.nevents += 1;
         let idx: usize = exceptions.trailing_zeros() as usize;
         let ev: Event = Event::from(ExceptionEvent::try_from(idx)?);
-        let eventid: EventDescriptor = EventDescriptor::new(self.nevents, ev);
+        let descriptor: EventDescriptor = EventDescriptor::new(self.nevents as usize, ev);
         let resume: Condvar = Condvar::new();
         self.pending_exceptions[idx].push_back((
-            eventid,
+            self.nevents,
+            descriptor,
             ExceptionEventInformation {
                 pid,
                 tid,
@@ -849,8 +857,10 @@ impl EventManagerInner {
         }
 
         self.nevents += 1;
-        let eventid: EventDescriptor = EventDescriptor::new(self.nevents, Event::from(event));
-        self.pending_scheduling.push_back((eventid, notification));
+        let descriptor: EventDescriptor =
+            EventDescriptor::new(self.nevents as usize, Event::from(event));
+        self.pending_scheduling
+            .push_back((self.nevents, descriptor, notification));
 
         // Wake the owning process if the scheduling-event class is currently owned. When there is
         // no owner yet, the notification stays buffered and is delivered once a subscriber
@@ -1348,7 +1358,7 @@ fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
 }
 
 pub fn init() -> Result<(), Error> {
-    let mut pending_interrupts: [LinkedList<EventDescriptor>; usize::BITS as usize] =
+    let mut pending_interrupts: [LinkedList<(u64, EventDescriptor)>; usize::BITS as usize] =
         unsafe { mem::zeroed() };
     for list in pending_interrupts.iter_mut() {
         *list = LinkedList::default();
@@ -1360,8 +1370,12 @@ pub fn init() -> Result<(), Error> {
         *entry = None;
     }
 
-    let mut pending_exceptions: [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>;
-        usize::BITS as usize] = unsafe { mem::zeroed() };
+    let mut pending_exceptions: [LinkedList<(
+        u64,
+        EventDescriptor,
+        ExceptionEventInformation,
+        Condvar,
+    )>; usize::BITS as usize] = unsafe { mem::zeroed() };
     for list in pending_exceptions.iter_mut() {
         *list = LinkedList::default();
     }
@@ -1372,7 +1386,7 @@ pub fn init() -> Result<(), Error> {
         *entry = None;
     }
 
-    let pending_scheduling: LinkedList<(EventDescriptor, SchedulingNotification)> =
+    let pending_scheduling: LinkedList<(u64, EventDescriptor, SchedulingNotification)> =
         LinkedList::default();
 
     let scheduling_owner: Option<ProcessIdentifier> = None;
