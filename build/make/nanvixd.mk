@@ -72,6 +72,13 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/thread-vfs-test-seed
 	@printf 'THREAD-VFS-2529-PAYLOAD' > $(BINARIES_DIR)/thread-vfs-test-seed/input.dat
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/thread-vfs-test.img $(BINARIES_DIR)/thread-vfs-test-seed/
+	# Build the ramfs image for the repeated fork()+execv() test. It contains the target at the
+	# filesystem root as "target" and a seeded file "coldfile.dat" that the parent opens before each
+	# fork; the child reads it through the inherited descriptor passed in argv.
+	@mkdir -p $(BINARIES_DIR)/fork-exec-loop-test-seed
+	@cp -f $(BINARIES_DIR)/fork-exec-loop-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-loop-test-seed/target
+	@printf 'COLD-READ-PAYLOAD-OK' > $(BINARIES_DIR)/fork-exec-loop-test-seed/coldfile.dat
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-loop-test.img $(BINARIES_DIR)/fork-exec-loop-test-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments (Linux only).

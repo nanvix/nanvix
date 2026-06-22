@@ -47,6 +47,33 @@ pub struct ForkCloneMessage {
 // NOTE: The size of a fork-clone message must match the size of a process management message payload.
 ::static_assert::assert_eq_size!(ForkCloneMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
+///
+/// # Description
+///
+/// A message that acknowledges a fork-clone. It is sent by the filesystem daemon to the process
+/// manager daemon once it has finished duplicating (or has failed to duplicate) the parent's
+/// filesystem state onto the freshly forked `child`. The process manager daemon uses it to release
+/// the parent and child blocked at the fork-synchronization barrier only after the snapshot has
+/// actually been taken, rather than merely dispatched, so that neither process can issue a
+/// filesystem operation that races ahead of (and is therefore dropped by) the clone.
+///
+/// The `status` field conveys the outcome: `0` when the clone was applied, or a non-zero error code
+/// when it could not be (for example, the child already held an active descriptor table). A
+/// non-zero status fails the fork so that a half-cloned child is never allowed to proceed.
+///
+#[repr(C, packed)]
+pub struct ForkCloneAckMessage {
+    /// Process identifier of the freshly forked child the acknowledgement concerns.
+    pub child: ProcessIdentifier,
+    /// Outcome of the clone: `0` on success, or a non-zero error code on failure.
+    pub status: i32,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+
+// NOTE: The size of a fork-clone acknowledgement message must match the size of a process
+// management message payload.
+::static_assert::assert_eq_size!(ForkCloneAckMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -106,6 +133,64 @@ impl ForkCloneMessage {
     }
 }
 
+impl ForkCloneAckMessage {
+    /// Status value that marks a successful fork-clone.
+    pub const STATUS_SUCCESS: i32 = 0;
+
+    /// Size of padding.
+    pub const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE
+        - mem::size_of::<ProcessIdentifier>()
+        - mem::size_of::<i32>();
+
+    ///
+    /// # Description
+    ///
+    /// Instantiates a new fork-clone acknowledgement message.
+    ///
+    /// # Parameters
+    ///
+    /// - `child`: Process identifier of the freshly forked child.
+    /// - `status`: Outcome of the clone (`0` on success, a non-zero error code on failure).
+    ///
+    pub fn new(child: ProcessIdentifier, status: i32) -> Self {
+        Self {
+            child,
+            status,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a byte array into a fork-clone acknowledgement message.
+    ///
+    /// # Parameters
+    ///
+    /// - `bytes`: Byte array.
+    ///
+    /// # Returns
+    ///
+    /// A fork-clone acknowledgement message.
+    ///
+    pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts a fork-clone acknowledgement message into a byte array.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding byte array.
+    ///
+    pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -147,6 +232,51 @@ pub fn fork_clone_request(
     let ipc_message: Message = Message::new(
         MessageSender::from(ProcessIdentifier::PROCD),
         MessageReceiver::from(ProcessIdentifier::VFSD),
+        MessageType::Ipc,
+        None,
+        system_message.into_bytes(),
+    );
+
+    Ok(ipc_message)
+}
+
+///
+/// # Description
+///
+/// Builds a fork-clone acknowledgement message.
+///
+/// # Parameters
+///
+/// - `source`: Process identifier of the sender (the filesystem daemon when confirming to the
+///   process manager daemon).
+/// - `destination`: Process identifier of the recipient (the process manager daemon).
+/// - `child`: Process identifier of the freshly forked child the acknowledgement concerns.
+/// - `status`: Outcome of the clone (`0` on success, a non-zero error code on failure).
+///
+/// # Returns
+///
+/// Upon successful completion, a fork-clone acknowledgement message is returned. Otherwise, an error
+/// is returned instead.
+///
+pub fn fork_clone_ack(
+    source: ProcessIdentifier,
+    destination: ProcessIdentifier,
+    child: ProcessIdentifier,
+    status: i32,
+) -> Result<Message, Error> {
+    let ack_message: ForkCloneAckMessage = ForkCloneAckMessage::new(child, status);
+
+    let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::ForkCloneAck,
+        ack_message.into_bytes(),
+    );
+
+    let system_message: SystemMessage =
+        SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
+
+    let ipc_message: Message = Message::new(
+        MessageSender::from(source),
+        MessageReceiver::from(destination),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),

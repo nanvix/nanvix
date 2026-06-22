@@ -33,6 +33,7 @@ extern crate alloc;
 pub use message::{
     exec_ack,
     exec_request,
+    fork_clone_ack,
     fork_clone_request,
     fork_sync_ack,
     fork_sync_request,
@@ -46,6 +47,7 @@ pub use message::{
     wait_response,
     ExecAckMessage,
     ExecMessage,
+    ForkCloneAckMessage,
     ForkCloneMessage,
     ForkSyncAckMessage,
     ForkSyncMessage,

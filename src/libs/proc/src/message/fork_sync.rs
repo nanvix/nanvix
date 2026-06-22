@@ -50,9 +50,9 @@ pub struct ForkSyncMessage {
 ///
 /// A message sent by the process manager daemon to release a parent or child blocked on a fork-sync
 /// request. The `status` field conveys the outcome of the fork synchronization: `0` when the
-/// fork-clone was successfully dispatched to the filesystem daemon, or a non-zero error code when it
-/// could not be dispatched. A non-zero status lets a blocked `fork()` abort instead of hanging
-/// forever on a snapshot that will never be taken.
+/// fork-clone was acknowledged by the filesystem daemon after the snapshot was taken, or a non-zero
+/// error code when the snapshot failed. A non-zero status lets a blocked `fork()` abort instead of
+/// hanging forever on a snapshot that will never be taken.
 ///
 #[repr(C, packed)]
 pub struct ForkSyncAckMessage {

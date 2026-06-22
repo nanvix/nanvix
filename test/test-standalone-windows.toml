@@ -294,6 +294,17 @@ extra_nanvixd_args = "-ramfs ./bin/fork-exec-write-test.img"
 input = "[]"
 expected_output = "ok"
 
+# Acceptance test for file-descriptor inheritance across fork()+execv(): a
+# descriptor opened before fork() must remain usable by the child after it
+# execv()s. FAILS while the exec'd image does not receive the parent's cloned
+# descriptor table (the inherited fd is unknown and the child's read fails).
+[[tests]]
+executor = "http"
+program = "./bin/fork-exec-loop-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/fork-exec-loop-test.img"
+input = "[]"
+expected_output = "ok"
+
 [[tests]]
 executor = "terminal"
 program = "./bin/fork-exec-write-test.initrd"
@@ -315,6 +326,12 @@ expected_output = "ok"
 executor = "terminal"
 program = "./bin/thread-vfs-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/thread-vfs-test.img"
+expected_output = "ok"
+
+[[tests]]
+executor = "terminal"
+program = "./bin/fork-exec-loop-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/fork-exec-loop-test.img"
 expected_output = "ok"
 
 # Acceptance test for socket reference-counting across fork() (nanvix/nanvix#2609).

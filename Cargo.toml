@@ -101,6 +101,8 @@ members = [
         "src/tests/fork-exec-write-test",
         "src/tests/fork-exec-write-target",
         "src/tests/thread-vfs-test",
+        "src/tests/fork-exec-loop-test",
+        "src/tests/fork-exec-loop-target",
         "src/tests/socket-fork-rust",
         "src/tests/setenv-rust",
         "src/tests/snapshot-test",
