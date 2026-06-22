@@ -22,7 +22,9 @@ use crate::{
 };
 use ::proc::{
     exec_ack,
+    fork_clone_ack,
     ExecMessage,
+    ForkCloneAckMessage,
     ForkCloneMessage,
     ProcessExitMessage,
     ProcessManagementMessage,
@@ -154,20 +156,46 @@ fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Res
                     // descriptors (sharing the underlying open file descriptions, and therefore
                     // file offsets, as POSIX requires) together with a private copy of its current
                     // working directory.
-                    if let Err(e) = ::vfs::fd::vfs_fork_clone(parent, child) {
-                        ::syslog::error!(
-                            "failed to clone filesystem state (parent={:?}, child={:?}, \
-                             error={:?})",
-                            parent,
+                    let status: i32 = match ::vfs::fd::vfs_fork_clone(parent, child) {
+                        Ok(()) => {
+                            ::syslog::info!(
+                                "cloned filesystem state (parent={:?}, child={:?})",
+                                parent,
+                                child
+                            );
+                            ForkCloneAckMessage::STATUS_SUCCESS
+                        },
+                        Err(e) => {
+                            ::syslog::error!(
+                                "failed to clone filesystem state (parent={:?}, child={:?}, \
+                                 error={:?})",
+                                parent,
+                                child,
+                                e
+                            );
+                            ErrorCode::TryAgain.get()
+                        },
+                    };
+                    // Acknowledge the process manager daemon that the clone has been processed, so
+                    // it releases the parent and child held at the fork-synchronization barrier only
+                    // now that the snapshot has actually been taken. Releasing on dispatch alone
+                    // would let the child run its first filesystem operation (e.g. the `execv()`
+                    // image load) before this clone, so that operation would make the child's table
+                    // active and the clone would be refused, dropping the inherited descriptors. A
+                    // non-zero status reports a failed clone so the fork is aborted rather than
+                    // proceeding with a half-cloned child.
+                    match fork_clone_ack(
+                        ProcessIdentifier::VFSD,
+                        ProcessIdentifier::PROCD,
+                        child,
+                        status,
+                    ) {
+                        Ok(ack) => send_response(&ack),
+                        Err(e) => ::syslog::error!(
+                            "failed to build fork-clone acknowledgement (child={:?}, error={:?})",
                             child,
                             e
-                        );
-                    } else {
-                        ::syslog::info!(
-                            "cloned filesystem state (parent={:?}, child={:?})",
-                            parent,
-                            child
-                        );
+                        ),
                     }
                     Ok(false)
                 },

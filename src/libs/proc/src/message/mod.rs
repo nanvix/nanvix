@@ -75,7 +75,7 @@ pub enum ProcessManagementMessageHeader {
     /// the child's filesystem state has been duplicated before either process proceeds).
     ForkSync = 11,
     /// Fork-sync acknowledgement (the process manager daemon releases a parent and its child once
-    /// the fork-clone has been dispatched to the filesystem daemon).
+    /// the filesystem daemon has acknowledged the fork-clone snapshot).
     ForkSyncAck = 12,
     /// Process-exit notification (used to notify other daemons to reclaim a terminated process's
     /// per-process state).
@@ -87,6 +87,11 @@ pub enum ProcessManagementMessageHeader {
     /// Exec acknowledgement (the filesystem daemon confirms close-on-exec was applied, and the
     /// process manager daemon releases the held process).
     ExecAck = 15,
+    /// Fork-clone acknowledgement (the filesystem daemon confirms it has duplicated the parent's
+    /// filesystem state onto the freshly forked child, allowing the process manager daemon to
+    /// release the held parent and child only once the snapshot has actually been taken rather than
+    /// merely dispatched).
+    ForkCloneAck = 16,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -107,6 +112,7 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             13 => Ok(ProcessManagementMessageHeader::ProcessExit),
             14 => Ok(ProcessManagementMessageHeader::Exec),
             15 => Ok(ProcessManagementMessageHeader::ExecAck),
+            16 => Ok(ProcessManagementMessageHeader::ForkCloneAck),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -128,6 +134,7 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::ProcessExit => 13,
             ProcessManagementMessageHeader::Exec => 14,
             ProcessManagementMessageHeader::ExecAck => 15,
+            ProcessManagementMessageHeader::ForkCloneAck => 16,
         }
     }
 }

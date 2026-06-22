@@ -66,8 +66,8 @@ fn map_duplicate_error(code: ErrorCode) -> ErrorCode {
 /// state (open file descriptors and current working directory) is duplicated asynchronously by the
 /// filesystem daemon. To honor POSIX semantics, the parent must not mutate its descriptor table
 /// before that snapshot is taken. This function blocks the parent until the process manager daemon
-/// confirms that the fork-clone has been dispatched to the filesystem daemon, after which the
-/// parent's subsequent filesystem operations are correctly ordered after the snapshot.
+/// confirms that the filesystem daemon has taken the fork-clone snapshot, after which the parent's
+/// subsequent filesystem operations are correctly ordered after that snapshot.
 ///
 /// # Parameters
 ///
@@ -94,13 +94,13 @@ fn sync_parent_after_fork(child: ProcessIdentifier) -> Result<(), Error> {
 ///
 /// # Description
 ///
-/// Blocks until the process manager daemon acknowledges that the fork-clone of the calling process
-/// has been dispatched to the filesystem daemon.
+/// Blocks until the process manager daemon acknowledges that the filesystem daemon has taken the
+/// fork-clone snapshot for the calling process.
 ///
 /// This is the child's half of the fork synchronization: a freshly forked child must not use its
 /// inherited descriptors before the filesystem daemon has duplicated them. The parent triggers the
 /// duplication (see [`sync_parent_after_fork`]); the daemon releases the parent and the child
-/// together once the fork-clone has been dispatched.
+/// together once the filesystem daemon acknowledges that the snapshot has been taken.
 ///
 /// # Returns
 ///
@@ -125,9 +125,8 @@ fn sync_child_after_fork() -> Result<(), Error> {
                     match message.header {
                         ProcessManagementMessageHeader::ForkSyncAck => {
                             // The acknowledgement carries the outcome of the fork synchronization. A
-                            // non-zero status means the process manager daemon could not dispatch the
-                            // fork-clone to the filesystem daemon, so `fork()` should fail rather than
-                            // proceed past a snapshot that was never taken.
+                            // non-zero status means the fork-clone snapshot failed, so `fork()`
+                            // should fail rather than proceed past a snapshot that was never taken.
                             let ack: ForkSyncAckMessage =
                                 ForkSyncAckMessage::from_bytes(message.payload);
                             let status: i32 = ack.status;
@@ -194,7 +193,7 @@ fn sync_child_after_fork() -> Result<(), Error> {
 /// manager daemon before returning. The kernel duplicates memory eagerly, but the child's
 /// filesystem state (open file descriptors and current working directory) is duplicated by the
 /// filesystem daemon out of band. The synchronization guarantees that this duplication has been
-/// dispatched before either process resumes, so that the parent cannot mutate its descriptor table
+/// acknowledged before either process resumes, so that the parent cannot mutate its descriptor table
 /// before the snapshot is taken and the child observes valid, offset-sharing descriptors the
 /// instant `fork()` returns — as POSIX requires.
 ///
@@ -217,9 +216,9 @@ pub fn do_fork() -> Result<pid_t, ErrorCode> {
         // Child: block until the daemon confirms that the inherited descriptors have been
         // duplicated into the filesystem daemon.
         if let Err(error) = sync_child_after_fork() {
-            // The fork synchronization failed: either the process manager daemon could not dispatch
-            // the fork-clone to the filesystem daemon (and released the child with a failure
-            // acknowledgement), or an unexpected message was observed in the synchronization window.
+            // The fork synchronization failed: either the fork-clone snapshot failed (and the
+            // process manager daemon released the child with a failure acknowledgement), or an
+            // unexpected message was observed in the synchronization window.
             // Either way the child's inherited descriptors are not in a well-defined state, and
             // POSIX forbids `fork()` from returning -1 in the child. Self-terminate rather than
             // surface the failure to the application, honoring the contract that no child survives a
