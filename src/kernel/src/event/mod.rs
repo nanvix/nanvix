@@ -31,3 +31,17 @@ pub use manager::{
 pub fn init() -> Result<(), Error> {
     manager::init()
 }
+
+///
+/// # Description
+///
+/// Runs the event subsystem in-kernel tests.
+///
+/// # Returns
+///
+/// `true` if every test passed, `false` otherwise.
+///
+#[cfg(feature = "test")]
+pub fn test() -> bool {
+    manager::test::test()
+}

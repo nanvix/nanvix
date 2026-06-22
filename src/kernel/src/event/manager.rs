@@ -65,6 +65,14 @@ use ::sys::{
 };
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+/// In-kernel tests for the event manager.
+#[cfg(feature = "test")]
+pub(super) mod test;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -216,21 +224,14 @@ struct EventManagerInner {
     pending_exceptions:
         [LinkedList<(EventDescriptor, ExceptionEventInformation, Condvar)>; usize::BITS as usize],
     scheduling_owner: Option<ProcessIdentifier>,
-    /// Pending scheduling-event notifications delivered in FIFO order by global event id. A single
-    /// totally-ordered queue (rather than per-event-type sub-queues drained round-robin) guarantees
-    /// that a process's creation event is delivered before its termination event: the kernel main
-    /// loop publishes a process's creation ahead of its termination, and a process is always created
-    /// before it terminates, so the creation is enqueued before the termination and carries the
-    /// smaller event id. This per-process creation-before-termination invariant lets the
-    /// scheduling-event owner (`procd`) record a child's lineage from its creation before handling
-    /// its termination, with no out-of-order reconciliation.
+    /// Pending scheduling-event notifications delivered in FIFO order by global event id. The
+    /// kernel main loop publishes a process's creation before its termination, so FIFO delivery lets
+    /// the owner observe the child's lineage before handling its exit.
     ///
     /// Each entry carries the global [`EventDescriptor`] stamped at generation time. The queue is
     /// maintained in event-id order: notifications are appended with monotonically increasing ids
-    /// (`notify_scheduling()`) and removals preserve relative order, so the smallest id is always at
-    /// the front and delivery (`try_wait()`) pops the front in O(1). A debug assertion guards that
-    /// id-order invariant. Broadening explicit FIFO-by-event-id delivery across the interrupt and
-    /// exception queues is tracked in #2558.
+    /// (`notify_scheduling()`) and removals preserve relative order, so delivery (`try_wait()`) pops
+    /// the smallest id in O(1).
     pending_scheduling: LinkedList<(EventDescriptor, SchedulingNotification)>,
 }
 
@@ -464,68 +465,60 @@ impl EventManagerInner {
         for i in 0..Self::NUMBER_EVENTS {
             // Check if any interrupts were triggered.
             if (self.nevents + i).is_multiple_of(Self::NUMBER_EVENTS) {
-                // FIXME(#2558): starvation. This inner scan always starts at bit 0, so a
-                // low-numbered interrupt can starve a high-numbered one. The FIFO-by-event-id
-                // delivery tracked in #2558 would resolve this uniformly across event classes.
-                for i in 0..usize::BITS {
-                    if (interrupts & (1 << i)) != 0 {
-                        let idx: usize = i as usize;
-                        if let Some(_event) = self.pending_interrupts[idx].pop_front() {
-                            let message: Message = Message {
-                                source: MessageSender::from(ProcessIdentifier::KERNEL),
-                                destination: MessageReceiver::from(pid),
-                                message_type: MessageType::Interrupt,
-                                ..Message::default()
-                            };
-                            return Ok(Some(message));
-                        }
+                // Deliver the oldest eligible interrupt first. This prevents a continuously
+                // refilled low-numbered bit from starving an older high-numbered one.
+                let selected: Option<usize> = Self::smallest_pending_front(interrupts, |bit| {
+                    self.pending_interrupts[bit]
+                        .front()
+                        .map(EventDescriptor::id)
+                });
+                if let Some(idx) = selected {
+                    if let Some(_event) = self.pending_interrupts[idx].pop_front() {
+                        let message: Message = Message {
+                            source: MessageSender::from(ProcessIdentifier::KERNEL),
+                            destination: MessageReceiver::from(pid),
+                            message_type: MessageType::Interrupt,
+                            ..Message::default()
+                        };
+                        return Ok(Some(message));
                     }
                 }
             }
 
             // Check if any exceptions were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 1 {
-                // FIXME(#2558): starvation. This inner scan always starts at bit 0, so a
-                // low-numbered exception can starve a high-numbered one. The FIFO-by-event-id
-                // delivery tracked in #2558 would resolve this uniformly across event classes.
-                for i in 0..usize::BITS {
-                    if (exceptions & (1 << i)) != 0 {
-                        let idx: usize = i as usize;
-                        if let Some(entry) = self.pending_exceptions[idx].pop_front() {
-                            let mut info: EventInformation = EventInformation::default();
-                            info.id = entry.0.clone();
-                            info.pid = entry.1.pid;
-                            info.number = Some(entry.1.info.num() as usize);
-                            info.code = Some(entry.1.info.code() as usize);
-                            info.address = Some(entry.1.info.addr() as usize);
-                            info.instruction = Some(entry.1.info.instruction() as usize);
+                // Deliver the oldest eligible exception first, using the same FIFO-by-event-id rule
+                // as interrupts.
+                let selected: Option<usize> = Self::smallest_pending_front(exceptions, |bit| {
+                    self.pending_exceptions[bit]
+                        .front()
+                        .map(|(evdesc, _, _)| evdesc.id())
+                });
+                if let Some(idx) = selected {
+                    if let Some(entry) = self.pending_exceptions[idx].pop_front() {
+                        let mut info: EventInformation = EventInformation::default();
+                        info.id = entry.0.clone();
+                        info.pid = entry.1.pid;
+                        info.number = Some(entry.1.info.num() as usize);
+                        info.code = Some(entry.1.info.code() as usize);
+                        info.address = Some(entry.1.info.addr() as usize);
+                        info.instruction = Some(entry.1.info.instruction() as usize);
 
-                            let mut message: Message = Message::from(info);
-                            message.destination = MessageReceiver::from(pid);
-                            message.message_type = MessageType::Exception;
+                        let mut message: Message = Message::from(info);
+                        message.destination = MessageReceiver::from(pid);
+                        message.message_type = MessageType::Exception;
 
-                            self.pending_exceptions[idx].push_back(entry);
+                        self.pending_exceptions[idx].push_back(entry);
 
-                            return Ok(Some(message));
-                        }
+                        return Ok(Some(message));
                     }
                 }
             }
 
             // Check if any scheduling events were triggered.
             if ((self.nevents + i) % Self::NUMBER_EVENTS) == 2 {
-                // Deliver scheduling events in FIFO order by global event id. Every pending entry
-                // is stamped with a monotonically increasing `EventDescriptor` id at generation time
-                // (`notify_scheduling()`) and appended to the queue, and removals preserve relative
-                // order, so the queue is always sorted by id and the smallest id sits at the front.
-                // Delivering the front entry therefore honors the true arrival order of events in
-                // O(1). Because the kernel main loop publishes a process's creation event before its
-                // termination event, and a process is always created before it terminates, the
-                // creation carries the smaller id and is enqueued ahead of the termination; the
-                // owner (`procd`) thus observes a process's creation before its termination and can
-                // record the child's lineage before handling the termination with no out-of-order
-                // reconciliation. The non-zero `scheduling` mask means the calling process owns the
-                // scheduling-event class. At most one scheduling event is delivered per call.
+                // Scheduling events are already kept in FIFO-by-event-id order. The non-zero
+                // `scheduling` mask means the caller owns the scheduling-event class.
                 if scheduling != 0 {
                     debug_assert!(
                         self.pending_scheduling_is_ordered(),
@@ -564,9 +557,8 @@ impl EventManagerInner {
             }
         }
 
-        // FIXME(#2558): Delivery of IPC messages will starve if the exception / interrupt rate is
-        // too high. Unlike the in-class scan starvation above, this is cross-category starvation
-        // (IPC vs. event classes); tracked alongside the other delivery-fairness work in #2558.
+        // FIXME(#2558): IPC can still starve under a sustained exception / interrupt rate. The
+        // in-class scans above are FIFO by event id, but IPC is only checked after event classes.
 
         // Check if any messages were delivered.
         match ProcessManager::try_recv(tid) {
@@ -590,6 +582,40 @@ impl EventManagerInner {
         }
 
         true
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Selects the queue that should deliver next under FIFO-by-event-id ordering: among the bits
+    /// set in `mask`, returns the index whose pending-queue head carries the smallest global event
+    /// id, or [`None`] when no selected bit has a pending entry.
+    ///
+    /// Delivering the smallest-id head first makes per-class delivery starvation-free: every queued
+    /// event has a fixed position in the global id order and is therefore served within a bounded
+    /// number of calls, regardless of which bit it occupies. This replaces the previous bit-0-first
+    /// scan, in which a continuously refilled low-numbered bit could starve a higher-numbered one.
+    ///
+    /// # Parameters
+    ///
+    /// - `mask`: Bit mask of queues eligible for delivery.
+    /// - `front_id`: Returns the global event id at the head of the queue for a given bit, or
+    ///   [`None`] when that queue is empty.
+    ///
+    /// # Returns
+    ///
+    /// The index of the queue to deliver from, or [`None`] when no eligible queue has a pending
+    /// entry.
+    ///
+    fn smallest_pending_front<F>(mask: usize, mut front_id: F) -> Option<usize>
+    where
+        F: FnMut(usize) -> Option<usize>,
+    {
+        (0..usize::BITS as usize)
+            .filter(|&bit| (mask & (1usize << bit)) != 0)
+            .filter_map(|bit| front_id(bit).map(|id| (bit, id)))
+            .min_by_key(|&(_, id)| id)
+            .map(|(bit, _)| bit)
     }
 
     ///

@@ -212,6 +212,9 @@ fn test() {
     if !crate::hal::mem::test() {
         panic!("memory tests failed");
     }
+    if !crate::event::test() {
+        panic!("event manager tests failed");
+    }
 }
 
 /// Magic value used for in-kernel verification of the kernel arguments mechanism.
