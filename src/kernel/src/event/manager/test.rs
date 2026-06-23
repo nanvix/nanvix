@@ -90,21 +90,22 @@ fn make_inner() -> EventManagerInner {
 ///
 /// # Description
 ///
-/// Enqueues a pending interrupt event on `bit`, stamping it with the next global event id.
+/// Enqueues a pending interrupt event on `bit`, stamping it with the next event sequence number.
 ///
 fn push_interrupt(inner: &mut EventManagerInner, bit: usize) {
     inner.nevents += 1;
     let event: Event = Event::Interrupt(InterruptEvent::VALUES[bit]);
-    inner.pending_interrupts[bit].push_back(EventDescriptor::new(inner.nevents, event));
+    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents as usize, event);
+    inner.pending_interrupts[bit].push_back((inner.nevents, descriptor));
 }
 
 ///
 /// # Description
 ///
-/// Enqueues a pending exception event on `bit`, owned by `pid`, stamping it with the next global
-/// event id. The event manager re-queues exceptions on each delivery until the owner resumes from
-/// them, so a test that does not want continuous re-delivery must clear the slot once observed (see
-/// [`resume_exception`]).
+/// Enqueues a pending exception event on `bit`, owned by `pid`, stamping it with the next event
+/// sequence number. The event manager re-queues exceptions on each delivery until the owner resumes
+/// from them, so a test that does not want continuous re-delivery must clear the slot once observed
+/// (see [`resume_exception`]).
 ///
 fn push_exception(
     inner: &mut EventManagerInner,
@@ -115,12 +116,13 @@ fn push_exception(
     inner.nevents += 1;
     inner.exception_ownership[bit] = Some(pid);
     let event: Event = Event::Exception(ExceptionEvent::VALUES[bit]);
-    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents, event);
+    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents as usize, event);
     // SAFETY: `ExceptionInformation` is plain-old-data: a register snapshot of fixed-width integer
     // fields (`u32` on 32-bit x86, `u64` on x86_64) for which the all-zero bit pattern is a valid
     // value on every supported architecture. The tests only need a placeholder to exercise delivery.
     let info: ExceptionInformation = unsafe { core::mem::zeroed() };
     inner.pending_exceptions[bit].push_back((
+        inner.nevents,
         descriptor,
         ExceptionEventInformation { pid, tid, info },
         Condvar::new(),
@@ -141,38 +143,43 @@ fn resume_exception(inner: &mut EventManagerInner, bit: usize) {
 ///
 /// # Description
 ///
-/// Enqueues a pending process-creation scheduling event, stamping it with the next global event id.
+/// Enqueues a pending process-creation scheduling event, stamping it with the next event sequence
+/// number.
 ///
 fn push_creation(inner: &mut EventManagerInner, pid: ProcessIdentifier) {
     inner.nevents += 1;
     let event: Event = Event::Scheduling(SchedulingEvent::ProcessCreation);
-    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents, event);
+    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents as usize, event);
     let info: ProcessCreationInfo =
         ProcessCreationInfo::new(pid, ProcessIdentifier::KERNEL, ProcessRole::User);
-    inner
-        .pending_scheduling
-        .push_back((descriptor, SchedulingNotification::Creation(info)));
+    inner.pending_scheduling.push_back((
+        inner.nevents,
+        descriptor,
+        SchedulingNotification::Creation(info),
+    ));
 }
 
 ///
 /// # Description
 ///
-/// Enqueues a pending process-termination scheduling event, stamping it with the next global event
-/// id.
+/// Enqueues a pending process-termination scheduling event, stamping it with the next event
+/// sequence number.
 ///
 fn push_termination(inner: &mut EventManagerInner, pid: ProcessIdentifier) {
     inner.nevents += 1;
     let event: Event = Event::Scheduling(SchedulingEvent::ProcessTermination);
-    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents, event);
+    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents as usize, event);
     let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
         pid,
         ExitStatus::ok(),
         ProcessIdentifier::KERNEL,
         ProcessRole::User,
     );
-    inner
-        .pending_scheduling
-        .push_back((descriptor, SchedulingNotification::Termination(info)));
+    inner.pending_scheduling.push_back((
+        inner.nevents,
+        descriptor,
+        SchedulingNotification::Termination(info),
+    ));
 }
 
 ///
@@ -281,7 +288,7 @@ fn test_each_call_delivers_a_single_interrupt() -> bool {
 ///
 /// # Description
 ///
-/// Verifies that scheduling events are delivered in FIFO order by global event id: a process's
+/// Verifies that scheduling events are delivered in FIFO order by event sequence number: a process's
 /// creation event, enqueued before its termination event, is delivered first. This per-process
 /// creation-before-termination invariant is the cross-event ordering guarantee preserved while
 /// making delivery starvation-free.
@@ -457,18 +464,18 @@ fn test_standing_scheduling_event_not_starved_under_interrupt_load() -> bool {
 ///
 /// # Description
 ///
-/// Verifies the FIFO-by-event-id selection rule that underlies starvation-free interrupt and
+/// Verifies the FIFO-by-sequence selection rule that underlies starvation-free interrupt and
 /// exception delivery: among the eligible bits, [`EventManagerInner::smallest_pending_front`] picks
-/// the queue head with the smallest global event id rather than the lowest-numbered bit. This is
-/// the structural property that makes delivery starvation-free, exercised here directly and
+/// the queue head with the smallest event sequence number rather than the lowest-numbered bit. This
+/// is the structural property that makes delivery starvation-free, exercised here directly and
 /// independently of the surrounding `try_wait` machinery (and shared verbatim by both the interrupt
 /// and exception delivery paths).
 ///
-fn test_smallest_pending_front_selects_oldest_id() -> bool {
-    // Bit 1 (low) holds a newer event (id 20); bit 5 (high) holds an older one (id 10). Selection
-    // must pick bit 5, proving a lower-numbered bit does not win merely by being scanned first, the
-    // previous bit-0-first bias.
-    let front_id = |bit: usize| -> Option<usize> {
+fn test_smallest_pending_front_selects_oldest_sequence() -> bool {
+    // Bit 1 (low) holds a newer event (sequence 20); bit 5 (high) holds an older one (sequence
+    // 10). Selection must pick bit 5, proving a lower-numbered bit does not win merely by being
+    // scanned first, the previous bit-0-first bias.
+    let front_seq = |bit: usize| -> Option<u64> {
         match bit {
             1 => Some(20),
             5 => Some(10),
@@ -477,13 +484,13 @@ fn test_smallest_pending_front_selects_oldest_id() -> bool {
     };
 
     let both: usize = (1usize << 1) | (1usize << 5);
-    if EventManagerInner::smallest_pending_front(both, front_id) != Some(5) {
+    if EventManagerInner::smallest_pending_front(both, front_seq) != Some(5) {
         error!("oldest event (bit 5) must be selected ahead of the lower-numbered bit 1");
         return false;
     }
 
     // When only the lower bit is eligible, it is selected.
-    if EventManagerInner::smallest_pending_front(1usize << 1, front_id) != Some(1) {
+    if EventManagerInner::smallest_pending_front(1usize << 1, front_seq) != Some(1) {
         error!("bit 1 must be selected when it is the only eligible bit");
         return false;
     }
@@ -511,12 +518,12 @@ fn test_smallest_pending_front_selects_oldest_id() -> bool {
 ///
 /// # Description
 ///
-/// Verifies that interrupt delivery follows FIFO order by global event id end-to-end: an older
+/// Verifies that interrupt delivery follows FIFO order by event sequence number end-to-end: an older
 /// interrupt enqueued on a high-numbered bit is delivered before a newer interrupt on a
 /// low-numbered bit. The previous bit-0-first scan delivered the low-numbered bit regardless of
-/// age; FIFO-by-id delivers the oldest first.
+/// age; FIFO-by-sequence delivers the oldest first.
 ///
-fn test_interrupt_delivery_is_fifo_by_id() -> bool {
+fn test_interrupt_delivery_is_fifo_by_sequence() -> bool {
     const OLDER_HIGH_BIT: usize = 5;
     const NEWER_LOW_BIT: usize = 1;
 
@@ -557,10 +564,10 @@ fn test_interrupt_delivery_is_fifo_by_id() -> bool {
 /// # Description
 ///
 /// Verifies that an interrupt is not starved by a continuous stream of lower-numbered interrupts: an
-/// interrupt on a high-numbered bit is enqueued first (oldest id), then a lower-numbered interrupt
-/// is enqueued before every delivery. Under the previous bit-0-first scan the low bit would win on
-/// every call and the older interrupt would never be delivered; FIFO-by-id delivers the oldest
-/// within a bounded number of calls.
+/// interrupt on a high-numbered bit is enqueued first (oldest sequence number), then a
+/// lower-numbered interrupt is enqueued before every delivery. Under the previous bit-0-first scan
+/// the low bit would win on every call and the older interrupt would never be delivered;
+/// FIFO-by-sequence delivers the oldest within a bounded number of calls.
 ///
 fn test_oldest_interrupt_not_starved_by_low_bit_load() -> bool {
     const VICTIM_HIGH_BIT: usize = 7;
@@ -596,11 +603,11 @@ fn test_oldest_interrupt_not_starved_by_low_bit_load() -> bool {
 ///
 /// # Description
 ///
-/// Verifies that exception delivery follows FIFO order by global event id end-to-end: an older
+/// Verifies that exception delivery follows FIFO order by event sequence number end-to-end: an older
 /// exception enqueued on a high-numbered bit is delivered before a newer exception on a
 /// low-numbered bit.
 ///
-fn test_exception_delivery_is_fifo_by_id() -> bool {
+fn test_exception_delivery_is_fifo_by_sequence() -> bool {
     const OLDER_HIGH_BIT: usize = 5;
     const NEWER_LOW_BIT: usize = 1;
 
@@ -653,6 +660,71 @@ fn test_oldest_exception_not_starved_by_low_bit_load() -> bool {
     false
 }
 
+///
+/// # Description
+///
+/// Verifies that delivery ordering follows the full-width event sequence number rather than the
+/// truncated [`EventDescriptor`] id, so FIFO order is preserved across the descriptor's id wrap
+/// boundary (issue #2674). [`EventDescriptor`] stores its id in a narrow field (24 bits on the
+/// kernel's 32-bit target), so an event generated just past the wrap reads back a *smaller* id than
+/// an older one generated just before it. Ordering by the descriptor id would deliver the newer
+/// event first; ordering by the `u64` sequence number delivers the older one first, as it must.
+///
+fn test_delivery_orders_by_sequence_across_id_wrap() -> bool {
+    const OLDER_HIGH_BIT: usize = 7;
+    const NEWER_LOW_BIT: usize = 1;
+
+    // Width of the `EventDescriptor` id field: the top bit is reserved and the low `BIT_LENGTH` bits
+    // hold the event tag, leaving the rest for the id. The id read back from a descriptor is the
+    // generation sequence number truncated to this many bits.
+    let id_bits: u32 = usize::BITS - 1 - Event::BIT_LENGTH as u32;
+    let wrap: u64 = 1u64 << id_bits;
+
+    let mut inner: EventManagerInner = make_inner();
+
+    // Arrange for the next two generated events to straddle the id wrap: the older event lands on
+    // the last id before the wrap (`wrap - 1`) and the newer event on the wrapped id (`0`).
+    inner.nevents = wrap - 2;
+
+    // Older event (high bit): sequence `wrap - 1`, descriptor id `wrap - 1` (the maximum).
+    push_interrupt(&mut inner, OLDER_HIGH_BIT);
+    // Newer event (low bit): sequence `wrap`, descriptor id `0` (wrapped).
+    push_interrupt(&mut inner, NEWER_LOW_BIT);
+
+    // Confirm the wrap actually occurred, otherwise the test would not exercise the regression.
+    let older_id: usize = inner.pending_interrupts[OLDER_HIGH_BIT]
+        .front()
+        .map(|(_, descriptor)| descriptor.id())
+        .unwrap_or(0);
+    let newer_id: usize = inner.pending_interrupts[NEWER_LOW_BIT]
+        .front()
+        .map(|(_, descriptor)| descriptor.id())
+        .unwrap_or(0);
+    if older_id <= newer_id {
+        error!(
+            "test setup did not straddle the id wrap (older_id={}, newer_id={})",
+            older_id, newer_id
+        );
+        return false;
+    }
+
+    // The older event must be delivered first even though its descriptor id is larger.
+    if deliver_once(&mut inner) != Some(MessageType::Interrupt) {
+        error!("expected an interrupt to be delivered");
+        return false;
+    }
+    if !inner.pending_interrupts[OLDER_HIGH_BIT].is_empty() {
+        error!("the older interrupt must be delivered first across the id wrap");
+        return false;
+    }
+    if inner.pending_interrupts[NEWER_LOW_BIT].is_empty() {
+        error!("the newer interrupt was delivered out of order across the id wrap");
+        return false;
+    }
+
+    true
+}
+
 //==================================================================================================
 // Test Runner
 //==================================================================================================
@@ -669,10 +741,11 @@ pub fn test() -> bool {
     passed &= run_test!(test_cross_class_drainable_events_all_delivered);
     passed &= run_test!(test_all_three_event_classes_make_progress);
     passed &= run_test!(test_standing_scheduling_event_not_starved_under_interrupt_load);
-    passed &= run_test!(test_smallest_pending_front_selects_oldest_id);
-    passed &= run_test!(test_interrupt_delivery_is_fifo_by_id);
+    passed &= run_test!(test_smallest_pending_front_selects_oldest_sequence);
+    passed &= run_test!(test_interrupt_delivery_is_fifo_by_sequence);
     passed &= run_test!(test_oldest_interrupt_not_starved_by_low_bit_load);
-    passed &= run_test!(test_exception_delivery_is_fifo_by_id);
+    passed &= run_test!(test_exception_delivery_is_fifo_by_sequence);
     passed &= run_test!(test_oldest_exception_not_starved_by_low_bit_load);
+    passed &= run_test!(test_delivery_orders_by_sequence_across_id_wrap);
     passed
 }
