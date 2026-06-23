@@ -34,35 +34,6 @@ pub struct UserFrame {
     addr: FrameAddress,
 }
 
-#[cfg(verus_keep_ghost)]
-verus! {
-
-use crate::hal::mem::spec_page_size;
-use crate::mm::phys::FrameAllocView;
-
-/// Abstract view of a user frame: the physical address of the owned frame.
-impl View for UserFrame {
-    type V = int;
-
-    closed spec fn view(&self) -> int {
-        self.addr@
-    }
-}
-
-/// Abstract view of the user page pool: the frame partition it draws from.
-///
-/// The pool carries no spec-readable state of its own — its real state is the global frame
-/// allocator — so its view is uninterpreted. The cross-call transition is realized by the
-/// proving-phase ghost token over the singleton allocator; the trust obligation for the two
-/// state-affecting operations is tracked by `Upool::new`/`Upool::alloc` being `external_body`.
-impl View for Upool {
-    type V = FrameAllocView;
-
-    uninterp spec fn view(&self) -> FrameAllocView;
-}
-
-} // verus!
-
 #[verus_verify]
 impl UserFrame {
     ///

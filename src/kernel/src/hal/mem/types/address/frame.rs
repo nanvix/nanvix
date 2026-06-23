@@ -33,36 +33,6 @@ use ::sys::error::Error;
 #[derive(Clone, Copy)]
 pub struct FrameAddress(PageAligned<PhysicalAddress>);
 
-#[cfg(verus_keep_ghost)]
-verus! {
-
-// The architectural page size, delegating to the `arch` crate's verified `PAGE_SIZE` constant.
-// Formerly an `uninterp spec fn` paired with a placeholder `assume_specification[PAGE_SIZE]`; now
-// that `arch` carries a real verified spec for `PAGE_SIZE`, that placeholder is superseded and this
-// definition names the same concrete value the proofs already relied on.
-pub open spec fn spec_page_size() -> int {
-    ::arch::mem::PAGE_SIZE as int
-}
-
-impl View for FrameAddress
-{
-    type V = int;
-
-    closed spec fn view(&self) -> int
-    {
-        self.0@
-    }
-}
-
-impl FrameAddress {
-    pub open spec fn inv(&self) -> bool
-    {
-        self@ % spec_page_size() == 0
-    }
-}
-
-}
-
 //==================================================================================================
 // Implementations
 //==================================================================================================

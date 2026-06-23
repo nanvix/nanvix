@@ -212,25 +212,9 @@ impl PageAligned<PhysicalAddress> {
     }
 }
 
-//==================================================================================================
-// Material for verification
-//==================================================================================================
-
-#[cfg(verus_keep_ghost)]
-verus! {
-
-use crate::hal::mem::spec_page_size;
-
-impl<T: Address> PageAligned<T>
-{
-    pub open spec fn inv(&self) -> bool
-    {
-        self@ % spec_page_size() == 0
-    }
-}
-
-}
-
+// `View` is a supertrait of `Address`, which `PageAligned<T>` implements in exec code, so this
+// impl must be present in normal builds too — it stays in an ungated `verus!` block (the spec
+// `inv` lives in `page.spec.rs`).
 verus! {
 
 impl<T: Address> View for PageAligned<T>

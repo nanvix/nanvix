@@ -1,3 +1,5 @@
+use crate::hal::mem::spec_page_size;
+
 verus! {
 
 // `PAGE_ALIGNMENT` is an external (arch-crate) constant. Model it so that verified
@@ -35,5 +37,13 @@ pub assume_specification<T: Address>[ <crate::hal::mem::PageAligned<T> as ::core
     ensures
         (*result)@ == a@,
 ;
+
+impl<T: Address> PageAligned<T>
+{
+    pub open spec fn inv(&self) -> bool
+    {
+        self@ % spec_page_size() == 0
+    }
+}
 
 } // verus!

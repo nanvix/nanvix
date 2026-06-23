@@ -42,20 +42,6 @@ pub struct KernelFrame {
     base: FrameAddress,
 }
 
-#[cfg(verus_keep_ghost)]
-verus! {
-
-/// Abstract view of a kernel frame: the physical address of the owned frame.
-impl View for KernelFrame {
-    type V = int;
-
-    closed spec fn view(&self) -> int {
-        self.base@
-    }
-}
-
-} // verus!
-
 // Dependency contract for the manager layer: wrapping a `FrameAddress` produces a handle whose
 // abstract address is the same physical frame.
 #[verus_verify]

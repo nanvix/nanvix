@@ -13,4 +13,13 @@ impl KernelFrame {
     }
 }
 
+/// Abstract view of a kernel frame: the physical address of the owned frame.
+impl View for KernelFrame {
+    type V = int;
+
+    closed spec fn view(&self) -> int {
+        self.base@
+    }
+}
+
 } // verus!
