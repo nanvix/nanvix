@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("number.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("number.proof.rs");
+
 use crate::mem;
 
 //==================================================================================================
@@ -17,6 +23,7 @@ use crate::mem;
 /// A type that represents a frame number.
 /// A frame number is in the range from `0` to [`Self::MAX`] (inclusive).
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct FrameNumber(usize);
 
@@ -24,6 +31,7 @@ pub struct FrameNumber(usize);
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl FrameNumber {
     /// The maximum frame number.
     ///
@@ -43,6 +51,7 @@ impl FrameNumber {
         mem::MAX_ADDRESS / mem::FRAME_SIZE - 1
     };
 
+    #[verus_spec(ensures Self::NULL@ == 0)]
     pub const NULL: Self = Self(0);
 
     ///
@@ -59,6 +68,12 @@ impl FrameNumber {
     /// - `Some(`[`FrameNumber`]`)`: Upon success.
     /// - `None`: If the value is greater than [`Self::MAX`].
     ///
+    #[verus_spec(result =>
+        ensures
+            value as int <= Self::spec_max() ==> (result is Some
+                && (result->Some_0)@ == value as int),
+            value as int > Self::spec_max() ==> result is None,
+    )]
     pub fn from_raw_value(value: usize) -> Option<Self> {
         if value > Self::MAX {
             return None;
@@ -76,7 +91,13 @@ impl FrameNumber {
     ///
     /// The raw value of the target [`FrameNumber`].
     ///
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+            0 <= self@ <= Self::spec_max(),
+    )]
     pub fn into_raw_value(self) -> usize {
+        proof! { use_type_invariant(self); }
         self.0
     }
 }

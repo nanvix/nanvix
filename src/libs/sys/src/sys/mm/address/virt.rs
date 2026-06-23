@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("virt.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("virt.proof.rs");
+
 use crate::{
     error::{
         Error,
@@ -26,6 +32,7 @@ use crate::{
 ///
 /// A type that represents a virtual address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtualAddress(usize);
 
@@ -36,7 +43,12 @@ pub struct VirtualAddress(usize);
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl VirtualAddress {
+    #[verus_spec(result =>
+        ensures
+            result@ == value as int,
+    )]
     pub const fn new(value: usize) -> Self {
         Self(value)
     }
@@ -50,10 +62,16 @@ impl VirtualAddress {
     ///
     /// - `raw_addr`: The raw value.
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == raw_addr as int,
+    )]
     pub fn from_raw_value(raw_addr: usize) -> Self {
         VirtualAddress::new(raw_addr)
     }
+}
 
+impl VirtualAddress {
     ///
     /// # Description
     ///
@@ -236,6 +254,10 @@ impl Address for VirtualAddress {
         self.0
     }
 
+    fn clone_address(&self) -> Self {
+        VirtualAddress(self.0)
+    }
+
     fn as_ptr(&self) -> *const u8 {
         self.0 as *const u8
     }
@@ -289,3 +311,20 @@ impl From<VirtualAddress> for usize {
         value.0
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+verus! {
+
+impl View for VirtualAddress {
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0 as int
+    }
+}
+
+} // end verus!

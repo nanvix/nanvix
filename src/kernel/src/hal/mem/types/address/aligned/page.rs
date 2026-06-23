@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("page.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("page.proof.rs");
+
 use crate::hal::mem::{
     types::address::{
         PhysicalAddress,
@@ -26,11 +32,20 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy)]
 pub struct PageAligned<T: Address>(T);
 
+#[verus_verify]
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
+    #[verus_spec(ret =>
+        ensures
+            match ret {
+                Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
+                Err(e) => !spec_aligned(addr@) && e.code == ErrorCode::BadAddress,
+            },
+    )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
         if !addr.is_aligned(PAGE_ALIGNMENT)? {
@@ -45,9 +60,14 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
+#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
+    }
+
+    fn clone_address(&self) -> Self {
+        PageAligned(self.0.clone_address())
     }
 
     ///
@@ -190,4 +210,37 @@ impl PageAligned<PhysicalAddress> {
         // Safety: the following unwrap is safe because the address is already page-aligned.
         PageAligned::from_address(self.0.into_virtual_address()).unwrap()
     }
+}
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+use crate::hal::mem::spec_page_size;
+
+impl<T: Address> PageAligned<T>
+{
+    pub open spec fn inv(&self) -> bool
+    {
+        self@ % spec_page_size() == 0
+    }
+}
+
+}
+
+verus! {
+
+impl<T: Address> View for PageAligned<T>
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
 }

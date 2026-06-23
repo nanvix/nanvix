@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("phys.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("phys.proof.rs");
+
 use crate::hal::mem::types::address::{
     Address,
     FrameAddress,
@@ -31,6 +37,7 @@ use ::sys::{
 ///
 /// A type that represents a physical address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PhysicalAddress(VirtualAddress);
 
@@ -51,57 +58,8 @@ impl PhysicalAddress {
         Ok(Self(addr))
     }
 
-    ///
-    /// # Description
-    ///
-    /// Constructs a physical address from a memory-mapped I/O address.
-    ///
-    /// # Parameters
-    ///
-    /// - `addr`: The memory-mapped I/O address.
-    ///
-    /// # Return Values
-    ///
-    /// Upon success, a physical address associated with the given memory-mapped I/O address is
-    /// returned. Upon failure, an error is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
-    ///
-    pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
-        Ok(Self(addr))
-    }
-
     pub fn into_virtual_address(self) -> VirtualAddress {
         self.0
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Constructs a [`PhysicalAddress`] from a [`FrameNumber`].
-    ///
-    /// # Parameters
-    ///
-    /// - `frame`: The frame number.
-    ///
-    /// # Returns
-    ///
-    /// A [`PhysicalAddress`] associated with the given `frame_number`.
-    ///
-    pub fn from_number(frame: FrameNumber) -> Self {
-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
-        Self(VirtualAddress::new(addr))
-    }
-
-    pub fn into_frame_number(self) -> FrameNumber {
-        let raw_addr: usize = self.0.into_raw_value();
-        let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
-        // The unwrap below never panics: `FrameNumber::MAX` is the number of the frame that
-        // contains `MAX_ADDRESS`, so `raw_addr >> FRAME_SHIFT <= FrameNumber::MAX` holds for
-        // every address in the space.
-        FrameNumber::from_raw_value(frame_number).unwrap()
     }
 
     ///
@@ -125,6 +83,97 @@ impl PhysicalAddress {
     pub fn from_into_frame_address(frame_addr: FrameAddress) -> Self {
         let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
         Self(VirtualAddress::new(raw_addr))
+    }
+}
+
+// Verified conversions between a physical address, frame numbers, and MMIO addresses.
+#[verus_verify]
+impl PhysicalAddress {
+    ///
+    /// # Description
+    ///
+    /// Constructs a physical address from a memory-mapped I/O address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: The memory-mapped I/O address.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, a physical address associated with the given memory-mapped I/O address is
+    /// returned. Upon failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
+    ///
+    // Identity wrapping that deliberately bypasses the physical-RAM-range validator: MMIO
+    // addresses may legally lie outside tracked RAM. On success the abstract address is unchanged.
+    #[verus_spec(result =>
+        requires
+            spec_frame_number(addr@) <= spec_max_frame_number(),
+        ensures
+            result is Ok,
+            (result->Ok_0)@ == addr@,
+            (result->Ok_0).inv(),
+    )]
+    pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
+        Ok(Self(addr))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`PhysicalAddress`] from a [`FrameNumber`].
+    ///
+    /// # Parameters
+    ///
+    /// - `frame`: The frame number.
+    ///
+    /// # Returns
+    ///
+    /// A [`PhysicalAddress`] associated with the given `frame_number`.
+    ///
+    // Total constructor: the result is the frame's base address, hence `FRAME_SIZE`-aligned.
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_from_number(spec_frame_raw_value(frame)),
+    )]
+    // VERUS REWRITE: the original `frame.into_raw_value() * mem::FRAME_SIZE` is split so the
+    // `into_raw_value()` postcondition (`0 <= self@ <= spec_max()`) lands in context *before* the
+    // overflow-bearing multiply, and `lemma_from_number_no_overflow` can be invoked between them.
+    // The bound cannot be obtained via `use_type_invariant(frame)` because `FrameNumber`'s type
+    // invariant is private to the `arch` crate (Verus: "missing type invariant function"), so the
+    // intermediate `addr_raw` binding is mandatory. Same value, same operations, same complexity.
+    // Reproducer: verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro/from_number.rs
+    pub fn from_number(frame: FrameNumber) -> Self {
+        let addr_raw: usize = frame.into_raw_value();
+        proof! {
+            lemma_from_number_no_overflow(frame);
+        }
+        let addr: usize = addr_raw * mem::FRAME_SIZE;
+        Self(VirtualAddress::new(addr))
+    }
+
+    // Total projection: identifies the frame containing the address, `self@ / FRAME_SIZE`
+    // (equivalently `self@ >> FRAME_SHIFT`). This is total for *every* address: the raw value is a
+    // `usize`, so `self@ <= usize::MAX`, and with the corrected `FrameNumber::MAX` (the number of
+    // the frame containing `MAX_ADDRESS`) the shifted index never exceeds `FrameNumber::spec_max()`,
+    // so the unwrap cannot panic. No precondition is required.
+    #[verus_spec(result =>
+        ensures
+            spec_frame_raw_value(result) == spec_frame_number(self@),
+    )]
+    pub fn into_frame_number(self) -> FrameNumber {
+        let raw_addr: usize = self.0.into_raw_value();
+        let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
+        proof! {
+            vstd::arithmetic::power2::lemma2_to64();
+            lemma_frame_index(self, raw_addr, mem::FRAME_SHIFT, frame_number);
+        }
+        // The unwrap never panics: `frame_number == self@ / FRAME_SIZE <= FrameNumber::MAX` for
+        // every address in the space (see `lemma_frame_index`).
+        FrameNumber::from_raw_value(frame_number).unwrap()
     }
 }
 
@@ -227,6 +276,19 @@ impl Address for PhysicalAddress {
         self.0.into_raw_value()
     }
 
+    // VERUS REWRITE (interface addition): `clone_address` is a *required* method of the
+    // `sys::mm::Address` trait, which gained it during the verus pipeline (it carries a verified
+    // contract `result@ == self@` that the bare `derive(Clone)`/`Clone::clone` supertrait cannot
+    // express — `Clone` has no Verus spec, so generic `Address` callers could not duplicate an
+    // address while retaining the abstract-value guarantee). The trait method lives in the
+    // out-of-scope `sys` crate (`src/libs/sys/src/sys/mm/address/mod.rs:88`); because
+    // `PhysicalAddress` implements `Address`, this impl method is mandatory and cannot be removed
+    // here. It is a view-preserving clone — same value, same complexity as a `Copy`. Recorded in
+    // verus-ai-logs/nanvix-phys-hal-phys-address/verification_todo.md.
+    fn clone_address(&self) -> Self {
+        PhysicalAddress(self.0)
+    }
+
     fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
     }
@@ -241,3 +303,21 @@ impl core::fmt::Debug for PhysicalAddress {
         write!(f, "{:?}", self.0)
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+verus! {
+
+impl View for PhysicalAddress
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+} // end verus!

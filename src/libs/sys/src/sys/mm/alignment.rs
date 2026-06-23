@@ -30,11 +30,13 @@ use crate::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
+#[verus_verify(external_derive)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Alignment {
     /// Aligned to 4 bytes.
@@ -141,6 +143,13 @@ impl From<Alignment> for usize {
         align as usize
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+#[cfg(verus_keep_ghost)]
+include!("alignment.spec.rs");
 
 //==================================================================================================
 // Standalone Functions

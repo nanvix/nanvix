@@ -20,6 +20,7 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy)]
 pub struct PageTableAligned<T: Address>(T);
 
@@ -38,6 +39,10 @@ impl<T: Address> PageTableAligned<T> {
 impl<T: Address> Address for PageTableAligned<T> {
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
+    }
+
+    fn clone_address(&self) -> Self {
+        PageTableAligned(self.0.clone_address())
     }
 
     ///
@@ -166,3 +171,23 @@ impl<T: Address> Ord for PageTableAligned<T> {
         self.0.cmp(other)
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+use ::vstd::prelude::*;
+
+verus! {
+
+impl<T: Address + View<V = int>> View for PageTableAligned<T>
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+} // end verus!

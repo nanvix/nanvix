@@ -5,6 +5,12 @@
 // Modules
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("mod.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("mod.proof.rs");
+
 mod virt;
 
 //==================================================================================================
@@ -26,9 +32,10 @@ use crate::{
 // Traits
 //==================================================================================================
 
+#[verus_verify]
 pub trait Address
 where
-    Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord,
+    Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
 {
     ///
     /// # Description
@@ -44,9 +51,41 @@ where
     /// - `Ok(Self)`: The new address.
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(a) => a@ == raw_addr as int,
+                Err(e) => e.code == crate::error::ErrorCode::BadAddress,
+            },
+    )]
     fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
 
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+    )]
     fn into_raw_value(self) -> usize;
+
+    ///
+    /// # Description
+    ///
+    /// Returns a copy of the target [`Address`] that denotes the same address.
+    ///
+    /// This is a view-preserving clone: the returned address has the same
+    /// abstract value as the receiver. It exists so that generic callers can
+    /// duplicate an [`Address`] while retaining the verification guarantee that
+    /// the copy equals the original — something the bare [`Clone`] supertrait
+    /// (which has no Verus contract) cannot provide.
+    ///
+    /// # Returns
+    ///
+    /// A copy of the target [`Address`].
+    ///
+    #[verus_spec(result =>
+        ensures
+            result@ == self@,
+    )]
+    fn clone_address(&self) -> Self;
     ///
     /// # Description
     ///
@@ -93,6 +132,11 @@ where
     /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_spec(result =>
+        ensures
+            result matches Ok(aligned)
+                && aligned == spec_addr_is_aligned(self@, align),
+    )]
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
 
     ///
