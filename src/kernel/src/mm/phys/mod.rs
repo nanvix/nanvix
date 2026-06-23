@@ -33,8 +33,6 @@ use ::alloc::collections::LinkedList;
 use ::arch::mem;
 use ::bitmap::Bitmap;
 use ::sys::error::Error;
-#[cfg(verus_keep_ghost)]
-use ::vstd::prelude::*;
 
 // Include specifications.
 #[cfg(verus_keep_ghost)]

@@ -889,9 +889,7 @@ impl Inner {
                     }
                     #[cfg(not(verus_keep_ghost))]
                     let conflicting_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
-                    #[cfg(not(verus_keep_ghost))]
                     let region_start: usize = region.start().into_raw_value();
-                    #[cfg(not(verus_keep_ghost))]
                     let region_end: usize = region_start.saturating_add(region.size());
                     let reason: &str = "frame is already allocated";
                     error!(
