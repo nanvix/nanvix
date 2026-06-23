@@ -24,7 +24,8 @@ STANDALONE_GUEST_BINARIES := \
 	fork-exec-vfsd-target fork-exec-write-test fork-exec-write-target \
 	thread-vfs-test fork-exec-loop-test fork-exec-loop-target socket-fork-rust \
 	fork-exec-pipe-bulk-test fork-exec-pipe-bulk-target \
-	fork-exec-pipe-loop-test fork-exec-pipe-loop-target
+	fork-exec-pipe-loop-test fork-exec-pipe-loop-target \
+	fork-exec-argv-space-test fork-exec-argv-space-target
 
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages

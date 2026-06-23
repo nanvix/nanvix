@@ -93,6 +93,12 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/fork-exec-pipe-loop-test-seed
 	@cp -f $(BINARIES_DIR)/fork-exec-pipe-loop-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-pipe-loop-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-pipe-loop-test.img $(BINARIES_DIR)/fork-exec-pipe-loop-test-seed/
+	# Build the ramfs image for the execv() space-argument test. It contains the target at the
+	# filesystem root as "target"; fork-exec-argv-space-test forks and the child execs it passing an
+	# argument that contains an embedded space, which the target verifies arrives verbatim.
+	@mkdir -p $(BINARIES_DIR)/fork-exec-argv-space-test-seed
+	@cp -f $(BINARIES_DIR)/fork-exec-argv-space-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-argv-space-test-seed/target
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-argv-space-test.img $(BINARIES_DIR)/fork-exec-argv-space-test-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments (Linux only).
