@@ -83,14 +83,16 @@ This command validates prerequisites and configures the development environment:
 5. Installs Python 3.12 via winget (if not already installed).
 6. Installs GNU Make via winget (if not already installed).
 7. Checks for Visual Studio Build Tools (warns if missing).
-8. Installs the Rust toolchain via winget (if not already installed).
-9. Configures the repository Git hooks from `.githooks`.
+8. Installs LLVM/Clang via winget (if not already installed).
+9. Installs the Rust toolchain via winget (if not already installed).
+10. Configures the repository Git hooks from `.githooks`.
 
 > **Note:** If winget is not available, install the prerequisites manually before running setup:
 >
 > - Git: `winget install Git.Git` (see [git-scm.com](https://git-scm.com))
 > - Python 3.10+: `winget install Python.Python.3.12` (see [python.org](https://www.python.org))
 > - GNU Make: `winget install ezwinports.make`
+> - LLVM/Clang: `winget install LLVM.LLVM`
 > - Rust: `winget install Rustlang.Rustup` (see [rustup.rs](https://rustup.rs))
 
 ---

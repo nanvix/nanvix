@@ -118,6 +118,9 @@ Available build parameters:
 
 # Run standalone integration tests on Windows.
 .\z.ps1 build -- run-nanvix-tests
+
+# Run the ported POSIX C test suites on Windows (requires LLVM/Clang; see setup-windows.md).
+.\z.ps1 build -- run-posix-tests
 ```
 
 ## Formal Verification with Verus
