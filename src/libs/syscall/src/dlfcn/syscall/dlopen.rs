@@ -26,7 +26,10 @@ use ::spin::{
     Mutex,
     MutexGuard,
 };
-use ::sys::error::Error;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //===================================================================================================
 // dlopen()
@@ -167,12 +170,19 @@ fn load_all_dependencies(
         dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
         new_dlhandle: &DlHandle,
         new_dlfile: &mut MutexGuard<'_, DynamicLibrary>,
+        ancestors: &mut BTreeMap<DlHandle, String>,
     ) -> Result<(), Error> {
         // Snapshot the loader's `DT_RUNPATH` entries so they are visible to
         // `resolve_library_path` while probing every dependency below. The
         // `DynamicLibrary` mutex is borrowed throughout, so this avoids
         // re-borrowing it per call.
         let runpaths: Vec<String> = new_dlfile.runpaths().to_vec();
+
+        // Snapshot the current library's own name so it can be (a) recorded as
+        // an ancestor for the recursive frames below and (b) compared against
+        // each dependency to detect a `DT_NEEDED` self-cycle, both without
+        // re-locking the (already held) `DynamicLibrary` mutex.
+        let self_name: String = new_dlfile.name().to_string();
 
         // Collect the name of all dependencies.
         let mut dependencies: Vec<String> = new_dlfile
@@ -182,13 +192,46 @@ fn load_all_dependencies(
             .collect();
 
         // Bind to already loaded dependencies and remove them from the list.
+        //
+        // The closure below calls `dlfile.lock()` on every other entry in the
+        // registry while looking for a matching name. Those locks must skip
+        // BOTH the current library (`new_dlhandle`) AND every ancestor still
+        // held by an outer recursive frame — otherwise any non-trivial
+        // recursive load (e.g. `libA → libB`, and especially diamond graphs
+        // like the one below) deadlocks:
+        //
+        //   dlopen(libdiamond.so)                  // holds libdiamond lock
+        //     -> recurse into libright.so          // also holds libright lock
+        //          -> retain() iterates dlfiles    // tries to lock libdiamond
+        //             ^ blocks forever, libdiamond is still held by the
+        //               outer frame.
+        //
+        // What this `retain` legitimately consolidates is a dependency that a
+        // PRIOR, already-finished iteration of an OUTER frame loaded. In the
+        // classic diamond
+        //
+        //   libdiamond.so -> libleft.so  -> libbase.so
+        //                 -> libright.so -> libbase.so
+        //
+        // libdiamond finishes libleft first (recursing in and loading
+        // libbase), then starts libright's frame; libright's `retain` then
+        // sees libbase already resident and binds libright's `libbase` edge to
+        // that single shared instance here. (The other shape — a sibling
+        // pulled in LATER within the *same* frame's own dependency list — is
+        // caught by the re-check in the load loop below, not here.)
+        //
+        // Skipping ancestors by handle is safe: the only dependency that can
+        // legitimately resolve to an ancestor is a `DT_NEEDED` cycle, which is
+        // detected and rejected explicitly in the load loop below (see the
+        // `self_name`/`ancestors` cycle check), so it never reaches this scan.
         dependencies.retain(|dependency| {
             // Resolve bare name so we can match against loaded libraries
             // that were opened with a full path.
             let resolved_dep: String = super::resolve_library_path(dependency, Some(&runpaths));
             for (dlhandle, dlfile) in dlfiles.iter() {
-                // Check if need to skip the dynamic library itself.
-                if dlhandle == new_dlhandle {
+                // Skip the dynamic library itself and any ancestor held by
+                // an outer frame's lock — locking them would deadlock.
+                if dlhandle == new_dlhandle || ancestors.contains_key(dlhandle) {
                     continue;
                 }
 
@@ -223,6 +266,73 @@ fn load_all_dependencies(
             // Resolve bare library names to full paths using search directories.
             let resolved_dep: String = super::resolve_library_path(&dependency, Some(&runpaths));
 
+            // Reject `DT_NEEDED` cycles before they recurse without bound. A
+            // dependency that resolves to the current library or to any
+            // ancestor still being loaded by an outer recursive frame cannot be
+            // followed: the ancestor's mutex is held, so we can neither recurse
+            // into it nor lock it to consolidate onto it, and skipping it by
+            // handle (as `retain` and the re-check do) would just open a fresh
+            // copy on a new handle and recurse forever. Cycles in `DT_NEEDED`
+            // are pathological — no sane toolchain emits them — so reject the
+            // load cleanly; `dlopen` then rolls back every entry added during
+            // this call.
+            if self_name == dependency
+                || self_name == resolved_dep
+                || ancestors
+                    .values()
+                    .any(|name| name == &dependency || name == &resolved_dep)
+            {
+                let reason: &str = "cyclic DT_NEEDED dependency";
+                ::syslog::warn!(
+                    "load_all_dependencies_recursive(): {} (dependency '{}')",
+                    reason,
+                    dependency
+                );
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            }
+
+            // Re-check the registry before opening: an EARLIER iteration of
+            // THIS frame's own load loop may have already loaded this exact
+            // dependency transitively. `retain` above runs only once, at frame
+            // entry, before any sibling is processed, so it cannot see a
+            // sibling that a later-processed sibling pulls in. Concretely, when
+            // a parent directly `DT_NEEDED`s both `libX` and `libbase` and
+            // `libX -> libbase`:
+            //
+            //   libdiamond.so -> libright.so -> libbase.so   (processed first)
+            //                 -> libbase.so                  (direct edge)
+            //
+            // processing `libright` loads `libbase`; when the loop reaches
+            // libdiamond's own direct `libbase` edge it is already resident and
+            // must be bound here, not re-opened. (dlfcn-diamond-c builds
+            // libdiamond with exactly this direct `libbase` edge to exercise
+            // this path.) Without this check the loader would open `libbase` a
+            // second time — two distinct in-memory copies with two private
+            // `unique_counter`s — or trip the `unreachable!()` below if the VFS
+            // recycles the underlying file descriptor.
+            let already_loaded: Option<Arc<Mutex<DynamicLibrary>>> =
+                dlfiles.iter().find_map(|(dlhandle, dlfile)| {
+                    if dlhandle == new_dlhandle || ancestors.contains_key(dlhandle) {
+                        return None;
+                    }
+                    let loaded_file: spin::MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+                    let loaded_name: &str = loaded_file.name();
+                    if loaded_name == dependency.as_str() || loaded_name == resolved_dep {
+                        Some(dlfile.clone())
+                    } else {
+                        None
+                    }
+                });
+            if let Some(existing) = already_loaded {
+                ::syslog::debug!(
+                    "load_all_dependencies_recursive(): dependency '{}' loaded transitively \
+                     during this dlopen call; binding to existing copy",
+                    dependency
+                );
+                new_dlfile.bind_dependency(dependency, existing)?;
+                continue;
+            }
+
             // Open and pre-load the dynamic library file.
             let dep_dlfile: DynamicLibrary = DynamicLibrary::open(&resolved_dep)?;
             let handle: DlHandle = dep_dlfile.handle();
@@ -235,9 +345,16 @@ fn load_all_dependencies(
 
             new_dlfile.bind_dependency(dependency.clone(), dep_dlfile.clone())?;
 
-            // Load dependencies of the new dynamic library file.
+            // Load dependencies of the new dynamic library file. Record the
+            // current library as an ancestor (keyed by handle, valued by its
+            // name) so the recursive frame neither tries to lock our still-held
+            // mutex (would deadlock on diamond DT_NEEDED graphs) nor mistakes a
+            // cycle back to us for a brand-new library.
+            ancestors.insert(*new_dlhandle, self_name.clone());
             let mut dlfile: MutexGuard<'_, DynamicLibrary> = dep_dlfile.lock();
-            load_all_dependencies_recursive(dlfiles, &handle, &mut dlfile)?;
+            let result = load_all_dependencies_recursive(dlfiles, &handle, &mut dlfile, ancestors);
+            ancestors.remove(new_dlhandle);
+            result?;
         }
 
         Ok(())
@@ -245,7 +362,8 @@ fn load_all_dependencies(
 
     let mut new_dlfile = new_dlfile.lock();
     let new_dlhandle = new_dlfile.handle();
-    load_all_dependencies_recursive(dlfiles, &new_dlhandle, &mut new_dlfile)?;
+    let mut ancestors: BTreeMap<DlHandle, String> = BTreeMap::new();
+    load_all_dependencies_recursive(dlfiles, &new_dlhandle, &mut new_dlfile, &mut ancestors)?;
 
     Ok(())
 }
