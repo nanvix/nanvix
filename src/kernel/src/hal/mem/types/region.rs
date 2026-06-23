@@ -199,7 +199,7 @@ impl<T: Address> MemoryRegion<T> {
 
     /// Returns the first valid address that lies in the target memory region.
     pub fn start(&self) -> T {
-        self.start.clone()
+        self.start
     }
 
     /// Returns the size of the target memory region.

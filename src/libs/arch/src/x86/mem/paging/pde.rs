@@ -94,7 +94,9 @@ impl PageDirectoryEntryFlags {
             page_size,
         }
     }
+}
 
+impl PageDirectoryEntryFlags {
     ///
     /// # Description
     ///
@@ -264,7 +266,9 @@ pub struct PageDirectoryEntry {
 impl PageDirectoryEntry {
     /// Size in bytes of the hardware page directory entry representation (32-bit encoded value).
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
+}
 
+impl PageDirectoryEntry {
     ///
     /// # Description
     ///
@@ -282,7 +286,9 @@ impl PageDirectoryEntry {
     pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
         Self { flags, frame }
     }
+}
 
+impl PageDirectoryEntry {
     ///
     /// # Description
     ///
@@ -372,7 +378,9 @@ impl PageDirectoryEntry {
     /// The physical address.
     ///
     pub fn frame_address(&self) -> usize {
-        self.frame.into_raw_value() << crate::mem::FRAME_SHIFT
+        let raw: usize = self.frame.into_raw_value();
+
+        raw << crate::mem::FRAME_SHIFT
     }
 
     ///

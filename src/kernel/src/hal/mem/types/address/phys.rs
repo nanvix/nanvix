@@ -51,57 +51,8 @@ impl PhysicalAddress {
         Ok(Self(addr))
     }
 
-    ///
-    /// # Description
-    ///
-    /// Constructs a physical address from a memory-mapped I/O address.
-    ///
-    /// # Parameters
-    ///
-    /// - `addr`: The memory-mapped I/O address.
-    ///
-    /// # Return Values
-    ///
-    /// Upon success, a physical address associated with the given memory-mapped I/O address is
-    /// returned. Upon failure, an error is returned instead.
-    ///
-    /// # Safety
-    ///
-    /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
-    ///
-    pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
-        Ok(Self(addr))
-    }
-
     pub fn into_virtual_address(self) -> VirtualAddress {
         self.0
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Constructs a [`PhysicalAddress`] from a [`FrameNumber`].
-    ///
-    /// # Parameters
-    ///
-    /// - `frame`: The frame number.
-    ///
-    /// # Returns
-    ///
-    /// A [`PhysicalAddress`] associated with the given `frame_number`.
-    ///
-    pub fn from_number(frame: FrameNumber) -> Self {
-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
-        Self(VirtualAddress::new(addr))
-    }
-
-    pub fn into_frame_number(self) -> FrameNumber {
-        let raw_addr: usize = self.0.into_raw_value();
-        let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
-        // The unwrap below never panics: `FrameNumber::MAX` is the number of the frame that
-        // contains `MAX_ADDRESS`, so `raw_addr >> FRAME_SHIFT <= FrameNumber::MAX` holds for
-        // every address in the space.
-        FrameNumber::from_raw_value(frame_number).unwrap()
     }
 
     ///
@@ -125,6 +76,79 @@ impl PhysicalAddress {
     pub fn from_into_frame_address(frame_addr: FrameAddress) -> Self {
         let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
         Self(VirtualAddress::new(raw_addr))
+    }
+}
+
+// Verified conversions between a physical address, frame numbers, and MMIO addresses.
+
+impl PhysicalAddress {
+    ///
+    /// # Description
+    ///
+    /// Constructs a physical address from a memory-mapped I/O address.
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: The memory-mapped I/O address.
+    ///
+    /// # Return Values
+    ///
+    /// Upon success, a physical address associated with the given memory-mapped I/O address is
+    /// returned. Upon failure, an error is returned instead.
+    ///
+    /// # Safety
+    ///
+    /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
+    ///
+    // Identity wrapping that deliberately bypasses the physical-RAM-range validator: MMIO
+    // addresses may legally lie outside tracked RAM. On success the abstract address is unchanged.
+
+    pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
+        Ok(Self(addr))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`PhysicalAddress`] from a [`FrameNumber`].
+    ///
+    /// # Parameters
+    ///
+    /// - `frame`: The frame number.
+    ///
+    /// # Returns
+    ///
+    /// A [`PhysicalAddress`] associated with the given `frame_number`.
+    ///
+    // Total constructor: the result is the frame's base address, hence `FRAME_SIZE`-aligned.
+
+    // VERUS REWRITE: the original `frame.into_raw_value() * mem::FRAME_SIZE` is split so the
+    // `into_raw_value()` postcondition (`0 <= self@ <= spec_max()`) lands in context *before* the
+    // overflow-bearing multiply, and `lemma_from_number_no_overflow` can be invoked between them.
+    // The bound cannot be obtained via `use_type_invariant(frame)` because `FrameNumber`'s type
+    // invariant is private to the `arch` crate (Verus: "missing type invariant function"), so the
+    // intermediate `addr_raw` binding is mandatory. Same value, same operations, same complexity.
+    // Reproducer: verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro/from_number.rs
+    pub fn from_number(frame: FrameNumber) -> Self {
+        let addr_raw: usize = frame.into_raw_value();
+
+        let addr: usize = addr_raw * mem::FRAME_SIZE;
+        Self(VirtualAddress::new(addr))
+    }
+
+    // Total projection: identifies the frame containing the address, `self@ / FRAME_SIZE`
+    // (equivalently `self@ >> FRAME_SHIFT`). This is total for *every* address: the raw value is a
+    // `usize`, so `self@ <= usize::MAX`, and with the corrected `FrameNumber::MAX` (the number of
+    // the frame containing `MAX_ADDRESS`) the shifted index never exceeds `FrameNumber::spec_max()`,
+    // so the unwrap cannot panic. No precondition is required.
+
+    pub fn into_frame_number(self) -> FrameNumber {
+        let raw_addr: usize = self.0.into_raw_value();
+        let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
+
+        // The unwrap never panics: `frame_number == self@ / FRAME_SIZE <= FrameNumber::MAX` for
+        // every address in the space (see `lemma_frame_index`).
+        FrameNumber::from_raw_value(frame_number).unwrap()
     }
 }
 

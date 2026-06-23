@@ -208,6 +208,9 @@ version = "0.17.5"
 [[package]]
 name = "bump-allocator"
 version = "0.17.5"
+dependencies = [
+ "vstd",
+]
 
 [[package]]
 name = "bumpalo"
@@ -3416,6 +3419,7 @@ dependencies = [
  "error",
  "rustc-std-workspace-core",
  "static_assert",
+ "vstd",
 ]
 
 [[package]]
@@ -4059,9 +4063,9 @@ checksum = "cab9266bfb5cf45a080f425c560b0e0be2bf81194f0e80258990c49c1829d8b9"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-05-31-0205"
+version = "0.0.0-2026-06-14-0213"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b9ec19995f94b959fd9602c646d01ca1db87575d48cf2544d86647344c70179"
+checksum = "472dd2037f1194cf402c982d3423b058173e34a5ec0aab3c0bef78801ebd5e34"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4083,9 +4087,9 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-05-31-0205"
+version = "0.0.0-2026-06-14-0213"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44910b2caa32676d1a03e1ae8c19f11833903c4dbafe4cd24d4a449d1a006d40"
+checksum = "6704a9ce586a5027f87933d9a84817411c937804090a9585c28bf335ac37eefc"
 dependencies = [
  "indexmap 1.9.3",
  "proc-macro2",
@@ -4204,9 +4208,9 @@ dependencies = [
 
 [[package]]
 name = "vstd"
-version = "0.0.0-2026-05-31-0205"
+version = "0.0.0-2026-06-14-0213"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44f48593f44e69eccf70e0ce6bc67a733f9c096f024d5ef41722d5d6aad90e6b"
+checksum = "b9c9b87576c9126305f9a91fdd72b0eb246e88e094f6a55e46c67ae2c83568c9"
 dependencies = [
  "verus_builtin",
  "verus_builtin_macros",
