@@ -184,7 +184,6 @@ clean-posix-tests:
 #---------------------------------------------------------------------------------------------------
 
 POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite).initrd)
-POSIX_TEST_LOGDIR  := $(LOGS_DIR)/posix-tests
 
 # Writable FAT32 RAMFS image for suites that exercise the file system (file-c)
 # or load a shared library at runtime (dlfcn-c). Built from a tiny seed directory
@@ -272,16 +271,11 @@ $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(eval $(call POSIX_TEST_SOLIB_RULE,$
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite)))
 
-# Maps each RAMFS suite to the image it boots with: a suite with its own
-# fixtures uses its per-suite image (POSIX_TEST_RAMFS_IMG_<suite>, defined by the
-# solib rule above), otherwise the shared image. The runner looks the suite up in
-# this `suite:image` list.
-POSIX_TEST_RAMFS_MAP := $(foreach s,$(POSIX_TEST_RAMFS_SUITES),$(s):$(or $(POSIX_TEST_RAMFS_IMG_$(s)),$(POSIX_TEST_RAMFS_IMG)))
-
-# Suites that need host networking (AF_INET sockets bridged to the host). The
-# runner boots these with nanvixd's `-allow-host-networking` flag, which enables
-# the in-VMM network daemon in standalone mode.
-POSIX_TEST_NET_SUITES := network-c
+# The per-suite boot arguments that pair each suite with its RAMFS image
+# (`-ramfs <img>`) or enable host networking (`-allow-host-networking`) now live
+# in the nanvix-test harness configs (test/test-posix.toml and
+# test/test-posix-windows.toml) as `extra_nanvixd_args`, since the harness — not
+# this makefile — boots the suites. This makefile only builds the images above.
 
 #---------------------------------------------------------------------------------------------------
 # Aggregate image target.
@@ -301,60 +295,33 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 
 .PHONY: run-posix-tests
 
-# The boot runner is Linux- and i686-only: it relies on coreutils `timeout`,
-# `/dev/null`, and a cloud-hypervisor-style nanvixd invocation (Linux), and the
-# guest C toolchain is pinned to the i686 ABI (TARGET=x86). On Windows or other
-# targets the suites can still be built (`all-posix-tests`); on Windows they boot
-# manually under WHP (see doc + repo notes).
+# The boot runner drives the suites through the nanvix-test harness, which boots
+# each <suite>.initrd under nanvixd in standalone mode (the `terminal` executor)
+# and asserts a guest exit code of 0. The harness is cross-platform: on Linux it
+# launches nanvixd against cloud-hypervisor; on Windows it launches nanvixd.exe
+# under WHP. The suites are i686-only (the guest C toolchain is pinned to the
+# i686 ABI, TARGET=x86) and standalone-only (they bundle the guest daemons). On
+# other targets or deployment modes the suites can still be built with
+# `all-posix-tests`.
+
+# Harness configuration: Windows uses the .exe nanvixd and a `.`-rooted temp dir.
 ifeq ($(IS_WINDOWS),yes)
-run-posix-tests:
-	@echo "Skipping POSIX C test suites (run-posix-tests is Linux-only; build with 'all-posix-tests' and boot manually under WHP)."
-else ifneq ($(TARGET),x86)
+POSIX_TEST_CONFIG := test/test-posix-windows.toml
+else
+POSIX_TEST_CONFIG := test/test-posix.toml
+endif
+
+ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
 else ifeq ($(DEPLOYMENT_MODE),standalone)
 run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS)
+	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(USERVM) || { echo "ERROR: $(USERVM) missing; run './z build -- all' first."; exit 1; }
-	@$(MKDIR_CMD) $(POSIX_TEST_LOGDIR)
-	@echo "================================================================================"
-	@echo "Running ported POSIX C test suites under nanvixd (standalone)"
-	@echo "================================================================================"
-	@failures=""; \
-	for suite in $(ALL_POSIX_TESTS); do \
-		initrd="$(BINARIES_DIR)/$$suite.initrd"; \
-		log="$(POSIX_TEST_LOGDIR)/$$suite.log"; \
-		console="$(POSIX_TEST_LOGDIR)/$$suite.console.log"; \
-		ramfs=""; \
-		for entry in $(POSIX_TEST_RAMFS_MAP); do \
-			case "$$entry" in \
-				$$suite:*) ramfs="-ramfs $${entry#*:}" ;; \
-			esac; \
-		done; \
-		net=""; \
-		case " $(POSIX_TEST_NET_SUITES) " in \
-			*" $$suite "*) net="-allow-host-networking" ;; \
-		esac; \
-		printf '%-24s ... ' "$$suite"; \
-		rc=0; \
-		timeout -k 5 $(TIMEOUT) $(NANVIXD) -console-file $$console -log-dir $(POSIX_TEST_LOGDIR) \
-			$$ramfs $$net -- $$initrd \
-			< /dev/null > $$log 2>&1 || rc=$$?; \
-		if [ "$$rc" -eq 0 ]; then \
-			echo "PASS (exit 0)"; \
-		else \
-			echo "FAIL (exit $$rc)"; \
-			failures="$$failures $$suite"; \
-		fi; \
-	done; \
-	echo "--------------------------------------------------------------------------------"; \
-	if [ -n "$$failures" ]; then \
-		echo "FAILED suites:$$failures"; \
-		echo "(logs in $(POSIX_TEST_LOGDIR))"; \
-		exit 1; \
-	fi; \
-	echo "All ported POSIX C test suites passed."
+	@echo "Running ported POSIX C test suites with configuration: $(POSIX_TEST_CONFIG)"
+	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(POSIX_TEST_CONFIG)
 else
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
