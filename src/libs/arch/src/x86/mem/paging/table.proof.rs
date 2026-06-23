@@ -12,7 +12,7 @@ pub proof fn lemma_masked_index_bounded(vaddr: usize, shift: usize)
 }
 
 // The `TableEntry` round-trip law: decoding a freshly-encoded entry yields it back.
-// This is the abstract contract every `TableEntry` implementor must honour (`raw` is a faithful,
+// This is the abstract contract every `TableEntry` implementer must honour (`raw` is a faithful,
 // injective serialization). Stated as a broadcast lemma so callers obtain the read-after-write
 // guarantee (`read(write(idx, e), idx) == Some(e)`) by `broadcast use lemma_entry_roundtrip`.
 //
@@ -23,7 +23,7 @@ pub proof fn lemma_masked_index_bounded(vaddr: usize, shift: usize)
 // recovers the same entry). The proof-fn body therefore discharges the obligation with a single
 // approved limitation assume (replacing the former `external_body`, which is illegal on a proof
 // fn): the assumed proposition is exactly the codec injectivity law each concrete `TableEntry`
-// implementor honours against its own interpreted codec.
+// implementer honours against its own interpreted codec.
 pub broadcast proof fn lemma_entry_roundtrip<E>(e: E)
     ensures
         #[trigger] spec_entry_from_raw::<E>(spec_entry_raw(e)) == Some(e),

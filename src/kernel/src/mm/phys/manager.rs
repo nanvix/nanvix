@@ -323,9 +323,8 @@ impl PhysMemoryManager {
         // (a `kernel_watermark() + count` overflow means the threshold exceeds any possible free
         // count). Binding it here makes that fact available on every path without an axiom.
         let available: usize = frame::free_count();
-        let watermark_threshold: usize = kernel_watermark()
-            .checked_add(count)
-            .ok_or_else(|| {
+        let watermark_threshold: usize =
+            kernel_watermark().checked_add(count).ok_or_else(|| {
                 let reason: &str = "watermark + count overflow";
                 error!("{reason}");
                 Error::new(ErrorCode::InvalidArgument, reason)

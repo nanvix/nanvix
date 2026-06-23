@@ -96,7 +96,6 @@ impl KernelFrame {
 
 #[verus_verify]
 impl KernelFrame {
-
     ///
     /// # Description
     ///
@@ -122,7 +121,6 @@ impl KernelFrame {
 }
 
 impl KernelFrame {
-
     ///
     /// # Description
     ///

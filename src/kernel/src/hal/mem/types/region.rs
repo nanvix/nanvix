@@ -174,7 +174,7 @@ impl<T: Address> MemoryRegion<T> {
         }
 
         // Check if memory region is too big.
-        let start_raw_addr: usize = start.clone().into_raw_value();
+        let start_raw_addr: usize = start.into_raw_value();
         let end_raw_addr: usize = match start_raw_addr.checked_add(size - 1) {
             Some(end_raw_addr) => end_raw_addr,
             None => {

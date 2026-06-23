@@ -623,7 +623,7 @@ impl Inner {
         // page-aligned), so it must be rejected here before converting — the panic-free
         // `into_frame_number()` below assumes the page alignment this entry point does not.
         let raw: usize = frame.into_raw_value();
-        if raw % mem::FRAME_SIZE != 0 {
+        if !raw.is_multiple_of(mem::FRAME_SIZE) {
             proof! {
                 lemma_uncovered_unaligned(self, frame@);
                 assert(!self@.is_allocated(frame@));
@@ -907,7 +907,7 @@ impl Inner {
                     return Err(err);
                 },
             }
-            index = index + 1;
+            index += 1;
         }
         // The scan covered every index in `[start_fn, start_fn + nfr)` and found it free.
         proof! {
