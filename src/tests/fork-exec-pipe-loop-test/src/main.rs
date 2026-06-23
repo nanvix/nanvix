@@ -18,21 +18,24 @@
 //! work *every* time, not just once. A long-running parent (e.g. an HTTP server) spawns interpreter
 //! subprocesses repeatedly; each capture must be reliable.
 //!
-//! This is the companion of `fork-exec-pipe-bulk-test`: where that test checks a single large
-//! transfer, this one repeats a moderate ([`PAYLOAD_BYTES`]) capture [`ITERATIONS`] times and
-//! requires the full payload back on *every* cycle. The exec'd `/target`
-//! (`fork-exec-pipe-loop-target`) is a deliberately *large* image (data segment inflated to
-//! `MEMORY_SIZE / 8`, like `execv-big-target`), because the defect only surfaces when a large image
-//! is `execv()`'d.
+//! This repeats a moderate ([`PAYLOAD_BYTES`]) capture [`ITERATIONS`] times and requires the full
+//! payload back on *every* cycle. The exec'd `/target` (`fork-exec-pipe-loop-target`) is a
+//! deliberately *large* image (data segment inflated to `MEMORY_SIZE / 8`, like `execv-big-target`)
+//! so the repeated capture is exercised against the large-`execv()` path, which a long-running
+//! parent hits when it spawns big interpreter subprocesses. Each cycle the parent pipes, forks, the
+//! child `dup2()`s the write end onto standard output and `execv()`s `/target`, and the parent
+//! drains the read end and checks it received all [`PAYLOAD_BYTES`] bytes intact with the child
+//! exiting `0`. It records the smallest delivery across all cycles and fails if any cycle did not
+//! deliver the full payload (or its child exited non-zero).
 //!
-//! On Nanvix today repeated fork()+execv()+pipe captures from a large image are unreliable: the
-//! amount of data that reaches the parent falls short and degrades from one cycle to the next
-//! (a per-cycle leak of pipe/descriptor state), and a forked+exec'd writer's `write()` to the
-//! inherited pipe eventually fails outright. The test records the smallest delivery across all
-//! cycles and fails if any cycle did not deliver the full payload (or its child exited non-zero).
+//! The exec target must be stripped (see its `build.rs`): `execv()` requires the caller to mmap the
+//! whole ELF image, so unstripped debug sections would inflate the file far beyond its loadable
+//! size and exhaust physical memory before the image is even loaded.
 //!
-//! While the bug is present the test FAILS; once every cycle reliably delivers the full payload it
-//! passes and guards the behavior. `/target` is bundled into the test ramfs by the harness.
+//! Because loading a large image many times is prohibitively slow under a trace-enabled (`debug`)
+//! build -- the kernel emits per-page trace over a byte-at-a-time UART -- this test is gated to
+//! `release` builds via `build_modes` in the test configuration. `/target` is bundled into the test
+//! ramfs by the harness.
 
 //==================================================================================================
 // Modules
@@ -84,8 +87,9 @@ const PATTERN: u8 = 0x5A;
 /// Size of the stack buffer used to drain the pipe.
 const CHUNK: usize = 4096;
 
-/// Number of fork()+execv()+capture cycles to perform. A large count exposes the per-cycle leak and
-/// makes a flaky pass vanishingly unlikely: every cycle must deliver the full payload.
+/// Number of fork()+execv()+capture cycles to perform. A large count makes a flaky pass vanishingly
+/// unlikely: every cycle must deliver the full payload, so any per-cycle regression in pipe or
+/// descriptor handling is caught.
 const ITERATIONS: usize = 64;
 
 /// Exit status reported by the child when `dup2()` did not redirect standard output.
@@ -175,7 +179,8 @@ fn test_fork_exec_pipe_loop() -> Result<(), Error> {
         assert!(
             total == PAYLOAD_BYTES && intact && child_ok,
             "repeated pipe capture across fork()+execv() failed at cycle {}: delivered {} of {} \
-             bytes (intact={}, child_ok={}); a forked+exec'd large image's pipe output is unreliable",
+             bytes (intact={}, child_ok={}); capturing a forked+exec'd large image's pipe output \
+             must be reliable on every cycle",
             i,
             total,
             PAYLOAD_BYTES,
@@ -186,7 +191,8 @@ fn test_fork_exec_pipe_loop() -> Result<(), Error> {
 
     assert!(
         min_delivered == PAYLOAD_BYTES && all_intact && all_children_ok,
-        "across {} cycles the smallest delivery was {} of {} bytes (all_intact={}, all_children_ok={})",
+        "across {} cycles the smallest delivery was {} of {} bytes (all_intact={}, \
+         all_children_ok={})",
         ITERATIONS,
         min_delivered,
         PAYLOAD_BYTES,

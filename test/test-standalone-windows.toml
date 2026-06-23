@@ -357,15 +357,17 @@ expected_output = "ok"
 
 # Acceptance test for repeated pipe-capture reliability across fork()+execv(): a
 # moderate payload streamed by an exec'd child through a dup2()'d pipe must reach
-# the parent in full on EVERY cycle. FAILS while repeated captures from a LARGE
-# exec'd image are unreliable (delivery falls short and degrades per cycle; the
-# writer's write() eventually fails); a small exec'd image does not trigger it.
+# the parent in full on EVERY cycle, across many cycles, for a large exec'd image.
+# Gated to release builds: it loads a large image many times, which is tractable
+# only when tracing is disabled (a debug/trace build emits per-page kernel trace
+# over a byte-at-a-time UART and would exceed the per-test timeout).
 [[tests]]
 executor = "http"
 program = "./bin/fork-exec-pipe-loop-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-pipe-loop-test.img"
 input = "[]"
 expected_output = "ok"
+build_modes = ["release"]
 
 [[tests]]
 build_modes = ["debug", "release"]

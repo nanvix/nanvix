@@ -17,8 +17,12 @@
 //! Loaded into the guest ramfs at `/target` and `execv()`'d, once per cycle, by the child that
 //! `fork-exec-pipe-loop-test` forks after redirecting standard output onto the write end of a pipe
 //! with `dup2()`. This target is deliberately a *large* image: its data segment is inflated to
-//! `MEMORY_SIZE / 8` (like `execv-big-target`), because the fork()+execv()+pipe reliability defect
-//! only reproduces when a *large* image is `execv()`'d -- a small one round-trips fine.
+//! `MEMORY_SIZE / 8` (like `execv-big-target`) so that each capture is exercised against the
+//! large-`execv()` path -- a small image round-trips trivially and would not cover it.
+//!
+//! Because `execv()` requires the caller to mmap the whole ELF image, this target is stripped at
+//! link time (see `build.rs`); otherwise its debug sections would inflate the on-disk file far
+//! beyond its loadable size and exhaust physical memory before the image is loaded.
 //!
 //! After exec it validates that its large segment loaded, `write()`s exactly [`PAYLOAD_BYTES`] bytes
 //! of the constant byte [`PATTERN`] to `STDOUT_FILENO` (now the pipe), looping over partial writes,
