@@ -200,13 +200,11 @@ impl PhysMemoryManager {
         }
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         if frames.capacity() < count {
             let reason: &str = "frames vector has insufficient capacity";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
@@ -225,7 +223,7 @@ impl PhysMemoryManager {
             lemma_user_bulk_start(self, g_old, frames@, count as nat);
         }
 
-        #[cfg_attr(verus_keep_ghost, verus_spec(
+        #[verus_spec(
             invariant
                 g_old == old(self)@,
                 g_old.wf(),
@@ -233,7 +231,7 @@ impl PhysMemoryManager {
                 frames@.len() == _idx,
                 user_bulk_inv(g_old, self@, frames@),
                 count > 0 ==> g_old.user_alloc_ok(count as nat),
-        ))]
+        )]
         for _idx in 0..count {
             proof_decl! {
                 let ghost mview_pre = self@;
@@ -329,13 +327,11 @@ impl PhysMemoryManager {
             .checked_add(count)
             .ok_or_else(|| {
                 let reason: &str = "watermark + count overflow";
-                #[cfg(not(verus_keep_ghost))]
                 error!("{reason}");
                 Error::new(ErrorCode::InvalidArgument, reason)
             })?;
         if available < watermark_threshold {
             let reason: &str = "would breach kernel watermark";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
@@ -372,10 +368,8 @@ impl PhysMemoryManager {
         }
         let frame_addr: FrameAddress = frame::alloc()?;
         let result: Result<KernelFrame, Error> = KernelFrame::new(frame_addr).inspect_err(|e| {
-            #[cfg(not(verus_keep_ghost))]
             warn!("failed to wrap frame after KernelFrame::new failure: {e:?}");
             if let Err(free_err) = frame::free(frame_addr) {
-                #[cfg(not(verus_keep_ghost))]
                 warn!("failed to free frame after KernelFrame::new failure: {free_err:?}");
             }
         });
@@ -438,27 +432,25 @@ impl PhysMemoryManager {
         // Check if caller-provided vector is not empty.
         if !frames.is_empty() {
             let reason: &str = "frames vector is not empty";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         if frames.capacity() < count {
             let reason: &str = "frames vector has insufficient capacity";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason}");
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
 
         let base_addr: FrameAddress = frame::alloc_contiguous(count)?;
         let base_raw: usize = base_addr.into_raw_value();
-        #[cfg_attr(verus_keep_ghost, verus_spec(
+        #[verus_spec(
             invariant
                 g_old == old(self)@,
                 g_old.wf(),
                 self@ == g_old,
                 base_raw as int == base_addr@,
                 base_raw as int + (count as int) * spec_page_size() <= usize::MAX as int,
-        ))]
+        )]
         for i in 0..count {
             proof! {
                 lemma_contig_no_overflow(base_raw, i, count);
@@ -470,7 +462,7 @@ impl PhysMemoryManager {
                     // Drop already-wrapped frames (frees them via KernelFrame::Drop).
                     frames.clear();
                     // Free remaining un-wrapped frames from the contiguous allocation.
-                    #[cfg_attr(verus_keep_ghost, verus_spec(
+                    #[verus_spec(
                         invariant
                             g_old == old(self)@,
                             g_old.wf(),
@@ -478,7 +470,7 @@ impl PhysMemoryManager {
                             base_raw as int == base_addr@,
                             base_raw as int + (count as int) * spec_page_size()
                                 <= usize::MAX as int,
-                    ))]
+                    )]
                     for j in i..count {
                         proof! {
                             lemma_contig_no_overflow(base_raw, j, count);
@@ -486,7 +478,6 @@ impl PhysMemoryManager {
                         let leak_raw: usize = base_raw + j * mem::PAGE_SIZE;
                         if let Ok(fa) = FrameAddress::from_raw_value(leak_raw) {
                             if let Err(e) = frame::free(fa) {
-                                #[cfg(not(verus_keep_ghost))]
                                 warn!("failed to free leaked frame {fa:?}: {e:?}");
                             }
                         }

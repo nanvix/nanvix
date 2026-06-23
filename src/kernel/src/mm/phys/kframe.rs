@@ -196,7 +196,6 @@ impl Drop for KernelFrame {
     )]
     fn drop(&mut self) {
         if let Err(e) = super::frame::free(self.base) {
-            #[cfg(not(verus_keep_ghost))]
             error!("failed to free kernel frame: {:?}", e);
         }
     }

@@ -151,7 +151,6 @@ impl Inner {
                     // and no covered frame is free.
                     lemma_alloc_full_no_free(self, g_old, pre_sb, pre_nb, pre_rc);
                 }
-                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 return Err(error);
             },
@@ -178,7 +177,6 @@ impl Inner {
                     assert(false);
                 }
                 let reason: &str = "frame number is out of bounds";
-                #[cfg(not(verus_keep_ghost))]
                 error!("{reason:?}");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
@@ -201,7 +199,6 @@ impl Inner {
                     // `from_frame_number` is total (always `Ok`); this arm is unreachable.
                     assert(false);
                 }
-                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 Err(error)
             },
@@ -268,7 +265,6 @@ impl Inner {
         // `Err` postcondition (`final@ == old@`) holds.
         if count > self.bitmap.number_of_bits() {
             let reason: &str = "requested range exceeds bitmap size";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason} (count={count})");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
@@ -280,7 +276,6 @@ impl Inner {
                     assert(spec_refcount_seq(self) == pre_rc);
                     assert(self@ == g_old);
                 }
-                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (count={count})");
                 return Err(error);
             },
@@ -293,7 +288,7 @@ impl Inner {
             }
         }
         // Newly allocated frames have a single owner.
-        #[cfg_attr(verus_keep_ghost, verus_spec(
+        #[verus_spec(
             invariant
                 start == frame_number as int,
                 0 <= start,
@@ -312,7 +307,7 @@ impl Inner {
                         pre_rc[k]
                     }),
             decreases frame_number + count - i,
-        ))]
+        )]
         for i in frame_number..frame_number + count {
             #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[i], 0);
@@ -337,7 +332,6 @@ impl Inner {
                     assert(false);
                 }
                 let reason: &str = "frame number is out of bounds";
-                #[cfg(not(verus_keep_ghost))]
                 error!("{reason:?}");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
@@ -360,7 +354,6 @@ impl Inner {
                     // `from_frame_number` is total (always `Ok`); this arm is unreachable.
                     assert(false);
                 }
-                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?}");
                 Err(error)
             },
@@ -424,7 +417,6 @@ impl Inner {
                 assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame number out of bounds";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
@@ -436,7 +428,6 @@ impl Inner {
                 assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame is already free";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
@@ -469,7 +460,6 @@ impl Inner {
                         // Unreachable: the bit is set and in range, so `clear` returns `Ok`.
                         assert(false);
                     }
-                    #[cfg(not(verus_keep_ghost))]
                     error!("{error:?} (frame={frame:?})");
                     Err(error)
                 },
@@ -549,7 +539,6 @@ impl Inner {
                 assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame number out of bounds";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
@@ -562,7 +551,6 @@ impl Inner {
                 assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "cannot share an unallocated frame";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
@@ -584,7 +572,6 @@ impl Inner {
                     assert(g_old.refcounts[frame@] == 255);
                 }
                 let reason: &str = "frame reference count overflow";
-                #[cfg(not(verus_keep_ghost))]
                 error!("{reason} (frame={frame:?})");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
@@ -642,7 +629,6 @@ impl Inner {
                 assert(!self@.is_allocated(frame@));
             }
             let reason: &str = "unaligned frame address";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
@@ -658,7 +644,6 @@ impl Inner {
                 assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame number out of bounds";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
@@ -669,7 +654,6 @@ impl Inner {
                 assert(!self.bitmap@.set_bits.contains(frame_number as int));
             }
             let reason: &str = "frame is not allocated";
-            #[cfg(not(verus_keep_ghost))]
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
@@ -745,7 +729,6 @@ impl Inner {
                     assert(self@ == g_old);
                     assert(!g_old.is_free(phys_addr@));
                 }
-                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (phys_addr={phys_addr:?})");
                 Err(error)
             },
@@ -853,7 +836,7 @@ impl Inner {
         // because out-of-bounds indices must be rejected before attempting to set them.
         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
         let mut index: usize = start_frame_number;
-        #[cfg_attr(verus_keep_ghost, verus_spec(
+        #[verus_spec(
             invariant
                 start_fn == start_frame_number as int,
                 end_exclusive as int == start_fn + nfr,
@@ -875,7 +858,7 @@ impl Inner {
                 forall|k: int| start_fn <= k < index as int ==>
                     #[trigger] pre_sb.contains(k) == false && k < pre_nb,
             decreases end_exclusive - index,
-        ))]
+        )]
         while index < end_exclusive {
             if index >= self.bitmap.number_of_bits() {
                 // `index` is out of range here, so `index * FRAME_SIZE` can overflow `usize`
@@ -888,7 +871,6 @@ impl Inner {
                 #[cfg(not(verus_keep_ghost))]
                 let uncovered_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
                 let reason: &str = "frame index not covered by the bitmap";
-                #[cfg(not(verus_keep_ghost))]
                 error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
@@ -912,7 +894,6 @@ impl Inner {
                     #[cfg(not(verus_keep_ghost))]
                     let region_end: usize = region_start.saturating_add(region.size());
                     let reason: &str = "frame is already allocated";
-                    #[cfg(not(verus_keep_ghost))]
                     error!(
                         "{} (frame={:#010x}, region_start={:#010x}, region_end={:#010x})",
                         reason, conflicting_addr, region_start, region_end
@@ -938,7 +919,7 @@ impl Inner {
         }
 
         // Book all frames in the range.
-        #[cfg_attr(verus_keep_ghost, verus_spec(
+        #[verus_spec(
             invariant
                 start_fn == start_frame_number as int,
                 end_exclusive as int == start_fn + nfr,
@@ -956,7 +937,7 @@ impl Inner {
                         pre_rc[k]
                     }),
             decreases end_exclusive - index,
-        ))]
+        )]
         for index in start_frame_number..end_exclusive {
             if let Err(error) = self.bitmap.set(index) {
                 // The bit at `index` is still clear and in range, so `set` cannot fail.
@@ -965,7 +946,6 @@ impl Inner {
                     assert(!pre_sb.contains(index as int));
                     assert(false);
                 }
-                #[cfg(not(verus_keep_ghost))]
                 error!("{error:?} (region={region:?})");
                 return Err(error);
             }

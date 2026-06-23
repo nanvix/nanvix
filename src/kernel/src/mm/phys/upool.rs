@@ -202,7 +202,6 @@ impl Drop for UserFrame {
     )]
     fn drop(&mut self) {
         if let Err(e) = frame::free(self.addr) {
-            #[cfg(not(verus_keep_ghost))]
             error!("failed to free user frame: {:?}", e);
         }
     }

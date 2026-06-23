@@ -7,8 +7,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 // To support attributes on statements, e.g., #[verus_spec(invariant ...)] while ...,
-// we need `proc_macro_hygiene`.
-#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
+// we need `proc_macro_hygiene` and `stmt_expr_attributes`. The loop-level `verus_spec`
+// attributes are emitted in all builds (not gated on `verus_keep_ghost`), so the features
+// must be enabled unconditionally.
+#![feature(proc_macro_hygiene)]
+#![cfg_attr(not(verus_keep_ghost), feature(stmt_expr_attributes))]
 
 //==================================================================================================
 // Modules
@@ -238,12 +241,12 @@ impl Slab {
         // them "in use" and thereby prevent them from being
         // allocated. Note that there are at most 7 such bits we need
         // to set.
-        #[cfg_attr(verus_keep_ghost, verus_spec(
+        #[verus_spec(
             invariant
                 index.inv(),
                 index@.num_bits == index_len * u8_bits,
                 index@.set_bits == Set::range(num_data_blocks as int, i as int),
-        ))]
+        )]
         for i in num_data_blocks..(index_len * u8_bits) {
             index.set(i)?;
         }

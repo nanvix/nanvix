@@ -11,12 +11,12 @@
 #![allow(static_mut_refs)] // https://github.com/nanvix/kernel/issues/454
 #![allow(internal_features)]
 #![feature(allocator_api)] // kheap uses this.
-#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
+#![feature(proc_macro_hygiene)] // statement-level verus_spec loop invariants need this.
+#![cfg_attr(not(verus_keep_ghost), feature(stmt_expr_attributes))]
 #![feature(linked_list_cursors)] // vmem uses this.
 #![feature(linked_list_remove)] // vmem uses this.
 #![feature(linked_list_retain)] // vmem uses this.
 #![feature(never_type)] // exit() uses this.
-#![cfg_attr(not(verus_keep_ghost), feature(stmt_expr_attributes))] // stdio uses this.
 #![feature(likely_unlikely)] // performance hints.
 #![no_std]
 #![no_main]
