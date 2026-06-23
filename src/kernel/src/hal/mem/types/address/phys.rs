@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("phys.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("phys.proof.rs");
+
 use crate::hal::mem::types::address::{
     Address,
     FrameAddress,
@@ -31,6 +37,7 @@ use ::sys::{
 ///
 /// A type that represents a physical address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PhysicalAddress(VirtualAddress);
 
@@ -80,7 +87,7 @@ impl PhysicalAddress {
 }
 
 // Verified conversions between a physical address, frame numbers, and MMIO addresses.
-
+#[verus_verify]
 impl PhysicalAddress {
     ///
     /// # Description
@@ -102,7 +109,14 @@ impl PhysicalAddress {
     ///
     // Identity wrapping that deliberately bypasses the physical-RAM-range validator: MMIO
     // addresses may legally lie outside tracked RAM. On success the abstract address is unchanged.
-
+    #[verus_spec(result =>
+        requires
+            spec_frame_number(addr@) <= spec_max_frame_number(),
+        ensures
+            result is Ok,
+            (result->Ok_0)@ == addr@,
+            (result->Ok_0).inv(),
+    )]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
         Ok(Self(addr))
     }
@@ -121,7 +135,10 @@ impl PhysicalAddress {
     /// A [`PhysicalAddress`] associated with the given `frame_number`.
     ///
     // Total constructor: the result is the frame's base address, hence `FRAME_SIZE`-aligned.
-
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_from_number(spec_frame_raw_value(frame)),
+    )]
     // VERUS REWRITE: the original `frame.into_raw_value() * mem::FRAME_SIZE` is split so the
     // `into_raw_value()` postcondition (`0 <= self@ <= spec_max()`) lands in context *before* the
     // overflow-bearing multiply, and `lemma_from_number_no_overflow` can be invoked between them.
@@ -131,7 +148,9 @@ impl PhysicalAddress {
     // Reproducer: verus-ai-logs/nanvix-phys-hal-phys-address/cheating-elimination/repro/from_number.rs
     pub fn from_number(frame: FrameNumber) -> Self {
         let addr_raw: usize = frame.into_raw_value();
-
+        proof! {
+            lemma_from_number_no_overflow(frame);
+        }
         let addr: usize = addr_raw * mem::FRAME_SIZE;
         Self(VirtualAddress::new(addr))
     }
@@ -141,11 +160,17 @@ impl PhysicalAddress {
     // `usize`, so `self@ <= usize::MAX`, and with the corrected `FrameNumber::MAX` (the number of
     // the frame containing `MAX_ADDRESS`) the shifted index never exceeds `FrameNumber::spec_max()`,
     // so the unwrap cannot panic. No precondition is required.
-
+    #[verus_spec(result =>
+        ensures
+            spec_frame_raw_value(result) == spec_frame_number(self@),
+    )]
     pub fn into_frame_number(self) -> FrameNumber {
         let raw_addr: usize = self.0.into_raw_value();
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
-
+        proof! {
+            vstd::arithmetic::power2::lemma2_to64();
+            lemma_frame_index(self, raw_addr, mem::FRAME_SHIFT, frame_number);
+        }
         // The unwrap never panics: `frame_number == self@ / FRAME_SIZE <= FrameNumber::MAX` for
         // every address in the space (see `lemma_frame_index`).
         FrameNumber::from_raw_value(frame_number).unwrap()
@@ -265,3 +290,21 @@ impl core::fmt::Debug for PhysicalAddress {
         write!(f, "{:?}", self.0)
     }
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+verus! {
+
+impl View for PhysicalAddress
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+} // end verus!

@@ -95,6 +95,15 @@ use ::core::{
         Ordering,
     },
 };
+use ::vstd::prelude::*;
+
+// Include specifications.
+#[cfg(verus_keep_ghost)]
+include!("lib.spec.rs");
+
+// Include proofs.
+#[cfg(verus_keep_ghost)]
+include!("lib.proof.rs");
 
 //==================================================================================================
 // Traits and Types
@@ -114,6 +123,13 @@ use ::core::{
 ///
 /// Returns the aligned value, or `None` if `alignment` is zero or the computation overflows.
 ///
+#[verus_spec(result =>
+    ensures
+        match result {
+            Some(r) => align_up_spec(value as nat, alignment as nat) == Some(r as nat),
+            None => align_up_spec(value as nat, alignment as nat) is None,
+        },
+)]
 pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
     if alignment == 0 {
         return None;
@@ -127,6 +143,7 @@ pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
 /// Error type returned by [`FixedSizeBumpAllocator`] operations.
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[verus_verify]
 pub enum BumpAllocError {
     /// Storage capacity exhausted.
     Exhausted,
@@ -171,6 +188,7 @@ impl fmt::Display for BumpAllocError {
 /// - the backing region is exclusively managed by this allocator API, so creating `&'static mut`
 ///   references from slots cannot alias with other mutable references.
 ///
+#[verus_verify]
 pub unsafe trait BssStorage {
     /// Number of fixed-size units that can be allocated.
     const NUM_UNITS: usize;
@@ -179,6 +197,10 @@ pub unsafe trait BssStorage {
     const STORAGE_SIZE: usize;
 
     /// Returns a mutable pointer to the beginning of the storage region.
+    #[verus_spec(result =>
+        ensures
+            result as int == base_of::<Self>(),
+    )]
     fn as_mut_ptr() -> *mut u8;
 }
 
@@ -193,6 +215,7 @@ pub unsafe trait BssStorage {
 /// - `A`: Unit alignment in bytes.
 /// - `S`: Backing storage provider.
 ///
+#[verus_verify]
 pub struct FixedSizeBumpAllocator<const N: usize, const A: usize, S: BssStorage> {
     /// Atomic bump index for the next available slot.
     next_slot: AtomicUsize,
@@ -240,6 +263,26 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// - [`BumpAllocError::OutOfBounds`] if computed slot exceeds storage bounds.
     /// - [`BumpAllocError::Misaligned`] if computed slot is not properly aligned.
     ///
+    // SAFETY-SPEC: `external_body` because the success path materializes a
+    // `&'static mut [u8; N]` from a backend-provided address (`usize as *mut`), a
+    // raw-memory operation Verus cannot verify without a `PointsTo` permission for
+    // the externally-owned `BssStorage` region. Mirrors the `src/libs/raw-array`
+    // pattern. Registered in `verus-ai-logs/tcb-allowed.md`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires bump_view(self).inv(),
+        ensures
+            match result {
+                Ok(slot) => {
+                    let v = bump_view(self);
+                    let a = slot_ref_addr(slot);
+                    &&& a % (v.unit_align as int) == 0
+                    &&& v.base <= a
+                    &&& a + (N as int) <= v.base + (v.storage_size as int)
+                },
+                Err(_) => true,
+            },
+    )]
     pub fn alloc(&self) -> Result<&'static mut [u8; N], BumpAllocError> {
         // Reserve a slot index via compare-and-swap to avoid overshooting the counter.
         let idx: usize = loop {
@@ -298,6 +341,29 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// The caller must initialise the returned `MaybeUninit<T>` before reading through it
     /// and ensure exclusive use of the returned reference.
     ///
+    // SAFETY-SPEC: `external_body` for the same reason as `alloc` (it delegates to
+    // `alloc` and then re-materializes the slot reference as `&'static mut
+    // MaybeUninit<T>`). The size/alignment guard arms make the `T`-vs-`(N, A)`
+    // contract caller-visible. Registered in `verus-ai-logs/tcb-allowed.md`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires bump_view(self).inv(),
+        ensures
+            match result {
+                Ok(slot) => {
+                    let v = bump_view(self);
+                    let a = slot_ref_addr(slot);
+                    &&& vstd::layout::size_of::<T>() == N as nat
+                    &&& vstd::layout::align_of::<T>() <= A as nat
+                    &&& a % (v.unit_align as int) == 0
+                    &&& v.base <= a
+                    &&& a + (N as int) <= v.base + (v.storage_size as int)
+                },
+                Err(BumpAllocError::SizeMismatch) => vstd::layout::size_of::<T>() != N as nat,
+                Err(BumpAllocError::AlignmentMismatch) => vstd::layout::align_of::<T>() > A as nat,
+                Err(_) => true,
+            },
+    )]
     pub unsafe fn alloc_as<T>(&self) -> Result<&'static mut MaybeUninit<T>, BumpAllocError> {
         if core::mem::size_of::<T>() != N {
             return Err(BumpAllocError::SizeMismatch);

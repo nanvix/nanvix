@@ -20,6 +20,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("identity_map.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("identity_map.proof.rs");
+
 use super::page_table_allocator::PAGE_TABLE_ALLOCATOR;
 use crate::hal::{
     arch::x86::{
@@ -79,6 +85,7 @@ use ::sys::error::{
 //==================================================================================================
 
 /// Physical address of the kernel page directory (set once during boot by [`init`]).
+#[verus_verify]
 static KERNEL_PD_PADDR: AtomicUsize = AtomicUsize::new(0);
 
 /// Raw value of the kernel CR3 register for address-space switching.
@@ -499,6 +506,31 @@ fn ensure_identity_mapped_range(
 /// - [`ErrorCode::OutOfMemory`]: No BSS page table slots available.
 /// - [`ErrorCode::BadAddress`]: The allocated page table frame number is out of range.
 ///
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        identity_map_view().inv(),
+    ensures
+        match result {
+            // The returned page-table physical address is page-aligned (BSS-backed and
+            // immediately usable as `Table::from_address` for the follow-up `ensure_pte`).
+            // Ensuring a page table installs internal structure only -- it adds no page to the
+            // identity map. The global map remains well-formed.
+            Ok(pt_paddr) => {
+                &&& identity_map_view().inv()
+                &&& spec_is_page_aligned(pt_paddr as int)
+            },
+            // On failure no usable page-table address is produced and the identity map is left
+            // well-formed: `ensure_pt` only ever installs *empty* page tables, so it maps no
+            // page on either path (`mapped` is unaffected). A stronger `mapped`-equality
+            // postcondition would require threading the pre-state (`old@`), but `ensure_pt`'s
+            // signature is fixed -- its other caller `init` is out of scope and must not be
+            // touched -- so invariant preservation is the strongest sound failure-state fact
+            // expressible over the parameterless global view here. This is *not* `true`: it
+            // guarantees a failed `ensure_pt` never corrupts the abstract identity map.
+            Err(_) => identity_map_view().inv(),
+        },
+)]
 fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize, Error> {
     let pde: PageDirectoryEntry = unsafe { pd.read(pde_idx) }.ok_or_else(|| {
         let reason: &str = "invalid PDE read from kernel PD";
@@ -572,6 +604,24 @@ fn ensure_pt(pd: Table<PageDirectoryEntry>, pde_idx: TableIndex) -> Result<usize
 /// - [`ErrorCode::InvalidArgument`]: Failed to read the PTE.
 /// - [`ErrorCode::BadAddress`]: The frame number is out of range.
 ///
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        identity_map_view().inv(),
+    ensures
+        identity_map_view().inv(),
+        match result {
+            // The leaf step that realizes V==P: on success the page containing `phys_addr` is
+            // present (writable, supervisor) and reachable at its own physical address. Membership
+            // holds whether the PTE was freshly installed or already present (idempotent).
+            Ok(_) => identity_map_view().mapped.contains(spec_page_base(phys_addr as int)),
+            // On failure the leaf entry was not installed: the PTE was not already present (a
+            // present PTE returns `Ok` via the idempotent fast path) and the read/frame-number
+            // failure left it absent, so the page is *not* in the identity map. `identity_map_page`
+            // propagates this and its caller must not treat the page as reachable.
+            Err(_) => !identity_map_view().mapped.contains(spec_page_base(phys_addr as int)),
+        },
+)]
 fn ensure_pte(
     pt: Table<PageTableEntry>,
     pte_idx: TableIndex,
@@ -640,6 +690,27 @@ fn ensure_pte(
 ///
 /// If the lazy mapper has not been initialized yet (boot page tables still active), this function
 /// is a no-op and returns success.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        identity_map_view().inv(),
+    ensures
+        identity_map_view().inv(),
+        match result {
+            // The page containing `phys_addr` is reachable at its own physical address. After init
+            // this means it is present (writable, supervisor) in the kernel page directory; before
+            // init the call is a no-op and the boot page tables already cover it. Either way the
+            // caller (`KernelFrame::new`) may subsequently read/write the frame through `phys_addr`.
+            Ok(_) => identity_map_view().accessible(phys_addr@),
+            // On failure the page was *not* made accessible, so `KernelFrame::new` must propagate
+            // the error and must not dereference the frame. This is sound: an `Err` is only
+            // reachable post-init (the pre-init path returns `Ok` as a no-op), and on the failure
+            // path the page was not already mapped (an already-present PTE returns `Ok`) and the
+            // failed `ensure_pt`/`ensure_pte` did not map it -- so `accessible` is false. Mirrors
+            // the `mm::phys` convention of stating the failure-state fact over the global view.
+            Err(_) => !identity_map_view().accessible(phys_addr@),
+        },
+)]
 pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     let phys_addr: usize = phys_addr.into_raw_value();
 

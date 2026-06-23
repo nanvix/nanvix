@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("page.spec.rs");
+
 use crate::hal::mem::{
     types::address::{
         PhysicalAddress,
@@ -26,11 +30,20 @@ use ::sys::{
 // Structures
 //==================================================================================================
 
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy)]
 pub struct PageAligned<T: Address>(T);
 
+#[verus_verify]
 impl<T: Address> PageAligned<T> {
     /// Constructs a page address from an aligned virtual address.
+    #[verus_spec(ret =>
+        ensures
+            match ret {
+                Ok(r) => spec_aligned(addr@) && r@ == addr@ && r.inv(),
+                Err(e) => !spec_aligned(addr@) && e.code == ErrorCode::BadAddress,
+            },
+    )]
     pub fn from_address(addr: T) -> Result<Self, Error> {
         // Check if `addr` is not aligned to a page boundary.
         if !addr.is_aligned(PAGE_ALIGNMENT)? {
@@ -45,6 +58,7 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
+#[verus_verify]
 impl<T: Address> Address for PageAligned<T> {
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
@@ -190,4 +204,21 @@ impl PageAligned<PhysicalAddress> {
         // Safety: the following unwrap is safe because the address is already page-aligned.
         PageAligned::from_address(self.0.into_virtual_address()).unwrap()
     }
+}
+
+// `View` is a supertrait of `Address`, which `PageAligned<T>` implements in exec code, so this
+// impl must be present in normal builds too — it stays in an ungated `verus!` block (the spec
+// `inv` lives in `page.spec.rs`).
+verus! {
+
+impl<T: Address> View for PageAligned<T>
+{
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
 }

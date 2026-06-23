@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("upool.spec.rs");
+
 use crate::{
     hal::mem::FrameAddress,
     mm::phys::frame,
@@ -22,11 +26,13 @@ use ::sys::error::Error;
 /// A type that represents a user frame.
 ///
 #[derive(Debug)]
+#[verus_verify(external_derive)]
 pub struct UserFrame {
     /// Frame address.
     addr: FrameAddress,
 }
 
+#[verus_verify]
 impl UserFrame {
     ///
     /// # Description
@@ -41,6 +47,13 @@ impl UserFrame {
     ///
     /// A user frame.
     ///
+    #[verus_spec(result =>
+        requires
+            addr.inv(),
+        ensures
+            result@ == addr@,
+            result.inv(),
+    )]
     pub fn new(addr: FrameAddress) -> Self {
         Self { addr }
     }
@@ -54,6 +67,13 @@ impl UserFrame {
     ///
     /// The physical address of the target user frame.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result@ == self@,
+            result.inv(),
+    )]
     pub fn address(&self) -> FrameAddress {
         self.addr
     }
@@ -67,6 +87,13 @@ impl UserFrame {
     ///
     /// The frame address.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result@ == self@,
+            result.inv(),
+    )]
     pub fn leak(self) -> FrameAddress {
         let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
         this.addr
@@ -88,6 +115,22 @@ impl UserFrame {
     /// On success, a new [`UserFrame`] that aliases the same physical frame as
     /// `self`. On failure, an error is returned.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            match result {
+                Ok(uf) => {
+                    &&& uf@ == self@
+                    &&& uf.inv()
+                    &&& crate::mm::phys::phys_view().frames.is_allocated(self@)
+                },
+                Err(_) => {
+                    ||| !crate::mm::phys::phys_view().frames.is_allocated(self@)
+                    ||| crate::mm::phys::phys_view().frames.refcounts[self@] >= 255
+                },
+            },
+    )]
     pub fn share(&self) -> Result<UserFrame, Error> {
         frame::share(self.addr)?;
         Ok(Self { addr: self.addr })
@@ -103,12 +146,29 @@ impl UserFrame {
     /// Upon success, the current reference count of the underlying physical frame is returned.
     /// Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            match result {
+                Ok(count) => {
+                    &&& crate::mm::phys::phys_view().frames.is_allocated(self@)
+                    &&& count as int == crate::mm::phys::phys_view().frames.refcounts[self@]
+                },
+                Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(self@),
+            },
+    )]
     pub fn refcount(&self) -> Result<u8, Error> {
         frame::refcount(self.addr)
     }
 }
 
+#[verus_verify]
 impl Drop for UserFrame {
+    #[verus_spec(
+        opens_invariants none
+        no_unwind
+    )]
     fn drop(&mut self) {
         if let Err(e) = frame::free(self.addr) {
             error!("failed to free user frame: {:?}", e);
@@ -127,11 +187,13 @@ impl Drop for UserFrame {
 /// so user-frame allocation has its own entry point ([`Upool::alloc`] returning [`UserFrame`]).
 ///
 #[derive(Debug)]
+#[verus_verify]
 pub struct Upool {
     /// Private field prevents external construction.
     _private: (),
 }
 
+#[verus_verify]
 impl Upool {
     ///
     /// # Description
@@ -142,6 +204,18 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
+    // Dependency contract: opaque pool facade whose real backing store is the global frame
+    // allocator. `external_body` because the post-state view `result@.wf()` is over the
+    // uninterpreted `View for Upool` and cannot be discharged from the empty struct body (the
+    // pool carries no spec-readable state of its own); see
+    // `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md`. The pool introduces no frames
+    // of its own; `wf()` is the only fact its boot-time caller needs before handing the pool to
+    // `PhysMemoryManager::init`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            result@.wf(),
+    )]
     pub(super) fn new() -> Self {
         Self { _private: () }
     }
@@ -155,6 +229,31 @@ impl Upool {
     ///
     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
     ///
+    // Dependency contract: delegates to the global frame allocator (`frame::alloc`). Modeled
+    // as a watermark-agnostic single-frame allocation over the pool's frame partition.
+    // `external_body`: the postcondition is a `self@` transition
+    // (`final(self)@ == old(self)@.alloc_one(uf@)`), but `frame::alloc`'s own contract speaks
+    // only of the frozen global `phys_view().frames` and `self` is structurally unchanged, so
+    // no in-body proof can establish the transition. The real `old@ -> @` step is deferred to
+    // the proving-phase ghost token over the singleton allocator; see
+    // `verus-ai-logs/nanvix-phys-phys-upool/verification_todo.md`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            old(self)@.wf(),
+        ensures
+            final(self)@.wf(),
+            match result {
+                Ok(uf) => {
+                    &&& old(self)@.is_free(uf@)
+                    &&& final(self)@ == old(self)@.alloc_one(uf@)
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& old(self)@.free_count() == 0
+                },
+            },
+    )]
     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
         let addr: FrameAddress = frame::alloc()?;
         Ok(UserFrame::new(addr))

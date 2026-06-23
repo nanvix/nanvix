@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("pde.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("pde.proof.rs");
+
 use crate::{
     mem::paging::TableEntry,
     x86::mem::paging::{
@@ -32,6 +38,7 @@ use crate::{
 ///
 /// A type that represents flags of a page directory entry.
 ///
+#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub struct PageDirectoryEntryFlags {
     /// Present flag.
@@ -52,6 +59,7 @@ pub struct PageDirectoryEntryFlags {
     page_size: PageSizeFlag,
 }
 
+#[verus_verify]
 impl PageDirectoryEntryFlags {
     ///
     /// # Description
@@ -73,6 +81,19 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pde_flags_new(
+                present,
+                read_write,
+                user_supervisor,
+                page_write_through,
+                page_cache_disable,
+                accessed,
+                dirty,
+                page_size,
+            ),
+    )]
     pub fn new(
         present: PresentFlag,
         read_write: ReadWriteFlag,
@@ -107,6 +128,9 @@ impl PageDirectoryEntryFlags {
     /// `true` if the present flag is set, `false` otherwise.
     ///
     #[inline(always)]
+    #[verus_spec(result =>
+        ensures result == self@.present,
+    )]
     pub fn is_present(&self) -> bool {
         matches!(self.present, PresentFlag::Present)
     }
@@ -255,6 +279,7 @@ impl PageDirectoryEntryFlags {
 ///
 /// A type that represents a page directory entry.
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct PageDirectoryEntry {
     /// Flags.
@@ -268,6 +293,7 @@ impl PageDirectoryEntry {
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
 }
 
+#[verus_verify]
 impl PageDirectoryEntry {
     ///
     /// # Description
@@ -283,7 +309,13 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
+    #[verus_spec(result =>
+        ensures
+            result@ == spec_pde_new(flags@, frame@),
+            result.inv(),
+    )]
     pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
+        proof! { use_type_invariant(frame); }
         Self { flags, frame }
     }
 }
@@ -351,6 +383,9 @@ impl PageDirectoryEntry {
     /// `true`: If the target page directory entry is marked as present.
     /// `false`: Otherwise.
     ///
+    #[verus_spec(result =>
+        ensures result == self@.flags.present,
+    )]
     pub fn is_present(&self) -> bool {
         self.flags.is_present()
     }
@@ -377,9 +412,23 @@ impl PageDirectoryEntry {
     ///
     /// The physical address.
     ///
+    #[verus_spec(result =>
+        ensures
+            result as int == self@.frame * (crate::mem::FRAME_SIZE as int),
+            result as int % (crate::mem::FRAME_SIZE as int) == 0,
+    )]
+    // VERUS REWRITE: the original `self.frame.into_raw_value() << crate::mem::FRAME_SHIFT`
+    // (single expression) is split so the `into_raw_value()` postcondition
+    // (`0 <= self@ <= FrameNumber::spec_max()`) lands in context *before* the overflow-bearing
+    // shift, and `lemma_frame_address(raw)` can be invoked between them to discharge the
+    // no-overflow + `FRAME_SIZE`-alignment `ensures`. The operand must be named (`let raw`)
+    // because an exec call cannot appear inside `proof!`, so there is otherwise no point between
+    // the call and the shift to invoke the lemma. Same value, same operations, same time/space
+    // complexity — semantically equivalent.
+    // Reproducer: verus-ai-logs/nanvix-phys-arch-x86-pde/cheating-elimination/repro/frame_address.rs
     pub fn frame_address(&self) -> usize {
         let raw: usize = self.frame.into_raw_value();
-
+        proof! { lemma_frame_address(raw); }
         raw << crate::mem::FRAME_SHIFT
     }
 

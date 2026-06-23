@@ -11,6 +11,10 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("kframe.spec.rs");
+
 use crate::hal::mem::{
     Address,
     FrameAddress,
@@ -30,11 +34,15 @@ use ::sys::error::Error;
 
 /// A type that represents a kernel frame.
 #[derive(Debug)]
+#[verus_verify(external_derive)]
 pub struct KernelFrame {
     /// Frame address.
     base: FrameAddress,
 }
 
+// Dependency contract for the manager layer: wrapping a `FrameAddress` produces a handle whose
+// abstract address is the same physical frame.
+#[verus_verify]
 impl KernelFrame {
     ///
     /// # Description
@@ -49,6 +57,24 @@ impl KernelFrame {
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
+    // Dependency contract: wrapping a frame goes through `mm::virt::identity_map_page`, which
+    // is outside the verification scope of `mm::phys`. On success the returned handle owns the
+    // same physical frame that was passed in. `external_body` per `verus-ai-logs/tcb-allowed.md`:
+    // the identity-mapping side effect lives in `mm::virt` and the body's `?`/log closures call
+    // into that layer, so the wrap contract is trusted until `mm::virt` is verified.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            base.inv(),
+        ensures
+            match result {
+                Ok(kf) => {
+                    &&& kf@ == base@
+                    &&& kf.inv()
+                },
+                Err(_) => true,
+            },
+    )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
         // Ensure the frame is identity-mapped in the kernel address space so that
         // Deref/DerefMut can safely access it. This lazily installs a page
@@ -68,6 +94,7 @@ impl KernelFrame {
     }
 }
 
+#[verus_verify]
 impl KernelFrame {
 
     ///
@@ -79,6 +106,16 @@ impl KernelFrame {
     ///
     /// The base address of the target kernel frame.
     ///
+    // Pure accessor: returns the owned frame's physical address unchanged. `result@ == self@`
+    // gives `kpage` the exact address; `result.inv()` (page alignment carried from `self.inv()`)
+    // lets `into_page_address` and the `KernelStack` arithmetic behind it proceed.
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result@ == self@,
+            result.inv(),
+    )]
     pub fn base(&self) -> FrameAddress {
         self.base
     }
@@ -130,7 +167,17 @@ impl DerefMut for KernelFrame {
     }
 }
 
+#[verus_verify]
 impl Drop for KernelFrame {
+    // Releasing the handle returns its physical frame to the global frame allocator via
+    // `super::frame::free`, which is best-effort (`ensures true`) and `opens_invariants none`/
+    // `no_unwind`, so `drop` makes no abstract postcondition. Callers (the manager error path,
+    // `KernelStack::drop`) rely on this being the sole, complete deallocation step. Mirror of
+    // `UserFrame::drop`.
+    #[verus_spec(
+        opens_invariants none
+        no_unwind
+    )]
     fn drop(&mut self) {
         if let Err(e) = super::frame::free(self.base) {
             error!("failed to free kernel frame: {:?}", e);
