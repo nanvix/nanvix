@@ -368,6 +368,26 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
     // Machine type used for filtering tests.
     let machine: &str = "microvm";
 
+    // Build mode used for filtering tests. The Makefile exports the guest `BUILD_MODE` (`debug` or
+    // `release`) into the environment. A missing or unrecognized value is a hard error rather than
+    // a silent default, so a misconfigured run fails fast instead of quietly skipping every
+    // build-mode-gated test.
+    let build_mode: String = match ::std::env::var("BUILD_MODE") {
+        Ok(value) => value.trim().to_string(),
+        Err(_) => {
+            return Err(::anyhow::anyhow!(
+                "BUILD_MODE environment variable is required (expected one of: {})",
+                TestCaseConfig::KNOWN_BUILD_MODES.join(", ")
+            ));
+        },
+    };
+    if !TestCaseConfig::KNOWN_BUILD_MODES.contains(&build_mode.as_str()) {
+        return Err(::anyhow::anyhow!(
+            "unknown BUILD_MODE '{build_mode}' (expected one of: {})",
+            TestCaseConfig::KNOWN_BUILD_MODES.join(", ")
+        ));
+    }
+
     for test_config in selected_tests {
         // Skip tests that are not applicable to the current machine.
         if !test_config.should_run_on(machine) {
@@ -379,6 +399,23 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 test_config.program,
                 machine,
                 test_config.runs_on
+            );
+            continue;
+        }
+
+        // Skip tests that are not applicable to the current build mode. This keeps heavy tests
+        // (e.g. those that load a large image many times) off the debug/trace builds, where the
+        // per-page kernel trace over a byte-at-a-time UART makes them too slow, while still running
+        // them in release builds where tracing is disabled.
+        if !test_config.should_run_in_build_mode(&build_mode) {
+            info!(
+                "main(): skipping test not applicable to build mode (executor={}, name={}, \
+                 program={:?}, build_mode={}, build_modes={:?})",
+                test_config.executor,
+                test_config.name,
+                test_config.program,
+                build_mode,
+                test_config.build_modes
             );
             continue;
         }
@@ -401,6 +438,7 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
             extra_nanvixd_args,
             expected_exit_code,
             runs_on: _,
+            build_modes: _,
             program_env,
             program_args_padding_len,
         } = test_config;

@@ -576,6 +576,12 @@ pub struct TestCaseConfig {
     pub expected_exit_code: Option<i32>,
     /// Optional list of machine types on which this test should run.
     pub runs_on: Option<Vec<String>>,
+    /// Required, non-empty list of build modes (`debug`, `release`) in which this test should run.
+    /// The test is skipped in any build mode not listed. This gates heavy tests to builds where
+    /// they are tractable: a test that loads a large image many times is prohibitively slow under a
+    /// `debug` (trace-enabled) build, where the kernel emits per-page trace over a byte-at-a-time
+    /// UART, but completes quickly under a `release` (trace-disabled) build.
+    pub build_modes: Vec<String>,
     /// Optional environment variables forwarded to the workload under test.
     /// Formatted as space-separated `KEY=VALUE` pairs (e.g., `"FOO=bar BAZ=qux"`).
     pub program_env: Option<String>,
@@ -586,6 +592,9 @@ pub struct TestCaseConfig {
 }
 
 impl TestCaseConfig {
+    /// Build modes recognized by the `build_modes` gate and by the active `BUILD_MODE` selector.
+    pub const KNOWN_BUILD_MODES: [&'static str; 2] = ["debug", "release"];
+
     ///
     /// # Description
     ///
@@ -615,6 +624,7 @@ impl TestCaseConfig {
         let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
         let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
         let runs_on_field: String = format!("{entry_prefix}.runs_on");
+        let build_modes_field: String = format!("{entry_prefix}.build_modes");
         let program_env_field: String = format!("{entry_prefix}.program_env");
         let program_args_padding_len_field: String =
             format!("{entry_prefix}.program_args_padding_len");
@@ -653,6 +663,12 @@ impl TestCaseConfig {
                 expected_exit_code_field.as_str(),
             )?,
             runs_on: read_optional_string_array(table, "runs_on", runs_on_field.as_str())?,
+            build_modes: read_optional_string_array(
+                table,
+                "build_modes",
+                build_modes_field.as_str(),
+            )?
+            .ok_or_else(|| ::anyhow::anyhow!("{build_modes_field} is a required field"))?,
             program_env: read_optional_string(table, "program_env", program_env_field.as_str())?,
             program_args_padding_len: read_optional_usize(
                 table,
@@ -710,6 +726,29 @@ impl TestCaseConfig {
         if self.program_args.is_some() && self.program_args_padding_len.is_some() {
             let reason: String = format!(
                 "tests[{index}] cannot set both 'program_args' and 'program_args_padding_len'"
+            );
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        // `build_modes` must list at least one mode: an empty list would match no build mode and
+        // silently disable the test in every run.
+        if self.build_modes.is_empty() {
+            let reason: String =
+                format!("tests[{index}] must specify a non-empty 'build_modes' list");
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        // Reject unknown build-mode filters early: a typo (e.g. "Release") would otherwise match no
+        // build mode and silently exclude the test from every run.
+        if let Some(unknown_mode) = self
+            .build_modes
+            .iter()
+            .find(|mode| !Self::KNOWN_BUILD_MODES.contains(&mode.as_str()))
+        {
+            let reason: String = format!(
+                "tests[{index}] has an unknown build mode '{unknown_mode}' in 'build_modes' \
+                 (known modes: {})",
+                Self::KNOWN_BUILD_MODES.join(", ")
             );
             return Err(::anyhow::anyhow!(reason));
         }
@@ -788,6 +827,24 @@ impl TestCaseConfig {
             // Filter specified - check if machine is in the list.
             Some(allowed_machines) => allowed_machines.iter().any(|m| m == machine),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether this test case should run in the specified build mode.
+    ///
+    /// # Parameters
+    ///
+    /// - `build_mode`: Build mode to check against (`debug` or `release`).
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when the test lists the given build mode in its `build_modes` filter; returns
+    /// `false` otherwise.
+    ///
+    pub fn should_run_in_build_mode(&self, build_mode: &str) -> bool {
+        self.build_modes.iter().any(|m| m == build_mode)
     }
 
     ///
@@ -1788,6 +1845,10 @@ mod tests {
         let mut table: Table = Table::new();
         table.insert("executor".to_string(), Value::String(executor.to_string()));
         table.insert("iterations".to_string(), Value::Integer(1));
+        table.insert(
+            "build_modes".to_string(),
+            Value::Array(vec![Value::String("debug".to_string())]),
+        );
         if let Some(exit_code) = expected_exit_code {
             table.insert("expected_exit_code".to_string(), exit_code);
         }
@@ -1861,6 +1922,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: Some(0),
             runs_on: None,
+            build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: None,
         };
@@ -1882,6 +1944,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: None,
             runs_on: None,
+            build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: None,
         };
@@ -1977,6 +2040,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: None,
             runs_on: None,
+            build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: Some(100),
         };
@@ -1986,5 +2050,81 @@ mod tests {
             "validate() must reject configs with both 'program_args' and \
              'program_args_padding_len'"
         );
+    }
+
+    /// Builds a minimal `empty` test case configuration with the given `build_modes` filter.
+    fn config_with_build_modes(build_modes: Vec<String>) -> TestCaseConfig {
+        TestCaseConfig {
+            executor: "empty".to_string(),
+            name: "empty/build_mode_gate".to_string(),
+            iterations: 1,
+            program: None,
+            program_args: None,
+            input: None,
+            expected_output: None,
+            expect_empty_output: false,
+            extra_nanvixd_args: None,
+            expected_exit_code: None,
+            runs_on: None,
+            build_modes,
+            program_env: None,
+            program_args_padding_len: None,
+        }
+    }
+
+    #[test]
+    fn should_run_in_build_mode_respects_listed_modes() {
+        let config: TestCaseConfig = config_with_build_modes(vec!["release".to_string()]);
+        assert!(
+            config.should_run_in_build_mode("release"),
+            "a release-gated test must run under release"
+        );
+        assert!(
+            !config.should_run_in_build_mode("debug"),
+            "a release-gated test must not run under debug"
+        );
+    }
+
+    #[test]
+    fn should_run_in_build_mode_matches_any_listed_mode() {
+        let config: TestCaseConfig =
+            config_with_build_modes(vec!["debug".to_string(), "release".to_string()]);
+        assert!(config.should_run_in_build_mode("debug"), "must run under a listed mode (debug)");
+        assert!(
+            config.should_run_in_build_mode("release"),
+            "must run under a listed mode (release)"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_known_build_modes() -> Result<()> {
+        let config: TestCaseConfig =
+            config_with_build_modes(vec!["debug".to_string(), "release".to_string()]);
+        config.validate(0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn validate_rejects_empty_build_modes() {
+        let config: TestCaseConfig = config_with_build_modes(Vec::new());
+        let result = config.validate(0);
+        assert!(result.is_err(), "validate() must reject an empty 'build_modes' list");
+    }
+
+    #[test]
+    fn validate_rejects_unknown_build_mode() {
+        let config: TestCaseConfig = config_with_build_modes(vec!["release-profiling".to_string()]);
+        let result = config.validate(0);
+        assert!(result.is_err(), "validate() must reject an unknown build mode in 'build_modes'");
+    }
+
+    #[test]
+    fn from_table_requires_build_modes() {
+        // A table without `build_modes` must fail to parse, since the field is required.
+        let mut table: Table = Table::new();
+        table.insert("executor".to_string(), Value::String("empty".to_string()));
+        table.insert("iterations".to_string(), Value::Integer(1));
+        let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
+        assert!(result.is_err(), "from_table() must reject a test entry missing 'build_modes'");
     }
 }
