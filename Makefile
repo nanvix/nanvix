@@ -416,6 +416,14 @@ endif
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
+# Ported POSIX C test suites (src/posix-tests/<suite>/), compiled against the
+# bundled libc by build/make/posix-tests.mk and booted by `run-posix-tests`.
+# `common/` holds shared crt0 scaffolding and is not a suite of its own. The
+# guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
+# (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner
+# is gated on TARGET=x86 accordingly.
+ALL_POSIX_TESTS := c-bindings ctor-c dlfcn-c dlfcn-global-c dlfcn-needed-c dlfcn-pie-c echo-c file-c hello-c memory-c misc-c network-c noop-c thread-c
+
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := \
@@ -541,6 +549,9 @@ endif
 # The bundled libc artifacts are always built; clean them too.
 clean: clean-nanvix-libc-bundle
 
+# The ported POSIX C test suites and their bootable/RAMFS images.
+clean: clean-posix-tests
+
 distclean: clean
 ifeq ($(IS_WINDOWS),yes)
 	$(FORCE_RM_CMD) "$(OBJECTS_DIR)"
@@ -627,6 +638,7 @@ help:
 	@echo "Testing Targets"
 	@echo "  run-unit-tests       Run unit tests for libraries and components"
 	@echo "  run-nanvix-tests     Run system integration tests using nanvix-test"
+	@echo "  run-posix-tests      Run the ported POSIX C test suites (standalone, Linux/x86)"
 	@echo ""
 	@echo "Execution Targets"
 	@echo "  debug    Run system in debug mode"
@@ -1071,6 +1083,7 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@$(MAKE) run-kernel-tests
 	@$(MAKE) run-smoke-test
 	@$(MAKE) run-nanvix-tests
+	@$(MAKE) run-posix-tests
 endif
 
 run-unit-tests: all-nanvix test-guest-rlibs
@@ -1190,6 +1203,16 @@ include build/make/generic-guest-staticlibs.mk
 #===================================================================================================
 
 include build/make/nanvix-libc-artifacts.mk
+
+#===================================================================================================
+# Build Rules for the Guest C Toolchain and Ported POSIX C Test Suites
+#===================================================================================================
+
+# guest-c-apps.mk must come after nanvix-libc-artifacts.mk (it references
+# NANVIX_LIBC_BUNDLE_AR) and posix-tests.mk after guest-c-apps.mk (it reuses the
+# GUEST_C_APP_* toolchain definitions and ALL_POSIX_TESTS).
+include build/make/guest-c-apps.mk
+include build/make/posix-tests.mk
 
 #===================================================================================================
 # Build Rules for Guest Rust Libraries

@@ -1,0 +1,75 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+#===================================================================================================
+# Shared Guest C Toolchain (build guest C sources against the bundled libc)
+#===================================================================================================
+#
+# Defines the host C toolchain and link flags used to build guest C sources
+# against the merged `libc.a` (the C library + the Nanvix system-call backend,
+# produced by `nanvix-libc-bundle`). These definitions are consumed by
+# `build/make/posix-tests.mk`, which compiles the ported POSIX C test suites with
+# them. The resulting binaries exercise the bundled libc and are never shipped in
+# releases: `install`/`release` copy only the kernel, daemons, libraries, and
+# host tools.
+#
+# C toolchain: guest C sources are cross-compiled with the host `clang`
+# (targeting the i686 guest ABI), so they build on developer machines and CI
+# without a dedicated cross toolchain.
+
+#---------------------------------------------------------------------------------------------------
+# C compiler.
+#---------------------------------------------------------------------------------------------------
+
+# Host clang, cross-compiling to the i686 guest ABI.
+GUEST_C_APP_CC := clang --target=i686-unknown-none
+
+#---------------------------------------------------------------------------------------------------
+# Flags and inputs.
+#---------------------------------------------------------------------------------------------------
+
+# Compile flags: freestanding i686, project headers only. Clang supplies the
+# freestanding headers (stddef.h/stdarg.h) from its builtin resource dir.
+#
+# On GNU/Linux, -nostdinc maximally isolates from host headers while clang still
+# resolves its builtin freestanding headers. On Windows this clang drops the
+# builtin resource dir under -nostdinc, so use -nostdlibinc there: it still
+# excludes the host C library headers but keeps the compiler's builtin
+# freestanding headers (stdarg.h, stddef.h, ...).
+ifeq ($(IS_WINDOWS),yes)
+GUEST_C_APP_CFLAGS := -m32 -march=pentiumpro -ffreestanding -nostdlibinc -std=c17
+else
+GUEST_C_APP_CFLAGS := -m32 -march=pentiumpro -ffreestanding -nostdinc -std=c17
+endif
+GUEST_C_APP_CFLAGS += -isystem $(ROOT_DIR)/include
+ifeq ($(RELEASE),yes)
+GUEST_C_APP_CFLAGS += -O3
+else
+GUEST_C_APP_CFLAGS += -O0 -g
+endif
+
+# Link: host ld over the merged libc.a + crt0 + the guest user linker script.
+# Mirrors the proven guest link (-z muldefs == the guest build's
+# -Wl,--allow-multiple-definition: both libc and the backend define __errno_location).
+#
+# Windows has no GNU ld. The LLVM toolchain that already supplies the guest
+# `clang` also ships `ld.lld`, which performs the same ELF i386 link
+# (-melf_i386, -z muldefs, -T script, --entry), so default to it there.
+ifeq ($(IS_WINDOWS),yes)
+GUEST_C_APP_LD ?= ld.lld
+else
+GUEST_C_APP_LD ?= ld
+endif
+GUEST_C_APP_LIBC := $(NANVIX_LIBC_BUNDLE_AR)
+# Standalone math archive (newlib-style libc.a / libm.a split). Produced by
+# `all-guest-staticlibs` from the `nanvix_libm` crate (libc_math + nvx panic
+# handler, no sysalloc).
+GUEST_C_APP_LIBM := $(LIBRARIES_DIR)/libm.a
+GUEST_C_APP_LD_SCRIPT := $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
+GUEST_C_APP_LDFLAGS := -melf_i386 -z noexecstack -z muldefs
+# --no-warn-rwx-segments silences a GNU ld >= 2.39 diagnostic. ld.lld neither
+# emits that warning nor recognizes the flag, so pass it only to GNU ld.
+ifneq ($(IS_WINDOWS),yes)
+GUEST_C_APP_LDFLAGS += --no-warn-rwx-segments
+endif
+GUEST_C_APP_LDFLAGS += -T $(GUEST_C_APP_LD_SCRIPT) --entry=_do_start
