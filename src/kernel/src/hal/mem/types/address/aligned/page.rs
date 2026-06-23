@@ -8,8 +8,6 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("page.spec.rs");
-#[cfg(verus_keep_ghost)]
-include!("page.proof.rs");
 
 use crate::hal::mem::{
     types::address::{

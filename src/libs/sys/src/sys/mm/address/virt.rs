@@ -8,8 +8,6 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("virt.spec.rs");
-#[cfg(verus_keep_ghost)]
-include!("virt.proof.rs");
 
 use crate::{
     error::{

@@ -8,8 +8,6 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("region.spec.rs");
-#[cfg(verus_keep_ghost)]
-include!("region.proof.rs");
 
 use crate::hal::mem::types::{
     access::AccessPermission,

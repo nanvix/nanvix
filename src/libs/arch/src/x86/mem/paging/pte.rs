@@ -8,8 +8,6 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("pte.spec.rs");
-#[cfg(verus_keep_ghost)]
-include!("pte.proof.rs");
 
 use crate::{
     mem::{

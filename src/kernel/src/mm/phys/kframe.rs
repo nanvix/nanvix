@@ -14,8 +14,6 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("kframe.spec.rs");
-#[cfg(verus_keep_ghost)]
-include!("kframe.proof.rs");
 
 use crate::hal::mem::{
     Address,

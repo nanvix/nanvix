@@ -8,8 +8,6 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("mod.spec.rs");
-#[cfg(verus_keep_ghost)]
-include!("mod.proof.rs");
 
 mod virt;
 

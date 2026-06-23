@@ -8,8 +8,6 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("upool.spec.rs");
-#[cfg(verus_keep_ghost)]
-include!("upool.proof.rs");
 
 use crate::{
     hal::mem::FrameAddress,

@@ -37,8 +37,6 @@ use ::sys::error::Error;
 // Include specifications.
 #[cfg(verus_keep_ghost)]
 include!("mod.spec.rs");
-#[cfg(verus_keep_ghost)]
-include!("mod.proof.rs");
 
 //==================================================================================================
 // Exports
