@@ -252,10 +252,6 @@ impl Address for VirtualAddress {
         self.0
     }
 
-    fn clone_address(&self) -> Self {
-        VirtualAddress(self.0)
-    }
-
     fn as_ptr(&self) -> *const u8 {
         self.0 as *const u8
     }

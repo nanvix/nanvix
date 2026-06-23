@@ -33,7 +33,7 @@ use crate::{
 #[verus_verify]
 pub trait Address
 where
-    Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
+    Self: core::fmt::Debug + Clone + Copy + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
 {
     ///
     /// # Description
@@ -64,26 +64,6 @@ where
     )]
     fn into_raw_value(self) -> usize;
 
-    ///
-    /// # Description
-    ///
-    /// Returns a copy of the target [`Address`] that denotes the same address.
-    ///
-    /// This is a view-preserving clone: the returned address has the same
-    /// abstract value as the receiver. It exists so that generic callers can
-    /// duplicate an [`Address`] while retaining the verification guarantee that
-    /// the copy equals the original — something the bare [`Clone`] supertrait
-    /// (which has no Verus contract) cannot provide.
-    ///
-    /// # Returns
-    ///
-    /// A copy of the target [`Address`].
-    ///
-    #[verus_spec(result =>
-        ensures
-            result@ == self@,
-    )]
-    fn clone_address(&self) -> Self;
     ///
     /// # Description
     ///
