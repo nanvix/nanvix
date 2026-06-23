@@ -37,11 +37,13 @@ gateway_connect_timeout_ms = 15000
 #===================================================================================================
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "empty"
 name = "empty/1"
 iterations = 1
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "empty"
 name = "empty/2"
 iterations = 2
@@ -51,6 +53,7 @@ iterations = 2
 #===================================================================================================
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
@@ -60,6 +63,7 @@ expected_exit_code = 13
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
@@ -69,6 +73,7 @@ expected_exit_code = 3
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/vfs-test.elf"
 extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
@@ -77,11 +82,13 @@ expect_empty_output = true
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/arch-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 name = "execv-small"
 program = "./bin/execv-test.initrd"
@@ -92,6 +99,7 @@ expected_exit_code = 0
 # execv() of a large binary (target inflated to MEMORY_SIZE/8). Reuses the same caller, pointed at
 # a ramfs whose `/target` is the large program, to exercise loading a big image with no size cap.
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 name = "execv-big"
 program = "./bin/execv-test.initrd"
@@ -100,38 +108,45 @@ expected_output = "ok"
 expected_exit_code = 0
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/echo-rust-nostd.initrd"
 input = '["hello"]'
 expected_output = "hello"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/thread-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/waitpid-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/setenv-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/stress-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/cmdline-len-rust.elf"
 # 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
@@ -150,6 +165,7 @@ expected_output = "ok"
 #===================================================================================================
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
@@ -159,6 +175,7 @@ expected_exit_code = 13
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
@@ -168,6 +185,7 @@ expected_exit_code = 3
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/vfs-test.elf"
 extra_nanvixd_args = "-ramfs ./bin/vfs-test.img"
@@ -176,42 +194,49 @@ expect_empty_output = true
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/arch-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/echo-rust-nostd.initrd"
 input = '["hello world!"]'
 expected_output = "hello world!"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/thread-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/waitpid-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/setenv-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/stress-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
@@ -219,6 +244,7 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/cmdline-len-rust.elf"
 # 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
@@ -231,6 +257,7 @@ expected_output = "ok"
 #===================================================================================================
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/mount-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
@@ -240,6 +267,7 @@ expected_exit_code = 0
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-fork-hostfs.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/test-fork-hostfs-data"
@@ -249,6 +277,7 @@ expected_exit_code = 13
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/mount-multipart-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
@@ -262,6 +291,7 @@ runs_on = ["microvm"]
 #===================================================================================================
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/network-rust.initrd"
 extra_nanvixd_args = "-allow-host-networking"
@@ -269,18 +299,21 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/network-rust.initrd"
 extra_nanvixd_args = "-allow-host-networking"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/pipe-dup2-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/fork-exec-vfsd-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-vfsd-test.img"
@@ -288,6 +321,7 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/fork-exec-write-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-write-test.img"
@@ -299,6 +333,7 @@ expected_output = "ok"
 # execv()s. FAILS while the exec'd image does not receive the parent's cloned
 # descriptor table (the inherited fd is unknown and the child's read fails).
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/fork-exec-loop-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-loop-test.img"
@@ -306,6 +341,7 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/fork-exec-write-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-write-test.img"
@@ -316,6 +352,7 @@ expected_output = "ok"
 # while vfsd derives the caller PID by casting the request's TID: the non-main thread's distinct
 # TID maps to a phantom process whose descriptor table is empty, so the I/O returns EBADF.
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/thread-vfs-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/thread-vfs-test.img"
@@ -323,12 +360,14 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/thread-vfs-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/thread-vfs-test.img"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/fork-exec-loop-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-loop-test.img"
@@ -338,6 +377,7 @@ expected_output = "ok"
 # FAILS until sockets are reference-counted across fork(): a child closing its
 # inherited copy currently destroys the parent's socket.
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/socket-fork-rust.initrd"
 extra_nanvixd_args = "-allow-host-networking"
@@ -345,17 +385,20 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/pipe-dup2-rust.initrd"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/fork-exec-vfsd-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-vfsd-test.img"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/socket-fork-rust.initrd"
 extra_nanvixd_args = "-allow-host-networking"
@@ -366,6 +409,7 @@ expected_output = "ok"
 #===================================================================================================
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "snapshot-restore"
 program = "./bin/snapshot-test.elf"
 iterations = 1

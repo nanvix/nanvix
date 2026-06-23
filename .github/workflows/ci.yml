@@ -389,15 +389,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # PRs run debug only (fast feedback); merge queue and dev pushes run
-        # release only (final validation + release archives); manual dispatch
-        # runs both.
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+        # PRs run debug AND release (so release-gated integration tests run on
+        # PRs too); merge queue and dev pushes run release only (final validation
+        # + release archives); manual dispatch runs both.
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
         deployment-type: [ standalone, single-process, multi-process ]
-        memory-size: [ 128, 256 ]
+        memory-size: ${{ fromJSON(github.event_name == 'pull_request' && '[128]' || '[128, 256]') }}
         # 256MB images are release-only; exclude them from debug builds.
         exclude:
           - build-type: debug
@@ -494,7 +494,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
@@ -711,11 +711,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        memory-size: [ 128, 256 ]
+        memory-size: ${{ fromJSON(github.event_name == 'pull_request' && '[128]' || '[128, 256]') }}
         # 256MB images are release-only; exclude them from debug builds.
         exclude:
           - build-type: debug
@@ -792,7 +792,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug"]' ||
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
@@ -887,6 +887,9 @@ jobs:
         shell: pwsh
         env:
           RUST_LOG: trace
+          # Forwarded to the harness so it can gate build-mode-restricted tests (e.g. heavy tests
+          # marked release-only via `build_modes`, which are too slow under a debug/trace build).
+          BUILD_MODE: ${{ matrix.build-type }}
         run: |
           & .\bin\nanvix-test.exe .\test\test-standalone-windows.toml
 

@@ -60,6 +60,9 @@ runs:
       shell: bash
       env:
         RUST_LOG: info
+        # Forwarded to the harness so it can gate build-mode-restricted tests (e.g. heavy tests
+        # marked release-only via `build_modes`, which are too slow under a debug/trace build).
+        BUILD_MODE: ${{ inputs.build-type }}
       run: |
         set -Eeuo pipefail
 

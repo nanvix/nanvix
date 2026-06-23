@@ -26,11 +26,13 @@ gateway_connect_max_backoff_ms = 500
 gateway_connect_timeout_ms = 15000
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "empty"
 name = "empty/1"
 iterations = 1
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "empty"
 name = "empty/2"
 iterations = 2
@@ -40,6 +42,7 @@ iterations = 2
 #===================================================================================================
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
@@ -48,6 +51,7 @@ expect_empty_output = true
 expected_exit_code = 13
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
@@ -57,42 +61,49 @@ expected_exit_code = 3
 runs_on = ["microvm"]
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/echo-rust-nostd.elf"
 input = '["hello world!"]'
 expected_output = "hello world!"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/linux-app.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/arch-rust.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/memory-rust.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/misc-rust.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/network-rust.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
+build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/thread-rust.elf"
 input = "[]"
