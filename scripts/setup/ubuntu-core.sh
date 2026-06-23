@@ -19,6 +19,7 @@ apt-get install -y        \
     bridge-utils          \
     build-essential       \
     bzip2                 \
+    clang                 \
     cmake                 \
     codespell             \
     cpio                  \
