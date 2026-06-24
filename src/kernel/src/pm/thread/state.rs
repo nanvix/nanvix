@@ -67,6 +67,18 @@ pub struct ThreadState {
     fpu_state: Pin<Box<FpuState>>,
     /// Whether the thread is detached (will be auto-harvested on exit).
     detached: bool,
+    /// Signals currently blocked for this thread.
+    ///
+    /// Inert plumbing for the signal subsystem: these fields are default-initialized so existing
+    /// behavior is unchanged, and are read by later phases of the signals effort.
+    #[allow(dead_code)]
+    blocked: u64,
+    /// Signals pending specifically against this thread (e.g. synchronous faults).
+    #[allow(dead_code)]
+    pending: u64,
+    /// Saved blocked mask while a handler runs (restored by `sigreturn`).
+    #[allow(dead_code)]
+    saved_blocked: Option<u64>,
 }
 
 //==================================================================================================
@@ -110,6 +122,9 @@ impl ThreadState {
             interrupt_reason: None,
             fpu_state: Box::pin(fpu_state),
             detached: false,
+            blocked: 0,
+            pending: 0,
+            saved_blocked: None,
         }
     }
 

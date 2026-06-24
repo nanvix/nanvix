@@ -115,6 +115,18 @@ pub enum KcallNumber {
     Execv = KcallNumber::NR_EXECV_SYSCALL,
     /// Resolves a thread identifier to the identifier of its owning process.
     GetPidByTid = KcallNumber::NR_GET_PID_BY_TID_SYSCALL,
+    /// Gets and/or sets the disposition of a signal.
+    Sigaction = KcallNumber::NR_SIGACTION_SYSCALL,
+    /// Gets and/or modifies the calling thread's blocked signal mask.
+    Sigprocmask = KcallNumber::NR_SIGPROCMASK_SYSCALL,
+    /// Posts a signal to a target process.
+    Kill = KcallNumber::NR_KILL_SYSCALL,
+    /// Restores the calling thread's context after a signal handler returns.
+    Sigreturn = KcallNumber::NR_SIGRETURN_SYSCALL,
+    /// Retrieves the set of pending-but-blocked signals.
+    Sigpending = KcallNumber::NR_SIGPENDING_SYSCALL,
+    /// Atomically sets the signal mask and blocks until a signal is delivered.
+    Sigsuspend = KcallNumber::NR_SIGSUSPEND_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -162,6 +174,12 @@ impl KcallNumber {
     const NR_GET_PPID_SYSCALL: u32 = 38;
     const NR_EXECV_SYSCALL: u32 = 39;
     const NR_GET_PID_BY_TID_SYSCALL: u32 = 40;
+    const NR_SIGACTION_SYSCALL: u32 = 41;
+    const NR_SIGPROCMASK_SYSCALL: u32 = 42;
+    const NR_KILL_SYSCALL: u32 = 43;
+    const NR_SIGRETURN_SYSCALL: u32 = 44;
+    const NR_SIGPENDING_SYSCALL: u32 = 45;
+    const NR_SIGSUSPEND_SYSCALL: u32 = 46;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -210,6 +228,12 @@ impl From<u32> for KcallNumber {
             Self::NR_DUPLICATE_SYSCALL => KcallNumber::Duplicate,
             Self::NR_EXECV_SYSCALL => KcallNumber::Execv,
             Self::NR_GET_PID_BY_TID_SYSCALL => KcallNumber::GetPidByTid,
+            Self::NR_SIGACTION_SYSCALL => KcallNumber::Sigaction,
+            Self::NR_SIGPROCMASK_SYSCALL => KcallNumber::Sigprocmask,
+            Self::NR_KILL_SYSCALL => KcallNumber::Kill,
+            Self::NR_SIGRETURN_SYSCALL => KcallNumber::Sigreturn,
+            Self::NR_SIGPENDING_SYSCALL => KcallNumber::Sigpending,
+            Self::NR_SIGSUSPEND_SYSCALL => KcallNumber::Sigsuspend,
             _ => KcallNumber::Invalid,
         }
     }
@@ -260,6 +284,12 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Duplicate => KcallNumber::NR_DUPLICATE_SYSCALL,
             KcallNumber::Execv => KcallNumber::NR_EXECV_SYSCALL,
             KcallNumber::GetPidByTid => KcallNumber::NR_GET_PID_BY_TID_SYSCALL,
+            KcallNumber::Sigaction => KcallNumber::NR_SIGACTION_SYSCALL,
+            KcallNumber::Sigprocmask => KcallNumber::NR_SIGPROCMASK_SYSCALL,
+            KcallNumber::Kill => KcallNumber::NR_KILL_SYSCALL,
+            KcallNumber::Sigreturn => KcallNumber::NR_SIGRETURN_SYSCALL,
+            KcallNumber::Sigpending => KcallNumber::NR_SIGPENDING_SYSCALL,
+            KcallNumber::Sigsuspend => KcallNumber::NR_SIGSUSPEND_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }
@@ -279,5 +309,22 @@ mod tests {
     #[test]
     fn test_kcall_vector_avoids_linux_syscall_gate() {
         assert_ne!(KCALL_VECTOR, 0x80);
+    }
+
+    #[test]
+    fn test_signal_kcall_numbers_round_trip() {
+        let signal_kcalls: [(KcallNumber, u32); 6] = [
+            (KcallNumber::Sigaction, 41),
+            (KcallNumber::Sigprocmask, 42),
+            (KcallNumber::Kill, 43),
+            (KcallNumber::Sigreturn, 44),
+            (KcallNumber::Sigpending, 45),
+            (KcallNumber::Sigsuspend, 46),
+        ];
+
+        for (kcall, number) in signal_kcalls {
+            assert_eq!(u32::from(kcall), number);
+            assert_eq!(KcallNumber::from(number), kcall);
+        }
     }
 }
