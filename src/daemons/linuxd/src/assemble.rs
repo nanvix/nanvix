@@ -37,11 +37,14 @@ use ::syscall::{
         SystemCallMessagePart,
     },
     poll::message::PollRequest,
-    sys::stat::message::{
-        FileChmodAtRequest,
-        FileStatAtRequest,
-        MakeDirectoryAtRequest,
-        UpdateFileAccessTimeAtRequest,
+    sys::{
+        select::message::SelectRequest,
+        stat::message::{
+            FileChmodAtRequest,
+            FileStatAtRequest,
+            MakeDirectoryAtRequest,
+            UpdateFileAccessTimeAtRequest,
+        },
     },
     unistd::message::{
         ChangeDirectoryRequest,
@@ -638,5 +641,48 @@ impl<T> RequestAssemblerTrait<T> for PollRequest {
         request: Self,
     ) -> Result<Vec<Message>, WorkerThreadError> {
         crate::linux::poll::do_poll(syscall_table, source, request)
+    }
+}
+
+impl<T> RequestAssemblerTrait<T> for SelectRequest {
+    fn new_assembler() -> RequestAssemblerType {
+        let capacity: usize = Self::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
+        RequestAssemblerType::SelectRequest(
+            SystemCallLongMessage::new(capacity).expect("capacity is set to a valid value"),
+        )
+    }
+
+    fn add_part(
+        assembler: &mut RequestAssemblerType,
+        part: SystemCallMessagePart,
+    ) -> Result<(), WorkerThreadError> {
+        match assembler {
+            RequestAssemblerType::SelectRequest(assembler) => Ok(assembler.add_part(part)?),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type").into()),
+        }
+    }
+
+    fn is_complete(assembler: &RequestAssemblerType) -> Result<bool, Error> {
+        match assembler {
+            RequestAssemblerType::SelectRequest(assembler) => Ok(assembler.is_complete()),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid assembler type")),
+        }
+    }
+
+    fn take_parts(assembler: RequestAssemblerType) -> Vec<SystemCallMessagePart> {
+        match assembler {
+            RequestAssemblerType::SelectRequest(assembler) => assembler.take_parts(),
+            _ => unreachable!("invalid assembler type"),
+        }
+    }
+
+    fn process_request(
+        syscall_table: &SyscallTable<T>,
+        source: ThreadIdentifier,
+        request: Self,
+    ) -> Result<Vec<Message>, WorkerThreadError> {
+        // `do_select()` yields a single response message; wrap it to satisfy the trait contract.
+        crate::linux::sys_select::do_select(syscall_table, source, request)
+            .map(|message| vec![message])
     }
 }

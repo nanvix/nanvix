@@ -324,6 +324,11 @@ pub enum SystemCallMessageHeader {
     RegisterSocketResponse,
     TtyControlRequest,
     TtyControlResponse,
+    // Multi-part variant of `SelectRequest`. `select()` is the lone fixed syscall message whose
+    // wire layout exceeds the single-message payload once a client-id trailer is reserved, so its
+    // request is transported as a `*Part` stream (see `SelectRequest`). Appended here to preserve
+    // the on-the-wire discriminants of existing variants.
+    SelectRequestPart,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -494,6 +499,7 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == RegisterSocketResponse as u16 => Ok(RegisterSocketResponse),
             x if x == TtyControlRequest as u16 => Ok(TtyControlRequest),
             x if x == TtyControlResponse as u16 => Ok(TtyControlResponse),
+            x if x == SelectRequestPart as u16 => Ok(SelectRequestPart),
             _ => Err(()),
         }
     }

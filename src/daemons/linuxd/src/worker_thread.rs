@@ -17,7 +17,6 @@ use crate::{
     linux::{
         dirent,
         fcntl,
-        sys_select,
         sys_socket,
         sys_times,
         unistd,
@@ -592,7 +591,6 @@ impl WorkerThreadHandle {
                                 | SystemCallMessageHeader::PartialWriteRequest
                                 | SystemCallMessageHeader::ReceiveSocketRequest
                                 | SystemCallMessageHeader::SeekRequest
-                                | SystemCallMessageHeader::SelectRequest
                                 | SystemCallMessageHeader::SendSocketRequest
                                 | SystemCallMessageHeader::ShutdownSocketRequest
                                 | SystemCallMessageHeader::TimesRequest
@@ -657,7 +655,8 @@ impl WorkerThreadHandle {
                                 | SystemCallMessageHeader::OpenAtRequestPart
                                 | SystemCallMessageHeader::RenameAtRequestPart
                                 | SystemCallMessageHeader::UnlinkAtRequestPart
-                                | SystemCallMessageHeader::PollRequestPart => {
+                                | SystemCallMessageHeader::PollRequestPart
+                                | SystemCallMessageHeader::SelectRequestPart => {
                                     match Self::handle_long_request_messages(
                                         uvm_stream.clone(),
                                         assembler.clone(),
@@ -889,10 +888,6 @@ impl WorkerThreadHandle {
                 let request: SeekRequest = SeekRequest::from_bytes(message.payload);
                 unistd::do_lseek(&syscall_table, source, request)
             },
-            SystemCallMessageHeader::SelectRequest => {
-                let request: SelectRequest = SelectRequest::from_bytes(message.payload)?;
-                sys_select::do_select(&syscall_table, source, request)
-            },
             SystemCallMessageHeader::SendSocketRequest => {
                 let request: SendSocketRequest = SendSocketRequest::from_bytes(message.payload);
                 sys_socket::do_send(&syscall_table, source, request)
@@ -1067,6 +1062,15 @@ impl WorkerThreadHandle {
             },
             SystemCallMessageHeader::PollRequestPart => {
                 Self::handle_long_request::<T, PollRequest>(
+                    uvm_stream,
+                    assembler,
+                    syscall_table,
+                    source,
+                    &message,
+                )
+            },
+            SystemCallMessageHeader::SelectRequestPart => {
+                Self::handle_long_request::<T, SelectRequest>(
                     uvm_stream,
                     assembler,
                     syscall_table,
