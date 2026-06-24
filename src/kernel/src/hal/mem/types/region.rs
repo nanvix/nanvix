@@ -167,7 +167,7 @@ impl<T: Address> MemoryRegion<T> {
         }
 
         // Check if memory region is too big.
-        let start_raw_addr: usize = start.clone().into_raw_value();
+        let start_raw_addr: usize = start.into_raw_value();
         let end_raw_addr: usize = match start_raw_addr.checked_add(size - 1) {
             Some(end_raw_addr) => end_raw_addr,
             None => {
@@ -199,7 +199,7 @@ impl<T: Address> MemoryRegion<T> {
 
     /// Returns the first valid address that lies in the target memory region.
     pub fn start(&self) -> T {
-        self.start.clone()
+        self.start
     }
 
     /// Returns the size of the target memory region.

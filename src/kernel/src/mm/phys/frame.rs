@@ -125,7 +125,10 @@ impl Inner {
 
         // Attempt to convert the frame number to a frame address.
         match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
+            Ok(frame_address) => {
+
+                Ok(frame_address)
+            },
             Err(error) => {
                 error!("{error:?}");
                 Err(error)
@@ -148,6 +151,16 @@ impl Inner {
     /// an error is returned instead.
     ///
     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+
+        // VERUS BUG FIX: `Bitmap::alloc_range` requires `size <= num_bits`. `alloc_contiguous`
+        // only requires `count > 0`, so guard `count` against the bitmap size before calling;
+        // no contiguous run longer than the bitmap can exist. No mutation occurs here, so the
+        // `Err` postcondition (`final@ == old@`) holds.
+        if count > self.bitmap.number_of_bits() {
+            let reason: &str = "requested range exceeds bitmap size";
+            error!("{reason} (count={count})");
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
         let frame_number: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
@@ -170,7 +183,10 @@ impl Inner {
         };
 
         match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
+            Ok(frame_address) => {
+
+                Ok(frame_address)
+            },
             Err(error) => {
                 error!("{error:?}");
                 Err(error)
@@ -212,7 +228,10 @@ impl Inner {
         // Only release the bit in the bitmap when the last owner releases the frame.
         if self.refcount[frame_number] == 0 {
             match self.bitmap.clear(frame_number) {
-                Ok(()) => Ok(()),
+                Ok(()) => {
+
+                    Ok(())
+                },
                 Err(error) => {
                     error!("{error:?} (frame={frame:?})");
                     Err(error)
@@ -284,6 +303,17 @@ impl Inner {
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
+        // `refcount` accepts an arbitrary `FrameAddress`: its contract requires only `self.inv()`,
+        // not `frame.inv()`. An unaligned address can never name a tracked frame (those are all
+        // page-aligned), so it must be rejected here before converting — the panic-free
+        // `into_frame_number()` below assumes the page alignment this entry point does not.
+        let raw: usize = frame.into_raw_value();
+        if !raw.is_multiple_of(mem::FRAME_SIZE) {
+
+            let reason: &str = "unaligned frame address";
+            error!("{reason} (frame={frame:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         if frame_number >= self.refcount.len() {
@@ -340,7 +370,9 @@ impl Inner {
     ///
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
-        frame_number < self.bitmap.number_of_bits()
+        let nbits: usize = self.bitmap.number_of_bits();
+
+        frame_number < nbits
     }
 
     ///
@@ -361,7 +393,9 @@ impl Inner {
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
-        let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+        let nframes: usize = region.size() / mem::FRAME_SIZE;
+
+        let end_exclusive: usize = start_frame_number + nframes;
 
         // Check that all frames in the range are covered by the bitmap and free,
         // then book them. Uncovered frames indicate a memory layout bug.
@@ -369,7 +403,9 @@ impl Inner {
         // The coverage check runs unconditionally — including optimized builds —
         // because out-of-bounds indices must be rejected before attempting to set them.
         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
-        for index in start_frame_number..=end_frame_number {
+        let mut index: usize = start_frame_number;
+
+        while index < end_exclusive {
             if index >= self.bitmap.number_of_bits() {
                 // `index` is out of range here, so `index * FRAME_SIZE` can overflow `usize`
                 // (e.g. on 32-bit targets), panicking in debug builds on the very error path
@@ -380,7 +416,9 @@ impl Inner {
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
             match self.bitmap.test(index) {
-                Ok(false) => {},
+                Ok(false) => {
+
+                },
                 Ok(true) => {
                     let conflicting_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
                     let region_start: usize = region.start().into_raw_value();
@@ -392,12 +430,17 @@ impl Inner {
                     );
                     return Err(Error::new(ErrorCode::OutOfMemory, reason));
                 },
-                Err(err) => return Err(err),
+                Err(err) => {
+
+                    return Err(err);
+                },
             }
+            index += 1;
         }
 
         // Book all frames in the range.
-        for index in start_frame_number..=end_frame_number {
+
+        for index in start_frame_number..end_exclusive {
             if let Err(error) = self.bitmap.set(index) {
                 error!("{error:?} (region={region:?})");
                 return Err(error);

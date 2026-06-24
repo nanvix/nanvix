@@ -28,7 +28,7 @@ use crate::{
 
 pub trait Address
 where
-    Self: core::fmt::Debug + Clone + PartialEq + Eq + PartialOrd + Ord,
+    Self: core::fmt::Debug + Clone + Copy + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
 {
     ///
     /// # Description

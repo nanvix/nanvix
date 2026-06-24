@@ -10,6 +10,9 @@ authors.workspace = true
 description = "Wire format for host filesystem daemon (hostfsd) communication"
 homepage.workspace = true
 
+[package.metadata.verus]
+verify = true
+
 [lib]
 crate-type = ["lib"]
 

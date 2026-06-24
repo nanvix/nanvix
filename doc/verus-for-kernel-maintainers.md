@@ -220,12 +220,12 @@ iteration and the point just after the loop ends).
 From `src/libs/slab/src/lib.rs`:
 
 ```rust
-#[cfg_attr(verus_keep_ghost, verus_spec(
+#[verus_spec(
     invariant
         index.inv(),
         index@.num_bits == index_len * u8_bits,
         index@.set_bits == Set::new(|j: int| num_data_blocks <= j < i),
-))]
+)]
 for i in num_data_blocks..(index_len * u8_bits) {
     index.set(i)?;
 }
@@ -239,8 +239,8 @@ Reading this invariant:
    loop index `i`, exactly the bits in range `[num_data_blocks, i)` have been set. This
    tracks the progress of marking upper bits as "in use".
 
-The `#[cfg_attr(verus_keep_ghost, ...)]` wrapper ensures this attribute is only active
-during verification and is stripped from normal builds.
+The `verus_spec` attribute is active during verification and compiles away in normal
+builds, so it does not need a `#[cfg_attr(verus_keep_ghost, ...)]` wrapper.
 
 ### `decreases` — Loop and Recursion Termination
 
@@ -251,12 +251,12 @@ terminate. The clause names an expression that gets strictly smaller on every it
 From `src/libs/bitmap/src/lib.rs` (simplified):
 
 ```rust
-#[cfg_attr(verus_keep_ghost, verus_spec(
+#[verus_spec(
     invariant
         0 <= i <= number_of_bits,
         // …
     decreases number_of_bits - i,
-))]
+)]
 while i < number_of_bits {
     // loop body
 }

@@ -66,7 +66,9 @@ impl KernelFrame {
 
         Ok(Self { base })
     }
+}
 
+impl KernelFrame {
     ///
     /// # Description
     ///
@@ -79,7 +81,9 @@ impl KernelFrame {
     pub fn base(&self) -> FrameAddress {
         self.base
     }
+}
 
+impl KernelFrame {
     ///
     /// # Description
     ///
