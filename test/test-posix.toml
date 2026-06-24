@@ -66,6 +66,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/dlfcn-diamond-c"
+program = "./bin/dlfcn-diamond-c.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-dlfcn-diamond-c.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/dlfcn-global-c"
 program = "./bin/dlfcn-global-c.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-dlfcn-global-c.img"

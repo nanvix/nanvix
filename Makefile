@@ -424,7 +424,7 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 # guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
 # (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner
 # is gated on TARGET=x86 accordingly.
-ALL_POSIX_TESTS := c-bindings ctor-c dlfcn-c dlfcn-global-c dlfcn-init-runpath-c dlfcn-needed-c dlfcn-pie-c echo-c file-c hello-c memory-c misc-c network-c noop-c thread-c
+ALL_POSIX_TESTS := c-bindings ctor-c dlfcn-c dlfcn-diamond-c dlfcn-global-c dlfcn-init-runpath-c dlfcn-needed-c dlfcn-pie-c echo-c file-c hello-c memory-c misc-c network-c noop-c thread-c
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
