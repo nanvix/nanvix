@@ -86,6 +86,13 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/fork-exec-pipe-bulk-test-seed
 	@cp -f $(BINARIES_DIR)/fork-exec-pipe-bulk-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-pipe-bulk-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-pipe-bulk-test.img $(BINARIES_DIR)/fork-exec-pipe-bulk-test-seed/
+	# Build the ramfs image for the repeated pipe-capture reliability test. It contains the target at
+	# the filesystem root as "target"; fork-exec-pipe-loop-test forks and the child dup2()s a pipe
+	# onto standard output and execs it once per cycle, after which the target streams a payload back
+	# through the pipe -- a capture whose full, repeated delivery to the parent the caller checks.
+	@mkdir -p $(BINARIES_DIR)/fork-exec-pipe-loop-test-seed
+	@cp -f $(BINARIES_DIR)/fork-exec-pipe-loop-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-pipe-loop-test-seed/target
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-pipe-loop-test.img $(BINARIES_DIR)/fork-exec-pipe-loop-test-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments (Linux only).

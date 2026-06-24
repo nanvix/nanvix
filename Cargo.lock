@@ -993,6 +993,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "fork-exec-pipe-loop-target"
+version = "0.17.10"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "config",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
+name = "fork-exec-pipe-loop-test"
+version = "0.17.10"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "fork-exec-vfsd-target"
 version = "0.17.10"
 dependencies = [
