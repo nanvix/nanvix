@@ -117,6 +117,7 @@ pub enum RequestAssemblerType {
     ChangeDirectoryRequest(SystemCallLongMessage),
     FileAccessAtRequest(SystemCallLongMessage),
     PollRequest(SystemCallLongMessage),
+    SelectRequest(SystemCallLongMessage),
 }
 
 pub trait RequestAssemblerTrait<T>
@@ -303,5 +304,73 @@ mod tests {
         );
 
         task_a.await.expect("task_a should complete");
+    }
+
+    /// Validates that a `SelectRequest` survives the linuxd receive path: split into
+    /// `SelectRequestPart`s on the client side, then reassembled by the worker's
+    /// `RequestAssembler` back into the original request (without executing `do_select`).
+    #[test]
+    #[allow(clippy::expect_used)]
+    fn select_request_assembles_into_request() {
+        use ::sysapi::sys_select::{
+            fd_set,
+            timeval,
+        };
+        use ::syscall::sys::select::message::SelectRequest;
+
+        let source: ThreadIdentifier = ThreadIdentifier::from(7_i32);
+
+        let mut readfds: fd_set = fd_set::default();
+        readfds.set_bit(0).expect("fd in range");
+        readfds.set_bit(5).expect("fd in range");
+        let mut writefds: fd_set = fd_set::default();
+        writefds.set_bit(2).expect("fd in range");
+        let timeout: timeval = timeval {
+            tv_sec: 1,
+            tv_usec: 2,
+        };
+
+        let original: SelectRequest =
+            SelectRequest::new(6, &Some(&mut readfds), &Some(&mut writefds), &None, &Some(timeout))
+                .expect("valid SelectRequest");
+
+        let parts: Vec<SystemCallMessagePart> = extract_parts(
+            original
+                .into_parts(source, ::syscall::LINUXD, MessageType::Ikc)
+                .expect("valid parts"),
+        );
+
+        // The request is transported as a `SelectRequestPart` stream; the part count is derived
+        // from the wire size and the per-part payload, so it stays correct across ABI/message-size
+        // changes (including the single-part case). Feed the parts through the assembler in order.
+        let expected_parts: usize =
+            SelectRequest::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
+        assert_eq!(parts.len(), expected_parts, "unexpected number of parts");
+
+        let mut assembler: RequestAssembler = RequestAssembler::default();
+        let mut result: Option<SelectRequest> = None;
+        for part in parts {
+            let r: Option<SelectRequest> = assembler
+                .assemble_and_take::<(), SelectRequest>(source, part)
+                .expect("assembly should succeed");
+            if r.is_some() {
+                result = r;
+            }
+        }
+
+        let request: SelectRequest = result.expect("request should be fully assembled");
+        assert_eq!(request.nfds, 6, "nfds mismatch");
+        assert_eq!(
+            request.readfds.map(|s| s.to_bytes()),
+            Some(readfds.to_bytes()),
+            "readfds mismatch"
+        );
+        assert_eq!(
+            request.writefds.map(|s| s.to_bytes()),
+            Some(writefds.to_bytes()),
+            "writefds mismatch"
+        );
+        assert!(request.errorfds.is_none(), "errorfds should be absent");
+        assert_eq!(request.timeout, Some(timeout.to_bytes()), "timeout mismatch");
     }
 }

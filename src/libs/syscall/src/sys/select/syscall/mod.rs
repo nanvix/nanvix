@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    message::MessagePartitioner,
     sys::select::message::{
         SelectRequest,
         SelectResponse,
@@ -13,6 +14,7 @@ use crate::{
     SystemCallMessage,
     SystemCallMessageHeader,
 };
+use ::alloc::vec::Vec;
 use ::sys::{
     error::{
         Error,
@@ -85,18 +87,13 @@ pub fn select(
 
     let tid: ThreadIdentifier = pm::__kcall_gettid()?;
 
-    // Build request and send it.
-    let request: Message = SelectRequest::build(
-        tid,
-        nfds,
-        &readfds,
-        &writefds,
-        &errorfds,
-        timeout,
-        crate::LINUXD,
-        ::sys::ipc::MessageType::Ikc,
-    )?;
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    // Build the request and send it as a multi-part `SelectRequestPart` stream.
+    let request: SelectRequest = SelectRequest::new(nfds, &readfds, &writefds, &errorfds, timeout)?;
+    let requests: Vec<Message> =
+        request.into_parts(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc)?;
+    for request in &requests {
+        ::sys::kcall::ipc::__kcall_send(request)?;
+    }
 
     // Receive response.
     let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
