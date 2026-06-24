@@ -340,6 +340,19 @@ extra_nanvixd_args = "-ramfs ./bin/fork-exec-loop-test.img"
 input = "[]"
 expected_output = "ok"
 
+# Acceptance test for execv() arguments containing spaces: an argument with an
+# embedded space must reach the new image verbatim as a single argument. FAILS
+# while execv() flattens argv/envp into a space-separated string (a token with a
+# space is rejected with EINVAL, or would be split). Size-independent. This is
+# why fork()+execv()'d CPython cannot run python -c "<code with spaces>".
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/fork-exec-argv-space-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/fork-exec-argv-space-test.img"
+input = "[]"
+expected_output = "ok"
+
 # Acceptance test for bulk pipe data integrity across fork()+execv(): a large
 # payload streamed by an exec'd child through a dup2()'d pipe must reach the
 # parent in full. FAILS while a bulk transfer from a LARGE exec'd image does not

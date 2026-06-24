@@ -122,16 +122,17 @@ fn map_executable(path: &str) -> Result<(VirtualAddress, usize, usize), Error> {
 /// # Description
 ///
 /// Validates that a single argument or environment token can round-trip through the kernel's
-/// space-separated `execv` wire format without being silently altered.
+/// NUL-separated `execv` wire format without being silently altered.
 ///
-/// Tokens are flattened by joining them with single spaces, and the new image's runtime re-splits
-/// the result on spaces. A token is therefore rejected when it:
+/// Tokens are flattened by joining them with a single NUL byte, and the new image's runtime
+/// re-splits the result on NUL bytes. Every byte other than NUL is carried verbatim, so an argument
+/// containing a space (or any other non-NUL byte) is delivered unchanged as one argument. A token is
+/// therefore rejected only when it:
 ///
-/// - is empty, because the kernel trims surrounding whitespace and adjacent delimiters collapse, so
-///   an empty token would be dropped;
-/// - contains a space, because it would be split into two or more tokens; or
-/// - contains a NUL byte, because it would terminate the C string early and is rejected by the
-///   kernel.
+/// - is empty, because an empty token is reserved as the end-of-list sentinel in the wire format and
+///   would otherwise be indistinguishable from it; or
+/// - contains a NUL byte, because NUL is the token delimiter and an interior NUL would split the
+///   token into two (and would also terminate the C string early in the new image).
 ///
 /// # Parameters
 ///
@@ -146,10 +147,10 @@ fn validate_exec_token(token: &str) -> Result<(), Error> {
         return Err(Error::new(ErrorCode::InvalidArgument, "execv token must not be empty"));
     }
 
-    if token.bytes().any(|byte| byte == b' ' || byte == 0) {
+    if token.bytes().any(|byte| byte == 0) {
         return Err(Error::new(
             ErrorCode::InvalidArgument,
-            "execv token must not contain spaces or NUL bytes",
+            "execv token must not contain NUL bytes",
         ));
     }
 
@@ -169,10 +170,12 @@ fn validate_exec_token(token: &str) -> Result<(), Error> {
 /// Because the kernel performs no filesystem I/O, this wrapper maps the target program's ELF image
 /// into the calling process's address space (via `mmap`) and hands it, together with the argument
 /// and environment vectors, to the [`__kcall_execv`] kernel call. The argument and environment
-/// vectors are flattened into space-separated strings, which the new image's runtime re-splits. To
-/// keep that round-trip lossless, every token is validated up front (see `validate_exec_token`): a
-/// token must be non-empty and contain neither a space nor a NUL byte, otherwise
-/// [`ErrorCode::InvalidArgument`] is returned before the executable is mapped.
+/// vectors are flattened into NUL-separated strings, which the new image's runtime re-splits on NUL
+/// bytes. Because NUL is the only delimiter, every other byte — including spaces — is carried
+/// verbatim, so an argument that contains a space arrives as a single argument. To keep that
+/// round-trip lossless, every token is validated up front (see `validate_exec_token`): a token must
+/// be non-empty and must not contain a NUL byte, otherwise [`ErrorCode::InvalidArgument`] is
+/// returned before the executable is mapped.
 ///
 /// # Parameters
 ///
@@ -194,8 +197,8 @@ pub fn do_execv(path: &str, argv: &[&str], envp: &[&str]) -> Error {
     }
 
     // Validate every argument and environment token before mapping the executable, so a token that
-    // cannot survive the space-separated wire format fails fast: this avoids leaking a mapping on
-    // the error path and prevents the new image from silently observing altered vectors.
+    // cannot survive the NUL-separated wire format fails fast: this avoids leaking a mapping on the
+    // error path and prevents the new image from silently observing altered vectors.
     for &token in argv.iter().chain(envp.iter()) {
         if let Err(error) = validate_exec_token(token) {
             return error;
@@ -208,13 +211,15 @@ pub fn do_execv(path: &str, argv: &[&str], envp: &[&str]) -> Error {
         Err(error) => return error,
     };
 
-    // Flatten the argument and environment vectors into the kernel's space-separated, on-the-wire
-    // form. The new image's runtime re-splits each string on spaces, with every space acting as a
-    // token delimiter, so a token must not contain embedded spaces (an embedded space would split
-    // it into two); because the kernel trims surrounding whitespace, leading and trailing empty
-    // tokens are not preserved.
-    let args: String = argv.join(" ");
-    let env: String = envp.join(" ");
+    // Flatten the argument and environment vectors into the kernel's NUL-separated, on-the-wire
+    // form. The new image's runtime re-splits each string on NUL bytes, with every NUL acting as a
+    // token delimiter, so a token must not contain an interior NUL (validated above); every other
+    // byte — including spaces — is carried verbatim, so an argument containing a space is delivered
+    // as a single argument. The new image stops at the first empty token (the zero-filled tail of
+    // the kernel-installed page following the final token), so no trailing delimiter is required
+    // here.
+    let args: String = argv.join("\0");
+    let env: String = envp.join("\0");
 
     // Describe the image and its arguments for the kernel. The buffers remain valid for the
     // duration of the kernel call, which reads from them before the image is replaced.
@@ -386,7 +391,7 @@ pub unsafe fn execv_from_c(
 /// Unlike [`execv_from_c`], which takes an explicit environment, this adapter inherits the caller's
 /// environment to honor POSIX `execv()`/`execvp()` semantics. The environment is read from the
 /// process-local environment table that also backs `getenv`/`setenv`, and is flattened into the
-/// kernel's space-separated `KEY=VALUE` form.
+/// kernel's NUL-separated `KEY=VALUE` form.
 ///
 /// # Parameters
 ///

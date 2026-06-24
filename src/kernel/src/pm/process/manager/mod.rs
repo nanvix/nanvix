@@ -493,14 +493,28 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Writes a NUL-terminated string directly to user space without heap allocation.
-    /// The string bytes are copied from the source `&str` followed by a single `\0` terminator.
+    /// Writes a string directly to user space without heap allocation, followed by a single `\0`
+    /// terminator.
+    ///
+    /// The destination receives the NUL-separated wire format. When `space_is_delimiter` is false,
+    /// the source string is already in that format (it may itself contain interior NUL bytes, which
+    /// are copied verbatim). When `space_is_delimiter` is true, the source is the space-separated
+    /// boot command line: it is copied verbatim and then every ASCII space byte is overwritten in
+    /// place with a NUL so the new image observes NUL-delimited tokens. This conversion is done by
+    /// patching individual bytes in user memory, so it needs no kernel-heap allocation (which a
+    /// max-length command line could not satisfy).
+    ///
+    /// The single terminator written here, together with the zero-filled remainder of the
+    /// destination page, forms the empty-token end-of-list sentinel that the new image's runtime
+    /// stops at.
     ///
     /// # Parameters
     ///
     /// - `vmem`: Virtual memory address space to write into.
     /// - `dest`: Destination virtual address in user space.
-    /// - `s`: Source string to write (must not contain interior NUL bytes).
+    /// - `s`: Source string to write.
+    /// - `space_is_delimiter`: When true, ASCII spaces in `s` are token delimiters and are
+    ///   substituted with NUL in the destination; when false, `s` is copied verbatim.
     ///
     /// # Returns
     ///
@@ -510,11 +524,25 @@ impl ProcessManager {
         vmem: &mut Vmem,
         dest: VirtualAddress,
         s: &str,
+        space_is_delimiter: bool,
     ) -> Result<(), Error> {
+        static NUL: u8 = 0;
         if !s.is_empty() {
             vmem.copy_to_user_unaligned(dest, VirtualAddress::new(s.as_ptr() as usize), s.len())?;
+            // Substitute ASCII spaces with NUL in place so the boot (space-separated) command line
+            // is delivered in the NUL-separated wire format without allocating a converted copy.
+            if space_is_delimiter {
+                for (i, _) in s.as_bytes().iter().enumerate().filter(|(_, &b)| b == b' ') {
+                    let space_vaddr: VirtualAddress =
+                        VirtualAddress::new(dest.into_raw_value() + i);
+                    vmem.copy_to_user_unaligned(
+                        space_vaddr,
+                        VirtualAddress::new(&NUL as *const u8 as usize),
+                        1,
+                    )?;
+                }
+            }
         }
-        static NUL: u8 = 0;
         let nul_vaddr: VirtualAddress = VirtualAddress::new(dest.into_raw_value() + s.len());
         vmem.copy_to_user_unaligned(nul_vaddr, VirtualAddress::new(&NUL as *const u8 as usize), 1)?;
         Ok(())
@@ -574,6 +602,13 @@ impl ProcessManager {
         let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
         let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
 
+        // The boot command line is space-separated, but the user-space runtime parses the
+        // NUL-separated wire format that the `execv()` path produces (so a token may carry an
+        // embedded space). Rather than allocating a converted copy on the constrained kernel heap
+        // (a max-length command line would not fit), `build_user_image` is told to treat ASCII
+        // spaces as token delimiters and substitutes them with NUL in place while streaming the
+        // bytes into the new image's user page.
+
         // Build the address space and main thread for the new image. All fallible work happens
         // here; on failure the process manager state is left unchanged.
         let (vmem, thread): (Vmem, ReadyThread) = Self::build_user_image(
@@ -584,6 +619,7 @@ impl ProcessManager {
             |mm, vmem| mm.load_elf(vmem, elf),
             args,
             env,
+            true,
             self.interrupt_capable,
         )?;
 
@@ -650,8 +686,14 @@ impl ProcessManager {
     ///   the entry point and the address past the last loaded segment. This indirection lets the
     ///   caller choose the image source: a contiguous kernel blob (boot) or another process's
     ///   address space (execv).
-    /// - `args`: Command line arguments (space-separated; no interior NUL bytes).
-    /// - `env`: Environment variables (space-separated; no interior NUL bytes).
+    /// - `args`: Command line arguments. When `space_is_delimiter` is true they are in the boot
+    ///   space-separated format; otherwise they are in the NUL-separated wire format (each token
+    ///   delimited by a NUL byte; no trailing delimiter required) where NUL is the only delimiter,
+    ///   so a token may carry any other byte, including a space.
+    /// - `env`: Environment variables (same format rules as `args`).
+    /// - `space_is_delimiter`: When true, ASCII spaces in `args`/`env` are token delimiters and are
+    ///   converted to NUL in the new image's pages; when false, the inputs are already
+    ///   NUL-separated and are installed verbatim.
     /// - `enable_interrupts`: Whether the forged context should run with interrupts enabled.
     ///
     /// # Returns
@@ -668,6 +710,7 @@ impl ProcessManager {
         load_elf: F,
         args: &str,
         env: &str,
+        space_is_delimiter: bool,
         enable_interrupts: bool,
     ) -> Result<(Vmem, ReadyThread), Error>
     where
@@ -676,27 +719,19 @@ impl ProcessManager {
             &mut Vmem,
         ) -> Result<(VirtualAddress, PageAligned<VirtualAddress>), Error>,
     {
-        // Strip leading and trailing spaces from arguments.
-        let args: &str = args.trim();
-
-        // Validate that args does not contain interior null bytes (for C-string semantics).
-        if args.as_bytes().contains(&0) {
-            let reason: &str = "command line contains interior null byte";
-            error!("{reason}");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
-        // args_len includes the null terminator that will be written to user space.
+        // The new image's pages hold the NUL-separated wire format: NUL is the token delimiter, so
+        // a token may carry any other byte (including a space) and surrounding spaces must be
+        // preserved verbatim. The exec path supplies this format directly; the boot path supplies a
+        // space-separated command line and sets `space_is_delimiter` so the spaces are converted to
+        // NUL while streaming into user space (see `write_nul_terminated_to_user`). The new image
+        // re-splits on NUL and stops at the first empty token, which the zero-filled tail of the
+        // page below provides.
+        //
+        // args_total_len includes the single NUL terminator that will be written to user space
+        // after the last token; combined with the zero-filled remainder of the page, it forms the
+        // empty-token end-of-list sentinel.
         let args_total_len: usize = args.len() + 1;
 
-        // Strip leading and trailing spaces from environment variables.
-        let env: &str = env.trim();
-
-        // Validate that env does not contain interior null bytes (for C-string semantics).
-        if env.as_bytes().contains(&0) {
-            let reason: &str = "environment string contains interior null byte";
-            error!("{reason}");
-            return Err(Error::new(ErrorCode::InvalidArgument, reason));
-        }
         // env_len includes the null terminator that will be written to user space.
         let env_total_len: usize = env.len() + 1;
 
@@ -732,7 +767,12 @@ impl ProcessManager {
                 &mut Vec::with_capacity(1),
             )?;
             // Write args as a NUL-terminated string directly to user space.
-            Self::write_nul_terminated_to_user(&mut vmem, args_vaddr.into_inner(), args)?;
+            Self::write_nul_terminated_to_user(
+                &mut vmem,
+                args_vaddr.into_inner(),
+                args,
+                space_is_delimiter,
+            )?;
             debug!(
                 "arguments written to user space (args_vaddr={:?}, args={:?})",
                 args_vaddr,
@@ -760,7 +800,12 @@ impl ProcessManager {
             )?;
 
             // Write env as a NUL-terminated string directly to user space.
-            Self::write_nul_terminated_to_user(&mut vmem, envp_vaddr.into_inner(), env)?;
+            Self::write_nul_terminated_to_user(
+                &mut vmem,
+                envp_vaddr.into_inner(),
+                env,
+                space_is_delimiter,
+            )?;
             debug!(
                 "environment variables written to user space (envp_vaddr={:?}, env={:?})",
                 envp_vaddr,
@@ -1399,6 +1444,7 @@ impl ProcessManager {
             |mm, dst_vmem| mm.load_elf_from_user(dst_vmem, src_vmem, elf_base, elf_len),
             args,
             env,
+            false,
             self.interrupt_capable,
         )?;
 
