@@ -129,6 +129,20 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/fork-pid-c"
+program = "./bin/fork-pid-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/fork-pthread-c"
+program = "./bin/fork-pthread-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/hello-c"
 program = "./bin/hello-c.initrd"
 expected_exit_code = 0
