@@ -417,18 +417,11 @@ impl ProcessManager {
             None => "",
         };
 
-        if args_str.as_bytes().contains(&0) {
-            return Error::new(
-                ErrorCode::InvalidArgument,
-                "execv argument string contains NUL bytes",
-            );
-        }
-        if env_str.as_bytes().contains(&0) {
-            return Error::new(
-                ErrorCode::InvalidArgument,
-                "execv environment string contains NUL bytes",
-            );
-        }
+        // The staged argument and environment strings use the NUL-separated wire format: NUL is the
+        // token delimiter, so interior NUL bytes are expected and must NOT be rejected here. Every
+        // other byte (including spaces) is carried verbatim to the new image, which re-splits on NUL
+        // and stops at the first empty token.
+        //
         // Build and commit the new image, streaming the ELF from the caller's address space. On
         // failure the calling process is left untouched (the staging regions are released as they
         // go out of scope).

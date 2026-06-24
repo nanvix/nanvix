@@ -463,13 +463,19 @@ pub unsafe extern "C" fn __nanvix_rust_dealloc_raw(ptr: *mut u8, size: usize, al
 ///
 /// # Description
 ///
-/// Builds a string table from a null-terminated, space-separated string,
-/// rewriting interior spaces to NUL and producing a null-terminated Vec
-/// of pointers into the (now-tokenised) buffer.
+/// Builds a string table from a NUL-separated, end-of-list-terminated buffer, producing a
+/// null-terminated Vec of pointers into the buffer.
+///
+/// The kernel installs the argument / environment buffer in the NUL-separated wire format: each
+/// token is delimited by a single NUL byte, and the list ends at the first empty token (the single
+/// NUL the kernel writes after the last token, followed by the zero-filled remainder of the page).
+/// Because NUL is the only delimiter, every other byte — including spaces — is part of a token's
+/// data and is preserved verbatim. The tokens are already NUL-terminated in place, so the returned
+/// pointers borrow the buffer directly with no rewriting.
 ///
 /// # Parameters
 ///
-/// - `string`: A pointer to a null-terminated string.
+/// - `string`: A pointer to the NUL-separated buffer.
 ///
 /// # Returns
 ///
@@ -477,42 +483,38 @@ pub unsafe extern "C" fn __nanvix_rust_dealloc_raw(ptr: *mut u8, size: usize, al
 ///
 /// # Safety
 ///
-/// This function dereferences `string`.  The caller must ensure that
-/// `string` points to a valid mutable buffer terminated by a single
-/// null byte and containing only ASCII characters (space-separated
-/// tokens).  The buffer must remain valid for as long as the returned
-/// pointers are used.
+/// This function dereferences `string`.  The caller must ensure that `string` points to a valid
+/// buffer of NUL-separated tokens whose end is marked by an empty token (two consecutive NUL
+/// bytes, or a leading NUL for an empty list).  The buffer must remain valid for as long as the
+/// returned pointers are used.
 ///
 unsafe fn build_string_table(string: *mut c_char) -> Vec<*mut c_char> {
     use ::core::ptr;
 
+    let mut result: Vec<*mut c_char> = Vec::new();
     let mut current = string;
-    let mut count = 0;
 
-    // Traverse `current`, replacing spaces with null characters and counting entries.
-    while unsafe { *current } != 0 {
-        if unsafe { *current } == b' ' as c_char {
-            unsafe { *current = b'\0' as c_char };
-            count += 1;
+    // Walk NUL-separated tokens. An empty token (a NUL where a token would start) marks the end of
+    // the list, so a token that contains a space — or any other non-NUL byte — is delivered intact.
+    loop {
+        // SAFETY: the caller guarantees a buffer terminated by an empty token, so `current` always
+        // points at a valid byte here (a token byte or the terminating NUL).
+        if unsafe { *current } == 0 {
+            break;
         }
-        current = unsafe { current.add(1) };
-    }
-    count += 1; // Account for the null-terminator.
 
-    // Create an array of pointers to the entries.
-    let mut result: Vec<*mut c_char> = Vec::with_capacity(count as usize + 1);
-    current = string;
-    for _ in 0..count {
         ::syslog::trace!("build_string_table(): entry[{}]: {:?}", result.len(), unsafe {
             ::core::ffi::CStr::from_ptr(current)
         });
-
         result.push(current);
+
+        // Advance to the start of the next token, past this token's NUL terminator.
         while unsafe { *current } != 0 {
             current = unsafe { current.add(1) };
         }
-        current = unsafe { current.add(1) }; // Skip the null terminator.
+        current = unsafe { current.add(1) };
     }
+
     result.push(ptr::null_mut()); // Null-terminate the array.
 
     result
