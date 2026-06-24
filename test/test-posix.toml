@@ -157,6 +157,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/setjmp-c"
+program = "./bin/setjmp-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/thread-c"
 program = "./bin/thread-c.initrd"
 expected_exit_code = 0
