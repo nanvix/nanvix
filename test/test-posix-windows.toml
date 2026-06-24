@@ -74,6 +74,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/dlfcn-init-runpath-c"
+program = "./bin/dlfcn-init-runpath-c.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-dlfcn-init-runpath-c.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/dlfcn-needed-c"
 program = "./bin/dlfcn-needed-c.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-dlfcn-needed-c.img"
