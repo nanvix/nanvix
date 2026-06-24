@@ -106,6 +106,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/dlfcn-weak-c"
+program = "./bin/dlfcn-weak-c.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-dlfcn-weak-c.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/echo-c"
 program = "./bin/echo-c.initrd"
 expected_exit_code = 0
