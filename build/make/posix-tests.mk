@@ -111,6 +111,10 @@ POSIX_TEST_PIE_dlfcn-diamond-c := yes
 # `g_dtor_ran` global lands in `.dynsym`; the loader's global symbol table then
 # satisfies libctor.so's `extern volatile int g_dtor_ran` reference at load time.
 POSIX_TEST_PIE_dlfcn-init-runpath-c := yes
+# dlfcn-weak-c links PIE with --export-dynamic so the main executable's
+# `main_callback`/`weak_data` globals land in `.dynsym`; the loader resolves the
+# helper `.so` files' weak undefined references against that global scope.
+POSIX_TEST_PIE_dlfcn-weak-c := yes
 
 define POSIX_TEST_RULE
 POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TESTS_SRCDIR)/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TESTS_SRCDIR)/$(1)/*.c))
@@ -181,10 +185,12 @@ clean-posix-tests:
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c)
+	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
 
 #---------------------------------------------------------------------------------------------------
@@ -420,6 +426,68 @@ $(POSIX_TEST_RUNPATH_IMG): $(POSIX_TEST_RUNPATH_LIBDIR)/libctor.so \
 	$(CP_CMD) $(POSIX_TEST_RUNPATH_LIBDIR)/libchild.so $(POSIX_TEST_RUNPATH_SEED)/lib/subdir/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_RUNPATH_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-weak-c: STB_WEAK undefined-symbol fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+# This suite ships SEVEN shared libraries built from FOUR sources, each compiled
+# with different -D defines, to exercise the loader's handling of weak undefined
+# symbols across both i686 relocation classes (built with the same freestanding
+# host toolchain as the global/needed fixtures above):
+#   * libweak-func-resolved.so / libweak-func-missing.so  (weak_func.c)
+#       NULL-guarded weak function ref  -> R_386_GLOB_DAT.
+#   * libweak-data-resolved.so / libweak-data-missing.so  (weak_data.c)
+#       NULL-guarded weak data ref      -> R_386_GLOB_DAT.
+#   * libweak-plt-resolved.so / libweak-plt-missing.so    (weak_func_plt.c)
+#       unguarded weak function call    -> R_386_JUMP_SLOT.
+#   * libstrong-missing.so                                (strong_missing.c)
+#       unguarded strong undefined call -> R_386_JUMP_SLOT (regression guard).
+#
+# The "resolved" variants reference the symbol names the main executable exports
+# (main_callback/weak_data); the "missing" variants reference names nothing
+# defines, so the loader must zero them per the STB_WEAK rule. The suite ELF is
+# PIE + --export-dynamic (POSIX_TEST_PIE_dlfcn-weak-c above) so its
+# main_callback/weak_data land in .dynsym for the resolved cases.
+
+POSIX_TEST_WEAK_SUITE  := dlfcn-weak-c
+POSIX_TEST_WEAK_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_WEAK_SUITE)/libs
+POSIX_TEST_WEAK_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_WEAK_SUITE)-seed
+POSIX_TEST_WEAK_IMG    := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_WEAK_SUITE).img
+
+# $(1) = output .so name; $(2) = source file under libs/; $(3) = extra -D defines.
+define POSIX_TEST_WEAK_SOLIB_RULE
+$$(POSIX_TEST_WEAK_LIBDIR)/$(1): $$(POSIX_TESTS_SRCDIR)/$$(POSIX_TEST_WEAK_SUITE)/libs/$(2)
+	@$$(MKDIR_CMD) $$(dir $$@)
+	@echo "[posix-test] building $$(POSIX_TEST_WEAK_SUITE)/$(1)"
+	$$(GUEST_C_APP_CC) $$(POSIX_TEST_SOLIB_CFLAGS) $(3) -c $$< -o $$@.o
+	$$(GUEST_C_APP_LD) $$(POSIX_TEST_SOLIB_LDFLAGS) $$@.o -o $$@
+endef
+
+$(eval $(call POSIX_TEST_WEAK_SOLIB_RULE,libweak-func-resolved.so,weak_func.c,-DCALLBACK_NAME=main_callback))
+$(eval $(call POSIX_TEST_WEAK_SOLIB_RULE,libweak-func-missing.so,weak_func.c,-DCALLBACK_NAME=missing_callback))
+$(eval $(call POSIX_TEST_WEAK_SOLIB_RULE,libweak-data-resolved.so,weak_data.c,-DWEAK_DATA_NAME=weak_data))
+$(eval $(call POSIX_TEST_WEAK_SOLIB_RULE,libweak-data-missing.so,weak_data.c,-DWEAK_DATA_NAME=missing_weak_data))
+$(eval $(call POSIX_TEST_WEAK_SOLIB_RULE,libweak-plt-resolved.so,weak_func_plt.c,-DCALLBACK_NAME=main_callback))
+$(eval $(call POSIX_TEST_WEAK_SOLIB_RULE,libweak-plt-missing.so,weak_func_plt.c,-DCALLBACK_NAME=missing_plt_callback))
+$(eval $(call POSIX_TEST_WEAK_SOLIB_RULE,libstrong-missing.so,strong_missing.c,))
+
+# The seven fixtures, in main.c's dlopen() order.
+POSIX_TEST_WEAK_LIBS := \
+	libstrong-missing.so \
+	libweak-func-resolved.so libweak-func-missing.so \
+	libweak-data-resolved.so libweak-data-missing.so \
+	libweak-plt-resolved.so libweak-plt-missing.so
+
+# Per-suite RAMFS image carrying all seven fixtures under lib/, where main.c
+# dlopen()s them.
+$(POSIX_TEST_WEAK_IMG): $(foreach lib,$(POSIX_TEST_WEAK_LIBS),$(POSIX_TEST_WEAK_LIBDIR)/$(lib)) \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_WEAK_SEED)/lib
+	$(CP_CMD) $(foreach lib,$(POSIX_TEST_WEAK_LIBS),$(POSIX_TEST_WEAK_LIBDIR)/$(lib)) \
+		$(POSIX_TEST_WEAK_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_WEAK_SEED)
+
 # The per-suite boot arguments that pair each suite with its RAMFS image
 # (`-ramfs <img>`) or enable host networking (`-allow-host-networking`) now live
 # in the nanvix-test harness configs (test/test-posix.toml and
@@ -440,7 +508,8 @@ $(POSIX_TEST_RUNPATH_IMG): $(POSIX_TEST_RUNPATH_LIBDIR)/libctor.so \
 all-posix-test-images: $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
 		$(POSIX_TEST_SOLIB_IMGS) \
-		$(POSIX_TEST_RUNPATH_IMG)
+		$(POSIX_TEST_RUNPATH_IMG) \
+		$(POSIX_TEST_WEAK_IMG)
 	@echo "All POSIX C test-suite images built."
 
 .PHONY: run-posix-tests
@@ -465,7 +534,7 @@ ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
 else ifeq ($(DEPLOYMENT_MODE),standalone)
-run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG)
+run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_WEAK_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }
