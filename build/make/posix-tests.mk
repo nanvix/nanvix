@@ -106,6 +106,7 @@ POSIX_TEST_PIE_LDFLAGS := -pie --export-dynamic --no-dynamic-linker -z notext -z
 POSIX_TEST_PIE_dlfcn-pie-c := yes
 POSIX_TEST_PIE_dlfcn-global-c := yes
 POSIX_TEST_PIE_dlfcn-needed-c := yes
+POSIX_TEST_PIE_dlfcn-diamond-c := yes
 # dlfcn-init-runpath-c links PIE with --export-dynamic so the main executable's
 # `g_dtor_ran` global lands in `.dynsym`; the loader's global symbol table then
 # satisfies libctor.so's `extern volatile int g_dtor_ran` reference at load time.
@@ -179,9 +180,11 @@ clean-posix-tests:
 	$(RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs.img
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
 
 #---------------------------------------------------------------------------------------------------
@@ -199,7 +202,7 @@ POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite
 # into lib/) so dlfcn-c can dlopen("lib/libmul.so"). Suites that need the image
 # are listed in POSIX_TEST_RAMFS_SUITES. Suites with their own fixtures (the
 # dlfcn global/needed variants, below) override the image with a per-suite one.
-POSIX_TEST_RAMFS_SUITES := file-c dlfcn-c dlfcn-pie-c dlfcn-global-c dlfcn-needed-c
+POSIX_TEST_RAMFS_SUITES := file-c dlfcn-c dlfcn-pie-c dlfcn-global-c dlfcn-needed-c dlfcn-diamond-c
 POSIX_TEST_RAMFS_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-seed
 POSIX_TEST_RAMFS_IMG    := $(BINARIES_DIR)/posix-tests-ramfs.img
 
@@ -274,8 +277,83 @@ endef
 
 $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(eval $(call POSIX_TEST_SOLIB_RULE,$(suite))))
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-diamond-c: four-library diamond DT_NEEDED fixture.
+#---------------------------------------------------------------------------------------------------
+#
+#   libdiamond.so -> libleft.so  -> libbase.so
+#                 -> libright.so -> libbase.so
+#                 -> libbase.so                (direct edge)
+#
+# The two arms (libleft.so, libright.so) each carry a DT_NEEDED on libbase.so;
+# libdiamond.so carries DT_NEEDED on both arms AND a direct DT_NEEDED on
+# libbase.so. A correct loader consolidates all three libbase.so edges onto a
+# single in-memory instance instead of opening it more than once (or
+# dead-locking on the recursive load). The two arm edges are consolidated by
+# the per-frame registry scan; libdiamond.so's own direct edge is consolidated
+# by the loader's load-loop re-check (libbase.so is loaded by an arm after
+# libdiamond's entry scan already ran). Built with the same i686 freestanding
+# toolchain as the provider/consumer fixtures above; each DT_NEEDED edge is
+# produced by linking the dependent against its dependencies with `-L<dir>
+# -l<name>` (the linker records each found `lib<name>.so` as a bare DT_NEEDED
+# entry, which the loader resolves through its default `lib/` search path —
+# exactly like dlfcn-needed-c).
+POSIX_TEST_DIAMOND_DIR  := $(POSIX_TESTS_OBJDIR)/dlfcn-diamond-c/libs
+POSIX_TEST_DIAMOND_SEED := $(BINARIES_DIR)/posix-tests-ramfs-dlfcn-diamond-c-seed
+POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c := $(BINARIES_DIR)/posix-tests-ramfs-dlfcn-diamond-c.img
+
+# Leaf: libbase.so (no dependencies).
+$(POSIX_TEST_DIAMOND_DIR)/libbase.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs/base.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-diamond-c/libbase.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Left arm: DT_NEEDED libbase.so.
+$(POSIX_TEST_DIAMOND_DIR)/libleft.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs/left.c \
+		$(POSIX_TEST_DIAMOND_DIR)/libbase.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-diamond-c/libleft.so (DT_NEEDED libbase.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_DIAMOND_DIR) -lbase -o $@
+
+# Right arm: DT_NEEDED libbase.so.
+$(POSIX_TEST_DIAMOND_DIR)/libright.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs/right.c \
+		$(POSIX_TEST_DIAMOND_DIR)/libbase.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-diamond-c/libright.so (DT_NEEDED libbase.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_DIAMOND_DIR) -lbase -o $@
+
+# Root: DT_NEEDED libleft.so + libright.so + libbase.so. The direct libbase.so
+# edge (alongside the two arms that also pull it in) is what exercises the
+# load-loop re-check in load_all_dependencies(): an arm loads libbase.so first,
+# then libdiamond.so's own libbase.so edge must bind to that existing instance
+# instead of re-opening it.
+$(POSIX_TEST_DIAMOND_DIR)/libdiamond.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs/diamond.c \
+		$(POSIX_TEST_DIAMOND_DIR)/libleft.so $(POSIX_TEST_DIAMOND_DIR)/libright.so \
+		$(POSIX_TEST_DIAMOND_DIR)/libbase.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-diamond-c/libdiamond.so (DT_NEEDED libleft.so libright.so libbase.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o \
+		-L$(POSIX_TEST_DIAMOND_DIR) -lleft -lright -lbase -o $@
+
+# Per-suite RAMFS image carrying all four fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c): $(POSIX_TEST_DIAMOND_DIR)/libbase.so \
+		$(POSIX_TEST_DIAMOND_DIR)/libleft.so \
+		$(POSIX_TEST_DIAMOND_DIR)/libright.so \
+		$(POSIX_TEST_DIAMOND_DIR)/libdiamond.so all-host-binaries-mkramfs
+	@$(MKDIR_CMD) $(POSIX_TEST_DIAMOND_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libbase.so $(POSIX_TEST_DIAMOND_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libleft.so $(POSIX_TEST_DIAMOND_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libright.so $(POSIX_TEST_DIAMOND_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libdiamond.so $(POSIX_TEST_DIAMOND_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_DIAMOND_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
-POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite)))
+POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
+	$(POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-init-runpath-c: constructor/destructor + DT_RUNPATH fixtures.
