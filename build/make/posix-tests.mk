@@ -106,6 +106,10 @@ POSIX_TEST_PIE_LDFLAGS := -pie --export-dynamic --no-dynamic-linker -z notext -z
 POSIX_TEST_PIE_dlfcn-pie-c := yes
 POSIX_TEST_PIE_dlfcn-global-c := yes
 POSIX_TEST_PIE_dlfcn-needed-c := yes
+# dlfcn-init-runpath-c links PIE with --export-dynamic so the main executable's
+# `g_dtor_ran` global lands in `.dynsym`; the loader's global symbol table then
+# satisfies libctor.so's `extern volatile int g_dtor_ran` reference at load time.
+POSIX_TEST_PIE_dlfcn-init-runpath-c := yes
 
 define POSIX_TEST_RULE
 POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TESTS_SRCDIR)/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TESTS_SRCDIR)/$(1)/*.c))
@@ -174,8 +178,10 @@ clean-posix-tests:
 	$(RM_CMD) $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite).initrd)
 	$(RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs.img
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
+	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
+	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
 
 #---------------------------------------------------------------------------------------------------
@@ -271,6 +277,71 @@ $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(eval $(call POSIX_TEST_SOLIB_RULE,$
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite)))
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-init-runpath-c: constructor/destructor + DT_RUNPATH fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+# This suite ships THREE shared libraries (built with the same freestanding host
+# toolchain as the global/needed fixtures above):
+#   * libctor.so   - carries `.init_array`/`.fini_array` (a constructor and a
+#                    destructor). The destructor stores a sentinel into the main
+#                    executable's exported `g_dtor_ran` global, so libctor.so is
+#                    left with an UNDEFINED `g_dtor_ran` that the loader resolves
+#                    from the global scope (the suite ELF is PIE +
+#                    --export-dynamic, see POSIX_TEST_PIE_* above). Staged at
+#                    lib/libctor.so.
+#   * libchild.so  - a self-contained dependency, given an explicit SONAME so the
+#                    DT_NEEDED entry recorded in libparent.so is the bare name
+#                    `libchild.so` regardless of linker (GNU ld vs ld.lld). Staged
+#                    ONLY at lib/subdir/libchild.so (never lib/).
+#   * libparent.so - DT_NEEDED=libchild.so (via -lchild) and DT_RUNPATH=lib/subdir
+#                    (via --enable-new-dtags -rpath lib/subdir). --enable-new-dtags
+#                    forces DT_RUNPATH instead of the deprecated DT_RPATH, which
+#                    the Nanvix loader intentionally ignores. The loader must
+#                    consult DT_RUNPATH to locate libchild.so. Staged at
+#                    lib/libparent.so.
+
+POSIX_TEST_RUNPATH_SUITE  := dlfcn-init-runpath-c
+POSIX_TEST_RUNPATH_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_RUNPATH_SUITE)/libs
+POSIX_TEST_RUNPATH_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_RUNPATH_SUITE)-seed
+POSIX_TEST_RUNPATH_IMG    := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_RUNPATH_SUITE).img
+
+# libctor.so: constructor/destructor witness. The undefined `g_dtor_ran` is left
+# for the loader to resolve from the main executable's global scope at load time.
+$(POSIX_TEST_RUNPATH_LIBDIR)/libctor.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_RUNPATH_SUITE)/libs/ctor.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_RUNPATH_SUITE)/libctor.so (.init_array/.fini_array)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# libchild.so: self-contained dependency with SONAME=libchild.so.
+$(POSIX_TEST_RUNPATH_LIBDIR)/libchild.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_RUNPATH_SUITE)/libs/subdir/child.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_RUNPATH_SUITE)/libchild.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libchild.so $@.o -o $@
+
+# libparent.so: DT_NEEDED=libchild.so, DT_RUNPATH=lib/subdir.
+$(POSIX_TEST_RUNPATH_LIBDIR)/libparent.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_RUNPATH_SUITE)/libs/parent.c \
+		$(POSIX_TEST_RUNPATH_LIBDIR)/libchild.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_RUNPATH_SUITE)/libparent.so (DT_NEEDED libchild.so, DT_RUNPATH lib/subdir)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o \
+		-L$(POSIX_TEST_RUNPATH_LIBDIR) -lchild --enable-new-dtags -rpath lib/subdir -o $@
+
+# Per-suite RAMFS image: libctor.so + libparent.so under lib/, libchild.so under
+# lib/subdir/ (reachable ONLY via libparent.so's DT_RUNPATH).
+$(POSIX_TEST_RUNPATH_IMG): $(POSIX_TEST_RUNPATH_LIBDIR)/libctor.so \
+		$(POSIX_TEST_RUNPATH_LIBDIR)/libparent.so \
+		$(POSIX_TEST_RUNPATH_LIBDIR)/libchild.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_RUNPATH_SEED)/lib/subdir
+	$(CP_CMD) $(POSIX_TEST_RUNPATH_LIBDIR)/libctor.so $(POSIX_TEST_RUNPATH_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_RUNPATH_LIBDIR)/libparent.so $(POSIX_TEST_RUNPATH_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_RUNPATH_LIBDIR)/libchild.so $(POSIX_TEST_RUNPATH_SEED)/lib/subdir/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_RUNPATH_SEED)
+
 # The per-suite boot arguments that pair each suite with its RAMFS image
 # (`-ramfs <img>`) or enable host networking (`-allow-host-networking`) now live
 # in the nanvix-test harness configs (test/test-posix.toml and
@@ -290,7 +361,8 @@ POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST
 .PHONY: all-posix-test-images
 all-posix-test-images: $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
-		$(POSIX_TEST_SOLIB_IMGS)
+		$(POSIX_TEST_SOLIB_IMGS) \
+		$(POSIX_TEST_RUNPATH_IMG)
 	@echo "All POSIX C test-suite images built."
 
 .PHONY: run-posix-tests
@@ -315,7 +387,7 @@ ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
 else ifeq ($(DEPLOYMENT_MODE),standalone)
-run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS)
+run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }
