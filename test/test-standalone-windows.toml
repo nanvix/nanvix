@@ -340,6 +340,21 @@ extra_nanvixd_args = "-ramfs ./bin/fork-exec-loop-test.img"
 input = "[]"
 expected_output = "ok"
 
+# Acceptance test for bulk pipe data integrity across fork()+execv(): a large
+# payload streamed by an exec'd child through a dup2()'d pipe must reach the
+# parent in full. FAILS while a bulk transfer from a LARGE exec'd image does not
+# reach the parent (the writer's write() fails part-way / the reader sees a short
+# stream), worsening per iteration; a small exec'd image does not trigger it.
+# Release-only: the target is a deliberately large image streamed many times, which is
+# prohibitively slow under a debug (trace-enabled) build but tractable under release.
+[[tests]]
+build_modes = ["release"]
+executor = "http"
+program = "./bin/fork-exec-pipe-bulk-test.initrd"
+extra_nanvixd_args = "-ramfs ./bin/fork-exec-pipe-bulk-test.img"
+input = "[]"
+expected_output = "ok"
+
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"

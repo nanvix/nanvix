@@ -105,6 +105,8 @@ members = [
         "src/tests/thread-vfs-test",
         "src/tests/fork-exec-loop-test",
         "src/tests/fork-exec-loop-target",
+        "src/tests/fork-exec-pipe-bulk-test",
+        "src/tests/fork-exec-pipe-bulk-target",
         "src/tests/socket-fork-rust",
         "src/tests/setenv-rust",
         "src/tests/snapshot-test",

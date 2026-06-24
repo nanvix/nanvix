@@ -960,6 +960,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "fork-exec-pipe-bulk-target"
+version = "0.17.9"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "config",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
+name = "fork-exec-pipe-bulk-test"
+version = "0.17.9"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "fork-exec-vfsd-target"
 version = "0.17.9"
 dependencies = [

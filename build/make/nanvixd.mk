@@ -79,6 +79,13 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@cp -f $(BINARIES_DIR)/fork-exec-loop-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-loop-test-seed/target
 	@printf 'COLD-READ-PAYLOAD-OK' > $(BINARIES_DIR)/fork-exec-loop-test-seed/coldfile.dat
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-loop-test.img $(BINARIES_DIR)/fork-exec-loop-test-seed/
+	# Build the ramfs image for the bulk pipe integrity test. It contains the target at the
+	# filesystem root as "target"; fork-exec-pipe-bulk-test forks and the child dup2()s a pipe onto
+	# standard output and execs it, after which the target streams a 1 MiB payload back through the
+	# pipe -- a bulk transfer whose delivery in full to the parent the caller checks.
+	@mkdir -p $(BINARIES_DIR)/fork-exec-pipe-bulk-test-seed
+	@cp -f $(BINARIES_DIR)/fork-exec-pipe-bulk-target.$(EXEC_FORMAT) $(BINARIES_DIR)/fork-exec-pipe-bulk-test-seed/target
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/fork-exec-pipe-bulk-test.img $(BINARIES_DIR)/fork-exec-pipe-bulk-test-seed/
 endif
 	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
 	# network namespaces. This is only the case in L2 deployments (Linux only).
