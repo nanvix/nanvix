@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bridge-utils          \
         build-essential       \
         bzip2                 \
+        clang                 \
         cmake                 \
         codespell             \
         cpio                  \
