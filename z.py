@@ -628,6 +628,55 @@ def find_make(plat: PlatformInfo) -> str | None:
     return None
 
 
+def find_clang(plat: PlatformInfo) -> str | None:
+    """Find the clang C cross-compiler, prepending its directory to PATH.
+
+    The guest C sources (the ported POSIX test suites and other guest C apps)
+    are cross-compiled with clang. On Windows they are additionally linked with
+    LLVM's ld.lld; on Linux the guest C link uses GNU ld (see
+    build/make/guest-c-apps.mk), so only clang matters there.
+
+    The Windows LLVM installer (winget ``LLVM.LLVM`` or the official MSI) drops
+    both tools under ``%ProgramFiles%\\LLVM\\bin`` but does not add that
+    directory to PATH, so probe the known install locations and prepend the
+    first directory that provides BOTH clang and ld.lld — accepting a clang
+    without a sibling ld.lld would only defer the failure to the link step.
+    Returns the clang path, or None when a usable toolchain cannot be located.
+    """
+    if not plat.is_windows:
+        return shutil.which("clang")
+
+    # On Windows clang alone is insufficient: the guest C link step needs ld.lld
+    # from the same LLVM toolchain. Accept what is already on PATH only when both
+    # resolve; otherwise probe the standard install locations for a bin directory
+    # that ships both and prepend it.
+    clang = shutil.which("clang")
+    if clang and shutil.which("ld.lld"):
+        return clang
+
+    candidates: list[Path] = []
+    # Default install location used by the winget package and the MSI.
+    for env_var in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"):
+        base = os.environ.get(env_var)
+        if base:
+            candidates.append(Path(base) / "LLVM" / "bin" / "clang.exe")
+    # Fallback: a portable winget package under the per-user packages dir.
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    if local_app_data:
+        winget_dir = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+        if winget_dir.exists():
+            for llvm_dir in winget_dir.glob("*LLVM*"):
+                candidates.extend(llvm_dir.rglob("clang.exe"))
+    for candidate in candidates:
+        # Only accept a clang whose directory also provides ld.lld, so the link
+        # step does not later fail with a confusing "ld.lld not found".
+        if candidate.exists() and (candidate.parent / "ld.lld.exe").exists():
+            _prepend_path(str(candidate.parent))
+            return str(candidate)
+
+    return None
+
+
 def _require_make(plat: PlatformInfo) -> str:
     """Find Make or die."""
     make = find_make(plat)
@@ -671,6 +720,14 @@ def setup_windows_make_env(plat: PlatformInfo) -> None:
     repo_venv_scripts = plat.repo_root / ".venv" / "Scripts"
     if repo_venv_scripts.is_dir():
         _append_path(str(repo_venv_scripts))
+
+    # Ensure the guest C cross-compiler (clang) and LLVM linker (ld.lld) are on
+    # PATH. The LLVM installer does not add itself to PATH on Windows, so probe
+    # the default install location and prepend it. Best-effort: only some
+    # targets (e.g. run-posix-tests) compile guest C sources, so a missing
+    # clang is not fatal here — posix-tests.mk emits a precise error if it is
+    # genuinely required.
+    find_clang(plat)
 
 
 def invoke_make(
@@ -1130,6 +1187,36 @@ def _pkg_install(
         die(f"No package manager ID available to install {name}. Install it manually.")
 
 
+def _pkg_install_best_effort(
+    name: str,
+    *,
+    winget_id: str | None = None,
+    choco_id: str | None = None,
+    use_choco: bool = False,
+) -> bool:
+    """Best-effort package install; returns True on success, False on failure.
+
+    Unlike `_pkg_install`, a failed install is not fatal — the caller decides
+    whether the package is strictly required. Used for tools that only some
+    build targets need (e.g. LLVM/Clang, required only when compiling guest C
+    sources), so a missing package manager or a failed install must not abort
+    setup for unrelated jobs.
+    """
+    if use_choco and choco_id:
+        print_info(f"Installing {name} via Chocolatey...")
+        cmd = ["choco", "install", choco_id, "-y", "--no-progress"]
+    elif winget_id:
+        print_info(f"Installing {name} via winget...")
+        cmd = ["winget", "install", winget_id, "--silent"]
+    else:
+        return False
+    rc = subprocess.run(cmd, stdout=subprocess.DEVNULL).returncode
+    if rc != 0:
+        return False
+    _refresh_windows_path()
+    return True
+
+
 def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
     """Set up the development environment on Linux."""
     print_info("Setting up Nanvix development environment...")
@@ -1340,6 +1427,35 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
             "'Desktop development with C++' workload from "
             "https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022"
         )
+
+    # LLVM/Clang: the guest C cross-compiler (clang) and linker (ld.lld) used to
+    # build the ported POSIX C test suites and other guest C sources. Best-effort:
+    # only some targets compile guest C, so a failed install must not abort setup
+    # for unrelated Windows jobs (benchmarks, format checks). find_clang() probes
+    # the install locations (the installer does not add %ProgramFiles%\LLVM\bin to
+    # PATH) and prepends the first directory that provides BOTH clang and ld.lld;
+    # if the toolchain still cannot be provisioned we warn and continue —
+    # posix-tests.mk emits a precise error if it is genuinely required.
+    if find_clang(plat):
+        print_success("LLVM/Clang: OK")
+    else:
+        _pkg_install_best_effort(
+            "LLVM/Clang",
+            winget_id="LLVM.LLVM",
+            choco_id="llvm",
+            use_choco=use_choco,
+        )
+        if find_clang(plat):
+            print_success("LLVM/Clang: OK")
+        else:
+            print_warning(
+                "LLVM/Clang (clang + ld.lld) not found and could not be installed "
+                "automatically. It is required only to compile the guest C sources "
+                "(e.g. the POSIX C test suites); other targets are unaffected. "
+                "Install it with 'winget install LLVM.LLVM' or 'choco install "
+                "llvm', or from https://github.com/llvm/llvm-project/releases, and "
+                "ensure %ProgramFiles%\\LLVM\\bin is on PATH."
+            )
 
     # Rust toolchain.
     if not shutil.which("rustc"):
