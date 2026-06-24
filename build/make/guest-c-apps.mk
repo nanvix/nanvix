@@ -28,19 +28,15 @@ GUEST_C_APP_CC := clang --target=i686-unknown-none
 # Flags and inputs.
 #---------------------------------------------------------------------------------------------------
 
-# Compile flags: freestanding i686, project headers only. Clang supplies the
-# freestanding headers (stddef.h/stdarg.h) from its builtin resource dir.
+# Compile flags: freestanding i686, project headers only.
 #
-# On GNU/Linux, -nostdinc maximally isolates from host headers while clang still
-# resolves its builtin freestanding headers. On Windows this clang drops the
-# builtin resource dir under -nostdinc, so use -nostdlibinc there: it still
-# excludes the host C library headers but keeps the compiler's builtin
-# freestanding headers (stdarg.h, stddef.h, ...).
-ifeq ($(IS_WINDOWS),yes)
-GUEST_C_APP_CFLAGS := -m32 -march=pentiumpro -ffreestanding -nostdlibinc -std=c17
-else
+# Use -nostdinc for maximal isolation: it drops BOTH the host system include
+# paths and the compiler's builtin resource-directory headers. The freestanding
+# headers normally supplied by the compiler (stddef.h, stdarg.h, stdint.h,
+# stdbool.h) are vendored in-tree under include/, so the build is hermetic and
+# does not depend on the compiler's resource directory (which clang 18 omits
+# under -nostdinc on both Linux and Windows).
 GUEST_C_APP_CFLAGS := -m32 -march=pentiumpro -ffreestanding -nostdinc -std=c17
-endif
 GUEST_C_APP_CFLAGS += -isystem $(ROOT_DIR)/include
 ifeq ($(RELEASE),yes)
 GUEST_C_APP_CFLAGS += -O3

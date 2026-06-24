@@ -31,7 +31,7 @@ extern "C" {
 #ifndef _WCHAR_T_DEFINED
 #define _WCHAR_T_DEFINED
 #ifndef __cplusplus
-typedef int wchar_t;
+typedef __WCHAR_TYPE__ wchar_t;
 #endif
 #endif
 

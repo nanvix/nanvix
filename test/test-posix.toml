@@ -1,0 +1,146 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Ported POSIX C test-suite configuration (Linux).
+#
+# Drives the suites built by build/make/posix-tests.mk through the nanvix-test
+# harness: each `<suite>.initrd` is booted under nanvixd in standalone mode (the
+# `terminal` executor) and the propagated guest exit code must be 0. Guest stdout
+# is discarded in standalone mode, so the exit code is authoritative and no output
+# assertion is made.
+#
+# Usage: nanvix-test.elf test/test-posix.toml
+
+[runner]
+nanvixd_binary_path = "./bin/nanvixd.elf"
+working_directory = "."
+log_directory = "logs"
+tmp_directory = "/tmp"
+ipv4_addr = "127.0.0.1"
+port_num = 9999
+hwloc_file_path = ""
+l2_enabled = false
+fatal = true
+toolchain_path = "toolchain"
+sysroot_path = "./sysroot"
+nanvixd_shutdown_attempts_max = 10
+nanvixd_shutdown_retry_interval_ms = 100
+nanvixd_ready_attempts_max = 50
+nanvixd_ready_retry_interval_ms = 100
+cleanup_uservm_sleep_duration_ms = 10
+cleanup_l2_uservm_sleep_duration_ms = 100
+stream_collection_timeout_ms = 300000
+tcp_cleanup_max_wait_seconds = 70
+tcp_cleanup_poll_interval_seconds = 2
+gateway_connect_max_attempts = 100
+gateway_connect_initial_backoff_ms = 10
+gateway_connect_max_backoff_ms = 500
+gateway_connect_timeout_ms = 15000
+
+#===================================================================================================
+# Ported POSIX C Test Suites (standalone, exit-code-only)
+#===================================================================================================
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/c-bindings"
+program = "./bin/c-bindings.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/ctor-c"
+program = "./bin/ctor-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/dlfcn-c"
+program = "./bin/dlfcn-c.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/dlfcn-global-c"
+program = "./bin/dlfcn-global-c.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-dlfcn-global-c.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/dlfcn-needed-c"
+program = "./bin/dlfcn-needed-c.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-dlfcn-needed-c.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/dlfcn-pie-c"
+program = "./bin/dlfcn-pie-c.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/echo-c"
+program = "./bin/echo-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/file-c"
+program = "./bin/file-c.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/hello-c"
+program = "./bin/hello-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/memory-c"
+program = "./bin/memory-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/misc-c"
+program = "./bin/misc-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/network-c"
+program = "./bin/network-c.initrd"
+extra_nanvixd_args = "-allow-host-networking"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/noop-c"
+program = "./bin/noop-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/thread-c"
+program = "./bin/thread-c.initrd"
+expected_exit_code = 0

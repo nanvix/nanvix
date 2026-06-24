@@ -80,3 +80,27 @@ runs:
 
         echo "Running: ./bin/nanvix-test.elf ${TEST_CONFIG}"
         ./bin/nanvix-test.elf "${TEST_CONFIG}"
+
+    # Ported POSIX C test suites. Standalone-only: the runner boots each suite
+    # under nanvixd in standalone mode and uses the guest exit code as the
+    # pass/fail signal. This also exercises the freestanding guest C toolchain
+    # (build/make/guest-c-apps.mk) that no other CI step compiles.
+    - name: "POSIX C Suites (${{ inputs.machine-type }})"
+      if: inputs.deployment-type == 'standalone'
+      shell: bash
+      # No RUST_LOG here (unlike the direct-invocation steps above): this step
+      # drives the harness through `./z build -- run-posix-tests`, whose recipe
+      # sets RUST_LOG=$(LOG_LEVEL) on the harness command line, so a step-level
+      # RUST_LOG would be overridden and have no effect.
+      run: |
+        set -Eeuo pipefail
+
+        RELEASE_FLAG=""
+        if [[ "${{ inputs.build-type }}" == "release" ]]; then
+          RELEASE_FLAG="--release"
+        fi
+
+        ./z build ${RELEASE_FLAG} -- run-posix-tests \
+            "MACHINE=${{ inputs.machine-type }}" \
+            TARGET=x86 \
+            "DEPLOYMENT_MODE=${{ inputs.deployment-type }}"

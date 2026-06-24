@@ -770,7 +770,7 @@ jobs:
           LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
           RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
         run: |
-          .\z.ps1 build -- all run-unit-tests $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL MEMORY_SIZE=${{ matrix.memory-size }}
+          .\z.ps1 build -- all run-unit-tests all-posix-test-images $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL MEMORY_SIZE=${{ matrix.memory-size }}
 
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
@@ -892,6 +892,20 @@ jobs:
           BUILD_MODE: ${{ matrix.build-type }}
         run: |
           & .\bin\nanvix-test.exe .\test\test-standalone-windows.toml
+
+      # Ported POSIX C test suites. Boots the prebuilt <suite>.initrd images
+      # (built by the Windows build job via all-posix-test-images and downloaded
+      # with the artifact) directly under WHP through the nanvix-test harness,
+      # asserting each guest exit code is 0. No rebuild is needed here.
+      - name: "POSIX C Suites (${{ matrix.machine-type }})"
+        if: steps.whp-check.outputs.whp_available == 'true'
+        shell: pwsh
+        env:
+          RUST_LOG: info
+          # Forwarded to the harness so it can gate build-mode-restricted tests.
+          BUILD_MODE: ${{ matrix.build-type }}
+        run: |
+          & .\bin\nanvix-test.exe .\test\test-posix-windows.toml
 
       - name: "Upload logs in case of failures"
         if: failure() || cancelled()
