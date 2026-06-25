@@ -208,7 +208,7 @@ POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite
 # into lib/) so dlfcn-c can dlopen("lib/libmul.so"). Suites that need the image
 # are listed in POSIX_TEST_RAMFS_SUITES. Suites with their own fixtures (the
 # dlfcn global/needed variants, below) override the image with a per-suite one.
-POSIX_TEST_RAMFS_SUITES := file-c dlfcn-c dlfcn-pie-c dlfcn-global-c dlfcn-needed-c dlfcn-diamond-c
+POSIX_TEST_RAMFS_SUITES := file-c stdio-c dlfcn-c dlfcn-pie-c dlfcn-global-c dlfcn-needed-c dlfcn-diamond-c
 POSIX_TEST_RAMFS_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-seed
 POSIX_TEST_RAMFS_IMG    := $(BINARIES_DIR)/posix-tests-ramfs.img
 
@@ -243,7 +243,7 @@ $(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt \
 # for R_386_* against local symbols), mirroring the prebuilt libmul.so recipe.
 
 POSIX_TEST_SOLIB_SUITES := dlfcn-global-c dlfcn-needed-c
-POSIX_TEST_SOLIB_CFLAGS := -m32 -march=pentiumpro -nostdlib -ffreestanding -fPIC -O2
+POSIX_TEST_SOLIB_CFLAGS := -m32 -march=pentiumpro -nostdlib -ffreestanding -fPIC -O2 -isystem $(ROOT_DIR)/include
 POSIX_TEST_SOLIB_LDFLAGS := -shared -melf_i386 -z notext
 
 # Consumer libraries that should carry a DT_NEEDED entry on libprovider.so.

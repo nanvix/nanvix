@@ -16,6 +16,7 @@
 
 #include <stdarg.h>
 #include <stddef.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -101,6 +102,7 @@ extern FILE *stderr(void);
 
 extern FILE *fopen(const char *pathname, const char *mode);
 extern FILE *fdopen(int fd, const char *mode);
+extern FILE *freopen(const char *pathname, const char *mode, FILE *stream);
 extern int fclose(FILE *stream);
 extern int fflush(FILE *stream);
 extern void clearerr(FILE *stream);
@@ -125,6 +127,7 @@ extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);
  *==================================================================================================*/
 
 extern int fseek(FILE *stream, long offset, int whence);
+extern int fseeko(FILE *stream, off_t offset, int whence);
 extern long ftell(FILE *stream);
 extern void rewind(FILE *stream);
 
@@ -151,6 +154,8 @@ extern int ungetc(int c, FILE *stream);
 extern char *fgets(char *s, int size, FILE *stream);
 extern int fputs(const char *s, FILE *stream);
 extern int puts(const char *s);
+extern ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream);
+extern ssize_t getline(char **lineptr, size_t *n, FILE *stream);
 
 /*==================================================================================================
  * Block I/O
@@ -165,12 +170,16 @@ extern size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 
 extern int printf(const char *fmt, ...);
 extern int fprintf(FILE *stream, const char *fmt, ...);
+extern int dprintf(int fd, const char *fmt, ...);
 extern int sprintf(char *buf, const char *fmt, ...);
 extern int snprintf(char *buf, size_t size, const char *fmt, ...);
+extern int asprintf(char **strp, const char *fmt, ...);
+extern int vdprintf(int fd, const char *fmt, va_list ap);
 extern int vprintf(const char *fmt, va_list ap);
 extern int vfprintf(FILE *stream, const char *fmt, va_list ap);
 extern int vsprintf(char *buf, const char *fmt, va_list ap);
 extern int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
+extern int vasprintf(char **strp, const char *fmt, va_list ap);
 
 /*==================================================================================================
  * Error Reporting
