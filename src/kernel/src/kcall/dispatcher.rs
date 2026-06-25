@@ -223,6 +223,15 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         #[cfg(not(feature = "microvm"))]
         KcallNumber::Snapshot => KcallResult::Error(ErrorCode::OperationNotSupported.into()),
 
+        // Signal subsystem kernel calls. These are currently inert stubs that return a
+        // not-implemented error; later phases of the signals effort implement the real handlers.
+        KcallNumber::Sigaction => pm::sigaction(),
+        KcallNumber::Sigprocmask => pm::sigprocmask(),
+        KcallNumber::Kill => pm::kill(),
+        KcallNumber::Sigreturn => pm::sigreturn(),
+        KcallNumber::Sigpending => pm::sigpending(),
+        KcallNumber::Sigsuspend => pm::sigsuspend(),
+
         // Unknown kernel call.
         _ => {
             error!("invalid kernel call (number={})", number);

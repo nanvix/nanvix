@@ -15,6 +15,7 @@
 mod interrupted;
 mod runnable;
 mod running;
+mod signal;
 mod sleeping;
 #[cfg(feature = "test")]
 mod test_detach;
@@ -38,7 +39,10 @@ use crate::{
     ipc::Mailbox,
     mm::Vmem,
     pm::{
-        process::capability::Capabilities,
+        process::{
+            capability::Capabilities,
+            state::signal::SignalControl,
+        },
         sync::{
             condvar::Condvar,
             mutex::Mutex,
@@ -216,6 +220,12 @@ pub struct ProcessState {
     conditions: BTreeMap<ConditionAddress, Condvar>,
     /// Pending exit status set when `exit()` is called with threads still running.
     pending_exit_status: Option<ExitStatus>,
+    /// Per-process signal control block.
+    ///
+    /// Inert plumbing for the signal subsystem: the block is default-initialized so existing
+    /// behavior is unchanged, and it is read by later phases of the signals effort.
+    #[allow(dead_code)]
+    signals: SignalControl,
 }
 
 impl ProcessState {
@@ -232,6 +242,7 @@ impl ProcessState {
             mutexes: BTreeMap::new(),
             conditions: BTreeMap::new(),
             pending_exit_status: None,
+            signals: SignalControl::default(),
         }
     }
 
