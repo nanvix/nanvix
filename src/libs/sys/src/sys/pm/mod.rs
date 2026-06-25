@@ -9,6 +9,7 @@ mod capability;
 mod execv_args;
 mod gid;
 mod pid;
+mod signal;
 mod sync;
 mod thread_create_args;
 mod tid;
@@ -22,6 +23,18 @@ pub use capability::Capability;
 pub use execv_args::ExecvArgs;
 pub use gid::GroupIdentifier;
 pub use pid::ProcessIdentifier;
+pub use signal::{
+    SigAction,
+    SigSet,
+    SIGKILL,
+    SIGSTOP,
+    SIG_BLOCK,
+    SIG_DFL,
+    SIG_IGN,
+    SIG_MAX,
+    SIG_SETMASK,
+    SIG_UNBLOCK,
+};
 pub use sync::{
     ConditionAddress,
     MutexAddress,
