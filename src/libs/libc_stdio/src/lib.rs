@@ -40,10 +40,13 @@
 // Modules
 //==================================================================================================
 
+mod float_fmt;
 mod format_engine;
 mod streams;
 
+pub mod asprintf;
 pub mod clearerr;
+pub mod dprintf;
 pub mod fclose;
 pub mod fdopen;
 pub mod feof;
@@ -57,10 +60,13 @@ pub mod fprintf;
 pub mod fputc;
 pub mod fputs;
 pub mod fread;
+pub mod freopen;
 pub mod fseek;
+pub mod fseeko;
 pub mod ftell;
 pub mod fwrite;
 pub mod getchar;
+pub mod getdelim;
 pub mod perror;
 pub mod printf;
 pub mod putchar;
@@ -75,6 +81,8 @@ pub mod sscanf;
 pub mod swprintf;
 pub mod tmpfile;
 pub mod ungetc;
+pub mod vasprintf;
+pub mod vdprintf;
 pub mod vfprintf;
 pub mod vprintf;
 pub mod vsnprintf;

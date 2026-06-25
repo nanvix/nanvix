@@ -56,6 +56,9 @@ impl<'a> ArgSource for VaListArgs<'a> {
     fn next_str(&mut self) -> *const c_char {
         unsafe { self.va.next_arg::<*const c_char>() }
     }
+    fn next_double(&mut self) -> f64 {
+        unsafe { self.va.next_arg::<f64>() }
+    }
 }
 
 //==================================================================================================

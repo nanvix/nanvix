@@ -66,6 +66,10 @@ impl<'a> ArgSource for VaListArgs<'a> {
         // SAFETY: caller guarantees matching format specifiers and arguments.
         unsafe { self.va.next_arg::<*const c_char>() }
     }
+    fn next_double(&mut self) -> f64 {
+        // SAFETY: caller guarantees matching format specifiers and arguments.
+        unsafe { self.va.next_arg::<f64>() }
+    }
 }
 
 //==================================================================================================

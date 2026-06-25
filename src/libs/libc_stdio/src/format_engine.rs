@@ -23,17 +23,17 @@ use ::sysapi::ffi::{
 //==================================================================================================
 
 /// Flags parsed from a printf format specifier.
-struct FormatFlags {
+pub(crate) struct FormatFlags {
     /// Left-align the output within the field width (`-`).
-    left_align: bool,
+    pub(crate) left_align: bool,
     /// Always print a sign character (`+`).
-    force_sign: bool,
+    pub(crate) force_sign: bool,
     /// Print a space before positive numbers (` `).
-    space_sign: bool,
+    pub(crate) space_sign: bool,
     /// Pad with zeros instead of spaces (`0`).
-    zero_pad: bool,
+    pub(crate) zero_pad: bool,
     /// Use alternate form (`#`).
-    alternate: bool,
+    pub(crate) alternate: bool,
 }
 
 /// Length modifier for printf format specifiers.
@@ -91,6 +91,9 @@ pub(crate) trait ArgSource {
     fn next_ptr(&mut self) -> usize;
     /// Fetches the next `*const c_char` string argument.
     fn next_str(&mut self) -> *const c_char;
+    /// Fetches the next `f64` (double) argument. A `float` is promoted to `double` when passed
+    /// through an ellipsis, so this also serves the `float` case.
+    fn next_double(&mut self) -> f64;
 }
 
 //==================================================================================================
@@ -426,7 +429,11 @@ fn parse_length(fmt: *const c_char, start: usize) -> (LengthMod, usize) {
 }
 
 /// Writes padding characters to the writer.
-fn write_padding<W: WriteTarget>(writer: &mut W, ch: u8, count: usize) -> Result<(), ()> {
+pub(crate) fn write_padding<W: WriteTarget>(
+    writer: &mut W,
+    ch: u8,
+    count: usize,
+) -> Result<(), ()> {
     // Emit padding in fixed-size chunks so that file-descriptor-backed writers do not incur
     // one syscall per padding byte for large widths/precisions.
     const CHUNK: usize = 64;
@@ -828,6 +835,18 @@ pub(crate) fn format_core<W: WriteTarget, A: ArgSource>(
                 let (start, len) = format_unsigned(ptr as u64, 16, false, &mut buf);
                 let _ = writer.write_bytes(&buf[start..start + len]);
             },
+            b'f' | b'F' | b'e' | b'E' | b'g' | b'G' => {
+                let value: f64 = args.next_double();
+                let _ = crate::float_fmt::format_float(
+                    writer,
+                    value,
+                    spec,
+                    &flags,
+                    width,
+                    has_precision,
+                    precision,
+                );
+            },
             b'%' => {
                 let _ = writer.write_byte(b'%');
             },
@@ -892,6 +911,7 @@ mod test {
         sizes: Vec<usize>,
         ptrs: Vec<usize>,
         strs: Vec<*const c_char>,
+        doubles: Vec<f64>,
         int_idx: usize,
         uint_idx: usize,
         long_idx: usize,
@@ -901,6 +921,7 @@ mod test {
         size_idx: usize,
         ptr_idx: usize,
         str_idx: usize,
+        double_idx: usize,
     }
 
     impl TestArgs {
@@ -915,6 +936,7 @@ mod test {
                 sizes: Vec::new(),
                 ptrs: Vec::new(),
                 strs: Vec::new(),
+                doubles: Vec::new(),
                 int_idx: 0,
                 uint_idx: 0,
                 long_idx: 0,
@@ -924,6 +946,7 @@ mod test {
                 size_idx: 0,
                 ptr_idx: 0,
                 str_idx: 0,
+                double_idx: 0,
             }
         }
     }
@@ -972,6 +995,11 @@ mod test {
         fn next_str(&mut self) -> *const c_char {
             let v: *const c_char = self.strs[self.str_idx];
             self.str_idx += 1;
+            v
+        }
+        fn next_double(&mut self) -> f64 {
+            let v: f64 = self.doubles[self.double_idx];
+            self.double_idx += 1;
             v
         }
     }
