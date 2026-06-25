@@ -23,6 +23,8 @@ use crate::{
         ExecvArgs,
         MutexAddress,
         ProcessIdentifier,
+        SigAction,
+        SigSet,
         ThreadCreateArgs,
         ThreadIdentifier,
     },
@@ -324,6 +326,93 @@ pub fn __kcall_terminate(pid: ProcessIdentifier) -> Result<(), Error> {
     // NOTE: errors are unlikely because terminate typically succeeds for a valid process.
     if unlikely(result != 0) {
         Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate()"))
+    } else {
+        Ok(())
+    }
+}
+
+//==================================================================================================
+// Sigaction
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Gets and/or sets the disposition of a signal for the calling process.
+///
+/// # Parameters
+///
+/// - `signum`: Signal number.
+/// - `act`: Pointer to the new action, or null to leave the disposition unchanged.
+/// - `oldact`: Pointer that receives the previous action, or null if not wanted.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because the caller must ensure that `act` and `oldact` are either null
+/// or valid, properly aligned pointers to [`SigAction`] values.
+///
+pub unsafe fn __kcall_sigaction(
+    signum: i32,
+    act: *const SigAction,
+    oldact: *mut SigAction,
+) -> Result<(), Error> {
+    let result: i64 = kcall3!(
+        KcallNumber::Sigaction.into(),
+        signum as u32,
+        act as usize as u32,
+        oldact as usize as u32
+    );
+
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to sigaction()"))
+    } else {
+        Ok(())
+    }
+}
+
+//==================================================================================================
+// Sigprocmask
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Gets and/or modifies the blocked-signal mask of the calling thread.
+///
+/// # Parameters
+///
+/// - `how`: How to combine `set` with the current mask (`SIG_BLOCK`, `SIG_UNBLOCK`, or
+///   `SIG_SETMASK`); ignored when `set` is null.
+/// - `set`: Pointer to the signals to apply, or null to leave the mask unchanged.
+/// - `oldset`: Pointer that receives the previous mask, or null if not wanted.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because the caller must ensure that `set` and `oldset` are either null
+/// or valid, properly aligned pointers to [`SigSet`] values.
+///
+pub unsafe fn __kcall_sigprocmask(
+    how: i32,
+    set: *const SigSet,
+    oldset: *mut SigSet,
+) -> Result<(), Error> {
+    let result: i64 = kcall3!(
+        KcallNumber::Sigprocmask.into(),
+        how as u32,
+        set as usize as u32,
+        oldset as usize as u32
+    );
+
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to sigprocmask()"))
     } else {
         Ok(())
     }
