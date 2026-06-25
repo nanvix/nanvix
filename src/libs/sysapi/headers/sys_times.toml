@@ -3,7 +3,7 @@
 #
 # C header specification for sys/times.h.
 # The tms layout mirrors src/libs/sysapi/src/sys_times.rs; times() is generated
-# from the posix crate.
+# from the libc_sys_times crate.
 
 file = "sys/times.h"
 brief = "Process times."
@@ -12,7 +12,7 @@ Declares the tms structure and the times() interface. The layout mirrors the
 Rust definition in the sysapi crate (sys_times.rs)."""
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_TIMES_H"
-scan_crates = ["posix"]
+scan_crates = ["libc_sys_times"]
 content_order = ["types:0", "section:0"]
 
 [[types]]

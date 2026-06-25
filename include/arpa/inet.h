@@ -13,7 +13,7 @@
  * Declares the byte-order conversion helpers and the textual IPv4 address
  * conversion interfaces. The byte-order helpers are provided as static inlines
  * (the target is little-endian, so they are simple byte swaps); the inet_*
- * prototypes are generated from the posix crate.
+ * prototypes are generated from the libc_arpa_inet crate.
  */
 
 #include <netinet/in.h>

@@ -3,7 +3,7 @@
 #
 # C header specification for sys/uio.h.
 # The iovec layout mirrors src/libs/sysapi/src/sys_uio.rs; prototypes are
-# generated from the posix crate.
+# generated from the libc_sys_uio crate.
 
 file = "sys/uio.h"
 brief = "Vectored I/O."
@@ -12,7 +12,7 @@ Declares the iovec structure and the scatter/gather I/O interfaces. The layout
 mirrors the Rust definition in the sysapi crate (sys_uio.rs)."""
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_UIO_H"
-scan_crates = ["posix"]
+scan_crates = ["libc_sys_uio"]
 content_order = ["types:0", "section:0"]
 
 [[types]]

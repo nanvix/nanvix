@@ -5,7 +5,6 @@
 // Imports
 //==================================================================================================
 
-use crate::errno::__errno_location;
 use ::sys::error::ErrorCode;
 use ::sysapi::ffi::{
     c_char,
@@ -13,6 +12,7 @@ use ::sysapi::ffi::{
     c_long,
     c_void,
 };
+use ::syscall::errno::__errno_location;
 use ::syslog::trace_libcall;
 
 //==================================================================================================

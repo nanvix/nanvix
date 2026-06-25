@@ -19,35 +19,86 @@ extern crate alloc;
 #[cfg(feature = "syscall")]
 extern crate syslog;
 
-// Address and routing parameter area.
-pub mod arpa;
+// POSIX modules that have been split into standalone `libc_*` crates and are
+// re-exported by this bundle.  The `extern crate` declarations force the linker
+// to include each crate's `#[no_mangle]` C-ABI symbols in `libposix.a`, exactly
+// as the `extern crate libc_*` lines do in the `nanvix_libc` bundle.  They are
+// gated on the `syscall` feature because those crates provide the syscall-backed
+// libc surface, matching the feature that previously gated these modules'
+// logging dependency.
 
-/// Dynamic linking.
-pub mod dlfcn;
+/// Internet address manipulation (`arpa/inet.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_arpa_inet;
+
+/// Dynamic linking (`dlfcn.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_dlfcn;
+
+/// System error numbers (`errno.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_errno;
+
+/// Network database operations (`netdb.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_netdb;
+
+/// The poll() function (`poll.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_poll;
+
+/// POSIX threads (`pthread.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_pthread;
+
+/// Password database (`pwd.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_pwd;
+
+/// File last access and modification times (`utime.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_utime;
+
+/// I/O control operations (`sys/ioctl.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_ioctl;
+
+/// Resource operations (`sys/resource.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_resource;
+
+/// File status (`sys/stat.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_stat;
+
+/// Time types (`sys/time.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_time;
+
+/// Process times (`sys/times.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_times;
+
+/// UNIX domain socket addresses (`sys/un.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_un;
+
+/// Vector I/O operations (`sys/uio.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_uio;
+
+/// System name (`sys/utsname.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_utsname;
 
 /// Dummy implementations.
 pub mod dummy;
-
-/// System error numbers.
-pub mod errno;
 
 /// Group database.
 pub mod grp;
 
 /// Virtual environments.
 pub mod venv;
-
-/// Definitions for network database operations.
-pub mod netdb;
-
-/// Definitions for the poll() function.
-pub mod poll;
-
-/// Posix threads.
-pub mod pthread;
-
-/// Password structure.
-pub mod pwd;
 
 /// Process start-of-day driver called from `nvx-crt0::_start`.
 ///
@@ -56,9 +107,3 @@ pub mod pwd;
 /// rationale comment in `start.rs` for why these live in libposix
 /// instead of in `nvx-crt0`.
 pub mod start;
-
-/// File last access and modification times.
-pub mod utime;
-
-/// System-specific headers.
-pub mod sys;

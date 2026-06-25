@@ -9,14 +9,11 @@ description = '''
 Declares the byte-order conversion helpers and the textual IPv4 address
 conversion interfaces. The byte-order helpers are provided as static inlines
 (the target is little-endian, so they are simple byte swaps); the inet_*
-prototypes are generated from the posix crate.'''
+prototypes are generated from the libc_arpa_inet crate.'''
 includes = ["netinet/in.h", "stdint.h"]
 guard = "_NANVIX_ARPA_INET_H"
-scan_crates = ["posix"]
-content_order = [
-    "raw:0",
-    "section:0",
-]
+scan_crates = ["libc_arpa_inet"]
+content_order = ["raw:0", "section:0"]
 
 [[raw_sections]]
 title = "Byte Order"
