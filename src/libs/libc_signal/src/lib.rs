@@ -34,6 +34,7 @@ pub mod raise;
 pub mod signal;
 pub mod sigprocmask;
 pub mod sigset;
+pub mod sigsuspend;
 
 //==================================================================================================
 // Imports

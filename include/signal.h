@@ -147,6 +147,7 @@ extern int sigaddset(sigset_t *set, int signum);
 extern int sigdelset(sigset_t *set, int signum);
 extern int sigismember(const sigset_t *set, int signum);
 extern int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
+extern int sigsuspend(const sigset_t *mask);
 extern int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 extern int pthread_sigmask(int how, const sigset_t *set, sigset_t *oldset);
 
