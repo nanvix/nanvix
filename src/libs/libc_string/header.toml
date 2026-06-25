@@ -21,6 +21,7 @@ functions = [
     "memcmp",
     "memcpy",
     "memmove",
+    "mempcpy",
     "memrchr",
     "memset",
 ]
@@ -28,9 +29,15 @@ functions = [
 [[sections]]
 title = "String Operations"
 functions = [
+    "stpcpy",
+    "stpncpy",
+    "strcasecmp",
+    "strcasestr",
     "strcat",
     "strchr",
+    "strchrnul",
     "strcmp",
+    "strcoll",
     "strcpy",
     "strcspn",
     "strdup",
@@ -39,6 +46,7 @@ functions = [
     "strlcat",
     "strlcpy",
     "strlen",
+    "strncasecmp",
     "strncat",
     "strncmp",
     "strncpy",
@@ -47,8 +55,10 @@ functions = [
     "strpbrk",
     "strrchr",
     "strsep",
+    "strsignal",
     "strspn",
     "strstr",
     "strtok",
     "strtok_r",
+    "strverscmp",
 ]
