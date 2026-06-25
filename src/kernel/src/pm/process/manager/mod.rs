@@ -196,7 +196,12 @@ pub struct ProcessManager {
     /// [`ProcessRole`] authoritatively even when a daemon occupies a process identifier that another
     /// deployment would assign to the init workload — e.g. a deployment without a separate VFS
     /// daemon lets the workload take the VFS daemon's conventional identifier.
-    daemon_pids: Vec<ProcessIdentifier>,
+    ///
+    /// Recording the name alongside each PID lets the kernel detect a duplicate spawn of the same
+    /// daemon name (e.g. a misconfigured boot image, or a future spawn-by-name path): only the first
+    /// process to claim a given name is classified as that daemon, so a later duplicate is treated as
+    /// an init process rather than silently recorded as a daemon.
+    daemon_pids: Vec<(&'static str, ProcessIdentifier)>,
 }
 
 impl ProcessManager {
@@ -248,7 +253,7 @@ impl ProcessManager {
     /// process spawned by the kernel is the init process; anything else was forked by a user
     /// process.
     fn classify_role(&self, pid: ProcessIdentifier, parent: ProcessIdentifier) -> ProcessRole {
-        ProcessRole::classify(parent, self.daemon_pids.contains(&pid))
+        ProcessRole::classify(parent, self.daemon_pids.iter().any(|(_, p)| *p == pid))
     }
 
     ///
@@ -631,8 +636,12 @@ impl ProcessManager {
         // command-line arguments) so it is classified as a daemon regardless of the process
         // identifier it receives. This keeps daemon identification correct for deployments that
         // omit a daemon and let the init workload take that daemon's conventional identifier.
-        let is_daemon: bool =
-            ::config::daemons::is_system_daemon(args.split_whitespace().next().unwrap_or(""));
+
+        let program_name: &str = args.split_whitespace().next().unwrap_or("");
+        let daemon_name: Option<&'static str> = ::config::daemons::GUEST_DAEMON_NAMES
+            .iter()
+            .copied()
+            .find(|&n| n == program_name);
 
         Ok(no_fail!(ProcessIdentifier, {
             // Commit the next process and thread identifiers now that all fallible operations have succeeded.
@@ -647,8 +656,15 @@ impl ProcessManager {
 
             // Remember daemon identifiers so a process's role can be classified authoritatively
             // later (e.g. at termination), when only its identifier is available.
-            if is_daemon {
-                self.daemon_pids.push(pid);
+            if let Some(daemon_name) = daemon_name {
+                let found_match = self
+                    .daemon_pids
+                    .iter()
+                    .any(|(name, _)| *name == daemon_name);
+
+                if !found_match {
+                    self.daemon_pids.push((daemon_name, pid));
+                }
             }
 
             // Record the creation so the kernel main loop can publish a process-creation
