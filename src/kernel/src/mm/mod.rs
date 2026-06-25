@@ -46,8 +46,15 @@ use crate::hal::mem::{
     TruncatedMemoryRegion,
     VirtualAddress,
 };
-use ::alloc::collections::LinkedList;
+use ::alloc::{
+    boxed::Box,
+    collections::LinkedList,
+};
 use ::arch::mem;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 
 //==================================================================================================
 // Re-exports
@@ -167,3 +174,16 @@ pub use kernel_vas::init;
 
 type VirtMemRegion = LinkedList<TruncatedMemoryRegion<VirtualAddress>>;
 type PhysMemRegion = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+/// Allocates `value` in a [`Box`] on the kernel heap using fallible allocation.
+///
+/// Unlike [`Box::new`], this returns an [`ErrorCode::OutOfMemory`] error when the allocation fails
+/// instead of aborting, so callers can propagate the failure.
+pub fn try_box<T>(value: T) -> Result<Box<T>, Error> {
+    Box::try_new(value)
+        .map_err(|_| Error::new(ErrorCode::OutOfMemory, "failed to allocate memory on kernel heap"))
+}
