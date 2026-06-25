@@ -223,10 +223,11 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         #[cfg(not(feature = "microvm"))]
         KcallNumber::Snapshot => KcallResult::Error(ErrorCode::OperationNotSupported.into()),
 
-        // Signal subsystem kernel calls. These are currently inert stubs that return a
-        // not-implemented error; later phases of the signals effort implement the real handlers.
-        KcallNumber::Sigaction => pm::sigaction(),
-        KcallNumber::Sigprocmask => pm::sigprocmask(),
+        // Signal subsystem kernel calls. `sigaction()` manages per-process dispositions and
+        // `sigprocmask()` manages the calling thread's blocked mask; the remaining calls are still
+        // inert stubs implemented by later phases of the signals effort.
+        KcallNumber::Sigaction => pm::sigaction(pid, arg0, arg1, arg2),
+        KcallNumber::Sigprocmask => pm::sigprocmask(pid, tid, arg0, arg1, arg2),
         KcallNumber::Kill => pm::kill(),
         KcallNumber::Sigreturn => pm::sigreturn(),
         KcallNumber::Sigpending => pm::sigpending(),

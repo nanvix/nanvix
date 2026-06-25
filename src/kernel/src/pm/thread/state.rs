@@ -69,14 +69,16 @@ pub struct ThreadState {
     detached: bool,
     /// Signals currently blocked for this thread.
     ///
-    /// Inert plumbing for the signal subsystem: these fields are default-initialized so existing
-    /// behavior is unchanged, and are read by later phases of the signals effort.
-    #[allow(dead_code)]
+    /// Per-thread blocked-signal mask managed by `sigprocmask()`.
     blocked: u64,
     /// Signals pending specifically against this thread (e.g. synchronous faults).
+    ///
+    /// Inert plumbing for the signal subsystem: written by a later phase of the signals effort.
     #[allow(dead_code)]
     pending: u64,
     /// Saved blocked mask while a handler runs (restored by `sigreturn`).
+    ///
+    /// Inert plumbing for the signal subsystem: read by a later phase of the signals effort.
     #[allow(dead_code)]
     saved_blocked: Option<u64>,
 }
@@ -339,6 +341,32 @@ impl ThreadState {
     ///
     pub(super) fn get_thread_data_area(&self) -> Option<VirtualAddress> {
         self.user_tda
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the set of signals currently blocked for this thread.
+    ///
+    /// # Returns
+    ///
+    /// The per-thread blocked-signal mask.
+    ///
+    pub(crate) fn blocked(&self) -> u64 {
+        self.blocked
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces the set of signals currently blocked for this thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `mask`: The new per-thread blocked-signal mask.
+    ///
+    pub(crate) fn set_blocked(&mut self, mask: u64) {
+        self.blocked = mask;
     }
 }
 
