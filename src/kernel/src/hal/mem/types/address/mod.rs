@@ -9,7 +9,6 @@ mod aligned;
 mod frame;
 mod page;
 mod pd;
-mod phys;
 
 #[cfg(feature = "test")]
 mod test;
@@ -20,13 +19,13 @@ mod test;
 
 pub use ::sys::mm::{
     Address,
+    PhysicalAddress,
     VirtualAddress,
 };
 pub use aligned::*;
 pub use frame::*;
 pub use page::*;
 pub use pd::*;
-pub use phys::*;
 
 //==================================================================================================
 // Standalone Functions

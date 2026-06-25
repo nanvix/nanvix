@@ -5,21 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::mem::types::address::{
-    Address,
-    FrameAddress,
-    VirtualAddress,
-};
-use ::arch::mem::{
-    self,
-    paging::FrameNumber,
-};
-use ::sys::{
+use crate::{
     error::{
         Error,
         ErrorCode,
     },
-    mm::Alignment,
+    mm::{
+        Address,
+        Alignment,
+        VirtualAddress,
+    },
 };
 
 //==================================================================================================
@@ -39,9 +34,25 @@ pub struct PhysicalAddress(VirtualAddress);
 //==================================================================================================
 
 impl PhysicalAddress {
+    ///
+    /// # Description
+    ///
+    /// Constructs a [`PhysicalAddress`] from a [`VirtualAddress`].
+    ///
+    /// # Parameters
+    ///
+    /// - `addr`: Virtual address whose raw value identifies a physical address.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the physical address is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the address is outside the physical address space.
+    ///
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
-        // Delegate to the per-platform validator to support sparse physical memory layouts.
-        if !crate::hal::platform::is_valid_physical_address(addr) {
+        if !is_valid_physical_address(addr) {
             return Err(Error::new(
                 ErrorCode::BadAddress,
                 "address out of bounds of physical memory",
@@ -60,19 +71,27 @@ impl PhysicalAddress {
     ///
     /// - `addr`: The memory-mapped I/O address.
     ///
-    /// # Return Values
+    /// # Returns
     ///
-    /// Upon success, a physical address associated with the given memory-mapped I/O address is
-    /// returned. Upon failure, an error is returned instead.
+    /// The physical address associated with the given memory-mapped I/O address.
     ///
     /// # Safety
     ///
     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
     ///
-    pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Result<Self, Error> {
-        Ok(Self(addr))
+    pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Self {
+        Self(addr)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Converts this physical address into a corresponding virtual address.
+    ///
+    /// # Returns
+    ///
+    /// The virtual address.
+    ///
     pub fn into_virtual_address(self) -> VirtualAddress {
         self.0
     }
@@ -80,51 +99,24 @@ impl PhysicalAddress {
     ///
     /// # Description
     ///
-    /// Constructs a [`PhysicalAddress`] from a [`FrameNumber`].
+    /// Performs a checked addition of a [`PhysicalAddress`] and a `usize`.
     ///
     /// # Parameters
     ///
-    /// - `frame`: The frame number.
+    /// - `rhs`: The value to add.
     ///
     /// # Returns
     ///
-    /// A [`PhysicalAddress`] associated with the given `frame_number`.
+    /// Upon success, the new [`PhysicalAddress`] is returned. Upon failure (overflow), `None` is
+    /// returned instead.
     ///
-    pub fn from_number(frame: FrameNumber) -> Self {
-        let addr: usize = frame.into_raw_value() * mem::FRAME_SIZE;
-        Self(VirtualAddress::new(addr))
-    }
-
-    pub fn into_frame_number(self) -> FrameNumber {
-        let raw_addr: usize = self.0.into_raw_value();
-        let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
-        // The unwrap below never panics: `FrameNumber::MAX` is the number of the frame that
-        // contains `MAX_ADDRESS`, so `raw_addr >> FRAME_SHIFT <= FrameNumber::MAX` holds for
-        // every address in the space.
-        FrameNumber::from_raw_value(frame_number).unwrap()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Constructs a [`PhysicalAddress`] from a [`FrameAddress`].
-    ///
-    /// # Parameters
-    ///
-    /// - `frame_addr`: The frame address.
-    ///
-    /// # Returns
-    ///
-    /// A [`PhysicalAddress`] associated with the given `frame_addr`.
-    ///
-    pub fn from_frame_address(frame_addr: FrameAddress) -> Self {
-        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
-        Self(VirtualAddress::new(raw_addr))
-    }
-
-    pub fn from_into_frame_address(frame_addr: FrameAddress) -> Self {
-        let raw_addr: usize = frame_addr.into_raw_value() << mem::FRAME_SHIFT;
-        Self(VirtualAddress::new(raw_addr))
+    pub fn checked_add(&self, rhs: usize) -> Option<Self> {
+        self.0
+            .checked_add(rhs)
+            .map(Self::from_virtual_address)
+            .transpose()
+            .ok()
+            .flatten()
     }
 }
 
@@ -162,15 +154,10 @@ impl Address for PhysicalAddress {
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
-        let aligned: VirtualAddress = self.0.align_up(align).ok_or_else(|| {
-            let reason: &str = "align_up overflow";
-            error!(
-                "PhysicalAddress::align_up(): {reason} (addr={:#x}, align={:?})",
-                self.0.into_raw_value(),
-                align
-            );
-            Error::new(ErrorCode::BadAddress, reason)
-        })?;
+        let aligned: VirtualAddress = self
+            .0
+            .align_up(align)
+            .ok_or_else(|| Error::new(ErrorCode::BadAddress, "align_up overflow"))?;
         Self::from_virtual_address(aligned)
     }
 
@@ -220,7 +207,7 @@ impl Address for PhysicalAddress {
     /// The maximum [`PhysicalAddress`].
     ///
     fn max_addr() -> usize {
-        crate::hal::platform::max_physical_address()
+        ::config::kernel::MEMORY_SIZE - 1
     }
 
     fn into_raw_value(self) -> usize {
@@ -240,4 +227,63 @@ impl core::fmt::Debug for PhysicalAddress {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "{:?}", self.0)
     }
+}
+
+impl TryFrom<u64> for PhysicalAddress {
+    type Error = Error;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        let value: usize = usize::try_from(value)
+            .map_err(|_| Error::new(ErrorCode::BadAddress, "physical address exceeds usize"))?;
+        PhysicalAddress::from_raw_value(value)
+    }
+}
+
+impl TryFrom<u32> for PhysicalAddress {
+    type Error = Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        PhysicalAddress::from_raw_value(value as usize)
+    }
+}
+
+#[cfg(target_pointer_width = "32")]
+impl From<PhysicalAddress> for u32 {
+    fn from(value: PhysicalAddress) -> Self {
+        value.0.into()
+    }
+}
+
+impl From<PhysicalAddress> for u64 {
+    fn from(value: PhysicalAddress) -> Self {
+        value.0.into()
+    }
+}
+
+impl From<PhysicalAddress> for usize {
+    fn from(value: PhysicalAddress) -> Self {
+        value.0.into()
+    }
+}
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Checks whether the given virtual address corresponds to a valid physical address.
+///
+/// # Parameters
+///
+/// - `addr`: The virtual address to validate.
+///
+/// # Returns
+///
+/// `true` if `addr` falls within the physical address space, `false` otherwise.
+///
+#[inline(always)]
+pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
+    addr < VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE)
 }
