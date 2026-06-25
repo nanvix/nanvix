@@ -127,6 +127,7 @@ struct sigaction {
 #define SIGIO 29
 #define SIGSYS 31
 #define _NSIG 65
+#define NSIG _NSIG
 #endif
 
 /*==================================================================================================
