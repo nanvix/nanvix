@@ -754,7 +754,7 @@ fn test_readdir_reports_directory_flag_and_size() {
 fn test_readdir_long_name_multipart_response() {
     let (mut handler, tmp) = setup();
     // A name longer than the inline `ReadDirEntry` capacity forces the multi-part
-    // response path. Use a name that comfortably exceeds MAX_DIR_ENTRY_NAME_LEN (29).
+    // response path. Use a name that comfortably exceeds MAX_DIR_ENTRY_NAME_LEN.
     let long_name: String = "l".repeat(180) + ".txt";
     assert!(long_name.len() > MAX_DIR_ENTRY_NAME_LEN, "test name must exceed the inline cap");
     fs::write(tmp.path().join(&long_name), b"payload!!").unwrap();

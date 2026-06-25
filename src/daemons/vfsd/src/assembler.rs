@@ -13,7 +13,10 @@ use crate::{
 use ::sys::{
     error::ErrorCode,
     ipc::Message,
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::syscall::{
     fcntl::message::{
@@ -69,6 +72,7 @@ pub(crate) struct AssemblerEntry {
 //==================================================================================================
 
 pub(crate) fn assemble_and_dispatch(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     header: SystemCallMessageHeader,
     part: SystemCallMessagePart,
@@ -104,7 +108,7 @@ pub(crate) fn assemble_and_dispatch(
     let parts: Vec<SystemCallMessagePart> = completed.assembler.take_parts();
 
     // Dispatch based on the header type.
-    Some(dispatch_assembled_request(source, completed.header, &parts, pending))
+    Some(dispatch_assembled_request(source_pid, source, completed.header, &parts, pending))
 }
 
 fn max_capacity_for_header(header: SystemCallMessageHeader) -> usize {
@@ -160,6 +164,7 @@ fn max_capacity_for_header(header: SystemCallMessageHeader) -> usize {
 }
 
 fn dispatch_assembled_request(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     header: SystemCallMessageHeader,
     parts: &[SystemCallMessagePart],
@@ -169,7 +174,8 @@ fn dispatch_assembled_request(
         SystemCallMessageHeader::OpenAtRequestPart => match OpenAtRequest::from_parts(parts) {
             Ok(req) => {
                 // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
-                handler::handle_openat_with_hostfs(source, req, pending).unwrap_or_default()
+                handler::handle_openat_with_hostfs(source_pid, source, req, pending)
+                    .unwrap_or_default()
             },
             Err(e) => {
                 ::syslog::error!("dispatch: openat from_parts failed (error={:?})", e);
@@ -179,7 +185,8 @@ fn dispatch_assembled_request(
         SystemCallMessageHeader::RenameAtRequestPart => match RenameAtRequest::from_parts(parts) {
             Ok(req) => {
                 // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
-                handler::handle_renameat_with_hostfs(source, req, pending).unwrap_or_default()
+                handler::handle_renameat_with_hostfs(source_pid, source, req, pending)
+                    .unwrap_or_default()
             },
             Err(e) => {
                 ::syslog::error!("dispatch: renameat from_parts failed (error={:?})", e);
@@ -189,7 +196,8 @@ fn dispatch_assembled_request(
         SystemCallMessageHeader::UnlinkAtRequestPart => match UnlinkAtRequest::from_parts(parts) {
             Ok(req) => {
                 // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
-                handler::handle_unlinkat_with_hostfs(source, req, pending).unwrap_or_default()
+                handler::handle_unlinkat_with_hostfs(source_pid, source, req, pending)
+                    .unwrap_or_default()
             },
             Err(e) => {
                 ::syslog::error!("dispatch: unlinkat from_parts failed (error={:?})", e);
@@ -198,9 +206,8 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageHeader::FileStatAtRequestPart => {
             match FileStatAtRequest::from_parts(parts) {
-                Ok(req) => {
-                    handler::handle_fstatat_with_hostfs(source, req, pending).unwrap_or_default()
-                },
+                Ok(req) => handler::handle_fstatat_with_hostfs(source_pid, source, req, pending)
+                    .unwrap_or_default(),
                 Err(e) => {
                     ::syslog::error!("dispatch: fstatat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]
@@ -211,7 +218,8 @@ fn dispatch_assembled_request(
             match MakeDirectoryAtRequest::from_parts(parts) {
                 Ok(req) => {
                     // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
-                    handler::handle_mkdirat_with_hostfs(source, req, pending).unwrap_or_default()
+                    handler::handle_mkdirat_with_hostfs(source_pid, source, req, pending)
+                        .unwrap_or_default()
                 },
                 Err(e) => {
                     ::syslog::error!("dispatch: mkdirat from_parts failed (error={:?})", e);
@@ -242,9 +250,8 @@ fn dispatch_assembled_request(
                 // `None` means the request was forwarded to hostfsd and the response
                 // will be sent asynchronously when the IKC reply arrives; emit no
                 // immediate messages in that case.
-                Ok(req) => {
-                    handler::handle_symlinkat_with_hostfs(source, req, pending).unwrap_or_default()
-                },
+                Ok(req) => handler::handle_symlinkat_with_hostfs(source_pid, source, req, pending)
+                    .unwrap_or_default(),
                 Err(e) => {
                     ::syslog::error!("dispatch: symlinkat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]
@@ -260,9 +267,8 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageHeader::ReadLinkAtRequestPart => {
             match ReadLinkAtRequest::from_parts(parts) {
-                Ok(req) => {
-                    handler::handle_readlinkat_with_hostfs(source, req, pending).unwrap_or_default()
-                },
+                Ok(req) => handler::handle_readlinkat_with_hostfs(source_pid, source, req, pending)
+                    .unwrap_or_default(),
                 Err(e) => {
                     ::syslog::error!("dispatch: readlinkat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]

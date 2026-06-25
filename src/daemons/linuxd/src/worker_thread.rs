@@ -73,7 +73,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     sys_types::c_ssize_t,
@@ -499,12 +502,17 @@ impl WorkerThreadHandle {
                     break;
                 },
             };
-            let source: ThreadIdentifier = match { message.source }.as_id() {
-                Err(tid) => tid,
-                Ok(_) => {
-                    unreachable!("messages that are in this channel always address threads");
-                },
-            };
+            // The kernel stamps the originating thread into `message.source.tid`; messages in this
+            // channel always address a thread. A `NONE` sentinel names no specific thread, so skip
+            // it rather than keying reply routing on the sentinel.
+            let source: ThreadIdentifier = { message.source }.tid;
+            if source.is_none() {
+                error!(
+                    "handle_message(): received message with no originating thread, skipping \
+                     (worker_tid={worker_tid:?})"
+                );
+                continue;
+            }
 
             match message.message_type {
                 sys::ipc::MessageType::Interrupt => {
@@ -1210,8 +1218,8 @@ impl WorkerThreadHandle {
     ///
     fn do_error(source: ThreadIdentifier, code: ErrorCode) -> Message {
         Message::new(
-            MessageSender::from(LINUXD),
-            MessageReceiver::from(source),
+            MessageSender::new(LINUXD, ThreadIdentifier::NONE),
+            MessageReceiver::new(ProcessIdentifier::from(i32::from(source)), source),
             MessageType::Ikc,
             Some(code),
             [0u8; Message::PAYLOAD_SIZE],

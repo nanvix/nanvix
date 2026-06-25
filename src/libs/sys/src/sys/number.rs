@@ -113,8 +113,6 @@ pub enum KcallNumber {
     Duplicate = KcallNumber::NR_DUPLICATE_SYSCALL,
     /// Replaces the image of the calling process.
     Execv = KcallNumber::NR_EXECV_SYSCALL,
-    /// Resolves a thread identifier to the identifier of its owning process.
-    GetPidByTid = KcallNumber::NR_GET_PID_BY_TID_SYSCALL,
     /// Gets and/or sets the disposition of a signal.
     Sigaction = KcallNumber::NR_SIGACTION_SYSCALL,
     /// Gets and/or modifies the calling thread's blocked signal mask.
@@ -173,7 +171,6 @@ impl KcallNumber {
     const NR_DUPLICATE_SYSCALL: u32 = 37;
     const NR_GET_PPID_SYSCALL: u32 = 38;
     const NR_EXECV_SYSCALL: u32 = 39;
-    const NR_GET_PID_BY_TID_SYSCALL: u32 = 40;
     const NR_SIGACTION_SYSCALL: u32 = 41;
     const NR_SIGPROCMASK_SYSCALL: u32 = 42;
     const NR_KILL_SYSCALL: u32 = 43;
@@ -227,7 +224,6 @@ impl From<u32> for KcallNumber {
             Self::NR_DETACH_THREAD_SYSCALL => KcallNumber::DetachThread,
             Self::NR_DUPLICATE_SYSCALL => KcallNumber::Duplicate,
             Self::NR_EXECV_SYSCALL => KcallNumber::Execv,
-            Self::NR_GET_PID_BY_TID_SYSCALL => KcallNumber::GetPidByTid,
             Self::NR_SIGACTION_SYSCALL => KcallNumber::Sigaction,
             Self::NR_SIGPROCMASK_SYSCALL => KcallNumber::Sigprocmask,
             Self::NR_KILL_SYSCALL => KcallNumber::Kill,
@@ -283,7 +279,6 @@ impl From<KcallNumber> for u32 {
             KcallNumber::DetachThread => KcallNumber::NR_DETACH_THREAD_SYSCALL,
             KcallNumber::Duplicate => KcallNumber::NR_DUPLICATE_SYSCALL,
             KcallNumber::Execv => KcallNumber::NR_EXECV_SYSCALL,
-            KcallNumber::GetPidByTid => KcallNumber::NR_GET_PID_BY_TID_SYSCALL,
             KcallNumber::Sigaction => KcallNumber::NR_SIGACTION_SYSCALL,
             KcallNumber::Sigprocmask => KcallNumber::NR_SIGPROCMASK_SYSCALL,
             KcallNumber::Kill => KcallNumber::NR_KILL_SYSCALL,

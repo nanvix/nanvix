@@ -45,6 +45,7 @@ use ::sys::{
         Capability,
         ProcessIdentifier,
         ThreadCreateArgs,
+        ThreadIdentifier,
     },
 };
 
@@ -115,8 +116,8 @@ extern "C" fn terminate_child_entry(_arg: usize) -> usize {
 
     // Acknowledge creation to the parent.
     let ack: Message = Message::new(
-        MessageSender::from(my_pid),
-        MessageReceiver::from(parent_pid),
+        MessageSender::new(my_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         [0u8; Message::PAYLOAD_SIZE],

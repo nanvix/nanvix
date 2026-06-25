@@ -116,8 +116,8 @@ pub fn strip_mount_prefix(path: &str) -> &str {
 /// heavy write traffic, the caller (vfsd event loop) may stall briefly until a slot opens.
 pub fn send_request(payload: &[u8; Message::PAYLOAD_SIZE]) -> bool {
     let message: Message = Message::new(
-        MessageSender::from(ProcessIdentifier::VFSD),
-        MessageReceiver::from(ProcessIdentifier::KERNEL),
+        MessageSender::VFSD,
+        MessageReceiver::KERNEL,
         MessageType::Ikc,
         None,
         *payload,

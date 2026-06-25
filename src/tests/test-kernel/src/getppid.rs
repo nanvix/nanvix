@@ -43,6 +43,7 @@ use ::sys::{
         Capability,
         ProcessIdentifier,
         ThreadCreateArgs,
+        ThreadIdentifier,
     },
 };
 
@@ -129,8 +130,8 @@ extern "C" fn child_entry(_arg: usize) -> usize {
     let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     payload[0..4].copy_from_slice(&ppid_raw.to_le_bytes());
     let reply: Message = Message::new(
-        MessageSender::from(my_pid),
-        MessageReceiver::from(parent_pid),
+        MessageSender::new(my_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         payload,
@@ -239,8 +240,8 @@ fn observe_child_parent(
 
     // Release the child to perform its observation.
     let go: Message = Message::new(
-        MessageSender::from(parent_pid),
-        MessageReceiver::from(child_pid),
+        MessageSender::new(parent_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(child_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         [0u8; Message::PAYLOAD_SIZE],

@@ -21,7 +21,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::ffi::c_int;
 
@@ -64,8 +67,8 @@ impl BindSocketRequest {
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(tid),
-            MessageReceiver::from(crate::NETWORK_DESTINATION),
+            MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
+            MessageReceiver::new(crate::NETWORK_DESTINATION, ThreadIdentifier::NONE),
             MessageType::Ikc,
             None,
             message.into_bytes(),
@@ -121,8 +124,8 @@ impl BindSocketResponse {
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(crate::NETWORK_SOURCE),
-            MessageReceiver::from(tid),
+            MessageSender::new(crate::NETWORK_SOURCE, ThreadIdentifier::NONE),
+            MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageType::Ikc,
             None,
             message.into_bytes(),

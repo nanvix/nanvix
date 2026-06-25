@@ -63,8 +63,8 @@ impl FileSyncRequest {
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::FileSyncRequest, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(tid),
-            MessageReceiver::from(destination),
+            MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
+            MessageReceiver::new(destination, ThreadIdentifier::NONE),
             message_type,
             None,
             message.into_bytes(),
@@ -118,8 +118,8 @@ impl FileSyncResponse {
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::FileSyncResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(source),
-            MessageReceiver::from(tid),
+            MessageSender::new(source, ThreadIdentifier::NONE),
+            MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
             message_type,
             None,
             message.into_bytes(),

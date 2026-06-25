@@ -20,7 +20,10 @@ use ::sys::{
         SystemMessage,
         SystemMessageHeader,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -130,8 +133,8 @@ pub fn process_exit_request(pid: ProcessIdentifier) -> Result<Message, Error> {
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     let ipc_message: Message = Message::new(
-        MessageSender::from(ProcessIdentifier::PROCD),
-        MessageReceiver::from(ProcessIdentifier::VFSD),
+        MessageSender::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+        MessageReceiver::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),

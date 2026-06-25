@@ -385,17 +385,17 @@ impl StandaloneVmHandle {
 ///
 /// Extracts the [`ThreadIdentifier`] from a message sender field.
 ///
-/// Write/Read requests encode the originating thread as a negative value in the
-/// [`MessageSender`](::sys::ipc::MessageSender) field.
+/// The kernel stamps the originating thread into the
+/// [`MessageSender::tid`](::sys::ipc::MessageSender) field of write/read requests, so it is read
+/// directly here.
 ///
 fn extract_tid(source: ::sys::ipc::MessageSender) -> ThreadIdentifier {
-    match source.as_id() {
-        Err(tid) => tid,
-        Ok(_pid) => {
-            warn!("standalone io_handler: message source is a PID, expected TID");
-            ThreadIdentifier::from(1i32)
-        },
+    let tid: ThreadIdentifier = source.tid;
+    if tid.is_none() {
+        warn!("standalone io_handler: message source has no thread id");
+        return ThreadIdentifier::from(1i32);
     }
+    tid
 }
 
 ///
@@ -526,8 +526,8 @@ async fn standalone_io_handler(
                             let mut send_failed = false;
                             for payload in response_payloads {
                                 let response: Message = Message::new(
-                                    MessageSender::from(ProcessIdentifier::KERNEL),
-                                    MessageReceiver::from(ProcessIdentifier::VFSD),
+                                    MessageSender::KERNEL,
+                                    MessageReceiver::VFSD,
                                     MessageType::Ikc,
                                     None,
                                     payload,
@@ -726,7 +726,7 @@ async fn standalone_io_handler(
                             let tid: ThreadIdentifier = extract_tid(msg.source);
                             let error_response: Message = Message::new(
                                 MessageSender::NETWORKD,
-                                MessageReceiver::from(tid),
+                                MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
                                 MessageType::Ikc,
                                 Some(ErrorCode::OperationNotSupported),
                                 [0u8; Message::PAYLOAD_SIZE],
@@ -916,8 +916,8 @@ async fn send_hostfs_error(
     }
 
     let err_response: Message = Message::new(
-        MessageSender::from(ProcessIdentifier::KERNEL),
-        MessageReceiver::from(ProcessIdentifier::VFSD),
+        MessageSender::KERNEL,
+        MessageReceiver::VFSD,
         MessageType::Ikc,
         None,
         err_payload,

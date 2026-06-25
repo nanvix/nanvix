@@ -47,12 +47,8 @@ use ::sys::{
 pub(crate) struct PendingOp {
     /// Thread that initiated the request (to send the response back).
     pub source_tid: ThreadIdentifier,
-    /// Process that initiated the request, recorded for operations that need a PID to transfer
-    /// data buffers (the push/pull in read/write). Like every caller PID in vfsd it is derived by
-    /// casting the caller's TID (see `caller_pid` in `ipc.rs`), so it is correct only when
-    /// TID == PID. `None` for operations that never push/pull (close, seek, etc.) and therefore
-    /// need no PID at all.
-    pub source_pid: Option<ProcessIdentifier>,
+    /// Process that initiated the request.
+    pub source_pid: ProcessIdentifier,
     /// The kind of operation, which determines how to interpret the IKC response.
     pub kind: PendingOpKind,
 }
@@ -283,23 +279,17 @@ pub(crate) fn complete_pending_op(
     response_payload: &[u8; Message::PAYLOAD_SIZE],
 ) {
     // Bind the VFS to the requesting process so that descriptor allocation (e.g. for a completed
-    // open) and directory-cursor updates land in its per-process state. Use the PID recorded on the
-    // pending op, falling back to deriving it from the source TID for operations that do not carry
-    // a PID (close, seek, etc.). Both paths rely on the same TID == PID assumption: the recorded
-    // `source_pid` is itself obtained by casting the caller's TID in `handle_ipc_message` (guest
-    // syscalls encode their source as a TID), so neither is correct for a request issued from a
-    // non-main thread of a multi-threaded process. See the TODO in `caller_pid` (ipc.rs) for the
-    // authoritative-PID fix. vfsd being single-threaded is what makes mutating this global
-    // current-process selector race-free.
+    // open) and directory-cursor updates land in its per-process state. `source_pid` was copied
+    // from the kernel-attested `message.source.pid` when the request was dispatched, so it remains
+    // correct even when the caller's thread identifier differs from its process identifier. vfsd
+    // being single-threaded is what makes mutating this global current-process selector race-free.
     //
     // The caller is guaranteed to still be registered here: guest syscalls are synchronous, so it
     // stays blocked awaiting this very response and cannot exit, and the only involuntary
     // termination path (memd killing a faulting process) cannot target a process parked in a
     // syscall. Completion therefore never resurrects an exited process — which would re-create an
     // empty placeholder and leak any host handle this op allocates (e.g. a completed open).
-    let current_pid: ProcessIdentifier = pending
-        .source_pid
-        .unwrap_or_else(|| ProcessIdentifier::from(i32::from(pending.source_tid)));
+    let current_pid: ProcessIdentifier = pending.source_pid;
     ::vfs::fd::set_current_process(current_pid);
 
     // Validate that the response header matches the expected operation kind.
@@ -308,14 +298,13 @@ pub(crate) fn complete_pending_op(
         // For Read operations, the caller is blocked waiting for a push before consuming
         // the IPC response. Send an empty push so the caller can proceed and see the error.
         if let PendingOpKind::Read { .. } = &pending.kind {
-            if let Some(pid) = pending.source_pid {
-                if let Err(e) = ::sys::kcall::ipc::__kcall_push(pid, pending.source_tid, &[]) {
-                    ::syslog::error!(
-                        "hostfs pending op: failed to push empty response for desync case \
-                         (error={:?})",
-                        e
-                    );
-                }
+            if let Err(e) =
+                ::sys::kcall::ipc::__kcall_push(pending.source_pid, pending.source_tid, &[])
+            {
+                ::syslog::error!(
+                    "hostfs pending op: failed to push empty response for desync case (error={:?})",
+                    e
+                );
             }
         }
         send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
@@ -326,8 +315,7 @@ pub(crate) fn complete_pending_op(
         PendingOpKind::Open { path } => complete_open(pending.source_tid, response_payload, path),
         PendingOpKind::Close => complete_close(pending.source_tid, response_payload),
         PendingOpKind::Read { count } => {
-            let pid: ProcessIdentifier = pending.source_pid.unwrap_or(ProcessIdentifier::KERNEL);
-            complete_read(pid, pending.source_tid, count, response_payload)
+            complete_read(pending.source_pid, pending.source_tid, count, response_payload)
         },
         PendingOpKind::Write => complete_write(pending.source_tid, response_payload),
         PendingOpKind::Seek => complete_seek(pending.source_tid, response_payload),

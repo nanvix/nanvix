@@ -68,8 +68,8 @@ impl WriteRequest {
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::WriteRequest, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(tid),
-            MessageReceiver::from(destination),
+            MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
+            MessageReceiver::new(destination, ThreadIdentifier::NONE),
             message_type,
             None,
             message.into_bytes(),
@@ -119,8 +119,8 @@ impl WriteResponse {
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageHeader::WriteResponse, message.into_bytes());
         let message: Message = Message::new(
-            MessageSender::from(source),
-            MessageReceiver::from(tid),
+            MessageSender::new(source, ThreadIdentifier::NONE),
+            MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
             message_type,
             None,
             message.into_bytes(),

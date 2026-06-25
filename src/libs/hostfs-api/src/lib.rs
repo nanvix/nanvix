@@ -5,15 +5,16 @@
 //!
 //! This crate defines the binary protocol used for communication between the guest-side VFS daemon
 //! (`vfsd`) and the host-side filesystem daemon (`hostfsd`). Messages are encoded into the
-//! fixed-size IPC message payload (48 bytes) using a compact binary format.
+//! fixed-size IPC message payload (`Message::PAYLOAD_SIZE` bytes) using a compact binary format.
 //!
 //! # Protocol Overview
 //!
 //! All messages use the [`SystemCallMessage`] wire format: a 2-byte
-//! [`SystemCallMessageHeader`] discriminant, a 4-byte operation identifier (`op_id`), and
-//! 42 bytes of operation-specific data. The `op_id` is assigned by vfsd when sending a
-//! request and echoed back by hostfsd in the corresponding response, allowing vfsd to
-//! match responses to pending operations without relying on FIFO ordering.
+//! [`SystemCallMessageHeader`] discriminant, a 4-byte operation identifier (`op_id`), and the
+//! remaining (`Message::PAYLOAD_SIZE` - `HOSTFS_DATA_START`) bytes of operation-specific data. The
+//! `op_id` is assigned by vfsd when sending a request and echoed back by hostfsd in the
+//! corresponding response, allowing vfsd to match responses to pending operations without relying
+//! on FIFO ordering.
 //!
 //! Each host filesystem operation maps to a pair of header variants (request + response)
 //! defined in the `syscall` crate.
@@ -240,26 +241,34 @@ impl OperationIdAllocator {
 pub const HOSTFS_DATA_START: usize = 6;
 
 /// Maximum path length that fits inline in a single message payload.
-/// Calculated as: PAYLOAD_SIZE(48) - header(2) - op_id(4) - flags(4) - path_len(2) = 36.
-pub const MAX_INLINE_PATH_LEN: usize = 36;
+///
+/// Derived from the live [`Message::PAYLOAD_SIZE`] so it tracks the IPC payload size automatically
+/// (the kernel-stamped client identity in nanvix/nanvix#2662 shrank the payload). The binding
+/// (tightest) inline path request is `open`/`mkdir`, whose data section is
+/// `[flags|mode: u32][path_len: u16][path...]`, i.e. 6 bytes precede the path. Longer paths fall
+/// back to the multi-part form in [`long_msg`].
+pub const MAX_INLINE_PATH_LEN: usize = Message::PAYLOAD_SIZE - HOSTFS_DATA_START - 4 - 2;
 
 /// Maximum inline data length for read responses.
-/// Calculated as: PAYLOAD_SIZE(48) - header(2) - op_id(4) - bytes_read(4) = 38.
-pub const MAX_INLINE_READ_DATA: usize = 38;
+///
+/// The read-response data section is `[bytes_read: i32][data...]`, so 4 bytes precede the data.
+pub const MAX_INLINE_READ_DATA: usize = Message::PAYLOAD_SIZE - HOSTFS_DATA_START - 4;
 
 /// Maximum inline data length for write requests.
-/// Calculated as: PAYLOAD_SIZE(48) - header(2) - op_id(4) - fd(4) - count(4) - offset(8) - data_len(2) = 24.
 ///
-/// The guest-side VFS layer (`handle_write_with_hostfs`) clamps the write buffer to this
-/// size before encoding the request, so `count` and `data_len` are always <= 24 on the wire.
-/// The guest is responsible for issuing multiple write requests to transfer larger buffers.
-/// Callers observe the returned `bytes_written` count and retry the remainder as needed.
-pub const MAX_INLINE_WRITE_DATA: usize = 24;
+/// The write-request data section is `[fd: i32][count: u32][offset: i64][data_len: u16][data...]`,
+/// so 18 bytes precede the data. The guest-side VFS layer (`handle_write_with_hostfs`) clamps the
+/// write buffer to this size before encoding the request, so `count` and `data_len` never exceed it
+/// on the wire. The guest issues multiple write requests to transfer larger buffers, observing the
+/// returned `bytes_written` count and retrying the remainder.
+pub const MAX_INLINE_WRITE_DATA: usize =
+    Message::PAYLOAD_SIZE - HOSTFS_DATA_START - (4 + 4 + 8 + 2);
 
 /// Maximum filename length in a directory entry response.
-/// Calculated as: PAYLOAD_SIZE(48) - header(2) - op_id(4) - name_len(2) - is_dir(1) - size(8) = 31.
-/// Set to 29 to leave 2 bytes of padding for future extensibility.
-pub const MAX_DIR_ENTRY_NAME_LEN: usize = 29;
+///
+/// The directory-entry data section is `[name_len: u16][is_dir: u8][size: u64][name...]`, so 11
+/// bytes precede the name. Names longer than this are truncated to the inline capacity.
+pub const MAX_DIR_ENTRY_NAME_LEN: usize = Message::PAYLOAD_SIZE - HOSTFS_DATA_START - (2 + 1 + 8);
 
 //==================================================================================================
 // Error Codes

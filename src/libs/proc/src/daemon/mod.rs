@@ -709,14 +709,9 @@ impl ProcessDaemon {
     }
 
     fn handle_ipc_message(&mut self, message: Message) -> Result<(), Error> {
-        let destination: ProcessIdentifier = match { message.source }.as_id() {
-            Ok(pid) => pid,
-            Err(tid) => {
-                let reason: &str = "invalid IPC message source";
-                ::syslog::error!("handle_ipc_message(): {reason:?} (tid={:?})", tid);
-                return Err(Error::new(ErrorCode::InvalidArgument, reason));
-            },
-        };
+        // The kernel stamps the authoritative originating process into `message.source.pid`, so the
+        // caller identity is taken directly from it.
+        let destination: ProcessIdentifier = { message.source }.pid;
         let message: SystemMessage = SystemMessage::from_bytes(message.payload)?;
 
         ::syslog::info!("received system message (header={:?})", message.header);

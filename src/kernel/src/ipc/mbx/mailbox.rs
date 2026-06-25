@@ -76,7 +76,7 @@ impl Mailbox {
         let message_index = self
             .buffer
             .iter()
-            .position(|msg| { msg.destination }.as_id() == Err(tid));
+            .position(|msg| { msg.destination }.tid == tid);
 
         // If a message was found, remove it from the buffer and return it.
         if let Some(index) = message_index {
@@ -87,7 +87,7 @@ impl Mailbox {
         let message_index = self
             .buffer
             .iter()
-            .position(|msg| { msg.destination }.as_id().is_ok());
+            .position(|msg| { msg.destination }.tid.is_none());
 
         // If a message was found, remove it from the buffer and return it.
         if let Some(index) = message_index {

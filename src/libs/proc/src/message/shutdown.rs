@@ -20,7 +20,10 @@ use ::sys::{
         SystemMessage,
         SystemMessageHeader,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -135,8 +138,8 @@ pub fn shutdown_request(destination: ProcessIdentifier, code: u8) -> Result<Mess
 
     // Construct an IPC message.
     let ipc_message: Message = Message::new(
-        MessageSender::from(ProcessIdentifier::PROCD),
-        MessageReceiver::from(destination),
+        MessageSender::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+        MessageReceiver::new(destination, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         sys_message.into_bytes(),

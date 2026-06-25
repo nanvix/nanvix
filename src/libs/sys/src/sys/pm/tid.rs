@@ -65,6 +65,22 @@ impl ThreadIdentifier {
     /// Identifier of the VFS daemon thread (main thread, assumes TID == PID).
     pub const VFSD: ThreadIdentifier = ThreadIdentifier(Self::VFSD_RAW);
 
+    /// Raw sentinel meaning "no specific thread".
+    ///
+    /// Real thread identifiers are non-negative, so this negative value is distinct from every
+    /// live thread. It lets [`MessageReceiver`](crate::ipc::MessageReceiver) address a process
+    /// mailbox (any thread) rather than a specific thread, and lets
+    /// [`MessageSender`](crate::ipc::MessageSender) leave the originating thread unspecified.
+    pub const NONE_RAW: i32 = -1;
+
+    /// Sentinel thread identifier meaning "no specific thread" (see [`Self::NONE_RAW`]).
+    pub const NONE: ThreadIdentifier = ThreadIdentifier(Self::NONE_RAW);
+
+    /// Returns `true` if this is the [`Self::NONE`] sentinel (i.e. no specific thread).
+    pub fn is_none(&self) -> bool {
+        self.0 == Self::NONE_RAW
+    }
+
     pub fn to_ne_bytes(&self) -> [u8; core::mem::size_of::<i32>()] {
         self.0.to_ne_bytes()
     }

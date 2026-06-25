@@ -51,7 +51,10 @@ use ::sys::{
         ipc,
         pm,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     ffi::c_int,
@@ -125,8 +128,8 @@ fn spawn_blocked_child(status: c_int) -> Result<ProcessIdentifier, Error> {
 /// Releases a child created by [`spawn_blocked_child`] by sending it an empty IPC message.
 fn release_child(parent: ProcessIdentifier, child: ProcessIdentifier) -> Result<(), Error> {
     let go: Message = Message::new(
-        MessageSender::from(parent),
-        MessageReceiver::from(child),
+        MessageSender::new(parent, ThreadIdentifier::NONE),
+        MessageReceiver::new(child, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         [0u8; Message::PAYLOAD_SIZE],
@@ -144,8 +147,8 @@ fn report_pid(to: ProcessIdentifier, pid: ProcessIdentifier) -> Result<(), Error
     let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     payload[0..4].copy_from_slice(&i32::from(pid).to_le_bytes());
     let report: Message = Message::new(
-        MessageSender::from(from),
-        MessageReceiver::from(to),
+        MessageSender::new(from, ThreadIdentifier::NONE),
+        MessageReceiver::new(to, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         payload,

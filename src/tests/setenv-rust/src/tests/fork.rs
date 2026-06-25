@@ -44,7 +44,10 @@ use ::sys::{
         ipc,
         pm,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::{
     ffi::c_int,
@@ -91,8 +94,8 @@ fn reap_child(child: ProcessIdentifier) -> Result<c_int, Error> {
 /// Releases a child blocked on [`ipc::__kcall_recv`] by sending it an empty IPC message.
 fn release_child(parent: ProcessIdentifier, child: ProcessIdentifier) -> Result<(), Error> {
     let go: Message = Message::new(
-        MessageSender::from(parent),
-        MessageReceiver::from(child),
+        MessageSender::new(parent, ThreadIdentifier::NONE),
+        MessageReceiver::new(child, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         [0u8; Message::PAYLOAD_SIZE],

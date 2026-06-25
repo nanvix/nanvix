@@ -212,8 +212,14 @@ fn write_ipc(
         total_written += written;
         offset += written as usize;
 
-        // Short write: fewer bytes written than requested.
-        if (written as usize) < chunk_size {
+        // Stop only when the backend makes no forward progress. A backend may accept fewer bytes
+        // than requested per request — notably hostfs caps each IKC write at
+        // `MAX_INLINE_WRITE_DATA`, which shrank when the IPC payload gave up 8 bytes to the
+        // kernel-stamped client identity (nanvix/nanvix#2662) — so a short write is not
+        // end-of-stream: the next iteration writes the remainder and the caller still observes a
+        // full write. Breaking on `written == 0` keeps the guard against an unbounded loop when no
+        // forward progress is possible.
+        if written == 0 {
             break;
         }
     }

@@ -57,7 +57,10 @@ use ::sys::{
         ipc,
         pm,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
     time::SystemTime,
 };
 use ::sysapi::{
@@ -170,8 +173,8 @@ fn run_child(parent_pid: ProcessIdentifier) -> Result<(), Error> {
     payload[0] = observed_before;
     payload[1..5].copy_from_slice(&ppid.to_le_bytes());
     let reply: Message = Message::new(
-        MessageSender::from(my_pid),
-        MessageReceiver::from(parent_pid),
+        MessageSender::new(my_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         payload,
@@ -225,8 +228,8 @@ fn test_fork_cow_and_lineage() -> Result<(), Error> {
 
     // Release the child to perform its observation.
     let go: Message = Message::new(
-        MessageSender::from(parent_pid),
-        MessageReceiver::from(child_pid),
+        MessageSender::new(parent_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(child_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         [0u8; Message::PAYLOAD_SIZE],
@@ -292,8 +295,8 @@ fn report_cached_pid(parent: ProcessIdentifier) -> Result<(), Error> {
     let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     payload[0..4].copy_from_slice(&i32::from(cached_pid).to_le_bytes());
     let reply: Message = Message::new(
-        MessageSender::from(real_pid),
-        MessageReceiver::from(parent),
+        MessageSender::new(real_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(parent, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         payload,
@@ -493,8 +496,8 @@ fn run_child_mutex_condvar(parent_pid: ProcessIdentifier) -> Result<(), Error> {
     payload[2] = observed_after;
     payload[4..8].copy_from_slice(&errcode.to_le_bytes());
     let reply: Message = Message::new(
-        MessageSender::from(my_pid),
-        MessageReceiver::from(parent_pid),
+        MessageSender::new(my_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         payload,
@@ -578,8 +581,8 @@ fn test_fork_mutex_condvar() -> Result<(), Error> {
 
     // Release the child to perform its observation.
     let go: Message = Message::new(
-        MessageSender::from(parent_pid),
-        MessageReceiver::from(child_pid),
+        MessageSender::new(parent_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(child_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         [0u8; Message::PAYLOAD_SIZE],
