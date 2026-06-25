@@ -44,7 +44,7 @@ impl FrameAddress {
     }
 
     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
-        Ok(Self(PageAligned::from_address(PhysicalAddress::from_number(frame_number))?))
+        Ok(Self(PageAligned::from_address(PhysicalAddress::from(frame_number))?))
     }
 
     pub fn into_frame_number(self) -> FrameNumber {

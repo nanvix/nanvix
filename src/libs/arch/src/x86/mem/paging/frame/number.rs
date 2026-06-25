@@ -6,6 +6,11 @@
 //==================================================================================================
 
 use crate::mem;
+use ::sys::mm::{
+    Address,
+    PhysicalAddress,
+    VirtualAddress,
+};
 
 //==================================================================================================
 // Structures
@@ -78,6 +83,27 @@ impl FrameNumber {
     ///
     pub fn into_raw_value(self) -> usize {
         self.0
+    }
+}
+
+impl From<FrameNumber> for PhysicalAddress {
+    fn from(frame_number: FrameNumber) -> Self {
+        let raw_addr: usize = frame_number.into_raw_value() * mem::FRAME_SIZE;
+        // SAFETY: frame-number conversions intentionally bypass the RAM-only physical-address
+        // validator. Page-table entries may refer to MMIO frames, such as the LAPIC page near the
+        // top of the u32 address space.
+        unsafe { PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(raw_addr)) }
+    }
+}
+
+impl From<PhysicalAddress> for FrameNumber {
+    fn from(phys_addr: PhysicalAddress) -> Self {
+        let raw_addr: usize = phys_addr.into_raw_value();
+        let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
+        // The unwrap below never panics: `FrameNumber::MAX` is the number of the frame that
+        // contains `MAX_ADDRESS`, so `raw_addr >> FRAME_SHIFT <= FrameNumber::MAX` holds for
+        // every address in the space.
+        FrameNumber::from_raw_value(frame_number).unwrap()
     }
 }
 

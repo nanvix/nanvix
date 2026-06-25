@@ -73,7 +73,7 @@ pub fn init(
     info!("booking virtual memory regions ...");
 
     // Last valid physical address (inclusive).
-    let max_phys_addr: usize = crate::hal::platform::max_physical_address();
+    let max_phys_addr: usize = PhysicalAddress::max_addr();
 
     let mut root_pagetables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)> =
         LinkedList::new();
@@ -97,7 +97,7 @@ pub fn init(
                 let mmio_addr: VirtualAddress = region.start().into_inner();
                 let phys_addr: PhysicalAddress =
                     // FIXME: ensure safety here.
-                    unsafe { PhysicalAddress::from_mmio_address(mmio_addr)? };
+                    unsafe { PhysicalAddress::from_mmio_address(mmio_addr) };
                 let page_aligned_phys_addr: PageAligned<PhysicalAddress> =
                     PageAligned::from_address(phys_addr)?;
                 FrameAddress::new(page_aligned_phys_addr)
@@ -252,7 +252,7 @@ pub fn init(
                     let mmio_addr: VirtualAddress = VirtualAddress::new(raw_vaddr);
                     let phys_addr: PhysicalAddress =
                         // FIXME: ensure safety here.
-                        unsafe { PhysicalAddress::from_mmio_address(mmio_addr)? };
+                        unsafe { PhysicalAddress::from_mmio_address(mmio_addr) };
                     FrameAddress::new(PageAligned::from_address(phys_addr)?)
                 };
             }

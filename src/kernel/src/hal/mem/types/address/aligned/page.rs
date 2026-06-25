@@ -12,7 +12,10 @@ use crate::hal::mem::{
     },
     Address,
 };
-use ::arch::mem::PAGE_ALIGNMENT;
+use ::arch::mem::{
+    paging::FrameNumber,
+    PAGE_ALIGNMENT,
+};
 use ::core::ops::Deref;
 use ::sys::{
     error::{
@@ -189,5 +192,9 @@ impl PageAligned<PhysicalAddress> {
     pub fn into_virtual_address(self) -> PageAligned<VirtualAddress> {
         // Safety: the following unwrap is safe because the address is already page-aligned.
         PageAligned::from_address(self.0.into_virtual_address()).unwrap()
+    }
+
+    pub fn into_frame_number(self) -> FrameNumber {
+        FrameNumber::from(self.0)
     }
 }

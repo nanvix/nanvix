@@ -75,7 +75,7 @@ fn book_mmio_regions(
             let phys_addr: PageAligned<PhysicalAddress> = PageAligned::from_address(unsafe {
                 // MMIO GPAs may legitimately lie outside tracked RAM, so they must not go through
                 // the regular physical-address validator here.
-                PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))?
+                PhysicalAddress::from_mmio_address(VirtualAddress::from_raw_value(mmio_addr))
             })?;
 
             // Only book frames that the frame allocator actually tracks.
