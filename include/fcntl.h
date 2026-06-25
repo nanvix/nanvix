@@ -37,6 +37,7 @@ extern "C" {
 #define O_NONBLOCK 0x4000 /**< Non-blocking mode. */
 #define O_NOCTTY 0x8000 /**< Do not assign controlling terminal. */
 #define O_CLOEXEC 0x40000 /**< Close-on-exec. */
+#define O_CLOFORK 0x80000 /**< Close-on-fork. */
 #define O_NOFOLLOW 0x100000 /**< Do not follow symbolic links. */
 #define O_DIRECTORY 0x200000 /**< Fail if not a directory. */
 #define AT_FDCWD -100 /**< Use the current working directory. */
@@ -66,6 +67,7 @@ extern "C" {
 
 /* File-descriptor flags (F_GETFD/F_SETFD). */
 #define FD_CLOEXEC 1
+#define FD_CLOFORK 2
 
 /* Lock types (struct flock l_type). */
 #define F_RDLCK 0

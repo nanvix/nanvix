@@ -91,6 +91,9 @@ mod lldiv;
 mod malloc;
 mod malloc_usable_size;
 mod memalign;
+mod mkdtemp;
+mod mkostemp;
+mod mkstemp;
 mod posix_memalign;
 mod putenv;
 mod qsort;
@@ -108,6 +111,7 @@ mod strtoll;
 mod strtoul;
 mod strtoull;
 mod system;
+mod tmpname;
 mod unsetenv;
 
 //==================================================================================================
@@ -159,6 +163,9 @@ pub use lldiv::{
 pub use malloc::malloc;
 pub use malloc_usable_size::malloc_usable_size;
 pub use memalign::memalign;
+pub use mkdtemp::mkdtemp;
+pub use mkostemp::mkostemp;
+pub use mkstemp::mkstemp;
 pub use posix_memalign::posix_memalign;
 pub use putenv::putenv;
 pub use qsort::{
