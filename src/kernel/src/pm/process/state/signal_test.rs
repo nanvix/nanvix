@@ -1,0 +1,299 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use super::signal::{
+    apply_how,
+    compute_blocked,
+    SignalControl,
+    SignalDisposition,
+    SignalHandler,
+    UNBLOCKABLE,
+};
+use crate::hal::mem::VirtualAddress;
+use ::alloc::boxed::Box;
+use ::sys::pm::{
+    SigAction,
+    SIGKILL,
+    SIGSTOP,
+    SIG_BLOCK,
+    SIG_DFL,
+    SIG_IGN,
+    SIG_SETMASK,
+    SIG_UNBLOCK,
+};
+
+//==================================================================================================
+// Helpers
+//==================================================================================================
+
+/// Bit for signal `signum` (1-based) in a signal set.
+fn bit(signum: usize) -> u64 {
+    1u64 << (signum - 1)
+}
+
+/// Builds a catch disposition with the given handler entry, mask, flags, and extended action.
+fn handler(entry: usize, mask: u64, flags: i32, sigaction: usize) -> SignalDisposition {
+    SignalDisposition::Handler(Box::new(SignalHandler {
+        entry: VirtualAddress::new(entry),
+        mask,
+        flags,
+        sigaction,
+    }))
+}
+
+//==================================================================================================
+// Mask Arithmetic Tests
+//==================================================================================================
+
+///
+/// # Description
+///
+/// `SIG_BLOCK` unions the requested signals into the current mask.
+///
+fn test_apply_how_block_computes_union() -> bool {
+    if apply_how(SIG_BLOCK, 0b0001, 0b0100) != Some(0b0101) {
+        error!("SIG_BLOCK did not compute the union of the masks");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// `SIG_UNBLOCK` clears only the requested signals from the current mask.
+///
+fn test_apply_how_unblock_clears_requested_bits() -> bool {
+    if apply_how(SIG_UNBLOCK, 0b0111, 0b0010) != Some(0b0101) {
+        error!("SIG_UNBLOCK did not clear the requested bits");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// `SIG_SETMASK` replaces the current mask with the requested signals.
+///
+fn test_apply_how_setmask_replaces_mask() -> bool {
+    if apply_how(SIG_SETMASK, 0b1111, 0b0010) != Some(0b0010) {
+        error!("SIG_SETMASK did not replace the mask");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// An unrecognized `how` value is rejected.
+///
+fn test_apply_how_rejects_invalid_how() -> bool {
+    if apply_how(42, 0, 0).is_some() {
+        error!("an invalid `how` value was accepted");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// `SIGKILL` and `SIGSTOP` are silently cleared from any computed mask, even when the caller asks
+/// to set a full mask.
+///
+fn test_compute_blocked_clears_unblockable() -> bool {
+    // Setting a full mask must leave SIGKILL/SIGSTOP unblocked.
+    match compute_blocked(SIG_SETMASK, 0, u64::MAX) {
+        Some(mask) if mask & UNBLOCKABLE == 0 => {},
+        other => {
+            error!("SIG_SETMASK with a full mask did not clear SIGKILL/SIGSTOP (mask={other:?})");
+            return false;
+        },
+    }
+
+    // Blocking SIGKILL/SIGSTOP explicitly is silently ignored.
+    match compute_blocked(SIG_BLOCK, 0, bit(SIGKILL) | bit(SIGSTOP)) {
+        Some(0) => {},
+        other => {
+            error!("blocking SIGKILL/SIGSTOP was not silently ignored (mask={other:?})");
+            return false;
+        },
+    }
+
+    // An invalid `how` is still rejected.
+    if compute_blocked(99, 0, 0).is_some() {
+        error!("compute_blocked() accepted an invalid `how` value");
+        return false;
+    }
+
+    true
+}
+
+//==================================================================================================
+// Disposition Tests
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A freshly constructed control block reports the default disposition for every signal.
+///
+fn test_disposition_defaults_to_default() -> bool {
+    let control: SignalControl = SignalControl::default();
+    for signum in 1..=64 {
+        match control.disposition(signum) {
+            Some(SignalDisposition::Default) => {},
+            other => {
+                error!("signal {signum} was not default-initialized (disposition={other:?})");
+                return false;
+            },
+        }
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Installing a disposition returns the one it replaced and stores the new one, exercising the
+/// atomic swap performed by `sigaction()`.
+///
+fn test_set_disposition_swaps_and_returns_previous() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+
+    // Installing over the initial default returns the default.
+    match control.set_disposition(1, handler(0x1000, 0b10, 4, 0x3000)) {
+        Some(SignalDisposition::Default) => {},
+        other => {
+            error!("installing over the default did not return the default (old={other:?})");
+            return false;
+        },
+    }
+
+    // The handler is now the active disposition.
+    match control.disposition(1) {
+        Some(SignalDisposition::Handler(installed))
+            if installed.entry == VirtualAddress::new(0x1000)
+                && installed.mask == 0b10
+                && installed.flags == 4
+                && installed.sigaction == 0x3000 => {},
+        other => {
+            error!("the installed handler was not stored verbatim (disposition={other:?})");
+            return false;
+        },
+    }
+
+    // Installing again returns the previous handler.
+    match control.set_disposition(1, SignalDisposition::Ignore) {
+        Some(SignalDisposition::Handler(old)) if old.entry == VirtualAddress::new(0x1000) => {},
+        other => {
+            error!("installing over a handler did not return the handler (old={other:?})");
+            return false;
+        },
+    }
+
+    // Other signals remain untouched.
+    match control.disposition(2) {
+        Some(SignalDisposition::Default) => {},
+        other => {
+            error!("an unrelated signal disposition was modified (disposition={other:?})");
+            return false;
+        },
+    }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Out-of-range signal numbers neither install nor report a disposition.
+///
+fn test_set_disposition_rejects_out_of_range() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+
+    if control.disposition(0).is_some() {
+        error!("signal number 0 was treated as in range");
+        return false;
+    }
+    if control.disposition(65).is_some() {
+        error!("signal number 65 was treated as in range");
+        return false;
+    }
+    if control
+        .set_disposition(0, SignalDisposition::Ignore)
+        .is_some()
+    {
+        error!("set_disposition() accepted signal number 0");
+        return false;
+    }
+    if control
+        .set_disposition(65, SignalDisposition::Ignore)
+        .is_some()
+    {
+        error!("set_disposition() accepted signal number 65");
+        return false;
+    }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Each disposition renders to the matching `oldact` structure returned by `sigaction()`.
+///
+fn test_to_sigaction_round_trips_dispositions() -> bool {
+    let default_action: SigAction = SignalDisposition::Default.to_sigaction();
+    if default_action.sa_handler != SIG_DFL {
+        error!("default disposition did not render as SIG_DFL");
+        return false;
+    }
+
+    let ignore_action: SigAction = SignalDisposition::Ignore.to_sigaction();
+    if ignore_action.sa_handler != SIG_IGN {
+        error!("ignore disposition did not render as SIG_IGN");
+        return false;
+    }
+
+    let handler_action: SigAction = handler(0x2000, 0b101, 8, 0x4000).to_sigaction();
+    if handler_action.sa_handler != 0x2000
+        || handler_action.sa_mask != 0b101
+        || handler_action.sa_flags != 8
+        || handler_action.sa_sigaction != 0x4000
+    {
+        error!("handler disposition did not render its entry, mask, flags, and extended action");
+        return false;
+    }
+
+    true
+}
+
+//==================================================================================================
+// Test Aggregator
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Runs all in-kernel unit tests for the signal control block and signal-mask arithmetic.
+///
+pub(super) fn test() -> bool {
+    let mut passed: bool = true;
+    passed &= run_test!(test_apply_how_block_computes_union);
+    passed &= run_test!(test_apply_how_unblock_clears_requested_bits);
+    passed &= run_test!(test_apply_how_setmask_replaces_mask);
+    passed &= run_test!(test_apply_how_rejects_invalid_how);
+    passed &= run_test!(test_compute_blocked_clears_unblockable);
+    passed &= run_test!(test_disposition_defaults_to_default);
+    passed &= run_test!(test_set_disposition_swaps_and_returns_previous);
+    passed &= run_test!(test_set_disposition_rejects_out_of_range);
+    passed &= run_test!(test_to_sigaction_round_trips_dispositions);
+    passed
+}

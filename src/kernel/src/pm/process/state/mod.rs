@@ -15,7 +15,9 @@
 mod interrupted;
 mod runnable;
 mod running;
-mod signal;
+pub(crate) mod signal;
+#[cfg(feature = "test")]
+mod signal_test;
 mod sleeping;
 #[cfg(feature = "test")]
 mod test_detach;
@@ -95,7 +97,10 @@ pub use zombie::ZombieProcess;
 /// Runs all in-kernel unit tests for the process state module.
 #[cfg(feature = "test")]
 pub(super) fn test() -> bool {
-    test_detach::test()
+    let mut passed: bool = true;
+    passed &= test_detach::test();
+    passed &= signal_test::test();
+    passed
 }
 
 //==================================================================================================
@@ -222,9 +227,7 @@ pub struct ProcessState {
     pending_exit_status: Option<ExitStatus>,
     /// Per-process signal control block.
     ///
-    /// Inert plumbing for the signal subsystem: the block is default-initialized so existing
-    /// behavior is unchanged, and it is read by later phases of the signals effort.
-    #[allow(dead_code)]
+    /// Holds the process-wide signal dispositions installed via `sigaction()`.
     signals: SignalControl,
 }
 
@@ -309,6 +312,19 @@ impl ProcessState {
 
     pub fn vmem_mut(&mut self) -> &mut Vmem {
         &mut self.vmem
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a mutable reference to the per-process signal control block.
+    ///
+    /// # Returns
+    ///
+    /// A mutable reference to the [`SignalControl`] of this process.
+    ///
+    pub fn signals_mut(&mut self) -> &mut SignalControl {
+        &mut self.signals
     }
 
     ///

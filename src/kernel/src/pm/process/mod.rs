@@ -7,7 +7,7 @@
 
 mod capability;
 mod manager;
-mod state;
+pub(crate) mod state;
 
 //==================================================================================================
 // Exports

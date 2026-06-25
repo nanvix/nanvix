@@ -5,14 +5,17 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    set_errno,
-    signal::sigset_t,
-};
+#[cfg(any(feature = "std", test))]
+use crate::set_errno;
+use crate::signal::sigset_t;
+#[cfg(any(feature = "std", test))]
 use ::core::sync::atomic::{
     AtomicU64,
     Ordering,
 };
+#[cfg(not(any(feature = "std", test)))]
+use ::sysapi::ffi::c_int;
+#[cfg(any(feature = "std", test))]
 use ::sysapi::{
     errno::EINVAL,
     ffi::c_int,
@@ -33,6 +36,7 @@ pub const SIG_SETMASK: c_int = 2;
 ///
 /// POSIX requires that any attempt to block these signals be silently ignored rather than
 /// reported as an error, so they are masked out of every computed blocked-signal set.
+#[cfg(any(feature = "std", test))]
 const UNBLOCKABLE: sigset_t = (1u64 << (9 - 1)) | (1u64 << (19 - 1));
 
 //==================================================================================================
@@ -45,6 +49,7 @@ const UNBLOCKABLE: sigset_t = (1u64 << (9 - 1)) | (1u64 << (19 - 1));
 /// bookkeeping: it is faithfully maintained so that callers which save and
 /// restore the mask (e.g. xz's single-threaded `mythread_sigmask`) observe
 /// consistent values, but it has no effect on signal delivery.
+#[cfg(any(feature = "std", test))]
 static SIGNAL_MASK: AtomicU64 = AtomicU64::new(0);
 
 //==================================================================================================
@@ -80,6 +85,32 @@ pub unsafe extern "C" fn sigprocmask(
     set: *const sigset_t,
     oldset: *mut sigset_t,
 ) -> c_int {
+    unsafe { sigprocmask_impl(how, set, oldset) }
+}
+
+/// Guest implementation of [`sigprocmask`]: delegates mask state to the Nanvix kernel.
+///
+/// # Safety
+///
+/// This function forwards raw pointers to the backend. The caller must ensure `set` and `oldset`
+/// are either null or valid pointers to `sigset_t` values.
+#[cfg(not(any(feature = "std", test)))]
+unsafe fn sigprocmask_impl(how: c_int, set: *const sigset_t, oldset: *mut sigset_t) -> c_int {
+    extern "C" {
+        fn __nanvix_sigprocmask(how: c_int, set: *const sigset_t, oldset: *mut sigset_t) -> c_int;
+    }
+
+    unsafe { __nanvix_sigprocmask(how, set, oldset) }
+}
+
+/// Host-only implementation of [`sigprocmask`] used by unit tests.
+///
+/// # Safety
+///
+/// This function dereferences `set` and `oldset` when they are non-null. The caller must ensure
+/// they are valid pointers to `sigset_t` values.
+#[cfg(any(feature = "std", test))]
+unsafe fn sigprocmask_impl(how: c_int, set: *const sigset_t, oldset: *mut sigset_t) -> c_int {
     let current: sigset_t = SIGNAL_MASK.load(Ordering::Relaxed);
 
     if !oldset.is_null() {
@@ -107,6 +138,7 @@ pub unsafe extern "C" fn sigprocmask(
 ///
 /// Combines the `current` mask with `value` according to `how`. Returns [`None`] when `how` is not
 /// one of [`SIG_BLOCK`], [`SIG_UNBLOCK`], or [`SIG_SETMASK`].
+#[cfg(any(feature = "std", test))]
 fn apply_how(how: c_int, current: sigset_t, value: sigset_t) -> Option<sigset_t> {
     match how {
         SIG_BLOCK => Some(current | value),

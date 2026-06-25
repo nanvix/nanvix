@@ -39,6 +39,11 @@ use crate::{
     pm::{
         clock,
         process::state::{
+            signal::{
+                compute_blocked,
+                SignalControl,
+                SignalDisposition,
+            },
             InterruptedProcess,
             ProcessRef,
             ProcessRefMut,
@@ -103,6 +108,8 @@ use ::sys::{
         ConditionAddress,
         MutexAddress,
         ProcessIdentifier,
+        SigAction,
+        SigSet,
         ThreadCreateArgs,
         ThreadIdentifier,
     },
@@ -493,6 +500,117 @@ impl ProcessManager {
                 Err(Error::new(ErrorCode::NoSuchEntry, reason))
             },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets and/or sets the disposition of a signal for a target process.
+    ///
+    /// The previous disposition is always captured (for the `oldact` return) before the new
+    /// disposition, if any, is installed.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process whose disposition is to be changed.
+    /// - `signum`: The signal number (1-based).
+    /// - `new`: The disposition to install, or [`None`] to leave the disposition unchanged.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the previous disposition rendered as a [`SigAction`] is returned. Upon
+    /// failure, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::NoSuchProcess`]: The specified process does not exist.
+    /// - [`ErrorCode::InvalidArgument`]: The signal number is out of range.
+    ///
+    pub fn sigaction(
+        &mut self,
+        pid: ProcessIdentifier,
+        signum: usize,
+        new: Option<SignalDisposition>,
+    ) -> Result<SigAction, Error> {
+        // Search for the process across all states.
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+        let signals: &mut SignalControl = process.state_mut().signals_mut();
+
+        // Capture the previous disposition for the `oldact` return before installing the new one.
+        let old: SigAction = match signals.disposition(signum) {
+            Some(disposition) => disposition.to_sigaction(),
+            None => {
+                let reason: &str = "invalid signal number";
+                error!("{reason} (pid={pid:?}, signum={signum})");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            },
+        };
+
+        // Install the new disposition, if one was requested.
+        if let Some(disposition) = new {
+            if signals.set_disposition(signum, disposition).is_none() {
+                // Unreachable: `disposition()` above already validated `signum`.
+                let reason: &str = "invalid signal number";
+                error!("{reason} (pid={pid:?}, signum={signum})");
+                return Err(Error::new(ErrorCode::InvalidArgument, reason));
+            }
+        }
+
+        Ok(old)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets and/or modifies the blocked-signal mask of the calling thread.
+    ///
+    /// The previous mask is always captured (for the `oldset` return) before the new mask, if any,
+    /// is installed. Signals that can never be blocked (`SIGKILL`/`SIGSTOP`) are silently cleared
+    /// from the resulting mask.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the calling thread.
+    /// - `how`: One of `SIG_BLOCK`, `SIG_UNBLOCK`, or `SIG_SETMASK` (only consulted when `set` is
+    ///   provided).
+    /// - `set`: The signals to apply per `how`, or [`None`] to leave the mask unchanged.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the previous blocked-signal mask is returned. Upon failure, an error is
+    /// returned instead.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::NoSuchEntry`]: The specified thread does not exist.
+    /// - [`ErrorCode::InvalidArgument`]: `how` is not a recognized value.
+    ///
+    pub fn sigprocmask(
+        &mut self,
+        tid: ThreadIdentifier,
+        how: i32,
+        set: Option<SigSet>,
+    ) -> Result<SigSet, Error> {
+        // Search for the calling thread across all states.
+        let mut thread: ThreadRefMut = self.find_thread_mut(tid)?;
+        let state = thread.thread_state_mut();
+
+        // Capture the previous mask for the `oldset` return before applying any change.
+        let old: SigSet = state.blocked();
+
+        // Apply the requested change to the per-thread blocked mask, if one was requested.
+        if let Some(set) = set {
+            match compute_blocked(how, old, set) {
+                Some(next) => state.set_blocked(next),
+                None => {
+                    let reason: &str = "invalid sigprocmask how";
+                    error!("{reason} (tid={tid:?}, how={how})");
+                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                },
+            }
+        }
+
+        Ok(old)
     }
 
     ///

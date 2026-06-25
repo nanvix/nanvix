@@ -5,8 +5,32 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::mem::VirtualAddress;
+use crate::hal::mem::{
+    Address,
+    VirtualAddress,
+};
 use ::alloc::boxed::Box;
+use ::sys::pm::{
+    SigAction,
+    SigSet,
+    SIGKILL,
+    SIGSTOP,
+    SIG_BLOCK,
+    SIG_DFL,
+    SIG_IGN,
+    SIG_SETMASK,
+    SIG_UNBLOCK,
+};
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Signals that can never be blocked, caught, or ignored: `SIGKILL` and `SIGSTOP`.
+///
+/// POSIX requires that any attempt to block these signals be silently ignored rather than reported
+/// as an error, so they are cleared from every computed blocked-signal mask.
+pub const UNBLOCKABLE: SigSet = (1u64 << (SIGKILL - 1)) | (1u64 << (SIGSTOP - 1));
 
 //==================================================================================================
 // Structures
@@ -20,7 +44,6 @@ use ::alloc::boxed::Box;
 // Boxed by [`SignalDisposition::Handler`] so that a disposition is only pointer-sized. Storing this
 // payload inline in every one of the 64 disposition slots would push the per-process table past the
 // kernel heap's maximum slab size (512 bytes); see [`crate::mm::kheap`].
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SignalHandler {
     /// Entry point of the user-space handler.
@@ -29,6 +52,8 @@ pub struct SignalHandler {
     pub mask: u64,
     /// Handler flags.
     pub flags: i32,
+    /// Extended handler slot used when `SA_SIGINFO` is set.
+    pub sigaction: usize,
 }
 
 ///
@@ -36,8 +61,6 @@ pub struct SignalHandler {
 ///
 /// Disposition of a single signal.
 ///
-// Variants other than `Default` are constructed by later phases of the signals effort.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum SignalDisposition {
     /// Take the default action for the signal.
@@ -53,9 +76,8 @@ pub enum SignalDisposition {
 ///
 /// Per-process signal control block.
 ///
-// Inert plumbing for the signal subsystem: the block is default-initialized so existing behavior
-// is unchanged, and its fields are read by later phases of the signals effort.
-#[allow(dead_code)]
+// The disposition table is read and written by `sigaction()`; the remaining fields are inert
+// plumbing read by later phases of the signals effort.
 #[derive(Debug)]
 pub struct SignalControl {
     /// Disposition for each of the 64 signals, indexed by `signum - 1`.
@@ -64,8 +86,14 @@ pub struct SignalControl {
     // maximum slab size (512 bytes) and keeps `ProcessState` in its original size class.
     dispositions: Box<[SignalDisposition; 64]>,
     /// Process-directed pending signals not yet claimed by a thread.
+    ///
+    /// Written by a later phase of the signals effort (signal posting).
+    #[allow(dead_code)]
     pending: u64,
     /// Address of the user-space return trampoline (restorer).
+    ///
+    /// Read by a later phase of the signals effort (asynchronous delivery).
+    #[allow(dead_code)]
     restorer: Option<VirtualAddress>,
 }
 
@@ -83,8 +111,134 @@ pub struct SignalControl {
 ::static_assert::assert_eq!(::core::mem::align_of::<[SignalDisposition; 64]>() <= 512);
 
 //==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Combines the `current` blocked-signal mask with `set` according to `how`.
+///
+/// # Parameters
+///
+/// - `how`: One of [`SIG_BLOCK`], [`SIG_UNBLOCK`], or [`SIG_SETMASK`].
+/// - `current`: The current blocked-signal mask.
+/// - `set`: The signals to apply per `how`.
+///
+/// # Returns
+///
+/// The updated mask, or [`None`] if `how` is not a recognized value.
+///
+pub(super) fn apply_how(how: i32, current: SigSet, set: SigSet) -> Option<SigSet> {
+    match how {
+        SIG_BLOCK => Some(current | set),
+        SIG_UNBLOCK => Some(current & !set),
+        SIG_SETMASK => Some(set),
+        _ => None,
+    }
+}
+
+///
+/// # Description
+///
+/// Computes the next blocked-signal mask, applying `how` and then silently clearing the signals
+/// that can never be blocked ([`UNBLOCKABLE`]).
+///
+/// # Parameters
+///
+/// - `how`: One of [`SIG_BLOCK`], [`SIG_UNBLOCK`], or [`SIG_SETMASK`].
+/// - `current`: The current blocked-signal mask.
+/// - `set`: The signals to apply per `how`.
+///
+/// # Returns
+///
+/// The updated mask with [`SIGKILL`]/[`SIGSTOP`] cleared, or [`None`] if `how` is invalid.
+///
+pub fn compute_blocked(how: i32, current: SigSet, set: SigSet) -> Option<SigSet> {
+    apply_how(how, current, set).map(|next| next & !UNBLOCKABLE)
+}
+
+//==================================================================================================
 // Implementations
 //==================================================================================================
+
+impl SignalDisposition {
+    ///
+    /// # Description
+    ///
+    /// Renders this disposition as the [`SigAction`] structure returned through the `oldact`
+    /// argument of `sigaction()`.
+    ///
+    /// # Returns
+    ///
+    /// The [`SigAction`] that describes this disposition.
+    ///
+    pub fn to_sigaction(&self) -> SigAction {
+        match self {
+            SignalDisposition::Default => SigAction {
+                sa_handler: SIG_DFL,
+                sa_mask: 0,
+                sa_flags: 0,
+                sa_sigaction: 0,
+            },
+            SignalDisposition::Ignore => SigAction {
+                sa_handler: SIG_IGN,
+                sa_mask: 0,
+                sa_flags: 0,
+                sa_sigaction: 0,
+            },
+            SignalDisposition::Handler(handler) => SigAction {
+                sa_handler: handler.entry.into_raw_value(),
+                sa_mask: handler.mask,
+                sa_flags: handler.flags,
+                sa_sigaction: handler.sigaction,
+            },
+        }
+    }
+}
+
+impl SignalControl {
+    ///
+    /// # Description
+    ///
+    /// Returns the disposition currently installed for signal `signum`.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: The signal number (1-based).
+    ///
+    /// # Returns
+    ///
+    /// A reference to the disposition for `signum`, or [`None`] if `signum` is out of range.
+    ///
+    pub fn disposition(&self, signum: usize) -> Option<&SignalDisposition> {
+        self.dispositions.get(signum.wrapping_sub(1))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Installs `disposition` for signal `signum`, returning the disposition it replaced.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: The signal number (1-based).
+    /// - `disposition`: The disposition to install.
+    ///
+    /// # Returns
+    ///
+    /// The previous disposition for `signum`, or [`None`] if `signum` is out of range (in which
+    /// case nothing is installed).
+    ///
+    pub fn set_disposition(
+        &mut self,
+        signum: usize,
+        disposition: SignalDisposition,
+    ) -> Option<SignalDisposition> {
+        let slot: &mut SignalDisposition = self.dispositions.get_mut(signum.wrapping_sub(1))?;
+        Some(::core::mem::replace(slot, disposition))
+    }
+}
 
 impl Default for SignalControl {
     fn default() -> Self {

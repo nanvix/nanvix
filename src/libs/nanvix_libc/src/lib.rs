@@ -82,19 +82,133 @@ pub unsafe extern "C" fn __errno() -> *mut c_int {
 }
 
 //==================================================================================================
-// Stub symbols required by libc_signal (not available in the posix crate)
+// Signal disposition (sigaction) backend required by libc_signal
 //==================================================================================================
 
-/// Stub `sigaction` — returns -1 with `ENOSYS` since kernel signal support is not yet available.
+// `libc_signal::signal::sigaction_t` (the C ABI view) and `sys::pm::SigAction` (the kernel-call
+// view) are not textually identical — `sa_sigaction` is `Option<extern "C" fn(...)>` on the libc
+// side but `usize` in `SigAction` (pointer-sized via the null-pointer optimization). The pointer
+// casts in `sigaction` below are only sound while the two stay ABI-compatible, so guard the size,
+// alignment, and field offsets at compile time; any future divergence fails the build instead of
+// silently corrupting the ABI.
+#[cfg(feature = "backend-nanvix")]
+const _: () = {
+    use ::libc_signal::signal::sigaction_t;
+    use ::sys::pm::SigAction;
+    assert!(::core::mem::size_of::<sigaction_t>() == ::core::mem::size_of::<SigAction>());
+    assert!(::core::mem::align_of::<sigaction_t>() == ::core::mem::align_of::<SigAction>());
+    assert!(
+        ::core::mem::offset_of!(sigaction_t, sa_handler)
+            == ::core::mem::offset_of!(SigAction, sa_handler)
+    );
+    assert!(
+        ::core::mem::offset_of!(sigaction_t, sa_mask)
+            == ::core::mem::offset_of!(SigAction, sa_mask)
+    );
+    assert!(
+        ::core::mem::offset_of!(sigaction_t, sa_flags)
+            == ::core::mem::offset_of!(SigAction, sa_flags)
+    );
+    assert!(
+        ::core::mem::offset_of!(sigaction_t, sa_sigaction)
+            == ::core::mem::offset_of!(SigAction, sa_sigaction)
+    );
+};
+
+/// `sigaction` — installs and/or queries the disposition of a signal via the `sigaction()` kernel
+/// call. This is the backend symbol that `libc_signal`'s `signal()` shim links against.
+///
+/// `libc_signal::signal::sigaction_t` and `sys::pm::SigAction` are ABI-compatible (same `repr(C)`
+/// size, alignment, and field offsets for `sa_handler`, `sa_mask`, `sa_flags`, `sa_sigaction`,
+/// asserted at compile time above), so the action pointers are reinterpreted across the boundary
+/// without translation.
+///
+/// # Safety
+///
+/// This function writes to the errno location and dereferences raw pointers. `act` and `oldact`
+/// must be either null or valid, properly aligned pointers to `sigaction_t` values.
+#[cfg(feature = "backend-nanvix")]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigaction(
+    signum: c_int,
+    act: *const libc_signal::signal::sigaction_t,
+    oldact: *mut libc_signal::signal::sigaction_t,
+) -> c_int {
+    match unsafe {
+        ::sys::kcall::pm::__kcall_sigaction(
+            signum,
+            act as *const ::sys::pm::SigAction,
+            oldact as *mut ::sys::pm::SigAction,
+        )
+    } {
+        Ok(()) => 0,
+        Err(error) => {
+            *__errno() = error.code.get();
+            -1
+        },
+    }
+}
+
+/// Stub `sigaction` for builds that supply their own backend (no kernel-call surface available).
 ///
 /// # Safety
 ///
 /// This function writes to the errno location and dereferences raw pointers.
+#[cfg(not(feature = "backend-nanvix"))]
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn sigaction(
     _signum: c_int,
     _act: *const libc_signal::signal::sigaction_t,
     _oldact: *mut libc_signal::signal::sigaction_t,
+) -> c_int {
+    *__errno() = ::sysapi::errno::ENOSYS;
+    -1
+}
+
+//==================================================================================================
+// Signal mask (sigprocmask) backend required by libc_signal
+//==================================================================================================
+
+/// `sigprocmask` backend gets and/or modifies the calling thread's blocked-signal mask via the
+/// `sigprocmask()` kernel call.
+///
+/// # Safety
+///
+/// This function writes to the errno location and dereferences raw pointers. `set` and `oldset`
+/// must be either null or valid, properly aligned pointers to `sigset_t` values.
+#[cfg(feature = "backend-nanvix")]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nanvix_sigprocmask(
+    how: c_int,
+    set: *const libc_signal::signal::sigset_t,
+    oldset: *mut libc_signal::signal::sigset_t,
+) -> c_int {
+    match unsafe {
+        ::sys::kcall::pm::__kcall_sigprocmask(
+            how,
+            set as *const ::sys::pm::SigSet,
+            oldset as *mut ::sys::pm::SigSet,
+        )
+    } {
+        Ok(()) => 0,
+        Err(error) => {
+            *__errno() = error.code.get();
+            -1
+        },
+    }
+}
+
+/// Stub `sigprocmask` backend for builds that supply their own backend.
+///
+/// # Safety
+///
+/// This function writes to the errno location and dereferences raw pointers.
+#[cfg(not(feature = "backend-nanvix"))]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nanvix_sigprocmask(
+    _how: c_int,
+    _set: *const libc_signal::signal::sigset_t,
+    _oldset: *mut libc_signal::signal::sigset_t,
 ) -> c_int {
     *__errno() = ::sysapi::errno::ENOSYS;
     -1
