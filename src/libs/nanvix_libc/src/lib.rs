@@ -236,21 +236,6 @@ pub unsafe extern "C" fn strxfrm(dest: *mut c_char, src: *const c_char, n: c_siz
     len
 }
 
-/// Stub `strftime` — returns 0 (failure) since full locale-aware formatting is not implemented.
-///
-/// # Safety
-///
-/// Caller must ensure valid pointers.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn strftime(
-    _s: *mut c_char,
-    _max: c_size_t,
-    _format: *const c_char,
-    _tm: *const c_void,
-) -> c_size_t {
-    0
-}
-
 /// Stub `wcsftime` — returns 0 (failure).
 ///
 /// # Safety

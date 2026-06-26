@@ -10,7 +10,7 @@ Declares functions for calendar time manipulation and conversion.
 Implemented by the libc_time Rust crate.'''
 includes = ["stddef.h"]
 guard = "_NANVIX_TIME_H"
-content_order = ["types", "section:0", "section:1", "raw:0", "raw:1"]
+content_order = ["types", "section:0", "section:1", "raw:0", "raw:1", "raw:2"]
 
 [[types]]
 text = '''
@@ -74,7 +74,9 @@ text = '''
 extern char *asctime(const struct tm *timeptr);
 extern char *asctime_r(const struct tm *timeptr, char *buf);
 extern char *ctime(const time_t *timep);
-extern char *ctime_r(const time_t *timep, char *buf);'''
+extern char *ctime_r(const time_t *timep, char *buf);
+extern size_t strftime(char *s, size_t max, const char *format,
+                       const struct tm *timeptr);'''
 
 # Implemented by the syscall crate; declared here so callers of time.h can use them.
 [[raw_sections]]
@@ -84,6 +86,11 @@ extern int clock_gettime(clockid_t clock_id, struct timespec *tp);
 extern int clock_getres(clockid_t clock_id, struct timespec *res);
 extern int clock_settime(clockid_t clock_id, const struct timespec *tp);
 extern int nanosleep(const struct timespec *req, struct timespec *rem);'''
+
+[[raw_sections]]
+title = "Time Parsing"
+text = '''
+extern char *strptime(const char *s, const char *format, struct tm *tm);'''
 
 [[sections]]
 title = "Calendar Time"

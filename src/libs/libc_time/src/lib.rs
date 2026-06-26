@@ -42,5 +42,7 @@ pub mod gmtime_r;
 pub mod localtime;
 pub mod localtime_r;
 pub mod mktime;
+pub mod strftime;
+pub mod strptime;
 pub mod time;
 pub mod tm_struct;

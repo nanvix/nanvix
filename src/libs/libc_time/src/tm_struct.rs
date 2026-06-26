@@ -58,9 +58,36 @@ pub const DAYS_IN_MONTH: [i64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30
 /// Abbreviated day names.
 pub const DAY_NAMES: [&[u8; 3]; 7] = [b"Sun", b"Mon", b"Tue", b"Wed", b"Thu", b"Fri", b"Sat"];
 
+/// Full day names.
+pub const FULL_DAY_NAMES: [&[u8]; 7] = [
+    b"Sunday",
+    b"Monday",
+    b"Tuesday",
+    b"Wednesday",
+    b"Thursday",
+    b"Friday",
+    b"Saturday",
+];
+
 /// Abbreviated month names.
 pub const MONTH_NAMES: [&[u8; 3]; 12] = [
     b"Jan", b"Feb", b"Mar", b"Apr", b"May", b"Jun", b"Jul", b"Aug", b"Sep", b"Oct", b"Nov", b"Dec",
+];
+
+/// Full month names.
+pub const FULL_MONTH_NAMES: [&[u8]; 12] = [
+    b"January",
+    b"February",
+    b"March",
+    b"April",
+    b"May",
+    b"June",
+    b"July",
+    b"August",
+    b"September",
+    b"October",
+    b"November",
+    b"December",
 ];
 
 //==================================================================================================
