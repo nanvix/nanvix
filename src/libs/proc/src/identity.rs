@@ -260,4 +260,67 @@ impl ProcessIdentity {
     pub fn is_root(&self) -> bool {
         self.uid == UserIdentifier::ROOT || self.suid == UserIdentifier::ROOT
     }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether this identity is allowed to signal a target identity.
+    ///
+    /// # Parameters
+    ///
+    /// - `target`: Target process identity.
+    ///
+    /// # Return Values
+    ///
+    /// If this identity may signal `target`, `true` is returned. Otherwise, `false` is returned.
+    ///
+    pub fn can_signal(&self, target: &Self) -> bool {
+        self.uid == UserIdentifier::ROOT
+            || self.euid == UserIdentifier::ROOT
+            || self.uid == target.uid
+            || self.uid == target.suid
+            || self.euid == target.uid
+            || self.euid == target.suid
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::ProcessIdentity;
+    use ::sys::pm::{
+        GroupIdentifier,
+        UserIdentifier,
+    };
+
+    fn identity(uid: usize) -> ProcessIdentity {
+        ProcessIdentity::new(UserIdentifier::from(uid), GroupIdentifier::ROOT)
+    }
+
+    #[test]
+    fn can_signal_allows_same_real_uid() {
+        let caller: ProcessIdentity = identity(1000);
+        let target: ProcessIdentity = identity(1000);
+
+        assert!(caller.can_signal(&target));
+    }
+
+    #[test]
+    fn can_signal_allows_root() {
+        let caller: ProcessIdentity = identity(0);
+        let target: ProcessIdentity = identity(1000);
+
+        assert!(caller.can_signal(&target));
+    }
+
+    #[test]
+    fn can_signal_rejects_different_uid() {
+        let caller: ProcessIdentity = identity(1000);
+        let target: ProcessIdentity = identity(1001);
+
+        assert!(!caller.can_signal(&target));
+    }
 }

@@ -8,6 +8,7 @@
 mod exec;
 mod fork_clone;
 mod fork_sync;
+mod kill;
 mod lookup;
 mod process_exit;
 mod shutdown;
@@ -21,6 +22,7 @@ mod wait;
 pub use exec::*;
 pub use fork_clone::*;
 pub use fork_sync::*;
+pub use kill::*;
 pub use lookup::*;
 pub use process_exit::*;
 pub use shutdown::*;
@@ -66,8 +68,11 @@ pub enum ProcessManagementMessageHeader {
     Wait = 6,
     /// Wait response (the process manager daemon reports a reaped child's pid and status).
     WaitResponse = 7,
-    // Discriminants 8-9 are reserved for future core process-management operations so that the
-    // fork-related variants below remain grouped in a stable, contiguous block.
+    /// Kill operation (a process asks the process manager daemon to post a signal to a target,
+    /// subject to the daemon's permission policy).
+    Kill = 8,
+    /// Kill response (the process manager daemon reports the outcome of a kill operation).
+    KillResponse = 9,
     /// Fork-clone operation (used to notify other daemons to clone a parent's resources onto a
     /// freshly forked child).
     ForkClone = 10,
@@ -106,6 +111,8 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             5 => Ok(ProcessManagementMessageHeader::LookupResponse),
             6 => Ok(ProcessManagementMessageHeader::Wait),
             7 => Ok(ProcessManagementMessageHeader::WaitResponse),
+            8 => Ok(ProcessManagementMessageHeader::Kill),
+            9 => Ok(ProcessManagementMessageHeader::KillResponse),
             10 => Ok(ProcessManagementMessageHeader::ForkClone),
             11 => Ok(ProcessManagementMessageHeader::ForkSync),
             12 => Ok(ProcessManagementMessageHeader::ForkSyncAck),
@@ -128,6 +135,8 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::LookupResponse => 5,
             ProcessManagementMessageHeader::Wait => 6,
             ProcessManagementMessageHeader::WaitResponse => 7,
+            ProcessManagementMessageHeader::Kill => 8,
+            ProcessManagementMessageHeader::KillResponse => 9,
             ProcessManagementMessageHeader::ForkClone => 10,
             ProcessManagementMessageHeader::ForkSync => 11,
             ProcessManagementMessageHeader::ForkSyncAck => 12,

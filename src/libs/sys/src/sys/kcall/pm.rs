@@ -297,6 +297,40 @@ pub fn __kcall_terminate(pid: ProcessIdentifier) -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Kill
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Posts a signal to a target process.
+///
+/// This is the privileged in-kernel posting primitive. A process may always post to itself; posting
+/// to another process requires the [`Capability::ProcessManagement`] capability, so unprivileged
+/// cross-process signaling is expected to be routed through the process-manager daemon. A `signum`
+/// of zero performs only the permission and existence check without posting any signal.
+///
+/// # Parameters
+///
+/// - `pid`: Process identifier of the target process.
+/// - `signum`: Signal number to post, or zero to perform only the existence check.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+///
+#[unsafe(no_mangle)]
+pub fn __kcall_kill(pid: ProcessIdentifier, signum: i32) -> Result<(), Error> {
+    let result: i64 = kcall2!(KcallNumber::Kill.into(), u32::try_from(pid)?, signum as u32);
+
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to kill()"))
+    } else {
+        Ok(())
+    }
+}
+
+//==================================================================================================
 // Sigaction
 //==================================================================================================
 

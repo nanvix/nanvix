@@ -12,6 +12,7 @@ use crate::{
     ForkCloneAckMessage,
     ForkSyncAckMessage,
     ForkSyncMessage,
+    KillMessage,
     LookupMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
@@ -49,7 +50,9 @@ use ::sys::{
     },
     pm::{
         Capability,
+        GroupIdentifier,
         ProcessIdentifier,
+        UserIdentifier,
     },
 };
 
@@ -73,7 +76,6 @@ struct ProcessRecord {
     /// Process name.
     name: String,
     /// Process identity (credentials).
-    #[allow(dead_code)]
     identity: Option<ProcessIdentity>,
     /// Process identifier of the parent (`None` for daemons and the init process).
     parent: Option<ProcessIdentifier>,
@@ -100,7 +102,7 @@ impl ProcessRecord {
     fn new(name: String, parent: Option<ProcessIdentifier>) -> Self {
         Self {
             name,
-            identity: None,
+            identity: Some(ProcessIdentity::new(UserIdentifier::ROOT, GroupIdentifier::ROOT)),
             parent,
             children: Vec::new(),
             fork_clone_done: false,
@@ -708,6 +710,84 @@ impl ProcessDaemon {
         ::config::daemons::is_system_daemon(name)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Handles a kill request: posts `signum` to `target` on behalf of `caller`.
+    ///
+    /// The daemon is the privileged gateway for cross-process signalling: it holds
+    /// [`Capability::ProcessManagement`], so it authorizes the request before forwarding it to the
+    /// in-kernel posting primitive. The current standalone identity model treats processes as root;
+    /// if richer credentials are recorded later, the usual same-user or root policy is enforced.
+    ///
+    /// # Parameters
+    ///
+    /// - `caller`: Process identifier of the requesting process.
+    /// - `message`: The kill request.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the kill response to send back to the caller. Upon failure, an
+    /// error is returned instead.
+    ///
+    fn handle_kill(
+        &mut self,
+        caller: ProcessIdentifier,
+        message: KillMessage,
+    ) -> Result<Message, Error> {
+        // Copy the fields out of the packed message before use to avoid unaligned references.
+        let target: ProcessIdentifier = message.target;
+        let signum: i32 = message.signum;
+
+        ::syslog::info!(
+            "handle_kill(): caller={:?}, target={:?}, signum={}",
+            caller,
+            target,
+            signum
+        );
+
+        let error: i32 = match self.authorize_kill(caller, target) {
+            Ok(()) => match ::sys::kcall::pm::__kcall_kill(target, signum) {
+                Ok(()) => 0,
+                Err(e) => e.code.get(),
+            },
+            Err(e) => e.code.get(),
+        };
+
+        message::kill_response(caller, error)
+    }
+
+    /// Authorizes a kill request before the daemon spends its process-management capability.
+    fn authorize_kill(
+        &self,
+        caller: ProcessIdentifier,
+        target: ProcessIdentifier,
+    ) -> Result<(), Error> {
+        let caller_identity: Option<&ProcessIdentity> = self
+            .processes
+            .get(&caller)
+            .and_then(|record| record.identity.as_ref());
+        let target_identity: Option<&ProcessIdentity> = self
+            .processes
+            .get(&target)
+            .and_then(|record| record.identity.as_ref());
+
+        match (caller_identity, target_identity) {
+            (Some(caller_identity), Some(target_identity))
+                if !caller_identity.can_signal(target_identity) =>
+            {
+                let reason: &str = "signal permission denied";
+                ::syslog::error!(
+                    "authorize_kill(): {reason} (caller={:?}, target={:?})",
+                    caller,
+                    target
+                );
+                Err(Error::new(ErrorCode::PermissionDenied, reason))
+            },
+            _ => Ok(()),
+        }
+    }
+
     fn handle_ipc_message(&mut self, message: Message) -> Result<(), Error> {
         // The kernel stamps the authoritative originating process into `message.source.pid`, so the
         // caller identity is taken directly from it.
@@ -781,6 +861,11 @@ impl ProcessDaemon {
                     if let Some(reply) = self.handle_wait(destination, message)? {
                         ::sys::kcall::ipc::__kcall_send(&reply)?;
                     }
+                },
+                ProcessManagementMessageHeader::Kill => {
+                    let message: KillMessage = KillMessage::from_bytes(message.payload);
+                    let reply: Message = self.handle_kill(destination, message)?;
+                    ::sys::kcall::ipc::__kcall_send(&reply)?;
                 },
                 // Ignore all other messages.
                 _ => {},

@@ -9,6 +9,7 @@ mod getegid;
 mod geteuid;
 mod getgid;
 mod getuid;
+mod kill;
 mod lookup;
 mod signup;
 mod wait;
@@ -21,6 +22,7 @@ pub use getegid::getegid;
 pub use geteuid::geteuid;
 pub use getgid::getgid;
 pub use getuid::getuid;
+pub use kill::kill;
 pub use lookup::lookup;
 pub use signup::signup;
 pub use wait::{

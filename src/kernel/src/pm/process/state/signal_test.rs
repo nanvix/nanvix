@@ -8,6 +8,8 @@
 use super::signal::{
     apply_how,
     compute_blocked,
+    default_action,
+    DefaultAction,
     SignalControl,
     SignalDisposition,
     SignalHandler,
@@ -17,8 +19,17 @@ use crate::hal::mem::VirtualAddress;
 use ::alloc::boxed::Box;
 use ::sys::pm::{
     SigAction,
+    SIGABRT,
+    SIGCHLD,
+    SIGCONT,
+    SIGHUP,
+    SIGIO,
     SIGKILL,
+    SIGQUIT,
+    SIGSEGV,
     SIGSTOP,
+    SIGTERM,
+    SIGTSTP,
     SIG_BLOCK,
     SIG_DFL,
     SIG_IGN,
@@ -276,6 +287,138 @@ fn test_to_sigaction_round_trips_dispositions() -> bool {
 }
 
 //==================================================================================================
+// Default-Action Tests
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Signals that default to terminating the process report [`DefaultAction::Terminate`], including
+/// unassigned and real-time signals.
+///
+fn test_default_action_terminates() -> bool {
+    for signum in [SIGHUP, SIGTERM, SIGKILL, SIGIO] {
+        if default_action(signum) != DefaultAction::Terminate {
+            error!("signal {signum} did not default to Terminate");
+            return false;
+        }
+    }
+    if default_action(40) != DefaultAction::Terminate {
+        error!("real-time signal did not default to Terminate");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Signals that default to a core-dumping termination report [`DefaultAction::Core`].
+///
+fn test_default_action_cores() -> bool {
+    for signum in [SIGQUIT, SIGABRT, SIGSEGV] {
+        if default_action(signum) != DefaultAction::Core {
+            error!("signal {signum} did not default to Core");
+            return false;
+        }
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// `SIGCHLD` is ignored by default.
+///
+fn test_default_action_ignores() -> bool {
+    if default_action(SIGCHLD) != DefaultAction::Ignore {
+        error!("SIGCHLD did not default to Ignore");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Job-control signals report [`DefaultAction::Stop`] and [`DefaultAction::Continue`].
+///
+fn test_default_action_stop_and_continue() -> bool {
+    for signum in [SIGSTOP, SIGTSTP] {
+        if default_action(signum) != DefaultAction::Stop {
+            error!("signal {signum} did not default to Stop");
+            return false;
+        }
+    }
+    if default_action(SIGCONT) != DefaultAction::Continue {
+        error!("SIGCONT did not default to Continue");
+        return false;
+    }
+    true
+}
+
+//==================================================================================================
+// Pending-Set Tests
+//==================================================================================================
+
+///
+/// # Description
+///
+/// `post()` records a signal in the pending set and reports whether it was newly posted.
+///
+fn test_post_records_pending_signal() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+    if control.pending() != 0 {
+        error!("a fresh signal control block had pending signals");
+        return false;
+    }
+    if !control.post(SIGTERM) {
+        error!("post() did not report SIGTERM as newly posted");
+        return false;
+    }
+    if control.pending() != bit(SIGTERM) {
+        error!("post() did not set the SIGTERM pending bit");
+        return false;
+    }
+    // Re-posting an already-pending signal does not report it as newly posted.
+    if control.post(SIGTERM) {
+        error!("post() reported an already-pending signal as newly posted");
+        return false;
+    }
+    if !control.post(SIGHUP) {
+        error!("post() did not report SIGHUP as newly posted");
+        return false;
+    }
+    if control.pending() != bit(SIGTERM) | bit(SIGHUP) {
+        error!("post() did not accumulate pending signals");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// `post()` rejects out-of-range signal numbers and leaves the pending set unchanged.
+///
+fn test_post_rejects_out_of_range() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+    if control.post(0) {
+        error!("post() accepted signal number 0");
+        return false;
+    }
+    if control.post(65) {
+        error!("post() accepted signal number 65");
+        return false;
+    }
+    if control.pending() != 0 {
+        error!("post() modified the pending set for an out-of-range signal");
+        return false;
+    }
+    true
+}
+
+//==================================================================================================
 // Test Aggregator
 //==================================================================================================
 
@@ -295,5 +438,11 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_set_disposition_swaps_and_returns_previous);
     passed &= run_test!(test_set_disposition_rejects_out_of_range);
     passed &= run_test!(test_to_sigaction_round_trips_dispositions);
+    passed &= run_test!(test_default_action_terminates);
+    passed &= run_test!(test_default_action_cores);
+    passed &= run_test!(test_default_action_ignores);
+    passed &= run_test!(test_default_action_stop_and_continue);
+    passed &= run_test!(test_post_records_pending_signal);
+    passed &= run_test!(test_post_rejects_out_of_range);
     passed
 }

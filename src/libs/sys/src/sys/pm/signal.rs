@@ -35,6 +35,65 @@ pub const SIGKILL: usize = 9;
 /// Signal number of `SIGSTOP`, which can never be caught, blocked, or ignored.
 pub const SIGSTOP: usize = 19;
 
+// Standard signal numbers. These mirror the values declared in `<signal.h>` and back the kernel's
+// default-action table. `SIGKILL` (9) and `SIGSTOP` (19) are defined above because they are also
+// referenced as the uncatchable signals.
+
+/// Hangup.
+pub const SIGHUP: usize = 1;
+/// Terminal interrupt.
+pub const SIGINT: usize = 2;
+/// Terminal quit.
+pub const SIGQUIT: usize = 3;
+/// Illegal instruction.
+pub const SIGILL: usize = 4;
+/// Trace/breakpoint trap.
+pub const SIGTRAP: usize = 5;
+/// Process abort.
+pub const SIGABRT: usize = 6;
+/// Bus error.
+pub const SIGBUS: usize = 7;
+/// Erroneous arithmetic operation.
+pub const SIGFPE: usize = 8;
+/// User-defined signal 1.
+pub const SIGUSR1: usize = 10;
+/// Invalid memory reference.
+pub const SIGSEGV: usize = 11;
+/// User-defined signal 2.
+pub const SIGUSR2: usize = 12;
+/// Write on a pipe with no reader.
+pub const SIGPIPE: usize = 13;
+/// Alarm clock.
+pub const SIGALRM: usize = 14;
+/// Termination request.
+pub const SIGTERM: usize = 15;
+/// Child process stopped or terminated.
+pub const SIGCHLD: usize = 17;
+/// Continue if stopped.
+pub const SIGCONT: usize = 18;
+/// Terminal stop.
+pub const SIGTSTP: usize = 20;
+/// Background process attempting read.
+pub const SIGTTIN: usize = 21;
+/// Background process attempting write.
+pub const SIGTTOU: usize = 22;
+/// Urgent condition on socket.
+pub const SIGURG: usize = 23;
+/// CPU time limit exceeded.
+pub const SIGXCPU: usize = 24;
+/// File size limit exceeded.
+pub const SIGXFSZ: usize = 25;
+/// Virtual timer expired.
+pub const SIGVTALRM: usize = 26;
+/// Profiling timer expired.
+pub const SIGPROF: usize = 27;
+/// Window size change.
+pub const SIGWINCH: usize = 28;
+/// I/O now possible.
+pub const SIGIO: usize = 29;
+/// Bad system call.
+pub const SIGSYS: usize = 31;
+
 /// `how` argument to `sigprocmask()`: add the signals in `set` to the blocked mask.
 pub const SIG_BLOCK: i32 = 0;
 

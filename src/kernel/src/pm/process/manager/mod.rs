@@ -41,6 +41,9 @@ use crate::{
         process::state::{
             signal::{
                 compute_blocked,
+                default_action,
+                DefaultAction,
+                KillOutcome,
                 SignalControl,
                 SignalDisposition,
             },
@@ -112,6 +115,8 @@ use ::sys::{
         SigSet,
         ThreadCreateArgs,
         ThreadIdentifier,
+        SIGKILL,
+        SIG_MAX,
     },
     time::SystemTime,
     ExitStatus,
@@ -611,6 +616,175 @@ impl ProcessManager {
         }
 
         Ok(old)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Posts a signal to a target process and evaluates its delivery.
+    ///
+    /// A process may always signal itself; posting to another process requires the
+    /// [`Capability::ProcessManagement`] capability, so an unprivileged process cannot post
+    /// arbitrary signals to others by calling the kernel directly (cross-process policy is the
+    /// province of the process-manager daemon). A `signum` of zero performs only the
+    /// permission/existence check (the POSIX null-signal probe).
+    ///
+    /// Signals whose effective action terminates the process reuse the existing termination paths:
+    /// the cross-process `terminate()` path for a non-running target, or the caller's own `exit()`
+    /// for a self-directed fatal signal (reported back as [`KillOutcome::TerminateSelf`] because
+    /// `exit()` performs a context switch and must run outside the process manager). `SIGKILL` is
+    /// unconditional and bypasses disposition and mask checks. A caught (handler) signal is posted
+    /// and a candidate thread is woken so that delivery is evaluated at its return-to-user
+    /// checkpoint.
+    ///
+    /// # Parameters
+    ///
+    /// - `caller`: Identifier of the calling process.
+    /// - `target`: Identifier of the process to signal.
+    /// - `signum`: Signal number to post, or zero for the null-signal probe.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a [`KillOutcome`] describing the remaining work for the kernel-call handler.
+    /// Upon failure, an error is returned instead.
+    ///
+    pub fn kill(
+        &mut self,
+        caller: ProcessIdentifier,
+        target: ProcessIdentifier,
+        signum: usize,
+    ) -> Result<KillOutcome, Error> {
+        trace!("caller={caller:?}, target={target:?}, signum={signum}");
+
+        // A process may always signal itself; cross-process posting is privileged.
+        if target != caller && !self.has_capability(caller, Capability::ProcessManagement)? {
+            let reason: &str = "process does not have process management capability";
+            error!("{reason} (caller={caller:?}, target={target:?})");
+            return Err(Error::new(ErrorCode::PermissionDenied, reason));
+        }
+
+        // The target must exist. This also services the null-signal probe below.
+        self.find_process(target)?;
+
+        // A null signal performs only the permission/existence check.
+        if signum == 0 {
+            return Ok(KillOutcome::Done);
+        }
+
+        // Reject out-of-range signal numbers.
+        if signum > SIG_MAX {
+            let reason: &str = "invalid signal number";
+            error!("{reason} (signum={signum})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // SIGKILL is uncatchable and unconditional: terminate immediately, bypassing disposition
+        // and mask checks.
+        if signum == SIGKILL {
+            return self.kill_terminate(caller, target);
+        }
+
+        // Resolve the effect of the signal from the target's disposition, posting it to the pending
+        // set when delivery must be deferred. The borrow of the process manager is dropped before
+        // any termination or wakeup so those operations can re-borrow it.
+        let (terminate, wake): (bool, bool) = {
+            let mut process: ProcessRefMut = self.find_process_mut(target)?;
+            let signals: &mut SignalControl = process.state_mut().signals_mut();
+            match signals.disposition(signum) {
+                Some(SignalDisposition::Ignore) => (false, false),
+                Some(SignalDisposition::Handler(_)) => {
+                    signals.post(signum);
+                    (false, true)
+                },
+                Some(SignalDisposition::Default) => match default_action(signum) {
+                    DefaultAction::Terminate => (true, false),
+                    DefaultAction::Core => {
+                        info!(
+                            "terminated by signal default core action (target={target:?}, \
+                             signum={signum})"
+                        );
+                        (true, false)
+                    },
+                    DefaultAction::Ignore => (false, false),
+                    DefaultAction::Stop | DefaultAction::Continue => {
+                        // Job-control stop/continue semantics arrive in a later phase; for now the
+                        // signal is recorded as pending and a candidate thread is woken.
+                        signals.post(signum);
+                        (false, true)
+                    },
+                },
+                None => {
+                    let reason: &str = "invalid signal number";
+                    error!("{reason} (signum={signum})");
+                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
+                },
+            }
+        };
+
+        if terminate {
+            return self.kill_terminate(caller, target);
+        }
+        if wake {
+            self.wakeup_signal_candidate(target);
+        }
+        Ok(KillOutcome::Done)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Routes a fatal signal to the appropriate termination path: the cross-process `terminate()`
+    /// for a non-running target, or [`KillOutcome::TerminateSelf`] when the caller is signalling
+    /// itself (so the kernel-call handler can invoke `exit()` on the calling process).
+    ///
+    /// # Parameters
+    ///
+    /// - `caller`: Identifier of the calling process.
+    /// - `target`: Identifier of the process to terminate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the [`KillOutcome`] for the handler. Upon failure, an error is returned.
+    ///
+    fn kill_terminate(
+        &mut self,
+        caller: ProcessIdentifier,
+        target: ProcessIdentifier,
+    ) -> Result<KillOutcome, Error> {
+        if target == caller {
+            Ok(KillOutcome::TerminateSelf)
+        } else {
+            self.terminate(target)?;
+            Ok(KillOutcome::Done)
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Wakes a candidate thread of a process to which a signal was posted, so that the thread can
+    /// evaluate delivery at its return-to-user checkpoint.
+    ///
+    /// Only a fully-suspended process needs an explicit wake; a process that still has a ready or
+    /// interrupted thread is already schedulable. The wakeup is best-effort: the candidate thread
+    /// may already have been woken by another notifier.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process whose candidate thread should be woken.
+    ///
+    fn wakeup_signal_candidate(&mut self, pid: ProcessIdentifier) {
+        let candidate: Option<ThreadIdentifier> = match self
+            .suspended
+            .iter()
+            .find(|process| process.state().pid() == pid)
+        {
+            Some(process) => process.candidate_tid(),
+            None => return,
+        };
+        if let Some(tid) = candidate {
+            let _ = self.do_wakeup(tid);
+        }
     }
 
     ///
@@ -1849,6 +2023,13 @@ impl ProcessManager {
             let process: SleepingProcess = self.suspended.remove(process);
             let process: InterruptedProcess = process.terminate();
             self.interrupted.push_back(process);
+            return Ok(());
+        }
+
+        // Check if target process is already interrupted.
+        if let Some(process) = self.interrupted.iter().position(|p| p.state().pid() == pid) {
+            let process: InterruptedProcess = self.interrupted.remove(process);
+            self.interrupted.push_back(process.terminate());
             return Ok(());
         }
 
