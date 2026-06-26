@@ -54,6 +54,16 @@ static ENV_TABLE: Lazy<Mutex<Vec<EnvEntry>>> = Lazy::new(|| Mutex::new(Vec::new(
 /// Optional callback invoked after a successful `set()` that writes a new or updated value.
 static SETENV_CALLBACK: Lazy<Mutex<Option<SetenvCallback>>> = Lazy::new(|| Mutex::new(None));
 
+/// Null-terminated array of pointers that backs the C-visible `environ` global.
+///
+/// One entry per environment variable (each pointing at a table entry's `KEY=VALUE` C string),
+/// followed by a single `0` terminator. Pointer values are stored as `usize` (rather than
+/// `*mut c_char`) so the static is `Send`/`Sync`, matching how [`EnvStorage::Borrowed`] keeps its
+/// address. It is rebuilt by [`sync_environ`] after every mutation and the `environ` global is
+/// repointed at its buffer, so C code reading `extern char **environ` always observes the current
+/// environment.
+static ENVIRON_ARRAY: Lazy<Mutex<Vec<usize>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -79,12 +89,13 @@ static SETENV_CALLBACK: Lazy<Mutex<Option<SetenvCallback>>> = Lazy::new(|| Mutex
 /// - Each string in the array remains valid for the duration of this call.
 ///
 pub unsafe fn init_from_raw(envp: *const *const c_char) {
-    if envp.is_null() {
-        return;
-    }
-
     let mut table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
     table.clear();
+
+    if envp.is_null() {
+        sync_environ(&table);
+        return;
+    }
 
     let mut i: usize = 0;
     loop {
@@ -107,6 +118,9 @@ pub unsafe fn init_from_raw(envp: *const *const c_char) {
 
         i += 1;
     }
+
+    // Publish the freshly populated table through the C-visible `environ` global.
+    sync_environ(&table);
 }
 
 ///
@@ -167,23 +181,21 @@ pub fn set(key: &str, value: &[u8], overwrite: bool) -> Result<bool, ()> {
 
     let mut table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
 
-    // Check if the key already exists.
-    for entry in table.iter_mut() {
-        if entry.matches_key(key) {
-            if overwrite {
-                *entry = EnvEntry::owned(key, value);
-                // Release the lock before invoking the callback.
-                drop(table);
-                invoke_setenv_callback(key, value);
-                return Ok(true);
+    // Locate an existing entry by index so the table can be reborrowed for `sync_environ` after the
+    // mutation without holding a `iter_mut()` borrow across the call.
+    let existing: Option<usize> = table.iter().position(|entry| entry.matches_key(key));
+    match existing {
+        Some(idx) => {
+            if !overwrite {
+                return Ok(false);
             }
-            return Ok(false);
-        }
+            table[idx] = EnvEntry::owned(key, value);
+        },
+        None => insert_entry(&mut table, key, value),
     }
 
-    // Key not found, insert new entry.
-    insert_entry(&mut table, key, value);
-    // Release the lock before invoking the callback.
+    // Repoint `environ`, then release the lock before invoking the callback.
+    sync_environ(&table);
     drop(table);
     invoke_setenv_callback(key, value);
     Ok(true)
@@ -201,6 +213,18 @@ pub fn set(key: &str, value: &[u8], overwrite: bool) -> Result<bool, ()> {
 pub fn unset(key: &str) {
     let mut table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
     table.retain(|entry| !entry.matches_key(key));
+    sync_environ(&table);
+}
+
+///
+/// # Description
+///
+/// Removes every variable from the environment table, leaving it empty.
+///
+pub fn clear() {
+    let mut table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
+    table.clear();
+    sync_environ(&table);
 }
 
 ///
@@ -235,15 +259,12 @@ pub unsafe fn put_raw(string: *mut c_char) -> Result<(), ()> {
     let value: &[u8] = &bytes[eq_pos + 1..];
 
     let mut table: spin::MutexGuard<'_, Vec<EnvEntry>> = ENV_TABLE.lock();
-    for entry in table.iter_mut() {
-        if entry.matches_key(key) {
-            *entry = EnvEntry::borrowed(string);
-            drop(table);
-            invoke_setenv_callback(key, value);
-            return Ok(());
-        }
+    let existing: Option<usize> = table.iter().position(|entry| entry.matches_key(key));
+    match existing {
+        Some(idx) => table[idx] = EnvEntry::borrowed(string),
+        None => table.push(EnvEntry::borrowed(string)),
     }
-    table.push(EnvEntry::borrowed(string));
+    sync_environ(&table);
     drop(table);
     invoke_setenv_callback(key, value);
     Ok(())
@@ -307,6 +328,46 @@ fn invoke_setenv_callback(key: &str, value: &[u8]) {
 // Helper Functions
 //==================================================================================================
 
+/// Rebuilds the C-visible [`ENVIRON_ARRAY`] from the current table and repoints the `environ`
+/// global at it.
+///
+/// The caller must hold the [`ENV_TABLE`] lock and pass the live entries, so this runs while the
+/// table is quiesced and the rebuilt pointer array is always consistent with it. Each surviving
+/// entry contributes the address of its `KEY=VALUE` C string; a trailing `0` terminates the array,
+/// matching the `char **environ` contract.
+///
+/// In a hosted (unit-test) build there is no C `environ` symbol to publish, so the array is still
+/// maintained — letting the table logic be exercised directly — but the global write is compiled
+/// out. In the freestanding libc the `environ` global is updated in place.
+fn sync_environ(table: &[EnvEntry]) {
+    let mut array: spin::MutexGuard<'_, Vec<usize>> = ENVIRON_ARRAY.lock();
+    array.clear();
+    array.reserve(table.len() + 1);
+    for entry in table.iter() {
+        array.push(entry.raw_ptr() as usize);
+    }
+    array.push(0);
+
+    let base: usize = array.as_ptr() as usize;
+
+    #[cfg(not(feature = "std"))]
+    {
+        unsafe extern "C" {
+            static mut environ: *mut *mut c_char;
+        }
+        // SAFETY: `environ` is the process-wide `char **environ` defined by libposix startup. The
+        // write is performed under the `ENV_TABLE` lock (held by the caller) and `ENVIRON_ARRAY`
+        // lock (held here), serializing it against any concurrent rebuild. Reads of `environ` from
+        // C are inherently unsynchronized, exactly as on a conventional libc.
+        unsafe {
+            let slot: *mut *mut *mut c_char = &raw mut environ;
+            *slot = base as *mut *mut c_char;
+        }
+    }
+    #[cfg(feature = "std")]
+    let _ = base;
+}
+
 /// Builds a null-terminated `KEY=VALUE\0` byte vector.
 fn make_raw(key: &str, value: &[u8]) -> Vec<u8> {
     let mut raw: Vec<u8> = Vec::with_capacity(key.len() + 1 + value.len() + 1);
@@ -345,6 +406,15 @@ impl EnvEntry {
     fn borrowed(ptr: *mut c_char) -> Self {
         Self {
             storage: EnvStorage::Borrowed(ptr as usize),
+        }
+    }
+
+    /// Returns a pointer to the first byte of the null-terminated `KEY=VALUE` C string, suitable for
+    /// publishing through the `environ` array.
+    fn raw_ptr(&self) -> *const c_char {
+        match &self.storage {
+            EnvStorage::Owned(raw) => raw.as_ptr().cast::<c_char>(),
+            EnvStorage::Borrowed(addr) => *addr as *const c_char,
         }
     }
 
@@ -429,6 +499,17 @@ mod test {
         let _guard = setup();
         let ptr: *const c_char = get("TEST_NONEXISTENT");
         assert!(ptr.is_null());
+    }
+
+    /// Tests that `clear()` removes every variable from the environment.
+    #[test]
+    fn test_clear() {
+        let _guard = setup();
+        assert_eq!(set("TEST_CLEAR_A", b"1", true), Ok(true));
+        assert_eq!(set("TEST_CLEAR_B", b"2", true), Ok(true));
+        clear();
+        assert!(get("TEST_CLEAR_A").is_null());
+        assert!(get("TEST_CLEAR_B").is_null());
     }
 
     /// Tests that overwrite=false preserves an existing variable.
@@ -635,5 +716,68 @@ mod test {
         assert!(!ptr.is_null());
         let value: &ffi::CStr = unsafe { ffi::CStr::from_ptr(ptr) };
         assert_eq!(value.to_bytes(), b"\xff\xfe");
+    }
+
+    /// Reads the [`ENVIRON_ARRAY`] back into owned `KEY=VALUE` strings, dereferencing each published
+    /// pointer up to the terminating NULL. Mirrors how C code walks `char **environ`.
+    fn environ_view() -> Vec<String> {
+        let array: spin::MutexGuard<'_, Vec<usize>> = ENVIRON_ARRAY.lock();
+        let mut out: Vec<String> = Vec::new();
+        for &addr in array.iter() {
+            if addr == 0 {
+                break;
+            }
+            let s: &ffi::CStr = unsafe { ffi::CStr::from_ptr(addr as *const c_char) };
+            if let Ok(text) = s.to_str() {
+                out.push(String::from(text));
+            }
+        }
+        out
+    }
+
+    /// Tests that the `environ` view tracks `set()`, `unset()`, and `clear()` mutations.
+    #[test]
+    fn environ_tracks_set_unset_clear() {
+        let _guard = setup();
+        // `setup()` cleared the table directly; the first mutation rebuilds the view from scratch.
+        assert_eq!(set("EVZ_A", b"1", true), Ok(true));
+        assert_eq!(set("EVZ_B", b"2", true), Ok(true));
+        let mut view: Vec<String> = environ_view();
+        view.sort();
+        assert_eq!(view, vec![String::from("EVZ_A=1"), String::from("EVZ_B=2")]);
+
+        // Overwriting an existing key keeps a single, updated entry.
+        assert_eq!(set("EVZ_A", b"9", true), Ok(true));
+        let mut view: Vec<String> = environ_view();
+        view.sort();
+        assert_eq!(view, vec![String::from("EVZ_A=9"), String::from("EVZ_B=2")]);
+
+        unset("EVZ_A");
+        assert_eq!(environ_view(), vec![String::from("EVZ_B=2")]);
+
+        clear();
+        assert!(environ_view().is_empty());
+    }
+
+    /// Tests that `put_raw()` publishes the caller-owned string through the `environ` view.
+    #[test]
+    fn environ_tracks_put_raw() {
+        let _guard = setup();
+        clear();
+        let raw: &[u8] = b"EVZ_P=val\0";
+        assert_eq!(unsafe { put_raw(raw.as_ptr() as *mut c_char) }, Ok(()));
+        assert_eq!(environ_view(), vec![String::from("EVZ_P=val")]);
+    }
+
+    /// Tests that `init_from_raw()` publishes the startup environment through the `environ` view.
+    #[test]
+    fn environ_tracks_init_from_raw() {
+        let _guard = setup();
+        let entries: [&[u8]; 2] = [b"EVZ_I=seed\0", b"\0"];
+        let ptrs: [*const c_char; 2] = [entries[0].as_ptr().cast::<c_char>(), ::core::ptr::null()];
+        unsafe {
+            init_from_raw(ptrs.as_ptr());
+        }
+        assert_eq!(environ_view(), vec![String::from("EVZ_I=seed")]);
     }
 }

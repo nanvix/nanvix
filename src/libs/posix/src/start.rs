@@ -196,13 +196,11 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     // null-terminated array of "KEY=VALUE" C strings, which is exactly
     // the format expected by `__nanvix_env_init`.
     //
-    // NOTE: `setenv` / `unsetenv` update only `env_table` (the
-    // libposix-side storage); they do NOT rebuild `environ`.  C code
-    // that mutates the environment via these functions and then reads
-    // back `extern char **environ` will observe a snapshot taken at
-    // process start, not the mutated state.  Keeping these two views
-    // in sync is left for a follow-up that introduces an
-    // `env_table`-backed `environ` proxy.
+    // `__nanvix_env_init` rebuilds an `env_table`-backed `environ` array and
+    // repoints this `environ` global at it, and every later setenv() /
+    // putenv() / unsetenv() keeps the two views in sync.  C code
+    // that mutates the environment therefore observes the change through
+    // `extern char **environ` as well as through getenv().
     unsafe {
         __nanvix_env_init(environ as *const *const c_char);
     }

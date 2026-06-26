@@ -155,6 +155,8 @@ extern size_t wcstombs(char *restrict dst, const wchar_t *restrict src, size_t n
  * Temporary Files
  *==================================================================================================*/
 
+extern char *mkdtemp(char *template);
+extern int mkostemp(char *template, int flag);
 extern int mkstemp(char *template);
 
 /*==================================================================================================

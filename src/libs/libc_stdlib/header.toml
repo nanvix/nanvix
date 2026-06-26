@@ -138,7 +138,7 @@ functions = ["mblen", "mbtowc", "mbstowcs", "wctomb", "wcstombs"]
 
 [[sections]]
 title = "Temporary Files"
-functions = ["mkstemp"]
+functions = ["mkdtemp", "mkostemp", "mkstemp"]
 
 [[sections]]
 title = "Path Utilities"
@@ -181,5 +181,7 @@ wcstombs = '''
 extern size_t wcstombs(char *restrict dst, const wchar_t *restrict src, size_t n);'''
 mkstemp = '''
 extern int mkstemp(char *template);'''
+mkostemp = '''
+extern int mkostemp(char *template, int flag);'''
 realpath = '''
 extern char *realpath(const char *restrict path, char *restrict resolved_path);'''
