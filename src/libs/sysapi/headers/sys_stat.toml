@@ -80,7 +80,7 @@ text = '''
 
 [[sections]]
 title = "File Status"
-functions = ["stat", "fstat", "lstat", "mkdir", "mkdirat", "umask", "fchmodat", "lchmod", "futimens", "utimensat", "chmod", "fchmod"]
+functions = ["stat", "fstat", "lstat", "mkdir", "mkdirat", "umask", "fchmodat", "lchmod", "futimens", "utimensat", "chmod", "fchmod", "mknod"]
 
 [overrides]
 umask = '''

@@ -21,7 +21,10 @@ use ::sysapi::{
         c_int,
     },
     sys_stat,
-    sys_types::mode_t,
+    sys_types::{
+        dev_t,
+        mode_t,
+    },
     time::timespec,
 };
 use ::syscall::sys::stat;
@@ -386,6 +389,41 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
 pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/454
     ::syslog::debug!("truncate(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
+}
+
+///
+/// # Description
+///
+/// Creates a filesystem node (regular file, device special file, FIFO, or socket) named `path`.
+/// Nanvix does not support creating special files through this interface, so the call always fails.
+///
+/// # Parameters
+///
+/// - `path`: Pathname of the node to create.
+/// - `mode`: File type and permission bits of the new node.
+/// - `dev`: Device the new node refers to (used only for device special files).
+///
+/// # Returns
+///
+/// The `mknod()` function always returns `-1` and sets `errno` to `ENOSYS` because the operation is
+/// not supported on Nanvix.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `path` points to a valid null-terminated C string.
+///
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+#[trace_syscall]
+pub unsafe extern "C" fn mknod(path: *const c_char, mode: mode_t, dev: dev_t) -> c_int {
+    // Nanvix does not support creating special files; the arguments are unused.
+    let _ = (path, mode, dev);
+    ::syslog::debug!("mknod(): not supported");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
 }

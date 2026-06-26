@@ -1,0 +1,47 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for grp.h.
+
+file = "grp.h"
+brief = "Group database."
+description = '''
+The `group` layout mirrors the Rust definition in the sysapi crate (grp.rs).'''
+includes = ["sys/types.h"]
+guard = "_NANVIX_GRP_H"
+scan_crates = ["posix"]
+content_order = [
+    "raw:0",
+    "section:0",
+]
+
+[[raw_sections]]
+title = ""
+text = '''
+/** @brief Group database entry. */
+struct group {
+    char *gr_name;    /**< Group name.                       */
+    char *gr_passwd;  /**< Encrypted password.               */
+    gid_t gr_gid;     /**< Group ID.                         */
+    char **gr_mem;    /**< Null-terminated array of members. */
+};'''
+
+[[sections]]
+title = ""
+functions = ["getgrgid", "getgrnam", "getgrouplist", "getgrent", "setgrent", "endgrent", "initgroups"]
+
+[overrides]
+getgrgid = '''
+extern struct group *getgrgid(gid_t gid);'''
+getgrnam = '''
+extern struct group *getgrnam(const char *name);'''
+getgrouplist = '''
+extern int getgrouplist(const char *user, gid_t group, gid_t *groups, int *ngroups);'''
+getgrent = '''
+extern struct group *getgrent(void);'''
+setgrent = '''
+extern void setgrent(void);'''
+endgrent = '''
+extern void endgrent(void);'''
+initgroups = '''
+extern int initgroups(const char *user, gid_t group);'''

@@ -49,8 +49,10 @@ static inline uint32_t ntohl(uint32_t __netlong)
 
 [[sections]]
 title = "Address Conversion"
-functions = ["inet_addr", "inet_ntoa", "inet_ntop", "inet_pton"]
+functions = ["inet_addr", "inet_aton", "inet_ntoa", "inet_ntop", "inet_pton"]
 
 [overrides]
+inet_aton = '''
+extern int inet_aton(const char *cp, struct in_addr *inp);'''
 inet_ntoa = '''
 extern char *inet_ntoa(struct in_addr in);'''

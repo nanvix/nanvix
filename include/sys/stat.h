@@ -101,6 +101,7 @@ extern int futimens(int fd, const struct timespec times[2]);
 extern int utimensat(int dirfd, const char *pathname, const struct timespec times[2], int flags);
 extern int chmod(const char *path, mode_t mode);
 extern int fchmod(int fd, mode_t mode);
+extern int mknod(const char *path, mode_t mode, dev_t dev);
 
 #ifdef __cplusplus
 }
