@@ -54,6 +54,11 @@ When modifying or generating code, keep platform differences in mind:
 - Do not modify unrelated code paths or tests.
 - Update documentation when behavior or interfaces change.
 - Prefer existing project tooling and scripts over ad-hoc commands.
+- Never stage or commit changes unless the user explicitly asks. Leave edits in the working
+  tree for review.
+- When the user does ask to commit, follow the commit-message convention in
+  [CONTRIBUTING.md](../CONTRIBUTING.md) (`[module] (B|E|F|W): Subject`, title at most 50
+  characters) and never bypass git hooks (no `--no-verify`).
 
 ## Validation
 
