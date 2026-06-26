@@ -26,6 +26,8 @@ or language-specific conventions.
 - For APIs, include sections as applicable: `# Description`, `# Parameters`, `# Returns`, `# Errors`.
 - For unsafe APIs, include a `# Safety` section describing invariants.
 - `TODO` and `FIXME` comments should reference an issue (for example: `TODO (#1234): ...`).
+- In source code, restrict issue/PR/task references to `TODO`/`FIXME` comments only (e.g., `TODO (#1234): ...`).
+- Avoid issue numbers in other code/doc comments and in commit messages.
 - Prefer comments that explain *why*.
 - End comments with a period.
 
