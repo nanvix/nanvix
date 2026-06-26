@@ -17,9 +17,9 @@ use crate::ipc::{
 ///
 /// # Description
 ///
-/// Represents a data chunk transfer between a user process and the kernel (linuxd). This structure
-/// pairs the fixed-size [`DataChunkHeader`] with a variable-length data buffer that holds the
-/// actual payload bytes.
+/// Represents a contiguous bulk transfer between UserVM and linuxd. This structure pairs the
+/// fixed-size [`DataChunkHeader`] with a variable-length data buffer that holds the actual payload
+/// bytes.
 ///
 /// # Notes
 ///

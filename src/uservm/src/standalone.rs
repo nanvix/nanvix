@@ -1088,7 +1088,8 @@ async fn handle_read_request(
     trace!("standalone io_handler: handling ReadRequest (fd={fd}, tid={tid:?})");
 
     // Wait for the pull-header bulk frame. The kernel emits this when the guest calls
-    // ipc::pull(). The header contains the guest buffer address and maximum byte count.
+    // ipc::pull(). The header carries an opaque bulk location and maximum byte count; the location
+    // is a guest buffer address on legacy paths or a UserVM transfer id for scatter/gather pulls.
     let pull_header: DataChunkHeader = match vm_stdout_rx.recv().await {
         Some(IkcFrame::Bulk(bulk)) => *bulk.header(),
         other => {

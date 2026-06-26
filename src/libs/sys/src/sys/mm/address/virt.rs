@@ -57,6 +57,35 @@ impl VirtualAddress {
     ///
     /// # Description
     ///
+    /// Converts a pointer into a [`VirtualAddress`], validating that it fits the 32-bit guest/host
+    /// wire format used to locate the referenced bytes over the vmbus.
+    ///
+    /// # Parameters
+    ///
+    /// - `ptr`: Pointer to convert.
+    /// - `reason`: Human-readable reason carried by the returned error if the pointer does not fit
+    ///   the guest/host wire format.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the [`VirtualAddress`] is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the pointer does not fit the 32-bit guest/host address
+    /// width.
+    ///
+    pub fn try_from_ptr<T>(ptr: *const T, reason: &'static str) -> Result<Self, Error> {
+        let addr: usize = ptr as usize;
+        if u32::try_from(addr).is_err() {
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+        Ok(VirtualAddress::new(addr))
+    }
+
+    ///
+    /// # Description
+    ///
     /// Aligns the target [`VirtualAddress`] to the provided `alignment`. If the address is already
     /// aligned, it is returned as is.
     ///

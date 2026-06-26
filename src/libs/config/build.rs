@@ -166,6 +166,12 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     constants.push_str(&format!("pub const IKC_POLL_BATCH_SIZE: usize = {val};\n"));
 
     let val: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "max_slab_size"),
+        "max_slab_size",
+    );
+    constants.push_str(&format!("pub const MAX_SLAB_SIZE: usize = {val};\n"));
+
+    let val: usize = parse_hex_or_decimal_usize(
         required_key(&kernel_config_toml, "debug_buffer_size"),
         "debug_buffer_size",
     );
@@ -262,6 +268,17 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         "max_processes ({}) must not exceed u8::MAX ({})",
         max_processes,
         u8::MAX,
+    );
+
+    // max_slab_size must be a power of two so it lines up with the kernel heap's slab tiers.
+    let max_slab_size: usize = parse_hex_or_decimal_usize(
+        required_key(&kernel_config_toml, "max_slab_size"),
+        "max_slab_size",
+    );
+    assert!(
+        max_slab_size.is_power_of_two(),
+        "max_slab_size ({}) must be a power of two",
+        max_slab_size,
     );
 
     // Write the generated file.

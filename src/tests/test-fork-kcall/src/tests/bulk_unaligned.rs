@@ -15,13 +15,12 @@
 //!    to the parent and child, and verifies the received bytes against a known pattern.
 //!
 //! 2. **Kernel-peer bulk transfer** (`push()`/`pull()` with [`ProcessIdentifier::KERNEL`]). This
-//!    path hands the buffer to the VMM as a single guest-physical address and lets it read/write
-//!    `data_len` **physically contiguous** bytes from there. Because a user buffer is only
-//!    *virtually* contiguous, a buffer that crosses a page boundary would make the VMM touch an
-//!    unrelated physical frame, so the kernel stages such a buffer through a physically-contiguous
-//!    bounce page before the transfer. [`test_kernel_bulk_push_page_crossing`] pushes a
-//!    page-crossing buffer to the kernel and confirms the call now succeeds — it was previously
-//!    rejected with an `InvalidArgument` error because only the first page was translated.
+//!    path hands the buffer to the VMM as a scatter/gather list of guest-physical segments.
+//!    Because a user buffer is only *virtually* contiguous, a buffer that crosses a page boundary
+//!    spans multiple physical frames, so the kernel describes each physically-contiguous run as
+//!    its own segment. [`test_kernel_bulk_push_page_crossing`] pushes a page-crossing buffer to
+//!    the kernel and confirms the call succeeds — it was previously rejected with an
+//!    `InvalidArgument` error because only the first page was translated.
 //!
 //! `push()` does not wait for a reply, so the kernel-peer test is deterministic and does not block
 //! even in standalone deployments where no Linux daemon completes the transfer.
@@ -178,12 +177,13 @@ fn assert_straddles_page(offset: usize, len: usize) {
 
 /// Verifies that a page-crossing buffer is accepted on the kernel-peer bulk transfer path.
 ///
-/// A `push()` whose peer is [`ProcessIdentifier::KERNEL`] is serviced via the vmbus data chunk
-/// transfer, which hands the VMM a single guest-physical address. A buffer that crosses a page
-/// boundary is only *virtually* contiguous, so the kernel stages it through a physically-contiguous
-/// bounce page before handing it to the VMM. On the unfixed kernel the buffer was rejected with an
+/// A `push()` whose peer is [`ProcessIdentifier::KERNEL`] is serviced via the vmbus scatter/gather
+/// data chunk transfer, which hands the VMM a list of guest-physical segments. A buffer that
+/// crosses a page boundary is only *virtually* contiguous, so the kernel describes it as one
+/// segment per physically-contiguous run. On the unfixed kernel the buffer was rejected with an
 /// `InvalidArgument` error because only its first page was translated, so this call is the
-/// regression trigger: it fails on the unfixed kernel and succeeds once the bounce page is staged.
+/// regression trigger: it fails on the unfixed kernel and succeeds once the buffer is described
+/// as scatter/gather segments.
 ///
 /// `pull()` is intentionally not exercised here: it would block waiting for a completion that no
 /// Linux daemon supplies in this standalone test. `push()` does not wait, so it stays
@@ -193,21 +193,21 @@ fn test_kernel_bulk_push_page_crossing() -> Result<(), Error> {
     let buffer: &mut [u8] = unsafe { arena_region(ptr::addr_of_mut!(SRC_ARENA), SRC_OFFSET) };
 
     // Fill the page-straddling buffer with a recognizable pattern and confirm it really does cross
-    // a page boundary — the exact shape the kernel-peer bulk path must stage through a bounce page.
+    // a page boundary — the exact shape the kernel-peer bulk path maps to scatter/gather segments.
     for (i, byte) in buffer.iter_mut().enumerate() {
         *byte = pattern_byte(i);
     }
     assert_straddles_page(SRC_OFFSET, PAYLOAD_LEN);
 
     // push(): writing a page-crossing buffer to the kernel must succeed. On the unfixed kernel this
-    // returns InvalidArgument (the VMM could translate only the first page); with the bounce-page
-    // staging in place it must be accepted and complete without blocking.
+    // returns InvalidArgument (the VMM could translate only the first page); with scatter/gather
+    // segment staging in place it must be accepted and complete without blocking.
     let push_result: Result<(), Error> =
         ipc::__kcall_push(ProcessIdentifier::KERNEL, ThreadIdentifier::KERNEL, buffer);
     assert!(
         push_result.is_ok(),
-        "push() to the kernel with a page-crossing buffer must succeed once it is staged through \
-         a bounce page (got {push_result:?})"
+        "push() to the kernel with a page-crossing buffer must succeed once it is described as \
+         scatter/gather segments (got {push_result:?})"
     );
 
     Ok(())

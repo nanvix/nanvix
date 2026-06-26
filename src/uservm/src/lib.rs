@@ -103,19 +103,34 @@ use ::log::{
 #[cfg(feature = "profile-time")]
 use ::std::time::Instant;
 use ::std::{
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
     fs::File,
     io::Write,
     sync::Arc,
     time::Duration,
 };
-use ::sys::ipc::{
-    DataChunk,
-    DataChunkHeader,
-    IkcFrame,
-    Message,
-    MessageReceiver,
-    MessageSender,
-    MessageType,
+use ::sys::{
+    ipc::{
+        DataChunk,
+        DataChunkHeader,
+        GuestSgBulkHeader,
+        GuestSgBulkKind,
+        GuestSgSegment,
+        HostBulkTransferHeader,
+        IkcFrame,
+        Message,
+        MessageReceiver,
+        MessageSender,
+        MessageType,
+        SG_BULK_MAX_BYTES,
+        SG_BULK_MAX_SEGMENTS,
+        VmBusMessage,
+        VmBusMessageKind,
+    },
+    mm::Address,
 };
 use ::tokio::{
     sync::{
@@ -168,6 +183,59 @@ pub const CHANNEL_CAPACITY: usize = 1024;
 /// `nanvixd` hung with no stdout and no exit (the rare standalone interactive boot/teardown wedge).
 ///
 const TEARDOWN_JOIN_GRACE: Duration = Duration::from_secs(5);
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+#[derive(Clone)]
+struct SgSegmentRange {
+    data_gpa: u32,
+    data_len: u32,
+}
+
+struct PendingSgPull {
+    total_len: usize,
+    segments: Vec<SgSegmentRange>,
+}
+
+#[derive(Default)]
+struct SgBulkRegistry {
+    next_transfer_id: u32,
+    pending: BTreeMap<u32, PendingSgPull>,
+}
+
+impl SgBulkRegistry {
+    fn insert(&mut self, pending: PendingSgPull, first_valid_transfer_id: u32) -> Result<u32> {
+        let first_valid_transfer_id: u32 = first_valid_transfer_id.max(1);
+        let mut transfer_id: u32 = if self.next_transfer_id < first_valid_transfer_id
+            || self.next_transfer_id == u32::MAX
+        {
+            first_valid_transfer_id
+        } else {
+            self.next_transfer_id + 1
+        };
+
+        for _ in first_valid_transfer_id..=u32::MAX {
+            if !self.pending.contains_key(&transfer_id) {
+                self.next_transfer_id = transfer_id;
+                self.pending.insert(transfer_id, pending);
+                return Ok(transfer_id);
+            }
+            transfer_id = if transfer_id == u32::MAX {
+                first_valid_transfer_id
+            } else {
+                transfer_id + 1
+            };
+        }
+
+        anyhow::bail!("scatter/gather transfer id space exhausted")
+    }
+
+    fn remove(&mut self, transfer_id: u32) -> Option<PendingSgPull> {
+        self.pending.remove(&transfer_id)
+    }
+}
 
 //==================================================================================================
 // UserVmArgs
@@ -285,16 +353,24 @@ impl UserVm {
             },
         };
 
+        let sg_bulk_registry: Arc<Mutex<SgBulkRegistry>> =
+            Arc::new(Mutex::new(SgBulkRegistry::default()));
+
         // Move the stdout sender out of args so no extra clone keeps the
         // data_rx channel alive after the VMM thread finishes.
         // Output function used for emulating I/O port writes.
-        let vmm_stdout_fn: Box<StdoutFn> = output_fn(args.vcpu_thread_stdout_tx);
+        let vmm_stdout_fn: Box<StdoutFn> =
+            output_fn(args.vcpu_thread_stdout_tx, sg_bulk_registry.clone());
 
         // Input function used for emulating I/O port reads.
         let ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool> =
             std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let vmm_stdin_fn: Box<StdinFn> =
-            build_input_fn(vcpu_thread_stdin_rx, args.counters.clone(), ikc_pending.clone());
+        let vmm_stdin_fn: Box<StdinFn> = build_input_fn(
+            vcpu_thread_stdin_rx,
+            args.counters.clone(),
+            ikc_pending.clone(),
+            sg_bulk_registry,
+        );
 
         #[cfg(feature = "profile-time")]
         #[allow(clippy::cast_possible_truncation)]
@@ -587,6 +663,153 @@ fn add_credit_fn(
     })
 }
 
+struct ValidatedSgBulk {
+    source_pid: ::sys::pm::ProcessIdentifier,
+    source_tid: ::sys::pm::ThreadIdentifier,
+    destination_pid: ::sys::pm::ProcessIdentifier,
+    destination_tid: ::sys::pm::ThreadIdentifier,
+    kind: GuestSgBulkKind,
+    total_len: usize,
+    segments: Vec<SgSegmentRange>,
+}
+
+fn validate_guest_range(vmem: &VirtualMemory, addr: u64, len: usize) -> Result<()> {
+    let addr: usize = usize::try_from(addr).map_err(|e| {
+        let reason: String = format!("guest address does not fit usize: {e}");
+        error!("{reason}");
+        anyhow::Error::msg(reason)
+    })?;
+    match addr.checked_add(len) {
+        Some(end) if end <= vmem.get_size() => Ok(()),
+        _ => {
+            let reason: String =
+                format!("invalid guest physical range (addr={addr:#x}, len={len:#x})");
+            error!("{reason}");
+            anyhow::bail!(reason)
+        },
+    }
+}
+
+fn read_guest_sg_segment(vmem: &VirtualMemory, addr: u64) -> Result<GuestSgSegment> {
+    validate_guest_range(vmem, addr, GuestSgSegment::SIZE)?;
+    let mut bytes: [u8; GuestSgSegment::SIZE] = [0u8; GuestSgSegment::SIZE];
+    vmem.read_bytes(addr, &mut bytes)?;
+    GuestSgSegment::try_from_bytes(bytes).map_err(|e| {
+        let reason: String = format!("failed to parse scatter/gather segment: {e:?}");
+        error!("{reason}");
+        anyhow::Error::msg(reason)
+    })
+}
+
+fn read_guest_sg_header(vmem: &VirtualMemory, addr: u64) -> Result<GuestSgBulkHeader> {
+    validate_guest_range(vmem, addr, GuestSgBulkHeader::SIZE)?;
+    let mut bytes: [u8; GuestSgBulkHeader::SIZE] = [0u8; GuestSgBulkHeader::SIZE];
+    vmem.read_bytes(addr, &mut bytes)?;
+    GuestSgBulkHeader::try_from_bytes(bytes).map_err(|e| {
+        let reason: String = format!("failed to parse scatter/gather header: {e:?}");
+        error!("{reason}");
+        anyhow::Error::msg(reason)
+    })
+}
+
+fn parse_guest_sg_bulk(vmem: &VirtualMemory, header_addr: u64) -> Result<ValidatedSgBulk> {
+    let header: GuestSgBulkHeader = read_guest_sg_header(vmem, header_addr)?;
+    let kind: GuestSgBulkKind = header.kind().map_err(|e| {
+        let reason: String = format!("invalid scatter/gather transfer kind: {e:?}");
+        error!("{reason}");
+        anyhow::Error::msg(reason)
+    })?;
+    let segment_count: usize = header.segment_count().get() as usize;
+    let total_len: usize = header.total_len() as usize;
+
+    if total_len == 0 || total_len > SG_BULK_MAX_BYTES {
+        let reason: String = format!("invalid scatter/gather length (len={total_len})");
+        error!("{reason}");
+        anyhow::bail!(reason)
+    }
+    if segment_count == 0 || segment_count > SG_BULK_MAX_SEGMENTS as usize {
+        let reason: String =
+            format!("invalid scatter/gather segment count (count={segment_count})");
+        error!("{reason}");
+        anyhow::bail!(reason)
+    }
+
+    let mut segments: Vec<SgSegmentRange> = Vec::with_capacity(segment_count);
+    let mut seen_descriptors: BTreeSet<u32> = BTreeSet::new();
+    let mut cumulative_len: usize = 0;
+    let mut segment: GuestSgSegment = header.first();
+
+    for index in 0..segment_count {
+        let data_len: usize = segment.data_len() as usize;
+        if data_len == 0 {
+            let reason: String = format!("zero-length scatter/gather segment (index={index})");
+            error!("{reason}");
+            anyhow::bail!(reason)
+        }
+        cumulative_len = cumulative_len.checked_add(data_len).ok_or_else(|| {
+            let reason: String = "scatter/gather cumulative length overflow".to_string();
+            error!("{reason}");
+            anyhow::Error::msg(reason)
+        })?;
+        if cumulative_len > total_len || cumulative_len > SG_BULK_MAX_BYTES {
+            let reason: String =
+                format!("scatter/gather segment lengths exceed declared length (index={index})");
+            error!("{reason}");
+            anyhow::bail!(reason)
+        }
+        validate_guest_range(vmem, segment.data_gpa() as u64, data_len)?;
+        segments.push(SgSegmentRange {
+            data_gpa: segment.data_gpa(),
+            data_len: segment.data_len(),
+        });
+
+        let next: u32 = u32::try_from(segment.next().into_raw_value()).map_err(|e| {
+            let reason: String =
+                format!("scatter/gather next descriptor address does not fit u32: {e}");
+            error!("{reason}");
+            anyhow::Error::msg(reason)
+        })?;
+        if index + 1 == segment_count {
+            if next != 0 {
+                let reason: String = "scatter/gather chain has extra descriptors".to_string();
+                error!("{reason}");
+                anyhow::bail!(reason)
+            }
+        } else {
+            if next == 0 {
+                let reason: String = "scatter/gather chain ended early".to_string();
+                error!("{reason}");
+                anyhow::bail!(reason)
+            }
+            if !seen_descriptors.insert(next) {
+                let reason: String =
+                    format!("scatter/gather descriptor cycle detected (addr={next:#x})");
+                error!("{reason}");
+                anyhow::bail!(reason)
+            }
+            segment = read_guest_sg_segment(vmem, next as u64)?;
+        }
+    }
+
+    if cumulative_len != total_len {
+        let reason: String = format!(
+            "scatter/gather length mismatch (declared={total_len}, actual={cumulative_len})"
+        );
+        error!("{reason}");
+        anyhow::bail!(reason)
+    }
+
+    Ok(ValidatedSgBulk {
+        source_pid: header.source_pid(),
+        source_tid: header.source_tid(),
+        destination_pid: header.destination_pid(),
+        destination_tid: header.destination_tid(),
+        kind,
+        total_len,
+        segments,
+    })
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -693,10 +916,11 @@ fn is_windows_named_pipe(path: &str) -> bool {
 ///
 /// A boxed closure compatible with the VMM's stdin handler implementation.
 ///
-pub fn build_input_fn(
+fn build_input_fn(
     mut input_queue: Receiver<IkcFrame>,
     counters: MessageCounters,
     ikc_pending: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    sg_bulk_registry: Arc<Mutex<SgBulkRegistry>>,
 ) -> Box<StdinFn> {
     // Input function used for emulating I/O port reads.
     let input = move |guest: &Arc<Mutex<Guest>>,
@@ -704,7 +928,7 @@ pub fn build_input_fn(
                       data,
                       size|
           -> Result<()> {
-        use std::mem;
+        use ::std::mem;
         on_input_function_called(&counters);
 
         // Check for invalid operand size.
@@ -757,14 +981,68 @@ pub fn build_input_fn(
                         let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
                         let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
 
-                        let dest_addr: u64 = bulk.header().data_addr() as u64;
                         let actual_len: usize = bulk.data().len();
-                        trace!(
-                            "input(): writing {actual_len} bulk bytes to guest at {dest_addr:#x}"
-                        );
-                        // Label: uservm::lib::vm_input::vm_write_bytes()
-                        profiler::timestamp_message!(bulk.data_mut(), 0);
-                        locked_vm.write_bytes(dest_addr, bulk.data())?;
+                        let transfer_id: u32 = bulk.header().data_addr();
+                        let pending_pull: Option<PendingSgPull> =
+                            sg_bulk_registry.blocking_lock().remove(transfer_id);
+                        if let Some(pending_pull) = pending_pull {
+                            if actual_len > pending_pull.total_len {
+                                let reason: String = format!(
+                                    "bulk response exceeds pending scatter/gather pull length \
+                                     (actual={actual_len}, max={})",
+                                    pending_pull.total_len
+                                );
+                                error!("{reason}");
+                                anyhow::bail!(reason);
+                            }
+                            trace!(
+                                "input(): scattering {actual_len} bulk bytes to guest \
+                                 (transfer_id={transfer_id})"
+                            );
+                            // Label: uservm::lib::vm_input::vm_write_bytes()
+                            profiler::timestamp_message!(bulk.data_mut(), 0);
+                            let mut copied: usize = 0;
+                            for segment in &pending_pull.segments {
+                                if copied == actual_len {
+                                    break;
+                                }
+                                let segment_len: usize = segment.data_len as usize;
+                                let bytes_to_copy: usize =
+                                    core::cmp::min(segment_len, actual_len - copied);
+                                locked_vm.write_bytes(
+                                    segment.data_gpa as u64,
+                                    &bulk.data()[copied..copied + bytes_to_copy],
+                                )?;
+                                copied += bytes_to_copy;
+                            }
+                        } else {
+                            let dest_addr: u64 = transfer_id as u64;
+                            let guest_size: usize = locked_vm.get_size();
+                            let dest_addr_usize: usize =
+                                usize::try_from(dest_addr).map_err(|e| {
+                                    let reason: String =
+                                        format!("bulk response address does not fit usize: {e}");
+                                    error!("input(): {reason}");
+                                    anyhow::Error::msg(reason)
+                                })?;
+                            if dest_addr_usize >= guest_size {
+                                let reason: String = format!(
+                                    "bulk response references unknown scatter/gather transfer id \
+                                     or invalid legacy address (data_addr={dest_addr:#x}, \
+                                     guest_size={guest_size:#x})"
+                                );
+                                error!("input(): {reason}");
+                                anyhow::bail!(reason);
+                            }
+                            validate_guest_range(&locked_vm, dest_addr, actual_len)?;
+                            trace!(
+                                "input(): writing {actual_len} legacy bulk bytes to guest at \
+                                 {dest_addr:#x}"
+                            );
+                            // Label: uservm::lib::vm_input::vm_write_bytes()
+                            profiler::timestamp_message!(bulk.data_mut(), 0);
+                            locked_vm.write_bytes(dest_addr, bulk.data())?;
+                        }
 
                         // Construct a PullResponse notification message. The kernel's
                         // main loop reads this from the regular message buffer, detects the
@@ -816,8 +1094,7 @@ pub fn build_input_fn(
 ///
 /// Builds an output callback that forwards messages and data chunk transfers emitted by the virtual
 /// machine. The callback inspects the [`VmBusMessage`] to determine whether the guest is
-/// sending a standard IKC message or a data chunk transfer and constructs the appropriate
-/// [`Transfer`] variant.
+/// sending a standard IKC message or a bulk transfer and constructs the appropriate [`IkcFrame`].
 ///
 /// # Parameters
 ///
@@ -828,7 +1105,10 @@ pub fn build_input_fn(
 ///
 /// A boxed closure compatible with the VMM's stdout handler implementation.
 ///
-pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
+fn output_fn(
+    queue: Sender<IkcFrame>,
+    sg_bulk_registry: Arc<Mutex<SgBulkRegistry>>,
+) -> Box<StdoutFn> {
     // On Windows/WHP the closure below runs on the vCPU thread while it holds the WHP partition
     // lock (held across `Emulator::handle_pmio_access()`). Sending directly on the bounded channel
     // there would block the vCPU thread under the lock whenever the asynchronous consumer is
@@ -838,11 +1118,16 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
     let sink: crate::pal::IkcStdoutSink = crate::pal::IkcStdoutSink::new(queue);
 
     // Output function used for emulating I/O port writes.
-    let output =
-        move |vm: &Arc<Mutex<VirtualMemory>>, envelope: &::sys::ipc::VmBusMessage| -> Result<()> {
-            use std::mem;
+    let output = move |vm: &Arc<Mutex<VirtualMemory>>, envelope: &VmBusMessage| -> Result<()> {
+        use ::std::mem;
 
-            if envelope.is_ikc() {
+        let envelope_kind: VmBusMessageKind = envelope.kind().map_err(|e| {
+            let reason: String = format!("invalid vmbus message kind: {e:?}");
+            error!("output(): {reason}");
+            anyhow::Error::msg(reason)
+        })?;
+        match envelope_kind {
+            VmBusMessageKind::Ikc => {
                 // Standard IKC message: read the message from guest memory.
                 let mut bytes: [u8; mem::size_of::<Message>()] = [0; mem::size_of::<Message>()];
                 trace!("output(): reading message from user VM");
@@ -873,7 +1158,8 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
                 }
 
                 trace!("output(): message forwarded to system VM");
-            } else {
+            },
+            VmBusMessageKind::LegacyBulk => {
                 // Data chunk transfer: `message_addr` points to a DataChunkHeader.
                 let mut header_bytes: [u8; DataChunkHeader::SIZE] = [0; DataChunkHeader::SIZE];
                 vm.blocking_lock()
@@ -905,10 +1191,110 @@ pub fn output_fn(queue: Sender<IkcFrame>) -> Box<StdoutFn> {
                     error!("output(): {reason}");
                     anyhow::bail!(reason);
                 }
-            }
+            },
+            VmBusMessageKind::GuestSgBulk => {
+                let (sg_bulk, first_valid_transfer_id): (ValidatedSgBulk, u32) = {
+                    let locked_vm: MutexGuard<'_, VirtualMemory> = vm.blocking_lock();
+                    let sg_bulk: ValidatedSgBulk =
+                        parse_guest_sg_bulk(&locked_vm, envelope.message_addr() as u64)?;
+                    let first_valid_transfer_id: u32 = u32::try_from(locked_vm.get_size())
+                        .map_err(|e| {
+                            let reason: String =
+                                format!("guest memory size exceeds transfer id space: {e}");
+                            error!("{reason}");
+                            anyhow::Error::msg(reason)
+                        })?;
+                    (sg_bulk, first_valid_transfer_id)
+                };
 
-            Ok(())
-        };
+                match sg_bulk.kind {
+                    GuestSgBulkKind::Push => {
+                        let mut data: Vec<u8> = vec![0u8; sg_bulk.total_len];
+                        {
+                            let locked_vm: MutexGuard<'_, VirtualMemory> = vm.blocking_lock();
+                            let mut offset: usize = 0;
+                            for segment in &sg_bulk.segments {
+                                let segment_len: usize = segment.data_len as usize;
+                                locked_vm.read_bytes(
+                                    segment.data_gpa as u64,
+                                    &mut data[offset..offset + segment_len],
+                                )?;
+                                offset += segment_len;
+                            }
+                        }
+
+                        // Label: uservm::lib::vm_output::send()
+                        profiler::timestamp_message!(&mut data, 0);
+
+                        let header: HostBulkTransferHeader = HostBulkTransferHeader::new(
+                            sg_bulk.source_pid,
+                            sg_bulk.source_tid,
+                            sg_bulk.destination_pid,
+                            sg_bulk.destination_tid,
+                            0,
+                            u32::try_from(sg_bulk.total_len).map_err(|e| {
+                                let reason: String =
+                                    format!("scatter/gather length exceeds u32: {e}");
+                                error!("{reason}");
+                                anyhow::Error::msg(reason)
+                            })?,
+                        );
+                        let bulk: DataChunk = DataChunk::new(header, data);
+
+                        trace!(
+                            "output(): forwarding scatter/gather push ({} bytes, {} segments)",
+                            sg_bulk.total_len,
+                            sg_bulk.segments.len()
+                        );
+                        if let Err(e) = sink.send(IkcFrame::Bulk(bulk)) {
+                            let reason: String =
+                                format!("failed to send scatter/gather transfer: {e:?}");
+                            error!("output(): {reason}");
+                            anyhow::bail!(reason);
+                        }
+                    },
+                    GuestSgBulkKind::Pull => {
+                        let pending: PendingSgPull = PendingSgPull {
+                            total_len: sg_bulk.total_len,
+                            segments: sg_bulk.segments,
+                        };
+                        let transfer_id: u32 = sg_bulk_registry
+                            .blocking_lock()
+                            .insert(pending, first_valid_transfer_id)?;
+                        let header: HostBulkTransferHeader = HostBulkTransferHeader::new(
+                            sg_bulk.source_pid,
+                            sg_bulk.source_tid,
+                            sg_bulk.destination_pid,
+                            sg_bulk.destination_tid,
+                            transfer_id,
+                            u32::try_from(sg_bulk.total_len).map_err(|e| {
+                                let reason: String =
+                                    format!("scatter/gather length exceeds u32: {e}");
+                                error!("{reason}");
+                                anyhow::Error::msg(reason)
+                            })?,
+                        );
+                        let bulk: DataChunk = DataChunk::new(header, Vec::new());
+
+                        trace!(
+                            "output(): forwarding scatter/gather pull request \
+                             (transfer_id={transfer_id}, len={})",
+                            sg_bulk.total_len
+                        );
+                        if let Err(e) = sink.send(IkcFrame::Bulk(bulk)) {
+                            sg_bulk_registry.blocking_lock().remove(transfer_id);
+                            let reason: String =
+                                format!("failed to send scatter/gather pull request: {e:?}");
+                            error!("output(): {reason}");
+                            anyhow::bail!(reason);
+                        }
+                    },
+                }
+            },
+        }
+
+        Ok(())
+    };
 
     Box::new(output)
 }

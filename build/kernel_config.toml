@@ -83,6 +83,19 @@ ipc_message_size = 64
 ikc_poll_batch_size = 8
 
 #==================================================================================================
+# Kernel Heap
+#==================================================================================================
+
+# Maximum allocation size (in bytes) served by the kernel heap's slab allocator.
+# Allocations whose size or alignment exceed this value are rejected. Components outside the kernel
+# (such as the scatter/gather IKC limits in the `sys` crate) size their buffers against this budget.
+# Constraints:
+# - Must be a power of two.
+# - Must match the largest slab tier in `src/kernel/src/mm/kheap.rs` (currently 512). The
+#   compile-time assertion in that module fails the build if the two ever diverge.
+max_slab_size = 512
+
+#==================================================================================================
 # Thread Limits
 #==================================================================================================
 

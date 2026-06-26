@@ -93,7 +93,13 @@ async fn forward_bulk_to_system_vm(
     frame_type: u8,
 ) -> Result<()> {
     // Label: uservm::io_thread::system_vm::write()
-    profiler::timestamp_message!(bulk.data_mut(), 0);
+    // Scatter/gather pull requests forward an empty payload (the data is filled in by the
+    // response that arrives later), so there is nothing to timestamp. The timestamp macro
+    // indexes byte 0 of the payload as its step header, which would panic on an empty buffer
+    // when message timestamping is enabled. Skip injection when there is no payload to carry it.
+    if !bulk.data().is_empty() {
+        profiler::timestamp_message!(bulk.data_mut(), 0);
+    }
     let payload: Vec<u8> = bulk.to_bytes();
     let len_prefix: [u8; BULK_TRANSFER_LENGTH_PREFIX_SIZE] =
         u32::to_le_bytes(u32::try_from(payload.len()).map_err(|e| {

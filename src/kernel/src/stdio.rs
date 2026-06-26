@@ -20,10 +20,18 @@ use ::sys::{
         ErrorCode,
     },
     ipc::{
-        DataChunkHeader,
+        GuestSgBulkHeader,
+        GuestSgBulkKind,
+        GuestSgSegment,
         Message,
         MessageType,
+        SegmentCount,
         VmBusMessage,
+        VmBusMessageKind,
+    },
+    mm::{
+        Address,
+        VirtualAddress,
     },
     pm::{
         ProcessIdentifier,
@@ -57,10 +65,13 @@ pub fn write(message: Message) -> Result<(), Error> {
     }
 
     let bytes: [u8; mem::size_of::<Message>()] = message.to_bytes();
+    let message_addr: u32 =
+        VirtualAddress::try_from_ptr(bytes.as_ptr(), "message address exceeds u32")?
+            .into_raw_value() as u32;
 
     // Build vmbus message wrapping the message address.
     let vmbus_msg: VmBusMessage =
-        VmBusMessage::new(mem::size_of::<Message>() as u32, true, &bytes as *const u8 as u32);
+        VmBusMessage::new(mem::size_of::<Message>() as u32, VmBusMessageKind::Ikc, message_addr);
 
     // Write vmbus message to the kernel's standard output.
     // SAFETY: The standard output is present, initialized and thread-safe to write.
@@ -107,8 +118,11 @@ pub fn read() -> Result<Option<Message>, Error> {
     }
 
     // Build vmbus message wrapping the message buffer address.
+    let message_addr: u32 =
+        VirtualAddress::try_from_ptr(message.as_mut_ptr(), "message buffer address exceeds u32")?
+            .into_raw_value() as u32;
     let vmbus_msg: VmBusMessage =
-        VmBusMessage::new(NBYTES as u32, true, &mut message as *mut u8 as u32);
+        VmBusMessage::new(NBYTES as u32, VmBusMessageKind::Ikc, message_addr);
 
     // Read message from the kernel's standard input via the vmbus message.
     // SAFETY: The standard input is present, initialized and thread-safe to read.
@@ -151,8 +165,8 @@ pub fn read() -> Result<Option<Message>, Error> {
 /// # Description
 ///
 /// Writes a data chunk transfer envelope to the kernel's standard output. This sends the
-/// [`DataChunkHeader`] metadata to the VMM via the vmbus, which then reads the bulk payload
-/// directly from guest memory. This function is only available for the microvm machine type.
+/// [`GuestSgBulkHeader`] metadata to the VMM via the vmbus. This function is only available for
+/// the microvm machine type.
 ///
 /// # Parameters
 ///
@@ -160,7 +174,9 @@ pub fn read() -> Result<Option<Message>, Error> {
 /// - `source_tid`: Thread identifier of the source (sender).
 /// - `destination_pid`: Process identifier of the destination (receiver).
 /// - `destination_tid`: Thread identifier of the destination (receiver).
-/// - `buffer_addr`: Guest physical address of the bulk data buffer.
+/// - `kind`: Type of scatter/gather transfer.
+/// - `segments`: Scatter/gather segment list. The first segment is embedded in the header and the
+///   remaining segments are chained through guest memory addresses.
 /// - `data_len`: Number of bytes in the bulk payload.
 ///
 /// # Returns
@@ -172,23 +188,47 @@ pub fn write_bulk(
     source_tid: ThreadIdentifier,
     destination_pid: ProcessIdentifier,
     destination_tid: ThreadIdentifier,
-    buffer_addr: u32,
+    kind: GuestSgBulkKind,
+    segments: &[GuestSgSegment],
     data_len: u32,
 ) -> Result<(), Error> {
-    // Build data chunk transfer header in the caller's stack.
-    let header: DataChunkHeader = DataChunkHeader::new(
-        source_pid,
-        source_tid,
-        destination_pid,
-        destination_tid,
-        buffer_addr,
-        data_len,
-    );
+    if segments.is_empty() {
+        let reason: &str = "scatter/gather transfer has no segments";
+        error!("{reason} (source_pid={source_pid:?}, source_tid={source_tid:?})");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+    let segment_count: SegmentCount = SegmentCount::try_from(segments.len()).inspect_err(|_| {
+        error!(
+            "too many scatter/gather segments (source_pid={source_pid:?}, \
+             source_tid={source_tid:?}, segments={})",
+            segments.len()
+        );
+    })?;
 
-    // Build a vmbus message referencing the header. The vmbus message signals a data chunk transfer by
-    // setting `is_ikc` to `false` and `size` to the bulk payload length.
+    // Build scatter/gather transfer header in the caller's stack. The descriptor chain (the `next`
+    // links between segments) is wired up by the ipc subsystem that built `segments`.
+    let header: GuestSgBulkHeader = GuestSgBulkHeader::new(
+        (source_pid, source_tid),
+        (destination_pid, destination_tid),
+        kind,
+        segment_count,
+        data_len,
+        segments[0],
+    );
+    let reason: &str = "scatter/gather header address exceeds u32";
+    let header_addr: u32 = VirtualAddress::try_from_ptr(&header as *const GuestSgBulkHeader, reason)
+        .inspect_err(|_| {
+            let header_addr: usize = &header as *const GuestSgBulkHeader as usize;
+            error!(
+                "{reason} (source_pid={source_pid:?}, source_tid={source_tid:?}, \
+                 header_addr={header_addr:#x})"
+            );
+        })?
+        .into_raw_value() as u32;
+
+    // Build a vmbus message referencing the scatter/gather header.
     let vmbus_msg: VmBusMessage =
-        VmBusMessage::new(data_len, false, &header as *const DataChunkHeader as u32);
+        VmBusMessage::new(data_len, VmBusMessageKind::GuestSgBulk, header_addr);
 
     // Write vmbus message to the kernel's standard output.
     // SAFETY: The standard output is present, initialized and thread-safe to write.
