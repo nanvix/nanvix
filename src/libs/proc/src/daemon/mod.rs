@@ -763,28 +763,49 @@ impl ProcessDaemon {
         caller: ProcessIdentifier,
         target: ProcessIdentifier,
     ) -> Result<(), Error> {
-        let caller_identity: Option<&ProcessIdentity> = self
+        let caller_identity: &ProcessIdentity = match self
             .processes
             .get(&caller)
-            .and_then(|record| record.identity.as_ref());
-        let target_identity: Option<&ProcessIdentity> = self
-            .processes
-            .get(&target)
-            .and_then(|record| record.identity.as_ref());
-
-        match (caller_identity, target_identity) {
-            (Some(caller_identity), Some(target_identity))
-                if !caller_identity.can_signal(target_identity) =>
-            {
-                let reason: &str = "signal permission denied";
+            .and_then(|record| record.identity.as_ref())
+        {
+            Some(identity) => identity,
+            None => {
+                let reason: &str = "caller identity not found";
                 ::syslog::error!(
                     "authorize_kill(): {reason} (caller={:?}, target={:?})",
                     caller,
                     target
                 );
-                Err(Error::new(ErrorCode::PermissionDenied, reason))
+                return Err(Error::new(ErrorCode::NoSuchProcess, reason));
             },
-            _ => Ok(()),
+        };
+        let target_identity: &ProcessIdentity = match self
+            .processes
+            .get(&target)
+            .and_then(|record| record.identity.as_ref())
+        {
+            Some(identity) => identity,
+            None => {
+                let reason: &str = "target identity not found";
+                ::syslog::error!(
+                    "authorize_kill(): {reason} (caller={:?}, target={:?})",
+                    caller,
+                    target
+                );
+                return Err(Error::new(ErrorCode::NoSuchProcess, reason));
+            },
+        };
+
+        if caller_identity.can_signal(target_identity) {
+            Ok(())
+        } else {
+            let reason: &str = "signal permission denied";
+            ::syslog::error!(
+                "authorize_kill(): {reason} (caller={:?}, target={:?})",
+                caller,
+                target
+            );
+            Err(Error::new(ErrorCode::PermissionDenied, reason))
         }
     }
 
@@ -1404,5 +1425,139 @@ impl Drop for ProcessDaemon {
         if let Err(e) = ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, false) {
             ::syslog::error!("failed to release process management capabilities (error={:?})", e);
         }
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::core::mem::ManuallyDrop;
+
+    fn process_identity(uid: usize) -> ProcessIdentity {
+        ProcessIdentity::new(UserIdentifier::from(uid), GroupIdentifier::ROOT)
+    }
+
+    fn process_record(identity: Option<ProcessIdentity>) -> ProcessRecord {
+        ProcessRecord {
+            name: String::new(),
+            identity,
+            parent: None,
+            children: Vec::new(),
+            fork_clone_done: false,
+            fork_clone_failed: false,
+            zombie: None,
+        }
+    }
+
+    fn process_daemon(
+        records: &[(ProcessIdentifier, Option<ProcessIdentity>)],
+    ) -> ManuallyDrop<ProcessDaemon> {
+        let mut processes: BTreeMap<ProcessIdentifier, ProcessRecord> = BTreeMap::new();
+        for (pid, identity) in records.iter() {
+            processes.insert(*pid, process_record(identity.clone()));
+        }
+
+        ManuallyDrop::new(ProcessDaemon {
+            processes,
+            init_proc: None,
+            pending_fork_syncs: Vec::new(),
+            pending_execs: Vec::new(),
+            blocked: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn authorize_kill_allows_root_caller() {
+        let caller: ProcessIdentifier = ProcessIdentifier::from(10);
+        let target: ProcessIdentifier = ProcessIdentifier::from(11);
+        let daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (caller, Some(process_identity(0))),
+            (target, Some(process_identity(1000))),
+        ]);
+
+        assert!(daemon.authorize_kill(caller, target).is_ok());
+    }
+
+    #[test]
+    fn authorize_kill_allows_same_user() {
+        let caller: ProcessIdentifier = ProcessIdentifier::from(10);
+        let target: ProcessIdentifier = ProcessIdentifier::from(11);
+        let daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (caller, Some(process_identity(1000))),
+            (target, Some(process_identity(1000))),
+        ]);
+
+        assert!(daemon.authorize_kill(caller, target).is_ok());
+    }
+
+    #[test]
+    fn authorize_kill_rejects_different_user() {
+        let caller: ProcessIdentifier = ProcessIdentifier::from(10);
+        let target: ProcessIdentifier = ProcessIdentifier::from(11);
+        let daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (caller, Some(process_identity(1000))),
+            (target, Some(process_identity(1001))),
+        ]);
+        let error: Error = daemon
+            .authorize_kill(caller, target)
+            .expect_err("different users should not be able to signal each other");
+
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+    }
+
+    #[test]
+    fn authorize_kill_rejects_unknown_caller() {
+        let caller: ProcessIdentifier = ProcessIdentifier::from(10);
+        let target: ProcessIdentifier = ProcessIdentifier::from(11);
+        let daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(target, Some(process_identity(1000)))]);
+        let error: Error = daemon
+            .authorize_kill(caller, target)
+            .expect_err("unknown caller should not be authorized");
+
+        assert_eq!(error.code, ErrorCode::NoSuchProcess);
+    }
+
+    #[test]
+    fn authorize_kill_rejects_unknown_target() {
+        let caller: ProcessIdentifier = ProcessIdentifier::from(10);
+        let target: ProcessIdentifier = ProcessIdentifier::from(11);
+        let daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(caller, Some(process_identity(1000)))]);
+        let error: Error = daemon
+            .authorize_kill(caller, target)
+            .expect_err("unknown target should not be authorized");
+
+        assert_eq!(error.code, ErrorCode::NoSuchProcess);
+    }
+
+    #[test]
+    fn authorize_kill_rejects_missing_caller_identity() {
+        let caller: ProcessIdentifier = ProcessIdentifier::from(10);
+        let target: ProcessIdentifier = ProcessIdentifier::from(11);
+        let daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(caller, None), (target, Some(process_identity(1000)))]);
+        let error: Error = daemon
+            .authorize_kill(caller, target)
+            .expect_err("caller without identity should not be authorized");
+
+        assert_eq!(error.code, ErrorCode::NoSuchProcess);
+    }
+
+    #[test]
+    fn authorize_kill_rejects_missing_target_identity() {
+        let caller: ProcessIdentifier = ProcessIdentifier::from(10);
+        let target: ProcessIdentifier = ProcessIdentifier::from(11);
+        let daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(caller, Some(process_identity(1000))), (target, None)]);
+        let error: Error = daemon
+            .authorize_kill(caller, target)
+            .expect_err("target without identity should not be authorized");
+
+        assert_eq!(error.code, ErrorCode::NoSuchProcess);
     }
 }
