@@ -76,6 +76,10 @@ struct stat {
 #define st_mtime st_mtim.tv_sec
 #define st_ctime st_ctim.tv_sec
 
+/* Special tv_nsec values for utimensat()/futimens(). */
+#define UTIME_NOW ((1L << 30) - 1L)
+#define UTIME_OMIT ((1L << 30) - 2L)
+
 /* File-type test macros. */
 #define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
 #define S_ISCHR(m)  (((m) & S_IFMT) == S_IFCHR)

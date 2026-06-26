@@ -81,6 +81,8 @@ extern long pathconf(const char *path, int name);
 extern char **environ;
 extern off_t lseek(int fd, off_t offset, int whence);
 extern int unlink(const char *path);
+extern int link(const char *oldpath, const char *newpath);
+extern int chroot(const char *path);
 extern int rmdir(const char *path);
 extern long sysconf(int name);'''
 

@@ -34,6 +34,11 @@ extern "C" {
 #define WTERMSIG(status) ((status) & 0x7f)
 #define WIFSTOPPED(status) (((status) & 0xff) == 0x7f)
 #define WSTOPSIG(status) WEXITSTATUS(status)
+/* Non-standard but widely used (glibc/BSD): reports whether the child produced
+ * a core dump. Nanvix never sets the core-dump bit, so WCOREDUMP() is always
+ * false, but the macro lets portable software referencing it compile. */
+#define WCOREFLAG 0x80
+#define WCOREDUMP(status) ((status) & WCOREFLAG)
 
 /*==================================================================================================
  * Functions
