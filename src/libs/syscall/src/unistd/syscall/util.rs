@@ -16,10 +16,9 @@ use ::core::cmp;
 /// # Description
 ///
 /// Computes the number of bytes that can be transferred starting at `ptr` without crossing a page
-/// boundary. The kernel's data chunk transfer path (push/pull) translates only the first page's virtual
-/// address to a guest physical address, so each individual transfer must be contained within a
-/// single physical page. This function ensures that constraint by clamping the transfer size to
-/// the remaining bytes on the current page.
+/// boundary. The kernel's data chunk transfer path can stage page-crossing buffers through a
+/// bounce page, but chunking callers at page boundaries keeps the common path on the direct
+/// single-page transfer.
 ///
 /// # Parameters
 ///
