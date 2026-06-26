@@ -1,0 +1,32 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for fnmatch.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/fnmatch.h.
+
+file = "fnmatch.h"
+brief = "Filename matching."
+description = """
+Declares the filename-matching routine fnmatch() and its flags, implemented by
+the libc_fnmatch Rust crate."""
+includes = []
+guard = "_NANVIX_FNMATCH_H"
+content_order = ["raw:0", "section:0"]
+
+[[raw_sections]]
+title = "Flags"
+text = '''
+#define FNM_NOMATCH 1  /* Value returned on no match. */
+
+#define FNM_PATHNAME (1 << 0) /* No wildcard can ever match '/'. */
+#define FNM_PERIOD   (1 << 2) /* Leading '.' is matched only explicitly. */
+#define FNM_NOESCAPE (1 << 1) /* Backslashes do not quote special chars. */
+#define FNM_CASEFOLD (1 << 4) /* Compare case-insensitively. */
+
+/* Equivalent to FNM_CASEFOLD. */
+#define FNM_IGNORECASE FNM_CASEFOLD'''
+
+[[sections]]
+title = "Filename Matching"
+functions = ["fnmatch"]
