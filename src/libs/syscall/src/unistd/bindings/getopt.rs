@@ -61,6 +61,20 @@ pub static mut optopt: c_int = 0;
 /// Cursor into the current clustered short-option element (internal parser state).
 static mut NEXTCHAR: *const c_char = ::core::ptr::null();
 
+/// Discards the internal short-option cursor shared with [`getopt`].
+///
+/// This supports the GNU `optind == 0` reset convention: a caller that restarts option processing
+/// by zeroing `optind` must also drop any partially consumed clustered short-option element so the
+/// next call begins at a fresh argument. The companion [`getopt_long`](super::getopt_long::getopt_long)
+/// entry point invokes this when it observes the reset request.
+///
+/// # Safety
+///
+/// The global `getopt` state must not be accessed concurrently from another thread.
+pub(crate) unsafe fn reset_short_option_cursor() {
+    unsafe { NEXTCHAR = ::core::ptr::null() };
+}
+
 //==================================================================================================
 // Helpers
 //==================================================================================================

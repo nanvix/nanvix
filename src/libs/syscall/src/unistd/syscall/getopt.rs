@@ -112,6 +112,16 @@ pub unsafe fn getopt(
     argv: *const *mut c_char,
     optstring: *const c_char,
 ) -> c_int {
+    // GNU/glibc reset convention: a caller restarts option processing by setting `optind` to 0.
+    // POSIX initializes `optind` to 1 and never assigns it 0, so the value is reserved to mean
+    // "reinitialize". Honor it by rewinding to the first argument and discarding any partially
+    // consumed clustered short-option element, matching the behavior relied upon by programs such
+    // as BusyBox that re-run option parsing in-process.
+    if state.optind == 0 {
+        state.optind = 1;
+        state.nextchar = ::core::ptr::null();
+    }
+
     // A leading '+' forces POSIX-conforming behavior in otherwise non-conforming environments and
     // has no other effect here; skip it so it is never treated as an option character. When both
     // '+' and ':' lead the string, POSIX requires '+' to appear first.
@@ -300,6 +310,35 @@ mod tests {
         assert_eq!(unsafe { step(&mut state, &args, &optstring) }, opt(b'c'));
         assert_eq!(unsafe { step(&mut state, &args, &optstring) }, -1);
         assert_eq!(state.optind, 2);
+    }
+
+    #[test]
+    fn optind_zero_restarts_option_processing() {
+        let args = Argv::new(&["prog", "-a", "-b"]);
+        let optstring = CString::new("ab").expect("no nul");
+        let mut state = GetoptState::default();
+        // First pass consumes both options and reaches the end.
+        assert_eq!(unsafe { step(&mut state, &args, &optstring) }, opt(b'a'));
+        assert_eq!(unsafe { step(&mut state, &args, &optstring) }, opt(b'b'));
+        assert_eq!(unsafe { step(&mut state, &args, &optstring) }, -1);
+        assert_eq!(state.optind, 3);
+        // Setting optind to 0 (GNU reset convention) restarts parsing from the first argument.
+        state.optind = 0;
+        assert_eq!(unsafe { step(&mut state, &args, &optstring) }, opt(b'a'));
+        assert_eq!(state.optind, 2);
+    }
+
+    #[test]
+    fn optind_zero_clears_clustered_cursor() {
+        let args = Argv::new(&["prog", "-ab"]);
+        let optstring = CString::new("ab").expect("no nul");
+        let mut state = GetoptState::default();
+        // Consume only the first character of the cluster, leaving the cursor mid-element.
+        assert_eq!(unsafe { step(&mut state, &args, &optstring) }, opt(b'a'));
+        // Resetting before the cluster is exhausted must restart at argv[1], not resume at 'b'.
+        state.optind = 0;
+        assert_eq!(unsafe { step(&mut state, &args, &optstring) }, opt(b'a'));
+        assert_eq!(state.optind, 1);
     }
 
     #[test]

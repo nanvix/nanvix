@@ -12,6 +12,7 @@ get and set scheduling parameters. Mirrors the Rust definitions in the sysapi
 crate (sched.rs)."""
 guard = "_NANVIX_SCHED_H"
 scan_crates = ["syscall"]
+includes = ["sys/types.h", "stddef.h"]
 content_order = ["macros", "types:0", "section:0"]
 
 [[macros]]
@@ -39,4 +40,4 @@ struct sched_param {
 
 [[sections]]
 title = "Scheduling"
-functions = ["sched_yield"]
+functions = ["sched_yield", "sched_getaffinity"]

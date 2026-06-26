@@ -1,0 +1,50 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for getopt.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from the syscall crate sources to produce include/getopt.h.
+
+file = "getopt.h"
+brief = "Command-line option parsing (GNU long options)."
+description = '''
+Declares the GNU long-option extensions to getopt(). The base getopt()
+interface and the optarg/optind/opterr/optopt globals are declared in
+<unistd.h>, which this header includes.'''
+includes = ["unistd.h"]
+guard = "_NANVIX_GETOPT_H"
+scan_crates = ["syscall"]
+content_order = ["raw:0", "raw:1", "section:0"]
+
+[[raw_sections]]
+title = "Long Option Type"
+text = '''
+/** @brief Describes one long option for getopt_long(). */
+struct option {
+    const char *name; /**< Long option name, without the leading "--". */
+    int has_arg;      /**< One of no_argument, required_argument, optional_argument. */
+    int *flag;        /**< If non-null, *flag is set to val and 0 is returned. */
+    int val;          /**< Value to return (or store through flag) when matched. */
+};'''
+
+[[raw_sections]]
+title = "Long Option has_arg Values"
+text = '''
+#define no_argument       0
+#define required_argument 1
+#define optional_argument 2'''
+
+[[sections]]
+title = "Long Option Functions"
+functions = [
+    "getopt_long",
+    "getopt_long_only",
+]
+
+[overrides]
+getopt_long = '''
+extern int getopt_long(int argc, char *const argv[], const char *optstring,
+                       const struct option *longopts, int *longindex);'''
+getopt_long_only = '''
+extern int getopt_long_only(int argc, char *const argv[], const char *optstring,
+                            const struct option *longopts, int *longindex);'''

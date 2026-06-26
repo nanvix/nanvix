@@ -15,6 +15,9 @@
  * crate (sched.rs).
  */
 
+#include <sys/types.h>
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -41,6 +44,7 @@ struct sched_param {
  *==================================================================================================*/
 
 extern int sched_yield(void);
+extern int sched_getaffinity(pid_t pid, size_t cpusetsize, void *mask);
 
 #ifdef __cplusplus
 }

@@ -12,7 +12,7 @@ interfaces. Constants mirror the Rust definitions in the sysapi crate
 includes = ["stddef.h", "sys/types.h"]
 guard = "_NANVIX_UNISTD_H"
 scan_crates = ["syscall"]
-content_order = ["raw:0", "raw:1", "section:0", "raw:2", "raw:3", "section:1"]
+content_order = ["raw:0", "raw:1", "section:0", "raw:2", "raw:3", "section:1", "section:2"]
 
 [[raw_sections]]
 title = "Constants"
@@ -103,6 +103,7 @@ extern int fchdir(int fd);
 #define R_OK 4
 extern int access(const char *path, int amode);
 extern unsigned int sleep(unsigned int seconds);
+extern unsigned int alarm(unsigned int seconds);
 extern int usleep(unsigned int usec);
 extern int unlinkat(int dirfd, const char *pathname, int flags);
 extern int isatty(int fd);
@@ -138,6 +139,10 @@ functions = [
 [[sections]]
 title = "Command-Line Option Parsing"
 functions = ["getopt"]
+
+[[sections]]
+title = "Process, Session, and System Operations"
+functions = ["setsid", "getsid", "vfork", "sync", "getgroups", "gethostid", "getlogin_r", "ttyname_r", "getpagesize"]
 
 [overrides]
 getopt = '''
