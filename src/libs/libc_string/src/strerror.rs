@@ -36,6 +36,7 @@ use ::sysapi::{
         ENOSPC,
         ENOSYS,
         ENOTDIR,
+        ENOTSUP,
         ENOTTY,
         ENXIO,
         EOPNOTSUPP,
@@ -112,6 +113,7 @@ pub unsafe extern "C" fn strerror(errnum: c_int) -> *mut c_char {
         ERANGE => b"Numerical result out of range\0",
         ENOSYS => b"Function not implemented\0",
         EOPNOTSUPP => b"Operation not supported\0",
+        ENOTSUP => b"Operation not supported\0",
         _ => b"Unknown error\0",
     };
     msg.as_ptr().cast::<c_char>().cast_mut()
@@ -125,6 +127,7 @@ mod test {
         errno::{
             EINVAL,
             ENOSYS,
+            ENOTSUP,
         },
         ffi::c_char,
     };
@@ -161,6 +164,16 @@ mod test {
         let ret: *mut c_char = unsafe { strerror(ENOSYS) };
         assert!(!ret.is_null());
         assert_eq!(c_str_to_bytes(ret), b"Function not implemented");
+    }
+
+    #[test]
+    fn test_strerror_enotsup() {
+        // ENOTSUP is 134 on Nanvix, distinct from EOPNOTSUPP (95). The VFS
+        // reports ErrorCode::OperationNotSupported (== ENOTSUP) for unsupported
+        // operations such as symlink() in standalone mode.
+        let ret: *mut c_char = unsafe { strerror(ENOTSUP) };
+        assert!(!ret.is_null());
+        assert_eq!(c_str_to_bytes(ret), b"Operation not supported");
     }
 
     #[test]

@@ -79,6 +79,7 @@ mod atoll;
 mod block_header;
 mod bsearch;
 mod calloc;
+mod clearenv;
 mod div_fn;
 pub mod env_table;
 mod exit;
@@ -94,6 +95,7 @@ mod memalign;
 mod mkdtemp;
 mod mkostemp;
 mod mkstemp;
+mod mktemp;
 mod posix_memalign;
 mod putenv;
 mod qsort;
@@ -101,6 +103,7 @@ mod quick_exit;
 mod rand;
 mod realloc;
 mod reallocarray;
+mod realpath;
 mod secure_getenv;
 mod setenv;
 mod strtod;
@@ -140,6 +143,7 @@ pub use atol::atol;
 pub use atoll::atoll;
 pub use bsearch::bsearch;
 pub use calloc::calloc;
+pub use clearenv::clearenv;
 pub use div_fn::{
     div,
     div_t,
@@ -166,6 +170,7 @@ pub use memalign::memalign;
 pub use mkdtemp::mkdtemp;
 pub use mkostemp::mkostemp;
 pub use mkstemp::mkstemp;
+pub use mktemp::mktemp;
 pub use posix_memalign::posix_memalign;
 pub use putenv::putenv;
 pub use qsort::{
@@ -182,6 +187,7 @@ pub use rand::{
 };
 pub use realloc::realloc;
 pub use reallocarray::reallocarray;
+pub use realpath::realpath;
 pub use secure_getenv::secure_getenv;
 pub use setenv::setenv;
 pub use strtod::strtod;

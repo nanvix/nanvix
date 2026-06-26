@@ -213,44 +213,6 @@ pub unsafe extern "C" fn tcsetattr(
 ///
 /// # Description
 ///
-/// Resolves a pathname to an absolute, canonical form, eliminating symbolic links, `.` and `..`
-/// components.
-///
-/// # Parameters
-///
-/// - `path`: Null-terminated input pathname to resolve.
-/// - `resolved_path`: Optional caller-provided buffer where the resolved path would be stored. If
-///   null, a future implementation would allocate a new buffer via the POSIX-specified allocator.
-///
-/// # Returns
-///
-/// On success, returns a pointer to the resolved path (either `resolved_path` or an allocated
-/// buffer). On failure, returns null and sets `errno` to indicate the error.
-///
-/// # Notes
-///
-/// This is a dummy implementation that always fails with `ENOSYS` (function not implemented).
-/// A future implementation should perform path normalization, handle symbolic links (with an
-/// upper bound on link depth to avoid cycles), and ensure the result does not exceed `PATH_MAX`.
-///
-/// # Safety
-///
-/// This function is unsafe because it dereferences raw pointers supplied by foreign callers. It is
-/// safe to call this function if `path` points to a valid, null-terminated C string and
-/// `resolved_path` is either null or points to a writable buffer large enough to hold the
-/// canonical path in a future, fully implemented version.
-///
-#[unsafe(no_mangle)]
-#[trace_libcall]
-pub unsafe extern "C" fn realpath(path: *const c_char, resolved_path: *mut c_char) -> *mut c_char {
-    ::syslog::debug!("realpath(): not implemented");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    core::ptr::null_mut()
-}
-
-///
-/// # Description
-///
 /// Retrieves the value of a configurable system limit or option associated with the
 /// pathname `path`, as identified by `name` (one of the `_PC_*` selectors defined in
 /// `<unistd.h>`).
