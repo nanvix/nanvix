@@ -154,3 +154,39 @@ pub unsafe extern "C" fn getpwuid(uid: uid_t) -> *mut passwd {
 
     entry
 }
+
+//==================================================================================================
+// getpwnam()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Returns the password database entry for the user with the login name `name`. Nanvix is
+/// effectively a single-user system whose only account is `root`, so the lookup ignores `name` and
+/// returns the same statically-allocated [`passwd`] entry produced by [`getpwuid`] for the root
+/// user (UID `0`).
+///
+/// # Parameters
+///
+/// - `name`: The login name to look up. Ignored on Nanvix.
+///
+/// # Returns
+///
+/// A pointer to a statically-allocated [`passwd`] entry describing the `root` user. Per POSIX, the
+/// storage may be overwritten by subsequent calls.
+///
+/// # Safety
+///
+/// This function returns a pointer to static storage that must not be freed by the caller and may
+/// be overwritten by subsequent calls. It is not thread-safe: callers must ensure no other thread
+/// calls `getpwnam()` or `getpwuid()` while the returned pointer is still in use.
+///
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn getpwnam(name: *const c_char) -> *mut passwd {
+    // Nanvix has a single account (`root`, UID 0); the looked-up name is ignored.
+    let _ = name;
+    unsafe { getpwuid(0) }
+}

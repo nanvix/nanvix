@@ -28,6 +28,9 @@ pub mod ffi;
 /// File control operations.
 pub mod fcntl;
 
+/// Group structure.
+pub mod grp;
+
 /// Implementation-defined constants.
 pub mod limits;
 

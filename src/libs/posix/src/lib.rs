@@ -31,6 +31,9 @@ pub mod dummy;
 /// System error numbers.
 pub mod errno;
 
+/// Group database.
+pub mod grp;
+
 /// Virtual environments.
 pub mod venv;
 

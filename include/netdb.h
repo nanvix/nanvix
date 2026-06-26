@@ -93,6 +93,12 @@ struct addrinfo {
 #define EAI_SYSTEM (-11)
 #define EAI_OVERFLOW (-12)
 
+#define HOST_NOT_FOUND 1
+#define TRY_AGAIN 2
+#define NO_RECOVERY 3
+#define NO_DATA 4
+#define NO_ADDRESS NO_DATA
+
 /*==================================================================================================
  * Functions
  *==================================================================================================*/
@@ -106,6 +112,7 @@ extern int getnameinfo(
     socklen_t servlen, int flags);
 extern struct hostent *gethostbyname(const char *name);
 extern struct servent *getservbyname(const char *name, const char *proto);
+extern const char *hstrerror(int err);
 
 /** @brief Error code set by the legacy host-lookup functions. */
 extern int h_errno;

@@ -311,6 +311,39 @@ pub unsafe extern "C" fn gai_strerror(errcode: c_int) -> *const c_char {
 ///
 /// # Description
 ///
+/// Returns a string describing a host-resolution error code, as found in `h_errno`.
+///
+/// # Parameters
+///
+/// - `err`: The error code to describe (`HOST_NOT_FOUND`, `TRY_AGAIN`, `NO_RECOVERY`, `NO_DATA`,
+///   or `0`).
+///
+/// # Returns
+///
+/// Returns a pointer to a static null-terminated string describing the error.
+///
+/// # Safety
+///
+/// This function is unsafe because it returns a pointer to a static string. The returned pointer
+/// must not be freed and is valid for the lifetime of the program.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn hstrerror(err: c_int) -> *const c_char {
+    let message: &::core::ffi::CStr = match err {
+        0 => c"Resolver error 0 (no error)",
+        1 => c"Unknown host",                    // HOST_NOT_FOUND
+        2 => c"Host name lookup failure",        // TRY_AGAIN
+        3 => c"Unknown server error",            // NO_RECOVERY
+        4 => c"No address associated with name", // NO_DATA / NO_ADDRESS
+        _ => c"Unknown resolver error",
+    };
+    message.as_ptr()
+}
+
+///
+/// # Description
+///
 /// Returns a pointer to the location where the error code for network database operations is stored.
 ///
 /// # Returns
