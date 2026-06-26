@@ -12,7 +12,7 @@
  *
  * Declares the dynamic-linking-loader constants, the symbol-information structure,
  * and the dlopen()-family interfaces. The constants and layout mirror the Rust
- * definitions in the posix and syscall crates (dlfcn).
+ * definitions in the libc_dlfcn and syscall crates (dlfcn).
  */
 
 #include <stdint.h>

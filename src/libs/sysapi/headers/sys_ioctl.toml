@@ -11,7 +11,7 @@ ports. In standalone mode the terminal-attribute and window-size requests
 (`TCGETS`/`TCSETS`/`TIOCGWINSZ`/`TIOCSWINSZ`) are served by the vfsd console
 backend; hosted deployments have no guest terminal device and ignore them.'''
 guard = "_NANVIX_SYS_IOCTL_H"
-scan_crates = ["posix"]
+scan_crates = ["libc_sys_ioctl"]
 content_order = ["raw:0", "raw:1", "section:0"]
 
 [[raw_sections]]

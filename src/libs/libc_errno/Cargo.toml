@@ -1,0 +1,25 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "libc_errno"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "POSIX System Error Numbers Library"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+syscall = { workspace = true, features = ["syscall"] }
+
+[features]
+default = []
+# Enables the use of the Rust Standard Library.
+std = []
+
+[lints]
+workspace = true

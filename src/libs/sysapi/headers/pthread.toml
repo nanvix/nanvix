@@ -11,7 +11,7 @@ identifiers are declared in <sys/types.h>; the layouts mirror the Rust
 definitions in the sysapi crate (pthread.rs, sys_types.rs).'''
 includes = ["sched.h", "sys/types.h", "time.h"]
 guard = "_NANVIX_PTHREAD_H"
-scan_crates = ["posix", "syscall"]
+scan_crates = ["libc_pthread", "syscall"]
 content_order = [
     "raw:0",
     "types",
@@ -84,27 +84,77 @@ text = '''
 
 [[sections]]
 title = "Threads"
-functions = ["pthread_create", "pthread_join", "pthread_detach", "pthread_kill", "pthread_exit", "pthread_self", "pthread_equal"]
+functions = [
+    "pthread_create",
+    "pthread_join",
+    "pthread_detach",
+    "pthread_kill",
+    "pthread_exit",
+    "pthread_self",
+    "pthread_equal",
+]
 
 [[sections]]
 title = "Thread Attributes"
-functions = ["pthread_attr_init", "pthread_attr_destroy", "pthread_attr_getdetachstate", "pthread_attr_setdetachstate", "pthread_attr_getstack", "pthread_attr_setstack", "pthread_attr_getstacksize", "pthread_attr_setstacksize", "pthread_attr_getstackaddr", "pthread_attr_setstackaddr", "pthread_getattr_np"]
+functions = [
+    "pthread_attr_init",
+    "pthread_attr_destroy",
+    "pthread_attr_getdetachstate",
+    "pthread_attr_setdetachstate",
+    "pthread_attr_getstack",
+    "pthread_attr_setstack",
+    "pthread_attr_getstacksize",
+    "pthread_attr_setstacksize",
+    "pthread_attr_getstackaddr",
+    "pthread_attr_setstackaddr",
+    "pthread_getattr_np",
+]
 
 [[sections]]
 title = "Mutexes"
-functions = ["pthread_mutex_init", "pthread_mutex_destroy", "pthread_mutex_lock", "pthread_mutex_unlock", "pthread_mutex_trylock", "pthread_mutex_timedlock", "pthread_mutexattr_init", "pthread_mutexattr_destroy"]
+functions = [
+    "pthread_mutex_init",
+    "pthread_mutex_destroy",
+    "pthread_mutex_lock",
+    "pthread_mutex_unlock",
+    "pthread_mutex_trylock",
+    "pthread_mutex_timedlock",
+    "pthread_mutexattr_init",
+    "pthread_mutexattr_destroy",
+]
 
 [[sections]]
 title = "Condition Variables"
-functions = ["pthread_cond_init", "pthread_cond_destroy", "pthread_cond_signal", "pthread_cond_broadcast", "pthread_cond_wait", "pthread_cond_timedwait", "pthread_condattr_init", "pthread_condattr_setclock"]
+functions = [
+    "pthread_cond_init",
+    "pthread_cond_destroy",
+    "pthread_cond_signal",
+    "pthread_cond_broadcast",
+    "pthread_cond_wait",
+    "pthread_cond_timedwait",
+    "pthread_condattr_init",
+    "pthread_condattr_setclock",
+]
 
 [[sections]]
 title = "Read-Write Locks"
-functions = ["pthread_rwlock_init", "pthread_rwlock_destroy", "pthread_rwlock_rdlock", "pthread_rwlock_wrlock", "pthread_rwlock_unlock"]
+functions = [
+    "pthread_rwlock_init",
+    "pthread_rwlock_destroy",
+    "pthread_rwlock_rdlock",
+    "pthread_rwlock_wrlock",
+    "pthread_rwlock_unlock",
+]
 
 [[sections]]
 title = "Thread-Specific Data"
-functions = ["pthread_key_create", "pthread_key_delete", "pthread_getspecific", "pthread_setspecific", "pthread_once"]
+functions = [
+    "pthread_key_create",
+    "pthread_key_delete",
+    "pthread_getspecific",
+    "pthread_setspecific",
+    "pthread_once",
+]
 
 [overrides]
 pthread_create = '''

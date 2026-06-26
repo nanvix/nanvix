@@ -9,11 +9,8 @@ description = '''
 The `passwd` layout mirrors the Rust definition in the sysapi crate (pwd.rs).'''
 includes = ["sys/types.h"]
 guard = "_NANVIX_PWD_H"
-scan_crates = ["posix"]
-content_order = [
-    "raw:0",
-    "section:0",
-]
+scan_crates = ["libc_pwd"]
+content_order = ["raw:0", "section:0"]
 
 [[raw_sections]]
 title = ""

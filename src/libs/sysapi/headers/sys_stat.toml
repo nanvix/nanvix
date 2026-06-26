@@ -11,7 +11,7 @@ status. The layout mirrors the Rust definition in the sysapi crate
 (sys_stat.rs).'''
 includes = ["sys/types.h", "time.h"]
 guard = "_NANVIX_SYS_STAT_H"
-scan_crates = ["posix", "syscall"]
+scan_crates = ["libc_sys_stat", "syscall"]
 content_order = ["raw:0", "types", "section:0"]
 
 [[types]]

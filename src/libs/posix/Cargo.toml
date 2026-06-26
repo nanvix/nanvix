@@ -23,21 +23,56 @@ crate-type = ["lib", "staticlib"]
 # bug — see `nanvix-todo/dlopen-load-address-conflict.md`.
 nvx = { workspace = true }
 sys = { workspace = true }
-cfg-if = { workspace = true }
 config = { workspace = true }
-num_enum = { workspace = true }
-spin = { workspace = true, features = ["lazy", "spin_mutex"] }
 syscall = { workspace = true, features = ["syscall", "dlfcn"] }
 static_assert = { workspace = true }
 sysapi = { workspace = true }
 sysalloc = { workspace = true, optional = true }
 syslog = { workspace = true, default-features = true, optional = true }
-type-safe = { workspace = true }
+# POSIX modules split into standalone `libc_*` crates and re-exported by this
+# bundle (see lib.rs).  Optional and tied to the `syscall` feature so a
+# `--no-default-features` posix build does not pull in the syscall-backed
+# surface.
+libc_arpa_inet = { workspace = true, optional = true }
+libc_dlfcn = { workspace = true, optional = true }
+libc_errno = { workspace = true, optional = true }
+libc_netdb = { workspace = true, optional = true }
+libc_poll = { workspace = true, optional = true }
+libc_pthread = { workspace = true, optional = true }
+libc_pwd = { workspace = true, optional = true }
+libc_utime = { workspace = true, optional = true }
+libc_sys_ioctl = { workspace = true, optional = true }
+libc_sys_resource = { workspace = true, optional = true }
+libc_sys_stat = { workspace = true, optional = true }
+libc_sys_time = { workspace = true, optional = true }
+libc_sys_times = { workspace = true, optional = true }
+libc_sys_un = { workspace = true, optional = true }
+libc_sys_uio = { workspace = true, optional = true }
+libc_sys_utsname = { workspace = true, optional = true }
 
 [features]
 default = ["syscall", "allocator", "c-main"]
 allocator = ["dep:sysalloc"]
-syscall = ["syslog", "syscall/dlfcn"]
+syscall = [
+    "syslog",
+    "syscall/dlfcn",
+    "dep:libc_arpa_inet",
+    "dep:libc_dlfcn",
+    "dep:libc_errno",
+    "dep:libc_netdb",
+    "dep:libc_poll",
+    "dep:libc_pthread",
+    "dep:libc_pwd",
+    "dep:libc_utime",
+    "dep:libc_sys_ioctl",
+    "dep:libc_sys_resource",
+    "dep:libc_sys_stat",
+    "dep:libc_sys_time",
+    "dep:libc_sys_times",
+    "dep:libc_sys_un",
+    "dep:libc_sys_uio",
+    "dep:libc_sys_utsname",
+]
 standalone = ["syscall/standalone"]
 std = []
 

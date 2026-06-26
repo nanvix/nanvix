@@ -51,6 +51,22 @@ members = [
         "src/libs/syslog",
         "src/libs/syslog-macros",
         "src/libs/libc_assert",
+        "src/libs/libc_arpa_inet",
+        "src/libs/libc_dlfcn",
+        "src/libs/libc_errno",
+        "src/libs/libc_netdb",
+        "src/libs/libc_poll",
+        "src/libs/libc_pthread",
+        "src/libs/libc_pwd",
+        "src/libs/libc_utime",
+        "src/libs/libc_sys_ioctl",
+        "src/libs/libc_sys_resource",
+        "src/libs/libc_sys_stat",
+        "src/libs/libc_sys_time",
+        "src/libs/libc_sys_times",
+        "src/libs/libc_sys_un",
+        "src/libs/libc_sys_uio",
+        "src/libs/libc_sys_utsname",
         "src/libs/libc_ctype",
         "src/libs/libc_fnmatch",
         "src/libs/libc_inttypes",
@@ -245,6 +261,22 @@ sorted-vec = { path = "src/libs/sorted-vec", default-features = false }
 spin = { git = "https://github.com/nanvix/spin-rs", package = "spin", branch = "nanvix/v0.10.0", default-features = false }
 static_assert = { path = "src/libs/static_assert", default-features = false }
 libc_assert = { path = "src/libs/libc_assert", default-features = false }
+libc_arpa_inet = { path = "src/libs/libc_arpa_inet", default-features = false }
+libc_dlfcn = { path = "src/libs/libc_dlfcn", default-features = false }
+libc_errno = { path = "src/libs/libc_errno", default-features = false }
+libc_netdb = { path = "src/libs/libc_netdb", default-features = false }
+libc_poll = { path = "src/libs/libc_poll", default-features = false }
+libc_pthread = { path = "src/libs/libc_pthread", default-features = false }
+libc_pwd = { path = "src/libs/libc_pwd", default-features = false }
+libc_utime = { path = "src/libs/libc_utime", default-features = false }
+libc_sys_ioctl = { path = "src/libs/libc_sys_ioctl", default-features = false }
+libc_sys_resource = { path = "src/libs/libc_sys_resource", default-features = false }
+libc_sys_stat = { path = "src/libs/libc_sys_stat", default-features = false }
+libc_sys_time = { path = "src/libs/libc_sys_time", default-features = false }
+libc_sys_times = { path = "src/libs/libc_sys_times", default-features = false }
+libc_sys_un = { path = "src/libs/libc_sys_un", default-features = false }
+libc_sys_uio = { path = "src/libs/libc_sys_uio", default-features = false }
+libc_sys_utsname = { path = "src/libs/libc_sys_utsname", default-features = false }
 libc_ctype = { path = "src/libs/libc_ctype", default-features = false }
 libc_fnmatch = { path = "src/libs/libc_fnmatch", default-features = false }
 libc_inttypes = { path = "src/libs/libc_inttypes", default-features = false }
