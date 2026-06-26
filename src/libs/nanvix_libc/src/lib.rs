@@ -21,6 +21,7 @@ extern crate libc_ctype;
 extern crate libc_inttypes;
 extern crate libc_langinfo;
 extern crate libc_locale;
+extern crate libc_regex;
 extern crate libc_setjmp;
 extern crate libc_signal;
 extern crate libc_stdio;
