@@ -311,10 +311,10 @@ impl Gdt {
         );
 
         // Set the GDTPTR.
-        let gdtr = GdtPtr(Pin::new(Box::new(::arch::mem::gdtr::Gdtr::new(
+        let gdtr = GdtPtr(Pin::new(crate::mm::try_box(::arch::mem::gdtr::Gdtr::new(
             GDT as u32,
             (GDT_NUM_ENTRIES * mem::size_of::<Gdte>()) as u16,
-        ))));
+        ))?));
 
         info!("loading the GDT...");
         Self::load(gdtr.0.as_ref().get_ref() as *const ::arch::mem::gdtr::Gdtr);
