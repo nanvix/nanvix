@@ -382,14 +382,14 @@ ALL_GUEST_RUST_LIBS := \
 	arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe \
 	koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi \
 	syscall sysalloc syslog-macros syslog sys \
-	libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math \
+	libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math libc_regex \
 	libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time \
 	libc_wchar libc_wctype \
 	mmio-tag multiimage vfs-bench-common
 ALL_GUEST_RUST_LIBS_TEST_LIST := \
 	arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe \
 	koptions proc raw-array nanvix-slab sorted-vec static_assert \
-	libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math \
+	libc_assert libc_ctype libc_inttypes libc_langinfo libc_locale libc_math libc_regex \
 	libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time \
 	libc_wchar libc_wctype \
 	syslog-macros syslog sys mmio-tag syscall vfs
@@ -425,7 +425,7 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 # guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
 # (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner
 # is gated on TARGET=x86 accordingly.
-ALL_POSIX_TESTS := c-bindings ctor-c dlfcn-c dlfcn-diamond-c dlfcn-global-c dlfcn-init-runpath-c dlfcn-needed-c dlfcn-pie-c dlfcn-weak-c echo-c file-c fork-pid-c fork-pthread-c hello-c memory-c misc-c network-c noop-c setjmp-c stdio-c thread-c
+ALL_POSIX_TESTS := c-bindings ctor-c dlfcn-c dlfcn-diamond-c dlfcn-global-c dlfcn-init-runpath-c dlfcn-needed-c dlfcn-pie-c dlfcn-weak-c echo-c file-c fork-pid-c fork-pthread-c hello-c memory-c misc-c network-c noop-c regex-c setjmp-c stdio-c thread-c
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 

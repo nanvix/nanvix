@@ -1894,6 +1894,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_regex"
+version = "0.17.34"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_setjmp"
 version = "0.17.34"
 dependencies = [
@@ -2452,6 +2459,7 @@ dependencies = [
  "libc_inttypes",
  "libc_langinfo",
  "libc_locale",
+ "libc_regex",
  "libc_setjmp",
  "libc_signal",
  "libc_stdio",

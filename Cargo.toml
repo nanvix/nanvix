@@ -60,6 +60,7 @@ members = [
         "src/libs/libc_stdio",
         "src/libs/libc_stdlib",
         "src/libs/libc_math",
+        "src/libs/libc_regex",
         "src/libs/libc_string",
         "src/libs/libc_time",
         "src/libs/libc_wchar",
@@ -247,6 +248,7 @@ libc_langinfo = { path = "src/libs/libc_langinfo", default-features = false }
 libc_locale = { path = "src/libs/libc_locale", default-features = false }
 libc_setjmp = { path = "src/libs/libc_setjmp", default-features = false }
 libc_math = { path = "src/libs/libc_math", default-features = false }
+libc_regex = { path = "src/libs/libc_regex", default-features = false }
 libc_signal = { path = "src/libs/libc_signal", default-features = false }
 libc_stdio = { path = "src/libs/libc_stdio", default-features = false }
 libc_stdlib = { path = "src/libs/libc_stdlib", default-features = false }
