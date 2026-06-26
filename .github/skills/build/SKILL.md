@@ -143,6 +143,10 @@ Any unrecognized target is forwarded to `make`, just like on Linux:
 ./z build -- spellcheck-fix
 ```
 
+When spell checking flags a legitimate domain term or acronym (for example, `vas` for
+Virtual Address Space, or `slab`), add it to `.codespellrc` rather than rewording the code
+or documentation.
+
 ## Formal Verification
 
 Nanvix uses Verus for formal verification of selected kernel crates. The expected Verus version is pinned in `build/verus-version`. Verification requires `VERUS_EXECUTABLE_DIR` to be set; when unset, `make verify` is a no-op.
@@ -183,6 +187,13 @@ Nanvix uses Verus for formal verification of selected kernel crates. The expecte
 
 The pipeline covers: spell checking, formatting, linting, building, and testing across multiple
 machine and deployment configurations.
+
+> **Validate across deployment modes before declaring success.** Lint runs with
+> `-- -D warnings`, so warnings like `dead_code` become hard failures; code compiled only under
+> a non-default `DEPLOYMENT_MODE` (for example, a helper used only with `standalone`) may build
+> cleanly in the default config but fail the pre-commit hook and CI under `single-process` or
+> `multi-process`. Do not report a change as done after checking only the default mode — run
+> `./scripts/pipeline.sh`, or repeat the relevant `lint-check`/`build` across `DEPLOYMENT_MODE={standalone,single-process,multi-process}`.
 
 ## IDE Setup (Optional)
 
