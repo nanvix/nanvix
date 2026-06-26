@@ -18,6 +18,7 @@
 /// Pull in all libc_* crate symbols so the linker includes them in the static archive.
 extern crate libc_assert;
 extern crate libc_ctype;
+extern crate libc_fnmatch;
 extern crate libc_inttypes;
 extern crate libc_langinfo;
 extern crate libc_libgen;

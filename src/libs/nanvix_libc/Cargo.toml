@@ -16,6 +16,7 @@ crate-type = ["staticlib"]
 [dependencies]
 libc_assert = { workspace = true }
 libc_ctype = { workspace = true }
+libc_fnmatch = { workspace = true }
 libc_inttypes = { workspace = true }
 libc_langinfo = { workspace = true }
 libc_libgen = { workspace = true }

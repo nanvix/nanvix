@@ -1866,6 +1866,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_fnmatch"
+version = "0.17.38"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_inttypes"
 version = "0.17.38"
 dependencies = [
@@ -2463,6 +2470,7 @@ version = "0.17.38"
 dependencies = [
  "libc_assert",
  "libc_ctype",
+ "libc_fnmatch",
  "libc_inttypes",
  "libc_langinfo",
  "libc_libgen",
