@@ -13,11 +13,29 @@ use ::alloc::boxed::Box;
 use ::sys::pm::{
     SigAction,
     SigSet,
+    SIGABRT,
+    SIGBUS,
+    SIGCHLD,
+    SIGCONT,
+    SIGFPE,
+    SIGILL,
     SIGKILL,
+    SIGQUIT,
+    SIGSEGV,
     SIGSTOP,
+    SIGSYS,
+    SIGTRAP,
+    SIGTSTP,
+    SIGTTIN,
+    SIGTTOU,
+    SIGURG,
+    SIGWINCH,
+    SIGXCPU,
+    SIGXFSZ,
     SIG_BLOCK,
     SIG_DFL,
     SIG_IGN,
+    SIG_MAX,
     SIG_SETMASK,
     SIG_UNBLOCK,
 };
@@ -87,8 +105,7 @@ pub struct SignalControl {
     dispositions: Box<[SignalDisposition; 64]>,
     /// Process-directed pending signals not yet claimed by a thread.
     ///
-    /// Written by a later phase of the signals effort (signal posting).
-    #[allow(dead_code)]
+    /// Set by the signal-posting primitive (`kill()`) and read when delivery is evaluated.
     pending: u64,
     /// Address of the user-space return trampoline (restorer).
     ///
@@ -156,6 +173,78 @@ pub(super) fn apply_how(how: i32, current: SigSet, set: SigSet) -> Option<SigSet
 ///
 pub fn compute_blocked(how: i32, current: SigSet, set: SigSet) -> Option<SigSet> {
     apply_how(how, current, set).map(|next| next & !UNBLOCKABLE)
+}
+
+//==================================================================================================
+// Default Actions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// The action performed for a signal whose disposition is the default ([`SIG_DFL`]).
+///
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefaultAction {
+    /// Abnormally terminate the process.
+    Terminate,
+    /// Abnormally terminate the process and emit a diagnostic (a core dump is future work).
+    Core,
+    /// Ignore (discard) the signal.
+    Ignore,
+    /// Stop (suspend) the process.
+    Stop,
+    /// Continue the process if it is stopped.
+    Continue,
+}
+
+///
+/// # Description
+///
+/// Returns the default action for signal `signum`, as defined by POSIX.
+///
+/// # Parameters
+///
+/// - `signum`: The signal number (1-based).
+///
+/// # Returns
+///
+/// The [`DefaultAction`] taken when `signum` has the default disposition. Signals without an
+/// explicitly assigned default action (unassigned slots and the real-time range) terminate the
+/// process, matching the POSIX default for catchable signals.
+///
+pub fn default_action(signum: usize) -> DefaultAction {
+    match signum {
+        SIGQUIT | SIGILL | SIGTRAP | SIGABRT | SIGBUS | SIGFPE | SIGSEGV | SIGXCPU | SIGXFSZ
+        | SIGSYS => DefaultAction::Core,
+        SIGCHLD | SIGURG | SIGWINCH => DefaultAction::Ignore,
+        SIGSTOP | SIGTSTP | SIGTTIN | SIGTTOU => DefaultAction::Stop,
+        SIGCONT => DefaultAction::Continue,
+        // All remaining signals — SIGHUP, SIGINT, SIGKILL, SIGUSR1, SIGUSR2, SIGPIPE, SIGALRM,
+        // SIGTERM, SIGVTALRM, SIGPROF, SIGIO, and any unassigned or real-time signal — terminate.
+        _ => DefaultAction::Terminate,
+    }
+}
+
+///
+/// # Description
+///
+/// Outcome of evaluating a posted signal in the kernel's `kill()` primitive.
+///
+/// The cross-process termination path (`terminate()`) operates on a non-running target and can run
+/// entirely inside the process manager. Self-termination, however, must unwind through the calling
+/// thread's own `exit()`, which performs a context switch and never returns; that step is therefore
+/// deferred to the kernel-call handler, which is not holding a borrow of the process manager.
+///
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KillOutcome {
+    /// The signal was fully handled in-kernel: it was posted and a candidate thread woken, it was
+    /// discarded, only the existence check was performed, or the target was terminated via the
+    /// cross-process path.
+    Done,
+    /// The signal's default action terminates the caller itself; the kernel-call handler must
+    /// complete the termination by invoking `exit()` on the calling process.
+    TerminateSelf,
 }
 
 //==================================================================================================
@@ -237,6 +326,46 @@ impl SignalControl {
     ) -> Option<SignalDisposition> {
         let slot: &mut SignalDisposition = self.dispositions.get_mut(signum.wrapping_sub(1))?;
         Some(::core::mem::replace(slot, disposition))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Adds `signum` to the process-directed pending set.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: The signal number (1-based).
+    ///
+    /// # Returns
+    ///
+    /// `true` if the signal was newly posted (it was not already pending), or `false` if `signum`
+    /// is out of range or was already pending.
+    ///
+    pub fn post(&mut self, signum: usize) -> bool {
+        if signum == 0 || signum > SIG_MAX {
+            return false;
+        }
+        let bit: u64 = 1u64 << (signum - 1);
+        let newly: bool = (self.pending & bit) == 0;
+        self.pending |= bit;
+        newly
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the process-directed pending set.
+    ///
+    /// # Returns
+    ///
+    /// The set of signals pending against the process but not yet claimed by a thread.
+    ///
+    // Exercised by the in-kernel unit tests and read by a later phase of the signals effort
+    // (`sigpending()` and asynchronous delivery).
+    #[allow(dead_code)]
+    pub fn pending(&self) -> u64 {
+        self.pending
     }
 }
 

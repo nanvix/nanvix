@@ -118,6 +118,32 @@ impl InterruptedThread {
     ///
     /// # Description
     ///
+    /// Overrides the interrupt reason so that the thread terminates when it is next resumed.
+    ///
+    /// This is used to convert an already-interrupted thread (e.g. one that timed out) into a
+    /// killed thread when its process receives a fatal signal.
+    ///
+    pub fn set_killed(&mut self) {
+        self.reason = InterruptReason::Killed;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the reason why the thread was interrupted.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`InterruptReason`] of the interrupted thread.
+    ///
+    #[cfg(feature = "test")]
+    pub fn reason(&self) -> &InterruptReason {
+        &self.reason
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the join condition variable of the interrupted thread.
     ///
     /// # Returns

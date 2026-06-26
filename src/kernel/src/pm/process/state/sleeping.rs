@@ -68,6 +68,23 @@ impl SleepingProcess {
         &mut self.state
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the identifier of a candidate thread to wake when a signal is posted to this
+    /// suspended process, so the thread can evaluate delivery at its return-to-user checkpoint.
+    ///
+    /// # Returns
+    ///
+    /// The identifier of one of the process's sleeping threads.
+    ///
+    pub fn candidate_tid(&self) -> Option<ThreadIdentifier> {
+        self.sleeping_threads
+            .iter()
+            .next()
+            .map(|thread| thread.id())
+    }
+
     pub fn terminate(self) -> InterruptedProcess {
         let (mut sleeping_threads, sleeping_thread): (VecDeque<SleepingThread>, SleepingThread) =
             self.sleeping_threads.pop_front();

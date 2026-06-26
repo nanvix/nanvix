@@ -13,6 +13,8 @@
 //==================================================================================================
 
 mod interrupted;
+#[cfg(feature = "test")]
+mod kill_test;
 mod runnable;
 mod running;
 pub(crate) mod signal;
@@ -100,6 +102,7 @@ pub(super) fn test() -> bool {
     let mut passed: bool = true;
     passed &= test_detach::test();
     passed &= signal_test::test();
+    passed &= kill_test::test();
     passed
 }
 

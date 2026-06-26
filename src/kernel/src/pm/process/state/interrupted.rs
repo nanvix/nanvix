@@ -96,6 +96,59 @@ impl InterruptedProcess {
     ///
     /// # Description
     ///
+    /// Terminates an already-interrupted process so that all of its threads exit once resumed.
+    ///
+    /// Every interrupted thread has its reason overridden to [`InterruptReason::Killed`], and any
+    /// remaining sleeping threads are interrupted with the same reason and folded into the
+    /// interrupted set. Because an interrupted process always retains at least one interrupted
+    /// thread, the result is again an [`InterruptedProcess`].
+    ///
+    /// # Returns
+    ///
+    /// The interrupted process with all of its threads marked for termination.
+    ///
+    pub fn terminate(mut self) -> InterruptedProcess {
+        // Convert every already-interrupted thread into a killed thread.
+        for thread in self.interrupted_threads.iter_mut() {
+            thread.set_killed();
+        }
+
+        // Interrupt any remaining sleeping threads with the killed reason and fold them into the
+        // interrupted set.
+        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+            let killed_threads: NonEmptyVecDeque<InterruptedThread> =
+                NonEmptyVecDeque::map(sleeping_threads, interrupt);
+            self.interrupted_threads.append(killed_threads);
+        }
+
+        self
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the interrupt reason recorded for the interrupted thread identified by `tid`.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to inspect.
+    ///
+    /// # Returns
+    ///
+    /// The [`InterruptReason`] of the matching interrupted thread, or [`None`] if no interrupted
+    /// thread with that identifier exists.
+    ///
+    #[cfg(feature = "test")]
+    pub(super) fn thread_reason(&self, tid: ThreadIdentifier) -> Option<&InterruptReason> {
+        self.interrupted_threads
+            .iter()
+            .find(|thread| thread.id() == tid)
+            .map(|thread| thread.reason())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Finds a thread in the target process.
     ///
     /// # Arguments

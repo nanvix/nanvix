@@ -401,7 +401,7 @@ ALL_GUEST_BENCHMARKS := \
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
 ALL_GUEST_TESTS := \
 	testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall \
-	waitpid-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault \
+	waitpid-rust kill-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault \
 	linux-app arch-rust vfs-test misc-rust memory-rust network-rust \
 	c-bindings-rust mount-test mount-multipart-test cmdline-len-rust \
 	env-rust-nostd cmdline-env-rust-nostd snapshot-test execv-test execv-target \
