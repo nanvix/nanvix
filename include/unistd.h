@@ -131,6 +131,7 @@ extern int fchdir(int fd);
 #define R_OK 4
 extern int access(const char *path, int amode);
 extern unsigned int sleep(unsigned int seconds);
+extern unsigned int alarm(unsigned int seconds);
 extern int usleep(unsigned int usec);
 extern int unlinkat(int dirfd, const char *pathname, int flags);
 extern int isatty(int fd);
@@ -152,6 +153,20 @@ extern int optopt;
  *==================================================================================================*/
 
 extern int getopt(int argc, char *const argv[], const char *optstring);
+
+/*==================================================================================================
+ * Process, Session, and System Operations
+ *==================================================================================================*/
+
+extern pid_t setsid(void);
+extern pid_t getsid(pid_t pid);
+extern pid_t vfork(void);
+extern void sync(void);
+extern int getgroups(int size, gid_t *list);
+extern long gethostid(void);
+extern int getlogin_r(char *buf, size_t bufsize);
+extern int ttyname_r(int fd, char *buf, size_t buflen);
+extern int getpagesize(void);
 
 #ifdef __cplusplus
 }
