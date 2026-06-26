@@ -1,0 +1,18 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for libgen.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/libgen.h.
+
+file = "libgen.h"
+brief = "Definitions for pattern matching functions."
+description = """
+Declares basename() and dirname(), the POSIX pathname component functions
+implemented by the libc_libgen Rust crate."""
+includes = []
+guard = "_NANVIX_LIBGEN_H"
+
+[[sections]]
+title = "Pathname Manipulation"
+functions = ["basename", "dirname"]
