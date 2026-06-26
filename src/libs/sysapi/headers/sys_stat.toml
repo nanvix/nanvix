@@ -12,11 +12,7 @@ status. The layout mirrors the Rust definition in the sysapi crate
 includes = ["sys/types.h", "time.h"]
 guard = "_NANVIX_SYS_STAT_H"
 scan_crates = ["posix", "syscall"]
-content_order = [
-    "raw:0",
-    "types",
-    "section:0",
-]
+content_order = ["raw:0", "types", "section:0"]
 
 [[types]]
 text = '''
@@ -41,6 +37,10 @@ struct stat {
 #define st_atime st_atim.tv_sec
 #define st_mtime st_mtim.tv_sec
 #define st_ctime st_ctim.tv_sec
+
+/* Special tv_nsec values for utimensat()/futimens(). */
+#define UTIME_NOW ((1L << 30) - 1L)
+#define UTIME_OMIT ((1L << 30) - 2L)
 
 /* File-type test macros. */
 #define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
@@ -80,7 +80,21 @@ text = '''
 
 [[sections]]
 title = "File Status"
-functions = ["stat", "fstat", "lstat", "mkdir", "mkdirat", "umask", "fchmodat", "lchmod", "futimens", "utimensat", "chmod", "fchmod", "mknod"]
+functions = [
+    "stat",
+    "fstat",
+    "lstat",
+    "mkdir",
+    "mkdirat",
+    "umask",
+    "fchmodat",
+    "lchmod",
+    "futimens",
+    "utimensat",
+    "chmod",
+    "fchmod",
+    "mknod",
+]
 
 [overrides]
 umask = '''

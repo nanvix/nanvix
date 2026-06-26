@@ -32,6 +32,7 @@ extern "C" {
 #define SOCK_STREAM 1 /**< Sequenced, reliable, connection-mode byte streams. */
 #define SOCK_DGRAM 2 /**< Connectionless, unreliable datagrams. */
 #define SOCK_RAW 3 /**< Raw protocol interface. */
+#define SOCK_RDM 4 /**< Reliably-delivered messages. */
 #define SOCK_SEQPACKET 5 /**< Sequenced, reliable, connection-mode records. */
 #define SOL_SOCKET 0xffff /**< Options at the socket level. */
 #define SO_REUSEADDR 0x0004 /**< Reuse of local addresses is supported. */

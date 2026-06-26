@@ -106,6 +106,8 @@ pub mod socket_types {
     pub const SOCK_STREAM: c_int = 1;
     /// Provides raw network protocol access.
     pub const SOCK_RAW: c_int = 3;
+    /// Provides reliably-delivered messages.
+    pub const SOCK_RDM: c_int = 4;
     /// Provides datagrams, which are connectionless-mode, unreliable messages of fixed maximum length.
     pub const SOCK_DGRAM: c_int = 2;
     /// Provides sequenced, reliable, bidirectional, connection-mode transmission paths for records.
