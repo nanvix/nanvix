@@ -489,7 +489,13 @@ jobs:
       matrix.deployment-type }})"
     needs: [ ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
-    if: ${{ !cancelled() && needs.ci-build.result == 'success' }}
+    # Fork PRs are excluded so untrusted fork code never runs on the
+    # self-hosted Test runners (mirrors the fork guard in
+    # benchmark-gate-windows).
+    if: >-
+      ${{ !cancelled() && needs.ci-build.result == 'success'
+      && (github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository) }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -499,7 +505,9 @@ jobs:
           '["release"]') }}
         machine-type: [ microvm ]
         deployment-type: [ standalone, single-process, multi-process ]
-    runs-on: ubuntu-24.04
+    runs-on:
+      group: Test
+      labels: [ self-hosted, Linux ]
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
       options: --privileged
@@ -787,7 +795,13 @@ jobs:
       matrix.build-type }})"
     needs: [ windows-ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
-    if: ${{ !cancelled() && needs.windows-ci-build.result == 'success' }}
+    # Fork PRs are excluded so untrusted fork code never runs on the
+    # self-hosted Test runners (mirrors the fork guard in
+    # benchmark-gate-windows).
+    if: >-
+      ${{ !cancelled() && needs.windows-ci-build.result == 'success'
+      && (github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository) }}
     # Debug guests run ~15x slower than release under WHP, so the debug matrix
     # variant (debug-only in-kernel tests + integration suite + POSIX C suites)
     # routinely consumes 25-27 min. Allow headroom over the 30 min default.
@@ -799,7 +813,9 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-    runs-on: windows-latest
+    runs-on:
+      group: Test
+      labels: [ self-hosted, Windows ]
     permissions:
       contents: read
 
