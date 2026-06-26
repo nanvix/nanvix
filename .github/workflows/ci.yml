@@ -788,7 +788,10 @@ jobs:
     needs: [ windows-ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.windows-ci-build.result == 'success' }}
-    timeout-minutes: 30
+    # Debug guests run ~15x slower than release under WHP, so the debug matrix
+    # variant (debug-only in-kernel tests + integration suite + POSIX C suites)
+    # routinely consumes 25-27 min. Allow headroom over the 30 min default.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
