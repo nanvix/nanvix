@@ -130,6 +130,20 @@ impl InterruptedThread {
     ///
     /// # Description
     ///
+    /// Returns the reason why the thread was interrupted.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the [`InterruptReason`] of the interrupted thread.
+    ///
+    #[cfg(feature = "test")]
+    pub fn reason(&self) -> &InterruptReason {
+        &self.reason
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the join condition variable of the interrupted thread.
     ///
     /// # Returns

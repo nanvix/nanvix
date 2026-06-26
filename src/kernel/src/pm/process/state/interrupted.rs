@@ -127,6 +127,28 @@ impl InterruptedProcess {
     ///
     /// # Description
     ///
+    /// Returns the interrupt reason recorded for the interrupted thread identified by `tid`.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to inspect.
+    ///
+    /// # Returns
+    ///
+    /// The [`InterruptReason`] of the matching interrupted thread, or [`None`] if no interrupted
+    /// thread with that identifier exists.
+    ///
+    #[cfg(feature = "test")]
+    pub(super) fn thread_reason(&self, tid: ThreadIdentifier) -> Option<&InterruptReason> {
+        self.interrupted_threads
+            .iter()
+            .find(|thread| thread.id() == tid)
+            .map(|thread| thread.reason())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Finds a thread in the target process.
     ///
     /// # Arguments
