@@ -664,7 +664,10 @@ fn test_pipe_blocking_fork() {
             ipc,
             pm,
         },
-        pm::ProcessIdentifier,
+        pm::{
+            ProcessIdentifier,
+            ThreadIdentifier,
+        },
     };
 
     /// Total bytes streamed; exceeds the 64 KiB pipe capacity to force the writer to block.
@@ -712,8 +715,8 @@ fn test_pipe_blocking_fork() {
         let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
         payload[0] = u8::from(passed);
         let reply: Message = Message::new(
-            MessageSender::from(my_pid),
-            MessageReceiver::from(parent_pid),
+            MessageSender::new(my_pid, ThreadIdentifier::NONE),
+            MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
             MessageType::Ipc,
             None,
             payload,
@@ -819,7 +822,10 @@ fn test_pipe_eof_on_writer_exit() {
             ipc,
             pm,
         },
-        pm::ProcessIdentifier,
+        pm::{
+            ProcessIdentifier,
+            ThreadIdentifier,
+        },
     };
 
     /// Bound on close retries absorbing the asynchronous fork-clone descriptor duplication.
@@ -865,8 +871,8 @@ fn test_pipe_eof_on_writer_exit() {
             let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
             payload[0] = READY;
             let reply: Message = Message::new(
-                MessageSender::from(my_pid),
-                MessageReceiver::from(parent_pid),
+                MessageSender::new(my_pid, ThreadIdentifier::NONE),
+                MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
                 MessageType::Ipc,
                 None,
                 payload,
@@ -933,7 +939,10 @@ fn test_pipe_epipe_on_reader_exit() {
             ipc,
             pm,
         },
-        pm::ProcessIdentifier,
+        pm::{
+            ProcessIdentifier,
+            ThreadIdentifier,
+        },
     };
 
     /// Bound on close retries absorbing the asynchronous fork-clone descriptor duplication.
@@ -984,8 +993,8 @@ fn test_pipe_epipe_on_reader_exit() {
             let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
             payload[0] = READY;
             let reply: Message = Message::new(
-                MessageSender::from(my_pid),
-                MessageReceiver::from(parent_pid),
+                MessageSender::new(my_pid, ThreadIdentifier::NONE),
+                MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
                 MessageType::Ipc,
                 None,
                 payload,

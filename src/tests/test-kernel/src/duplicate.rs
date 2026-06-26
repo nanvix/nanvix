@@ -47,6 +47,7 @@ use ::sys::{
         MutexAddress,
         ProcessIdentifier,
         ThreadCreateArgs,
+        ThreadIdentifier,
     },
     time::SystemTime,
 };
@@ -163,8 +164,8 @@ extern "C" fn child_entry(_arg: usize) -> usize {
     payload[0] = observed_before;
     payload[1] = observed_after;
     let reply: Message = Message::new(
-        MessageSender::from(my_pid),
-        MessageReceiver::from(parent_pid),
+        MessageSender::new(my_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         payload,
@@ -221,8 +222,8 @@ fn test_duplicate_cow() -> Result<(), Error> {
 
     // Release the child to perform its observation.
     let go: Message = Message::new(
-        MessageSender::from(parent_pid),
-        MessageReceiver::from(child_pid),
+        MessageSender::new(parent_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(child_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         [0u8; Message::PAYLOAD_SIZE],
@@ -378,8 +379,8 @@ fn test_duplicate_cow_refork() -> Result<(), Error> {
 
         // Release the second child to perform its observation and write.
         let go: Message = Message::new(
-            MessageSender::from(parent_pid),
-            MessageReceiver::from(second_child),
+            MessageSender::new(parent_pid, ThreadIdentifier::NONE),
+            MessageReceiver::new(second_child, ThreadIdentifier::NONE),
             MessageType::Ipc,
             None,
             [0u8; Message::PAYLOAD_SIZE],
@@ -593,8 +594,8 @@ fn child_mutex_condvar_report() -> Result<(), Error> {
     payload[1] = observed_before;
     payload[2] = observed_after;
     let reply: Message = Message::new(
-        MessageSender::from(my_pid),
-        MessageReceiver::from(parent_pid),
+        MessageSender::new(my_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         payload,
@@ -687,8 +688,8 @@ fn test_duplicate_mutex_condvar() -> Result<(), Error> {
 
         // Release the child to perform its observation and write.
         let go: Message = Message::new(
-            MessageSender::from(parent_pid),
-            MessageReceiver::from(child_pid),
+            MessageSender::new(parent_pid, ThreadIdentifier::NONE),
+            MessageReceiver::new(child_pid, ThreadIdentifier::NONE),
             MessageType::Ipc,
             None,
             [0u8; Message::PAYLOAD_SIZE],

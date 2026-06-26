@@ -17,7 +17,10 @@ use crate::{
         MessageSender,
         MessageType,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::core::fmt::Debug;
 
@@ -48,32 +51,38 @@ impl From<EventInformation> for Message {
             .copy_from_slice(&info.pid.to_ne_bytes());
         offset += core::mem::size_of::<ProcessIdentifier>();
 
+        // The optional fields below carry 32-bit guest quantities (exception number, error code,
+        // fault address and faulting instruction). They are serialized as fixed-width `u32` rather
+        // than native `usize` so the encoding is identical on the 32-bit guest (where this runs at
+        // runtime) and on a 64-bit host (where it is exercised by unit tests), and so the worst
+        // case fits within the message payload. On the guest `usize` is 32 bits, so this is lossless
+        // and byte-for-byte identical to the previous native encoding.
         if let Some(number) = info.number {
-            payload[offset..offset + core::mem::size_of::<usize>()]
-                .copy_from_slice(&number.to_ne_bytes());
-            offset += core::mem::size_of::<usize>();
+            payload[offset..offset + core::mem::size_of::<u32>()]
+                .copy_from_slice(&(number as u32).to_ne_bytes());
+            offset += core::mem::size_of::<u32>();
         }
 
         if let Some(code) = info.code {
-            payload[offset..offset + core::mem::size_of::<usize>()]
-                .copy_from_slice(&code.to_ne_bytes());
-            offset += core::mem::size_of::<usize>();
+            payload[offset..offset + core::mem::size_of::<u32>()]
+                .copy_from_slice(&(code as u32).to_ne_bytes());
+            offset += core::mem::size_of::<u32>();
         }
 
         if let Some(address) = info.address {
-            payload[offset..offset + core::mem::size_of::<usize>()]
-                .copy_from_slice(&address.to_ne_bytes());
-            offset += core::mem::size_of::<usize>();
+            payload[offset..offset + core::mem::size_of::<u32>()]
+                .copy_from_slice(&(address as u32).to_ne_bytes());
+            offset += core::mem::size_of::<u32>();
         }
 
         if let Some(instruction) = info.instruction {
-            payload[offset..offset + core::mem::size_of::<usize>()]
-                .copy_from_slice(&instruction.to_ne_bytes());
+            payload[offset..offset + core::mem::size_of::<u32>()]
+                .copy_from_slice(&(instruction as u32).to_ne_bytes());
         }
 
         Message::new(
-            MessageSender::from(info.pid),
-            MessageReceiver::from(info.pid),
+            MessageSender::new(info.pid, ThreadIdentifier::NONE),
+            MessageReceiver::new(info.pid, ThreadIdentifier::NONE),
             MessageType::Exception,
             None,
             payload,
@@ -119,7 +128,8 @@ impl EventInformation {
 
     /// # Description
     ///
-    /// Reads an optional `usize` from `payload` at the current `offset`, advancing `offset`.
+    /// Reads an optional fixed-width `u32` from `payload` at the current `offset`, advancing
+    /// `offset`, and widens it to `usize`.
     ///
     /// # Parameters
     ///
@@ -130,16 +140,16 @@ impl EventInformation {
     ///
     /// `Some(value)` if enough bytes remain, or `None` if the payload has insufficient bytes.
     ///
-    fn read_optional_usize(payload: &[u8], offset: &mut usize) -> Option<usize> {
-        let size: usize = core::mem::size_of::<usize>();
+    fn read_optional_u32(payload: &[u8], offset: &mut usize) -> Option<usize> {
+        let size: usize = core::mem::size_of::<u32>();
         let end: usize = offset.checked_add(size)?;
         if end > payload.len() {
             return None;
         }
-        let bytes: [u8; core::mem::size_of::<usize>()] =
+        let bytes: [u8; core::mem::size_of::<u32>()] =
             payload.get(*offset..end)?.try_into().ok()?;
         *offset = end;
-        Some(usize::from_ne_bytes(bytes))
+        Some(u32::from_ne_bytes(bytes) as usize)
     }
 }
 
@@ -161,10 +171,10 @@ impl TryFrom<Message> for EventInformation {
             "invalid process identifier",
         )?);
 
-        let number: Option<usize> = Self::read_optional_usize(payload, &mut offset);
-        let code: Option<usize> = Self::read_optional_usize(payload, &mut offset);
-        let address: Option<usize> = Self::read_optional_usize(payload, &mut offset);
-        let instruction: Option<usize> = Self::read_optional_usize(payload, &mut offset);
+        let number: Option<usize> = Self::read_optional_u32(payload, &mut offset);
+        let code: Option<usize> = Self::read_optional_u32(payload, &mut offset);
+        let address: Option<usize> = Self::read_optional_u32(payload, &mut offset);
+        let instruction: Option<usize> = Self::read_optional_u32(payload, &mut offset);
 
         Ok(Self {
             id,

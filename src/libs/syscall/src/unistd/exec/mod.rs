@@ -529,17 +529,8 @@ pub fn exec_startup_barrier() {
         },
     };
 
-    let sender = message.source;
-    let source: ProcessIdentifier = match sender.as_id() {
-        Ok(source) => source,
-        Err(tid) => {
-            ::syslog::warn!(
-                "exec_startup_barrier(): unexpected non-process message source while awaiting \
-                 exec ack (tid={tid:?})"
-            );
-            return;
-        },
-    };
+    // The kernel stamps the authoritative originating process into `message.source.pid`.
+    let source: ProcessIdentifier = { message.source }.pid;
     if source != ProcessIdentifier::PROCD {
         ::syslog::warn!(
             "exec_startup_barrier(): unexpected message source while awaiting exec ack \

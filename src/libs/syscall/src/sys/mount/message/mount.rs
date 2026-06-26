@@ -247,8 +247,8 @@ impl MountResponse {
             message.into_bytes(),
         );
         Message::new(
-            MessageSender::from(source),
-            MessageReceiver::from(tid),
+            MessageSender::new(source, ThreadIdentifier::NONE),
+            MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
             message_type,
             None,
             message.into_bytes(),

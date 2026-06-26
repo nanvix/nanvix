@@ -127,12 +127,10 @@ impl Benchmark {
             let warmup_syscall_msg: SystemCallMessage =
                 SystemCallMessage::try_from_bytes(warmup_read_msg.payload)
                     .map_err(|_| anyhow::anyhow!("warmup: error parsing SystemCall message"))?;
-            // NOTE: `as_id()` returns `Err(ThreadIdentifier)` when the source is a
-            // thread (expected) and `Ok(ProcessIdentifier)` when it is a process.
-            let warmup_tid: ThreadIdentifier = match { warmup_read_msg.source }.as_id() {
-                Err(tid) => tid,
-                Ok(pid) => anyhow::bail!("warmup: unexpected message source: {pid:?}"),
-            };
+            let warmup_tid: ThreadIdentifier = { warmup_read_msg.source }.tid;
+            if warmup_tid.is_none() {
+                anyhow::bail!("warmup: message source has no thread id");
+            }
             let _warmup_read_req: ReadRequest = ReadRequest::from_bytes(warmup_syscall_msg.payload);
 
             // Step 2: Receive the bulk pull request from the guest kernel.
@@ -235,10 +233,10 @@ impl Benchmark {
                         ));
                     },
                 };
-            let tid: ThreadIdentifier = match { ipc_read_message.source }.as_id() {
-                Err(tid) => tid,
-                Ok(pid) => return Err(anyhow::anyhow!("unexpected message source: {pid:?}")),
-            };
+            let tid: ThreadIdentifier = { ipc_read_message.source }.tid;
+            if tid.is_none() {
+                return Err(anyhow::anyhow!("unexpected message source: no thread id"));
+            }
             let _read_request: ReadRequest = ReadRequest::from_bytes(syscall_message.payload);
 
             // Step 2: Receive the bulk pull request from the guest kernel.

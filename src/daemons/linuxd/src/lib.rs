@@ -68,7 +68,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::syscall::venv::VirtualEnvironmentIdentifier;
 use ::syscomm::{
@@ -994,12 +997,15 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         let assembler: Arc<Mutex<RequestAssembler>> = self.assembler.clone();
         let venv_dir: Arc<Mutex<VirtualEnviromentDirectory>> = self.venv.clone();
 
-        let source: ThreadIdentifier = match { message.source }.as_id() {
-            Err(tid) => tid,
-            Ok(pid) => {
-                unimplemented!("received message from process {pid:?} instead of thread");
-            },
-        };
+        // The kernel stamps the originating thread into `message.source.tid`; a guest IKC request
+        // always names a concrete thread. A `NONE` sentinel names no specific thread, so reject it
+        // rather than keying virtual-environment state under the sentinel and misrouting work.
+        let source: ThreadIdentifier = { message.source }.tid;
+        if source.is_none() {
+            let reason: &str = "received message with no originating thread";
+            error!("forward_user_vm_msg_to_worker_thread(): {reason} (uvm_id={uvm_id})");
+            return Err(Error::new(ErrorCode::InvalidMessage, reason));
+        }
 
         // Ensure virtual environment association.
         let (channel_tx, channel_rx): (Sender<VenvCommand>, Option<Receiver<VenvCommand>>) = {
@@ -1091,8 +1097,8 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
 ///
 pub fn build_error(tid: ThreadIdentifier, error: ErrorCode) -> Message {
     Message::new(
-        MessageSender::from(::syscall::LINUXD),
-        MessageReceiver::from(tid),
+        MessageSender::new(::syscall::LINUXD, ThreadIdentifier::NONE),
+        MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
         MessageType::Ikc,
         Some(error),
         [0u8; Message::PAYLOAD_SIZE],

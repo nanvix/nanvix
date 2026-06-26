@@ -60,7 +60,10 @@ use ::sys::{
         ipc,
         pm,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::sysapi::ffi::c_int;
 use ::syscall::{
@@ -200,8 +203,8 @@ fn run_child(parent_pid: ProcessIdentifier, my_pid: ProcessIdentifier) -> Result
     payload[1] = first_byte;
     payload[2] = count;
     let reply: Message = Message::new(
-        MessageSender::from(my_pid),
-        MessageReceiver::from(parent_pid),
+        MessageSender::new(my_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(parent_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         payload,
@@ -255,8 +258,8 @@ fn test_fork_descriptor_inheritance() -> Result<(), Error> {
 
     // Release the child to perform its read against the inherited descriptor.
     let go: Message = Message::new(
-        MessageSender::from(parent_pid),
-        MessageReceiver::from(child_pid),
+        MessageSender::new(parent_pid, ThreadIdentifier::NONE),
+        MessageReceiver::new(child_pid, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         [0u8; Message::PAYLOAD_SIZE],

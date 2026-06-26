@@ -20,7 +20,10 @@ use ::sys::{
         SystemMessage,
         SystemMessageHeader,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -212,8 +215,8 @@ fn wrap(
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     Message::new(
-        MessageSender::from(source),
-        MessageReceiver::from(destination),
+        MessageSender::new(source, ThreadIdentifier::NONE),
+        MessageReceiver::new(destination, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),

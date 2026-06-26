@@ -63,56 +63,32 @@ use alloc::{
 
 /// Extracts the caller's thread identifier from an IPC message.
 ///
-/// Guest syscall requests encode their source as the caller's thread id (`MessageSender::from` a
-/// `ThreadIdentifier`) because vfsd needs the TID to route the reply, so this almost always takes
-/// the TID branch and returns it as-is. A PID-encoded source (e.g. a message routed with a
-/// `ProcessIdentifier`) is handled by deriving a TID from the PID value, which is correct only for
-/// single-threaded processes where TID == PID.
+/// The kernel stamps the originating thread into `message.source.tid` on `send` (see
+/// `src/kernel/src/ipc/send.rs`), so vfsd reads it directly to route the reply back to the exact
+/// calling thread.
 fn caller_tid(message: &Message) -> ThreadIdentifier {
-    let source = message.source;
-    match source.as_id() {
-        Ok(pid) => {
-            // PID-encoded source — derive TID from PID value (valid for single-threaded callers).
-            ThreadIdentifier::from(i32::from(pid))
-        },
-        Err(tid) => tid,
-    }
+    // `source` is a `Copy` field of a `repr(packed)` `Message`; copy it out before projecting into
+    // it so that no reference to an unaligned field is formed.
+    let source: MessageSender = message.source;
+    source.tid
 }
 
 /// Extracts the caller's process identifier from an IPC message.
 ///
-/// A PID-encoded source (a daemon or the kernel) is authoritative and is returned as-is. Guest
-/// syscall requests instead encode their source as the caller's *thread* id, because vfsd needs the
-/// TID to route the reply. The owning PID is then recovered from an authoritative kernel lookup
-/// ([`__kcall_getpid_by_tid`](::sys::kcall::pm::__kcall_getpid_by_tid)) rather than by casting the
-/// TID: a process reached via `fork()` + `execv()` keeps its PID but is assigned a new main-thread
-/// TID, so `TID != PID` and a cast would key the request's per-process VFS state (fd table and cwd)
-/// under a phantom process — losing a child's writes after it exits and corrupting I/O on inherited
-/// descriptors (nanvix/nanvix#2650, #2637, #2529). The same lookup also attributes a request from a
-/// non-main thread of a multi-threaded caller to the correct process.
-///
-/// If the kernel cannot resolve the TID (which should not happen for an in-flight request, whose
-/// thread is blocked awaiting this reply), the legacy TID-cast is used as a fallback so the request
-/// is still answered rather than dropped.
+/// This returns `message.source.pid`, the kernel-attested caller identity that the `send` kernel
+/// call stamps on every message (see `src/kernel/src/ipc/send.rs`). Because the kernel — not the
+/// sender — fills this field, it is authoritative and unforgeable, and it is correct by construction
+/// in the cases where the historical `TID == PID` reconstruction failed: a process reached via
+/// `fork()` + `execv()` keeps its PID but is assigned a new main-thread TID (`TID != PID`), and a
+/// request issued by a non-main thread of a multi-threaded caller likewise has `TID != PID`. Keying
+/// per-process VFS state (fd table and cwd) by this PID therefore no longer misattributes a child's
+/// writes after it exits, nor corrupts I/O on inherited descriptors (nanvix/nanvix#2650, #2637,
+/// #2529).
 fn caller_pid(message: &Message) -> ProcessIdentifier {
-    let sender: MessageSender = message.source;
-    match sender.as_id() {
-        // A PID-encoded source (daemon/kernel peer) is already authoritative.
-        Ok(pid) => pid,
-        // A TID-encoded source is a guest syscall request: recover the owning PID authoritatively.
-        Err(tid) => match ::sys::kcall::pm::__kcall_getpid_by_tid(tid) {
-            Ok(pid) => pid,
-            Err(error) => {
-                ::syslog::warn!(
-                    "caller_pid(): kernel TID->PID resolution failed (tid={:?}, error={:?}); \
-                     falling back to TID cast",
-                    tid,
-                    error
-                );
-                ProcessIdentifier::from(i32::from(tid))
-            },
-        },
-    }
+    // `source` is a `Copy` field of a `repr(packed)` `Message`; copy it out before projecting into
+    // it so that no reference to an unaligned field is formed.
+    let source: MessageSender = message.source;
+    source.pid
 }
 
 //==================================================================================================
@@ -121,17 +97,13 @@ fn caller_pid(message: &Message) -> ProcessIdentifier {
 
 fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Result<bool, Error> {
     // State-mutating process-management messages are privileged: only procd may direct them. The
-    // caller (handle_ipc_message) routes here only when the message source is procd, which is the
-    // runtime gate. Note that this trusts `message.source`: the kernel currently only *logs* an
-    // invalid source and still delivers the message (see `src/kernel/src/ipc/send.rs`), so it does
-    // not by itself stop another process from spoofing a procd source. Robustly closing that gap
-    // would require the kernel to reject messages whose source does not match the real sender,
-    // tracked in issue #2527. The debug-assert below is a development sanity check of the routing
-    // invariant, not a security control.
+    // caller (handle_ipc_message) routes here only when the kernel-attested `message.source.pid` is
+    // PROCD, so a sender cannot reach this path by forging `message.source`. The debug assert below
+    // documents that routing invariant and catches accidental direct calls in development builds.
     debug_assert_eq!(
         caller_pid(&message),
         ProcessIdentifier::PROCD,
-        "handle_system_message invoked with non-procd source"
+        "handle_system_message invoked with non-procd client"
     );
     let sys_msg: SystemMessage = SystemMessage::from_bytes(message.payload)?;
     match sys_msg.header {
@@ -364,11 +336,9 @@ pub(crate) fn handle_ipc_message(
     }
 
     // Bind the VFS to the requesting process so that descriptor and working-directory operations
-    // resolve against its per-process state. Guest syscall messages encode their source as the
-    // caller's thread id, so `source_pid` is obtained by casting that TID to a PID (see
-    // `caller_pid`). This resolves to the correct process only for single-threaded callers where
-    // TID == PID; a request from a non-main thread of a multi-threaded process would be
-    // misattributed (see the TODO in `caller_pid` for the authoritative-PID fix). vfsd being
+    // resolve against its per-process state. `source_pid` is the kernel-attested caller identity
+    // (`message.source.pid`; see `caller_pid`), so it is correct even for `fork()` + `execv()`'d
+    // children and for requests from non-main threads of a multi-threaded caller. vfsd being
     // single-threaded is what makes mutating this global current-process selector race-free.
     ::vfs::fd::set_current_process(source_pid);
 
@@ -392,9 +362,13 @@ pub(crate) fn handle_ipc_message(
         // Short requests: single message request, single message response.
         //==========================================================================================
         SystemCallMessageHeader::CloseRequest => {
-            if let Some(response) =
-                handler::handle_close_with_hostfs(source_tid, syscall_msg, pending, pipe_wait)
-            {
+            if let Some(response) = handler::handle_close_with_hostfs(
+                source_pid,
+                source_tid,
+                syscall_msg,
+                pending,
+                pipe_wait,
+            ) {
                 send_response(&response);
             }
         },
@@ -412,14 +386,14 @@ pub(crate) fn handle_ipc_message(
         },
         SystemCallMessageHeader::SeekRequest => {
             if let Some(response) =
-                handler::handle_seek_with_hostfs(source_tid, syscall_msg, pending)
+                handler::handle_seek_with_hostfs(source_pid, source_tid, syscall_msg, pending)
             {
                 send_response(&response);
             }
         },
         SystemCallMessageHeader::FileSyncRequest => {
             if let Some(response) =
-                handler::handle_fsync_with_hostfs(source_tid, syscall_msg, pending)
+                handler::handle_fsync_with_hostfs(source_pid, source_tid, syscall_msg, pending)
             {
                 send_response(&response);
             }
@@ -430,7 +404,7 @@ pub(crate) fn handle_ipc_message(
         },
         SystemCallMessageHeader::FileTruncateRequest => {
             if let Some(response) =
-                handler::handle_ftruncate_with_hostfs(source_tid, syscall_msg, pending)
+                handler::handle_ftruncate_with_hostfs(source_pid, source_tid, syscall_msg, pending)
             {
                 send_response(&response);
             }
@@ -524,7 +498,7 @@ pub(crate) fn handle_ipc_message(
         //==========================================================================================
         SystemCallMessageHeader::FileStatRequest => {
             if let Some(responses) =
-                handler::handle_fstat_with_hostfs(source_tid, syscall_msg, pending)
+                handler::handle_fstat_with_hostfs(source_pid, source_tid, syscall_msg, pending)
             {
                 for response in responses {
                     send_response(&response);
@@ -539,7 +513,7 @@ pub(crate) fn handle_ipc_message(
         },
         SystemCallMessageHeader::GetDirectoryEntriesRequest => {
             if let Some(responses) =
-                handler::handle_getdents_with_hostfs(source_tid, syscall_msg, pending)
+                handler::handle_getdents_with_hostfs(source_pid, source_tid, syscall_msg, pending)
             {
                 for response in responses {
                     send_response(&response);
@@ -567,9 +541,14 @@ pub(crate) fn handle_ipc_message(
         | SystemCallMessageHeader::HostUmountRequestPart => {
             let part: SystemCallMessagePart =
                 SystemCallMessagePart::from_bytes(syscall_msg.payload);
-            if let Some(responses) =
-                assemble_and_dispatch(source_tid, syscall_msg.header, part, assemblers, pending)
-            {
+            if let Some(responses) = assemble_and_dispatch(
+                source_pid,
+                source_tid,
+                syscall_msg.header,
+                part,
+                assemblers,
+                pending,
+            ) {
                 for response in responses {
                     send_response(&response);
                 }

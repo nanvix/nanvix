@@ -22,81 +22,97 @@ use ::core::mem;
 // Structures
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Identity of the process and thread that originated a message.
+///
+/// Both halves are carried explicitly: `pid` attributes the message to a process (used by servers
+/// that key per-process state, such as vfsd), while `tid` names the originating thread (or
+/// [`ThreadIdentifier::NONE`] when unspecified). The kernel stamps the authoritative identity on
+/// every message that passes through the `send` kernel call (see `src/kernel/src/ipc/send.rs`), so
+/// a server may trust these fields instead of reconstructing identity from a sign-encoded value.
+/// This is correct across `fork()` + `execv()` (which keeps the process identifier but installs a
+/// new main-thread thread identifier, so `TID != PID`) and for requests issued by non-main threads
+/// of a multi-threaded caller (nanvix/nanvix#2650, nanvix/nanvix#2529).
+///
+/// # Notes
+///
+/// - All fields are intentionally public to enable zero-copy message parsing.
+///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct MessageSender(i32);
+#[repr(C)]
+pub struct MessageSender {
+    /// Process that originated the message.
+    pub pid: ProcessIdentifier,
+    /// Thread that originated the message, or [`ThreadIdentifier::NONE`] when unspecified.
+    pub tid: ThreadIdentifier,
+}
+::static_assert::assert_eq_size!(MessageSender, 2 * mem::size_of::<u32>());
 
 impl MessageSender {
+    /// The size of a message sender, in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
     /// The kernel process is the sender of the message.
-    pub const KERNEL: Self = MessageSender(ProcessIdentifier::KERNEL_RAW);
+    pub const KERNEL: Self = Self::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
     /// The memory management daemon is the sender of the message (standalone mode only).
     /// NOTE: Aliases [`Self::NETWORKD`] — these are mutually exclusive deployment modes.
-    pub const MEMD: Self = MessageSender(ProcessIdentifier::MEMD_RAW);
+    pub const MEMD: Self = Self::new(ProcessIdentifier::MEMD, ThreadIdentifier::NONE);
     /// The network daemon is the sender of the message (hosted mode only).
     /// NOTE: Aliases [`Self::MEMD`] — these are mutually exclusive deployment modes.
-    pub const NETWORKD: Self = MessageSender(ProcessIdentifier::NETWORKD_RAW);
+    pub const NETWORKD: Self = Self::new(ProcessIdentifier::NETWORKD, ThreadIdentifier::NONE);
     /// The VFS daemon is the sender of the message.
-    pub const VFSD: Self = MessageSender(ProcessIdentifier::VFSD_RAW);
-}
+    pub const VFSD: Self = Self::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE);
 
-impl MessageSender {
-    pub fn as_id(&self) -> Result<ProcessIdentifier, ThreadIdentifier> {
-        if self.0 >= 0 {
-            Ok(ProcessIdentifier::from(self.0))
-        } else {
-            Err(ThreadIdentifier::from(-self.0))
-        }
+    /// Creates a message sender from an explicit process and thread identifier.
+    pub const fn new(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Self {
+        Self { pid, tid }
     }
 }
 
-impl From<ProcessIdentifier> for MessageSender {
-    fn from(pid: ProcessIdentifier) -> Self {
-        Self(pid.into())
-    }
-}
-
-impl From<ThreadIdentifier> for MessageSender {
-    fn from(tid: ThreadIdentifier) -> Self {
-        let tid: i32 = tid.into();
-        Self(-tid)
-    }
-}
-
+///
+/// # Description
+///
+/// Destination of a message, naming the receiving process and optionally a specific thread.
+///
+/// When `tid` is [`ThreadIdentifier::NONE`] the message is delivered to the process mailbox of
+/// `pid` (any thread may consume it); otherwise it is delivered to the named thread. This explicit
+/// tuple replaces the previous sign-encoded routing discriminator.
+///
+/// # Notes
+///
+/// - All fields are intentionally public to enable zero-copy message parsing.
+///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct MessageReceiver(i32);
-
-impl MessageReceiver {
-    pub fn as_id(&self) -> Result<ProcessIdentifier, ThreadIdentifier> {
-        if self.0 >= 0 {
-            Ok(ProcessIdentifier::from(self.0))
-        } else {
-            Err(ThreadIdentifier::from(-self.0))
-        }
-    }
+#[repr(C)]
+pub struct MessageReceiver {
+    /// Process that should receive the message.
+    pub pid: ProcessIdentifier,
+    /// Thread that should receive the message, or [`ThreadIdentifier::NONE`] for the process
+    /// mailbox.
+    pub tid: ThreadIdentifier,
 }
+::static_assert::assert_eq_size!(MessageReceiver, 2 * mem::size_of::<u32>());
 
 impl MessageReceiver {
+    /// The size of a message receiver, in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
     /// The kernel process is the receiver of the message.
-    pub const KERNEL: Self = MessageReceiver(ProcessIdentifier::KERNEL_RAW);
+    pub const KERNEL: Self = Self::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
     /// The memory management daemon is the receiver of the message (standalone mode only).
     /// NOTE: Aliases [`Self::NETWORKD`] — these are mutually exclusive deployment modes.
-    pub const MEMD: Self = MessageReceiver(ProcessIdentifier::MEMD_RAW);
+    pub const MEMD: Self = Self::new(ProcessIdentifier::MEMD, ThreadIdentifier::NONE);
     /// The network daemon is the receiver of the message (hosted mode only).
     /// NOTE: Aliases [`Self::MEMD`] — these are mutually exclusive deployment modes.
-    pub const NETWORKD: Self = MessageReceiver(ProcessIdentifier::NETWORKD_RAW);
+    pub const NETWORKD: Self = Self::new(ProcessIdentifier::NETWORKD, ThreadIdentifier::NONE);
     /// The VFS daemon is the receiver of the message.
-    pub const VFSD: Self = MessageReceiver(ProcessIdentifier::VFSD_RAW);
-}
+    pub const VFSD: Self = Self::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE);
 
-impl From<ProcessIdentifier> for MessageReceiver {
-    fn from(pid: ProcessIdentifier) -> Self {
-        Self(pid.into())
-    }
-}
-
-impl From<ThreadIdentifier> for MessageReceiver {
-    fn from(tid: ThreadIdentifier) -> Self {
-        let tid: i32 = tid.into();
-        Self(-tid)
+    /// Creates a message receiver from an explicit process and thread identifier.
+    pub const fn new(pid: ProcessIdentifier, tid: ThreadIdentifier) -> Self {
+        Self { pid, tid }
     }
 }
 
@@ -130,9 +146,9 @@ pub struct Message {
 //==================================================================================================
 
 impl Message {
-    /// The size of the message header fields (source, destination and type).
+    /// The size of the message header fields (type, source, destination and status).
     pub const HEADER_SIZE: usize =
-        2 * mem::size_of::<ProcessIdentifier>() + MessageType::SIZE + mem::size_of::<i32>();
+        MessageType::SIZE + MessageSender::SIZE + MessageReceiver::SIZE + mem::size_of::<i32>();
     /// The size of the message's payload.
     pub const PAYLOAD_SIZE: usize = config::kernel::IPC_MESSAGE_SIZE - Self::HEADER_SIZE;
 

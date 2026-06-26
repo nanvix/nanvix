@@ -77,8 +77,8 @@ impl GetCurrentWorkingDirectoryRequest {
             message.into_bytes(),
         );
         let message: Message = Message::new(
-            MessageSender::from(tid),
-            MessageReceiver::from(destination),
+            MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
+            MessageReceiver::new(destination, ThreadIdentifier::NONE),
             message_type,
             None,
             message.into_bytes(),

@@ -20,7 +20,10 @@ use ::sys::{
         SystemMessage,
         SystemMessageHeader,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -284,8 +287,8 @@ pub fn wait_request(
 
     // Construct an IPC message.
     let ipc_message: Message = Message::new(
-        MessageSender::from(caller),
-        MessageReceiver::from(ProcessIdentifier::PROCD),
+        MessageSender::new(caller, ThreadIdentifier::NONE),
+        MessageReceiver::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),
@@ -332,8 +335,8 @@ pub fn wait_response(
 
     // Construct an IPC message.
     let ipc_message: Message = Message::new(
-        MessageSender::from(ProcessIdentifier::PROCD),
-        MessageReceiver::from(destination),
+        MessageSender::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+        MessageReceiver::new(destination, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),

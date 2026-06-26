@@ -217,16 +217,16 @@ impl SystemCallMessagePart {
         let message: SystemCallMessage = SystemCallMessage::new(header, message.into_bytes());
         if is_response {
             Ok(Message::new(
-                MessageSender::from(daemon),
-                MessageReceiver::from(tid),
+                MessageSender::new(daemon, ThreadIdentifier::NONE),
+                MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
                 message_type,
                 None,
                 message.into_bytes(),
             ))
         } else {
             Ok(Message::new(
-                MessageSender::from(tid),
-                MessageReceiver::from(daemon),
+                MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
+                MessageReceiver::new(daemon, ThreadIdentifier::NONE),
                 message_type,
                 None,
                 message.into_bytes(),

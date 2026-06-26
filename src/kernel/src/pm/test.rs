@@ -32,7 +32,6 @@ use ::sys::{
         MessageType,
     },
     mm::Address,
-    pm::ProcessIdentifier,
 };
 
 //==================================================================================================
@@ -53,8 +52,8 @@ fn test_mailbox_is_empty_tracks_buffered_messages() -> bool {
     }
 
     let message: Message = Message::new(
-        MessageSender::from(ProcessIdentifier::KERNEL),
-        MessageReceiver::from(ProcessIdentifier::KERNEL),
+        MessageSender::KERNEL,
+        MessageReceiver::KERNEL,
         MessageType::Ipc,
         Option::<ErrorCode>::None,
         [0u8; Message::PAYLOAD_SIZE],

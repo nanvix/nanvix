@@ -10,10 +10,10 @@
 //! # Inline Data Limits
 //!
 //! Read operations are limited to [`MAX_INLINE_READ_DATA`](::hostfs_api::MAX_INLINE_READ_DATA)
-//! (38) bytes per request, and write operations to
-//! [`MAX_INLINE_WRITE_DATA`](::hostfs_api::MAX_INLINE_WRITE_DATA) (24) bytes. Larger
-//! requests are silently clamped. Callers (the guest VFS layer) must handle short
-//! reads/writes and issue additional requests for the remainder.
+//! bytes per request, and write operations to
+//! [`MAX_INLINE_WRITE_DATA`](::hostfs_api::MAX_INLINE_WRITE_DATA) bytes. Larger requests are
+//! silently clamped. Callers (the guest VFS layer) must handle short reads/writes and issue
+//! additional requests for the remainder.
 //!
 //! When forwarding to hostfsd, these handlers send the IKC request and push a
 //! [`PendingOp`] onto the pending queue. They return `None` to indicate that no
@@ -65,6 +65,7 @@ use ::syscall::{
 //==================================================================================================
 
 pub(crate) fn handle_close_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
@@ -106,7 +107,7 @@ pub(crate) fn handle_close_with_hostfs(
                 op_id,
                 PendingOp {
                     source_tid: source,
-                    source_pid: None,
+                    source_pid,
                     kind: PendingOpKind::Close,
                 },
             )
@@ -236,6 +237,7 @@ pub(crate) fn handle_dup2(
 }
 
 pub(crate) fn handle_seek_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
@@ -261,7 +263,7 @@ pub(crate) fn handle_seek_with_hostfs(
                 op_id,
                 PendingOp {
                     source_tid: source,
-                    source_pid: None,
+                    source_pid,
                     kind: PendingOpKind::Seek,
                 },
             )
@@ -276,6 +278,7 @@ pub(crate) fn handle_seek_with_hostfs(
 }
 
 pub(crate) fn handle_fsync_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
@@ -296,7 +299,7 @@ pub(crate) fn handle_fsync_with_hostfs(
                 op_id,
                 PendingOp {
                     source_tid: source,
-                    source_pid: None,
+                    source_pid,
                     kind: PendingOpKind::Flush,
                 },
             )
@@ -311,6 +314,7 @@ pub(crate) fn handle_fsync_with_hostfs(
 }
 
 pub(crate) fn handle_ftruncate_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
@@ -334,7 +338,7 @@ pub(crate) fn handle_ftruncate_with_hostfs(
                 op_id,
                 PendingOp {
                     source_tid: source,
-                    source_pid: None,
+                    source_pid,
                     kind: PendingOpKind::Truncate,
                 },
             )
@@ -353,6 +357,7 @@ pub(crate) fn handle_ftruncate_with_hostfs(
 //==================================================================================================
 
 pub(crate) fn handle_fstat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
@@ -373,7 +378,7 @@ pub(crate) fn handle_fstat_with_hostfs(
                 op_id,
                 PendingOp {
                     source_tid: source,
-                    source_pid: None,
+                    source_pid,
                     kind: PendingOpKind::Stat,
                 },
             )
@@ -388,6 +393,7 @@ pub(crate) fn handle_fstat_with_hostfs(
 }
 
 pub(crate) fn handle_fstatat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     request: FileStatAtRequest,
     pending: &mut PendingQueue,
@@ -422,7 +428,7 @@ pub(crate) fn handle_fstatat_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid: source,
-                            source_pid: None,
+                            source_pid,
                             kind,
                         },
                     )
@@ -489,7 +495,7 @@ pub(crate) fn handle_read_with_hostfs(
                 op_id,
                 PendingOp {
                     source_tid,
-                    source_pid: Some(source_pid),
+                    source_pid,
                     kind: PendingOpKind::Read { count: buf_size },
                 },
             )
@@ -549,7 +555,7 @@ pub(crate) fn handle_write_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid,
-                            source_pid: Some(source_pid),
+                            source_pid,
                             kind: PendingOpKind::Write,
                         },
                     )
@@ -613,6 +619,7 @@ use alloc::{
 /// Returns `None` when the request was forwarded to hostfsd (the response is sent later
 /// from the event loop). Non-hostfs FDs fall through to the synchronous VFS handler.
 pub(crate) fn handle_getdents_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
@@ -651,7 +658,7 @@ pub(crate) fn handle_getdents_with_hostfs(
                 op_id,
                 PendingOp {
                     source_tid: source,
-                    source_pid: None,
+                    source_pid,
                     kind: PendingOpKind::Getdents {
                         remote_fd,
                         guest_fd: fd,
@@ -672,6 +679,7 @@ pub(crate) fn handle_getdents_with_hostfs(
 }
 
 pub(crate) fn handle_openat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     request: OpenAtRequest,
     pending: &mut PendingQueue,
@@ -696,7 +704,7 @@ pub(crate) fn handle_openat_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid: source,
-                            source_pid: None,
+                            source_pid,
                             kind: PendingOpKind::Open { path: open_path },
                         },
                     )
@@ -714,6 +722,7 @@ pub(crate) fn handle_openat_with_hostfs(
 }
 
 pub(crate) fn handle_renameat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     request: RenameAtRequest,
     pending: &mut PendingQueue,
@@ -751,7 +760,7 @@ pub(crate) fn handle_renameat_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid: source,
-                            source_pid: None,
+                            source_pid,
                             kind: PendingOpKind::Rename,
                         },
                     )
@@ -769,6 +778,7 @@ pub(crate) fn handle_renameat_with_hostfs(
 }
 
 pub(crate) fn handle_unlinkat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     request: UnlinkAtRequest,
     pending: &mut PendingQueue,
@@ -803,7 +813,7 @@ pub(crate) fn handle_unlinkat_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid: source,
-                            source_pid: None,
+                            source_pid,
                             kind,
                         },
                     )
@@ -821,6 +831,7 @@ pub(crate) fn handle_unlinkat_with_hostfs(
 }
 
 pub(crate) fn handle_mkdirat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     request: MakeDirectoryAtRequest,
     pending: &mut PendingQueue,
@@ -844,7 +855,7 @@ pub(crate) fn handle_mkdirat_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid: source,
-                            source_pid: None,
+                            source_pid,
                             kind: PendingOpKind::Mkdir,
                         },
                     )
@@ -862,6 +873,7 @@ pub(crate) fn handle_mkdirat_with_hostfs(
 }
 
 pub(crate) fn handle_symlinkat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     request: SymbolicLinkAtRequest,
     pending: &mut PendingQueue,
@@ -887,7 +899,7 @@ pub(crate) fn handle_symlinkat_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid: source,
-                            source_pid: None,
+                            source_pid,
                             kind: PendingOpKind::Symlink,
                         },
                     )
@@ -905,6 +917,7 @@ pub(crate) fn handle_symlinkat_with_hostfs(
 }
 
 pub(crate) fn handle_readlinkat_with_hostfs(
+    source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
     request: ReadLinkAtRequest,
     pending: &mut PendingQueue,
@@ -929,7 +942,7 @@ pub(crate) fn handle_readlinkat_with_hostfs(
                         op_id,
                         PendingOp {
                             source_tid: source,
-                            source_pid: None,
+                            source_pid,
                             kind: PendingOpKind::Readlink { bufsiz },
                         },
                     )

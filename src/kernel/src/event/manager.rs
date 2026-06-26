@@ -478,8 +478,8 @@ impl EventManagerInner {
                 if let Some(idx) = selected {
                     if let Some(_event) = self.pending_interrupts[idx].pop_front() {
                         let message: Message = Message {
-                            source: MessageSender::from(ProcessIdentifier::KERNEL),
-                            destination: MessageReceiver::from(pid),
+                            source: MessageSender::KERNEL,
+                            destination: MessageReceiver::new(pid, ThreadIdentifier::NONE),
                             message_type: MessageType::Interrupt,
                             ..Message::default()
                         };
@@ -508,7 +508,7 @@ impl EventManagerInner {
                         info.instruction = Some(entry.2.info.instruction() as usize);
 
                         let mut message: Message = Message::from(info);
-                        message.destination = MessageReceiver::from(pid);
+                        message.destination = MessageReceiver::new(pid, ThreadIdentifier::NONE);
                         message.message_type = MessageType::Exception;
 
                         self.pending_exceptions[idx].push_back(entry);
@@ -549,11 +549,11 @@ impl EventManagerInner {
                         };
 
                         let message: Message = Message {
-                            source: MessageSender::from(ProcessIdentifier::KERNEL),
-                            destination: MessageReceiver::from(pid),
+                            source: MessageSender::KERNEL,
+                            destination: MessageReceiver::new(pid, ThreadIdentifier::NONE),
                             message_type,
-                            status: 0,
                             payload,
+                            ..Message::default()
                         };
 
                         return Ok(Some(message));
@@ -803,15 +803,12 @@ impl EventManagerInner {
     ) -> Result<(), Error> {
         pm.post_message(receiver, message)?;
 
-        match receiver.as_id() {
-            Ok(pid) => {
-                // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
-                unsafe { self.notify_all_process_threads(pid) }
-            },
-            Err(tid) => {
-                // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
-                unsafe { self.get_wait().notify_thread(tid) }
-            },
+        if receiver.tid.is_none() {
+            // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
+            unsafe { self.notify_all_process_threads(receiver.pid) }
+        } else {
+            // SAFETY: the calling process does not hold mutable reference to the inner state of the process manager.
+            unsafe { self.get_wait().notify_thread(receiver.tid) }
         }
     }
 

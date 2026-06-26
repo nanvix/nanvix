@@ -14,10 +14,7 @@ use crate::{
     },
 };
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+    error::Error,
     ipc::{
         Message,
         MessageSender,
@@ -70,15 +67,12 @@ pub fn send(pid: ProcessIdentifier, tid: ThreadIdentifier, arg0: u32) -> KcallRe
         return KcallResult::Error(e.code.into());
     }
 
-    // Reject messages whose source does not match the calling thread or process. Without this
-    // check a process could forge the `source` field to impersonate another (possibly privileged)
-    // peer, since receivers authenticate callers on `message.source`.
-    if { message.source } != MessageSender::from(src_tid) && { message.source }
-        != MessageSender::from(src_pid)
-    {
-        error!("invalid message source (message={message:?})");
-        return KcallResult::Error(ErrorCode::OperationNotPermitted.into());
-    }
+    // Stamp the kernel-attested caller identity over whatever the sender supplied. The kernel knows
+    // the authoritative (pid, tid) of the calling thread, so a sender cannot forge `source`: a
+    // server may therefore trust `message.source.pid` for attribution (correct across
+    // `fork()` + `execv()` and for non-main threads, where TID != PID) and `message.source.tid` to
+    // route a reply to the exact calling thread (nanvix/nanvix#2662, #2650, #2529).
+    message.source = MessageSender::new(src_pid, src_tid);
 
     // Route message based on its type.
     match message.message_type {

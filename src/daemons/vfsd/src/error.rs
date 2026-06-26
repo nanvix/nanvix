@@ -53,8 +53,8 @@ pub(crate) fn fat32_to_error_code(e: &::vfs::Fat32Error) -> ErrorCode {
 
 pub(crate) fn build_error(source: ThreadIdentifier, code: ErrorCode) -> Message {
     Message::new(
-        MessageSender::from(ProcessIdentifier::VFSD),
-        MessageReceiver::from(source),
+        MessageSender::VFSD,
+        MessageReceiver::new(ProcessIdentifier::from(i32::from(source)), source),
         MessageType::Ipc,
         Some(code),
         [0u8; Message::PAYLOAD_SIZE],

@@ -54,8 +54,8 @@ pub fn test() -> Result<(), Error> {
     }
 
     // Inline-path tests: all use short link names whose wire path (after stripping
-    // the `/mnt/` mount prefix) fits within `MAX_INLINE_PATH_LEN` (36 bytes), so
-    // readlink/lstat take the single-message fast path.
+    // the `/mnt/` mount prefix) fits within `MAX_INLINE_PATH_LEN`, so readlink/lstat take the
+    // single-message fast path.
     test_symlink_create_readlink()?;
     test_lstat_does_not_follow()?;
     test_stat_follows_symlink()?;
@@ -195,11 +195,11 @@ fn test_symlink_to_nonexistent_target() -> Result<(), Error> {
 /// Tests that readlink/lstat/stat work over the multi-part wire format.
 ///
 /// Uses a link path whose wire form (after the `/mnt/` prefix is stripped) exceeds
-/// `hostfs_api::MAX_INLINE_PATH_LEN` (36 bytes), so vfsd sends the request through
-/// the multi-part assembler rather than the inline single-message fast path. This
+/// `hostfs_api::MAX_INLINE_PATH_LEN`, so vfsd sends the request through the multi-part assembler
+/// rather than the inline single-message fast path. This
 /// covers both no-follow (`lstat`) and follow (`stat`) multi-part dispatch paths.
 fn test_long_path_multipart() -> Result<(), Error> {
-    // Stripped wire path: "long-symlink-name-padding-AAAAAAAAAAAA.lnk" (42 bytes > 36).
+    // Stripped wire path: "long-symlink-name-padding-AAAAAAAAAAAA.lnk".
     let link_path: FileSystemPath =
         FileSystemPath::new("/mnt/long-symlink-name-padding-AAAAAAAAAAAA.lnk")?;
     let target: FileSystemPath = FileSystemPath::new("symlink-target.txt")?;

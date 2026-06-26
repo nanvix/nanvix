@@ -20,7 +20,10 @@ use ::sys::{
         SystemMessage,
         SystemMessageHeader,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -230,8 +233,8 @@ pub fn fork_clone_request(
     // Construct an IPC message. The notification is sent by the process manager daemon to the
     // filesystem daemon.
     let ipc_message: Message = Message::new(
-        MessageSender::from(ProcessIdentifier::PROCD),
-        MessageReceiver::from(ProcessIdentifier::VFSD),
+        MessageSender::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+        MessageReceiver::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),
@@ -275,8 +278,8 @@ pub fn fork_clone_ack(
         SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
 
     let ipc_message: Message = Message::new(
-        MessageSender::from(source),
-        MessageReceiver::from(destination),
+        MessageSender::new(source, ThreadIdentifier::NONE),
+        MessageReceiver::new(destination, ThreadIdentifier::NONE),
         MessageType::Ipc,
         None,
         system_message.into_bytes(),

@@ -22,7 +22,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 use ::syscall::{
     sys::socket::{
@@ -110,13 +113,11 @@ pub fn dispatch_message(
     source: MessageSender,
     syscall_msg: SystemCallMessage,
 ) -> Option<Vec<Message>> {
-    let tid: ThreadIdentifier = match source.as_id() {
-        Err(tid) => tid,
-        Ok(pid) => {
-            error!("networkd::dispatch(): message source is a PID ({pid:?}), expected TID");
-            return None;
-        },
-    };
+    let tid: ThreadIdentifier = source.tid;
+    if tid.is_none() {
+        error!("networkd::dispatch(): message source has no thread id");
+        return None;
+    }
 
     match syscall_msg.header {
         SystemCallMessageHeader::AcceptSocketRequest => {
@@ -191,8 +192,8 @@ fn to_host_fd(guest_fd: i32) -> i32 {
 
 fn build_error(tid: ThreadIdentifier, error: ErrorCode) -> Message {
     Message::new(
-        MessageSender::from(::syscall::NETWORKD),
-        MessageReceiver::from(tid),
+        MessageSender::new(::syscall::NETWORKD, ThreadIdentifier::NONE),
+        MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
         MessageType::Ikc,
         Some(error),
         [0u8; Message::PAYLOAD_SIZE],

@@ -67,21 +67,6 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         },
         // Handle `gettid()` locally.
         KcallNumber::GetTid => KcallResult::Success(<i64>::from(tid).into()),
-        // Resolve a thread identifier to its owning process identifier. This lets a privileged
-        // server (vfsd) attribute a request to the correct process even after the caller has
-        // execv()'d, which assigns a new main-thread TID while preserving the PID (so TID != PID).
-        KcallNumber::GetPidByTid => match ThreadIdentifier::try_from(i64::from(arg0)) {
-            Ok(target_tid) => {
-                // SAFETY: the process manager is initialized and access is synchronized; the
-                // immutable borrow used above for `pid`/`tid` yielded Copy values and is not live.
-                let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
-                match pm.try_get_pid_by_tid(target_tid) {
-                    Ok(target_pid) => KcallResult::Success(<i64>::from(target_pid).into()),
-                    Err(e) => KcallResult::Error(e.code.into()),
-                }
-            },
-            Err(e) => KcallResult::Error(e.code.into()),
-        },
         KcallNumber::Exit => {
             // SAFETY: the calling process is not the kernel.
             let e: Error = unsafe { ProcessManager::exit(ExitStatus::from(arg0)).unwrap_err() };
