@@ -150,6 +150,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/libgen-c"
+program = "./bin/libgen-c.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/memory-c"
 program = "./bin/memory-c.initrd"
 expected_exit_code = 0

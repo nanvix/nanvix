@@ -54,6 +54,7 @@ members = [
         "src/libs/libc_ctype",
         "src/libs/libc_inttypes",
         "src/libs/libc_langinfo",
+        "src/libs/libc_libgen",
         "src/libs/libc_locale",
         "src/libs/libc_setjmp",
         "src/libs/libc_signal",
@@ -245,6 +246,7 @@ libc_assert = { path = "src/libs/libc_assert", default-features = false }
 libc_ctype = { path = "src/libs/libc_ctype", default-features = false }
 libc_inttypes = { path = "src/libs/libc_inttypes", default-features = false }
 libc_langinfo = { path = "src/libs/libc_langinfo", default-features = false }
+libc_libgen = { path = "src/libs/libc_libgen", default-features = false }
 libc_locale = { path = "src/libs/libc_locale", default-features = false }
 libc_setjmp = { path = "src/libs/libc_setjmp", default-features = false }
 libc_math = { path = "src/libs/libc_math", default-features = false }

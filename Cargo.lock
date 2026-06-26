@@ -1880,6 +1880,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_libgen"
+version = "0.17.36"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_locale"
 version = "0.17.36"
 dependencies = [
@@ -2458,6 +2465,7 @@ dependencies = [
  "libc_ctype",
  "libc_inttypes",
  "libc_langinfo",
+ "libc_libgen",
  "libc_locale",
  "libc_regex",
  "libc_setjmp",
