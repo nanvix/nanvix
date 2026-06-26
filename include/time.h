@@ -104,6 +104,8 @@ extern char *asctime(const struct tm *timeptr);
 extern char *asctime_r(const struct tm *timeptr, char *buf);
 extern char *ctime(const time_t *timep);
 extern char *ctime_r(const time_t *timep, char *buf);
+extern size_t strftime(char *s, size_t max, const char *format,
+                       const struct tm *timeptr);
 
 /*==================================================================================================
  * Clocks
@@ -113,6 +115,12 @@ extern int clock_gettime(clockid_t clock_id, struct timespec *tp);
 extern int clock_getres(clockid_t clock_id, struct timespec *res);
 extern int clock_settime(clockid_t clock_id, const struct timespec *tp);
 extern int nanosleep(const struct timespec *req, struct timespec *rem);
+
+/*==================================================================================================
+ * Time Parsing
+ *==================================================================================================*/
+
+extern char *strptime(const char *s, const char *format, struct tm *tm);
 
 #ifdef __cplusplus
 }
