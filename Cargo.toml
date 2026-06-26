@@ -94,6 +94,7 @@ members = [
         "src/tests/test-fork-hostfs",
         "src/tests/test-fork-kcall",
         "src/tests/waitpid-rust",
+        "src/tests/kill-rust",
         "src/tests/linux-app",
         "src/tests/memory-rust",
         "src/tests/misc-rust",

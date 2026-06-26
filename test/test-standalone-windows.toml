@@ -129,6 +129,12 @@ expected_output = "ok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+program = "./bin/kill-rust.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 program = "./bin/setenv-rust.initrd"
 expected_output = "ok"
 
@@ -218,6 +224,13 @@ expected_output = "ok"
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/waitpid-rust.initrd"
+input = "[]"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/kill-rust.initrd"
 input = "[]"
 expected_output = "ok"
 
