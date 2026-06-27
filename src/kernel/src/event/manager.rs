@@ -1337,6 +1337,12 @@ fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
                 error!("killing process (interrupted by signal)");
                 ErrorCode::Interrupted
             },
+            SleepError::Interrupted(InterruptReason::Signaled) => {
+                // A caught signal interrupted a thread parked in exception handling. There is no
+                // kernel call to restart on this path, so the process is torn down with EINTR.
+                error!("killing process (interrupted by signal during exception handling)");
+                ErrorCode::Interrupted
+            },
             SleepError::Interrupted(InterruptReason::TimedOut) => {
                 error!("killing process (timed out)");
                 ErrorCode::OperationTimedOut

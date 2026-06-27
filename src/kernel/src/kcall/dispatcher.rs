@@ -20,6 +20,7 @@ use crate::{
     pm::{
         self,
         InterruptReason,
+        KcallRestart,
         ProcessManager,
         SleepError,
     },
@@ -80,7 +81,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         // is synchronized.
         KcallNumber::JoinThread => match unsafe { pm::join_thread(pid, arg0, arg1) } {
             Ok(status) => KcallResult::Success(Into::<u32>::into(status).into()),
-            Err(sleep_error) => handle_sleep_error(sleep_error),
+            Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
         },
         KcallNumber::ExitThread => {
             // SAFETY: the calling process is not the kernel and it does not hold a mutable
@@ -138,12 +139,12 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         // SAFETY: The calling thread is not the kernel and no resources are held.
         KcallNumber::Recv => match unsafe { ipc::recv(tid, pid, arg0 as usize) } {
             Ok(()) => KcallResult::ok(),
-            Err(sleep_error) => handle_sleep_error(sleep_error),
+            Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
         },
         // SAFETY: The calling thread is not the kernel and no resources are held.
         KcallNumber::Push => match ipc::push(pid, tid, arg0, arg1, arg2 as usize, arg3) {
             Ok(()) => KcallResult::ok(),
-            Err(sleep_error) => handle_sleep_error(sleep_error),
+            Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
         },
         // SAFETY: The calling thread is not the kernel and no resources are held.
         KcallNumber::Pull => match ipc::pull(pid, tid, arg0, arg1, arg2 as usize, arg3) {
@@ -151,7 +152,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
                 Ok(bytes_u32) => KcallResult::Success(bytes_u32.into()),
                 Err(_) => KcallResult::Error(ErrorCode::InvalidArgument.into()),
             },
-            Err(sleep_error) => handle_sleep_error(sleep_error),
+            Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
         },
         // SAFETY: The calling thread does not hold a reference to the process manager.
         KcallNumber::Resume => unsafe { event::resume(arg0 as usize) },
@@ -159,7 +160,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::MutexLock => {
             match unsafe { pm::lock_mutex(pid, tid, arg0 as usize, arg1 as usize, arg2 as usize) } {
                 Ok(()) => KcallResult::ok(),
-                Err(sleep_error) => handle_sleep_error(sleep_error),
+                Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
             }
         },
         // SAFETY: The calling thread does not hold a reference to the process manager.
@@ -173,7 +174,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
                 pm::wait_cond(pid, tid, arg0 as usize, arg1 as usize, arg2 as usize, arg3 as usize)
             } {
                 Ok(()) => KcallResult::ok(),
-                Err(sleep_error) => handle_sleep_error(sleep_error),
+                Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
             }
         },
         // SAFETY: The calling thread is not the kernel, no resources are held, and the calling process does not hold a reference to the process manager.
@@ -191,7 +192,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         // SAFETY: The calling thread does not hold any resources.
         KcallNumber::Sleep => match unsafe { pm::sleep(arg0 as usize, arg1 as usize) } {
             Ok(()) => KcallResult::ok(),
-            Err(sleep_error) => handle_sleep_error(sleep_error),
+            Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
         },
 
         // Handle `snapshot()` locally (microvm platform only).
@@ -219,8 +220,8 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::Sigprocmask => pm::sigprocmask(pid, tid, arg0, arg1, arg2),
         KcallNumber::Kill => pm::kill(pid, arg0, arg1),
         KcallNumber::Sigreturn => pm::sigreturn(),
-        KcallNumber::Sigpending => pm::sigpending(),
-        KcallNumber::Sigsuspend => pm::sigsuspend(),
+        KcallNumber::Sigpending => pm::sigpending(pid, tid, arg0),
+        KcallNumber::Sigsuspend => pm::sigsuspend(pid, tid, arg0),
         KcallNumber::SigRestorer => pm::sig_restorer(pid, arg0),
 
         // Unknown kernel call.
@@ -246,7 +247,14 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
     result
 }
 
-fn handle_sleep_error(sleep_error: SleepError) -> KcallResult {
+fn handle_sleep_error(
+    sleep_error: SleepError,
+    number: u32,
+    arg0: u32,
+    arg1: u32,
+    arg2: u32,
+    arg3: u32,
+) -> KcallResult {
     match sleep_error {
         SleepError::Generic(generic_error) => {
             error!("failed to sleep: {:?}", generic_error);
@@ -262,6 +270,21 @@ fn handle_sleep_error(sleep_error: SleepError) -> KcallResult {
             InterruptReason::TimedOut => {
                 error!("failed to sleep: operation timed out");
                 KcallResult::Error(ErrorCode::OperationTimedOut.into())
+            },
+            InterruptReason::Signaled => {
+                // A deliverable, caught signal interrupted the blocking call. Record the call's
+                // number and arguments so the asynchronous-delivery checkpoint can transparently
+                // restart it when the interrupting handler is installed with `SA_RESTART`. Without
+                // `SA_RESTART`, the checkpoint discards this record and the `EINTR` reported here is
+                // what the call returns. The current blocking calls make no observable partial
+                // progress before interruption, so reporting `EINTR` (rather than a short count) is
+                // always correct here.
+                // SAFETY: the process manager is initialized and access to it is synchronized.
+                unsafe { ProcessManager::get_mut() }.set_running_thread_restart(KcallRestart {
+                    number,
+                    args: [arg0, arg1, arg2, arg3],
+                });
+                KcallResult::Error(ErrorCode::Interrupted.into())
             },
         },
     }

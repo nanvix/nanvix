@@ -8,8 +8,9 @@
 //! (`_do_kcall`) leaves on the top of a thread's kernel stack. The stub runs before any Rust code,
 //! so the interrupted user state sits at fixed offsets below the top of the kernel stack: the
 //! hardware trap frame (`EIP`, `CS`, `EFLAGS`, user `ESP`, `SS`) followed by the callee-saved
-//! registers the stub pushes (`EBP`, `ESI`, `EDI`, `EBX`). These offsets mirror that stub and must
-//! change with it.
+//! registers and the scratch `ECX` the stub pushes (`EBP`, `ESI`, `EDI`, `EBX`, `ECX`); `ECX` is
+//! preserved so an `SA_RESTART` restart can reload the interrupted call's second argument. These
+//! offsets mirror that stub and must change with it.
 //!
 
 //==================================================================================================
@@ -36,13 +37,16 @@ const SELECTOR_RPL_MASK: u32 = 0b11;
 /// On-stack image of the interrupted user context, as the kernel-call entry stub (`_do_kcall`)
 /// leaves it just below the top of the kernel stack (`esp0`).
 ///
-/// Fields are ordered by ascending address: the stub pushes the callee-saved registers last (so
-/// `EBX` sits lowest), beneath the hardware trap frame the CPU pushes on the ring 3 -> ring 0
+/// Fields are ordered by ascending address: the stub pushes `ECX` last (so it sits lowest), beneath
+/// the callee-saved registers and the hardware trap frame the CPU pushes on the ring 3 -> ring 0
 /// transition. Each field therefore sits `size_of - offset_of` bytes *below* `esp0`, which the
 /// `OFF_*` constants encode so the stub layout has a single source of truth.
 #[repr(C)]
 struct TrapFrame {
-    /// `EBX` (pushed last by the entry stub; lowest address).
+    /// `ECX` (pushed last by the entry stub; lowest address). Preserved so an `SA_RESTART` restart
+    /// can reload the interrupted call's second argument.
+    ecx: u32,
+    /// `EBX` (pushed by the entry stub).
     ebx: u32,
     /// `EDI` (pushed by the entry stub).
     edi: u32,
@@ -62,8 +66,8 @@ struct TrapFrame {
     ss: u32,
 }
 
-// `TrapFrame` must be 36 bytes long (9 words). This must match the `_do_kcall` entry stub.
-::static_assert::assert_eq_size!(TrapFrame, 36);
+// `TrapFrame` must be 40 bytes long (10 words). This must match the `_do_kcall` entry stub.
+::static_assert::assert_eq_size!(TrapFrame, 40);
 
 impl TrapFrame {
     /// Size of the saved frame; `esp0` points just past its last word (`SS`).
@@ -87,6 +91,8 @@ impl TrapFrame {
     const OFF_EDI: usize = Self::SIZE - core::mem::offset_of!(Self, edi);
     /// Offset of the saved `EBX` below `esp0`.
     const OFF_EBX: usize = Self::SIZE - core::mem::offset_of!(Self, ebx);
+    /// Offset of the saved `ECX` below `esp0`.
+    const OFF_ECX: usize = Self::SIZE - core::mem::offset_of!(Self, ecx);
 }
 
 //==================================================================================================
@@ -160,7 +166,7 @@ pub unsafe fn read_trap_context(esp0: usize, result: i64) -> SignalCpuContext {
             flags: kstack_read(esp0, TrapFrame::OFF_EFLAGS),
             ax,
             bx: kstack_read(esp0, TrapFrame::OFF_EBX),
-            cx: 0,
+            cx: kstack_read(esp0, TrapFrame::OFF_ECX),
             dx,
             si: kstack_read(esp0, TrapFrame::OFF_ESI),
             di: kstack_read(esp0, TrapFrame::OFF_EDI),
@@ -200,8 +206,36 @@ pub unsafe fn restore_trap_context(esp0: usize, cpu: &SignalCpuContext) {
         kstack_write(esp0, TrapFrame::OFF_ESP, cpu.sp);
         kstack_write(esp0, TrapFrame::OFF_SS, cpu.ss);
         kstack_write(esp0, TrapFrame::OFF_EBX, cpu.bx);
+        kstack_write(esp0, TrapFrame::OFF_ECX, cpu.cx);
         kstack_write(esp0, TrapFrame::OFF_ESI, cpu.si);
         kstack_write(esp0, TrapFrame::OFF_EDI, cpu.di);
         kstack_write(esp0, TrapFrame::OFF_EBP, cpu.bp);
     }
+}
+
+/// Size in bytes of the kernel-call trap instruction (`int $KCALL_VECTOR`, encoded as `CD ib`),
+/// used to rewind a saved instruction pointer back onto the trap so the call re-executes.
+const KCALL_TRAP_INSN_SIZE: u32 = 2;
+
+/// Rewrites a saved user context so that, once restored by `sigreturn()`, the interrupted kernel
+/// call is transparently restarted (the kernel's analog of Linux's `ERESTARTSYS`).
+///
+/// The saved instruction pointer is rewound to the kernel-call trap instruction and the original
+/// call number and argument registers are reloaded, so re-executing the trap repeats the call with
+/// its initial arguments. The reloaded `EAX`/`EDX` reach the user through the `sigreturn()` return
+/// value, while `EBX`/`ECX`/`EDI` are restored from the trap frame; `ECX` relies on the entry stub
+/// having preserved it for exactly this purpose.
+///
+/// # Parameters
+///
+/// - `cpu`: Saved context to rewrite in place.
+/// - `number`: Kernel-call number (restored to the accumulator).
+/// - `args`: Original kernel-call arguments, in argument-register order.
+pub fn prepare_kcall_restart(cpu: &mut SignalCpuContext, number: u32, args: [u32; 4]) {
+    cpu.ip = cpu.ip.wrapping_sub(KCALL_TRAP_INSN_SIZE);
+    cpu.ax = number;
+    cpu.bx = args[0];
+    cpu.cx = args[1];
+    cpu.dx = args[2];
+    cpu.di = args[3];
 }

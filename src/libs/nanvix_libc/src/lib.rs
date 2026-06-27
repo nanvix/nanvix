@@ -218,6 +218,73 @@ pub unsafe extern "C" fn __nanvix_sigprocmask(
 }
 
 //==================================================================================================
+// Signal pending/suspend (sigpending/sigsuspend) backends required by libc_signal
+//==================================================================================================
+
+/// `sigpending` backend reports the calling thread's pending-but-blocked signal set via the
+/// `sigpending()` kernel call.
+///
+/// # Safety
+///
+/// This function writes to the errno location and dereferences `set`, which must be a valid,
+/// properly aligned pointer to a `sigset_t`.
+#[cfg(feature = "backend-nanvix")]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nanvix_sigpending(set: *mut libc_signal::signal::sigset_t) -> c_int {
+    match unsafe { ::sys::kcall::pm::__kcall_sigpending(set as *mut ::sys::pm::SigSet) } {
+        Ok(()) => 0,
+        Err(error) => {
+            *__errno() = error.code.get();
+            -1
+        },
+    }
+}
+
+/// Stub `sigpending` backend for builds that supply their own backend.
+///
+/// # Safety
+///
+/// This function writes to the errno location and dereferences raw pointers.
+#[cfg(not(feature = "backend-nanvix"))]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nanvix_sigpending(_set: *mut libc_signal::signal::sigset_t) -> c_int {
+    *__errno() = ::sysapi::errno::ENOSYS;
+    -1
+}
+
+/// `sigsuspend` backend installs `mask` and suspends until a caught signal is delivered via the
+/// `sigsuspend()` kernel call. It always returns `-1`; on the expected path `errno` is `EINTR`.
+///
+/// # Safety
+///
+/// This function writes to the errno location and dereferences `mask`, which must be a valid,
+/// properly aligned pointer to a `sigset_t`.
+#[cfg(feature = "backend-nanvix")]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nanvix_sigsuspend(mask: *const libc_signal::signal::sigset_t) -> c_int {
+    match unsafe { ::sys::kcall::pm::__kcall_sigsuspend(mask as *const ::sys::pm::SigSet) } {
+        // sigsuspend() never succeeds; this arm is unreachable but keeps the match total.
+        Ok(()) => 0,
+        Err(error) => {
+            *__errno() = error.code.get();
+            -1
+        },
+    }
+}
+
+/// Stub `sigsuspend` backend for builds that supply their own backend.
+///
+/// # Safety
+///
+/// This function writes to the errno location and dereferences raw pointers.
+#[cfg(not(feature = "backend-nanvix"))]
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn __nanvix_sigsuspend(_mask: *const libc_signal::signal::sigset_t) -> c_int {
+    *__errno() = ::sysapi::errno::ENOSYS;
+    -1
+}
+
+//==================================================================================================
 // Stub symbols required by libstdc++ but not yet implemented
 //==================================================================================================
 

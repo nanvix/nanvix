@@ -35,6 +35,7 @@ pub use x86::{
     forge_user_stack,
     install_fpu,
     join_kcall_result,
+    prepare_kcall_restart,
     read_trap_context,
     read_user_sp,
     redirect_to_handler,

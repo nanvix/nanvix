@@ -69,19 +69,26 @@ use ::sys::{
     },
     pm::{
         ProcessIdentifier,
+        SA_RESTART,
         SA_SIGINFO,
+        SIG_BLOCK,
         SIG_MAX,
+        SIG_SETMASK,
         SIGKILL,
         SIGTERM,
         SIGUSR1,
         SIGUSR2,
         SigAction,
+        SigSet,
         ThreadIdentifier,
     },
 };
 use ::sysapi::{
     ffi::c_int,
-    sys_types::pid_t,
+    sys_types::{
+        pid_t,
+        time_t,
+    },
     sys_wait::{
         wexitstatus,
         wifexited,
@@ -107,6 +114,12 @@ const CHILD_FAIL: c_int = 111;
 /// terminated by the signal. Surfacing a distinct status turns a missed kill into a loud assertion
 /// failure rather than a silent pass.
 const CHILD_NOT_KILLED: c_int = 112;
+
+/// Duration, in seconds, of the timed sleeps that park a thread in an interruptible wait. It is
+/// comfortably longer than the interrupting signal needs to arrive (so the sleep is always
+/// interrupted mid-wait rather than completing on its own), yet bounded so that a regression in
+/// signal interruption stalls the suite for only this long instead of an hour.
+const INTERRUPTIBLE_SLEEP_SECS: time_t = 10;
 
 //==================================================================================================
 // Wait Selection
@@ -244,10 +257,11 @@ fn run_child(wait: ChildWait) -> ! {
             }
         },
         ChildWait::TimedSleep => {
-            // One hour — far longer than the test needs to deliver the signal, so the child is
-            // always terminated mid-wait rather than waking on its own.
+            // Comfortably longer than the test needs to deliver the signal, so the child is always
+            // terminated mid-wait rather than waking on its own, yet bounded so a regression does
+            // not stall the suite for an hour.
             let req: timespec = timespec {
-                tv_sec: 3600,
+                tv_sec: INTERRUPTIBLE_SLEEP_SECS,
                 tv_nsec: 0,
             };
             // SAFETY: `req` is a valid `timespec`; passing a null `rem` is permitted.
@@ -448,6 +462,302 @@ fn test_siginfo_signal_runs_three_arg_handler() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Blocking-Call Interruption
+//==================================================================================================
+
+/// Exit status reported by a signaller child that completed its job (posted the signal) successfully.
+const SIGNALLER_OK: c_int = 0;
+
+/// Sends an empty notification from the calling process to `to` over IPC.
+fn send_empty(to: ProcessIdentifier) -> Result<(), Error> {
+    let from: ProcessIdentifier = pm::getpid_uncached()?;
+    let message: Message = Message::new(
+        MessageSender::new(from, ThreadIdentifier::NONE),
+        MessageReceiver::new(to, ThreadIdentifier::NONE),
+        MessageType::Ipc,
+        None,
+        [0u8; Message::PAYLOAD_SIZE],
+    );
+    ipc::__kcall_send(&message)
+}
+
+/// Returns whether a blocking IPC receive reported interruption (`EINTR`).
+fn is_eintr_err(result: &Result<Message, Error>) -> bool {
+    matches!(result, Err(error) if error.code.get() == ErrorCode::Interrupted.get())
+}
+
+/// Installs a catching disposition for `SIGUSR1` with the given `sa_flags`.
+fn install_sigusr1_handler(sa_flags: c_int) -> Result<(), Error> {
+    let act: SigAction = SigAction {
+        sa_handler: sigusr1_handler_addr(),
+        sa_mask: 0,
+        sa_flags,
+        sa_sigaction: 0,
+    };
+    // SAFETY: `act` is a valid, properly aligned `SigAction`; the old-action pointer is null.
+    unsafe { pm::__kcall_sigaction(as_signum(SIGUSR1)?, &raw const act, ptr::null_mut()) }
+}
+
+/// Signaller child entry point: wait for the parent's go-ahead, then post `SIGUSR1` to the parent so
+/// it interrupts the parent's in-progress blocking call. The cross-process `kill()` is relayed
+/// through the process-manager daemon, whose several context switches let the parent reach its
+/// blocking point first. This function never returns to the caller.
+fn run_signaller_child() -> ! {
+    let parent: ProcessIdentifier = match pm::__kcall_getppid() {
+        Ok(parent) => parent,
+        // SAFETY: the freshly forked child holds no resources requiring cleanup.
+        Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+    };
+    if await_ready().is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+    let signum: c_int = match as_signum(SIGUSR1) {
+        Ok(signum) => signum,
+        // SAFETY: as above.
+        Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+    };
+    if kill(i32::from(parent), signum) != 0 {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+    // SAFETY: as above.
+    unsafe { bindings::_exit::_exit(SIGNALLER_OK) };
+}
+
+/// Forks a signaller child. Returns the child's PID in the parent; the child never returns here.
+fn spawn_signaller() -> Result<ProcessIdentifier, Error> {
+    let ret: pid_t = bindings::fork::fork();
+    if ret == 0 {
+        run_signaller_child();
+    }
+    assert!(ret > 0, "fork() failed in parent (ret={})", ret);
+    Ok(ProcessIdentifier::from(ret))
+}
+
+/// Reaps a signaller child and asserts it completed successfully.
+fn reap_signaller(child: ProcessIdentifier) {
+    let mut status: c_int = 0;
+    // SAFETY: `status` points to a valid `c_int`.
+    let reaped: pid_t = unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, 0) };
+    assert!(
+        reaped == i32::from(child),
+        "waitpid() must reap the signaller child (ret={}, child={})",
+        reaped,
+        i32::from(child)
+    );
+    assert!(
+        wifexited(status),
+        "signaller child must surface as a normal exit (status={:#x})",
+        status
+    );
+    assert!(
+        wexitstatus(status) == SIGNALLER_OK,
+        "signaller child failed to post the signal (status={})",
+        wexitstatus(status)
+    );
+}
+
+/// Verifies that a deliverable caught signal interrupts a thread blocked in `recv()`, returning
+/// `EINTR` and running the handler, when the handler is installed without `SA_RESTART`.
+fn test_eintr_interrupts_recv() -> Result<(), Error> {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+    install_sigusr1_handler(0)?;
+
+    let signaller: ProcessIdentifier = spawn_signaller()?;
+    // Release the signaller, then block. The relayed cross-process signal arrives once we are parked
+    // in recv().
+    send_empty(signaller)?;
+    let result: Result<Message, Error> = ipc::__kcall_recv();
+
+    assert!(
+        HANDLER_RAN.load(Ordering::SeqCst),
+        "SIGUSR1 handler did not run after interrupting a blocked recv()"
+    );
+    assert!(is_eintr_err(&result), "recv() must report EINTR when interrupted by a caught signal");
+    reap_signaller(signaller);
+    Ok(())
+}
+
+/// Verifies that a deliverable caught signal interrupts a thread blocked in a timed sleep, returning
+/// `EINTR` and running the handler, when the handler is installed without `SA_RESTART`.
+fn test_eintr_interrupts_sleep() -> Result<(), Error> {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+    install_sigusr1_handler(0)?;
+
+    let signaller: ProcessIdentifier = spawn_signaller()?;
+    send_empty(signaller)?;
+    // Comfortably longer than the signal needs to arrive, so the sleep is always interrupted
+    // mid-wait rather than completing on its own, yet bounded so a regression does not stall the
+    // suite for an hour.
+    let req: timespec = timespec {
+        tv_sec: INTERRUPTIBLE_SLEEP_SECS,
+        tv_nsec: 0,
+    };
+    // SAFETY: `req` is a valid `timespec`; passing a null `rem` is permitted.
+    let ret: c_int = unsafe { nanosleep(&raw const req, ptr::null_mut()) };
+
+    assert!(
+        HANDLER_RAN.load(Ordering::SeqCst),
+        "SIGUSR1 handler did not run after interrupting a blocked sleep"
+    );
+    assert!(ret == -1, "nanosleep() must report interruption (ret={})", ret);
+    assert!(
+        read_errno() == ErrorCode::Interrupted.get(),
+        "nanosleep() must fail with EINTR (errno={})",
+        read_errno()
+    );
+    reap_signaller(signaller);
+    Ok(())
+}
+
+/// Verifies that an `SA_RESTART` handler transparently restarts a blocked sleep instead of reporting
+/// `EINTR`: the sleep is interrupted, the handler runs, and the call re-executes with its original
+/// arguments to completion. The sleep duration travels in the kernel call's second argument
+/// register, so a faithful restart must also restore that register.
+fn test_sa_restart_restarts_sleep() -> Result<(), Error> {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+    install_sigusr1_handler(SA_RESTART)?;
+
+    let signaller: ProcessIdentifier = spawn_signaller()?;
+    send_empty(signaller)?;
+    // A sub-second sleep whose duration is carried entirely in the nanoseconds field (the call's
+    // second argument). The signal arrives well within it; the handler runs and the call restarts
+    // for the full duration, so a correct restart completes successfully rather than failing.
+    let req: timespec = timespec {
+        tv_sec: 0,
+        tv_nsec: 900_000_000,
+    };
+    // SAFETY: `req` is a valid `timespec`; passing a null `rem` is permitted.
+    let ret: c_int = unsafe { nanosleep(&raw const req, ptr::null_mut()) };
+
+    assert!(
+        HANDLER_RAN.load(Ordering::SeqCst),
+        "SIGUSR1 handler did not run during an SA_RESTART sleep"
+    );
+    assert!(
+        ret == 0,
+        "SA_RESTART nanosleep() must complete after restarting (ret={}, errno={})",
+        ret,
+        read_errno()
+    );
+    reap_signaller(signaller);
+    Ok(())
+}
+
+/// Verifies that `sigsuspend()` blocks with the supplied mask installed, is interrupted by a caught
+/// signal whose handler runs, and then reports `EINTR`.
+fn test_sigsuspend_returns_after_handler() -> Result<(), Error> {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+    install_sigusr1_handler(0)?;
+
+    let signaller: ProcessIdentifier = spawn_signaller()?;
+    send_empty(signaller)?;
+    // Suspend with an empty mask so SIGUSR1 remains deliverable.
+    let mask: SigSet = 0;
+    // SAFETY: `mask` points to a valid `SigSet` for the duration of the call.
+    let result: Result<(), Error> = unsafe { pm::__kcall_sigsuspend(&raw const mask) };
+
+    assert!(HANDLER_RAN.load(Ordering::SeqCst), "SIGUSR1 handler did not run during sigsuspend()");
+    assert!(
+        matches!(&result, Err(error) if error.code.get() == ErrorCode::Interrupted.get()),
+        "sigsuspend() must report EINTR after a handler runs"
+    );
+    reap_signaller(signaller);
+    Ok(())
+}
+
+/// Verifies that `sigsuspend()` immediately delivers a signal that was already pending and becomes
+/// unblocked under the temporary mask, instead of sleeping until a later signal arrives.
+fn test_sigsuspend_delivers_pending_unblocked_signal() -> Result<(), Error> {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+    install_sigusr1_handler(0)?;
+
+    let bit: SigSet = 1u64 << (SIGUSR1 - 1);
+    let block: SigSet = bit;
+    let mut old: SigSet = 0;
+    // Block SIGUSR1 so the self-directed signal below becomes pending.
+    // SAFETY: `block` and `old` point to valid `SigSet` values.
+    unsafe { pm::__kcall_sigprocmask(SIG_BLOCK, &raw const block, &raw mut old) }?;
+
+    let caller: ProcessIdentifier = pm::getpid_uncached()?;
+    post_signal(caller, as_signum(SIGUSR1)?);
+    assert!(!HANDLER_RAN.load(Ordering::SeqCst), "a blocked signal must stay pending");
+
+    let suspend_mask: SigSet = old & !bit;
+    // SAFETY: `suspend_mask` points to a valid `SigSet` for the duration of the call.
+    let result: Result<(), Error> = unsafe { pm::__kcall_sigsuspend(&raw const suspend_mask) };
+
+    assert!(
+        HANDLER_RAN.load(Ordering::SeqCst),
+        "sigsuspend() did not deliver the already-pending SIGUSR1"
+    );
+    assert!(
+        matches!(&result, Err(error) if error.code.get() == ErrorCode::Interrupted.get()),
+        "sigsuspend() must report EINTR after delivering a pending signal"
+    );
+
+    let mut current: SigSet = 0;
+    // SAFETY: `current` points to a valid `SigSet`; a null `set` requests only the old mask.
+    unsafe { pm::__kcall_sigprocmask(SIG_SETMASK, ptr::null(), &raw mut current) }?;
+    assert!(
+        current & bit != 0,
+        "sigsuspend() must restore the pre-suspend blocked mask (current={:#x})",
+        current
+    );
+
+    // Restore the mask that was in effect before this test blocked SIGUSR1.
+    // SAFETY: `old` points to a valid `SigSet`; the old-mask output is not requested.
+    unsafe { pm::__kcall_sigprocmask(SIG_SETMASK, &raw const old, ptr::null_mut()) }?;
+    Ok(())
+}
+
+/// Verifies that `sigpending()` reports a signal that is posted while blocked, that the blocked
+/// signal is not delivered, and that unblocking it delivers it and clears it from the pending set.
+fn test_sigpending_reports_blocked_pending() -> Result<(), Error> {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+    install_sigusr1_handler(0)?;
+
+    let bit: SigSet = 1u64 << (SIGUSR1 - 1);
+    let block: SigSet = bit;
+    let mut old: SigSet = 0;
+    // Block SIGUSR1 so a self-directed post stays pending instead of being delivered.
+    // SAFETY: `block` and `old` point to valid `SigSet` values.
+    unsafe { pm::__kcall_sigprocmask(SIG_BLOCK, &raw const block, &raw mut old) }?;
+
+    // Post SIGUSR1 to ourselves; it is blocked, so it must remain pending and undelivered.
+    let caller: ProcessIdentifier = pm::getpid_uncached()?;
+    post_signal(caller, as_signum(SIGUSR1)?);
+    assert!(!HANDLER_RAN.load(Ordering::SeqCst), "a blocked signal must not be delivered");
+
+    // sigpending() must report the pending-but-blocked signal.
+    let mut pending: SigSet = 0;
+    // SAFETY: `pending` points to a valid `SigSet`.
+    unsafe { pm::__kcall_sigpending(&raw mut pending) }?;
+    assert!(
+        pending & bit != 0,
+        "sigpending() must report the pending-but-blocked SIGUSR1 (pending={:#x})",
+        pending
+    );
+
+    // Unblocking delivers the pending signal at this call's return-to-user boundary.
+    // SAFETY: `old` points to a valid `SigSet`.
+    unsafe { pm::__kcall_sigprocmask(SIG_SETMASK, &raw const old, ptr::null_mut()) }?;
+    assert!(HANDLER_RAN.load(Ordering::SeqCst), "unblocking a pending signal must deliver it");
+
+    // It must no longer be pending.
+    let mut pending_after: SigSet = 0;
+    // SAFETY: `pending_after` points to a valid `SigSet`.
+    unsafe { pm::__kcall_sigpending(&raw mut pending_after) }?;
+    assert!(
+        pending_after & bit == 0,
+        "a delivered signal must clear from the pending set (pending={:#x})",
+        pending_after
+    );
+    Ok(())
+}
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
@@ -463,5 +773,11 @@ pub fn run() -> Result<(), Error> {
     test_kill_rejects_invalid_signal()?;
     test_caught_signal_runs_handler()?;
     test_siginfo_signal_runs_three_arg_handler()?;
+    test_eintr_interrupts_recv()?;
+    test_eintr_interrupts_sleep()?;
+    test_sa_restart_restarts_sleep()?;
+    test_sigsuspend_returns_after_handler()?;
+    test_sigsuspend_delivers_pending_unblocked_signal()?;
+    test_sigpending_reports_blocked_pending()?;
     Ok(())
 }

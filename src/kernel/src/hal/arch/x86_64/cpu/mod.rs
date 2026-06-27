@@ -62,6 +62,7 @@ pub use interrupt::{
 };
 pub use sigframe::{
     join_kcall_result,
+    prepare_kcall_restart,
     read_trap_context,
     read_user_sp,
     redirect_to_handler,

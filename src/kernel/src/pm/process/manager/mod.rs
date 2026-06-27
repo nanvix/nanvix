@@ -53,6 +53,7 @@ use crate::{
                 KillOutcome,
                 SignalControl,
                 SignalDisposition,
+                UNBLOCKABLE,
             },
             InterruptedProcess,
             ProcessRef,
@@ -154,6 +155,30 @@ pub(super) fn test() -> bool {
 pub enum SleepError {
     Interrupted(InterruptReason),
     Generic(Error),
+}
+
+//==================================================================================================
+// Post Action
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Action the signal-posting primitive (`kill()`) must take after evaluating a posted signal's
+/// disposition, once the borrow of the process manager has been released so the action can re-borrow
+/// it.
+///
+enum PostAction {
+    /// Nothing further to do (the signal was ignored or discarded).
+    None,
+    /// The signal's default action terminates the target.
+    Terminate,
+    /// A caught signal was posted: interrupt a blocked candidate thread so its blocking call reports
+    /// `EINTR` (or restarts) and the handler is delivered at the return-to-user checkpoint.
+    Interrupt,
+    /// A job-control stop/continue signal was posted: wake a candidate thread (full semantics arrive
+    /// in a later phase).
+    Wake,
 }
 
 //==================================================================================================
@@ -628,6 +653,116 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Returns the set of signals that are pending on the calling process but blocked from delivery
+    /// to the calling thread (`pending & blocked`), as reported by `sigpending()`.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the calling process.
+    /// - `tid`: Identifier of the calling thread.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the pending-but-blocked signal set. Upon failure, an error is returned.
+    ///
+    pub fn sigpending(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    ) -> Result<SigSet, Error> {
+        let blocked: SigSet = self.find_thread_mut(tid)?.thread_state_mut().blocked();
+        let pending: SigSet = self
+            .find_process_mut(pid)?
+            .state_mut()
+            .signals_mut()
+            .pending();
+        Ok(pending & blocked)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Atomically installs the temporary blocked-signal mask for a `sigsuspend()` and records the
+    /// mask to reinstate once the call completes.
+    ///
+    /// The previous mask is saved so that `sigreturn()` restores it after the interrupting handler
+    /// runs, matching the POSIX requirement that `sigsuspend()` leave the mask unchanged on return.
+    /// Signals that can never be blocked (`SIGKILL`/`SIGSTOP`) are cleared from the installed mask.
+    /// The return value reports whether an already-pending caught signal is now deliverable under
+    /// the temporary mask; in that case `sigsuspend()` must return `EINTR` immediately so the
+    /// normal return-to-user checkpoint can deliver it without sleeping forever.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the calling thread.
+    /// - `mask`: The temporary mask to install for the duration of the suspension.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `true` is returned when a caught pending signal is deliverable under the
+    /// temporary mask. Upon failure, an error is returned instead.
+    ///
+    pub fn install_sigsuspend_mask(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        mask: SigSet,
+    ) -> Result<bool, Error> {
+        self.find_process(pid)?;
+
+        let installed: SigSet = mask & !UNBLOCKABLE;
+        let mut thread: ThreadRefMut = self.find_thread_mut(tid)?;
+        let state = thread.thread_state_mut();
+        let previous: SigSet = state.blocked();
+        state.set_saved_blocked(Some(previous));
+        state.set_blocked(installed);
+
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+        let signals: &mut SignalControl = process.state_mut().signals_mut();
+        let mut deliverable: SigSet = signals.pending() & !installed;
+        while deliverable != 0 {
+            let signum: usize = (deliverable.trailing_zeros() as usize) + 1;
+            if let Some(SignalDisposition::Handler(_)) = signals.disposition(signum) {
+                return Ok(true);
+            }
+            deliverable &= deliverable - 1;
+        }
+
+        Ok(false)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reinstates the blocked-signal mask that [`Self::install_sigsuspend_mask`] saved, undoing a
+    /// `sigsuspend()` that is unwinding without delivering a handler.
+    ///
+    /// On the normal path, `sigsuspend()` leaves mask restoration to `sigreturn()` once the
+    /// interrupting handler returns. When the call instead fails before any handler runs,
+    /// `sigreturn()` never executes, so this restores the saved mask directly to honor the POSIX
+    /// requirement that `sigsuspend()` leave the mask unchanged on return (even on failure). It is a
+    /// no-op when no mask was saved.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the calling thread.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    ///
+    pub fn restore_sigsuspend_mask(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
+        let mut thread: ThreadRefMut = self.find_thread_mut(tid)?;
+        let state = thread.thread_state_mut();
+        if let Some(saved) = state.take_saved_blocked() {
+            state.set_blocked(saved & !UNBLOCKABLE);
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
     /// Posts a signal to a target process and evaluates its delivery.
     ///
     /// A process may always signal itself; posting to another process requires the
@@ -693,31 +828,31 @@ impl ProcessManager {
 
         // Resolve the effect of the signal from the target's disposition, posting it to the pending
         // set when delivery must be deferred. The borrow of the process manager is dropped before
-        // any termination or wakeup so those operations can re-borrow it.
-        let (terminate, wake): (bool, bool) = {
+        // any termination, interruption, or wakeup so those operations can re-borrow it.
+        let action: PostAction = {
             let mut process: ProcessRefMut = self.find_process_mut(target)?;
             let signals: &mut SignalControl = process.state_mut().signals_mut();
             match signals.disposition(signum) {
-                Some(SignalDisposition::Ignore) => (false, false),
+                Some(SignalDisposition::Ignore) => PostAction::None,
                 Some(SignalDisposition::Handler(_)) => {
                     signals.post(signum);
-                    (false, true)
+                    PostAction::Interrupt
                 },
                 Some(SignalDisposition::Default) => match default_action(signum) {
-                    DefaultAction::Terminate => (true, false),
+                    DefaultAction::Terminate => PostAction::Terminate,
                     DefaultAction::Core => {
                         info!(
                             "terminated by signal default core action (target={target:?}, \
                              signum={signum})"
                         );
-                        (true, false)
+                        PostAction::Terminate
                     },
-                    DefaultAction::Ignore => (false, false),
+                    DefaultAction::Ignore => PostAction::None,
                     DefaultAction::Stop | DefaultAction::Continue => {
                         // Job-control stop/continue semantics arrive in a later phase; for now the
                         // signal is recorded as pending and a candidate thread is woken.
                         signals.post(signum);
-                        (false, true)
+                        PostAction::Wake
                     },
                 },
                 None => {
@@ -728,11 +863,11 @@ impl ProcessManager {
             }
         };
 
-        if terminate {
-            return self.kill_terminate(caller, target);
-        }
-        if wake {
-            self.wakeup_signal_candidate(target);
+        match action {
+            PostAction::Terminate => return self.kill_terminate(caller, target),
+            PostAction::Interrupt => self.interrupt_signal_candidate(target, signum),
+            PostAction::Wake => self.wakeup_signal_candidate(target),
+            PostAction::None => {},
         }
         Ok(KillOutcome::Done)
     }
@@ -792,6 +927,68 @@ impl ProcessManager {
         if let Some(tid) = candidate {
             let _ = self.do_wakeup(tid);
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Interrupts a blocked candidate thread of a process to which a caught signal was posted, so
+    /// that the thread's blocking kernel call reports the interruption (returning `EINTR`, or
+    /// transparently restarting when the handler requests `SA_RESTART`) and the handler is delivered
+    /// at its return-to-user checkpoint.
+    ///
+    /// Only a fully-suspended process needs explicit help; a process that still has a ready or
+    /// running thread reaches its own checkpoint without being woken. A signal that the candidate
+    /// thread would block is left pending and interrupts nothing.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process whose candidate thread should be interrupted.
+    /// - `signum`: Signal number that was posted.
+    ///
+    fn interrupt_signal_candidate(&mut self, pid: ProcessIdentifier, signum: usize) {
+        let candidate: Option<ThreadIdentifier> = self
+            .suspended
+            .iter()
+            .find(|process| process.state().pid() == pid)
+            .and_then(|process| process.candidate_tid_for(signum));
+        if let Some(tid) = candidate {
+            self.interrupt_suspended_thread(tid);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Moves the suspended process that owns thread `tid` to the interrupted list, recording the
+    /// interruption as [`InterruptReason::Signaled`] on that thread so it is resumed at the next
+    /// scheduling opportunity and its blocking call observes the interruption.
+    ///
+    /// Best-effort: if the thread is no longer suspended (for example, it was already woken by
+    /// another notifier), the process lists are left unchanged.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to interrupt.
+    ///
+    fn interrupt_suspended_thread(&mut self, tid: ThreadIdentifier) {
+        let mut scanned: LinkedList<SleepingProcess> = LinkedList::new();
+        while let Some(process) = self.suspended.pop_front() {
+            if process.find_thread(tid).is_some() {
+                match process.interrupt_thread(tid, InterruptReason::Signaled) {
+                    Ok(interrupted_process) => self.interrupted.push_back(interrupted_process),
+                    Err(suspended_process) => self.suspended.push_front(suspended_process),
+                }
+                // Restore the processes scanned before the match, preserving their order.
+                while let Some(process) = scanned.pop_back() {
+                    self.suspended.push_front(process);
+                }
+                return;
+            }
+            scanned.push_back(process);
+        }
+        // Thread not found among suspended processes; rollback the list to its original state.
+        self.suspended = scanned;
     }
 
     ///

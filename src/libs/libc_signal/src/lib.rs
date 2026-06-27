@@ -32,6 +32,7 @@
 
 pub mod raise;
 pub mod signal;
+pub mod sigpending;
 pub mod sigprocmask;
 pub mod sigset;
 pub mod sigsuspend;

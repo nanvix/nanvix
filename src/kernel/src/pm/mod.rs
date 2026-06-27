@@ -58,7 +58,10 @@ pub use process::{
     SignalDeliveryOutcome,
     SleepError,
 };
-pub use thread::InterruptReason;
+pub use thread::{
+    InterruptReason,
+    KcallRestart,
+};
 
 ///
 /// # Description

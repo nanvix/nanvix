@@ -85,6 +85,32 @@ impl SleepingProcess {
             .map(|thread| thread.id())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Returns the identifier of a candidate thread that can take delivery of signal `signum`, i.e.
+    /// a sleeping thread that does not currently block it.
+    ///
+    /// A blocked signal must remain pending rather than interrupt a blocking call, so a thread whose
+    /// mask blocks `signum` is not a valid interruption candidate.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: The signal number (1-based).
+    ///
+    /// # Returns
+    ///
+    /// The identifier of a sleeping thread that does not block `signum`, or [`None`] if every
+    /// sleeping thread blocks it.
+    ///
+    pub fn candidate_tid_for(&self, signum: usize) -> Option<ThreadIdentifier> {
+        let bit: u64 = 1u64 << (signum - 1);
+        self.sleeping_threads
+            .iter()
+            .find(|thread| (thread.thread_state().blocked() & bit) == 0)
+            .map(|thread| thread.id())
+    }
+
     pub fn terminate(self) -> InterruptedProcess {
         let (mut sleeping_threads, sleeping_thread): (VecDeque<SleepingThread>, SleepingThread) =
             self.sleeping_threads.pop_front();
@@ -111,6 +137,52 @@ impl SleepingProcess {
                     NonEmptyVecDeque::new(ready_thread),
                     None,
                     NonEmptyVecDeque::from(sleeping_threads),
+                    self.zombie_threads.take(),
+                ))
+            },
+            Err(sleeping_threads) => {
+                self.sleeping_threads = sleeping_threads;
+                Err(self)
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Interrupts a single sleeping thread of this suspended process with the given reason, leaving
+    /// any remaining threads asleep.
+    ///
+    /// This is the signal-interruption counterpart of [`Self::wakeup`]: where `wakeup` resumes a
+    /// thread so its blocking call re-evaluates, this resumes a thread so its blocking call reports
+    /// the interruption (and, for [`InterruptReason::Signaled`], returns `EINTR` or transparently
+    /// restarts at the return-to-user checkpoint).
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread to interrupt.
+    /// - `reason`: Reason recorded for the interruption.
+    ///
+    /// # Returns
+    ///
+    /// On success, the process is returned as an [`InterruptedProcess`] carrying the interrupted
+    /// thread. If no sleeping thread matches `tid`, the unchanged [`SleepingProcess`] is returned.
+    ///
+    pub fn interrupt_thread(
+        mut self,
+        tid: ThreadIdentifier,
+        reason: InterruptReason,
+    ) -> Result<InterruptedProcess, SleepingProcess> {
+        let sleeping_threads: NonEmptyVecDeque<SleepingThread> = self.sleeping_threads;
+
+        // Search for the sleeping thread.
+        match sleeping_threads.remove_if(|thread| thread.id() == tid) {
+            Ok((sleeping_threads, sleeping_thread)) => {
+                let interrupted_thread: InterruptedThread = sleeping_thread.interrupt(reason);
+                Ok(InterruptedProcess::from_sleeping(
+                    self.state,
+                    NonEmptyVecDeque::from(sleeping_threads),
+                    NonEmptyVecDeque::new(interrupted_thread),
                     self.zombie_threads.take(),
                 ))
             },
