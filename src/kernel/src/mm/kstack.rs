@@ -91,7 +91,7 @@ impl KernelStack {
     ///
     pub fn new(mm: &mut VirtMemoryManager) -> Result<Self, Error> {
         let count: usize = config::kernel::KSTACK_SIZE / ::arch::mem::PAGE_SIZE;
-        let mut kframes: Vec<KernelFrame> = Vec::with_capacity(count);
+        let mut kframes: Vec<KernelFrame> = crate::mm::try_vec_with_capacity(count)?;
         mm.alloc_kpages(true, count, &mut kframes)?;
         let kpages: Vec<KernelPage> = kframes.into_iter().map(KernelPage::new).collect();
 

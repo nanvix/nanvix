@@ -1072,7 +1072,7 @@ impl ProcessManager {
                 AccessPermission::RDWR,
                 true,
                 1,
-                &mut Vec::with_capacity(1),
+                &mut crate::mm::try_vec_with_capacity(1)?,
             )?;
             // Write args as a NUL-terminated string directly to user space.
             Self::write_nul_terminated_to_user(
@@ -1104,7 +1104,7 @@ impl ProcessManager {
                 AccessPermission::RDWR,
                 true,
                 1,
-                &mut Vec::with_capacity(1),
+                &mut crate::mm::try_vec_with_capacity(1)?,
             )?;
 
             // Write env as a NUL-terminated string directly to user space.
@@ -1153,7 +1153,7 @@ impl ProcessManager {
                 AccessPermission::RDWR,
                 true,
                 count,
-                &mut Vec::with_capacity(count),
+                &mut crate::mm::try_vec_with_capacity(count)?,
             )?;
 
             // Construct the ready main thread. This is infallible.

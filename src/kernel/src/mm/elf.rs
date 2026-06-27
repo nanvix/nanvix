@@ -467,7 +467,7 @@ fn do_elf32_load(
             virt_addr_base, virt_addr_end, file_off_base, file_off_end, access
         );
 
-        let mut uframe_buf: Vec<UserFrame> = Vec::with_capacity(1);
+        let mut uframe_buf: Vec<UserFrame> = crate::mm::try_vec_with_capacity(1)?;
         for vaddr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
             let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
 
