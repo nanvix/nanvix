@@ -80,13 +80,13 @@ Interactive mode runs a single application, waits for it to exit, and forwards i
 
 ### Shim Configuration
 
-| Key              | Description                                    | Default          |
-| ---------------- | ---------------------------------------------- | ---------------- |
-| `kernel_path`    | Path to `nanvixd.elf` on the host.             | `nanvixd.elf`    |
-| `mkramfs_path`   | Path to `mkramfs.elf` on the host.             | `mkramfs.elf`    |
-| `temp_dir`       | Directory for generated ramfs images.          | System temp dir  |
-| `execution_mode` | Execution mode (`"standalone"` for V1).        | `"standalone"`   |
-| `extra_args`     | Additional arguments passed to `nanvixd`.      | `[]`             |
+| Key              | Description                               | Default         |
+| ---------------- | ----------------------------------------- | --------------- |
+| `kernel_path`    | Path to `nanvixd.elf` on the host.        | `nanvixd.elf`   |
+| `mkramfs_path`   | Path to `mkramfs.elf` on the host.        | `mkramfs.elf`   |
+| `temp_dir`       | Directory for generated ramfs images.     | System temp dir |
+| `execution_mode` | Execution mode (`"standalone"` for V1).   | `"standalone"`  |
+| `extra_args`     | Additional arguments passed to `nanvixd`. | `[]`            |
 
 Example:
 
@@ -131,7 +131,7 @@ By default, networking system calls from the guest are blocked. To allow the gue
 host network stack, pass `-allow-host-networking`:
 
 ```bash
-./bin/nanvixd.elf -allow-host-networking -console-file /dev/stdout -- ./bin/network-rust.elf
+./bin/nanvixd.elf -allow-host-networking -console-file /dev/stdout -- ./bin/test-rust-network.elf
 ```
 
 ### Mounting a Host Directory
@@ -139,7 +139,7 @@ host network stack, pass `-allow-host-networking`:
 To make a host directory accessible to the guest at `/mnt`, use the `-mount` flag:
 
 ```bash
-./bin/nanvixd.elf -mount /path/to/shared/dir -console-file /dev/stdout -- ./bin/file-rust.elf
+./bin/nanvixd.elf -mount /path/to/shared/dir -console-file /dev/stdout -- ./bin/test-rust-file.elf
 ```
 
 The guest can then read and write files under `/mnt/` which map to the host directory.
@@ -278,12 +278,12 @@ All requests are `POST` to `http://<host:port>/`. The message type is specified 
 
 **Request body:**
 
-| Field          | Type   | Required | Description                              |
-| -------------- | ------ | -------- | ---------------------------------------- |
-| `tenant_id`    | string | yes      | Tenant identifier for resource isolation.|
-| `app_name`     | string | yes      | Application name for identification.     |
-| `program`      | string | yes      | Path to the program binary to execute.   |
-| `program_args` | string | yes      | Arguments and environment variables.     |
+| Field          | Type   | Required | Description                               |
+| -------------- | ------ | -------- | ----------------------------------------- |
+| `tenant_id`    | string | yes      | Tenant identifier for resource isolation. |
+| `app_name`     | string | yes      | Application name for identification.      |
+| `program`      | string | yes      | Path to the program binary to execute.    |
+| `program_args` | string | yes      | Arguments and environment variables.      |
 
 Arguments and environment variables are packed into a single string separated by `;`. The format
 is `<app args>;<env vars>`. Everything before the first unescaped semicolon becomes command-line
@@ -294,10 +294,10 @@ with `;`. To include a literal `;` in any section, escape it as `\;`.
 
 **Success response (200):**
 
-| Field              | Type    | Description                                |
-| ------------------ | ------- | ------------------------------------------ |
-| `user_vm_id`       | integer | Unique identifier for the application.     |
-| `gateway_sockaddr` | string  | Socket address for the application's I/O.  |
+| Field              | Type    | Description                               |
+| ------------------ | ------- | ----------------------------------------- |
+| `user_vm_id`       | integer | Unique identifier for the application.    |
+| `gateway_sockaddr` | string  | Socket address for the application's I/O. |
 
 #### KILL — Terminate an Application
 
@@ -305,29 +305,29 @@ with `;`. To include a literal `;` in any section, escape it as `\;`.
 
 **Request body:**
 
-| Field        | Type    | Required | Description                          |
-| ------------ | ------- | -------- | ------------------------------------ |
-| `user_vm_id` | integer | yes      | Identifier of the application.       |
+| Field        | Type    | Required | Description                    |
+| ------------ | ------- | -------- | ------------------------------ |
+| `user_vm_id` | integer | yes      | Identifier of the application. |
 
 **Success response (200):**
 
-| Field       | Type    | Description                                   |
-| ----------- | ------- | --------------------------------------------- |
-| `exit_code` | integer | `0` for success, non-zero for failure.        |
+| Field       | Type    | Description                            |
+| ----------- | ------- | -------------------------------------- |
+| `exit_code` | integer | `0` for success, non-zero for failure. |
 
 ### HTTP Error Codes
 
 All error responses use the `ErrorResponse` schema with a machine-readable `code` and a
 human-readable `message`. Callers should branch on `code` and relay `message` for diagnostics.
 
-| Code                   | HTTP Status | Cause                                 |
-| ---------------------- | ----------- | ------------------------------------- |
-| `MISSING_MESSAGE_TYPE` | 400         | Missing or invalid message type.      |
-| `BODY_READ_FAILED`     | 500         | Could not read the request body.      |
-| `INVALID_NEW_PAYLOAD`  | 400         | Invalid JSON for a `NEW` request.     |
-| `NEW_REQUEST_FAILED`   | 500         | Application creation failed.          |
-| `INVALID_KILL_PAYLOAD` | 400         | Invalid JSON for a `KILL` request.    |
-| `KILL_REQUEST_FAILED`  | 500         | Application termination failed.       |
+| Code                   | HTTP Status | Cause                              |
+| ---------------------- | ----------- | ---------------------------------- |
+| `MISSING_MESSAGE_TYPE` | 400         | Missing or invalid message type.   |
+| `BODY_READ_FAILED`     | 500         | Could not read the request body.   |
+| `INVALID_NEW_PAYLOAD`  | 400         | Invalid JSON for a `NEW` request.  |
+| `NEW_REQUEST_FAILED`   | 500         | Application creation failed.       |
+| `INVALID_KILL_PAYLOAD` | 400         | Invalid JSON for a `KILL` request. |
+| `KILL_REQUEST_FAILED`  | 500         | Application termination failed.    |
 
 **Example error response:**
 
@@ -376,24 +376,24 @@ are silently discarded.
 
 Optional flags:
 
-| Flag                        | Description                                                             |
-| --------------------------- | ----------------------------------------------------------------------- |
-| `-stderr <file>`            | Redirect guest stderr to a file instead of host stderr.                 |
-| `-initrd_args <args>`       | Arguments forwarded to the initrd payload.                              |
-| `-kernel-args <args>`       | Kernel arguments written to guest control registers (see below).        |
-| `-ramfs <file>`             | Path to a RAM filesystem image exposed to the guest.                    |
-| `-user-vm-id <id>`          | VM identifier (defaults to `0` in standalone mode).                     |
-| `-log-to-file`              | Write logs to files instead of stdout.                                  |
-| `-log-dir <dir>`            | Directory for log files (used with `-log-to-file`).                     |
-| `-allow-host-networking`    | Enable host networking for the guest (disabled when omitted).           |
+| Flag                     | Description                                                      |
+| ------------------------ | ---------------------------------------------------------------- |
+| `-stderr <file>`         | Redirect guest stderr to a file instead of host stderr.          |
+| `-initrd_args <args>`    | Arguments forwarded to the initrd payload.                       |
+| `-kernel-args <args>`    | Kernel arguments written to guest control registers (see below). |
+| `-ramfs <file>`          | Path to a RAM filesystem image exposed to the guest.             |
+| `-user-vm-id <id>`       | VM identifier (defaults to `0` in standalone mode).              |
+| `-log-to-file`           | Write logs to files instead of stdout.                           |
+| `-log-dir <dir>`         | Directory for log files (used with `-log-to-file`).              |
+| `-allow-host-networking` | Enable host networking for the guest (disabled when omitted).    |
 
 ### Recognised Kernel Arguments
 
 The `-kernel-args` flag accepts a space-separated list of tokens:
 
-| Token      | Description                                                                              |
-| ---------- | ---------------------------------------------------------------------------------------- |
-| `snapshot` | Allow the guest to take exactly one VM snapshot via the `snapshot` kernel call.           |
+| Token      | Description                                                                     |
+| ---------- | ------------------------------------------------------------------------------- |
+| `snapshot` | Allow the guest to take exactly one VM snapshot via the `snapshot` kernel call. |
 
 Example:
 

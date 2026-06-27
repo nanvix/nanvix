@@ -43,7 +43,7 @@ iterations = 2
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/test-kernel.elf"
+program = "./bin/test-rust-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
@@ -52,7 +52,7 @@ expected_exit_code = 13
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/test-mmio-fault.elf"
+program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
@@ -68,56 +68,56 @@ expected_output = "hello world!"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/linux-app.elf"
+program = "./bin/test-rust-linux-app.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/file-rust.elf"
+program = "./bin/test-rust-file.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/thread-rust.elf"
+program = "./bin/test-rust-thread.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "http"
-program = "./bin/stress-rust.elf"
+program = "./bin/test-rust-stress.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/arch-rust.elf"
+program = "./bin/test-rust-arch.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/misc-rust.elf"
+program = "./bin/test-rust-misc.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "http"
-program = "./bin/memory-rust.elf"
+program = "./bin/test-rust-memory.elf"
 input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/network-rust.elf"
+program = "./bin/test-rust-network.elf"
 extra_nanvixd_args = "-allow-host-networking"
 input = "[]"
 expected_output = "ok"
@@ -125,7 +125,7 @@ expected_output = "ok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/dlfcn-rust.elf"
+program = "./bin/test-rust-dlfcn.elf"
 input = "[]"
 expected_output = "ok"
 
@@ -136,7 +136,7 @@ expected_output = "ok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/test-kernel.elf"
+program = "./bin/test-rust-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
@@ -145,7 +145,7 @@ expected_exit_code = 13
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/test-mmio-fault.elf"
+program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
@@ -161,64 +161,64 @@ expected_output = "hello world"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/linux-app.elf"
+program = "./bin/test-rust-linux-app.elf"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/file-rust.elf"
+program = "./bin/test-rust-file.elf"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/thread-rust.elf"
+program = "./bin/test-rust-thread.elf"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "terminal"
-program = "./bin/stress-rust.elf"
+program = "./bin/test-rust-stress.elf"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/arch-rust.elf"
+program = "./bin/test-rust-arch.elf"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/misc-rust.elf"
+program = "./bin/test-rust-misc.elf"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "terminal"
-program = "./bin/memory-rust.elf"
+program = "./bin/test-rust-memory.elf"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/network-rust.elf"
+program = "./bin/test-rust-network.elf"
 extra_nanvixd_args = "-allow-host-networking"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/dlfcn-rust.elf"
+program = "./bin/test-rust-dlfcn.elf"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/cmdline-len-rust.elf"
-# 4092 (MAX_CMDLINE_ARGS_LEN) - 20 (filename) - 1 (space separator) = 4071.
-program_args_padding_len = 4071
+program = "./bin/test-rust-cmdline-len.elf"
+# 4092 (MAX_CMDLINE_ARGS_LEN) - 25 (filename) - 1 (space separator) = 4066.
+program_args_padding_len = 4066
 expected_output = "ok"
 
 #===================================================================================================
@@ -229,7 +229,7 @@ expected_output = "ok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/env-rust-nostd.elf"
+program = "./bin/test-rust-env-nostd.elf"
 program_env = "TEST_VAR=hello"
 input = "[]"
 expected_output = "TEST_VAR=hello\nok"
@@ -237,7 +237,7 @@ expected_output = "TEST_VAR=hello\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/env-rust-nostd.elf"
+program = "./bin/test-rust-env-nostd.elf"
 program_env = "TEST_VAR=hello"
 expected_output = "TEST_VAR=hello\nok"
 
@@ -245,7 +245,7 @@ expected_output = "TEST_VAR=hello\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/env-rust-nostd.elf"
+program = "./bin/test-rust-env-nostd.elf"
 program_env = "FOO=bar BAZ=qux"
 input = "[]"
 expected_output = "FOO=bar\nBAZ=qux\nok"
@@ -253,7 +253,7 @@ expected_output = "FOO=bar\nBAZ=qux\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/env-rust-nostd.elf"
+program = "./bin/test-rust-env-nostd.elf"
 program_env = "FOO=bar BAZ=qux"
 expected_output = "FOO=bar\nBAZ=qux\nok"
 
@@ -261,7 +261,7 @@ expected_output = "FOO=bar\nBAZ=qux\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/env-rust-nostd.elf"
+program = "./bin/test-rust-env-nostd.elf"
 program_env = "SPECIAL=a/b:c-d_e.f"
 input = "[]"
 expected_output = "SPECIAL=a/b:c-d_e.f\nok"
@@ -269,7 +269,7 @@ expected_output = "SPECIAL=a/b:c-d_e.f\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/env-rust-nostd.elf"
+program = "./bin/test-rust-env-nostd.elf"
 program_env = "SPECIAL=a/b:c-d_e.f"
 expected_output = "SPECIAL=a/b:c-d_e.f\nok"
 
@@ -281,7 +281,7 @@ expected_output = "SPECIAL=a/b:c-d_e.f\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello world"
 program_env = "FOO=bar"
 input = "[]"
@@ -290,7 +290,7 @@ expected_output = "ARGS:hello world\nENV:FOO=bar\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello world"
 program_env = "FOO=bar"
 expected_output = "ARGS:hello world\nENV:FOO=bar\nok"
@@ -299,7 +299,7 @@ expected_output = "ARGS:hello world\nENV:FOO=bar\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello world"
 input = "[]"
 expected_output = "ARGS:hello world\nENV:\nok"
@@ -307,7 +307,7 @@ expected_output = "ARGS:hello world\nENV:\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello world"
 expected_output = "ARGS:hello world\nENV:\nok"
 
@@ -315,7 +315,7 @@ expected_output = "ARGS:hello world\nENV:\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_env = "FOO=bar"
 input = "[]"
 expected_output = "ARGS:\nENV:FOO=bar\nok"
@@ -323,7 +323,7 @@ expected_output = "ARGS:\nENV:FOO=bar\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_env = "FOO=bar"
 expected_output = "ARGS:\nENV:FOO=bar\nok"
 
@@ -331,7 +331,7 @@ expected_output = "ARGS:\nENV:FOO=bar\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "a;b"
 program_env = "X=1"
 input = "[]"
@@ -340,7 +340,7 @@ expected_output = "ARGS:a;b\nENV:X=1\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "a;b"
 program_env = "X=1"
 expected_output = "ARGS:a;b\nENV:X=1\nok"
@@ -349,7 +349,7 @@ expected_output = "ARGS:a;b\nENV:X=1\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello"
 program_env = "PATH=a;b"
 input = "[]"
@@ -358,7 +358,7 @@ expected_output = "ARGS:hello\nENV:PATH=a;b\nok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/cmdline-env-rust-nostd.elf"
+program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello"
 program_env = "PATH=a;b"
 expected_output = "ARGS:hello\nENV:PATH=a;b\nok"

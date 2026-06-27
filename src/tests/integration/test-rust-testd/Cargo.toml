@@ -1,0 +1,42 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "test-rust-testd"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Test Daemon"
+homepage.workspace = true
+
+[[bin]]
+name = "test-rust-testd"
+
+[dependencies]
+arch = { workspace = true }
+libc_string = { workspace = true }
+sys = { workspace = true }
+nvx = { workspace = true }
+nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
+sysalloc = { workspace = true }
+proc = { workspace = true, features = ["syscall"] }
+config = { workspace = true }
+static_assert = { workspace = true }
+syslog = { workspace = true, default-features = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace", "nvx-crt0/trace"]
+debug = ["nvx/debug", "nvx-crt0/debug"]
+info = ["nvx/info", "nvx-crt0/info"]
+warn = ["nvx/warn", "nvx-crt0/warn"]
+error = ["nvx/error", "nvx-crt0/error"]
+panic = ["nvx/panic", "nvx-crt0/panic"]
+
+[lints]
+workspace = true
