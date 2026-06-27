@@ -35,6 +35,7 @@ extern "C" {
 #define O_EXCL 0x0800 /**< Fail if file already exists. */
 #define O_SYNC 0x2000 /**< Synchronized I/O data integrity. */
 #define O_NONBLOCK 0x4000 /**< Non-blocking mode. */
+#define O_NDELAY O_NONBLOCK /**< Non-blocking mode (legacy alias). */
 #define O_NOCTTY 0x8000 /**< Do not assign controlling terminal. */
 #define O_CLOEXEC 0x40000 /**< Close-on-exec. */
 #define O_CLOFORK 0x80000 /**< Close-on-fork. */
@@ -85,6 +86,7 @@ struct flock {
 
 extern int open(const char *path, int flags, ...);
 extern int openat(int dirfd, const char *path, int flags, ...);
+extern int creat(const char *path, mode_t mode);
 extern int fcntl(int fd, int cmd, ...);
 extern int posix_fadvise(int fd, off_t offset, off_t len, int advice);
 extern int posix_fallocate(int fd, off_t offset, off_t len);

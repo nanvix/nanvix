@@ -36,7 +36,7 @@ use ::sysapi::{
 ///
 pub fn creat(filename: &str, mode: mode_t) -> Result<c_int, Error> {
     ::syslog::trace!("creat(): pathname={filename:?}, mode={mode:?}");
-    let flags: c_int = OpenFlags::read_write()
+    let flags: c_int = OpenFlags::write_only()
         .set_create(true)
         .set_truncate(true)
         .into();
