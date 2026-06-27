@@ -121,6 +121,8 @@ functions = [
     "pthread_mutex_timedlock",
     "pthread_mutexattr_init",
     "pthread_mutexattr_destroy",
+    "pthread_mutexattr_settype",
+    "pthread_mutexattr_gettype",
 ]
 
 [[sections]]
