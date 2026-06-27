@@ -14,10 +14,7 @@ use crate::hal::mem::types::{
         VirtualAddress,
     },
 };
-use ::alloc::string::{
-    String,
-    ToString,
-};
+use ::alloc::string::String;
 use ::arch::mem::PAGE_ALIGNMENT;
 use ::sys::error::{
     Error,
@@ -184,7 +181,7 @@ impl<T: Address> MemoryRegion<T> {
         }
 
         Ok(Self {
-            name: name.to_string(),
+            name: crate::mm::try_string_from_str(name)?,
             start,
             size,
             typ,
