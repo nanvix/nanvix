@@ -97,6 +97,7 @@ mod mkostemp;
 mod mkstemp;
 mod mktemp;
 mod posix_memalign;
+mod pty;
 mod putenv;
 mod qsort;
 mod quick_exit;
@@ -172,6 +173,13 @@ pub use mkostemp::mkostemp;
 pub use mkstemp::mkstemp;
 pub use mktemp::mktemp;
 pub use posix_memalign::posix_memalign;
+pub use pty::{
+    grantpt,
+    posix_openpt,
+    ptsname,
+    ptsname_r,
+    unlockpt,
+};
 pub use putenv::putenv;
 pub use qsort::{
     qsort,
