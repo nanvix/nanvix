@@ -171,6 +171,51 @@ typedef __UINTMAX_TYPE__ uintmax_t;
  * Macros for integer constants
  *==================================================================================================*/
 
+/*
+ * The width-specific `INTn_C`/`UINTn_C` macros below expand to the internal
+ * `__INTn_C`/`__UINTn_C` helpers. Some compilers (e.g. GCC) predefine those
+ * helpers directly; others (e.g. Clang) instead predefine only the matching
+ * token-paste suffix `__INTn_C_SUFFIX__` / `__UINTn_C_SUFFIX__` (`LL`, `ULL`,
+ * `U`, or empty) for the active ABI. Define the helpers from those suffixes when
+ * the compiler does not supply them, so a constant gets the correct type on
+ * either toolchain.
+ */
+#define __nvx_int_c_join(a, b) a##b
+#define __nvx_int_c(c, suffix) __nvx_int_c_join(c, suffix)
+
+#ifndef __INT8_C
+#define __INT8_C(c) __nvx_int_c(c, __INT8_C_SUFFIX__)
+#endif
+#ifndef __INT16_C
+#define __INT16_C(c) __nvx_int_c(c, __INT16_C_SUFFIX__)
+#endif
+#ifndef __INT32_C
+#define __INT32_C(c) __nvx_int_c(c, __INT32_C_SUFFIX__)
+#endif
+#ifndef __INT64_C
+#define __INT64_C(c) __nvx_int_c(c, __INT64_C_SUFFIX__)
+#endif
+
+#ifndef __UINT8_C
+#define __UINT8_C(c) __nvx_int_c(c, __UINT8_C_SUFFIX__)
+#endif
+#ifndef __UINT16_C
+#define __UINT16_C(c) __nvx_int_c(c, __UINT16_C_SUFFIX__)
+#endif
+#ifndef __UINT32_C
+#define __UINT32_C(c) __nvx_int_c(c, __UINT32_C_SUFFIX__)
+#endif
+#ifndef __UINT64_C
+#define __UINT64_C(c) __nvx_int_c(c, __UINT64_C_SUFFIX__)
+#endif
+
+#ifndef __INTMAX_C
+#define __INTMAX_C(c) __nvx_int_c(c, __INTMAX_C_SUFFIX__)
+#endif
+#ifndef __UINTMAX_C
+#define __UINTMAX_C(c) __nvx_int_c(c, __UINTMAX_C_SUFFIX__)
+#endif
+
 #define INT8_C(c) __INT8_C(c)
 #define INT16_C(c) __INT16_C(c)
 #define INT32_C(c) __INT32_C(c)
