@@ -7,7 +7,7 @@
 #
 # Builds the C test suites ported from `nanvix/posix-tests` and runs them under
 # nanvixd in standalone mode (nanvixd drives the UserVM). Each suite lives at
-# `src/posix-tests/<suite>/` (one or
+# `src/tests/integration/<suite>/` or `src/tests/stress/<suite>/` (one or
 # more `*.c` files), is compiled with the host C toolchain against the in-tree
 # headers in `include/`, and linked against the merged `libc.a` (the C library +
 # the Nanvix system-call backend, produced by `nanvix-libc-bundle`) — exactly
@@ -31,8 +31,20 @@
 # Inputs and flags (reused from guest-c-apps.mk).
 #---------------------------------------------------------------------------------------------------
 
-POSIX_TESTS_SRCDIR := $(SOURCES_DIR)/posix-tests
+# After the test reorganization the POSIX C suites are split across two source
+# roots: most live under src/tests/integration, while the memory stress suite
+# lives under src/tests/stress. POSIX_TESTS_SRCDIR is the integration root — the
+# default for suites and the only root the shared-library fixtures use;
+# POSIX_TESTS_STRESS_SRCDIR holds the stress suites. Objects from both roots are
+# mirrored into a single POSIX_TESTS_OBJDIR (suite names are unique across roots).
+POSIX_TESTS_SRCDIR := $(SOURCES_DIR)/tests/integration
+POSIX_TESTS_STRESS_SRCDIR := $(SOURCES_DIR)/tests/stress
 POSIX_TESTS_OBJDIR := $(OBJECTS_DIR)/posix-tests
+
+# Suites that live under the stress root (POSIX_TESTS_STRESS_SRCDIR) rather than
+# the default integration root. Consumed by POSIX_TEST_RULE to pick the source
+# directory and by the second object compile pattern rule below.
+POSIX_TEST_STRESS_memory-c := yes
 
 # Shared, weak `_init`/`_fini` glue, retained only as harmless legacy scaffolding.
 # After doc/toolchain-migration.md §4.5 (decision 1), the c-main startup
@@ -62,6 +74,10 @@ POSIX_TEST_CFLAGS += -D__NANVIX_SYSNAME__=\"nanvix\" -D__NANVIX_NODENAME__=\"loc
 # (a shell loop inside an `$(eval $(call ...))` body would have its `$var`
 # references eaten by the extra expansion pass). PIE suites add `-fPIE` through
 # the per-object `POSIX_TEST_EXTRA_CFLAGS` target-specific variable.
+#
+# Two pattern rules — one per source root (integration and stress) — funnel into
+# the same objects directory; the recipe is identical, so any change must be made
+# to both.
 $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_SRCDIR)/%.c
 	@command -v $(firstword $(GUEST_C_APP_CC)) >/dev/null 2>&1 || { \
 		echo "ERROR: posix-tests need '$(firstword $(GUEST_C_APP_CC))' on PATH to cross-compile the guest C sources."; \
@@ -71,7 +87,16 @@ $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_SRCDIR)/%.c
 	@echo "[posix-test] compiling $< (CC=$(firstword $(GUEST_C_APP_CC)))"
 	$(GUEST_C_APP_CC) $(POSIX_TEST_CFLAGS) $(POSIX_TEST_EXTRA_CFLAGS) -c $< -o $@
 
-# $(1) = suite name (directory under src/posix-tests/ and resulting <suite>.elf).
+$(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_STRESS_SRCDIR)/%.c
+	@command -v $(firstword $(GUEST_C_APP_CC)) >/dev/null 2>&1 || { \
+		echo "ERROR: posix-tests need '$(firstword $(GUEST_C_APP_CC))' on PATH to cross-compile the guest C sources."; \
+		exit 1; \
+	}
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] compiling $< (CC=$(firstword $(GUEST_C_APP_CC)))"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_CFLAGS) $(POSIX_TEST_EXTRA_CFLAGS) -c $< -o $@
+
+# $(1) = suite name (directory under the suite's source root and resulting <suite>.elf).
 #
 # All `*.c` under the suite directory are compiled and linked together. The
 # explicit `.elf` rule overrides the generic `$(BINARIES_DIR)/%.elf:
@@ -117,8 +142,9 @@ POSIX_TEST_PIE_dlfcn-init-runpath-c := yes
 POSIX_TEST_PIE_dlfcn-weak-c := yes
 
 define POSIX_TEST_RULE
-POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TESTS_SRCDIR)/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TESTS_SRCDIR)/$(1)/*.c))
-POSIX_TEST_OBJS_$(1) := $$(patsubst $$(POSIX_TESTS_SRCDIR)/%.c,$$(POSIX_TESTS_OBJDIR)/%.o,$$(POSIX_TEST_SRCS_$(1)))
+POSIX_TEST_SRCROOT_$(1) := $$(if $$(POSIX_TEST_STRESS_$(1)),$$(POSIX_TESTS_STRESS_SRCDIR),$$(POSIX_TESTS_SRCDIR))
+POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TEST_SRCROOT_$(1))/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TEST_SRCROOT_$(1))/$(1)/*.c))
+POSIX_TEST_OBJS_$(1) := $$(patsubst $$(POSIX_TEST_SRCROOT_$(1))/%.c,$$(POSIX_TESTS_OBJDIR)/%.o,$$(POSIX_TEST_SRCS_$(1)))
 # PIE suites compile their objects with -fPIE and link with the PIE flags.
 ifeq ($$(POSIX_TEST_PIE_$(1)),yes)
 $$(POSIX_TEST_OBJS_$(1)): POSIX_TEST_EXTRA_CFLAGS := -fPIE
