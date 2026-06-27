@@ -20,8 +20,20 @@ use ::syscall::errno::__errno_location;
 use ::syslog::trace_syscall;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+const PRIO_PROCESS: c_int = 0;
+const PRIO_PGRP: c_int = 1;
+const PRIO_USER: c_int = 2;
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+fn valid_priority_selector(which: c_int) -> bool {
+    matches!(which, PRIO_PROCESS | PRIO_PGRP | PRIO_USER)
+}
 
 #[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
@@ -45,4 +57,41 @@ pub unsafe extern "C" fn setrlimit(_resource: c_int, _rlim: *const rlimit) -> c_
         *__errno_location() = ErrorCode::InvalidSysCall.get();
     }
     -1
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+#[trace_syscall]
+pub unsafe extern "C" fn getpriority(which: c_int, _who: c_int) -> c_int {
+    if !valid_priority_selector(which) {
+        ::syslog::warn!("getpriority(): invalid priority selector (which={})", which);
+        unsafe {
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Nanvix has no process-scheduling-priority concept; report the normal
+    // priority (0). Callers (nice, renice, start-stop-daemon) treat 0 as the
+    // default nice value.
+    ::syslog::debug!("getpriority(): not implemented; reporting normal priority");
+    0
+}
+
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+#[trace_syscall]
+pub unsafe extern "C" fn setpriority(which: c_int, _who: c_int, _prio: c_int) -> c_int {
+    if !valid_priority_selector(which) {
+        ::syslog::warn!("setpriority(): invalid priority selector (which={})", which);
+        unsafe {
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
+    // Nanvix has no process-scheduling-priority concept; accept and ignore the
+    // request so that nice/renice succeed as no-ops rather than hard-failing.
+    ::syslog::debug!("setpriority(): not implemented; ignoring");
+    0
 }

@@ -1,0 +1,69 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/resource.h.
+# The rlimit layout mirrors src/libs/sysapi/src/sys_resource.rs; the resource
+# limit and priority interfaces are generated from the libc_sys_resource crate.
+
+file = "sys/resource.h"
+brief = "Resource limits and priorities."
+description = """
+Declares the resource limit interfaces (getrlimit/setrlimit) and the process
+priority interfaces (getpriority/setpriority), together with the rlimit
+structure and the associated resource and priority identifiers. The rlimit
+layout mirrors the Rust definition in the sysapi crate (sys_resource.rs)."""
+includes = ["sys/types.h"]
+guard = "_NANVIX_SYS_RESOURCE_H"
+scan_crates = ["libc_sys_resource"]
+content_order = ["raw:0", "types:0", "raw:1", "raw:2", "section:0", "section:1"]
+
+[[raw_sections]]
+title = "Resource Limit Identifiers"
+text = """
+#define RLIMIT_CPU 0      /**< CPU time, in seconds.          */
+#define RLIMIT_FSIZE 1    /**< Maximum file size.             */
+#define RLIMIT_DATA 2     /**< Maximum data segment size.     */
+#define RLIMIT_STACK 3    /**< Maximum stack size.            */
+#define RLIMIT_CORE 4     /**< Maximum core file size.        */
+#define RLIMIT_RSS 5      /**< Maximum resident set size.     */
+#define RLIMIT_NPROC 6    /**< Maximum number of processes.   */
+#define RLIMIT_NOFILE 7   /**< Maximum number of open files.  */
+#define RLIMIT_MEMLOCK 8  /**< Maximum locked-in-memory size. */
+#define RLIMIT_AS 9       /**< Maximum address space size.    */
+#define RLIMIT_NLIMITS 10 /**< Number of resource limits.     */"""
+
+[[types]]
+text = """
+/** @brief Resource limit value type. */
+typedef unsigned long rlim_t;
+
+/** @brief Resource limit. */
+struct rlimit {
+    rlim_t rlim_cur; /**< Soft limit. */
+    rlim_t rlim_max; /**< Hard limit. */
+};"""
+
+[[raw_sections]]
+title = "Resource Limit Values"
+text = """
+/** @brief Unlimited resource value. */
+#define RLIM_INFINITY ((rlim_t)-1)
+/** @brief Unrepresentable saved soft-limit value. */
+#define RLIM_SAVED_CUR RLIM_INFINITY
+/** @brief Unrepresentable saved hard-limit value. */
+#define RLIM_SAVED_MAX RLIM_INFINITY"""
+
+[[raw_sections]]
+title = "Priority Identifiers"
+text = """
+#define PRIO_PROCESS 0 /**< Identifies a process.       */
+#define PRIO_PGRP 1    /**< Identifies a process group. */
+#define PRIO_USER 2    /**< Identifies a user.          */"""
+
+[[sections]]
+title = "Resource Limits"
+functions = ["getrlimit", "setrlimit"]
+
+[[sections]]
+title = "Process Priorities"
+functions = ["getpriority", "setpriority"]
