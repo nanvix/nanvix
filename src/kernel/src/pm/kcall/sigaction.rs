@@ -24,6 +24,7 @@ use ::sys::{
     pm::{
         ProcessIdentifier,
         SigAction,
+        SA_SIGINFO,
         SIGKILL,
         SIGSTOP,
         SIG_DFL,
@@ -108,8 +109,13 @@ pub fn sigaction(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32)
             return KcallResult::Error(error.code.into());
         }
 
-        // Map the handler field to a disposition.
-        match act.sa_handler {
+        // Map the effective handler slot to a disposition.
+        let handler_entry: usize = if (act.sa_flags & SA_SIGINFO) != 0 {
+            act.sa_sigaction
+        } else {
+            act.sa_handler
+        };
+        match handler_entry {
             SIG_DFL => Some(SignalDisposition::Default),
             SIG_IGN => Some(SignalDisposition::Ignore),
             entry => {

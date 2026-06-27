@@ -16,6 +16,8 @@ pub(crate) mod state;
 pub use manager::{
     ExceptionGuard,
     ProcessManager,
+    SigReturnFailure,
+    SignalDeliveryOutcome,
     SleepError,
 };
 

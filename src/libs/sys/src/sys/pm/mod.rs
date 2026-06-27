@@ -26,6 +26,10 @@ pub use pid::ProcessIdentifier;
 pub use signal::{
     SigAction,
     SigSet,
+    SA_NODEFER,
+    SA_RESETHAND,
+    SA_RESTART,
+    SA_SIGINFO,
     SIGABRT,
     SIGALRM,
     SIGBUS,

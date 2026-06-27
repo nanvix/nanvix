@@ -183,6 +183,11 @@ impl RunningProcess {
         // Swap in the new address space, returning the old one for deferred reclamation.
         let old_vmem: Vmem = self.state.replace_vmem(new_vmem);
 
+        // Reset signal dispositions for the new image: caught handlers point at code in the old
+        // image, so they are reset to the default (SIG_IGN/SIG_DFL are preserved), the pending set
+        // is cleared, and the restorer is dropped so the new image re-registers it at startup.
+        self.state.signals_mut().reset_for_exec();
+
         (old_vmem, old_zombie, from_ctx, to_ctx, user_tda)
     }
 

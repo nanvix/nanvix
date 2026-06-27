@@ -368,6 +368,27 @@ impl ThreadState {
     pub(crate) fn set_blocked(&mut self, mask: u64) {
         self.blocked = mask;
     }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the top (highest address) of this thread's kernel stack.
+    ///
+    /// When the thread enters the kernel from user mode, the processor switches to this stack and
+    /// the hardware-saved trap frame (and the registers preserved by the kernel-call entry stub)
+    /// lie at fixed offsets below this address. The signal-delivery machinery uses this to locate
+    /// and rewrite the interrupted user context.
+    ///
+    /// # Returns
+    ///
+    /// The virtual address of the top of the kernel stack, or [`None`] if this thread has no
+    /// kernel stack.
+    ///
+    pub(crate) fn kernel_stack_top(&self) -> Option<VirtualAddress> {
+        self.kernel_stack
+            .as_ref()
+            .map(|kstack| kstack.top().into_inner())
+    }
 }
 
 impl fmt::Debug for ThreadState {

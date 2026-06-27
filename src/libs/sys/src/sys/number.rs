@@ -125,6 +125,8 @@ pub enum KcallNumber {
     Sigpending = KcallNumber::NR_SIGPENDING_SYSCALL,
     /// Atomically sets the signal mask and blocks until a signal is delivered.
     Sigsuspend = KcallNumber::NR_SIGSUSPEND_SYSCALL,
+    /// Registers the calling process's user-space signal-return trampoline (restorer).
+    SigRestorer = KcallNumber::NR_SIG_RESTORER_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -171,6 +173,7 @@ impl KcallNumber {
     const NR_DUPLICATE_SYSCALL: u32 = 37;
     const NR_GET_PPID_SYSCALL: u32 = 38;
     const NR_EXECV_SYSCALL: u32 = 39;
+    const NR_SIG_RESTORER_SYSCALL: u32 = 40;
     const NR_SIGACTION_SYSCALL: u32 = 41;
     const NR_SIGPROCMASK_SYSCALL: u32 = 42;
     const NR_KILL_SYSCALL: u32 = 43;
@@ -224,6 +227,7 @@ impl From<u32> for KcallNumber {
             Self::NR_DETACH_THREAD_SYSCALL => KcallNumber::DetachThread,
             Self::NR_DUPLICATE_SYSCALL => KcallNumber::Duplicate,
             Self::NR_EXECV_SYSCALL => KcallNumber::Execv,
+            Self::NR_SIG_RESTORER_SYSCALL => KcallNumber::SigRestorer,
             Self::NR_SIGACTION_SYSCALL => KcallNumber::Sigaction,
             Self::NR_SIGPROCMASK_SYSCALL => KcallNumber::Sigprocmask,
             Self::NR_KILL_SYSCALL => KcallNumber::Kill,
@@ -279,6 +283,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::DetachThread => KcallNumber::NR_DETACH_THREAD_SYSCALL,
             KcallNumber::Duplicate => KcallNumber::NR_DUPLICATE_SYSCALL,
             KcallNumber::Execv => KcallNumber::NR_EXECV_SYSCALL,
+            KcallNumber::SigRestorer => KcallNumber::NR_SIG_RESTORER_SYSCALL,
             KcallNumber::Sigaction => KcallNumber::NR_SIGACTION_SYSCALL,
             KcallNumber::Sigprocmask => KcallNumber::NR_SIGPROCMASK_SYSCALL,
             KcallNumber::Kill => KcallNumber::NR_KILL_SYSCALL,

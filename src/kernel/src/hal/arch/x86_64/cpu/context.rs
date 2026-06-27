@@ -56,6 +56,61 @@ pub struct ContextInformation {
 // `ContextInformation` must be 184 bytes long. This must match low-level assembly dispatcher code.
 ::static_assert::assert_eq_size!(ContextInformation, 184);
 
+///
+/// # Description
+///
+/// Snapshot of the interrupted user CPU context saved into a signal frame and restored by
+/// `sigreturn()` (x86-64 variant).
+///
+/// The field set mirrors the general-purpose register file of the target architecture plus the
+/// instruction pointer, stack pointer, flags, and the code and stack segment selectors. The
+/// selectors and flags are sanitized on restore so a forged frame cannot escalate privilege.
+///
+#[repr(C)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub struct SignalCpuContext {
+    /// Instruction pointer (`RIP`).
+    pub ip: u64,
+    /// Stack pointer (`RSP`).
+    pub sp: u64,
+    /// Flags register (`RFLAGS`).
+    pub flags: u64,
+    /// `RAX` (also the interrupted kernel call's return value).
+    pub ax: u64,
+    /// `RBX`.
+    pub bx: u64,
+    /// `RCX`.
+    pub cx: u64,
+    /// `RDX`.
+    pub dx: u64,
+    /// `RSI`.
+    pub si: u64,
+    /// `RDI`.
+    pub di: u64,
+    /// `RBP`.
+    pub bp: u64,
+    /// `R8`.
+    pub r8: u64,
+    /// `R9`.
+    pub r9: u64,
+    /// `R10`.
+    pub r10: u64,
+    /// `R11`.
+    pub r11: u64,
+    /// `R12`.
+    pub r12: u64,
+    /// `R13`.
+    pub r13: u64,
+    /// `R14`.
+    pub r14: u64,
+    /// `R15`.
+    pub r15: u64,
+    /// Code segment selector (`CS`).
+    pub cs: u64,
+    /// Stack segment selector (`SS`).
+    pub ss: u64,
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================

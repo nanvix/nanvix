@@ -54,6 +54,8 @@ pub use kcall::*;
 pub use process::{
     ExceptionGuard,
     ProcessManager,
+    SigReturnFailure,
+    SignalDeliveryOutcome,
     SleepError,
 };
 pub use thread::InterruptReason;

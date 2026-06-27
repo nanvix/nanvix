@@ -109,8 +109,8 @@ pub struct SignalControl {
     pending: u64,
     /// Address of the user-space return trampoline (restorer).
     ///
-    /// Read by a later phase of the signals effort (asynchronous delivery).
-    #[allow(dead_code)]
+    /// Registered by the `SigRestorer` kernel call and read when an asynchronous signal frame is
+    /// built, to set the handler's return address.
     restorer: Option<VirtualAddress>,
 }
 
@@ -366,6 +366,70 @@ impl SignalControl {
     #[allow(dead_code)]
     pub fn pending(&self) -> u64 {
         self.pending
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Removes `signum` from the process-directed pending set.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: The signal number (1-based).
+    ///
+    pub fn clear_pending(&mut self, signum: usize) {
+        if signum != 0 && signum <= SIG_MAX {
+            self.pending &= !(1u64 << (signum - 1));
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the address of the user-space signal-return trampoline (restorer), if registered.
+    ///
+    /// # Returns
+    ///
+    /// The restorer address, or [`None`] if the process has not registered one.
+    ///
+    pub fn restorer(&self) -> Option<VirtualAddress> {
+        self.restorer
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Registers the address of the user-space signal-return trampoline (restorer).
+    ///
+    /// The restorer is re-resolved from the freshly loaded image after `execv()`, because caught
+    /// dispositions are reset to the default on exec.
+    ///
+    /// # Parameters
+    ///
+    /// - `restorer`: The restorer address, or [`None`] to clear it.
+    ///
+    pub fn set_restorer(&mut self, restorer: Option<VirtualAddress>) {
+        self.restorer = restorer;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resets the signal control block for an `execv()` image replacement.
+    ///
+    /// Caught dispositions point at handler code in the outgoing image, so they are reset to the
+    /// default; [`SIG_IGN`] and [`SIG_DFL`] dispositions are preserved, as POSIX requires. The
+    /// pending set is cleared and the restorer is dropped — the freshly loaded image re-registers
+    /// its own restorer at startup.
+    ///
+    pub fn reset_for_exec(&mut self) {
+        for slot in self.dispositions.iter_mut() {
+            if matches!(slot, SignalDisposition::Handler(_)) {
+                *slot = SignalDisposition::Default;
+            }
+        }
+        self.pending = 0;
+        self.restorer = None;
     }
 }
 

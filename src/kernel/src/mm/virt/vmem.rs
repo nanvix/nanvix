@@ -466,6 +466,70 @@ impl Vmem {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Asserts whether a memory region lies entirely in user space and every page that backs it is
+    /// mapped and writable, either directly or through a copy-on-write mapping that a kernel write
+    /// would resolve to a private, writable copy.
+    ///
+    /// This is the check a kernel-side writer performs before writing to a user region whose
+    /// address is under user control (for example, the signal-frame builder, which places a frame
+    /// at the interrupted thread's user stack pointer). It lets an unmapped or read-only page fail
+    /// gracefully up front instead of faulting the physical-alias write path that
+    /// [`Self::copy_to_user_unaligned`] takes.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Starting virtual address of the region.
+    /// - `size`: Size of the region in bytes.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the entire region lies in user space and is mapped and writable, `false`
+    /// otherwise.
+    ///
+    pub fn is_user_region_writable(&self, start: VirtualAddress, size: usize) -> bool {
+        // The region must first lie entirely in user space; this also rejects empty regions.
+        if !Self::is_user_region(start, size) {
+            return false;
+        }
+
+        let first_page: usize = ::sys::mm::align_down(start.into_raw_value(), PAGE_ALIGNMENT);
+        // `is_user_region` already rejected zero-length and overflowing regions, so the subtraction
+        // and the inclusive end are well defined.
+        let last_page: usize = match start.into_raw_value().checked_add(size - 1) {
+            Some(end_inclusive) => ::sys::mm::align_down(end_inclusive, PAGE_ALIGNMENT),
+            None => return false,
+        };
+
+        let mut page: usize = first_page;
+        loop {
+            let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(page) {
+                Ok(vaddr) => vaddr,
+                Err(_) => return false,
+            };
+            match self.try_find_user_pte(vaddr) {
+                // Mapped and writable, either directly or via a copy-on-write mapping that the
+                // write path will resolve to a private, writable copy.
+                Ok(Some(pte))
+                    if pte.is_present() && (pte.flags().is_writable() || pte.is_cow()) => {},
+                // Unmapped, read-only, or a lookup failure: not safe to write.
+                _ => return false,
+            }
+
+            if page == last_page {
+                break;
+            }
+            page = match page.checked_add(mem::PAGE_SIZE) {
+                Some(next) => next,
+                None => return false,
+            };
+        }
+
+        true
+    }
+
     /// Asserts whether an address lies in the kernel space.
     fn is_kernel_addr(virt_addr: VirtualAddress) -> bool {
         !Self::is_user_addr(virt_addr)

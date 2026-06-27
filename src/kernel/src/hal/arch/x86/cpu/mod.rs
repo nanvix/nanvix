@@ -9,6 +9,7 @@ mod context;
 mod exception;
 pub(crate) mod idt;
 mod interrupt;
+mod sigframe;
 
 #[cfg(feature = "smp")]
 #[path = "../../shared/cpu/clock.rs"]
@@ -45,7 +46,10 @@ use ::sys::error::{
 // Exports
 //==================================================================================================
 
-pub use context::ContextInformation;
+pub use context::{
+    ContextInformation,
+    SignalCpuContext,
+};
 pub use exception::{
     ExceptionController,
     ExceptionInformation,
@@ -57,8 +61,22 @@ pub use interrupt::{
     InterruptNumber,
     XapicTimer,
 };
+#[cfg(feature = "test")]
+pub use sigframe::split_kcall_result;
+pub use sigframe::{
+    join_kcall_result,
+    read_trap_context,
+    read_user_sp,
+    redirect_to_handler,
+    restore_trap_context,
+    returning_to_user,
+};
 pub mod tss;
-pub use fpu::FpuState;
+pub use fpu::{
+    capture_fpu,
+    install_fpu,
+    FpuState,
+};
 
 //==================================================================================================
 // Standalone Functions

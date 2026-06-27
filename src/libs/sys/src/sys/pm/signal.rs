@@ -103,6 +103,24 @@ pub const SIG_UNBLOCK: i32 = 1;
 /// `how` argument to `sigprocmask()`: replace the blocked mask with `set`.
 pub const SIG_SETMASK: i32 = 2;
 
+// `sa_flags` bits interpreted by the signal-delivery machinery. The values mirror those declared in
+// `<signal.h>` so a `struct sigaction` crosses the kernel-call boundary unchanged.
+
+/// `sa_flags` bit selecting the extended, three-argument handler (`sa_sigaction`).
+pub const SA_SIGINFO: i32 = 0x0000_0004;
+
+/// `sa_flags` bit requesting that interrupted, restartable kernel calls be resumed.
+pub const SA_RESTART: i32 = 0x1000_0000;
+
+/// `sa_flags` bit requesting that the delivered signal not be blocked while its handler runs.
+pub const SA_NODEFER: i32 = 0x4000_0000;
+
+/// `sa_flags` bit requesting that the disposition be reset to [`SIG_DFL`] on delivery.
+///
+/// This is the `0x8000_0000` bit of `<signal.h>`; because `sa_flags` is a signed 32-bit field it
+/// is the sign bit, i.e. [`i32::MIN`]. Flag tests use a bitwise `AND`, which is sign-agnostic.
+pub const SA_RESETHAND: i32 = i32::MIN;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -127,7 +145,7 @@ pub struct SigAction {
     pub sa_mask: SigSet,
     /// Handler flags (`SA_SIGINFO`, `SA_RESTART`, `SA_NODEFER`, `SA_RESETHAND`, ...).
     pub sa_flags: i32,
-    /// Extended handler slot, used by the C ABI when `SA_SIGINFO` is set. The kernel preserves
-    /// this slot but does not interpret it in this phase.
+    /// Extended handler slot, used by the C ABI when `SA_SIGINFO` is set. The kernel uses this
+    /// slot as the handler entry when [`SA_SIGINFO`] is present.
     pub sa_sigaction: usize,
 }
