@@ -44,6 +44,25 @@ use ::sys::{
 ///
 /// # Description
 ///
+/// Kernel-call number and raw arguments captured when a blocking kernel call is interrupted by a
+/// deliverable, caught signal.
+///
+/// When the interrupting signal's handler is installed with `SA_RESTART`, the signal-delivery
+/// checkpoint uses this record to rewind the interrupted thread to its kernel-call trap instruction
+/// and reload the original argument registers, so the call is transparently restarted after the
+/// handler returns (the kernel's analog of Linux's `ERESTARTSYS`).
+///
+#[derive(Clone, Copy, Debug)]
+pub struct KcallRestart {
+    /// Kernel-call number (the value the user left in the accumulator).
+    pub number: u32,
+    /// Raw kernel-call arguments, in argument-register order.
+    pub args: [u32; 4],
+}
+
+///
+/// # Description
+///
 /// This structure represents the state of a thread.
 ///
 pub struct ThreadState {
@@ -76,11 +95,17 @@ pub struct ThreadState {
     /// Inert plumbing for the signal subsystem: written by a later phase of the signals effort.
     #[allow(dead_code)]
     pending: u64,
-    /// Saved blocked mask while a handler runs (restored by `sigreturn`).
+    /// Mask to restore once a pending `sigsuspend()` completes.
     ///
-    /// Inert plumbing for the signal subsystem: read by a later phase of the signals effort.
-    #[allow(dead_code)]
+    /// Set by `sigsuspend()` to the mask in effect before it installed its temporary mask. When
+    /// present, `sigreturn()` restores it (instead of the frame's saved mask) so the original mask
+    /// is reinstated after the interrupting handler runs.
     saved_blocked: Option<u64>,
+    /// Interrupted blocking kernel call awaiting an `SA_RESTART` decision, if any.
+    ///
+    /// Recorded when a caught signal interrupts a blocking call and consumed at the signal-delivery
+    /// checkpoint to transparently restart the call when the handler requests it.
+    restart: Option<KcallRestart>,
 }
 
 //==================================================================================================
@@ -127,6 +152,7 @@ impl ThreadState {
             blocked: 0,
             pending: 0,
             saved_blocked: None,
+            restart: None,
         }
     }
 
@@ -367,6 +393,59 @@ impl ThreadState {
     ///
     pub(crate) fn set_blocked(&mut self, mask: u64) {
         self.blocked = mask;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes the mask to restore once a pending `sigsuspend()` completes, clearing it.
+    ///
+    /// # Returns
+    ///
+    /// The saved mask, or [`None`] if no `sigsuspend()` is in progress.
+    ///
+    pub(crate) fn take_saved_blocked(&mut self) -> Option<u64> {
+        self.saved_blocked.take()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Records the mask to restore once a pending `sigsuspend()` completes.
+    ///
+    /// # Parameters
+    ///
+    /// - `mask`: The mask to restore, or [`None`] to clear any pending restoration.
+    ///
+    pub(crate) fn set_saved_blocked(&mut self, mask: Option<u64>) {
+        self.saved_blocked = mask;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Records the kernel call to restart should the interrupting signal request `SA_RESTART`.
+    ///
+    /// # Parameters
+    ///
+    /// - `restart`: The kernel-call number and arguments of the interrupted blocking call.
+    ///
+    pub(crate) fn set_restart(&mut self, restart: KcallRestart) {
+        self.restart = Some(restart);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes the recorded restart information, clearing it.
+    ///
+    /// # Returns
+    ///
+    /// The recorded [`KcallRestart`], or [`None`] if no blocking call was interrupted by a caught
+    /// signal at this kernel-call boundary.
+    ///
+    pub(crate) fn take_restart(&mut self) -> Option<KcallRestart> {
+        self.restart.take()
     }
 
     ///

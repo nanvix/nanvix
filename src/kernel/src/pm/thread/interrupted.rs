@@ -26,6 +26,8 @@ pub enum InterruptReason {
     Killed,
     /// Timer expired.
     TimedOut,
+    /// A deliverable, caught signal interrupted the call.
+    Signaled,
 }
 
 ///

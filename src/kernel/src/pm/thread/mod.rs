@@ -46,6 +46,7 @@ pub use interrupted::{
 pub use ready::ReadyThread;
 pub use running::RunningThread;
 pub use sleeping::SleepingThread;
+pub use state::KcallRestart;
 pub use zombie::ZombieThread;
 
 //==================================================================================================

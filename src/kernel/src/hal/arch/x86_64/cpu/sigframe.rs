@@ -72,3 +72,9 @@ pub unsafe fn redirect_to_handler(_esp0: usize, _handler_ip: usize, _frame_top: 
 ///
 /// As for [`read_user_sp`].
 pub unsafe fn restore_trap_context(_esp0: usize, _cpu: &SignalCpuContext) {}
+
+/// Rewrites a saved user context to transparently restart an interrupted kernel call.
+///
+/// Inert on x86-64 until asynchronous signal delivery is implemented; present so the
+/// architecture-neutral delivery logic compiles.
+pub fn prepare_kcall_restart(_cpu: &mut SignalCpuContext, _number: u32, _args: [u32; 4]) {}

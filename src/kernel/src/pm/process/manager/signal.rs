@@ -34,6 +34,7 @@ use crate::{
             capture_fpu,
             install_fpu,
             join_kcall_result,
+            prepare_kcall_restart,
             read_trap_context,
             read_user_sp,
             redirect_to_handler,
@@ -63,6 +64,7 @@ use crate::{
                 UNBLOCKABLE,
             },
         },
+        KcallRestart,
         ORDER,
     },
 };
@@ -74,6 +76,7 @@ use ::sys::{
         ThreadIdentifier,
         SA_NODEFER,
         SA_RESETHAND,
+        SA_RESTART,
         SA_SIGINFO,
     },
 };
@@ -149,6 +152,24 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Records, on the running thread, a blocking kernel call that a deliverable caught signal just
+    /// interrupted. The asynchronous-delivery checkpoint consumes this record to transparently
+    /// restart the call when the interrupting handler is installed with `SA_RESTART`.
+    ///
+    /// # Parameters
+    ///
+    /// - `restart`: The interrupted call's number and arguments.
+    ///
+    pub fn set_running_thread_restart(&mut self, restart: KcallRestart) {
+        let tid: ThreadIdentifier = self.get_tid();
+        if let Some(mut thread) = self.get_running_mut().find_thread_mut(tid) {
+            thread.thread_state_mut().set_restart(restart);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Evaluates and, if warranted, performs delivery of a pending caught signal to the running
     /// thread at the kernel-call return-to-user boundary.
     ///
@@ -167,14 +188,18 @@ impl ProcessManager {
 
         // Locate the running thread's kernel stack and read its blocked mask.
         let owner_tid: ThreadIdentifier = ThreadIdentifier::from(FPU_OWNER_TID.load(ORDER));
-        let (esp0, blocked): (usize, u64) = {
+        let (esp0, blocked, restart): (usize, u64, Option<KcallRestart>) = {
             let mut thread = match self.get_running_mut().find_thread_mut(tid) {
                 Some(thread) => thread,
                 None => return SignalDeliveryOutcome::None,
             };
             let state = thread.thread_state_mut();
+            // Consume any restart record now so it never lingers past this kernel-call boundary,
+            // even if no signal turns out to be deliverable below.
+            let restart: Option<KcallRestart> = state.take_restart();
+            let blocked: u64 = state.blocked();
             match state.kernel_stack_top() {
-                Some(esp0) => (esp0.into_raw_value(), state.blocked()),
+                Some(esp0) => (esp0.into_raw_value(), blocked, restart),
                 None => return SignalDeliveryOutcome::None,
             }
         };
@@ -218,7 +243,19 @@ impl ProcessManager {
         };
 
         // Snapshot the interrupted CPU context and place the frame on the user stack.
-        let cpu: SignalCpuContext = unsafe { read_trap_context(esp0, result) };
+        let mut cpu: SignalCpuContext = unsafe { read_trap_context(esp0, result) };
+
+        // If a blocking call was interrupted by this signal and the handler that is about to run is
+        // installed with SA_RESTART, rewind the saved context to the kernel-call trap and reload the
+        // original argument registers, so the call transparently re-executes after the handler
+        // returns. Without SA_RESTART the recorded EINTR result (already in the saved accumulator)
+        // stands and the record is simply discarded.
+        if let Some(restart) = restart {
+            if (sa_flags & SA_RESTART) != 0 {
+                prepare_kcall_restart(&mut cpu, restart.number, restart.args);
+            }
+        }
+
         let user_sp: usize = cpu.sp as usize;
         let layout: FrameLayout = match frame_layout(user_sp) {
             Some(layout) => layout,
@@ -364,11 +401,18 @@ impl ProcessManager {
             Err(_) => return Err(SigReturnFailure::Forged),
         };
 
-        // Restore the blocked mask and FPU state, then rewrite the trap frame to resume.
-        let restored_blocked: u64 = frame.blocked & !UNBLOCKABLE;
+        // Restore the blocked mask and FPU state, then rewrite the trap frame to resume. If a
+        // `sigsuspend()` is unwinding through this return, reinstate the mask it saved (restoring
+        // the pre-suspend mask now that its interrupting handler has run) instead of the frame's
+        // saved mask.
         {
             if let Some(mut thread) = self.get_running_mut().find_thread_mut(tid) {
-                thread.thread_state_mut().set_blocked(restored_blocked);
+                let state = thread.thread_state_mut();
+                let restored_blocked: u64 = match state.take_saved_blocked() {
+                    Some(saved) => saved & !UNBLOCKABLE,
+                    None => frame.blocked & !UNBLOCKABLE,
+                };
+                state.set_blocked(restored_blocked);
             }
         }
         self.restore_thread_fpu(tid, owner_tid == tid, &frame.fpu);

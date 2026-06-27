@@ -418,6 +418,90 @@ pub unsafe fn __kcall_sigprocmask(
 }
 
 //==================================================================================================
+// Sigpending
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Retrieves the set of signals that are pending on the calling process but blocked from delivery
+/// to the calling thread.
+///
+/// # Parameters
+///
+/// - `set`: User-space pointer that receives the pending-but-blocked signal set.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+///
+/// # Safety
+///
+/// This function is unsafe because the caller must ensure that `set` is a valid, properly aligned
+/// pointer to a [`SigSet`] value.
+///
+pub unsafe fn __kcall_sigpending(set: *mut SigSet) -> Result<(), Error> {
+    // The kernel call carries the address in a single 32-bit register, so reject a pointer that does
+    // not fit rather than silently truncating it (which could forward a wrong address on a 64-bit
+    // image whose buffer sits above 4 GiB).
+    let set_raw: u32 = u32::try_from(set as usize).map_err(|_| {
+        Error::new(ErrorCode::InvalidArgument, "signal set address exceeds u32::MAX")
+    })?;
+
+    let result: i64 = kcall1!(KcallNumber::Sigpending.into(), set_raw);
+
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to sigpending()"))
+    } else {
+        Ok(())
+    }
+}
+
+//==================================================================================================
+// Sigsuspend
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Atomically installs `mask` as the calling thread's blocked-signal mask and suspends the thread
+/// until a caught signal is delivered, after which the previous mask is restored.
+///
+/// Following POSIX, `sigsuspend()` always returns an error; on the expected path it is
+/// [`ErrorCode::Interrupted`] (`EINTR`).
+///
+/// # Parameters
+///
+/// - `mask`: User-space pointer to the temporary mask to install while suspended.
+///
+/// # Returns
+///
+/// Always returns an error: [`ErrorCode::Interrupted`] once a signal is caught, or another error
+/// code on failure.
+///
+/// # Safety
+///
+/// This function is unsafe because the caller must ensure that `mask` is a valid, properly aligned
+/// pointer to a [`SigSet`] value.
+///
+pub unsafe fn __kcall_sigsuspend(mask: *const SigSet) -> Result<(), Error> {
+    // The kernel call carries the address in a single 32-bit register, so reject a pointer that does
+    // not fit rather than silently truncating it (which could forward a wrong address on a 64-bit
+    // image whose buffer sits above 4 GiB).
+    let mask_raw: u32 = u32::try_from(mask as usize).map_err(|_| {
+        Error::new(ErrorCode::InvalidArgument, "signal mask address exceeds u32::MAX")
+    })?;
+
+    let result: i64 = kcall1!(KcallNumber::Sigsuspend.into(), mask_raw);
+
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "sigsuspend() interrupted"))
+    } else {
+        Ok(())
+    }
+}
+
+//==================================================================================================
 // Sig Restorer
 //==================================================================================================
 

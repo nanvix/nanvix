@@ -326,12 +326,17 @@ global_asm!(
     // clear/set the IF flag — the hardware handles it.
     //
     "_do_kcall:",
-    // Save execution context (esp and eflags saved by hardware;
-    // we do not save scratch registers eax, ecx, edx).
+    // Save execution context (esp and eflags saved by hardware). We do not save the scratch
+    // registers eax and edx (eax carries the call number on entry and the result on exit; edx
+    // carries the result's high word). We do save ecx — although it is also a scratch register —
+    // so that a caught signal handler installed with SA_RESTART can restart the interrupted call
+    // with its original second argument (which the user passes in ecx). The saved slot is rewritten
+    // by sigreturn() on the restart path and otherwise restores ecx to its entry value.
     "    pushl %ebp",
     "    pushl %esi",
     "    pushl %edi",
     "    pushl %ebx",
+    "    pushl %ecx",
 
     // Clear the direction flag.
     "    cld",
@@ -352,6 +357,7 @@ global_asm!(
     "    addl $5*{WORD_SIZE}, %esp",
 
     // Restore execution context.
+    "    popl %ecx",
     "    popl %ebx",
     "    popl %edi",
     "    popl %esi",
