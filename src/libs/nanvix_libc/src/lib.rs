@@ -292,21 +292,6 @@ pub unsafe extern "C" fn __nanvix_sigsuspend(_mask: *const libc_signal::signal::
 // Stub symbols required by libstdc++ but not yet implemented
 //==================================================================================================
 
-/// Stub `wcsftime` — returns 0 (failure).
-///
-/// # Safety
-///
-/// Caller must ensure valid pointers.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn wcsftime(
-    _s: *mut i32,
-    _max: c_size_t,
-    _format: *const i32,
-    _tm: *const c_void,
-) -> c_size_t {
-    0
-}
-
 /// C++ ABI: register a function to be called at exit or when a shared library is unloaded.
 ///
 /// # Safety

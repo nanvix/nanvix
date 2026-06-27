@@ -49,6 +49,34 @@ impl Drop for NarrowString {
 // Helpers
 //==================================================================================================
 
+/// Copies `len` wide single-byte characters to a heap-allocated narrow string.
+///
+/// # Safety
+///
+/// `nptr` must point to at least `len` valid wide characters followed by any storage needed by the
+/// caller's scan.
+unsafe fn copy_narrow_alloc(nptr: *const wchar_t, len: usize) -> Option<NarrowString> {
+    let size: c_size_t = c_size_t::try_from(len.saturating_add(1)).ok()?;
+    let ptr: *mut c_char = unsafe { malloc(size) }.cast::<c_char>();
+    if ptr.is_null() {
+        return None;
+    }
+    for i in 0..len {
+        let c: wchar_t = unsafe { *nptr.add(i) };
+        let cp: u32 = u32::from_ne_bytes(c.to_ne_bytes());
+        let byte: u8 = match u8::try_from(cp) {
+            Ok(byte) => byte,
+            Err(_) => {
+                unsafe { free(ptr.cast::<c_void>()) };
+                return None;
+            },
+        };
+        unsafe { *ptr.add(i) = c_char::from_ne_bytes([byte]) };
+    }
+    unsafe { *ptr.add(len) = 0 };
+    Some(NarrowString { ptr })
+}
+
 /// Copies the ASCII prefix of a wide numeric string to a heap-allocated narrow string.
 ///
 /// # Safety
@@ -68,18 +96,30 @@ pub(crate) unsafe fn to_narrow_alloc(nptr: *const wchar_t) -> Option<NarrowStrin
         len += 1;
     }
 
-    let size: c_size_t = c_size_t::try_from(len.saturating_add(1)).ok()?;
-    let ptr: *mut c_char = unsafe { malloc(size) }.cast::<c_char>();
-    if ptr.is_null() {
-        return None;
-    }
-    for i in 0..len {
-        let c: wchar_t = unsafe { *nptr.add(i) };
+    unsafe { copy_narrow_alloc(nptr, len) }
+}
+
+/// Copies a full null-terminated wide string of single-byte characters to a heap-allocated narrow
+/// string.
+///
+/// # Safety
+///
+/// `nptr` must point to a valid, null-terminated wide string.
+pub(crate) unsafe fn to_narrow_alloc_full(nptr: *const wchar_t) -> Option<NarrowString> {
+    let mut len: usize = 0;
+    loop {
+        let c: wchar_t = unsafe { *nptr.add(len) };
+        if c == 0 {
+            break;
+        }
         let cp: u32 = u32::from_ne_bytes(c.to_ne_bytes());
-        unsafe { *ptr.add(i) = c_char::from_ne_bytes([(cp & 0xff) as u8]) };
+        if cp > u32::from(u8::MAX) {
+            return None;
+        }
+        len += 1;
     }
-    unsafe { *ptr.add(len) = 0 };
-    Some(NarrowString { ptr })
+
+    unsafe { copy_narrow_alloc(nptr, len) }
 }
 
 //==================================================================================================
@@ -105,5 +145,24 @@ mod test {
         }
         assert_eq!(unsafe { *narrow.as_ptr().add(80) }, c_char::from_ne_bytes(*b"x"));
         assert_eq!(unsafe { *narrow.as_ptr().add(81) }, 0);
+    }
+
+    #[test]
+    fn test_to_narrow_alloc_full_accepts_single_byte_characters() {
+        let wide: [wchar_t; 3] = [0x41, 0xff, 0];
+
+        let narrow: NarrowString = unsafe { to_narrow_alloc_full(wide.as_ptr()) }
+            .expect("full narrow allocation should succeed");
+
+        assert_eq!(unsafe { *narrow.as_ptr() }, c_char::from_ne_bytes(*b"A"));
+        assert_eq!(unsafe { *narrow.as_ptr().add(1) }, c_char::from_ne_bytes([0xff]));
+        assert_eq!(unsafe { *narrow.as_ptr().add(2) }, 0);
+    }
+
+    #[test]
+    fn test_to_narrow_alloc_full_rejects_unrepresentable_characters() {
+        let wide: [wchar_t; 3] = [0x41, 0x100, 0];
+
+        assert!(unsafe { to_narrow_alloc_full(wide.as_ptr()) }.is_none());
     }
 }
