@@ -34,8 +34,9 @@
 //! The following aspects of the signals design are intentionally out of scope here:
 //!
 //! - The non-standalone deployment gate is a compile-time concern.
-//! - `SIGKILL`'s unconditional short-circuit, signal masking, and caught (handler) dispositions
-//!   are validated separately; this suite focuses on the default-termination posting path.
+//! - `SIGKILL`'s unconditional short-circuit and signal masking are validated separately. Caught
+//!   (handler) dispositions are exercised by a self-directed delivery test at the end of this
+//!   suite, which redirects the caller through a handler and back via `sigreturn()`.
 //! - The kernel's transient already-interrupted process state is covered by in-kernel unit tests,
 //!   as it is not deterministically observable from user space.
 
@@ -43,7 +44,14 @@
 // Imports
 //==================================================================================================
 
-use ::core::ptr;
+use ::core::{
+    ptr,
+    sync::atomic::{
+        AtomicBool,
+        AtomicUsize,
+        Ordering,
+    },
+};
 use ::sys::{
     error::{
         Error,
@@ -61,9 +69,13 @@ use ::sys::{
     },
     pm::{
         ProcessIdentifier,
+        SA_SIGINFO,
         SIG_MAX,
         SIGKILL,
         SIGTERM,
+        SIGUSR1,
+        SIGUSR2,
+        SigAction,
         ThreadIdentifier,
     },
 };
@@ -323,6 +335,119 @@ fn test_kill_rejects_invalid_signal() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Caught-Signal Delivery
+//==================================================================================================
+
+/// Records whether the `SIGUSR1` handler ran.
+static HANDLER_RAN: AtomicBool = AtomicBool::new(false);
+/// Records whether the `SA_SIGINFO` handler ran.
+static SIGINFO_HANDLER_RAN: AtomicBool = AtomicBool::new(false);
+/// Records the signal number observed by the `SA_SIGINFO` handler.
+static SIGINFO_SIGNUM: AtomicUsize = AtomicUsize::new(0);
+/// Records the `si_signo` value observed through the `SA_SIGINFO` siginfo pointer.
+static SIGINFO_SI_SIGNO: AtomicUsize = AtomicUsize::new(0);
+/// Records whether the `SA_SIGINFO` pointers were non-null.
+static SIGINFO_POINTERS_VALID: AtomicBool = AtomicBool::new(false);
+
+/// Handler installed for `SIGUSR1`; records its invocation so the test can confirm that
+/// asynchronous delivery redirected the thread here and then resumed the interrupted code.
+extern "C" fn sigusr1_handler(_signum: c_int) {
+    HANDLER_RAN.store(true, Ordering::SeqCst);
+}
+
+/// Three-argument handler installed with `SA_SIGINFO`.
+extern "C" fn sigusr2_siginfo_handler(signum: c_int, info: *const u32, ctx: *const u32) {
+    if let Ok(signum) = usize::try_from(signum) {
+        SIGINFO_SIGNUM.store(signum, Ordering::SeqCst);
+    }
+    SIGINFO_POINTERS_VALID.store(!info.is_null() && !ctx.is_null(), Ordering::SeqCst);
+    if !info.is_null() {
+        // SAFETY: the kernel supplies `info` as a pointer to the frame's embedded siginfo image
+        // for the duration of the handler.
+        let si_signo: u32 = unsafe { ::core::ptr::read_volatile(info) };
+        if let Ok(si_signo) = usize::try_from(si_signo) {
+            SIGINFO_SI_SIGNO.store(si_signo, Ordering::SeqCst);
+        }
+    }
+    SIGINFO_HANDLER_RAN.store(true, Ordering::SeqCst);
+}
+
+/// Returns the address of [`sigusr1_handler`] for the `sa_handler` slot. Forming a pointer-sized
+/// value from a function item is exactly what the `<signal.h>` handler slot expects.
+#[allow(clippy::as_conversions)]
+fn sigusr1_handler_addr() -> usize {
+    sigusr1_handler as *const () as usize
+}
+
+/// Returns the address of [`sigusr2_siginfo_handler`] for the `sa_sigaction` slot.
+#[allow(clippy::as_conversions)]
+fn sigusr2_siginfo_handler_addr() -> usize {
+    sigusr2_siginfo_handler as *const () as usize
+}
+
+/// Verifies that a caught signal posted to the calling process runs its registered handler at the
+/// kernel-call return boundary and then resumes the interrupted code with the handler's effects
+/// visible. This exercises the full asynchronous-delivery path end-to-end: signal-frame build,
+/// handler invocation, the restorer trampoline, and `sigreturn()` context restoration.
+fn test_caught_signal_runs_handler() -> Result<(), Error> {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+
+    // Install a catching disposition for SIGUSR1.
+    let act: SigAction = SigAction {
+        sa_handler: sigusr1_handler_addr(),
+        sa_mask: 0,
+        sa_flags: 0,
+        sa_sigaction: 0,
+    };
+    // SAFETY: `act` is a valid, properly aligned `SigAction`; the old-action pointer is null.
+    unsafe { pm::__kcall_sigaction(as_signum(SIGUSR1)?, &raw const act, ptr::null_mut()) }?;
+
+    // Post SIGUSR1 to ourselves. The signal is delivered at the boundary where this `kill()`
+    // returns, so the handler has run by the time control returns to user space.
+    let caller: ProcessIdentifier = pm::getpid_uncached()?;
+    post_signal(caller, as_signum(SIGUSR1)?);
+
+    assert!(
+        HANDLER_RAN.load(Ordering::SeqCst),
+        "SIGUSR1 handler did not run after a self-directed kill()"
+    );
+    Ok(())
+}
+
+/// Verifies that `SA_SIGINFO` dispatch uses the three-argument handler slot and passes the signal
+/// number through both the first argument and the embedded siginfo image.
+fn test_siginfo_signal_runs_three_arg_handler() -> Result<(), Error> {
+    SIGINFO_HANDLER_RAN.store(false, Ordering::SeqCst);
+    SIGINFO_SIGNUM.store(0, Ordering::SeqCst);
+    SIGINFO_SI_SIGNO.store(0, Ordering::SeqCst);
+    SIGINFO_POINTERS_VALID.store(false, Ordering::SeqCst);
+
+    let act: SigAction = SigAction {
+        sa_handler: 0,
+        sa_mask: 0,
+        sa_flags: SA_SIGINFO,
+        sa_sigaction: sigusr2_siginfo_handler_addr(),
+    };
+    // SAFETY: `act` is a valid, properly aligned `SigAction`; the old-action pointer is null.
+    unsafe { pm::__kcall_sigaction(as_signum(SIGUSR2)?, &raw const act, ptr::null_mut()) }?;
+
+    let caller: ProcessIdentifier = pm::getpid_uncached()?;
+    post_signal(caller, as_signum(SIGUSR2)?);
+
+    assert!(
+        SIGINFO_HANDLER_RAN.load(Ordering::SeqCst),
+        "SIGUSR2 SA_SIGINFO handler did not run after a self-directed kill()"
+    );
+    assert!(
+        SIGINFO_POINTERS_VALID.load(Ordering::SeqCst),
+        "SIGUSR2 SA_SIGINFO handler did not receive non-null info/context pointers"
+    );
+    assert_eq!(SIGINFO_SIGNUM.load(Ordering::SeqCst), SIGUSR2);
+    assert_eq!(SIGINFO_SI_SIGNO.load(Ordering::SeqCst), SIGUSR2);
+    Ok(())
+}
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
@@ -336,5 +461,7 @@ pub fn run() -> Result<(), Error> {
     test_kill_rejects_negative_pid()?;
     test_kill_rejects_unknown_pid()?;
     test_kill_rejects_invalid_signal()?;
+    test_caught_signal_runs_handler()?;
+    test_siginfo_signal_runs_three_arg_handler()?;
     Ok(())
 }

@@ -11,7 +11,10 @@ use crate::{
     io,
     ipc,
     kcall::{
-        handler::poll_ikc_messages,
+        handler::{
+            deliver_pending_signals,
+            poll_ikc_messages,
+        },
         KcallResult,
     },
     pm::{
@@ -218,6 +221,7 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::Sigreturn => pm::sigreturn(),
         KcallNumber::Sigpending => pm::sigpending(),
         KcallNumber::Sigsuspend => pm::sigsuspend(),
+        KcallNumber::SigRestorer => pm::sig_restorer(pid, arg0),
 
         // Unknown kernel call.
         _ => {
@@ -232,7 +236,14 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
     // without waiting for the next scheduling opportunity.
     poll_ikc_messages();
 
-    result.into()
+    // Asynchronous signal-delivery checkpoint. At this return-to-user boundary, redirect the
+    // calling thread through a pending caught signal's handler. `sigreturn()` restores the saved
+    // accumulator verbatim, so passing the kernel-call result through preserves it across the
+    // handler when a frame is built.
+    let result: i64 = result.into();
+    deliver_pending_signals(result);
+
+    result
 }
 
 fn handle_sleep_error(sleep_error: SleepError) -> KcallResult {

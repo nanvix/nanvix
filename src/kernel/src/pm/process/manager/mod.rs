@@ -3,6 +3,13 @@
 
 mod r#unsafe;
 
+mod signal;
+
+pub use signal::{
+    SigReturnFailure,
+    SignalDeliveryOutcome,
+};
+
 #[cfg(feature = "test")]
 mod test;
 

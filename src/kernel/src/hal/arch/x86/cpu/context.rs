@@ -51,6 +51,45 @@ pub struct ContextInformation {
 // `ContextInformation` must be 76 bytes long. This must match low-level assembly dispatcher code.
 ::static_assert::assert_eq_size!(ContextInformation, 76);
 
+///
+/// # Description
+///
+/// Snapshot of the interrupted user CPU context saved into a signal frame and restored by
+/// `sigreturn()`.
+///
+/// The field set mirrors the general-purpose register file of the target architecture plus the
+/// instruction pointer, stack pointer, flags, and the code and stack segment selectors. The
+/// selectors and flags are sanitized on restore so a forged frame cannot escalate privilege.
+///
+#[repr(C)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub struct SignalCpuContext {
+    /// Instruction pointer (`EIP`).
+    pub ip: u32,
+    /// Stack pointer (`ESP`).
+    pub sp: u32,
+    /// Flags register (`EFLAGS`).
+    pub flags: u32,
+    /// `EAX` (also the interrupted kernel call's return value).
+    pub ax: u32,
+    /// `EBX`.
+    pub bx: u32,
+    /// `ECX`.
+    pub cx: u32,
+    /// `EDX`.
+    pub dx: u32,
+    /// `ESI`.
+    pub si: u32,
+    /// `EDI`.
+    pub di: u32,
+    /// `EBP`.
+    pub bp: u32,
+    /// Code segment selector (`CS`).
+    pub cs: u32,
+    /// Stack segment selector (`SS`).
+    pub ss: u32,
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================

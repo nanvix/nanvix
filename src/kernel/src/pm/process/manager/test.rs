@@ -5,6 +5,11 @@
 // Imports
 //==================================================================================================
 
+#[cfg(target_arch = "x86")]
+use crate::hal::arch::{
+    join_kcall_result,
+    split_kcall_result,
+};
 use crate::pm::ProcessManager;
 use ::config::kernel::SCHEDULER_FREQ;
 use ::sys::pm::ProcessIdentifier;
@@ -97,6 +102,31 @@ fn test_cross_process_switch_resets_quantum() -> bool {
     true
 }
 
+///
+/// # Description
+///
+/// Verifies that signal delivery preserves the complete `EDX:EAX` kernel-call return value.
+///
+/// This catches sign-extension regressions for negative errno-style returns and high-half loss for
+/// 64-bit success values restored through `sigreturn()`.
+///
+#[cfg(target_arch = "x86")]
+fn test_signal_kcall_result_split_join_preserves_bits() -> bool {
+    for value in [0i64, 1, -1, -4, 0x1234_5678_9abc_def0u64 as i64] {
+        let (ax, dx): (u32, u32) = split_kcall_result(value);
+        let restored: i64 = join_kcall_result(ax, dx);
+        if restored != value {
+            error!(
+                "split/join changed kcall result bits (value={value}, ax={ax:#x}, dx={dx:#x}, \
+                 restored={restored})"
+            );
+            return false;
+        }
+    }
+
+    true
+}
+
 //==================================================================================================
 // Test Runner
 //==================================================================================================
@@ -107,5 +137,9 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_intra_process_switch_resets_exhausted_quantum);
     passed &= run_test!(test_intra_process_switch_preserves_remaining_quantum);
     passed &= run_test!(test_cross_process_switch_resets_quantum);
+    #[cfg(target_arch = "x86")]
+    {
+        passed &= run_test!(test_signal_kcall_result_split_join_preserves_bits);
+    }
     passed
 }

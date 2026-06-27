@@ -241,6 +241,40 @@ core::arch::global_asm!(
 );
 
 //==================================================================================================
+// Signal-Return Trampoline
+//==================================================================================================
+
+// Position-independent restorer trampoline. The kernel installs this address as the return address
+// of a caught-signal handler frame, so that when a handler returns it lands here and issues the
+// `sigreturn()` kernel call. `sigreturn()` restores the interrupted context and resumes it
+// directly, so control never returns to the `jmp` safety net below.
+//
+// The trampoline only loads the kernel-call number and traps; `sigreturn()` locates the signal
+// frame from the user stack pointer, so no register arguments are required.
+core::arch::global_asm!(
+    r#"
+    .globl __nvx_sigreturn_trampoline
+    .type __nvx_sigreturn_trampoline, @function
+
+    .section .text, "ax"
+
+    __nvx_sigreturn_trampoline:
+        mov eax, {sigreturn_nr}
+        int {kcall_vector}
+    1:  jmp 1b
+    "#,
+    sigreturn_nr = const ::sys::number::KcallNumber::Sigreturn as u32,
+    kcall_vector = const ::sys::number::KCALL_VECTOR,
+);
+
+// Address-only view of the trampoline symbol defined in assembly above, used to register the
+// restorer with the kernel without forming a function pointer (which would require an
+// `fn`-to-integer cast).
+unsafe extern "C" {
+    static __nvx_sigreturn_trampoline: u8;
+}
+
+//==================================================================================================
 // Rust Entry Point
 //==================================================================================================
 
@@ -281,6 +315,13 @@ pub unsafe extern "C" fn _start(argp: *mut c_char, envp: *mut c_char) -> ! {
     unsafe {
         ::nvx::pie::relocate_pie_binary(USER_BASE_RAW);
     }
+
+    // Register the position-independent signal-return trampoline so the kernel can deliver caught
+    // signals to this image. Done after relocation so the symbol address is the final runtime one,
+    // and best-effort: a failure here only disables signal handlers, not startup. Re-registering
+    // here also re-resolves the restorer after `execv()` replaces the image.
+    let restorer: usize = ::core::ptr::addr_of!(__nvx_sigreturn_trampoline) as usize;
+    let _ = ::sys::kcall::pm::__kcall_sig_restorer(restorer);
 
     unsafe {
         __nanvix_libc_start_main(argp, envp);

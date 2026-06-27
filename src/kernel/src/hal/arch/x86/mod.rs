@@ -42,13 +42,24 @@ use ::sys::error::Error;
 // Exports
 //==================================================================================================
 
+#[cfg(feature = "test")]
+pub use cpu::split_kcall_result;
 pub use cpu::{
+    capture_fpu,
     forge_user_stack,
+    install_fpu,
+    join_kcall_result,
+    read_trap_context,
+    read_user_sp,
+    redirect_to_handler,
+    restore_trap_context,
+    returning_to_user,
     ContextInformation,
     ExceptionInformation,
     InterruptController,
     InterruptHandler,
     InterruptNumber,
+    SignalCpuContext,
 };
 
 //==================================================================================================

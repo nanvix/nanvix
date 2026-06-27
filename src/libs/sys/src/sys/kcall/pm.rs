@@ -418,6 +418,43 @@ pub unsafe fn __kcall_sigprocmask(
 }
 
 //==================================================================================================
+// Sig Restorer
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Registers the calling process's user-space signal-return trampoline (restorer).
+///
+/// The kernel records `restorer` and installs it as the return address of every caught-signal
+/// handler frame it builds, so that a handler returns into the trampoline, which issues
+/// `sigreturn()`. Each freshly loaded image re-registers its restorer after `execv()`.
+///
+/// # Parameters
+///
+/// - `restorer`: Address of the restorer trampoline in the calling process's address space.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
+///
+pub fn __kcall_sig_restorer(restorer: usize) -> Result<(), Error> {
+    // The kernel call carries the address in a single 32-bit register, so reject a restorer that
+    // does not fit rather than silently truncating it (which could register a wrong address, or even
+    // pass kernel validation, on a 64-bit image whose trampoline sits above 4 GiB).
+    let restorer_raw: u32 = u32::try_from(restorer)
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "restorer address exceeds u32::MAX"))?;
+
+    let result: i64 = kcall1!(KcallNumber::SigRestorer.into(), restorer_raw);
+
+    if result < 0 {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to register signal restorer"))
+    } else {
+        Ok(())
+    }
+}
+
+//==================================================================================================
 // Create Thread
 //==================================================================================================
 

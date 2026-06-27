@@ -124,6 +124,48 @@ impl FpuState {
     }
 }
 
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+/// Captures a thread's FPU image into a raw buffer.
+///
+/// When `is_owner` is set the thread currently owns the live FPU, so its registers are flushed to
+/// the kernel-side save area first; otherwise the already-saved area is copied as is.
+///
+/// # Safety
+///
+/// `fpu` must point to the FPU save area of the target thread. When `is_owner` is set, the live FPU
+/// must belong to that thread so flushing it does not clobber another thread's state.
+pub unsafe fn capture_fpu(fpu: *mut FpuState, is_owner: bool) -> [u8; FPU_STATE_SIZE] {
+    let mut image: [u8; FPU_STATE_SIZE] = [0u8; FPU_STATE_SIZE];
+    unsafe {
+        if is_owner {
+            FpuState::save(fpu);
+        }
+        ::core::ptr::copy_nonoverlapping(fpu.cast::<u8>(), image.as_mut_ptr(), FPU_STATE_SIZE);
+    }
+    image
+}
+
+/// Installs a raw FPU image into a thread.
+///
+/// When `is_owner` is set the thread currently owns the live FPU, so the restored area is reloaded
+/// into the registers; otherwise only the kernel-side save area is updated.
+///
+/// # Safety
+///
+/// As for [`capture_fpu`]. When `is_owner` is set the live FPU is reloaded from `fpu`, which must
+/// hold a valid `FXSAVE` image.
+pub unsafe fn install_fpu(fpu: *mut FpuState, is_owner: bool, image: &[u8; FPU_STATE_SIZE]) {
+    unsafe {
+        ::core::ptr::copy_nonoverlapping(image.as_ptr(), fpu.cast::<u8>(), FPU_STATE_SIZE);
+        if is_owner {
+            FpuState::restore(fpu);
+        }
+    }
+}
+
 ///
 /// # Description
 ///
