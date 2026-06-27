@@ -106,3 +106,40 @@ pub unsafe extern "C" fn fread(
     let size_usize: usize = size as usize;
     (offset / size_usize) as c_size_t
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`fread`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`fread`].
+///
+/// # Parameters
+///
+/// - `ptr`: Destination buffer.
+/// - `size`: Size in bytes of each element.
+/// - `nmemb`: Number of elements to read.
+/// - `stream`: Pointer to the source [`FILE`] stream.
+///
+/// # Returns
+///
+/// The number of elements successfully read, which may be less than `nmemb` on end-of-file or
+/// error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `ptr` points to a buffer of at least `size * nmemb` bytes and that `stream` is a valid [`FILE`].
+///
+/// # References
+///
+/// - <https://man7.org/linux/man-pages/man3/unlocked_stdio.3.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn fread_unlocked(
+    ptr: *mut c_void,
+    size: c_size_t,
+    nmemb: c_size_t,
+    stream: *mut FILE,
+) -> c_size_t {
+    fread(ptr, size, nmemb, stream)
+}

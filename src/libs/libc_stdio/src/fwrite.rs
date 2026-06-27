@@ -101,3 +101,39 @@ pub unsafe extern "C" fn fwrite(
     let size_usize: usize = size as usize;
     (written / size_usize) as c_size_t
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`fwrite`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`fwrite`].
+///
+/// # Parameters
+///
+/// - `ptr`: Source buffer.
+/// - `size`: Size in bytes of each element.
+/// - `nmemb`: Number of elements to write.
+/// - `stream`: Pointer to the target [`FILE`] stream.
+///
+/// # Returns
+///
+/// The number of elements successfully written, which may be less than `nmemb` on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `ptr` points to a buffer of at least `size * nmemb` bytes and that `stream` is a valid [`FILE`].
+///
+/// # References
+///
+/// - <https://man7.org/linux/man-pages/man3/unlocked_stdio.3.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn fwrite_unlocked(
+    ptr: *const c_void,
+    size: c_size_t,
+    nmemb: c_size_t,
+    stream: *mut FILE,
+) -> c_size_t {
+    fwrite(ptr, size, nmemb, stream)
+}

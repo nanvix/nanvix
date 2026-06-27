@@ -91,3 +91,32 @@ pub unsafe extern "C" fn fputs(s: *const c_char, stream: *mut FILE) -> c_int {
 
     0
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`fputs`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`fputs`].
+///
+/// # Parameters
+///
+/// - `s`: NUL-terminated string to write.
+/// - `stream`: Pointer to the target [`FILE`] stream.
+///
+/// # Returns
+///
+/// A non-negative number on success, or `EOF` (`-1`) on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `s` points to a valid NUL-terminated string and that `stream` is a valid [`FILE`].
+///
+/// # References
+///
+/// - <https://man7.org/linux/man-pages/man3/unlocked_stdio.3.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn fputs_unlocked(s: *const c_char, stream: *mut FILE) -> c_int {
+    fputs(s, stream)
+}

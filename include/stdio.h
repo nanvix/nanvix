@@ -122,6 +122,10 @@ extern int vsscanf(const char *s, const char *format, __builtin_va_list ap);
 extern void setbuf(FILE *stream, char *buf);
 extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);
 
+/* Process I/O (pipe streams). */
+extern FILE *popen(const char *command, const char *type);
+extern int pclose(FILE *stream);
+
 /*==================================================================================================
  * Positioning
  *==================================================================================================*/
@@ -129,6 +133,7 @@ extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);
 extern int fseek(FILE *stream, long offset, int whence);
 extern int fseeko(FILE *stream, off_t offset, int whence);
 extern long ftell(FILE *stream);
+extern off_t ftello(FILE *stream);
 extern void rewind(FILE *stream);
 
 /*==================================================================================================
@@ -186,6 +191,34 @@ extern int vasprintf(char **strp, const char *fmt, va_list ap);
  *==================================================================================================*/
 
 extern void perror(const char *s);
+
+/*==================================================================================================
+ * Unlocked I/O
+ *==================================================================================================*/
+
+extern int getc_unlocked(FILE *stream);
+extern int getchar_unlocked(void);
+extern int putc_unlocked(int c, FILE *stream);
+extern int putchar_unlocked(int c);
+extern int fgetc_unlocked(FILE *stream);
+extern int fputc_unlocked(int c, FILE *stream);
+extern char *fgets_unlocked(char *s, int size, FILE *stream);
+extern int fputs_unlocked(const char *s, FILE *stream);
+extern size_t fread_unlocked(void *ptr, size_t size, size_t nmemb, FILE *stream);
+extern size_t fwrite_unlocked(const void *ptr, size_t size, size_t nmemb, FILE *stream);
+extern int feof_unlocked(FILE *stream);
+extern int ferror_unlocked(FILE *stream);
+extern int fileno_unlocked(FILE *stream);
+extern void clearerr_unlocked(FILE *stream);
+extern int fflush_unlocked(FILE *stream);
+
+/*==================================================================================================
+ * File Locking
+ *==================================================================================================*/
+
+extern void flockfile(FILE *stream);
+extern int ftrylockfile(FILE *stream);
+extern void funlockfile(FILE *stream);
 
 #ifdef __cplusplus
 }

@@ -23,6 +23,8 @@ content_order = [
     "section:4",
     "section:5",
     "section:6",
+    "section:7",
+    "section:8",
 ]
 
 [[types]]
@@ -114,7 +116,11 @@ extern int vsscanf(const char *s, const char *format, __builtin_va_list ap);
 #define _IOLBF 1
 #define _IONBF 2
 extern void setbuf(FILE *stream, char *buf);
-extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);'''
+extern int setvbuf(FILE *stream, char *buf, int mode, size_t size);
+
+/* Process I/O (pipe streams). */
+extern FILE *popen(const char *command, const char *type);
+extern int pclose(FILE *stream);'''
 
 [[raw_sections]]
 title = ""
@@ -130,7 +136,7 @@ functions = ["stdin", "stdout", "stderr"]
 
 [[sections]]
 title = "Positioning"
-functions = ["fseek", "fseeko", "ftell", "rewind"]
+functions = ["fseek", "fseeko", "ftell", "ftello", "rewind"]
 
 [[sections]]
 title = "Character I/O"
@@ -164,3 +170,27 @@ functions = [
 [[sections]]
 title = "Error Reporting"
 functions = ["perror"]
+
+[[sections]]
+title = "Unlocked I/O"
+functions = [
+    "getc_unlocked",
+    "getchar_unlocked",
+    "putc_unlocked",
+    "putchar_unlocked",
+    "fgetc_unlocked",
+    "fputc_unlocked",
+    "fgets_unlocked",
+    "fputs_unlocked",
+    "fread_unlocked",
+    "fwrite_unlocked",
+    "feof_unlocked",
+    "ferror_unlocked",
+    "fileno_unlocked",
+    "clearerr_unlocked",
+    "fflush_unlocked",
+]
+
+[[sections]]
+title = "File Locking"
+functions = ["flockfile", "ftrylockfile", "funlockfile"]

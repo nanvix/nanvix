@@ -106,3 +106,61 @@ pub unsafe extern "C" fn fgetc(stream: *mut FILE) -> c_int {
 pub unsafe extern "C" fn getc(stream: *mut FILE) -> c_int {
     fgetc(stream)
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`fgetc`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`fgetc`].
+///
+/// # Parameters
+///
+/// - `stream`: Pointer to the source [`FILE`] stream.
+///
+/// # Returns
+///
+/// The next character as an `unsigned char` promoted to [`c_int`], or `EOF` (`-1`) on end-of-file
+/// or error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `stream` points to a valid, open [`FILE`] structure.
+///
+/// # References
+///
+/// - <https://man7.org/linux/man-pages/man3/unlocked_stdio.3.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn fgetc_unlocked(stream: *mut FILE) -> c_int {
+    fgetc(stream)
+}
+
+///
+/// # Description
+///
+/// Non-locking variant of [`getc`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`getc`].
+///
+/// # Parameters
+///
+/// - `stream`: Pointer to the source [`FILE`] stream.
+///
+/// # Returns
+///
+/// The next character as an `unsigned char` promoted to [`c_int`], or `EOF` (`-1`) on end-of-file
+/// or error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `stream` points to a valid, open [`FILE`] structure.
+///
+/// # References
+///
+/// - <https://pubs.opengroup.org/onlinepubs/9799919799/functions/getc_unlocked.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn getc_unlocked(stream: *mut FILE) -> c_int {
+    fgetc(stream)
+}
