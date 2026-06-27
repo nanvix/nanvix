@@ -119,13 +119,14 @@ text = '''
 
 [[sections]]
 title = "Signal Functions"
-functions = ["signal", "raise", "kill"]
+functions = ["signal", "raise", "kill", "killpg"]
 
 [[sections]]
 title = "Signal Set Functions"
 functions = [
     "sigemptyset",
     "sigfillset",
+    "sigisemptyset",
     "sigaddset",
     "sigdelset",
     "sigismember",
@@ -140,6 +141,8 @@ signal = '''
 extern sighandler_t signal(int signum, sighandler_t handler);'''
 kill = '''
 extern int kill(pid_t pid, int sig);'''
+killpg = '''
+extern int killpg(pid_t pgrp, int sig);'''
 sigaction = '''
 extern int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);'''
 pthread_sigmask = '''

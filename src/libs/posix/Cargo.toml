@@ -55,6 +55,8 @@ default = ["syscall", "allocator", "c-main"]
 allocator = ["dep:sysalloc"]
 syscall = [
     "syslog",
+    # Propagate to the `syscall` crate's optional C bindings so the
+    # syscall-backed surface is exported by `libposix.a`.
     "syscall/dlfcn",
     "dep:libc_arpa_inet",
     "dep:libc_dlfcn",
@@ -73,6 +75,20 @@ syscall = [
     "dep:libc_sys_uio",
     "dep:libc_sys_utsname",
 ]
+
+# Surfaces the syscall-backed signal-control calls (`sigaction`, `sigprocmask`)
+# from the `syscall` crate, covering a gap in Newlib: ports linked against the
+# standalone `libposix.a` (e.g. xz) need them, but Newlib does not provide them.
+#
+# Deliberately kept OUT of the `syscall` feature. The in-tree `nanvix_libc`
+# bundle (`libc.a`) pulls `posix` in via its `backend-nanvix` feature and ALREADY
+# defines `sigaction` (in `nanvix_libc`) and `sigprocmask` (in `libc_signal`), so
+# enabling the `syscall` versions there too would emit DUPLICATE `sigaction` /
+# `sigprocmask` symbols into `libc.a`. This feature is therefore enabled ONLY for
+# the standalone `libposix.a` build (see `GUEST_STATICLIB_FEATURES_posix` in
+# `build/make/generic-guest-staticlibs.mk`), which carries neither `nanvix_libc`
+# nor `libc_signal`.
+newlib-compat = ["syscall/signal"]
 standalone = ["syscall/standalone"]
 std = []
 

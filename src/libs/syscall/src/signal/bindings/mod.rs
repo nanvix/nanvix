@@ -8,3 +8,5 @@
 pub mod kill;
 #[cfg(feature = "sigaction")]
 pub mod sigaction;
+#[cfg(feature = "signal")]
+pub mod sigprocmask;
