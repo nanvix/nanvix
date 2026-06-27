@@ -16,10 +16,18 @@ mod transfer;
 
 pub use kernel::{
     DataChunkHeader,
+    GuestSgBulkHeader,
+    GuestSgBulkKind,
+    GuestSgSegment,
+    HostBulkTransferHeader,
     Message,
     MessageReceiver,
     MessageSender,
+    SegmentCount,
     VmBusMessage,
+    VmBusMessageKind,
+    SG_BULK_MAX_BYTES,
+    SG_BULK_MAX_SEGMENTS,
 };
 pub use system::{
     SystemMessage,

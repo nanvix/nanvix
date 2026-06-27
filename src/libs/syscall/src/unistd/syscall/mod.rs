@@ -11,6 +11,12 @@
 #[cfg(any(feature = "syscall", feature = "std", test))]
 mod getopt;
 
+// The scatter/gather chunking helper in `util` is pure Rust and host-testable, so it is also
+// compiled under `test`. Its only non-test consumers (`read`/`write`) are gated behind the
+// `syscall` feature, which keeps `util` available there too.
+#[cfg(any(feature = "syscall", test))]
+mod util;
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod _exit;
@@ -46,7 +52,6 @@ cfg_if::cfg_if! {
         mod symlink;
         mod symlinkat;
         mod unlink;
-        mod util;
         mod write;
     }
 }

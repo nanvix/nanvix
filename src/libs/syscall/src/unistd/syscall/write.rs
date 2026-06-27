@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use super::util::page_chunk_size;
+use super::util::sg_chunk_size;
 use crate::{
     safe::RawFileDescriptor,
     unistd::message::{
@@ -44,14 +44,14 @@ use ::sysapi::{
 ///
 /// # Description
 ///
-/// Writes a single page-aligned chunk to a file descriptor via IKC. Sends a WriteRequest,
+/// Writes a single scatter/gather chunk to a file descriptor via IKC. Sends a WriteRequest,
 /// pushes the chunk data, and receives the WriteResponse.
 ///
 /// # Parameters
 ///
 /// - `tid`: Thread identifier of the calling thread.
 /// - `fd`: File descriptor.
-/// - `chunk`: Byte slice to write (must not cross a page boundary).
+/// - `chunk`: Byte slice to write.
 ///
 /// # Returns
 ///
@@ -102,6 +102,34 @@ fn write_chunk(
     match message.header {
         SystemCallMessageHeader::WriteResponse => {
             let response: WriteResponse = WriteResponse::from_bytes(message.payload);
+            let count: i32 = response.count;
+
+            if count < 0 {
+                ::syslog::warn!(
+                    "write_chunk(): linuxd returned negative count (fd={:?}, count={:?})",
+                    fd,
+                    count
+                );
+                return Err(Error::new(
+                    ErrorCode::InvalidMessage,
+                    "write response count is negative",
+                ));
+            }
+
+            if (count as usize) > chunk.len() {
+                ::syslog::warn!(
+                    "write_chunk(): linuxd returned oversized count (fd={:?}, count={:?}, \
+                     chunk.len={:?})",
+                    fd,
+                    count,
+                    chunk.len()
+                );
+                return Err(Error::new(
+                    ErrorCode::InvalidMessage,
+                    "write response count exceeds requested chunk length",
+                ));
+            }
+
             Ok(response.count as c_size_t)
         },
         header => {
@@ -188,7 +216,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     )
 }
 
-/// Forwards a write request via IPC, splitting the buffer into page-aligned chunks.
+/// Forwards a write request via IPC, splitting the buffer into scatter/gather chunks.
 fn write_ipc(
     fd: RawFileDescriptor,
     buffer: &[u8],
@@ -204,7 +232,7 @@ fn write_ipc(
 
     while offset < buffer.len() {
         let chunk_size: usize =
-            page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
+            sg_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &[u8] = &buffer[offset..offset + chunk_size];
 
         let written: c_size_t =

@@ -11,12 +11,60 @@ use crate::{
         ErrorCode,
     },
     ipc::typ::MessageType,
+    mm::{
+        Address,
+        Alignment,
+        VirtualAddress,
+    },
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
 };
 use ::core::mem;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Page size, in bytes, used to reason about scatter/gather bulk transfer limits.
+///
+/// Scatter/gather chains describe guest memory at page granularity, so the limits below are
+/// expressed as multiples of this value rather than as opaque byte counts. Sourced from
+/// [`Alignment`] (the same canonical definition that the `arch` crate's page alignment resolves to)
+/// because the `sys` crate cannot depend on the `arch` crate: `arch` already depends on `sys`, so
+/// the reverse dependency would form a cycle.
+const PAGE_SIZE: usize = Alignment::Align4096 as usize;
+
+/// Largest single allocation, in bytes, that the guest kernel's slab heap allocator can satisfy.
+///
+/// The kernel assembles the scatter/gather descriptor list for a transfer as one contiguous heap
+/// allocation, and its slab allocator rejects any request larger than this. Sourced from the shared
+/// [`config::kernel::MAX_SLAB_SIZE`] budget (the same value the kernel heap enforces in
+/// `kernel::mm::kheap`) so the kernel can always build the descriptor chain without overflowing the
+/// heap; reading the same constant keeps the two in sync.
+const SG_BULK_MAX_DESCRIPTOR_BYTES: usize = config::kernel::MAX_SLAB_SIZE;
+
+/// Maximum number of segments in a scatter/gather bulk transfer.
+///
+/// In the worst case every page of a transfer is physically discontiguous and needs its own segment
+/// descriptor, so the kernel builds up to this many [`GuestSgSegment`] descriptors in a single
+/// heap allocation. The limit is therefore the number of fixed-size descriptors that fit within
+/// [`SG_BULK_MAX_DESCRIPTOR_BYTES`]; raising that heap budget is required before this can grow.
+///
+/// Typed as `u16` to match the wire representation of a segment count, so call sites do not need a
+/// narrowing `as` cast. The single narrowing cast below is a compile-time constant that is
+/// provably lossless (the descriptor budget is far smaller than `u16::MAX`).
+pub const SG_BULK_MAX_SEGMENTS: u16 = (SG_BULK_MAX_DESCRIPTOR_BYTES / GuestSgSegment::SIZE) as u16;
+
+/// Maximum number of bytes in a scatter/gather bulk transfer.
+///
+/// Guideline: this is derived from [`SG_BULK_MAX_SEGMENTS`] assuming the worst case of one page per
+/// segment, so the byte ceiling is the segment ceiling times the page size. Keeping it a multiple
+/// of [`PAGE_SIZE`] ensures the two limits stay consistent. Larger user transfers are split
+/// into several bulk transfers by the read/write chunking path, so this bounds a single transfer
+/// rather than the total amount a caller may move.
+pub const SG_BULK_MAX_BYTES: usize = SG_BULK_MAX_SEGMENTS as usize * PAGE_SIZE;
 
 //==================================================================================================
 // Structures
@@ -253,12 +301,43 @@ impl Default for Message {
 pub struct VmBusMessage {
     /// Size of the message in bytes (stored as `u64`, logical type is `u32`).
     size: u64,
-    /// Whether this is an IKC message (stored as `u64`, logical type is `bool`).
-    is_ikc: u64,
+    /// Type of message carried by this envelope (stored as `u64`).
+    kind: u64,
     /// Guest virtual address of the message (stored as `u64`, logical type is `u32`).
     message_addr: u64,
 }
 ::static_assert::assert_eq_size!(VmBusMessage, 3 * mem::size_of::<u64>());
+
+///
+/// # Description
+///
+/// Message kind carried by a [`VmBusMessage`].
+///
+#[repr(u64)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VmBusMessageKind {
+    /// Legacy contiguous bulk transfer descriptor.
+    LegacyBulk = 0,
+    /// Standard IKC message.
+    Ikc = 1,
+    /// Guest scatter/gather bulk transfer descriptor.
+    GuestSgBulk = 2,
+}
+
+impl TryFrom<u64> for VmBusMessageKind {
+    type Error = Error;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        // Match against the enum discriminants themselves so the wire values have a single source
+        // of truth and are not duplicated as literals here.
+        match value {
+            value if value == Self::LegacyBulk as u64 => Ok(Self::LegacyBulk),
+            value if value == Self::Ikc as u64 => Ok(Self::Ikc),
+            value if value == Self::GuestSgBulk as u64 => Ok(Self::GuestSgBulk),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid vmbus message kind")),
+        }
+    }
+}
 
 //==================================================================================================
 // Implementations
@@ -276,17 +355,17 @@ impl VmBusMessage {
     /// # Parameters
     ///
     /// - `size`: Size of the message in bytes.
-    /// - `is_ikc`: Whether this is an IKC message.
+    /// - `kind`: Type of message carried by this envelope.
     /// - `message_addr`: Guest virtual address of the message.
     ///
     /// # Returns
     ///
     /// The new message envelope.
     ///
-    pub fn new(size: u32, is_ikc: bool, message_addr: u32) -> Self {
+    pub fn new(size: u32, kind: VmBusMessageKind, message_addr: u32) -> Self {
         Self {
             size: size as u64,
-            is_ikc: is_ikc as u64,
+            kind: kind as u64,
             message_addr: message_addr as u64,
         }
     }
@@ -316,23 +395,40 @@ impl VmBusMessage {
     ///
     /// # Description
     ///
-    /// Returns whether this is an IKC message.
+    /// Returns the type of message carried by this envelope.
     ///
-    pub fn is_ikc(&self) -> bool {
-        self.is_ikc != 0
+    /// # Returns
+    ///
+    /// Upon success, the message kind is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the envelope contains an unknown message kind.
+    ///
+    pub fn kind(&self) -> Result<VmBusMessageKind, Error> {
+        VmBusMessageKind::try_from(self.kind)
     }
 
     ///
     /// # Description
     ///
-    /// Sets whether this is an IKC message.
+    /// Returns whether this is an IKC message.
+    ///
+    pub fn is_ikc(&self) -> bool {
+        self.kind == VmBusMessageKind::Ikc as u64
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the type of message carried by this envelope.
     ///
     /// # Parameters
     ///
-    /// - `is_ikc`: Whether this is an IKC message.
+    /// - `kind`: Type of message carried by this envelope.
     ///
-    pub fn set_is_ikc(&mut self, is_ikc: bool) {
-        self.is_ikc = is_ikc as u64;
+    pub fn set_kind(&mut self, kind: VmBusMessageKind) {
+        self.kind = kind as u64;
     }
 
     ///
@@ -367,6 +463,8 @@ impl VmBusMessage {
     /// A byte array that represents the target message envelope.
     ///
     pub fn to_bytes(self) -> [u8; Self::SIZE] {
+        // SAFETY: The header is `repr(C)` and contains only fixed-width integer fields, so its
+        // in-memory representation is exactly `Self::SIZE` bytes.
         unsafe { mem::transmute(self) }
     }
 
@@ -395,26 +493,23 @@ impl VmBusMessage {
 }
 
 //==================================================================================================
-// DataChunkHeader
+// HostBulkTransferHeader
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// Header structure describing a data chunk transfer between a user process and the kernel
-/// (linuxd). This header is placed in guest memory and referenced by a [`VmBusMessage`] with
-/// `is_ikc` set to `false`. The `message_addr` field of the envelope points to this header, and
-/// the envelope's `size` field holds the byte count of the bulk payload.
+/// Header structure describing a contiguous data chunk transfer between UserVM and linuxd.
 ///
 /// # Notes
 ///
 /// - All fields use fixed-width types for ABI stability across the guest/host boundary.
-/// - The `data_addr` field stores a guest physical address pointing to the bulk payload buffer.
-/// - This structure is `no_std`-compatible so it can be used inside the kernel.
+/// - The `data_addr` field stores an opaque UserVM value. It may be a guest physical address on
+///   legacy paths, or a UserVM transfer identifier for scatter/gather pull responses.
 ///
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-pub struct DataChunkHeader {
+pub struct HostBulkTransferHeader {
     /// Process identifier of the source (sender), stored as a fixed-width `i32`.
     source_pid: i32,
     /// Thread identifier of the source (sender), stored as a fixed-width `i32`.
@@ -423,18 +518,21 @@ pub struct DataChunkHeader {
     destination_pid: i32,
     /// Thread identifier of the destination (receiver), stored as a fixed-width `i32`.
     destination_tid: i32,
-    /// Guest physical address of the bulk data buffer.
+    /// Opaque bulk payload location.
+    ///
+    /// This is a guest physical address on legacy contiguous paths and a UserVM transfer identifier
+    /// on scatter/gather pull responses.
     data_addr: u32,
     /// Number of bytes in the bulk payload.
     data_len: u32,
 }
-::static_assert::assert_eq_size!(DataChunkHeader, 6 * mem::size_of::<u32>());
+::static_assert::assert_eq_size!(HostBulkTransferHeader, 6 * mem::size_of::<u32>());
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl DataChunkHeader {
+impl HostBulkTransferHeader {
     /// Size of the header in bytes.
     pub const SIZE: usize = mem::size_of::<Self>();
 
@@ -449,7 +547,7 @@ impl DataChunkHeader {
     /// - `source_tid`: Thread identifier of the source.
     /// - `destination_pid`: Process identifier of the destination.
     /// - `destination_tid`: Thread identifier of the destination.
-    /// - `data_addr`: Guest physical address of the bulk data buffer.
+    /// - `data_addr`: Guest physical address or opaque UserVM transfer identifier.
     /// - `data_len`: Number of bytes in the bulk payload.
     ///
     /// # Returns
@@ -517,7 +615,7 @@ impl DataChunkHeader {
     ///
     /// # Description
     ///
-    /// Returns the guest physical address of the bulk data buffer.
+    /// Returns the guest physical address or opaque UserVM transfer identifier.
     ///
     pub fn data_addr(&self) -> u32 {
         self.data_addr
@@ -566,6 +664,380 @@ impl DataChunkHeader {
     /// validation is added in the future.
     ///
     pub fn try_from_bytes(bytes: [u8; Self::SIZE]) -> Result<Self, Error> {
-        Ok(unsafe { mem::transmute::<[u8; Self::SIZE], DataChunkHeader>(bytes) })
+        // SAFETY: All bit patterns are valid because the header contains only fixed-width integer
+        // fields.
+        Ok(unsafe { mem::transmute::<[u8; Self::SIZE], HostBulkTransferHeader>(bytes) })
+    }
+}
+
+/// Backwards-compatible name for the contiguous UserVM/linuxd bulk header.
+pub type DataChunkHeader = HostBulkTransferHeader;
+
+///
+/// # Description
+///
+/// Kind of guest scatter/gather bulk transfer.
+///
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuestSgBulkKind {
+    /// UserVM should gather guest memory and send it to linuxd.
+    Push = 1,
+    /// UserVM should register guest memory as the destination for a later linuxd response.
+    Pull = 2,
+}
+
+impl TryFrom<u16> for GuestSgBulkKind {
+    type Error = Error;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        // Match against the enum discriminants themselves so the wire values have a single source
+        // of truth and are not duplicated as literals here.
+        match value {
+            value if value == Self::Push as u16 => Ok(Self::Push),
+            value if value == Self::Pull as u16 => Ok(Self::Pull),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid scatter/gather kind")),
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// A guest physical memory segment in a scatter/gather bulk transfer.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct GuestSgSegment {
+    /// Guest virtual address of the next segment descriptor, or zero if this is the last segment.
+    ///
+    /// Stored as a fixed-width `u32` for ABI stability across the guest/host boundary; the typed
+    /// [`VirtualAddress`] accessors convert to and from this representation.
+    next: u32,
+    /// Guest physical address of this segment's data.
+    data_gpa: u32,
+    /// Number of bytes in this segment.
+    data_len: u32,
+}
+::static_assert::assert_eq_size!(GuestSgSegment, 3 * mem::size_of::<u32>());
+
+impl GuestSgSegment {
+    /// Size of the segment descriptor in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates a new guest scatter/gather segment.
+    ///
+    /// # Parameters
+    ///
+    /// - `next`: Guest virtual address of the next segment descriptor, or zero for the last
+    ///   segment.
+    /// - `data_gpa`: Guest physical address of this segment's data.
+    /// - `data_len`: Number of bytes in this segment.
+    ///
+    /// # Returns
+    ///
+    /// The new guest scatter/gather segment.
+    ///
+    pub fn new(next: VirtualAddress, data_gpa: u32, data_len: u32) -> Self {
+        Self {
+            next: next.into_raw_value() as u32,
+            data_gpa,
+            data_len,
+        }
+    }
+
+    /// Returns the guest virtual address of the next descriptor.
+    pub fn next(&self) -> VirtualAddress {
+        VirtualAddress::from_raw_value(self.next as usize)
+    }
+
+    /// Sets the guest virtual address of the next descriptor.
+    pub fn set_next(&mut self, next: VirtualAddress) {
+        self.next = next.into_raw_value() as u32;
+    }
+
+    /// Returns the guest physical address of this segment's data.
+    pub fn data_gpa(&self) -> u32 {
+        self.data_gpa
+    }
+
+    /// Returns the number of bytes in this segment.
+    pub fn data_len(&self) -> u32 {
+        self.data_len
+    }
+
+    /// Sets the number of bytes in this segment.
+    pub fn set_data_len(&mut self, data_len: u32) {
+        self.data_len = data_len;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts the segment descriptor to a byte array.
+    ///
+    /// # Returns
+    ///
+    /// A byte array that represents the segment descriptor.
+    ///
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
+        // SAFETY: The segment is `repr(C)` and contains only fixed-width integer fields, so its
+        // in-memory representation is exactly `Self::SIZE` bytes.
+        unsafe { mem::transmute(self) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to convert a byte array to a segment descriptor.
+    ///
+    /// # Parameters
+    ///
+    /// - `bytes`: The byte array to convert.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the segment descriptor is returned. Upon failure, an error is returned
+    /// instead.
+    ///
+    /// # Errors
+    ///
+    /// This function currently cannot fail because all bit patterns are valid for the `repr(C)`
+    /// layout. The `Result` return type is retained for forward compatibility in case field
+    /// validation is added in the future.
+    ///
+    pub fn try_from_bytes(bytes: [u8; Self::SIZE]) -> Result<Self, Error> {
+        // SAFETY: All bit patterns are valid because the segment contains only fixed-width integer
+        // fields.
+        Ok(unsafe { mem::transmute::<[u8; Self::SIZE], GuestSgSegment>(bytes) })
+    }
+}
+
+///
+/// # Description
+///
+/// Number of segments in a scatter/gather bulk transfer.
+///
+/// This is a thin newtype over `u16` (the wire representation) that provides stronger type safety
+/// than a bare integer when describing the length of a scatter/gather segment chain.
+///
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SegmentCount(u16);
+
+impl SegmentCount {
+    /// Maximum number of segments a scatter/gather bulk transfer may contain.
+    pub const MAX: Self = Self(SG_BULK_MAX_SEGMENTS);
+
+    ///
+    /// # Description
+    ///
+    /// Creates a new [`SegmentCount`] from a raw count.
+    ///
+    /// # Parameters
+    ///
+    /// - `count`: Number of segments.
+    ///
+    /// # Returns
+    ///
+    /// The new segment count.
+    ///
+    pub fn new(count: u16) -> Self {
+        Self(count)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the raw number of segments.
+    ///
+    pub fn get(self) -> u16 {
+        self.0
+    }
+}
+
+impl TryFrom<usize> for SegmentCount {
+    type Error = Error;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        if value == 0 || value > SG_BULK_MAX_SEGMENTS as usize {
+            return Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "invalid scatter/gather segment count",
+            ));
+        }
+        let count: u16 = u16::try_from(value).map_err(|_| {
+            Error::new(ErrorCode::InvalidArgument, "too many scatter/gather segments")
+        })?;
+        Ok(Self(count))
+    }
+}
+
+///
+/// # Description
+///
+/// Guest scatter/gather bulk transfer descriptor consumed by UserVM.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct GuestSgBulkHeader {
+    /// Process identifier of the source.
+    source_pid: i32,
+    /// Thread identifier of the source.
+    source_tid: i32,
+    /// Process identifier of the destination.
+    destination_pid: i32,
+    /// Thread identifier of the destination.
+    destination_tid: i32,
+    /// Scatter/gather transfer kind.
+    kind: u16,
+    /// Number of segments in the chain, including `first`.
+    segment_count: u16,
+    /// Total number of bytes in the transfer.
+    total_len: u32,
+    /// First segment descriptor.
+    first: GuestSgSegment,
+}
+::static_assert::assert_eq_size!(GuestSgBulkHeader, 9 * mem::size_of::<u32>());
+
+impl GuestSgBulkHeader {
+    /// Size of the scatter/gather bulk header in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates a new guest scatter/gather bulk header.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Process and thread identifiers of the source.
+    /// - `destination`: Process and thread identifiers of the destination.
+    /// - `kind`: Type of scatter/gather transfer.
+    /// - `segment_count`: Number of segments in the chain, including `first`.
+    /// - `total_len`: Total number of bytes in the transfer.
+    /// - `first`: First segment descriptor.
+    ///
+    /// # Returns
+    ///
+    /// The new guest scatter/gather bulk header.
+    ///
+    pub fn new(
+        source: (ProcessIdentifier, ThreadIdentifier),
+        destination: (ProcessIdentifier, ThreadIdentifier),
+        kind: GuestSgBulkKind,
+        segment_count: SegmentCount,
+        total_len: u32,
+        first: GuestSgSegment,
+    ) -> Self {
+        let (source_pid, source_tid) = source;
+        let (destination_pid, destination_tid) = destination;
+        Self {
+            source_pid: source_pid.into(),
+            source_tid: source_tid.into(),
+            destination_pid: destination_pid.into(),
+            destination_tid: destination_tid.into(),
+            kind: kind as u16,
+            segment_count: segment_count.get(),
+            total_len,
+            first,
+        }
+    }
+
+    /// Returns the process identifier of the source.
+    pub fn source_pid(&self) -> ProcessIdentifier {
+        ProcessIdentifier::from(self.source_pid)
+    }
+
+    /// Returns the thread identifier of the source.
+    pub fn source_tid(&self) -> ThreadIdentifier {
+        ThreadIdentifier::from(self.source_tid)
+    }
+
+    /// Returns the process identifier of the destination.
+    pub fn destination_pid(&self) -> ProcessIdentifier {
+        ProcessIdentifier::from(self.destination_pid)
+    }
+
+    /// Returns the thread identifier of the destination.
+    pub fn destination_tid(&self) -> ThreadIdentifier {
+        ThreadIdentifier::from(self.destination_tid)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the scatter/gather transfer kind.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the scatter/gather transfer kind is returned. Upon failure, an error is
+    /// returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the header contains an unknown scatter/gather transfer
+    /// kind.
+    ///
+    pub fn kind(&self) -> Result<GuestSgBulkKind, Error> {
+        GuestSgBulkKind::try_from(self.kind)
+    }
+
+    /// Returns the number of segments in the chain.
+    pub fn segment_count(&self) -> SegmentCount {
+        SegmentCount::new(self.segment_count)
+    }
+
+    /// Returns the total number of bytes in the transfer.
+    pub fn total_len(&self) -> u32 {
+        self.total_len
+    }
+
+    /// Returns the first segment descriptor.
+    pub fn first(&self) -> GuestSgSegment {
+        self.first
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts the scatter/gather bulk header to a byte array.
+    ///
+    /// # Returns
+    ///
+    /// A byte array that represents the scatter/gather bulk header.
+    ///
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
+        // SAFETY: The header is `repr(C)` and contains only fixed-width integer fields plus a
+        // fixed-layout segment, so its in-memory representation is exactly `Self::SIZE` bytes.
+        unsafe { mem::transmute(self) }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to convert a byte array to a scatter/gather bulk header.
+    ///
+    /// # Parameters
+    ///
+    /// - `bytes`: The byte array to convert.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the scatter/gather bulk header is returned. Upon failure, an error is returned
+    /// instead.
+    ///
+    /// # Errors
+    ///
+    /// This function currently cannot fail because all bit patterns are valid for the `repr(C)`
+    /// layout. The `Result` return type is retained for forward compatibility in case field
+    /// validation is added in the future.
+    ///
+    pub fn try_from_bytes(bytes: [u8; Self::SIZE]) -> Result<Self, Error> {
+        // SAFETY: All bit patterns are valid because the header contains only fixed-width integer
+        // fields and a segment whose bit patterns are all valid.
+        Ok(unsafe { mem::transmute::<[u8; Self::SIZE], GuestSgBulkHeader>(bytes) })
     }
 }

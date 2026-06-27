@@ -13,6 +13,8 @@ mod push;
 mod recv;
 pub(crate) mod rendezvous;
 mod send;
+#[cfg(feature = "stdio")]
+mod sg;
 
 //==================================================================================================
 //  Exports

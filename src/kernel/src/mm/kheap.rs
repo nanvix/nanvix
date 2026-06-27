@@ -47,10 +47,19 @@ const MIN_SLAB_SIZE: usize = SLAB_COUNT * mem::PAGE_SIZE;
 /// provided to initialize the heap.
 pub(crate) closed const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 /// Maximum slab size in bytes. Allocations whose size or alignment exceed this are rejected.
-/// Use `512` directly because Verus does not yet support enum discriminants in const expressions:
-/// https://github.com/verus-lang/verus/issues/1107.
+///
+/// This must mirror [`config::kernel::MAX_SLAB_SIZE`], the shared kernel-heap budget. It is
+/// duplicated as the literal `512` here because Verus cannot evaluate cross-crate constants in
+/// specification contexts (and, separately, does not yet support enum discriminants in const
+/// expressions: https://github.com/verus-lang/verus/issues/1107). The `assert_eq!` below makes this
+/// a genuine dependency on the `config` crate: the kernel fails to compile if the two diverge.
 const MAX_SLAB_SIZE: usize = 512;
 }
+
+// Bind the Verus-visible literal above to the shared budget defined in the `config` crate. This
+// turns the duplicated literal into a compile-time dependency: if `config::kernel::MAX_SLAB_SIZE`
+// ever changes, this assertion forces the kernel-heap constant to be updated in lockstep.
+::static_assert::assert_eq!(MAX_SLAB_SIZE == ::config::kernel::MAX_SLAB_SIZE);
 
 //==================================================================================================
 //  Structures

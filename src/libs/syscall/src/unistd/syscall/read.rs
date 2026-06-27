@@ -41,7 +41,7 @@ use ::sysapi::{
 ///
 /// # Description
 ///
-/// Reads a single page-aligned chunk from a file descriptor via IKC. Sends a ReadRequest,
+/// Reads a single page-bounded chunk from a file descriptor via IKC. Sends a ReadRequest,
 /// pulls the chunk data, and receives the ReadResponse.
 ///
 /// # Parameters
@@ -269,7 +269,13 @@ fn read_ipc(
         total_read += count;
         offset += count as usize;
 
-        // Short read: fewer bytes returned than the chunk size.
+        // A short reply ends the read. Because the chunk never spans more than one page (see
+        // `page_chunk_size`) and the IKC backends deliver up to a full page per request, receiving
+        // fewer bytes than requested means the input is exhausted: end-of-file for a regular file,
+        // or no more bytes currently available for a stream. Continuing here would truncate neither
+        // a multi-page file (the next page is fetched on the following iteration) nor block a
+        // partially-filled stream. Do not switch this loop to multi-page chunks without revisiting
+        // this guard: a capped multi-page reply is indistinguishable from genuine end-of-input.
         if (count as usize) < chunk_size {
             break;
         }
