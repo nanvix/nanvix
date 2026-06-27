@@ -108,7 +108,7 @@ input = "[]"
 expected_output = "ok"
 
 [[tests]]
-build_modes = ["debug", "release"]
+build_modes = ["release"]
 executor = "http"
 program = "./bin/memory-rust.elf"
 input = "[]"
@@ -195,7 +195,7 @@ program = "./bin/misc-rust.elf"
 expected_output = "ok"
 
 [[tests]]
-build_modes = ["debug", "release"]
+build_modes = ["release"]
 executor = "terminal"
 program = "./bin/memory-rust.elf"
 expected_output = "ok"

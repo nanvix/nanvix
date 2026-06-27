@@ -354,8 +354,10 @@ expected_output = "ok"
 # descriptor opened before fork() must remain usable by the child after it
 # execv()s. FAILS while the exec'd image does not receive the parent's cloned
 # descriptor table (the inherited fd is unknown and the child's read fails).
+# Release-only: loops fork()+execv() many times to stress the path, which is too
+# slow to run under a debug/trace build within the per-test timeout.
 [[tests]]
-build_modes = ["debug", "release"]
+build_modes = ["release"]
 executor = "http"
 program = "./bin/fork-exec-loop-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-loop-test.img"
@@ -430,8 +432,10 @@ program = "./bin/thread-vfs-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/thread-vfs-test.img"
 expected_output = "ok"
 
+# Release-only: loops fork()+execv() many times to stress the path, which is too
+# slow to run under a debug/trace build within the per-test timeout.
 [[tests]]
-build_modes = ["debug", "release"]
+build_modes = ["release"]
 executor = "terminal"
 program = "./bin/fork-exec-loop-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/fork-exec-loop-test.img"
