@@ -49,6 +49,8 @@ use crate::hal::mem::{
 use ::alloc::{
     boxed::Box,
     collections::LinkedList,
+    string::String,
+    vec::Vec,
 };
 use ::arch::mem;
 use ::sys::error::{
@@ -179,11 +181,62 @@ type PhysMemRegion = LinkedList<TruncatedMemoryRegion<PhysicalAddress>>;
 // Standalone Functions
 //==================================================================================================
 
+/// Builds an [`ErrorCode::OutOfMemory`] error for a failed kernel heap allocation.
+fn out_of_memory() -> Error {
+    Error::new(ErrorCode::OutOfMemory, "failed to allocate memory on kernel heap")
+}
+
+//--------------------------------------------------------------------------------------------------
+// Box
+//--------------------------------------------------------------------------------------------------
+
 /// Allocates `value` in a [`Box`] on the kernel heap using fallible allocation.
 ///
 /// Unlike [`Box::new`], this returns an [`ErrorCode::OutOfMemory`] error when the allocation fails
 /// instead of aborting, so callers can propagate the failure.
 pub fn try_box<T>(value: T) -> Result<Box<T>, Error> {
-    Box::try_new(value)
-        .map_err(|_| Error::new(ErrorCode::OutOfMemory, "failed to allocate memory on kernel heap"))
+    Box::try_new(value).map_err(|_| out_of_memory())
+}
+
+//--------------------------------------------------------------------------------------------------
+// Vec
+//--------------------------------------------------------------------------------------------------
+
+/// Creates an empty [`Vec`] with at least `capacity` elements pre-allocated on the kernel heap
+/// using fallible allocation.
+///
+/// Unlike [`Vec::with_capacity`], this returns an [`ErrorCode::OutOfMemory`] error when the
+/// allocation fails instead of aborting, so callers can propagate the failure.
+pub fn try_vec_with_capacity<T>(capacity: usize) -> Result<Vec<T>, Error> {
+    let mut vec: Vec<T> = Vec::new();
+    vec.try_reserve_exact(capacity)
+        .map_err(|_| out_of_memory())?;
+    Ok(vec)
+}
+
+//--------------------------------------------------------------------------------------------------
+// String
+//--------------------------------------------------------------------------------------------------
+
+/// Creates an empty [`String`] with at least `capacity` bytes pre-allocated on the kernel heap
+/// using fallible allocation.
+///
+/// Unlike [`String::with_capacity`], this returns an [`ErrorCode::OutOfMemory`] error when the
+/// allocation fails instead of aborting, so callers can propagate the failure.
+pub fn try_string_with_capacity(capacity: usize) -> Result<String, Error> {
+    let mut string: String = String::new();
+    string
+        .try_reserve_exact(capacity)
+        .map_err(|_| out_of_memory())?;
+    Ok(string)
+}
+
+/// Creates a [`String`] containing a copy of `value` on the kernel heap using fallible allocation.
+///
+/// Unlike [`str::to_string`], this returns an [`ErrorCode::OutOfMemory`] error when the allocation
+/// fails instead of aborting, so callers can propagate the failure.
+pub fn try_string_from_str(value: &str) -> Result<String, Error> {
+    let mut string: String = try_string_with_capacity(value.len())?;
+    string.push_str(value);
+    Ok(string)
 }
