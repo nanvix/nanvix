@@ -10,7 +10,7 @@ Declares functions for calendar time manipulation and conversion.
 Implemented by the libc_time Rust crate.'''
 includes = ["stddef.h"]
 guard = "_NANVIX_TIME_H"
-content_order = ["types", "section:0", "section:1", "raw:0", "raw:1", "raw:2"]
+content_order = ["types", "section:0", "section:1", "raw:0", "raw:1", "raw:2", "raw:3"]
 
 [[types]]
 text = '''
@@ -60,6 +60,7 @@ struct tm {
     int tm_wday;  /**< Days since Sunday [0, 6].    */
     int tm_yday;  /**< Days since Jan 1 [0, 365].   */
     int tm_isdst; /**< Daylight Saving Time flag.   */
+    long tm_gmtoff; /**< Seconds east of UTC (always 0). */
 };
 
 /** @brief Time specification for clock_gettime(). */
@@ -92,9 +93,19 @@ title = "Time Parsing"
 text = '''
 extern char *strptime(const char *s, const char *format, struct tm *tm);'''
 
+# Time-zone interface. Nanvix is fixed to UTC; these symbols are provided by the
+# nanvix_libc shim so that portable software referencing them compiles and links.
+[[raw_sections]]
+title = "Time Zone"
+text = '''
+extern char *tzname[2];
+extern long timezone;
+extern int daylight;
+extern void tzset(void);'''
+
 [[sections]]
 title = "Calendar Time"
-functions = ["time", "clock", "difftime", "mktime"]
+functions = ["time", "clock", "difftime", "mktime", "timegm"]
 
 [[sections]]
 title = "Time Conversion"

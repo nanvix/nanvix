@@ -202,6 +202,7 @@ mod test {
             tm_wday: 3,
             tm_yday: 180,
             tm_isdst: 0,
+            tm_gmtoff: 0,
         };
         let mut buf: [c_char; 26] = [0; 26];
         let ret: *mut c_char = unsafe { asctime_r(&t, buf.as_mut_ptr()) };
@@ -221,6 +222,7 @@ mod test {
             tm_wday: 4,
             tm_yday: 0,
             tm_isdst: 0,
+            tm_gmtoff: 0,
         };
         let mut buf: [c_char; 26] = [0; 26];
         let ret: *mut c_char = unsafe { asctime_r(&t, buf.as_mut_ptr()) };
@@ -265,6 +267,7 @@ mod test {
             tm_wday: 4,
             tm_yday: 0,
             tm_isdst: 0,
+            tm_gmtoff: 0,
         };
         let mut buf: [c_char; 26] = [0; 26];
 
