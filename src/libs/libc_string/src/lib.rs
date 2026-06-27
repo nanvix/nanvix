@@ -73,3 +73,4 @@ pub mod strstr;
 pub mod strtok;
 pub mod strtok_r;
 pub mod strverscmp;
+pub mod strxfrm;
