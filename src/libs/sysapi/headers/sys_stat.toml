@@ -94,6 +94,7 @@ functions = [
     "chmod",
     "fchmod",
     "mknod",
+    "mkfifo",
 ]
 
 [overrides]

@@ -67,6 +67,9 @@ extern pid_t fork(void);
 extern int execve(const char *path, char *const argv[], char *const envp[]);
 extern int execvp(const char *file, char *const argv[]);
 extern int execv(const char *path, char *const argv[]);
+extern int execl(const char *path, const char *arg, ...);
+extern int execlp(const char *file, const char *arg, ...);
+extern int execle(const char *path, const char *arg, ...);
 extern pid_t getppid(void);
 extern int faccessat(int dirfd, const char *pathname, int mode, int flags);
 extern int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int flags);
@@ -133,6 +136,9 @@ functions = [
     "seteuid",
     "setgid",
     "setegid",
+    "setresuid",
+    "setresgid",
+    "setgroups",
     "gethostname",
     "chown",
     "fchown",
@@ -144,8 +150,24 @@ functions = ["getopt"]
 
 [[sections]]
 title = "Process, Session, and System Operations"
-functions = ["setsid", "getsid", "vfork", "sync", "getgroups", "gethostid", "getlogin_r", "ttyname_r", "getpagesize"]
+functions = ["setsid", "getsid", "setpgid", "setpgrp", "getpgid", "getpgrp", "tcsetpgrp", "tcgetpgrp", "nice", "sethostname", "vfork", "sync", "syncfs", "getgroups", "gethostid", "getlogin_r", "ttyname_r", "getpagesize"]
 
 [overrides]
 getopt = '''
 extern int getopt(int argc, char *const argv[], const char *optstring);'''
+setpgid = '''
+extern int setpgid(pid_t pid, pid_t pgid);'''
+setpgrp = '''
+extern int setpgrp(void);'''
+getpgid = '''
+extern pid_t getpgid(pid_t pid);'''
+getpgrp = '''
+extern pid_t getpgrp(void);'''
+tcsetpgrp = '''
+extern int tcsetpgrp(int fd, pid_t pgrp);'''
+tcgetpgrp = '''
+extern pid_t tcgetpgrp(int fd);'''
+nice = '''
+extern int nice(int inc);'''
+sethostname = '''
+extern int sethostname(const char *name, size_t len);'''
