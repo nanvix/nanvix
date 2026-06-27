@@ -7,6 +7,7 @@
 #include <sched.h>
 #include <stdint.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/types.h>
 #include <time.h>
 
@@ -117,6 +118,12 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(ssize_t, sizeof(int));
     STATIC_ASSERT_SIZE(time_t, sizeof(long long));
     STATIC_ASSERT_SIZE(uid_t, sizeof(unsigned int));
+
+    // Assert behavior of device-number macros in <sys/sysmacros.h>.
+    STATIC_ASSERT(major(makedev(0x12, 0x34)), 0x12);
+    STATIC_ASSERT(minor(makedev(0x12, 0x34)), 0x34);
+    STATIC_ASSERT(major(makedev(0x1ff, 0x2ff)), 0xff);
+    STATIC_ASSERT(minor(makedev(0x1ff, 0x2ff)), 0xff);
 
     // Assert size of types in <time.h>.
     STATIC_ASSERT_SIZE(struct timespec, sizeof(time_t) + sizeof(long));
