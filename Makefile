@@ -422,8 +422,10 @@ endif
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
-# Ported POSIX C test suites (src/posix-tests/<suite>/), compiled against the
-# bundled libc by build/make/posix-tests.mk and booted by `run-posix-tests`.
+# Ported POSIX C test suites, compiled against the bundled libc by
+# build/make/posix-tests.mk and booted by `run-posix-tests`. Suites live under
+# src/tests/integration/<suite>/, except memory-c which lives under
+# src/tests/stress/<suite>/ (see POSIX_TEST_STRESS_* in posix-tests.mk).
 # `common/` holds shared crt0 scaffolding and is not a suite of its own. The
 # guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
 # (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner

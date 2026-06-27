@@ -26,15 +26,15 @@ Libraries with unit tests are listed in
 
 ### Integration Tests (Guest — Rust)
 
-| Test          | Path                      | Purpose            |
-|---------------|---------------------------|--------------------|
-| `testd`       | `src/tests/testd/`        | Guest test daemon  |
-| `arch-rust`   | `src/tests/arch-rust/`    | Arch tests         |
-| `file-rust`   | `src/tests/file-rust/`    | File tests         |
-| `thread-rust` | `src/tests/thread-rust/`  | Thread tests       |
-| `stress-rust` | `src/tests/stress-rust/`  | Stress tests       |
-| `test-kernel` | `src/tests/test-kernel/`  | Kernel tests       |
-| `linux-app`   | `src/tests/linux-app/`    | Linux app tests    |
+| Test          | Path                                  | Purpose            |
+|---------------|---------------------------------------|--------------------|
+| `testd`       | `src/tests/integration/testd/`        | Guest test daemon  |
+| `arch-rust`   | `src/tests/integration/arch-rust/`    | Arch tests         |
+| `file-rust`   | `src/tests/integration/file-rust/`    | File tests         |
+| `thread-rust` | `src/tests/integration/thread-rust/`  | Thread tests       |
+| `stress-rust` | `src/tests/stress/stress-rust/`       | Stress tests       |
+| `test-kernel` | `src/tests/integration/test-kernel/`  | Kernel tests       |
+| `linux-app`   | `src/tests/integration/linux-app/`    | Linux app tests    |
 
 ### System Integration Tests
 
@@ -100,7 +100,8 @@ Rules for tests:
 
 Guest integration tests are `#![no_std]` binaries that run inside Nanvix:
 
-1. Create directory at `src/tests/<name>/`.
+1. Create directory at `src/tests/integration/<name>/` (or
+   `src/tests/stress/<name>/` for stress tests).
 2. Structure similar to guest daemons
    (`#![no_std]`, `#![no_main]`).
 3. Add to `ALL_GUEST_TESTS` in the `Makefile`.

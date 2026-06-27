@@ -87,15 +87,15 @@ shutdown-time extraction step.
 
 ### 3.2 Components
 
-| Component | Location | Role |
-| --- | --- | --- |
-| `mount()` / `umount()` syscalls | `src/libs/syscall/src/sys/mount/` | User-space API for mounting/unmounting hostfs |
-| vfsd mount handler | `src/daemons/vfsd/src/handler/mount_handler.rs` | Validates mount requests and enables/disables hostfs routing |
-| vfsd hostfs module | `src/daemons/vfsd/src/hostfs.rs` | Routes `/mnt` paths to IKC messages for hostfsd |
-| vfsd hostfs handlers | `src/daemons/vfsd/src/handler/hostfs_handlers.rs` | Intercepts FD-based operations on hostfs-backed descriptors and forwards them via IKC |
-| hostfs-api wire format | `src/libs/hostfs-api/` | Defines the binary protocol between vfsd and hostfsd (request/response encoding) |
-| hostfsd daemon | `src/daemons/hostfsd/` | Host-side daemon that processes IKC requests using the host filesystem |
-| hostfsd worker | `src/uservm/src/standalone.rs` | Host-side thread that runs the hostfsd event loop |
+| Component                       | Location                                          | Role                                                                                  |
+| ------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `mount()` / `umount()` syscalls | `src/libs/syscall/src/sys/mount/`                 | User-space API for mounting/unmounting hostfs                                         |
+| vfsd mount handler              | `src/daemons/vfsd/src/handler/mount_handler.rs`   | Validates mount requests and enables/disables hostfs routing                          |
+| vfsd hostfs module              | `src/daemons/vfsd/src/hostfs.rs`                  | Routes `/mnt` paths to IKC messages for hostfsd                                       |
+| vfsd hostfs handlers            | `src/daemons/vfsd/src/handler/hostfs_handlers.rs` | Intercepts FD-based operations on hostfs-backed descriptors and forwards them via IKC |
+| hostfs-api wire format          | `src/libs/hostfs-api/`                            | Defines the binary protocol between vfsd and hostfsd (request/response encoding)      |
+| hostfsd daemon                  | `src/daemons/hostfsd/`                            | Host-side daemon that processes IKC requests using the host filesystem                |
+| hostfsd worker                  | `src/uservm/src/standalone.rs`                    | Host-side thread that runs the hostfsd event loop                                     |
 
 ### 3.3 Architecture
 
@@ -161,42 +161,42 @@ handles. The table:
 
 ### 3.5 Advantages Over Snapshot-Based Approach
 
-| Property | hostfsd (current) | Snapshot-based (removed) |
-| --- | --- | --- |
-| Boot latency | Constant (no image packing) | O(n) proportional to dir size |
-| Size limit | Unbounded (host filesystem) | Limited by guest memory (16 MiB) |
-| Host→guest sync | Live (reads see latest host state) | Stale after boot |
-| Guest→host sync | Immediate (writes go to host) | Only on shutdown |
-| Guest memory usage | Zero (no in-memory copy) | Full directory size |
+| Property           | hostfsd (current)                  | Snapshot-based (removed)         |
+| ------------------ | ---------------------------------- | -------------------------------- |
+| Boot latency       | Constant (no image packing)        | O(n) proportional to dir size    |
+| Size limit         | Unbounded (host filesystem)        | Limited by guest memory (16 MiB) |
+| Host→guest sync    | Live (reads see latest host state) | Stale after boot                 |
+| Guest→host sync    | Immediate (writes go to host)      | Only on shutdown                 |
+| Guest memory usage | Zero (no in-memory copy)           | Full directory size              |
 
 ### 3.6 Supported Operations
 
 The following file operations are supported on hostfs-mounted paths (`/mnt/...`):
 
-| Operation | Syscall | Notes |
-| --- | --- | --- |
-| Open/Create | `openat()` | Supports `O_RDONLY`, `O_WRONLY`, `O_RDWR`, `O_CREAT`, `O_TRUNC`, `O_DIRECTORY`, `O_APPEND` |
-| Close | `close()` | Releases local and remote FD |
-| Read | `read()` / `pread()` | Positional reads supported; data clamped per IKC round-trip; caller handles short reads |
-| Write | `write()` / `pwrite()` | Positional writes supported; data clamped per IKC round-trip; caller handles short writes |
-| Seek | `lseek()` | `SEEK_SET`, `SEEK_CUR`, `SEEK_END` |
-| Stat | `fstat()` | Returns size, mode (POSIX permissions on Unix, synthetic on Windows), and type |
-| Truncate | `ftruncate()` | Truncates to specified length; rejected on directories |
-| Sync | `fsync()` | Flushes host-side file buffers |
-| Read Directory | `getdents()` | Offset-based iteration via cached directory listing |
-| Mkdir | `mkdirat()` | Creates directory on host |
-| Rmdir | `unlinkat(AT_REMOVEDIR)` | Removes empty directory on host |
-| Unlink | `unlinkat()` | Removes file on host |
-| Rename | `renameat()` | Both paths must resolve within the sandbox |
+| Operation      | Syscall                  | Notes                                                                                      |
+| -------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
+| Open/Create    | `openat()`               | Supports `O_RDONLY`, `O_WRONLY`, `O_RDWR`, `O_CREAT`, `O_TRUNC`, `O_DIRECTORY`, `O_APPEND` |
+| Close          | `close()`                | Releases local and remote FD                                                               |
+| Read           | `read()` / `pread()`     | Positional reads supported; data clamped per IKC round-trip; caller handles short reads    |
+| Write          | `write()` / `pwrite()`   | Positional writes supported; data clamped per IKC round-trip; caller handles short writes  |
+| Seek           | `lseek()`                | `SEEK_SET`, `SEEK_CUR`, `SEEK_END`                                                         |
+| Stat           | `fstat()`                | Returns size, mode (POSIX permissions on Unix, synthetic on Windows), and type             |
+| Truncate       | `ftruncate()`            | Truncates to specified length; rejected on directories                                     |
+| Sync           | `fsync()`                | Flushes host-side file buffers                                                             |
+| Read Directory | `getdents()`             | Offset-based iteration via cached directory listing                                        |
+| Mkdir          | `mkdirat()`              | Creates directory on host                                                                  |
+| Rmdir          | `unlinkat(AT_REMOVEDIR)` | Removes empty directory on host                                                            |
+| Unlink         | `unlinkat()`             | Removes file on host                                                                       |
+| Rename         | `renameat()`             | Both paths must resolve within the sandbox                                                 |
 
 #### Not Supported
 
-| Operation | Reason |
-| --- | --- |
-| `fstatat()` on `/mnt` paths | Requires path-based stat without pre-opened FD |
-| `link()` / `symlink()` | Not applicable to hostfs |
-| `chmod()` / `fchmod()` | Host permissions are those of the `nanvixd` process |
-| `fallocate()` | Not forwarded to hostfsd |
+| Operation                   | Reason                                              |
+| --------------------------- | --------------------------------------------------- |
+| `fstatat()` on `/mnt` paths | Requires path-based stat without pre-opened FD      |
+| `link()` / `symlink()`      | Not applicable to hostfs                            |
+| `chmod()` / `fchmod()`      | Host permissions are those of the `nanvixd` process |
+| `fallocate()`               | Not forwarded to hostfsd                            |
 
 ### 3.7 C Bindings
 
@@ -231,7 +231,7 @@ set errno on error, return -1 on failure / 0 on success).
 
 ### Integration Test: `mount-test`
 
-The `mount-test` binary (`src/tests/mount-test/`) is a comprehensive guest-side integration test
+The `mount-test` binary (`src/tests/integration/mount-test/`) is a comprehensive guest-side integration test
 that exercises the full hostfs feature set in standalone mode. It is structured into phases:
 
 1. **Mount lifecycle** — mount, double-mount rejection, umount, double-umount rejection, re-mount.
