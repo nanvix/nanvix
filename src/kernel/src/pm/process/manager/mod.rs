@@ -124,7 +124,12 @@ use ::sys::{
         SigSet,
         ThreadCreateArgs,
         ThreadIdentifier,
+        SIGCONT,
         SIGKILL,
+        SIGSTOP,
+        SIGTSTP,
+        SIGTTIN,
+        SIGTTOU,
         SIG_MAX,
     },
     time::SystemTime,
@@ -177,9 +182,9 @@ enum PostAction {
     /// A caught signal was posted: interrupt a blocked candidate thread so its blocking call reports
     /// `EINTR` (or restarts) and the handler is delivered at the return-to-user checkpoint.
     Interrupt,
-    /// A job-control stop/continue signal was posted: wake a candidate thread (full semantics arrive
-    /// in a later phase).
-    Wake,
+    /// A job-control stop signal with the default disposition was posted: suspend the target
+    /// process (`SIGSTOP`/`SIGTSTP`/`SIGTTIN`/`SIGTTOU`).
+    Stop,
 }
 
 //==================================================================================================
@@ -429,15 +434,26 @@ impl ProcessManager {
         // NOTE: if we fail beyond this point we need to page mappings.
         //==============================================================
 
+        // A new thread inherits the creating (running) thread's blocked-signal mask, as POSIX
+        // requires; the signal dispositions are process-wide and therefore already shared.
+        let inherited_blocked: SigSet = self
+            .get_running_mut()
+            .running_mut()
+            .thread_state()
+            .blocked();
+
         Ok(no_fail!(ThreadIdentifier, {
             // Create a new thread.
-            let ready_thread: ReadyThread = self.tm.create_thread(
+            let mut ready_thread: ReadyThread = self.tm.create_thread(
                 tid,
                 Some(kernel_stack),
                 None,
                 thread_create_args.user_tda,
                 context,
             );
+            ready_thread
+                .thread_state_mut()
+                .set_blocked(inherited_blocked);
 
             // Commit the next thread identifier now that all fallible operations have succeeded.
             self.tm.commit_next_tid(next_tid);
@@ -849,12 +865,13 @@ impl ProcessManager {
                         PostAction::Terminate
                     },
                     DefaultAction::Ignore => PostAction::None,
-                    DefaultAction::Stop | DefaultAction::Continue => {
-                        // Job-control stop/continue semantics arrive in a later phase; for now the
-                        // signal is recorded as pending and a candidate thread is woken.
-                        signals.post(signum);
-                        PostAction::Wake
-                    },
+                    // Job-control stop suspends the target. The effect is applied directly to the
+                    // target's scheduling state below, so the signal is consumed rather than left
+                    // pending.
+                    DefaultAction::Stop => PostAction::Stop,
+                    // The continue effect is applied unconditionally for SIGCONT above (it must
+                    // resume a stopped target regardless of disposition), so nothing remains here.
+                    DefaultAction::Continue => PostAction::None,
                 },
                 None => {
                     let reason: &str = "invalid signal number";
@@ -864,10 +881,18 @@ impl ProcessManager {
             }
         };
 
+        // SIGCONT's continue effect is unconditional (POSIX): it resumes a stopped target
+        // regardless of the target's disposition, so it is applied here rather than only on the
+        // default path. An installed handler still runs — that delivery is driven by the
+        // disposition-derived action below.
+        if signum == SIGCONT {
+            self.continue_process(target)?;
+        }
+
         match action {
             PostAction::Terminate => return self.kill_terminate(caller, target),
             PostAction::Interrupt => self.interrupt_signal_candidate(target, signum),
-            PostAction::Wake => self.wakeup_signal_candidate(target),
+            PostAction::Stop => self.stop_process(target)?,
             PostAction::None => {},
         }
         Ok(KillOutcome::Done)
@@ -905,29 +930,63 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Wakes a candidate thread of a process to which a signal was posted, so that the thread can
-    /// evaluate delivery at its return-to-user checkpoint.
+    /// Stops (suspends) a process in response to a job-control stop signal whose default action is
+    /// *stop* (`SIGSTOP`/`SIGTSTP`/`SIGTTIN`/`SIGTTOU`).
     ///
-    /// Only a fully-suspended process needs an explicit wake; a process that still has a ready or
-    /// interrupted thread is already schedulable. The wakeup is best-effort: the candidate thread
-    /// may already have been woken by another notifier.
+    /// The process is marked stopped, which makes the scheduler skip it — none of its threads run —
+    /// regardless of whether they are currently ready, running, suspended, or interrupted. The
+    /// threads keep their underlying state, so a later `SIGCONT` resumes them from where they were.
+    /// Any pending `SIGCONT` is discarded, mirroring the POSIX rule that a stop supersedes a
+    /// not-yet-acted-upon continue.
+    ///
+    /// The target is never the running process here: cross-process posting is relayed through the
+    /// process-manager daemon (which is the running process during the kernel call). A process that
+    /// stops *itself* marks its own running state and is descheduled and skipped at the next
+    /// scheduling opportunity (its next blocking call or preemption).
     ///
     /// # Parameters
     ///
-    /// - `pid`: Identifier of the process whose candidate thread should be woken.
+    /// - `pid`: Identifier of the process to stop.
     ///
-    fn wakeup_signal_candidate(&mut self, pid: ProcessIdentifier) {
-        let candidate: Option<ThreadIdentifier> = match self
-            .suspended
-            .iter()
-            .find(|process| process.state().pid() == pid)
-        {
-            Some(process) => process.candidate_tid(),
-            None => return,
-        };
-        if let Some(tid) = candidate {
-            let _ = self.do_wakeup(tid);
+    fn stop_process(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
+        // The kernel/idle process underpins the scheduler's always-runnable invariant (a stopped
+        // process is skipped by `take_earliest_ready`, which relies on the kernel process always
+        // being selectable), so it must never be stopped.
+        if pid == ProcessIdentifier::KERNEL {
+            let reason: &str = "cannot stop the kernel process";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+        // A stop discards a pending continue and vice versa.
+        process.state_mut().signals_mut().clear_pending(SIGCONT);
+        process.state_mut().set_stopped(true);
+        trace!("stopped process (pid={pid:?})");
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Continues a process in response to `SIGCONT`, clearing its stopped flag so the scheduler
+    /// considers it runnable again. A process that was suspended in a blocking kernel call when it
+    /// was stopped stays suspended and resumes that call when it next wakes; a process that was
+    /// ready or running resumes execution at the next scheduling opportunity. Continuing a process
+    /// that is not stopped is a no-op. Any pending stop signals are discarded, mirroring the POSIX
+    /// rule that a continue supersedes a not-yet-acted-upon stop.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process to continue.
+    ///
+    fn continue_process(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+        for stop_signum in [SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU] {
+            process.state_mut().signals_mut().clear_pending(stop_signum);
+        }
+        process.state_mut().set_stopped(false);
+        trace!("continued process (pid={pid:?})");
+        Ok(())
     }
 
     ///
@@ -1539,17 +1598,35 @@ impl ProcessManager {
         // NOTE: if we fail beyond this point we leak page mappings.
         //==============================================================
 
+        // Capture the parent's signal state to inherit into the child. POSIX requires a forked child
+        // to inherit the parent's signal dispositions and the calling thread's blocked-signal mask,
+        // while starting with an empty pending set. The dispositions (and restorer) are captured
+        // here and installed into the child below; the blocked mask is applied to the child's main
+        // thread.
+        let inherited_signals: SignalControl =
+            self.get_running().state().signals().inherited_for_fork();
+        let inherited_blocked: SigSet = self
+            .get_running_mut()
+            .running_mut()
+            .thread_state()
+            .blocked();
+
         Ok(no_fail!(ProcessIdentifier, {
-            let thread: ReadyThread =
+            let mut thread: ReadyThread =
                 self.tm
                     .create_thread(child_tid, Some(kernel_stack), None, args.user_tda, context);
+            // The child's main thread inherits the calling thread's blocked-signal mask.
+            thread.thread_state_mut().set_blocked(inherited_blocked);
 
             // Commit reserved identifiers now that all fallible operations succeeded.
             self.next_pid = next_pid;
             self.tm.commit_next_tid(next_tid);
             self.live_count += 1;
 
-            let process: RunnableProcess = RunnableProcess::new(child_pid, pid, thread, vmem);
+            // Install the dispositions and restorer inherited from the parent into the freshly
+            // created child before it is enqueued; its pending set stays empty.
+            let mut process: RunnableProcess = RunnableProcess::new(child_pid, pid, thread, vmem);
+            process.set_signals(inherited_signals);
             self.ready.push_back(process);
 
             // Record the creation so the kernel main loop can publish a process-creation
@@ -2207,6 +2284,13 @@ impl ProcessManager {
         // counterpart threads that would otherwise block forever.
         self.cleanup_rendezvous(pid, "terminate");
 
+        // Clear any job-control stopped flag so the doomed process is schedulable again and can run
+        // its own termination; a stopped process is otherwise skipped by the scheduler and could
+        // never complete its exit. The flag is harmless to clear when it was not set.
+        if let Ok(mut process) = self.find_process_mut(pid) {
+            process.state_mut().set_stopped(false);
+        }
+
         // Check if target process is ready.
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
             let process: RunnableProcess = self.ready.remove(process);
@@ -2588,25 +2672,28 @@ impl ProcessManager {
     }
 
     fn take_earliest_ready(&mut self) -> RunnableProcess {
-        // SAFETY: As the kernel process is always runnable, the following statement will never panic.
-        let mut selected: (usize, SystemTime) = (
-            0,
-            self.ready
-                .front()
-                .expect("there should always be a process ready to run")
-                .earliest_admission_time(),
-        );
-
-        // Select process with the earliest admission time.
+        // Select the ready process with the earliest admission time, skipping job-control *stopped*
+        // processes (which remain on the ready list but must not run until continued by `SIGCONT`).
+        // The kernel process is never stopped and is always runnable, so a non-stopped candidate
+        // always exists.
+        let mut selected: Option<(usize, SystemTime)> = None;
         for (i, process) in self.ready.iter().enumerate() {
+            if process.state().is_stopped() {
+                continue;
+            }
             let process_admission_time: SystemTime = process.earliest_admission_time();
-            if process_admission_time < selected.1 {
-                selected = (i, process_admission_time);
+            match selected {
+                Some((_, earliest)) if earliest <= process_admission_time => {},
+                _ => selected = Some((i, process_admission_time)),
             }
         }
 
+        let index: usize = selected
+            .expect("there should always be a non-stopped process ready to run")
+            .0;
+
         // Remove the selected process from the list of ready processes.
-        self.ready.remove(selected.0)
+        self.ready.remove(index)
     }
 
     ///

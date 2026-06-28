@@ -53,6 +53,7 @@ use ::sys::{
         GroupIdentifier,
         ProcessIdentifier,
         UserIdentifier,
+        SIGCHLD,
     },
 };
 
@@ -519,6 +520,10 @@ impl ProcessDaemon {
                     record.zombie = Some(status);
                 }
                 self.wake_waiter(parent, pid, status)?;
+                // Notify the parent of the child's state change after servicing any blocked
+                // `waitpid()` waiter. This keeps the synchronous reap path stable while still
+                // generating the asynchronous `SIGCHLD` notification.
+                self.notify_parent_sigchld(parent);
             },
             // No live process can ever reap it: drop it rather than leak an unreapable zombie.
             None => {
@@ -694,6 +699,22 @@ impl ProcessDaemon {
         }
 
         Ok(())
+    }
+
+    /// Posts `SIGCHLD` to `parent` to notify it of a child's state change (here, termination), as
+    /// required by POSIX. `SIGCHLD` defaults to being ignored, so this is a no-op for a parent that
+    /// has not installed a handler; it complements, rather than replaces, the `waitpid()` flow. A
+    /// failure to post is logged but never propagated: the child's termination must still be
+    /// finalized (the zombie retained and any blocked waiter woken) even when the notification
+    /// cannot be delivered.
+    fn notify_parent_sigchld(&self, parent: ProcessIdentifier) {
+        if let Err(e) = ::sys::kcall::pm::__kcall_kill(parent, SIGCHLD as i32) {
+            ::syslog::warn!(
+                "notify_parent_sigchld(): failed to post SIGCHLD (parent={:?}, error={:?})",
+                parent,
+                e
+            );
+        }
     }
 
     /// Reaps a zombie `child` of `parent`, removing it from the registry and from the parent's list

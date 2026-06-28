@@ -235,6 +235,11 @@ pub struct ProcessState {
     ///
     /// Holds the process-wide signal dispositions installed via `sigaction()`.
     signals: SignalControl,
+    /// Job-control stopped flag. Set when a stop signal (`SIGSTOP`/`SIGTSTP`/`SIGTTIN`/`SIGTTOU`)
+    /// suspends the process and cleared when `SIGCONT` resumes it. A stopped process is skipped by
+    /// the scheduler — none of its threads run — until it is continued, modelling the POSIX
+    /// *stopped* state without a dedicated scheduling list.
+    stopped: bool,
 }
 
 impl ProcessState {
@@ -252,6 +257,7 @@ impl ProcessState {
             conditions: BTreeMap::new(),
             pending_exit_status: None,
             signals: SignalControl::default(),
+            stopped: false,
         }
     }
 
@@ -331,6 +337,66 @@ impl ProcessState {
     ///
     pub fn signals_mut(&mut self) -> &mut SignalControl {
         &mut self.signals
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns an immutable reference to the per-process signal control block.
+    ///
+    /// # Returns
+    ///
+    /// An immutable reference to the [`SignalControl`] of this process.
+    ///
+    pub fn signals(&self) -> &SignalControl {
+        &self.signals
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Replaces the per-process signal control block.
+    ///
+    /// Used by `fork()` to install the dispositions and restorer inherited from the parent into the
+    /// freshly created child.
+    ///
+    /// # Parameters
+    ///
+    /// - `signals`: The signal control block to install.
+    ///
+    pub fn set_signals(&mut self, signals: SignalControl) {
+        self.signals = signals;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether the process is job-control *stopped*.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the process is stopped (and therefore not schedulable until continued), `false`
+    /// otherwise.
+    ///
+    pub fn is_stopped(&self) -> bool {
+        self.stopped
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets or clears the job-control *stopped* flag of the process.
+    ///
+    /// While set, the scheduler skips the process so none of its threads run; clearing it (on
+    /// `SIGCONT`) makes the process schedulable again, resuming its threads from where they were
+    /// suspended.
+    ///
+    /// # Parameters
+    ///
+    /// - `stopped`: `true` to stop the process, `false` to continue it.
+    ///
+    pub fn set_stopped(&mut self, stopped: bool) {
+        self.stopped = stopped;
     }
 
     ///
