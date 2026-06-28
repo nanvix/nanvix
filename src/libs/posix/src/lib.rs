@@ -91,11 +91,33 @@ extern crate libc_sys_uio;
 #[cfg(feature = "syscall")]
 extern crate libc_sys_utsname;
 
-/// Dummy implementations.
-pub mod dummy;
+/// Group database (`grp.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_grp;
 
-/// Group database.
-pub mod grp;
+/// Terminal control (`termios.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_termios;
+
+/// Standard symbolic constants and types (`unistd.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_unistd;
+
+/// File tree walk (`ftw.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_ftw;
+
+/// File-system information (`sys/statvfs.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_sys_statvfs;
+
+/// Directory entries (`dirent.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_dirent;
+
+/// Pathname pattern matching (`glob.h`).
+#[cfg(feature = "syscall")]
+extern crate libc_glob;
 
 /// Virtual environments.
 pub mod venv;

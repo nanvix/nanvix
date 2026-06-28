@@ -84,6 +84,13 @@ members = [
         "src/libs/libc_time",
         "src/libs/libc_wchar",
         "src/libs/libc_wctype",
+        "src/libs/libc_grp",
+        "src/libs/libc_termios",
+        "src/libs/libc_unistd",
+        "src/libs/libc_ftw",
+        "src/libs/libc_sys_statvfs",
+        "src/libs/libc_dirent",
+        "src/libs/libc_glob",
         "src/libs/nanvix_libc",
         "src/libs/nanvix_libm",
         "src/libs/cache",
@@ -296,6 +303,13 @@ libc_string = { path = "src/libs/libc_string", default-features = false }
 libc_time = { path = "src/libs/libc_time", default-features = false }
 libc_wchar = { path = "src/libs/libc_wchar", default-features = false }
 libc_wctype = { path = "src/libs/libc_wctype", default-features = false }
+libc_grp = { path = "src/libs/libc_grp", default-features = false }
+libc_termios = { path = "src/libs/libc_termios", default-features = false }
+libc_unistd = { path = "src/libs/libc_unistd", default-features = false }
+libc_ftw = { path = "src/libs/libc_ftw", default-features = false }
+libc_sys_statvfs = { path = "src/libs/libc_sys_statvfs", default-features = false }
+libc_dirent = { path = "src/libs/libc_dirent", default-features = false }
+libc_glob = { path = "src/libs/libc_glob", default-features = false }
 nanvix_libc = { path = "src/libs/nanvix_libc", default-features = false }
 nanvix_libm = { path = "src/libs/nanvix_libm", default-features = false }
 mmio-tag = { path = "src/libs/mmio-tag", default-features = false }

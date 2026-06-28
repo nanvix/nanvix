@@ -49,6 +49,13 @@ libc_sys_times = { workspace = true, optional = true }
 libc_sys_un = { workspace = true, optional = true }
 libc_sys_uio = { workspace = true, optional = true }
 libc_sys_utsname = { workspace = true, optional = true }
+libc_grp = { workspace = true, optional = true }
+libc_termios = { workspace = true, optional = true }
+libc_unistd = { workspace = true, optional = true }
+libc_ftw = { workspace = true, optional = true }
+libc_sys_statvfs = { workspace = true, optional = true }
+libc_dirent = { workspace = true, optional = true }
+libc_glob = { workspace = true, optional = true }
 
 [features]
 default = ["syscall", "allocator", "c-main"]
@@ -74,6 +81,13 @@ syscall = [
     "dep:libc_sys_un",
     "dep:libc_sys_uio",
     "dep:libc_sys_utsname",
+    "dep:libc_grp",
+    "dep:libc_termios",
+    "dep:libc_unistd",
+    "dep:libc_ftw",
+    "dep:libc_sys_statvfs",
+    "dep:libc_dirent",
+    "dep:libc_glob",
 ]
 
 # Surfaces the syscall-backed signal-control calls (`sigaction`, `sigprocmask`)
@@ -89,7 +103,7 @@ syscall = [
 # `build/make/generic-guest-staticlibs.mk`), which carries neither `nanvix_libc`
 # nor `libc_signal`.
 newlib-compat = ["syscall/signal"]
-standalone = ["syscall/standalone"]
+standalone = ["syscall/standalone", "libc_termios?/standalone"]
 std = []
 
 # `init-array` makes `__nanvix_libc_start_main` run global constructors /

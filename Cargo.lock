@@ -1519,6 +1519,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_dirent"
+version = "0.17.80"
+dependencies = [
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "libc_dlfcn"
 version = "0.17.80"
 dependencies = [
@@ -1541,6 +1551,32 @@ name = "libc_fnmatch"
 version = "0.17.80"
 dependencies = [
  "sysapi",
+]
+
+[[package]]
+name = "libc_ftw"
+version = "0.17.80"
+dependencies = [
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
+name = "libc_glob"
+version = "0.17.80"
+dependencies = [
+ "sysapi",
+ "syslog",
+]
+
+[[package]]
+name = "libc_grp"
+version = "0.17.80"
+dependencies = [
+ "sysapi",
+ "syslog",
 ]
 
 [[package]]
@@ -1703,6 +1739,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_sys_statvfs"
+version = "0.17.80"
+dependencies = [
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "libc_sys_time"
 version = "0.17.80"
 dependencies = [
@@ -1746,10 +1792,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_termios"
+version = "0.17.80"
+dependencies = [
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "libc_time"
 version = "0.17.80"
 dependencies = [
  "sysapi",
+]
+
+[[package]]
+name = "libc_unistd"
+version = "0.17.80"
+dependencies = [
+ "sys",
+ "sysapi",
+ "syscall",
+ "syslog",
 ]
 
 [[package]]
@@ -2480,8 +2546,12 @@ version = "0.17.80"
 dependencies = [
  "config",
  "libc_arpa_inet",
+ "libc_dirent",
  "libc_dlfcn",
  "libc_errno",
+ "libc_ftw",
+ "libc_glob",
+ "libc_grp",
  "libc_netdb",
  "libc_poll",
  "libc_pthread",
@@ -2489,11 +2559,14 @@ dependencies = [
  "libc_sys_ioctl",
  "libc_sys_resource",
  "libc_sys_stat",
+ "libc_sys_statvfs",
  "libc_sys_time",
  "libc_sys_times",
  "libc_sys_uio",
  "libc_sys_un",
  "libc_sys_utsname",
+ "libc_termios",
+ "libc_unistd",
  "libc_utime",
  "nvx",
  "static_assert",
