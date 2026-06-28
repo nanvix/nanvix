@@ -107,7 +107,6 @@ extern int utimensat(int dirfd, const char *pathname, const struct timespec time
 extern int chmod(const char *path, mode_t mode);
 extern int fchmod(int fd, mode_t mode);
 extern int mknod(const char *path, mode_t mode, dev_t dev);
-extern int mkfifo(const char *path, mode_t mode);
 
 #ifdef __cplusplus
 }

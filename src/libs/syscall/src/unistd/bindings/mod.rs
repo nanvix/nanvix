@@ -58,7 +58,6 @@ cfg_if::cfg_if! {
         pub mod link;
         pub mod linkat;
         pub mod lseek;
-        pub mod mkfifo;
         pub mod nice;
         pub mod pread;
         pub mod pwrite;
