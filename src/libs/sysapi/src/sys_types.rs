@@ -17,6 +17,7 @@ use crate::{
         c_long,
         c_longlong,
         c_uint,
+        c_ulong,
         c_ulonglong,
         c_ushort,
         c_void,
@@ -54,6 +55,12 @@ pub type clockid_t = c_int;
 
 /// Used for device IDs.
 pub type dev_t = c_ulonglong;
+
+/// Used for file-system block counts.
+pub type fsblkcnt_t = c_ulong;
+
+/// Used for file-system file (node) counts.
+pub type fsfilcnt_t = c_ulong;
 
 /// Used for group IDs.
 pub type gid_t = c_uint;
