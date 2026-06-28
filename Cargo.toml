@@ -159,7 +159,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.17.49"
+version = "0.17.50"
 license-file = "LICENSE.txt"
 authors = ["The Maintainers of Nanvix"]
 edition = "2021"
