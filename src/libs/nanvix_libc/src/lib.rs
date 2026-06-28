@@ -67,7 +67,10 @@ use ::sysapi::{
         c_uint,
         c_void,
     },
-    sys_types::c_size_t,
+    sys_types::{
+        c_size_t,
+        pid_t,
+    },
 };
 
 /// Thread-local errno storage (single-threaded: a plain static suffices).
@@ -381,6 +384,75 @@ pub extern "C" fn cfsetispeed(_termios_p: *mut c_void, _speed: c_uint) -> c_int 
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub extern "C" fn cfsetospeed(_termios_p: *mut c_void, _speed: c_uint) -> c_int {
     0
+}
+
+/// Stub `cfsetspeed` — sets both input and output line speed. No terminal hardware, so this is a
+/// no-op success.
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub extern "C" fn cfsetspeed(_termios_p: *mut c_void, _speed: c_uint) -> c_int {
+    0
+}
+
+/// `cfmakeraw` — places the terminal attributes pointed to by `termios_p` in "raw" mode.
+///
+/// Unlike line-speed configuration, this is a pure in-memory transformation of the caller's
+/// `struct termios` and requires no terminal hardware. It clears canonical input (`ICANON`), echo
+/// (`ECHO`), signal generation (`ISIG`), extended input processing (`IEXTEN`), CR-to-NL mapping
+/// (`ICRNL`), start/stop output control (`IXON`), and output post-processing (`OPOST`), then sets a
+/// one-byte, no-timeout non-canonical read (`VMIN = 1`, `VTIME = 0`) — the flags honored by the
+/// vfsd console line discipline. A null pointer is ignored.
+///
+/// # Safety
+///
+/// `termios_p` must be null or point to a valid, writable `struct termios`; a non-null pointer is
+/// dereferenced and overwritten.
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn cfmakeraw(termios_p: *mut c_void) {
+    use ::sysapi::termios::{
+        Termios,
+        ECHO,
+        ICANON,
+        ICRNL,
+        IEXTEN,
+        ISIG,
+        IXON,
+        OPOST,
+        VMIN,
+        VTIME,
+    };
+
+    if termios_p.is_null() {
+        return;
+    }
+
+    // SAFETY: the caller guarantees `termios_p` points to a valid, writable `struct termios`.
+    let termios: &mut Termios = unsafe { &mut *(termios_p as *mut Termios) };
+    termios.c_iflag &= !(ICRNL | IXON);
+    termios.c_oflag &= !OPOST;
+    termios.c_lflag &= !(ICANON | ECHO | ISIG | IEXTEN);
+    termios.c_cc[VMIN] = 1;
+    termios.c_cc[VTIME] = 0;
+}
+
+/// `tcgetsid` — returns the session ID of the terminal referred to by `fd`.
+///
+/// Nanvix has no sessions or process groups, so a process is treated as its own session leader:
+/// when `fd` refers to a terminal, the returned session ID is the caller's process ID. If `fd` does
+/// not refer to a terminal, returns `-1` with `errno` set, as reported by `isatty`.
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub extern "C" fn tcgetsid(fd: c_int) -> pid_t {
+    extern "C" {
+        fn isatty(fd: c_int) -> c_int;
+        fn getpid() -> pid_t;
+    }
+
+    // SAFETY: FFI to the runtime `isatty`, which validates `fd` and sets `errno` on error.
+    if unsafe { isatty(fd) } == 0 {
+        return -1 as pid_t;
+    }
+
+    // SAFETY: FFI to the runtime `getpid`, which has no preconditions.
+    unsafe { getpid() }
 }
 
 //==================================================================================================

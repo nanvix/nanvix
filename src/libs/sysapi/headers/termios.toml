@@ -230,10 +230,13 @@ functions = [
     "tcdrain",
     "tcflush",
     "tcflow",
+    "tcgetsid",
     "cfgetispeed",
     "cfgetospeed",
     "cfsetispeed",
     "cfsetospeed",
+    "cfsetspeed",
+    "cfmakeraw",
 ]
 
 [overrides]
@@ -257,3 +260,9 @@ cfsetispeed = '''
 extern int cfsetispeed(struct termios *termios_p, speed_t speed);'''
 cfsetospeed = '''
 extern int cfsetospeed(struct termios *termios_p, speed_t speed);'''
+cfsetspeed = '''
+extern int cfsetspeed(struct termios *termios_p, speed_t speed);'''
+cfmakeraw = '''
+extern void cfmakeraw(struct termios *termios_p);'''
+tcgetsid = '''
+extern pid_t tcgetsid(int fd);'''
