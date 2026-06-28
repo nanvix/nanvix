@@ -288,22 +288,6 @@ pub unsafe extern "C" fn __nanvix_sigsuspend(_mask: *const libc_signal::signal::
 // Stub symbols required by libstdc++ but not yet implemented
 //==================================================================================================
 
-/// Stub `strxfrm` — copies at most `n` bytes of `src` to `dest` (C/POSIX locale identity).
-///
-/// # Safety
-///
-/// Caller must ensure `dest` has room for at least `n` bytes and `src` is null-terminated.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn strxfrm(dest: *mut c_char, src: *const c_char, n: c_size_t) -> c_size_t {
-    let len: c_size_t = libc_string::strlen::strlen(src);
-    if n > 0 && !dest.is_null() {
-        let copy_len: c_size_t = if len < n { len } else { n - 1 };
-        core::ptr::copy_nonoverlapping(src, dest, copy_len as usize);
-        *dest.add(copy_len as usize) = 0;
-    }
-    len
-}
-
 /// Stub `wcsftime` — returns 0 (failure).
 ///
 /// # Safety

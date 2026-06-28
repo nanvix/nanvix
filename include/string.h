@@ -69,6 +69,7 @@ extern char *strstr(const char *haystack, const char *needle);
 extern char *strtok(char *s, const char *delim);
 extern char *strtok_r(char *s, const char *delim, char **saveptr);
 extern int strverscmp(const char *s1, const char *s2);
+extern size_t strxfrm(char *dest, const char *src, size_t n);
 
 #ifdef __cplusplus
 }
