@@ -1,0 +1,34 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "libc_grp"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "POSIX Group Database Library"
+homepage.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+sysapi = { workspace = true }
+syslog = { workspace = true, default-features = true }
+
+[features]
+default = []
+# Enables the use of the Rust Standard Library.
+std = []
+
+# Logging
+trace = ["syslog/trace"]
+debug = ["syslog/debug"]
+info = ["syslog/info"]
+warn = ["syslog/warn"]
+error = ["syslog/error"]
+panic = ["syslog/panic"]
+
+[lints]
+workspace = true

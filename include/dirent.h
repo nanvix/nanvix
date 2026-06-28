@@ -62,6 +62,7 @@ struct posix_dent {
  *==================================================================================================*/
 
 extern DIR *opendir(const char *dirname);
+extern DIR *fdopendir(int fd);
 extern struct dirent *readdir(DIR *dirp);
 extern int closedir(DIR *dirp);
 
