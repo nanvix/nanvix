@@ -19,7 +19,9 @@ pub use manager::{
     SigReturnFailure,
     SignalDeliveryOutcome,
     SleepError,
+    SyncSignalOutcome,
 };
+pub use state::exception_to_signal;
 
 //==================================================================================================
 // Tests

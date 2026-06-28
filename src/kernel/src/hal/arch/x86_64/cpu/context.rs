@@ -184,6 +184,53 @@ impl ContextInformation {
     ///
     /// # Description
     ///
+    /// Reads the interrupted user context saved by an exception into the architecture-neutral
+    /// [`SignalCpuContext`].
+    ///
+    /// Inert on x86-64: synchronous signal delivery is not wired on this architecture (see
+    /// [`returns_to_user`](Self::returns_to_user)), so this never feeds a real frame build.
+    ///
+    /// # Returns
+    ///
+    /// A default (zeroed) [`SignalCpuContext`].
+    ///
+    pub fn to_signal_context(&self) -> SignalCpuContext {
+        SignalCpuContext::default()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Rewrites this saved exception context to enter a signal handler.
+    ///
+    /// Inert on x86-64 until synchronous signal delivery is implemented.
+    ///
+    /// # Parameters
+    ///
+    /// - `_entry`: Address of the user-space signal handler.
+    /// - `_frame_top`: Stack pointer the handler would be entered with.
+    ///
+    pub fn redirect_to_signal_handler(&mut self, _entry: usize, _frame_top: usize) {}
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether this saved exception context resumes in user mode.
+    ///
+    /// Always `false` on x86-64, which keeps the synchronous-signal checkpoint inert (matching the
+    /// placeholder kernel-call delivery path).
+    ///
+    /// # Returns
+    ///
+    /// `false`.
+    ///
+    pub fn returns_to_user(&self) -> bool {
+        false
+    }
+
+    ///
+    /// # Description
+    ///
     /// Switches to another execution context.
     ///
     /// # Parameters

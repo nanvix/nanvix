@@ -9,6 +9,7 @@ use super::signal::{
     apply_how,
     compute_blocked,
     default_action,
+    exception_to_signal,
     DefaultAction,
     SignalControl,
     SignalDisposition,
@@ -22,13 +23,16 @@ use ::sys::pm::{
     SIGABRT,
     SIGCHLD,
     SIGCONT,
+    SIGFPE,
     SIGHUP,
+    SIGILL,
     SIGIO,
     SIGKILL,
     SIGQUIT,
     SIGSEGV,
     SIGSTOP,
     SIGTERM,
+    SIGTRAP,
     SIGTSTP,
     SIG_BLOCK,
     SIG_DFL,
@@ -358,6 +362,52 @@ fn test_default_action_stop_and_continue() -> bool {
 }
 
 //==================================================================================================
+// Synchronous Exception Mapping Tests
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Synchronous CPU exceptions map to the signals defined by the signals design: `#DE`->`SIGFPE`,
+/// `#UD`->`SIGILL`, `#GP`/`#PF`->`SIGSEGV`, and `#BP`/`#DB`->`SIGTRAP`.
+///
+fn test_exception_to_signal_maps_known_vectors() -> bool {
+    // (vector, expected signal): #DE=0, #DB=1, #BP=3, #UD=6, #GP=13, #PF=14.
+    let cases: [(u32, usize); 6] = [
+        (0, SIGFPE),
+        (1, SIGTRAP),
+        (3, SIGTRAP),
+        (6, SIGILL),
+        (13, SIGSEGV),
+        (14, SIGSEGV),
+    ];
+    for (vector, expected) in cases {
+        if exception_to_signal(vector) != Some(expected) {
+            error!("vector {vector} did not map to signal {expected}");
+            return false;
+        }
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Exception vectors without a synchronous-signal mapping (and out-of-range vectors) report
+/// [`None`], so the exception path leaves their handling unchanged.
+///
+fn test_exception_to_signal_ignores_unmapped_vectors() -> bool {
+    // #NMI=2, #CSO=9, #MF (x87 FP)=16, #AC=17, plus an out-of-range vector.
+    for vector in [2u32, 9, 16, 17, 100] {
+        if exception_to_signal(vector).is_some() {
+            error!("vector {vector} unexpectedly mapped to a signal");
+            return false;
+        }
+    }
+    true
+}
+
+//==================================================================================================
 // Pending-Set Tests
 //==================================================================================================
 
@@ -442,6 +492,8 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_default_action_cores);
     passed &= run_test!(test_default_action_ignores);
     passed &= run_test!(test_default_action_stop_and_continue);
+    passed &= run_test!(test_exception_to_signal_maps_known_vectors);
+    passed &= run_test!(test_exception_to_signal_ignores_unmapped_vectors);
     passed &= run_test!(test_post_records_pending_signal);
     passed &= run_test!(test_post_rejects_out_of_range);
     passed

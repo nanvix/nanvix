@@ -34,6 +34,7 @@ use ::sys::{
     pm::{
         MutexAddress,
         ThreadIdentifier,
+        SIG_MAX,
     },
 };
 
@@ -92,8 +93,9 @@ pub struct ThreadState {
     blocked: u64,
     /// Signals pending specifically against this thread (e.g. synchronous faults).
     ///
-    /// Inert plumbing for the signal subsystem: written by a later phase of the signals effort.
-    #[allow(dead_code)]
+    /// Synchronous CPU exceptions are directed at the faulting thread, so the exception path records
+    /// the generated signal here and the delivery checkpoints union it with the process-directed
+    /// pending set.
     pending: u64,
     /// Mask to restore once a pending `sigsuspend()` completes.
     ///
@@ -393,6 +395,49 @@ impl ThreadState {
     ///
     pub(crate) fn set_blocked(&mut self, mask: u64) {
         self.blocked = mask;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the set of signals pending specifically against this thread.
+    ///
+    /// # Returns
+    ///
+    /// The per-thread pending-signal set.
+    ///
+    pub(crate) fn pending(&self) -> u64 {
+        self.pending
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Adds `signum` to the thread-directed pending set.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: The signal number (1-based).
+    ///
+    pub(crate) fn post_pending(&mut self, signum: usize) {
+        if signum != 0 && signum <= SIG_MAX {
+            self.pending |= 1u64 << (signum - 1);
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Removes `signum` from the thread-directed pending set.
+    ///
+    /// # Parameters
+    ///
+    /// - `signum`: The signal number (1-based).
+    ///
+    pub(crate) fn clear_pending(&mut self, signum: usize) {
+        if signum != 0 && signum <= SIG_MAX {
+            self.pending &= !(1u64 << (signum - 1));
+        }
     }
 
     ///

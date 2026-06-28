@@ -11,16 +11,19 @@ use crate::{
             ContextInformation,
             ExceptionInformation,
             InterruptNumber,
+            SignalCpuContext,
         },
         Hal,
     },
     mm::VirtMemoryManager,
     pm::{
+        exception_to_signal,
         sync::condvar::Condvar,
         ExceptionGuard,
         InterruptReason,
         ProcessManager,
         SleepError,
+        SyncSignalOutcome,
     },
 };
 use ::alloc::collections::{
@@ -242,6 +245,31 @@ struct EventManagerInner {
 
 impl EventManagerInner {
     const NUMBER_EVENTS: usize = 3;
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether an exception vector has been claimed by an exception owner via `evctrl()`.
+    ///
+    /// The exception path consults this to enforce signal-generation precedence: an owner-claimed
+    /// vector is forwarded to that owner, while an unclaimed vector may instead be mapped to a
+    /// synchronous signal on the faulting thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `vector`: The CPU exception vector number.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the vector is currently owned, `false` otherwise (including out-of-range vectors,
+    /// which can never be owned).
+    ///
+    fn exception_has_owner(&self, vector: u32) -> bool {
+        match self.exception_ownership.get(vector as usize) {
+            Some(owner) => owner.is_some(),
+            None => false,
+        }
+    }
 
     fn do_evctrl_interrupt(
         &mut self,
@@ -1250,7 +1278,7 @@ fn interrupt_handler(intnum: InterruptNumber) {
 
 fn do_exception_handler(
     info: &ExceptionInformation,
-    ctx: &ContextInformation,
+    ctx: &mut ContextInformation,
 ) -> Result<(), SleepError> {
     trace!("info={:?}", info);
 
@@ -1311,6 +1339,40 @@ fn do_exception_handler(
         return Ok(());
     }
 
+    // Synchronous-signal precedence. The fault is now known to be unresolved by the kernel. If the
+    // faulting vector maps to a signal and no exception owner has claimed it via `evctrl()`, and the
+    // fault was taken in user mode, generate the signal on the faulting thread. An owner-claimed
+    // vector (or a vector that maps to no signal, or a kernel-mode fault) falls through to the
+    // owner-forwarding path below, which terminates the process when no owner exists.
+    let vector: u32 = info.num();
+    if let Some(signum) = exception_to_signal(vector) {
+        let has_owner: bool = EventManager::get()
+            .map_err(SleepError::Generic)?
+            .try_borrow_mut()
+            .map_err(SleepError::Generic)?
+            .exception_has_owner(vector);
+
+        if !has_owner && ctx.returns_to_user() {
+            // SAFETY: This is the only thread running, thus access to the process manager is
+            // synchronized, and no reference to it is currently held.
+            let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+            let cpu: SignalCpuContext = ctx.to_signal_context();
+            match pm.try_deliver_synchronous_signal(signum, cpu) {
+                SyncSignalOutcome::Delivered { entry, frame_top } => {
+                    // Redirect the faulting context into the handler; on return to user mode the
+                    // thread enters the handler on its freshly built signal frame.
+                    ctx.redirect_to_signal_handler(entry, frame_top);
+                    return Ok(());
+                },
+                SyncSignalOutcome::Terminate => {
+                    let reason: &str = "terminated by synchronous signal default action";
+                    error!("{reason} (signum={signum}, pid={pid:?})");
+                    return Err(SleepError::Generic(Error::new(ErrorCode::Interrupted, reason)));
+                },
+            }
+        }
+    }
+
     // SAFETY: the calling process does hold a mutable reference to the inner state of the process manager.
     let resume: Condvar = unsafe {
         EventManager::get()
@@ -1325,7 +1387,7 @@ fn do_exception_handler(
     unsafe { resume.wait(None) }
 }
 
-fn exception_handler(info: &ExceptionInformation, ctx: &ContextInformation) {
+fn exception_handler(info: &ExceptionInformation, ctx: &mut ContextInformation) {
     let _guard: ExceptionGuard = ProcessManager::enter_exception_handler();
     if let Err(sleep_error) = do_exception_handler(info, ctx) {
         let status: ErrorCode = match sleep_error {

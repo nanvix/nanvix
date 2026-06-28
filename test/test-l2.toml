@@ -57,7 +57,17 @@ program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
-expected_exit_code = 3
+expected_exit_code = 4
+runs_on = ["microvm"]
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-sigsegv.elf"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 0
 runs_on = ["microvm"]
 
 [[tests]]
