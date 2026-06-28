@@ -718,6 +718,45 @@ mod test {
         assert_eq!(value.to_bytes(), b"\xff\xfe");
     }
 
+    /// Tests that `init_from_raw` skips malformed entries (those lacking a `=`) while still
+    /// importing the well-formed entries that surround them.
+    #[test]
+    fn test_init_from_raw_skips_malformed() {
+        let _guard = setup();
+        let entries: [&[u8]; 4] = [b"GOOD=1\0", b"MALFORMED\0", b"ALSO=2\0", b"\0"];
+        let ptrs: [*const c_char; 4] = [
+            entries[0].as_ptr().cast::<c_char>(),
+            entries[1].as_ptr().cast::<c_char>(),
+            entries[2].as_ptr().cast::<c_char>(),
+            ::core::ptr::null(),
+        ];
+        unsafe {
+            init_from_raw(ptrs.as_ptr());
+        }
+        let good: *const c_char = get("GOOD");
+        assert!(!good.is_null());
+        let good_val: &ffi::CStr = unsafe { ffi::CStr::from_ptr(good) };
+        assert_eq!(good_val.to_str(), Ok("1"));
+        let also: *const c_char = get("ALSO");
+        assert!(!also.is_null());
+        let also_val: &ffi::CStr = unsafe { ffi::CStr::from_ptr(also) };
+        assert_eq!(also_val.to_str(), Ok("2"));
+        // The malformed token carried no `=`, so it must not become an environment entry.
+        assert!(get("MALFORMED").is_null());
+    }
+
+    /// Tests that `init_from_raw` with a non-null `envp` whose first element is the terminating
+    /// NULL produces an empty table (covers the non-null-pointer path distinct from `envp.is_null()`).
+    #[test]
+    fn test_init_from_raw_empty_array() {
+        let _guard = setup();
+        let ptrs: [*const c_char; 1] = [::core::ptr::null()];
+        unsafe {
+            init_from_raw(ptrs.as_ptr());
+        }
+        assert!(get("ANYTHING").is_null());
+    }
+
     /// Reads the [`ENVIRON_ARRAY`] back into owned `KEY=VALUE` strings, dereferencing each published
     /// pointer up to the terminating NULL. Mirrors how C code walks `char **environ`.
     fn environ_view() -> Vec<String> {

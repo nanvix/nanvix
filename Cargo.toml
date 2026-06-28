@@ -110,6 +110,7 @@ members = [
         "src/tests/integration/test-rust-cmdline-env-nostd",
         "src/tests/integration/test-rust-dlfcn",
         "src/tests/integration/test-rust-env-nostd",
+        "src/tests/integration/test-rust-getenv-nostd",
         "src/tests/integration/test-rust-execv-big-target",
         "src/tests/integration/test-rust-execv-target",
         "src/tests/integration/test-rust-execv-test",

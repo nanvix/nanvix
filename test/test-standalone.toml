@@ -633,6 +633,57 @@ program_env = "PATH=a;b"
 expected_output = "ARGS:hello\nENV:PATH=a;b\nok"
 
 #===================================================================================================
+# getenv() Environment Lookup Tests
+#===================================================================================================
+
+# getenv() returns kernel-cmdline-provided variables (including HOME); a key that was never
+# provided resolves to null.
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-getenv-nostd.elf"
+program_env = "HOME=/scratch NVX_GETENV_A=alpha NVX_GETENV_B=beta"
+input = "[]"
+expected_output = "GETENV:HOME=/scratch NVX_GETENV_A=alpha NVX_GETENV_B=beta NVX_GETENV_MISSING=(null)\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-getenv-nostd.elf"
+program_env = "HOME=/scratch NVX_GETENV_A=alpha NVX_GETENV_B=beta"
+expected_output = "GETENV:HOME=/scratch NVX_GETENV_A=alpha NVX_GETENV_B=beta NVX_GETENV_MISSING=(null)\nok"
+
+# A malformed entry (a bare KEY token with no '=') is skipped, so getenv() returns null for it.
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-getenv-nostd.elf"
+program_env = "HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B"
+input = "[]"
+expected_output = "GETENV:HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B=(null) NVX_GETENV_MISSING=(null)\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-getenv-nostd.elf"
+program_env = "HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B"
+expected_output = "GETENV:HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B=(null) NVX_GETENV_MISSING=(null)\nok"
+
+# An empty environment produces an empty table, so every probed key resolves to null.
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-getenv-nostd.elf"
+input = "[]"
+expected_output = "GETENV:HOME=(null) NVX_GETENV_A=(null) NVX_GETENV_B=(null) NVX_GETENV_MISSING=(null)\nok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-getenv-nostd.elf"
+expected_output = "GETENV:HOME=(null) NVX_GETENV_A=(null) NVX_GETENV_B=(null) NVX_GETENV_MISSING=(null)\nok"
+
+#===================================================================================================
 # Snapshot Save / Restore Tests
 #===================================================================================================
 

@@ -3760,6 +3760,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-rust-getenv-nostd"
+version = "0.17.82"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_stdlib",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "test-rust-kernel"
 version = "0.17.82"
 dependencies = [

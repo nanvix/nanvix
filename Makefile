@@ -409,7 +409,7 @@ ALL_GUEST_TESTS := \
 	test-rust-sigsegv \
 	test-rust-linux-app test-rust-arch test-rust-vfs-test test-rust-misc test-rust-memory test-rust-network \
 	test-rust-c-bindings test-rust-mount-test test-rust-mount-multipart-test test-rust-cmdline-len \
-	test-rust-env-nostd test-rust-cmdline-env-nostd test-rust-snapshot-test test-rust-execv-test test-rust-execv-target \
+	test-rust-env-nostd test-rust-cmdline-env-nostd test-rust-getenv-nostd test-rust-snapshot-test test-rust-execv-test test-rust-execv-target \
 	test-rust-execv-big-target test-rust-pipe-dup2 test-rust-fork-exec-vfsd-test test-rust-fork-exec-vfsd-target \
 	test-rust-fork-exec-write-test test-rust-fork-exec-write-target test-rust-thread-vfs-test \
 	test-rust-fork-exec-loop-test test-rust-fork-exec-loop-target test-rust-socket-fork \
