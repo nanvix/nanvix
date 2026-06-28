@@ -3870,6 +3870,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-rust-sigsegv"
+version = "0.17.79"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "syslog",
+]
+
+[[package]]
 name = "test-rust-snapshot-test"
 version = "0.17.79"
 dependencies = [

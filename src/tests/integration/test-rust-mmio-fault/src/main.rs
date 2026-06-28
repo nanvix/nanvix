@@ -53,8 +53,10 @@ const RAMFS_MMIO_TAG: u64 = u64::from_be_bytes(*b"RAMFS   ");
 ///
 /// # Expected Behavior
 ///
-/// The write triggers a page fault. The memory daemon (`memd`) terminates the faulting process,
-/// which exits with error code 3 (`ESRCH`).
+/// The write triggers a page fault that no mapping resolves and that no exception owner has claimed.
+/// The kernel maps the fault to `SIGSEGV` on the faulting thread; with no handler installed, the
+/// signal's default action terminates the process. The process exits with error code 4 (`EINTR`),
+/// the status the kernel assigns to a process terminated by a signal's default action.
 ///
 #[no_mangle]
 pub fn main() -> Result<(), Error> {

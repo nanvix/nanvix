@@ -37,8 +37,8 @@ use crate::hal::arch::{
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_exception(
-    ctx: *const ContextInformation,
+    ctx: *mut ContextInformation,
     excp: *const ExceptionInformation,
 ) {
-    super::exception_controller::dispatch(&*excp, &*ctx);
+    super::exception_controller::dispatch(&*excp, &mut *ctx);
 }

@@ -8,6 +8,7 @@ mod signal;
 pub use signal::{
     SigReturnFailure,
     SignalDeliveryOutcome,
+    SyncSignalOutcome,
 };
 
 #[cfg(feature = "test")]

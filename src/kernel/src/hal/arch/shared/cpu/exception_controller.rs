@@ -23,7 +23,7 @@ use ::sys::error::{
 ///
 /// A type that represents an exception handler.
 ///
-pub type ExceptionHandler = fn(&ExceptionInformation, &ContextInformation);
+pub type ExceptionHandler = fn(&ExceptionInformation, &mut ContextInformation);
 
 //==================================================================================================
 // Structures
@@ -149,7 +149,7 @@ impl Drop for ExceptionController {
 ///
 /// This function is unsafe because it accesses global variables.
 ///
-pub(crate) unsafe fn dispatch(excp: &ExceptionInformation, ctx: &ContextInformation) {
+pub(crate) unsafe fn dispatch(excp: &ExceptionInformation, ctx: &mut ContextInformation) {
     match HANDLER {
         Some(handler) => handler(excp, ctx),
         None => {

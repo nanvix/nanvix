@@ -90,6 +90,7 @@ use ::sys::{
 pub use interrupted::InterruptedProcess;
 pub use runnable::RunnableProcess;
 pub use running::RunningProcess;
+pub use signal::exception_to_signal;
 pub use sleeping::SleepingProcess;
 pub use zombie::ZombieProcess;
 

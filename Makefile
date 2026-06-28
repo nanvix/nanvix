@@ -405,6 +405,7 @@ ALL_GUEST_APPLICATIONS := hello-rust-nostd
 ALL_GUEST_TESTS := \
 	test-rust-testd test-rust-file test-rust-fork-guestfs test-rust-fork-hostfs test-rust-fork-kcall \
 	test-rust-waitpid test-rust-kill test-rust-setenv test-rust-thread test-rust-stress test-rust-kernel test-rust-mmio-fault \
+	test-rust-sigsegv \
 	test-rust-linux-app test-rust-arch test-rust-vfs-test test-rust-misc test-rust-memory test-rust-network \
 	test-rust-c-bindings test-rust-mount-test test-rust-mount-multipart-test test-rust-cmdline-len \
 	test-rust-env-nostd test-rust-cmdline-env-nostd test-rust-snapshot-test test-rust-execv-test test-rust-execv-target \

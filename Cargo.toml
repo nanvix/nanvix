@@ -138,6 +138,7 @@ members = [
         "src/tests/stress/test-rust-stress",
         "src/tests/integration/test-rust-kernel",
         "src/tests/integration/test-rust-mmio-fault",
+        "src/tests/integration/test-rust-sigsegv",
         "src/tests/integration/test-rust-testd",
         "src/tests/integration/test-rust-thread",
         "src/tests/integration/test-rust-vfs-test",

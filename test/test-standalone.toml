@@ -56,7 +56,16 @@ program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
-expected_exit_code = 3
+expected_exit_code = 4
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-sigsegv.elf"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 0
 
 [[tests]]
 build_modes = ["debug", "release"]
@@ -161,7 +170,16 @@ program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 input = "[]"
 expect_empty_output = true
-expected_exit_code = 3
+expected_exit_code = 4
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-sigsegv.elf"
+extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
+input = "[]"
+expect_empty_output = true
+expected_exit_code = 0
 
 [[tests]]
 build_modes = ["debug", "release"]

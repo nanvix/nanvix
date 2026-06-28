@@ -12,8 +12,22 @@ use crate::hal::arch::x86::{
         SegmentSelector,
     },
 };
-use ::arch::cpu::tss::Tss;
+use ::arch::cpu::{
+    ring::PrivilegeLevel,
+    tss::Tss,
+};
 use ::sys::mm::VirtualAddress;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Flags installed when a thread enters a signal handler: interrupts enabled (bit 9) and the
+/// always-one reserved bit (bit 1), everything else clear. Mirrors the kernel-call delivery path.
+const SIGNAL_HANDLER_ENTRY_FLAGS: u32 = (1 << 9) | (1 << 1);
+
+/// Mask for the requested-privilege-level (RPL) field of a segment selector (its low two bits).
+const SELECTOR_RPL_MASK: u32 = 0b11;
 
 //==================================================================================================
 // Structures
@@ -144,6 +158,71 @@ impl ContextInformation {
             esp,
             ..Default::default()
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reads the interrupted user context saved by an exception into the architecture-neutral
+    /// [`SignalCpuContext`] used to build a signal frame.
+    ///
+    /// # Returns
+    ///
+    /// The [`SignalCpuContext`] mirroring this saved exception context.
+    ///
+    pub fn to_signal_context(&self) -> SignalCpuContext {
+        // Copy the packed fields by value (a reference into a packed struct is ill-formed).
+        SignalCpuContext {
+            ip: self.eip,
+            sp: self.esp,
+            flags: self.eflags,
+            ax: self.eax,
+            bx: self.ebx,
+            cx: self.ecx,
+            dx: self.edx,
+            si: self.esi,
+            di: self.edi,
+            bp: self.ebp,
+            cs: self.cs,
+            ss: self.ss,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Rewrites this saved exception context so that, on return to user mode, the faulting thread
+    /// enters a signal handler on its freshly built signal frame.
+    ///
+    /// Mirrors [`redirect_to_handler`](crate::hal::arch::redirect_to_handler) for the kernel-call
+    /// path: the instruction pointer is pointed at the handler entry, the stack pointer at the top
+    /// of the signal frame, and the flags reset to a clean handler-entry value (interrupts enabled,
+    /// everything else clear).
+    ///
+    /// # Parameters
+    ///
+    /// - `entry`: Address of the user-space signal handler.
+    /// - `frame_top`: Stack pointer the handler is entered with (top of the signal frame).
+    ///
+    pub fn redirect_to_signal_handler(&mut self, entry: usize, frame_top: usize) {
+        self.eip = entry as u32;
+        self.esp = frame_top as u32;
+        self.eflags = SIGNAL_HANDLER_ENTRY_FLAGS;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether this saved exception context resumes in user mode, determined from the
+    /// requested-privilege-level of the saved code-segment selector.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the interrupted context is ring 3, `false` otherwise.
+    ///
+    pub fn returns_to_user(&self) -> bool {
+        let cs: u32 = self.cs;
+        (cs & SELECTOR_RPL_MASK) == PrivilegeLevel::Ring3 as u32
     }
 
     ///
