@@ -23,6 +23,7 @@ extern crate libc_inttypes;
 extern crate libc_langinfo;
 extern crate libc_libgen;
 extern crate libc_locale;
+extern crate libc_mntent;
 extern crate libc_regex;
 extern crate libc_setjmp;
 extern crate libc_signal;

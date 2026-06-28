@@ -1,0 +1,68 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for mntent.h.
+# The gen-headers tool combines this with the extern "C" signatures parsed
+# from this crate's sources to produce include/mntent.h.
+
+file = "mntent.h"
+brief = "Filesystem table (fstab/mtab) access."
+description = """
+Declares the structure and functions used to read and write the filesystem
+description files (/etc/fstab and /etc/mtab), implemented by the libc_mntent
+Rust crate as thin parsers layered on top of <stdio.h>."""
+includes = ["stdio.h"]
+guard = "_NANVIX_MNTENT_H"
+content_order = [
+    "raw:0",
+    "raw:1",
+    "section:0",
+]
+
+[[raw_sections]]
+title = "Paths and Options"
+text = '''
+#define MNTTAB  "/etc/fstab"
+#define MOUNTED "/etc/mtab"
+
+#define MNTTYPE_IGNORE "ignore"
+#define MNTTYPE_NFS    "nfs"
+#define MNTTYPE_SWAP   "swap"
+
+#define MNTOPT_DEFAULTS "defaults"
+#define MNTOPT_RO       "ro"
+#define MNTOPT_RW       "rw"
+#define MNTOPT_SUID     "suid"
+#define MNTOPT_NOSUID   "nosuid"
+#define MNTOPT_NOAUTO   "noauto"'''
+
+[[raw_sections]]
+title = "Types"
+text = '''
+/** @brief Filesystem table entry. */
+struct mntent {
+    char *mnt_fsname; /**< Device or remote filesystem.  */
+    char *mnt_dir;    /**< Mount point.                  */
+    char *mnt_type;   /**< Filesystem type.              */
+    char *mnt_opts;   /**< Comma-separated mount options.*/
+    int mnt_freq;     /**< Dump frequency in days.       */
+    int mnt_passno;   /**< Pass number on parallel fsck. */
+};'''
+
+[[sections]]
+title = "Filesystem Table Access"
+functions = ["setmntent", "getmntent", "getmntent_r", "addmntent", "endmntent", "hasmntopt"]
+
+[overrides]
+setmntent = '''
+extern FILE *setmntent(const char *filename, const char *type);'''
+getmntent = '''
+extern struct mntent *getmntent(FILE *stream);'''
+getmntent_r = '''
+extern struct mntent *getmntent_r(FILE *stream, struct mntent *result, char *buffer, int bufsize);'''
+addmntent = '''
+extern int addmntent(FILE *stream, const struct mntent *mnt);'''
+endmntent = '''
+extern int endmntent(FILE *stream);'''
+hasmntopt = '''
+extern char *hasmntopt(const struct mntent *mnt, const char *opt);'''

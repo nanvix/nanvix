@@ -383,7 +383,7 @@ ALL_GUEST_RUST_LIBS := \
 	koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi \
 	syscall sysalloc syslog-macros syslog sys \
 	libc_arpa_inet libc_assert libc_ctype libc_dlfcn libc_errno libc_fnmatch \
-	libc_inttypes libc_langinfo libc_libgen libc_locale libc_math libc_netdb \
+	libc_inttypes libc_langinfo libc_libgen libc_locale libc_math libc_mntent libc_netdb \
 	libc_poll libc_pthread libc_pwd libc_regex libc_setjmp libc_signal \
 	libc_stdio libc_stdlib libc_string libc_sys_ioctl libc_sys_resource \
 	libc_sys_stat libc_sys_time libc_sys_times libc_sys_un libc_sys_uio \
@@ -392,7 +392,7 @@ ALL_GUEST_RUST_LIBS := \
 ALL_GUEST_RUST_LIBS_TEST_LIST := \
 	arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe \
 	koptions proc raw-array nanvix-slab sorted-vec static_assert \
-	libc_assert libc_ctype libc_fnmatch libc_inttypes libc_langinfo libc_libgen libc_locale libc_math libc_regex \
+	libc_assert libc_ctype libc_fnmatch libc_inttypes libc_langinfo libc_libgen libc_locale libc_math libc_mntent libc_regex \
 	libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time \
 	libc_wchar libc_wctype \
 	syslog-macros syslog sys mmio-tag syscall vfs

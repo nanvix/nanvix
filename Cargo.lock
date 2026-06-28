@@ -1579,6 +1579,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libc_mntent"
+version = "0.17.74"
+dependencies = [
+ "sysapi",
+]
+
+[[package]]
 name = "libc_netdb"
 version = "0.17.74"
 dependencies = [
@@ -2179,6 +2186,7 @@ dependencies = [
  "libc_langinfo",
  "libc_libgen",
  "libc_locale",
+ "libc_mntent",
  "libc_regex",
  "libc_setjmp",
  "libc_signal",
