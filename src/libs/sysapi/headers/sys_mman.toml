@@ -14,7 +14,7 @@ interfaces. Constants mirror the Rust definitions in the sysapi crate
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_MMAN_H"
 scan_crates = ["syscall"]
-content_order = ["macros", "raw:0", "section:0", "section:1", "section:2"]
+content_order = ["macros", "raw:0", "section:0", "section:1", "section:2", "section:3"]
 
 [[macros]]
 name = "PROT_NONE"
@@ -56,6 +56,21 @@ name = "MAP_ANONYMOUS"
 value = "0x20"
 comment = "Anonymous mapping (not backed by a file)."
 
+[[macros]]
+name = "MS_ASYNC"
+value = "0x1"
+comment = "Perform asynchronous writes."
+
+[[macros]]
+name = "MS_INVALIDATE"
+value = "0x2"
+comment = "Invalidate cached copies of mapped data."
+
+[[macros]]
+name = "MS_SYNC"
+value = "0x4"
+comment = "Perform synchronous writes."
+
 [[raw_sections]]
 title = ""
 text = """
@@ -73,6 +88,7 @@ munmap = "extern int munmap(void *addr, size_t length);"
 mprotect = "extern int mprotect(void *addr, size_t length, int prot);"
 mlock = "extern int mlock(const void *addr, size_t len);"
 munlock = "extern int munlock(const void *addr, size_t len);"
+msync = "extern int msync(void *addr, size_t length, int flags);"
 
 [[sections]]
 title = "Memory Protection"
@@ -81,3 +97,7 @@ functions = ["mprotect"]
 [[sections]]
 title = "Memory Locking"
 functions = ["mlock", "munlock"]
+
+[[sections]]
+title = "Memory Synchronization"
+functions = ["msync"]

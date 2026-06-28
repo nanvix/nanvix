@@ -33,3 +33,14 @@ pub mod flags {
 
 /// Used to indicate a failure in `mmap()`.
 pub const MAP_FAILED: *mut u8 = -1isize as *mut u8;
+
+pub mod msync_flags {
+    use crate::ffi::c_int;
+
+    /// Perform asynchronous writes.
+    pub const MS_ASYNC: c_int = 0x1;
+    /// Invalidate cached copies of mapped data.
+    pub const MS_INVALIDATE: c_int = 0x2;
+    /// Perform synchronous writes.
+    pub const MS_SYNC: c_int = 0x4;
+}

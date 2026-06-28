@@ -30,6 +30,7 @@ use ::sys::{
 pub mod mlock;
 pub mod mmap;
 pub mod mprotect;
+pub mod msync;
 pub mod munlock;
 pub mod munmap;
 
