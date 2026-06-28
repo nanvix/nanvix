@@ -63,7 +63,7 @@ pub const UNBLOCKABLE: SigSet = (1u64 << (SIGKILL - 1)) | (1u64 << (SIGSTOP - 1)
 // Boxed by [`SignalDisposition::Handler`] so that a disposition is only pointer-sized. Storing this
 // payload inline in every one of the 64 disposition slots would push the per-process table past the
 // kernel heap's maximum slab size (512 bytes); see [`crate::mm::kheap`].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SignalHandler {
     /// Entry point of the user-space handler.
     pub entry: VirtualAddress,
@@ -80,7 +80,7 @@ pub struct SignalHandler {
 ///
 /// Disposition of a single signal.
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SignalDisposition {
     /// Take the default action for the signal.
     Default,
@@ -452,6 +452,29 @@ impl SignalControl {
     ///
     pub fn set_restorer(&mut self, restorer: Option<VirtualAddress>) {
         self.restorer = restorer;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Produces the signal control block a forked child inherits from this (the parent's) one.
+    ///
+    /// The signal dispositions are copied verbatim, as POSIX requires, and the restorer is inherited
+    /// because the child shares the parent's address space (the trampoline lives at the same
+    /// address). The pending set is *not* inherited: a freshly forked child starts with no pending
+    /// signals.
+    ///
+    /// # Returns
+    ///
+    /// A [`SignalControl`] carrying the inherited dispositions and restorer with an empty pending
+    /// set.
+    ///
+    pub fn inherited_for_fork(&self) -> Self {
+        Self {
+            dispositions: self.dispositions.clone(),
+            pending: 0,
+            restorer: self.restorer,
+        }
     }
 
     ///

@@ -71,23 +71,6 @@ impl SleepingProcess {
     ///
     /// # Description
     ///
-    /// Returns the identifier of a candidate thread to wake when a signal is posted to this
-    /// suspended process, so the thread can evaluate delivery at its return-to-user checkpoint.
-    ///
-    /// # Returns
-    ///
-    /// The identifier of one of the process's sleeping threads.
-    ///
-    pub fn candidate_tid(&self) -> Option<ThreadIdentifier> {
-        self.sleeping_threads
-            .iter()
-            .next()
-            .map(|thread| thread.id())
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the identifier of a candidate thread that can take delivery of signal `signum`, i.e.
     /// a sleeping thread that does not currently block it.
     ///

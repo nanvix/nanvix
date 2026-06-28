@@ -12,6 +12,7 @@ use crate::{
         clock,
         process::state::{
             interrupted::interrupt,
+            signal::SignalControl,
             InterruptedProcess,
             ProcessState,
             RunningProcess,
@@ -99,6 +100,22 @@ impl RunnableProcess {
 
     pub(super) fn state_mut(&mut self) -> &mut ProcessState {
         &mut self.state
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Installs the per-process signal control block into this process.
+    ///
+    /// Used by `fork()` to install the dispositions and restorer inherited from the parent into
+    /// the freshly created child before it is enqueued onto the ready list.
+    ///
+    /// # Parameters
+    ///
+    /// - `signals`: The signal control block to install.
+    ///
+    pub fn set_signals(&mut self, signals: SignalControl) {
+        self.state.set_signals(signals);
     }
 
     ///

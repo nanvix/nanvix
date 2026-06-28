@@ -74,7 +74,10 @@ use ::sys::{
         SIG_BLOCK,
         SIG_MAX,
         SIG_SETMASK,
+        SIGCHLD,
+        SIGCONT,
         SIGKILL,
+        SIGSTOP,
         SIGTERM,
         SIGUSR1,
         SIGUSR2,
@@ -90,6 +93,7 @@ use ::sysapi::{
         time_t,
     },
     sys_wait::{
+        WNOHANG,
         wexitstatus,
         wifexited,
     },
@@ -758,6 +762,497 @@ fn test_sigpending_reports_blocked_pending() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Job Control (Stop/Continue)
+//==================================================================================================
+
+/// Exit status reported by a job-control child once it is continued and resumes past its gating
+/// receive. Observing it after a stop/continue cycle proves the child was suspended and then
+/// resumed rather than running straight through.
+const JOBCTL_RESUMED: c_int = 88;
+
+/// Number of non-blocking wait polls used to confirm a stopped child makes no progress. Each poll is
+/// a process-manager round-trip that yields the CPU, so a child that was *not* stopped would be
+/// scheduled, consume its go-message, and exit within these opportunities — turning a broken stop
+/// into a caught regression rather than a silent pass.
+const STOP_POLL_ATTEMPTS: usize = 16;
+
+/// Child entry point for the stop/continue test: notify the parent that it is about to block, then
+/// block in `recv()` for the parent's go-message. The receive can only complete once the child is
+/// scheduled, which a stopped child never is; on receiving the message the child exits with a
+/// sentinel that proves it resumed. This function never returns to the caller.
+fn run_jobctl_child() -> ! {
+    let parent: ProcessIdentifier = match pm::__kcall_getppid() {
+        Ok(parent) => parent,
+        // SAFETY: the freshly forked child holds no resources requiring cleanup.
+        Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+    };
+    if notify_ready(parent).is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+    // Block until the parent's go-message arrives. While the child is stopped this cannot complete,
+    // because the child is never scheduled to receive it.
+    if ipc::__kcall_recv().is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+    // SAFETY: as above.
+    unsafe { bindings::_exit::_exit(JOBCTL_RESUMED) };
+}
+
+/// Forks a job-control child. Returns the child's PID in the parent; the child never returns here.
+fn spawn_jobctl_child() -> Result<ProcessIdentifier, Error> {
+    let ret: pid_t = bindings::fork::fork();
+    if ret == 0 {
+        run_jobctl_child();
+    }
+    assert!(ret > 0, "fork() failed in parent (ret={})", ret);
+    Ok(ProcessIdentifier::from(ret))
+}
+
+/// Verifies that `SIGSTOP` suspends a process and `SIGCONT` resumes it. The parent stops the child,
+/// makes its go-message available, and confirms the child makes no progress (it never terminates
+/// despite the message being deliverable). It then continues the child, which consumes the message
+/// and exits with [`JOBCTL_RESUMED`], proving the suspension was lifted and the child resumed from
+/// exactly where it was stopped.
+fn test_sigstop_stops_and_sigcont_resumes() -> Result<(), Error> {
+    let child: ProcessIdentifier = spawn_jobctl_child()?;
+    // The child has reached (or is about to reach) its gating receive by the time its readiness
+    // notification arrives.
+    await_ready()?;
+
+    // Stop the child. The cross-process post is relayed through the process-manager daemon, so the
+    // stop is in effect by the time `kill()` returns.
+    post_signal(child, as_signum(SIGSTOP)?);
+
+    // Make the go-message available. A running child would consume it and exit; a stopped child
+    // cannot run, so the message stays buffered and the child stays alive.
+    send_empty(child)?;
+
+    // Confirm the stopped child makes no progress: across repeated scheduling opportunities it is
+    // never terminated, even though its go-message is already deliverable.
+    let mut status: c_int = 0;
+    for _ in 0..STOP_POLL_ATTEMPTS {
+        // SAFETY: `status` points to a valid `c_int`.
+        let polled: pid_t =
+            unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, WNOHANG) };
+        assert!(
+            polled == 0,
+            "a stopped child must not terminate (ret={}, errno={})",
+            polled,
+            read_errno()
+        );
+    }
+
+    // Continue the child. It is scheduled again, completes its gating receive, and exits.
+    post_signal(child, as_signum(SIGCONT)?);
+
+    // SAFETY: `status` points to a valid `c_int`.
+    let reaped: pid_t = unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, 0) };
+    assert!(
+        reaped == i32::from(child),
+        "waitpid() must reap the continued child (ret={}, child={})",
+        reaped,
+        i32::from(child)
+    );
+    assert!(
+        wifexited(status),
+        "continued child must surface as a normal exit (status={:#x})",
+        status
+    );
+    assert!(
+        wexitstatus(status) == JOBCTL_RESUMED,
+        "continued child must exit with the resume sentinel (got={}, expected={})",
+        wexitstatus(status),
+        JOBCTL_RESUMED
+    );
+    Ok(())
+}
+
+/// Verifies that `SIGSTOP` is uncatchable: its disposition cannot be changed, so installing a
+/// handler for it is rejected.
+fn test_sigstop_is_uncatchable() -> Result<(), Error> {
+    let act: SigAction = SigAction {
+        sa_handler: sigusr1_handler_addr(),
+        sa_mask: 0,
+        sa_flags: 0,
+        sa_sigaction: 0,
+    };
+    // SAFETY: `act` is a valid, properly aligned `SigAction`; the old-action pointer is null.
+    let ret: Result<(), Error> =
+        unsafe { pm::__kcall_sigaction(as_signum(SIGSTOP)?, &raw const act, ptr::null_mut()) };
+    assert!(
+        matches!(&ret, Err(error) if error.code.get() == ErrorCode::InvalidArgument.get()),
+        "installing a handler for the uncatchable SIGSTOP must be rejected"
+    );
+    Ok(())
+}
+
+/// Records whether the child's `SIGCONT` handler ran.
+static CONT_HANDLER_RAN: AtomicBool = AtomicBool::new(false);
+
+/// Exit status reported by the caught-`SIGCONT` child when it resumed *and* its handler ran.
+const CONT_RESUMED_WITH_HANDLER: c_int = 99;
+/// Exit status reported by the caught-`SIGCONT` child when it resumed but its handler did not run.
+const CONT_RESUMED_NO_HANDLER: c_int = 98;
+
+/// Handler installed by the caught-`SIGCONT` child; records that the continue signal was delivered.
+extern "C" fn sigcont_handler(_signum: c_int) {
+    CONT_HANDLER_RAN.store(true, Ordering::SeqCst);
+}
+
+/// Returns the address of [`sigcont_handler`] for the `sa_handler` slot.
+#[allow(clippy::as_conversions)]
+fn sigcont_handler_addr() -> usize {
+    sigcont_handler as *const () as usize
+}
+
+/// Child entry point for the caught-`SIGCONT` test. Installs a `SIGCONT` handler, then blocks in a
+/// gating receive (retrying across an interruption by the continue signal itself). On resuming it
+/// reports, through its exit status, whether the handler ran — proving `SIGCONT` both resumed the
+/// stopped process and ran its handler. Never returns.
+fn run_jobctl_handler_child() -> ! {
+    CONT_HANDLER_RAN.store(false, Ordering::SeqCst);
+    let parent: ProcessIdentifier = match pm::__kcall_getppid() {
+        Ok(parent) => parent,
+        // SAFETY: the freshly forked child holds no resources requiring cleanup.
+        Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+    };
+
+    // Install a catching disposition for SIGCONT.
+    let act: SigAction = SigAction {
+        sa_handler: sigcont_handler_addr(),
+        sa_mask: 0,
+        sa_flags: 0,
+        sa_sigaction: 0,
+    };
+    let signum: c_int = match as_signum(SIGCONT) {
+        Ok(signum) => signum,
+        // SAFETY: as above.
+        Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+    };
+    // SAFETY: `act` is a valid, properly aligned `SigAction`; the old-action pointer is null.
+    if unsafe { pm::__kcall_sigaction(signum, &raw const act, ptr::null_mut()) }.is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+
+    if notify_ready(parent).is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+
+    // Block until the parent's go-message arrives. Continuing the stopped child with the caught
+    // SIGCONT may interrupt this receive (delivering the handler); retry until it completes.
+    loop {
+        match ipc::__kcall_recv() {
+            Ok(_) => break,
+            Err(error) if error.code.get() == ErrorCode::Interrupted.get() => continue,
+            // SAFETY: as above.
+            Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+        }
+    }
+
+    if CONT_HANDLER_RAN.load(Ordering::SeqCst) {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CONT_RESUMED_WITH_HANDLER) };
+    }
+    // SAFETY: as above.
+    unsafe { bindings::_exit::_exit(CONT_RESUMED_NO_HANDLER) };
+}
+
+/// Forks a caught-`SIGCONT` child. Returns the child's PID in the parent; the child never returns.
+fn spawn_jobctl_handler_child() -> Result<ProcessIdentifier, Error> {
+    let ret: pid_t = bindings::fork::fork();
+    if ret == 0 {
+        run_jobctl_handler_child();
+    }
+    assert!(ret > 0, "fork() failed in parent (ret={})", ret);
+    Ok(ProcessIdentifier::from(ret))
+}
+
+/// Verifies that `SIGCONT` resumes a stopped process *and* runs an installed handler — i.e. its
+/// continue effect is independent of its (catching) disposition. Without this, a stopped process
+/// that caught `SIGCONT` would never be continued and would hang forever. The child installs a
+/// `SIGCONT` handler, is stopped, and is then continued with `SIGCONT`; it exits with a sentinel
+/// only if it both resumed and observed its handler having run.
+fn test_caught_sigcont_continues_and_runs_handler() -> Result<(), Error> {
+    let child: ProcessIdentifier = spawn_jobctl_handler_child()?;
+    await_ready()?;
+
+    post_signal(child, as_signum(SIGSTOP)?);
+    send_empty(child)?;
+
+    // Confirm the child is stopped: it makes no progress despite its go-message being deliverable.
+    let mut status: c_int = 0;
+    for _ in 0..STOP_POLL_ATTEMPTS {
+        // SAFETY: `status` points to a valid `c_int`.
+        let polled: pid_t =
+            unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, WNOHANG) };
+        assert!(
+            polled == 0,
+            "a stopped child with a caught SIGCONT must not terminate (ret={}, errno={})",
+            polled,
+            read_errno()
+        );
+    }
+
+    // Continue the child with the caught SIGCONT. It must resume and run its handler.
+    post_signal(child, as_signum(SIGCONT)?);
+
+    // SAFETY: `status` points to a valid `c_int`.
+    let reaped: pid_t = unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, 0) };
+    assert!(
+        reaped == i32::from(child),
+        "waitpid() must reap the continued child (ret={}, child={})",
+        reaped,
+        i32::from(child)
+    );
+    assert!(
+        wifexited(status),
+        "continued child must surface as a normal exit (status={:#x})",
+        status
+    );
+    assert!(
+        wexitstatus(status) == CONT_RESUMED_WITH_HANDLER,
+        "caught SIGCONT must both resume the stopped child and run its handler (exit={}, \
+         resumed-without-handler={})",
+        wexitstatus(status),
+        CONT_RESUMED_NO_HANDLER
+    );
+    Ok(())
+}
+
+//==================================================================================================
+// Fork Signal-State Inheritance
+//==================================================================================================
+
+/// Exit status reported by the fork-inheritance child when every inherited property is correct.
+const INHERIT_OK: c_int = 55;
+/// Exit status reported when the inherited `SIGUSR1` disposition is not the parent's handler.
+const INHERIT_BAD_DISPOSITION: c_int = 56;
+/// Exit status reported when the inherited blocked mask does not carry `SIGUSR2`.
+const INHERIT_BAD_MASK: c_int = 57;
+/// Exit status reported when the child's pending set was not cleared.
+const INHERIT_BAD_PENDING: c_int = 58;
+
+/// Child entry point for the fork-inheritance test. Confirms that the parent's signal state was
+/// inherited per POSIX: the caught `SIGUSR1` disposition and the blocked `SIGUSR2` mask carry over,
+/// while the pending set starts empty. Reports the outcome through its exit status. Never returns.
+fn run_fork_inherit_child() -> ! {
+    let signum: c_int = match as_signum(SIGUSR1) {
+        Ok(signum) => signum,
+        // SAFETY: the freshly forked child holds no resources requiring cleanup.
+        Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+    };
+
+    // The caught SIGUSR1 disposition must be inherited as the parent's handler.
+    let mut old: SigAction = SigAction::default();
+    // SAFETY: `old` points to a valid `SigAction`; a null `act` requests only the current action.
+    if unsafe { pm::__kcall_sigaction(signum, ptr::null(), &raw mut old) }.is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+    if old.sa_handler != sigusr1_handler_addr() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(INHERIT_BAD_DISPOSITION) };
+    }
+
+    // The blocked mask must be inherited with SIGUSR2 still blocked.
+    let mut mask: SigSet = 0;
+    // SAFETY: `mask` points to a valid `SigSet`; a null `set` requests only the current mask.
+    if unsafe { pm::__kcall_sigprocmask(SIG_SETMASK, ptr::null(), &raw mut mask) }.is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+    if mask & (1u64 << (SIGUSR2 - 1)) == 0 {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(INHERIT_BAD_MASK) };
+    }
+
+    // The pending set must start empty: pending signals are not inherited across fork.
+    let mut pending: SigSet = 0;
+    // SAFETY: `pending` points to a valid `SigSet`.
+    if unsafe { pm::__kcall_sigpending(&raw mut pending) }.is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+    if pending != 0 {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(INHERIT_BAD_PENDING) };
+    }
+
+    // SAFETY: as above.
+    unsafe { bindings::_exit::_exit(INHERIT_OK) };
+}
+
+/// Verifies that `fork()` honors POSIX signal-state inheritance: the child inherits the parent's
+/// signal dispositions and the calling thread's blocked mask, while its pending set starts empty.
+/// The parent installs a `SIGUSR1` handler, blocks `SIGUSR2`, forks, and confirms the child observes
+/// all three properties through its exit status.
+fn test_fork_inherits_signal_state() -> Result<(), Error> {
+    install_sigusr1_handler(0)?;
+
+    // Block SIGUSR2 in the parent so the child must inherit it as blocked.
+    let usr2_bit: SigSet = 1u64 << (SIGUSR2 - 1);
+    let mut saved_mask: SigSet = 0;
+    // SAFETY: `usr2_bit` and `saved_mask` point to valid `SigSet` values.
+    unsafe { pm::__kcall_sigprocmask(SIG_BLOCK, &raw const usr2_bit, &raw mut saved_mask) }?;
+
+    let ret: pid_t = bindings::fork::fork();
+    if ret == 0 {
+        run_fork_inherit_child();
+    }
+    assert!(ret > 0, "fork() failed in parent (ret={})", ret);
+    let child: ProcessIdentifier = ProcessIdentifier::from(ret);
+
+    let mut status: c_int = 0;
+    // SAFETY: `status` points to a valid `c_int`.
+    let reaped: pid_t = unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, 0) };
+    assert!(
+        reaped == i32::from(child),
+        "waitpid() must reap the fork-inheritance child (ret={}, child={})",
+        reaped,
+        i32::from(child)
+    );
+    assert!(wifexited(status), "child must surface as a normal exit (status={:#x})", status);
+    assert!(
+        wexitstatus(status) == INHERIT_OK,
+        "forked child must inherit the parent's signal state (exit={}, expected={})",
+        wexitstatus(status),
+        INHERIT_OK
+    );
+
+    // Restore the parent's signal state so later tests are unaffected.
+    // SAFETY: `saved_mask` points to a valid `SigSet`; the old-mask output is not requested.
+    unsafe { pm::__kcall_sigprocmask(SIG_SETMASK, &raw const saved_mask, ptr::null_mut()) }?;
+    let restore: SigAction = SigAction {
+        sa_handler: ::sys::pm::SIG_DFL,
+        sa_mask: 0,
+        sa_flags: 0,
+        sa_sigaction: 0,
+    };
+    // SAFETY: `restore` is a valid, properly aligned `SigAction`; the old-action pointer is null.
+    unsafe { pm::__kcall_sigaction(as_signum(SIGUSR1)?, &raw const restore, ptr::null_mut()) }?;
+
+    Ok(())
+}
+
+//==================================================================================================
+// Child-Status Signals (SIGCHLD)
+//==================================================================================================
+
+/// Counts how many times the `SIGCHLD` handler ran, so the test can confirm that the
+/// process-manager daemon posted `SIGCHLD` to the parent on a child's termination.
+static SIGCHLD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// Handler installed for `SIGCHLD`; records each delivery so the test can confirm the parent was
+/// notified of its child's termination.
+extern "C" fn sigchld_handler(_signum: c_int) {
+    SIGCHLD_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+/// Returns the address of [`sigchld_handler`] for the `sa_handler` slot.
+#[allow(clippy::as_conversions)]
+fn sigchld_handler_addr() -> usize {
+    sigchld_handler as *const () as usize
+}
+
+/// Forks a child that exits immediately with status zero. Returns the child's PID in the parent;
+/// the child never returns from this function.
+fn spawn_exiting_child() -> Result<ProcessIdentifier, Error> {
+    let ret: pid_t = bindings::fork::fork();
+    if ret == 0 {
+        // SAFETY: the freshly forked child holds no resources requiring cleanup.
+        unsafe { bindings::_exit::_exit(0) };
+    }
+    assert!(ret > 0, "fork() failed in parent (ret={})", ret);
+    Ok(ProcessIdentifier::from(ret))
+}
+
+/// Verifies that the process-manager daemon posts `SIGCHLD` to the parent when a child terminates,
+/// and that this notification integrates cleanly with `waitpid()`: the parent installs a `SIGCHLD`
+/// handler, forks a child that exits, reaps the child, and observes the handler having run.
+///
+/// `SIGCHLD` is blocked across the reap so the notification remains pending and can be observed
+/// deterministically after the synchronous `waitpid()` completes. This mirrors the POSIX-idiomatic
+/// pattern for combining a `SIGCHLD` handler with a direct wait: collect the child status first,
+/// then unblock the pending notification and run the handler.
+fn test_sigchld_delivered_on_child_exit() -> Result<(), Error> {
+    SIGCHLD_COUNT.store(0, Ordering::SeqCst);
+
+    // Install a catching disposition for SIGCHLD. Its default action is to ignore, so a handler is
+    // required to observe the notification at all.
+    let act: SigAction = SigAction {
+        sa_handler: sigchld_handler_addr(),
+        sa_mask: 0,
+        sa_flags: 0,
+        sa_sigaction: 0,
+    };
+    // SAFETY: `act` is a valid, properly aligned `SigAction`; the old-action pointer is null.
+    unsafe { pm::__kcall_sigaction(as_signum(SIGCHLD)?, &raw const act, ptr::null_mut()) }?;
+
+    // Block SIGCHLD across the reap so the daemon-relayed wait is not interrupted by the very
+    // notification it triggers; the signal stays pending and is observed deterministically below.
+    let bit: SigSet = 1u64 << (SIGCHLD - 1);
+    let mut old: SigSet = 0;
+    // SAFETY: `bit` and `old` point to valid `SigSet` values.
+    unsafe { pm::__kcall_sigprocmask(SIG_BLOCK, &raw const bit, &raw mut old) }?;
+
+    let child: ProcessIdentifier = spawn_exiting_child()?;
+
+    // Reap the child with a blocking wait. SIGCHLD is blocked, so the wait completes cleanly with
+    // the child collected rather than being interrupted by the notification its exit generates.
+    let mut status: c_int = 0;
+    // SAFETY: `status` points to a valid `c_int`.
+    let reaped: pid_t = unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, 0) };
+    assert!(
+        reaped == i32::from(child),
+        "waitpid() must reap the exiting child (ret={}, errno={})",
+        reaped,
+        read_errno()
+    );
+    assert!(wifexited(status), "exited child must surface as a normal exit (status={:#x})", status);
+    assert!(
+        wexitstatus(status) == 0,
+        "exited child must report exit status zero (got={})",
+        wexitstatus(status)
+    );
+
+    // The daemon must have posted SIGCHLD to the parent on the child's termination; with the signal
+    // blocked, the notification is pending rather than delivered.
+    let mut pending: SigSet = 0;
+    // SAFETY: `pending` points to a valid `SigSet`.
+    unsafe { pm::__kcall_sigpending(&raw mut pending) }?;
+    assert!(
+        pending & bit != 0,
+        "SIGCHLD must be pending on the parent after its child's termination (pending={:#x})",
+        pending
+    );
+
+    // Unblocking delivers the pending notification at this call's return-to-user boundary, running
+    // the handler.
+    // SAFETY: `old` points to a valid `SigSet`; the old-mask output is not requested.
+    unsafe { pm::__kcall_sigprocmask(SIG_SETMASK, &raw const old, ptr::null_mut()) }?;
+    assert!(
+        SIGCHLD_COUNT.load(Ordering::SeqCst) >= 1,
+        "unblocking a pending SIGCHLD must deliver it to the parent"
+    );
+
+    // Restore the default disposition so later code in this process is unaffected.
+    let restore: SigAction = SigAction {
+        sa_handler: ::sys::pm::SIG_DFL,
+        sa_mask: 0,
+        sa_flags: 0,
+        sa_sigaction: 0,
+    };
+    // SAFETY: `restore` is a valid, properly aligned `SigAction`; the old-action pointer is null.
+    unsafe { pm::__kcall_sigaction(as_signum(SIGCHLD)?, &raw const restore, ptr::null_mut()) }?;
+
+    Ok(())
+}
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
@@ -779,5 +1274,10 @@ pub fn run() -> Result<(), Error> {
     test_sigsuspend_returns_after_handler()?;
     test_sigsuspend_delivers_pending_unblocked_signal()?;
     test_sigpending_reports_blocked_pending()?;
+    test_sigstop_stops_and_sigcont_resumes()?;
+    test_sigstop_is_uncatchable()?;
+    test_caught_sigcont_continues_and_runs_handler()?;
+    test_fork_inherits_signal_state()?;
+    test_sigchld_delivered_on_child_exit()?;
     Ok(())
 }
