@@ -21,6 +21,7 @@ libc_inttypes = { workspace = true }
 libc_langinfo = { workspace = true }
 libc_libgen = { workspace = true }
 libc_locale = { workspace = true }
+libc_mntent = { workspace = true }
 libc_regex = { workspace = true }
 # NOTE: the math routines (`libc_math`) are deliberately NOT pulled in here — they
 # are shipped as the separate `libm.a` archive (the `nanvix_libm` crate), mirroring
