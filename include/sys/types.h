@@ -50,6 +50,8 @@ typedef int ssize_t;
 /* File-system and process types. */
 typedef long long blkcnt_t;          /**< File block counts.              */
 typedef long long blksize_t;         /**< Block sizes.                    */
+typedef unsigned long fsblkcnt_t;    /**< File-system block counts.       */
+typedef unsigned long fsfilcnt_t;    /**< File-system file counts.        */
 typedef unsigned long long dev_t;    /**< Device IDs.                     */
 typedef unsigned int gid_t;          /**< Group IDs.                      */
 typedef unsigned long long ino_t;    /**< File serial numbers.            */

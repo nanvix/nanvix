@@ -519,3 +519,38 @@ pub unsafe extern "C" fn glob(
 pub unsafe extern "C" fn globfree(_pglob: *mut c_void) {
     ::syslog::debug!("globfree(): not implemented");
 }
+
+///
+/// # Description
+///
+/// Retrieves file-system statistics for the file system that contains the open file
+/// referred to by `fd` and stores them in the `statvfs` structure pointed to by `buf`.
+///
+/// # Parameters
+///
+/// - `fd`: An open file descriptor referring to any file within the queried file system.
+/// - `buf`: Pointer to a `struct statvfs` to be filled in on success.
+///
+/// # Returns
+///
+/// On success returns `0` and populates `*buf`. On failure returns `-1` and sets `errno`.
+///
+/// # Notes
+///
+/// This is a dummy implementation that always fails with `ENOSYS` (function not
+/// implemented). It mirrors [`statvfs()`] and exists so that portable software which
+/// references the symbol compiles and links; such callers treat the `-1`/`errno` failure
+/// as "information unavailable". A future implementation should query the backing
+/// file-system daemon.
+///
+/// # Safety
+///
+/// This function is safe to call with any arguments; it ignores `fd` and `buf`.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn fstatvfs(_fd: c_int, _buf: *mut c_void) -> c_int {
+    ::syslog::debug!("fstatvfs(): not implemented");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
+}
