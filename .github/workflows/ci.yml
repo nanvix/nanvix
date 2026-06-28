@@ -397,11 +397,7 @@ jobs:
           '["release"]') }}
         machine-type: [ microvm ]
         deployment-type: [ standalone, single-process, multi-process ]
-        memory-size: ${{ fromJSON(github.event_name == 'pull_request' && '[128]' || '[128, 256]') }}
-        # 256MB images are release-only; exclude them from debug builds.
-        exclude:
-          - build-type: debug
-            memory-size: 256
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -510,6 +506,9 @@ jobs:
       # The CI container runs as root without USER set; nanvixd uses it as
       # fallback tenant-id and fails when the variable is missing.
       USER: root
+      # Single source of truth for the memory size (MB) whose build artifacts
+      # this job consumes. Must match the ci-build matrix memory-size.
+      MEMORY_SIZE: "256"
 
     steps:
       - uses: actions/checkout@v7
@@ -526,6 +525,7 @@ jobs:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
           deployment-type: "${{ matrix.deployment-type }}"
+          memory-size: "${{ env.MEMORY_SIZE }}"
 
       - name: "Integration Test"
         uses: ./.github/actions/integration-test
@@ -715,11 +715,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        memory-size: ${{ fromJSON(github.event_name == 'pull_request' && '[128]' || '[128, 256]') }}
-        # 256MB images are release-only; exclude them from debug builds.
-        exclude:
-          - build-type: debug
-            memory-size: 256
+        memory-size: [ 256 ]
     runs-on: windows-latest
     permissions:
       contents: read
@@ -802,6 +798,10 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+    env:
+      # Single source of truth for the memory size (MB) whose build artifacts
+      # this job consumes. Must match the windows-ci-build matrix memory-size.
+      MEMORY_SIZE: "256"
 
     steps:
       - uses: actions/checkout@v7
@@ -809,7 +809,7 @@ jobs:
       - name: "Download Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-128mb
+          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{ env.MEMORY_SIZE }}mb
           path: bin
 
       - name: "Exclude bin/ from Windows Defender"
@@ -1477,7 +1477,7 @@ jobs:
         target-arch: [ x86 ]
         machine-type: [ microvm ]
         deployment-type: [ standalone, single-process, multi-process ]
-        memory-size: [ 128, 256 ]
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -1542,7 +1542,7 @@ jobs:
       matrix:
         target-arch: [ x86 ]
         machine-type: [ microvm ]
-        memory-size: [ 128, 256 ]
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     permissions:
       contents: read

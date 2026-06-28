@@ -53,7 +53,7 @@ export WHP ?= no
 
 # Memory size in megabytes. Exported as MEMORY_SIZE_BYTES for build.rs scripts.
 # Example: make all MEMORY_SIZE=256
-export MEMORY_SIZE ?= 128
+export MEMORY_SIZE ?= 256
 
 #===================================================================================================
 # OS Detection
