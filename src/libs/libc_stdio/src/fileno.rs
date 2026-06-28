@@ -42,3 +42,31 @@ pub unsafe extern "C" fn fileno(stream: *mut FILE) -> c_int {
 
     (*stream).fd
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`fileno`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`fileno`].
+///
+/// # Parameters
+///
+/// - `stream`: Pointer to the target [`FILE`] stream.
+///
+/// # Returns
+///
+/// The integer file descriptor associated with `stream`, or `-1` on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `stream` points to a valid, open [`FILE`] structure.
+///
+/// # References
+///
+/// - <https://man7.org/linux/man-pages/man3/unlocked_stdio.3.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn fileno_unlocked(stream: *mut FILE) -> c_int {
+    fileno(stream)
+}

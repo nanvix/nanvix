@@ -66,3 +66,61 @@ pub unsafe extern "C" fn fputc(c: c_int, stream: *mut FILE) -> c_int {
         byte as c_int
     }
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`fputc`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`fputc`].
+///
+/// # Parameters
+///
+/// - `c`: The character to write, passed as a [`c_int`].
+/// - `stream`: Pointer to the target [`FILE`] stream.
+///
+/// # Returns
+///
+/// The character written as an `unsigned char` cast to [`c_int`], or `EOF` (`-1`) on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `stream` points to a valid, open [`FILE`] structure.
+///
+/// # References
+///
+/// - <https://man7.org/linux/man-pages/man3/unlocked_stdio.3.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn fputc_unlocked(c: c_int, stream: *mut FILE) -> c_int {
+    fputc(c, stream)
+}
+
+///
+/// # Description
+///
+/// Non-locking variant of `putc`, equivalent to [`fputc`]. Nanvix streams are single-threaded,
+/// so locking is unnecessary.
+///
+/// # Parameters
+///
+/// - `c`: The character to write, passed as a [`c_int`].
+/// - `stream`: Pointer to the target [`FILE`] stream.
+///
+/// # Returns
+///
+/// The character written as an `unsigned char` cast to [`c_int`], or `EOF` (`-1`) on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `stream` points to a valid, open [`FILE`] structure.
+///
+/// # References
+///
+/// - <https://pubs.opengroup.org/onlinepubs/9799919799/functions/putc_unlocked.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn putc_unlocked(c: c_int, stream: *mut FILE) -> c_int {
+    fputc(c, stream)
+}

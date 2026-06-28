@@ -42,3 +42,31 @@ pub unsafe extern "C" fn ferror(stream: *mut FILE) -> c_int {
 
     (*stream).error
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`ferror`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`ferror`].
+///
+/// # Parameters
+///
+/// - `stream`: Pointer to the target [`FILE`] stream.
+///
+/// # Returns
+///
+/// Non-zero if the error indicator is set for `stream`, otherwise zero.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `stream` points to a valid, open [`FILE`] structure.
+///
+/// # References
+///
+/// - <https://man7.org/linux/man-pages/man3/unlocked_stdio.3.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn ferror_unlocked(stream: *mut FILE) -> c_int {
+    ferror(stream)
+}

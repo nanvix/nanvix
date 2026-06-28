@@ -35,3 +35,27 @@ pub unsafe extern "C" fn getchar() -> c_int {
     // SAFETY: stdin() returns a valid pointer to the standard input FILE.
     unsafe { crate::fgetc::fgetc(crate::stdin()) }
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`getchar`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`getchar`].
+///
+/// # Returns
+///
+/// The next character from standard input as an `unsigned char` promoted to [`c_int`], or
+/// `EOF` (`-1`) on end-of-file or error.
+///
+/// # Safety
+///
+/// This function is unsafe because it accesses the global standard input stream.
+///
+/// # References
+///
+/// - <https://pubs.opengroup.org/onlinepubs/9799919799/functions/getchar_unlocked.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn getchar_unlocked() -> c_int {
+    getchar()
+}

@@ -64,3 +64,30 @@ pub unsafe extern "C" fn putchar(c: c_int) -> c_int {
         byte as c_int
     }
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`putchar`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`putchar`].
+///
+/// # Parameters
+///
+/// - `c`: The character to write, passed as a [`c_int`].
+///
+/// # Returns
+///
+/// The character written as an `unsigned char` cast to [`c_int`], or `EOF` (`-1`) on error.
+///
+/// # Safety
+///
+/// This function is unsafe because it accesses the global standard output stream.
+///
+/// # References
+///
+/// - <https://pubs.opengroup.org/onlinepubs/9799919799/functions/putchar_unlocked.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn putchar_unlocked(c: c_int) -> c_int {
+    putchar(c)
+}

@@ -71,3 +71,37 @@ pub unsafe extern "C" fn fgets(s: *mut c_char, size: c_int, stream: *mut FILE) -
     *s.add(i) = 0;
     s
 }
+
+///
+/// # Description
+///
+/// Non-locking variant of [`fgets`]. Nanvix streams are single-threaded, so this is exactly
+/// equivalent to [`fgets`].
+///
+/// # Parameters
+///
+/// - `s`: Destination buffer.
+/// - `size`: Maximum number of bytes to store, including the terminating NUL.
+/// - `stream`: Pointer to the source [`FILE`] stream.
+///
+/// # Returns
+///
+/// `s` on success, or a null pointer on end-of-file (with no characters read) or error.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointers. The caller must ensure that
+/// `s` points to a buffer of at least `size` bytes and that `stream` is a valid [`FILE`].
+///
+/// # References
+///
+/// - <https://man7.org/linux/man-pages/man3/unlocked_stdio.3.html>
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn fgets_unlocked(
+    s: *mut c_char,
+    size: c_int,
+    stream: *mut FILE,
+) -> *mut c_char {
+    fgets(s, size, stream)
+}
