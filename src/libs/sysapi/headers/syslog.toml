@@ -10,7 +10,7 @@ Nanvix has no system log daemon in standalone mode, so these routines are
 no-ops; the definitions exist so that ports referencing them compile and link.'''
 guard = "_NANVIX_SYSLOG_H"
 scan_crates = ["nanvix_libc"]
-content_order = ["raw:0", "raw:1", "raw:2", "section:0"]
+content_order = ["raw:0", "raw:1", "raw:2", "raw:3", "section:0"]
 
 [[raw_sections]]
 title = "Options (openlog)"
@@ -32,7 +32,23 @@ text = '''
 #define LOG_AUTH (4 << 3)
 #define LOG_SYSLOG (5 << 3)
 #define LOG_LPR (6 << 3)
-#define LOG_LOCAL0 (16 << 3)'''
+#define LOG_NEWS (7 << 3)
+#define LOG_UUCP (8 << 3)
+#define LOG_CRON (9 << 3)
+#define LOG_AUTHPRIV (10 << 3)
+#define LOG_FTP (11 << 3)
+#define LOG_LOCAL0 (16 << 3)
+#define LOG_LOCAL1 (17 << 3)
+#define LOG_LOCAL2 (18 << 3)
+#define LOG_LOCAL3 (19 << 3)
+#define LOG_LOCAL4 (20 << 3)
+#define LOG_LOCAL5 (21 << 3)
+#define LOG_LOCAL6 (22 << 3)
+#define LOG_LOCAL7 (23 << 3)
+
+#define LOG_NFACILITIES 24
+#define LOG_FACMASK 0x03f8
+#define LOG_FAC(p) (((p) & LOG_FACMASK) >> 3)'''
 
 [[raw_sections]]
 title = "Priorities"
@@ -46,8 +62,70 @@ text = '''
 #define LOG_INFO 6
 #define LOG_DEBUG 7
 
+#define LOG_PRIMASK 0x07
+#define LOG_PRI(p) ((p) & LOG_PRIMASK)
+#define LOG_MAKEPRI(fac, pri) ((fac) | (pri))
+
 #define LOG_MASK(pri) (1 << (pri))
 #define LOG_UPTO(pri) ((1 << ((pri) + 1)) - 1)'''
+
+# Optional priority/facility name tables, defined only in a translation unit that
+# requests them via `#define SYSLOG_NAMES` (classic BSD <syslog.h> contract). The
+# arrays are real definitions, so exactly one TU per program may enable them.
+[[raw_sections]]
+title = "Priority and facility name tables (SYSLOG_NAMES)"
+text = '''
+#ifdef SYSLOG_NAMES
+#define INTERNAL_NOPRI 0x10
+#define INTERNAL_MARK (LOG_NFACILITIES << 3)
+
+typedef struct _code {
+    const char *c_name;
+    int c_val;
+} CODE;
+
+CODE prioritynames[] = {
+    { "alert", LOG_ALERT },
+    { "crit", LOG_CRIT },
+    { "debug", LOG_DEBUG },
+    { "emerg", LOG_EMERG },
+    { "err", LOG_ERR },
+    { "error", LOG_ERR },
+    { "info", LOG_INFO },
+    { "none", INTERNAL_NOPRI },
+    { "notice", LOG_NOTICE },
+    { "panic", LOG_EMERG },
+    { "warn", LOG_WARNING },
+    { "warning", LOG_WARNING },
+    { (const char *)0, -1 }
+};
+
+CODE facilitynames[] = {
+    { "auth", LOG_AUTH },
+    { "authpriv", LOG_AUTHPRIV },
+    { "cron", LOG_CRON },
+    { "daemon", LOG_DAEMON },
+    { "ftp", LOG_FTP },
+    { "kern", LOG_KERN },
+    { "lpr", LOG_LPR },
+    { "mail", LOG_MAIL },
+    { "mark", INTERNAL_MARK },
+    { "news", LOG_NEWS },
+    { "security", LOG_AUTH },
+    { "syslog", LOG_SYSLOG },
+    { "user", LOG_USER },
+    { "uucp", LOG_UUCP },
+    { "local0", LOG_LOCAL0 },
+    { "local1", LOG_LOCAL1 },
+    { "local2", LOG_LOCAL2 },
+    { "local3", LOG_LOCAL3 },
+    { "local4", LOG_LOCAL4 },
+    { "local5", LOG_LOCAL5 },
+    { "local6", LOG_LOCAL6 },
+    { "local7", LOG_LOCAL7 },
+    { (const char *)0, -1 }
+};
+#endif /* SYSLOG_NAMES */'''
 
 [[sections]]
 title = "Functions"
