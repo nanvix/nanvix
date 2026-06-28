@@ -1,0 +1,44 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for glob.h.
+
+file = "glob.h"
+brief = "Pathname pattern matching."
+description = '''
+Declares the glob()/globfree() interfaces and the glob_t result structure.
+Nanvix does not yet implement pathname globbing, so the backing glob() always
+reports GLOB_NOMATCH; the declarations exist so that portable software (notably
+the hush shell) compiles and links.'''
+includes = ["stddef.h"]
+guard = "_NANVIX_GLOB_H"
+content_order = ["raw:0"]
+
+[[raw_sections]]
+title = "Pathname Pattern Matching"
+text = '''
+/** @brief Result of a glob() call. */
+typedef struct {
+    size_t gl_pathc;  /**< Count of paths matched by pattern. */
+    char **gl_pathv;  /**< Null-terminated list of matched pathnames. */
+    size_t gl_offs;   /**< Reserved slots at the start of gl_pathv. */
+} glob_t;
+
+/* Flags for the glob() flags argument. */
+#define GLOB_ERR      0x0001 /**< Return on read errors. */
+#define GLOB_MARK     0x0002 /**< Append a slash to matched directories. */
+#define GLOB_NOSORT   0x0004 /**< Do not sort the matched pathnames. */
+#define GLOB_DOOFFS   0x0008 /**< Reserve gl_offs slots at the start. */
+#define GLOB_NOCHECK  0x0010 /**< Return the pattern itself on no match. */
+#define GLOB_APPEND   0x0020 /**< Append matches to an existing gl_pathv. */
+#define GLOB_NOESCAPE 0x0040 /**< Backslashes do not quote metacharacters. */
+
+/* Error returns from glob(). */
+#define GLOB_NOSPACE 1 /**< Ran out of memory. */
+#define GLOB_ABORTED 2 /**< Read error. */
+#define GLOB_NOMATCH 3 /**< No matches found. */
+#define GLOB_NOSYS   4 /**< Not implemented. */
+
+extern int glob(const char *pattern, int flags,
+                int (*errfunc)(const char *epath, int eerrno), glob_t *pglob);
+extern void globfree(glob_t *pglob);'''
