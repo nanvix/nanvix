@@ -1,0 +1,27 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for sys/sysmacros.h.
+
+file = "sys/sysmacros.h"
+brief = "Device number macros."
+description = '''
+`major()` and `minor()` extract the major and minor components of a `dev_t`
+device number, and `makedev()` composes one from a major/minor pair.'''
+includes = ["sys/types.h"]
+guard = "_NANVIX_SYS_SYSMACROS_H"
+extern_c = false
+content_order = ["raw:0"]
+
+[[raw_sections]]
+title = ""
+text = '''
+#ifndef major
+#define major(dev) ((unsigned int)(((dev_t)(dev) >> 8) & 0xffu))
+#endif
+#ifndef minor
+#define minor(dev) ((unsigned int)((dev_t)(dev) & 0xffu))
+#endif
+#ifndef makedev
+#define makedev(maj, min) ((dev_t)(((((dev_t)(maj)) & 0xffu) << 8) | (((dev_t)(min)) & 0xffu)))
+#endif'''
