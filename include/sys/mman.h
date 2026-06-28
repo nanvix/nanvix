@@ -33,6 +33,9 @@ extern "C" {
 #define MAP_PRIVATE 0x02 /**< Changes are private. */
 #define MAP_FIXED 0x10 /**< Interpret the address exactly. */
 #define MAP_ANONYMOUS 0x20 /**< Anonymous mapping (not backed by a file). */
+#define MS_ASYNC 0x1 /**< Perform asynchronous writes. */
+#define MS_INVALIDATE 0x2 /**< Invalidate cached copies of mapped data. */
+#define MS_SYNC 0x4 /**< Perform synchronous writes. */
 
 /** @brief Returned by mmap() on failure. */
 #define MAP_FAILED ((void *)-1)
@@ -56,6 +59,12 @@ extern int mprotect(void *addr, size_t length, int prot);
 
 extern int mlock(const void *addr, size_t len);
 extern int munlock(const void *addr, size_t len);
+
+/*==================================================================================================
+ * Memory Synchronization
+ *==================================================================================================*/
+
+extern int msync(void *addr, size_t length, int flags);
 
 #ifdef __cplusplus
 }

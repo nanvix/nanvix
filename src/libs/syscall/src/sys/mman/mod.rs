@@ -34,6 +34,7 @@ cfg_if::cfg_if! {
             mmap::mmap,
             mmap_reserve,
             mprotect::mprotect,
+            msync::msync,
             munlock::munlock,
             munmap::munmap,
         };
