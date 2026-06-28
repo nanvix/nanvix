@@ -66,16 +66,23 @@ GUEST_STATICLIB_FEATURES_nanvix_libm := $(strip $(GUEST_STATICLIB_FEATURES_nanvi
 
 # posix is the standalone Nanvix syscall backend (libposix.a), shipped for
 # out-of-tree C consumers that link it alongside their own libc. It takes an
-# EXPLICIT feature override — identical to the default `$(LOG_LEVEL) [+ standalone]`
-# set, and KEEPING posix's defaults (`syscall allocator c-main`; no
-# `--no-default-features`) — for ONE reason: to force posix into the per-package
-# build group so its `libposix.a` is compiled on its OWN, separately from
-# `nanvix_libc`. `nanvix_libc` depends on `posix` with `init-array`; a combined
-# `cargo build -p posix -p nanvix_libc` would unify features and bake
-# `init-array` into `libposix.a`, imposing a `.preinit/.init/.fini_array`
-# linker-script contract on those out-of-tree consumers. Building posix alone
-# keeps `libposix.a` on the legacy `_init`/`_fini` contract, exactly as before.
-GUEST_STATICLIB_FEATURES_posix := $(GUEST_STATICLIB_FEATURES)
+# EXPLICIT feature override — the default `$(LOG_LEVEL) [+ standalone]` set (KEEPING
+# posix's defaults `syscall allocator c-main`; no `--no-default-features`) plus
+# `newlib-compat` — for two reasons:
+#
+#   1. To force posix into the per-package build group so its `libposix.a` is
+#      compiled on its OWN, separately from `nanvix_libc`. `nanvix_libc` depends
+#      on `posix` with `init-array`; a combined `cargo build -p posix -p
+#      nanvix_libc` would unify features and bake `init-array` into `libposix.a`,
+#      imposing a `.preinit/.init/.fini_array` linker-script contract on those
+#      out-of-tree consumers. Building posix alone keeps `libposix.a` on the
+#      legacy `_init`/`_fini` contract, exactly as before.
+#   2. `newlib-compat` surfaces the syscall-backed `sigaction` / `sigprocmask`
+#      that Newlib-linked ports (e.g. xz) need from `libposix.a`. It is scoped to
+#      THIS standalone build on purpose: the `nanvix_libc` bundle (`libc.a`)
+#      already defines those symbols (via `nanvix_libc` / `libc_signal`), so
+#      enabling them in the bundle's embedded posix too would duplicate them.
+GUEST_STATICLIB_FEATURES_posix := $(GUEST_STATICLIB_FEATURES) newlib-compat
 GUEST_STATICLIB_FEATURES_posix := $(strip $(GUEST_STATICLIB_FEATURES_posix))
 
 # Returns the cargo `--features "..."` arg for the given package, falling

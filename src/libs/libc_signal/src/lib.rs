@@ -30,6 +30,7 @@
 // Modules
 //==================================================================================================
 
+pub mod killpg;
 pub mod raise;
 pub mod signal;
 pub mod sigpending;

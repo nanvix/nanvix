@@ -137,6 +137,7 @@ struct sigaction {
 extern sighandler_t signal(int signum, sighandler_t handler);
 extern int raise(int sig);
 extern int kill(pid_t pid, int sig);
+extern int killpg(pid_t pgrp, int sig);
 
 /*==================================================================================================
  * Signal Set Functions
@@ -144,6 +145,7 @@ extern int kill(pid_t pid, int sig);
 
 extern int sigemptyset(sigset_t *set);
 extern int sigfillset(sigset_t *set);
+extern int sigisemptyset(const sigset_t *set);
 extern int sigaddset(sigset_t *set, int signum);
 extern int sigdelset(sigset_t *set, int signum);
 extern int sigismember(const sigset_t *set, int signum);

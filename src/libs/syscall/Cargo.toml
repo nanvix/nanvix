@@ -66,8 +66,9 @@ rustc-dep-of-std = [
 ]
 standalone = ["dep:sysalloc", "dep:proc"]
 
-# TODO (#798): remove this feature flag once the signal module is stable.
+# TODO (#798): remove these feature flags once the signal module is stable.
 sigaction = []
+signal = ["sigaction"]
 
 # Logging
 error = ["syslog/error"]

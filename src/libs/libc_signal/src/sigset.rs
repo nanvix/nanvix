@@ -83,6 +83,37 @@ pub unsafe extern "C" fn sigfillset(set: *mut sigset_t) -> c_int {
 ///
 /// # Description
 ///
+/// Tests whether a signal set is empty (GNU extension).
+///
+/// # Parameters
+///
+/// - `set`: Pointer to the signal set to test.
+///
+/// # Returns
+///
+/// `1` if the set is empty, `0` if it contains at least one signal, or `-1` if `set` is null.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences the raw pointer `set`.
+///
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn sigisemptyset(set: *const sigset_t) -> c_int {
+    if set.is_null() {
+        // POSIX: EFAULT when `set` points to invalid memory.
+        set_errno(EFAULT);
+        return -1;
+    }
+    if *set == 0 {
+        1
+    } else {
+        0
+    }
+}
+
+///
+/// # Description
+///
 /// Adds the specified signal to the signal set.
 ///
 /// # Parameters
@@ -215,6 +246,21 @@ mod test {
     }
 
     #[test]
+    fn test_sigisemptyset() {
+        let mut set: sigset_t = 0;
+        assert_eq!(unsafe { sigemptyset(&mut set) }, 0);
+        assert_eq!(unsafe { sigisemptyset(&set) }, 1);
+
+        // A set with any signal is not empty.
+        assert_eq!(unsafe { sigaddset(&mut set, 1) }, 0);
+        assert_eq!(unsafe { sigisemptyset(&set) }, 0);
+
+        // A full set is not empty.
+        assert_eq!(unsafe { sigfillset(&mut set) }, 0);
+        assert_eq!(unsafe { sigisemptyset(&set) }, 0);
+    }
+
+    #[test]
     fn test_sigaddset_and_sigismember() {
         let mut set: sigset_t = 0;
         assert_eq!(unsafe { sigemptyset(&mut set) }, 0);
@@ -254,6 +300,7 @@ mod test {
     fn test_sigset_null_pointer() {
         assert_eq!(unsafe { sigemptyset(core::ptr::null_mut()) }, -1);
         assert_eq!(unsafe { sigfillset(core::ptr::null_mut()) }, -1);
+        assert_eq!(unsafe { sigisemptyset(core::ptr::null()) }, -1);
         assert_eq!(unsafe { sigaddset(core::ptr::null_mut(), 1) }, -1);
         assert_eq!(unsafe { sigdelset(core::ptr::null_mut(), 1) }, -1);
         assert_eq!(unsafe { sigismember(core::ptr::null(), 1) }, -1);
