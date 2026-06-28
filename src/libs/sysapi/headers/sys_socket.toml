@@ -53,6 +53,12 @@ text = '''
 #define AF_UNIX 1 /**< UNIX domain sockets. */
 #define AF_INET 2 /**< Internet domain sockets (IPv4). */
 #define AF_INET6 10 /**< Internet domain sockets (IPv6). */
+#define AF_LOCAL AF_UNIX /**< Synonym for AF_UNIX. */
+#define PF_UNSPEC AF_UNSPEC /**< Unspecified protocol family. */
+#define PF_UNIX AF_UNIX /**< UNIX domain protocol family. */
+#define PF_LOCAL AF_LOCAL /**< Synonym for PF_UNIX. */
+#define PF_INET AF_INET /**< Internet protocol family (IPv4). */
+#define PF_INET6 AF_INET6 /**< Internet protocol family (IPv6). */
 #define SOCK_STREAM 1 /**< Sequenced, reliable, connection-mode byte streams. */
 #define SOCK_DGRAM 2 /**< Connectionless, unreliable datagrams. */
 #define SOCK_RAW 3 /**< Raw protocol interface. */
