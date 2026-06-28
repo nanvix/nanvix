@@ -88,6 +88,8 @@ pub mod file_status_flags {
     pub const O_SYNC: c_int = 0x2000;
     /// Non-blocking mode.
     pub const O_NONBLOCK: c_int = 0x4000;
+    /// Non-blocking mode (legacy alias).
+    pub const O_NDELAY: c_int = O_NONBLOCK;
 }
 
 /// Constants to be used with `*at()`.
