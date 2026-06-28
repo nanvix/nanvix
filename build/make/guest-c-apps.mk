@@ -32,10 +32,10 @@ GUEST_C_APP_CC := clang --target=i686-unknown-none
 #
 # Use -nostdinc for maximal isolation: it drops BOTH the host system include
 # paths and the compiler's builtin resource-directory headers. The freestanding
-# headers normally supplied by the compiler (stddef.h, stdarg.h, stdint.h,
-# stdbool.h) are vendored in-tree under include/, so the build is hermetic and
-# does not depend on the compiler's resource directory (which clang 18 omits
-# under -nostdinc on both Linux and Windows).
+# headers normally supplied by the compiler (stdalign.h, stdarg.h, stdbool.h,
+# stddef.h, stdint.h) are vendored in-tree under include/, so the build is
+# hermetic and does not depend on the compiler's resource directory (which clang
+# 18 omits under -nostdinc on both Linux and Windows).
 GUEST_C_APP_CFLAGS := -m32 -march=pentiumpro -ffreestanding -nostdinc -std=c17
 GUEST_C_APP_CFLAGS += -isystem $(ROOT_DIR)/include
 ifeq ($(RELEASE),yes)
