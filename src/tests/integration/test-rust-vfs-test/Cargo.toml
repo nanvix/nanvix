@@ -1,0 +1,41 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "test-rust-vfs-test"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Validation tests for the VFS layer"
+homepage.workspace = true
+
+[[bin]]
+name = "test-rust-vfs-test"
+
+[dependencies]
+vfs = { workspace = true }
+libc_string = { workspace = true }
+nvx = { workspace = true }
+nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
+sysalloc = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+sysapi = { workspace = true }
+syslog = { workspace = true, default-features = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
+
+[features]
+default = ["panic"]
+trace = ["nvx/trace", "syslog/trace", "nvx-crt0/trace"]
+debug = ["nvx/debug", "syslog/debug", "nvx-crt0/debug"]
+info = ["nvx/info", "syslog/info", "nvx-crt0/info"]
+warn = ["nvx/warn", "syslog/warn", "nvx-crt0/warn"]
+error = ["nvx/error", "syslog/error", "nvx-crt0/error"]
+panic = ["nvx/panic", "syslog/panic", "nvx-crt0/panic"]
+
+[lints]
+workspace = true

@@ -81,9 +81,9 @@ override it:
 .\z.ps1 run -- -program bin\hello-rust-nostd.elf
 ```
 
-| Option              | Default                       | Description                |
-| ------------------- | ----------------------------- | -------------------------- |
-| `-program <path>`   | `bin/hello-rust-nostd.elf`    | Path to the guest binary.  |
+| Option            | Default                    | Description               |
+| ----------------- | -------------------------- | ------------------------- |
+| `-program <path>` | `bin/hello-rust-nostd.elf` | Path to the guest binary. |
 
 ## Running nanvixd Directly
 
@@ -99,7 +99,7 @@ By default, networking system calls from the guest are blocked. To allow the gue
 host network stack, pass `-allow-host-networking`:
 
 ```powershell
-.\bin\nanvixd.exe -allow-host-networking -- .\bin\network-rust.elf
+.\bin\nanvixd.exe -allow-host-networking -- .\bin\test-rust-network.elf
 ```
 
 ### Mounting a Host Directory
@@ -107,7 +107,7 @@ host network stack, pass `-allow-host-networking`:
 To make a host directory accessible to the guest at `/mnt`, use the `-mount` flag:
 
 ```powershell
-.\bin\nanvixd.exe -mount C:\path\to\shared\dir -- .\bin\file-rust.elf
+.\bin\nanvixd.exe -mount C:\path\to\shared\dir -- .\bin\test-rust-file.elf
 ```
 
 The guest can then read and write files under `/mnt/` which map to the host directory.
@@ -228,24 +228,24 @@ For low-level debugging, you can bypass `nanvixd` and run the UserVM directly:
 
 Optional flags:
 
-| Flag                        | Description                                                             |
-| --------------------------- | ----------------------------------------------------------------------- |
-| `-stderr <file>`            | Redirect guest stderr to a file instead of host stderr.                 |
-| `-initrd_args <args>`       | Arguments forwarded to the initrd payload.                              |
-| `-kernel-args <args>`       | Kernel arguments written to guest control registers (see below).        |
-| `-ramfs <file>`             | Path to a RAM filesystem image exposed to the guest.                    |
-| `-user-vm-id <id>`          | VM identifier (defaults to `0` in standalone mode).                     |
-| `-log-to-file`              | Write logs to files instead of stdout.                                  |
-| `-log-dir <dir>`            | Directory for log files (used with `-log-to-file`).                     |
-| `-allow-host-networking`    | Enable host networking for the guest (disabled when omitted).           |
+| Flag                     | Description                                                      |
+| ------------------------ | ---------------------------------------------------------------- |
+| `-stderr <file>`         | Redirect guest stderr to a file instead of host stderr.          |
+| `-initrd_args <args>`    | Arguments forwarded to the initrd payload.                       |
+| `-kernel-args <args>`    | Kernel arguments written to guest control registers (see below). |
+| `-ramfs <file>`          | Path to a RAM filesystem image exposed to the guest.             |
+| `-user-vm-id <id>`       | VM identifier (defaults to `0` in standalone mode).              |
+| `-log-to-file`           | Write logs to files instead of stdout.                           |
+| `-log-dir <dir>`         | Directory for log files (used with `-log-to-file`).              |
+| `-allow-host-networking` | Enable host networking for the guest (disabled when omitted).    |
 
 ### Recognised Kernel Arguments
 
 The `-kernel-args` flag accepts a space-separated list of tokens:
 
-| Token      | Description                                                                              |
-| ---------- | ---------------------------------------------------------------------------------------- |
-| `snapshot` | Allow the guest to take exactly one VM snapshot via the `snapshot` kernel call.           |
+| Token      | Description                                                                     |
+| ---------- | ------------------------------------------------------------------------------- |
+| `snapshot` | Allow the guest to take exactly one VM snapshot via the `snapshot` kernel call. |
 
 Example:
 

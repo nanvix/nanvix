@@ -403,21 +403,21 @@ ALL_GUEST_BENCHMARKS := \
 	vfs-bench-nostd mount-bench-nostd
 ALL_GUEST_APPLICATIONS := hello-rust-nostd
 ALL_GUEST_TESTS := \
-	testd file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall \
-	waitpid-rust kill-rust setenv-rust thread-rust stress-rust test-kernel test-mmio-fault \
-	linux-app arch-rust vfs-test misc-rust memory-rust network-rust \
-	c-bindings-rust mount-test mount-multipart-test cmdline-len-rust \
-	env-rust-nostd cmdline-env-rust-nostd snapshot-test execv-test execv-target \
-	execv-big-target pipe-dup2-rust fork-exec-vfsd-test fork-exec-vfsd-target \
-	fork-exec-write-test fork-exec-write-target thread-vfs-test \
-	fork-exec-loop-test fork-exec-loop-target socket-fork-rust \
-	fork-exec-pipe-bulk-test fork-exec-pipe-bulk-target \
-	fork-exec-pipe-loop-test fork-exec-pipe-loop-target \
-	fork-exec-argv-space-test fork-exec-argv-space-target
+	test-rust-testd test-rust-file test-rust-fork-guestfs test-rust-fork-hostfs test-rust-fork-kcall \
+	test-rust-waitpid test-rust-kill test-rust-setenv test-rust-thread test-rust-stress test-rust-kernel test-rust-mmio-fault \
+	test-rust-linux-app test-rust-arch test-rust-vfs-test test-rust-misc test-rust-memory test-rust-network \
+	test-rust-c-bindings test-rust-mount-test test-rust-mount-multipart-test test-rust-cmdline-len \
+	test-rust-env-nostd test-rust-cmdline-env-nostd test-rust-snapshot-test test-rust-execv-test test-rust-execv-target \
+	test-rust-execv-big-target test-rust-pipe-dup2 test-rust-fork-exec-vfsd-test test-rust-fork-exec-vfsd-target \
+	test-rust-fork-exec-write-test test-rust-fork-exec-write-target test-rust-thread-vfs-test \
+	test-rust-fork-exec-loop-test test-rust-fork-exec-loop-target test-rust-socket-fork \
+	test-rust-fork-exec-pipe-bulk-test test-rust-fork-exec-pipe-bulk-target \
+	test-rust-fork-exec-pipe-loop-test test-rust-fork-exec-pipe-loop-target \
+	test-rust-fork-exec-argv-space-test test-rust-fork-exec-argv-space-target
 # dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
 # relocation model produces R_X86_64_32 relocations incompatible with PIE.
 ifneq ($(TARGET),x86_64)
-ALL_GUEST_TESTS += dlfcn-rust
+ALL_GUEST_TESTS += test-rust-dlfcn
 endif
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
@@ -430,7 +430,7 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 # guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
 # (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner
 # is gated on TARGET=x86 accordingly.
-ALL_POSIX_TESTS := c-bindings ctor-c dlfcn-c dlfcn-diamond-c dlfcn-global-c dlfcn-init-runpath-c dlfcn-needed-c dlfcn-pie-c dlfcn-weak-c echo-c file-c fork-pid-c fork-pthread-c hello-c libgen-c memory-c misc-c network-c noop-c regex-c setjmp-c stdio-c thread-c
+ALL_POSIX_TESTS := test-c-bindings test-c-ctor test-c-dlfcn test-c-dlfcn-diamond test-c-dlfcn-global test-c-dlfcn-init-runpath test-c-dlfcn-needed test-c-dlfcn-pie test-c-dlfcn-weak test-c-echo test-c-file test-c-fork-pid test-c-fork-pthread test-c-hello test-c-libgen test-c-memory test-c-misc test-c-network test-c-noop test-c-regex test-c-setjmp test-c-stdio test-c-thread
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
@@ -985,19 +985,19 @@ image: all-nanvix
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
 		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT)\;vfsd \
-		$(BINARIES_DIR)/testd.$(EXEC_FORMAT)\;testd
+		$(BINARIES_DIR)/test-rust-testd.$(EXEC_FORMAT)\;testd
 
 image-clean:
 	$(RM_CMD) $(IMAGE)
 
 # Standalone tests that do NOT require daemons (run as bare .elf binaries).
-STANDALONE_NO_DAEMON_TESTS := test-kernel
+STANDALONE_NO_DAEMON_TESTS := test-rust-kernel
 
 # Guest binaries that are bundled into a ramfs image rather than launched directly, so they must
 # not have a standalone .initrd of their own. The execv targets are loaded at runtime by
-# execv-test (the small target as `/target` in execv-test.img, the large target as `/target` in
-# execv-big-test.img).
-STANDALONE_RAMFS_ONLY_BINARIES := execv-target execv-big-target fork-exec-vfsd-target fork-exec-write-target fork-exec-loop-target fork-exec-pipe-bulk-target fork-exec-pipe-loop-target fork-exec-argv-space-target
+# test-rust-execv-test (the small target as `/target` in test-rust-execv-test.img, the large target as `/target` in
+# test-rust-execv-big-test.img).
+STANDALONE_RAMFS_ONLY_BINARIES := test-rust-execv-target test-rust-execv-big-target test-rust-fork-exec-vfsd-target test-rust-fork-exec-write-target test-rust-fork-exec-loop-target test-rust-fork-exec-pipe-bulk-target test-rust-fork-exec-pipe-loop-target test-rust-fork-exec-argv-space-target
 
 # Standalone binaries that manage VFS locally and must NOT include vfsd in their
 # .initrd image (vfsd would claim the RAMFS MMIO region before the benchmark).

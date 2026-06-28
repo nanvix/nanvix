@@ -10,22 +10,22 @@ TEST_KERNEL_FEATURES := $(GUEST_BINARY_FEATURES)
 TEST_KERNEL_FEATURES := $(strip $(TEST_KERNEL_FEATURES))
 TEST_KERNEL_CARGO_FEATURES := $(if $(TEST_KERNEL_FEATURES),--features "$(TEST_KERNEL_FEATURES)")
 
-# Package-specific features for misc-rust program.
+# Package-specific features for test-rust-misc program.
 MISC_RUST_FEATURES := $(GUEST_BINARY_FEATURES)
 MISC_RUST_FEATURES := $(strip $(MISC_RUST_FEATURES))
 MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_FEATURES)")
 
 # Guest binaries that support standalone deployment mode.
 STANDALONE_GUEST_BINARIES := \
-	file-rust test-fork-guestfs test-fork-hostfs test-fork-kcall waitpid-rust \
-	kill-rust setenv-rust linux-app thread-rust stress-rust arch-rust mount-test \
-	mount-multipart-test mount-bench-nostd cmdline-len-rust network-rust \
-	execv-test execv-target execv-big-target pipe-dup2-rust fork-exec-vfsd-test \
-	fork-exec-vfsd-target fork-exec-write-test fork-exec-write-target \
-	thread-vfs-test fork-exec-loop-test fork-exec-loop-target socket-fork-rust \
-	fork-exec-pipe-bulk-test fork-exec-pipe-bulk-target \
-	fork-exec-pipe-loop-test fork-exec-pipe-loop-target \
-	fork-exec-argv-space-test fork-exec-argv-space-target
+	test-rust-file test-rust-fork-guestfs test-rust-fork-hostfs test-rust-fork-kcall test-rust-waitpid \
+	test-rust-kill test-rust-setenv test-rust-linux-app test-rust-thread test-rust-stress test-rust-arch test-rust-mount-test \
+	test-rust-mount-multipart-test mount-bench-nostd test-rust-cmdline-len test-rust-network \
+	test-rust-execv-test test-rust-execv-target test-rust-execv-big-target test-rust-pipe-dup2 test-rust-fork-exec-vfsd-test \
+	test-rust-fork-exec-vfsd-target test-rust-fork-exec-write-test test-rust-fork-exec-write-target \
+	test-rust-thread-vfs-test test-rust-fork-exec-loop-test test-rust-fork-exec-loop-target test-rust-socket-fork \
+	test-rust-fork-exec-pipe-bulk-test test-rust-fork-exec-pipe-bulk-target \
+	test-rust-fork-exec-pipe-loop-test test-rust-fork-exec-pipe-loop-target \
+	test-rust-fork-exec-argv-space-test test-rust-fork-exec-argv-space-target
 
 # Computes the cargo features string for a guest binary package.
 # test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
@@ -35,7 +35,7 @@ _standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filte
 _pkg_features = $(strip $(GUEST_BINARY_FEATURES) $(call _standalone_feature,$(1)))
 
 # Returns package-specific cargo features, falling back to generic features.
-GUEST_BINARY_PKG_FEATURES = $(if $(filter test-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(filter misc-rust,$(1)),$(MISC_RUST_CARGO_FEATURES),$(if $(call _pkg_features,$(1)),--features "$(call _pkg_features,$(1))")))
+GUEST_BINARY_PKG_FEATURES = $(if $(filter test-rust-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(filter test-rust-misc,$(1)),$(MISC_RUST_CARGO_FEATURES),$(if $(call _pkg_features,$(1)),--features "$(call _pkg_features,$(1))")))
 
 # Per-package rules retained for direct invocation (e.g., make all-guest-binaries-<pkg>).
 define GUEST_BINARY_RULES
@@ -72,7 +72,7 @@ $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target
 # - c-bindings-rust: built separately to avoid Cargo feature unification masking
 #   missing symbols (it validates that all expected C symbols link without
 #   features contributed by sibling crates like network-rust).
-_GUEST_BINS_COMMON := $(filter-out test-kernel c-bindings-rust,$(ALL_GUEST_BINARIES))
+_GUEST_BINS_COMMON := $(filter-out test-rust-kernel test-rust-c-bindings,$(ALL_GUEST_BINARIES))
 
 ifeq ($(DEPLOYMENT_MODE),standalone)
 _GUEST_BINS_STANDALONE := $(filter $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
@@ -95,11 +95,11 @@ endif
 ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
 	$(GUEST_CARGO_BUILD_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES)
 endif
-ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_BUILD_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES)
+ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_BUILD_CMD) -p test-rust-kernel $(TEST_KERNEL_CARGO_FEATURES)
 endif
-ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_BUILD_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES)
+ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_BUILD_CMD) -p test-rust-c-bindings $(GUEST_BINARY_CARGO_FEATURES)
 endif
 	@for pkg in $(ALL_GUEST_BINARIES); do \
 		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$$pkg.elf $(BINARIES_DIR)/$$pkg.elf; \
@@ -109,8 +109,8 @@ endif
 # unreliable after a bin/ clean. Re-copy from the build output directory.
 # Multiple stale build hash directories may exist; pick the most recently
 # modified image to avoid copying an outdated artifact.
-	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-test-*/out/test.img 2>/dev/null | head -n1); \
-		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/vfs-test.img; fi
+	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/test-rust-vfs-test-*/out/test.img 2>/dev/null | head -n1); \
+		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/test-rust-vfs-test.img; fi
 	@newest=$$(ls -t $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/build/vfs-bench-nostd-*/out/$(VFS_BENCH_IMG) 2>/dev/null | head -n1); \
 		if [ -n "$$newest" ]; then $(CP_CMD) "$$newest" $(BINARIES_DIR)/$(VFS_BENCH_IMG); fi
 # Reset mount-test-data so that subsequent test runs always start with pristine input.
@@ -131,11 +131,11 @@ endif
 ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
 	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES)
 endif
-ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
-	@$(GUEST_CARGO_CHECK_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES)
+ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
+	@$(GUEST_CARGO_CHECK_CMD) -p test-rust-kernel $(TEST_KERNEL_CARGO_FEATURES)
 endif
-ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
-	@$(GUEST_CARGO_CHECK_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES)
+ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
+	@$(GUEST_CARGO_CHECK_CMD) -p test-rust-c-bindings $(GUEST_BINARY_CARGO_FEATURES)
 endif
 
 # Batched format: single cargo invocation for all guest binaries.
@@ -156,11 +156,11 @@ endif
 ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
 	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
 endif
-ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CLIPPY_CMD) -p test-rust-kernel $(TEST_KERNEL_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
 endif
-ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CLIPPY_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CLIPPY_CMD) -p test-rust-c-bindings $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
 endif
 
 rust-lint-check-guest-binaries:
@@ -170,9 +170,9 @@ endif
 ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
 	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) -- -D warnings
 endif
-ifneq ($(filter test-kernel,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CLIPPY_CMD) -p test-kernel $(TEST_KERNEL_CARGO_FEATURES) -- -D warnings
+ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CLIPPY_CMD) -p test-rust-kernel $(TEST_KERNEL_CARGO_FEATURES) -- -D warnings
 endif
-ifneq ($(filter c-bindings-rust,$(ALL_GUEST_BINARIES)),)
-	$(GUEST_CARGO_CLIPPY_CMD) -p c-bindings-rust $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
+ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
+	$(GUEST_CARGO_CLIPPY_CMD) -p test-rust-c-bindings $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
 endif

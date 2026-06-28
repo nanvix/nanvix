@@ -44,7 +44,7 @@ POSIX_TESTS_OBJDIR := $(OBJECTS_DIR)/posix-tests
 # Suites that live under the stress root (POSIX_TESTS_STRESS_SRCDIR) rather than
 # the default integration root. Consumed by POSIX_TEST_RULE to pick the source
 # directory and by the second object compile pattern rule below.
-POSIX_TEST_STRESS_memory-c := yes
+POSIX_TEST_STRESS_test-c-memory := yes
 
 # Shared, weak `_init`/`_fini` glue, retained only as harmless legacy scaffolding.
 # After doc/toolchain-migration.md §4.5 (decision 1), the c-main startup
@@ -112,7 +112,7 @@ $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_STRESS_SRCDIR)/%.c
 # file-c: only the sub-tests that main.c runs under __NANVIX_STANDALONE__. The
 # remaining files exercise links, permissions/ownership, timestamps, and
 # poll/select, which the standalone FAT32 VFS does not support.
-POSIX_TEST_FILES_file-c := \
+POSIX_TEST_FILES_test-c-file := \
 	main.c open_close.c create_unlink.c write_read.c posix_fadvise.c lseek.c \
 	posix_fallocate.c readv.c preadv.c writev.c pwritev.c pread.c pwrite.c \
 	fdatasync.c stat.c ftruncate.c renameat.c unlinkat.c mkdirat.c mkdir.c \
@@ -128,18 +128,18 @@ POSIX_TEST_FILES_file-c := \
 POSIX_TEST_PIE_LDFLAGS := -pie --export-dynamic --no-dynamic-linker -z notext -z norelro --hash-style=sysv
 
 # Suites linked as position-independent executables (PIE).
-POSIX_TEST_PIE_dlfcn-pie-c := yes
-POSIX_TEST_PIE_dlfcn-global-c := yes
-POSIX_TEST_PIE_dlfcn-needed-c := yes
-POSIX_TEST_PIE_dlfcn-diamond-c := yes
+POSIX_TEST_PIE_test-c-dlfcn-pie := yes
+POSIX_TEST_PIE_test-c-dlfcn-global := yes
+POSIX_TEST_PIE_test-c-dlfcn-needed := yes
+POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
 # dlfcn-init-runpath-c links PIE with --export-dynamic so the main executable's
 # `g_dtor_ran` global lands in `.dynsym`; the loader's global symbol table then
 # satisfies libctor.so's `extern volatile int g_dtor_ran` reference at load time.
-POSIX_TEST_PIE_dlfcn-init-runpath-c := yes
+POSIX_TEST_PIE_test-c-dlfcn-init-runpath := yes
 # dlfcn-weak-c links PIE with --export-dynamic so the main executable's
 # `main_callback`/`weak_data` globals land in `.dynsym`; the loader resolves the
 # helper `.so` files' weak undefined references against that global scope.
-POSIX_TEST_PIE_dlfcn-weak-c := yes
+POSIX_TEST_PIE_test-c-dlfcn-weak := yes
 
 define POSIX_TEST_RULE
 POSIX_TEST_SRCROOT_$(1) := $$(if $$(POSIX_TEST_STRESS_$(1)),$$(POSIX_TESTS_STRESS_SRCDIR),$$(POSIX_TESTS_SRCDIR))
@@ -168,7 +168,7 @@ $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_RULE,$(suite))))
 # suite ELF) with a custom command line, rather than going through the generic
 # `standalone-images` machinery, so that:
 #   * argv[0] is "<suite>.elf" — the upstream convention some suites assert on
-#     (e.g. misc-c checks `strcmp(argv[0], "misc-c.elf") == 0`);
+#     (e.g. test-c-misc checks `strcmp(argv[0], "test-c-misc.elf") == 0`);
 #   * suites that need environment variables (e.g. misc-c needs NANVIX_TEST=1)
 #     can inject them via POSIX_TEST_ENV_<suite>.
 #
@@ -178,7 +178,7 @@ $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_RULE,$(suite))))
 # next `;`. Every `;` is written `\;` so the shell passes a literal `;` to mkimage.
 
 # Per-suite environment variables (space-separated KEY=VALUE entries). Empty unless set.
-POSIX_TEST_ENV_misc-c := NANVIX_TEST=1
+POSIX_TEST_ENV_test-c-misc := NANVIX_TEST=1
 
 # $(1) = suite name.
 define POSIX_TEST_IMAGE_RULE
@@ -210,7 +210,7 @@ clean-posix-tests:
 	$(RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs.img
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
-	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
@@ -234,7 +234,7 @@ POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite
 # into lib/) so dlfcn-c can dlopen("lib/libmul.so"). Suites that need the image
 # are listed in POSIX_TEST_RAMFS_SUITES. Suites with their own fixtures (the
 # dlfcn global/needed variants, below) override the image with a per-suite one.
-POSIX_TEST_RAMFS_SUITES := file-c stdio-c dlfcn-c dlfcn-pie-c dlfcn-global-c dlfcn-needed-c dlfcn-diamond-c
+POSIX_TEST_RAMFS_SUITES := test-c-file test-c-stdio test-c-dlfcn test-c-dlfcn-pie test-c-dlfcn-global test-c-dlfcn-needed test-c-dlfcn-diamond
 POSIX_TEST_RAMFS_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-seed
 POSIX_TEST_RAMFS_IMG    := $(BINARIES_DIR)/posix-tests-ramfs.img
 
@@ -242,10 +242,10 @@ $(POSIX_TEST_RAMFS_SEED)/marker.txt:
 	@$(MKDIR_CMD) $(POSIX_TEST_RAMFS_SEED)
 	@echo "posix-tests ramfs marker" > $@
 
-# Depends on dlfcn-rust's ELF so that its build script has installed
+# Depends on test-rust-dlfcn's ELF so that its build script has installed
 # lib/libmul.so and lib/libmul-pie.so before we stage them into the RAMFS seed.
 $(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt \
-		$(BINARIES_DIR)/dlfcn-rust.$(EXEC_FORMAT) all-host-binaries-mkramfs
+		$(BINARIES_DIR)/test-rust-dlfcn.$(EXEC_FORMAT) all-host-binaries-mkramfs
 	@$(MKDIR_CMD) $(POSIX_TEST_RAMFS_SEED)/lib
 	$(CP_CMD) $(LIBRARIES_DIR)/libmul.so $(POSIX_TEST_RAMFS_SEED)/lib/
 	$(CP_CMD) $(LIBRARIES_DIR)/libmul-pie.so $(POSIX_TEST_RAMFS_SEED)/lib/
@@ -268,12 +268,12 @@ $(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt \
 # `-z notext` (the inline-asm-free fixtures still need text relocations allowed
 # for R_386_* against local symbols), mirroring the prebuilt libmul.so recipe.
 
-POSIX_TEST_SOLIB_SUITES := dlfcn-global-c dlfcn-needed-c
+POSIX_TEST_SOLIB_SUITES := test-c-dlfcn-global test-c-dlfcn-needed
 POSIX_TEST_SOLIB_CFLAGS := -m32 -march=pentiumpro -nostdlib -ffreestanding -fPIC -O2 -isystem $(ROOT_DIR)/include
 POSIX_TEST_SOLIB_LDFLAGS := -shared -melf_i386 -z notext
 
 # Consumer libraries that should carry a DT_NEEDED entry on libprovider.so.
-POSIX_TEST_SOLIB_NEEDED_dlfcn-needed-c := yes
+POSIX_TEST_SOLIB_NEEDED_test-c-dlfcn-needed := yes
 
 # $(1) = suite name with a libs/ subdir (provider.c + consumer.c).
 define POSIX_TEST_SOLIB_RULE
@@ -330,19 +330,19 @@ $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(eval $(call POSIX_TEST_SOLIB_RULE,$
 # -l<name>` (the linker records each found `lib<name>.so` as a bare DT_NEEDED
 # entry, which the loader resolves through its default `lib/` search path —
 # exactly like dlfcn-needed-c).
-POSIX_TEST_DIAMOND_DIR  := $(POSIX_TESTS_OBJDIR)/dlfcn-diamond-c/libs
-POSIX_TEST_DIAMOND_SEED := $(BINARIES_DIR)/posix-tests-ramfs-dlfcn-diamond-c-seed
-POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c := $(BINARIES_DIR)/posix-tests-ramfs-dlfcn-diamond-c.img
+POSIX_TEST_DIAMOND_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-diamond/libs
+POSIX_TEST_DIAMOND_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-diamond-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-diamond.img
 
 # Leaf: libbase.so (no dependencies).
-$(POSIX_TEST_DIAMOND_DIR)/libbase.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs/base.c
+$(POSIX_TEST_DIAMOND_DIR)/libbase.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-diamond/libs/base.c
 	@$(MKDIR_CMD) $(dir $@)
 	@echo "[posix-test] building dlfcn-diamond-c/libbase.so"
 	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
 	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
 
 # Left arm: DT_NEEDED libbase.so.
-$(POSIX_TEST_DIAMOND_DIR)/libleft.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs/left.c \
+$(POSIX_TEST_DIAMOND_DIR)/libleft.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-diamond/libs/left.c \
 		$(POSIX_TEST_DIAMOND_DIR)/libbase.so
 	@$(MKDIR_CMD) $(dir $@)
 	@echo "[posix-test] building dlfcn-diamond-c/libleft.so (DT_NEEDED libbase.so)"
@@ -350,7 +350,7 @@ $(POSIX_TEST_DIAMOND_DIR)/libleft.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs
 	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_DIAMOND_DIR) -lbase -o $@
 
 # Right arm: DT_NEEDED libbase.so.
-$(POSIX_TEST_DIAMOND_DIR)/libright.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs/right.c \
+$(POSIX_TEST_DIAMOND_DIR)/libright.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-diamond/libs/right.c \
 		$(POSIX_TEST_DIAMOND_DIR)/libbase.so
 	@$(MKDIR_CMD) $(dir $@)
 	@echo "[posix-test] building dlfcn-diamond-c/libright.so (DT_NEEDED libbase.so)"
@@ -362,7 +362,7 @@ $(POSIX_TEST_DIAMOND_DIR)/libright.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/lib
 # load-loop re-check in load_all_dependencies(): an arm loads libbase.so first,
 # then libdiamond.so's own libbase.so edge must bind to that existing instance
 # instead of re-opening it.
-$(POSIX_TEST_DIAMOND_DIR)/libdiamond.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/libs/diamond.c \
+$(POSIX_TEST_DIAMOND_DIR)/libdiamond.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-diamond/libs/diamond.c \
 		$(POSIX_TEST_DIAMOND_DIR)/libleft.so $(POSIX_TEST_DIAMOND_DIR)/libright.so \
 		$(POSIX_TEST_DIAMOND_DIR)/libbase.so
 	@$(MKDIR_CMD) $(dir $@)
@@ -372,7 +372,7 @@ $(POSIX_TEST_DIAMOND_DIR)/libdiamond.so: $(POSIX_TESTS_SRCDIR)/dlfcn-diamond-c/l
 		-L$(POSIX_TEST_DIAMOND_DIR) -lleft -lright -lbase -o $@
 
 # Per-suite RAMFS image carrying all four fixtures under lib/.
-$(POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c): $(POSIX_TEST_DIAMOND_DIR)/libbase.so \
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond): $(POSIX_TEST_DIAMOND_DIR)/libbase.so \
 		$(POSIX_TEST_DIAMOND_DIR)/libleft.so \
 		$(POSIX_TEST_DIAMOND_DIR)/libright.so \
 		$(POSIX_TEST_DIAMOND_DIR)/libdiamond.so all-host-binaries-mkramfs
@@ -385,7 +385,7 @@ $(POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c): $(POSIX_TEST_DIAMOND_DIR)/libbase.so \
 
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
-	$(POSIX_TEST_RAMFS_IMG_dlfcn-diamond-c)
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-init-runpath-c: constructor/destructor + DT_RUNPATH fixtures.
@@ -411,7 +411,7 @@ POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST
 #                    consult DT_RUNPATH to locate libchild.so. Staged at
 #                    lib/libparent.so.
 
-POSIX_TEST_RUNPATH_SUITE  := dlfcn-init-runpath-c
+POSIX_TEST_RUNPATH_SUITE  := test-c-dlfcn-init-runpath
 POSIX_TEST_RUNPATH_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_RUNPATH_SUITE)/libs
 POSIX_TEST_RUNPATH_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_RUNPATH_SUITE)-seed
 POSIX_TEST_RUNPATH_IMG    := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_RUNPATH_SUITE).img
@@ -475,7 +475,7 @@ $(POSIX_TEST_RUNPATH_IMG): $(POSIX_TEST_RUNPATH_LIBDIR)/libctor.so \
 # PIE + --export-dynamic (POSIX_TEST_PIE_dlfcn-weak-c above) so its
 # main_callback/weak_data land in .dynsym for the resolved cases.
 
-POSIX_TEST_WEAK_SUITE  := dlfcn-weak-c
+POSIX_TEST_WEAK_SUITE  := test-c-dlfcn-weak
 POSIX_TEST_WEAK_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_WEAK_SUITE)/libs
 POSIX_TEST_WEAK_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_WEAK_SUITE)-seed
 POSIX_TEST_WEAK_IMG    := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_WEAK_SUITE).img

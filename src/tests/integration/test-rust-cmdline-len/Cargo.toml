@@ -1,0 +1,42 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "test-rust-cmdline-len"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "Integration test for large command-line arguments (u16 wire format)"
+homepage.workspace = true
+
+[[bin]]
+name = "test-rust-cmdline-len"
+
+[dependencies]
+nvx = { workspace = true }
+nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
+sysalloc = { workspace = true }
+libc_string = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+sysapi = { workspace = true }
+syscall = { workspace = true, features = ["syscall"] }
+syslog = { workspace = true, default-features = true }
+config = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+standalone = ["syscall/standalone"]
+trace = ["nvx/trace", "syscall/trace", "syslog/trace", "nvx-crt0/trace"]
+debug = ["nvx/debug", "syscall/debug", "syslog/debug", "nvx-crt0/debug"]
+info = ["nvx/info", "syscall/info", "syslog/info", "nvx-crt0/info"]
+warn = ["nvx/warn", "syscall/warn", "syslog/warn", "nvx-crt0/warn"]
+error = ["nvx/error", "syscall/error", "syslog/error", "nvx-crt0/error"]
+panic = ["nvx/panic", "syscall/panic", "syslog/panic", "nvx-crt0/panic"]
+
+[lints]
+workspace = true
