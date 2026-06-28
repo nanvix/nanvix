@@ -11,7 +11,7 @@ description = """
 Declares memory allocation, string conversion, integer arithmetic, searching
 and sorting, pseudo-random sequence generation, environment, and process
 control interfaces implemented by the libc_stdlib Rust crate."""
-includes = ["stddef.h", "sys/wait.h", "fcntl.h"]
+includes = ["stddef.h", "sys/wait.h"]
 guard = "_NANVIX_STDLIB_H"
 content_order = [
     "macros",
@@ -26,6 +26,7 @@ content_order = [
     "section:7",
     "section:8",
     "section:9",
+    "section:10",
 ]
 
 [[macros]]
@@ -42,7 +43,7 @@ guard = "EXIT_FAILURE"
 
 [[macros]]
 name = "RAND_MAX"
-value = "32767"
+value = "2147483647"
 comment = "Maximum value returned by rand()."
 guard = "RAND_MAX"
 
@@ -118,7 +119,14 @@ functions = ["rand", "srand"]
 
 [[sections]]
 title = "Environment"
-functions = ["getenv", "secure_getenv", "setenv", "unsetenv", "putenv"]
+functions = [
+    "getenv",
+    "secure_getenv",
+    "setenv",
+    "unsetenv",
+    "putenv",
+    "clearenv",
+]
 
 [[sections]]
 title = "Process Control"
@@ -138,11 +146,15 @@ functions = ["mblen", "mbtowc", "mbstowcs", "wctomb", "wcstombs"]
 
 [[sections]]
 title = "Temporary Files"
-functions = ["mkdtemp", "mkostemp", "mkstemp"]
+functions = ["mkdtemp", "mkostemp", "mkstemp", "mktemp"]
 
 [[sections]]
 title = "Path Utilities"
 functions = ["realpath"]
+
+[[sections]]
+title = "Pseudo-Terminals"
+functions = ["posix_openpt", "grantpt", "unlockpt", "ptsname", "ptsname_r"]
 
 [overrides]
 _Exit = '''

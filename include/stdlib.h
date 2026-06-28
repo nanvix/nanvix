@@ -17,7 +17,6 @@
 
 #include <stddef.h>
 #include <sys/wait.h>
-#include <fcntl.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,7 +35,7 @@ extern "C" {
 #endif
 
 #ifndef RAND_MAX
-#define RAND_MAX 32767 /**< Maximum value returned by rand(). */
+#define RAND_MAX 2147483647 /**< Maximum value returned by rand(). */
 #endif
 
 #ifndef MB_CUR_MAX
@@ -128,6 +127,7 @@ extern char *secure_getenv(const char *name);
 extern int setenv(const char *name, const char *value, int overwrite);
 extern int unsetenv(const char *name);
 extern int putenv(char *string);
+extern int clearenv(void);
 
 /*==================================================================================================
  * Process Control
@@ -158,12 +158,23 @@ extern size_t wcstombs(char *restrict dst, const wchar_t *restrict src, size_t n
 extern char *mkdtemp(char *template);
 extern int mkostemp(char *template, int flag);
 extern int mkstemp(char *template);
+extern char *mktemp(char *template);
 
 /*==================================================================================================
  * Path Utilities
  *==================================================================================================*/
 
 extern char *realpath(const char *restrict path, char *restrict resolved_path);
+
+/*==================================================================================================
+ * Pseudo-Terminals
+ *==================================================================================================*/
+
+extern int posix_openpt(int flags);
+extern int grantpt(int fd);
+extern int unlockpt(int fd);
+extern char *ptsname(int fd);
+extern int ptsname_r(int fd, char *buf, size_t buflen);
 
 #ifdef __cplusplus
 }
