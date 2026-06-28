@@ -22,6 +22,7 @@ content_order = [
     "section:5",
     "section:6",
     "section:7",
+    "section:8",
 ]
 
 [[types]]
@@ -105,6 +106,10 @@ functions = [
     "wcsrtombs",
 ]
 
+[[sections]]
+title = "Wide Character Time"
+functions = ["wcsftime"]
+
 [overrides]
 wcscoll = '''
 extern int wcscoll(const wchar_t *s1, const wchar_t *s2);'''
@@ -112,6 +117,8 @@ wcsxfrm = '''
 extern size_t wcsxfrm(wchar_t *dest, const wchar_t *src, size_t n);'''
 wcstok = '''
 extern wchar_t *wcstok(wchar_t *ws, const wchar_t *delim, wchar_t **ptr);'''
+wcsftime = '''
+extern size_t wcsftime(wchar_t *s, size_t maxsize, const wchar_t *format, const struct tm *timeptr);'''
 wmemchr = '''
 extern wchar_t *wmemchr(const wchar_t *s, wchar_t c, size_t n);'''
 vswprintf = '''

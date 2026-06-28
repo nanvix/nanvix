@@ -40,6 +40,7 @@ pub mod wcschr;
 pub mod wcscmp;
 pub mod wcscoll;
 pub mod wcscpy;
+pub mod wcsftime;
 pub mod wcslen;
 pub mod wcsncmp;
 pub mod wcsncpy;

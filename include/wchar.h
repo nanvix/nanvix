@@ -141,6 +141,12 @@ extern int mbsinit(const mbstate_t *ps);
 extern size_t mbsrtowcs(wchar_t *dest, const char **src, size_t n, mbstate_t *ps);
 extern size_t wcsrtombs(char *dest, const wchar_t **src, size_t n, mbstate_t *ps);
 
+/*==================================================================================================
+ * Wide Character Time
+ *==================================================================================================*/
+
+extern size_t wcsftime(wchar_t *s, size_t maxsize, const wchar_t *format, const struct tm *timeptr);
+
 #ifdef __cplusplus
 }
 #endif
