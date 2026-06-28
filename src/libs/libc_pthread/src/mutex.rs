@@ -11,6 +11,12 @@ use ::sys::{
 };
 use ::sysapi::{
     ffi::c_int,
+    pthread::pthread_mutex_type::{
+        PTHREAD_MUTEX_DEFAULT,
+        PTHREAD_MUTEX_ERRORCHECK,
+        PTHREAD_MUTEX_NORMAL,
+        PTHREAD_MUTEX_RECURSIVE,
+    },
     sys_types::{
         pthread_mutex_t,
         pthread_mutexattr_t,
@@ -47,7 +53,13 @@ use ::syslog::trace_libcall;
 #[unsafe(no_mangle)]
 #[trace_libcall]
 pub unsafe extern "C" fn pthread_mutexattr_init(attr: *mut pthread_mutexattr_t) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/511.
+    // Check if `attr` is not valid.
+    if attr.is_null() {
+        ::syslog::warn!("pthread_mutexattr_init(): invalid attr pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    *attr = pthread_mutexattr_t::default();
     0
 }
 
@@ -79,6 +91,109 @@ pub unsafe extern "C" fn pthread_mutexattr_init(attr: *mut pthread_mutexattr_t) 
 #[trace_libcall]
 pub unsafe extern "C" fn pthread_mutexattr_destroy(attr: *mut pthread_mutexattr_t) -> c_int {
     // TODO: https://github.com/nanvix/nanvix/issues/509
+    0
+}
+
+//==================================================================================================
+// pthread_mutexattr_settype()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Sets the mutex type attribute in a mutex attributes object.
+///
+/// # Parameters
+///
+/// - `attr`: Pointer to the mutex attributes object.
+/// - `type_`: Mutex type to set.
+///
+/// # Returns
+///
+/// The `pthread_mutexattr_settype()` function returns `0` on success. On error, it returns an error
+/// number.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `attr` points to a valid `pthread_mutexattr_t` object.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn pthread_mutexattr_settype(
+    attr: *mut pthread_mutexattr_t,
+    type_: c_int,
+) -> c_int {
+    // Check if `attr` is not valid.
+    if attr.is_null() {
+        ::syslog::warn!("pthread_mutexattr_settype(): invalid attr pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `type_` is a supported mutex type.
+    match type_ {
+        PTHREAD_MUTEX_NORMAL
+        | PTHREAD_MUTEX_RECURSIVE
+        | PTHREAD_MUTEX_ERRORCHECK
+        | PTHREAD_MUTEX_DEFAULT => {
+            (*attr).set_type(type_);
+            0
+        },
+        _ => {
+            ::syslog::warn!("pthread_mutexattr_settype(): invalid mutex type (type={})", type_);
+            ErrorCode::InvalidArgument.get()
+        },
+    }
+}
+
+//==================================================================================================
+// pthread_mutexattr_gettype()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Gets the mutex type attribute from a mutex attributes object.
+///
+/// # Parameters
+///
+/// - `attr`: Pointer to the mutex attributes object.
+/// - `type_`: Pointer where the mutex type is stored on success.
+///
+/// # Returns
+///
+/// The `pthread_mutexattr_gettype()` function returns `0` on success. On error, it returns an error
+/// number.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `attr` points to a valid `pthread_mutexattr_t` object.
+/// - `type_` points to a valid `int` object.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn pthread_mutexattr_gettype(
+    attr: *const pthread_mutexattr_t,
+    type_: *mut c_int,
+) -> c_int {
+    // Check if `attr` is not valid.
+    if attr.is_null() {
+        ::syslog::warn!("pthread_mutexattr_gettype(): invalid attr pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `type_` is not valid.
+    if type_.is_null() {
+        ::syslog::warn!("pthread_mutexattr_gettype(): invalid type pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    *type_ = (*attr).type_();
     0
 }
 

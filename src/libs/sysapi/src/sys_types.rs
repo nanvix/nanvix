@@ -21,7 +21,7 @@ use crate::{
         c_ushort,
         c_void,
     },
-    pthread::pthread_mutex_type::PTHREAD_MUTEX_NORMAL,
+    pthread::pthread_mutex_type::PTHREAD_MUTEX_DEFAULT,
     sched::{
         sched_param,
         sched_policy::SCHED_OTHER,
@@ -245,13 +245,25 @@ impl pthread_mutexattr_t {
     /// Size of `pthread_mutexattr_t` structure.
     pub const SIZE: usize =
         Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_TYPE + Self::SIZE_OF_RECURSIVE;
+
+    /// Returns the mutex type stored in the attributes object.
+    pub fn type_(&self) -> c_int {
+        self.type_
+    }
+
+    /// Sets the mutex type stored in the attributes object.
+    pub fn set_type(&mut self, type_: c_int) {
+        self.type_ = type_;
+        self.recursive = (type_ == crate::pthread::pthread_mutex_type::PTHREAD_MUTEX_RECURSIVE)
+            as crate::ffi::c_int;
+    }
 }
 
 impl Default for pthread_mutexattr_t {
     fn default() -> Self {
         Self {
             is_initialized: 1,
-            type_: PTHREAD_MUTEX_NORMAL,
+            type_: PTHREAD_MUTEX_DEFAULT,
             recursive: 0,
         }
     }
