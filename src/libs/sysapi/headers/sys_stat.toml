@@ -86,6 +86,7 @@ functions = [
     "lstat",
     "mkdir",
     "mkdirat",
+    "mkfifo",
     "umask",
     "fchmodat",
     "lchmod",

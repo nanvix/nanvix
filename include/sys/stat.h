@@ -98,6 +98,7 @@ extern int fstat(int fd, struct stat *buf);
 extern int lstat(const char *pathname, struct stat *statbuf);
 extern int mkdir(const char *pathname, mode_t mode);
 extern int mkdirat(int dirfd, const char *pathname, mode_t mode);
+extern int mkfifo(const char *path, mode_t mode);
 extern mode_t umask(mode_t mask);
 extern int fchmodat(int dirfd, const char *pathname, mode_t mode, int flags);
 extern int lchmod(const char *pathname, mode_t mode);

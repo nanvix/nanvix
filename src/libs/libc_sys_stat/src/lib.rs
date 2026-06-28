@@ -439,6 +439,40 @@ pub unsafe extern "C" fn mknod(path: *const c_char, mode: mode_t, dev: dev_t) ->
 ///
 /// # Description
 ///
+/// Creates a new FIFO special file named `path`. Nanvix does not support FIFO special files, so
+/// the call always fails.
+///
+/// # Parameters
+///
+/// - `path`: Pathname of the FIFO to create.
+/// - `mode`: Permission bits of the new FIFO.
+///
+/// # Returns
+///
+/// The `mkfifo()` function always returns `-1` and sets `errno` to `ENOSYS` because the operation
+/// is not supported on Nanvix.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference a raw pointer.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `path` points to a valid null-terminated C string.
+///
+#[allow(clippy::missing_safety_doc)]
+#[unsafe(no_mangle)]
+#[trace_syscall]
+pub unsafe extern "C" fn mkfifo(path: *const c_char, mode: mode_t) -> c_int {
+    // Nanvix does not support FIFO special files; the arguments are unused.
+    let _ = (path, mode);
+    ::syslog::debug!("mkfifo(): not supported");
+    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    -1
+}
+
+///
+/// # Description
+///
 /// Sets the calling process's file mode creation mask (umask).
 ///
 /// # Parameters
