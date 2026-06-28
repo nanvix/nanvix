@@ -1,0 +1,13 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for features.h.
+
+file = "features.h"
+brief = "Feature-test macro gateway."
+description = '''
+Reserved for feature-test macro definitions. The Nanvix libc exposes its full
+interface unconditionally, so this header currently defines no macros; it
+exists so that translation units which include <features.h> compile cleanly.'''
+guard = "_NANVIX_FEATURES_H"
+extern_c = false
