@@ -45,4 +45,5 @@ pub mod mktime;
 pub mod strftime;
 pub mod strptime;
 pub mod time;
+pub mod timegm;
 pub mod tm_struct;

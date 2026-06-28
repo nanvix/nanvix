@@ -11,7 +11,10 @@
 // Imports
 //==================================================================================================
 
-use ::sysapi::ffi::c_int;
+use ::sysapi::ffi::{
+    c_int,
+    c_long,
+};
 
 //==================================================================================================
 // Constants
@@ -116,6 +119,8 @@ pub struct tm {
     pub tm_yday: c_int,
     /// Daylight Saving Time flag.
     pub tm_isdst: c_int,
+    /// Seconds east of UTC. Always `0` on Nanvix, which keeps time in UTC.
+    pub tm_gmtoff: c_long,
 }
 
 impl tm {
@@ -131,6 +136,7 @@ impl tm {
             tm_wday: 0,
             tm_yday: 0,
             tm_isdst: 0,
+            tm_gmtoff: 0,
         }
     }
 }

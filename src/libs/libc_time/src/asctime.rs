@@ -59,6 +59,7 @@ mod test {
             tm_wday: 4,
             tm_yday: 0,
             tm_isdst: 0,
+            tm_gmtoff: 0,
         };
         let ret: *mut i8 = unsafe { asctime(&t) };
         assert!(!ret.is_null());

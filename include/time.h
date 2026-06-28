@@ -70,6 +70,7 @@ struct tm {
     int tm_wday;  /**< Days since Sunday [0, 6].    */
     int tm_yday;  /**< Days since Jan 1 [0, 365].   */
     int tm_isdst; /**< Daylight Saving Time flag.   */
+    long tm_gmtoff; /**< Seconds east of UTC (always 0). */
 };
 
 /** @brief Time specification for clock_gettime(). */
@@ -86,6 +87,7 @@ extern time_t time(time_t *tloc);
 extern clock_t clock(void);
 extern double difftime(time_t time1, time_t time0);
 extern time_t mktime(struct tm *timeptr);
+extern time_t timegm(struct tm *timeptr);
 
 /*==================================================================================================
  * Time Conversion
@@ -121,6 +123,15 @@ extern int nanosleep(const struct timespec *req, struct timespec *rem);
  *==================================================================================================*/
 
 extern char *strptime(const char *s, const char *format, struct tm *tm);
+
+/*==================================================================================================
+ * Time Zone
+ *==================================================================================================*/
+
+extern char *tzname[2];
+extern long timezone;
+extern int daylight;
+extern void tzset(void);
 
 #ifdef __cplusplus
 }

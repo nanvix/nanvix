@@ -112,6 +112,7 @@ pub unsafe extern "C" fn gmtime_r(timep: *const time_t, result: *mut tm) -> *mut
     (*result).tm_wday = wday;
     (*result).tm_yday = yday as c_int;
     (*result).tm_isdst = 0;
+    (*result).tm_gmtoff = 0;
 
     result
 }
