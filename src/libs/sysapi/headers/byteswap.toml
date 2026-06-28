@@ -1,0 +1,23 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for byteswap.h.
+
+file = "byteswap.h"
+brief = "Byte-order swapping macros."
+description = '''
+`bswap_16()`, `bswap_32()`, and `bswap_64()` reverse the byte order of a 16-,
+32-, or 64-bit integer. They map directly to the compiler's `__builtin_bswap*`
+intrinsics.'''
+guard = "_NANVIX_BYTESWAP_H"
+extern_c = false
+content_order = [
+    "raw:0",
+]
+
+[[raw_sections]]
+title = ""
+text = '''
+#define bswap_16(x) __builtin_bswap16(x)
+#define bswap_32(x) __builtin_bswap32(x)
+#define bswap_64(x) __builtin_bswap64(x)'''
