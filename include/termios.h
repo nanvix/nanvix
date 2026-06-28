@@ -237,10 +237,13 @@ extern int tcsendbreak(int fd, int duration);
 extern int tcdrain(int fd);
 extern int tcflush(int fd, int queue_selector);
 extern int tcflow(int fd, int action);
+extern pid_t tcgetsid(int fd);
 extern speed_t cfgetispeed(const struct termios *termios_p);
 extern speed_t cfgetospeed(const struct termios *termios_p);
 extern int cfsetispeed(struct termios *termios_p, speed_t speed);
 extern int cfsetospeed(struct termios *termios_p, speed_t speed);
+extern int cfsetspeed(struct termios *termios_p, speed_t speed);
+extern void cfmakeraw(struct termios *termios_p);
 
 #ifdef __cplusplus
 }
