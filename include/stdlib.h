@@ -46,6 +46,11 @@ extern "C" {
  * Types
  *==================================================================================================*/
 
+/* glibc compatibility: expose alloca() via <stdlib.h> under _GNU_SOURCE. */
+#ifdef _GNU_SOURCE
+#include <alloca.h>
+#endif
+
 /** @brief Structure type returned by the div() function. */
 typedef struct {
     int quot; /**< Quotient.  */
@@ -86,7 +91,7 @@ extern long atol(const char *nptr);
 extern long long atoll(const char *nptr);
 extern double strtod(const char *restrict nptr, char **restrict endptr);
 extern float strtof(const char *restrict nptr, char **restrict endptr);
-extern double strtold(const char *restrict nptr, char **restrict endptr);
+extern long double strtold(const char *restrict nptr, char **restrict endptr);
 extern long strtol(const char *restrict nptr, char **restrict endptr, int base);
 extern long long strtoll(const char *restrict nptr, char **restrict endptr, int base);
 extern unsigned long strtoul(const char *restrict nptr, char **restrict endptr, int base);

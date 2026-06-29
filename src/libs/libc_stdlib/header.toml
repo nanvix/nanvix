@@ -55,6 +55,13 @@ guard = "MB_CUR_MAX"
 
 [[types]]
 text = """
+/* glibc compatibility: expose alloca() via <stdlib.h> under _GNU_SOURCE. */
+#ifdef _GNU_SOURCE
+#include <alloca.h>
+#endif"""
+
+[[types]]
+text = """
 /** @brief Structure type returned by the div() function. */
 typedef struct {
     int quot; /**< Quotient.  */
@@ -170,7 +177,7 @@ extern double strtod(const char *restrict nptr, char **restrict endptr);'''
 strtof = '''
 extern float strtof(const char *restrict nptr, char **restrict endptr);'''
 strtold = '''
-extern double strtold(const char *restrict nptr, char **restrict endptr);'''
+extern long double strtold(const char *restrict nptr, char **restrict endptr);'''
 strtol = '''
 extern long strtol(const char *restrict nptr, char **restrict endptr, int base);'''
 strtoll = '''

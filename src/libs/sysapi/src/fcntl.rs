@@ -102,6 +102,8 @@ pub mod atflags {
     pub const AT_EACCESS: c_int = 1;
     /// Remove directory instead of file.
     pub const AT_REMOVEDIR: c_int = 8;
+    /// Follow symbolic links.
+    pub const AT_SYMLINK_FOLLOW: c_int = 0x400;
     /// Do not follow symbolic links.
     pub const AT_SYMLINK_NOFOLLOW: c_int = 2;
 }
