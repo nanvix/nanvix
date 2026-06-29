@@ -158,6 +158,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-inet"
+program = "./bin/test-c-inet.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-libgen"
 program = "./bin/test-c-libgen.initrd"
 expected_exit_code = 0
