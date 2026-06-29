@@ -17,6 +17,7 @@ mod dlclose;
 mod dlopen;
 mod dlsym;
 mod dynlib;
+mod exe_link;
 
 //==================================================================================================
 // Imports
@@ -382,3 +383,4 @@ pub use dladdr::dladdr;
 pub use dlclose::dlclose;
 pub use dlopen::dlopen;
 pub use dlsym::dlsym;
+pub use exe_link::dllink_executable;

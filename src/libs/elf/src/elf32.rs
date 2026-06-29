@@ -141,6 +141,10 @@ pub const PT_HIPROC: u32 = 0x7fffffff;
 
 /// Marks end of dynamic section.
 pub const DT_NULL: i32 = 0;
+/// String-table offset of the name of a needed shared object (DT_NEEDED).
+pub const DT_NEEDED: i32 = 1;
+/// Address of the dynamic symbol table (DT_SYMTAB).
+pub const DT_SYMTAB: i32 = 6;
 /// Address of relocation table.
 pub const DT_REL: i32 = 17;
 /// Size of relocation table in bytes.

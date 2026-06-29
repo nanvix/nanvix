@@ -34,6 +34,15 @@ use ::elf::elf32::{
 /// If the binary is not ET_DYN, has no PT_DYNAMIC segment, or was loaded at its link-time
 /// address (delta = 0), this function returns without modification.
 ///
+/// # Note
+///
+/// This pass intentionally handles only the symbol-less `R_386_RELATIVE` fixups, which is all
+/// that can be done this early: it runs from `nvx-crt0::_start` before the heap, VFS, and dlfcn
+/// runtime are available. Symbol-based GOT/PLT relocations (`R_386_GLOB_DAT` / `R_386_JMP_SLOT`)
+/// — including those bound against `DT_NEEDED` shared libraries — are resolved later by the
+/// dlfcn self-linker (`syscall::dlfcn::dllink_executable`), which libposix invokes from
+/// `__nanvix_libc_start_main` once the heap is up and before any application code runs.
+///
 /// # Parameters
 ///
 /// - `base_address`: The address at which the PIE binary was loaded. The ELF header must be

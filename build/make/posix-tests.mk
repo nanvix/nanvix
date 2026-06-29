@@ -140,6 +140,23 @@ POSIX_TEST_PIE_test-c-dlfcn-init-runpath := yes
 # `main_callback`/`weak_data` globals land in `.dynsym`; the loader resolves the
 # helper `.so` files' weak undefined references against that global scope.
 POSIX_TEST_PIE_test-c-dlfcn-weak := yes
+# dlfcn-selflink-c links PIE against libprovider.so (-lprovider) so the main
+# executable carries a DT_NEEDED entry plus an R_386_GLOB_DAT (data) and an
+# R_386_JMP_SLOT (function) relocation against the provider's symbols. This is
+# the forward direction the other dlfcn suites do not cover: nvx-crt0's
+# self-linker (syscall::dlfcn::dllink_executable) must bind the executable's own
+# GOT/PLT against the loaded library before main() runs.
+POSIX_TEST_PIE_test-c-dlfcn-selflink := yes
+
+# Per-suite hooks consumed by POSIX_TEST_RULE: extra link-time prerequisites and
+# extra linker arguments appended AFTER the libc/libm `--end-group`. Used by
+# dlfcn-selflink-c to link the suite ELF against its libprovider.so fixture
+# (recording the DT_NEEDED entry and the GOT/PLT relocations) with eager binding
+# (`-z now`), since Nanvix has no lazy PLT resolver. These must be set before the
+# POSIX_TEST_RULE foreach below expands each suite's link rule.
+POSIX_TEST_SELFLINK_DIR := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-selflink/libs
+POSIX_TEST_EXTRA_LD_DEPS_test-c-dlfcn-selflink := $(POSIX_TEST_SELFLINK_DIR)/libprovider.so
+POSIX_TEST_EXTRA_LDLIBS_test-c-dlfcn-selflink := -L$(POSIX_TEST_SELFLINK_DIR) -lprovider -z now
 
 define POSIX_TEST_RULE
 POSIX_TEST_SRCROOT_$(1) := $$(if $$(POSIX_TEST_STRESS_$(1)),$$(POSIX_TESTS_STRESS_SRCDIR),$$(POSIX_TESTS_SRCDIR))
@@ -150,11 +167,13 @@ ifeq ($$(POSIX_TEST_PIE_$(1)),yes)
 $$(POSIX_TEST_OBJS_$(1)): POSIX_TEST_EXTRA_CFLAGS := -fPIE
 endif
 $$(BINARIES_DIR)/$(1).$$(EXEC_FORMAT): $$(POSIX_TEST_OBJS_$(1)) $$(POSIX_TEST_CRT_OBJ) \
-		$$(GUEST_C_APP_LIBC) $$(GUEST_C_APP_LIBM) $$(LIBNVX_CRT0) $$(GUEST_C_APP_LD_SCRIPT)
+		$$(GUEST_C_APP_LIBC) $$(GUEST_C_APP_LIBM) $$(LIBNVX_CRT0) $$(GUEST_C_APP_LD_SCRIPT) \
+		$$(POSIX_TEST_EXTRA_LD_DEPS_$(1))
 	@echo "[posix-test] linking $(1) against libc.a + libm.a$$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))), (PIE))"
 	$$(GUEST_C_APP_LD) $$(GUEST_C_APP_LDFLAGS) $$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))),$$(POSIX_TEST_PIE_LDFLAGS)) \
 		$$(POSIX_TEST_OBJS_$(1)) $$(POSIX_TEST_CRT_OBJ) \
-		--start-group $$(LIBNVX_CRT0) $$(GUEST_C_APP_LIBC) $$(GUEST_C_APP_LIBM) --end-group -o $$@
+		--start-group $$(LIBNVX_CRT0) $$(GUEST_C_APP_LIBC) $$(GUEST_C_APP_LIBM) --end-group \
+		$$(POSIX_TEST_EXTRA_LDLIBS_$(1)) -o $$@
 	@echo "[posix-test] built $$@"
 endef
 
@@ -211,11 +230,13 @@ clean-posix-tests:
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
 	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
 
@@ -383,9 +404,43 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond): $(POSIX_TEST_DIAMOND_DIR)/libbase.
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libdiamond.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_DIAMOND_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-selflink-c: main-executable GOT/PLT self-linking fixture.
+#---------------------------------------------------------------------------------------------------
+#
+# Unlike the suites above (which dlopen() shared libraries at runtime), this
+# suite exercises the FORWARD direction: the main executable itself is linked
+# against libprovider.so (-lprovider, see POSIX_TEST_EXTRA_LDLIBS_* above), so
+# it carries a DT_NEEDED entry plus an R_386_GLOB_DAT (data) and an
+# R_386_JMP_SLOT (function) relocation against the provider's symbols. nvx-crt0's
+# self-linker (syscall::dlfcn::dllink_executable) must load libprovider.so into
+# the global scope and bind both slots before main() runs. libprovider.so plays
+# the role of a "libc.so" and is staged at lib/libprovider.so, reached through
+# the loader's default lib/ search path. Built with the same i686 freestanding
+# toolchain as the fixtures above; an explicit -soname pins the bare DT_NEEDED
+# name regardless of linker (GNU ld vs ld.lld).
+POSIX_TEST_SELFLINK_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-selflink-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-selflink.img
+
+# Provider: self-contained (zero undefined symbols), exporting one data symbol
+# (-> R_386_GLOB_DAT in the executable) and one function (-> R_386_JMP_SLOT).
+$(POSIX_TEST_SELFLINK_DIR)/libprovider.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-selflink/libs/provider.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building test-c-dlfcn-selflink/libprovider.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libprovider.so $@.o -o $@
+
+# Per-suite RAMFS image carrying libprovider.so under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink): $(POSIX_TEST_SELFLINK_DIR)/libprovider.so \
+		all-host-binaries-mkramfs
+	@$(MKDIR_CMD) $(POSIX_TEST_SELFLINK_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_SELFLINK_DIR)/libprovider.so $(POSIX_TEST_SELFLINK_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_SELFLINK_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
-	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-init-runpath-c: constructor/destructor + DT_RUNPATH fixtures.

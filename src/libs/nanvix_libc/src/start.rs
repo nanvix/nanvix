@@ -45,10 +45,7 @@
 
 #![cfg(all(feature = "allocator", feature = "syscall"))]
 use ::alloc::vec::Vec;
-use ::config::memory_layout::{
-    USER_BASE_RAW,
-    USER_HEAP_CAPACITY,
-};
+use ::config::memory_layout::USER_HEAP_CAPACITY;
 use ::core::ffi::c_char;
 
 //==================================================================================================
@@ -157,11 +154,6 @@ pub static mut environ: *mut *mut c_char = ::core::ptr::null_mut();
 pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut c_char) -> ! {
     ::syslog::trace!("__nanvix_libc_start_main(): argp={:?}, envp={:?}", argp, envp);
 
-    // Suppress unused-import warning when neither USER_BASE_RAW nor any
-    // other consumer needs it; it is referenced only by the `_start`
-    // documentation cross-reference in `nvx-crt0`.
-    let _ = USER_BASE_RAW;
-
     // Bring up the stateful runtime (heap, TDA).  All `sysalloc` state
     // lives in this compilation unit (libc); no other static
     // archive in the final link may depend on `sysalloc`.
@@ -212,6 +204,23 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     // those descriptors, so the cache — rebuilt lazily on first use — observes the
     // post-close-on-exec table. In run modes without a guest `vfsd`, this is a no-op.
     ::syscall::unistd::exec_startup_barrier();
+
+    // Bind the executable's own symbol-based GOT/PLT relocations
+    // (`R_386_GLOB_DAT` / `R_386_JMP_SLOT`) against the global symbol table,
+    // loading any `DT_NEEDED` shared libraries into the global scope first.
+    // This complements the early `R_386_RELATIVE` pass performed by
+    // `nvx::pie::relocate_pie_binary` before the heap was up, and must run
+    // before any application code (`.init_array` constructors or `main`) so the
+    // bound slots are valid on first use. A no-op for executables that declare
+    // no shared-library dependencies.
+    //
+    // A failure here leaves GOT/PLT slots unbound, so entering `.init_array` or
+    // `main` would fault on the first call through an unbound PLT slot or read of
+    // an unbound GOT slot. Like the other `runtime_init()` startup failures, this
+    // is unrecoverable and must abort the process.
+    if let Err(e) = unsafe { ::syscall::dlfcn::dllink_executable() } {
+        panic!("__nanvix_libc_start_main(): failed to bind executable symbols: {e:?}");
+    }
 
     // Run global constructors before entering `main`.  `.preinit_array` runs
     // first, then `.init_array` (relibc's `relibc_start` pattern).  Done after
