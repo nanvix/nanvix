@@ -20,22 +20,23 @@ use ::syslog::trace_syscall;
 /// # Description
 ///
 /// Executes a program by replacing the current process image. The `execvp()` function replaces the
-/// current process image with a new process image specified by `file`. Per POSIX, if `file`
-/// contains a slash it is used as a pathname; otherwise the directories listed in the `PATH`
-/// environment variable are searched for an executable of that name (see the Notes section for the
-/// current limitation). The `argv` argument is an array of character pointers to
-/// null-terminated strings that represent the argument list available to the new program. The
-/// first argument, by convention, points to the filename associated with the file being executed.
-/// The array of pointers must be terminated by a null pointer. This function is one of the exec
-/// family of functions that provide different interfaces for program execution and process
-/// replacement. Per POSIX, the new program inherits the calling process's environment.
+/// current process image with a new process image. Per POSIX, if `file` contains a slash it is used
+/// as a pathname; otherwise the directories listed in the `PATH` environment variable are searched
+/// in order for an executable of that name, and the first match is executed. The `argv` argument is
+/// an array of character pointers to null-terminated strings that represent the argument list
+/// available to the new program. The first argument, by convention, points to the filename
+/// associated with the file being executed. The array of pointers must be terminated by a null
+/// pointer. This function is one of the exec family of functions that provide different interfaces
+/// for program execution and process replacement. Per POSIX, the new program inherits the calling
+/// process's environment.
 ///
 /// # Parameters
 ///
 /// - `file`: Name of the executable file to execute. This must be a valid null-terminated string.
 ///   If it contains a slash, it is treated as a pathname (absolute or relative to the current
-///   working directory); otherwise POSIX locates it as a bare program name through the `PATH`
-///   environment variable (not yet implemented; see the Notes section). The file must have
+///   working directory); otherwise it is located as a bare program name by searching the
+///   directories in the `PATH` environment variable. When `PATH` is unset, a default search path is
+///   used, and an empty `PATH` entry denotes the current working directory. The file must have
 ///   appropriate execute permissions for the calling process.
 /// - `argv`: Argument vector for the new program. This is an array of pointers to null-terminated
 ///   strings that represent the command-line arguments to be passed to the new program. By
@@ -50,12 +51,6 @@ use ::syslog::trace_syscall;
 /// to indicate the error. The calling process continues execution at the point of the failed
 /// `execvp()` call. Common error conditions include file not found, permission denied, invalid
 /// executable format, insufficient memory, or invalid argument pointers.
-///
-/// # Notes
-///
-/// `PATH` search is not yet implemented: `file` is currently treated as a literal path and the
-/// call is delegated directly to the `execv()` path. A future implementation should search the
-/// directories listed in the `PATH` environment variable when `file` does not contain a slash.
 ///
 /// # Safety
 ///
@@ -73,10 +68,11 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn execvp(file: *const c_char, argv: *const *const c_char) -> c_int {
-    // `PATH` search is not implemented; treat `file` as a literal path and delegate to the
-    // environment-inheriting `execv()` path. `execv_inherit_env_from_c` returns only on failure; on
-    // success the process image is replaced and control does not return here.
-    let error: ::sys::error::Error = unsafe { crate::unistd::execv_inherit_env_from_c(file, argv) };
+    // Locate `file` per POSIX `execvp()` rules (direct path when it contains a slash, otherwise a
+    // `PATH` search) and replace the image, inheriting the caller's environment.
+    // `execvp_from_c` returns only on failure; on success the process image is replaced and control
+    // does not return here.
+    let error: ::sys::error::Error = unsafe { crate::unistd::execvp_from_c(file, argv) };
     unsafe {
         *__errno_location() = error.code.get();
     }

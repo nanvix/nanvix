@@ -232,12 +232,14 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
 	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
+	$(RM_CMD) $(POSIX_TEST_EXECVP_IMG)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_EXECVP_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
 
 #---------------------------------------------------------------------------------------------------
@@ -569,6 +571,30 @@ $(POSIX_TEST_WEAK_IMG): $(foreach lib,$(POSIX_TEST_WEAK_LIBS),$(POSIX_TEST_WEAK_
 		$(POSIX_TEST_WEAK_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_WEAK_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# execvp-c: PATH-search fixture.
+#---------------------------------------------------------------------------------------------------
+#
+# test-c-execvp validates execvp()'s PATH search. The suite is a dual-role ELF:
+# booted as the driver it fork()s and execvp()s a copy of itself, and that copy
+# (re-exec'd with argv[1]=="execvp-child") plays the target role. The target must
+# be reachable through PATH, so the suite ELF is staged a second time in this
+# per-suite RAMFS image as /bin/prog; the driver sets PATH=/bin and asserts the
+# child it execvp()s exits with the target's sentinel code. /bin/prog IS the
+# suite ELF, so no extra build step is needed beyond copying it into the seed.
+
+POSIX_TEST_EXECVP_SUITE := test-c-execvp
+POSIX_TEST_EXECVP_SEED  := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_EXECVP_SUITE)-seed
+POSIX_TEST_EXECVP_IMG   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_EXECVP_SUITE).img
+
+$(POSIX_TEST_EXECVP_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXECVP_SUITE).$(EXEC_FORMAT) \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_EXECVP_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_EXECVP_SEED)/bin
+	$(CP_CMD) $(BINARIES_DIR)/$(POSIX_TEST_EXECVP_SUITE).$(EXEC_FORMAT) \
+		$(POSIX_TEST_EXECVP_SEED)/bin/prog
+	$(MKRAMFS) -o $@ $(POSIX_TEST_EXECVP_SEED)
+
 # The per-suite boot arguments that pair each suite with its RAMFS image
 # (`-ramfs <img>`) or enable host networking (`-allow-host-networking`) now live
 # in the nanvix-test harness configs (test/test-posix.toml and
@@ -590,7 +616,8 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
 		$(POSIX_TEST_SOLIB_IMGS) \
 		$(POSIX_TEST_RUNPATH_IMG) \
-		$(POSIX_TEST_WEAK_IMG)
+		$(POSIX_TEST_WEAK_IMG) \
+		$(POSIX_TEST_EXECVP_IMG)
 	@echo "All POSIX C test-suite images built."
 
 .PHONY: run-posix-tests
@@ -615,7 +642,7 @@ ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
 else ifeq ($(DEPLOYMENT_MODE),standalone)
-run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_WEAK_IMG)
+run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_WEAK_IMG) $(POSIX_TEST_EXECVP_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }

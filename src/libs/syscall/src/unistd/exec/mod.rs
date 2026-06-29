@@ -39,6 +39,17 @@ use ::sysapi::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Separator between directory entries in the `PATH` environment variable. POSIX uses a colon.
+const PATH_SEPARATOR: char = ':';
+
+/// Search path used by `execvp()` when `PATH` is absent from the environment. POSIX leaves this
+/// value implementation-defined; a minimal, sensible default is used here.
+const DEFAULT_PATH: &str = "/bin:/usr/bin";
+
+//==================================================================================================
 // Private Standalone Functions
 //==================================================================================================
 
@@ -155,6 +166,61 @@ fn validate_exec_token(token: &str) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+///
+/// # Description
+///
+/// Reads the value of the `PATH` environment variable from the calling process's environment table
+/// (the same table that backs `getenv`/`setenv`).
+///
+/// # Returns
+///
+/// The value of `PATH` as an owned string if it is set and is valid UTF-8, otherwise `None`.
+///
+fn read_env_path() -> Option<String> {
+    let value: *const c_char = ::libc_stdlib::env_table::get("PATH");
+    if value.is_null() {
+        return None;
+    }
+    // SAFETY: `env_table::get` returned a non-null pointer (checked above) to a NUL-terminated C
+    // string that stays valid until the next `set`/`unset` of `PATH`. No such mutation happens
+    // before the value is copied into an owned `String` here, so the borrow is sound and the result
+    // does not depend on the table's storage afterward.
+    unsafe { ::core::ffi::CStr::from_ptr(value) }
+        .to_str()
+        .ok()
+        .map(String::from)
+}
+
+///
+/// # Description
+///
+/// Joins a single `PATH` directory prefix and a bare program name into one candidate path.
+///
+/// # Parameters
+///
+/// - `dir`: A single directory entry taken from `PATH`. Per POSIX, an empty entry denotes the
+///   current working directory; in that case `file` is returned unprefixed so it resolves relative
+///   to the current working directory.
+/// - `file`: The bare program name (the caller guarantees it contains no slash).
+///
+/// # Returns
+///
+/// The constructed candidate path.
+///
+fn join_search_path(dir: &str, file: &str) -> String {
+    if dir.is_empty() {
+        return String::from(file);
+    }
+
+    let mut candidate: String = String::with_capacity(dir.len() + 1 + file.len());
+    candidate.push_str(dir);
+    if !dir.ends_with('/') {
+        candidate.push('/');
+    }
+    candidate.push_str(file);
+    candidate
 }
 
 //==================================================================================================
@@ -384,14 +450,15 @@ pub unsafe fn execv_from_c(
 ///
 /// # Description
 ///
-/// C-ABI adapter for the environment-inheriting members of the `execv` family (`execv`, `execvp`):
-/// parses the `path` and `argv` C strings, snapshots the calling process's current environment, and
-/// replaces the calling process's image via [`do_execv`].
+/// C-ABI adapter for the environment-inheriting `execv()`: parses the `path` and `argv` C strings,
+/// snapshots the calling process's current environment, and replaces the calling process's image via
+/// [`do_execv`].
 ///
 /// Unlike [`execv_from_c`], which takes an explicit environment, this adapter inherits the caller's
-/// environment to honor POSIX `execv()`/`execvp()` semantics. The environment is read from the
-/// process-local environment table that also backs `getenv`/`setenv`, and is flattened into the
-/// kernel's NUL-separated `KEY=VALUE` form.
+/// environment to honor POSIX `execv()` semantics. The environment is read from the process-local
+/// environment table that also backs `getenv`/`setenv`, and is flattened into the kernel's
+/// NUL-separated `KEY=VALUE` form. (`execvp()` shares these semantics but performs a `PATH` search
+/// first; see [`execvp_from_c`].)
 ///
 /// # Parameters
 ///
@@ -421,6 +488,90 @@ pub unsafe fn execv_inherit_env_from_c(path: *const c_char, argv: *const *const 
     let env_tokens: Vec<&str> = env_owned.iter().map(String::as_str).collect();
 
     do_execv(path, &argv_vec, &env_tokens)
+}
+
+///
+/// # Description
+///
+/// C-ABI adapter for `execvp()`: parses the `file` and `argv` C strings, locates the executable
+/// following POSIX `execvp()` rules, and replaces the calling process's image via [`do_execv`],
+/// inheriting the caller's environment.
+///
+/// If `file` contains a slash it is used directly as a path, with no search. Otherwise the
+/// directories listed in the `PATH` environment variable are searched in order for an executable
+/// named `file`, and the first candidate that can be executed replaces the image. When `PATH` is
+/// unset, the default path [`DEFAULT_PATH`] is searched instead. An empty `PATH` entry denotes the
+/// current working directory.
+///
+/// During the search a candidate that does not exist ([`ErrorCode::NoSuchEntry`]) or whose prefix is
+/// not a directory ([`ErrorCode::InvalidDirectory`]) is skipped. A candidate that exists but cannot
+/// be accessed ([`ErrorCode::PermissionDenied`]) is remembered and reported only if no later
+/// candidate succeeds, mirroring the POSIX requirement to surface `EACCES`. Any other failure is
+/// reported immediately. If the search exhausts every entry, [`ErrorCode::NoSuchEntry`] is returned.
+///
+/// # Parameters
+///
+/// - `file`: NUL-terminated name or path of the program image to execute.
+/// - `argv`: NUL-pointer-terminated array of argument C strings.
+///
+/// # Returns
+///
+/// This function returns only on failure, yielding the error that prevented the replacement; on
+/// success the process image is replaced and control does not return.
+///
+/// # Safety
+///
+/// The caller must ensure that `file` points to a valid, NUL-terminated C string and that `argv` is
+/// non-null and points to a NUL-pointer-terminated array of valid, NUL-terminated C strings.
+///
+pub unsafe fn execvp_from_c(file: *const c_char, argv: *const *const c_char) -> Error {
+    // SAFETY: the caller upholds the documented C-string and array invariants.
+    let (file, argv_vec): (&str, Vec<&str>) = match unsafe { parse_path_and_argv(file, argv) } {
+        Ok(parsed) => parsed,
+        Err(error) => return error,
+    };
+
+    // An empty file name can never name an executable; fail fast before any search.
+    if file.is_empty() {
+        return Error::new(ErrorCode::NoSuchEntry, "execvp file name is empty");
+    }
+
+    // Snapshot the caller's environment so the new image inherits it (POSIX `execvp()` semantics).
+    // The owned strings outlive the borrowed token slice handed to `do_execv`.
+    let env_owned: Vec<String> = ::libc_stdlib::env_table::snapshot();
+    let env_tokens: Vec<&str> = env_owned.iter().map(String::as_str).collect();
+
+    // A file name that contains a slash is used as a path directly, with no `PATH` search (POSIX).
+    if file.contains('/') {
+        return do_execv(file, &argv_vec, &env_tokens);
+    }
+
+    // Otherwise, search each directory listed in `PATH` (or the default path when `PATH` is unset).
+    let path_value: Option<String> = read_env_path();
+    let search_path: &str = path_value.as_deref().unwrap_or(DEFAULT_PATH);
+
+    // Remember a `PermissionDenied` failure so it can be reported if nothing else executes, matching
+    // the POSIX requirement to surface `EACCES` when a candidate was found but could not be run.
+    let mut deferred: Option<Error> = None;
+    for dir in search_path.split(PATH_SEPARATOR) {
+        let candidate: String = join_search_path(dir, file);
+
+        // `do_execv` returns only on failure; on success the image is replaced and this never
+        // returns.
+        let error: Error = do_execv(&candidate, &argv_vec, &env_tokens);
+        match error.code {
+            // Not present in this directory: keep searching.
+            ErrorCode::NoSuchEntry | ErrorCode::InvalidDirectory => continue,
+            // Found but not accessible: remember it and keep searching.
+            ErrorCode::PermissionDenied => deferred = Some(error),
+            // Any other failure (e.g. a malformed executable) is reported immediately.
+            _ => return error,
+        }
+    }
+
+    // No candidate could be executed: report the remembered access error, if any, otherwise that
+    // the file was not found anywhere on the search path.
+    deferred.unwrap_or_else(|| Error::new(ErrorCode::NoSuchEntry, "execvp: file not found in PATH"))
 }
 
 //==================================================================================================
