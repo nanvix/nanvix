@@ -1,0 +1,33 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "test-rust-getenv-nostd"
+version.workspace = true
+license-file.workspace = true
+edition = "2024"
+authors.workspace = true
+description = "Integration test that getenv() returns kernel-cmdline-provided environment variables"
+homepage.workspace = true
+
+[[bin]]
+name = "test-rust-getenv-nostd"
+
+[dependencies]
+nvx = { workspace = true }
+nvx-crt0 = { workspace = true, features = ["rust-main", "provides-allocator"] }
+sysalloc = { workspace = true }
+libc_stdlib = { workspace = true }
+libc_string = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+sysapi = { workspace = true }
+syscall = { workspace = true, features = ["syscall"] }
+syslog = { workspace = true, default-features = true }
+
+[build-dependencies]
+cc = { workspace = true }
+cfg-if = { workspace = true }
+
+[features]
+default = ["panic"]
+panic = ["nvx/panic", "nvx-crt0/panic"]
