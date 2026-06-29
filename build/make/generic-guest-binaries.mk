@@ -18,7 +18,7 @@ MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_F
 # Guest binaries that support standalone deployment mode.
 STANDALONE_GUEST_BINARIES := \
 	test-rust-file test-rust-fork-guestfs test-rust-fork-hostfs test-rust-fork-kcall test-rust-waitpid \
-	test-rust-kill test-rust-setenv test-rust-linux-app test-rust-thread test-rust-stress test-rust-arch test-rust-mount-test \
+	test-rust-kill test-rust-job-control test-rust-setenv test-rust-linux-app test-rust-thread test-rust-stress test-rust-arch test-rust-mount-test \
 	test-rust-mount-multipart-test mount-bench-nostd test-rust-cmdline-len test-rust-network \
 	test-rust-execv-test test-rust-execv-target test-rust-execv-big-target test-rust-pipe-dup2 test-rust-fork-exec-vfsd-test \
 	test-rust-fork-exec-vfsd-target test-rust-fork-exec-write-test test-rust-fork-exec-write-target \

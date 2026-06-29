@@ -21,6 +21,10 @@
 pub const TCGETS: i32 = 0x5401;
 /// Set the terminal attributes (`struct termios`).
 pub const TCSETS: i32 = 0x5402;
+/// Get the foreground process group of the terminal (`pid_t`).
+pub const TIOCGPGRP: i32 = 0x540f;
+/// Set the foreground process group of the terminal (`pid_t`).
+pub const TIOCSPGRP: i32 = 0x5410;
 /// Get the terminal window size (`struct winsize`).
 pub const TIOCGWINSZ: i32 = 0x5413;
 /// Set the terminal window size (`struct winsize`).

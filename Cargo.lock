@@ -3777,6 +3777,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-rust-job-control"
+version = "0.17.83"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc_string",
+ "nvx",
+ "nvx-crt0",
+ "sys",
+ "sysalloc",
+ "sysapi",
+ "syscall",
+ "syslog",
+]
+
+[[package]]
 name = "test-rust-kernel"
 version = "0.17.83"
 dependencies = [

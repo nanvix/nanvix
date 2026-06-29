@@ -49,8 +49,10 @@
 //! The discipline implements the cooked-input behavior the console needs and deliberately omits the
 //! rest of the `termios` machinery:
 //!
-//! - **Signals.** `ISIG` is not acted upon: `VINTR` (`^C`), `VQUIT`, and `VSUSP` (`^Z`) are treated
-//!   as ordinary input rather than raising signals.
+//! - **Signals.** When `ISIG` is set, `VINTR` (`^C`), `VQUIT` (`^\`), and `VSUSP` (`^Z`) flush the
+//!   input queue and are reported through [`LineDiscipline::take_signals`] for the daemon to deliver
+//!   to the foreground process group; the discipline never delivers a signal itself. When `ISIG` is
+//!   cleared they are treated as ordinary input.
 //! - **Flow control.** `IXON`/`IXOFF` are ignored: `VSTART` (`^Q`) and `VSTOP` (`^S`) do not gate
 //!   output.
 //! - **Input translation.** Among the input-mode flags only `ICRNL` is honored; `IGNCR`, `INLCR`,
@@ -91,6 +93,25 @@ pub enum ConsoleReadOutcome {
     WouldBlock,
     /// A `VEOF` (`^D`) on an empty line — the caller must receive end-of-file (`0`).
     Eof,
+}
+
+//==================================================================================================
+// Terminal Signals
+//==================================================================================================
+
+/// A terminal-generated signal recognized by the line discipline while `ISIG` is set.
+///
+/// The discipline reports the *kind* of event rather than a numeric signal so that it stays free of
+/// the kernel signal-number definitions; the console daemon maps each variant to the corresponding
+/// POSIX signal and asks the process manager daemon to deliver it to the foreground process group.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TerminalSignal {
+    /// `VINTR` (`^C`) — maps to `SIGINT`.
+    Interrupt,
+    /// `VQUIT` (`^\`) — maps to `SIGQUIT`.
+    Quit,
+    /// `VSUSP` (`^Z`) — maps to `SIGTSTP`.
+    Suspend,
 }
 
 //==================================================================================================
@@ -137,6 +158,11 @@ pub struct LineDiscipline {
     /// read never crosses a line boundary even if `ICANON` is cleared and later restored while that
     /// line is still queued unread.
     raw_run_open: bool,
+    /// Terminal-generated signals recognized since the last drain. Populated by
+    /// [`LineDiscipline::push_input`] when `ISIG` is set and a `VINTR`/`VQUIT`/`VSUSP` byte arrives,
+    /// and drained by [`LineDiscipline::take_signals`] so the daemon can forward them to the
+    /// foreground process group. The discipline itself never delivers signals.
+    signals: Vec<TerminalSignal>,
 }
 
 impl Default for LineDiscipline {
@@ -147,6 +173,7 @@ impl Default for LineDiscipline {
             pending: Vec::new(),
             ready: VecDeque::new(),
             raw_run_open: false,
+            signals: Vec::new(),
         }
     }
 }
@@ -172,6 +199,11 @@ impl LineDiscipline {
         self.termios.c_lflag & termios::ECHO != 0
     }
 
+    /// Returns `true` when terminal-generated signals are enabled (`ISIG`).
+    fn signals_enabled(&self) -> bool {
+        self.termios.c_lflag & termios::ISIG != 0
+    }
+
     /// Returns `true` when carriage returns are mapped to newlines on input (`ICRNL`).
     fn map_cr_to_nl(&self) -> bool {
         self.termios.c_iflag & termios::ICRNL != 0
@@ -191,15 +223,20 @@ impl LineDiscipline {
     /// Feeds raw input bytes through the discipline and returns the bytes to echo.
     ///
     /// The returned vector is empty when `ECHO` is cleared. Cooked bytes produced here become
-    /// available to [`LineDiscipline::read`].
+    /// available to [`LineDiscipline::read`]. Terminal-generated signals recognized while `ISIG` is
+    /// set are queued for [`LineDiscipline::take_signals`] rather than acted upon here.
     pub fn push_input(&mut self, input: &[u8]) -> Vec<u8> {
         let mut echo: Vec<u8> = Vec::new();
         let canonical: bool = self.canonical();
         let echo_on: bool = self.echo_enabled();
+        let signals_on: bool = self.signals_enabled();
         let map_cr_to_nl: bool = self.map_cr_to_nl();
         let erase: Option<u8> = self.control_char(termios::VERASE);
         let kill: Option<u8> = self.control_char(termios::VKILL);
         let eof: Option<u8> = self.control_char(termios::VEOF);
+        let intr: Option<u8> = self.control_char(termios::VINTR);
+        let quit: Option<u8> = self.control_char(termios::VQUIT);
+        let susp: Option<u8> = self.control_char(termios::VSUSP);
 
         for &raw in input {
             // Input translation: map carriage return to newline when ICRNL is set. The host
@@ -209,6 +246,29 @@ impl LineDiscipline {
             } else {
                 raw
             };
+
+            // Terminal-generated signals take precedence over line editing when ISIG is set. A
+            // signal character never reaches the input queue: it flushes the pending input, echoes
+            // its caret form, and queues a signal for the daemon to deliver to the foreground group.
+            if signals_on {
+                let signal: Option<TerminalSignal> = if intr == Some(byte) {
+                    Some(TerminalSignal::Interrupt)
+                } else if quit == Some(byte) {
+                    Some(TerminalSignal::Quit)
+                } else if susp == Some(byte) {
+                    Some(TerminalSignal::Suspend)
+                } else {
+                    None
+                };
+                if let Some(signal) = signal {
+                    if echo_on {
+                        echo.extend_from_slice(&Self::caret(byte));
+                    }
+                    self.flush_input();
+                    self.signals.push(signal);
+                    continue;
+                }
+            }
 
             if !canonical {
                 // Raw mode: the byte becomes readable immediately and is echoed verbatim.
@@ -265,6 +325,35 @@ impl LineDiscipline {
         }
         self.ready.push_back(Segment::Eof);
         self.raw_run_open = false;
+    }
+
+    /// Drains the terminal-generated signals recognized since the last call.
+    ///
+    /// The console daemon calls this after [`LineDiscipline::push_input`] to learn which
+    /// terminal-generated signals (`^C`/`^\`/`^Z`) the just-fed input produced, so it can ask the
+    /// process manager daemon to deliver them to the foreground process group. The returned vector
+    /// is empty when no signal character was seen.
+    pub fn take_signals(&mut self) -> Vec<TerminalSignal> {
+        ::core::mem::take(&mut self.signals)
+    }
+
+    /// Discards all buffered input, both the pending (uncommitted) line and the cooked queue.
+    ///
+    /// A terminal-generated signal flushes the input queue (POSIX behavior when `NOFLSH` is clear),
+    /// so a partially typed line is dropped rather than delivered to whatever reads next.
+    fn flush_input(&mut self) {
+        self.pending.clear();
+        self.ready.clear();
+        self.raw_run_open = false;
+    }
+
+    /// Returns the two-byte caret echo (`^X`) for a control byte.
+    ///
+    /// A control byte `c` echoes as `^` followed by `c ^ 0x40`, so `^C` (`0x03`) prints as `^C`,
+    /// `^\` (`0x1c`) as `^\`, and `^Z` (`0x1a`) as `^Z`, matching how an interactive terminal shows
+    /// the signal characters it consumes.
+    fn caret(byte: u8) -> [u8; 2] {
+        [b'^', byte ^ 0x40]
     }
 
     /// Reads cooked bytes into `buf`, returning the outcome of the attempt.
@@ -352,6 +441,7 @@ mod tests {
     use ::sysapi::termios::{
         ECHO,
         ICANON,
+        ISIG,
     };
 
     /// Reads all immediately-available bytes into a freshly allocated vector of length `max`.
@@ -581,5 +671,100 @@ mod tests {
         // The raw bytes that arrived in between remain their own readable segment.
         assert_eq!(read_bytes(&mut ld, 16), b"xy", "the raw bytes are a separate segment");
         assert_eq!(ld.read(&mut [0u8; 16]), ConsoleReadOutcome::WouldBlock);
+    }
+
+    /// Tests that `^C` raises an interrupt signal, flushes pending input, and echoes as `^C`.
+    #[test]
+    fn interrupt_char_raises_signal_and_flushes_input() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+
+        // A partial line is typed but not yet committed.
+        assert_eq!(ld.push_input(b"ab"), b"ab");
+        assert!(ld.take_signals().is_empty(), "no signal yet");
+
+        // ^C (VINTR) raises an interrupt and echoes its caret form.
+        let echo: Vec<u8> = ld.push_input(b"\x03");
+        assert_eq!(echo, b"^C", "the interrupt character echoes as a caret sequence");
+        assert_eq!(
+            ld.take_signals(),
+            ::alloc::vec![TerminalSignal::Interrupt],
+            "VINTR raises an interrupt signal"
+        );
+
+        // The pending line was flushed: nothing is readable.
+        assert_eq!(ld.read(&mut [0u8; 16]), ConsoleReadOutcome::WouldBlock);
+    }
+
+    /// Tests that `^\` and `^Z` map to the quit and suspend signals respectively.
+    #[test]
+    fn quit_and_suspend_chars_map_to_signals() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+
+        ld.push_input(b"\x1c"); // ^\ (VQUIT)
+        assert_eq!(ld.take_signals(), ::alloc::vec![TerminalSignal::Quit]);
+
+        ld.push_input(b"\x1a"); // ^Z (VSUSP)
+        assert_eq!(ld.take_signals(), ::alloc::vec![TerminalSignal::Suspend]);
+    }
+
+    /// Tests that a single fed chunk can produce several signals in order.
+    #[test]
+    fn multiple_signal_chars_are_reported_in_order() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+        ld.push_input(b"\x03\x1a"); // ^C then ^Z
+        assert_eq!(
+            ld.take_signals(),
+            ::alloc::vec![TerminalSignal::Interrupt, TerminalSignal::Suspend]
+        );
+    }
+
+    /// Tests that signal characters are ordinary input when `ISIG` is cleared.
+    #[test]
+    fn signal_char_is_ordinary_input_when_isig_cleared() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+        clear_lflag(&mut ld, ISIG);
+
+        ld.push_input(b"a\x03b\n");
+        assert!(ld.take_signals().is_empty(), "no signal is raised when ISIG is cleared");
+        assert_eq!(
+            read_bytes(&mut ld, 16),
+            b"a\x03b\n",
+            "the interrupt byte is delivered as ordinary input"
+        );
+    }
+
+    /// Tests that terminal signals are recognized in raw mode (`ICANON` cleared, `ISIG` set).
+    #[test]
+    fn signals_recognized_in_raw_mode() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+        clear_lflag(&mut ld, ICANON);
+
+        // A raw byte is buffered, then ^C arrives.
+        ld.push_input(b"x");
+        ld.push_input(b"\x03");
+
+        assert_eq!(ld.take_signals(), ::alloc::vec![TerminalSignal::Interrupt]);
+        // The buffered raw byte was flushed by the signal.
+        assert_eq!(ld.read(&mut [0u8; 16]), ConsoleReadOutcome::WouldBlock);
+    }
+
+    /// Tests that `take_signals` drains the queue: a second call returns nothing.
+    #[test]
+    fn take_signals_drains_the_queue() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+        ld.push_input(b"\x03");
+        assert_eq!(ld.take_signals(), ::alloc::vec![TerminalSignal::Interrupt]);
+        assert!(ld.take_signals().is_empty(), "signals are drained once taken");
+    }
+
+    /// Tests that a signal character is not echoed when `ECHO` is cleared.
+    #[test]
+    fn signal_char_not_echoed_without_echo() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+        clear_lflag(&mut ld, ECHO);
+
+        let echo: Vec<u8> = ld.push_input(b"\x03");
+        assert!(echo.is_empty(), "no echo is produced when ECHO is cleared");
+        assert_eq!(ld.take_signals(), ::alloc::vec![TerminalSignal::Interrupt]);
     }
 }
