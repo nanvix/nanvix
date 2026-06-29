@@ -367,7 +367,7 @@ impl Inner {
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
-        let end_frame_number: usize = start_frame_number + region.size() / mem::FRAME_SIZE - 1;
+        let end_exclusive: usize = start_frame_number + region.size() / mem::FRAME_SIZE;
 
         // Check that all frames in the range are covered by the bitmap and free,
         // then book them. Uncovered frames indicate a memory layout bug.
@@ -375,7 +375,7 @@ impl Inner {
         // The coverage check runs unconditionally — including optimized builds —
         // because out-of-bounds indices must be rejected before attempting to set them.
         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
-        for index in start_frame_number..=end_frame_number {
+        for index in start_frame_number..end_exclusive {
             if index >= self.bitmap.number_of_bits() {
                 // `index` is out of range here, so `index * FRAME_SIZE` can overflow `usize`
                 // (e.g. on 32-bit targets), panicking in debug builds on the very error path
@@ -403,7 +403,7 @@ impl Inner {
         }
 
         // Book all frames in the range.
-        for index in start_frame_number..=end_frame_number {
+        for index in start_frame_number..end_exclusive {
             if let Err(error) = self.bitmap.set(index) {
                 error!("{error:?} (region={region:?})");
                 return Err(error);
