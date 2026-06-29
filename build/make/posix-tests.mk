@@ -115,7 +115,7 @@ $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_STRESS_SRCDIR)/%.c
 POSIX_TEST_FILES_test-c-file := \
 	main.c open_close.c create_unlink.c write_read.c posix_fadvise.c lseek.c \
 	posix_fallocate.c readv.c preadv.c writev.c pwritev.c pread.c pwrite.c \
-	fdatasync.c stat.c ftruncate.c renameat.c unlinkat.c mkdirat.c mkdir.c \
+	fdatasync.c stat.c ftruncate.c truncate.c renameat.c unlinkat.c mkdirat.c mkdir.c \
 	dirent.c getcwd.c chdir.c fchdir.c
 
 # Extra link flags for position-independent executables. The dlfcn PIE variants

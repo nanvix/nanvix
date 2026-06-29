@@ -51,6 +51,7 @@ cfg_if::cfg_if! {
         mod readlinkat;
         mod symlink;
         mod symlinkat;
+        mod truncate;
         mod unlink;
         mod write;
     }
@@ -101,6 +102,7 @@ cfg_if::cfg_if! {
             readlinkat::readlinkat,
             symlink::symlink,
             symlinkat::symlinkat,
+            truncate::truncate,
             unlink::unlink,
             write::write,
         };
