@@ -37,19 +37,19 @@ sys = { workspace = true, features = ["kcall"] }
 # alloc-crate usage finds an allocator.
 sysalloc = { workspace = true, optional = true }
 # Optional: only pulled in via the `provides-allocator` feature.  Rust
-# no_std binaries that depend on `nvx-crt0` via cargo need libposix's
-# `__nanvix_libc_start_main` resolved at link time; pulling `posix` as
-# a cargo dep brings it into the binary's link graph.  Cargo unifies
-# `sysalloc` (referenced by both this crate and `posix`) into a single
-# compilation, so the binary ends up with a single sysalloc instance.
+# no_std binaries that depend on `nvx-crt0` via cargo need libc's
+# `__nanvix_libc_start_main` resolved at link time; pulling `nanvix_libc` as
+# a cargo dep (default-features off, just the `backend-nanvix` backend) brings
+# it into the binary's link graph.  Cargo unifies `sysalloc` (referenced by both
+# this crate and `nanvix_libc`) into a single compilation, so the binary ends up
+# with a single sysalloc instance.
 #
 # For the cpython staticlib path this dep is OFF (the staticlib build
 # uses `--no-default-features`), so `libnvx_crt0.a` does NOT carry
-# `libposix` or `sysalloc` objects — `__nanvix_libc_start_main` is
-# resolved from the separately-built `libposix.a` at the cpython link.
-posix = { workspace = true, default-features = false, features = [
-    "allocator",
-    "syscall",
+# libc or `sysalloc` objects — `__nanvix_libc_start_main` is
+# resolved from the separately-built `libc.a` at the cpython link.
+nanvix_libc = { workspace = true, default-features = false, features = [
+    "backend-nanvix",
 ], optional = true }
 
 [features]
@@ -75,10 +75,10 @@ init-array = []
 # on `nvx-crt0` via cargo.  Disabled for the cpython staticlib build
 # (which uses `forwarding-allocator` instead) so `libnvx_crt0.a`
 # carries no `sysalloc` objects.
-provides-allocator = ["dep:sysalloc", "dep:posix"]
+provides-allocator = ["dep:sysalloc", "dep:nanvix_libc"]
 
 # `forwarding-allocator` declares a stub `#[global_allocator]` in this
-# crate that forwards to `libposix`'s `sysalloc` via C-ABI bridges.  It
+# crate that forwards to the libc `sysalloc` via C-ABI bridges.  It
 # exists only to satisfy rustc's requirement that every staticlib
 # linking the `alloc` crate (which `-Zbuild-std=core,alloc` pulls in
 # unconditionally) must declare a `#[global_allocator]`.

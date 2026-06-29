@@ -15,46 +15,122 @@
 // Re-exports
 //==================================================================================================
 
-/// Pull in all libc_* crate symbols so the linker includes them in the static archive.
+/// Pull in all libc_* crate symbols so the linker includes them in the static
+/// archive. Gated on `staticlib`: only the produced `libc.a` needs the full C
+/// surface forced in. The `rlib` path (nvx-crt0 pulling this crate for the
+/// `start` backend) stays lean.
+#[cfg(feature = "staticlib")]
 extern crate libc_assert;
+#[cfg(feature = "staticlib")]
 extern crate libc_ctype;
+#[cfg(feature = "staticlib")]
 extern crate libc_fnmatch;
+#[cfg(feature = "staticlib")]
 extern crate libc_inttypes;
+#[cfg(feature = "staticlib")]
 extern crate libc_langinfo;
+#[cfg(feature = "staticlib")]
 extern crate libc_libgen;
+#[cfg(feature = "staticlib")]
 extern crate libc_locale;
+#[cfg(feature = "staticlib")]
 extern crate libc_mntent;
+#[cfg(feature = "staticlib")]
 extern crate libc_regex;
+#[cfg(feature = "staticlib")]
 extern crate libc_setjmp;
+#[cfg(feature = "staticlib")]
 extern crate libc_signal;
+#[cfg(feature = "staticlib")]
 extern crate libc_stdio;
+#[cfg(feature = "staticlib")]
 extern crate libc_stdlib;
+#[cfg(feature = "staticlib")]
 extern crate libc_string;
+#[cfg(feature = "staticlib")]
 extern crate libc_time;
+#[cfg(feature = "staticlib")]
 extern crate libc_wchar;
+#[cfg(feature = "staticlib")]
 extern crate libc_wctype;
 
-/// Runtime support: panic handler, global allocator, and the POSIX syscall
-/// backend (`open`/`read`/`write`/`__nanvix_libc_start_main` + the in-memory
-/// VFS). The `extern crate posix` is REQUIRED (not just the Cargo dependency):
-/// it forces the linker to include posix's `#[no_mangle]` backend symbols in the
-/// static archive, exactly as the `extern crate libc_*` lines above do for the C
-/// library surface. Without it, rustc's staticlib reachability drops every
-/// posix symbol that this crate does not reference from Rust.
-///
-/// Gated behind the `backend-nanvix` feature so a consumer supplying its own
-/// backend (panic handler + global allocator + crt0 + syscalls) can build this
-/// archive with `--no-default-features`.
+/// Heap-backed startup (`start` module) needs `alloc`.
+#[cfg(feature = "backend-nanvix")]
+extern crate alloc;
+
+/// Runtime support: panic handler (nvx), global allocator (sysalloc), and the
+/// process start-of-day driver (the `start` module below). Gated behind the
+/// `backend-nanvix` feature so a consumer supplying its own backend (panic
+/// handler + global allocator + crt0 + syscalls) can build with
+/// `--no-default-features`.
 #[cfg(feature = "backend-nanvix")]
 extern crate nvx;
 #[cfg(feature = "backend-nanvix")]
-extern crate posix;
-#[cfg(feature = "backend-nanvix")]
 extern crate sysalloc;
+
+/// POSIX syscall-backed surface. Each `extern crate` forces the linker to
+/// include the crate's `#[no_mangle]` C-ABI symbols, exactly as the non-syscall
+/// `extern crate libc_*` lines above do. Gated on `backend-nanvix` (which
+/// enables `syscall`): the syscall-backed wrappers (`mkdir`, `lstat`, ...) are
+/// part of the backend, so they are present both in `libc.a` and on the `rlib`
+/// path that `nvx-crt0` pulls for Rust no_std binaries.
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_arpa_inet;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_dirent;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_dlfcn;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_errno;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_ftw;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_glob;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_grp;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_netdb;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_poll;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_pthread;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_pwd;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_ioctl;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_resource;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_stat;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_statvfs;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_time;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_times;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_uio;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_un;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_sys_utsname;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_termios;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_unistd;
+#[cfg(feature = "backend-nanvix")]
+extern crate libc_utime;
 
 /// Transitive dependencies required for staticlib resolution.
 extern crate sys;
 extern crate syslog;
+
+/// Process start-of-day driver called from `nvx-crt0::_start`. Owns the
+/// stateful runtime services (heap, TDA, argv / envp parsing) that bring up and
+/// tear down a Nanvix process. Moved here from the former `posix` crate so
+/// `libc.a` is the only library C applications must link against.
+#[cfg(feature = "backend-nanvix")]
+pub mod start;
 
 //==================================================================================================
 // errno support
@@ -321,8 +397,8 @@ pub static __dso_handle: SyncPtr = SyncPtr(core::ptr::null_mut());
 // Terminal interface stubs (no interactive terminal in standalone mode)
 //==================================================================================================
 //
-// `tcgetattr`/`tcsetattr` are provided by the `posix` backend (src/libs/posix/
-// src/dummy.rs); the remaining terminal helpers below are not, so they live here.
+// `tcgetattr`/`tcsetattr` are provided by the `libc_termios` crate; the
+// remaining terminal helpers below are not, so they live here.
 
 /// Stub `tcsendbreak` — no terminal hardware, so this is a no-op success.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]

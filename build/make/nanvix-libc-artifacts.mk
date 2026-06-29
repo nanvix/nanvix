@@ -15,8 +15,7 @@
 #   - libdl.a libpthread.a librt.a : empty stub archives so legacy `-ldl` /
 #                `-lpthread` / `-lrt` resolve with no spec drop-list
 #
-# libc.a embeds the Nanvix system-call backend (the same backend is also
-# shipped standalone as `libposix.a`, carrying `write`, `read`, `open`,
+# libc.a embeds the Nanvix system-call backend (carrying `write`, `read`, `open`,
 # `__nanvix_libc_start_main`, and the typed kernel-call wrappers), while libm.a
 # carries the math routines. The startfile `crt0.o` provides `_do_start`
 # unconditionally, and the empty stub archives satisfy ports that still pass
@@ -93,14 +92,14 @@ endif
 
 # Outputs. `libc.a` is now produced DIRECTLY by `all-guest-staticlibs`: a single
 # `cargo build -p nanvix_libc` compiles the C library together with the POSIX
-# syscall backend (pulled in via nanvix_libc's `backend-nanvix` feature →
-# `dep:posix`), so the staticlib already embeds `open`/`read`/`write`/
+# syscall backend and start-of-day driver (pulled in via nanvix_libc's
+# `backend-nanvix` feature), so the staticlib already embeds `open`/`read`/`write`/
 # `__nanvix_libc_start_main` and a SINGLE unified `sysalloc`/`libc_stdlib`/`sys`/
 # `nvx`. It is staged straight under its conventional `-lc` name (`libc.a`) — no
-# `ar` merge and no separate `libnanvix_libc.a`. The standalone `libposix.a`
-# remains a separate out-of-tree-consumer artifact. The old two-archive libc
-# merge embedded DUPLICATE instances of those crates (each `sysalloc` with its
-# own `HEAP` static): exactly the duplicate-HEAP regression this restructure
+# `ar` merge and no separate `libnanvix_libc.a`, and no standalone `libposix.a`;
+# `libc.a` is the only library C applications link against. The old two-archive
+# libc merge embedded DUPLICATE instances of those crates (each `sysalloc` with
+# its own `HEAP` static): exactly the duplicate-HEAP regression this restructure
 # structurally eliminates.
 NANVIX_LIBC_BUNDLE_AR := $(LIBRARIES_DIR)/libc.a
 NANVIX_LIBC_BUNDLE_SO := $(LIBRARIES_DIR)/libc.so
@@ -139,9 +138,8 @@ NANVIX_CRT0_ALIAS_OBJECTS := $(foreach alias,$(NANVIX_CRT0_ALIAS_NAMES),$(LIBRAR
 
 # Empty stub archives so ports that still pass `-ldl` / `-lpthread` / `-lrt`
 # resolve with NO spec drop-list — every real symbol already lives in `libc.a`
-# (the relibc approach). `-lm` resolves to the real `libm.a` above, and `-lposix`
-# to the real `libposix.a` (the standalone Nanvix syscall backend, built by
-# `all-guest-staticlibs` and shipped for out-of-tree C consumers).
+# (the relibc approach). `-lm` resolves to the real `libm.a` above. There is no
+# `-lposix`: the syscall backend is embedded in `libc.a`.
 NANVIX_LIBC_STUB_ARCHIVES := \
 	$(LIBRARIES_DIR)/libdl.a \
 	$(LIBRARIES_DIR)/libpthread.a \

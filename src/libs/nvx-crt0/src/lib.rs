@@ -20,7 +20,7 @@
 //! This crate is intentionally **stateless** in the sysroot staticlib build
 //! (`forwarding-allocator`): it carries no `sysalloc` objects and does not
 //! allocate; it only provides a tiny forwarding `#[global_allocator]` stub.
-//! All stateful runtime services live in `libposix`'s `start` module and are
+//! All stateful runtime services live in `libc`'s `start` module and are
 //! reached via the `extern "C" fn __nanvix_libc_start_main` entry point.
 //!
 //! # Architectural rationale
@@ -28,13 +28,13 @@
 //! This split mirrors the glibc / musl / newlib / picolibc convention:
 //! `crt1.o` / `crt0.o` is a tiny stateless wrapper; the libc-side function
 //! (`__libc_start_main`) carries all stateful work.  In Nanvix terms,
-//! `libnvx_crt0.a` is the wrapper and `libposix.a` is the libc.
+//! `libnvx_crt0.a` is the wrapper and `libc.a` is the libc.
 //!
 //! The split is what makes the design correct.  Before this layout
 //! `nvx-crt0` itself depended on `sysalloc` (via `nvx::init`) AND used a
 //! `Vec` for argv parsing, so `libnvx_crt0.a` carried a copy of
 //! `sysalloc`'s state — including `VADDR_NEXT` — that was a DISTINCT
-//! cargo compilation from the one inside `libposix.a`.  Two
+//! cargo compilation from the one inside `libc.a`.  Two
 //! `VADDR_NEXT` globals meant `dlopen()` collided with the already-
 //! mapped heap pages.  See
 //! `nanvix-todo/dlopen-load-address-conflict.md`.
@@ -89,12 +89,12 @@ use ::core::ffi::c_char;
 #[cfg(feature = "provides-allocator")]
 extern crate sysalloc;
 
-// Pull `posix` into the binary's link graph so libposix-side
+// Pull `nanvix_libc` into the binary's link graph so libc-side
 // `__nanvix_libc_start_main` (and the C-ABI bridges it relies on)
 // resolve at link time.  Same gating reason as `extern crate sysalloc`
 // above.
 #[cfg(feature = "provides-allocator")]
-extern crate posix;
+extern crate nanvix_libc;
 
 #[cfg(feature = "rust-main")]
 use ::core::sync::atomic::{
@@ -107,17 +107,17 @@ use ::core::sync::atomic::{
 // External Functions
 //==================================================================================================
 
-// `__nanvix_libc_start_main` is the libposix-side process startup driver
+// `__nanvix_libc_start_main` is the libc-side process startup driver
 // (analogous to glibc's `__libc_start_main`).  It owns runtime init
 // (heap, TDA), argv / envp parsing, environment-table population, the
 // trampoline call (via `__nanvix_main` below), runtime cleanup, and
-// process exit.  See `libposix/src/start.rs`.
+// process exit.  See `nanvix_libc/src/start.rs`.
 unsafe extern "C" {
     fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut c_char) -> !;
 }
 
-// Raw `sysalloc` C-ABI bridges exported by `libposix` (see
-// `libposix/src/start.rs`).  Used as the implementation of the
+// Raw `sysalloc` C-ABI bridges exported by `libc` (see
+// `nanvix_libc/src/start.rs`).  Used as the implementation of the
 // forwarding `#[global_allocator]` below (only built when the
 // `forwarding-allocator` feature is on); they call `sysalloc::alloc`
 // / `sysalloc::dealloc` directly so there is no recursion through
@@ -136,8 +136,8 @@ unsafe extern "C" {
 // core,alloc`) requires every staticlib that links it to declare a
 // `#[global_allocator]`, even when the staticlib's own code never
 // allocates.  This crate has no allocation sites of its own — all
-// allocating work happens inside `libposix.a` — so we provide a
-// minimal forwarding `#[global_allocator]` that defers to libposix's
+// allocating work happens inside `libc.a` — so we provide a
+// minimal forwarding `#[global_allocator]` that defers to libc's
 // `sysalloc` via the C-ABI bridges above.
 //
 // The forwarder is gated on the `forwarding-allocator` feature
@@ -146,10 +146,10 @@ unsafe extern "C" {
 // and a second one declared here would conflict at compile time.
 
 #[cfg(feature = "forwarding-allocator")]
-struct LibposixAllocator;
+struct LibcAllocator;
 
 #[cfg(feature = "forwarding-allocator")]
-unsafe impl ::core::alloc::GlobalAlloc for LibposixAllocator {
+unsafe impl ::core::alloc::GlobalAlloc for LibcAllocator {
     unsafe fn alloc(&self, layout: ::core::alloc::Layout) -> *mut u8 {
         unsafe { __nanvix_rust_alloc_raw(layout.size(), layout.align()) }
     }
@@ -161,7 +161,7 @@ unsafe impl ::core::alloc::GlobalAlloc for LibposixAllocator {
 
 #[cfg(feature = "forwarding-allocator")]
 #[global_allocator]
-static ALLOCATOR: LibposixAllocator = LibposixAllocator;
+static ALLOCATOR: LibcAllocator = LibcAllocator;
 
 //==================================================================================================
 // Global Variables
@@ -282,7 +282,7 @@ unsafe extern "C" {
 /// # Description
 ///
 /// Rust entry point reached from `_do_start`.  Performs PIE relocation and
-/// then immediately tail-calls into libposix's `__nanvix_libc_start_main`,
+/// then immediately tail-calls into libc's `__nanvix_libc_start_main`,
 /// which owns runtime init, argv / envp parsing, trampoline dispatch,
 /// cleanup, and process exit.
 ///
@@ -304,12 +304,12 @@ unsafe extern "C" {
 ///
 /// This function is unsafe because it dereferences raw pointers supplied by
 /// the kernel trap-frame setup, and it relies on `__nanvix_libc_start_main`
-/// being provided at link time by `libposix.a`.
+/// being provided at link time by `libc.a`.
 ///
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _start(argp: *mut c_char, envp: *mut c_char) -> ! {
     // Apply PIE relocations before any global data access.  Must happen
-    // here (not in libposix) because the libposix-side `__nanvix_libc_start_main`
+    // here (not in libc) because the libc-side `__nanvix_libc_start_main`
     // accesses global statics (sysalloc, environ, ...) that themselves
     // need relocation.
     unsafe {
@@ -335,7 +335,7 @@ pub unsafe extern "C" fn _start(argp: *mut c_char, envp: *mut c_char) -> ! {
 ///
 /// # Description
 ///
-/// C-ABI trampoline invoked by libposix's `__nanvix_libc_start_main` to
+/// C-ABI trampoline invoked by libc.a `__nanvix_libc_start_main` to
 /// dispatch into the application's entry point.
 ///
 /// In `c-main` mode (cpython, hello-c, smoke, ...), this calls the
@@ -378,7 +378,7 @@ pub unsafe extern "C" fn __nanvix_main(argc: i32, argv: *const *const u8) -> i32
             cfg_if::cfg_if! {
                 if #[cfg(feature = "init-array")] {
                     // Global constructors / destructors are run separately by
-                    // `__nanvix_libc_start_main` (libposix start.rs), which
+                    // `__nanvix_libc_start_main` (libc.a start.rs), which
                     // walks `.init_array` / `.fini_array` around this
                     // trampoline.  Matches the in-tree `nanvix_libc` bundle,
                     // which ships no crti/crtn/crtbegin/crtend and therefore

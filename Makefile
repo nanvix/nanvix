@@ -172,11 +172,7 @@ MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 
 # File format for guest executables (always ELF regardless of host OS).
 export EXEC_FORMAT := elf
-# Libraries. `libposix.a` is the standalone Nanvix syscall backend, shipped for
-# out-of-tree C consumers that link it alongside their own libc. The in-tree
-# `libc.a` bundle additionally embeds the same backend (see
-# build/make/nanvix-libc-artifacts.mk); the two are independent archives.
-export LIBPOSIX := $(LIBRARIES_DIR)/libposix.a
+# Libraries.
 export LIBNVX_CRT0 := $(LIBRARIES_DIR)/libnvx_crt0.a
 
 # Binaries.
@@ -363,21 +359,15 @@ export VERUS_KERNEL_FEATURES := microvm trace
 # Top-Level Targets
 #===================================================================================================
 
-# `posix` is built as the standalone `libposix.a` artifact (the Nanvix syscall
-# backend) AND compiled into `libc.a` as a `nanvix_libc` dependency (via its
-# `backend-nanvix` feature). `libposix.a` is shipped for out-of-tree C consumers
-# that link it alongside their own libc; the in-tree `libc.a` bundle embeds the
-# same backend compiled in a single cargo invocation (one unified `sysalloc`).
-# The two are independent archives — no link consumes both. `posix` takes a
-# feature override (see generic-guest-staticlibs.mk) so its standalone
-# `libposix.a` is built on its own and does NOT pick up `nanvix_libc`'s
-# `init-array` via cargo feature unification (which would impose a `.init_array`
-# linker-script contract on those consumers).
+# `nanvix_libc` produces the deliverable `libc.a`: the full C library plus the
+# Nanvix syscall backend and the process start-of-day driver
+# (`__nanvix_libc_start_main`), compiled in a single cargo invocation (one
+# unified `sysalloc`). `libc.a` is the only library C applications link against.
 #
 # `nanvix_libm` produces the standalone math archive `libm.a` (libc_math + the
 # nvx panic handler, no sysalloc). Together with `libc.a` and `libnvx_crt0.a` it
 # forms the full crt0 + libc + libm replacement for the GCC + newlib toolchain.
-ALL_GUEST_STATIC_LIBS := posix nvx-crt0 nanvix_libc nanvix_libm
+ALL_GUEST_STATIC_LIBS := nvx-crt0 nanvix_libc nanvix_libm
 ALL_GUEST_RUST_LIBS := \
 	arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe \
 	koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi \
@@ -599,7 +589,6 @@ ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 	@cp ${USERVM} ${SYSROOT_DIR}/bin/
 endif
 endif
-	@cp ${LIBPOSIX} ${SYSROOT_DIR}/lib/
 	@cp ${LIBNVX_CRT0} ${SYSROOT_DIR}/lib/
 	@cp ${NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS} ${SYSROOT_DIR}/lib/
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts/common

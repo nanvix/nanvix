@@ -22,7 +22,7 @@
 //!
 //! The executable entry point (`_do_start` / `_start`) and the C / Rust
 //! trampolines that bridge to the application's `main` function live in the
-//! sibling `nvx-crt0` crate.  Libraries (notably `libposix`) depend only on
+//! sibling `nvx-crt0` crate.  Libraries (notably `libc`) depend only on
 //! this crate; executables depend on both this crate and `nvx-crt0`.
 
 //==================================================================================================
@@ -58,9 +58,9 @@ extern crate alloc;
 ///
 /// Available only under the `runtime` feature, for consumers that bring up
 /// the runtime through `nvx` directly.  The default startup path no longer
-/// calls this: `nvx-crt0::_start` tail-calls into libposix's
+/// calls this: `nvx-crt0::_start` tail-calls into libc's
 /// `__nanvix_libc_start_main`, which performs the equivalent bring-up in
-/// `posix::start::runtime_init` right after `pie::relocate_pie_binary`.
+/// `nanvix_libc::start::runtime_init` right after `pie::relocate_pie_binary`.
 #[cfg(feature = "runtime")]
 pub fn init() {
     #[cfg(any(target_os = "none", target_os = "nanvix"))]
@@ -99,8 +99,8 @@ pub fn init() {
 ///
 /// Available only under the `runtime` feature, for consumers that bring up
 /// the runtime through `nvx` directly.  The default startup path no longer
-/// calls this: teardown happens in libposix's `__nanvix_libc_start_main`
-/// (`posix::start::runtime_cleanup`) right before the process exits via the
+/// calls this: teardown happens in libc's `__nanvix_libc_start_main`
+/// (`nanvix_libc::start::runtime_cleanup`) right before the process exits via the
 /// `__kcall_exit` syscall.
 #[cfg(feature = "runtime")]
 pub fn cleanup() {

@@ -11,83 +11,154 @@ description = "Nanvix C Standard Library (combined staticlib)"
 homepage.workspace = true
 
 [lib]
-crate-type = ["staticlib"]
+crate-type = ["lib", "staticlib"]
 
 [dependencies]
-libc_assert = { workspace = true }
-libc_ctype = { workspace = true }
-libc_fnmatch = { workspace = true }
-libc_inttypes = { workspace = true }
-libc_langinfo = { workspace = true }
-libc_libgen = { workspace = true }
-libc_locale = { workspace = true }
-libc_mntent = { workspace = true }
-libc_regex = { workspace = true }
+libc_assert = { workspace = true, optional = true }
+libc_ctype = { workspace = true, optional = true }
+libc_fnmatch = { workspace = true, optional = true }
+libc_inttypes = { workspace = true, optional = true }
+libc_langinfo = { workspace = true, optional = true }
+libc_libgen = { workspace = true, optional = true }
+libc_locale = { workspace = true, optional = true }
+libc_mntent = { workspace = true, optional = true }
+libc_regex = { workspace = true, optional = true }
 # NOTE: the math routines (`libc_math`) are deliberately NOT pulled in here — they
 # are shipped as the separate `libm.a` archive (the `nanvix_libm` crate), mirroring
 # the GCC + newlib split of `libc.a` / `libm.a`. `libc.a` references no math
 # symbols, so the two archives are independent.
-libc_setjmp = { workspace = true }
+libc_setjmp = { workspace = true, optional = true }
+# `libc_signal` is non-optional: the `sigaction` backend in lib.rs references its
+# types unconditionally.
 libc_signal = { workspace = true }
-libc_stdio = { workspace = true }
-libc_stdlib = { workspace = true }
-libc_string = { workspace = true }
-libc_time = { workspace = true }
-libc_wchar = { workspace = true }
-libc_wctype = { workspace = true }
+libc_stdio = { workspace = true, optional = true }
+libc_stdlib = { workspace = true, optional = true }
+libc_string = { workspace = true, optional = true }
+libc_time = { workspace = true, optional = true }
+libc_wchar = { workspace = true, optional = true }
+libc_wctype = { workspace = true, optional = true }
+# POSIX syscall-backed surface (formerly re-exported by the `posix` crate, now
+# merged here). Optional and tied to the `staticlib` feature so only `libc.a`
+# pulls them in.
+libc_arpa_inet = { workspace = true, optional = true }
+libc_dirent = { workspace = true, optional = true }
+libc_dlfcn = { workspace = true, optional = true }
+libc_errno = { workspace = true, optional = true }
+libc_ftw = { workspace = true, optional = true }
+libc_glob = { workspace = true, optional = true }
+libc_grp = { workspace = true, optional = true }
+libc_netdb = { workspace = true, optional = true }
+libc_poll = { workspace = true, optional = true }
+libc_pthread = { workspace = true, optional = true }
+libc_pwd = { workspace = true, optional = true }
+libc_sys_ioctl = { workspace = true, optional = true }
+libc_sys_resource = { workspace = true, optional = true }
+libc_sys_stat = { workspace = true, optional = true }
+libc_sys_statvfs = { workspace = true, optional = true }
+libc_sys_time = { workspace = true, optional = true }
+libc_sys_times = { workspace = true, optional = true }
+libc_sys_uio = { workspace = true, optional = true }
+libc_sys_un = { workspace = true, optional = true }
+libc_sys_utsname = { workspace = true, optional = true }
+libc_termios = { workspace = true, optional = true }
+libc_unistd = { workspace = true, optional = true }
+libc_utime = { workspace = true, optional = true }
 # Backend runtime providers: the `#[panic_handler]` (nvx), the
-# `#[global_allocator]` (sysalloc), and the POSIX system-call backend (posix:
-# `open`/`read`/`write`/`__nanvix_libc_start_main` + the in-memory VFS). All are
-# gated behind the `backend-nanvix` feature so a consumer that supplies its own
-# backend can build with `--no-default-features`.
-#
-# `posix` is pulled in HERE (rather than merged as a separate `libposix.a` via
-# `ar`) so the entire C library + backend is compiled in ONE cargo invocation.
-# Cargo then unifies every shared transitive dependency (sysalloc, libc_stdlib,
-# sys, nvx, syslog) to a SINGLE instance each, which structurally prevents the
-# duplicate-`sysalloc`/duplicate-`HEAP` class of bugs that the previous
-# two-staticlib merge produced (crt0 initialised one `HEAP`, the global
-# allocator read another).
+# `#[global_allocator]` (sysalloc), and the process start-of-day driver (the
+# `start` module: `__nanvix_libc_start_main` + the runtime trio). All are gated
+# behind the `backend-nanvix` feature so a consumer that supplies its own
+# backend can build with `--no-default-features`. The whole C library + backend
+# is compiled in ONE cargo invocation, so cargo unifies every shared transitive
+# dependency (sysalloc, libc_stdlib, sys, nvx, syslog) to a SINGLE instance,
+# structurally preventing the duplicate-`sysalloc`/duplicate-`HEAP` class of bugs.
 nvx = { workspace = true, optional = true, features = ["weak-panic"] }
 sysalloc = { workspace = true, optional = true }
-posix = { workspace = true, optional = true, features = [
-    "syscall",
-    "allocator",
-    "c-main",
-    "init-array",
-] }
+config = { workspace = true, optional = true }
+syscall = { workspace = true, optional = true, features = ["syscall", "dlfcn"] }
 sysapi = { workspace = true }
 syslog = { workspace = true, default-features = true }
 sys = { workspace = true }
 
 [features]
-default = ["staticlib", "backend-nanvix"]
-staticlib = []
+default = ["staticlib", "backend-nanvix", "c-main", "init-array"]
+# Pulls the full C surface (every libc_* crate) into the produced `libc.a`.
+staticlib = [
+    "dep:libc_assert",
+    "dep:libc_ctype",
+    "dep:libc_fnmatch",
+    "dep:libc_inttypes",
+    "dep:libc_langinfo",
+    "dep:libc_libgen",
+    "dep:libc_locale",
+    "dep:libc_mntent",
+    "dep:libc_regex",
+    "dep:libc_setjmp",
+    "dep:libc_stdio",
+    "dep:libc_stdlib",
+    "dep:libc_string",
+    "dep:libc_time",
+    "dep:libc_wchar",
+    "dep:libc_wctype",
+]
 std = []
 
 # Default Nanvix runtime backend: pulls in the `#[panic_handler]` (nvx), the
-# `#[global_allocator]` (sysalloc), and the POSIX syscall backend (posix) so the
+# `#[global_allocator]` (sysalloc), and the start-of-day driver (`start`) so the
 # produced static archive is a complete, self-contained libc.a.
-backend-nanvix = ["dep:nvx", "dep:sysalloc", "dep:posix"]
+backend-nanvix = ["dep:nvx", "dep:sysalloc", "allocator", "syscall"]
 # Host/custom backend: the final link must supply panic + allocator + crt0.
-# Building a staticlib with this and without `backend-nanvix` requires the
-# consumer to provide the runtime trio at link time.
 backend-host = []
 
-# Standalone deployment: routes stdout/stderr to the debug kcall and file I/O to
-# the in-memory VFS. Forwarded to the `posix` backend (the libc functions
-# themselves have no standalone-specific behaviour).
-standalone = ["posix?/standalone"]
+allocator = ["dep:sysalloc"]
+syscall = [
+    "dep:syscall",
+    "dep:config",
+    "dep:libc_arpa_inet",
+    "dep:libc_dirent",
+    "dep:libc_dlfcn",
+    "dep:libc_errno",
+    "dep:libc_ftw",
+    "dep:libc_glob",
+    "dep:libc_grp",
+    "dep:libc_netdb",
+    "dep:libc_poll",
+    "dep:libc_pthread",
+    "dep:libc_pwd",
+    "dep:libc_sys_ioctl",
+    "dep:libc_sys_resource",
+    "dep:libc_sys_stat",
+    "dep:libc_sys_statvfs",
+    "dep:libc_sys_time",
+    "dep:libc_sys_times",
+    "dep:libc_sys_uio",
+    "dep:libc_sys_un",
+    "dep:libc_sys_utsname",
+    "dep:libc_termios",
+    "dep:libc_unistd",
+    "dep:libc_utime",
+]
 
-# Logging — forwarded to the `posix` backend so the shared `syslog` (used by both
-# `posix` and `sysalloc` in the now-unified dependency graph) is compiled at the
-# same level it had under the previous separate `libposix.a` build.
-trace = ["posix?/trace"]
-debug = ["posix?/debug"]
-info = ["posix?/info"]
-warn = ["posix?/warn"]
-error = ["posix?/error"]
-panic = ["posix?/panic"]
+# `c-main` gates the link-time errno wiring used by C executables: it switches
+# the `syscall` crate's `__errno_location()` to resolve errno to a single shared
+# owner in the final link.
+c-main = ["syscall?/staticlib"]
+
+# `init-array` makes `__nanvix_libc_start_main` run global constructors /
+# destructors by walking the `.preinit_array` / `.init_array` / `.fini_array`
+# sections (bounded by the `__*_array_{start,end}` symbols from `user.ld`).
+init-array = []
+
+# Standalone deployment: routes stdout/stderr to the debug kcall and file I/O to
+# the in-memory VFS.
+standalone = ["syscall?/standalone", "libc_termios?/standalone"]
+
+# Logging
+trace = ["syslog/trace"]
+debug = ["syslog/debug"]
+info = ["syslog/info"]
+warn = ["syslog/warn"]
+error = ["syslog/error"]
+panic = ["syslog/panic"]
 
 [lints]
 workspace = true

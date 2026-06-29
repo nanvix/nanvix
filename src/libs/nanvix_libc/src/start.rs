@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! Process start-of-day driver — libposix-owned.
+//! Process start-of-day driver — libc-owned.
 //!
 //! Owns the stateful runtime services that bring up a Nanvix process
 //! and tear it down:
@@ -22,7 +22,7 @@
 //! does NOT need to depend on `sysalloc` or `extern crate alloc` — and
 //! therefore `libnvx_crt0.a` carries no `sysalloc` objects.  All
 //! heap state (`sysalloc::vaddr::VADDR_NEXT`, ...) is then owned
-//! exclusively by `libposix.a`, structurally preventing the duplicated-
+//! exclusively by `libc.a`, structurally preventing the duplicated-
 //! `VADDR_NEXT` / dlopen-collision bug documented in
 //! `nanvix-todo/dlopen-load-address-conflict.md`.
 //!
@@ -73,7 +73,7 @@ unsafe extern "C" {
 
 // Constructor / destructor array bounds, provided by the guest linker script
 // (`build/user/linker/x86/user.ld`).  Only referenced when the `init-array`
-// feature is enabled (the in-tree `nanvix_libc` bundle); a default `libposix`
+// feature is enabled (the in-tree `nanvix_libc` bundle); a default `libc`
 // build neither walks these arrays nor requires the linker to define their
 // bound symbols, so consumers with their own linker scripts keep linking
 // unchanged.  Nanvix ships no crtbegin/crtend, so the `.preinit_array` /
@@ -124,7 +124,7 @@ pub static mut environ: *mut *mut c_char = ::core::ptr::null_mut();
 ///
 /// # Description
 ///
-/// libposix-side process startup driver, analogous to glibc's
+/// libc-side process startup driver, analogous to glibc's
 /// `__libc_start_main`.  Called from `nvx-crt0::_start` immediately
 /// after PIE relocation.
 ///
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     let _ = USER_BASE_RAW;
 
     // Bring up the stateful runtime (heap, TDA).  All `sysalloc` state
-    // lives in this compilation unit (libposix); no other static
+    // lives in this compilation unit (libc); no other static
     // archive in the final link may depend on `sysalloc`.
     runtime_init();
 
@@ -177,7 +177,7 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     // as raw pointers that must remain dereferenceable until process
     // exit.  Dropping the vectors after `main()` returns would leave
     // those pointers dangling for any C destructor / `atexit` handler
-    // (or for the libposix-side environment-table consumers below)
+    // (or for the libc-side environment-table consumers below)
     // that still reads them during teardown.  Leaking matches glibc's
     // behaviour for `argv` / `environ`.
     let argv: &'static [*const c_char] =
@@ -191,7 +191,7 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
         environ = env.as_mut_ptr();
     }
 
-    // Populate the libposix environment table used by
+    // Populate the libc.a environment table used by
     // getenv() / setenv() / unsetenv().  The `environ` pointer is a
     // null-terminated array of "KEY=VALUE" C strings, which is exactly
     // the format expected by `__nanvix_env_init`.
@@ -220,7 +220,7 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     //
     // Gated on the `init-array` feature: only the in-tree `nanvix_libc` bundle
     // (paired with `nvx-crt0/init-array`) walks these arrays.  A default
-    // `libposix` build keeps the historical behaviour where the `c-main`
+    // `libc` build keeps the historical behaviour where the `c-main`
     // trampoline runs the GCC-style `_init` / `_fini` hooks instead.
     #[cfg(feature = "init-array")]
     unsafe {

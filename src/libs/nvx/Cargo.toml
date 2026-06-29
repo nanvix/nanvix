@@ -38,7 +38,7 @@ sysalloc = { workspace = true, optional = true }
 default = ["runtime"]
 # `runtime` toggles the heap / TDA bring-up helpers (`nvx::init` /
 # `nvx::cleanup`).  Consumers that bring up the runtime through some
-# other path — for example libposix's `__nanvix_libc_start_main` — may
+# other path — for example libc.a's `__nanvix_libc_start_main` — may
 # depend on `nvx` with `default-features = false` to drop the
 # `sysalloc` transitive dep.  See the `Cargo.toml` of `nvx-crt0` for
 # the cpython staticlib build path that exercises this.
