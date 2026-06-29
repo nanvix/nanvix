@@ -129,6 +129,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-execvp"
+program = "./bin/test-c-execvp.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-execvp.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-file"
 program = "./bin/test-c-file.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"

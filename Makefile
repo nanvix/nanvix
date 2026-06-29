@@ -423,7 +423,7 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 # guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
 # (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner
 # is gated on TARGET=x86 accordingly.
-ALL_POSIX_TESTS := test-c-bindings test-c-ctor test-c-dlfcn test-c-dlfcn-diamond test-c-dlfcn-global test-c-dlfcn-init-runpath test-c-dlfcn-needed test-c-dlfcn-pie test-c-dlfcn-selflink test-c-dlfcn-weak test-c-echo test-c-file test-c-fork-pid test-c-fork-pthread test-c-glob test-c-hello test-c-inet test-c-libgen test-c-memory test-c-misc test-c-network test-c-noop test-c-regex test-c-setjmp test-c-stdio test-c-thread
+ALL_POSIX_TESTS := test-c-bindings test-c-ctor test-c-dlfcn test-c-dlfcn-diamond test-c-dlfcn-global test-c-dlfcn-init-runpath test-c-dlfcn-needed test-c-dlfcn-pie test-c-dlfcn-selflink test-c-dlfcn-weak test-c-echo test-c-execvp test-c-file test-c-fork-pid test-c-fork-pthread test-c-glob test-c-hello test-c-inet test-c-libgen test-c-memory test-c-misc test-c-network test-c-noop test-c-regex test-c-setjmp test-c-stdio test-c-thread
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
