@@ -143,6 +143,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-glob"
+program = "./bin/test-c-glob.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-hello"
 program = "./bin/test-c-hello.initrd"
 expected_exit_code = 0
