@@ -151,8 +151,8 @@ impl Inner {
         // Reject impossible requests before delegating to the bitmap range allocator.
         if count > self.bitmap.number_of_bits() {
             let reason: &str = "requested range exceeds bitmap size";
-            error!("{reason} (count={count})");
-            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+            error!("{reason} (count={count}, bitmap_bits={})", self.bitmap.number_of_bits());
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
         }
         let frame_number: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
