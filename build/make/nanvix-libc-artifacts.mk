@@ -108,6 +108,10 @@ NANVIX_LIBC_BUNDLE_SO := $(LIBRARIES_DIR)/libc.so
 # libc.a. Shipped alongside libc.a + libnvx_crt0.a as the newlib libc+libm
 # replacement.
 NANVIX_LIBM_BUNDLE_AR := $(LIBRARIES_DIR)/libm.a
+# Shared math surface (`libm.so`), mirroring `libc.so` for dlopen consumers. Its
+# forwarding allocator shims reference `libc.so`'s real allocator and resolve at
+# load time, so no allocator state is duplicated.
+NANVIX_LIBM_BUNDLE_SO := $(LIBRARIES_DIR)/libm.so
 
 # Startup object (the `nvx-crt0` entry: `_do_start` / `_start` / `__nanvix_main`).
 #
@@ -152,6 +156,7 @@ NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS := \
 	$(NANVIX_LIBC_BUNDLE_AR) \
 	$(NANVIX_LIBM_BUNDLE_AR) \
 	$(NANVIX_LIBC_BUNDLE_SO) \
+	$(NANVIX_LIBM_BUNDLE_SO) \
 	$(NANVIX_CRT0_OBJECT) \
 	$(NANVIX_CRT0_ALIAS_OBJECTS) \
 	$(NANVIX_LIBC_STUB_ARCHIVES)
@@ -164,7 +169,16 @@ NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS := \
 # incremental rebuilds, mirroring the guest-ELF bridge rule
 # (`$(BINARIES_DIR)/%.elf: all-guest-binaries ;`).
 $(NANVIX_LIBC_BUNDLE_AR): all-guest-staticlibs ;
-$(NANVIX_LIBM_BUNDLE_AR): all-guest-staticlibs ;
+# libm.a forwards allocation to libc.a, but rustc still emits global `__rust_*`
+# shim symbols for it (every `alloc`-linking staticlib must declare a
+# `#[global_allocator]`). Demote those shims to LOCAL so libc.a stays the single
+# owner and a default static link of `libc.a + libm.a` needs no `-z muldefs`,
+# mirroring the crt0.o treatment below.
+$(NANVIX_LIBM_BUNDLE_AR): all-guest-staticlibs
+	@echo "[nanvix-libc] demoting libm.a allocator shims to local (single-owner)"
+	$(NANVIX_LIBC_OBJCOPY) --wildcard \
+		-L '*__rust_alloc*' -L '*__rust_dealloc*' -L '*__rust_realloc*' \
+		$@
 $(NANVIX_CRT0_ARCHIVE): all-guest-staticlibs ;
 
 # libc.so: shared object (same exported surface, for dlopen), linked from libc.a.
@@ -172,6 +186,16 @@ $(NANVIX_LIBC_BUNDLE_SO): $(NANVIX_LIBC_BUNDLE_AR)
 	@echo "[nanvix-libc] linking libc.so (shared)"
 	$(NANVIX_LIBC_LD) -shared -m $(NANVIX_LIBC_ELF_EMULATION) -z notext -z muldefs \
 		--whole-archive $(NANVIX_LIBC_BUNDLE_AR) --no-whole-archive \
+		-o $@
+
+# libm.so: shared math object. Linked from the (single-owner) libm.a; its
+# forwarding allocator shims are local, so the link needs no `-z muldefs` and the
+# real allocator stays in libc.so. `-z notext` allows the R_386_* text
+# relocations the static-relocation-model objects emit, exactly like libc.so.
+$(NANVIX_LIBM_BUNDLE_SO): $(NANVIX_LIBM_BUNDLE_AR)
+	@echo "[nanvix-libc] linking libm.so (shared)"
+	$(NANVIX_LIBC_LD) -shared -m $(NANVIX_LIBC_ELF_EMULATION) -z notext \
+		--whole-archive $(NANVIX_LIBM_BUNDLE_AR) --no-whole-archive \
 		-o $@
 
 # crt0.o: single relocatable startup object folded from libnvx_crt0.a (see the
@@ -211,13 +235,13 @@ $(NANVIX_LIBC_STUB_ARCHIVES):
 	@echo "[nanvix-libc] creating empty stub archive $(@F)"
 	$(NANVIX_LIBC_AR) -rcs $@
 
-# Convenience alias to build all artifacts (libc.a + libm.a + libc.so + crt0.o
-# [+ aliases] + the empty -ldl/-lpthread/-lrt stub archives).
+# Convenience alias to build all artifacts (libc.a + libm.a + libc.so + libm.so +
+# crt0.o [+ aliases] + the empty -ldl/-lpthread/-lrt stub archives).
 nanvix-libc-bundle: $(NANVIX_LIBC_BUNDLE_AR) $(NANVIX_LIBM_BUNDLE_AR) \
-	$(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_CRT0_OBJECT) $(NANVIX_LIBC_STUB_ARCHIVES)
+	$(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO) $(NANVIX_CRT0_OBJECT) $(NANVIX_LIBC_STUB_ARCHIVES)
 
 clean-nanvix-libc-bundle:
-	$(RM_CMD) $(NANVIX_LIBC_BUNDLE_AR) $(NANVIX_LIBM_BUNDLE_AR) $(NANVIX_LIBC_BUNDLE_SO)
+	$(RM_CMD) $(NANVIX_LIBC_BUNDLE_AR) $(NANVIX_LIBM_BUNDLE_AR) $(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO)
 	$(RM_CMD) $(NANVIX_CRT0_OBJECT) $(NANVIX_LIBC_STUB_ARCHIVES)
 	$(RM_CMD) $(NANVIX_CRT0_ALIAS_OBJECTS)
 
