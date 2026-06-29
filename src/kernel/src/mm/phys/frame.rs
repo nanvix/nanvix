@@ -284,6 +284,13 @@ impl Inner {
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
+        // Refcount queries are only meaningful for page-aligned frame bases.
+        let raw: usize = frame.into_raw_value();
+        if !raw.is_multiple_of(mem::FRAME_SIZE) {
+            let reason: &str = "unaligned frame address";
+            error!("{reason} (frame={frame:?})");
+            return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
         if frame_number >= self.refcount.len() {
