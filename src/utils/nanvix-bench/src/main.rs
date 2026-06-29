@@ -187,6 +187,8 @@ async fn main() -> Result<()> {
 
     let mut benchmark = Benchmark {
         iterations: args.iterations(),
+        payload_size: args.payload_size(),
+        payload_size_override: args.payload_size_override(),
         hwloc_file: args.hwloc_file(),
         hwloc,
         flavour: args.benchmark(),

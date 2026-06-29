@@ -87,15 +87,15 @@ SUPPORTED_BENCHMARKS: list[str] = [
     "concurrent",
     "concurrent_l2",
     "snapshot_restore",
-    "warm_start",
-    "warm_start_l2",
-    "warm_start_vmm",
 ]
 
 # Benchmarks whose CSV files follow the ``commit,size,p50,p95,p99`` schema.
 # Each produces one plot per message size.
 SIZED_BENCHMARKS: list[str] = [
     "round_trip_latency",
+    "warm_start",
+    "warm_start_l2",
+    "warm_start_vmm",
 ]
 
 # Human-readable titles for each benchmark.
