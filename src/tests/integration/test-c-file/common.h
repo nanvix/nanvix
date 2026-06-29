@@ -54,6 +54,9 @@ extern void test_fdatasync(void);
 // Tests whether we can truncate a file descriptor.
 extern void test_ftruncate(void);
 
+// Tests whether we can truncate a file referenced by a pathname.
+extern void test_truncate(void);
+
 // Tests whether we can change access permissions of a file.
 extern void test_lchmod(void);
 

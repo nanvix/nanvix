@@ -114,6 +114,7 @@ int main(int argc, const char *argv[])
     test_fdatasync();       // requires open(), close(), read(), write(), and unlink().
     test_stat();
     test_ftruncate(); // requires open(), close(), fstat() and unlink().
+    test_truncate();  // requires open(), close(), stat() and unlinkat().
 #ifndef __NANVIX_STANDALONE__
     // FAT32 does not support hard links or symbolic links.
     test_linkat();     // requires open(), stat() and unlinkat().
