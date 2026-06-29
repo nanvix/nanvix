@@ -65,6 +65,7 @@ extern DIR *opendir(const char *dirname);
 extern DIR *fdopendir(int fd);
 extern struct dirent *readdir(DIR *dirp);
 extern int closedir(DIR *dirp);
+extern void rewinddir(DIR *dirp);
 
 #ifdef __cplusplus
 }

@@ -16,10 +16,11 @@ use ::sysapi::ffi::c_char;
 ///
 /// Converts the initial portion of the string pointed to by `nptr` to a floating-point value.
 ///
-/// Nanvix computes the result at `double` precision and the generated C declaration returns
-/// `double` to match. This keeps the implementation and the C prototype in agreement on the
-/// return-value ABI (a `long double` prototype would expect the value in the x87 register on the
-/// supported targets, corrupting callers).
+/// The C prototype returns `long double` to match POSIX. The conversion is computed at `double`
+/// precision and delegated to [`crate::strtod`]. This is ABI-correct on the supported i686 target,
+/// where the cdecl convention returns `float`, `double`, and `long double` alike in the x87 `st0`
+/// register; the `f64` result is promoted to the 80-bit extended representation on return, so the
+/// value the caller pops as `long double` is exactly the converted number.
 ///
 /// # Parameters
 ///

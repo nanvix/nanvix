@@ -79,7 +79,7 @@ struct posix_dent {
 
 [[sections]]
 title = "Directory Operations"
-functions = ["opendir", "fdopendir", "readdir", "closedir"]
+functions = ["opendir", "fdopendir", "readdir", "closedir", "rewinddir"]
 
 # opendir's Rust binding spells its path argument `*const i8`; declare the
 # standard POSIX prototype so C callers can pass a `const char *`.
@@ -88,3 +88,4 @@ functions = ["opendir", "fdopendir", "readdir", "closedir"]
 [overrides]
 opendir = "extern DIR *opendir(const char *dirname);"
 fdopendir = "extern DIR *fdopendir(int fd);"
+rewinddir = "extern void rewinddir(DIR *dirp);"

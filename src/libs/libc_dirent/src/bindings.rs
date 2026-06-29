@@ -52,3 +52,20 @@ pub unsafe extern "C" fn fdopendir(_fd: c_int) -> *mut c_void {
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     core::ptr::null_mut()
 }
+
+///
+/// # Description
+///
+/// Resets the position of the directory stream `dirp` to the beginning. Minimal stub: the
+/// underlying getdents-backed stream cannot be re-seeked, so this is a no-op kept so consumers
+/// (e.g. CPython's posixmodule) link successfully.
+///
+/// # Safety
+///
+/// Safe to call with any pointer; the value is not dereferenced.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn rewinddir(_dirp: *mut c_void) {
+    ::syslog::debug!("rewinddir(): not implemented");
+}

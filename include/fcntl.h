@@ -45,6 +45,7 @@ extern "C" {
 #define AT_EACCESS 1 /**< Check access using effective IDs. */
 #define AT_SYMLINK_NOFOLLOW 2 /**< Do not follow symbolic links. */
 #define AT_REMOVEDIR 8 /**< Remove a directory instead of a file. */
+#define AT_SYMLINK_FOLLOW 0x400 /**< Follow symbolic links. */
 #define POSIX_FADV_NORMAL 0 /**< No advice. */
 #define POSIX_FADV_SEQUENTIAL 1 /**< Sequential access. */
 #define POSIX_FADV_RANDOM 2 /**< Random access. */
