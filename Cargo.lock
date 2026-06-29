@@ -1567,6 +1567,7 @@ dependencies = [
 name = "libc_glob"
 version = "0.18.0"
 dependencies = [
+ "libc_fnmatch",
  "sysapi",
  "syslog",
 ]
