@@ -49,6 +49,7 @@ int main(int argc, const char *argv[])
     test_clock_gettime();
 #ifndef __hyperlight__
     test_nanosleep();
+    test_sleep();
 #endif
     test_times();
     test_uname();
