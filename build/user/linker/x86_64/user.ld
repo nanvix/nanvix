@@ -34,6 +34,25 @@ SECTIONS
 	}
 
 	/*
+	 * Dynamic section.
+	 *
+	 * Holds the DT_* entries (DT_NEEDED dependencies and the addresses/sizes of
+	 * the dynamic relocation and symbol tables). The bounding symbols are
+	 * provided HERE — mirroring `.dynsym`/`.dynstr` below — so the dlfcn
+	 * self-linker (`syscall::dlfcn::dllink_executable`) can find `.dynamic` at
+	 * runtime: the ELF header and program headers are not mapped at the image's
+	 * load address, so they cannot be parsed in-process. The boundaries collapse
+	 * to an empty range for statically linked images (no `.dynamic`), making the
+	 * self-linker a no-op there.
+	 */
+	.dynamic : ALIGN(8)
+	{
+		PROVIDE(__dynamic_start = .);
+		*(.dynamic)
+		PROVIDE(__dynamic_end = .);
+	}
+
+	/*
 	 * Constructor / destructor arrays (the primary ctor/dtor mechanism).
 	 *
 	 * `__nanvix_libc_start_main` (libposix start.rs) walks `.preinit_array`
