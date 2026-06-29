@@ -1,41 +1,20 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use ::sys::error::Error;
+
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-mod getegid;
-mod geteuid;
-mod getgid;
-mod getuid;
 mod job_control;
-mod kill;
-mod lookup;
-mod signup;
-mod wait;
 
 //==================================================================================================
-// Exports
+// Standalone Functions
 //==================================================================================================
 
-pub use getegid::getegid;
-pub use geteuid::geteuid;
-pub use getgid::getgid;
-pub use getuid::getuid;
-pub use job_control::{
-    getpgid,
-    getpgrp,
-    getsid,
-    setpgid,
-    setsid,
-    tcgetpgrp,
-    tcsetpgrp,
-};
-pub use kill::kill;
-pub use lookup::lookup;
-pub use signup::signup;
-pub use wait::{
-    wait,
-    WaitOutcome,
-};
+/// Runs every job-control test.
+pub fn run_all() -> Result<(), Error> {
+    job_control::run()?;
+    Ok(())
+}

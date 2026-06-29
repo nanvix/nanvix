@@ -8,11 +8,13 @@
 mod exec;
 mod fork_clone;
 mod fork_sync;
+mod job_control;
 mod kill;
 mod lookup;
 mod process_exit;
 mod shutdown;
 mod signup;
+mod terminal;
 mod wait;
 
 //==================================================================================================
@@ -22,11 +24,13 @@ mod wait;
 pub use exec::*;
 pub use fork_clone::*;
 pub use fork_sync::*;
+pub use job_control::*;
 pub use kill::*;
 pub use lookup::*;
 pub use process_exit::*;
 pub use shutdown::*;
 pub use signup::*;
+pub use terminal::*;
 pub use wait::*;
 
 //==================================================================================================
@@ -97,6 +101,19 @@ pub enum ProcessManagementMessageHeader {
     /// release the held parent and child only once the snapshot has actually been taken rather than
     /// merely dispatched).
     ForkCloneAck = 16,
+    /// Job-control operation (a process asks the process manager daemon to manipulate or query
+    /// session, process-group, or foreground-group state: `setsid`/`setpgid`/`getpgid`/`getsid`/
+    /// `tcsetpgrp`/`tcgetpgrp`).
+    JobControl = 17,
+    /// Job-control response (the process manager daemon reports the outcome of a job-control
+    /// operation).
+    JobControlResponse = 18,
+    /// Terminal-signal notification (the filesystem daemon asks the process manager daemon to
+    /// deliver a terminal-generated signal to the controlling terminal's foreground process group).
+    TerminalSignal = 19,
+    /// Terminal-access notification (the filesystem daemon reports that a process accessed the
+    /// console, so the process manager daemon can raise `SIGTTIN`/`SIGTTOU` for a background group).
+    TerminalAccess = 20,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -120,6 +137,10 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             14 => Ok(ProcessManagementMessageHeader::Exec),
             15 => Ok(ProcessManagementMessageHeader::ExecAck),
             16 => Ok(ProcessManagementMessageHeader::ForkCloneAck),
+            17 => Ok(ProcessManagementMessageHeader::JobControl),
+            18 => Ok(ProcessManagementMessageHeader::JobControlResponse),
+            19 => Ok(ProcessManagementMessageHeader::TerminalSignal),
+            20 => Ok(ProcessManagementMessageHeader::TerminalAccess),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -144,6 +165,10 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::Exec => 14,
             ProcessManagementMessageHeader::ExecAck => 15,
             ProcessManagementMessageHeader::ForkCloneAck => 16,
+            ProcessManagementMessageHeader::JobControl => 17,
+            ProcessManagementMessageHeader::JobControlResponse => 18,
+            ProcessManagementMessageHeader::TerminalSignal => 19,
+            ProcessManagementMessageHeader::TerminalAccess => 20,
         }
     }
 }

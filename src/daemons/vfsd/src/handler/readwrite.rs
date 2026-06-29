@@ -23,6 +23,9 @@ use ::sys::{
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
+        SIGINT,
+        SIGQUIT,
+        SIGTSTP,
     },
 };
 use ::sysapi::{
@@ -63,7 +66,10 @@ use ::vfs::{
         ConsoleStream,
         TtyError,
     },
-    line_discipline::ConsoleReadOutcome,
+    line_discipline::{
+        ConsoleReadOutcome,
+        TerminalSignal,
+    },
 };
 
 //==================================================================================================
@@ -164,6 +170,14 @@ pub(crate) fn handle_console_read(
     if stream != ConsoleStream::Stdin {
         let _ = push_to_reader(source_pid, source_tid, &[], "console read");
         return build_error(source_tid, ErrorCode::BadFile);
+    }
+
+    if count > 0 {
+        // Report the console read to the process manager daemon so that it can raise `SIGTTIN` when
+        // the reader is in a background process group. The notification is fire-and-forget: job
+        // control is the daemon's concern, and a process with no foreground group established (the
+        // common case) is never signalled, so this is a no-op for ordinary readers.
+        notify_terminal_access(source_pid, false);
     }
 
     let buf_size: usize = count.min(MAX_BULK_TRANSFER_SIZE);
@@ -291,7 +305,79 @@ fn feed_console_input(fd: i32) -> Result<(), ErrorCode> {
         }
     }
 
+    // Forward any terminal-generated signals (`^C`/`^\`/`^Z`) recognized by the line discipline to
+    // the process manager daemon, which owns job control and delivers them to the foreground group.
+    forward_console_signals(fd);
+
     Ok(())
+}
+
+/// Notifies the process manager daemon that `pid` accessed the console, so it can raise `SIGTTIN`
+/// (read) or `SIGTTOU` (write) when `pid` is in a background process group.
+///
+/// The notification is fire-and-forget for the same reason as [`forward_console_signals`]: the
+/// single-threaded daemon must not block its event loop on the process manager daemon. Job-control
+/// policy (whether the access is actually from a background group) lives entirely in that daemon.
+fn notify_terminal_access(pid: ProcessIdentifier, write: bool) {
+    match ::proc::terminal_access_request(ProcessIdentifier::VFSD, pid, write) {
+        Ok(message) => {
+            if let Err(error) = ::sys::kcall::ipc::__kcall_send(&message) {
+                ::syslog::warn!(
+                    "console read: failed to notify terminal access (pid={:?}, error={:?})",
+                    pid,
+                    error
+                );
+            }
+        },
+        Err(error) => {
+            ::syslog::warn!(
+                "console read: failed to build terminal-access notification (error={:?})",
+                error
+            );
+        },
+    }
+}
+
+/// Forwards the terminal-generated signals the line discipline recognized to the process manager
+/// daemon, which delivers them to the controlling terminal's foreground process group.
+///
+/// Each line-discipline [`TerminalSignal`] maps to its POSIX signal and is sent as a fire-and-forget
+/// notification, so the single-threaded daemon never blocks its event loop waiting on the process
+/// manager daemon. Failures are logged and otherwise ignored: a dropped terminal signal must not
+/// derail the console read that produced it.
+fn forward_console_signals(fd: i32) {
+    let signals: Vec<TerminalSignal> = match ::vfs::fd::vfs_console_take_signals(fd) {
+        Ok(signals) => signals,
+        Err(error) => {
+            ::syslog::warn!("console read: failed to drain signals (error={:?})", error);
+            return;
+        },
+    };
+
+    for signal in signals {
+        let signum: i32 = match signal {
+            TerminalSignal::Interrupt => SIGINT as i32,
+            TerminalSignal::Quit => SIGQUIT as i32,
+            TerminalSignal::Suspend => SIGTSTP as i32,
+        };
+        match ::proc::terminal_signal_request(ProcessIdentifier::VFSD, signum) {
+            Ok(message) => {
+                if let Err(error) = ::sys::kcall::ipc::__kcall_send(&message) {
+                    ::syslog::warn!(
+                        "console read: failed to forward terminal signal (signum={}, error={:?})",
+                        signum,
+                        error
+                    );
+                }
+            },
+            Err(error) => {
+                ::syslog::warn!(
+                    "console read: failed to build terminal-signal notification (error={:?})",
+                    error
+                );
+            },
+        }
+    }
 }
 
 /// Reads raw input from the kernel console stdin stream.

@@ -120,6 +120,7 @@ members = [
         "src/tests/integration/test-rust-fork-kcall",
         "src/tests/integration/test-rust-waitpid",
         "src/tests/integration/test-rust-kill",
+        "src/tests/integration/test-rust-job-control",
         "src/tests/integration/test-rust-linux-app",
         "src/tests/stress/test-rust-memory",
         "src/tests/integration/test-rust-misc",

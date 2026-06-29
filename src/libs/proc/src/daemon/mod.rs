@@ -12,11 +12,15 @@ use crate::{
     ForkCloneAckMessage,
     ForkSyncAckMessage,
     ForkSyncMessage,
+    JobControlOp,
+    JobControlRequest,
     KillMessage,
     LookupMessage,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     SignupMessage,
+    TerminalAccessMessage,
+    TerminalSignalMessage,
     WaitMessage,
     WaitTarget,
 };
@@ -54,6 +58,8 @@ use ::sys::{
         ProcessIdentifier,
         UserIdentifier,
         SIGCHLD,
+        SIGTTIN,
+        SIGTTOU,
     },
 };
 
@@ -96,11 +102,21 @@ struct ProcessRecord {
     /// Termination status once the process has terminated and is awaiting reap by `waitpid()`.
     /// `Some(status)` marks a zombie; `None` marks a live (or not-yet-terminated) process.
     zombie: Option<i32>,
+    /// Session identifier: the process identifier of the leader of this process's session. A process
+    /// born directly from the kernel (init and the daemons) starts in a session of its own; a forked
+    /// child inherits its parent's session; `setsid()` starts a new one led by the caller.
+    sid: ProcessIdentifier,
+    /// Process-group identifier: the process identifier of the leader of this process's process
+    /// group. Inherited from the parent on fork and changed by `setpgid()`/`setsid()`. Used for
+    /// signal-to-process-group delivery and foreground/background terminal arbitration.
+    pgid: ProcessIdentifier,
 }
 
 impl ProcessRecord {
-    /// Instantiates a new process record.
-    fn new(name: String, parent: Option<ProcessIdentifier>) -> Self {
+    /// Instantiates a new process record. The process starts as the leader of its own session and
+    /// process group (`sid == pgid == pid`); callers that know a parent override these to inherit the
+    /// parent's session and group.
+    fn new(pid: ProcessIdentifier, name: String, parent: Option<ProcessIdentifier>) -> Self {
         Self {
             name,
             identity: Some(ProcessIdentity::new(UserIdentifier::ROOT, GroupIdentifier::ROOT)),
@@ -109,6 +125,8 @@ impl ProcessRecord {
             fork_clone_done: false,
             fork_clone_failed: false,
             zombie: None,
+            sid: pid,
+            pgid: pid,
         }
     }
 }
@@ -178,6 +196,11 @@ pub struct ProcessDaemon {
     /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
     /// answered later, when a `ProcessTermination` event for a matching child arrives.
     blocked: Vec<BlockedWaiter>,
+    /// Foreground process group of the controlling terminal (the console), set by `tcsetpgrp()` and
+    /// reported by `tcgetpgrp()`. Terminal-generated signals (`^C`/`^Z`) are delivered to this group,
+    /// and console access by a process outside it is a background access that raises `SIGTTIN` or
+    /// `SIGTTOU`. `None` until a foreground group is established.
+    foreground_pgrp: Option<ProcessIdentifier>,
 }
 
 impl ProcessDaemon {
@@ -208,6 +231,7 @@ impl ProcessDaemon {
             pending_fork_syncs: Vec::new(),
             pending_execs: Vec::new(),
             blocked: Vec::new(),
+            foreground_pgrp: None,
         })
     }
 
@@ -419,6 +443,7 @@ impl ProcessDaemon {
                 ::syslog::info!("init process terminated (pid={:?}, status={:?})", pid, status);
                 self.cleanup_terminated(pid);
                 self.processes.remove(&pid);
+                self.clear_foreground_pgrp_if_empty();
                 self.init_proc = None;
                 Ok(Some(status))
             },
@@ -429,6 +454,7 @@ impl ProcessDaemon {
                 ::syslog::info!("deregistering daemon (pid={:?}, status={:?})", pid, status);
                 self.cleanup_terminated(pid);
                 self.processes.remove(&pid);
+                self.clear_foreground_pgrp_if_empty();
                 if status != 0 {
                     ::syslog::error!(
                         "critical daemon (pid={:?}) terminated with non-zero status {} — \
@@ -520,6 +546,7 @@ impl ProcessDaemon {
                     record.zombie = Some(status);
                 }
                 self.wake_waiter(parent, pid, status)?;
+                self.clear_foreground_pgrp_if_empty();
                 // Notify the parent of the child's state change after servicing any blocked
                 // `waitpid()` waiter. This keeps the synchronous reap path stable while still
                 // generating the asynchronous `SIGCHLD` notification.
@@ -528,6 +555,7 @@ impl ProcessDaemon {
             // No live process can ever reap it: drop it rather than leak an unreapable zombie.
             None => {
                 self.processes.remove(&pid);
+                self.clear_foreground_pgrp_if_empty();
             },
         }
 
@@ -724,6 +752,7 @@ impl ProcessDaemon {
             record.children.retain(|c| *c != child);
         }
         self.processes.remove(&child);
+        self.clear_foreground_pgrp_if_empty();
     }
 
     /// Returns `true` if `name` belongs to a guest system daemon that should not trigger shutdown.
@@ -767,15 +796,431 @@ impl ProcessDaemon {
             signum
         );
 
-        let error: i32 = match self.authorize_kill(caller, target) {
+        // POSIX `kill()` overloads the sign of the target pid to select a process group: a positive
+        // pid names a single process, while `0`, `-1`, and `< -1` name the caller's group, every
+        // process, and a specific group respectively. The single-process path is unchanged; the
+        // group selectors fan the signal out across every matching member.
+        let raw_target: i32 = target.into();
+        let error: i32 = if raw_target > 0 {
+            self.kill_one(caller, target, signum)
+        } else {
+            self.kill_group(caller, raw_target, signum)
+        };
+
+        message::kill_response(caller, error)
+    }
+
+    /// Posts `signum` to a single `target` process on behalf of `caller`, authorizing the request
+    /// first. Returns `0` on success or the error code otherwise.
+    fn kill_one(&self, caller: ProcessIdentifier, target: ProcessIdentifier, signum: i32) -> i32 {
+        match self.authorize_kill(caller, target) {
             Ok(()) => match ::sys::kcall::pm::__kcall_kill(target, signum) {
                 Ok(()) => 0,
                 Err(e) => e.code.get(),
             },
             Err(e) => e.code.get(),
+        }
+    }
+
+    /// Posts `signum` to a process group selected by the sign of `raw_target`, on behalf of
+    /// `caller`. Mirrors POSIX `kill()` group semantics: `0` selects the caller's process group,
+    /// `-1` broadcasts to every signalable process, and `< -1` selects the process group whose
+    /// identifier is `-raw_target`. Returns `0` when at least one signal was posted, `EPERM` when
+    /// members matched but none could be signalled, or `ESRCH` when no member matched.
+    fn kill_group(&self, caller: ProcessIdentifier, raw_target: i32, signum: i32) -> i32 {
+        // Resolve the set of target processes from the selector.
+        let targets: Vec<ProcessIdentifier> = if raw_target == -1 {
+            // Broadcast: every process the caller may signal, excluding the kernel placeholder and
+            // the system daemons (they own well-known low identifiers below the init process).
+            self.processes
+                .keys()
+                .copied()
+                .filter(|pid| i32::from(*pid) >= ProcessIdentifier::INIT_RAW)
+                .collect()
+        } else {
+            // `0` selects the caller's own group; `< -1` selects the group `-raw_target`.
+            let pgid: ProcessIdentifier = if raw_target == 0 {
+                match self.processes.get(&caller) {
+                    Some(record) => record.pgid,
+                    None => return ErrorCode::NoSuchProcess.get(),
+                }
+            } else {
+                // Negating `i32::MIN` would overflow; such a process group can never exist, so it is
+                // reported as having no member rather than panicking.
+                match raw_target.checked_neg() {
+                    Some(pgid_raw) => ProcessIdentifier::from(pgid_raw),
+                    None => return ErrorCode::NoSuchProcess.get(),
+                }
+            };
+            self.group_members(pgid)
         };
 
-        message::kill_response(caller, error)
+        if targets.is_empty() {
+            return ErrorCode::NoSuchProcess.get();
+        }
+
+        let mut any_sent: bool = false;
+        for target in targets {
+            if self.authorize_kill(caller, target).is_err() {
+                continue;
+            }
+            if ::sys::kcall::pm::__kcall_kill(target, signum).is_ok() {
+                any_sent = true;
+            }
+        }
+
+        if any_sent {
+            0
+        } else {
+            // Members matched, but none could be signalled (permission denied or every post
+            // failed): report that the operation was not permitted.
+            ErrorCode::OperationNotPermitted.get()
+        }
+    }
+
+    /// Returns the process identifiers of every live member of process group `pgid`.
+    fn group_members(&self, pgid: ProcessIdentifier) -> Vec<ProcessIdentifier> {
+        self.processes
+            .iter()
+            .filter(|(_, record)| record.pgid == pgid && record.zombie.is_none())
+            .map(|(pid, _)| *pid)
+            .collect()
+    }
+
+    /// Clears the terminal foreground process group when it no longer has any live member.
+    fn clear_foreground_pgrp_if_empty(&mut self) {
+        if let Some(pgrp) = self.foreground_pgrp {
+            if self.group_members(pgrp).is_empty() {
+                self.foreground_pgrp = None;
+            }
+        }
+    }
+
+    /// Posts `signum` to every member of process group `pgid`, ignoring individual failures. Used by
+    /// the terminal paths, where the daemon is the privileged sender and no per-target permission
+    /// check applies (the signal originates from the controlling terminal, not from a process).
+    fn post_group_signal(&self, pgid: ProcessIdentifier, signum: i32) {
+        for pid in self.group_members(pgid) {
+            if let Err(e) = ::sys::kcall::pm::__kcall_kill(pid, signum) {
+                ::syslog::warn!(
+                    "post_group_signal(): failed (pid={:?}, signum={}, error={:?})",
+                    pid,
+                    signum,
+                    e
+                );
+            }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Handles a job-control request: manipulates or queries the session, process-group, and
+    /// foreground-group state the daemon owns.
+    ///
+    /// # Parameters
+    ///
+    /// - `caller`: Process identifier of the requesting process.
+    /// - `request`: The job-control request.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the job-control response to send back to the caller. Upon
+    /// failure, an error is returned instead.
+    ///
+    fn handle_job_control(
+        &mut self,
+        caller: ProcessIdentifier,
+        request: JobControlRequest,
+    ) -> Result<Message, Error> {
+        // Copy the fields out of the packed request before use to avoid unaligned references.
+        let pid: ProcessIdentifier = request.pid;
+        let pgid: ProcessIdentifier = request.pgid;
+
+        let op: JobControlOp = match request.op() {
+            Ok(op) => op,
+            Err(_) => {
+                return message::job_control_response(
+                    caller,
+                    ErrorCode::InvalidArgument.get(),
+                    ProcessIdentifier::from(0),
+                );
+            },
+        };
+
+        ::syslog::info!(
+            "handle_job_control(): caller={:?}, op={:?}, pid={:?}, pgid={:?}",
+            caller,
+            op,
+            pid,
+            pgid
+        );
+
+        let outcome: Result<ProcessIdentifier, Error> = match op {
+            JobControlOp::SetSid => self.job_control_setsid(caller),
+            JobControlOp::SetPgid => self.job_control_setpgid(caller, pid, pgid).map(|()| pid),
+            JobControlOp::GetPgid => self.job_control_getpgid(caller, pid),
+            JobControlOp::GetSid => self.job_control_getsid(caller, pid),
+            JobControlOp::TcSetPgrp => self.job_control_tcsetpgrp(caller, pgid),
+            JobControlOp::TcGetPgrp => self.job_control_tcgetpgrp(caller),
+        };
+
+        let (error, result): (i32, ProcessIdentifier) = match outcome {
+            Ok(result) => (0, result),
+            Err(e) => (e.code.get(), ProcessIdentifier::from(0)),
+        };
+
+        message::job_control_response(caller, error, result)
+    }
+
+    /// Resolves a job-control target pid, where `0` selects the caller.
+    fn resolve_target(caller: ProcessIdentifier, pid: ProcessIdentifier) -> ProcessIdentifier {
+        if pid == ProcessIdentifier::from(0) {
+            caller
+        } else {
+            pid
+        }
+    }
+
+    /// Implements `setsid()`: the caller becomes the leader of a new session and a new process
+    /// group. Fails with `EPERM` when the caller is already a process-group leader, as POSIX
+    /// requires (a group leader cannot move itself into a brand-new session).
+    fn job_control_setsid(
+        &mut self,
+        caller: ProcessIdentifier,
+    ) -> Result<ProcessIdentifier, Error> {
+        let record: &mut ProcessRecord = self
+            .processes
+            .get_mut(&caller)
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))?;
+
+        if record.pgid == caller {
+            return Err(Error::new(
+                ErrorCode::OperationNotPermitted,
+                "caller is already a process-group leader",
+            ));
+        }
+
+        record.sid = caller;
+        record.pgid = caller;
+        Ok(caller)
+    }
+
+    /// Implements `setpgid()`: moves `pid` (or the caller when `pid` is `0`) into process group
+    /// `pgid` (or a new group led by the target when `pgid` is `0`). Enforces the POSIX constraints
+    /// that the target be the caller or a child of the caller, that it not be a session leader, and
+    /// that both the target and the destination group live in the caller's session.
+    fn job_control_setpgid(
+        &mut self,
+        caller: ProcessIdentifier,
+        pid: ProcessIdentifier,
+        pgid: ProcessIdentifier,
+    ) -> Result<(), Error> {
+        let caller_sid: ProcessIdentifier = self
+            .processes
+            .get(&caller)
+            .map(|record| record.sid)
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))?;
+
+        let target: ProcessIdentifier = Self::resolve_target(caller, pid);
+
+        let (target_sid, target_parent): (ProcessIdentifier, Option<ProcessIdentifier>) = {
+            let record: &ProcessRecord = self
+                .processes
+                .get(&target)
+                .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "target not found"))?;
+            (record.sid, record.parent)
+        };
+
+        // The target must be the caller or a child of the caller.
+        if target != caller && target_parent != Some(caller) {
+            return Err(Error::new(
+                ErrorCode::NoSuchProcess,
+                "target is neither the caller nor a child of the caller",
+            ));
+        }
+
+        // The target must be in the caller's session.
+        if target_sid != caller_sid {
+            return Err(Error::new(
+                ErrorCode::OperationNotPermitted,
+                "target is in a different session",
+            ));
+        }
+
+        // A session leader cannot change its process group.
+        if target_sid == target {
+            return Err(Error::new(ErrorCode::OperationNotPermitted, "target is a session leader"));
+        }
+
+        let new_pgid: ProcessIdentifier = if pgid == ProcessIdentifier::from(0) {
+            target
+        } else {
+            pgid
+        };
+
+        // A new group may be created only when its identifier is the target itself; joining an
+        // existing group requires that group to already live in the caller's session.
+        if new_pgid != target {
+            let exists_in_session: bool = self
+                .processes
+                .values()
+                .any(|record| record.pgid == new_pgid && record.sid == caller_sid);
+            if !exists_in_session {
+                return Err(Error::new(
+                    ErrorCode::OperationNotPermitted,
+                    "destination process group is not in the caller's session",
+                ));
+            }
+        }
+
+        if let Some(record) = self.processes.get_mut(&target) {
+            record.pgid = new_pgid;
+        }
+        self.clear_foreground_pgrp_if_empty();
+        Ok(())
+    }
+
+    /// Implements `getpgid()`: returns the process group of `pid` (or the caller when `pid` is `0`).
+    fn job_control_getpgid(
+        &self,
+        caller: ProcessIdentifier,
+        pid: ProcessIdentifier,
+    ) -> Result<ProcessIdentifier, Error> {
+        let target: ProcessIdentifier = Self::resolve_target(caller, pid);
+        self.processes
+            .get(&target)
+            .map(|record| record.pgid)
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "process not found"))
+    }
+
+    /// Implements `getsid()`: returns the session of `pid` (or the caller when `pid` is `0`).
+    fn job_control_getsid(
+        &self,
+        caller: ProcessIdentifier,
+        pid: ProcessIdentifier,
+    ) -> Result<ProcessIdentifier, Error> {
+        let target: ProcessIdentifier = Self::resolve_target(caller, pid);
+        self.processes
+            .get(&target)
+            .map(|record| record.sid)
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "process not found"))
+    }
+
+    /// Implements `tcsetpgrp()`: makes `pgrp` the foreground process group of the controlling
+    /// terminal. The group must already exist in the caller's session.
+    fn job_control_tcsetpgrp(
+        &mut self,
+        caller: ProcessIdentifier,
+        pgrp: ProcessIdentifier,
+    ) -> Result<ProcessIdentifier, Error> {
+        let caller_sid: ProcessIdentifier = self
+            .processes
+            .get(&caller)
+            .map(|record| record.sid)
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))?;
+
+        // The requested foreground group must be a group in the caller's session.
+        let valid: bool = self
+            .processes
+            .values()
+            .any(|record| record.pgid == pgrp && record.sid == caller_sid);
+        if !valid {
+            return Err(Error::new(
+                ErrorCode::OperationNotPermitted,
+                "process group is not in the caller's session",
+            ));
+        }
+
+        self.foreground_pgrp = Some(pgrp);
+        Ok(pgrp)
+    }
+
+    /// Implements `tcgetpgrp()`: returns the foreground process group of the controlling terminal.
+    /// When no foreground group has been established, the caller's own group is reported, matching
+    /// the single-process default in which the caller is the foreground process.
+    fn job_control_tcgetpgrp(&self, caller: ProcessIdentifier) -> Result<ProcessIdentifier, Error> {
+        if let Some(pgrp) = self.foreground_pgrp {
+            return Ok(pgrp);
+        }
+        self.processes
+            .get(&caller)
+            .map(|record| record.pgid)
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))
+    }
+
+    /// Handles a terminal-signal notification from the console owner: delivers `signum` to the
+    /// controlling terminal's foreground process group. A signal posted while no foreground group is
+    /// established has nowhere to go and is dropped.
+    fn handle_terminal_signal(&mut self, signum: i32) {
+        match self.foreground_pgrp {
+            Some(pgrp) => {
+                ::syslog::info!(
+                    "handle_terminal_signal(): delivering signum={} to foreground group {:?}",
+                    signum,
+                    pgrp
+                );
+                self.post_group_signal(pgrp, signum);
+            },
+            None => {
+                ::syslog::info!(
+                    "handle_terminal_signal(): no foreground group; dropping signum={}",
+                    signum
+                );
+            },
+        }
+    }
+
+    /// Handles a terminal-access notification from the console owner: when `pid` accessed the console
+    /// from a *background* process group (one that is not the terminal's foreground group), the
+    /// access raises `SIGTTOU` (write) or `SIGTTIN` (read) on that group, as POSIX requires. An
+    /// access from the foreground group, or while no foreground group is established, is allowed
+    /// silently.
+    fn handle_terminal_access(&mut self, pid: ProcessIdentifier, write: bool) {
+        let foreground: ProcessIdentifier = match self.foreground_pgrp {
+            Some(pgrp) => pgrp,
+            None => return,
+        };
+
+        let pgid: ProcessIdentifier = match self.processes.get(&pid) {
+            Some(record) => record.pgid,
+            None => return,
+        };
+
+        if pgid == foreground {
+            return;
+        }
+
+        let signum: i32 = if write {
+            SIGTTOU as i32
+        } else {
+            SIGTTIN as i32
+        };
+        ::syslog::info!(
+            "handle_terminal_access(): background {} by {:?} (group {:?}); raising signum={}",
+            if write { "write" } else { "read" },
+            pid,
+            pgid,
+            signum
+        );
+        self.post_group_signal(pgid, signum);
+    }
+
+    /// Resolves the subject of a terminal-access notification from `reporter`.
+    ///
+    /// The filesystem daemon may report console reads on behalf of any process because it owns the
+    /// shared input path. A process may report only its own console writes; the kernel-stamped
+    /// message source prevents it from forging another process's terminal access.
+    fn terminal_access_subject(
+        reporter: ProcessIdentifier,
+        notification: &TerminalAccessMessage,
+    ) -> Option<ProcessIdentifier> {
+        let pid: ProcessIdentifier = notification.pid;
+        if reporter == ProcessIdentifier::VFSD || pid == reporter {
+            Some(pid)
+        } else {
+            None
+        }
     }
 
     /// Authorizes a kill request before the daemon spends its process-management capability.
@@ -909,6 +1354,42 @@ impl ProcessDaemon {
                     let reply: Message = self.handle_kill(destination, message)?;
                     ::sys::kcall::ipc::__kcall_send(&reply)?;
                 },
+                ProcessManagementMessageHeader::JobControl => {
+                    let request: JobControlRequest = JobControlRequest::from_bytes(message.payload);
+                    let reply: Message = self.handle_job_control(destination, request)?;
+                    ::sys::kcall::ipc::__kcall_send(&reply)?;
+                },
+                ProcessManagementMessageHeader::TerminalSignal => {
+                    // The console line-discipline owner is the only legitimate source of a
+                    // terminal-generated signal. A notification from any other process is a forgery
+                    // that could signal the foreground group at will, so it is dropped.
+                    if destination == ProcessIdentifier::VFSD {
+                        let notification: TerminalSignalMessage =
+                            TerminalSignalMessage::from_bytes(message.payload);
+                        self.handle_terminal_signal(notification.signum);
+                    } else {
+                        ::syslog::warn!(
+                            "dropping forged terminal-signal (source={:?})",
+                            destination
+                        );
+                    }
+                },
+                ProcessManagementMessageHeader::TerminalAccess => {
+                    // The console input owner may report reads on behalf of clients. Console writes
+                    // bypass vfsd, so a process may report only its own write access; the kernel
+                    // stamps the source pid, making cross-process reports detectable.
+                    let notification: TerminalAccessMessage =
+                        TerminalAccessMessage::from_bytes(message.payload);
+                    match Self::terminal_access_subject(destination, &notification) {
+                        Some(pid) => self.handle_terminal_access(pid, notification.is_write()),
+                        None => {
+                            ::syslog::warn!(
+                                "dropping forged terminal-access (source={:?})",
+                                destination
+                            );
+                        },
+                    }
+                },
                 // Ignore all other messages.
                 _ => {},
             }
@@ -945,7 +1426,7 @@ impl ProcessDaemon {
                             record.name = s;
                         },
                         None => {
-                            self.processes.insert(pid, ProcessRecord::new(s, None));
+                            self.processes.insert(pid, ProcessRecord::new(pid, s, None));
                         },
                     }
                     message::signup_response(destination, pid, 0)
@@ -968,7 +1449,7 @@ impl ProcessDaemon {
         // never broadcast a shutdown message.
         self.processes
             .entry(parent)
-            .or_insert_with(|| ProcessRecord::new(String::new(), None));
+            .or_insert_with(|| ProcessRecord::new(parent, String::new(), None));
 
         // A forked child inherits the name of its parent.
         let child_name: String = self
@@ -977,14 +1458,30 @@ impl ProcessDaemon {
             .map(|record| record.name.clone())
             .unwrap_or_default();
 
+        // A forked child inherits its parent's session and process group; a process born directly
+        // from the kernel (init and the daemons) has no inheritable parent and stays the leader of
+        // its own session and group, which is exactly what `ProcessRecord::new` seeds.
+        let inherited: Option<(ProcessIdentifier, ProcessIdentifier)> =
+            if parent == ProcessIdentifier::KERNEL {
+                None
+            } else {
+                self.processes
+                    .get(&parent)
+                    .map(|record| (record.sid, record.pgid))
+            };
+
         // Insert or update the child record.
         match self.processes.get_mut(&child) {
             Some(record) => {
                 record.parent = Some(parent);
             },
             None => {
-                self.processes
-                    .insert(child, ProcessRecord::new(child_name, Some(parent)));
+                let mut record: ProcessRecord = ProcessRecord::new(child, child_name, Some(parent));
+                if let Some((sid, pgid)) = inherited {
+                    record.sid = sid;
+                    record.pgid = pgid;
+                }
+                self.processes.insert(child, record);
             },
         }
 
@@ -1462,7 +1959,7 @@ mod tests {
         ProcessIdentity::new(UserIdentifier::from(uid), GroupIdentifier::ROOT)
     }
 
-    fn process_record(identity: Option<ProcessIdentity>) -> ProcessRecord {
+    fn process_record(pid: ProcessIdentifier, identity: Option<ProcessIdentity>) -> ProcessRecord {
         ProcessRecord {
             name: String::new(),
             identity,
@@ -1471,6 +1968,8 @@ mod tests {
             fork_clone_done: false,
             fork_clone_failed: false,
             zombie: None,
+            sid: pid,
+            pgid: pid,
         }
     }
 
@@ -1479,7 +1978,7 @@ mod tests {
     ) -> ManuallyDrop<ProcessDaemon> {
         let mut processes: BTreeMap<ProcessIdentifier, ProcessRecord> = BTreeMap::new();
         for (pid, identity) in records.iter() {
-            processes.insert(*pid, process_record(identity.clone()));
+            processes.insert(*pid, process_record(*pid, identity.clone()));
         }
 
         ManuallyDrop::new(ProcessDaemon {
@@ -1488,6 +1987,7 @@ mod tests {
             pending_fork_syncs: Vec::new(),
             pending_execs: Vec::new(),
             blocked: Vec::new(),
+            foreground_pgrp: None,
         })
     }
 
@@ -1580,5 +2080,101 @@ mod tests {
             .expect_err("target without identity should not be authorized");
 
         assert_eq!(error.code, ErrorCode::NoSuchProcess);
+    }
+
+    #[test]
+    fn terminal_access_allows_vfsd_to_report_any_process() {
+        let reader: ProcessIdentifier = ProcessIdentifier::from(10);
+        let notification: TerminalAccessMessage = TerminalAccessMessage::new(reader, false);
+
+        assert_eq!(
+            ProcessDaemon::terminal_access_subject(ProcessIdentifier::VFSD, &notification),
+            Some(reader)
+        );
+    }
+
+    #[test]
+    fn terminal_access_allows_self_report() {
+        let writer: ProcessIdentifier = ProcessIdentifier::from(10);
+        let notification: TerminalAccessMessage = TerminalAccessMessage::new(writer, true);
+
+        assert_eq!(ProcessDaemon::terminal_access_subject(writer, &notification), Some(writer));
+    }
+
+    #[test]
+    fn terminal_access_rejects_cross_process_report() {
+        let reporter: ProcessIdentifier = ProcessIdentifier::from(10);
+        let target: ProcessIdentifier = ProcessIdentifier::from(11);
+        let notification: TerminalAccessMessage = TerminalAccessMessage::new(target, true);
+
+        assert_eq!(ProcessDaemon::terminal_access_subject(reporter, &notification), None);
+    }
+
+    #[test]
+    fn foreground_pgrp_clears_when_last_member_is_removed() {
+        let leader: ProcessIdentifier = ProcessIdentifier::from(10);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(leader, Some(process_identity(0)))]);
+        daemon.foreground_pgrp = Some(leader);
+
+        daemon.processes.remove(&leader);
+        daemon.clear_foreground_pgrp_if_empty();
+
+        assert_eq!(daemon.foreground_pgrp, None);
+    }
+
+    #[test]
+    fn foreground_pgrp_ignores_zombie_members() {
+        let leader: ProcessIdentifier = ProcessIdentifier::from(10);
+        let member: ProcessIdentifier = ProcessIdentifier::from(11);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (leader, Some(process_identity(0))),
+            (member, Some(process_identity(0))),
+        ]);
+        daemon.foreground_pgrp = Some(leader);
+        daemon
+            .processes
+            .get_mut(&member)
+            .expect("member record")
+            .pgid = leader;
+
+        daemon
+            .processes
+            .get_mut(&leader)
+            .expect("leader record")
+            .zombie = Some(0);
+        daemon
+            .processes
+            .get_mut(&member)
+            .expect("member record")
+            .zombie = Some(0);
+        daemon.clear_foreground_pgrp_if_empty();
+
+        assert_eq!(daemon.foreground_pgrp, None);
+    }
+
+    #[test]
+    fn foreground_pgrp_stays_when_group_has_live_member() {
+        let leader: ProcessIdentifier = ProcessIdentifier::from(10);
+        let member: ProcessIdentifier = ProcessIdentifier::from(11);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (leader, Some(process_identity(0))),
+            (member, Some(process_identity(0))),
+        ]);
+        daemon.foreground_pgrp = Some(leader);
+        daemon
+            .processes
+            .get_mut(&member)
+            .expect("member record")
+            .pgid = leader;
+
+        daemon
+            .processes
+            .get_mut(&leader)
+            .expect("leader record")
+            .zombie = Some(0);
+        daemon.clear_foreground_pgrp_if_empty();
+
+        assert_eq!(daemon.foreground_pgrp, Some(leader));
     }
 }

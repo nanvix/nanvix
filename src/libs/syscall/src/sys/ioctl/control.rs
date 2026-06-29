@@ -75,11 +75,19 @@ fn ioctl_standalone(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int
             Winsize,
             TCGETS,
             TCSETS,
+            TIOCGPGRP,
             TIOCGWINSZ,
+            TIOCSPGRP,
             TIOCSWINSZ,
         },
         termios::Termios,
     };
+
+    // Foreground-process-group control is job control, owned by the process manager daemon rather
+    // than the vfsd console backend. Route these requests there.
+    if request == TIOCGPGRP || request == TIOCSPGRP {
+        return ioctl_pgrp(fd, request, arg);
+    }
 
     // Classify the request by payload length.
     let len: usize = match request {
@@ -112,6 +120,44 @@ fn ioctl_standalone(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int
             tty_push(tty_fd, request, winsize.as_bytes())
         },
         _ => unreachable!("terminal-control request was classified above"),
+    }
+}
+
+/// Answers a foreground-process-group ioctl (`TIOCGPGRP`/`TIOCSPGRP`) on a terminal descriptor by
+/// consulting the process manager daemon, which owns the controlling terminal's foreground group.
+///
+/// These two requests back `tcgetpgrp()`/`tcsetpgrp()`; the argument is a `pid_t` rather than a
+/// `termios`/`winsize` payload, so they are answered here directly instead of through the vfsd
+/// push/pull transfer used by the other terminal requests.
+#[cfg(feature = "standalone")]
+fn ioctl_pgrp(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int, Error> {
+    use ::sys::pm::ProcessIdentifier;
+    use ::sysapi::{
+        sys_ioctl::TIOCGPGRP,
+        sys_types::pid_t,
+    };
+
+    // The argument is a `pid_t` the caller owns; it must be a valid pointer.
+    if arg.is_null() {
+        ::syslog::warn!("ioctl(): null argument pointer (fd={fd}, request={request:#x})");
+        return Err(Error::new(ErrorCode::BadAddress, "ioctl: null argument pointer"));
+    }
+
+    // Only a console descriptor is a terminal; a non-console fd is ENOTTY, an unknown fd is EBADF.
+    let _tty_fd: i32 = crate::fdtable::resolve_tty(fd, "ioctl")?;
+
+    if request == TIOCGPGRP {
+        let pgrp: ProcessIdentifier = ::proc::tcgetpgrp()?;
+        // Safety: `arg` is non-null and points to a `pid_t` the caller owns.
+        unsafe {
+            *(arg as *mut pid_t) = i32::from(pgrp);
+        }
+        Ok(0)
+    } else {
+        // Safety: `arg` is non-null and points to a `pid_t` the caller owns.
+        let pgrp: pid_t = unsafe { *(arg as *const pid_t) };
+        ::proc::tcsetpgrp(ProcessIdentifier::from(pgrp))?;
+        Ok(0)
     }
 }
 

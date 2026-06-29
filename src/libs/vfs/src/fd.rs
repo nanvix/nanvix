@@ -25,6 +25,7 @@ use crate::{
     line_discipline::{
         ConsoleReadOutcome,
         LineDiscipline,
+        TerminalSignal,
     },
 };
 use ::alloc::{
@@ -2325,6 +2326,18 @@ pub fn vfs_console_push_input(fd: c_int, input: &[u8]) -> Result<Vec<u8>, TtyErr
     let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
     let echo: Vec<u8> = terminal.lock().push_input(input);
     Ok(echo)
+}
+
+/// Drains the terminal-generated signals (`^C`/`^\`/`^Z`) recognized by the console line discipline
+/// since the last drain.
+///
+/// Called right after [`vfs_console_push_input`] so the console daemon can forward each recognized
+/// signal to the foreground process group. The returned vector is empty when no signal character was
+/// seen in the fed input.
+pub fn vfs_console_take_signals(fd: c_int) -> Result<Vec<TerminalSignal>, TtyError> {
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
+    let signals: Vec<TerminalSignal> = terminal.lock().take_signals();
+    Ok(signals)
 }
 
 /// Signals end-of-input on the raw console stream.

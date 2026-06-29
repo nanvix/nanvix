@@ -333,9 +333,14 @@ fn test_kill_zero_signal_only_probes() -> Result<(), Error> {
     Ok(())
 }
 
-/// Verifies that unsupported process-group selectors are rejected.
-fn test_kill_rejects_negative_pid() -> Result<(), Error> {
-    expect_kill_error(-1, as_signum(SIGTERM)?, ErrorCode::InvalidArgument);
+/// Verifies that signalling a process group with no members reports `ESRCH`.
+///
+/// Process-group selectors (a negative `pid`) are now honored rather than rejected: an empty group
+/// simply has no member to receive the signal. The null signal is used so this probes without
+/// delivering anything, and a group identifier that matches no live process is chosen so no running
+/// process is ever disturbed.
+fn test_kill_empty_process_group() -> Result<(), Error> {
+    expect_kill_error(-i32::MAX, 0, ErrorCode::NoSuchProcess);
     Ok(())
 }
 
@@ -1263,7 +1268,7 @@ pub fn run() -> Result<(), Error> {
     test_kill_interrupted_process()?;
     test_sigkill_terminates_sleeping_process()?;
     test_kill_zero_signal_only_probes()?;
-    test_kill_rejects_negative_pid()?;
+    test_kill_empty_process_group()?;
     test_kill_rejects_unknown_pid()?;
     test_kill_rejects_invalid_signal()?;
     test_caught_signal_runs_handler()?;

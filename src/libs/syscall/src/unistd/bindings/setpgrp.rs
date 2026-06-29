@@ -15,16 +15,36 @@ use ::syslog::trace_syscall;
 ///
 /// # Description
 ///
-/// Sets the process group. Nanvix does not implement process groups, so this call has no
-/// observable side effects and always reports success. It exists so that portable software that
-/// detaches from a controlling terminal compiles, links, and runs.
+/// Sets the process group of the calling process, equivalent to `setpgid(0, 0)`: the caller becomes
+/// the leader of a new process group. In standalone mode this is routed to the process manager
+/// daemon; in hosted modes it reports success without acting.
 ///
 /// # Returns
 ///
-/// `0`.
+/// `0` on success, or `-1` with `errno` set on failure.
 ///
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn setpgrp() -> c_int {
-    0
+    #[cfg(feature = "standalone")]
+    {
+        use crate::errno::__errno_location;
+        use ::sys::pm::ProcessIdentifier;
+
+        match ::proc::setpgid(ProcessIdentifier::from(0), ProcessIdentifier::from(0)) {
+            Ok(()) => 0,
+            Err(e) => {
+                ::syslog::warn!("setpgrp(): failed (error={:?})", e);
+                // SAFETY: writing to the thread-local `errno` location is sound.
+                unsafe {
+                    *__errno_location() = e.code.get();
+                }
+                -1
+            },
+        }
+    }
+    #[cfg(not(feature = "standalone"))]
+    {
+        0
+    }
 }

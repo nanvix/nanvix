@@ -179,6 +179,9 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
                 if res.route == Route::Console
                     && (res.backend_fd == STDOUT_FILENO || res.backend_fd == STDERR_FILENO) =>
             {
+                if !buffer.is_empty() {
+                    notify_terminal_write();
+                }
                 write_ipc(
                     res.backend_fd,
                     buffer,
@@ -214,6 +217,49 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         crate::VFS_PUSH_PULL_PID,
         crate::VFS_PUSH_PULL_TID,
     )
+}
+
+/// Notifies the process manager daemon that the calling process wrote to the console.
+///
+/// Console output bypasses vfsd and flows directly to the kernel, so this self-report is the only
+/// path that lets job control raise `SIGTTOU` for background stdout/stderr writes.
+#[cfg(feature = "standalone")]
+fn notify_terminal_write() {
+    let caller: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
+        Ok(pid) => pid,
+        Err(error) => {
+            ::syslog::warn!(
+                "write(): failed to get caller pid for terminal access (error={:?})",
+                error
+            );
+            return;
+        },
+    };
+
+    // Single-binary test workloads run as pid 1, which aliases `PROCD` but has no separate process
+    // manager daemon to receive this fire-and-forget message. The fixed daemon pid range is not a
+    // job-control subject, so skip those writers.
+    if i32::from(caller) <= ProcessIdentifier::VFSD_RAW {
+        return;
+    }
+
+    match ::proc::terminal_access_request(caller, caller, true) {
+        Ok(message) => {
+            if let Err(error) = ::sys::kcall::ipc::__kcall_send(&message) {
+                ::syslog::warn!(
+                    "write(): failed to notify terminal write (pid={:?}, error={:?})",
+                    caller,
+                    error
+                );
+            }
+        },
+        Err(error) => {
+            ::syslog::warn!(
+                "write(): failed to build terminal-write notification (error={:?})",
+                error
+            );
+        },
+    }
 }
 
 /// Forwards a write request via IPC, splitting the buffer into scatter/gather chunks.

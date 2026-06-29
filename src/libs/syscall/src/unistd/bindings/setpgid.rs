@@ -20,9 +20,9 @@ use ::syslog::trace_syscall;
 ///
 /// # Description
 ///
-/// Sets the process-group ID of a process. Nanvix does not implement process groups, so this call
-/// has no observable side effects; it validates its arguments and reports success so that portable
-/// software performing job-control bookkeeping compiles, links, and runs.
+/// Sets the process-group ID of a process. In standalone mode this is routed to the process manager
+/// daemon, which moves the target into the requested process group subject to the POSIX
+/// constraints; in hosted modes it validates its arguments and reports success.
 ///
 /// # Parameters
 ///
@@ -31,16 +31,36 @@ use ::syslog::trace_syscall;
 ///
 /// # Returns
 ///
-/// `0` on success, or `-1` with `errno` set to `EINVAL` when an argument is negative.
+/// `0` on success, or `-1` with `errno` set on failure.
 ///
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn setpgid(pid: pid_t, pgid: pid_t) -> c_int {
     if pid < 0 || pgid < 0 {
+        // SAFETY: writing to the thread-local `errno` location is sound.
         unsafe {
             *__errno_location() = ErrorCode::InvalidArgument.get();
         }
         return -1;
     }
-    0
+
+    #[cfg(feature = "standalone")]
+    {
+        use ::sys::pm::ProcessIdentifier;
+
+        match ::proc::setpgid(ProcessIdentifier::from(pid), ProcessIdentifier::from(pgid)) {
+            Ok(()) => 0,
+            Err(e) => {
+                // SAFETY: writing to the thread-local `errno` location is sound.
+                unsafe {
+                    *__errno_location() = e.code.get();
+                }
+                -1
+            },
+        }
+    }
+    #[cfg(not(feature = "standalone"))]
+    {
+        0
+    }
 }
