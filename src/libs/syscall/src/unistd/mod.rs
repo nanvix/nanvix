@@ -38,6 +38,7 @@ cfg_if::cfg_if! {
             exec_startup_barrier,
             execv_from_c,
             execv_inherit_env_from_c,
+            execvp_from_c,
         };
         pub use self::syscall::{
             faccessat,
