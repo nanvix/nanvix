@@ -94,6 +94,7 @@ export SNAPSHOT_DIR  := $(ROOT_DIR)/images
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
+export INCLUDE_DIR   := $(ROOT_DIR)/include
 export CLH_DIR       ?= $(ROOT_DIR)/toolchain
 export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
 export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
@@ -591,6 +592,9 @@ endif
 endif
 	@cp ${LIBNVX_CRT0} ${SYSROOT_DIR}/lib/
 	@cp ${NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS} ${SYSROOT_DIR}/lib/
+	@rm -rf ${SYSROOT_DIR}/include
+	@mkdir -p ${SYSROOT_DIR}/include
+	@cp -r ${INCLUDE_DIR}/. ${SYSROOT_DIR}/include/
 	@mkdir -p ${SYSROOT_DIR}/etc/scripts/common
 	@cp -r ${SCRIPTS_DIR}/common/* ${SYSROOT_DIR}/etc/scripts/common/
 	@cp -r ${BUILD_DIR}/user/linker/$(TARGET)/user.ld ${SYSROOT_DIR}/lib/
