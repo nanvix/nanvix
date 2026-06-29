@@ -1,0 +1,6 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+# Guest application binaries. One entry per line to minimize merge conflicts.
+ALL_GUEST_APPLICATIONS := \
+	hello-rust-nostd
