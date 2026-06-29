@@ -24,7 +24,7 @@ GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$
 # stateless — it does not depend on `sysalloc` and has no
 # `#[global_allocator]` — so `libnvx_crt0.a` carries no `sysalloc`
 # objects.  All heap state (`VADDR_NEXT`, ...) lives exclusively in
-# `libposix.a` via `__nanvix_libc_start_main`.  See
+# `libc.a` via `__nanvix_libc_start_main`.  See
 # `nanvix-todo/dlopen-load-address-conflict.md` for the bug this
 # structurally prevents.
 #
@@ -38,52 +38,28 @@ GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$
 # compilation per binary, so they do not consume the sysroot copy and
 # do not hit the duplicate-`sysalloc` scenario.
 # The `init-array` feature switches the `c-main` trampoline from the legacy
-# `_init` / `_fini` hooks to relying on `posix/init-array`
+# `_init` / `_fini` hooks to relying on `nanvix_libc/init-array`
 # (`__nanvix_libc_start_main` walking `.init_array` / `.fini_array`).  Both
 # halves are enabled together for the bundle: `crt0.o` here and `libc.a` via
-# `nanvix_libc`'s `posix` dependency.
+# `nanvix_libc`'s default features.
 GUEST_STATICLIB_FEATURES_nvx-crt0 := c-main forwarding-allocator init-array $(LOG_LEVEL)
 GUEST_STATICLIB_FEATURES_nvx-crt0 := $(strip $(GUEST_STATICLIB_FEATURES_nvx-crt0))
 
 # nanvix_libc is the C library aggregator that produces the deliverable libc.a.
-# It now ALSO pulls the POSIX syscall backend (`posix`) in via its
+# It pulls the POSIX syscall backend and the start-of-day driver in via its
 # `backend-nanvix` feature, so a SINGLE `cargo build -p nanvix_libc` compiles the
 # complete C library + backend together. Cargo unifies every shared transitive
 # dependency (sysalloc, libc_stdlib, sys, nvx, syslog) to ONE instance, which
 # structurally prevents the duplicate-`sysalloc`/duplicate-`HEAP` bug the old
 # separate-build + `ar`-merge produced. It therefore takes the DEFAULT feature
-# set ($(LOG_LEVEL) [+ standalone]); its `standalone` feature forwards to
-# `posix/standalone`.
-#
-# (No `GUEST_STATICLIB_FEATURES_nanvix_libc` override: it must use the default
-# bundle so `standalone` reaches the embedded `posix` backend.)
+# set ($(LOG_LEVEL) [+ standalone]). It is the only library C applications link
+# against — there is no separate libposix.a.
 
 # nanvix_libm produces libm.a (libc_math + the nvx panic handler). It has no
 # standalone-specific behaviour and pulls no syscall backend, so it takes ONLY
 # the log level (never the `standalone` feature, which it does not define).
 GUEST_STATICLIB_FEATURES_nanvix_libm := $(LOG_LEVEL)
 GUEST_STATICLIB_FEATURES_nanvix_libm := $(strip $(GUEST_STATICLIB_FEATURES_nanvix_libm))
-
-# posix is the standalone Nanvix syscall backend (libposix.a), shipped for
-# out-of-tree C consumers that link it alongside their own libc. It takes an
-# EXPLICIT feature override — the default `$(LOG_LEVEL) [+ standalone]` set (KEEPING
-# posix's defaults `syscall allocator c-main`; no `--no-default-features`) plus
-# `newlib-compat` — for two reasons:
-#
-#   1. To force posix into the per-package build group so its `libposix.a` is
-#      compiled on its OWN, separately from `nanvix_libc`. `nanvix_libc` depends
-#      on `posix` with `init-array`; a combined `cargo build -p posix -p
-#      nanvix_libc` would unify features and bake `init-array` into `libposix.a`,
-#      imposing a `.preinit/.init/.fini_array` linker-script contract on those
-#      out-of-tree consumers. Building posix alone keeps `libposix.a` on the
-#      legacy `_init`/`_fini` contract, exactly as before.
-#   2. `newlib-compat` surfaces the syscall-backed `sigaction` / `sigprocmask`
-#      that Newlib-linked ports (e.g. xz) need from `libposix.a`. It is scoped to
-#      THIS standalone build on purpose: the `nanvix_libc` bundle (`libc.a`)
-#      already defines those symbols (via `nanvix_libc` / `libc_signal`), so
-#      enabling them in the bundle's embedded posix too would duplicate them.
-GUEST_STATICLIB_FEATURES_posix := $(GUEST_STATICLIB_FEATURES) newlib-compat
-GUEST_STATICLIB_FEATURES_posix := $(strip $(GUEST_STATICLIB_FEATURES_posix))
 
 # Returns the cargo `--features "..."` arg for the given package, falling
 # back to the default $(GUEST_STATICLIB_CARGO_FEATURES) when no override is
@@ -99,8 +75,8 @@ guest_staticlib_artifact = lib$(subst -,_,$(1)).a
 # EXCEPT the two aggregator staticlibs are staged under their conventional `-l`
 # names: `nanvix_libc` -> `libc.a` (embeds the POSIX backend) and `nanvix_libm`
 # -> `libm.a` (the math archive). There is no separate `libnanvix_libc.a` or
-# `libnanvix_libm.a`; `posix` still produces the standalone `libposix.a` for
-# out-of-tree consumers that link it with their own libc.
+# `libnanvix_libm.a`, and no standalone `libposix.a`; `libc.a` is the only
+# library C applications link against.
 guest_staticlib_staged = $(if $(filter nanvix_libc,$(1)),libc.a,$(if $(filter nanvix_libm,$(1)),libm.a,$(call guest_staticlib_artifact,$(1))))
 
 # Per-package crate-type override. Some packages keep `crate-type = ["lib"]`

@@ -37,7 +37,6 @@ members = [
         "src/libs/no_fail",
         "src/libs/nvx",
         "src/libs/nvx-crt0",
-        "src/libs/posix",
         "src/libs/proc",
         "src/libs/profiler",
         "src/libs/raw-array",
@@ -251,7 +250,6 @@ oci-spec = "0.10.0"
 profiler = { path = "src/libs/profiler", default-features = false }
 protobuf = "3.7"
 portpicker = "0.1"
-posix = { path = "src/libs/posix", default-features = false }
 proc = { path = "src/libs/proc", default-features = false }
 rand = "0.10.1"
 raw-array = { path = "src/libs/raw-array", default-features = false }

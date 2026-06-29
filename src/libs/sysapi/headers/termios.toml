@@ -13,7 +13,7 @@ definitions let ports with an interactive mode (e.g. the QuickJS REPL) compile
 and link.'''
 includes = ["sys/types.h"]
 guard = "_NANVIX_TERMIOS_H"
-scan_crates = ["nanvix_libc", "posix"]
+scan_crates = ["nanvix_libc"]
 content_order = [
     "types",
     "raw:0",

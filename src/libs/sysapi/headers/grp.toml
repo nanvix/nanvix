@@ -9,7 +9,7 @@ description = '''
 The `group` layout mirrors the Rust definition in the sysapi crate (grp.rs).'''
 includes = ["sys/types.h"]
 guard = "_NANVIX_GRP_H"
-scan_crates = ["posix"]
+scan_crates = ["nanvix_libc"]
 content_order = [
     "raw:0",
     "section:0",

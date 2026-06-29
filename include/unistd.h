@@ -12,7 +12,7 @@
  *
  * Declares miscellaneous standard constants and the core POSIX process and I/O
  * interfaces. Constants mirror the Rust definitions in the sysapi crate
- * (unistd.rs); prototypes are generated from the syscall and posix crates.
+ * (unistd.rs); prototypes are generated from the syscall crate.
  */
 
 #include <stddef.h>
