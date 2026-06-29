@@ -405,6 +405,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-needed \
 	test-c-dlfcn-pie \
 	test-c-dlfcn-selflink \
+	test-c-dlfcn-startup \
 	test-c-dlfcn-weak \
 	test-c-echo \
 	test-c-execvp \
