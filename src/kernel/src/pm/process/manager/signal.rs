@@ -310,7 +310,7 @@ impl ProcessManager {
         }
 
         // Redirect the interrupted thread into its handler.
-        unsafe { redirect_to_handler(esp0, entry, frame_top) };
+        unsafe { redirect_to_handler(esp0, entry, frame_top, signum) };
 
         SignalDeliveryOutcome::Delivered
     }
@@ -507,7 +507,12 @@ impl ProcessManager {
             return None;
         }
 
-        // Copy the return address and the on-stack handler arguments below the save area.
+        // Copy the return address and the on-stack handler arguments below the save area. Only the
+        // bytes the ABI actually passes on the stack are written: the return address plus, on
+        // architectures that pass handler arguments on the stack, the argument words. On x86-64 the
+        // System V ABI passes the arguments in registers, so only the return address is written here
+        // (the signal number is placed in a register by `redirect_to_signal_handler`), and writing
+        // the full argument array would overrun into the save area that was just copied.
         let (info_ptr, ctx_ptr): (usize, usize) = if has_siginfo {
             (
                 layout.save_area_base + sigframe::siginfo_offset(),
@@ -517,12 +522,13 @@ impl ProcessManager {
             (0, 0)
         };
         let args: [usize; 4] = [restorer, signum, info_ptr, ctx_ptr];
+        let args_bytes: usize = RETADDR_SIZE + save_area_offset_from_sigreturn_sp();
         if self
             .vmcopy_to_user(
                 pid,
                 VirtualAddress::new(layout.frame_top),
                 VirtualAddress::new(args.as_ptr() as usize),
-                core::mem::size_of::<[usize; 4]>(),
+                args_bytes,
             )
             .is_err()
         {
@@ -548,7 +554,7 @@ impl ProcessManager {
         // never have been built; treat `sigreturn()` there as an unsupported kernel call instead of
         // running the placeholder restore path and terminating the process as if the frame were
         // forged.
-        if !cfg!(target_arch = "x86") {
+        if !cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
             return Err(SigReturnFailure::Unsupported);
         }
 

@@ -64,6 +64,16 @@ const WHV_X64_REGISTER_RFLAGS: WHV_REGISTER_NAME = WHV_REGISTER_NAME(17);
 const WHV_X64_REGISTER_RAX: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0);
 const WHV_X64_REGISTER_RBX: WHV_REGISTER_NAME = WHV_REGISTER_NAME(3);
 const WHV_X64_REGISTER_CS: WHV_REGISTER_NAME = WHV_REGISTER_NAME(19);
+// Additional segment, table, and control registers used to bring up 64-bit long mode at reset.
+const WHV_X64_REGISTER_ES: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x12);
+const WHV_X64_REGISTER_SS: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x14);
+const WHV_X64_REGISTER_DS: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x15);
+const WHV_X64_REGISTER_FS: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x16);
+const WHV_X64_REGISTER_GS: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x17);
+const WHV_X64_REGISTER_CR0: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x1C);
+const WHV_X64_REGISTER_CR3: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x1E);
+const WHV_X64_REGISTER_CR4: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x1F);
+const WHV_X64_REGISTER_EFER: WHV_REGISTER_NAME = WHV_REGISTER_NAME(0x2001);
 /// Deliverability notifications register (controls interrupt-window exits).
 const WHV_X64_REGISTER_DELIVERABILITY_NOTIFICATIONS: WHV_REGISTER_NAME =
     WHV_REGISTER_NAME(-2_147_483_644i32);
@@ -312,6 +322,99 @@ impl VirtualProcessor {
                     anyhow::anyhow!(reason)
                 },
             )?;
+        }
+
+        self.online = true;
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resets the virtual processor for a 64-bit guest, bringing it up directly in long mode.
+    ///
+    /// Programs the long-mode control registers (`CR0`/`CR3`/`CR4`/`EFER`) and the flat 64-bit code
+    /// and data segments (supplying their hidden descriptor state directly), then sets the entry
+    /// point and boot arguments. The caller must have installed the boot page tables (rooted at
+    /// `CR3 = 0x2000`) in guest memory beforehand. No GDTR is programmed: the kernel installs its
+    /// own GDT before performing any far transfer or segment reload.
+    ///
+    pub fn reset_64bit(&mut self, rip: u64, rax: u64, rbx: u64) -> Result<()> {
+        trace!("reset_64bit(): rip={rip:#010x}");
+
+        const CR0_LONG_MODE: u64 = 0x8000_0021; // PG | NE | PE.
+        const CR3_BOOT_PML4: u64 = 0x2000; // Boot PML4 physical address.
+        const CR4_PAE: u64 = 0x0000_0020; // PAE.
+        const EFER_LONG_MODE: u64 = 0x0000_0500; // LMA | LME.
+        const CODE_SELECTOR: u16 = 0x08;
+        const DATA_SELECTOR: u16 = 0x10;
+        const CODE_ATTRIBUTES: u16 = 0xA09B; // P, S, ring0, exec/read, long mode, granularity.
+        const DATA_ATTRIBUTES: u16 = 0xC093; // P, S, ring0, read/write, default-32, granularity.
+        const SEGMENT_LIMIT: u32 = 0xFFFF_FFFF;
+
+        // Note: the GDTR is intentionally *not* programmed here. The hidden segment descriptor
+        // state is supplied directly below, so the hypervisor never needs to consult a GDT in
+        // guest memory while applying this state, and the kernel installs its own GDT (`lgdt`)
+        // before it performs any far transfer or segment reload. Setting `WHvX64RegisterGdtr`
+        // through `WHvSetVirtualProcessorRegisters` at this point makes the platform fault
+        // internally; omitting it matches the proven long-mode bring-up sequence.
+        let names: [WHV_REGISTER_NAME; 14] = [
+            WHV_X64_REGISTER_CR3,
+            WHV_X64_REGISTER_CR4,
+            WHV_X64_REGISTER_EFER,
+            WHV_X64_REGISTER_CR0,
+            WHV_X64_REGISTER_CS,
+            WHV_X64_REGISTER_DS,
+            WHV_X64_REGISTER_ES,
+            WHV_X64_REGISTER_FS,
+            WHV_X64_REGISTER_GS,
+            WHV_X64_REGISTER_SS,
+            WHV_X64_REGISTER_RIP,
+            WHV_X64_REGISTER_RFLAGS,
+            WHV_X64_REGISTER_RAX,
+            WHV_X64_REGISTER_RBX,
+        ];
+
+        // Build the register values in place on a fully zeroed array (mirrors `reset()`), avoiding
+        // by-value `union` construction.
+        let mut values: [WHV_REGISTER_VALUE; 14] = [unsafe { mem::zeroed() }; 14];
+        values[0].Reg64 = CR3_BOOT_PML4;
+        values[1].Reg64 = CR4_PAE;
+        values[2].Reg64 = EFER_LONG_MODE;
+        values[3].Reg64 = CR0_LONG_MODE;
+        // CS (index 4) and the five data segments DS/ES/FS/GS/SS (indices 5..=9).
+        for (i, &(selector, attributes)) in [
+            (CODE_SELECTOR, CODE_ATTRIBUTES),
+            (DATA_SELECTOR, DATA_ATTRIBUTES),
+            (DATA_SELECTOR, DATA_ATTRIBUTES),
+            (DATA_SELECTOR, DATA_ATTRIBUTES),
+            (DATA_SELECTOR, DATA_ATTRIBUTES),
+            (DATA_SELECTOR, DATA_ATTRIBUTES),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let seg: &mut WHV_REGISTER_VALUE = &mut values[4 + i];
+            seg.Segment.Base = 0;
+            seg.Segment.Limit = SEGMENT_LIMIT;
+            seg.Segment.Selector = selector;
+            seg.Segment.Anonymous.Attributes = attributes;
+        }
+        values[10].Reg64 = rip;
+        values[11].Reg64 = RFLAGS_RESERVED_BIT1;
+        values[12].Reg64 = rax;
+        values[13].Reg64 = rbx;
+
+        // Program the entire long-mode state atomically: paging root (CR3), mode flags
+        // (CR0.PG/PE, CR4.PAE, EFER.LME/LMA), flat segments, and entry state must be applied
+        // in a single set so the hypervisor never observes an inconsistent intermediate (e.g.
+        // EFER.LMA=1 while CR0.PG=0).
+        unsafe {
+            whp_set_registers(self.partition, self.index, &names, &values).map_err(|e| {
+                let reason: String = format!("failed to set long-mode registers (error={e:?})");
+                error!("reset_64bit(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
         }
 
         self.online = true;
@@ -678,7 +781,8 @@ impl VirtualProcessor {
             },
             // Other exit reasons.
             reason => {
-                warn!("run(): unhandled WHP exit reason ({reason:?})");
+                let rip: u64 = exit_context.VpContext.Rip;
+                warn!("run(): unhandled WHP exit reason ({reason:?}) at rip={rip:#018x}");
                 VirtualProcessorExitContext::Unknown
             },
         }

@@ -59,7 +59,7 @@ enum InterruptControllerType {
     Legacy(Pic),
     Xapic(Xapic, Ioapic),
     /// xAPIC-only mode: LAPIC handles timer delivery and EOI entirely in-kernel.
-    #[cfg(target_arch = "x86")]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     XapicOnly(Xapic),
 }
 
@@ -74,10 +74,10 @@ impl InterruptController {
         xapic: Option<UninitXapic>,
         ioapic: Option<UninitIoapic>,
         intmap: InterruptMap,
-        #[cfg(target_arch = "x86")] eoi_xapic: Option<Xapic>,
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] eoi_xapic: Option<Xapic>,
     ) -> Result<Self, Error> {
         // Skip PIC initialization when the xAPIC timer has already been initialized.
-        #[cfg(target_arch = "x86")]
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         if let Some(xapic_eoi) = eoi_xapic {
             if pic.is_some() || xapic.is_some() || ioapic.is_some() {
                 let reason: &str = "pic, xapic, and ioapic must be None in xapic-only mode";
@@ -174,7 +174,7 @@ impl InterruptController {
                 xapic.ack();
                 Ok(())
             },
-            #[cfg(target_arch = "x86")]
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             InterruptControllerType::XapicOnly(ref mut xapic) => {
                 xapic.ack();
                 Ok(())
@@ -193,7 +193,7 @@ impl InterruptController {
                 let intnum: u8 = self.intmap[intnum];
                 ioapic.enable(intnum, 0)
             },
-            #[cfg(target_arch = "x86")]
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             InterruptControllerType::XapicOnly(_) => {
                 // No PIC to unmask. LAPIC timer is already unmasked
                 // during calibration; other interrupt sources (IKC)
@@ -231,7 +231,7 @@ impl InterruptController {
                 error!("{reason}");
                 Err(Error::new(ErrorCode::OperationNotSupported, reason))
             },
-            #[cfg(target_arch = "x86")]
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             InterruptControllerType::XapicOnly(_) => {
                 let reason: &str = "xapic-only does not support starting cores";
                 error!("{reason}");
@@ -250,7 +250,7 @@ impl InterruptController {
     ) -> Result<(), Error> {
         let intnum: u8 = match self.intctrl {
             InterruptControllerType::Legacy(_) => intnum as u8,
-            #[cfg(target_arch = "x86")]
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             InterruptControllerType::XapicOnly(_) => intnum as u8,
             InterruptControllerType::Xapic(_, _) => self.intmap[intnum],
         };
@@ -261,7 +261,7 @@ impl InterruptController {
     pub fn get_handler(&self, intnum: InterruptNumber) -> Result<Option<InterruptHandler>, Error> {
         let intnum: u8 = match self.intctrl {
             InterruptControllerType::Legacy(_) => intnum as u8,
-            #[cfg(target_arch = "x86")]
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             InterruptControllerType::XapicOnly(_) => intnum as u8,
             InterruptControllerType::Xapic(_, _) => self.intmap[intnum],
         };

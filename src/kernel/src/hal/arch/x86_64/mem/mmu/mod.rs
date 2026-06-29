@@ -24,7 +24,7 @@ pub mod page_table;
 ///
 /// On x86_64, this function is intentionally a no-op. Address-space switching is handled
 /// by callers via `#[cfg(target_arch = "x86_64")]` paths that write CR3 directly (see
-/// `Vmem::load()`) or allocate per-process PML4s through [`hwpt::alloc_process_pml4()`].
+/// `Vmem::load()`) or allocate per-process PML4s through [`hwpt::create_user_pml4()`].
 /// The shared virtual-memory layer gates its calls to this function behind
 /// `#[cfg(not(target_arch = "x86_64"))]`, so this code path is never reached at runtime.
 ///

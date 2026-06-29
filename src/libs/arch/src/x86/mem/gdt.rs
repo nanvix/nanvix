@@ -52,8 +52,7 @@ const FLAGS_NIBBLE_MASK: u8 = 0x0f;
 /// A type that represents an entry in the Global Descriptor Table (GDT).
 ///
 #[repr(C)]
-#[cfg_attr(target_arch = "x86", repr(align(8)))]
-#[cfg_attr(target_arch = "x86_64", repr(align(16)))]
+#[repr(align(8))]
 pub struct Gdte {
     /// The lower 16 bits of the segment limit.
     limit_low: u16,
@@ -69,12 +68,12 @@ pub struct Gdte {
     base_high: u8,
 }
 
+// A GDT entry is 8 bytes on both x86 and x86_64. The 16-byte system descriptors (TSS/LDT) on
+// x86_64 occupy two consecutive 8-byte entries (see `GdtEntries::TssLow`/`TssHigh`).
+::static_assert::assert_eq_size!(Gdte, 8);
+
 /// Required alignment for a GDT entry.
-#[cfg(target_arch = "x86")]
 pub const GDTE_ALIGNMENT: ::sys::mm::Alignment = ::sys::mm::Alignment::Align8;
-/// Required alignment for a GDT entry.
-#[cfg(target_arch = "x86_64")]
-pub const GDTE_ALIGNMENT: ::sys::mm::Alignment = ::sys::mm::Alignment::Align16;
 
 // Ensure `Gdte` alignment matches `GDTE_ALIGNMENT`.
 ::static_assert::assert_eq_align!(Gdte, GDTE_ALIGNMENT as usize);

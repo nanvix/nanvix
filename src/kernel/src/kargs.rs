@@ -40,11 +40,17 @@ pub struct KernelArguments {
     boot_info: usize,
 }
 
-// `KernelArguments` must be 8 bytes long. This must match low-level startup code.
+// `KernelArguments` layout must match low-level startup code: a `u32` boot magic followed by a
+// pointer-sized boot info field. Size and alignment therefore depend on the pointer width.
+#[cfg(target_pointer_width = "32")]
 ::static_assert::assert_eq_size!(KernelArguments, 8);
-
-// `KernelArguments` must be aligned to 4 bytes. This must match low-level startup code.
+#[cfg(target_pointer_width = "32")]
 ::static_assert::assert_eq_align!(KernelArguments, 4);
+
+#[cfg(target_pointer_width = "64")]
+::static_assert::assert_eq_size!(KernelArguments, 16);
+#[cfg(target_pointer_width = "64")]
+::static_assert::assert_eq_align!(KernelArguments, 8);
 
 //==================================================================================================
 // Implementations

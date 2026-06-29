@@ -101,9 +101,11 @@ pub enum SignalDisposition {
 pub struct SignalControl {
     /// Disposition for each of the 64 signals, indexed by `signum - 1`.
     ///
-    // Boxed so the 64-entry table is a single heap allocation that stays within the kernel heap's
-    // maximum slab size (512 bytes) and keeps `ProcessState` in its original size class.
-    dispositions: Box<[SignalDisposition; 64]>,
+    // Split into two 32-entry halves so that each half is a single heap allocation that stays
+    // within the kernel heap's maximum slab size (512 bytes) regardless of pointer width: a
+    // 64-bit `SignalDisposition` is 16 bytes, so a single 64-entry table would be 1024 bytes and
+    // exceed the largest slab. Two 32-entry halves keep `ProcessState` in its original size class.
+    dispositions: [Box<[SignalDisposition; 32]>; 2],
     /// Process-directed pending signals not yet claimed by a thread.
     ///
     /// Set by the signal-posting primitive (`kill()`) and read when delivery is evaluated.
@@ -119,14 +121,13 @@ pub struct SignalControl {
 // Compile-Time Assertions
 //==================================================================================================
 
-// Enforce, at build time, that the boxed dispositions table fits the kernel heap's largest slab
-// size class (512 bytes; see `crate::mm::kheap`). The kernel heap rejects any allocation whose size
-// or alignment exceeds that bound, which would turn `SignalControl::default()` into a runtime
-// allocation failure. The `Box<[SignalDisposition; 64]>` field above relies on `SignalDisposition`
-// staying small enough; this assertion fails the compile if a layout change (e.g. dropping the
-// niche optimization for the boxed `Handler` payload) ever pushes the table past the bound.
-::static_assert::assert_eq!(::core::mem::size_of::<[SignalDisposition; 64]>() <= 512);
-::static_assert::assert_eq!(::core::mem::align_of::<[SignalDisposition; 64]>() <= 512);
+// Enforce, at build time, that each half of the dispositions table fits the kernel heap's largest
+// slab size class (512 bytes; see `crate::mm::kheap`). The kernel heap rejects any allocation whose
+// size or alignment exceeds that bound, which would turn `SignalControl::default()` into a runtime
+// allocation failure. The table is split into two `Box<[SignalDisposition; 32]>` halves so that each
+// allocation stays within the bound even when `SignalDisposition` is 16 bytes wide (64-bit).
+::static_assert::assert_eq!(::core::mem::size_of::<[SignalDisposition; 32]>() <= 512);
+::static_assert::assert_eq!(::core::mem::align_of::<[SignalDisposition; 32]>() <= 512);
 
 //==================================================================================================
 // Standalone Functions
@@ -343,7 +344,8 @@ impl SignalControl {
     /// A reference to the disposition for `signum`, or [`None`] if `signum` is out of range.
     ///
     pub fn disposition(&self, signum: usize) -> Option<&SignalDisposition> {
-        self.dispositions.get(signum.wrapping_sub(1))
+        let idx: usize = signum.wrapping_sub(1);
+        self.dispositions.get(idx / 32)?.get(idx % 32)
     }
 
     ///
@@ -366,7 +368,9 @@ impl SignalControl {
         signum: usize,
         disposition: SignalDisposition,
     ) -> Option<SignalDisposition> {
-        let slot: &mut SignalDisposition = self.dispositions.get_mut(signum.wrapping_sub(1))?;
+        let idx: usize = signum.wrapping_sub(1);
+        let slot: &mut SignalDisposition =
+            self.dispositions.get_mut(idx / 32)?.get_mut(idx % 32)?;
         Some(::core::mem::replace(slot, disposition))
     }
 
@@ -488,9 +492,11 @@ impl SignalControl {
     /// its own restorer at startup.
     ///
     pub fn reset_for_exec(&mut self) {
-        for slot in self.dispositions.iter_mut() {
-            if matches!(slot, SignalDisposition::Handler(_)) {
-                *slot = SignalDisposition::Default;
+        for half in self.dispositions.iter_mut() {
+            for slot in half.iter_mut() {
+                if matches!(slot, SignalDisposition::Handler(_)) {
+                    *slot = SignalDisposition::Default;
+                }
             }
         }
         self.pending = 0;
@@ -501,7 +507,10 @@ impl SignalControl {
 impl Default for SignalControl {
     fn default() -> Self {
         Self {
-            dispositions: Box::new(::core::array::from_fn(|_| SignalDisposition::Default)),
+            dispositions: [
+                Box::new(::core::array::from_fn(|_| SignalDisposition::Default)),
+                Box::new(::core::array::from_fn(|_| SignalDisposition::Default)),
+            ],
             pending: 0,
             restorer: None,
         }

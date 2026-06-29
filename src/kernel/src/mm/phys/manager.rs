@@ -386,4 +386,53 @@ impl PhysMemoryManager {
         }
         result
     }
+
+    ///
+    /// # Description
+    ///
+    /// Reclaims a previously booked (reserved) physical region, returning its frames to the
+    /// allocator so they can satisfy later allocations. This is used to release the boot-modules
+    /// region once every server has been copied into its own address space: the initrd images are
+    /// then dead weight, and in debug builds they can dominate physical memory.
+    ///
+    /// The region is page-aligned (the base is rounded down and the end up) so that whole frames
+    /// are released even when the booked payload begins at an offset within a page.
+    ///
+    /// # Parameters
+    ///
+    /// - `base_phys`: Physical base address of the booked region.
+    /// - `size`: Size of the booked region in bytes.
+    ///
+    /// # Returns
+    ///
+    /// The number of frames returned to the allocator (zero when the region is empty or its base
+    /// is invalid).
+    ///
+    pub fn reclaim_booked_region(&mut self, base_phys: usize, size: usize) -> usize {
+        if size == 0 {
+            return 0;
+        }
+        let page_start: usize = base_phys & !(mem::PAGE_SIZE - 1);
+        let raw_end: usize = match base_phys.checked_add(size) {
+            Some(end) => end,
+            None => return 0,
+        };
+        let page_end: usize = match raw_end.checked_add(mem::PAGE_SIZE - 1) {
+            Some(v) => v & !(mem::PAGE_SIZE - 1),
+            None => return 0,
+        };
+        let count: usize = (page_end - page_start) / mem::PAGE_SIZE;
+        match FrameAddress::from_raw_value(page_start) {
+            // `free_kernel_region` frees what it can even on partial failure, so the region is
+            // considered reclaimed regardless of its result.
+            Ok(base) => {
+                let _ = self.free_kernel_region(base, count);
+                count
+            },
+            Err(e) => {
+                warn!("reclaim_booked_region(): invalid base {page_start:#x}: {e:?}");
+                0
+            },
+        }
+    }
 }

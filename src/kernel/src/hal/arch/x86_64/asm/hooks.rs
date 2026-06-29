@@ -292,41 +292,40 @@ global_asm!(
     //  - R10: arg3
     //
     "_do_kcall:",
-    //   Clear the direction flag. User code may set DF=1 (via std),
-    //   and all compiler-generated code (including Rust's rep-based
-    //   memcpy) assumes DF=0. The int instruction does not clear DF,
-    //   so we must do it explicitly before calling into Rust kernel
-    //   code.
-    "    cld",
+    //   Push a dummy error code so the on-stack frame matches the
+    //   `ContextInformation` layout produced by the exception hooks (which
+    //   the hardware supplies an error code for). Saving the full register
+    //   file here — rather than only the callee-saved registers — lets
+    //   `sigreturn()` restore every register of a thread interrupted at a
+    //   kernel-call boundary, exactly as it does for a faulting thread.
+    "    pushq $0",
 
-    // Save callee-saved registers.
-    "    pushq %rbp",
-    "    pushq %r12",
-    "    pushq %r13",
-    "    pushq %r14",
-    "    pushq %r15",
-    "    pushq %rbx",
-
-    "    movq %rsp, %rbp",
+    // Save the full execution context. `context_save` clears the direction
+    // flag (user code may set DF=1; Rust assumes DF=0) and leaves a pointer
+    // to the saved context in %rax. The original kernel-call number stays in
+    // the context's RAX slot.
+    "    context_save %rax",
 
     // Set up x86_64 SysV ABI arguments for
-    // do_kcall(kcall_nr, arg0, arg1, arg2, arg3).
-    "    movq %r10, %r8",  // arg3 → r8 (5th SysV param)
-    "    movq %rdx, %rcx", // arg2 → rcx (4th SysV param)
-    "    movq %rsi, %rdx", // arg1 → rdx (3rd SysV param)
-    "    movq %rdi, %rsi", // arg0 → rsi (2nd SysV param)
-    "    movq %rax, %rdi", // kcall_nr → rdi (1st SysV param)
+    // do_kcall(kcall_nr, arg0, arg1, arg2, arg3) from the saved context. The
+    // user passes the call number in RAX and arg0..arg3 in RDI, RSI, RDX, R10.
+    "    movq {CONTEXT_RDI}(%rax), %rsi", // arg0 → rsi (2nd SysV param)
+    "    movq {CONTEXT_RSI}(%rax), %rdx", // arg1 → rdx (3rd SysV param)
+    "    movq {CONTEXT_RDX}(%rax), %rcx", // arg2 → rcx (4th SysV param)
+    "    movq {CONTEXT_R10}(%rax), %r8",  // arg3 → r8 (5th SysV param)
+    "    movq {CONTEXT_RAX}(%rax), %rdi", // kcall_nr → rdi (1st SysV param)
 
     // Handle kernel call.
     "    call do_kcall",
 
-    // Restore callee-saved registers. Return value is in RAX.
-    "    popq %rbx",
-    "    popq %r15",
-    "    popq %r14",
-    "    popq %r13",
-    "    popq %r12",
-    "    popq %rbp",
+    // Store the result (RAX) into the saved context's RAX slot so
+    // `context_restore` delivers it to user space. %rsp still points at the
+    // saved context base.
+    "    movq %rax, {CONTEXT_RAX}(%rsp)",
+
+    // Restore the full execution context and pop the dummy error code.
+    "    context_restore",
+    "    addq ${QWORD_SIZE}, %rsp",
 
     "    jmp __leave_kernel",
 

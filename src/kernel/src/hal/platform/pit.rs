@@ -40,6 +40,7 @@ static TIMER_FREQUENCY: AtomicU32 = AtomicU32::new(pit::PIT_MAX_FREQUENCY);
 /// On non-WHP platforms the PIT operates as a periodic timer using channel 0. On WHP the PIT is
 /// used exclusively as a calibration source for the LAPIC timer via channel 2.
 ///
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
 pub struct Pit {
     /// PIT command register (port 0x43).
     ctrl: ReadWriteIoPort,
@@ -55,6 +56,7 @@ pub struct Pit {
 }
 
 #[cfg(not(all(feature = "microvm", feature = "whp")))]
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
 impl Pit {
     ///
     /// # Description
@@ -118,6 +120,7 @@ impl Pit {
 }
 
 #[cfg(all(feature = "microvm", feature = "whp"))]
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
 impl Pit {
     ///
     /// # Description

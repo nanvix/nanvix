@@ -84,7 +84,11 @@ pub unsafe fn wait_cond(
     // Unpack kernel call arguments.
     let cond_addr: ConditionAddress = ConditionAddress::from(cond_addr);
     let mutex_addr: MutexAddress = MutexAddress::from(mutex_addr);
-    let alarm: Option<SystemTime> = if timeout_s == usize::MAX && timeout_ns == usize::MAX {
+    // The kernel-call ABI passes the timeout fields as 32-bit values, so the "no timeout" sentinel
+    // is `u32::MAX` in each field (zero-extended into `usize` here). Comparing against `usize::MAX`
+    // would only match on 32-bit targets; use the 32-bit sentinel so it works on x86_64 too.
+    const NO_TIMEOUT: usize = u32::MAX as usize;
+    let alarm: Option<SystemTime> = if timeout_s == NO_TIMEOUT && timeout_ns == NO_TIMEOUT {
         None
     } else {
         match SystemTime::new(timeout_s as u64, timeout_ns as u32) {

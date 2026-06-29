@@ -8,6 +8,110 @@
 use ::core::arch;
 
 //==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+/// Issues a kernel call with no arguments.
+///
+/// # Safety
+///
+/// This function is unsafe because it issues inline assembly.
+#[inline(never)]
+pub unsafe fn kcall0(kcall_nr: u32) -> i64 {
+    let ret: i64;
+    unsafe {
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
+            inout("rax") kcall_nr as i64 => ret,
+            options(nostack, preserves_flags)
+        );
+    }
+    ret
+}
+
+/// Issues a kernel call with one argument.
+///
+/// # Safety
+///
+/// This function is unsafe because it issues inline assembly.
+#[inline(never)]
+pub unsafe fn kcall1(kcall_nr: u32, arg0: u32) -> i64 {
+    let ret: i64;
+    unsafe {
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
+            inout("rax") kcall_nr as i64 => ret,
+            in("rdi") arg0,
+            options(nostack, preserves_flags)
+        );
+    }
+    ret
+}
+
+/// Issues a kernel call with two arguments.
+///
+/// # Safety
+///
+/// This function is unsafe because it issues inline assembly.
+#[inline(never)]
+pub unsafe fn kcall2(kcall_nr: u32, arg0: u32, arg1: u32) -> i64 {
+    let ret: i64;
+    unsafe {
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
+            inout("rax") kcall_nr as i64 => ret,
+            in("rdi") arg0,
+            in("rsi") arg1,
+            options(nostack, preserves_flags)
+        );
+    }
+    ret
+}
+
+/// Issues a kernel call with three arguments.
+///
+/// # Safety
+///
+/// This function is unsafe because it issues inline assembly.
+#[inline(never)]
+pub unsafe fn kcall3(kcall_nr: u32, arg0: u32, arg1: u32, arg2: u32) -> i64 {
+    let ret: i64;
+    unsafe {
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
+            inout("rax") kcall_nr as i64 => ret,
+            in("rdi") arg0,
+            in("rsi") arg1,
+            in("rdx") arg2,
+            options(nostack, preserves_flags)
+        );
+    }
+    ret
+}
+
+/// Issues a kernel call with four arguments.
+///
+/// # Safety
+///
+/// This function is unsafe because it issues inline assembly.
+#[inline(never)]
+pub unsafe fn kcall4(kcall_nr: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u32) -> i64 {
+    let ret: i64;
+    unsafe {
+        arch::asm!("int {kcall_vector}",
+            kcall_vector = const crate::number::KCALL_VECTOR,
+            inout("rax") kcall_nr as i64 => ret,
+            in("rdi") arg0,
+            in("rsi") arg1,
+            in("rdx") arg2,
+            in("r10") arg3,
+            options(nostack, preserves_flags)
+        );
+    }
+    ret
+}
+
+//==================================================================================================
 // Thread Data Area Helpers
 //==================================================================================================
 

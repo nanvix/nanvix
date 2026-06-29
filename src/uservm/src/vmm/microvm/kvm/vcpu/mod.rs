@@ -50,6 +50,7 @@ use ::kvm_bindings::{
     kvm_mp_state,
     kvm_msr_entry,
     kvm_regs,
+    kvm_segment,
     kvm_sregs,
     kvm_vcpu_events,
     kvm_xcrs,
@@ -313,6 +314,75 @@ impl VirtualProcessor {
     /// Returns a pointer to KVM's immediate-exit byte for this vCPU.
     pub fn immediate_exit_ptr(&mut self) -> *mut u8 {
         &mut self.fd.get_kvm_run().immediate_exit
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resets the virtual processor for a 64-bit guest, bringing it up directly in long mode.
+    ///
+    /// Programs the long-mode control registers (`CR0`/`CR3`/`CR4`/`EFER`) and the flat 64-bit code
+    /// and data segments (supplying their hidden descriptor state directly), then sets the entry
+    /// point and boot arguments. The caller must have installed the boot page tables (rooted at
+    /// `CR3 = 0x2000`) in guest memory beforehand. No GDT is installed: the kernel installs its own
+    /// GDT before performing any far transfer or segment reload.
+    ///
+    pub fn reset_64bit(&mut self, rip: u64, rax: u64, rbx: u64) -> Result<()> {
+        trace!("reset_64bit(): rip={rip:#010x}");
+
+        const SEGMENT_LIMIT: u32 = 0xFFFF_FFFF;
+
+        // Builds a flat segment descriptor for long mode.
+        fn segment(selector: u16, type_: u8, long: u8, default_op: u8) -> kvm_segment {
+            kvm_segment {
+                base: 0,
+                limit: SEGMENT_LIMIT,
+                selector,
+                type_,
+                present: 1,
+                dpl: 0,
+                db: default_op,
+                s: 1,
+                l: long,
+                g: 1,
+                avl: 0,
+                unusable: 0,
+                padding: 0,
+            }
+        }
+
+        let mut vcpu_sregs: kvm_sregs = self.fd.get_sregs()?;
+        vcpu_sregs.cr0 = 0x8000_0021; // PG | NE | PE.
+        vcpu_sregs.cr3 = 0x2000; // Boot PML4 physical address.
+        vcpu_sregs.cr4 = 0x0000_0020; // PAE.
+        vcpu_sregs.efer = 0x0000_0500; // LMA | LME.
+
+        let code: kvm_segment = segment(0x08, 0xB, 1, 0);
+        let data: kvm_segment = segment(0x10, 0x3, 0, 1);
+        vcpu_sregs.cs = code;
+        vcpu_sregs.ds = data;
+        vcpu_sregs.es = data;
+        vcpu_sregs.fs = data;
+        vcpu_sregs.gs = data;
+        vcpu_sregs.ss = data;
+
+        // The hidden segment descriptor state above is sufficient to enter long mode; no GDT is
+        // installed in guest memory, so the GDTR is left empty until the kernel loads its own.
+        vcpu_sregs.gdt.base = 0;
+        vcpu_sregs.gdt.limit = 0;
+
+        self.fd.set_sregs(&vcpu_sregs)?;
+
+        let mut vcpu_regs: kvm_regs = self.fd.get_regs()?;
+        vcpu_regs.rip = rip;
+        vcpu_regs.rax = rax;
+        vcpu_regs.rbx = rbx;
+        vcpu_regs.rflags = 0x2; // Reserved bit set, interrupts disabled.
+        self.fd.set_regs(&vcpu_regs)?;
+
+        self.online = true;
+
+        Ok(())
     }
 
     ///

@@ -37,7 +37,7 @@ use ::type_safe::usize_to_mut_ptr;
 
 verus! {
 /// Number of slabs in the heap. Each slab is responsible for allocating blocks of a specific size.
-const NUM_OF_SLABS: usize = 7;
+const NUM_OF_SLABS: usize = 9;
 /// Number of slabs per slab size. Each slab size is allocated a fixed number of slabs.
 pub(super) const SLAB_COUNT: usize = 32;
 /// Minimum size of a single slab in bytes. It is calculated as the number of slabs per slab size
@@ -53,7 +53,7 @@ pub(crate) closed const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 /// specification contexts (and, separately, does not yet support enum discriminants in const
 /// expressions: https://github.com/verus-lang/verus/issues/1107). The `assert_eq!` below makes this
 /// a genuine dependency on the `config` crate: the kernel fails to compile if the two diverge.
-const MAX_SLAB_SIZE: usize = 512;
+const MAX_SLAB_SIZE: usize = 2048;
 }
 
 // Bind the Verus-visible literal above to the shared budget defined in the `config` crate. This
@@ -77,6 +77,8 @@ pub(super) enum SlabSize {
     Slab128 = 128,
     Slab256 = 256,
     Slab512 = 512,
+    Slab1024 = 1024,
+    Slab2048 = 2048,
 }
 
 #[verus_verify]
@@ -88,6 +90,8 @@ struct Kheap {
     slab_128_bytes: Slab,
     slab_256_bytes: Slab,
     slab_512_bytes: Slab,
+    slab_1024_bytes: Slab,
+    slab_2048_bytes: Slab,
     // Ghost state — alloc_map is the ground truth for abstract KheapView.
     // Ghost<T> is zero-sized; it costs nothing at runtime.
     #[cfg(verus_keep_ghost_body)]
@@ -223,6 +227,16 @@ impl Kheap {
                 slab_size,
                 SlabSize::Slab512 as usize,
             )?,
+            slab_1024_bytes: Slab::from_raw_parts(
+                heap_start_addr.add(7 * slab_size),
+                slab_size,
+                SlabSize::Slab1024 as usize,
+            )?,
+            slab_2048_bytes: Slab::from_raw_parts(
+                heap_start_addr.add(8 * slab_size),
+                slab_size,
+                SlabSize::Slab2048 as usize,
+            )?,
         };
         Ok(kheap)
     }
@@ -292,6 +306,8 @@ impl Kheap {
             SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_e| AllocError),
             SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_e| AllocError),
             SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab1024 => self.slab_1024_bytes.allocate().map_err(|_e| AllocError),
+            SlabSize::Slab2048 => self.slab_2048_bytes.allocate().map_err(|_e| AllocError),
         };
         proof! {
             let size = spec_layout_size(layout);
@@ -352,6 +368,14 @@ impl Kheap {
             SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_e| AllocError),
             SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_e| AllocError),
             SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            SlabSize::Slab1024 => self
+                .slab_1024_bytes
+                .deallocate(ptr)
+                .map_err(|_e| AllocError),
+            SlabSize::Slab2048 => self
+                .slab_2048_bytes
+                .deallocate(ptr)
+                .map_err(|_e| AllocError),
         };
         proof! {
             let size = spec_layout_size(layout);
@@ -390,6 +414,8 @@ impl Kheap {
             65..=128 => Ok(SlabSize::Slab128),
             129..=256 => Ok(SlabSize::Slab256),
             257..=512 => Ok(SlabSize::Slab512),
+            513..=1024 => Ok(SlabSize::Slab1024),
+            1025..=2048 => Ok(SlabSize::Slab2048),
             _ => Err(AllocError),
         };
         proof! {

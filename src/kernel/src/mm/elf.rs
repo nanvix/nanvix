@@ -40,14 +40,20 @@ use ::core::{
     mem::MaybeUninit,
 };
 pub use ::elf::elf32::Elf32Fhdr;
-use ::elf::elf32::{
-    Elf32Phdr,
-    ET_DYN,
-    ET_EXEC,
-    PF_R,
-    PF_W,
-    PF_X,
-    PT_LOAD,
+use ::elf::{
+    elf32::{
+        Elf32Phdr,
+        ET_DYN,
+        ET_EXEC,
+        PF_R,
+        PF_W,
+        PF_X,
+        PT_LOAD,
+    },
+    elf64::{
+        Elf64Fhdr,
+        Elf64Phdr,
+    },
 };
 use ::sys::{
     config::memory_layout::{
@@ -214,27 +220,94 @@ impl ElfSource<'_> {
         }
     }
 
-    /// Reads and returns the ELF file header.
-    fn read_header(&self) -> Result<Elf32Fhdr, Error> {
-        let mut hdr: MaybeUninit<Elf32Fhdr> = MaybeUninit::uninit();
-        self.read_bytes(0, hdr.as_mut_ptr() as *mut u8, Elf32Fhdr::SIZE)?;
-        // SAFETY: `Elf32Fhdr` is `repr(C)` and composed solely of integer fields with no invalid
-        // bit patterns; the full `SIZE` bytes were just initialized.
-        Ok(unsafe { hdr.assume_init() })
+    /// Reads and returns the ELF file header, transparently handling 32-bit (ELFCLASS32) and 64-bit
+    /// (ELFCLASS64) images.
+    fn read_header(&self) -> Result<ElfHeaderInfo, Error> {
+        // Read the identification bytes to detect the ELF class (EI_CLASS, index 4: 2 = 64-bit).
+        let mut ident: [u8; 16] = [0; 16];
+        self.read_bytes(0, ident.as_mut_ptr(), ident.len())?;
+        if &ident[0..4] != b"\x7fELF" {
+            return Err(Error::new(ErrorCode::BadFile, "invalid ELF magic"));
+        }
+        let is_64: bool = ident[4] == 2;
+
+        if is_64 {
+            let mut hdr: MaybeUninit<Elf64Fhdr> = MaybeUninit::uninit();
+            self.read_bytes(0, hdr.as_mut_ptr() as *mut u8, core::mem::size_of::<Elf64Fhdr>())?;
+            // SAFETY: `Elf64Fhdr` is `repr(C)` of integer fields with no invalid bit patterns.
+            let hdr: Elf64Fhdr = unsafe { hdr.assume_init() };
+            if let Err(reason) = hdr.validate() {
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            }
+            Ok(ElfHeaderInfo {
+                is_64: true,
+                e_type: hdr.e_type,
+                e_entry: hdr.e_entry as usize,
+                e_phoff: hdr.e_phoff as usize,
+                e_phnum: hdr.e_phnum as usize,
+            })
+        } else {
+            let mut hdr: MaybeUninit<Elf32Fhdr> = MaybeUninit::uninit();
+            self.read_bytes(0, hdr.as_mut_ptr() as *mut u8, Elf32Fhdr::SIZE)?;
+            // SAFETY: `Elf32Fhdr` is `repr(C)` of integer fields with no invalid bit patterns.
+            let hdr: Elf32Fhdr = unsafe { hdr.assume_init() };
+            if let Err(reason) = hdr.validate() {
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            }
+            Ok(ElfHeaderInfo {
+                is_64: false,
+                e_type: hdr.e_type,
+                e_entry: hdr.e_entry as usize,
+                e_phoff: hdr.e_phoff as usize,
+                e_phnum: hdr.e_phnum as usize,
+            })
+        }
     }
 
-    /// Reads and returns the program header at `index`, given the program header table file offset.
-    fn read_phdr(&self, index: usize, e_phoff: usize) -> Result<Elf32Phdr, Error> {
-        let entry_size: usize = core::mem::size_of::<Elf32Phdr>();
+    /// Reads and returns the program header at `index`, given the program header table file offset
+    /// and the ELF class (`is_64`).
+    fn read_phdr(&self, index: usize, e_phoff: usize, is_64: bool) -> Result<ElfPhdrInfo, Error> {
+        let entry_size: usize = if is_64 {
+            core::mem::size_of::<Elf64Phdr>()
+        } else {
+            core::mem::size_of::<Elf32Phdr>()
+        };
         let offset: usize = index
             .checked_mul(entry_size)
             .and_then(|o| o.checked_add(e_phoff))
             .ok_or_else(|| Error::new(ErrorCode::BadFile, "program header offset overflow"))?;
-        let mut phdr: MaybeUninit<Elf32Phdr> = MaybeUninit::uninit();
-        self.read_bytes(offset, phdr.as_mut_ptr() as *mut u8, entry_size)?;
-        // SAFETY: `Elf32Phdr` is `repr(C)` and composed solely of `u32` fields with no invalid bit
-        // patterns; the full entry was just initialized.
-        Ok(unsafe { phdr.assume_init() })
+
+        if is_64 {
+            let mut phdr: MaybeUninit<Elf64Phdr> = MaybeUninit::uninit();
+            self.read_bytes(offset, phdr.as_mut_ptr() as *mut u8, entry_size)?;
+            // SAFETY: `Elf64Phdr` is `repr(C)` of integer fields with no invalid bit patterns.
+            let phdr: Elf64Phdr = unsafe { phdr.assume_init() };
+            Ok(ElfPhdrInfo {
+                p_type: phdr.p_type,
+                p_flags: phdr.p_flags,
+                p_offset: phdr.p_offset as usize,
+                p_vaddr: phdr.p_vaddr as usize,
+                p_filesz: phdr.p_filesz as usize,
+                p_memsz: phdr.p_memsz as usize,
+                p_align: phdr.p_align as usize,
+            })
+        } else {
+            let mut phdr: MaybeUninit<Elf32Phdr> = MaybeUninit::uninit();
+            self.read_bytes(offset, phdr.as_mut_ptr() as *mut u8, entry_size)?;
+            // SAFETY: `Elf32Phdr` is `repr(C)` of `u32` fields with no invalid bit patterns.
+            let phdr: Elf32Phdr = unsafe { phdr.assume_init() };
+            Ok(ElfPhdrInfo {
+                p_type: phdr.p_type,
+                p_flags: phdr.p_flags,
+                p_offset: phdr.p_offset as usize,
+                p_vaddr: phdr.p_vaddr as usize,
+                p_filesz: phdr.p_filesz as usize,
+                p_memsz: phdr.p_memsz as usize,
+                p_align: phdr.p_align as usize,
+            })
+        }
     }
 
     ///
@@ -308,6 +381,46 @@ impl ElfSource<'_> {
 /// last loaded segment are returned. If an error occurs, an error code is returned and the
 /// virtual memory space may be left in an inconsistent state.
 ///
+/// Architecture-neutral view of an ELF file header (fields common to ELFCLASS32 and ELFCLASS64).
+struct ElfHeaderInfo {
+    /// Whether the image is 64-bit (ELFCLASS64).
+    is_64: bool,
+    /// Object file type (`ET_EXEC`/`ET_DYN`).
+    e_type: u16,
+    /// Entry point virtual address.
+    e_entry: usize,
+    /// Program header table file offset.
+    e_phoff: usize,
+    /// Number of program header entries.
+    e_phnum: usize,
+}
+
+/// Architecture-neutral view of an ELF program header.
+struct ElfPhdrInfo {
+    p_type: u32,
+    p_flags: u32,
+    p_offset: usize,
+    p_vaddr: usize,
+    p_filesz: usize,
+    p_memsz: usize,
+    p_align: usize,
+}
+
+impl ElfPhdrInfo {
+    /// Returns `true` if this is a loadable (`PT_LOAD`) segment.
+    fn is_loadable(&self) -> bool {
+        self.p_type == PT_LOAD
+    }
+
+    /// Validates segment invariants (`p_filesz <= p_memsz`).
+    fn validate(&self) -> Result<(), &'static str> {
+        if self.p_filesz > self.p_memsz {
+            return Err("segment file size exceeds memory size");
+        }
+        Ok(())
+    }
+}
+
 fn do_elf32_load(
     mm: &mut VirtMemoryManager,
     vmem: &mut Vmem,
@@ -328,14 +441,10 @@ fn do_elf32_load(
     let mut loaded_count: usize = 0;
 
     // Check if the ELF header is valid.
-    let header: Elf32Fhdr = source.read_header()?;
-    if let Err(reason) = header.validate() {
-        error!("{reason}");
-        return Err(Error::new(ErrorCode::BadFile, reason));
-    }
+    let header: ElfHeaderInfo = source.read_header()?;
 
-    let e_phoff: usize = header.e_phoff as usize;
-    let e_phnum: usize = header.e_phnum as usize;
+    let e_phoff: usize = header.e_phoff;
+    let e_phnum: usize = header.e_phnum;
     const MAX_PROGRAM_HEADERS: usize = 256;
     if e_phnum > MAX_PROGRAM_HEADERS {
         let reason: &str = "too many program headers";
@@ -355,9 +464,9 @@ fn do_elf32_load(
         let user_base: usize = USER_BASE_RAW;
         let mut lowest_vaddr: usize = usize::MAX;
         for i in 0..e_phnum {
-            let phdr: Elf32Phdr = source.read_phdr(i, e_phoff)?;
+            let phdr: ElfPhdrInfo = source.read_phdr(i, e_phoff, header.is_64)?;
             if phdr.p_type == PT_LOAD {
-                lowest_vaddr = lowest_vaddr.min(phdr.p_vaddr as usize);
+                lowest_vaddr = lowest_vaddr.min(phdr.p_vaddr);
             }
         }
         let lowest_vaddr: usize = if lowest_vaddr == usize::MAX {
@@ -374,13 +483,11 @@ fn do_elf32_load(
         0
     };
 
-    let entry_raw: usize = (header.e_entry as usize)
-        .checked_add(load_base)
-        .ok_or_else(|| {
-            let reason: &str = "entry address overflow";
-            error!("{reason} (e_entry={:#x}, load_base={:#x})", header.e_entry, load_base);
-            Error::new(ErrorCode::BadFile, reason)
-        })?;
+    let entry_raw: usize = header.e_entry.checked_add(load_base).ok_or_else(|| {
+        let reason: &str = "entry address overflow";
+        error!("{reason} (e_entry={:#x}, load_base={:#x})", header.e_entry, load_base);
+        Error::new(ErrorCode::BadFile, reason)
+    })?;
     let entry: VirtualAddress = VirtualAddress::new(entry_raw);
 
     // Check if entry point does not match what we expect.
@@ -392,7 +499,7 @@ fn do_elf32_load(
 
     // Load segments.
     for phdr_index in 0..e_phnum {
-        let phdr: Elf32Phdr = source.read_phdr(phdr_index, e_phoff)?;
+        let phdr: ElfPhdrInfo = source.read_phdr(phdr_index, e_phoff, header.is_64)?;
         if !phdr.is_loadable() {
             continue;
         }
@@ -407,14 +514,11 @@ fn do_elf32_load(
             .p_align
             .try_into()
             .map_err(|_| Error::new(ErrorCode::BadFile, "invalid alignment value in elf file"))?;
-        let adjusted_vaddr: usize =
-            (phdr.p_vaddr as usize)
-                .checked_add(load_base)
-                .ok_or_else(|| {
-                    let reason: &str = "virtual address overflow in PIE segment";
-                    error!("{reason} (p_vaddr={:#x}, load_base={load_base:#x})", phdr.p_vaddr);
-                    Error::new(ErrorCode::BadFile, reason)
-                })?;
+        let adjusted_vaddr: usize = phdr.p_vaddr.checked_add(load_base).ok_or_else(|| {
+            let reason: &str = "virtual address overflow in PIE segment";
+            error!("{reason} (p_vaddr={:#x}, load_base={load_base:#x})", phdr.p_vaddr);
+            Error::new(ErrorCode::BadFile, reason)
+        })?;
         let virt_addr_base: usize = ::sys::mm::align_down(adjusted_vaddr, align);
 
         // The per-page copy below always writes a segment's file bytes starting at the page base
@@ -440,7 +544,7 @@ fn do_elf32_load(
         };
 
         // Allocate segment.
-        let size: usize = max(phdr.p_filesz as usize, phdr.p_memsz as usize);
+        let size: usize = max(phdr.p_filesz, phdr.p_memsz);
         let virt_addr_range_end: usize = adjusted_vaddr.checked_add(size).ok_or_else(|| {
             let reason: &str = "virtual address overflow in elf segment";
             error!("{reason} (adjusted_vaddr={adjusted_vaddr:#x}, size={size})");
@@ -456,17 +560,15 @@ fn do_elf32_load(
         // File-offset range of this segment's on-disk data. Segment bytes are read from the image
         // source relative to these offsets, independently of where (or how contiguously) the
         // source is stored.
-        let file_off_base: usize = phdr.p_offset as usize;
+        let file_off_base: usize = phdr.p_offset;
         // `p_offset` and `p_filesz` are attacker-controlled in the `execv()` path; a crafted ELF
         // could overflow this sum, so it is computed with checked arithmetic.
-        let file_off_end: usize = file_off_base
-            .checked_add(phdr.p_filesz as usize)
-            .ok_or_else(|| {
-                let reason: &str = "segment file offset range overflow";
-                error!("{reason} (p_offset={:#x}, p_filesz={:#x})", phdr.p_offset, phdr.p_filesz);
-                Error::new(ErrorCode::BadFile, reason)
-            })?;
-        source.check_bounds(file_off_base, phdr.p_filesz as usize)?;
+        let file_off_end: usize = file_off_base.checked_add(phdr.p_filesz).ok_or_else(|| {
+            let reason: &str = "segment file offset range overflow";
+            error!("{reason} (p_offset={:#x}, p_filesz={:#x})", phdr.p_offset, phdr.p_filesz);
+            Error::new(ErrorCode::BadFile, reason)
+        })?;
+        source.check_bounds(file_off_base, phdr.p_filesz)?;
 
         // Load segment by batch-allocating pages before copying data.
         debug!(

@@ -155,11 +155,15 @@ NANVIX_LIBC_STUB_ARCHIVES := \
 NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS := \
 	$(NANVIX_LIBC_BUNDLE_AR) \
 	$(NANVIX_LIBM_BUNDLE_AR) \
-	$(NANVIX_LIBC_BUNDLE_SO) \
-	$(NANVIX_LIBM_BUNDLE_SO) \
 	$(NANVIX_CRT0_OBJECT) \
 	$(NANVIX_CRT0_ALIAS_OBJECTS) \
 	$(NANVIX_LIBC_STUB_ARCHIVES)
+# libc.so / libm.so (dlopen surface) require PIE; the x86_64 static relocation
+# model emits R_X86_64_32 relocations incompatible with a shared object, so they
+# are x86-only.
+ifneq ($(TARGET),x86_64)
+NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS += $(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO)
+endif
 
 .PHONY: nanvix-libc-bundle clean-nanvix-libc-bundle
 
@@ -279,9 +283,15 @@ $(NANVIX_LIBC_STUB_ARCHIVES):
 	$(NANVIX_LIBC_AR) -rcs $@
 
 # Convenience alias to build all artifacts (libc.a + libm.a + libc.so + libm.so +
-# crt0.o [+ aliases] + the empty -ldl/-lpthread/-lrt stub archives).
+# crt0.o [+ aliases] + the empty -ldl/-lpthread/-lrt stub archives). libc.so and
+# libm.so are omitted for x86_64 (see install-artifacts note: no PIE under the
+# static reloc model).
+NANVIX_LIBC_BUNDLE_OPT_SO :=
+ifneq ($(TARGET),x86_64)
+NANVIX_LIBC_BUNDLE_OPT_SO := $(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO)
+endif
 nanvix-libc-bundle: $(NANVIX_LIBC_BUNDLE_AR) $(NANVIX_LIBM_BUNDLE_AR) \
-	$(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO) $(NANVIX_CRT0_OBJECT) $(NANVIX_LIBC_STUB_ARCHIVES)
+	$(NANVIX_LIBC_BUNDLE_OPT_SO) $(NANVIX_CRT0_OBJECT) $(NANVIX_LIBC_STUB_ARCHIVES)
 
 clean-nanvix-libc-bundle:
 	$(RM_CMD) $(NANVIX_LIBC_BUNDLE_AR) $(NANVIX_LIBM_BUNDLE_AR) $(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO)

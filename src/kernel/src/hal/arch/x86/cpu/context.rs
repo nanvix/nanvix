@@ -151,11 +151,12 @@ impl ContextInformation {
     #[cfg(feature = "exception-stack-guard")]
     pub const CONTEXT_HW_SIZE: u32 = core::mem::size_of::<Self>() as u32 - Self::CONTEXT_ERR;
 
-    pub fn new(cr3: u32, esp: u32, esp0: u32) -> Self {
+    #[allow(clippy::as_conversions)]
+    pub fn new(cr3: usize, esp: usize, esp0: usize) -> Self {
         Self {
-            esp0,
-            cr3,
-            esp,
+            esp0: esp0 as u32,
+            cr3: cr3 as u32,
+            esp: esp as u32,
             ..Default::default()
         }
     }
@@ -203,8 +204,10 @@ impl ContextInformation {
     ///
     /// - `entry`: Address of the user-space signal handler.
     /// - `frame_top`: Stack pointer the handler is entered with (top of the signal frame).
+    /// - `_signum`: The signal number delivered to the handler. Unused on x86, where the cdecl ABI
+    ///   passes it on the stack (written into the frame by the frame builder).
     ///
-    pub fn redirect_to_signal_handler(&mut self, entry: usize, frame_top: usize) {
+    pub fn redirect_to_signal_handler(&mut self, entry: usize, frame_top: usize, _signum: usize) {
         self.eip = entry as u32;
         self.esp = frame_top as u32;
         self.eflags = SIGNAL_HANDLER_ENTRY_FLAGS;

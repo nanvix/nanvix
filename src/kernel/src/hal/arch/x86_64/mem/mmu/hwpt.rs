@@ -12,14 +12,12 @@
 //! - Adding new PDPT/PD/PT entries for unmapped regions (e.g., user stack).
 //! - Providing `map` and `unmap` for individual 4 KiB pages.
 
-use crate::hal::mem::FrameAddress;
-
 //==================================================================================================
 // Constants
 //==================================================================================================
 
 /// Maximum number of page-table pages that can be allocated from the static pool.
-const MAX_PT_PAGES: usize = 128;
+const MAX_PT_PAGES: usize = 1024;
 
 /// Number of entries per page table level (PML4, PDPT, PD, PT).
 const ENTRIES_PER_TABLE: usize = 512;
@@ -59,6 +57,13 @@ static mut PT_POOL: [PtPage; MAX_PT_PAGES] = {
 /// Next free index into `PT_POOL`.
 static mut PT_POOL_NEXT: usize = 0;
 
+/// Free list of page-table page physical addresses returned by [`free_pt_page`]. Reusing freed
+/// pages keeps the static pool from being exhausted by process churn (fork/exec/exit).
+static mut PT_FREELIST: [u64; MAX_PT_PAGES] = [0; MAX_PT_PAGES];
+
+/// Number of valid entries in [`PT_FREELIST`].
+static mut PT_FREELIST_LEN: usize = 0;
+
 /// Physical address of the PML4 (read from CR3 during `init()`).
 static mut PML4_PADDR: usize = 0;
 
@@ -69,12 +74,25 @@ static mut INITIALIZED: bool = false;
 // Private Helpers
 //==================================================================================================
 
-/// Allocates a zeroed page-table page from the static pool. Returns its physical address.
+/// Allocates a zeroed page-table page from the free list or the static pool. Returns its physical
+/// address.
 ///
 /// # Panics
 ///
 /// Panics if the pool is exhausted.
 unsafe fn alloc_pt_page() -> u64 {
+    // Reuse a freed page if one is available.
+    if PT_FREELIST_LEN > 0 {
+        PT_FREELIST_LEN -= 1;
+        let paddr: u64 = PT_FREELIST[PT_FREELIST_LEN];
+        // Zero the reused page before handing it out.
+        let ptr: *mut u64 = paddr as *mut u64;
+        for i in 0..ENTRIES_PER_TABLE {
+            core::ptr::write_volatile(ptr.add(i), 0);
+        }
+        return paddr;
+    }
+
     let idx: usize = PT_POOL_NEXT;
     if idx >= MAX_PT_PAGES {
         error!("hwpt: page-table pool exhausted (used={}, max={})", idx, MAX_PT_PAGES);
@@ -84,6 +102,19 @@ unsafe fn alloc_pt_page() -> u64 {
     // The pool lives in identity-mapped kernel BSS, so virtual address == physical address.
     let ptr: *const PtPage = &PT_POOL[idx];
     ptr as u64
+}
+
+/// Returns a page-table page to the free list for later reuse.
+///
+/// # Safety
+///
+/// `paddr` must be a page previously obtained from [`alloc_pt_page`] and no longer referenced by
+/// any page table.
+unsafe fn free_pt_page(paddr: u64) {
+    if PT_FREELIST_LEN < MAX_PT_PAGES {
+        PT_FREELIST[PT_FREELIST_LEN] = paddr;
+        PT_FREELIST_LEN += 1;
+    }
 }
 
 /// Reads a 64-bit entry from a page table at `table_paddr[index]`.
@@ -202,35 +233,150 @@ pub unsafe fn init() {
 ///
 /// # Safety
 ///
-/// Caller must ensure `vaddr` is page-aligned and `paddr` is a valid physical frame.
-pub unsafe fn map(vaddr: usize, paddr: usize, user: bool, writable: bool) {
-    if !INITIALIZED {
-        error!("hwpt: map called before init()");
-        panic!("hwpt: not initialized");
-    }
-    map_in(PML4_PADDR as u64, vaddr, paddr, user, writable);
-}
-
-/// Maps a single 4 KiB page for user space: `vaddr` → `paddr` with User + Writable flags.
+/// Allocates a fresh per-process 4-level page table (PML4 + PDPT) for a user address space.
 ///
-/// This is a convenience wrapper around [`map()`] for the common case.
-#[allow(dead_code)]
-pub unsafe fn map_user(vaddr: usize, paddr: FrameAddress) {
-    map(vaddr, paddr.into_raw_value(), true, true);
-}
-
-/// Unmaps a single 4 KiB page at `vaddr` from the global (boot) PML4.
+/// The new PML4 shares the kernel's low-memory mapping by pointing `PDPT[0]` at the boot `PD0`
+/// (which identity-maps `0..1 GiB`, covering all of kernel space — code, data, stacks, the IDT/GDT,
+/// and the microvm control/pvclock pages). User space (`1 GiB..`) lives in `PDPT[1..]`, whose page
+/// directories are created on demand by [`map_user`]. The Local APIC MMIO page (above `1 GiB`) is
+/// also mapped, supervisor-only, so the kernel can issue EOIs while running on this address space
+/// after an interrupt taken from user mode.
+///
+/// Returns the physical address of the new PML4 (the value to load into `CR3`).
 ///
 /// # Safety
 ///
-/// Caller must ensure `vaddr` is page-aligned and currently mapped.
-#[allow(dead_code)]
-pub unsafe fn unmap(vaddr: usize) {
-    if !INITIALIZED {
-        error!("hwpt: unmap called before init()");
-        panic!("hwpt: not initialized");
+/// Must be called after [`init`].
+pub unsafe fn create_user_pml4() -> u64 {
+    assert!(INITIALIZED, "hwpt: not initialized");
+
+    let new_pml4: u64 = alloc_pt_page();
+    let new_pdpt: u64 = alloc_pt_page();
+
+    // PDPT[0] → boot PD0 (shared kernel mapping). PTE_USER is set on this intermediate so that
+    // user-accessible low pages (e.g. the pvclock page) remain reachable from Ring 3; the actual
+    // U/S permission is still gated by the leaf entries inside the shared PD.
+    write_entry(new_pdpt, 0, BOOT_PD0_PADDR | PTE_PRESENT | PTE_WRITABLE | PTE_USER);
+
+    // PML4[0] → new PDPT.
+    write_entry(new_pml4, 0, new_pdpt | PTE_PRESENT | PTE_WRITABLE | PTE_USER);
+
+    // Map the Local APIC MMIO page (supervisor-only) so interrupt EOIs issued while this address
+    // space is active do not fault.
+    let lapic: usize = ::config::microvm::DEFAULT_LAPIC_BASE;
+    map_in(new_pml4, lapic, lapic, false, true);
+
+    new_pml4
+}
+
+/// Maps a single 4 KiB user page `vaddr` → `paddr` (User-accessible) in the given per-process PML4.
+///
+/// # Safety
+///
+/// `pml4` must be a valid PML4 physical address from [`create_user_pml4`].
+pub unsafe fn map_user(pml4: u64, vaddr: usize, paddr: usize, writable: bool) {
+    map_in(pml4, vaddr, paddr, true, writable);
+}
+
+/// Unmaps a single 4 KiB user page at `vaddr` in the given per-process PML4.
+///
+/// # Safety
+///
+/// `pml4` must be a valid PML4 physical address from [`create_user_pml4`].
+pub unsafe fn unmap_user(pml4: u64, vaddr: usize) {
+    unmap_in(pml4, vaddr);
+}
+
+/// Maps (user-accessible) a single 4 KiB page `vaddr` → `paddr` into the boot PML4's shared kernel
+/// low-memory page directory (`PDPT[0]` → boot `PD0`). Because every per-process PML4 references
+/// that same boot `PD0`, this makes the page visible — with the same permissions — in all address
+/// spaces, mirroring how the kernel's shared identity-mapped page tables behave on 32-bit targets.
+///
+/// This is used by `kctrl()` to expose MMIO windows (e.g. the RAMFS) that live in low physical
+/// memory to user processes. Mapping at 4 KiB granularity transparently splits the covering 2 MiB
+/// identity page in boot `PD0` while preserving the surrounding supervisor-only kernel mappings.
+///
+/// # Safety
+///
+/// Must be called after [`init`]. `vaddr` must lie within the boot `PD0` coverage (the low 1 GiB).
+pub unsafe fn map_kernel_mmio(vaddr: usize, paddr: usize, writable: bool) {
+    assert!(INITIALIZED, "hwpt: not initialized");
+    map_in(PML4_PADDR as u64, vaddr, paddr, true, writable);
+}
+
+/// Updates the writable permission of an already-mapped 4 KiB user page (used for copy-on-write).
+/// If the page is not currently mapped at 4 KiB granularity, this is a no-op.
+///
+/// # Safety
+///
+/// `pml4` must be a valid PML4 physical address from [`create_user_pml4`].
+pub unsafe fn protect_user(pml4: u64, vaddr: usize, writable: bool) {
+    let pml4_idx: usize = (vaddr >> 39) & 0x1FF;
+    let pdpt_idx: usize = (vaddr >> 30) & 0x1FF;
+    let pd_idx: usize = (vaddr >> 21) & 0x1FF;
+    let pt_idx: usize = (vaddr >> 12) & 0x1FF;
+
+    let pml4_entry: u64 = read_entry(pml4, pml4_idx);
+    if pml4_entry & PTE_PRESENT == 0 {
+        return;
     }
-    unmap_in(PML4_PADDR as u64, vaddr);
+    let pdpt: u64 = pml4_entry & ADDR_MASK_4K;
+    let pdpt_entry: u64 = read_entry(pdpt, pdpt_idx);
+    if pdpt_entry & PTE_PRESENT == 0 {
+        return;
+    }
+    let pd: u64 = pdpt_entry & ADDR_MASK_4K;
+    let pd_entry: u64 = read_entry(pd, pd_idx);
+    if pd_entry & PTE_PRESENT == 0 || pd_entry & PDE_PS != 0 {
+        return;
+    }
+    let pt: u64 = pd_entry & ADDR_MASK_4K;
+    let pte: u64 = read_entry(pt, pt_idx);
+    if pte & PTE_PRESENT == 0 {
+        return;
+    }
+    let new_pte: u64 = if writable {
+        pte | PTE_WRITABLE
+    } else {
+        pte & !PTE_WRITABLE
+    };
+    write_entry(pt, pt_idx, new_pte);
+    invlpg(vaddr);
+}
+
+/// Tears down a per-process PML4, returning every process-owned page-table page to the free list.
+///
+/// The shared kernel `PD0` (referenced by `PDPT[0]`) is never freed; only the process-private
+/// `PDPT[1..]` subtrees (user space plus the per-process LAPIC tables) and the `PDPT`/`PML4`
+/// pages themselves are reclaimed.
+///
+/// # Safety
+///
+/// `pml4` must be a valid PML4 physical address from [`create_user_pml4`] that is no longer loaded
+/// in any `CR3`.
+pub unsafe fn destroy_user_pml4(pml4: u64) {
+    let pml4_entry: u64 = read_entry(pml4, 0);
+    if pml4_entry & PTE_PRESENT != 0 {
+        let pdpt: u64 = pml4_entry & ADDR_MASK_4K;
+        // Skip PDPT[0] (shared kernel PD0); free all process-private PDPT[1..] subtrees.
+        for pdpt_i in 1..ENTRIES_PER_TABLE {
+            let pdpt_entry: u64 = read_entry(pdpt, pdpt_i);
+            if pdpt_entry & PTE_PRESENT == 0 || pdpt_entry & PDE_PS != 0 {
+                continue;
+            }
+            let pd: u64 = pdpt_entry & ADDR_MASK_4K;
+            for pd_i in 0..ENTRIES_PER_TABLE {
+                let pd_entry: u64 = read_entry(pd, pd_i);
+                if pd_entry & PTE_PRESENT == 0 || pd_entry & PDE_PS != 0 {
+                    continue;
+                }
+                free_pt_page(pd_entry & ADDR_MASK_4K);
+            }
+            free_pt_page(pd);
+        }
+        free_pt_page(pdpt);
+    }
+    free_pt_page(pml4);
 }
 
 /// Unmaps a single 4 KiB page at `vaddr` using the given PML4.
@@ -277,47 +423,6 @@ unsafe fn unmap_in(pml4: u64, vaddr: usize) {
 /// Discovered from the boot PML4 during `init()`.
 static mut BOOT_PD0_PADDR: u64 = 0;
 
-/// Allocates a per-process set of page tables (PML4 + PDPT + PD for user space).
-///
-/// The new PML4 shares the kernel mapping (PDPT[0] → boot PD0) and gets a fresh PD
-/// for user space (PDPT[1]).
-///
-/// Returns the physical address of the new PML4.
-///
-/// # Safety
-///
-/// Must be called after `init()`.
-pub unsafe fn alloc_process_pml4() -> u64 {
-    assert!(INITIALIZED, "hwpt: not initialized");
-
-    let new_pml4: u64 = alloc_pt_page();
-    let new_pdpt: u64 = alloc_pt_page();
-    let new_pd: u64 = alloc_pt_page();
-
-    // PDPT[0] → boot PD0 (shared kernel mapping).
-    // PTE_USER is required so that kctrl()-mapped MMIO pages (which set PTE_USER at the
-    // PD/PT level) are accessible from Ring 3. Pages without PTE_USER at the PD/PT level
-    // remain supervisor-only despite this intermediate entry having PTE_USER.
-    write_entry(new_pdpt, 0, BOOT_PD0_PADDR | PTE_PRESENT | PTE_WRITABLE | PTE_USER);
-
-    // PDPT[1] → new PD (user space, initially empty).
-    write_entry(new_pdpt, 1, new_pd | PTE_PRESENT | PTE_WRITABLE | PTE_USER);
-
-    // PML4[0] → new PDPT.
-    write_entry(new_pml4, 0, new_pdpt | PTE_PRESENT | PTE_WRITABLE | PTE_USER);
-
-    new_pml4
-}
-
-/// Maps a single 4 KiB page in a per-process PML4: `vaddr` → `paddr`.
-///
-/// # Safety
-///
-/// `pml4_paddr` must be a valid PML4 physical address from `alloc_process_pml4()`.
-pub unsafe fn map_for_process(pml4_paddr: u64, vaddr: usize, paddr: FrameAddress) {
-    map_in(pml4_paddr, vaddr, paddr.into_raw_value(), true, true);
-}
-
 /// Maps a single 4 KiB page in a specific PML4 hierarchy.
 unsafe fn map_in(pml4: u64, vaddr: usize, paddr: usize, user: bool, writable: bool) {
     let pml4_idx: usize = (vaddr >> 39) & 0x1FF;
@@ -363,13 +468,4 @@ unsafe fn map_in(pml4: u64, vaddr: usize, paddr: usize, user: bool, writable: bo
     write_entry(pt, pt_idx, pte);
 
     invlpg(vaddr);
-}
-
-/// Unmaps a single 4 KiB page in a per-process PML4.
-///
-/// # Safety
-///
-/// `pml4_paddr` must be a valid PML4 physical address.
-pub unsafe fn unmap_for_process(pml4_paddr: u64, vaddr: usize) {
-    unmap_in(pml4_paddr, vaddr);
 }

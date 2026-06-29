@@ -46,6 +46,9 @@ endif
 	@mkdir -p $(BINARIES_DIR)/test-rust-execv-big-test-seed
 	@cp -f $(BINARIES_DIR)/test-rust-execv-big-target.$(EXEC_FORMAT) $(BINARIES_DIR)/test-rust-execv-big-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/test-rust-execv-big-test.img $(BINARIES_DIR)/test-rust-execv-big-test-seed/
+# The fork()+execv() ramfs images are only built when their guest targets are (see the
+# fork-dependent entries in ALL_GUEST_TESTS, which are excluded for x86_64).
+ifneq ($(TARGET),x86_64)
 	# Build the ramfs image for the fork()+execv()+vfsd test. It contains the target program at the
 	# filesystem root as "target"; test-rust-fork-exec-vfsd-test forks and the child execs it, after which the
 	# target performs a vfsd read (the operation that hangs after fork()+execv()).
@@ -58,12 +61,14 @@ endif
 	@mkdir -p $(BINARIES_DIR)/test-rust-fork-exec-write-test-seed
 	@cp -f $(BINARIES_DIR)/test-rust-fork-exec-write-target.$(EXEC_FORMAT) $(BINARIES_DIR)/test-rust-fork-exec-write-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/test-rust-fork-exec-write-test.img $(BINARIES_DIR)/test-rust-fork-exec-write-test-seed/
+endif
 	# Build the ramfs image for the multi-threaded VFS attribution test (nanvix/nanvix#2529). It is
 	# seeded with /input.dat (the payload a secondary thread reads through a descriptor the main
 	# thread opened); the test creates /output.dat at runtime and reads it back.
 	@mkdir -p $(BINARIES_DIR)/test-rust-thread-vfs-test-seed
 	@printf 'THREAD-VFS-2529-PAYLOAD' > $(BINARIES_DIR)/test-rust-thread-vfs-test-seed/input.dat
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/test-rust-thread-vfs-test.img $(BINARIES_DIR)/test-rust-thread-vfs-test-seed/
+ifneq ($(TARGET),x86_64)
 	# Build the ramfs image for the repeated fork()+execv() test. It contains the target at the
 	# filesystem root as "target" and a seeded file "coldfile.dat" that the parent opens before each
 	# fork; the child reads it through the inherited descriptor passed in argv.
@@ -91,6 +96,7 @@ endif
 	@mkdir -p $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed
 	@cp -f $(BINARIES_DIR)/test-rust-fork-exec-argv-space-target.$(EXEC_FORMAT) $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test.img $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed/
+endif
 
 check-nanvixd:
 	@$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd

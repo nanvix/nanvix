@@ -47,6 +47,7 @@ use crate::{
     kmod::KernelModule,
     mm::{
         elf::Elf32Fhdr,
+        phys::PhysMemoryManager,
         VirtMemoryManager,
         Vmem,
     },
@@ -330,6 +331,52 @@ fn spawn_servers(mm: &mut VirtMemoryManager, kmods: &mut LinkedList<KernelModule
     count
 }
 
+///
+/// # Description
+///
+/// Reclaims the physical frames backing the boot-modules (initrd) region once every server has
+/// been spawned. [`spawn_servers`] copies each module's loadable segments into the new process's
+/// own address space, so the initrd images — which in debug builds can occupy the majority of
+/// physical memory — are no longer needed, and their frames are returned to the allocator to
+/// satisfy later user allocations (for example, loading a large `execv()` image).
+///
+/// # Parameters
+///
+/// - `kmods`: The list of kernel modules whose backing regions are reclaimed.
+///
+fn reclaim_boot_modules(kmods: &LinkedList<KernelModule>) {
+    // SAFETY: the physical memory manager is initialized, this is a single-core system running
+    // with interrupts disabled, and no other reference to it is held here.
+    let pm: &mut PhysMemoryManager = unsafe { PhysMemoryManager::get_mut() };
+
+    // Multibinary modules share a single backing region; track which region bases have already
+    // been reclaimed so each is freed exactly once.
+    let mut reclaimed_bases: [usize; ::multibin::MAX_ENTRIES] =
+        [usize::MAX; ::multibin::MAX_ENTRIES];
+    let mut reclaimed_count: usize = 0;
+    let mut reclaimed_frames: usize = 0;
+
+    for module in kmods.iter() {
+        let base: usize = module.region_base().into_raw_value();
+        if reclaimed_bases
+            .iter()
+            .take(reclaimed_count)
+            .any(|b| *b == base)
+        {
+            continue;
+        }
+        if reclaimed_count < reclaimed_bases.len() {
+            reclaimed_bases[reclaimed_count] = base;
+            reclaimed_count += 1;
+        }
+        reclaimed_frames += pm.reclaim_booked_region(base, module.region_size());
+    }
+
+    info!(
+        "reclaim_boot_modules(): reclaimed {reclaimed_frames} frames from the boot-modules region"
+    );
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kmain(kargs: &KernelArguments) {
     // Install klog buffer backing storage before the first logging call.
@@ -435,6 +482,21 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         memory_regions.push_back(data);
     }
     memory_regions.push_back(kimage.bss());
+
+    // On x86_64 the VMM brings the guest up in long mode using boot page tables and a GDT placed
+    // in low guest memory between the pvclock page (0x1000) and the kernel image (0x100000). The
+    // kernel adopts this PML4 as its CR3, so these frames must never be handed out by the frame
+    // allocator. Reserve the region that holds them.
+    #[cfg(target_arch = "x86_64")]
+    if let Ok(region) = MemoryRegion::new(
+        "vmm-boot-structures",
+        VirtualAddress::from_raw_value(0x2000),
+        0x000F_E000,
+        MemoryRegionType::Reserved,
+        AccessPermission::RDWR,
+    ) {
+        memory_regions.push_back(region);
+    }
 
     // Add kernel modules to list of memory regions.
     // Track which page-aligned region bases have already been registered to avoid
@@ -600,20 +662,26 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     info!("number of cores online: {}", cores_online);
 
     // SAFETY: the memory manager is initialized and access is synchronized.
-    let status: ExitStatus =
-        if spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &mut kernel_modules) > 0 {
-            // Enable timer interrupts, if they are supported.
-            // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
-            if let Some(intman) = unsafe { Hal::get_mut() }.intman() {
-                if let Err(e) = intman.unmask(hal::arch::InterruptNumber::Timer) {
-                    panic!("failed to mask timer interrupt: {:?}", e);
-                }
-            }
+    let num_servers: usize =
+        spawn_servers(unsafe { VirtMemoryManager::get_mut() }, &mut kernel_modules);
 
-            kcall::handler()
-        } else {
-            ExitStatus::ok()
-        };
+    // Reclaim the boot-modules region now that every server has been loaded into its own address
+    // space; the initrd images are no longer needed and their frames are freed for user use.
+    reclaim_boot_modules(&kernel_modules);
+
+    let status: ExitStatus = if num_servers > 0 {
+        // Enable timer interrupts, if they are supported.
+        // SAFETY: the hardware abstraction layer is initialized and access is synchronized.
+        if let Some(intman) = unsafe { Hal::get_mut() }.intman() {
+            if let Err(e) = intman.unmask(hal::arch::InterruptNumber::Timer) {
+                panic!("failed to mask timer interrupt: {:?}", e);
+            }
+        }
+
+        kcall::handler()
+    } else {
+        ExitStatus::ok()
+    };
 
     #[cfg(feature = "smp")]
     startup::wait().expect("failed to synchronize application cores");

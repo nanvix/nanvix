@@ -6,12 +6,26 @@
 //==================================================================================================
 
 use crate::hal::arch::x86::cpu::tss;
-use ::arch::cpu::tss::Tss;
+use ::arch::cpu::{
+    ring::PrivilegeLevel,
+    tss::Tss,
+};
 use ::core::arch::asm;
 use ::sys::mm::{
     Address,
     VirtualAddress,
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Flags installed when a thread enters a signal handler: interrupts enabled (bit 9) and the
+/// always-one reserved bit (bit 1), everything else clear. Mirrors the kernel-call delivery path.
+const SIGNAL_HANDLER_ENTRY_FLAGS: u64 = (1 << 9) | (1 << 1);
+
+/// Mask for the requested-privilege-level (RPL) field of a segment selector (its low two bits).
+const SELECTOR_RPL_MASK: u64 = 0b11;
 
 //==================================================================================================
 // Structures
@@ -172,11 +186,12 @@ impl ContextInformation {
     #[allow(dead_code)]
     pub const CONTEXT_HW_SIZE: u32 = core::mem::size_of::<Self>() as u32 - Self::CONTEXT_ERR;
 
-    pub fn new(cr3: u64, rsp: u64, rsp0: u64) -> Self {
+    #[allow(clippy::as_conversions)]
+    pub fn new(cr3: usize, rsp: usize, rsp0: usize) -> Self {
         Self {
-            rsp0,
-            cr3,
-            rsp,
+            rsp0: rsp0 as u64,
+            cr3: cr3 as u64,
+            rsp: rsp as u64,
             ..Default::default()
         }
     }
@@ -185,47 +200,75 @@ impl ContextInformation {
     /// # Description
     ///
     /// Reads the interrupted user context saved by an exception into the architecture-neutral
-    /// [`SignalCpuContext`].
-    ///
-    /// Inert on x86-64: synchronous signal delivery is not wired on this architecture (see
-    /// [`returns_to_user`](Self::returns_to_user)), so this never feeds a real frame build.
+    /// [`SignalCpuContext`] used to build a signal frame.
     ///
     /// # Returns
     ///
-    /// A default (zeroed) [`SignalCpuContext`].
+    /// The [`SignalCpuContext`] mirroring this saved exception context.
     ///
     pub fn to_signal_context(&self) -> SignalCpuContext {
-        SignalCpuContext::default()
+        // Copy the packed fields by value (a reference into a packed struct is ill-formed).
+        SignalCpuContext {
+            ip: self.rip,
+            sp: self.rsp,
+            flags: self.rflags,
+            ax: self.rax,
+            bx: self.rbx,
+            cx: self.rcx,
+            dx: self.rdx,
+            si: self.rsi,
+            di: self.rdi,
+            bp: self.rbp,
+            r8: self.r8,
+            r9: self.r9,
+            r10: self.r10,
+            r11: self.r11,
+            r12: self.r12,
+            r13: self.r13,
+            r14: self.r14,
+            r15: self.r15,
+            cs: self.cs,
+            ss: self.ss,
+        }
     }
 
     ///
     /// # Description
     ///
-    /// Rewrites this saved exception context to enter a signal handler.
+    /// Rewrites this saved exception context so that, on return to user mode, the faulting thread
+    /// enters a signal handler on its freshly built signal frame.
     ///
-    /// Inert on x86-64 until synchronous signal delivery is implemented.
+    /// The instruction pointer is pointed at the handler entry, the stack pointer at the top of the
+    /// signal frame, and the flags reset to a clean handler-entry value (interrupts enabled,
+    /// everything else clear). The signal number is placed in `RDI`, the first integer-argument
+    /// register of the System V ABI, so a handler declared as `fn(int)` receives it.
     ///
     /// # Parameters
     ///
-    /// - `_entry`: Address of the user-space signal handler.
-    /// - `_frame_top`: Stack pointer the handler would be entered with.
+    /// - `entry`: Address of the user-space signal handler.
+    /// - `frame_top`: Stack pointer the handler is entered with (top of the signal frame).
+    /// - `signum`: The signal number delivered to the handler.
     ///
-    pub fn redirect_to_signal_handler(&mut self, _entry: usize, _frame_top: usize) {}
+    pub fn redirect_to_signal_handler(&mut self, entry: usize, frame_top: usize, signum: usize) {
+        self.rip = entry as u64;
+        self.rsp = frame_top as u64;
+        self.rflags = SIGNAL_HANDLER_ENTRY_FLAGS;
+        self.rdi = signum as u64;
+    }
 
     ///
     /// # Description
     ///
-    /// Returns whether this saved exception context resumes in user mode.
-    ///
-    /// Always `false` on x86-64, which keeps the synchronous-signal checkpoint inert (matching the
-    /// placeholder kernel-call delivery path).
+    /// Returns whether this saved exception context resumes in user mode, determined from the
+    /// requested-privilege-level of the saved code-segment selector.
     ///
     /// # Returns
     ///
-    /// `false`.
+    /// `true` if the interrupted context is ring 3, `false` otherwise.
     ///
     pub fn returns_to_user(&self) -> bool {
-        false
+        let cs: u64 = self.cs;
+        (cs & SELECTOR_RPL_MASK) == PrivilegeLevel::Ring3 as u64
     }
 
     ///

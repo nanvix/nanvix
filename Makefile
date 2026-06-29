@@ -1029,7 +1029,11 @@ endif
 
 # Determine the standalone test configuration file based on host and architecture.
 ifeq ($(IS_WINDOWS),yes)
+ifeq ($(TARGET),x86_64)
+NANVIX_TEST_CONFIG := test/test-standalone-windows-x86_64.toml
+else
 NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
+endif
 else
 ifeq ($(TARGET),x86_64)
 NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml

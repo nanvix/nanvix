@@ -57,6 +57,9 @@ pub struct Guest {
     credits: u32,
     /// Entry point of the guest.
     entry: usize,
+    /// Whether the loaded kernel is a 64-bit (ELFCLASS64 / x86_64) image. Determines whether the
+    /// virtual processor must be brought up directly in long mode at reset.
+    is_64bit: bool,
 }
 
 ///
@@ -122,6 +125,10 @@ impl Guest {
         let elf: FileMapping = FileMapping::open(kernel_filename)?;
         let (entry, first_address, size): (usize, usize, usize) =
             unsafe { elf::load(ptr.cast::<::std::ffi::c_void>(), elf.ptr(), size)? };
+
+        // Detect the ELF class (EI_CLASS byte, index 4: 2 = ELFCLASS64) to decide whether the
+        // virtual processor must be reset directly into 64-bit long mode.
+        self.is_64bit = unsafe { *elf.ptr().add(4) } == 2;
 
         self.kernel = Some((first_address, size));
         self.entry = entry;
@@ -764,7 +771,103 @@ impl Guest {
         let rbx: u64 =
             (initrd_base & !((1 << nzeros) - 1)) | ((initrd_size >> 12) & ((1 << nzeros) - 1));
 
-        vcpu.reset(self.entry as u64, rax, rbx)
+        if self.is_64bit {
+            // Bring the guest up directly in 64-bit long mode: install boot page tables in low
+            // guest memory, then program the long-mode control/segment state. The kernel installs
+            // its own GDT early in boot, so no GDT is set up here.
+            self.setup_long_mode(vmem)?;
+            vcpu.reset_64bit(self.entry as u64, rax, rbx)
+        } else {
+            vcpu.reset(self.entry as u64, rax, rbx)
+        }
+    }
+
+    /// Guest-physical address of the boot PML4 (adopted by the kernel as its CR3). Placed above
+    /// the microvm control page (GPA 0) and the pvclock page (GPA 0x1000), below the kernel image
+    /// (GPA 0x100000).
+    const BOOT_PML4_ADDR: u64 = 0x2000;
+    /// Guest-physical address of the boot PDPT.
+    const BOOT_PDPT_ADDR: u64 = 0x3000;
+    /// Guest-physical address of the first boot page directory.
+    const BOOT_PD0_ADDR: u64 = 0x4000;
+
+    ///
+    /// # Description
+    ///
+    /// Writes identity-mapping boot page tables (PML4 → PDPT → 2 MiB page directories) into low
+    /// guest physical memory. The page tables identity-map all of guest RAM so the kernel — which
+    /// adopts this PML4 as its CR3 — can reach every physical frame. These frames are reserved by
+    /// the kernel's frame allocator (see `kmain`).
+    ///
+    /// No GDT is installed here: the long-mode bring-up supplies the hidden segment descriptor
+    /// state directly through the virtual processor registers, and the kernel installs its own GDT
+    /// before performing any far transfer or segment reload.
+    ///
+    fn setup_long_mode(&self, vmem: &mut VirtualMemory) -> Result<()> {
+        const PRESENT_RW: u64 = 0x3; // Present | Writable.
+        const PRESENT_RW_PS: u64 = 0x83; // Present | Writable | PageSize (2 MiB).
+        const GIB: u64 = 1 << 30;
+        const TWO_MIB: u64 = 2 << 20;
+        const TABLE_BYTES: usize = 512 * 8; // 4 KiB page-table page.
+
+        // Builds a zeroed 4 KiB page-table buffer on the heap. Page tables are built on the heap
+        // (not the stack) to keep this frame small — three 4 KiB stack arrays would risk
+        // overflowing the spawning thread's stack.
+        fn new_table() -> Vec<u8> {
+            vec![0u8; TABLE_BYTES]
+        }
+
+        // Writes a little-endian `u64` entry at slot `index` of a page-table buffer.
+        fn set_entry(table: &mut [u8], index: usize, entry: u64) {
+            table[index * 8..index * 8 + 8].copy_from_slice(&entry.to_le_bytes());
+        }
+
+        let mem_size: u64 = vmem.get_size() as u64;
+        // Each page directory maps 1 GiB with 2 MiB pages. Cover all of guest RAM.
+        let num_pd: u64 = mem_size.div_ceil(GIB).max(1);
+
+        // PML4: a single entry pointing at the PDPT.
+        let mut pml4: Vec<u8> = new_table();
+        set_entry(&mut pml4, 0, Self::BOOT_PDPT_ADDR | PRESENT_RW);
+        vmem.write_bytes(Self::BOOT_PML4_ADDR, &pml4)?;
+
+        // The Local APIC MMIO page is mapped into the boot PML4 so the kernel can program the LAPIC
+        // periodic timer and issue EOIs while running on this (kernel) address space. The LAPIC
+        // sits at ~3.98 GiB, well above guest RAM, so it occupies its own PDPT[3] → PD entry and
+        // never collides with the identity-mapped RAM page directories (guest RAM is far below
+        // 3 GiB on the microvm). It is mapped as a single 2 MiB page.
+        const LAPIC_BASE: u64 = 0xFEE0_0000;
+        let lapic_pdpt_idx: usize = ((LAPIC_BASE >> 30) & 0x1FF) as usize;
+        let lapic_pd_idx: usize = ((LAPIC_BASE >> 21) & 0x1FF) as usize;
+        let lapic_pd_addr: u64 = Self::BOOT_PD0_ADDR + num_pd * 0x1000;
+        debug_assert!(
+            (num_pd as usize) <= lapic_pdpt_idx,
+            "guest RAM PDPT entries must not collide with the LAPIC PDPT entry"
+        );
+
+        // PDPT: one entry per RAM page directory, plus the LAPIC page directory at PDPT[3].
+        let mut pdpt: Vec<u8> = new_table();
+        for k in 0..num_pd {
+            set_entry(&mut pdpt, k as usize, (Self::BOOT_PD0_ADDR + k * 0x1000) | PRESENT_RW);
+        }
+        set_entry(&mut pdpt, lapic_pdpt_idx, lapic_pd_addr | PRESENT_RW);
+        vmem.write_bytes(Self::BOOT_PDPT_ADDR, &pdpt)?;
+
+        // Page directories: identity-mapping 2 MiB pages.
+        for k in 0..num_pd {
+            let mut pd: Vec<u8> = new_table();
+            for j in 0..512u64 {
+                set_entry(&mut pd, j as usize, (k * GIB + j * TWO_MIB) | PRESENT_RW_PS);
+            }
+            vmem.write_bytes(Self::BOOT_PD0_ADDR + k * 0x1000, &pd)?;
+        }
+
+        // Build the LAPIC page directory: a single 2 MiB page mapping the LAPIC MMIO window.
+        let mut lapic_pd: Vec<u8> = new_table();
+        set_entry(&mut lapic_pd, lapic_pd_idx, (LAPIC_BASE & !(TWO_MIB - 1)) | PRESENT_RW_PS);
+        vmem.write_bytes(lapic_pd_addr, &lapic_pd)?;
+
+        Ok(())
     }
 
     ///

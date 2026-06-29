@@ -96,6 +96,14 @@ pub struct Vmem {
     kernel_pages: LinkedList<Rc<RefCell<KernelPage>>>,
     /// List of user page tables.
     user_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
+    /// Physical address of the per-process hardware 4-level page table (PML4) on x86_64.
+    ///
+    /// x86_64 hardware uses 4-level paging, but the `pgdir` above is a 2-level (32-bit-style)
+    /// structure used for the kernel's logical bookkeeping. On x86_64 the value actually loaded
+    /// into `CR3` is this hardware PML4, into which user mappings are mirrored. A value of `0`
+    /// denotes the kernel address space (which runs on the VMM-provided boot PML4).
+    #[cfg(target_arch = "x86_64")]
+    hw_pml4: u64,
 }
 
 impl Vmem {
@@ -170,6 +178,9 @@ impl Vmem {
             kernel_page_tables: kpage_tables,
             kernel_pages: kpages,
             user_page_tables: LinkedList::new(),
+            // The kernel address space runs on the VMM-provided boot PML4 (see `hw_pml4`).
+            #[cfg(target_arch = "x86_64")]
+            hw_pml4: 0,
         })
     }
 
@@ -205,11 +216,19 @@ impl Vmem {
             super::sync_kernel_pdes(target_pd_paddr)?;
         }
 
+        // On x86_64, allocate a fresh per-process hardware PML4. It shares the kernel's low-memory
+        // mapping (and maps the LAPIC) and starts with an empty user space; user mappings are
+        // mirrored into it as they are added (see `hw_map_user`/`hw_unmap_user`).
+        #[cfg(target_arch = "x86_64")]
+        let hw_pml4: u64 = unsafe { crate::hal::arch::x86::mem::mmu::hwpt::create_user_pml4() };
+
         Ok(Self {
             pgdir,
             kernel_page_tables,
             kernel_pages,
             user_page_tables: LinkedList::new(),
+            #[cfg(target_arch = "x86_64")]
+            hw_pml4,
         })
     }
 
@@ -222,6 +241,94 @@ impl Vmem {
     /// Returns a reference to the underlying page directory.
     pub fn pgdir(&self) -> &PageDirectory<PageDirectoryStorage> {
         &self.pgdir
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the physical address to load into `CR3` for this address space.
+    ///
+    /// On x86_64 this is the per-process hardware PML4 (4-level paging root). On other
+    /// architectures it is the 2-level page directory, which the hardware uses directly.
+    ///
+    pub fn cr3_value(&self) -> Result<usize, Error> {
+        #[cfg(target_arch = "x86_64")]
+        {
+            Ok(self.hw_pml4 as usize)
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            Ok(self.pgdir.physical_address()?.into_raw_value())
+        }
+    }
+
+    /// Mirrors a user-page mapping into the per-process hardware page table (x86_64). No-op on
+    /// other architectures and for the kernel address space (`hw_pml4 == 0`).
+    #[inline]
+    fn hw_map_user(&self, vaddr: usize, paddr: usize, writable: bool) {
+        #[cfg(target_arch = "x86_64")]
+        if self.hw_pml4 != 0 {
+            unsafe {
+                crate::hal::arch::x86::mem::mmu::hwpt::map_user(
+                    self.hw_pml4,
+                    vaddr,
+                    paddr,
+                    writable,
+                );
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let _ = (vaddr, paddr, writable);
+        }
+    }
+
+    /// Mirrors a user-page unmapping into the per-process hardware page table (x86_64). No-op on
+    /// other architectures and for the kernel address space.
+    #[inline]
+    fn hw_unmap_user(&self, vaddr: usize) {
+        #[cfg(target_arch = "x86_64")]
+        if self.hw_pml4 != 0 {
+            unsafe {
+                crate::hal::arch::x86::mem::mmu::hwpt::unmap_user(self.hw_pml4, vaddr);
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let _ = vaddr;
+        }
+    }
+
+    /// Mirrors a user-page permission change (copy-on-write) into the per-process hardware page
+    /// table (x86_64). No-op on other architectures and for the kernel address space.
+    #[inline]
+    fn hw_protect_user(&self, vaddr: usize, writable: bool) {
+        #[cfg(target_arch = "x86_64")]
+        if self.hw_pml4 != 0 {
+            unsafe {
+                crate::hal::arch::x86::mem::mmu::hwpt::protect_user(self.hw_pml4, vaddr, writable);
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let _ = (vaddr, writable);
+        }
+    }
+
+    /// Mirrors a kernel-space MMIO mapping (e.g. a RAMFS window exposed to user space by `kctrl`)
+    /// into the shared boot-PML4 low-memory page directory on x86_64. Because every per-process
+    /// PML4 shares that page directory, the mapping becomes visible in all address spaces, matching
+    /// the shared kernel page tables used on 32-bit targets. No-op on other architectures.
+    #[inline]
+    fn hw_map_kernel_mmio(&self, vaddr: usize, paddr: usize, writable: bool) {
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            crate::hal::arch::x86::mem::mmu::hwpt::map_kernel_mmio(vaddr, paddr, writable);
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let _ = (vaddr, paddr, writable);
+        }
     }
 
     ///
@@ -400,6 +507,13 @@ impl Vmem {
 
         // Map the page to the target virtual address space.
         page_table.map(PageAddress::new(vaddr), uframe.address(), false, false, true, access)?;
+
+        // Mirror the mapping into the per-process hardware page table (x86_64).
+        self.hw_map_user(
+            vaddr.into_raw_value(),
+            uframe.address().into_raw_value(),
+            access.is_writable(),
+        );
 
         //=============================================================
         // NOTE: if we fail beyond this point we should unmap the page.
@@ -952,7 +1066,11 @@ impl Vmem {
         let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
         let page_table: &mut PageTable<PageTableStorage> =
             self.lookup_user_page_table(pgtable_vaddr)?;
-        page_table.mark_cow(PageAddress::new(vaddr))
+        page_table.mark_cow(PageAddress::new(vaddr))?;
+
+        // Mirror the write-protect into the per-process hardware page table (x86_64).
+        self.hw_protect_user(vaddr.into_raw_value(), false);
+        Ok(())
     }
 
     ///
@@ -985,7 +1103,11 @@ impl Vmem {
         let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
         let page_table: &mut PageTable<PageTableStorage> =
             self.lookup_user_page_table(pgtable_vaddr)?;
-        page_table.unmark_cow(PageAddress::new(vaddr))
+        page_table.unmark_cow(PageAddress::new(vaddr))?;
+
+        // Mirror the writable restore into the per-process hardware page table (x86_64).
+        self.hw_protect_user(vaddr.into_raw_value(), true);
+        Ok(())
     }
 
     ///
@@ -1023,7 +1145,13 @@ impl Vmem {
         let pgtable_vaddr: PageTableAddress = PageTableAddress::new(pgtab_aligned);
         let page_table: &mut PageTable<PageTableStorage> =
             self.lookup_user_page_table(pgtable_vaddr)?;
-        page_table.replace_cow_frame(PageAddress::new(vaddr), new_frame)
+        let old_frame: FrameAddress =
+            page_table.replace_cow_frame(PageAddress::new(vaddr), new_frame)?;
+
+        // Mirror the new (private, writable) frame into the per-process hardware page table
+        // (x86_64). The page becomes writable again now that it is no longer shared.
+        self.hw_map_user(vaddr.into_raw_value(), new_frame.into_raw_value(), true);
+        Ok(old_frame)
     }
 
     ///
@@ -1706,6 +1834,9 @@ impl Vmem {
             (pgtable_vaddr, page_table.nmapped() == 0)
         };
 
+        // Mirror the unmapping into the per-process hardware page table (x86_64).
+        self.hw_unmap_user(vaddr.into_raw_value());
+
         //====================================================================================
         // NOTE: if we fail beyond this point and we want to recover we should remap the page.
         //====================================================================================
@@ -1870,6 +2001,16 @@ impl Vmem {
                 },
                 Err(e) => return Err(e),
             }
+            // Release the borrow on the kernel page table before touching the hardware tables.
+            drop(pt_mut);
+
+            // Mirror the (user-accessible) identity MMIO mapping into the shared boot-PML4 kernel
+            // page directory so user processes can reach it on x86_64 (no-op on other arches).
+            self.hw_map_kernel_mmio(
+                vaddr.into_raw_value(),
+                vaddr.into_raw_value(),
+                access.is_writable(),
+            );
         }
 
         Ok(())
@@ -1902,6 +2043,17 @@ impl Drop for Vmem {
         // Unmap shared kernel page tables.
         while let Some(entry) = self.kernel_page_tables.pop_front() {
             drop(entry)
+        }
+
+        // Reclaim the per-process hardware page table (x86_64). This returns every process-private
+        // page-table page (PDPT, user PDs/PTs, and the LAPIC tables) to the hardware page-table
+        // free list; the shared kernel PD0 is never freed.
+        #[cfg(target_arch = "x86_64")]
+        if self.hw_pml4 != 0 {
+            unsafe {
+                crate::hal::arch::x86::mem::mmu::hwpt::destroy_user_pml4(self.hw_pml4);
+            }
+            self.hw_pml4 = 0;
         }
     }
 }

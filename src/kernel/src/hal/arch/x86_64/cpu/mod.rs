@@ -59,6 +59,7 @@ pub use interrupt::{
     InterruptController,
     InterruptHandler,
     InterruptNumber,
+    XapicTimer,
 };
 pub use sigframe::{
     join_kcall_result,
@@ -84,7 +85,7 @@ pub fn init(
     ioports: &mut IoPortAllocator,
     ioaddresses: &mut IoMemoryAllocator,
     madt: &Option<MadtInfo>,
-) -> Result<(GdtPtr, TssRef, Option<InterruptController>), Error> {
+) -> Result<(GdtPtr, TssRef, Option<InterruptController>, Option<XapicTimer>), Error> {
     unsafe extern "C" {
         static kstack: u8;
     }
@@ -141,16 +142,16 @@ pub fn init(
     let (gdtr, tss): (GdtPtr, TssRef) = unsafe { Gdt::init(&kstack)? };
     unsafe { idt::init() };
 
-    let controller: Option<InterruptController> = match interrupt::init(ioports, ioaddresses, madt)
-    {
-        Ok(controller) => Some(controller),
-        Err(e) => {
-            warn!("failed to initialize interrupt controller (error={:?})", e);
-            None
-        },
-    };
+    let (controller, xapic_timer): (Option<InterruptController>, Option<XapicTimer>) =
+        match interrupt::init(ioports, ioaddresses, madt) {
+            Ok((controller, xapic_timer)) => (Some(controller), xapic_timer),
+            Err(e) => {
+                warn!("failed to initialize interrupt controller (error={:?})", e);
+                (None, None)
+            },
+        };
 
-    Ok((gdtr, tss, controller))
+    Ok((gdtr, tss, controller, xapic_timer))
 }
 
 #[cfg(feature = "smp")]
