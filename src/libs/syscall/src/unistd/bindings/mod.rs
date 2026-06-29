@@ -84,6 +84,7 @@ cfg_if::cfg_if! {
         pub mod sysconf;
         pub mod tcgetpgrp;
         pub mod tcsetpgrp;
+        pub mod truncate;
         pub mod ttyname_r;
         pub mod unlink;
         pub mod vfork;

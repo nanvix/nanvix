@@ -391,16 +391,6 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
     }
 }
 
-#[allow(clippy::missing_safety_doc)]
-#[unsafe(no_mangle)]
-#[trace_syscall]
-pub unsafe extern "C" fn truncate(_path: *const c_char, _length: u64) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/454
-    ::syslog::debug!("truncate(): not implemented");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
-    -1
-}
-
 ///
 /// # Description
 ///
