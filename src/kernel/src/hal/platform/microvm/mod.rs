@@ -251,8 +251,77 @@ pub(super) unsafe fn wait_for_interrupt() {
 /// - It assumes that the standard output device was properly initialized.
 /// - It does not prevent concurrent access to the standard output device.
 ///
+#[cfg(feature = "putb")]
 pub unsafe fn putb(b: u8) {
     ::arch::io::out8(::config::microvm::DEFAULT_STDOUT_PORT, b);
+}
+
+///
+/// # Description
+///
+/// Writes the string `s` to the platform's standard output device in a single block transfer.
+///
+/// The kernel log buffer flushes through this path. Instead of emitting one `out8` per byte on
+/// [`DEFAULT_STDOUT_PORT`](::config::microvm::DEFAULT_STDOUT_PORT) — which traps once per byte on a
+/// virtual machine — it builds a [`VmBusMessage`] envelope describing the buffer and writes the
+/// envelope address with a single `out32` to
+/// [`DEFAULT_KLOG_PORT`](::config::microvm::DEFAULT_KLOG_PORT). The host then reads the whole buffer
+/// from guest memory in one shot, so a full `KlogBuffer` flush costs one VM exit rather than one per
+/// byte.
+///
+/// # Parameters
+///
+/// - `s`: String to write.
+///
+/// # Safety
+///
+/// This function is unsafe for multiple reasons:
+/// - It assumes that the standard output device is present.
+/// - It assumes that the standard output device was properly initialized.
+/// - It does not prevent concurrent access to the standard output device.
+///
+#[cfg(feature = "puts")]
+pub unsafe fn puts(s: &str) {
+    use ::core::hint;
+    use ::sys::{
+        ipc::{
+            VmBusMessage,
+            VmBusMessageKind,
+        },
+        mm::{
+            Address,
+            VirtualAddress,
+        },
+    };
+
+    // Nothing to do for an empty flush.
+    if s.is_empty() {
+        return;
+    }
+
+    // Resolve the guest virtual address of the buffer. On the 32-bit kernel this never fails;
+    // drop the output on the (unreachable) error rather than making the log path fallible.
+    let buffer_addr: u32 =
+        match VirtualAddress::try_from_ptr(s.as_ptr(), "klog buffer address exceeds u32") {
+            Ok(addr) => addr.into_raw_value() as u32,
+            Err(_) => return,
+        };
+
+    // Build an envelope describing the buffer. The dedicated `DEFAULT_KLOG_PORT` plus the
+    // `KlogBlock` kind let the host validate that this is a raw console-block transfer rather than
+    // an application IKC message.
+    let envelope: VmBusMessage =
+        VmBusMessage::new(s.len() as u32, VmBusMessageKind::KlogBlock, buffer_addr);
+
+    crate::PERF_KLOG_BLOCK_WRITES.fetch_add(1, ::core::sync::atomic::Ordering::Relaxed);
+    crate::PERF_KLOG_BYTES.fetch_add(s.len(), ::core::sync::atomic::Ordering::Relaxed);
+
+    // NOTE: we assume that page is tagged as writethrough-enabled and cache-disabled.
+    #[allow(clippy::unit_arg)]
+    hint::black_box(::arch::io::out32(
+        ::config::microvm::DEFAULT_KLOG_PORT,
+        &envelope as *const VmBusMessage as u32,
+    ));
 }
 
 ///
