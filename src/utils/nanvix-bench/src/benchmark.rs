@@ -161,6 +161,8 @@ impl FromStr for BenchmarkFlavour {
 
 pub struct Benchmark {
     pub iterations: usize,
+    pub payload_size: usize,
+    pub payload_size_override: Option<usize>,
     pub hwloc_file: Option<String>,
     pub hwloc: Option<HwLoc>,
     pub flavour: BenchmarkFlavour,

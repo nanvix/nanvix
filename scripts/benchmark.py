@@ -30,6 +30,9 @@ NA = "NA"
 NANVIX_BENCH_BINARY = "nanvix-bench.exe" if IS_WINDOWS else "nanvix-bench.elf"
 PERCENTILES = ["p50", "p95", "p99"]
 ROUND_TRIP_SIZES = ["32B", "64B", "128B", "256B", "512B", "1KiB", "4KiB"]
+WARM_START_DEFAULT_SIZE = "32B"
+WARM_START_VMM_SIZES = ["32B", "1KiB", "4KiB", "8KiB", "16KiB", "32KiB", "64KiB"]
+WARM_START_VMM_MIN_PAYLOAD_SIZE = 4
 X86_64_ARCH = "X64"
 
 # ======================================================================
@@ -51,6 +54,23 @@ VFS_BENCH = "vfs-bench"
 WARM_START_BENCH = "warm-start"
 WARM_START_L2_BENCH = WARM_START_BENCH + L2_SUFFIX
 WARM_START_VMM_BENCH = "warm-start-vmm"
+PAYLOAD_SIZE_BENCHMARKS = [
+    WARM_START_BENCH,
+    WARM_START_L2_BENCH,
+    WARM_START_VMM_BENCH,
+]
+SIZE_ANNOTATED_BENCHMARKS = {
+    WARM_START_BENCH: [WARM_START_DEFAULT_SIZE],
+    WARM_START_L2_BENCH: [WARM_START_DEFAULT_SIZE],
+}
+SIZE_SWEEP_BENCHMARKS = {
+    ROUND_TRIP_LATENCY_BENCH: ROUND_TRIP_SIZES,
+    WARM_START_VMM_BENCH: WARM_START_VMM_SIZES,
+}
+SIZE_AWARE_BENCHMARKS = {
+    **SIZE_ANNOTATED_BENCHMARKS,
+    **SIZE_SWEEP_BENCHMARKS,
+}
 
 # ======================================================================
 # Benchmark Constants
@@ -73,9 +93,6 @@ PERCENTILE_BENCHMARKS = [
     CONCURRENT_BENCH,
     CONCURRENT_L2_BENCH,
     SNAPSHOT_RESTORE_BENCH,
-    WARM_START_BENCH,
-    WARM_START_L2_BENCH,
-    WARM_START_VMM_BENCH,
 ]
 
 # ======================================================================
@@ -256,7 +273,60 @@ def gen_filename_for_benchmark(benchmark: str, machine_type: str, arch: str) -> 
     return f"nanvix_bench_{benchmark}_{machine_type}_{arch}.csv"
 
 
-def filter_benchmark_stdout(benchmark: str, raw_stdout: str, commit: str) -> str:
+def _format_size_key(size_bytes: int) -> str:
+    """Format a byte size like nanvix-bench size-sweep output after normalization."""
+    if size_bytes >= 1024 and size_bytes % 1024 == 0:
+        return f"{size_bytes // 1024}KiB"
+    return f"{size_bytes}B"
+
+
+def _parse_percentile_values(benchmark: str, raw_stdout: str) -> dict[str, int]:
+    """Extract p50/p95/p99 values from scalar percentile benchmark output."""
+    # The snapshot-restore benchmark prints multiple percentile blocks
+    # (Cold-start, Snapshot restore, Post-restore execution). Restrict
+    # parsing to the headline "Snapshot restore (...)" section so the
+    # CSV continues to track the same metric across releases. For all
+    # other percentile benchmarks the full stdout is scanned.
+    if benchmark == SNAPSHOT_RESTORE_BENCH:
+        section_match = re.search(
+            r"^Snapshot restore \(.*?\):\s*\n(?P<body>(?:[ \t]+.*\n?)+)",
+            raw_stdout,
+            re.MULTILINE,
+        )
+        if section_match is None:
+            print(
+                "ERROR: missing 'Snapshot restore (...)' section in "
+                f"benchmark '{benchmark}' output"
+            )
+            raise ValueError("Missing 'Snapshot restore' section")
+        search_scope = section_match.group("body")
+    else:
+        search_scope = raw_stdout
+
+    pattern = re.compile(
+        r"^\s*(p50|p95|p99)\s*:\s*([0-9]+)\s*us\b", re.IGNORECASE | re.MULTILINE
+    )
+    values: dict[str, int] = {}
+    for k, v in pattern.findall(search_scope):
+        values[k.lower()] = int(v)
+
+    # Ensure all three percentiles are present.
+    missing = [p for p in PERCENTILES if p not in values]
+    if missing:
+        print(
+            f"ERROR: missing percentile values for benchmark '{benchmark}': {missing}"
+        )
+        raise ValueError("Missing percentile values in benchmark results")
+
+    return values
+
+
+def filter_benchmark_stdout(
+    benchmark: str,
+    raw_stdout: str,
+    commit: str,
+    expected_sizes: Optional[list[str]] = None,
+) -> str:
     """
     Convert a benchmark's raw stdout into a formatted CSV string.
 
@@ -274,50 +344,35 @@ def filter_benchmark_stdout(benchmark: str, raw_stdout: str, commit: str) -> str
     A CSV string (header + data rows) with the benchmark metrics.
     """
     if benchmark in PERCENTILE_BENCHMARKS:
-        # The snapshot-restore benchmark prints multiple percentile blocks
-        # (Cold-start, Snapshot restore, Post-restore execution). Restrict
-        # parsing to the headline "Snapshot restore (...)" section so the
-        # CSV continues to track the same metric across releases. For all
-        # other percentile benchmarks the full stdout is scanned.
-        if benchmark == SNAPSHOT_RESTORE_BENCH:
-            section_match = re.search(
-                r"^Snapshot restore \(.*?\):\s*\n(?P<body>(?:[ \t]+.*\n?)+)",
-                raw_stdout,
-                re.MULTILINE,
-            )
-            if section_match is None:
-                print(
-                    "ERROR: missing 'Snapshot restore (...)' section in "
-                    f"benchmark '{benchmark}' output"
-                )
-                raise ValueError("Missing 'Snapshot restore' section")
-            search_scope = section_match.group("body")
-        else:
-            search_scope = raw_stdout
-
-        pattern = re.compile(
-            r"^\s*(p50|p95|p99)\s*:\s*([0-9]+)\s*us\b", re.IGNORECASE | re.MULTILINE
-        )
-        values = {}
-        for k, v in pattern.findall(search_scope):
-            values[k.lower()] = int(v)
-
-        # Ensure all three percentiles are present.
-        missing = [p for p in PERCENTILES if p not in values]
-        if missing:
-            print(
-                f"ERROR: missing percentile values for benchmark '{benchmark}': {missing}"
-            )
-            raise ValueError("Missing percentile values in benchmark results")
-
+        values = _parse_percentile_values(benchmark, raw_stdout)
         header = "commit," + ",".join(PERCENTILES)
         data = commit + "," + ",".join(str(values[p]) for p in PERCENTILES)
         filtered_stdout = header + "\n" + data
 
-    elif benchmark == ROUND_TRIP_LATENCY_BENCH:
+    elif benchmark in SIZE_ANNOTATED_BENCHMARKS:
+        values = _parse_percentile_values(benchmark, raw_stdout)
+        if expected_sizes is None:
+            expected_sizes = SIZE_ANNOTATED_BENCHMARKS[benchmark]
+        if len(expected_sizes) != 1:
+            print(f"ERROR: expected one size for '{benchmark}' - got: {expected_sizes}")
+            raise ValueError("Invalid size annotation")
+
+        header = "commit,size," + ",".join(PERCENTILES)
+        data = (
+            commit
+            + ","
+            + expected_sizes[0]
+            + ","
+            + ",".join(str(values[p]) for p in PERCENTILES)
+        )
+        filtered_stdout = header + "\n" + data
+
+    elif benchmark in SIZE_SWEEP_BENCHMARKS:
         header = "commit,size," + ",".join(PERCENTILES)
         data_lines = []
         actual_sizes = []
+        if expected_sizes is None:
+            expected_sizes = SIZE_SWEEP_BENCHMARKS[benchmark]
         for line in raw_stdout.splitlines():
             if not line.strip():
                 continue
@@ -338,9 +393,9 @@ def filter_benchmark_stdout(benchmark: str, raw_stdout: str, commit: str) -> str
             data_lines.append(",".join([commit, size, p50, p95, p99]))
 
         # Sanity check we have a value for each size.
-        if actual_sizes != ROUND_TRIP_SIZES:
+        if actual_sizes != expected_sizes:
             print(f"ERROR: did not collect expected sizes in '{benchmark}'")
-            print(f"ERROR: expected: {ROUND_TRIP_SIZES} - got: {actual_sizes}")
+            print(f"ERROR: expected: {expected_sizes} - got: {actual_sizes}")
             raise ValueError("Not expected values.")
 
         filtered_stdout = header + "\n" + "\n".join(data_lines)
@@ -509,7 +564,7 @@ def read_benchmark_values_from_file(
 
     - ``benchmark``: Name of the benchmark.
     - ``file_path``: Path to the CSV file.
-    - ``percentile``: For round-trip-latency, which percentile column to read.
+    - ``percentile``: For size-aware benchmarks, which percentile column to read.
 
     # Returns
 
@@ -532,13 +587,37 @@ def read_benchmark_values_from_file(
             print(f"WARNING: could not read {file_path}: {exc}")
             result_dict = {p: NA for p in PERCENTILES}
 
-    elif benchmark == ROUND_TRIP_LATENCY_BENCH:
+    elif benchmark in SIZE_AWARE_BENCHMARKS:
         try:
             with open(file_path, "r") as f:
                 lines = [line.strip() for line in f.readlines() if line.strip()]
 
             if len(lines) < 2:
                 raise ValueError("No data rows")
+
+            if percentile is None:
+                percentile = PERCENTILES[0]
+
+            header = lines[0].split(",")
+            expected_sizes: list[str] = SIZE_AWARE_BENCHMARKS[benchmark]
+            if header == ["commit", *PERCENTILES]:
+                # Transitional compatibility for histories recorded before a
+                # benchmark migrated from the scalar (commit,p50,p95,p99) format
+                # to the size-aware (commit,size,p50,p95,p99) format. The legacy
+                # benchmark only ever exercised the default payload, so its last
+                # row maps onto the default (first) payload size. Size-annotated
+                # benchmarks (warm-start, warm-start-l2) have that as their only
+                # size; size-sweep benchmarks (warm-start-vmm) report the larger
+                # sweep sizes as NA since no scalar history exists for them.
+                result_dict = {size: NA for size in expected_sizes}
+                last_commit = lines[-1].split(",")[0]
+                col_idx = PERCENTILES.index(percentile) + 1
+                default_size = expected_sizes[0]
+                for line in lines[1:]:
+                    parts = line.split(",")
+                    if parts[0] == last_commit:
+                        result_dict[default_size] = parts[col_idx]
+                return result_dict
 
             # Find the last commit present in the file.
             last_commit = lines[-1].split(",")[0]
@@ -554,12 +633,12 @@ def read_benchmark_values_from_file(
                     result_dict[size] = parts[col_idx]
 
             # Fill in any missing sizes with NA.
-            for size in ROUND_TRIP_SIZES:
+            for size in expected_sizes:
                 if size not in result_dict:
                     result_dict[size] = NA
         except (FileNotFoundError, ValueError, IndexError) as exc:
             print(f"WARNING: could not read {file_path}: {exc}")
-            result_dict = {s: NA for s in ROUND_TRIP_SIZES}
+            result_dict = {s: NA for s in SIZE_AWARE_BENCHMARKS[benchmark]}
 
     elif benchmark == VFS_BENCH:
         # VFS benchmark CSV: commit,section,operation,samples,p50,p95,p99
@@ -675,7 +754,7 @@ def generate_benchmark_table(
     table_width = 2 + first_col_width + (groups_count * (machine_col_width + 3))
 
     # Create header for this benchmark
-    if benchmark == ROUND_TRIP_LATENCY_BENCH and percentile is not None:
+    if benchmark in SIZE_AWARE_BENCHMARKS and percentile is not None:
         header = make_header(benchmark + f"-{percentile}", table_width)
     else:
         header = make_header(benchmark, table_width)
@@ -761,7 +840,7 @@ def ci_summary(args):
             bench_summary += "\n" + generate_benchmark_table(
                 args.dev_dir, args.target_dir, benchmark, machines, archs
             )
-        elif benchmark == ROUND_TRIP_LATENCY_BENCH:
+        elif benchmark in SIZE_AWARE_BENCHMARKS:
             for percentile in PERCENTILES:
                 bench_summary += "\n" + generate_benchmark_table(
                     args.dev_dir,
@@ -857,13 +936,15 @@ def ci_summary(args):
 
 
 def _read_baseline_moving_avg(
-    benchmark: str, file_path: str, window: int = 20
+    benchmark: str, file_path: str, window: int = 20, size: Optional[str] = None
 ) -> Optional[float]:
     """
     Read the last ``window`` p50 values from a baseline CSV and return their average.
 
-    Only works for percentile benchmarks (``commit,p50,p95,p99`` format).
-    Returns ``None`` when the file is missing or contains no valid p50 values.
+    Works for scalar percentile benchmarks (``commit,p50,p95,p99``) and size-annotated
+    warm-start benchmarks (``commit,size,p50,p95,p99``). Legacy warm-start files in
+    scalar format are read as the default ``32B`` payload size. Returns ``None`` when
+    the file is missing or contains no valid p50 values.
 
     # Parameters
 
@@ -871,7 +952,10 @@ def _read_baseline_moving_avg(
     - ``file_path``: Path to the baseline CSV file.
     - ``window``: Number of most-recent data rows to average.
     """
-    if benchmark not in PERCENTILE_BENCHMARKS:
+    if (
+        benchmark not in PERCENTILE_BENCHMARKS
+        and benchmark not in SIZE_ANNOTATED_BENCHMARKS
+    ):
         return None
 
     try:
@@ -882,11 +966,40 @@ def _read_baseline_moving_avg(
             if header is None:
                 print(f"WARNING: no data rows in baseline: {file_path}")
                 return None
+            header_cols = header.strip().split(",")
+            p50_idx = 1
+            size_idx = None
+            expected_size = size
+            if benchmark in SIZE_ANNOTATED_BENCHMARKS:
+                if expected_size is None:
+                    expected_size = SIZE_ANNOTATED_BENCHMARKS[benchmark][0]
+                if header_cols == ["commit", *PERCENTILES]:
+                    if expected_size != SIZE_ANNOTATED_BENCHMARKS[benchmark][0]:
+                        return None
+                    size_idx = None
+                elif header_cols == ["commit", "size", *PERCENTILES]:
+                    p50_idx = 2
+                    size_idx = 1
+                else:
+                    print(
+                        f"WARNING: unsupported baseline header for {benchmark}: "
+                        f"{header.strip()}"
+                    )
+                    return None
             tail: collections.deque[str] = collections.deque(maxlen=window)
             for line in reader:
                 stripped = line.strip()
-                if stripped:
-                    tail.append(stripped)
+                if not stripped:
+                    continue
+                parts = stripped.split(",")
+                if (
+                    size_idx is not None
+                    and expected_size is not None
+                    and len(parts) > size_idx
+                    and parts[size_idx] != expected_size
+                ):
+                    continue
+                tail.append(stripped)
     except FileNotFoundError:
         print(f"WARNING: baseline file not found: {file_path}")
         return None
@@ -898,10 +1011,10 @@ def _read_baseline_moving_avg(
     p50_values: list[float] = []
     for row in tail:
         parts = row.split(",")
-        if len(parts) < 2:
+        if len(parts) <= p50_idx:
             continue
         try:
-            p50_values.append(float(parts[1]))
+            p50_values.append(float(parts[p50_idx]))
         except (ValueError, TypeError):
             continue
 
@@ -920,8 +1033,9 @@ def ci_gate(args) -> int:
     moving average of the last N baseline p50 values in dev-dir. Exits
     non-zero if any benchmark regresses beyond the configured threshold.
 
-    Only percentile benchmarks (commit,p50,p95,p99) are checked. Benchmarks
-    with missing baseline or missing results are skipped with a warning.
+    Scalar percentile benchmarks (commit,p50,p95,p99) and size-annotated warm-start
+    benchmarks are checked. Size-sweep benchmarks and benchmarks with missing baseline
+    or missing results are skipped with a warning.
     """
     threshold = args.regression_threshold
     window = args.baseline_window
@@ -933,14 +1047,90 @@ def ci_gate(args) -> int:
     checked = 0
 
     for benchmark in benchmarks:
-        if benchmark not in PERCENTILE_BENCHMARKS:
-            print(f"SKIP: '{benchmark}' is not a percentile benchmark")
+        if (
+            benchmark not in PERCENTILE_BENCHMARKS
+            and benchmark not in SIZE_ANNOTATED_BENCHMARKS
+        ):
+            print(f"SKIP: '{benchmark}' is not a regression-gated benchmark")
             continue
 
         for machine, arch in itertools.product(machines, archs):
             csv_name = gen_filename_for_benchmark(benchmark, machine, arch)
             dev_path = os.path.join(args.dev_dir, csv_name)
             tgt_path = os.path.join(args.target_dir, csv_name)
+
+            if benchmark in SIZE_ANNOTATED_BENCHMARKS:
+                tgt_vals = read_benchmark_values_from_file(benchmark, tgt_path, "p50")
+                saw_result_size = False
+                checked_any_size = False
+                for size, tgt_val in tgt_vals.items():
+                    if tgt_val == NA:
+                        continue
+                    saw_result_size = True
+
+                    dev_avg = _read_baseline_moving_avg(
+                        benchmark, dev_path, window, size
+                    )
+                    if dev_avg is None:
+                        print(
+                            f"SKIP: no baseline for {benchmark} {size} "
+                            f"({machine}/{arch})"
+                        )
+                        continue
+                    if dev_avg == 0:
+                        print(
+                            f"WARNING: zero baseline avg for {benchmark} {size} "
+                            f"({machine}/{arch}), skipping"
+                        )
+                        continue
+
+                    try:
+                        tgt_p50 = float(tgt_val)
+                    except (ValueError, TypeError) as e:
+                        print(
+                            f"SKIP: invalid p50 value for {benchmark} {size} "
+                            f"({machine}/{arch}): {e}"
+                        )
+                        continue
+
+                    checked += 1
+                    checked_any_size = True
+                    delta_pct = (tgt_p50 - dev_avg) / dev_avg * 100
+
+                    if delta_pct > threshold:
+                        regressions.append(
+                            {
+                                "benchmark": f"{benchmark} {size}",
+                                "machine": machine,
+                                "arch": arch,
+                                "dev_avg": round(dev_avg, 1),
+                                "tgt_p50": tgt_p50,
+                                "delta_pct": round(delta_pct, 1),
+                            }
+                        )
+                        print(
+                            f"REGRESSION: {benchmark} {size} ({machine}/{arch}): "
+                            f"p50 {tgt_p50} vs baseline avg {round(dev_avg, 1)} "
+                            f"(+{round(delta_pct, 1)}%, threshold: {threshold}%)"
+                        )
+                    else:
+                        status = (
+                            f"+{delta_pct:.1f}%"
+                            if delta_pct > 0
+                            else f"{delta_pct:.1f}%"
+                        )
+                        print(
+                            f"OK: {benchmark} {size} ({machine}/{arch}): "
+                            f"p50 {tgt_p50} vs baseline avg {round(dev_avg, 1)} ({status})"
+                        )
+
+                if not saw_result_size:
+                    print(f"SKIP: no results for {benchmark} ({machine}/{arch})")
+                elif not checked_any_size:
+                    print(
+                        f"SKIP: no comparable baseline for {benchmark} ({machine}/{arch})"
+                    )
+                continue
 
             # Read baseline moving average of p50 values.
             dev_avg = _read_baseline_moving_avg(benchmark, dev_path, window)
@@ -1077,10 +1267,6 @@ def run_benchmark(args):
         f"[BENCHMARK] Running '{args.benchmark}' benchmark "
         f"(machine={args.machine_type}, arch={X86_64_ARCH})"
     )
-    print(
-        f"[BENCHMARK] Configuration: iterations={args.iterations}, "
-        f"hwloc={args.hwloc}"
-    )
     # Normalize paths so that Unix-style "./" prefixes are converted to
     # platform-native form (cmd.exe does not understand "./").
     args.bin_dir = os.path.normpath(args.bin_dir)
@@ -1133,6 +1319,27 @@ def run_benchmark(args):
     # a number of concurrent user VMs.
     is_concurrent_bench = args.benchmark.startswith(CONCURRENT_BENCH)
     print(f"[BENCHMARK] Is concurrent benchmark: {is_concurrent_bench}")
+    payload_size = args.payload_size
+    print(
+        f"[BENCHMARK] Configuration: iterations={args.iterations}, "
+        f"hwloc={args.hwloc}, payload_size={payload_size}"
+    )
+    if payload_size is not None and args.benchmark not in PAYLOAD_SIZE_BENCHMARKS:
+        print(
+            f"ERROR: --payload-size is not supported for benchmark '{args.benchmark}'."
+        )
+        raise ValueError("Unsupported payload-size benchmark")
+    if (
+        payload_size is not None
+        and args.benchmark == WARM_START_VMM_BENCH
+        and payload_size < WARM_START_VMM_MIN_PAYLOAD_SIZE
+    ):
+        print(
+            "ERROR: --payload-size for warm-start-vmm must be at least "
+            f"{WARM_START_VMM_MIN_PAYLOAD_SIZE} bytes because it includes the "
+            "length prefix."
+        )
+        raise ValueError("Invalid warm-start-vmm payload size")
 
     nanvix_bench_cmd = [
         os.path.join(args.bin_dir, NANVIX_BENCH_BINARY),
@@ -1142,6 +1349,11 @@ def run_benchmark(args):
             f"-iterations {args.iterations}"
             if not is_concurrent_bench
             else f"-num-concurrent-vms {NUM_CONCURRENT_VMS}"
+        ),
+        (
+            f"-payload-size {payload_size}"
+            if payload_size is not None and args.benchmark in PAYLOAD_SIZE_BENCHMARKS
+            else ""
         ),
         f"-clh-bin-path {args.clh_bin_path}",
     ]
@@ -1219,7 +1431,12 @@ def run_benchmark(args):
         raw_stdout = result.stdout.decode("utf-8")
         raw_stderr = result.stderr.decode("utf-8", errors="replace")
         print(f"[BENCHMARK] Raw stdout length: {len(raw_stdout)} bytes")
-        filtered_stdout = filter_benchmark_stdout(args.benchmark, raw_stdout, commit)
+        expected_sizes = None
+        if args.benchmark in SIZE_AWARE_BENCHMARKS and payload_size is not None:
+            expected_sizes = [_format_size_key(payload_size)]
+        filtered_stdout = filter_benchmark_stdout(
+            args.benchmark, raw_stdout, commit, expected_sizes
+        )
         print(f"[BENCHMARK] Filtered stdout length: {len(filtered_stdout)} bytes")
         print(f"[BENCHMARK] Writing results to: {output_file}")
         with open(output_file, "w") as fh:
@@ -1331,12 +1548,27 @@ def persist_results(args: argparse.Namespace) -> None:
 
             existing_header: str = existing_lines[0] if existing_lines else ""
             if existing_header != header:
-                print(
-                    f"WARNING: header mismatch for {filename}: "
-                    f"source='{header}' vs target='{existing_header}'. "
-                    f"Skipping."
-                )
-                continue
+                if benchmark in SIZE_AWARE_BENCHMARKS:
+                    print(
+                        f"WARNING: resetting history for {filename}: "
+                        f"source='{header}' vs target='{existing_header}'."
+                    )
+                    new_rows = data_rows
+                    with open(target_path, "w") as f:
+                        f.write(header + "\n")
+                        for row in new_rows:
+                            f.write(row + "\n")
+                    if max_history > 0:
+                        _prune_history(target_path, header, max_history)
+                    print(f"Persisted {len(new_rows)} row(s) to {target_path}")
+                    continue
+                else:
+                    print(
+                        f"WARNING: header mismatch for {filename}: "
+                        f"source='{header}' vs target='{existing_header}'. "
+                        f"Skipping."
+                    )
+                    continue
 
             # Collect commit hashes already present in the target file to
             # prevent duplicate rows from CI retries.
@@ -1474,6 +1706,16 @@ if __name__ == "__main__":
         type=int,
         default=100,
         help="Path to file with the hardware locality information",
+    )
+    run_parser.add_argument(
+        "--payload-size",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Echo payload size in bytes for warm-start, warm-start-l2, and "
+            "warm-start-vmm benchmarks. For warm-start-vmm, the size includes "
+            "the 4-byte length prefix. Defaults to nanvix-bench's built-in value."
+        ),
     )
     run_parser.add_argument(
         "--output-dir",

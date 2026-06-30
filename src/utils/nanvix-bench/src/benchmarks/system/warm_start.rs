@@ -3,7 +3,6 @@
 
 use super::super::{
     CLEANUP_SLEEP_DURATION,
-    DEFAULT_PAYLOAD_SIZE,
     WARMUP_SLEEP_DURATION,
 };
 use crate::benchmark::{
@@ -31,17 +30,19 @@ impl Benchmark {
     /// into the VM once it has started executing.
     pub async fn run_warm_start(&mut self, linuxd_deployment: &LinuxdDeployment) -> Result<()> {
         // Display a progress bar
-        let pb = ProgressBar::new(self.iterations.try_into().unwrap());
+        let iterations: u64 = u64::try_from(self.iterations)
+            .map_err(|e| anyhow::anyhow!("iteration count exceeds u64: {e}"))?;
+        let pb: ProgressBar = ProgressBar::new(iterations);
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("{msg} [{bar:40.cyan/blue}] {pos}/{len} ({percent}%)")
-                .expect("error creating progress bar")
+                .map_err(|e| anyhow::anyhow!("error creating progress bar: {e}"))?
                 .progress_chars("#>-"),
         );
         pb.set_message("Benchmark progress:");
 
         // Payload we are sending over the wire
-        let payload = [7u8; DEFAULT_PAYLOAD_SIZE];
+        let payload: Vec<u8> = vec![7u8; self.payload_size];
 
         let (new_msg_headers, new_msg) = self.prepare_new_message(None, None)?;
 
@@ -54,20 +55,18 @@ impl Benchmark {
             let (user_vm_id, mut gateway_stream) = self
                 .start(new_msg, new_msg_headers, linuxd_deployment)
                 .await?;
+            let mut response_payload: Vec<u8> = vec![0u8; payload.len()];
 
             // Warmup: send one untimed echo to trigger lazy initialization (worker thread
             // creation, TCP path warm-up, etc.) so that timed iterations reflect steady-state
             // latency.
             {
-                let mut warmup_response = [0u8; DEFAULT_PAYLOAD_SIZE];
                 gateway_stream.write_all(&payload).await?;
-                gateway_stream.read_exact(&mut warmup_response).await?;
+                gateway_stream.read_exact(&mut response_payload).await?;
                 sleep(Duration::from_millis(WARMUP_SLEEP_DURATION)).await;
             }
 
             for _ in 0..self.iterations {
-                let mut response_payload = [0u8; DEFAULT_PAYLOAD_SIZE];
-
                 let start = Instant::now();
                 gateway_stream.write_all(&payload).await?;
                 gateway_stream.read_exact(&mut response_payload).await?;

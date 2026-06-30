@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::benchmark::BenchmarkFlavour;
+use crate::{
+    benchmark::BenchmarkFlavour,
+    benchmarks::DEFAULT_PAYLOAD_SIZE,
+};
 use ::anyhow::Result;
 use ::nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use ::std::str::FromStr;
@@ -18,6 +21,8 @@ pub struct Args {
     benchmark: BenchmarkFlavour,
     hwloc_file: Option<String>,
     iterations: usize,
+    payload_size: usize,
+    payload_size_override: Option<usize>,
     num_concurrent_vms: Option<usize>,
     netns_pool_size: Option<usize>,
     clh_bin_path: String,
@@ -33,9 +38,11 @@ impl Args {
     const OPT_BENCHMARK: &'static str = "-benchmark";
     const OPT_HWLOC: &'static str = "-hwloc";
     const OPT_ITERATIONS: &'static str = "-iterations";
+    const OPT_PAYLOAD_SIZE: &'static str = "-payload-size";
     const OPT_NUM_CONCURRENT_VMS: &'static str = "-num-concurrent-vms";
     const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
     const DEFAULT_NETNS_POOL_SIZE: usize = ::nanvixd::args::Args::DEFAULT_NETNS_POOL_SIZE;
+    const WARM_START_VMM_PAYLOAD_PREFIX_SIZE: usize = ::std::mem::size_of::<u32>();
     const OPT_CLH_BIN_PATH: &'static str = "-clh-bin-path";
     const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
@@ -132,6 +139,9 @@ Options:
   {hwloc} <hwloc.json>                Hardware locality configuration file for CPU \
              affinity/topology.
   {iterations} <num>                  Number of iterations to run (default: 100).
+  {payload_size} <bytes>              Echo payload size for warm-start, warm-start-l2, and \
+             warm-start-vmm benchmarks (default: {default_payload_size}; warm-start-vmm counts \
+             its {warm_start_vmm_prefix_size}-byte prefix and sweeps sizes when omitted).
   {num_concurrent_vms} <num>          Number of concurrent VMs (mandatory for concurrent and \
              concurrent-l2 benchmarks).
   {netns_pool_size} <size>            Netns pool prefill size for nanvixd (concurrent-l2 only; \
@@ -149,6 +159,9 @@ Examples:
   # Run boot-time with a custom hwloc and 1000 iterations
   {program_name} {benchmark} boot-time {hwloc} hwloc.json {iterations} 1000
 
+  # Run warm-start with a 32KiB payload
+  {program_name} {benchmark} warm-start {payload_size} 32768
+
   # Run concurrent benchmark with 4 concurrent VMs
   {program_name} {benchmark} concurrent {num_concurrent_vms} 4
 ",
@@ -156,6 +169,9 @@ Examples:
             benchmark = Self::OPT_BENCHMARK,
             hwloc = Self::OPT_HWLOC,
             iterations = Self::OPT_ITERATIONS,
+            payload_size = Self::OPT_PAYLOAD_SIZE,
+            default_payload_size = DEFAULT_PAYLOAD_SIZE,
+            warm_start_vmm_prefix_size = Self::WARM_START_VMM_PAYLOAD_PREFIX_SIZE,
             num_concurrent_vms = Self::OPT_NUM_CONCURRENT_VMS,
             netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
             default_netns_pool_size = Self::DEFAULT_NETNS_POOL_SIZE,
@@ -170,6 +186,7 @@ Examples:
         let mut benchmark_str: String = String::new();
         let mut hwloc_file: Option<String> = None;
         let mut iterations: usize = 100;
+        let mut payload_size: Option<usize> = None;
         let mut num_concurrent_vms: Option<usize> = None;
         let mut netns_pool_size: Option<usize> = None;
         let mut clh_bin_path: String = "./toolchain/bin".to_string();
@@ -206,6 +223,25 @@ Examples:
                         return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_ITERATIONS));
                     }
                     iterations = args[i].parse::<usize>()?;
+                },
+                Self::OPT_PAYLOAD_SIZE => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_PAYLOAD_SIZE
+                        ));
+                    }
+                    let parsed_payload_size: usize = args[i].parse::<usize>()?;
+                    if parsed_payload_size == 0 {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "{} must be a positive integer",
+                            Self::OPT_PAYLOAD_SIZE,
+                        ));
+                    }
+                    payload_size = Some(parsed_payload_size);
                 },
                 Self::OPT_NUM_CONCURRENT_VMS => {
                     i += 1;
@@ -305,6 +341,35 @@ Examples:
                     }
                 }
 
+                // Reject -payload-size when it would be silently ignored.
+                if payload_size.is_some()
+                    && !matches!(
+                        benchmark,
+                        BenchmarkFlavour::WarmStart
+                            | BenchmarkFlavour::WarmStartL2
+                            | BenchmarkFlavour::WarmStartVMM
+                    )
+                {
+                    Self::usage(args[0].as_str());
+                    return Err(anyhow::anyhow!(
+                        "{benchmark} benchmark does not accept {}",
+                        Self::OPT_PAYLOAD_SIZE,
+                    ));
+                }
+
+                if let Some(payload_size) = payload_size
+                    && matches!(benchmark, BenchmarkFlavour::WarmStartVMM)
+                    && payload_size < Self::WARM_START_VMM_PAYLOAD_PREFIX_SIZE
+                {
+                    Self::usage(args[0].as_str());
+                    return Err(anyhow::anyhow!(
+                        "{benchmark} benchmark requires {} >= {} because the size includes the \
+                         length prefix",
+                        Self::OPT_PAYLOAD_SIZE,
+                        Self::WARM_START_VMM_PAYLOAD_PREFIX_SIZE,
+                    ));
+                }
+
                 // Derive netns pool size from the benchmark flavour.
                 let netns_pool_size = match benchmark {
                     BenchmarkFlavour::ConcurrentL2 => {
@@ -318,6 +383,8 @@ Examples:
                     benchmark,
                     hwloc_file,
                     iterations,
+                    payload_size: payload_size.unwrap_or(DEFAULT_PAYLOAD_SIZE),
+                    payload_size_override: payload_size,
                     num_concurrent_vms,
                     netns_pool_size,
                     clh_bin_path,
@@ -343,6 +410,14 @@ Examples:
         self.iterations
     }
 
+    pub fn payload_size(&self) -> usize {
+        self.payload_size
+    }
+
+    pub fn payload_size_override(&self) -> Option<usize> {
+        self.payload_size_override
+    }
+
     pub fn num_concurrent_vms(&self) -> Option<usize> {
         self.num_concurrent_vms
     }
@@ -357,5 +432,62 @@ Examples:
 
     pub fn tmp_dir(&self) -> String {
         self.tmp_dir.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Args;
+
+    #[test]
+    fn parse_rejects_zero_payload_size() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start".to_string(),
+            "-payload-size".to_string(),
+            "0".to_string(),
+        ];
+
+        let error: anyhow::Error = match Args::parse(args) {
+            Ok(_) => panic!("expected zero payload size to be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("positive integer"), "unexpected error: {error}");
+    }
+
+    #[test]
+    fn parse_accepts_warm_start_vmm_payload_size_override() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start-vmm".to_string(),
+            "-payload-size".to_string(),
+            "4096".to_string(),
+        ];
+
+        let args: Args = Args::parse(args).expect("expected warm-start-vmm payload size to parse");
+
+        assert_eq!(args.payload_size(), 4096);
+        assert_eq!(args.payload_size_override(), Some(4096));
+    }
+
+    #[test]
+    fn parse_rejects_too_small_warm_start_vmm_payload_size() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start-vmm".to_string(),
+            "-payload-size".to_string(),
+            "2".to_string(),
+        ];
+
+        let error: anyhow::Error = match Args::parse(args) {
+            Ok(_) => panic!("expected too-small warm-start-vmm payload size to be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains(">= 4"), "unexpected error: {error}");
     }
 }

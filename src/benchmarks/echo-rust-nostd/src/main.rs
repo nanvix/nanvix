@@ -13,6 +13,10 @@ extern crate libc_string;
 extern crate nvx;
 extern crate nvx_crt0;
 
+use ::alloc::{
+    vec,
+    vec::Vec,
+};
 use ::sys::error::Error;
 use ::sysapi::{
     sys_types::c_ssize_t,
@@ -27,7 +31,8 @@ use ::syscall::unistd;
 // Constants
 //==================================================================================================
 
-const MAX_REQUEST_SIZE: usize = 4096;
+// Keep this independent from benchmark CLI options: this app is reused by multiple benchmark modes.
+const MAX_REQUEST_SIZE: usize = 64 * 1024;
 
 //==================================================================================================
 // Standalone Functions
@@ -37,7 +42,7 @@ const MAX_REQUEST_SIZE: usize = 4096;
 pub fn main() -> Result<(), Error> {
     let stdin: i32 = STDIN_FILENO;
     let stdout: i32 = STDOUT_FILENO;
-    let mut buffer: [u8; MAX_REQUEST_SIZE] = [0; MAX_REQUEST_SIZE];
+    let mut buffer: Vec<u8> = vec![0; MAX_REQUEST_SIZE];
 
     loop {
         let nread: c_ssize_t = match unistd::read(stdin, &mut buffer) {

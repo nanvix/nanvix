@@ -16,6 +16,10 @@ inputs:
     description: "Number of benchmark iterations"
     required: true
     default: "100"
+  payload-size:
+    description: "Optional echo payload size for warm-start benchmarks (warm-start-vmm minimum: 4)"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -26,14 +30,25 @@ runs:
         BENCHMARKS: ${{ inputs.benchmarks }}
         MACHINE_TYPE: ${{ inputs.machine-type }}
         ITERATIONS: ${{ inputs.iterations }}
+        PAYLOAD_SIZE: ${{ inputs.payload-size }}
       run: |
         for bench in ${BENCHMARKS}; do
+          payload_args=()
+          case "${bench}" in
+            warm-start|warm-start-l2|warm-start-vmm)
+              if [[ -n "${PAYLOAD_SIZE}" ]]; then
+                payload_args=(--payload-size "${PAYLOAD_SIZE}")
+              fi
+              ;;
+          esac
+
           python3 ./scripts/benchmark.py \
             run \
             --benchmark "${bench}" \
             --machine-type "${MACHINE_TYPE}" \
             --hwloc "$HOME/hwloc.json" \
             --iterations "${ITERATIONS}" \
+            "${payload_args[@]}" \
             --clh-bin-path "$HOME/toolchain/bin" \
             --output-dir "$(pwd)" \
             --commit "${{ github.sha }}"

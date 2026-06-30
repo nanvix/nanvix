@@ -947,6 +947,7 @@ jobs:
             standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent
               round-trip-latency snapshot-restore warm-start warm-start-vmm"
             standard-iterations: "100"
+            payload-size: ""
             echo-benchmarks: "echo-breakdown"
             echo-iterations: "1000"
             vfs-benchmarks: "vfs-bench"
@@ -1014,6 +1015,7 @@ jobs:
           benchmarks: "${{ matrix.standard-benchmarks }}"
           machine-type: "${{ matrix.machine-type }}"
           iterations: "${{ matrix.standard-iterations }}"
+          payload-size: "${{ matrix.payload-size }}"
 
       - name: "Build (Echo-Breakdown)"
         if: matrix.echo-benchmarks != ''
@@ -1106,6 +1108,7 @@ jobs:
           - machine-type: microvm
             standard-benchmarks: "boot-time cold-start snapshot-restore vfs-bench warm-start-vmm"
             standard-iterations: "100"
+            payload-size: ""
             profiler: "PROFILER=yes"
     runs-on:
       group: Benchmark
@@ -1226,16 +1229,25 @@ jobs:
           BENCHMARKS: ${{ matrix.standard-benchmarks }}
           MACHINE_TYPE: ${{ matrix.machine-type }}
           ITERATIONS: ${{ matrix.standard-iterations }}
+          PAYLOAD_SIZE: ${{ matrix.payload-size }}
         run: |
           foreach ($bench in $env:BENCHMARKS -split ' ') {
             Write-Host "[INFO] Running benchmark '${bench}'..."
-            python scripts/benchmark.py `
-              run `
-              --benchmark $bench `
-              --machine-type $env:MACHINE_TYPE `
-              --iterations $env:ITERATIONS `
-              --output-dir "." `
-              --commit "${{ github.sha }}"
+            $benchmarkArgs = @(
+              "run",
+              "--benchmark", $bench,
+              "--machine-type", $env:MACHINE_TYPE,
+              "--iterations", $env:ITERATIONS
+            )
+            if (($bench -in @("warm-start", "warm-start-l2", "warm-start-vmm")) -and
+                -not [string]::IsNullOrWhiteSpace($env:PAYLOAD_SIZE)) {
+              $benchmarkArgs += @("--payload-size", $env:PAYLOAD_SIZE)
+            }
+            $benchmarkArgs += @(
+              "--output-dir", ".",
+              "--commit", "${{ github.sha }}"
+            )
+            python scripts/benchmark.py @benchmarkArgs
             if ($LASTEXITCODE -ne 0) {
               Write-Error "Benchmark '${bench}' failed with exit code $LASTEXITCODE"
               exit $LASTEXITCODE
@@ -1314,15 +1326,16 @@ jobs:
         if: github.ref_name != 'dev'
         shell: bash
         # vfs-bench and echo-breakdown are excluded: they use different CSV schemas
-        # (not percentile-based). round-trip-latency is also excluded (multi-row).
+        # (not percentile-based). Size-sweep benchmarks are also excluded (multi-row).
         run: |
           git fetch origin dev --quiet
           git checkout origin/dev -- data/baremetal
+          benchmarks="boot-time,cold-start,cold-start-uvm,concurrent,warm-start"
           python3 ./scripts/benchmark.py \
             ci-gate \
             --dev-dir "data/baremetal" \
             --target-dir "$(pwd)" \
-            --benchmarks "boot-time,cold-start,cold-start-uvm,concurrent,warm-start,warm-start-vmm" \
+            --benchmarks "${benchmarks}" \
             --machine-types "microvm" \
             --archs "X64" \
             --regression-threshold 40 \
@@ -1407,14 +1420,16 @@ jobs:
         if: github.ref_name != 'dev'
         shell: bash
         # vfs-bench is excluded: it uses a different CSV schema (not percentile-based).
+        # Size-sweep benchmarks are also excluded (multi-row).
         run: |
           git fetch origin dev --quiet
           git checkout origin/dev -- data/windows-baremetal
+          benchmarks="boot-time,cold-start"
           python3 ./scripts/benchmark.py \
             ci-gate \
             --dev-dir "data/windows-baremetal" \
             --target-dir "$(pwd)" \
-            --benchmarks "boot-time,cold-start,warm-start-vmm" \
+            --benchmarks "${benchmarks}" \
             --machine-types "microvm" \
             --archs "X64" \
             --regression-threshold 40 \
