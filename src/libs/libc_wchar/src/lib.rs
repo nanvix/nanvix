@@ -44,6 +44,7 @@ pub mod wcsftime;
 pub mod wcslen;
 pub mod wcsncmp;
 pub mod wcsncpy;
+pub mod wcspbrk;
 pub mod wcsrchr;
 pub mod wcsstr;
 pub mod wcstod;
