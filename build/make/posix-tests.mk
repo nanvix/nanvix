@@ -158,6 +158,26 @@ POSIX_TEST_SELFLINK_DIR := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-selflink/libs
 POSIX_TEST_EXTRA_LD_DEPS_test-c-dlfcn-selflink := $(POSIX_TEST_SELFLINK_DIR)/libprovider.so
 POSIX_TEST_EXTRA_LDLIBS_test-c-dlfcn-selflink := -L$(POSIX_TEST_SELFLINK_DIR) -lprovider -z now
 
+# dlfcn-startup-c is the acceptance test for the startup DT_NEEDED loader (issue
+# #2773): it links the executable PIE against the REAL toolchain-shipped shared
+# libraries libc.so and libm.so (via `-l:libc.so -l:libm.so`) instead of the
+# static libm.a, so the executable carries DT_NEEDED entries for both plus
+# R_386_JMP_SLOT relocations against libm.so's math symbols. The self-linker
+# (syscall::dlfcn::dllink_executable) must auto-load libc.so and then libm.so
+# into the global scope and bind the executable's GOT/PLT before main() runs,
+# with NO dlopen() call. libm.so's allocator / mem* imports resolve from libc.so
+# (loaded first, in DT_NEEDED order); the executable's statically linked libc.a
+# stays the single heap owner because the loader's global scope is first-wins.
+# `-z now` forces eager binding (Nanvix has no lazy PLT resolver). The bare
+# DT_NEEDED names (`-l:` with no SONAME on the .so) are resolved through the
+# loader's default lib/ search path, where the per-suite RAMFS stages them.
+POSIX_TEST_PIE_test-c-dlfcn-startup := yes
+# Drop the static libm.a from the link group so the math symbols stay undefined
+# and bind to libm.so at startup instead of being pulled in statically.
+POSIX_TEST_NO_STATIC_LIBM_test-c-dlfcn-startup := yes
+POSIX_TEST_EXTRA_LD_DEPS_test-c-dlfcn-startup := $(LIBRARIES_DIR)/libc.so $(LIBRARIES_DIR)/libm.so
+POSIX_TEST_EXTRA_LDLIBS_test-c-dlfcn-startup := -L$(LIBRARIES_DIR) -l:libc.so -l:libm.so -z now
+
 define POSIX_TEST_RULE
 POSIX_TEST_SRCROOT_$(1) := $$(if $$(POSIX_TEST_STRESS_$(1)),$$(POSIX_TESTS_STRESS_SRCDIR),$$(POSIX_TESTS_SRCDIR))
 POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TEST_SRCROOT_$(1))/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TEST_SRCROOT_$(1))/$(1)/*.c))
@@ -169,10 +189,10 @@ endif
 $$(BINARIES_DIR)/$(1).$$(EXEC_FORMAT): $$(POSIX_TEST_OBJS_$(1)) $$(POSIX_TEST_CRT_OBJ) \
 		$$(GUEST_C_APP_LIBC) $$(GUEST_C_APP_LIBM) $$(LIBNVX_CRT0) $$(GUEST_C_APP_LD_SCRIPT) \
 		$$(POSIX_TEST_EXTRA_LD_DEPS_$(1))
-	@echo "[posix-test] linking $(1) against libc.a + libm.a$$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))), (PIE))"
+	@echo "[posix-test] linking $(1) against libc.a$$(if $$(POSIX_TEST_NO_STATIC_LIBM_$(1)),, + libm.a)$$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))), (PIE))"
 	$$(GUEST_C_APP_LD) $$(GUEST_C_APP_LDFLAGS) $$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))),$$(POSIX_TEST_PIE_LDFLAGS)) \
 		$$(POSIX_TEST_OBJS_$(1)) $$(POSIX_TEST_CRT_OBJ) \
-		--start-group $$(LIBNVX_CRT0) $$(GUEST_C_APP_LIBC) $$(GUEST_C_APP_LIBM) --end-group \
+		--start-group $$(LIBNVX_CRT0) $$(GUEST_C_APP_LIBC) $$(if $$(POSIX_TEST_NO_STATIC_LIBM_$(1)),,$$(GUEST_C_APP_LIBM)) --end-group \
 		$$(POSIX_TEST_EXTRA_LDLIBS_$(1)) -o $$@
 	@echo "[posix-test] built $$@"
 endef
@@ -231,6 +251,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
 	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
 	$(RM_CMD) $(POSIX_TEST_EXECVP_IMG)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
@@ -238,6 +259,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_STARTUP_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_EXECVP_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
@@ -439,10 +461,32 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink): $(POSIX_TEST_SELFLINK_DIR)/libpro
 	$(CP_CMD) $(POSIX_TEST_SELFLINK_DIR)/libprovider.so $(POSIX_TEST_SELFLINK_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_SELFLINK_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-startup-c: real libc.so + libm.so startup auto-load fixture.
+#---------------------------------------------------------------------------------------------------
+#
+# Unlike the fixtures above (purpose-built .so files), this suite stages the
+# ACTUAL shared libraries produced by nanvix-libc-bundle (libc.so + libm.so)
+# under lib/, reached through the loader's default lib/ search path. The
+# executable links against them via DT_NEEDED (see the per-suite hooks above) and
+# the startup loader auto-loads them before main(); see
+# test-c-dlfcn-startup/main.c.
+POSIX_TEST_STARTUP_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-startup-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-startup.img
+
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup): $(LIBRARIES_DIR)/libc.so $(LIBRARIES_DIR)/libm.so \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_STARTUP_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_STARTUP_SEED)/lib
+	$(CP_CMD) $(LIBRARIES_DIR)/libc.so $(POSIX_TEST_STARTUP_SEED)/lib/
+	$(CP_CMD) $(LIBRARIES_DIR)/libm.so $(POSIX_TEST_STARTUP_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_STARTUP_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
-	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-init-runpath-c: constructor/destructor + DT_RUNPATH fixtures.

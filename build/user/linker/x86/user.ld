@@ -80,28 +80,37 @@ SECTIONS
 	 * These sections hold relocated function pointers, so they must live in the
 	 * writable LOAD segment (with .data/.ctors/.dtors) where the PIE relocator
 	 * fixes them up.
+	 *
+	 * The boundary symbols use `PROVIDE` (default visibility) rather than the
+	 * customary `PROVIDE_HIDDEN`, mirroring the `__dynamic_*` / `__dynsym_*` /
+	 * `__dynstr_*` bounds above, so they are emitted into `.dynsym` under
+	 * `--export-dynamic`. A dynamically linked `libc.so` references these section
+	 * bounds as undefined symbols (its own `__nanvix_libc_start_main` walks the
+	 * arrays), and the startup DT_NEEDED loader
+	 * (`syscall::dlfcn::dllink_executable`) resolves them from the executable's
+	 * exported global scope when it auto-loads `libc.so`.
 	 */
 	.preinit_array : ALIGN(4)
 	{
-		PROVIDE_HIDDEN(__preinit_array_start = .);
+		PROVIDE(__preinit_array_start = .);
 		KEEP(*(.preinit_array))
-		PROVIDE_HIDDEN(__preinit_array_end = .);
+		PROVIDE(__preinit_array_end = .);
 	}
 
 	.init_array : ALIGN(4)
 	{
-		PROVIDE_HIDDEN(__init_array_start = .);
+		PROVIDE(__init_array_start = .);
 		KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
 		KEEP(*(.init_array))
-		PROVIDE_HIDDEN(__init_array_end = .);
+		PROVIDE(__init_array_end = .);
 	}
 
 	.fini_array : ALIGN(4)
 	{
-		PROVIDE_HIDDEN(__fini_array_start = .);
+		PROVIDE(__fini_array_start = .);
 		KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
 		KEEP(*(.fini_array))
-		PROVIDE_HIDDEN(__fini_array_end = .);
+		PROVIDE(__fini_array_end = .);
 	}
 
 	/* Uninitialized data section. */
