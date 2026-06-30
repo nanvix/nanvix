@@ -699,10 +699,12 @@ pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Resu
 
 #[cfg(feature = "test")]
 pub(super) mod test {
-    use super::{
-        sync_kernel_pdes,
-        KERNEL_PD_PADDR,
-    };
+    use super::KERNEL_PD_PADDR;
+    // `sync_kernel_pdes` performs the 2-level PDE copy and exists on x86 only; the
+    // companion test below is gated to match.
+    #[cfg(not(target_arch = "x86_64"))]
+    use super::sync_kernel_pdes;
+    #[cfg(not(target_arch = "x86_64"))]
     use crate::{
         hal::mem::PageDirectoryAddress,
         mm::VirtMemoryManager,
@@ -762,6 +764,10 @@ pub(super) mod test {
     /// [`sync_kernel_pdes`], and verifies that every present kernel PDE in
     /// `[0, MEMORY_SIZE)` was copied into the target PD with the same frame address.
     ///
+    /// x86-only: on x86_64 the active page tables are a 4-level hierarchy managed by
+    /// the HAL and `sync_kernel_pdes` is a no-op, so this 2-level PDE-copy check does
+    /// not apply.
+    #[cfg(not(target_arch = "x86_64"))]
     fn test_sync_kernel_pdes_copies_to_target() -> bool {
         let kernel_pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
         if kernel_pd_paddr == 0 {
@@ -857,7 +863,10 @@ pub(super) mod test {
         let mut passed: bool = true;
 
         passed &= run_test!(test_init_preallocates_identity_map_pdes);
-        passed &= run_test!(test_sync_kernel_pdes_copies_to_target);
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            passed &= run_test!(test_sync_kernel_pdes_copies_to_target);
+        }
 
         passed
     }
