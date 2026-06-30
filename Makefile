@@ -402,6 +402,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-diamond \
 	test-c-dlfcn-global \
 	test-c-dlfcn-init-runpath \
+	test-c-dlfcn-initfini \
 	test-c-dlfcn-needed \
 	test-c-dlfcn-pie \
 	test-c-dlfcn-selflink \

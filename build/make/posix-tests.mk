@@ -158,6 +158,22 @@ POSIX_TEST_SELFLINK_DIR := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-selflink/libs
 POSIX_TEST_EXTRA_LD_DEPS_test-c-dlfcn-selflink := $(POSIX_TEST_SELFLINK_DIR)/libprovider.so
 POSIX_TEST_EXTRA_LDLIBS_test-c-dlfcn-selflink := -L$(POSIX_TEST_SELFLINK_DIR) -lprovider -z now
 
+# dlfcn-initfini-c is the acceptance test for init/fini ordering across a
+# startup-loaded DT_NEEDED dependency: it links the executable PIE
+# + --export-dynamic against a purpose-built libinitfini.so (-linitfini) that the
+# executable references by NO symbol, so the dependency is auto-loaded at startup
+# purely for its `.init_array` constructor (run before main) and `.fini_array`
+# destructor (run at exit by syscall::dlfcn::dlfini_executable), with NO dlopen()
+# call. `--no-as-needed` forces the DT_NEEDED entry even though the executable
+# references none of libinitfini.so's symbols; `-z now` forces eager binding
+# (Nanvix has no lazy PLT resolver). The bare DT_NEEDED name (pinned by the
+# fixture's -soname) is resolved through the loader's default lib/ search path,
+# where the per-suite RAMFS stages libinitfini.so.
+POSIX_TEST_PIE_test-c-dlfcn-initfini := yes
+POSIX_TEST_INITFINI_DIR := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-initfini/libs
+POSIX_TEST_EXTRA_LD_DEPS_test-c-dlfcn-initfini := $(POSIX_TEST_INITFINI_DIR)/libinitfini.so
+POSIX_TEST_EXTRA_LDLIBS_test-c-dlfcn-initfini := -L$(POSIX_TEST_INITFINI_DIR) --no-as-needed -linitfini -z now
+
 # dlfcn-startup-c is the acceptance test for the startup DT_NEEDED loader (issue
 # #2773): it links the executable PIE against the REAL toolchain-shipped shared
 # libraries libc.so and libm.so (via `-l:libc.so -l:libm.so`) instead of the
@@ -252,6 +268,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini)
 	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
 	$(RM_CMD) $(POSIX_TEST_EXECVP_IMG)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
@@ -260,6 +277,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_STARTUP_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_INITFINI_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_EXECVP_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
@@ -482,11 +500,43 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup): $(LIBRARIES_DIR)/libc.so $(LIBRARI
 	$(CP_CMD) $(LIBRARIES_DIR)/libm.so $(POSIX_TEST_STARTUP_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_STARTUP_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-initfini-c: startup DT_NEEDED constructor/destructor ordering fixture.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships ONE shared library, libinitfini.so, built with the same i686 freestanding
+# toolchain as the fixtures above. It carries a `.init_array` constructor and a
+# `.fini_array` destructor and leaves three symbols UNDEFINED — `g_ctor_ran`,
+# `g_main_ran` (data) and `test_dtor_finish` (function) — which the loader
+# resolves from the main executable's exported global scope at load time (the
+# suite ELF is PIE + --export-dynamic, see POSIX_TEST_PIE_* above). The executable
+# DT_NEEDEDs it but references none of its symbols, so the startup loader
+# auto-loads it for its constructor/destructor side effects alone (no dlopen).
+# An explicit -soname pins the bare DT_NEEDED name regardless of linker. Staged
+# at lib/libinitfini.so, reached through the loader's default lib/ search path.
+POSIX_TEST_INITFINI_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-initfini-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-initfini.img
+
+$(POSIX_TEST_INITFINI_DIR)/libinitfini.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-initfini/libs/initfini.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building test-c-dlfcn-initfini/libinitfini.so (.init_array/.fini_array)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libinitfini.so $@.o -o $@
+
+# Per-suite RAMFS image carrying libinitfini.so under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini): $(POSIX_TEST_INITFINI_DIR)/libinitfini.so \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_INITFINI_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_INITFINI_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_INITFINI_DIR)/libinitfini.so $(POSIX_TEST_INITFINI_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_INITFINI_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink) \
-	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-init-runpath-c: constructor/destructor + DT_RUNPATH fixtures.
