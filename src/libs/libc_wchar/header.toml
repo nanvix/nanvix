@@ -77,7 +77,7 @@ functions = ["wcscmp", "wcsncmp", "wcscoll", "wcsxfrm"]
 
 [[sections]]
 title = "Search"
-functions = ["wcschr", "wcsrchr", "wcsstr", "wcstok"]
+functions = ["wcschr", "wcsrchr", "wcspbrk", "wcsstr", "wcstok"]
 
 [[sections]]
 title = "Numeric Conversions"

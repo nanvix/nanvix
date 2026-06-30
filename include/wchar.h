@@ -93,6 +93,7 @@ extern size_t wcsxfrm(wchar_t *dest, const wchar_t *src, size_t n);
 
 extern wchar_t *wcschr(const wchar_t *s, wchar_t c);
 extern wchar_t *wcsrchr(const wchar_t *s, wchar_t c);
+extern wchar_t *wcspbrk(const wchar_t *ws1, const wchar_t *ws2);
 extern wchar_t *wcsstr(const wchar_t *haystack, const wchar_t *needle);
 extern wchar_t *wcstok(wchar_t *ws, const wchar_t *delim, wchar_t **ptr);
 

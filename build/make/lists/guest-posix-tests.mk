@@ -42,4 +42,5 @@ ALL_POSIX_TESTS := \
 	test-c-setjmp \
 	test-c-stdio \
 	test-c-termios \
-	test-c-thread
+	test-c-thread \
+	test-c-wchar
