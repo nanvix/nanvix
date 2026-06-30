@@ -40,6 +40,7 @@ ALL_POSIX_TESTS := \
 	test-c-network \
 	test-c-noop \
 	test-c-pathconf \
+	test-c-posix-timers \
 	test-c-regex \
 	test-c-setjmp \
 	test-c-stdio \
