@@ -46,10 +46,14 @@ use ::syscall::{
             GetSockNameResponse,
             ListenSocketRequest,
             ListenSocketResponse,
+            ReceiveFromSocketRequest,
+            ReceiveFromSocketResponse,
             ReceiveSocketRequest,
             ReceiveSocketResponse,
             SendSocketRequest,
             SendSocketResponse,
+            SendToSocketRequest,
+            SendToSocketResponse,
             ShutdownSocketRequest,
             ShutdownSocketResponse,
         },
@@ -86,7 +90,9 @@ pub fn is_networking_header(header: &SystemCallMessageHeader) -> bool {
             | SystemCallMessageHeader::GetSockNameRequest
             | SystemCallMessageHeader::ListenSocketRequest
             | SystemCallMessageHeader::ReceiveSocketRequest
+            | SystemCallMessageHeader::ReceiveFromSocketRequest
             | SystemCallMessageHeader::SendSocketRequest
+            | SystemCallMessageHeader::SendToSocketRequest
             | SystemCallMessageHeader::ShutdownSocketRequest
     )
 }
@@ -174,6 +180,63 @@ pub fn dispatch_message(
         },
         _ => None,
     }
+}
+
+///
+/// # Description
+///
+/// Dispatches a `sendto()` request whose datagram payload was delivered out-of-band via a
+/// scatter/gather push.
+///
+/// # Parameters
+///
+/// - `backend`: Reference to the networking backend.
+/// - `filter`: Host egress filter applied to the destination address.
+/// - `source`: The message source (identifies the calling thread).
+/// - `syscall_msg`: The parsed `SendToSocketRequest` system call message.
+/// - `data`: The datagram payload pulled from the caller.
+///
+/// # Returns
+///
+/// The response message to send back to the guest.
+///
+pub fn dispatch_sendto(
+    backend: &NetBackend,
+    filter: &HostFilter,
+    source: MessageSender,
+    syscall_msg: SystemCallMessage,
+    data: &[u8],
+) -> Message {
+    let tid: ThreadIdentifier = source.tid;
+    let request: SendToSocketRequest = SendToSocketRequest::from_bytes(syscall_msg.payload);
+    do_sendto(backend, filter, tid, request, data)
+}
+
+///
+/// # Description
+///
+/// Dispatches a `recvfrom()` request whose datagram payload is delivered out-of-band via a
+/// scatter/gather pull.
+///
+/// # Parameters
+///
+/// - `backend`: Reference to the networking backend.
+/// - `source`: The message source (identifies the calling thread).
+/// - `syscall_msg`: The parsed `ReceiveFromSocketRequest` system call message.
+///
+/// # Returns
+///
+/// A tuple with the response message and the datagram payload to push back to the guest.
+///
+pub fn dispatch_recvfrom(
+    backend: &NetBackend,
+    source: MessageSender,
+    syscall_msg: SystemCallMessage,
+) -> (Message, Vec<u8>) {
+    let tid: ThreadIdentifier = source.tid;
+    let request: ReceiveFromSocketRequest =
+        ReceiveFromSocketRequest::from_bytes(syscall_msg.payload);
+    do_recvfrom(backend, tid, request)
 }
 
 //==================================================================================================
@@ -366,5 +429,63 @@ fn do_send(backend: &NetBackend, tid: ThreadIdentifier, request: SendSocketReque
         Ok(count) => SendSocketResponse::build(tid, count as i32),
         Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),
         Err(NetError::Errno(code)) => build_error(tid, code),
+    }
+}
+
+fn do_sendto(
+    backend: &NetBackend,
+    filter: &HostFilter,
+    tid: ThreadIdentifier,
+    request: SendToSocketRequest,
+    data: &[u8],
+) -> Message {
+    trace!("networkd::sendto(): tid={tid:?}, request={request:?}, data.len={}", data.len());
+    // Enforce host egress policy before sending to an explicit destination. This mirrors the
+    // check performed by `do_connect()`: a `sendto()` to an arbitrary address is equivalent to a
+    // `connect()` followed by a `send()`, so the same unbypassable boundary applies. IPv4
+    // destinations are matched against the filter; any non-IPv4 or unparsable destination is
+    // permitted only under `AllowAll`.
+    let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
+        Ok(SocketAddr::V4(addr)) => filter.permits_connection(addr.addr().octets(), addr.port()),
+        _ => filter.is_allow_all(),
+    };
+    if !permitted {
+        trace!("networkd::sendto(): destination denied by host egress filter");
+        return build_error(tid, ErrorCode::PermissionDenied);
+    }
+    match backend.sendto(
+        to_host_fd(request.sockfd),
+        data,
+        data.len(),
+        request.flags,
+        &request.sockaddr,
+    ) {
+        Ok(count) => SendToSocketResponse::build(tid, count as i32),
+        Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),
+        Err(NetError::Errno(code)) => build_error(tid, code),
+    }
+}
+
+fn do_recvfrom(
+    backend: &NetBackend,
+    tid: ThreadIdentifier,
+    request: ReceiveFromSocketRequest,
+) -> (Message, Vec<u8>) {
+    trace!("networkd::recvfrom(): tid={tid:?}, request={request:?}");
+    let recv_len: usize =
+        core::cmp::min(ReceiveFromSocketResponse::MAX_DATA_SIZE, request.count as usize);
+    let mut buffer: Vec<u8> = vec![0u8; recv_len];
+    match backend.recvfrom(to_host_fd(request.sockfd), &mut buffer, recv_len, request.flags) {
+        Ok((count, addr)) => {
+            // Report the actual address length supplied by the host rather than the fixed
+            // struct size.
+            let addrlen: u32 = u32::from(addr.sa_len);
+            // Trim the buffer to the bytes actually received so the bulk transfer carries only
+            // the datagram payload.
+            buffer.truncate(count as usize);
+            (ReceiveFromSocketResponse::build(tid, count as u32, addrlen, &addr), buffer)
+        },
+        Err(NetError::Interrupted) => (build_error(tid, ErrorCode::Interrupted), Vec::new()),
+        Err(NetError::Errno(code)) => (build_error(tid, code), Vec::new()),
     }
 }

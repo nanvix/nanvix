@@ -16,7 +16,10 @@ use ::net_backend::{
     HostFilter,
     NetBackend,
 };
-use ::sys::ipc::Message;
+use ::sys::ipc::{
+    Message,
+    MessageSender,
+};
 use ::syscall::{
     SystemCallMessage,
     SystemCallMessageHeader,
@@ -85,6 +88,54 @@ impl NetworkDaemon {
         };
 
         dispatch::dispatch_message(&self.backend, &self.filter, msg.source, syscall_msg)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Processes a `sendto()` request whose datagram payload was delivered out-of-band via a
+    /// scatter/gather push.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Identifies the calling thread.
+    /// - `syscall_msg`: The parsed `SendToSocketRequest` system call message.
+    /// - `data`: The datagram payload pulled from the caller.
+    ///
+    /// # Returns
+    ///
+    /// The response message to send back to the guest.
+    ///
+    pub fn handle_sendto(
+        &self,
+        source: MessageSender,
+        syscall_msg: SystemCallMessage,
+        data: &[u8],
+    ) -> Message {
+        dispatch::dispatch_sendto(&self.backend, &self.filter, source, syscall_msg, data)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Processes a `recvfrom()` request whose datagram payload is delivered out-of-band via a
+    /// scatter/gather pull.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Identifies the calling thread.
+    /// - `syscall_msg`: The parsed `ReceiveFromSocketRequest` system call message.
+    ///
+    /// # Returns
+    ///
+    /// A tuple with the response message and the datagram payload to push back to the guest.
+    ///
+    pub fn handle_recvfrom(
+        &self,
+        source: MessageSender,
+        syscall_msg: SystemCallMessage,
+    ) -> (Message, Vec<u8>) {
+        dispatch::dispatch_recvfrom(&self.backend, source, syscall_msg)
     }
 
     ///

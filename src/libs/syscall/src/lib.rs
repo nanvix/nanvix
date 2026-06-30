@@ -329,6 +329,12 @@ pub enum SystemCallMessageHeader {
     // request is transported as a `*Part` stream (see `SelectRequest`). Appended here to preserve
     // the on-the-wire discriminants of existing variants.
     SelectRequestPart,
+    // Datagram socket I/O carrying an explicit peer address (`sendto()`/`recvfrom()`). Appended
+    // here to preserve the on-the-wire discriminants of existing variants.
+    SendToSocketRequest,
+    SendToSocketResponse,
+    ReceiveFromSocketRequest,
+    ReceiveFromSocketResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -500,6 +506,10 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == TtyControlRequest as u16 => Ok(TtyControlRequest),
             x if x == TtyControlResponse as u16 => Ok(TtyControlResponse),
             x if x == SelectRequestPart as u16 => Ok(SelectRequestPart),
+            x if x == SendToSocketRequest as u16 => Ok(SendToSocketRequest),
+            x if x == SendToSocketResponse as u16 => Ok(SendToSocketResponse),
+            x if x == ReceiveFromSocketRequest as u16 => Ok(ReceiveFromSocketRequest),
+            x if x == ReceiveFromSocketResponse as u16 => Ok(ReceiveFromSocketResponse),
             _ => Err(()),
         }
     }

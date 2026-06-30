@@ -6,6 +6,13 @@
 //==================================================================================================
 
 use crate::errno::__errno_location;
+#[cfg(feature = "standalone")]
+use crate::sys::socket;
+#[cfg(feature = "standalone")]
+use ::core::{
+    mem,
+    slice,
+};
 use ::sys::error::ErrorCode;
 use ::sysapi::{
     ffi::{
@@ -70,7 +77,6 @@ use ::syslog::trace_syscall;
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]
-#[allow(unreachable_code)]
 pub unsafe extern "C" fn recvfrom(
     sockfd: c_int,
     buf: *mut c_void,
@@ -81,15 +87,113 @@ pub unsafe extern "C" fn recvfrom(
 ) -> c_ssize_t {
     #[cfg(feature = "standalone")]
     {
-        let _ = (sockfd, buf, len, flags, sockaddr, addrlen);
-        *__errno_location() = ::sys::error::ErrorCode::OperationNotSupported.get();
-        return -1;
+        // Check if `buf` is valid.
+        if buf.is_null() {
+            ::syslog::warn!(
+                "recvfrom(): invalid buffer (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
+                 flags={flags:?})"
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        }
+
+        // Check if `len` is valid.
+        if len == 0 {
+            ::syslog::warn!(
+                "recvfrom(): invalid buffer length (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
+                 flags={flags:?})"
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        }
+
+        // Check if `flags` is valid.
+        if flags != 0 {
+            ::syslog::warn!(
+                "recvfrom(): unsupported flags (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
+                 flags={flags:?})"
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        }
+
+        // Attempt to convert `len` to `usize`.
+        let len: usize = match len.try_into() {
+            Ok(len) => len,
+            Err(_error) => {
+                ::syslog::warn!(
+                    "recvfrom(): failed to convert length (sockfd={sockfd:?}, buf={buf:?}, \
+                     len={len:?}, flags={flags:?})"
+                );
+                *__errno_location() = ErrorCode::InvalidArgument.get();
+                return -1;
+            },
+        };
+
+        // Attempt to convert buffer.
+        let buf: &mut [u8] = unsafe { slice::from_raw_parts_mut(buf as *mut u8, len) };
+
+        // When no source address is requested, `recvfrom()` behaves like `recv()`.
+        if sockaddr.is_null() {
+            return match socket::syscall::recv(sockfd, buf, flags) {
+                Ok(bytes_received) => match bytes_received.try_into() {
+                    Ok(bytes_received) => bytes_received,
+                    Err(_error) => {
+                        *__errno_location() = ErrorCode::ValueOutOfRange.get();
+                        -1
+                    },
+                },
+                Err(error) => {
+                    ::syslog::warn!(
+                        "recvfrom(): {error:?} (sockfd={sockfd:?}, len={len:?}, flags={flags:?})"
+                    );
+                    *__errno_location() = error.code.get();
+                    -1
+                },
+            };
+        }
+
+        // A source address was requested, so `addrlen` must be valid too.
+        if addrlen.is_null() || *addrlen < mem::size_of::<sockaddr>() as socklen_t {
+            ::syslog::warn!(
+                "recvfrom(): invalid socket address length (sockfd={sockfd:?}, \
+                 sockaddr={sockaddr:?}, addrlen={addrlen:?})"
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        }
+
+        match socket::syscall::recvfrom(sockfd, buf, flags) {
+            Ok((bytes_received, source)) => match bytes_received.try_into() {
+                Ok(bytes_received) => {
+                    let (source, source_len): (sockaddr, socklen_t) = source.into();
+                    *sockaddr = source;
+                    *addrlen = source_len;
+                    bytes_received
+                },
+                Err(_error) => {
+                    *__errno_location() = ErrorCode::ValueOutOfRange.get();
+                    -1
+                },
+            },
+            Err(error) => {
+                ::syslog::warn!(
+                    "recvfrom(): {error:?} (sockfd={sockfd:?}, len={len:?}, flags={flags:?})"
+                );
+                *__errno_location() = error.code.get();
+                -1
+            },
+        }
     }
 
     // TODO: https://github.com/nanvix/nanvix/issues/590
-    ::syslog::debug!("recvfrom(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
+    #[cfg(not(feature = "standalone"))]
+    {
+        let _ = (sockfd, buf, len, flags, sockaddr, addrlen);
+        ::syslog::debug!("recvfrom(): not implemented");
+        unsafe {
+            *__errno_location() = ErrorCode::InvalidSysCall.get();
+        }
+        -1
     }
-    -1
 }

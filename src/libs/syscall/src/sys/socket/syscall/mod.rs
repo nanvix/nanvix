@@ -12,7 +12,9 @@ mod getpeername;
 mod getsockname;
 mod listen;
 mod recv;
+mod recvfrom;
 mod send;
+mod sendto;
 mod shutdown;
 mod socket;
 mod socketpair;
@@ -29,7 +31,9 @@ pub use self::{
     getsockname::getsockname,
     listen::listen,
     recv::recv,
+    recvfrom::recvfrom,
     send::send,
+    sendto::sendto,
     shutdown::shutdown,
     socket::socket,
     socketpair::socketpair,
