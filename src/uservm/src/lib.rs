@@ -1291,6 +1291,16 @@ fn output_fn(
                     },
                 }
             },
+            VmBusMessageKind::KlogBlock => {
+                // Kernel-log blocks are delivered on `DEFAULT_KLOG_PORT` and handled by the console
+                // path, never the application stdout path. Receiving one here means a guest or port
+                // mix-up, so fail loudly rather than misrouting kernel log bytes into application
+                // output.
+                let reason: String =
+                    "unexpected KlogBlock envelope on the application stdout port".to_string();
+                error!("output(): {reason}");
+                anyhow::bail!(reason);
+            },
         }
 
         Ok(())

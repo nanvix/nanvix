@@ -322,6 +322,10 @@ pub enum VmBusMessageKind {
     Ikc = 1,
     /// Guest scatter/gather bulk transfer descriptor.
     GuestSgBulk = 2,
+    /// Kernel-log block. Carries a contiguous run of console bytes flushed by the kernel log
+    /// buffer in a single transfer (delivered on `DEFAULT_KLOG_PORT`), so a whole buffer flush
+    /// costs one VM exit instead of one per byte.
+    KlogBlock = 3,
 }
 
 impl TryFrom<u64> for VmBusMessageKind {
@@ -334,6 +338,7 @@ impl TryFrom<u64> for VmBusMessageKind {
             value if value == Self::LegacyBulk as u64 => Ok(Self::LegacyBulk),
             value if value == Self::Ikc as u64 => Ok(Self::Ikc),
             value if value == Self::GuestSgBulk as u64 => Ok(Self::GuestSgBulk),
+            value if value == Self::KlogBlock as u64 => Ok(Self::KlogBlock),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid vmbus message kind")),
         }
     }

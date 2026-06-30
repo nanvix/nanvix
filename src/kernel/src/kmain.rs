@@ -188,6 +188,14 @@ static PERF_IKC_MESSAGES_SENT: AtomicUsize = AtomicUsize::new(0);
 /// Number of IKC messages received.
 static PERF_IKC_MESSAGES_RECEIVED: AtomicUsize = AtomicUsize::new(0);
 
+/// Number of block kernel-log flushes emitted via `DEFAULT_KLOG_PORT` (one VM exit each).
+static PERF_KLOG_BLOCK_WRITES: AtomicUsize = AtomicUsize::new(0);
+
+/// Total number of kernel-log bytes flushed to the host console. Under the legacy per-byte path
+/// this equals the number of VM exits; with block flushing it is amortized across
+/// [`PERF_KLOG_BLOCK_WRITES`] exits.
+static PERF_KLOG_BYTES: AtomicUsize = AtomicUsize::new(0);
+
 /// Whether the guest is entitled to take a VM snapshot.
 /// Set to `true` during boot when the `snapshot` kernel option is present.
 /// Consumed (set to `false`) on the first successful snapshot request.
@@ -642,6 +650,14 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
     info!("- No. Times VMBus Write Was Called: {:?}", PERF_VMBUS_WRITE.load(Ordering::Relaxed));
     info!("- No. IKC Messages Sent: {:?}", PERF_IKC_MESSAGES_SENT.load(Ordering::Relaxed));
     info!("- No. IKC Messages Received: {:?}", PERF_IKC_MESSAGES_RECEIVED.load(Ordering::Relaxed));
+    info!(
+        "- No. Klog Block Writes (out32 exits): {:?}",
+        PERF_KLOG_BLOCK_WRITES.load(Ordering::Relaxed)
+    );
+    info!(
+        "- No. Klog Bytes Flushed (== legacy per-byte exits): {:?}",
+        PERF_KLOG_BYTES.load(Ordering::Relaxed)
+    );
 
     trace!("the system will shutdown now!");
     kernel_magic_string(status);

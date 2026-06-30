@@ -281,6 +281,12 @@ pub mod microvm {
     /// I/O port that is connected to the standard input of the virtual machine.
     pub const DEFAULT_STDIN_PORT: u16 = 0xea;
 
+    /// I/O port used by the kernel to flush its log buffer to the host console in a single block
+    /// transfer (Dword width). The guest writes the address of a [`VmBusMessage`] envelope
+    /// describing the buffer, so a whole `KlogBuffer` flush costs one VM exit instead of one exit
+    /// per byte on [`DEFAULT_STDOUT_PORT`].
+    pub const DEFAULT_KLOG_PORT: u16 = 0xeb;
+
     /// Timer period in microseconds, derived from the kernel timer frequency.
     pub const TIMER_PERIOD_US: u64 =
         (crate::constants::MICROSECONDS_PER_SECOND as u64) / (crate::kernel::TIMER_FREQ as u64);

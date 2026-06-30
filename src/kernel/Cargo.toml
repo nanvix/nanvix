@@ -47,7 +47,7 @@ default = ["microvm"]
 # Machine Types
 microvm = [
     "arch/microvm",
-    "putb",
+    "puts",
     "stdio",
     "pit",
     "dep:config",
