@@ -12,6 +12,10 @@ inputs:
   machine-type:
     description: "Machine type"
     required: true
+  target:
+    description: "Target architecture (e.g. x86, x86_64)"
+    required: false
+    default: "x86"
   memory-size:
     description: "Memory size in MB (default: 256)"
     required: false
@@ -23,7 +27,8 @@ runs:
     - name: "Download Build Artifacts"
       uses: actions/download-artifact@v7
       with:
-        name: ci-build-${{ inputs.build-type }}-${{ inputs.machine-type }}-${{
+        name: ci-build-${{ inputs.build-type }}-${{ inputs.target }}-${{
+          inputs.machine-type }}-${{
           inputs.memory-size }}mb
         path: .
 

@@ -12,6 +12,10 @@ inputs:
   machine-type:
     description: "Machine type"
     required: true
+  target:
+    description: "Target architecture (e.g. x86, x86_64)"
+    required: false
+    default: "x86"
 
 runs:
   using: "composite"
@@ -28,7 +32,7 @@ runs:
 
         ./z build -- run-kernel-tests \
             "MACHINE=${{ inputs.machine-type }}" \
-            TARGET=x86 \
+            TARGET=${{ inputs.target }} \
             LOG_LEVEL=trace
 
         echo "In-kernel tests passed."
@@ -50,4 +54,5 @@ runs:
 
         ./z build ${RELEASE_FLAG} -- run-smoke-test \
             "MACHINE=${{ inputs.machine-type }}" \
+            TARGET=${{ inputs.target }} \
             "TIMEOUT=${TIMEOUT}"

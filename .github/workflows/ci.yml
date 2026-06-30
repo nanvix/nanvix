@@ -276,12 +276,13 @@ jobs:
   # Lint is machine-dependent but does NOT depend on build-type (debug vs release). Run lint once
   # per machine instead of once per build matrix entry.
   lint:
-    name: "Lint (${{ matrix.machine-type }})"
+    name: "Lint (${{ matrix.target-arch }}, ${{ matrix.machine-type }})"
     needs: [ precheck ]
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
     runs-on: ubuntu-24.04
     container:
@@ -319,7 +320,7 @@ jobs:
         run: |
           ./z build -- lint-check \
             "MACHINE=${{ matrix.machine-type }}" \
-            TARGET=x86 \
+            TARGET=${{ matrix.target-arch }} \
             LOG_LEVEL=trace \
             VERBOSE=yes \
             BUILD_OPT=no
@@ -374,7 +375,8 @@ jobs:
   # all builds have finished rather than as soon as an individual build
   # completes.
   ci-build:
-    name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{
+    name: "Build (${{ matrix.build-type }}, ${{ matrix.target-arch }}, ${{
+      matrix.machine-type }}, ${{
       matrix.memory-size }}mb)"
     needs: [ precheck, checks, lint, verify ]
     timeout-minutes: 120
@@ -387,6 +389,7 @@ jobs:
         build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
         memory-size: [ 256 ]
     runs-on: ubuntu-24.04
@@ -468,7 +471,7 @@ jobs:
         run: |
           ./z build -- ${BUILD_TARGETS} \
             "MACHINE=${MACHINE_TYPE}" \
-            TARGET=x86 \
+            TARGET=${{ matrix.target-arch }} \
             "LOG_LEVEL=${LOG_LEVEL}" \
             VERBOSE=yes \
             BUILD_OPT=yes \
@@ -478,7 +481,8 @@ jobs:
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
         with:
-          name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{
+          name: ci-build-${{ matrix.build-type }}-${{ matrix.target-arch }}-${{
+            matrix.machine-type }}-${{
             matrix.memory-size }}mb
           overwrite: true
           retention-days: 1
@@ -493,7 +497,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number
-            }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.memory-size }}mb
+            }}-${{ matrix.build-type }}-${{ matrix.target-arch }}-${{
+            matrix.machine-type }}-${{ matrix.memory-size }}mb
           overwrite: "true"
           path: |
             logs/
@@ -502,7 +507,8 @@ jobs:
             **/*.err
 
   ci-test:
-    name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, shard ${{
+    name: "Test (${{ matrix.build-type }}, ${{ matrix.target-arch }}, ${{
+      matrix.machine-type }}, shard ${{
       matrix.shard }}/4)"
     needs: [ ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
@@ -514,6 +520,7 @@ jobs:
         build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
         # The TOML-driven integration suites are partitioned into disjoint shards
         # that run on independent runners. The harness selects this shard's tests
@@ -548,12 +555,14 @@ jobs:
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
+          target: "${{ matrix.target-arch }}"
 
       - name: "Integration Test"
         uses: ./.github/actions/integration-test
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
+          target: "${{ matrix.target-arch }}"
           shard-index: "${{ matrix.shard }}"
           shard-total: "4"
 
@@ -562,8 +571,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-integration-logs-${{ github.event.pull_request.number ||
-            github.run_number }}-${{ matrix.build-type }}-${{
-            matrix.machine-type }}-shard${{ matrix.shard }}
+            github.run_number }}-${{ matrix.build-type }}-${{ matrix.target-arch
+            }}-${{ matrix.machine-type }}-shard${{ matrix.shard }}
           overwrite: "true"
           path: |
             logs/
@@ -576,7 +585,8 @@ jobs:
   # integration test. Kept in a dedicated job so the sharded ci-test runners
   # execute only disjoint slices of the TOML suites.
   ci-test-extras:
-    name: "Test Extras (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
+    name: "Test Extras (${{ matrix.build-type }}, ${{ matrix.target-arch }}, ${{
+      matrix.machine-type }})"
     needs: [ ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.ci-build.result == 'success' }}
@@ -587,6 +597,7 @@ jobs:
         build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
     runs-on: ubuntu-24.04
     container:
@@ -614,14 +625,19 @@ jobs:
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
+          target: "${{ matrix.target-arch }}"
 
       - name: "In-Kernel & Smoke Tests"
         uses: ./.github/actions/integration-test-extras
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
+          target: "${{ matrix.target-arch }}"
 
       - name: "Shim Integration Test"
+        # The containerd shim is host-side and architecture-independent; run it
+        # once (under x86) to avoid duplicating a slow, guest-booting test.
+        if: matrix.target-arch == 'x86'
         shell: bash
         env:
           NANVIX_DIR: ${{ github.workspace }}
@@ -636,7 +652,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-integration-extras-logs-${{ github.event.pull_request.number ||
-            github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
+            github.run_number }}-${{ matrix.build-type }}-${{ matrix.target-arch
+            }}-${{ matrix.machine-type }}
           overwrite: "true"
           path: |
             logs/
@@ -1585,7 +1602,8 @@ jobs:
       - name: "Download CI Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.memory-size }}mb
+          name: ci-build-release-${{ matrix.target-arch }}-${{ matrix.machine-type
+            }}-${{ matrix.memory-size }}mb
           path: .
 
       - name: "Package Release Archive"
