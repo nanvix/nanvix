@@ -18,6 +18,16 @@
 
 #include <stddef.h>
 
+/* `restrict` is C99-only; expand it to the keyword in C and to nothing in C++,
+   where it is a parse error (even as `__restrict`) inside array parameters. */
+#ifndef __nanvix_restrict
+#ifdef __cplusplus
+#define __nanvix_restrict
+#else
+#define __nanvix_restrict restrict
+#endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -77,10 +87,10 @@ typedef struct {
  * Regular Expression Functions
  *==================================================================================================*/
 
-extern int regcomp(regex_t *restrict preg, const char *restrict pattern, int cflags);
-extern int regexec(const regex_t *restrict preg, const char *restrict string, size_t nmatch,
-                   regmatch_t pmatch[restrict], int eflags);
-extern size_t regerror(int errcode, const regex_t *restrict preg, char *restrict errbuf,
+extern int regcomp(regex_t *__nanvix_restrict preg, const char *__nanvix_restrict pattern, int cflags);
+extern int regexec(const regex_t *__nanvix_restrict preg, const char *__nanvix_restrict string, size_t nmatch,
+                   regmatch_t pmatch[__nanvix_restrict], int eflags);
+extern size_t regerror(int errcode, const regex_t *__nanvix_restrict preg, char *__nanvix_restrict errbuf,
                        size_t errbuf_size);
 extern void regfree(regex_t *preg);
 

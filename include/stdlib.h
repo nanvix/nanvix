@@ -19,6 +19,16 @@
 #include <sys/wait.h>
 #include <locale.h>
 
+/* `restrict` is C99-only; expand it to the keyword in C and to nothing in C++,
+   where it is a parse error (even as `__restrict`) inside array parameters. */
+#ifndef __nanvix_restrict
+#ifdef __cplusplus
+#define __nanvix_restrict
+#else
+#define __nanvix_restrict restrict
+#endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -90,20 +100,20 @@ extern double atof(const char *nptr);
 extern int atoi(const char *nptr);
 extern long atol(const char *nptr);
 extern long long atoll(const char *nptr);
-extern double strtod(const char *restrict nptr, char **restrict endptr);
-extern float strtof(const char *restrict nptr, char **restrict endptr);
-extern long double strtold(const char *restrict nptr, char **restrict endptr);
-extern long strtol(const char *restrict nptr, char **restrict endptr, int base);
-extern long long strtoll(const char *restrict nptr, char **restrict endptr, int base);
-extern unsigned long strtoul(const char *restrict nptr, char **restrict endptr, int base);
-extern unsigned long long strtoull(const char *restrict nptr, char **restrict endptr, int base);
-extern double strtod_l(const char *restrict nptr, char **restrict endptr, locale_t locale);
-extern float strtof_l(const char *restrict nptr, char **restrict endptr, locale_t locale);
-extern long double strtold_l(const char *restrict nptr, char **restrict endptr, locale_t locale);
-extern long strtol_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);
-extern long long strtoll_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);
-extern unsigned long strtoul_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);
-extern unsigned long long strtoull_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);
+extern double strtod(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr);
+extern float strtof(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr);
+extern long double strtold(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr);
+extern long strtol(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, int base);
+extern long long strtoll(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, int base);
+extern unsigned long strtoul(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, int base);
+extern unsigned long long strtoull(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, int base);
+extern double strtod_l(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, locale_t locale);
+extern float strtof_l(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, locale_t locale);
+extern long double strtold_l(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, locale_t locale);
+extern long strtol_l(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, int base, locale_t locale);
+extern long long strtoll_l(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, int base, locale_t locale);
+extern unsigned long strtoul_l(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, int base, locale_t locale);
+extern unsigned long long strtoull_l(const char *__nanvix_restrict nptr, char **__nanvix_restrict endptr, int base, locale_t locale);
 
 /*==================================================================================================
  * Integer Arithmetic
@@ -159,25 +169,25 @@ extern int system(const char *command);
  *==================================================================================================*/
 
 extern int mblen(const char *s, size_t n);
-extern int mbtowc(wchar_t *restrict pwc, const char *restrict s, size_t n);
-extern size_t mbstowcs(wchar_t *restrict dst, const char *restrict src, size_t n);
+extern int mbtowc(wchar_t *__nanvix_restrict pwc, const char *__nanvix_restrict s, size_t n);
+extern size_t mbstowcs(wchar_t *__nanvix_restrict dst, const char *__nanvix_restrict src, size_t n);
 extern int wctomb(char *s, wchar_t wc);
-extern size_t wcstombs(char *restrict dst, const wchar_t *restrict src, size_t n);
+extern size_t wcstombs(char *__nanvix_restrict dst, const wchar_t *__nanvix_restrict src, size_t n);
 
 /*==================================================================================================
  * Temporary Files
  *==================================================================================================*/
 
-extern char *mkdtemp(char *template);
-extern int mkostemp(char *template, int flag);
-extern int mkstemp(char *template);
-extern char *mktemp(char *template);
+extern char *mkdtemp(char *tmpl);
+extern int mkostemp(char *tmpl, int flag);
+extern int mkstemp(char *tmpl);
+extern char *mktemp(char *tmpl);
 
 /*==================================================================================================
  * Path Utilities
  *==================================================================================================*/
 
-extern char *realpath(const char *restrict path, char *restrict resolved_path);
+extern char *realpath(const char *__nanvix_restrict path, char *__nanvix_restrict resolved_path);
 
 /*==================================================================================================
  * Pseudo-Terminals
