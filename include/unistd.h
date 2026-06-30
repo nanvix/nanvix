@@ -33,6 +33,12 @@ extern "C" {
 #ifndef _POSIX_THREADS
 #define _POSIX_THREADS 200809L
 #endif
+#ifndef _POSIX_TIMERS
+#define _POSIX_TIMERS 200809L
+#endif
+#ifndef _POSIX_MONOTONIC_CLOCK
+#define _POSIX_MONOTONIC_CLOCK 200809L
+#endif
 
 #define STDIN_FILENO 0 /**< File descriptor of standard input. */
 #define STDOUT_FILENO 1 /**< File descriptor of standard output. */
