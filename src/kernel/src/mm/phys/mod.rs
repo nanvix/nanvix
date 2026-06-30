@@ -5,6 +5,9 @@
 // Modules
 //==================================================================================================
 
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
 pub(crate) mod frame;
 mod kframe;
 mod manager;
@@ -31,6 +34,10 @@ use ::alloc::collections::LinkedList;
 use ::arch::mem;
 use ::bitmap::Bitmap;
 use ::sys::error::Error;
+
+// Include specifications.
+#[cfg(verus_keep_ghost)]
+include!("mod.spec.rs");
 
 //==================================================================================================
 // Exports

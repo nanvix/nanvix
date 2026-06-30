@@ -5,6 +5,10 @@
 // Modules
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("mod.spec.rs");
+
 pub mod pvclock;
 mod start;
 mod start16;
@@ -485,6 +489,10 @@ pub fn get_kstack_guard_base() -> usize {
 /// The guest physical address corresponding to the given guest virtual address.
 ///
 ///
+#[verus_spec(result =>
+    ensures
+        result as int == spec_gva_to_gpa(gva as int),
+)]
 #[inline(always)]
 pub fn gva_to_gpa(gva: usize) -> usize {
     gva

@@ -30,8 +30,7 @@ Reference](https://verus-lang.github.io/verus/guide/).
   same as Rust's `i32` or `usize`. mathematical operators (e.g., +, *) upconvert their inputs to int
   (signed mathematical integer).
 - Verified crates split into `lib.rs` (code + contracts), `lib.spec.rs` (specification
-  that a human needs to review/audit), and optionally `lib.proof.rs` (verification
-  material that does not need such review — safe to skip).
+  material), and optionally `lib.proof.rs` (proof lemmas and helper facts).
 - To understand a function, read its contract — you do **not** need to read the body or
   any proofs.
 
@@ -88,8 +87,8 @@ When present, each file has a distinct purpose:
 | File           | Purpose                                        | Must read?              |
 |----------------|------------------------------------------------|-------------------------|
 | `lib.rs`       | Implementation with `#[verus_spec]` attributes | **Yes**                 |
-| `lib.spec.rs`  | Specification a human needs to review/audit    | **Yes** (for contracts) |
-| `lib.proof.rs` | Verification material (proofs, lemmas)         | Only for debugging      |
+| `lib.spec.rs`  | Specification material                         | **Yes** (for contracts) |
+| `lib.proof.rs` | Verification material (proofs, lemmas)         | When checking proofs    |
 
 Spec and proof files are pulled into `lib.rs` with conditional includes:
 
@@ -220,12 +219,12 @@ iteration and the point just after the loop ends).
 From `src/libs/slab/src/lib.rs`:
 
 ```rust
-#[cfg_attr(verus_keep_ghost, verus_spec(
+#[verus_spec(
     invariant
         index.inv(),
         index@.num_bits == index_len * u8_bits,
         index@.set_bits == Set::new(|j: int| num_data_blocks <= j < i),
-))]
+)]
 for i in num_data_blocks..(index_len * u8_bits) {
     index.set(i)?;
 }
@@ -239,8 +238,8 @@ Reading this invariant:
    loop index `i`, exactly the bits in range `[num_data_blocks, i)` have been set. This
    tracks the progress of marking upper bits as "in use".
 
-The `#[cfg_attr(verus_keep_ghost, ...)]` wrapper ensures this attribute is only active
-during verification and is stripped from normal builds.
+The `verus_spec` attribute is active during verification and compiles away in normal
+builds, so it does not need a `#[cfg_attr(verus_keep_ghost, ...)]` wrapper.
 
 ### `decreases` — Loop and Recursion Termination
 
@@ -251,12 +250,12 @@ terminate. The clause names an expression that gets strictly smaller on every it
 From `src/libs/bitmap/src/lib.rs` (simplified):
 
 ```rust
-#[cfg_attr(verus_keep_ghost, verus_spec(
+#[verus_spec(
     invariant
         0 <= i <= number_of_bits,
         // …
     decreases number_of_bits - i,
-))]
+)]
 while i < number_of_bits {
     // loop body
 }
@@ -639,9 +638,9 @@ pattern for FFI, allocators, and I/O — the trust boundary is explicit and inte
 
 ### 6. Overlooking `assume` in proofs
 
-`assume(P)` introduces fact `P` **without proof** — it is a soundness hole. A complete
-verification should contain no `assume` statements. If you encounter one, flag it for
-review. (By contrast, `assert(P)` is safe — it *proves* `P`.)
+`assume(P)` introduces fact `P` **without proof**. Treat it as a deliberate trust boundary:
+check that the assumed fact is narrow, documented, and justified. (By contrast, `assert(P)`
+is safe because the verifier must prove `P`.)
 
 ---
 
@@ -656,6 +655,5 @@ When you open a verified crate for the first time:
    its `inv()` function to understand what `self@` fields mean in contracts.
 3. **Check for `uninterp spec fn`** — these define abstract concepts (like `is_zero`)
    with no body. Their meaning comes purely from the contracts that reference them.
-4. **Skip `lib.proof.rs`** — unless you are debugging a verification failure.
-5. **Grep for `assume(`** — any `assume` statement is a soundness hole that should
-   eventually be replaced by a proof.
+4. **Open `lib.proof.rs` when needed** — especially for trust boundaries and helper lemmas.
+5. **Grep for `assume(`** — each assumption should be narrow and justified.

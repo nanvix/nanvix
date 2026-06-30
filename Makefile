@@ -312,7 +312,7 @@ endif
 export VERUS_EXECUTABLE_DIR ?=
 
 # List of crates to verify with Verus.
-VERUS_CRATES := bitmap nanvix-slab kernel
+VERUS_CRATES := bitmap sys nanvix-slab arch kernel
 
 # Platform-specific Verus binary name.
 ifeq ($(IS_WINDOWS),yes)
