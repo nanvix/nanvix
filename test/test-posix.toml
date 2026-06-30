@@ -183,6 +183,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-headers"
+program = "./bin/test-c-headers.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-hello"
 program = "./bin/test-c-hello.initrd"
 expected_exit_code = 0
