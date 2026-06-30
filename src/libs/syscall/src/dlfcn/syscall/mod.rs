@@ -82,6 +82,9 @@ static LIBRARY_SEARCH_PATHS: Lazy<Mutex<Vec<String>>> =
 /// Ensures `dlinit` runs at most once.
 static DLINIT_ONCE: Once = Once::new();
 
+/// Ensures the global-scope `.fini_array` destructors run at most once.
+static GLOBAL_FINI_ONCE: Once = Once::new();
+
 /// Resolves a library filename to a canonical path.
 ///
 /// If `filename` contains a path separator (`/`), it is treated as an explicit
@@ -375,6 +378,59 @@ pub(super) fn register_library_in_global_scope(lib_arc: &Arc<Mutex<DynamicLibrar
     pinned.push(lib_arc.clone());
 }
 
+/// Runs the `.fini_array` destructors of every shared library that was loaded
+/// into the global scope (`RTLD_GLOBAL`) in the reverse of their load order.
+///
+/// This is the process-exit counterpart of the `.init_array` constructors that
+/// [`dlopen`] runs when a library is loaded. The startup `DT_NEEDED` loader
+/// ([`dllink_executable`](exe_link::dllink_executable)) loads the executable's
+/// dependencies with `RTLD_GLOBAL`, so each one is pinned in
+/// [`GLOBAL_PINNED_LIBRARIES`] in load order and its constructors run before
+/// `main`. Those pinned libraries are never unloaded by `dlclose` (the extra
+/// pin reference keeps their reference count above the unload threshold), so
+/// their destructors would otherwise never run. This routine closes that gap
+/// by invoking them at process teardown, newest-loaded first — the reverse of
+/// construction order, as required by the System V gABI.
+///
+/// Idempotent: a [`Once`] guard ensures the destructors run at most once even
+/// if this is called more than once (e.g. from multiple exit paths).
+///
+/// # Locking
+///
+/// The pinned-library list is snapshotted under its lock and the lock is
+/// released before any destructor runs, so a destructor may legally re-enter
+/// the loader (`dlsym`/`dlopen`/`dlclose`) without self-deadlocking. The
+/// snapshot's `Arc`s keep every library — and therefore its mapped segments —
+/// alive for the duration of the walk.
+pub(super) fn run_global_destructors() {
+    GLOBAL_FINI_ONCE.call_once(|| {
+        // Snapshot the pinned libraries in reverse load order, then release the
+        // lock before invoking any destructor.
+        let libraries: Vec<Arc<Mutex<DynamicLibrary>>> = {
+            let pinned: spin::MutexGuard<'_, Vec<Arc<Mutex<DynamicLibrary>>>> =
+                GLOBAL_PINNED_LIBRARIES.lock();
+            pinned.iter().rev().cloned().collect()
+        };
+
+        for lib_arc in libraries.iter() {
+            // Snapshot the destructor descriptor and library name under a short
+            // per-library lock, then drop the lock before invoking destructors
+            // so a destructor that re-enters the loader cannot deadlock.
+            let (descriptor, name): (Option<(usize, usize)>, String) = {
+                let lib: spin::MutexGuard<'_, DynamicLibrary> = lib_arc.lock();
+                (lib.fini_array_descriptor(), String::from(lib.name()))
+            };
+            // SAFETY: `descriptor` was produced under the per-library lock for a
+            // library still held alive by `libraries`'s `Arc`; pinned libraries
+            // are never unloaded, so its segments remain mapped; and no dlfcn
+            // locks are held across this call.
+            unsafe {
+                DynamicLibrary::invoke_fini_array(descriptor, &name);
+            }
+        }
+    });
+}
+
 //==================================================================================================
 // Exports
 //==================================================================================================
@@ -383,4 +439,7 @@ pub use dladdr::dladdr;
 pub use dlclose::dlclose;
 pub use dlopen::dlopen;
 pub use dlsym::dlsym;
-pub use exe_link::dllink_executable;
+pub use exe_link::{
+    dlfini_executable,
+    dllink_executable,
+};

@@ -182,6 +182,44 @@ pub unsafe fn dllink_executable() -> Result<(), Error> {
     Ok(())
 }
 
+///
+/// # Description
+///
+/// Runs the `.fini_array` destructors of the executable's startup-loaded
+/// shared-library dependencies, in the reverse of their load order. This is the
+/// process-exit counterpart of [`dllink_executable`]: that routine loads the
+/// executable's `DT_NEEDED` dependencies into the global scope and runs their
+/// `.preinit_array` / `.init_array` constructors (via `dlopen`) before `main`;
+/// this runs their `.fini_array` destructors after `main` returns.
+///
+/// The startup dependencies are loaded with `RTLD_GLOBAL` and are therefore
+/// pinned for the lifetime of the process — `dlclose` never unloads them — so
+/// their destructors are not driven by the normal `dlclose` teardown path.
+/// This routine drives them at process exit instead, newest dependency first,
+/// as required by the System V gABI.
+///
+/// The walk covers every library currently in the global scope (the startup
+/// `DT_NEEDED` dependencies plus anything later promoted with
+/// `dlopen(RTLD_GLOBAL)`); libraries loaded `RTLD_LOCAL` and already torn down
+/// through `dlclose` are unaffected.
+///
+/// # Returns
+///
+/// Nothing. Destructors that panic propagate as usual; a library with no
+/// `.fini_array` is skipped.
+///
+/// # Safety
+///
+/// Must be called once, on the main executable's own thread of control, after
+/// `main` (and the executable's own `.fini_array`) has returned and while the
+/// heap is still up — a destructor may allocate or free. The destructors are
+/// the loaded libraries' own trusted teardown routines. Repeated calls are a
+/// no-op (guarded by a `Once`).
+///
+pub unsafe fn dlfini_executable() {
+    super::run_global_destructors();
+}
+
 //==================================================================================================
 // Private Functions
 //==================================================================================================
