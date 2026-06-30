@@ -369,49 +369,18 @@ export VERUS_KERNEL_FEATURES := microvm trace
 # nvx panic handler, no sysalloc). Together with `libc.a` and `libnvx_crt0.a` it
 # forms the full crt0 + libc + libm replacement for the GCC + newlib toolchain.
 ALL_GUEST_STATIC_LIBS := nvx-crt0 nanvix_libc nanvix_libm
-ALL_GUEST_RUST_LIBS := \
-	arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe \
-	koptions nvx proc raw-array nanvix-slab sorted-vec static_assert sysapi \
-	syscall sysalloc syslog-macros syslog sys \
-	libc_arpa_inet libc_assert libc_ctype libc_dirent libc_dlfcn libc_errno libc_fnmatch \
-	libc_ftw libc_glob libc_grp libc_inttypes libc_langinfo libc_libgen libc_locale \
-	libc_math libc_mntent libc_netdb libc_poll libc_pthread libc_pwd \
-	libc_regex libc_setjmp libc_signal libc_stdio libc_stdlib libc_string \
-	libc_sys_ioctl libc_sys_resource libc_sys_stat libc_sys_statvfs libc_sys_time libc_sys_times \
-	libc_sys_un libc_sys_uio libc_sys_utsname libc_termios libc_time libc_unistd \
-	libc_utime libc_wchar libc_wctype \
-	mmio-tag multiimage vfs-bench-common
-ALL_GUEST_RUST_LIBS_TEST_LIST := \
-	arch bitmap bump-allocator cache cmdline config elf error fat32 type-safe \
-	koptions proc raw-array nanvix-slab sorted-vec static_assert \
-	libc_assert libc_ctype libc_fnmatch libc_inttypes libc_langinfo libc_libgen libc_locale libc_math libc_mntent libc_regex \
-	libc_setjmp libc_signal libc_stdio libc_stdlib libc_string libc_time \
-	libc_wchar libc_wctype \
-	syslog-macros syslog sys mmio-tag syscall vfs
 
-ALL_GUEST_DAEMONS := memd procd vfsd
-ALL_GUEST_BENCHMARKS := \
-	echo-rust-nostd noop-rust-nostd snapshot-rust-nostd \
-	vfs-bench-nostd mount-bench-nostd
-ALL_GUEST_APPLICATIONS := hello-rust-nostd
-ALL_GUEST_TESTS := \
-	test-rust-testd test-rust-file test-rust-fork-guestfs test-rust-fork-hostfs test-rust-fork-kcall \
-	test-rust-waitpid test-rust-kill test-rust-job-control test-rust-setenv test-rust-thread test-rust-stress test-rust-kernel test-rust-mmio-fault \
-	test-rust-sigsegv \
-	test-rust-linux-app test-rust-arch test-rust-vfs-test test-rust-misc test-rust-memory test-rust-network \
-	test-rust-c-bindings test-rust-mount-test test-rust-mount-multipart-test test-rust-cmdline-len \
-	test-rust-env-nostd test-rust-cmdline-env-nostd test-rust-getenv-nostd test-rust-snapshot-test test-rust-execv-test test-rust-execv-target \
-	test-rust-execv-big-target test-rust-pipe-dup2 test-rust-fork-exec-vfsd-test test-rust-fork-exec-vfsd-target \
-	test-rust-fork-exec-write-test test-rust-fork-exec-write-target test-rust-thread-vfs-test \
-	test-rust-fork-exec-loop-test test-rust-fork-exec-loop-target test-rust-socket-fork \
-	test-rust-fork-exec-pipe-bulk-test test-rust-fork-exec-pipe-bulk-target \
-	test-rust-fork-exec-pipe-loop-test test-rust-fork-exec-pipe-loop-target \
-	test-rust-fork-exec-argv-space-test test-rust-fork-exec-argv-space-target
-# dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
-# relocation model produces R_X86_64_32 relocations incompatible with PIE.
-ifneq ($(TARGET),x86_64)
-ALL_GUEST_TESTS += test-rust-dlfcn
-endif
+# Guest component lists live in dedicated fragments under build/make/lists/ (one
+# variable per file) so that adding an entry edits a small, isolated file and
+# rarely conflicts across branches. They are defined here — before
+# ALL_GUEST_BINARIES below and the consuming build/make/*.mk includes.
+include build/make/lists/guest-rust-libs.mk
+include build/make/lists/guest-rust-libs-test-list.mk
+include build/make/lists/guest-daemons.mk
+include build/make/lists/guest-benchmarks.mk
+include build/make/lists/guest-applications.mk
+include build/make/lists/guest-tests.mk
+
 ALL_GUEST_BINARIES := $(ALL_GUEST_DAEMONS) $(ALL_GUEST_BENCHMARKS) $(ALL_GUEST_APPLICATIONS)
 ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 
@@ -423,7 +392,38 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 # guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
 # (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner
 # is gated on TARGET=x86 accordingly.
-ALL_POSIX_TESTS := test-c-bindings test-c-ctor test-c-dlfcn test-c-dlfcn-diamond test-c-dlfcn-global test-c-dlfcn-init-runpath test-c-dlfcn-needed test-c-dlfcn-pie test-c-dlfcn-selflink test-c-dlfcn-weak test-c-echo test-c-execvp test-c-file test-c-fork-pid test-c-fork-pthread test-c-glob test-c-hello test-c-inet test-c-libgen test-c-memory test-c-misc test-c-network test-c-noop test-c-regex test-c-setjmp test-c-stdio test-c-thread
+#
+# One entry per line (with `\` continuations) so that adding a suite touches a
+# single line, minimizing merge conflicts between branches that each add a suite.
+ALL_POSIX_TESTS := \
+	test-c-bindings \
+	test-c-ctor \
+	test-c-dlfcn \
+	test-c-dlfcn-diamond \
+	test-c-dlfcn-global \
+	test-c-dlfcn-init-runpath \
+	test-c-dlfcn-needed \
+	test-c-dlfcn-pie \
+	test-c-dlfcn-selflink \
+	test-c-dlfcn-weak \
+	test-c-echo \
+	test-c-execvp \
+	test-c-file \
+	test-c-fork-pid \
+	test-c-fork-pthread \
+	test-c-glob \
+	test-c-hello \
+	test-c-inet \
+	test-c-libgen \
+	test-c-memory \
+	test-c-misc \
+	test-c-network \
+	test-c-noop \
+	test-c-regex \
+	test-c-setjmp \
+	test-c-stdio \
+	test-c-termios \
+	test-c-thread
 
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 

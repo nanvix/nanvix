@@ -239,6 +239,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-termios"
+program = "./bin/test-c-termios.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-thread"
 program = "./bin/test-c-thread.initrd"
 expected_exit_code = 0
