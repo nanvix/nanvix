@@ -269,6 +269,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-locale"
+program = "./bin/test-c-locale.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-wchar"
 program = "./bin/test-c-wchar.initrd"
 expected_exit_code = 0

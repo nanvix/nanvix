@@ -15,6 +15,7 @@
  */
 
 #include <stddef.h>
+#include <locale.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,6 +71,8 @@ extern char *strtok(char *s, const char *delim);
 extern char *strtok_r(char *s, const char *delim, char **saveptr);
 extern int strverscmp(const char *s1, const char *s2);
 extern size_t strxfrm(char *dest, const char *src, size_t n);
+extern int strcoll_l(const char *s1, const char *s2, locale_t locale);
+extern size_t strxfrm_l(char *dest, const char *src, size_t n, locale_t locale);
 
 #ifdef __cplusplus
 }

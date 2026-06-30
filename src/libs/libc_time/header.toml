@@ -8,7 +8,7 @@ brief = "Date and time."
 description = '''
 Declares functions for calendar time manipulation and conversion.
 Implemented by the libc_time Rust crate.'''
-includes = ["stddef.h"]
+includes = ["stddef.h", "locale.h"]
 guard = "_NANVIX_TIME_H"
 content_order = ["types", "section:0", "section:1", "raw:0", "raw:1", "raw:2", "raw:3"]
 
@@ -77,7 +77,9 @@ extern char *asctime_r(const struct tm *timeptr, char *buf);
 extern char *ctime(const time_t *timep);
 extern char *ctime_r(const time_t *timep, char *buf);
 extern size_t strftime(char *s, size_t max, const char *format,
-                       const struct tm *timeptr);'''
+                       const struct tm *timeptr);
+extern size_t strftime_l(char *s, size_t max, const char *format,
+                         const struct tm *timeptr, locale_t locale);'''
 
 # Implemented by the syscall crate; declared here so callers of time.h can use them.
 [[raw_sections]]

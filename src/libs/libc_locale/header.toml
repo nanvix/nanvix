@@ -12,6 +12,9 @@ Declares functions and types for locale-specific formatting. Only the
 C/POSIX locale is supported. Implemented by the libc_locale Rust crate."""
 includes = ["stddef.h"]
 guard = "_NANVIX_LOCALE_H"
+# Emit the type block (which defines `locale_t`) before the constants so that the
+# `LC_GLOBAL_LOCALE` macro, whose value casts to `locale_t`, follows the typedef.
+content_order = ["types", "macros", "section:0", "section:1"]
 
 [[macros]]
 name = "LC_CTYPE"
@@ -40,6 +43,38 @@ value = "5"
 [[macros]]
 name = "LC_ALL"
 value = "6"
+
+[[macros]]
+name = "LC_CTYPE_MASK"
+value = "(1 << LC_CTYPE)"
+
+[[macros]]
+name = "LC_NUMERIC_MASK"
+value = "(1 << LC_NUMERIC)"
+
+[[macros]]
+name = "LC_TIME_MASK"
+value = "(1 << LC_TIME)"
+
+[[macros]]
+name = "LC_COLLATE_MASK"
+value = "(1 << LC_COLLATE)"
+
+[[macros]]
+name = "LC_MONETARY_MASK"
+value = "(1 << LC_MONETARY)"
+
+[[macros]]
+name = "LC_MESSAGES_MASK"
+value = "(1 << LC_MESSAGES)"
+
+[[macros]]
+name = "LC_ALL_MASK"
+value = "(LC_CTYPE_MASK | LC_NUMERIC_MASK | LC_TIME_MASK | LC_COLLATE_MASK | LC_MONETARY_MASK | LC_MESSAGES_MASK)"
+
+[[macros]]
+name = "LC_GLOBAL_LOCALE"
+value = "((locale_t) -1)"
 
 [[types]]
 text = """
@@ -74,3 +109,13 @@ struct lconv {
 [[sections]]
 title = "Functions"
 functions = ["setlocale", "localeconv"]
+
+[[sections]]
+title = "Locale Management"
+functions = ["newlocale", "duplocale", "freelocale", "uselocale"]
+
+[overrides]
+newlocale = "extern locale_t newlocale(int category_mask, const char *locale, locale_t base);"
+duplocale = "extern locale_t duplocale(locale_t locobj);"
+freelocale = "extern void freelocale(locale_t locobj);"
+uselocale = "extern locale_t uselocale(locale_t newloc);"

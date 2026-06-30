@@ -33,6 +33,7 @@ pub mod bcmp;
 pub mod bcopy;
 pub mod bzero;
 pub mod ffs;
+pub mod locale;
 pub mod memccpy;
 pub mod memchr;
 pub mod memcmp;

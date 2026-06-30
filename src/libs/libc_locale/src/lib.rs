@@ -32,3 +32,4 @@
 
 pub mod localeconv;
 pub mod setlocale;
+pub mod xlocale;

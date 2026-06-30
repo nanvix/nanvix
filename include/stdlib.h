@@ -17,6 +17,7 @@
 
 #include <stddef.h>
 #include <sys/wait.h>
+#include <locale.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -96,6 +97,13 @@ extern long strtol(const char *restrict nptr, char **restrict endptr, int base);
 extern long long strtoll(const char *restrict nptr, char **restrict endptr, int base);
 extern unsigned long strtoul(const char *restrict nptr, char **restrict endptr, int base);
 extern unsigned long long strtoull(const char *restrict nptr, char **restrict endptr, int base);
+extern double strtod_l(const char *restrict nptr, char **restrict endptr, locale_t locale);
+extern float strtof_l(const char *restrict nptr, char **restrict endptr, locale_t locale);
+extern long double strtold_l(const char *restrict nptr, char **restrict endptr, locale_t locale);
+extern long strtol_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);
+extern long long strtoll_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);
+extern unsigned long strtoul_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);
+extern unsigned long long strtoull_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);
 
 /*==================================================================================================
  * Integer Arithmetic

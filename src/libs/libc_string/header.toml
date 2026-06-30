@@ -10,7 +10,7 @@ brief = "String and memory operations."
 description = """
 Declares byte-string length and memory manipulation routines implemented by
 the libc_string Rust crate."""
-includes = ["stddef.h"]
+includes = ["stddef.h", "locale.h"]
 guard = "_NANVIX_STRING_H"
 
 [[sections]]
@@ -62,4 +62,10 @@ functions = [
     "strtok_r",
     "strverscmp",
     "strxfrm",
+    "strcoll_l",
+    "strxfrm_l",
 ]
+
+[overrides]
+strcoll_l = "extern int strcoll_l(const char *s1, const char *s2, locale_t locale);"
+strxfrm_l = "extern size_t strxfrm_l(char *dest, const char *src, size_t n, locale_t locale);"

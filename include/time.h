@@ -15,6 +15,7 @@
  */
 
 #include <stddef.h>
+#include <locale.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,6 +109,8 @@ extern char *ctime(const time_t *timep);
 extern char *ctime_r(const time_t *timep, char *buf);
 extern size_t strftime(char *s, size_t max, const char *format,
                        const struct tm *timeptr);
+extern size_t strftime_l(char *s, size_t max, const char *format,
+                         const struct tm *timeptr, locale_t locale);
 
 /*==================================================================================================
  * Clocks
