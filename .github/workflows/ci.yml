@@ -420,6 +420,14 @@ jobs:
       # sccache GHA backend) can persist entries across runs.
       actions: write
 
+    env:
+      # Opt into sccache's GitHub Actions cache backend. The sccache-action only
+      # installs sccache and exports the cache-service URL/token (plus
+      # ACTIONS_CACHE_SERVICE_V2); it does NOT set this flag. Without it sccache
+      # silently falls back to a local on-disk cache that is discarded with the
+      # ephemeral container every run, yielding a permanent ~0% hit rate.
+      SCCACHE_GHA_ENABLED: "true"
+
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # !failure() ensures the build does not start when checks/lint/verify fail.
     if: |
@@ -839,6 +847,10 @@ jobs:
       actions: write
     env:
       MACHINE_TYPE: ${{ matrix.machine-type }}
+      # Opt into sccache's GitHub Actions cache backend (see ci-build). The
+      # sccache-action does not set this flag, so without it Windows builds use
+      # a local cache discarded with the ephemeral runner, staying cold.
+      SCCACHE_GHA_ENABLED: "true"
 
     steps:
       - uses: actions/checkout@v7
@@ -851,12 +863,13 @@ jobs:
           rustup show
           rustup component add --toolchain $toolchain clippy rustfmt
 
-      # Enable the sccache GitHub Actions cache backend so Windows builds reuse
-      # cached compilation artifacts across runs. Without this the GitHub-hosted
-      # Windows runner's ephemeral disk discards the local sccache cache every
-      # run, leaving Windows builds permanently cold. The action installs
-      # sccache, adds it to PATH (picked up by the Makefile's RUSTC_WRAPPER
-      # auto-detection), and sets SCCACHE_GHA_ENABLED=true.
+      # Install sccache and wire up the GitHub Actions cache backend so Windows
+      # builds reuse cached compilation artifacts across runs. Without caching
+      # the GitHub-hosted Windows runner's ephemeral disk discards the local
+      # sccache cache every run, leaving Windows builds permanently cold. The
+      # action installs sccache, adds it to PATH (picked up by the Makefile's
+      # RUSTC_WRAPPER auto-detection), and exports the GHA cache-service URL and
+      # token; the SCCACHE_GHA_ENABLED flag itself is set at the job level above.
       - name: "Setup sccache"
         uses: Mozilla-Actions/sccache-action@v0.0.10
         with:
