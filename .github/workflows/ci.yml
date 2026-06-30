@@ -42,6 +42,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
 
+# Disable Cargo incremental compilation across every CI job. CI runners start
+# from an empty target/ directory on each run, so incremental compilation gives
+# no benefit and actively defeats sccache, which refuses to cache incremental
+# builds. Forcing it off (overriding the dev profile's incremental = true) makes
+# debug compilations cacheable and raises the sccache hit rate.
+env:
+  CARGO_INCREMENTAL: 0
+
 # Build-type strategy:
 #   pull_request      → debug only   (fast feedback during development)
 #   merge_group       → release only (final validation before landing on dev)
@@ -408,6 +416,9 @@ jobs:
     permissions:
       contents: read
       packages: read
+      # Grant cache write access so the actions/cache save step (and the
+      # sccache GHA backend) can persist entries across runs.
+      actions: write
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # !failure() ensures the build does not start when checks/lint/verify fail.
@@ -436,6 +447,28 @@ jobs:
         uses: Mozilla-Actions/sccache-action@v0.0.10
         with:
           version: "v0.10.0"
+
+      # Cache the Cargo registry index, downloaded crate archives (.crate
+      # files), and git dependency database so dependency resolution and crate
+      # downloads are not repeated on every run. The extracted sources under
+      # registry/src and the git/checkouts working copies are intentionally
+      # omitted: Cargo regenerates them locally from the cached archives and
+      # git/db, so caching them would only bloat the entry without saving any
+      # network round-trips. Keyed on Cargo.lock; the machine-type is folded
+      # into the key so concurrent matrix legs do not race on the same entry.
+      # sccache (above) handles compilation caching; this complements it by
+      # avoiding redundant network fetches and registry rebuilds.
+      - name: "Cache Cargo Registry"
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ matrix.machine-type }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ matrix.machine-type }}-
+            cargo-${{ runner.os }}-
 
       - name: "Build & Unit Test"
         shell: bash
@@ -801,6 +834,9 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+      # Grant cache write access so the sccache GHA backend can persist
+      # compilation artifacts across runs.
+      actions: write
     env:
       MACHINE_TYPE: ${{ matrix.machine-type }}
 
@@ -814,6 +850,17 @@ jobs:
           rustup toolchain install $toolchain
           rustup show
           rustup component add --toolchain $toolchain clippy rustfmt
+
+      # Enable the sccache GitHub Actions cache backend so Windows builds reuse
+      # cached compilation artifacts across runs. Without this the GitHub-hosted
+      # Windows runner's ephemeral disk discards the local sccache cache every
+      # run, leaving Windows builds permanently cold. The action installs
+      # sccache, adds it to PATH (picked up by the Makefile's RUSTC_WRAPPER
+      # auto-detection), and sets SCCACHE_GHA_ENABLED=true.
+      - name: "Setup sccache"
+        uses: Mozilla-Actions/sccache-action@v0.0.10
+        with:
+          version: "v0.10.0"
 
       - name: "Setup Prerequisites"
         shell: pwsh
