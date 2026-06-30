@@ -44,6 +44,7 @@ pub mod ispunct;
 pub mod isspace;
 pub mod isupper;
 pub mod isxdigit;
+pub mod locale;
 pub mod toascii;
 pub mod tolower;
 pub mod toupper;

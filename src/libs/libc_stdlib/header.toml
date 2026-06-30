@@ -11,7 +11,7 @@ description = """
 Declares memory allocation, string conversion, integer arithmetic, searching
 and sorting, pseudo-random sequence generation, environment, and process
 control interfaces implemented by the libc_stdlib Rust crate."""
-includes = ["stddef.h", "sys/wait.h"]
+includes = ["stddef.h", "sys/wait.h", "locale.h"]
 guard = "_NANVIX_STDLIB_H"
 content_order = [
     "macros",
@@ -110,6 +110,13 @@ functions = [
     "strtoll",
     "strtoul",
     "strtoull",
+    "strtod_l",
+    "strtof_l",
+    "strtold_l",
+    "strtol_l",
+    "strtoll_l",
+    "strtoul_l",
+    "strtoull_l",
 ]
 
 [[sections]]
@@ -186,6 +193,13 @@ strtoul = '''
 extern unsigned long strtoul(const char *restrict nptr, char **restrict endptr, int base);'''
 strtoull = '''
 extern unsigned long long strtoull(const char *restrict nptr, char **restrict endptr, int base);'''
+strtod_l = "extern double strtod_l(const char *restrict nptr, char **restrict endptr, locale_t locale);"
+strtof_l = "extern float strtof_l(const char *restrict nptr, char **restrict endptr, locale_t locale);"
+strtold_l = "extern long double strtold_l(const char *restrict nptr, char **restrict endptr, locale_t locale);"
+strtol_l = "extern long strtol_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);"
+strtoll_l = "extern long long strtoll_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);"
+strtoul_l = "extern unsigned long strtoul_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);"
+strtoull_l = "extern unsigned long long strtoull_l(const char *restrict nptr, char **restrict endptr, int base, locale_t locale);"
 qsort_r = '''
 extern void qsort_r(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *, void *), void *arg);'''
 mbtowc = '''

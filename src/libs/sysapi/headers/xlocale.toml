@@ -1,0 +1,14 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for xlocale.h.
+
+file = "xlocale.h"
+brief = "Compatibility shim for the POSIX xlocale API."
+description = '''
+Re-includes the headers that declare the locale-management functions and the
+per-locale `*_l` functions. Provided for toolchains and sources that include
+<xlocale.h> directly; Nanvix declares each symbol in its primary header.'''
+includes = ["locale.h", "ctype.h", "string.h", "time.h", "stdlib.h"]
+guard = "_NANVIX_XLOCALE_H"
+extern_c = false

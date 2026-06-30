@@ -89,6 +89,7 @@ mod labs;
 mod ldiv;
 mod llabs;
 mod lldiv;
+pub mod locale;
 mod malloc;
 mod malloc_usable_size;
 mod memalign;

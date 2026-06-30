@@ -39,6 +39,7 @@ pub mod ctime_r;
 pub mod difftime;
 pub mod gmtime;
 pub mod gmtime_r;
+pub mod locale;
 pub mod localtime;
 pub mod localtime_r;
 pub mod mktime;

@@ -11,7 +11,7 @@ description = """
 Declares functions for testing and mapping characters. All functions operate
 on values representable as unsigned char or the value EOF. Implemented by
 the libc_ctype Rust crate."""
-includes = []
+includes = ["locale.h"]
 guard = "_NANVIX_CTYPE_H"
 
 [[sections]]
@@ -30,8 +30,36 @@ functions = [
     "iscntrl",
     "isxdigit",
     "isascii",
+    "isalnum_l",
+    "isalpha_l",
+    "isblank_l",
+    "iscntrl_l",
+    "isdigit_l",
+    "isgraph_l",
+    "islower_l",
+    "isprint_l",
+    "ispunct_l",
+    "isspace_l",
+    "isupper_l",
+    "isxdigit_l",
 ]
 
 [[sections]]
 title = "Conversion"
-functions = ["toupper", "tolower", "toascii"]
+functions = ["toupper", "tolower", "toascii", "tolower_l", "toupper_l"]
+
+[overrides]
+isalnum_l = "extern int isalnum_l(int c, locale_t locale);"
+isalpha_l = "extern int isalpha_l(int c, locale_t locale);"
+isblank_l = "extern int isblank_l(int c, locale_t locale);"
+iscntrl_l = "extern int iscntrl_l(int c, locale_t locale);"
+isdigit_l = "extern int isdigit_l(int c, locale_t locale);"
+isgraph_l = "extern int isgraph_l(int c, locale_t locale);"
+islower_l = "extern int islower_l(int c, locale_t locale);"
+isprint_l = "extern int isprint_l(int c, locale_t locale);"
+ispunct_l = "extern int ispunct_l(int c, locale_t locale);"
+isspace_l = "extern int isspace_l(int c, locale_t locale);"
+isupper_l = "extern int isupper_l(int c, locale_t locale);"
+isxdigit_l = "extern int isxdigit_l(int c, locale_t locale);"
+tolower_l = "extern int tolower_l(int c, locale_t locale);"
+toupper_l = "extern int toupper_l(int c, locale_t locale);"
