@@ -25,6 +25,7 @@ cfg_if::cfg_if! {
         pub use syscall::dladdr;
         pub use syscall::dlinit;
         pub use syscall::dllink_executable;
+        pub use syscall::dlfini_executable;
     }
 }
 

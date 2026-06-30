@@ -252,6 +252,23 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
         run_fini_array(&raw const __fini_array_start, &raw const __fini_array_end);
     }
 
+    // Run the `.fini_array` destructors of the startup-loaded shared-library
+    // dependencies (those auto-loaded by `dllink_executable` above, plus any
+    // promoted to the global scope via `dlopen(RTLD_GLOBAL)`), newest first —
+    // the reverse of the construction order `dllink_executable` established
+    // before `main`. Those dependencies are pinned for the lifetime of the
+    // process, so `dlclose` never drives their destructors; this is the
+    // process-exit counterpart that does. Done after the executable's own
+    // `.fini_array` (the executable was constructed last, so it is destroyed
+    // first) and before `runtime_cleanup` tears down the heap, because a
+    // destructor may still allocate or free. Unlike the executable's own
+    // arrays, this is NOT gated on the `init-array` feature: the dependencies'
+    // constructors ran through `dlopen` regardless of it, so their destructors
+    // must too. A no-op for executables with no shared-library dependencies.
+    unsafe {
+        ::syscall::dlfcn::dlfini_executable();
+    }
+
     // Tear down the runtime.  `argv` / `env` are leaked above (see the
     // comment at their declaration) so no Vec destructors run here
     // that would touch the heap after `runtime_cleanup` releases it.
