@@ -134,8 +134,11 @@ name = "posix/test-c-echo"
 program = "./bin/test-c-echo.initrd"
 expected_exit_code = 0
 
+# Release-only: loads a large (~23 MB) RAM-FS image. On debug/trace builds the per-page kernel
+# trace over the byte-at-a-time UART makes streaming this image extremely slow, and large images
+# can wedge VM boot/teardown on WHP, stalling the shard for tens of minutes (see issue #2805).
 [[tests]]
-build_modes = ["debug", "release"]
+build_modes = ["release"]
 executor = "terminal"
 name = "posix/test-c-execvp"
 program = "./bin/test-c-execvp.initrd"

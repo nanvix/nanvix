@@ -108,8 +108,11 @@ expected_exit_code = 0
 
 # execv() of a large binary (target inflated to MEMORY_SIZE/8). Reuses the same caller, pointed at
 # a ramfs whose `/target` is the large program, to exercise loading a big image with no size cap.
+# Release-only: on debug/trace builds the per-page kernel trace over the byte-at-a-time UART makes
+# streaming this large image extremely slow, and large images can wedge VM boot/teardown on WHP,
+# stalling the shard for tens of minutes (see issue #2805).
 [[tests]]
-build_modes = ["debug", "release"]
+build_modes = ["release"]
 executor = "terminal"
 name = "execv-big"
 program = "./bin/test-rust-execv-test.initrd"
