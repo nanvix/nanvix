@@ -241,19 +241,34 @@ impl ContextInformation {
     /// The instruction pointer is pointed at the handler entry, the stack pointer at the top of the
     /// signal frame, and the flags reset to a clean handler-entry value (interrupts enabled,
     /// everything else clear). The signal number is placed in `RDI`, the first integer-argument
-    /// register of the System V ABI, so a handler declared as `fn(int)` receives it.
+    /// register of the System V ABI, so a handler declared as `fn(int)` receives it. For an
+    /// `SA_SIGINFO` handler the user addresses of the embedded `siginfo` and context images are
+    /// placed in `RSI` and `RDX`, the second and third integer-argument registers, so a handler
+    /// declared as `fn(int, *const siginfo_t, *const c_void)` receives them; a non-`SA_SIGINFO`
+    /// handler passes `0` for both and a one-argument handler ignores them.
     ///
     /// # Parameters
     ///
     /// - `entry`: Address of the user-space signal handler.
     /// - `frame_top`: Stack pointer the handler is entered with (top of the signal frame).
     /// - `signum`: The signal number delivered to the handler.
+    /// - `info_ptr`: User address of the embedded `siginfo` image (`SA_SIGINFO`), or `0`.
+    /// - `ctx_ptr`: User address of the embedded context image (`SA_SIGINFO`), or `0`.
     ///
-    pub fn redirect_to_signal_handler(&mut self, entry: usize, frame_top: usize, signum: usize) {
+    pub fn redirect_to_signal_handler(
+        &mut self,
+        entry: usize,
+        frame_top: usize,
+        signum: usize,
+        info_ptr: usize,
+        ctx_ptr: usize,
+    ) {
         self.rip = entry as u64;
         self.rsp = frame_top as u64;
         self.rflags = SIGNAL_HANDLER_ENTRY_FLAGS;
         self.rdi = signum as u64;
+        self.rsi = info_ptr as u64;
+        self.rdx = ctx_ptr as u64;
     }
 
     ///

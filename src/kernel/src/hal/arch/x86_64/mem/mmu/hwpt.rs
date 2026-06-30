@@ -262,9 +262,15 @@ pub unsafe fn create_user_pml4() -> u64 {
     write_entry(new_pml4, 0, new_pdpt | PTE_PRESENT | PTE_WRITABLE | PTE_USER);
 
     // Map the Local APIC MMIO page (supervisor-only) so interrupt EOIs issued while this address
-    // space is active do not fault.
-    let lapic: usize = ::config::microvm::DEFAULT_LAPIC_BASE;
-    map_in(new_pml4, lapic, lapic, false, true);
+    // space is active do not fault. This is only needed on the WHP backend, where the kernel drives
+    // the LAPIC directly for timer delivery and EOI. On the KVM backend the kernel uses the legacy
+    // 8259 PIC together with the PIT periodic timer (mirroring the 32-bit x86 path), so it never
+    // touches the LAPIC MMIO page and the mapping is omitted.
+    #[cfg(feature = "whp")]
+    {
+        let lapic: usize = ::config::microvm::DEFAULT_LAPIC_BASE;
+        map_in(new_pml4, lapic, lapic, false, true);
+    }
 
     new_pml4
 }

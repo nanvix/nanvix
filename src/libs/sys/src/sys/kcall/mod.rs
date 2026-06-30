@@ -22,7 +22,7 @@ pub mod debug;
 pub mod event;
 
 /// `fork()` kernel-call wrapper.
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod fork;
 
 /// Inter-Process Communication (IPC) kernel calls.

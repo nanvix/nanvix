@@ -27,7 +27,7 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn fork() -> pid_t {
-    #[cfg(target_arch = "x86")]
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         use crate::errno::__errno_location;
 
@@ -43,7 +43,7 @@ pub extern "C" fn fork() -> pid_t {
         }
     }
 
-    #[cfg(not(target_arch = "x86"))]
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
     {
         use crate::errno::__errno_location;
         use ::sys::error::ErrorCode;

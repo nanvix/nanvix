@@ -206,8 +206,17 @@ impl ContextInformation {
     /// - `frame_top`: Stack pointer the handler is entered with (top of the signal frame).
     /// - `_signum`: The signal number delivered to the handler. Unused on x86, where the cdecl ABI
     ///   passes it on the stack (written into the frame by the frame builder).
+    /// - `_info_ptr`/`_ctx_ptr`: The `SA_SIGINFO` siginfo/context pointers. Unused on x86 for the
+    ///   same reason as `_signum`.
     ///
-    pub fn redirect_to_signal_handler(&mut self, entry: usize, frame_top: usize, _signum: usize) {
+    pub fn redirect_to_signal_handler(
+        &mut self,
+        entry: usize,
+        frame_top: usize,
+        _signum: usize,
+        _info_ptr: usize,
+        _ctx_ptr: usize,
+    ) {
         self.eip = entry as u32;
         self.esp = frame_top as u32;
         self.eflags = SIGNAL_HANDLER_ENTRY_FLAGS;

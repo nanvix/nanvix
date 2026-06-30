@@ -179,8 +179,9 @@ pub unsafe fn read_trap_context(esp0: usize, result: i64) -> SignalCpuContext {
 
 /// Redirects the interrupted thread to a handler entry on its new signal-frame stack.
 ///
-/// The `signum` argument is unused on x86, where the cdecl ABI passes handler arguments on the
-/// stack (written into the frame by the frame builder) rather than in registers.
+/// The `signum`, `info_ptr`, and `ctx_ptr` arguments are unused on x86, where the cdecl ABI passes
+/// handler arguments on the stack (written into the frame by the frame builder) rather than in
+/// registers.
 ///
 /// # Safety
 ///
@@ -190,6 +191,8 @@ pub unsafe fn redirect_to_handler(
     handler_ip: usize,
     frame_top: usize,
     _signum: usize,
+    _info_ptr: usize,
+    _ctx_ptr: usize,
 ) {
     unsafe {
         kstack_write(esp0, TrapFrame::OFF_EIP, handler_ip as u32);

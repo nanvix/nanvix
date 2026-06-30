@@ -1363,10 +1363,18 @@ fn do_exception_handler(
             let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
             let cpu: SignalCpuContext = ctx.to_signal_context();
             match pm.try_deliver_synchronous_signal(signum, cpu) {
-                SyncSignalOutcome::Delivered { entry, frame_top } => {
+                SyncSignalOutcome::Delivered {
+                    entry,
+                    frame_top,
+                    info_ptr,
+                    ctx_ptr,
+                } => {
                     // Redirect the faulting context into the handler; on return to user mode the
-                    // thread enters the handler on its freshly built signal frame.
-                    ctx.redirect_to_signal_handler(entry, frame_top, signum);
+                    // thread enters the handler on its freshly built signal frame. The signal number
+                    // and, for SA_SIGINFO handlers, the siginfo/context pointers are placed in the
+                    // handler's argument registers (register-argument ABIs) or were already written
+                    // to the frame (stack-argument ABIs).
+                    ctx.redirect_to_signal_handler(entry, frame_top, signum, info_ptr, ctx_ptr);
                     return Ok(());
                 },
                 SyncSignalOutcome::Terminate => {

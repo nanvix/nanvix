@@ -139,17 +139,30 @@ pub unsafe fn read_trap_context(esp0: usize, result: i64) -> SignalCpuContext {
 /// Redirects the interrupted thread to a handler entry on its new signal-frame stack.
 ///
 /// The signal number is placed in `RDI`, the first integer-argument register of the System V ABI,
-/// so a handler declared as `fn(int)` receives it.
+/// so a handler declared as `fn(int)` receives it. For an `SA_SIGINFO` handler the kernel also
+/// places the user addresses of the embedded `siginfo` and context images in `RSI` and `RDX`, the
+/// second and third integer-argument registers, so a handler declared as
+/// `fn(int, *const siginfo_t, *const c_void)` receives them. For a non-`SA_SIGINFO` handler the
+/// caller passes `0` for both, which a one-argument handler simply ignores.
 ///
 /// # Safety
 ///
 /// As for [`kstack_read`].
-pub unsafe fn redirect_to_handler(esp0: usize, handler_ip: usize, frame_top: usize, signum: usize) {
+pub unsafe fn redirect_to_handler(
+    esp0: usize,
+    handler_ip: usize,
+    frame_top: usize,
+    signum: usize,
+    info_ptr: usize,
+    ctx_ptr: usize,
+) {
     unsafe {
         kstack_write(esp0, off(ContextInformation::CONTEXT_RIP), handler_ip as u64);
         kstack_write(esp0, off(ContextInformation::CONTEXT_RSP), frame_top as u64);
         kstack_write(esp0, off(ContextInformation::CONTEXT_RFLAGS), HANDLER_ENTRY_FLAGS);
         kstack_write(esp0, off(ContextInformation::CONTEXT_RDI), signum as u64);
+        kstack_write(esp0, off(ContextInformation::CONTEXT_RSI), info_ptr as u64);
+        kstack_write(esp0, off(ContextInformation::CONTEXT_RDX), ctx_ptr as u64);
     }
 }
 

@@ -1035,11 +1035,8 @@ else
 NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
 endif
 else
-ifeq ($(TARGET),x86_64)
-NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
-else
+# x86_64 runs the same standalone integration suite as x86 on Linux.
 NANVIX_TEST_CONFIG := test/test-standalone.toml
-endif
 endif
 
 NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.$(HOST_BIN_EXT)
