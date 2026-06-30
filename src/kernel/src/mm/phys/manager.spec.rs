@@ -1,0 +1,130 @@
+verus! {
+
+use crate::hal::mem::spec_page_size;
+use crate::mm::phys::FrameAllocView;
+
+// `Result::and_then`: on `Ok`, the closure is applied to the payload (its precondition must hold);
+// on `Err`, the error is forwarded unchanged. Mirrors `core`'s implementation. vstd ships no
+// specification for it.
+pub assume_specification<T, E, U, F: FnOnce(T) -> Result<U, E>>[ Result::<T, E>::and_then ](
+    result: Result<T, E>,
+    op: F,
+) -> (res: Result<U, E>)
+    requires
+        result is Ok ==> op.requires((result->Ok_0,)),
+    ensures
+        result is Err ==> res == Err::<U, E>(result->Err_0),
+        result is Ok ==> op.ensures((result->Ok_0,), res),
+;
+
+// `Result::inspect_err`: runs a side-effecting closure on the error (if any) and returns the
+// receiver unchanged. The closure is used purely for its effects, so no abstract obligation is
+// threaded. vstd ships no specification for it.
+pub assume_specification<T, E, F: FnOnce(&E)>[ Result::<T, E>::inspect_err ](
+    result: Result<T, E>,
+    f: F,
+) -> (res: Result<T, E>)
+    ensures
+        res == result,
+;
+
+// `Vec::capacity`: reports spare storage; opaque with respect to the abstract sequence. vstd
+// ships no specification for it.
+pub assume_specification<T, A: ::core::alloc::Allocator>[ Vec::<T, A>::capacity ](
+    vec: &Vec<T, A>,
+) -> (c: usize)
+;
+
+//==================================================================================================
+// Build-time kernel watermark
+//==================================================================================================
+
+/// The kernel watermark: the number of physical frames the kernel always keeps free for itself.
+///
+/// User allocations are gated by this threshold; kernel allocations bypass it. Mirrors the
+/// build-time constant `config::kernel::KERNEL_WATERMARK`. Callers do not depend on the concrete
+/// threshold, only on the fact that user allocations are gated by it.
+pub uninterp spec fn spec_kernel_watermark() -> nat;
+
+//==================================================================================================
+// Allocation / watermark vocabulary (on the existing FrameAllocView)
+//==================================================================================================
+
+impl FrameAllocView {
+    /// The set of currently-free covered frames (refcount 0). Models `frame::free_frames`.
+    pub open spec fn free_set(self) -> Set<int> {
+        self.refcounts.dom().filter(|a: int| self.refcounts[a] == 0)
+    }
+
+    /// Number of frames currently free, i.e. available to hand out. This is the single quantity
+    /// the kernel watermark reads. Models `frame::free_count()`.
+    pub open spec fn free_count(self) -> nat {
+        self.free_set().len()
+    }
+
+    /// A user allocation of `count` frames is admissible: fulfilling it would still leave at
+    /// least `KERNEL_WATERMARK` frames free for the kernel. This is the predicate behind the
+    /// user-vs-kernel asymmetry that `check_user_watermark` enforces.
+    pub open spec fn user_alloc_ok(self, count: nat) -> bool {
+        self.free_count() >= count + spec_kernel_watermark()
+    }
+
+    /// Allocate a single currently-free frame `addr`: set its reference count to 1. (Equivalent
+    /// to `book_all(set![addr])`.)
+    pub open spec fn alloc_one(self, addr: int) -> FrameAllocView {
+        FrameAllocView {
+            refcounts: self.refcounts.insert(addr, 1int),
+        }
+    }
+}
+
+//==================================================================================================
+// Manager view
+//==================================================================================================
+
+impl View for PhysMemoryManager {
+    type V = FrameAllocView;
+
+    /// The manager brokers the global physical-frame partition through the user page pool.
+    closed spec fn view(&self) -> FrameAllocView {
+        self.upool@
+    }
+}
+
+impl PhysMemoryManager {
+    /// Well-formedness invariant: the brokered frame partition is well formed (free/allocated
+    /// disjoint, page-aligned, refcount <-> allocated consistent, refcounts in 1..=255).
+    ///
+    /// Liveness is structural (a `&mut self` is only obtainable after `init` succeeded) and the
+    /// watermark is a per-user-allocation gate, not an invariant — kernel allocations are
+    /// designed to dip below it — so neither appears here.
+    pub open spec fn inv(&self) -> bool {
+        self@.wf()
+    }
+}
+
+//==================================================================================================
+// Handle-set helpers
+//==================================================================================================
+
+/// The set of physical frame addresses owned by a sequence of user-frame handles.
+pub open spec fn user_addr_set(frames: Seq<UserFrame>) -> Set<int> {
+    frames.map_values(|uf: UserFrame| uf@).to_set()
+}
+
+/// The set of physical frame addresses owned by a sequence of kernel-frame handles.
+pub open spec fn kernel_addr_set(frames: Seq<KernelFrame>) -> Set<int> {
+    frames.map_values(|kf: KernelFrame| kf@).to_set()
+}
+
+/// The first `count` kernel-frame handles in `frames` occupy a physically contiguous, page-aligned
+/// run: there is a page-aligned `base` such that handle `i` owns `base + i * page_size`. This is the
+/// identity-map contiguity guarantee that kernel-stack callers (`alloc_kpages`) depend on.
+pub open spec fn kernel_frames_contiguous(frames: Seq<KernelFrame>, count: nat) -> bool {
+    exists|base: int|
+        #![trigger crate::mm::phys::region_frame_addrs(base, (count * spec_page_size()) as int)]
+        base % spec_page_size() == 0 && forall|i: int|
+            0 <= i < count ==> #[trigger] frames[i]@ == base + i * spec_page_size()
+}
+
+} // verus!

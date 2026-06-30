@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("region.spec.rs");
+
 use crate::hal::mem::types::{
     access::AccessPermission,
     address::{
@@ -195,11 +199,22 @@ impl<T: Address> MemoryRegion<T> {
     }
 
     /// Returns the first valid address that lies in the target memory region.
+    // `T: Address` requires `Copy`, so this is a plain copy: the returned value has the same
+    // abstract address (`res@ == self@.start`), discharging the postcondition below. A `.clone()`
+    // here would NOT verify — `<T as Clone>::clone` on an abstract `T` carries no Verus contract.
+    #[verus_spec(result =>
+        ensures
+            result@ == self@.start,
+    )]
     pub fn start(&self) -> T {
         self.start
     }
 
     /// Returns the size of the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result as int == self@.size,
+    )]
     pub fn size(&self) -> usize {
         self.size
     }
@@ -346,11 +361,19 @@ impl<T: Address> TruncatedMemoryRegion<T> {
     }
 
     /// Returns the first valid address that lies in the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result@ == self@.start,
+    )]
     pub fn start(&self) -> PageAligned<T> {
         self.0.start()
     }
 
     /// Returns the size of the target memory region.
+    #[verus_spec(result =>
+        ensures
+            result as int == self@.size,
+    )]
     pub fn size(&self) -> usize {
         self.0.size()
     }

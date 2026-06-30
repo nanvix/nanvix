@@ -44,6 +44,10 @@ use ::sys::{
     },
     mm::Address,
 };
+use ::vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+include!("frame.spec.rs");
 
 //==================================================================================================
 // Inner
@@ -103,6 +107,25 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(frame) => {
+                    &&& frame.inv()
+                    &&& old(self)@.is_free(frame@)
+                    &&& final(self)@ == FrameAllocView {
+                        refcounts: old(self)@.refcounts.insert(frame@, 1int),
+                    }
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& old(self)@.no_free_frames()
+                }
+            },
+    )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
@@ -147,6 +170,34 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            count > 0,
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(base) => {
+                    &&& base.inv()
+                    &&& ({
+                        let frame_indices = Set::range(0, count as int);
+                        let frames = frame_indices.map_by(
+                            |i: int| base@ + i * spec_page_size(),
+                            |addr: int| (addr - base@) / spec_page_size(),
+                        );
+                        &&& old(self)@.all_free(frames)
+                        &&& final(self)@ == FrameAllocView {
+                            refcounts: old(self)@.refcounts.union_prefer_right(
+                                Map::new(frames, |addr: int| 1int)
+                            ),
+                        }
+                    })
+                },
+                Err(_) => {
+                    final(self)@ == old(self)@
+                }
+            },
+    )]
     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
         // Reject impossible requests before delegating to the bitmap range allocator.
         if count > self.bitmap.number_of_bits() {
@@ -197,6 +248,30 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            frame.inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(self)@.is_allocated(frame@)
+                    // Releasing one reference simply decrements the count. When it
+                    // reaches zero the frame stays covered but becomes free, so the
+                    // map domain is unchanged in both the shared and last-owner cases.
+                    &&& final(self)@ == FrameAllocView {
+                        refcounts: old(self)@.refcounts.insert(
+                            frame@, old(self)@.refcounts[frame@] - 1
+                        ),
+                    }
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& !old(self)@.is_allocated(frame@)
+                }
+            },
+    )]
     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
@@ -246,6 +321,32 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            frame.inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(self)@.is_allocated(frame@)
+                    // The concrete `checked_add` rejects sharing at the u8 ceiling, so
+                    // success implies headroom. Stating it explicitly keeps `Ok`/`Err`
+                    // complementary and lets `final(self)@.wf()` follow directly (the new
+                    // count is `<= 255`) instead of via a contradiction with `inv()`.
+                    &&& old(self)@.refcounts[frame@] < 255
+                    &&& final(self)@ == FrameAllocView {
+                        refcounts: old(self)@.refcounts.insert(
+                            frame@, old(self)@.refcounts[frame@] + 1
+                        ),
+                    }
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& old(self)@.is_allocated(frame@) ==> old(self)@.refcounts[frame@] >= 255
+                }
+            },
+    )]
     fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
@@ -289,6 +390,22 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+            frame.inv(),
+        ensures
+            self.inv(),
+            match result {
+                Ok(count) => {
+                    &&& self@.is_allocated(frame@)
+                    &&& count as int == self@.refcounts[frame@]
+                },
+                Err(_) => {
+                    !self@.is_allocated(frame@)
+                }
+            },
+    )]
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
 
@@ -320,6 +437,25 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            phys_addr.inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& old(self)@.is_free(phys_addr@)
+                    &&& final(self)@ == FrameAllocView {
+                        refcounts: old(self)@.refcounts.insert(phys_addr@, 1int),
+                    }
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& !old(self)@.is_free(phys_addr@)
+                }
+            },
+    )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         match self.bitmap.set(frame_number) {
@@ -344,6 +480,14 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
+    #[verus_spec(ret =>
+        requires
+            self.inv(),
+            phys_addr.inv(),
+        ensures
+            self.inv(),
+            ret <==> self@.is_covered(phys_addr@),
+    )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
         frame_number < self.bitmap.number_of_bits()
@@ -362,6 +506,33 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            old(self).inv(),
+            region.inv(),
+        ensures
+            final(self).inv(),
+            ({
+                let start_frame_number = region@.start / spec_page_size();
+                let end_frame_number = (region@.start + region@.size) / spec_page_size();
+                let frame_numbers = Set::range(start_frame_number, end_frame_number);
+                let frames = frame_numbers.map(|i: int| i * spec_page_size());
+                match result {
+                    Ok(()) => {
+                        &&& old(self)@.all_free(frames)
+                        &&& final(self)@ == FrameAllocView {
+                            refcounts: old(self)@.refcounts.union_prefer_right(
+                                Map::new(frames, |addr: int| 1int)
+                            ),
+                        }
+                    },
+                    Err(_) => {
+                        &&& final(self)@ == old(self)@
+                        &&& !old(self)@.all_free(frames)
+                    },
+                }
+            }),
+    )]
     fn alloc_range(
         &mut self,
         region: &TruncatedMemoryRegion<PhysicalAddress>,
@@ -436,6 +607,15 @@ static mut INSTANCE: MaybeUninit<Inner> = MaybeUninit::uninit();
 static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 
 /// Returns a mutable reference to the initialized singleton.
+///
+/// Materializes the initialized singleton and exposes its abstract state to verified callers.
+#[verus_verify(external_body)]
+#[verus_spec(r =>
+    ensures
+        (*r).inv(),
+        (*r)@ == crate::mm::phys::phys_view().frames,
+        crate::mm::phys::phys_view().initialized,
+)]
 fn instance() -> &'static mut Inner {
     if unlikely(!INSTANCE_INIT.load(ORDER)) {
         panic!("frame allocator used before init()");
@@ -456,6 +636,19 @@ fn instance() -> &'static mut Inner {
 ///
 /// Must be called exactly once during boot, before any other function
 /// in this module.
+///
+/// Initializes module-level storage and publishes the corresponding abstract state.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        match result {
+            Ok(_) => {
+                &&& crate::mm::phys::phys_view().initialized
+                &&& crate::mm::phys::phys_view().frames.wf()
+            },
+            Err(_) => true,
+        },
+)]
 pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
@@ -498,6 +691,19 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
+///
+/// Singleton wrapper around `Inner::alloc`.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        match result {
+            Ok(frame) => {
+                &&& frame.inv()
+                &&& crate::mm::phys::phys_view().frames.is_allocated(frame@)
+            },
+            Err(_) => crate::mm::phys::phys_view().frames.no_free_frames(),
+        },
+)]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
     instance().alloc()
 }
@@ -510,6 +716,20 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 ///
 /// Returns the base `FrameAddress` of the contiguous range.
 ///
+/// Singleton wrapper around `Inner::alloc_contiguous`.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        count > 0,
+    ensures
+        match result {
+            Ok(base) => {
+                &&& base.inv()
+                &&& base@ + (count as int) * spec_page_size() <= usize::MAX as int
+            },
+            Err(_) => true,
+        },
+)]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
     instance().alloc_contiguous(count)
 }
@@ -523,12 +743,27 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 ///
 /// The number of free frames in the system.
 ///
+/// Reports the number of free frames in the global allocator.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        result as nat == crate::mm::phys::phys_view().frames.free_count(),
+)]
 pub(super) fn free_count() -> usize {
     let inner = instance();
     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
 
 /// Free a frame previously returned by [`alloc`].
+///
+/// Best-effort release used by cleanup paths and frame-handle destructors.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        true,
+    opens_invariants none
+    no_unwind
+)]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
     instance().free(frame)
 }
@@ -542,26 +777,87 @@ pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
 ///
 /// Returns `true` when the frame allocator tracks the frame at `phys_addr`.
 ///
+/// Pure coverage query over the global frame partition.
+#[verus_spec(ret =>
+    requires
+        phys_addr.inv(),
+    ensures
+        ret <==> crate::mm::phys::phys_view().frames.covers(phys_addr@),
+)]
 pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
     instance().is_covered(phys_addr)
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
+///
+/// Singleton wrapper around `Inner::book`.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        phys_addr.inv(),
+    ensures
+        match result {
+            Ok(()) => crate::mm::phys::phys_view().frames.reserved(phys_addr@),
+            Err(_) => !crate::mm::phys::phys_view().frames.is_free(phys_addr@),
+        },
+)]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     instance().book(phys_addr)
 }
 
 /// Book every frame in the given physical memory region.
+///
+/// Singleton wrapper around `Inner::alloc_range`.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        region.inv(),
+    ensures
+        match result {
+            Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
+                crate::mm::phys::region_frame_addrs(region@.start, region@.size)),
+            Err(_) => !crate::mm::phys::phys_view().frames.all_free(
+                crate::mm::phys::region_frame_addrs(region@.start, region@.size)),
+        },
+)]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
     instance().alloc_range(region)
 }
 
 /// Add a new reference to an already-allocated frame (e.g. for copy-on-write sharing).
+///
+/// Singleton wrapper around `Inner::share`.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        frame.inv(),
+    ensures
+        match result {
+            Ok(()) => crate::mm::phys::phys_view().frames.is_allocated(frame@),
+            Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(frame@)
+                || crate::mm::phys::phys_view().frames.refcounts[frame@] >= 255,
+        },
+)]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
     instance().share(frame)
 }
 
 /// Returns the current reference count of an already-allocated frame.
+///
+/// Singleton wrapper around `Inner::refcount`.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    requires
+        frame.inv(),
+    ensures
+        match result {
+            Ok(count) => {
+                &&& crate::mm::phys::phys_view().frames.is_allocated(frame@)
+                &&& count as int == crate::mm::phys::phys_view().frames.refcounts[frame@]
+            },
+            Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(frame@),
+        },
+)]
 pub(super) fn refcount(frame: FrameAddress) -> Result<u8, Error> {
     instance().refcount(frame)
 }

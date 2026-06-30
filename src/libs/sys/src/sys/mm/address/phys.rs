@@ -5,6 +5,8 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+
 use crate::{
     error::{
         Error,
@@ -287,3 +289,20 @@ impl From<PhysicalAddress> for usize {
 pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
     addr < VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE)
 }
+
+//==================================================================================================
+// Material for verification
+//==================================================================================================
+
+verus! {
+
+impl View for PhysicalAddress {
+    type V = int;
+
+    closed spec fn view(&self) -> int
+    {
+        self.0@
+    }
+}
+
+} // end verus!

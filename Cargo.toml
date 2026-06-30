@@ -379,6 +379,7 @@ debug = "line-tables-only"
 
 [workspace.lints.rust]
 warnings = "deny"
+unused_features = "allow"
 unexpected_cfgs = { level = "deny", check-cfg = [
         "cfg(verus_keep_ghost)",
         "cfg(verus_keep_ghost_body)",

@@ -95,6 +95,13 @@ use ::core::{
         Ordering,
     },
 };
+use ::vstd::prelude::*;
+
+// Include specifications.
+#[cfg(verus_keep_ghost)]
+include!("lib.spec.rs");
+
+// Include proofs.
 
 //==================================================================================================
 // Traits and Types
@@ -114,6 +121,13 @@ use ::core::{
 ///
 /// Returns the aligned value, or `None` if `alignment` is zero or the computation overflows.
 ///
+#[verus_spec(result =>
+    ensures
+        match result {
+            Some(r) => align_up_spec(value as nat, alignment as nat) == Some(r as nat),
+            None => align_up_spec(value as nat, alignment as nat) is None,
+        },
+)]
 pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
     if alignment == 0 {
         return None;
@@ -179,6 +193,10 @@ pub unsafe trait BssStorage {
     const STORAGE_SIZE: usize;
 
     /// Returns a mutable pointer to the beginning of the storage region.
+    #[verus_spec(result =>
+        ensures
+            result as int == base_of::<Self>(),
+    )]
     fn as_mut_ptr() -> *mut u8;
 }
 
@@ -217,6 +235,7 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// backend causes independent bump counters, which leads to overlapping slot reservations
     /// and undefined behavior (multiple `&'static mut` references to the same memory).
     ///
+    #[verus_verify(external_body)]
     pub const unsafe fn new() -> Self {
         Self {
             next_slot: AtomicUsize::new(0),
@@ -240,6 +259,22 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// - [`BumpAllocError::OutOfBounds`] if computed slot exceeds storage bounds.
     /// - [`BumpAllocError::Misaligned`] if computed slot is not properly aligned.
     ///
+    /// Materializes a slot reference from backend-provided storage.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires bump_view(self).inv(),
+        ensures
+            match result {
+                Ok(slot) => {
+                    let v = bump_view(self);
+                    let a = slot_ref_addr(slot);
+                    &&& a % (v.unit_align as int) == 0
+                    &&& v.base <= a
+                    &&& a + (N as int) <= v.base + (v.storage_size as int)
+                },
+                Err(_) => true,
+            },
+    )]
     pub fn alloc(&self) -> Result<&'static mut [u8; N], BumpAllocError> {
         // Reserve a slot index via compare-and-swap to avoid overshooting the counter.
         let idx: usize = loop {
@@ -298,6 +333,26 @@ impl<const N: usize, const A: usize, S: BssStorage> FixedSizeBumpAllocator<N, A,
     /// The caller must initialise the returned `MaybeUninit<T>` before reading through it
     /// and ensure exclusive use of the returned reference.
     ///
+    /// Delegates to `alloc` and exposes the typed-slot size/alignment contract.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires bump_view(self).inv(),
+        ensures
+            match result {
+                Ok(slot) => {
+                    let v = bump_view(self);
+                    let a = slot_ref_addr(slot);
+                    &&& vstd::layout::size_of::<T>() == N as nat
+                    &&& vstd::layout::align_of::<T>() <= A as nat
+                    &&& a % (v.unit_align as int) == 0
+                    &&& v.base <= a
+                    &&& a + (N as int) <= v.base + (v.storage_size as int)
+                },
+                Err(BumpAllocError::SizeMismatch) => vstd::layout::size_of::<T>() != N as nat,
+                Err(BumpAllocError::AlignmentMismatch) => vstd::layout::align_of::<T>() > A as nat,
+                Err(_) => true,
+            },
+    )]
     pub unsafe fn alloc_as<T>(&self) -> Result<&'static mut MaybeUninit<T>, BumpAllocError> {
         if core::mem::size_of::<T>() != N {
             return Err(BumpAllocError::SizeMismatch);

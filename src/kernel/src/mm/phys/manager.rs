@@ -5,6 +5,9 @@
 // Imports
 //==================================================================================================
 
+#[cfg(verus_keep_ghost)]
+include!("manager.spec.rs");
+
 use crate::{
     hal::mem::FrameAddress,
     mm::phys::{
@@ -30,6 +33,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Constants
@@ -81,6 +85,15 @@ impl PhysMemoryManager {
     ///
     /// Returns `InvalidArgument` if the singleton has already been initialized.
     ///
+    /// Initializes the manager singleton without changing the frame partition.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(_) => crate::mm::phys::phys_view().manager_ready,
+                Err(_) => crate::mm::phys::phys_view().manager_ready,
+            },
+    )]
     pub(super) fn init(upool: Upool) -> Result<(), Error> {
         if unlikely(PHYS_MEMORY_MANAGER_INIT.load(ORDER)) {
             return Err(Error::new(
@@ -94,7 +107,9 @@ impl PhysMemoryManager {
         PHYS_MEMORY_MANAGER_INIT.store(true, ORDER);
         Ok(())
     }
+}
 
+impl PhysMemoryManager {
     ///
     /// # Description
     ///
@@ -123,7 +138,9 @@ impl PhysMemoryManager {
         // SAFETY: the physical memory manager has been initialized, so the value is valid.
         PHYS_MEMORY_MANAGER.assume_init_mut()
     }
+}
 
+impl PhysMemoryManager {
     ///
     /// # Description
     ///
@@ -145,6 +162,26 @@ impl PhysMemoryManager {
     /// error is returned and any frames allocated by this call are dropped by truncating `frames`
     /// back to empty.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+            old(frames)@.len() == 0,
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& (count > 0 ==> old(self)@.user_alloc_ok(count as nat))
+                    &&& final(frames)@.len() == count
+                    &&& user_addr_set(final(frames)@).len() == count
+                    &&& old(self)@.all_free(user_addr_set(final(frames)@))
+                    &&& final(self)@ == old(self)@.book_all(user_addr_set(final(frames)@))
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& final(frames)@.len() == 0
+                },
+            },
+    )]
     pub fn alloc_many_user_frames(
         &mut self,
         count: usize,
@@ -193,6 +230,23 @@ impl PhysMemoryManager {
     /// Upon success, a [`UserFrame`] is returned. Upon failure, an error is returned
     /// instead.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(uf) => {
+                    &&& old(self)@.user_alloc_ok(1)
+                    &&& old(self)@.is_free(uf@)
+                    &&& final(self)@ == old(self)@.alloc_one(uf@)
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& !old(self)@.user_alloc_ok(1)
+                },
+            },
+    )]
     pub fn alloc_user_frame(&mut self) -> Result<UserFrame, Error> {
         Self::check_user_watermark(1)?;
         self.upool.alloc()
@@ -213,6 +267,15 @@ impl PhysMemoryManager {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(()) => crate::mm::phys::phys_view().frames.free_count()
+                    >= count as nat + spec_kernel_watermark(),
+                Err(_) => crate::mm::phys::phys_view().frames.free_count()
+                    < count as nat + spec_kernel_watermark(),
+            },
+    )]
     fn check_user_watermark(count: usize) -> Result<(), Error> {
         // Read the free count before checking the threshold so both success and overflow paths use
         // the same observed allocator state.
@@ -242,6 +305,19 @@ impl PhysMemoryManager {
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(kf) => {
+                    &&& old(self)@.is_free(kf@)
+                    &&& final(self)@ == old(self)@.alloc_one(kf@)
+                },
+                Err(_) => final(self)@ == old(self)@,
+            },
+    )]
     pub fn alloc_kernel_frame(&mut self) -> Result<KernelFrame, Error> {
         let frame_addr: FrameAddress = frame::alloc()?;
         KernelFrame::new(frame_addr).inspect_err(|e| {
@@ -272,6 +348,26 @@ impl PhysMemoryManager {
     /// Upon success, `Ok(())` is returned and `frames` is filled with `count`
     /// contiguous entries. Upon failure, an error is returned instead.
     ///
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+            old(frames)@.len() == 0,
+            count > 0,
+        ensures
+            final(self).inv(),
+            match result {
+                Ok(()) => {
+                    &&& final(frames)@.len() == count
+                    &&& kernel_frames_contiguous(final(frames)@, count as nat)
+                    &&& old(self)@.all_free(kernel_addr_set(final(frames)@))
+                    &&& final(self)@ == old(self)@.book_all(kernel_addr_set(final(frames)@))
+                },
+                Err(_) => {
+                    &&& final(self)@ == old(self)@
+                    &&& final(frames)@.len() == 0
+                },
+            },
+    )]
     pub fn alloc_many_kernel_frames(
         &mut self,
         count: usize,
@@ -313,7 +409,9 @@ impl PhysMemoryManager {
         }
         Ok(())
     }
+}
 
+impl PhysMemoryManager {
     ///
     /// # Description
     ///
@@ -395,6 +493,11 @@ impl PhysMemoryManager {
 //==================================================================================================
 
 /// Ties the generated runtime constant to its abstract specification.
+#[verus_verify(external_body)]
+#[verus_spec(ret =>
+    ensures
+        ret as nat == spec_kernel_watermark(),
+)]
 #[inline]
 fn kernel_watermark() -> usize {
     config::kernel::KERNEL_WATERMARK

@@ -11,6 +11,10 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("kframe.spec.rs");
+
 use crate::hal::mem::{
     Address,
     FrameAddress,
@@ -49,6 +53,20 @@ impl KernelFrame {
     ///
     /// Upon success, a kernel frame is returned. Upon failure, an error is returned instead.
     ///
+    /// Wrapping a kernel frame identity-maps the page and returns a handle for the same frame.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            base.inv(),
+        ensures
+            match result {
+                Ok(kf) => {
+                    &&& kf@ == base@
+                    &&& kf.inv()
+                },
+                Err(_) => true,
+            },
+    )]
     pub(super) fn new(base: FrameAddress) -> Result<Self, Error> {
         // Ensure the frame is identity-mapped in the kernel address space so that
         // Deref/DerefMut can safely access it. This lazily installs a page
@@ -66,7 +84,9 @@ impl KernelFrame {
 
         Ok(Self { base })
     }
+}
 
+impl KernelFrame {
     ///
     /// # Description
     ///
@@ -76,10 +96,20 @@ impl KernelFrame {
     ///
     /// The base address of the target kernel frame.
     ///
+    /// Pure accessor: returns the owned frame's physical address unchanged.
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result@ == self@,
+            result.inv(),
+    )]
     pub fn base(&self) -> FrameAddress {
         self.base
     }
+}
 
+impl KernelFrame {
     ///
     /// # Description
     ///
@@ -125,6 +155,15 @@ impl DerefMut for KernelFrame {
 }
 
 impl Drop for KernelFrame {
+    // Releasing the handle returns its physical frame to the global frame allocator via
+    // `super::frame::free`, which is best-effort (`ensures true`) and `opens_invariants none`/
+    // `no_unwind`, so `drop` makes no abstract postcondition. Callers (the manager error path,
+    // `KernelStack::drop`) rely on this being the sole, complete deallocation step. Mirror of
+    // `UserFrame::drop`.
+    #[verus_spec(
+        opens_invariants none
+        no_unwind
+    )]
     fn drop(&mut self) {
         if let Err(e) = super::frame::free(self.base) {
             error!("failed to free kernel frame: {:?}", e);

@@ -5,6 +5,10 @@
 // Modules
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("mod.spec.rs");
+
 mod phys;
 mod virt;
 
@@ -30,7 +34,7 @@ use crate::{
 
 pub trait Address
 where
-    Self: core::fmt::Debug + Clone + Copy + PartialEq + Eq + PartialOrd + Ord,
+    Self: core::fmt::Debug + Clone + Copy + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
 {
     ///
     /// # Description
@@ -46,9 +50,21 @@ where
     /// - `Ok(Self)`: The new address.
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(a) => a@ == raw_addr as int,
+                Err(e) => e.code == crate::error::ErrorCode::BadAddress,
+            },
+    )]
     fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
 
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+    )]
     fn into_raw_value(self) -> usize;
+
     ///
     /// # Description
     ///
@@ -95,6 +111,11 @@ where
     /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_spec(result =>
+        ensures
+            result matches Ok(aligned)
+                && aligned == spec_addr_is_aligned(self@, align),
+    )]
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
 
     ///

@@ -190,6 +190,9 @@ version = "0.18.34"
 [[package]]
 name = "bump-allocator"
 version = "0.18.34"
+dependencies = [
+ "vstd",
+]
 
 [[package]]
 name = "bumpalo"
@@ -3213,6 +3216,7 @@ dependencies = [
  "error",
  "rustc-std-workspace-core",
  "static_assert",
+ "vstd",
 ]
 
 [[package]]
