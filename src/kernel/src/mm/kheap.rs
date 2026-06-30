@@ -37,6 +37,10 @@ use ::type_safe::usize_to_mut_ptr;
 
 verus! {
 /// Number of slabs in the heap. Each slab is responsible for allocating blocks of a specific size.
+/// x86_64 adds two larger tiers (1024/2048 B) for its wider per-process structures.
+#[cfg(not(target_arch = "x86_64"))]
+const NUM_OF_SLABS: usize = 7;
+#[cfg(target_arch = "x86_64")]
 const NUM_OF_SLABS: usize = 9;
 /// Number of slabs per slab size. Each slab size is allocated a fixed number of slabs.
 pub(super) const SLAB_COUNT: usize = 32;
@@ -49,10 +53,15 @@ pub(crate) closed const MIN_HEAP_SIZE: usize = NUM_OF_SLABS * MIN_SLAB_SIZE;
 /// Maximum slab size in bytes. Allocations whose size or alignment exceed this are rejected.
 ///
 /// This must mirror [`config::kernel::MAX_SLAB_SIZE`], the shared kernel-heap budget. It is
-/// duplicated as the literal `512` here because Verus cannot evaluate cross-crate constants in
+/// duplicated as a literal here because Verus cannot evaluate cross-crate constants in
 /// specification contexts (and, separately, does not yet support enum discriminants in const
 /// expressions: https://github.com/verus-lang/verus/issues/1107). The `assert_eq!` below makes this
 /// a genuine dependency on the `config` crate: the kernel fails to compile if the two diverge.
+///
+/// x86_64 uses a larger budget (2048 B) than x86 (512 B) for its wider per-process structures.
+#[cfg(not(target_arch = "x86_64"))]
+const MAX_SLAB_SIZE: usize = 512;
+#[cfg(target_arch = "x86_64")]
 const MAX_SLAB_SIZE: usize = 2048;
 }
 
@@ -77,7 +86,9 @@ pub(super) enum SlabSize {
     Slab128 = 128,
     Slab256 = 256,
     Slab512 = 512,
+    #[cfg(target_arch = "x86_64")]
     Slab1024 = 1024,
+    #[cfg(target_arch = "x86_64")]
     Slab2048 = 2048,
 }
 
@@ -90,7 +101,9 @@ struct Kheap {
     slab_128_bytes: Slab,
     slab_256_bytes: Slab,
     slab_512_bytes: Slab,
+    #[cfg(target_arch = "x86_64")]
     slab_1024_bytes: Slab,
+    #[cfg(target_arch = "x86_64")]
     slab_2048_bytes: Slab,
     // Ghost state — alloc_map is the ground truth for abstract KheapView.
     // Ghost<T> is zero-sized; it costs nothing at runtime.
@@ -227,11 +240,13 @@ impl Kheap {
                 slab_size,
                 SlabSize::Slab512 as usize,
             )?,
+            #[cfg(target_arch = "x86_64")]
             slab_1024_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(7 * slab_size),
                 slab_size,
                 SlabSize::Slab1024 as usize,
             )?,
+            #[cfg(target_arch = "x86_64")]
             slab_2048_bytes: Slab::from_raw_parts(
                 heap_start_addr.add(8 * slab_size),
                 slab_size,
@@ -306,7 +321,9 @@ impl Kheap {
             SlabSize::Slab128 => self.slab_128_bytes.allocate().map_err(|_e| AllocError),
             SlabSize::Slab256 => self.slab_256_bytes.allocate().map_err(|_e| AllocError),
             SlabSize::Slab512 => self.slab_512_bytes.allocate().map_err(|_e| AllocError),
+            #[cfg(target_arch = "x86_64")]
             SlabSize::Slab1024 => self.slab_1024_bytes.allocate().map_err(|_e| AllocError),
+            #[cfg(target_arch = "x86_64")]
             SlabSize::Slab2048 => self.slab_2048_bytes.allocate().map_err(|_e| AllocError),
         };
         proof! {
@@ -368,10 +385,12 @@ impl Kheap {
             SlabSize::Slab128 => self.slab_128_bytes.deallocate(ptr).map_err(|_e| AllocError),
             SlabSize::Slab256 => self.slab_256_bytes.deallocate(ptr).map_err(|_e| AllocError),
             SlabSize::Slab512 => self.slab_512_bytes.deallocate(ptr).map_err(|_e| AllocError),
+            #[cfg(target_arch = "x86_64")]
             SlabSize::Slab1024 => self
                 .slab_1024_bytes
                 .deallocate(ptr)
                 .map_err(|_e| AllocError),
+            #[cfg(target_arch = "x86_64")]
             SlabSize::Slab2048 => self
                 .slab_2048_bytes
                 .deallocate(ptr)
@@ -414,7 +433,9 @@ impl Kheap {
             65..=128 => Ok(SlabSize::Slab128),
             129..=256 => Ok(SlabSize::Slab256),
             257..=512 => Ok(SlabSize::Slab512),
+            #[cfg(target_arch = "x86_64")]
             513..=1024 => Ok(SlabSize::Slab1024),
+            #[cfg(target_arch = "x86_64")]
             1025..=2048 => Ok(SlabSize::Slab2048),
             _ => Err(AllocError),
         };
