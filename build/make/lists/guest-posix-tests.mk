@@ -34,6 +34,7 @@ ALL_POSIX_TESTS := \
 	test-c-hello \
 	test-c-inet \
 	test-c-libgen \
+	test-c-locale \
 	test-c-memory \
 	test-c-misc \
 	test-c-network \
