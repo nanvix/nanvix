@@ -267,10 +267,24 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
     // Select tests before preparing the environment to avoid unnecessary environment setup.
     let test_glob_filter: Option<GlobSet> = parsed_args.glob_filter();
     let total_tests: usize = tests.len();
-    let selected_tests: Vec<TestCaseConfig> = tests
+    let filtered_tests: Vec<TestCaseConfig> = tests
         .into_iter()
         .filter(|test_config| test_config.matches_filter(test_glob_filter.as_ref()))
         .collect();
+    let filtered_count: usize = filtered_tests.len();
+
+    // Partition the filtered tests across shards when a shard selector is provided. Sharding is
+    // positional (round-robin over the filtered, TOML-ordered list), so it is independent of test
+    // names and automatically distributes newly added tests across shards.
+    let selected_tests: Vec<TestCaseConfig> = match parsed_args.shard() {
+        Some(shard) => filtered_tests
+            .into_iter()
+            .enumerate()
+            .filter(|(position, _)| shard.selects(*position))
+            .map(|(_, test_config)| test_config)
+            .collect(),
+        None => filtered_tests,
+    };
     let selected_count: usize = selected_tests.len();
 
     // List mode: print selected tests and exit without executing.
@@ -307,6 +321,22 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
 
     // Fail early when no tests match the requested filter.
     if selected_tests.is_empty() {
+        // An empty shard is not an error: when TOTAL exceeds the number of filtered tests, some
+        // shards legitimately receive no work. Only treat an empty selection as success when the
+        // filtered test list is non-empty (i.e. the filter matched tests but this shard received
+        // none); an empty filtered list is still fatal, matching the non-sharded path.
+        if let (Some(shard), true) = (parsed_args.shard(), filtered_count > 0) {
+            info!(
+                "main(): no tests assigned to shard {}/{} (filter={})",
+                shard.index(),
+                shard.total(),
+                parsed_args
+                    .test_filter()
+                    .map(|f| format!("\"{}\"", f))
+                    .unwrap_or("None".to_string())
+            );
+            return Ok(());
+        }
         let reason: String = format!(
             "no tests selected (filter={})",
             parsed_args
@@ -319,10 +349,14 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
     }
 
     info!(
-        "main(): selected {selected_count} of {total_tests} tests to run (filter={})",
+        "main(): selected {selected_count} of {total_tests} tests to run (filter={}, shard={})",
         parsed_args
             .test_filter()
             .map(|f| format!("\"{}\"", f))
+            .unwrap_or("None".to_string()),
+        parsed_args
+            .shard()
+            .map(|s| format!("{}/{}", s.index(), s.total()))
             .unwrap_or("None".to_string())
     );
 

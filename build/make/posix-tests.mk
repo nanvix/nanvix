@@ -732,6 +732,13 @@ else
 POSIX_TEST_CONFIG := test/test-posix.toml
 endif
 
+# Optional test sharding. When SHARD is set to INDEX/TOTAL (e.g. SHARD=1/4), the
+# harness runs only that disjoint, round-robin slice of the suites via its
+# `-shard` option, letting CI partition the POSIX suites across independent
+# runners. The selector must precede the config path (the harness treats the
+# last argument as the config file). Leave SHARD empty to run every suite.
+POSIX_TEST_SHARD_FLAG := $(if $(strip $(SHARD)),-shard $(strip $(SHARD)))
+
 ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
@@ -741,8 +748,8 @@ run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(USERVM) || { echo "ERROR: $(USERVM) missing; run './z build -- all' first."; exit 1; }
-	@echo "Running ported POSIX C test suites with configuration: $(POSIX_TEST_CONFIG)"
-	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(POSIX_TEST_CONFIG)
+	@echo "Running ported POSIX C test suites with configuration: $(POSIX_TEST_CONFIG)$(if $(strip $(SHARD)), (shard $(strip $(SHARD))))"
+	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(POSIX_TEST_SHARD_FLAG) $(POSIX_TEST_CONFIG)
 else
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."

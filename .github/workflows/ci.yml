@@ -486,6 +486,83 @@ jobs:
 
   ci-test:
     name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{
+      matrix.deployment-type }}, shard ${{ matrix.shard }}/4)"
+    needs: [ ci-build ]
+    # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
+    if: ${{ !cancelled() && needs.ci-build.result == 'success' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        machine-type: [ microvm ]
+        deployment-type: [ standalone, single-process, multi-process ]
+        # The TOML-driven integration suites are partitioned into disjoint shards
+        # that run on independent runners. The harness selects this shard's tests
+        # via `-shard INDEX/TOTAL` (round-robin), so tests added to the TOML
+        # configs are distributed automatically with no workflow changes. To
+        # change the shard count, update this list AND the `shard-total` input
+        # passed to the integration-test action below so they stay in sync.
+        shard: [ 1, 2, 3, 4 ]
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/nanvix/ci:ubuntu-24.04
+      options: --privileged
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # The CI container runs as root without USER set; nanvixd uses it as
+      # fallback tenant-id and fails when the variable is missing.
+      USER: root
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: "Setup"
+        uses: ./.github/actions/native-setup
+
+      - name: "Setup KVM"
+        uses: ./.github/actions/setup-kvm
+
+      - name: "Prepare Test Artifacts"
+        uses: ./.github/actions/prepare-test-artifacts
+        with:
+          build-type: "${{ matrix.build-type }}"
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "${{ matrix.deployment-type }}"
+
+      - name: "Integration Test"
+        uses: ./.github/actions/integration-test
+        with:
+          build-type: "${{ matrix.build-type }}"
+          machine-type: "${{ matrix.machine-type }}"
+          deployment-type: "${{ matrix.deployment-type }}"
+          shard-index: "${{ matrix.shard }}"
+          shard-total: "4"
+
+      - name: "Upload logs in case of failures"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-integration-logs-${{ github.event.pull_request.number ||
+            github.run_number }}-${{ matrix.build-type }}-${{
+            matrix.machine-type }}-${{ matrix.deployment-type }}-shard${{ matrix.shard }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+
+  # Non-sharded integration checks that should run once per configuration rather
+  # than per shard: in-kernel unit tests, the boot smoke test, and the shim
+  # integration test. Kept in a dedicated job so the sharded ci-test runners
+  # execute only disjoint slices of the TOML suites.
+  ci-test-extras:
+    name: "Test Extras (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{
       matrix.deployment-type }})"
     needs: [ ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
@@ -527,8 +604,8 @@ jobs:
           machine-type: "${{ matrix.machine-type }}"
           deployment-type: "${{ matrix.deployment-type }}"
 
-      - name: "Integration Test"
-        uses: ./.github/actions/integration-test
+      - name: "In-Kernel & Smoke Tests"
+        uses: ./.github/actions/integration-test-extras
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
@@ -548,7 +625,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: nanvix-integration-logs-${{ github.event.pull_request.number ||
+          name: nanvix-integration-extras-logs-${{ github.event.pull_request.number ||
             github.run_number }}-${{ matrix.build-type }}-${{
             matrix.machine-type }}-${{ matrix.deployment-type }}
           overwrite: "true"
@@ -557,6 +634,7 @@ jobs:
             **/*.log
             **/*.out
             **/*.err
+
 
   # ==========================================================================================
   # Windows CI (GitHub-Hosted Runners)
@@ -784,15 +862,14 @@ jobs:
   # mirroring the Linux CI integration-test stage.
   windows-integration-test:
     name: "Windows Integration Test (${{ matrix.machine-type }}, ${{
-      matrix.build-type }})"
+      matrix.build-type }}, shard ${{ matrix.shard }}/4)"
     needs: [ windows-ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.windows-ci-build.result == 'success' }}
-    # Debug guests run ~15x slower than release under WHP, so the debug matrix
-    # variant (debug-only in-kernel tests + integration suite + POSIX C suites)
-    # routinely consumes 25-27 min, and grows as new suites are added. Allow
-    # generous headroom over the 30 min default.
-    timeout-minutes: 60
+    # Debug guests run ~15x slower than release under WHP. Partitioning the
+    # integration + POSIX suites into disjoint shards keeps each runner well
+    # under the timeout even for debug. Allow headroom over the 30 min default.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -800,6 +877,11 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
+        # Integration tests are partitioned into disjoint shards via the harness
+        # `-shard INDEX/TOTAL` option (round-robin), so new tests distribute
+        # automatically. To change the shard count, update this list AND the
+        # `/4` divisors used in the test steps below so they stay in sync.
+        shard: [ 1, 2, 3, 4 ]
     runs-on: windows-latest
     permissions:
       contents: read
@@ -876,9 +958,11 @@ jobs:
           Write-Host "WHP probe succeeded — hypervisor is functional."
           echo "whp_available=true" >> $env:GITHUB_OUTPUT
 
+      # In-kernel tests are deployment- and shard-agnostic, so run them only on
+      # the first shard to avoid redundant work across the parallel shard runners.
       - name: "In-Kernel Tests (${{ matrix.machine-type }})"
         if: steps.whp-check.outputs.whp_available == 'true' && matrix.build-type ==
-          'debug'
+          'debug' && matrix.shard == 1
         shell: pwsh
         env:
           RUST_LOG: debug
@@ -886,7 +970,7 @@ jobs:
           .\z.ps1 build -- run-kernel-tests "MACHINE=${{ matrix.machine-type }}" TARGET=x86 LOG_LEVEL=trace
           Write-Host "In-kernel tests passed."
 
-      - name: "Run Integration Tests"
+      - name: "Run Integration Tests (shard ${{ matrix.shard }}/4)"
         if: steps.whp-check.outputs.whp_available == 'true'
         shell: pwsh
         env:
@@ -895,13 +979,14 @@ jobs:
           # marked release-only via `build_modes`, which are too slow under a debug/trace build).
           BUILD_MODE: ${{ matrix.build-type }}
         run: |
-          & .\bin\nanvix-test.exe .\test\test-standalone-windows.toml
+          # The config path must be the last argument, so -shard precedes it.
+          & .\bin\nanvix-test.exe -shard "${{ matrix.shard }}/4" .\test\test-standalone-windows.toml
 
       # Ported POSIX C test suites. Boots the prebuilt <suite>.initrd images
       # (built by the Windows build job via all-posix-test-images and downloaded
       # with the artifact) directly under WHP through the nanvix-test harness,
       # asserting each guest exit code is 0. No rebuild is needed here.
-      - name: "POSIX C Suites (${{ matrix.machine-type }})"
+      - name: "POSIX C Suites (${{ matrix.machine-type }}, shard ${{ matrix.shard }}/4)"
         if: steps.whp-check.outputs.whp_available == 'true'
         shell: pwsh
         env:
@@ -909,7 +994,8 @@ jobs:
           # Forwarded to the harness so it can gate build-mode-restricted tests.
           BUILD_MODE: ${{ matrix.build-type }}
         run: |
-          & .\bin\nanvix-test.exe .\test\test-posix-windows.toml
+          # The config path must be the last argument, so -shard precedes it.
+          & .\bin\nanvix-test.exe -shard "${{ matrix.shard }}/4" .\test\test-posix-windows.toml
 
       - name: "Upload logs in case of failures"
         if: failure() || cancelled()
@@ -917,7 +1003,7 @@ jobs:
         with:
           name: nanvix-windows-integration-logs-${{ github.event.pull_request.number ||
             github.run_number }}-${{ matrix.machine-type }}-${{
-            matrix.build-type }}
+            matrix.build-type }}-shard${{ matrix.shard }}
           overwrite: "true"
           path: |
             logs/
@@ -1468,6 +1554,7 @@ jobs:
       ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
     needs:
       - ci-test
+      - ci-test-extras
       - benchmark-gate-linux
       - benchmark-gate-windows
       - benchmark-finalize
@@ -1482,6 +1569,7 @@ jobs:
       github.ref == 'refs/heads/dev' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
+      needs.ci-test-extras.result == 'success' &&
       (needs.benchmark-finalize.result == 'success' ||
         needs.benchmark-gate-linux.outputs.should-run != 'true') &&
       (needs.windows-benchmark-finalize.result == 'success' ||
@@ -1533,6 +1621,7 @@ jobs:
     needs:
       - windows-integration-test
       - ci-test
+      - ci-test-extras
       - benchmark-gate-linux
       - benchmark-gate-windows
       - benchmark-finalize
@@ -1547,6 +1636,7 @@ jobs:
       github.ref == 'refs/heads/dev' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
       needs.ci-test.result == 'success' &&
+      needs.ci-test-extras.result == 'success' &&
       (needs.benchmark-finalize.result == 'success' ||
         needs.benchmark-gate-linux.outputs.should-run != 'true') &&
       (needs.windows-benchmark-finalize.result == 'success' ||
@@ -1631,6 +1721,7 @@ jobs:
         verify,
         ci-build,
         ci-test,
+        ci-test-extras,
         benchmark-gate-linux,
         benchmark-gate-windows,
         benchmark,
