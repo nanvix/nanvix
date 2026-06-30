@@ -1,0 +1,57 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Integration Test Extras"
+description: "Run the non-sharded integration checks (in-kernel and smoke tests)
+  for the microvm machine type"
+
+inputs:
+  build-type:
+    description: "Build type (debug or release)"
+    required: true
+  machine-type:
+    description: "Machine type"
+    required: true
+  deployment-type:
+    description: "Deployment type"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    # In-kernel unit tests: build kernel with `test` feature, boot it, and verify
+    # tests pass by waiting for the magic string (tests run before the user binary).
+    - name: "In-Kernel Tests (${{ inputs.machine-type }})"
+      if: inputs.build-type == 'debug'
+      shell: bash
+      env:
+        RUST_LOG: debug
+      run: |
+        set -Eeuo pipefail
+
+        ./z build -- run-kernel-tests \
+            "MACHINE=${{ inputs.machine-type }}" \
+            TARGET=x86 \
+            LOG_LEVEL=trace
+
+        echo "In-kernel tests passed."
+
+    # Smoke test that boots nanvixd and checks for the kernel magic string,
+    # verifying the multibin initrd (procd, testd, memd, vfsd).
+    - name: "Smoke Test (${{ inputs.machine-type }})"
+      shell: bash
+      env:
+        RUST_LOG: debug
+      run: |
+        set -Eeuo pipefail
+
+        TIMEOUT=120
+        RELEASE_FLAG=""
+        if [[ "${{ inputs.build-type }}" == "release" ]]; then
+          RELEASE_FLAG="--release"
+        fi
+
+        ./z build ${RELEASE_FLAG} -- run-smoke-test \
+            "MACHINE=${{ inputs.machine-type }}" \
+            "DEPLOYMENT_MODE=${{ inputs.deployment-type }}" \
+            "TIMEOUT=${TIMEOUT}"

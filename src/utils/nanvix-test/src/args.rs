@@ -21,12 +21,74 @@ use ::std::process;
 ///
 /// # Description
 ///
+/// Partition selector that assigns a disjoint, round-robin subset of the filtered test list to a
+/// single parallel shard. Sharding is positional, so it is independent of test names and
+/// automatically distributes newly added tests across shards.
+#[derive(Clone, Copy)]
+pub struct Shard {
+    /// Zero-based index of this shard within `total`.
+    index: usize,
+    /// Total number of shards the test list is partitioned into.
+    total: usize,
+}
+
+impl Shard {
+    ///
+    /// # Description
+    ///
+    /// Determines whether the test at `position` (zero-based, within the filtered list) is assigned
+    /// to this shard. Round-robin assignment keeps shards balanced as tests are added.
+    ///
+    /// # Parameters
+    ///
+    /// - `position`: Zero-based index of the test within the filtered list.
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when the test belongs to this shard; otherwise returns `false`.
+    ///
+    pub fn selects(&self, position: usize) -> bool {
+        position % self.total == self.index
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the one-based index of this shard, suitable for display.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the one-based shard index.
+    ///
+    pub fn index(&self) -> usize {
+        self.index + 1
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Retrieves the total number of shards.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the total shard count.
+    ///
+    pub fn total(&self) -> usize {
+        self.total
+    }
+}
+
+///
+/// # Description
+///
 /// CLI arguments resolved for the Nanvix test utility entrypoint.
 pub struct Args {
     /// Path to the Nanvix test configuration file supplied on the command line.
     config_file_path: String,
     /// Optional test filter to select specific tests to run.
     test_filter: Option<String>,
+    /// Optional shard selector that partitions the filtered tests across parallel runners.
+    shard: Option<Shard>,
     /// When true, list selected tests and exit without running them.
     list: bool,
 }
@@ -38,6 +100,7 @@ pub struct Args {
 impl Args {
     const OPT_HELP: &'static str = "-help";
     const OPT_TEST_SELECTOR: &'static str = "-test";
+    const OPT_SHARD: &'static str = "-shard";
     const OPT_LIST: &'static str = "-list";
 
     ///
@@ -65,6 +128,8 @@ Options:
     {help}                   Show this help message and exit.
     {filter} <pattern>         Specify a comma-separated list or a matching pattern of test(s) to \
              run (e.g., '-test http/*' to run all tests in the 'http' executor).
+    {shard} <INDEX/TOTAL>    Run only shard INDEX of TOTAL (1-based), partitioning the selected \
+             tests round-robin across parallel runners (e.g., '-shard 1/4').
     {list}                   List selected tests and exit without running them.
 
 Required positional arguments:
@@ -73,6 +138,7 @@ Required positional arguments:
             program_name = program_name,
             help = Self::OPT_HELP,
             filter = Self::OPT_TEST_SELECTOR,
+            shard = Self::OPT_SHARD,
             list = Self::OPT_LIST,
         );
     }
@@ -94,6 +160,7 @@ Required positional arguments:
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut config_file_path: Option<String> = None;
         let mut test_filter_string: Option<String> = None;
+        let mut shard: Option<Shard> = None;
         let mut list: bool = false;
 
         let mut i: usize = 1;
@@ -113,6 +180,26 @@ Required positional arguments:
                     } else {
                         let reason: String = "missing argument for option '-test': expected a \
                                               comma-separated list of test names or a pattern"
+                            .to_string();
+                        Self::usage(args[0].as_str());
+                        eprintln!("parse(): {reason}");
+                        return Err(::anyhow::anyhow!(reason));
+                    }
+                },
+                Self::OPT_SHARD => {
+                    if i + 1 < args.len() {
+                        match Self::parse_shard(args[i + 1].as_str()) {
+                            Ok(parsed_shard) => shard = Some(parsed_shard),
+                            Err(reason) => {
+                                Self::usage(args[0].as_str());
+                                eprintln!("parse(): {reason}");
+                                return Err(::anyhow::anyhow!(reason));
+                            },
+                        }
+                        i += 1; // Skip the next argument since it's the shard selector
+                    } else {
+                        let reason: String = "missing argument for option '-shard': expected \
+                                              INDEX/TOTAL (e.g. '1/4')"
                             .to_string();
                         Self::usage(args[0].as_str());
                         eprintln!("parse(): {reason}");
@@ -152,6 +239,7 @@ Required positional arguments:
         Ok(Self {
             config_file_path,
             test_filter,
+            shard,
             list,
         })
     }
@@ -185,6 +273,19 @@ Required positional arguments:
     ///
     /// # Description
     ///
+    /// Retrieves the shard selector specified via the CLI.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the shard selector when `-shard` was provided; otherwise returns `None`.
+    ///
+    pub fn shard(&self) -> Option<Shard> {
+        self.shard
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns whether the `-list` flag was specified on the command line.
     ///
     /// # Return Value
@@ -209,6 +310,51 @@ Required positional arguments:
         self.test_filter
             .as_ref()
             .map(|filter_str: &String| build_globset(filter_str))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Parses a `-shard` selector of the form `INDEX/TOTAL` (1-based index).
+    ///
+    /// # Parameters
+    ///
+    /// - `value`: Raw selector string supplied on the command line.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the parsed `Shard` when the selector is well formed; otherwise returns an error
+    /// message describing the problem.
+    ///
+    fn parse_shard(value: &str) -> Result<Shard, String> {
+        let trimmed: &str = value.trim();
+        let (index_str, total_str) = trimmed.split_once('/').ok_or_else(|| {
+            format!("invalid '-shard' value '{trimmed}': expected INDEX/TOTAL (e.g. '1/4')")
+        })?;
+        let index: usize = index_str.trim().parse().map_err(|_| {
+            format!(
+                "invalid shard index '{}' in '-shard {trimmed}': expected a positive integer",
+                index_str.trim()
+            )
+        })?;
+        let total: usize = total_str.trim().parse().map_err(|_| {
+            format!(
+                "invalid shard total '{}' in '-shard {trimmed}': expected a positive integer",
+                total_str.trim()
+            )
+        })?;
+        if total == 0 {
+            return Err(format!("invalid '-shard {trimmed}': TOTAL must be greater than zero"));
+        }
+        if index == 0 || index > total {
+            return Err(format!(
+                "invalid '-shard {trimmed}': INDEX must be in the range 1..={total}"
+            ));
+        }
+        Ok(Shard {
+            index: index - 1,
+            total,
+        })
     }
 }
 
@@ -352,5 +498,81 @@ mod tests {
         let args = vec!["nanvix-test".to_string(), "test/test.toml".to_string()];
         let parsed = super::Args::parse(args).expect("Failed to parse args without -list");
         assert!(!parsed.list(), "list must default to false");
+    }
+    #[test]
+    fn shard_flag_parses_valid_value() {
+        let args = vec![
+            "nanvix-test".to_string(),
+            "-shard".to_string(),
+            "2/4".to_string(),
+            "test/test.toml".to_string(),
+        ];
+        let parsed = super::Args::parse(args).expect("Failed to parse -shard flag");
+        let shard = parsed.shard().expect("shard must be set");
+        assert_eq!(shard.index(), 2, "one-based shard index must be 2");
+        assert_eq!(shard.total(), 4, "shard total must be 4");
+        assert_eq!(parsed.config_file_path(), "test/test.toml");
+    }
+    #[test]
+    fn shard_flag_defaults_to_none() {
+        let args = vec!["nanvix-test".to_string(), "test/test.toml".to_string()];
+        let parsed = super::Args::parse(args).expect("Failed to parse args without -shard");
+        assert!(parsed.shard().is_none(), "shard must default to None");
+    }
+    #[test]
+    fn shard_selects_round_robin() {
+        let args = vec![
+            "nanvix-test".to_string(),
+            "-shard".to_string(),
+            "1/4".to_string(),
+            "test/test.toml".to_string(),
+        ];
+        let parsed = super::Args::parse(args).expect("Failed to parse -shard flag");
+        let shard = parsed.shard().expect("shard must be set");
+        // Shard 1 of 4 (zero-based index 0) selects positions 0, 4, 8, ...
+        assert!(shard.selects(0));
+        assert!(!shard.selects(1));
+        assert!(!shard.selects(3));
+        assert!(shard.selects(4));
+    }
+    #[test]
+    fn shard_flag_rejects_zero_total() {
+        let args = vec![
+            "nanvix-test".to_string(),
+            "-shard".to_string(),
+            "1/0".to_string(),
+            "test/test.toml".to_string(),
+        ];
+        assert!(super::Args::parse(args).is_err(), "zero TOTAL must be rejected");
+    }
+    #[test]
+    fn shard_flag_rejects_index_out_of_range() {
+        let args = vec![
+            "nanvix-test".to_string(),
+            "-shard".to_string(),
+            "5/4".to_string(),
+            "test/test.toml".to_string(),
+        ];
+        assert!(super::Args::parse(args).is_err(), "INDEX greater than TOTAL must be rejected");
+    }
+    #[test]
+    fn shard_flag_rejects_zero_index() {
+        let args = vec![
+            "nanvix-test".to_string(),
+            "-shard".to_string(),
+            "0/4".to_string(),
+            "test/test.toml".to_string(),
+        ];
+        assert!(super::Args::parse(args).is_err(), "zero INDEX must be rejected");
+    }
+    #[test]
+    fn shard_flag_rejects_malformed_value() {
+        let args = vec![
+            "nanvix-test".to_string(),
+            "-shard".to_string(),
+            "abc".to_string(),
+            "test/test.toml".to_string(),
+        ];
+        assert!(super::Args::parse(args).is_err(), "malformed shard value must be rejected");
     }
 }
