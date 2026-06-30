@@ -62,6 +62,28 @@ extern "C" {
 #define _SC_PHYS_PAGES 11 /**< Total number of physical pages. */
 #define _SC_AVPHYS_PAGES 12 /**< Number of available physical pages. */
 
+/* pathconf()/fpathconf() name selectors. */
+#define _PC_LINK_MAX 0 /**< Maximum number of links to a file. */
+#define _PC_MAX_CANON 1 /**< Maximum bytes in a terminal canonical input line. */
+#define _PC_MAX_INPUT 2 /**< Maximum bytes in a terminal input queue. */
+#define _PC_NAME_MAX 3 /**< Maximum length of a filename component. */
+#define _PC_PATH_MAX 4 /**< Maximum length of a relative pathname. */
+#define _PC_PIPE_BUF 5 /**< Maximum atomic write size to a pipe. */
+#define _PC_CHOWN_RESTRICTED 6 /**< Whether chown() is restricted. */
+#define _PC_NO_TRUNC 7 /**< Whether over-long pathname components error. */
+#define _PC_VDISABLE 8 /**< Terminal special-character disable value. */
+#define _PC_SYNC_IO 9 /**< Whether synchronized I/O is supported. */
+#define _PC_ASYNC_IO 10 /**< Whether asynchronous I/O is supported. */
+#define _PC_PRIO_IO 11 /**< Whether prioritized I/O is supported. */
+#define _PC_FILESIZEBITS 12 /**< Number of bits to represent a file's size. */
+#define _PC_ALLOC_SIZE_MIN 13 /**< Minimum allocation unit of a file. */
+#define _PC_REC_INCR_XFER_SIZE 14 /**< Recommended transfer size increment. */
+#define _PC_REC_MAX_XFER_SIZE 15 /**< Maximum recommended transfer size. */
+#define _PC_REC_MIN_XFER_SIZE 16 /**< Minimum recommended transfer size. */
+#define _PC_REC_XFER_ALIGN 17 /**< Recommended transfer buffer alignment. */
+#define _PC_SYMLINK_MAX 18 /**< Maximum length of a symbolic-link target. */
+#define _PC_2_SYMLINKS 19 /**< Whether the file system supports symbolic links. */
+
 /*==================================================================================================
  * File and Process Operations
  *==================================================================================================*/
