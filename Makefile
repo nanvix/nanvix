@@ -937,6 +937,27 @@ STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDAL
 STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
 STANDALONE_NO_VFS_INITRDS   := $(STANDALONE_NO_VFS_BINARIES:%=$(BINARIES_DIR)/%.initrd)
 
+# Cross-target build guard.
+#
+# $(BINARIES_DIR) is shared across TARGETs, but the multibinary boot images (`*.initrd`) bundle
+# architecture-specific guest binaries. On an incremental build that switches TARGET without a
+# `clean`, the guest binaries are re-copied with their (cached) cargo mtimes and therefore never
+# look newer than a `*.initrd` built for the other target, which would leave a stale wrong-arch
+# boot image in $(BINARIES_DIR). This guard records the last-built TARGET and, when it changes,
+# removes the boot images so they are rebuilt from the current target's binaries. It is wired as an
+# order-only prerequisite of the per-image rules below, so it runs once before any image is
+# (re)built. Clean builds and CI (a fresh workspace per target) are unaffected.
+TARGET_SENTINEL := $(BINARIES_DIR)/.last-build-target
+
+.PHONY: target-guard
+target-guard:
+	@mkdir -p $(BINARIES_DIR)
+	@if [ "$$(cat '$(TARGET_SENTINEL)' 2>/dev/null)" != "$(TARGET)" ]; then \
+		echo "[target-guard] TARGET='$(TARGET)' differs from last build; removing stale multibinary boot images from $(BINARIES_DIR)"; \
+		$(RM_CMD) $(BINARIES_DIR)/*.initrd; \
+		echo '$(TARGET)' > '$(TARGET_SENTINEL)'; \
+	fi
+
 # Bridge from the side-effect-producing build targets to the actual ELF/mkimage files they
 # leave in $(BINARIES_DIR). These rules have an empty recipe (the trailing `;`) and a normal
 # prerequisite on the underlying build target.
@@ -969,7 +990,8 @@ $(STANDALONE_WITH_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT) \
-		$(MKIMAGE)
+		$(MKIMAGE) \
+		| target-guard
 	$(MKIMAGE) -o $@ \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
@@ -980,7 +1002,8 @@ $(STANDALONE_NO_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
 		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
-		$(MKIMAGE)
+		$(MKIMAGE) \
+		| target-guard
 	$(MKIMAGE) -o $@ \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \

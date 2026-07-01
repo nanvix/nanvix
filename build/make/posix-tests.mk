@@ -37,7 +37,11 @@
 # mirrored into a single POSIX_TESTS_OBJDIR (suite names are unique across roots).
 POSIX_TESTS_SRCDIR := $(SOURCES_DIR)/tests/integration
 POSIX_TESTS_STRESS_SRCDIR := $(SOURCES_DIR)/tests/stress
-POSIX_TESTS_OBJDIR := $(OBJECTS_DIR)/posix-tests
+# Namespace the object tree by TARGET. The guest C objects are ABI-specific
+# (i686 vs x86-64) but $(OBJECTS_DIR) is shared across targets, so a TARGET
+# switch without a clean must not relink stale wrong-arch objects (e.g. the
+# shared crt0-stubs.o).
+POSIX_TESTS_OBJDIR := $(OBJECTS_DIR)/posix-tests/$(TARGET)
 
 # Suites that live under the stress root (POSIX_TESTS_STRESS_SRCDIR) rather than
 # the default integration root. Consumed by POSIX_TEST_RULE to pick the source
@@ -123,7 +127,21 @@ POSIX_TEST_FILES_test-c-file := \
 # libc's text relocations, -z norelro to keep .dynamic in the data segment (the
 # kernel maps pages per-segment), SysV hashing, and no PT_INTERP (Nanvix has no
 # system dynamic linker; nvx-crt0 self-relocates the PIE at startup).
+#
+# On x86-64 a PIE link is impossible here: the static libc.a is built with
+# relocation-model=static and carries R_X86_64_32S relocations that `ld -pie`
+# rejects ("can not be used when making a PIE object"). Instead these suites link
+# as a non-PIE ET_EXEC at the fixed guest base (< 2 GiB, so the 32-bit absolute
+# relocations resolve at link time). --export-dynamic still emits
+# .dynsym/.dynamic so the executable's own symbols populate the loader's global
+# scope, and linking against a fixture .so still records DT_NEEDED plus the
+# .rela.plt/.rela.dyn entries the startup self-linker binds. nvx-crt0's PIE
+# self-relocation is a no-op for a non-PIE image.
+ifeq ($(TARGET),x86_64)
+POSIX_TEST_PIE_LDFLAGS := --export-dynamic --no-dynamic-linker -z notext -z norelro --hash-style=sysv
+else
 POSIX_TEST_PIE_LDFLAGS := -pie --export-dynamic --no-dynamic-linker -z notext -z norelro --hash-style=sysv
+endif
 
 # Suites linked as position-independent executables (PIE).
 POSIX_TEST_PIE_test-c-dlfcn-pie := yes
@@ -257,7 +275,12 @@ define POSIX_TEST_RULE
 POSIX_TEST_SRCROOT_$(1) := $$(if $$(POSIX_TEST_STRESS_$(1)),$$(POSIX_TESTS_STRESS_SRCDIR),$$(POSIX_TESTS_SRCDIR))
 POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TEST_SRCROOT_$(1))/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TEST_SRCROOT_$(1))/$(1)/*.c))
 POSIX_TEST_OBJS_$(1) := $$(patsubst $$(POSIX_TEST_SRCROOT_$(1))/%.c,$$(POSIX_TESTS_OBJDIR)/%.o,$$(POSIX_TEST_SRCS_$(1)))
-# PIE suites compile their objects with -fPIE and link with the PIE flags.
+# PIE suites compile their objects with -fPIE and link with the PIE flags. On
+# x86-64 the final link is non-PIE (see POSIX_TEST_PIE_LDFLAGS), but the objects
+# are still compiled -fPIE so that references to a shared library's symbols go
+# through the GOT/PLT (R_X86_64_GLOB_DAT / R_X86_64_JUMP_SLOT, which the startup
+# self-linker binds) rather than becoming R_X86_64_COPY relocations, which a
+# non-PIC executable would otherwise emit for shared data.
 ifeq ($$(POSIX_TEST_PIE_$(1)),yes)
 $$(POSIX_TEST_OBJS_$(1)): POSIX_TEST_EXTRA_CFLAGS := -fPIE
 endif
@@ -422,7 +445,13 @@ POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite
 # into lib/) so dlfcn-c can dlopen("lib/libmul.so"). Suites that need the image
 # are listed in POSIX_TEST_RAMFS_SUITES. Suites with their own fixtures (the
 # dlfcn global/needed variants, below) override the image with a per-suite one.
+# The shared-image dlfcn entries are i686-only; on x86_64 only the file-system
+# suites need the shared writable RAMFS.
+ifeq ($(TARGET),x86_64)
+POSIX_TEST_RAMFS_SUITES := test-c-file test-c-stdio
+else
 POSIX_TEST_RAMFS_SUITES := test-c-file test-c-stdio test-c-dlfcn test-c-dlfcn-refcount test-c-dlfcn-pie test-c-dlfcn-global test-c-dlfcn-needed test-c-dlfcn-diamond
+endif
 POSIX_TEST_RAMFS_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-seed
 POSIX_TEST_RAMFS_IMG    := $(BINARIES_DIR)/posix-tests-ramfs.img
 
@@ -430,14 +459,21 @@ $(POSIX_TEST_RAMFS_SEED)/marker.txt:
 	@$(MKDIR_CMD) $(POSIX_TEST_RAMFS_SEED)
 	@echo "posix-tests ramfs marker" > $@
 
-# Depends on test-rust-dlfcn's ELF so that its build script has installed
-# lib/libmul.so and lib/libmul-pie.so before we stage them into the RAMFS seed.
+# The shared writable RAMFS. On x86 it also carries the dlfcn dlopen fixtures
+# (lib/libmul.so + lib/libmul-pie.so, staged by test-rust-dlfcn's build script),
+# so it depends on that ELF. On x86_64 the dlfcn suites are not built, so the
+# image only provides the writable file system the file-system suites need.
+ifeq ($(TARGET),x86_64)
+$(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt all-host-binaries-mkramfs
+	$(MKRAMFS) -o $(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_RAMFS_SEED)
+else
 $(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt \
 		$(BINARIES_DIR)/test-rust-dlfcn.$(EXEC_FORMAT) all-host-binaries-mkramfs
 	@$(MKDIR_CMD) $(POSIX_TEST_RAMFS_SEED)/lib
 	$(CP_CMD) $(LIBRARIES_DIR)/libmul.so $(POSIX_TEST_RAMFS_SEED)/lib/
 	$(CP_CMD) $(LIBRARIES_DIR)/libmul-pie.so $(POSIX_TEST_RAMFS_SEED)/lib/
 	$(MKRAMFS) -o $(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_RAMFS_SEED)
+endif
 
 #---------------------------------------------------------------------------------------------------
 # Suites that build their own shared-library fixtures (a `libs/` subdirectory).
@@ -457,8 +493,16 @@ $(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt \
 # for R_386_* against local symbols), mirroring the prebuilt libmul.so recipe.
 
 POSIX_TEST_SOLIB_SUITES := test-c-dlfcn-global test-c-dlfcn-needed
+# The fixture shared objects follow the active guest ABI: i686 PIC on x86, x86-64
+# PIC on x86_64. Both are position-independent (`-fPIC` / `-shared`); `-z notext`
+# tolerates the freestanding fixtures' text relocations against local symbols.
+ifeq ($(TARGET),x86_64)
+POSIX_TEST_SOLIB_CFLAGS := -m64 -march=x86-64 -nostdlib -ffreestanding -fPIC -O2 -isystem $(ROOT_DIR)/include
+POSIX_TEST_SOLIB_LDFLAGS := -shared -melf_x86_64 -z notext
+else
 POSIX_TEST_SOLIB_CFLAGS := -m32 -march=pentiumpro -nostdlib -ffreestanding -fPIC -O2 -isystem $(ROOT_DIR)/include
 POSIX_TEST_SOLIB_LDFLAGS := -shared -melf_i386 -z notext
+endif
 
 # Consumer libraries that should carry a DT_NEEDED entry on libprovider.so.
 POSIX_TEST_SOLIB_NEEDED_test-c-dlfcn-needed := yes
@@ -1462,13 +1506,24 @@ $(POSIX_TEST_EXECVP_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXECVP_SUITE).$(EXEC_FORM
 # `run-posix-tests` is skipped — notably Windows, where suites are booted
 # manually under WHP (see the repo notes). `run-posix-tests` depends on the same
 # set, so this also pre-stages everything the Linux runner consumes.
+# The dlfcn shared-library fixtures (the global/needed/diamond/selflink/initfini
+# RAMFS images, the init-runpath image, and the weak-symbol image) now build for
+# every guest ABI: the fixture `.so` follow the active TARGET
+# (`POSIX_TEST_SOLIB_*`), and the dlfcn suites that consume them run on x86 and
+# x86_64. The startup suite's image is excluded on x86_64 because it stages the
+# real libc.so/libm.so, which cannot be built as x86-64 shared objects (see the
+# i686-only note in build/make/lists/guest-posix-tests.mk). Basic test-c-dlfcn /
+# test-c-dlfcn-pie stay i686-only (they dlopen the prebuilt i386 libmul.so).
+ifeq ($(TARGET),x86_64)
+POSIX_TEST_DLFCN_FIXTURE_IMGS := $(filter-out $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup),$(POSIX_TEST_SOLIB_IMGS)) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) $(POSIX_TEST_WEAK_IMG)
+else
+POSIX_TEST_DLFCN_FIXTURE_IMGS := $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) $(POSIX_TEST_WEAK_IMG)
+endif
+
 .PHONY: all-posix-test-images
 all-posix-test-images: $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
-		$(POSIX_TEST_SOLIB_IMGS) \
-		$(POSIX_TEST_RUNPATH_IMG) \
-		$(POSIX_TEST_STAGING_IMG) \
-		$(POSIX_TEST_WEAK_IMG) \
+		$(POSIX_TEST_DLFCN_FIXTURE_IMGS) \
 		$(POSIX_TEST_EXECVP_IMG)
 	@echo "All POSIX C test-suite images built."
 
@@ -1478,10 +1533,11 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 # each <suite>.initrd under nanvixd in standalone mode (the `terminal` executor)
 # and asserts a guest exit code of 0. The harness is cross-platform: on Linux it
 # launches nanvixd directly; on Windows it launches nanvixd.exe under WHP. The
-# suites are i686-only (the guest C toolchain is pinned to the
-# i686 ABI, TARGET=x86) and standalone-only (they bundle the guest daemons). On
-# other targets or deployment modes the suites can still be built with
-# `all-posix-tests`.
+# suites build for every guest ABI (TARGET=x86 and x86_64); the i686-only suites
+# listed in POSIX_TESTS_X86_ONLY are gated
+# to x86 through their per-test `targets` field. The suites are
+# standalone-only (they bundle the guest daemons). On unsupported targets the
+# portable suites can still be built with `all-posix-tests`.
 
 # Harness configuration: Windows uses the .exe nanvixd and a `.`-rooted temp dir.
 ifeq ($(IS_WINDOWS),yes)
@@ -1497,14 +1553,11 @@ endif
 # last argument as the config file). Leave SHARD empty to run every suite.
 POSIX_TEST_SHARD_FLAG := $(if $(strip $(SHARD)),-shard $(strip $(SHARD)))
 
-ifneq ($(TARGET),x86)
+ifeq ($(filter $(TARGET),x86 x86_64),)
 run-posix-tests:
-	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
+	@echo "Skipping POSIX C test suites (no guest C toolchain for TARGET=$(TARGET))."
 else
-run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) \
-		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
-		$(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) \
-		$(POSIX_TEST_WEAK_IMG) $(POSIX_TEST_EXECVP_IMG)
+run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }

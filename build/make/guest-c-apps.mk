@@ -21,14 +21,20 @@
 # C compiler.
 #---------------------------------------------------------------------------------------------------
 
-# Host clang, cross-compiling to the i686 guest ABI.
+# Host clang, cross-compiling to the active guest ABI: i686 for TARGET=x86 and
+# x86-64 for TARGET=x86_64. Both are freestanding `-unknown-none` targets,
+# mirroring the Rust guest target specs in build/targets/$(TARGET)-user.json.
+ifeq ($(TARGET),x86_64)
+GUEST_C_APP_CC := clang --target=x86_64-unknown-none
+else
 GUEST_C_APP_CC := clang --target=i686-unknown-none
+endif
 
 #---------------------------------------------------------------------------------------------------
 # Flags and inputs.
 #---------------------------------------------------------------------------------------------------
 
-# Compile flags: freestanding i686, project headers only.
+# Compile flags: freestanding guest C, project headers only.
 #
 # Use -nostdinc for maximal isolation: it drops BOTH the host system include
 # paths and the compiler's builtin resource-directory headers. The freestanding
@@ -36,7 +42,18 @@ GUEST_C_APP_CC := clang --target=i686-unknown-none
 # stddef.h, stdint.h) are vendored in-tree under include/, so the build is
 # hermetic and does not depend on the compiler's resource directory (which clang
 # 18 omits under -nostdinc on both Linux and Windows).
+#
+# The flavor follows TARGET and mirrors build/targets/$(TARGET)-user.json so the
+# C objects share the Rust guest ABI:
+#   * x86_64: baseline x86-64 CPU, no red zone (the kernel's exception/signal
+#     delivery does not preserve it) and the small code model + non-PIE static
+#     link at the guest BASE_ADDR (< 2 GiB, so 32-bit absolute relocations hold).
+#   * x86: i686 / pentiumpro.
+ifeq ($(TARGET),x86_64)
+GUEST_C_APP_CFLAGS := -m64 -march=x86-64 -mno-red-zone -mcmodel=small -ffreestanding -nostdinc -std=c17
+else
 GUEST_C_APP_CFLAGS := -m32 -march=pentiumpro -ffreestanding -nostdinc -std=c17
+endif
 GUEST_C_APP_CFLAGS += -isystem $(ROOT_DIR)/include
 ifeq ($(RELEASE),yes)
 GUEST_C_APP_CFLAGS += -O3
@@ -62,7 +79,12 @@ GUEST_C_APP_LIBC := $(NANVIX_LIBC_BUNDLE_AR)
 # handler, no sysalloc).
 GUEST_C_APP_LIBM := $(LIBRARIES_DIR)/libm.a
 GUEST_C_APP_LD_SCRIPT := $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
+# ELF flavor follows TARGET (-melf_i386 for x86, -melf_x86_64 for x86_64).
+ifeq ($(TARGET),x86_64)
+GUEST_C_APP_LDFLAGS := -melf_x86_64 -z noexecstack -z muldefs
+else
 GUEST_C_APP_LDFLAGS := -melf_i386 -z noexecstack -z muldefs
+endif
 # --no-warn-rwx-segments silences a GNU ld >= 2.39 diagnostic. ld.lld neither
 # emits that warning nor recognizes the flag, so pass it only to GNU ld.
 ifneq ($(IS_WINDOWS),yes)

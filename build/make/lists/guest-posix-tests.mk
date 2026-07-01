@@ -5,10 +5,14 @@
 # build/make/posix-tests.mk and booted by `run-posix-tests`. Suites live under
 # src/tests/integration/<suite>/, except memory-c which lives under
 # src/tests/stress/<suite>/ (see POSIX_TEST_STRESS_* in posix-tests.mk).
-# `common/` holds shared crt0 scaffolding and is not a suite of its own. The
-# guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
-# (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner
-# is gated on TARGET=x86 accordingly.
+# `common/` holds shared crt0 scaffolding and is not a suite of its own.
+#
+# The guest C toolchain (build/make/guest-c-apps.mk) follows the active TARGET:
+# i686 for x86 and x86-64 for x86_64. Suites that build and run on every guest
+# ABI live in ALL_POSIX_TESTS; suites pinned to the i686 ABI are listed in
+# POSIX_TESTS_X86_ONLY and appended to ALL_POSIX_TESTS only for x86 builds. The
+# x86_64 `run-posix-tests` run skips the i686-only suites through the per-test
+# `targets = ["x86"]` gate in test/test-posix.toml.
 #
 # One entry per line (with `\` continuations) so that adding a suite touches a
 # single line, minimizing merge conflicts between branches that each add a suite.
@@ -16,7 +20,6 @@ ALL_POSIX_TESTS := \
 	test-c-bindings \
 	test-c-cxa-atexit \
 	test-c-ctor \
-	test-c-dlfcn \
 	test-c-dlfcn-ctor-dtor-reentry \
 	test-c-dlfcn-cycle \
 	test-c-dlfcn-diamond \
@@ -31,13 +34,10 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-initfini \
 	test-c-dlfcn-needed \
 	test-c-dlfcn-order \
-	test-c-dlfcn-pie \
-	test-c-dlfcn-refcount \
 	test-c-dlfcn-scope \
 	test-c-dlfcn-searchpath \
 	test-c-dlfcn-selflink \
 	test-c-dlfcn-staging \
-	test-c-dlfcn-startup \
 	test-c-dlfcn-weak \
 	test-c-echo \
 	test-c-execvp \
@@ -66,3 +66,26 @@ ALL_POSIX_TESTS := \
 	test-c-termios \
 	test-c-thread \
 	test-c-wchar
+
+# Suites pinned to the i686 guest ABI (TARGET=x86), appended to ALL_POSIX_TESTS
+# only for x86 builds:
+#  - test-c-dlfcn, test-c-dlfcn-pie, and test-c-dlfcn-refcount dlopen the
+#    prebuilt libmul.so / libmul-pie.so fixtures, which are checked-in i386
+#    shared objects built from i386 inline assembly (see
+#    src/tests/integration/test-rust-dlfcn); no x86-64 build of those fixtures
+#    exists yet.
+#  - test-c-dlfcn-startup stages the real libc.so / libm.so, which cannot be
+#    built as x86-64 shared objects from the static libc.a (its
+#    relocation-model=static objects carry R_X86_64_32 relocations that a shared
+#    link rejects).
+# The rest of the dlfcn family builds its own per-ABI fixtures and runs on both
+# guest ABIs.
+POSIX_TESTS_X86_ONLY := \
+	test-c-dlfcn \
+	test-c-dlfcn-pie \
+	test-c-dlfcn-refcount \
+	test-c-dlfcn-startup
+
+ifneq ($(TARGET),x86_64)
+ALL_POSIX_TESTS += $(POSIX_TESTS_X86_ONLY)
+endif
