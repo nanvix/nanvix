@@ -202,21 +202,41 @@ $(NANVIX_LIBM_BUNDLE_SO): $(NANVIX_LIBM_BUNDLE_AR)
 # NOTE above). The crt1.o / Scrt1.o aliases are regular object copies so the
 # sysroot/release bundle does not depend on symlink support.
 #
-# After folding, the Rust global-allocator shim symbols (`__rust_alloc`,
-# `__rust_dealloc`, `__rust_realloc`, `__rust_alloc_zeroed`,
-# `__rust_alloc_error_handler`) are demoted to LOCAL. `nvx-crt0` only carries a
-# *forwarding* `#[global_allocator]` (built with the `forwarding-allocator`
-# feature) — it has no allocation sites of its own and exists solely to satisfy
-# rustc's requirement that every `alloc`-linking staticlib declare a global
-# allocator (see nvx-crt0/src/lib.rs). The real allocator lives in `libc.a`'s
-# `sysalloc`, which exports the SAME shim symbols. As an ARCHIVE member the
-# forwarding shim is harmless (the linker skips it once `libc.a` satisfies the
-# reference), but `ld -r --whole-archive` folds it into `crt0.o` as an
-# UNCONDITIONAL global definition, so a default (no `-z muldefs`) static link of
-# `crt0.o + libc.a` fails with "multiple definition of `__rust_alloc'". Demoting
-# crt0's dead copies to local keeps `libc.a` the single owner and realizes the
-# "crt0 carries no #[global_allocator]" invariant — without a `-z muldefs`
-# reliance.
+# After folding, two families of DEAD DUPLICATE globals that `libc.a` also owns
+# are demoted to LOCAL, so `libc.a` stays their single owner and a default
+# (no `-z muldefs` / no `-Wl,--allow-multiple-definition`) static link of
+# `crt0.o + libc.a` no longer fails with "multiple definition of ...". As ARCHIVE
+# members these dead copies are harmless (the linker skips them once `libc.a`
+# satisfies the reference), but `ld -r --whole-archive` folds EVERY member into
+# `crt0.o` as an UNCONDITIONAL global definition, so any symbol `crt0` merely
+# carries (but does not itself reference) collides with `libc.a`'s copy at the
+# native link.
+#
+#   1. Rust global-allocator / compiler-builtins runtime shims (`__rust_alloc`,
+#      `__rust_dealloc`, `__rust_realloc`, `__rust_alloc_zeroed`,
+#      `__rdl_alloc_error_handler`, `__rust_no_alloc_shim_is_unstable_v2`,
+#      `__rust_probestack`). `nvx-crt0` only carries a *forwarding*
+#      `#[global_allocator]` (built with the `forwarding-allocator` feature) — it
+#      has no allocation sites of its own and exists solely to satisfy rustc's
+#      requirement that every `alloc`-linking staticlib declare a global
+#      allocator (see nvx-crt0/src/lib.rs). The real allocator (and the
+#      compiler-builtins `__rust_probestack` intrinsic) live in `libc.a`, which
+#      exports the SAME shim symbols.
+#
+#   2. The `sys`-crate kernel-call / fork / thread startup stubs (`__kcall_*`,
+#      `fork_save_context`, `fork_trampoline`, `_do_start_thread`,
+#      `_do_exit_thread`). `nvx-crt0` depends on `sys` with the `kcall` feature
+#      because `_start` registers the signal restorer via `__kcall_sig_restorer()`,
+#      so the WHOLE `sys` kernel-call backend is folded into `crt0.o`. `crt0`
+#      reaches the restorer through its name-mangled Rust symbol, so the C-ABI
+#      `__kcall_*` wrappers and the fork / thread assembly helpers are dead
+#      duplicates here; `libc.a` embeds the same backend and is their single owner.
+#
+# Demoting crt0's dead copies to local keeps `libc.a` the single owner and
+# realizes the "crt0 is a stateless startup shim" invariant (see
+# nvx-crt0/src/lib.rs) — without a `-z muldefs` reliance. The `__kcall_*` pattern
+# is anchored (no leading `*`) so it matches only the C-ABI wrappers and leaves
+# crt0's own name-mangled `__kcall_sig_restorer` reference untouched.
 $(NANVIX_CRT0_OBJECT): $(NANVIX_CRT0_ARCHIVE)
 	@echo "[nanvix-libc] emitting crt0.o (nvx-crt0 startup object)"
 	$(NANVIX_LIBC_LD) -r -m $(NANVIX_LIBC_ELF_EMULATION) \
@@ -224,6 +244,10 @@ $(NANVIX_CRT0_OBJECT): $(NANVIX_CRT0_ARCHIVE)
 		-o $@
 	$(NANVIX_LIBC_OBJCOPY) --wildcard \
 		-L '*__rust_alloc*' -L '*__rust_dealloc*' -L '*__rust_realloc*' \
+		-L '*__rdl_alloc_error_handler*' -L '*__rust_no_alloc_shim_is_unstable*' \
+		-L '*__rust_probestack*' \
+		-L '__kcall_*' -L 'fork_save_context' -L 'fork_trampoline' \
+		-L '_do_start_thread' -L '_do_exit_thread' \
 		$@
 	@for alias in $(NANVIX_CRT0_ALIAS_NAMES); do \
 		$(CP_CMD) $(NANVIX_CRT0_OBJECT) $(LIBRARIES_DIR)/$$alias; \
