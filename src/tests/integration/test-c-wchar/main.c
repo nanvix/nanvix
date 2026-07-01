@@ -76,6 +76,66 @@ static void test_wide_search_siblings(void)
     assert(wcsstr(ws, L"absent") == NULL);
 }
 
+// Tests wcstof(), the wide-character to float conversion.
+static void test_wcstof(void)
+{
+    wchar_t *end = NULL;
+
+    // A simple value parses exactly and leaves the end pointer at the terminator.
+    {
+        const wchar_t *s = L"3.5";
+        float v = wcstof(s, &end);
+        assert(v == 3.5f);
+        assert(end == s + 3);
+        assert(*end == L'\0');
+    }
+
+    // A trailing suffix stops the scan and the end pointer reports the stop position.
+    {
+        const wchar_t *s = L"2.5x";
+        float v = wcstof(s, &end);
+        assert(v == 2.5f);
+        assert(end == s + 3);
+        assert(*end == L'x');
+    }
+
+    // A leading sign and fractional part are honored.
+    assert(wcstof(L"-0.5", NULL) == -0.5f);
+
+    // A null end pointer is accepted.
+    assert(wcstof(L"10", NULL) == 10.0f);
+}
+
+// Tests wcstold(), the wide-character to long double conversion.
+static void test_wcstold(void)
+{
+    wchar_t *end = NULL;
+
+    // A simple value parses exactly and leaves the end pointer at the terminator.
+    {
+        const wchar_t *s = L"3.5";
+        long double v = wcstold(s, &end);
+        assert(v == 3.5L);
+        assert(end == s + 3);
+        assert(*end == L'\0');
+    }
+
+    // A trailing suffix stops the scan and the end pointer reports the stop position.
+    {
+        const wchar_t *s = L"2.5x";
+        long double v = wcstold(s, &end);
+        assert(v == 2.5L);
+        assert(end == s + 3);
+        assert(*end == L'x');
+    }
+
+    // A leading sign and fractional part are honored.
+    assert(wcstold(L"-0.5", NULL) == -0.5L);
+
+    // A null end pointer is accepted.
+    assert(wcstold(L"10", NULL) == 10.0L);
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -101,6 +161,8 @@ int main(int argc, const char *argv[])
 
     test_wcspbrk();
     test_wide_search_siblings();
+    test_wcstof();
+    test_wcstold();
 
     // Write magic string to signal that the test passed.
     {
