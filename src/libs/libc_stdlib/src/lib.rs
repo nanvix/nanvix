@@ -221,6 +221,9 @@ pub use setenv::setenv;
 pub use strtod::strtod;
 pub use strtof::strtof;
 pub use strtol::strtol;
+// On the x86_64 guest `strtold` is an assembly symbol (see strtold.rs), not a Rust item, so the
+// Rust-level re-export exists only where the Rust function is compiled.
+#[cfg(not(all(target_arch = "x86_64", not(any(feature = "std", test)))))]
 pub use strtold::strtold;
 pub use strtoll::strtoll;
 pub use strtoul::strtoul;

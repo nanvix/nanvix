@@ -22,16 +22,58 @@ use ::sysapi::ffi::c_char;
 ///
 /// The C prototype returns `long double` to match POSIX. As with the narrow `strtold`, the
 /// conversion is computed at `double` precision: the wide string is narrowed to its byte
-/// representation and delegated to `strtod`. This is ABI-correct on the supported i686 target, where
-/// the cdecl convention returns `double` and `long double` alike in the x87 `st0` register, so the
-/// `f64` result is promoted to the 80-bit extended representation on return.
+/// representation and delegated to `strtod`. On the i686 guest the cdecl convention returns `double`
+/// and `long double` alike in the x87 `st0`, so the `f64` result is promoted to the 80-bit extended
+/// representation on return. The x86_64 System V ABI returns `double` in `xmm0` but `long double` in
+/// `st0`, so on that target `wcstold` is exported as an assembly trampoline (below) that reloads the
+/// `xmm0` result onto the x87 stack.
 ///
 /// # Safety
 ///
 /// `nptr` must point to a valid, null-terminated wide string. `endptr`, if non-null, must be a
 /// valid pointer.
+#[cfg(not(all(target_arch = "x86_64", not(any(feature = "std", test)))))]
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn wcstold(nptr: *const wchar_t, endptr: *mut *mut wchar_t) -> f64 {
+    unsafe { wcstold_impl(nptr, endptr) }
+}
+
+// x86_64 guest: `double`-precision producer used by the assembly trampoline below (see the narrow
+// `strtold` for the detailed rationale). Kept as an internal symbol so the public `wcstold` can
+// convert its `xmm0` result into the `st0` return value the System V AMD64 ABI mandates for
+// `long double`.
+#[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __nanvix_wcstold_f64(nptr: *const wchar_t, endptr: *mut *mut wchar_t) -> f64 {
+    unsafe { wcstold_impl(nptr, endptr) }
+}
+
+// x86_64 guest: export `wcstold` as an assembly trampoline that computes the value at `double`
+// precision (result in `xmm0`) and reloads it onto the x87 stack with `fldl`, so the `long double`
+// return value is delivered in `st0`. `sub $8, %rsp` reserves an 8-byte spill slot and keeps `%rsp`
+// 16-byte aligned at the `call`.
+#[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global wcstold",
+    ".type wcstold, @function",
+    "wcstold:",
+    "    sub $8, %rsp",
+    "    call __nanvix_wcstold_f64",
+    "    movsd %xmm0, (%rsp)",
+    "    fldl (%rsp)",
+    "    add $8, %rsp",
+    "    ret",
+    options(att_syntax),
+);
+
+/// Shared `double`-precision conversion backing `wcstold` on every target. Narrows the wide string
+/// to its byte representation and delegates to `strtod`.
+///
+/// # Safety
+///
+/// `nptr` must point to a valid, null-terminated wide string. `endptr`, if non-null, must be a
+/// valid pointer.
+unsafe fn wcstold_impl(nptr: *const wchar_t, endptr: *mut *mut wchar_t) -> f64 {
     extern "C" {
         fn strtod(s: *const c_char, e: *mut *mut c_char) -> f64;
     }

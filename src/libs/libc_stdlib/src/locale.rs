@@ -9,11 +9,14 @@ use crate::{
     strtod::strtod,
     strtof::strtof,
     strtol::strtol,
-    strtold::strtold,
     strtoll::strtoll,
     strtoul::strtoul,
     strtoull::strtoull,
 };
+// `strtold` backs only the non-x86_64-guest `strtold_l`; on the x86_64 guest `strtold_l` is an
+// assembly tail-call to the `strtold` symbol and needs no Rust import.
+#[cfg(not(all(target_arch = "x86_64", not(any(feature = "std", test)))))]
+use crate::strtold::strtold;
 use ::sysapi::ffi::{
     c_char,
     c_int,
@@ -61,9 +64,14 @@ pub unsafe extern "C" fn strtof_l(
 
 /// Converts the initial portion of a string to a `long double` using the C/POSIX locale.
 ///
+/// Delegates to [`strtold`]. On the x86_64 guest the `long double` return value must come back in
+/// the x87 `st0` (see `strtold`), so this is exported there as an assembly tail-call to `strtold`
+/// rather than a Rust wrapper, whose `-> f64` return would use `xmm0`.
+///
 /// # Safety
 ///
 /// This function dereferences the raw pointers `nptr` and `endptr`, which must be valid.
+#[cfg(not(all(target_arch = "x86_64", not(any(feature = "std", test)))))]
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn strtold_l(
     nptr: *const c_char,
@@ -72,6 +80,17 @@ pub unsafe extern "C" fn strtold_l(
 ) -> f64 {
     unsafe { strtold(nptr, endptr) }
 }
+
+// x86_64 guest: tail-call `strtold` so its `st0` (long double) return propagates unchanged. The
+// C/POSIX-only locale argument in `%rdx` is ignored; `%rdi`/`%rsi` already hold `nptr`/`endptr`.
+#[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global strtold_l",
+    ".type strtold_l, @function",
+    "strtold_l:",
+    "    jmp strtold",
+    options(att_syntax),
+);
 
 /// Converts the initial portion of a string to a `long` using the C/POSIX locale.
 ///
