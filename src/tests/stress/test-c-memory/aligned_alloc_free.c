@@ -34,7 +34,10 @@ void test_aligned_alloc_free(void)
     };
 
     const struct test_case cases[] = {
-        {.alignment = 4u, .size = 4u}, // Assuming 32-bit (sizeof(void*) == 4).
+        // Smallest legal alignment is sizeof(void *): 4 on the 32-bit (x86) ABI,
+        // 8 on the 64-bit (x86_64) ABI. The remaining cases are multiples of 8,
+        // valid on both ABIs.
+        {.alignment = sizeof(void *), .size = sizeof(void *)},
         {.alignment = 8u, .size = 16u},
         {.alignment = 16u, .size = 32u},
         {.alignment = 32u, .size = 64u},

@@ -64,6 +64,12 @@ int main(int argc, const char *argv[])
     (void)argv;
 
     // Assert types in <sys/stat.h>.
+    //
+    // The exact byte size is an i386-ABI layout lock: on x86_64 the 64-bit
+    // members carry 8-byte alignment, so `struct stat` gains padding the member
+    // sum below does not model. Gate the lock to i386; the functional tests run
+    // on every target.
+#if defined(__i386__)
     STATIC_ASSERT_SIZE(struct stat,
                        sizeof(dev_t) +               // st_dev
                            sizeof(ino_t) +           // st_ino
@@ -79,12 +85,19 @@ int main(int argc, const char *argv[])
                            sizeof(blksize_t) +       // st_blksize
                            sizeof(blkcnt_t)          // st_blocks
     );
+#endif /* __i386__ */
 
     // Assert types in <dirent.h>.
     STATIC_ASSERT_SIZE(struct dirent,
                        sizeof(ino_t) +                     // d_ino
                            (NAME_MAX + 1) * (sizeof(char)) // d_name
     );
+    // i386-ABI layout lock (see the note on `struct stat` above): `struct
+    // posix_dent`'s `d_reclen`/`d_type`/`d_pad` members push the trailing
+    // `d_name` off the 8-byte boundary `d_ino` forces on x86_64, so the struct
+    // gains padding the member sum does not model. (`struct dirent` above stays
+    // exact on every ABI: its `d_name` already lands on an 8-byte boundary.)
+#if defined(__i386__)
     STATIC_ASSERT_SIZE(struct posix_dent,
                        sizeof(ino_t) +                       // d_ino
                            sizeof(reclen_t) +                // d_reclen
@@ -92,6 +105,7 @@ int main(int argc, const char *argv[])
                            (NAME_MAX + 1) * (sizeof(char)) + // d_name
                            1 * sizeof(char)                  // d_pad
     );
+#endif /* __i386__ */
 
     // Run tests.
     test_open_close();

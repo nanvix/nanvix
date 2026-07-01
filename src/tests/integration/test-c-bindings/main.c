@@ -67,7 +67,10 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(char, 1);
     STATIC_ASSERT_SIZE(short, 2);
     STATIC_ASSERT_SIZE(int, 4);
-    STATIC_ASSERT_SIZE(long, 4);
+    // `long` and `size_t` track the pointer width on the Nanvix SysV targets
+    // (ILP32 on x86, LP64 on x86_64), so assert them against sizeof(void *)
+    // rather than a fixed 4-byte width.
+    STATIC_ASSERT_SIZE(long, sizeof(void *));
     STATIC_ASSERT_SIZE(long long, 8);
     STATIC_ASSERT_SIZE(float, 4);
     STATIC_ASSERT_SIZE(double, 8);
@@ -76,7 +79,7 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(unsigned char, 1);
     STATIC_ASSERT_SIZE(unsigned short, 2);
     STATIC_ASSERT_SIZE(unsigned int, 4);
-    STATIC_ASSERT_SIZE(unsigned long, 4);
+    STATIC_ASSERT_SIZE(unsigned long, sizeof(void *));
     STATIC_ASSERT_SIZE(unsigned long long, 8);
 
     // Assert size of types in <stdint.h>.
@@ -114,7 +117,7 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(off_t, sizeof(long long));
     STATIC_ASSERT_SIZE(pid_t, sizeof(int));
     STATIC_ASSERT_SIZE(reclen_t, sizeof(unsigned short));
-    STATIC_ASSERT_SIZE(size_t, sizeof(unsigned int));
+    STATIC_ASSERT_SIZE(size_t, sizeof(void *));
     STATIC_ASSERT_SIZE(ssize_t, sizeof(int));
     STATIC_ASSERT_SIZE(time_t, sizeof(long long));
     STATIC_ASSERT_SIZE(uid_t, sizeof(unsigned int));
