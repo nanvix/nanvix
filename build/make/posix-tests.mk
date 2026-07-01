@@ -132,6 +132,11 @@ POSIX_TEST_PIE_test-c-dlfcn-pie := yes
 POSIX_TEST_PIE_test-c-dlfcn-global := yes
 POSIX_TEST_PIE_test-c-dlfcn-needed := yes
 POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
+# dlfcn-dtor-reentry-c links PIE + --export-dynamic so the main executable's
+# `dtor_probe` helper (and its witness globals) land in `.dynsym`; libreentry.so's
+# destructor then resolves its `extern void dtor_probe(void)` reference from the
+# loader's global symbol table while it is being torn down.
+POSIX_TEST_PIE_test-c-dlfcn-dtor-reentry := yes
 # dlfcn-init-runpath-c links PIE with --export-dynamic so the main executable's
 # `g_dtor_ran` global lands in `.dynsym`; the loader's global symbol table then
 # satisfies libctor.so's `extern volatile int g_dtor_ran` reference at load time.
@@ -294,6 +299,7 @@ clean-posix-tests:
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
@@ -305,6 +311,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HELLO_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SEARCHPATH_SEED)
@@ -642,9 +649,60 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini): $(POSIX_TEST_INITFINI_DIR)/libini
 	$(CP_CMD) $(POSIX_TEST_INITFINI_DIR)/libinitfini.so $(POSIX_TEST_INITFINI_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_INITFINI_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-dtor-reentry-c: destructor-time loader re-entrancy fixtures (issue #2538).
+#---------------------------------------------------------------------------------------------------
+#
+# Ships TWO shared libraries (built with the same i686 freestanding toolchain as
+# the fixtures above):
+#   * libdep.so     - self-contained dependency (zero undefined symbols),
+#                     exporting dep_value(). An explicit -soname pins the bare
+#                     DT_NEEDED name recorded in libreentry.so to `libdep.so`
+#                     regardless of linker (GNU ld vs ld.lld), so the loader
+#                     resolves it through the default lib/ search path.
+#   * libreentry.so - DT_NEEDED=libdep.so (it references dep_value via -ldep).
+#                     Carries a `.fini_array` destructor that calls the main
+#                     executable's dtor_probe() -- left UNDEFINED and resolved
+#                     from the global scope at load time (the suite ELF is PIE +
+#                     --export-dynamic, see POSIX_TEST_PIE_* above).
+# Both are staged under lib/, where main.c dlopen()s libreentry.so. A correct
+# dlclose() keeps both entries (and the libreentry.so -> libdep.so edge) in the
+# registry until the destructors finish, so the destructor-time probe re-resolves
+# them instead of mapping a second copy.
+POSIX_TEST_DTOR_REENTRY_SUITE  := test-c-dlfcn-dtor-reentry
+POSIX_TEST_DTOR_REENTRY_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_DTOR_REENTRY_SUITE)/libs
+POSIX_TEST_DTOR_REENTRY_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_DTOR_REENTRY_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_DTOR_REENTRY_SUITE).img
+
+# libdep.so: self-contained dependency with SONAME=libdep.so.
+$(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libdep.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_DTOR_REENTRY_SUITE)/libs/dep.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_DTOR_REENTRY_SUITE)/libdep.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libdep.so $@.o -o $@
+
+# libreentry.so: DT_NEEDED=libdep.so; `.fini_array` destructor calls dtor_probe.
+$(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libreentry.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_DTOR_REENTRY_SUITE)/libs/reentry.c \
+		$(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libdep.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_DTOR_REENTRY_SUITE)/libreentry.so (DT_NEEDED libdep.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o \
+		-L$(POSIX_TEST_DTOR_REENTRY_LIBDIR) -ldep -o $@
+
+# Per-suite RAMFS image carrying both fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry): $(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libdep.so \
+		$(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libreentry.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libdep.so $(POSIX_TEST_DTOR_REENTRY_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libreentry.so $(POSIX_TEST_DTOR_REENTRY_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_DTOR_REENTRY_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink) \
