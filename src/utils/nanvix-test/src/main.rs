@@ -398,6 +398,17 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
         ));
     }
 
+    // Target architecture used for filtering tests. The Makefile exports the guest `TARGET` (`x86`
+    // or `x86_64`); a missing or empty value defaults to `x86` so direct, single-arch invocations
+    // keep working. Tests whose `targets` filter excludes this architecture are skipped, which lets
+    // a config list suites that only build for one ABI (e.g. the i686-only dlfcn/setjmp suites)
+    // without the other ABI's run failing on the images those suites never produced.
+    let target: String = ::std::env::var("TARGET")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "x86".to_string());
+
     for test_config in selected_tests {
         // Skip tests that are not applicable to the current machine.
         if !test_config.should_run_on(machine) {
@@ -409,6 +420,22 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 test_config.program,
                 machine,
                 test_config.runs_on
+            );
+            continue;
+        }
+
+        // Skip tests that are not applicable to the current target architecture. This gates suites
+        // that only build/run on a specific guest ABI (e.g. the i686-only dlfcn dynamic-linker and
+        // setjmp suites) so an x86_64 run does not attempt to boot images that were never built.
+        if !test_config.should_run_on_target(&target) {
+            info!(
+                "main(): skipping test not applicable to target (executor={}, name={}, \
+                 program={:?}, target={}, targets={:?})",
+                test_config.executor,
+                test_config.name,
+                test_config.program,
+                target,
+                test_config.targets
             );
             continue;
         }
@@ -448,6 +475,7 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
             extra_nanvixd_args,
             expected_exit_code,
             runs_on: _,
+            targets: _,
             build_modes: _,
             program_env,
             program_args_padding_len,
