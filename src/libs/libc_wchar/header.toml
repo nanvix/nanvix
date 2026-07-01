@@ -81,7 +81,15 @@ functions = ["wcschr", "wcsrchr", "wcspbrk", "wcsstr", "wcstok"]
 
 [[sections]]
 title = "Numeric Conversions"
-functions = ["wcstol", "wcstoul", "wcstoll", "wcstoull", "wcstod"]
+functions = [
+    "wcstol",
+    "wcstoul",
+    "wcstoll",
+    "wcstoull",
+    "wcstod",
+    "wcstof",
+    "wcstold",
+]
 
 [[sections]]
 title = "Wide Memory Operations"
@@ -135,3 +143,5 @@ mbsrtowcs = '''
 extern size_t mbsrtowcs(wchar_t *dest, const char **src, size_t n, mbstate_t *ps);'''
 wcsrtombs = '''
 extern size_t wcsrtombs(char *dest, const wchar_t **src, size_t n, mbstate_t *ps);'''
+wcstold = '''
+extern long double wcstold(const wchar_t *nptr, wchar_t **endptr);'''
