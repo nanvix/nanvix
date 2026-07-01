@@ -110,7 +110,7 @@ extern int ferror(FILE *stream);
 extern int feof(FILE *stream);
 extern int fileno(FILE *stream);
 extern int remove(const char *pathname);
-extern int rename(const char *old, const char *new);
+extern int rename(const char *old, const char *newpath);
 extern FILE *tmpfile(void);
 extern int sscanf(const char *s, const char *format, ...);
 extern int vsscanf(const char *s, const char *format, __builtin_va_list ap);

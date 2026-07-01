@@ -251,13 +251,19 @@ endef
 
 $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_IMAGE_RULE,$(suite))))
 
+POSIX_HEADERS_CXX_FLAGS := -m32 -march=pentiumpro -ffreestanding -nostdinc -nostdinc++ -std=c++17
+POSIX_HEADERS_CXX_FLAGS += -isystem $(ROOT_DIR)/include
+POSIX_PUBLIC_HEADERS := $(filter-out $(ROOT_DIR)/include/stdatomic.h,\
+	$(wildcard $(ROOT_DIR)/include/*.h $(ROOT_DIR)/include/*/*.h))
+POSIX_HEADERS_CXX_STAMP := $(POSIX_TESTS_OBJDIR)/headers-cxx-check.stamp
+
 #---------------------------------------------------------------------------------------------------
 # Aggregate and clean targets.
 #---------------------------------------------------------------------------------------------------
 
-.PHONY: all-posix-tests clean-posix-tests
+.PHONY: all-posix-tests clean-posix-tests check-headers-cxx
 
-all-posix-tests: $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite).$(EXEC_FORMAT))
+all-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite).$(EXEC_FORMAT))
 
 clean-posix-tests:
 	$(RM_CMD) $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite).$(EXEC_FORMAT))
@@ -281,6 +287,38 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_EXECVP_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
+
+#---------------------------------------------------------------------------------------------------
+# C++ header-safety check.
+#---------------------------------------------------------------------------------------------------
+#
+# The generated libc headers in include/ are wrapped in `extern "C"` and are meant to be includable
+# from C++ (libunwind, libc++, libc++abi, user C++). This check compiles every public header as a
+# standalone C++ translation unit (syntax-only) to guard that contract: no C++ keyword is used as a
+# parameter identifier, and the C99 `restrict` qualifier is neutralized under C++. It
+# complements the C-only suites, which compile the same headers as C and so cannot catch a C++ parse
+# regression. The headers are also re-checked with `-Drestrict=__restrict` to prove the private
+# `__nanvix_restrict` qualifier macro does not depend on the caller's `restrict` macro state.
+#
+# <stdatomic.h> is excluded: C11 atomics are intentionally C-only (C++ provides <atomic>), and no
+# libc header includes it.
+
+check-headers-cxx: $(POSIX_HEADERS_CXX_STAMP)
+
+$(POSIX_HEADERS_CXX_STAMP): $(POSIX_PUBLIC_HEADERS)
+	@command -v $(firstword $(GUEST_C_APP_CC)) >/dev/null 2>&1 || { \
+		echo "ERROR: posix-tests need '$(firstword $(GUEST_C_APP_CC))' on PATH to C++-check the generated headers."; \
+		exit 1; \
+	}
+	@$(MKDIR_CMD) $(dir $@)
+	@for header in $(patsubst $(ROOT_DIR)/include/%,%,$(POSIX_PUBLIC_HEADERS)); do \
+		echo "[posix-test] C++-checking <$$header>"; \
+		printf '#include <%s>\nint main(void){return 0;}\n' "$$header" \
+			| $(GUEST_C_APP_CC) $(POSIX_HEADERS_CXX_FLAGS) -x c++ -fsyntax-only - || exit 1; \
+		printf '#include <%s>\nint main(void){return 0;}\n' "$$header" \
+			| $(GUEST_C_APP_CC) $(POSIX_HEADERS_CXX_FLAGS) -Drestrict=__restrict -x c++ -fsyntax-only - || exit 1; \
+	done
+	@touch $@
 
 #---------------------------------------------------------------------------------------------------
 # Boot runner: build + boot each ported suite under nanvixd in standalone mode
@@ -743,7 +781,7 @@ ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
 else ifeq ($(DEPLOYMENT_MODE),standalone)
-run-posix-tests: $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_WEAK_IMG) $(POSIX_TEST_EXECVP_IMG)
+run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_WEAK_IMG) $(POSIX_TEST_EXECVP_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }

@@ -391,8 +391,132 @@ fn pat_name(pat: &syn::Pat) -> String {
     if trimmed.is_empty() {
         "arg".to_string()
     } else {
-        trimmed.to_string()
+        sanitize_c_ident(trimmed)
     }
+}
+
+/// C++ keywords that are not also C keywords. Using any of these as a C function
+/// parameter name compiles as C but is a hard parse error in C++, which breaks
+/// every C++ translation unit (libunwind, libc++, user code) that includes the
+/// generated headers. Parameter names are not ABI-significant, so the generator
+/// rewrites a colliding name by appending an underscore.
+const CPP_KEYWORDS: &[&str] = &[
+    "alignas",
+    "alignof",
+    "and",
+    "and_eq",
+    "asm",
+    "bitand",
+    "bitor",
+    "bool",
+    "catch",
+    "char8_t",
+    "char16_t",
+    "char32_t",
+    "class",
+    "co_await",
+    "co_return",
+    "co_yield",
+    "compl",
+    "concept",
+    "const_cast",
+    "consteval",
+    "constexpr",
+    "constinit",
+    "decltype",
+    "delete",
+    "dynamic_cast",
+    "explicit",
+    "export",
+    "false",
+    "friend",
+    "mutable",
+    "namespace",
+    "new",
+    "noexcept",
+    "not",
+    "not_eq",
+    "nullptr",
+    "operator",
+    "or",
+    "or_eq",
+    "private",
+    "protected",
+    "public",
+    "reinterpret_cast",
+    "requires",
+    "static_assert",
+    "static_cast",
+    "template",
+    "this",
+    "thread_local",
+    "throw",
+    "true",
+    "try",
+    "typeid",
+    "typename",
+    "using",
+    "virtual",
+    "wchar_t",
+    "xor",
+    "xor_eq",
+];
+
+/// Rewrites a C identifier that collides with a C++ keyword so the generated
+/// header parses as both C and C++. A trailing underscore is appended because
+/// parameter names carry no ABI significance.
+fn sanitize_c_ident(name: &str) -> String {
+    if CPP_KEYWORDS.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_string()
+    }
+}
+
+/// Returns `true` if `byte` may appear within a C identifier.
+fn is_c_ident_byte(byte: u8) -> bool {
+    byte == b'_' || byte.is_ascii_alphanumeric()
+}
+
+/// Returns `true` if any rendered line uses the C99 `restrict` keyword as a
+/// standalone identifier. The keyword is valid (and desirable) C but a parse
+/// error in C++, so a header that emits it needs a portable compatibility shim.
+/// Tokens such as `__restrict` do not match, while a comment that merely
+/// mentions the word would over-match harmlessly (the rewrite is keyword-aware).
+fn uses_restrict_keyword(lines: &[String]) -> bool {
+    lines.iter().any(|line| {
+        line.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .any(|token| token == "restrict")
+    })
+}
+
+/// Rewrites every standalone `restrict` keyword in `line` to the private
+/// `__nanvix_restrict` qualifier macro (see [`RESTRICT_SHIM`]). Adjacent
+/// identifier characters guard against touching `__restrict` or any larger
+/// identifier; headers are ASCII, so byte-wise boundaries are sufficient.
+fn rewrite_restrict_tokens(line: &str) -> String {
+    const KEYWORD: &str = "restrict";
+    const REPLACEMENT: &str = "__nanvix_restrict";
+
+    let bytes: &[u8] = line.as_bytes();
+    let mut out: String = String::with_capacity(line.len());
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        let at_word_start: bool =
+            !is_c_ident_byte(bytes[index]) || index == 0 || !is_c_ident_byte(bytes[index - 1]);
+        let after: usize = index + KEYWORD.len();
+        if at_word_start
+            && line[index..].starts_with(KEYWORD)
+            && (after == bytes.len() || !is_c_ident_byte(bytes[after]))
+        {
+            out.push_str(REPLACEMENT);
+            index = after;
+        } else {
+            out.push(bytes[index] as char);
+            index += 1;
+        }
+    }
+    out
 }
 
 /// Parses a single Rust source file, returning its `pub extern "C"` signatures.
@@ -696,6 +820,11 @@ fn generate_header(spec: &HeaderSpec, funcs: &BTreeMap<String, FuncSig>) -> Stri
         lines.push(String::new());
     }
 
+    // Anchor for a possible C++ `restrict` shim: it must sit after the includes
+    // and before the `extern "C"` block. Whether the shim is actually needed is
+    // only known once the body is rendered, so it is spliced in at the end.
+    let restrict_shim_anchor: usize = lines.len();
+
     // extern "C" open.
     if spec.extern_c {
         lines.push("#ifdef __cplusplus".to_string());
@@ -756,6 +885,43 @@ fn generate_header(spec: &HeaderSpec, funcs: &BTreeMap<String, FuncSig>) -> Stri
 
     lines.push(format!("#endif /* {} */", spec.guard));
     lines.push(String::new());
+
+    // C99's `restrict` is a parse error in C++. If the rendered body uses the
+    // keyword, rewrite it to the private `__nanvix_restrict` qualifier macro and
+    // emit that macro's definition after the includes (before the `extern "C"`
+    // block). The macro expands to `restrict` in C and to nothing in C++.
+    //
+    // A private macro is used (rather than `#define restrict ...` directly) so
+    // the public `restrict` name is never redefined: that avoids leaking an
+    // empty `restrict` macro into the rest of a C++ translation unit and avoids
+    // the `!defined(restrict)` hole where a caller that pre-defines `restrict`
+    // would defeat the shim. The C++ expansion is empty rather than `__restrict`
+    // because `__restrict` is itself rejected inside array-parameter brackets,
+    // e.g. `regmatch_t pmatch[restrict]` in <regex.h>.
+    if uses_restrict_keyword(&lines[restrict_shim_anchor..]) {
+        for line in lines.iter_mut().skip(restrict_shim_anchor) {
+            if line.contains("restrict") {
+                *line = rewrite_restrict_tokens(line);
+            }
+        }
+        let shim: [String; 8] = [
+            "/* `restrict` is C99-only; expand it to the keyword in C and to nothing in C++,"
+                .to_string(),
+            "   where it is a parse error (even as `__restrict`) inside array parameters. */"
+                .to_string(),
+            "#ifndef __nanvix_restrict".to_string(),
+            "#ifdef __cplusplus".to_string(),
+            "#define __nanvix_restrict".to_string(),
+            "#else".to_string(),
+            "#define __nanvix_restrict restrict".to_string(),
+            "#endif".to_string(),
+        ];
+        // Close the outer `#ifndef` and separate the shim from the body.
+        let mut block: Vec<String> = shim.to_vec();
+        block.push("#endif".to_string());
+        block.push(String::new());
+        lines.splice(restrict_shim_anchor..restrict_shim_anchor, block);
+    }
 
     lines.join("\n")
 }

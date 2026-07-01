@@ -31,6 +31,7 @@ ALL_POSIX_TESTS := \
 	test-c-fork-pid \
 	test-c-fork-pthread \
 	test-c-glob \
+	test-c-headers \
 	test-c-hello \
 	test-c-inet \
 	test-c-libgen \
