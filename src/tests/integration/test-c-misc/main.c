@@ -45,6 +45,10 @@ int main(int argc, const char *argv[])
     test_seteuid();
     test_setgid();
     test_setegid();
+    test_setresuid();
+    test_setresgid();
+    test_setgroups();
+    test_initgroups();
     test_clock_getres();
     test_clock_gettime();
 #ifndef __hyperlight__
