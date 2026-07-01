@@ -219,14 +219,31 @@ pub(crate) async fn test_with_http_executor(
 ///
 /// # Return Value
 ///
-/// Returns `Ok(())` after the bytes are written successfully; returns an error on socket write
-/// failures.
+/// Returns `Ok(())` after the bytes are written successfully. A `BrokenPipe` or `ConnectionReset`
+/// error is treated as success because it means the guest closed the gateway before consuming its
+/// input (for example, a workload that exits or faults before reading stdin); the workload's real
+/// expectations are validated later via the collected output and exit code. Any other write
+/// failure is returned as an error.
 ///
 async fn send_payload(user_vm: &mut UserVm, payload: &[u8]) -> Result<()> {
     trace!("send_payload(): payload_len={}, payload={:?}", payload.len(), payload);
     if let Err(error) = user_vm.gateway_stream().write_all(payload).await {
-        error!("send_payload(): failed to send payload (error={error})");
-        return Err(error.into());
+        match error.kind() {
+            // The guest closed the gateway before consuming its input. Mirror the read path
+            // (collect_uservm_payload) and the terminal executor (send_interactive_input),
+            // which also tolerate a peer that closes early.
+            ErrorKind::BrokenPipe | ErrorKind::ConnectionReset => {
+                warn!(
+                    "send_payload(): gateway closed before payload was sent (error_kind={:?}, \
+                     error={error})",
+                    error.kind()
+                );
+            },
+            _ => {
+                error!("send_payload(): failed to send payload (error={error})");
+                return Err(error.into());
+            },
+        }
     }
 
     Ok(())
@@ -239,14 +256,29 @@ async fn send_payload(user_vm: &mut UserVm, payload: &[u8]) -> Result<()> {
 ///
 /// # Return Value
 ///
-/// Returns `Ok(())` when the shutdown succeeds; returns an error if the gateway cannot be closed.
+/// Returns `Ok(())` when the shutdown succeeds. A `BrokenPipe` or `ConnectionReset` error is
+/// treated as success because the guest already closed the gateway (for example, a workload that
+/// exits or faults before reading stdin). Any other shutdown failure is returned as an error.
 ///
 async fn close_gateway_input(user_vm: &mut UserVm) -> Result<()> {
     if let Err(error) = user_vm.gateway_stream().shutdown_write().await {
-        let reason: String =
-            format!("failed to shutdown uservm gateway write half (error={error})");
-        error!("close_gateway_input(): {reason}");
-        return Err(::anyhow::anyhow!(reason));
+        match error.kind() {
+            // The guest already closed the gateway, so shutting down the write half is a no-op
+            // from the test's perspective. Tolerate it like send_payload and the read path.
+            ErrorKind::BrokenPipe | ErrorKind::ConnectionReset => {
+                warn!(
+                    "close_gateway_input(): gateway already closed (error_kind={:?}, \
+                     error={error})",
+                    error.kind()
+                );
+            },
+            _ => {
+                let reason: String =
+                    format!("failed to shutdown uservm gateway write half (error={error})");
+                error!("close_gateway_input(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            },
+        }
     }
 
     Ok(())

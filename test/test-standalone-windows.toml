@@ -57,7 +57,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 runs_on = ["microvm"]
@@ -67,7 +66,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 4
 runs_on = ["microvm"]
@@ -77,7 +75,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-sigsegv.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 0
 runs_on = ["microvm"]
@@ -87,7 +84,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-vfs-test.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-vfs-test.img"
-input = "[]"
 expect_empty_output = true
 runs_on = ["microvm"]
 
@@ -219,7 +215,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 runs_on = ["microvm"]
@@ -229,7 +224,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 4
 runs_on = ["microvm"]
@@ -239,7 +233,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-sigsegv.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 0
 runs_on = ["microvm"]
@@ -249,7 +242,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-vfs-test.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-vfs-test.img"
-input = "[]"
 expect_empty_output = true
 runs_on = ["microvm"]
 
@@ -257,7 +249,6 @@ runs_on = ["microvm"]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-arch.initrd"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
@@ -271,42 +262,36 @@ expected_output = "hello world!"
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-thread.initrd"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-waitpid.initrd"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-kill.initrd"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-job-control.initrd"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-setenv.initrd"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "http"
 program = "./bin/test-rust-stress.initrd"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
@@ -314,7 +299,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-linux-app.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
@@ -323,7 +307,6 @@ executor = "http"
 program = "./bin/test-rust-cmdline-len.elf"
 # 4092 (MAX_CMDLINE_ARGS_LEN) - 25 (filename) - 1 (space separator) = 4066.
 program_args_padding_len = 4066
-input = "[]"
 expected_output = "ok"
 
 #===================================================================================================
@@ -337,7 +320,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-getenv-nostd.elf"
 program_env = "HOME=/scratch NVX_GETENV_A=alpha NVX_GETENV_B=beta"
-input = "[]"
 expected_output = "GETENV:HOME=/scratch NVX_GETENV_A=alpha NVX_GETENV_B=beta NVX_GETENV_MISSING=(null)\nok"
 
 # A malformed entry (a bare KEY token with no '=') is skipped, so getenv() returns null for it.
@@ -346,7 +328,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-getenv-nostd.elf"
 program_env = "HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B"
-input = "[]"
 expected_output = "GETENV:HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B=(null) NVX_GETENV_MISSING=(null)\nok"
 
 # An empty environment produces an empty table, so every probed key resolves to null.
@@ -354,7 +335,6 @@ expected_output = "GETENV:HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B=(null) NVX_
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-getenv-nostd.elf"
-input = "[]"
 expected_output = "GETENV:HOME=(null) NVX_GETENV_A=(null) NVX_GETENV_B=(null) NVX_GETENV_MISSING=(null)\nok"
 
 #===================================================================================================
@@ -366,7 +346,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-mount-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
-input = "[]"
 expected_output = "ok"
 expected_exit_code = 0
 runs_on = ["microvm"]
@@ -376,7 +355,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-fork-hostfs.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/test-fork-hostfs-data"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 runs_on = ["microvm"]
@@ -386,7 +364,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-mount-multipart-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
-input = "[]"
 expected_output = "ok"
 expected_exit_code = 0
 runs_on = ["microvm"]
@@ -400,7 +377,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-network.initrd"
 extra_nanvixd_args = "-allow-host-networking"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
@@ -414,7 +390,6 @@ expected_output = "ok"
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-pipe-dup2.initrd"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
@@ -422,7 +397,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-fork-exec-vfsd-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-fork-exec-vfsd-test.img"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
@@ -430,7 +404,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-fork-exec-write-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-fork-exec-write-test.img"
-input = "[]"
 expected_output = "ok"
 
 # Acceptance test for file-descriptor inheritance across fork()+execv(): a
@@ -444,7 +417,6 @@ build_modes = ["release"]
 executor = "http"
 program = "./bin/test-rust-fork-exec-loop-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-fork-exec-loop-test.img"
-input = "[]"
 expected_output = "ok"
 
 # Acceptance test for execv() arguments containing spaces: an argument with an
@@ -457,7 +429,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-fork-exec-argv-space-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-fork-exec-argv-space-test.img"
-input = "[]"
 expected_output = "ok"
 
 # Acceptance test for bulk pipe data integrity across fork()+execv(): a large
@@ -472,7 +443,6 @@ build_modes = ["release"]
 executor = "http"
 program = "./bin/test-rust-fork-exec-pipe-bulk-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-fork-exec-pipe-bulk-test.img"
-input = "[]"
 expected_output = "ok"
 
 # Acceptance test for repeated pipe-capture reliability across fork()+execv(): a
@@ -485,7 +455,6 @@ expected_output = "ok"
 executor = "http"
 program = "./bin/test-rust-fork-exec-pipe-loop-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-fork-exec-pipe-loop-test.img"
-input = "[]"
 expected_output = "ok"
 build_modes = ["release"]
 
@@ -505,7 +474,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-thread-vfs-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-thread-vfs-test.img"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
@@ -532,7 +500,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-socket-fork.initrd"
 extra_nanvixd_args = "-allow-host-networking"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]

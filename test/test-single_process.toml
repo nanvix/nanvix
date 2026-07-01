@@ -45,7 +45,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 
@@ -54,7 +53,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 4
 
@@ -63,7 +61,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-sigsegv.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 0
 
@@ -78,49 +75,42 @@ expected_output = "hello world!"
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-linux-app.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-file.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-thread.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "http"
 program = "./bin/test-rust-stress.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-arch.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-misc.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "http"
 program = "./bin/test-rust-memory.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
@@ -128,14 +118,12 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-network.elf"
 extra_nanvixd_args = "-allow-host-networking"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-dlfcn.elf"
-input = "[]"
 expected_output = "ok"
 
 #===================================================================================================
@@ -147,7 +135,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 
@@ -156,7 +143,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 4
 
@@ -165,7 +151,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-sigsegv.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 0
 
@@ -249,7 +234,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-env-nostd.elf"
 program_env = "TEST_VAR=hello"
-input = "[]"
 expected_output = "TEST_VAR=hello\nok"
 
 [[tests]]
@@ -265,7 +249,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-env-nostd.elf"
 program_env = "FOO=bar BAZ=qux"
-input = "[]"
 expected_output = "FOO=bar\nBAZ=qux\nok"
 
 [[tests]]
@@ -281,7 +264,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-env-nostd.elf"
 program_env = "SPECIAL=a/b:c-d_e.f"
-input = "[]"
 expected_output = "SPECIAL=a/b:c-d_e.f\nok"
 
 [[tests]]
@@ -302,7 +284,6 @@ executor = "http"
 program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello world"
 program_env = "FOO=bar"
-input = "[]"
 expected_output = "ARGS:hello world\nENV:FOO=bar\nok"
 
 [[tests]]
@@ -319,7 +300,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello world"
-input = "[]"
 expected_output = "ARGS:hello world\nENV:\nok"
 
 [[tests]]
@@ -335,7 +315,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_env = "FOO=bar"
-input = "[]"
 expected_output = "ARGS:\nENV:FOO=bar\nok"
 
 [[tests]]
@@ -352,7 +331,6 @@ executor = "http"
 program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "a;b"
 program_env = "X=1"
-input = "[]"
 expected_output = "ARGS:a;b\nENV:X=1\nok"
 
 [[tests]]
@@ -370,7 +348,6 @@ executor = "http"
 program = "./bin/test-rust-cmdline-env-nostd.elf"
 program_args = "hello"
 program_env = "PATH=a;b"
-input = "[]"
 expected_output = "ARGS:hello\nENV:PATH=a;b\nok"
 
 [[tests]]
@@ -392,7 +369,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-getenv-nostd.elf"
 program_env = "HOME=/scratch NVX_GETENV_A=alpha NVX_GETENV_B=beta"
-input = "[]"
 expected_output = "GETENV:HOME=/scratch NVX_GETENV_A=alpha NVX_GETENV_B=beta NVX_GETENV_MISSING=(null)\nok"
 
 [[tests]]
@@ -408,7 +384,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-getenv-nostd.elf"
 program_env = "HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B"
-input = "[]"
 expected_output = "GETENV:HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B=(null) NVX_GETENV_MISSING=(null)\nok"
 
 [[tests]]
@@ -423,7 +398,6 @@ expected_output = "GETENV:HOME=/data NVX_GETENV_A=alpha NVX_GETENV_B=(null) NVX_
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-getenv-nostd.elf"
-input = "[]"
 expected_output = "GETENV:HOME=(null) NVX_GETENV_A=(null) NVX_GETENV_B=(null) NVX_GETENV_MISSING=(null)\nok"
 
 [[tests]]

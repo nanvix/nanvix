@@ -45,7 +45,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 
@@ -54,7 +53,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 4
 runs_on = ["microvm"]
@@ -64,7 +62,6 @@ build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-sigsegv.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 0
 runs_on = ["microvm"]
@@ -80,63 +77,54 @@ expected_output = "hello world!"
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-linux-app.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-file.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-thread.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "http"
 program = "./bin/test-rust-stress.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-arch.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-misc.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["release"]
 executor = "http"
 program = "./bin/test-rust-memory.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-network.elf"
-input = "[]"
 expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-dlfcn.elf"
-input = "[]"
 expected_output = "ok"
 runs_on = ["microvm"]
 
@@ -149,7 +137,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-kernel.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 13
 
@@ -158,7 +145,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-mmio-fault.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 4
 runs_on = ["microvm"]
@@ -168,7 +154,6 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-sigsegv.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
-input = "[]"
 expect_empty_output = true
 expected_exit_code = 0
 runs_on = ["microvm"]

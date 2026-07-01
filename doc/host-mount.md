@@ -259,7 +259,6 @@ The test entry in `test/test-standalone-windows.toml`:
 executor = "terminal"
 program = "./bin/mount-test.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img -mount ./bin/mount-test-data"
-input = "[]"
 expected_output = "ok"
 expected_exit_code = 0
 runs_on = ["microvm"]
