@@ -163,6 +163,32 @@ pub(crate) unsafe fn raw_recv(
     libc::recv(fd, buf as *mut libc::c_void, count as _, flags) as isize
 }
 
+/// Raw sendto operation.
+#[inline]
+pub(crate) unsafe fn raw_sendto(
+    fd: RawSocket,
+    buf: *const u8,
+    count: usize,
+    flags: libc::c_int,
+    addr: *const libc::sockaddr,
+    addrlen: SocklenT,
+) -> isize {
+    libc::sendto(fd, buf as *const libc::c_void, count as _, flags, addr, addrlen) as isize
+}
+
+/// Raw recvfrom operation.
+#[inline]
+pub(crate) unsafe fn raw_recvfrom(
+    fd: RawSocket,
+    buf: *mut u8,
+    count: usize,
+    flags: libc::c_int,
+    addr: *mut libc::sockaddr,
+    addrlen: *mut SocklenT,
+) -> isize {
+    libc::recvfrom(fd, buf as *mut libc::c_void, count as _, flags, addr, addrlen) as isize
+}
+
 /// Raw shutdown operation.
 #[inline]
 pub(crate) unsafe fn raw_shutdown(fd: RawSocket, how: libc::c_int) -> libc::c_int {

@@ -234,6 +234,46 @@ pub(crate) unsafe fn raw_recv(
     winsock::recv(fd, buf as *mut libc::c_char, count as libc::c_int, flags) as isize
 }
 
+/// Raw sendto operation (calls Winsock `sendto`).
+///
+/// # Safety
+///
+/// `buf` must point to at least `count` readable bytes. `count` must not exceed
+/// `libc::c_int::MAX`; the caller is responsible for validating this. `addr` must point to a
+/// valid socket address of `addrlen` bytes.
+#[inline]
+pub(crate) unsafe fn raw_sendto(
+    fd: RawSocket,
+    buf: *const u8,
+    count: usize,
+    flags: libc::c_int,
+    addr: *const libc::sockaddr,
+    addrlen: SocklenT,
+) -> isize {
+    winsock::sendto(fd, buf as *const libc::c_char, count as libc::c_int, flags, addr, addrlen)
+        as isize
+}
+
+/// Raw recvfrom operation (calls Winsock `recvfrom`).
+///
+/// # Safety
+///
+/// `buf` must point to at least `count` writable bytes. `count` must not exceed
+/// `libc::c_int::MAX`; the caller is responsible for validating this. `addr` and `addrlen` must
+/// point to a valid socket address buffer and its length.
+#[inline]
+pub(crate) unsafe fn raw_recvfrom(
+    fd: RawSocket,
+    buf: *mut u8,
+    count: usize,
+    flags: libc::c_int,
+    addr: *mut libc::sockaddr,
+    addrlen: *mut SocklenT,
+) -> isize {
+    winsock::recvfrom(fd, buf as *mut libc::c_char, count as libc::c_int, flags, addr, addrlen)
+        as isize
+}
+
 /// Raw shutdown operation (calls Winsock `shutdown`).
 #[inline]
 pub(crate) unsafe fn raw_shutdown(fd: RawSocket, how: libc::c_int) -> libc::c_int {
@@ -302,6 +342,7 @@ pub(crate) mod winsock {
     use libc::{
         c_char,
         c_int,
+        sockaddr,
         SOCKET,
     };
 
@@ -369,6 +410,22 @@ pub(crate) mod winsock {
         pub fn shutdown(s: SOCKET, how: c_int) -> c_int;
         pub fn send(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int) -> c_int;
         pub fn recv(s: SOCKET, buf: *mut c_char, len: c_int, flags: c_int) -> c_int;
+        pub fn sendto(
+            s: SOCKET,
+            buf: *const c_char,
+            len: c_int,
+            flags: c_int,
+            to: *const sockaddr,
+            tolen: c_int,
+        ) -> c_int;
+        pub fn recvfrom(
+            s: SOCKET,
+            buf: *mut c_char,
+            len: c_int,
+            flags: c_int,
+            from: *mut sockaddr,
+            fromlen: *mut c_int,
+        ) -> c_int;
     }
 }
 

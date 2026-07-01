@@ -12,7 +12,9 @@ mod getpeername;
 mod getsockname;
 mod listen;
 mod recv;
+mod recvfrom;
 mod send;
+mod sendto;
 mod shutdown;
 mod socket;
 mod socketpair;
@@ -50,9 +52,17 @@ pub use self::{
         ReceiveSocketRequest,
         ReceiveSocketResponse,
     },
+    recvfrom::{
+        ReceiveFromSocketRequest,
+        ReceiveFromSocketResponse,
+    },
     send::{
         SendSocketRequest,
         SendSocketResponse,
+    },
+    sendto::{
+        SendToSocketRequest,
+        SendToSocketResponse,
     },
     shutdown::{
         ShutdownSocketRequest,
