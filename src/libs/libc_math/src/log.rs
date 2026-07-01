@@ -5,7 +5,19 @@
 // Constants
 //==================================================================================================
 
-const LN2: f64 = core::f64::consts::LN_2;
+/// `ln(2)` split into a leading part (exact in its high bits) and a low correction.
+const LN2_HI: f64 = 6.931_471_803_691_238e-1;
+const LN2_LO: f64 = 1.908_214_929_270_587_7e-10;
+/// `2^54`, used to scale subnormal inputs up into the normal range.
+const TWO54: f64 = 1.801_439_850_948_198_4e16;
+/// Minimax coefficients for the log approximation on the reduced range.
+const LG1: f64 = 6.666_666_666_666_735e-1;
+const LG2: f64 = 3.999_999_999_940_942e-1;
+const LG3: f64 = 2.857_142_874_366_239e-1;
+const LG4: f64 = 2.222_219_843_214_978_4e-1;
+const LG5: f64 = 1.818_357_216_161_805e-1;
+const LG6: f64 = 1.531_383_769_920_937_3e-1;
+const LG7: f64 = 1.479_819_860_511_658_6e-1;
 
 //==================================================================================================
 // Public Functions
@@ -15,8 +27,11 @@ const LN2: f64 = core::f64::consts::LN_2;
 ///
 /// # Description
 ///
-/// Decomposes `x` into mantissa `m` and exponent `e`, then computes
-/// `log(x) = e * ln(2) + log(m)` using the substitution `s = (m-1)/(m+1)` for fast convergence.
+/// Writes `x = 2^k * (1 + f)` with `f` in `[-1/3, 1/3]` and evaluates
+/// `log(1 + f)` from an odd minimax polynomial in `s = f / (2 + f)`, then adds
+/// `k * ln(2)` using a two-part `ln(2)` so no precision is lost for large `k`.
+/// This is the fdlibm algorithm and is accurate to within one unit in the last
+/// place.
 ///
 /// # Parameters
 ///
@@ -24,62 +39,83 @@ const LN2: f64 = core::f64::consts::LN_2;
 ///
 /// # Returns
 ///
-/// The natural logarithm of `x`. Returns NaN for negative inputs, -inf for zero.
+/// The natural logarithm of `x`. Returns NaN for negative inputs and `-inf` for zero.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::eq_op
+)]
 pub extern "C" fn log(x: f64) -> f64 {
-    if x.is_nan() {
-        return x;
+    let mut xr: f64 = x;
+    let mut hx: i32 = (x.to_bits() >> 32) as i32; // signed high word
+    let lx: u32 = x.to_bits() as u32; // low word
+
+    let mut k: i32 = 0;
+    if hx < 0x0010_0000 {
+        // |x| < 2^-1022: zero, negative, or subnormal.
+        if (hx & 0x7fff_ffff) == 0 && lx == 0 {
+            return f64::NEG_INFINITY; // log(+/-0) = -inf
+        }
+        if hx < 0 {
+            return (x - x) / 0.0; // log(negative) = NaN
+        }
+        // Subnormal: scale up by 2^54 and adjust the exponent.
+        k -= 54;
+        xr = x * TWO54;
+        hx = (xr.to_bits() >> 32) as i32;
     }
-    if x < 0.0 {
-        return f64::from_bits(0x7FF8_0000_0000_0000);
+    if hx >= 0x7ff0_0000 {
+        return x + x; // log(+inf) = +inf, log(NaN) = NaN
     }
-    if x == 0.0 {
-        return f64::from_bits(0xFFF0_0000_0000_0000);
-    }
-    if x.to_bits() == 0x7FF0_0000_0000_0000 {
-        return x;
+    k += (hx >> 20) - 1023;
+    hx &= 0x000f_ffff;
+    let i: i32 = (hx + 0x9_5f64) & 0x10_0000;
+    // Normalize the significand to [1, 2) (i == 0) or [0.5, 1) (i != 0).
+    let new_hi: u64 = u64::from((hx | (i ^ 0x3ff0_0000)) as u32);
+    xr = f64::from_bits((new_hi << 32) | (xr.to_bits() & 0xffff_ffff));
+    k += i >> 20;
+    let f: f64 = xr - 1.0;
+
+    // Path for f very close to zero, avoiding cancellation.
+    if (0x000f_ffff & (2 + hx)) < 3 {
+        if f == 0.0 {
+            if k == 0 {
+                return 0.0;
+            }
+            let dk: f64 = f64::from(k);
+            return dk * LN2_HI + dk * LN2_LO;
+        }
+        let r: f64 = f * f * (0.5 - 0.333_333_333_333_333_3 * f);
+        if k == 0 {
+            return f - r;
+        }
+        let dk: f64 = f64::from(k);
+        return dk * LN2_HI - ((r - dk * LN2_LO) - f);
     }
 
-    let bits: u64 = x.to_bits();
-    let exp_raw: u64 = (bits >> 52) & 0x7FF;
-
-    // Handle subnormals by scaling up.
-    let (adj_bits, exp_adj): (u64, i64) = if exp_raw == 0 {
-        let scaled: f64 = x * 4_503_599_627_370_496.0; // 2^52
-        (scaled.to_bits(), -52)
+    let s: f64 = f / (2.0 + f);
+    let dk: f64 = f64::from(k);
+    let z: f64 = s * s;
+    let i2: i32 = hx - 0x6_147a;
+    let w: f64 = z * z;
+    let j: i32 = 0x6_b851 - hx;
+    let t1: f64 = w * (LG2 + w * (LG4 + w * LG6));
+    let t2: f64 = z * (LG1 + w * (LG3 + w * (LG5 + w * LG7)));
+    let r: f64 = t2 + t1;
+    if (i2 | j) > 0 {
+        let hfsq: f64 = 0.5 * f * f;
+        if k == 0 {
+            f - (hfsq - s * (hfsq + r))
+        } else {
+            dk * LN2_HI - ((hfsq - (s * (hfsq + r) + dk * LN2_LO)) - f)
+        }
+    } else if k == 0 {
+        f - s * (f - r)
     } else {
-        (bits, 0)
-    };
-
-    let exp_biased: u64 = (adj_bits >> 52) & 0x7FF;
-    #[allow(clippy::cast_possible_wrap)]
-    let mut e: i64 = (exp_biased as i64) - 1023 + exp_adj;
-
-    // Extract mantissa in [1, 2).
-    let m_bits: u64 = (adj_bits & 0x000F_FFFF_FFFF_FFFF) | 0x3FF0_0000_0000_0000;
-    let mut m: f64 = f64::from_bits(m_bits);
-
-    // Reduce m to [sqrt(2)/2, sqrt(2)] for better convergence.
-    if m > core::f64::consts::SQRT_2 {
-        m *= 0.5;
-        e += 1;
+        dk * LN2_HI - ((s * (f - r) - dk * LN2_LO) - f)
     }
-
-    // Use substitution s = (m-1)/(m+1), then log(m) = 2*(s + s^3/3 + s^5/5 + ...).
-    let s: f64 = (m - 1.0) / (m + 1.0);
-    let s2: f64 = s * s;
-
-    let log_m: f64 = 2.0
-        * s
-        * (1.0
-            + s2 * (1.0 / 3.0
-                + s2 * (0.2
-                    + s2 * (1.0 / 7.0
-                        + s2 * (1.0 / 9.0
-                            + s2 * (1.0 / 11.0 + s2 * (1.0 / 13.0 + s2 * (1.0 / 15.0))))))));
-
-    let e_f64: f64 = e as f64;
-    e_f64 * LN2 + log_m
 }
 
 //==================================================================================================
@@ -102,12 +138,33 @@ mod tests {
 
     #[test]
     fn test_two() {
-        assert!((log(2.0) - LN2).abs() < 1e-10);
+        assert!((log(2.0) - core::f64::consts::LN_2).abs() < 1e-10);
     }
 
     #[test]
     fn test_ten() {
         assert!((log(10.0) - 2.302_585_092_994_046).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_matches_std_over_range() {
+        // Multiplicative sweep across the exponent range, compared to the host libm.
+        let mut x: f64 = 1e-300;
+        while x < 1e300 {
+            let got: f64 = log(x);
+            let want: f64 = x.ln();
+            assert!(
+                (got - want).abs() <= want.abs() * 1e-14 + 1e-15,
+                "log({x}) = {got}, want {want}"
+            );
+            x *= 1.037;
+        }
+    }
+
+    #[test]
+    fn test_subnormal() {
+        let d: f64 = f64::from_bits(0x0000_0000_0000_1000); // subnormal
+        assert!((log(d) - d.ln()).abs() <= d.ln().abs() * 1e-14);
     }
 
     #[test]

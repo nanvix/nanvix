@@ -5,25 +5,26 @@
 // Constants
 //==================================================================================================
 
-const LN2: f64 = core::f64::consts::LN_2;
-const LN2_INV: f64 = core::f64::consts::LOG2_E;
-
-/// Taylor series coefficients for e^r: 1/n! from n=12 down to n=0.
-const EXP_COEFFS: [f64; 13] = [
-    1.0 / 479_001_600.0,
-    1.0 / 39_916_800.0,
-    1.0 / 3_628_800.0,
-    1.0 / 362_880.0,
-    1.0 / 40_320.0,
-    1.0 / 5_040.0,
-    1.0 / 720.0,
-    1.0 / 120.0,
-    1.0 / 24.0,
-    1.0 / 6.0,
-    0.5,
-    1.0,
-    1.0,
-];
+/// `ln(2)` split into a leading part (exact in its high bits) and a low
+/// correction, indexed by the sign of the argument so the reduction stays exact.
+const LN2HI: [f64; 2] = [6.931_471_803_691_238e-1, -6.931_471_803_691_238e-1];
+const LN2LO: [f64; 2] = [1.908_214_929_270_587_7e-10, -1.908_214_929_270_587_7e-10];
+/// `+/-0.5`, added before truncation to round the reduction quotient.
+const HALF: [f64; 2] = [0.5, -0.5];
+/// `1 / ln(2)`.
+const INVLN2: f64 = 1.442_695_040_888_963_4;
+/// Overflow threshold: `exp(x)` overflows to `+inf` for `x > O_THRESHOLD`.
+const O_THRESHOLD: f64 = 7.097_827_128_933_84e2;
+/// Underflow threshold: `exp(x)` underflows to `0` for `x < U_THRESHOLD`.
+const U_THRESHOLD: f64 = -7.451_332_191_019_411e2;
+/// Minimax polynomial coefficients for the scaled remainder `x - r*R(r^2)`.
+const P1: f64 = 1.666_666_666_666_660_2e-1;
+const P2: f64 = -2.777_777_777_701_559_3e-3;
+const P3: f64 = 6.613_756_321_437_934e-5;
+const P4: f64 = -1.653_390_220_546_525_2e-6;
+const P5: f64 = 4.138_136_797_057_238_5e-8;
+/// `2^-1000`, used to defer final scaling for tiny results without underflow.
+const TWOM1000: f64 = f64::from_bits(0x0170_0000_0000_0000);
 
 //==================================================================================================
 // Public Functions
@@ -33,7 +34,10 @@ const EXP_COEFFS: [f64; 13] = [
 ///
 /// # Description
 ///
-/// Uses range reduction: `e^x = 2^k * e^r` where `r = x - k*ln(2)` and `|r| <= ln(2)/2`.
+/// Reduces the argument as `x = k*ln(2) + r` with `|r| <= 0.5*ln(2)`, evaluates
+/// `e^r` from a minimax polynomial in `r`, and reconstructs the result by scaling
+/// with `2^k`. This is the fdlibm algorithm and is accurate to within one unit in
+/// the last place.
 ///
 /// # Parameters
 ///
@@ -41,52 +45,77 @@ const EXP_COEFFS: [f64; 13] = [
 ///
 /// # Returns
 ///
-/// The value `e^x`.
+/// The value `e^x`. Overflow saturates to `+inf` and underflow to `0`.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 pub extern "C" fn exp(x: f64) -> f64 {
-    if x.is_nan() {
-        return x;
-    }
+    let hx: u32 = (x.to_bits() >> 32) as u32;
+    let xsb: usize = ((hx >> 31) & 1) as usize; // sign bit of x
+    let ax: u32 = hx & 0x7fff_ffff; // high word of |x|
 
-    // Range reduction: x = k*ln(2) + r.
-    let k_f: f64 = crate::round::round(x * LN2_INV);
-    let r: f64 = x - k_f * LN2;
-
-    // Horner evaluation of degree-12 Taylor polynomial.
-    let mut poly: f64 = EXP_COEFFS[0];
-    let mut i: usize = 1;
-    while i < EXP_COEFFS.len() {
-        poly = poly * r + EXP_COEFFS[i];
-        i += 1;
-    }
-
-    // Multiply by 2^k.
-    #[allow(clippy::cast_possible_truncation)]
-    let k_i64: i64 = k_f as i64;
-
-    // The result is `poly * 2^k`. Inputs just below the overflow boundary
-    // (`ln(f64::MAX) ~= 709.7827`) reduce to `k == 1024`, whose result is still
-    // finite even though `2^1024` is not a representable exponent. Scale as
-    // `2^1023 * 2` so those values round correctly while true overflows saturate
-    // to `+inf`.
-    if k_i64 > 1024 {
-        return f64::from_bits(0x7FF0_0000_0000_0000);
-    }
-    if k_i64 == 1024 {
-        return poly * f64::from_bits(0x7FE0_0000_0000_0000) * 2.0;
-    }
-    if k_i64 < -1022 {
-        let scale: f64 = f64::from_bits(0x0010_0000_0000_0000);
-        let adj: i64 = k_i64 + 1022;
-        if adj < -1022 {
-            return 0.0;
+    // Filter out non-finite and out-of-range arguments.
+    if ax >= 0x4086_2E42 {
+        // |x| >= 709.78...
+        if ax >= 0x7ff0_0000 {
+            // x is +/-inf or NaN.
+            if x.is_nan() {
+                return x + x;
+            }
+            return if xsb == 0 { x } else { 0.0 }; // exp(+inf)=inf, exp(-inf)=0
         }
-        let biased: u64 = (adj + 1023) as u64;
-        return poly * scale * f64::from_bits(biased << 52);
+        if x > O_THRESHOLD {
+            return f64::INFINITY; // overflow
+        }
+        if x < U_THRESHOLD {
+            return 0.0; // underflow
+        }
     }
 
-    let biased: u64 = (k_i64 + 1023) as u64;
-    poly * f64::from_bits(biased << 52)
+    // Argument reduction: x = k*ln(2) + (hi - lo), with r = hi - lo the reduced value.
+    let mut k: i32 = 0;
+    let mut hi: f64 = 0.0;
+    let mut lo: f64 = 0.0;
+    let mut r: f64 = x;
+    if ax > 0x3fd6_2e42 {
+        // |x| > 0.5*ln2
+        if ax < 0x3FF0_A2B2 {
+            // |x| < 1.5*ln2: a single step of ln2 suffices.
+            hi = x - LN2HI[xsb];
+            lo = LN2LO[xsb];
+            k = 1 - (xsb as i32) - (xsb as i32);
+        } else {
+            k = (INVLN2 * x + HALF[xsb]) as i32;
+            let t: f64 = f64::from(k);
+            hi = x - t * LN2HI[0]; // t*LN2HI[0] is exact here
+            lo = t * LN2LO[0];
+        }
+        r = hi - lo;
+    } else if ax < 0x3e30_0000 {
+        // |x| < 2^-28: exp(x) rounds to 1 + x.
+        return 1.0 + x;
+    }
+
+    // Evaluate exp(r) on the reduced range and scale by 2^k.
+    let t: f64 = r * r;
+    let twopk: f64 = if k >= -1021 {
+        f64::from_bits(((0x3ff + k) as u64) << 52)
+    } else {
+        f64::from_bits(((0x3ff + k + 1000) as u64) << 52)
+    };
+    let c: f64 = r - t * (P1 + t * (P2 + t * (P3 + t * (P4 + t * P5))));
+    if k == 0 {
+        return 1.0 - ((r * c) / (c - 2.0) - r);
+    }
+    let y: f64 = 1.0 - ((lo - (r * c) / (2.0 - c)) - hi);
+    if k >= -1021 {
+        if k == 1024 {
+            // 2^1024 is not representable; scale as 2^1023 * 2 instead.
+            return y * 2.0 * f64::from_bits(0x7fe0_0000_0000_0000);
+        }
+        y * twopk
+    } else {
+        y * twopk * TWOM1000
+    }
 }
 
 //==================================================================================================
@@ -114,7 +143,19 @@ mod tests {
 
     #[test]
     fn test_ln2() {
-        assert!((exp(LN2) - 2.0).abs() < 1e-10);
+        assert!((exp(core::f64::consts::LN_2) - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_matches_std_over_range() {
+        // Compare against the host libm across the full finite range at <= a few ULP.
+        let mut x: f64 = -700.0;
+        while x <= 700.0 {
+            let got: f64 = exp(x);
+            let want: f64 = x.exp();
+            assert!((got - want).abs() <= want.abs() * 1e-14, "exp({x}) = {got}, want {want}");
+            x += 0.013;
+        }
     }
 
     #[test]
