@@ -8,6 +8,8 @@
 //==================================================================================================
 
 #include <assert.h>
+#include <errno.h>
+#include <locale.h>
 #include <stddef.h>
 #include <string.h>
 #include <unistd.h>
@@ -136,6 +138,168 @@ static void test_wcstold(void)
     assert(wcstold(L"10", NULL) == 10.0L);
 }
 
+// Tests wcscoll_l() and wcsxfrm_l(), the locale-aware wide comparison functions. Nanvix supports
+// only the C/POSIX locale, so collation follows wide code-point order and the transform is the
+// identity copy.
+static void test_wcs_collation_l(void)
+{
+    locale_t loc = newlocale(LC_ALL_MASK, "C", (locale_t)0);
+    assert(loc != (locale_t)0);
+
+    // wcscoll_l() orders like wcscmp() in the C/POSIX locale.
+    assert(wcscoll_l(L"abc", L"abc", loc) == 0);
+    assert(wcscoll_l(L"abc", L"abd", loc) < 0);
+    assert(wcscoll_l(L"abd", L"abc", loc) > 0);
+
+    // Lowercase code points sort after uppercase ones.
+    assert(wcscoll_l(L"a", L"A", loc) > 0);
+
+    // wcsxfrm_l() performs the identity transform: the returned length excludes the terminator and
+    // the destination equals the source.
+    {
+        wchar_t dest[8] = {L'?', L'?', L'?', L'?', L'?', L'?', L'?', L'?'};
+        size_t len = wcsxfrm_l(dest, L"abc", 8, loc);
+        assert(len == 3);
+        assert(wcscmp(dest, L"abc") == 0);
+    }
+
+    // The defining property of wcsxfrm_l(): comparing two transformed strings with wcscmp() yields
+    // the same ordering as comparing the originals with wcscoll_l().
+    {
+        wchar_t xa[8];
+        wchar_t xb[8];
+        assert(wcsxfrm_l(xa, L"abc", 8, loc) == 3);
+        assert(wcsxfrm_l(xb, L"abd", 8, loc) == 3);
+        assert(wcscmp(xa, xb) < 0);
+    }
+
+    // A zero-size destination writes nothing but still reports the required length.
+    assert(wcsxfrm_l(NULL, L"hello", 0, loc) == 5);
+
+    freelocale(loc);
+}
+
+// Tests mbsnrtowcs(), the bounded restartable multibyte-to-wide conversion. The C/POSIX locale maps
+// each byte directly to a wide character.
+static void test_mbsnrtowcs(void)
+{
+    // The byte budget bounds the conversion: only two of the three bytes are read, no terminator is
+    // written, and src is advanced past the last converted byte.
+    {
+        const char in[] = "abc";
+        const char *src = in;
+        wchar_t out[4] = {L'?', L'?', L'?', L'?'};
+        size_t n = mbsnrtowcs(out, &src, 2, 4, NULL);
+        assert(n == 2);
+        assert(out[0] == L'a');
+        assert(out[1] == L'b');
+        assert(src == in + 2);
+    }
+
+    // When the terminator falls within the budget it is converted and src is set to NULL.
+    {
+        const char in[] = "ab";
+        const char *src = in;
+        wchar_t out[4] = {L'?', L'?', L'?', L'?'};
+        size_t n = mbsnrtowcs(out, &src, 8, 4, NULL);
+        assert(n == 2);
+        assert(out[0] == L'a');
+        assert(out[1] == L'b');
+        assert(out[2] == L'\0');
+        assert(src == NULL);
+    }
+
+    // The destination length bounds the conversion even when byte budget remains.
+    {
+        const char in[] = "abc";
+        const char *src = in;
+        wchar_t out[1];
+        size_t n = mbsnrtowcs(out, &src, 8, 1, NULL);
+        assert(n == 1);
+        assert(out[0] == L'a');
+        assert(src == in + 1);
+    }
+
+    // A caller-supplied conversion state is accepted and round-trips to the initial state.
+    {
+        mbstate_t st;
+        memset(&st, 0, sizeof(st));
+        const char in[] = "hi";
+        const char *src = in;
+        wchar_t out[4] = {L'?', L'?', L'?', L'?'};
+        size_t n = mbsnrtowcs(out, &src, 8, 4, &st);
+        assert(n == 2);
+        assert(out[0] == L'h');
+        assert(out[1] == L'i');
+        assert(out[2] == L'\0');
+        assert(src == NULL);
+        assert(mbsinit(&st) != 0);
+    }
+
+    // A null destination measures the length (bounded by the byte budget) and leaves src unchanged.
+    {
+        const char in[] = "abcd";
+        const char *src = in;
+        size_t n = mbsnrtowcs(NULL, &src, 3, 0, NULL);
+        assert(n == 3);
+        assert(src == in);
+    }
+}
+
+// Tests wcsnrtombs(), the bounded restartable wide-to-multibyte conversion.
+static void test_wcsnrtombs(void)
+{
+    // The wide-character budget bounds the conversion: only two of the three wide characters are
+    // read, no terminator is written, and src is advanced past the last converted character.
+    {
+        const wchar_t in[] = L"abc";
+        const wchar_t *src = in;
+        char out[4] = {'?', '?', '?', '?'};
+        size_t n = wcsnrtombs(out, &src, 2, 4, NULL);
+        assert(n == 2);
+        assert(out[0] == 'a');
+        assert(out[1] == 'b');
+        assert(src == in + 2);
+    }
+
+    // When the terminator falls within the budget it is converted and src is set to NULL.
+    {
+        const wchar_t in[] = L"ab";
+        const wchar_t *src = in;
+        char out[4] = {'?', '?', '?', '?'};
+        size_t n = wcsnrtombs(out, &src, 8, 4, NULL);
+        assert(n == 2);
+        assert(out[0] == 'a');
+        assert(out[1] == 'b');
+        assert(out[2] == '\0');
+        assert(src == NULL);
+    }
+
+    // A wide character outside the single-byte range aborts with (size_t)-1, sets errno to EILSEQ,
+    // and leaves src pointing at the offending character.
+    {
+        const wchar_t in[] = {L'a', (wchar_t)0x100, L'\0'};
+        const wchar_t *src = in;
+        char out[4] = {'?', '?', '?', '?'};
+        errno = 0;
+        size_t n = wcsnrtombs(out, &src, 8, 4, NULL);
+        assert(n == (size_t)-1);
+        assert(errno == EILSEQ);
+        assert(out[0] == 'a');
+        assert(src == in + 1);
+    }
+
+    // A null destination measures the length (bounded by the wide-character budget) and leaves src
+    // unchanged.
+    {
+        const wchar_t in[] = L"abcd";
+        const wchar_t *src = in;
+        size_t n = wcsnrtombs(NULL, &src, 2, 0, NULL);
+        assert(n == 2);
+        assert(src == in);
+    }
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -163,6 +327,9 @@ int main(int argc, const char *argv[])
     test_wide_search_siblings();
     test_wcstof();
     test_wcstold();
+    test_wcs_collation_l();
+    test_mbsnrtowcs();
+    test_wcsnrtombs();
 
     // Write magic string to signal that the test passed.
     {

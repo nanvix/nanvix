@@ -73,7 +73,14 @@ functions = ["wcslen", "wcscpy", "wcsncpy", "wcscat"]
 
 [[sections]]
 title = "Comparison"
-functions = ["wcscmp", "wcsncmp", "wcscoll", "wcsxfrm"]
+functions = [
+    "wcscmp",
+    "wcsncmp",
+    "wcscoll",
+    "wcscoll_l",
+    "wcsxfrm",
+    "wcsxfrm_l",
+]
 
 [[sections]]
 title = "Search"
@@ -111,7 +118,9 @@ functions = [
     "mbrlen",
     "mbsinit",
     "mbsrtowcs",
+    "mbsnrtowcs",
     "wcsrtombs",
+    "wcsnrtombs",
 ]
 
 [[sections]]
@@ -121,8 +130,12 @@ functions = ["wcsftime"]
 [overrides]
 wcscoll = '''
 extern int wcscoll(const wchar_t *s1, const wchar_t *s2);'''
+wcscoll_l = '''
+extern int wcscoll_l(const wchar_t *s1, const wchar_t *s2, locale_t locale);'''
 wcsxfrm = '''
 extern size_t wcsxfrm(wchar_t *dest, const wchar_t *src, size_t n);'''
+wcsxfrm_l = '''
+extern size_t wcsxfrm_l(wchar_t *dest, const wchar_t *src, size_t n, locale_t locale);'''
 wcstok = '''
 extern wchar_t *wcstok(wchar_t *ws, const wchar_t *delim, wchar_t **ptr);'''
 wcsftime = '''
@@ -141,7 +154,11 @@ mbsinit = '''
 extern int mbsinit(const mbstate_t *ps);'''
 mbsrtowcs = '''
 extern size_t mbsrtowcs(wchar_t *dest, const char **src, size_t n, mbstate_t *ps);'''
+mbsnrtowcs = '''
+extern size_t mbsnrtowcs(wchar_t *dest, const char **src, size_t nmc, size_t len, mbstate_t *ps);'''
 wcsrtombs = '''
 extern size_t wcsrtombs(char *dest, const wchar_t **src, size_t n, mbstate_t *ps);'''
+wcsnrtombs = '''
+extern size_t wcsnrtombs(char *dest, const wchar_t **src, size_t nwc, size_t len, mbstate_t *ps);'''
 wcstold = '''
 extern long double wcstold(const wchar_t *nptr, wchar_t **endptr);'''

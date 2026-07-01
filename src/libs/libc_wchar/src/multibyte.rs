@@ -487,6 +487,167 @@ pub unsafe extern "C" fn wcsrtombs(
     }
 }
 
+/// Restartable conversion of a multibyte string to a wide-character string, reading at most `nmc`
+/// bytes from the source.
+///
+/// Behaves like [`mbsrtowcs`] except that no more than `nmc` bytes are read from `*src`. As with
+/// [`mbsrtowcs`], conversion also stops once the terminating null byte is reached or, when `dst` is
+/// non-null, once `len` wide characters have been produced.
+///
+/// # Safety
+///
+/// `src` must point to a valid pointer to a multibyte string with at least `nmc` readable bytes.
+/// `dst` (when non-null) must have room for `len` wide characters.
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn mbsnrtowcs(
+    dst: *mut wchar_t,
+    src: *mut *const c_char,
+    nmc: usize,
+    len: usize,
+    ps: *mut mbstate_t,
+) -> usize {
+    let mut state: mbstate_t = if ps.is_null() {
+        mbstate_t {
+            count: 0,
+            bytes: [0; 4],
+        }
+    } else {
+        unsafe { *ps }
+    };
+    let mut s: *const c_char = unsafe { *src };
+    let mut remaining: usize = nmc;
+    let mut count: usize = 0;
+
+    loop {
+        // Stop once the destination is full.
+        if !dst.is_null() && count >= len {
+            if !ps.is_null() {
+                unsafe { *ps = state };
+            }
+            unsafe { *src = s };
+            return count;
+        }
+
+        // Stop once the source byte budget is exhausted. Per POSIX, `*src` is updated only when
+        // `dst` is non-null.
+        if remaining == 0 {
+            if !ps.is_null() {
+                unsafe { *ps = state };
+            }
+            if !dst.is_null() {
+                unsafe { *src = s };
+            }
+            return count;
+        }
+
+        let mut wc: wchar_t = 0;
+        let res: usize = unsafe { mbrtowc_core(&mut wc, s, remaining, &mut state) };
+        if res == SIZE_ERR || res == SIZE_INCOMPLETE {
+            // Per POSIX, when `dst` is non-null the pointer object pointed to by `src` is updated
+            // to point at the byte that triggered the encoding error, so the caller can restart or
+            // diagnose. When `dst` is null the call merely measures and leaves `*src` untouched.
+            if !dst.is_null() {
+                unsafe { *src = s };
+            }
+            set_errno(EILSEQ);
+            return SIZE_ERR;
+        }
+        if wc == 0 {
+            // The terminating null was converted. Per POSIX, `*src` is nulled only when `dst` is
+            // non-null.
+            if !dst.is_null() {
+                unsafe { *dst.add(count) = 0 };
+                unsafe { *src = core::ptr::null() };
+            }
+            if !ps.is_null() {
+                unsafe { *ps = state };
+            }
+            return count;
+        }
+        if !dst.is_null() {
+            unsafe { *dst.add(count) = wc };
+        }
+        count += 1;
+        s = unsafe { s.add(res) };
+        remaining -= res;
+    }
+}
+
+/// Restartable conversion of a wide-character string to a multibyte string, reading at most `nwc`
+/// wide characters from the source.
+///
+/// Behaves like [`wcsrtombs`] except that no more than `nwc` wide characters are read from `*src`.
+/// As with [`wcsrtombs`], conversion also stops once the terminating null is reached or, when `dst`
+/// is non-null, once `len` bytes have been produced.
+///
+/// # Safety
+///
+/// `src` must point to a valid pointer to a wide string with at least `nwc` readable wide
+/// characters. `dst` (when non-null) must have room for `len` bytes.
+#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
+pub unsafe extern "C" fn wcsnrtombs(
+    dst: *mut c_char,
+    src: *mut *const wchar_t,
+    nwc: usize,
+    len: usize,
+    _ps: *mut mbstate_t,
+) -> usize {
+    let mut w: *const wchar_t = unsafe { *src };
+    let mut remaining: usize = nwc;
+    let mut count: usize = 0;
+
+    loop {
+        // Stop once the wide-character budget is exhausted. Per POSIX, `*src` is updated only when
+        // `dst` is non-null.
+        if remaining == 0 {
+            if !dst.is_null() {
+                unsafe { *src = w };
+            }
+            return count;
+        }
+
+        let wc: wchar_t = unsafe { *w };
+        if wc == 0 {
+            // Per POSIX, the pointer object pointed to by `src` is updated only when `dst` is
+            // non-null.
+            if !dst.is_null() {
+                if count < len {
+                    // There is room for the terminating null byte: store it and signal that
+                    // conversion stopped at the terminator by nulling `*src`.
+                    unsafe { *dst.add(count) = 0 };
+                    unsafe { *src = core::ptr::null() };
+                } else {
+                    // No room remains for the terminating null byte, so conversion stops early due
+                    // to the length limit. `*src` is left pointing at the terminator.
+                    unsafe { *src = w };
+                }
+            }
+            return count;
+        }
+
+        let cp: u32 = cp_of(wc);
+        if cp > 0xff {
+            if !dst.is_null() {
+                unsafe { *src = w };
+            }
+            set_errno(EILSEQ);
+            return SIZE_ERR;
+        }
+        if dst.is_null() {
+            count += 1;
+        } else {
+            if count >= len {
+                unsafe { *src = w };
+                return count;
+            }
+            unsafe { *dst.add(count) = cchar_of(u8::try_from(cp).unwrap_or(0)) };
+            count += 1;
+        }
+        w = unsafe { w.add(1) };
+        remaining -= 1;
+    }
+}
+
 //==================================================================================================
 // Unit Tests
 //==================================================================================================
@@ -498,8 +659,10 @@ mod test {
         mbrlen,
         mbrtowc,
         mbsinit,
+        mbsnrtowcs,
         mbsrtowcs,
         wcrtomb,
+        wcsnrtombs,
         wcsrtombs,
         SIZE_INCOMPLETE,
     };
@@ -712,5 +875,124 @@ mod test {
         assert_eq!(output[0], cchar_of(0x61));
         assert_eq!(output[1], cchar_of(0x62));
         assert_eq!(src, unsafe { input.as_ptr().add(2) });
+    }
+
+    #[test]
+    fn test_mbsnrtowcs_stops_at_byte_budget() {
+        // Only the first two of the three available bytes may be read, so conversion stops with
+        // `*src` pointing just past the last converted byte and no null is written.
+        let input = as_chars(b"abc\0");
+        let mut src: *const ::sysapi::ffi::c_char = input.as_ptr();
+        let mut output: [wchar_t; 4] = [-1; 4];
+        let ret: usize = unsafe {
+            mbsnrtowcs(output.as_mut_ptr(), &mut src, 2, output.len(), core::ptr::null_mut())
+        };
+        assert_eq!(ret, 2);
+        assert_eq!(output[0], 0x61);
+        assert_eq!(output[1], 0x62);
+        assert_eq!(src, unsafe { input.as_ptr().add(2) });
+    }
+
+    #[test]
+    fn test_mbsnrtowcs_nulls_source_after_terminator_within_budget() {
+        // The terminator lies within the byte budget, so it is converted and `*src` is nulled.
+        let input = as_chars(b"ab\0");
+        let mut src: *const ::sysapi::ffi::c_char = input.as_ptr();
+        let mut output: [wchar_t; 4] = [-1; 4];
+        let ret: usize = unsafe {
+            mbsnrtowcs(output.as_mut_ptr(), &mut src, 8, output.len(), core::ptr::null_mut())
+        };
+        assert_eq!(ret, 2);
+        assert_eq!(output[0], 0x61);
+        assert_eq!(output[1], 0x62);
+        assert_eq!(output[2], 0);
+        assert!(src.is_null());
+    }
+
+    #[test]
+    fn test_mbsnrtowcs_stops_when_destination_full() {
+        // The destination holds a single wide character, so conversion stops there even though more
+        // input and byte budget remain.
+        let input = as_chars(b"abc\0");
+        let mut src: *const ::sysapi::ffi::c_char = input.as_ptr();
+        let mut output: [wchar_t; 1] = [0];
+        let ret: usize = unsafe {
+            mbsnrtowcs(output.as_mut_ptr(), &mut src, 8, output.len(), core::ptr::null_mut())
+        };
+        assert_eq!(ret, 1);
+        assert_eq!(output[0], 0x61);
+        assert_eq!(src, unsafe { input.as_ptr().add(1) });
+    }
+
+    #[test]
+    fn test_mbsnrtowcs_null_dst_leaves_source_unchanged() {
+        // In measuring mode (null `dst`) POSIX requires `*src` to be left untouched, while the byte
+        // budget still bounds the reported length.
+        let input = as_chars(b"abcd\0");
+        let mut src: *const ::sysapi::ffi::c_char = input.as_ptr();
+        let ret: usize =
+            unsafe { mbsnrtowcs(core::ptr::null_mut(), &mut src, 3, 0, core::ptr::null_mut()) };
+        assert_eq!(ret, 3);
+        assert_eq!(src, input.as_ptr());
+    }
+
+    #[test]
+    fn test_wcsnrtombs_stops_at_wide_char_budget() {
+        // Only the first two of the three available wide characters may be read, so conversion stops
+        // with `*src` pointing just past the last converted wide character.
+        let input: [wchar_t; 4] = [0x61, 0x62, 0x63, 0];
+        let mut src: *const wchar_t = input.as_ptr();
+        let mut output: [::sysapi::ffi::c_char; 4] = [-1; 4];
+        let ret: usize = unsafe {
+            wcsnrtombs(output.as_mut_ptr(), &mut src, 2, output.len(), core::ptr::null_mut())
+        };
+        assert_eq!(ret, 2);
+        assert_eq!(output[0], cchar_of(0x61));
+        assert_eq!(output[1], cchar_of(0x62));
+        assert_eq!(src, unsafe { input.as_ptr().add(2) });
+    }
+
+    #[test]
+    fn test_wcsnrtombs_nulls_source_after_terminator_within_budget() {
+        // The terminator lies within the wide-character budget, so it is converted and `*src` is
+        // nulled.
+        let input: [wchar_t; 3] = [0x61, 0x62, 0];
+        let mut src: *const wchar_t = input.as_ptr();
+        let mut output: [::sysapi::ffi::c_char; 4] = [-1; 4];
+        let ret: usize = unsafe {
+            wcsnrtombs(output.as_mut_ptr(), &mut src, 8, output.len(), core::ptr::null_mut())
+        };
+        assert_eq!(ret, 2);
+        assert_eq!(output[0], cchar_of(0x61));
+        assert_eq!(output[1], cchar_of(0x62));
+        assert_eq!(output[2], 0);
+        assert!(src.is_null());
+    }
+
+    #[test]
+    fn test_wcsnrtombs_reports_error_on_unencodable_wide_char() {
+        // A wide character outside the single-byte range aborts conversion with `EILSEQ` and leaves
+        // `*src` pointing at the offending character.
+        let input: [wchar_t; 3] = [0x61, 0x100, 0];
+        let mut src: *const wchar_t = input.as_ptr();
+        let mut output: [::sysapi::ffi::c_char; 4] = [-1; 4];
+        let ret: usize = unsafe {
+            wcsnrtombs(output.as_mut_ptr(), &mut src, 8, output.len(), core::ptr::null_mut())
+        };
+        assert_eq!(ret, usize::MAX);
+        assert_eq!(output[0], cchar_of(0x61));
+        assert_eq!(src, unsafe { input.as_ptr().add(1) });
+    }
+
+    #[test]
+    fn test_wcsnrtombs_null_dst_leaves_source_unchanged() {
+        // In measuring mode (null `dst`) POSIX requires `*src` to be left untouched, while the
+        // wide-character budget still bounds the reported length.
+        let input: [wchar_t; 4] = [0x61, 0x62, 0x63, 0];
+        let mut src: *const wchar_t = input.as_ptr();
+        let ret: usize =
+            unsafe { wcsnrtombs(core::ptr::null_mut(), &mut src, 2, 0, core::ptr::null_mut()) };
+        assert_eq!(ret, 2);
+        assert_eq!(src, input.as_ptr());
     }
 }
