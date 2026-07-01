@@ -18,6 +18,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn \
 	test-c-dlfcn-diamond \
 	test-c-dlfcn-global \
+	test-c-dlfcn-hello \
 	test-c-dlfcn-init-runpath \
 	test-c-dlfcn-initfini \
 	test-c-dlfcn-needed \

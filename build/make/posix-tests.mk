@@ -201,6 +201,21 @@ POSIX_TEST_NO_STATIC_LIBM_test-c-dlfcn-startup := yes
 POSIX_TEST_EXTRA_LD_DEPS_test-c-dlfcn-startup := $(LIBRARIES_DIR)/libc.so $(LIBRARIES_DIR)/libm.so
 POSIX_TEST_EXTRA_LDLIBS_test-c-dlfcn-startup := -L$(LIBRARIES_DIR) -l:libc.so -l:libm.so -z now
 
+# dlfcn-hello-c is the "dynamic hello" acceptance test: the capstone
+# that boots a plain hello-world executable linked against the REAL shared
+# libraries libc.so and libm.so and lets the crt0 startup loader auto-resolve them
+# before main(), with NO dlopen() call. Its link wiring is identical to
+# dlfcn-startup-c above — PIE, static libm.a dropped so the math symbols bind to
+# libm.so (R_386_JMP_SLOT), DT_NEEDED on the bare libc.so/libm.so names, `-z now`
+# for eager binding — but main.c folds the dynamically-resolved cos/pow/exp
+# results into a single printed "value=42" instead of asserting each math result
+# separately. The bare DT_NEEDED names are resolved through the loader's default
+# lib/ search path, where the per-suite RAMFS stages libc.so and libm.so.
+POSIX_TEST_PIE_test-c-dlfcn-hello := yes
+POSIX_TEST_NO_STATIC_LIBM_test-c-dlfcn-hello := yes
+POSIX_TEST_EXTRA_LD_DEPS_test-c-dlfcn-hello := $(LIBRARIES_DIR)/libc.so $(LIBRARIES_DIR)/libm.so
+POSIX_TEST_EXTRA_LDLIBS_test-c-dlfcn-hello := -L$(LIBRARIES_DIR) -l:libc.so -l:libm.so -z now
+
 define POSIX_TEST_RULE
 POSIX_TEST_SRCROOT_$(1) := $$(if $$(POSIX_TEST_STRESS_$(1)),$$(POSIX_TESTS_STRESS_SRCDIR),$$(POSIX_TESTS_SRCDIR))
 POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TEST_SRCROOT_$(1))/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TEST_SRCROOT_$(1))/$(1)/*.c))
@@ -279,6 +294,7 @@ clean-posix-tests:
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
@@ -290,6 +306,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_HELLO_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SEARCHPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_STARTUP_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_INITFINI_SEED)
@@ -548,6 +565,27 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup): $(LIBRARIES_DIR)/libc.so $(LIBRARI
 	$(MKRAMFS) -o $@ $(POSIX_TEST_STARTUP_SEED)
 
 #---------------------------------------------------------------------------------------------------
+# dlfcn-hello-c: "dynamic hello" startup auto-load of real libc.so + libm.so.
+#---------------------------------------------------------------------------------------------------
+#
+# Like dlfcn-startup-c, this suite stages the ACTUAL shared libraries produced by
+# nanvix-libc-bundle (libc.so + libm.so) under lib/, reached through the loader's
+# default lib/ search path. The executable links against them via DT_NEEDED (see
+# the per-suite hooks above) and the startup loader auto-loads them before main();
+# see test-c-dlfcn-hello/main.c, which computes and prints "value=42" through that
+# dynamic linkage.
+POSIX_TEST_HELLO_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-hello-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-hello.img
+
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello): $(LIBRARIES_DIR)/libc.so $(LIBRARIES_DIR)/libm.so \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_HELLO_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_HELLO_SEED)/lib
+	$(CP_CMD) $(LIBRARIES_DIR)/libc.so $(POSIX_TEST_HELLO_SEED)/lib/
+	$(CP_CMD) $(LIBRARIES_DIR)/libm.so $(POSIX_TEST_HELLO_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_HELLO_SEED)
+
+#---------------------------------------------------------------------------------------------------
 # dlfcn-searchpath-c: default search-path resolution of bare libc.so + libm.so.
 #---------------------------------------------------------------------------------------------------
 #
@@ -607,6 +645,7 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini): $(POSIX_TEST_INITFINI_DIR)/libini
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup) \
