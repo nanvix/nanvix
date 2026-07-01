@@ -147,6 +147,13 @@ POSIX_TEST_PIE_test-c-dlfcn-weak := yes
 # self-linker (syscall::dlfcn::dllink_executable) must bind the executable's own
 # GOT/PLT against the loaded library before main() runs.
 POSIX_TEST_PIE_test-c-dlfcn-selflink := yes
+# dlfcn-searchpath-c dlopen()s the REAL libc.so at run time. libc.so carries an
+# UNDEFINED `__nanvix_main` (the app entry symbol, normally supplied by the main
+# executable), which RTLD_NOW must resolve from the executable's exported global
+# scope. Linking PIE with --export-dynamic lands the executable's symbols
+# (including `__nanvix_main`) in `.dynsym` so dlinit() seeds the loader's global
+# symbol table and the dlopen("libc.so") relocation succeeds.
+POSIX_TEST_PIE_test-c-dlfcn-searchpath := yes
 
 # Per-suite hooks consumed by POSIX_TEST_RULE: extra link-time prerequisites and
 # extra linker arguments appended AFTER the libc/libm `--end-group`. Used by
@@ -272,6 +279,7 @@ clean-posix-tests:
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini)
@@ -282,6 +290,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_SEARCHPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_STARTUP_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_INITFINI_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
@@ -539,6 +548,32 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup): $(LIBRARIES_DIR)/libc.so $(LIBRARI
 	$(MKRAMFS) -o $@ $(POSIX_TEST_STARTUP_SEED)
 
 #---------------------------------------------------------------------------------------------------
+# dlfcn-searchpath-c: default search-path resolution of bare libc.so + libm.so.
+#---------------------------------------------------------------------------------------------------
+#
+# Like dlfcn-startup-c, this suite stages the ACTUAL shared libraries produced by
+# nanvix-libc-bundle (libc.so + libm.so) under lib/. The difference is in how the
+# suite reaches them: instead of linking the executable against them (DT_NEEDED +
+# startup auto-load), dlfcn-searchpath-c dlopen()s the BARE names "libc.so" and
+# "libm.so" at run time, so the loader's default lib/ search path
+# (syscall::dlfcn::resolve_library_path -> LIBRARY_SEARCH_PATHS) is what locates
+# them. This is the acceptance test for the runtime layout + default search path
+# work (issue #2775). The suite links PIE + --export-dynamic (see POSIX_TEST_PIE_*
+# above) so that libc.so's undefined `__nanvix_main` resolves from the
+# executable's exported global scope when RTLD_NOW relocates it; the per-suite
+# RAMFS below stages the libraries under lib/.
+POSIX_TEST_SEARCHPATH_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-searchpath-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-searchpath.img
+
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath): $(LIBRARIES_DIR)/libc.so $(LIBRARIES_DIR)/libm.so \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_SEARCHPATH_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_SEARCHPATH_SEED)/lib
+	$(CP_CMD) $(LIBRARIES_DIR)/libc.so $(POSIX_TEST_SEARCHPATH_SEED)/lib/
+	$(CP_CMD) $(LIBRARIES_DIR)/libm.so $(POSIX_TEST_SEARCHPATH_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_SEARCHPATH_SEED)
+
+#---------------------------------------------------------------------------------------------------
 # dlfcn-initfini-c: startup DT_NEEDED constructor/destructor ordering fixture.
 #---------------------------------------------------------------------------------------------------
 #
@@ -572,6 +607,7 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini): $(POSIX_TEST_INITFINI_DIR)/libini
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini)

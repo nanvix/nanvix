@@ -114,6 +114,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-dlfcn-searchpath"
+program = "./bin/test-c-dlfcn-searchpath.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-searchpath.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-dlfcn-selflink"
 program = "./bin/test-c-dlfcn-selflink.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-selflink.img"
