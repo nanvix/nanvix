@@ -38,6 +38,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-searchpath \
 	test-c-dlfcn-selflink \
 	test-c-dlfcn-staging \
+	test-c-dlfcn-startup \
 	test-c-dlfcn-weak \
 	test-c-echo \
 	test-c-execvp \
@@ -74,17 +75,13 @@ ALL_POSIX_TESTS := \
 #    shared objects built from i386 inline assembly (see
 #    src/tests/integration/test-rust-dlfcn); no x86-64 build of those fixtures
 #    exists yet.
-#  - test-c-dlfcn-startup stages the real libc.so / libm.so, which cannot be
-#    built as x86-64 shared objects from the static libc.a (its
-#    relocation-model=static objects carry R_X86_64_32 relocations that a shared
-#    link rejects).
-# The rest of the dlfcn family builds its own per-ABI fixtures and runs on both
-# guest ABIs.
+# The rest of the dlfcn family builds its own per-ABI fixtures (or, for the
+# startup/hello/searchpath suites, links the real libc.so/libm.so now that those
+# are produced as x86-64 PIC shared objects) and runs on both guest ABIs.
 POSIX_TESTS_X86_ONLY := \
 	test-c-dlfcn \
 	test-c-dlfcn-pie \
-	test-c-dlfcn-refcount \
-	test-c-dlfcn-startup
+	test-c-dlfcn-refcount
 
 ifneq ($(TARGET),x86_64)
 ALL_POSIX_TESTS += $(POSIX_TESTS_X86_ONLY)

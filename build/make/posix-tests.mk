@@ -1506,19 +1506,14 @@ $(POSIX_TEST_EXECVP_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXECVP_SUITE).$(EXEC_FORM
 # `run-posix-tests` is skipped — notably Windows, where suites are booted
 # manually under WHP (see the repo notes). `run-posix-tests` depends on the same
 # set, so this also pre-stages everything the Linux runner consumes.
-# The dlfcn shared-library fixtures (the global/needed/diamond/selflink/initfini
-# RAMFS images, the init-runpath image, and the weak-symbol image) now build for
-# every guest ABI: the fixture `.so` follow the active TARGET
-# (`POSIX_TEST_SOLIB_*`), and the dlfcn suites that consume them run on x86 and
-# x86_64. The startup suite's image is excluded on x86_64 because it stages the
-# real libc.so/libm.so, which cannot be built as x86-64 shared objects (see the
-# i686-only note in build/make/lists/guest-posix-tests.mk). Basic test-c-dlfcn /
-# test-c-dlfcn-pie stay i686-only (they dlopen the prebuilt i386 libmul.so).
-ifeq ($(TARGET),x86_64)
-POSIX_TEST_DLFCN_FIXTURE_IMGS := $(filter-out $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup),$(POSIX_TEST_SOLIB_IMGS)) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) $(POSIX_TEST_WEAK_IMG)
-else
+# The dlfcn shared-library fixtures build for every guest ABI: the per-suite
+# fixture `.so` follow the active TARGET (`POSIX_TEST_SOLIB_*`), and the
+# startup/hello/searchpath suites stage the real libc.so/libm.so, which are now
+# produced as x86-64 PIC shared objects (see build/make/nanvix-libc-artifacts.mk)
+# as well as i686. Basic test-c-dlfcn, test-c-dlfcn-pie, and
+# test-c-dlfcn-refcount stay i686-only (they dlopen the prebuilt i386 libmul
+# fixtures) and ship no fixture image here.
 POSIX_TEST_DLFCN_FIXTURE_IMGS := $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) $(POSIX_TEST_WEAK_IMG)
-endif
 
 .PHONY: all-posix-test-images
 all-posix-test-images: $(POSIX_TEST_INITRDS) \

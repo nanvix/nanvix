@@ -21,15 +21,18 @@
 # unconditionally, and the empty stub archives satisfy ports that still pass
 # `-ldl` / `-lpthread` / `-lrt`.
 #
-# Binutils: the bundle uses host `ld`/`ar`/`ranlib`. The shared object is linked
-# with the target's ELF emulation ($(NANVIX_LIBC_ELF_EMULATION)) and `-z notext`
-# because the libc objects are built with the target's
-# `relocation-model = static`; the resulting text relocations are exactly the
-# relocation types the Nanvix dynamic loader already handles for the dlfcn test
-# fixtures (libmul.so). `-z muldefs` on the libc.so link tolerates the Rust
-# allocator-shim duplicates (`__rust_alloc`, ...) that remain until the deeper
-# allocator work lands; the panic handler is already weak and
-# `__errno_location` already has a single owner.
+# Binutils: the bundle uses host `ld`/`ar`/`ranlib`. On i686 the shared objects
+# are linked directly from the static libc.a/libm.a with the target's ELF
+# emulation ($(NANVIX_LIBC_ELF_EMULATION)) and `-z notext`, because those objects
+# are built with `relocation-model = static` and the resulting R_386_* text
+# relocations are exactly the load-time-relocatable types the Nanvix dynamic
+# loader already handles for the dlfcn test fixtures (libmul.so). On x86_64 the
+# static relocation model instead emits R_X86_64_32S relocations that a shared
+# link rejects, so the shared objects are linked from a SEPARATE PIC compilation
+# of nanvix_libc/nanvix_libm (see the x86_64 PIC block below). `-z muldefs` on the
+# libc.so link tolerates the Rust allocator-shim duplicates (`__rust_alloc`, ...)
+# that remain until the deeper allocator work lands; the panic handler is already
+# weak and `__errno_location` already has a single owner.
 
 # Host binutils used to assemble the bundle (overridable).
 #
@@ -155,15 +158,14 @@ NANVIX_LIBC_STUB_ARCHIVES := \
 NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS := \
 	$(NANVIX_LIBC_BUNDLE_AR) \
 	$(NANVIX_LIBM_BUNDLE_AR) \
+	$(NANVIX_LIBC_BUNDLE_SO) \
+	$(NANVIX_LIBM_BUNDLE_SO) \
 	$(NANVIX_CRT0_OBJECT) \
 	$(NANVIX_CRT0_ALIAS_OBJECTS) \
 	$(NANVIX_LIBC_STUB_ARCHIVES)
-# libc.so / libm.so (dlopen surface) require PIE; the x86_64 static relocation
-# model emits R_X86_64_32 relocations incompatible with a shared object, so they
-# are x86-only.
-ifneq ($(TARGET),x86_64)
-NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS += $(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO)
-endif
+# libc.so / libm.so (the dlopen / DT_NEEDED surface) ship for every guest ABI:
+# i686 links them straight from the static archive (`-z notext`), x86_64 from the
+# PIC compilation of nanvix_libc/nanvix_libm (see the x86_64 PIC block below).
 
 .PHONY: nanvix-libc-bundle clean-nanvix-libc-bundle
 
@@ -204,6 +206,95 @@ $(NANVIX_LIBM_BUNDLE_AR): all-guest-staticlibs
 		$@
 $(NANVIX_CRT0_ARCHIVE): all-guest-staticlibs ;
 
+#---------------------------------------------------------------------------------------------------
+# x86_64: PIC compilation of nanvix_libc / nanvix_libm (shared objects only).
+#---------------------------------------------------------------------------------------------------
+#
+# The static libc.a/libm.a that executables link are built with
+# `relocation-model = static` (build/targets/x86_64-user.json + GUEST_RUST_FLAGS),
+# which on x86_64 emits R_X86_64_32S (32-bit sign-extended absolute) relocations.
+# A shared object may load at an arbitrary base, so those absolute relocations
+# cannot be expressed as runtime dynamic relocations and `ld -shared` rejects them
+# outright ("relocation R_X86_64_32S cannot be used against ...; recompile with
+# -fPIC") — `-z notext` cannot help, because there is no load-base-relative 32-bit
+# dynamic relocation on x86_64. (On i686 the analogous R_386_32 *is* a valid
+# text/dynamic relocation, which is why the i686 `.so` link straight from the
+# static archive with `-z notext` in the else-branch below.)
+#
+# So on x86_64 the shared objects are fed by a SECOND, PIC compilation of the two
+# crates, built under a dedicated `x86_64-user-pic` target triple so cargo keys
+# its artifacts to a separate `target/x86_64-user-pic/` tree and never clobbers
+# the static `libc.a` executables depend on (cargo keys by target + profile, not
+# by RUSTFLAGS). `-C relocation-model=pic` (RUSTFLAGS wins over the target JSON)
+# routes absolute references through the GOT / makes them PC-relative, so the
+# linked `.so` carry only runtime-relocatable relocations
+# (R_X86_64_{RELATIVE,GLOB_DAT,JUMP_SLOT,64}). Executables are unaffected: they
+# keep linking the static libc.a and stay non-PIE ET_EXEC.
+ifeq ($(TARGET),x86_64)
+# Dedicated PIC target triple. build/targets/x86_64-user-pic.json MUST stay
+# identical to x86_64-user.json except for `relocation-model` (kept in sync by
+# review); its only role is to give cargo a distinct output directory so the PIC
+# build is isolated from — and independently cacheable against — the static one.
+NANVIX_LIBC_PIC_TRIPLE      := x86_64-user-pic
+NANVIX_LIBC_PIC_TARGET      := $(TARGETS_DIR)/$(NANVIX_LIBC_PIC_TRIPLE).json
+NANVIX_LIBC_PIC_OBJDIR      := $(OBJECTS_DIR)/$(NANVIX_LIBC_PIC_TRIPLE)/$(BUILD_MODE)
+NANVIX_LIBC_PIC_AR          := $(NANVIX_LIBC_PIC_OBJDIR)/libnanvix_libc.a
+NANVIX_LIBM_PIC_AR          := $(NANVIX_LIBC_PIC_OBJDIR)/libnanvix_libm.a
+# prefer-dynamic=no mirrors GUEST_RUST_FLAGS; relocation-model=pic overrides both
+# the target JSON and the static GUEST_RUST_FLAGS.
+NANVIX_LIBC_PIC_RUSTFLAGS   := "-C relocation-model=pic -C prefer-dynamic=no"
+NANVIX_LIBC_PIC_CARGO_BUILD := RUSTFLAGS=$(NANVIX_LIBC_PIC_RUSTFLAGS) $(CARGO) build --locked \
+	$(GUEST_CARGO_FLAGS) --target $(NANVIX_LIBC_PIC_TARGET) $(CARGO_PROFILE)
+
+# Build both crates PIC with the SAME feature sets as the static build
+# (nanvix_libc: default $(GUEST_STATICLIB_CARGO_FEATURES); nanvix_libm: its
+# override), then demote libm's Rust allocator shims to LOCAL exactly as the
+# static libm.a receives, so libc.so remains the single allocator owner.
+.PHONY: nanvix-libc-pic-staticlibs
+nanvix-libc-pic-staticlibs: init
+	@echo "[nanvix-libc] building PIC nanvix_libc / nanvix_libm ($(NANVIX_LIBC_PIC_TRIPLE))"
+	$(NANVIX_LIBC_PIC_CARGO_BUILD) -p nanvix_libc $(GUEST_STATICLIB_CARGO_FEATURES)
+	$(NANVIX_LIBC_PIC_CARGO_BUILD) -p nanvix_libm --features "$(GUEST_STATICLIB_FEATURES_nanvix_libm)"
+	@echo "[nanvix-libc] demoting PIC libm.a allocator shims to local (single-owner)"
+	$(NANVIX_LIBC_OBJCOPY) --wildcard \
+		-L '*__rust_alloc*' -L '*__rust_dealloc*' -L '*__rust_realloc*' \
+		$(NANVIX_LIBM_PIC_AR)
+
+# Bridge rules: let the .so targets key off the PIC archives' mtimes (cargo only
+# rewrites them when the inputs change), mirroring the static all-guest-staticlibs
+# bridge above.
+$(NANVIX_LIBC_PIC_AR): nanvix-libc-pic-staticlibs ;
+$(NANVIX_LIBM_PIC_AR): nanvix-libc-pic-staticlibs ;
+
+# libc.so / libm.so linked from the PIC archives. PIC objects carry no text
+# relocations, so `-z notext` is unnecessary. `-z muldefs` is retained on libc.so
+# to tolerate any residual Rust allocator-shim duplicates (harmless no-op
+# otherwise); libm.so needs none because its shims are demoted to local above and
+# its allocator forwards to libc.so at load time.
+#
+# The .so are then `--strip-debug`'d. The build-std `core`/`alloc` + the full libc
+# surface make the unstripped x86_64 objects ~23 MB (libc) / ~5 MB (libm), ~85% of
+# which is DWARF; the startup/hello/searchpath suites stage BOTH into a per-suite
+# RAMFS whose ~42 MB total then overflows the guest's ~30 MB RAMFS budget
+# (uservm ramfs.rs: memory_size - initrd - slack). Stripping only the non-alloc
+# `.debug_*` sections (libc.so -> ~2.7 MB, libm.so -> ~0.7 MB) leaves the
+# PT_LOAD image, `.dynsym`/`.dynstr`, relocations and GOT untouched — the loaded
+# object and its runtime behavior are identical — so the images fit with room to
+# spare. (i686 keeps its unstripped `.so`: its smaller objects already fit.)
+$(NANVIX_LIBC_BUNDLE_SO): $(NANVIX_LIBC_PIC_AR)
+	@echo "[nanvix-libc] linking libc.so (shared, PIC)"
+	$(NANVIX_LIBC_LD) -shared -m $(NANVIX_LIBC_ELF_EMULATION) -z muldefs \
+		--whole-archive $(NANVIX_LIBC_PIC_AR) --no-whole-archive \
+		-o $@
+	$(NANVIX_LIBC_OBJCOPY) --strip-debug $@
+
+$(NANVIX_LIBM_BUNDLE_SO): $(NANVIX_LIBM_PIC_AR)
+	@echo "[nanvix-libc] linking libm.so (shared, PIC)"
+	$(NANVIX_LIBC_LD) -shared -m $(NANVIX_LIBC_ELF_EMULATION) \
+		--whole-archive $(NANVIX_LIBM_PIC_AR) --no-whole-archive \
+		-o $@
+	$(NANVIX_LIBC_OBJCOPY) --strip-debug $@
+else
 # libc.so: shared object (same exported surface, for dlopen), linked from libc.a.
 $(NANVIX_LIBC_BUNDLE_SO): $(NANVIX_LIBC_BUNDLE_AR)
 	@echo "[nanvix-libc] linking libc.so (shared)"
@@ -220,6 +311,7 @@ $(NANVIX_LIBM_BUNDLE_SO): $(NANVIX_LIBM_BUNDLE_AR)
 	$(NANVIX_LIBC_LD) -shared -m $(NANVIX_LIBC_ELF_EMULATION) -z notext \
 		--whole-archive $(NANVIX_LIBM_BUNDLE_AR) --no-whole-archive \
 		-o $@
+endif
 
 # crt0.o: single relocatable startup object folded from libnvx_crt0.a (see the
 # NOTE above). The crt1.o / Scrt1.o aliases are regular object copies so the
@@ -284,14 +376,10 @@ $(NANVIX_LIBC_STUB_ARCHIVES):
 
 # Convenience alias to build all artifacts (libc.a + libm.a + libc.so + libm.so +
 # crt0.o [+ aliases] + the empty -ldl/-lpthread/-lrt stub archives). libc.so and
-# libm.so are omitted for x86_64 (see install-artifacts note: no PIE under the
-# static reloc model).
-NANVIX_LIBC_BUNDLE_OPT_SO :=
-ifneq ($(TARGET),x86_64)
-NANVIX_LIBC_BUNDLE_OPT_SO := $(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO)
-endif
+# libm.so build for every guest ABI (on x86_64 from the PIC compilation above).
 nanvix-libc-bundle: $(NANVIX_LIBC_BUNDLE_AR) $(NANVIX_LIBM_BUNDLE_AR) \
-	$(NANVIX_LIBC_BUNDLE_OPT_SO) $(NANVIX_CRT0_OBJECT) $(NANVIX_LIBC_STUB_ARCHIVES)
+	$(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO) \
+	$(NANVIX_CRT0_OBJECT) $(NANVIX_LIBC_STUB_ARCHIVES)
 
 clean-nanvix-libc-bundle:
 	$(RM_CMD) $(NANVIX_LIBC_BUNDLE_AR) $(NANVIX_LIBM_BUNDLE_AR) $(NANVIX_LIBC_BUNDLE_SO) $(NANVIX_LIBM_BUNDLE_SO)
