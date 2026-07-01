@@ -58,6 +58,22 @@ core::arch::global_asm!(
     options(att_syntax),
 );
 
+// Guest (no_std) build: the real implementation is x86-64 assembly. Per the System V AMD64 ABI the
+// sigjmp_buf pointer arrives in RDI and the savemask flag in ESI; the flag is stored just past the
+// eight register slots (offset 64) and execution tail-calls setjmp to capture the register context.
+// Reusing setjmp guarantees the two cannot diverge. The guest does not yet maintain a signal mask
+// (pthread_sigmask is a no-op), so there is nothing to save when savemask is nonzero; the flag is
+// recorded so the behavior becomes correct automatically once a signal mask is implemented.
+#[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global sigsetjmp",
+    ".type sigsetjmp, @function",
+    "sigsetjmp:",
+    "    mov %esi, 64(%rdi)", // save savemask flag (just past the eight 64-bit register slots)
+    "    jmp setjmp",         // tail-call setjmp: saves the register context and returns 0
+    options(att_syntax),
+);
+
 //==================================================================================================
 // Unit Tests
 //==================================================================================================
@@ -74,7 +90,7 @@ mod test {
     #[test]
     fn sigsetjmp_stub_reports_direct_return() {
         let mut buf: sigjmp_buf = sigjmp_buf {
-            regs: [0; 6],
+            regs: [0; crate::jmp_buf::JMP_BUF_REGS],
             savemask: 0,
         };
         let result: c_int = unsafe { sigsetjmp(&mut buf, 1) };

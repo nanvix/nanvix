@@ -54,6 +54,31 @@ core::arch::global_asm!(
     options(att_syntax),
 );
 
+// Guest (no_std) build: the real implementation is x86-64 assembly. Per the System V AMD64 ABI the
+// pointer argument arrives in RDI and the callee-saved registers are RBX, RBP, R12-R15, and RSP;
+// these plus the return address (RIP) are the context restored by longjmp. The assembler's `.global
+// setjmp` directive exports the C symbol directly and is the equivalent of `no_mangle`, applied only
+// in non-std builds (see libc_assert).
+#[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global setjmp",
+    ".type setjmp, @function",
+    "setjmp:",
+    "    mov %rbx, 0(%rdi)",  // save RBX
+    "    mov %rbp, 8(%rdi)",  // save RBP
+    "    mov %r12, 16(%rdi)", // save R12
+    "    mov %r13, 24(%rdi)", // save R13
+    "    mov %r14, 32(%rdi)", // save R14
+    "    mov %r15, 40(%rdi)", // save R15
+    "    lea 8(%rsp), %rax",  // compute original RSP (before call pushed return addr)
+    "    mov %rax, 48(%rdi)", // save RSP
+    "    mov (%rsp), %rax",   // get return address
+    "    mov %rax, 56(%rdi)", // save RIP (return addr)
+    "    xor %eax, %eax",     // return 0
+    "    ret",
+    options(att_syntax),
+);
+
 //==================================================================================================
 // Unit Tests
 //==================================================================================================
@@ -61,7 +86,10 @@ core::arch::global_asm!(
 #[cfg(all(test, feature = "std"))]
 mod test {
     use super::setjmp;
-    use crate::jmp_buf::jmp_buf;
+    use crate::jmp_buf::{
+        jmp_buf,
+        JMP_BUF_REGS,
+    };
     use ::sysapi::ffi::c_int;
 
     // On the host, setjmp is a non-functional stub that always reports a direct (zero) return. The
@@ -69,7 +97,9 @@ mod test {
     // the host test harness.
     #[test]
     fn setjmp_stub_reports_direct_return() {
-        let mut buf: jmp_buf = jmp_buf { regs: [0; 6] };
+        let mut buf: jmp_buf = jmp_buf {
+            regs: [0; JMP_BUF_REGS],
+        };
         let result: c_int = unsafe { setjmp(&mut buf) };
         assert_eq!(result, 0);
     }

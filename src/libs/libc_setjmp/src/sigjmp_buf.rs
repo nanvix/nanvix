@@ -10,6 +10,11 @@
 
 use ::sysapi::ffi::c_int;
 
+use crate::jmp_buf::{
+    jmp_buf_reg,
+    JMP_BUF_REGS,
+};
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -20,12 +25,15 @@ use ::sysapi::ffi::c_int;
 /// The `sigjmp_buf` type stores the execution context for `sigsetjmp`/`siglongjmp`.
 ///
 /// On x86-32, the following registers are saved: EBX, ESI, EDI, EBP, ESP, and the return address
-/// (EIP). The `savemask` field records whether `sigsetjmp` was asked to save the signal mask.
+/// (EIP). On x86-64, the saved registers are: RBX, RBP, R12, R13, R14, R15, RSP, and the return
+/// address (RIP). The `savemask` field records whether `sigsetjmp` was asked to save the signal
+/// mask.
 ///
 #[repr(C)]
 pub struct sigjmp_buf {
-    /// Saved registers: EBX, ESI, EDI, EBP, ESP, EIP.
-    pub regs: [c_int; 6],
+    /// Saved registers. x86-32: EBX, ESI, EDI, EBP, ESP, EIP. x86-64: RBX, RBP, R12, R13, R14,
+    /// R15, RSP, RIP.
+    pub regs: [jmp_buf_reg; JMP_BUF_REGS],
     /// Nonzero if `sigsetjmp` was called with a nonzero `savemask` argument.
     pub savemask: c_int,
 }
@@ -37,39 +45,45 @@ pub struct sigjmp_buf {
 #[cfg(all(test, feature = "std"))]
 mod test {
     use super::sigjmp_buf;
+    use crate::jmp_buf::{
+        jmp_buf_reg,
+        JMP_BUF_REGS,
+    };
     use ::core::mem::{
         align_of,
+        offset_of,
         size_of,
     };
-    use ::sysapi::ffi::c_int;
 
-    // The sigsetjmp/siglongjmp assembly reuses the setjmp/longjmp register slots at byte offsets 0,
-    // 4, 8, 12, 16, and 20, and stores the savemask flag at offset 24. These tests lock the
-    // sigjmp_buf layout to that contract so the Rust type and the assembly cannot silently diverge.
+    // The sigsetjmp/siglongjmp assembly reuses the setjmp/longjmp register slots and stores the
+    // savemask flag immediately after them. These tests lock the sigjmp_buf layout to that contract
+    // so the Rust type and the assembly cannot silently diverge.
 
     #[test]
-    fn sigjmp_buf_has_six_register_slots() {
+    fn sigjmp_buf_has_expected_register_slots() {
         let buf: sigjmp_buf = sigjmp_buf {
-            regs: [0; 6],
+            regs: [0; JMP_BUF_REGS],
             savemask: 0,
         };
-        assert_eq!(buf.regs.len(), 6);
+        assert_eq!(buf.regs.len(), JMP_BUF_REGS);
     }
 
     #[test]
-    fn sigjmp_buf_size_matches_register_count_plus_savemask() {
-        assert_eq!(size_of::<sigjmp_buf>(), 7 * size_of::<c_int>());
+    fn sigjmp_buf_savemask_follows_registers() {
+        // The sigsetjmp assembly stores the savemask flag at the byte offset immediately past the
+        // register block.
+        assert_eq!(offset_of!(sigjmp_buf, savemask), JMP_BUF_REGS * size_of::<jmp_buf_reg>());
     }
 
     #[test]
     fn sigjmp_buf_alignment_matches_register() {
-        assert_eq!(align_of::<sigjmp_buf>(), align_of::<c_int>());
+        assert_eq!(align_of::<sigjmp_buf>(), align_of::<jmp_buf_reg>());
     }
 
     #[test]
     fn sigjmp_buf_zero_initialized() {
         let buf: sigjmp_buf = sigjmp_buf {
-            regs: [0; 6],
+            regs: [0; JMP_BUF_REGS],
             savemask: 0,
         };
         assert!(buf.regs.iter().all(|&slot| slot == 0));

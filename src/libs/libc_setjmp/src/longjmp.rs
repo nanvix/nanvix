@@ -56,3 +56,29 @@ core::arch::global_asm!(
     "    jmp *20(%edx)",      // jump to saved EIP
     options(att_syntax),
 );
+
+// Guest (no_std) build: the real implementation is x86-64 assembly. Per the System V AMD64 ABI the
+// jmp_buf pointer arrives in RDI and the return value in ESI; it restores the callee-saved registers
+// (RBX, RBP, R12-R15, RSP) and jumps to the saved RIP. The assembler's `.global longjmp` directive
+// exports the C symbol directly and is the equivalent of `no_mangle`, applied only in non-std builds
+// (see libc_assert).
+#[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global longjmp",
+    ".type longjmp, @function",
+    "longjmp:",
+    "    mov %esi, %eax", // eax = return value (val is a 32-bit c_int)
+    "    test %eax, %eax",
+    "    jnz 1f",
+    "    inc %eax", // if val == 0, set to 1
+    "1:",
+    "    mov 0(%rdi), %rbx",  // restore RBX
+    "    mov 8(%rdi), %rbp",  // restore RBP
+    "    mov 16(%rdi), %r12", // restore R12
+    "    mov 24(%rdi), %r13", // restore R13
+    "    mov 32(%rdi), %r14", // restore R14
+    "    mov 40(%rdi), %r15", // restore R15
+    "    mov 48(%rdi), %rsp", // restore RSP
+    "    jmp *56(%rdi)",      // jump to saved RIP
+    options(att_syntax),
+);

@@ -52,3 +52,17 @@ core::arch::global_asm!(
     "    jmp longjmp", // tail-call longjmp: restores the register context and resumes
     options(att_syntax),
 );
+
+// Guest (no_std) build: the real implementation is x86-64 assembly. POSIX defines siglongjmp to be
+// equivalent to longjmp (except for the signal mask), so it tail-calls longjmp to restore the
+// register context and resume. Reusing longjmp guarantees the two cannot diverge. A saved signal
+// mask would be restored here when env->savemask is nonzero, but the guest does not yet maintain a
+// signal mask (pthread_sigmask is a no-op), so there is nothing to restore.
+#[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global siglongjmp",
+    ".type siglongjmp, @function",
+    "siglongjmp:",
+    "    jmp longjmp", // tail-call longjmp: restores the register context and resumes
+    options(att_syntax),
+);
