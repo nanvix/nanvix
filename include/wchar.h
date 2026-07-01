@@ -106,6 +106,8 @@ extern unsigned long wcstoul(const wchar_t *nptr, wchar_t **endptr, int base);
 extern long long wcstoll(const wchar_t *nptr, wchar_t **endptr, int base);
 extern unsigned long long wcstoull(const wchar_t *nptr, wchar_t **endptr, int base);
 extern double wcstod(const wchar_t *nptr, wchar_t **endptr);
+extern float wcstof(const wchar_t *nptr, wchar_t **endptr);
+extern long double wcstold(const wchar_t *nptr, wchar_t **endptr);
 
 /*==================================================================================================
  * Wide Memory Operations
