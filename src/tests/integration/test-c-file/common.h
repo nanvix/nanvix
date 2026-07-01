@@ -81,6 +81,12 @@ extern void test_mkdirat(void);
 // Tests whether we can create a directory.
 extern void test_mkdir(void);
 
+// Tests whether `mkfifo()` reports that FIFO special files are unsupported.
+extern void test_mkfifo(void);
+
+// Tests whether `mknod()` reports that special files are unsupported.
+extern void test_mknod(void);
+
 // Tests whether we can use posix_fadvise on a file.
 extern void test_posix_fadvise(void);
 

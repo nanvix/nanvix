@@ -127,6 +127,8 @@ int main(int argc, const char *argv[])
     test_unlinkat();   // requires open() and close().
     test_mkdirat();    // requires stat() and unlinkat().
     test_mkdir();      // requires stat() and unlinkat().
+    test_mkfifo();     // mkfifo() is unsupported; verifies it fails with ENOTSUP.
+    test_mknod();      // mknod() is unsupported; verifies it fails with ENOTSUP.
     test_dirent();
     test_getcwd();
     test_chdir(); // requires getcwd().

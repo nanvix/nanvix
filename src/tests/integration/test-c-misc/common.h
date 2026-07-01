@@ -92,6 +92,18 @@ extern void test_seteuid(void);
 // Tests whether `setuid()` can be used to set the real user ID of the calling process.
 extern void test_setuid(void);
 
+// Tests whether `setresuid()` can be used to set the real, effective, and saved-set user IDs.
+extern void test_setresuid(void);
+
+// Tests whether `setresgid()` can be used to set the real, effective, and saved-set group IDs.
+extern void test_setresgid(void);
+
+// Tests whether `setgroups()` can be used to set the supplementary group IDs.
+extern void test_setgroups(void);
+
+// Tests whether `initgroups()` initializes the supplementary group access list.
+extern void test_initgroups(void);
+
 // Tests whether we can retrieve process times with `times()`.
 extern void test_times(void);
 
