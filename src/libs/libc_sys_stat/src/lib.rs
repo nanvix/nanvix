@@ -405,8 +405,8 @@ pub unsafe extern "C" fn mkdirat(dirfd: c_int, pathname: *const c_char, mode: mo
 ///
 /// # Returns
 ///
-/// The `mknod()` function always returns `-1` and sets `errno` to `ENOSYS` because the operation is
-/// not supported on Nanvix.
+/// The `mknod()` function always returns `-1` and sets `errno` to `ENOTSUP` because Nanvix's
+/// filesystem does not support special files.
 ///
 /// # Safety
 ///
@@ -422,7 +422,7 @@ pub unsafe extern "C" fn mknod(path: *const c_char, mode: mode_t, dev: dev_t) ->
     // Nanvix does not support creating special files; the arguments are unused.
     let _ = (path, mode, dev);
     ::syslog::debug!("mknod(): not supported");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    *__errno_location() = ErrorCode::OperationNotSupported.get();
     -1
 }
 
@@ -439,8 +439,8 @@ pub unsafe extern "C" fn mknod(path: *const c_char, mode: mode_t, dev: dev_t) ->
 ///
 /// # Returns
 ///
-/// The `mkfifo()` function always returns `-1` and sets `errno` to `ENOSYS` because the operation
-/// is not supported on Nanvix.
+/// The `mkfifo()` function always returns `-1` and sets `errno` to `ENOTSUP` because Nanvix's
+/// filesystem does not support FIFO special files.
 ///
 /// # Safety
 ///
@@ -456,7 +456,7 @@ pub unsafe extern "C" fn mkfifo(path: *const c_char, mode: mode_t) -> c_int {
     // Nanvix does not support FIFO special files; the arguments are unused.
     let _ = (path, mode);
     ::syslog::debug!("mkfifo(): not supported");
-    *__errno_location() = ErrorCode::InvalidSysCall.get();
+    *__errno_location() = ErrorCode::OperationNotSupported.get();
     -1
 }
 
