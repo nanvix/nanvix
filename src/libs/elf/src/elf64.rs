@@ -208,12 +208,16 @@ impl Elf64Phdr {
 
 /// Marks end of dynamic section.
 pub const DT_NULL: i64 = 0;
+/// Offset in the string table of a needed shared-library name.
+pub const DT_NEEDED: i64 = 1;
+/// Size in bytes of the PLT relocation table.
+pub const DT_PLTRELSZ: i64 = 2;
+/// Address of the dynamic symbol table.
+pub const DT_SYMTAB: i64 = 6;
 /// Address of an RELA relocation table (relocations with explicit addends).
 pub const DT_RELA: i64 = 7;
 /// Size in bytes of the RELA relocation table.
 pub const DT_RELASZ: i64 = 8;
-/// Size in bytes of the PLT relocation table.
-pub const DT_PLTRELSZ: i64 = 2;
 /// Type of relocation entry referenced by `DT_JMPREL` (`DT_REL` or `DT_RELA`).
 pub const DT_PLTREL: i64 = 20;
 /// Address of the PLT relocation table.

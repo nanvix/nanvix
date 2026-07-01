@@ -13,69 +13,106 @@ use ::core::{
         DerefMut,
     },
 };
+// Architecture-independent ELF symbol/section constants (identical between ELF32 and ELF64).
+use ::goblin::elf::{
+    section_header::SHN_UNDEF,
+    sym::{
+        st_bind,
+        st_type,
+        STB_GLOBAL,
+        STB_LOCAL,
+        STB_WEAK,
+        STT_FUNC,
+        STT_OBJECT,
+    },
+};
+// The guest dynamic linker only ever processes objects built for its own ABI, so the
+// relocation-type constants, the relocation-entry record (`Rel`/REL on i386, `Rela`/RELA on
+// x86-64), and the symbol record are selected at compile time by the target architecture.
+#[cfg(not(target_arch = "x86_64"))]
 use ::goblin::{
-    elf::{
-        reloc::{
-            R_386_16,
-            R_386_32,
-            R_386_32PLT,
-            R_386_8,
-            R_386_COPY,
-            R_386_GLOB_DAT,
-            R_386_GOT32,
-            R_386_GOT32X,
-            R_386_GOTOFF,
-            R_386_GOTPC,
-            R_386_IRELATIVE,
-            R_386_JMP_SLOT,
-            R_386_NONE,
-            R_386_NUM,
-            R_386_PC16,
-            R_386_PC32,
-            R_386_PC8,
-            R_386_PLT32,
-            R_386_RELATIVE,
-            R_386_SIZE32,
-            R_386_TLS_DESC,
-            R_386_TLS_DESC_CALL,
-            R_386_TLS_DTPMOD32,
-            R_386_TLS_DTPOFF32,
-            R_386_TLS_GD,
-            R_386_TLS_GD_32,
-            R_386_TLS_GD_CALL,
-            R_386_TLS_GD_POP,
-            R_386_TLS_GD_PUSH,
-            R_386_TLS_GOTDESC,
-            R_386_TLS_GOTIE,
-            R_386_TLS_IE,
-            R_386_TLS_IE_32,
-            R_386_TLS_LDM,
-            R_386_TLS_LDM_32,
-            R_386_TLS_LDM_CALL,
-            R_386_TLS_LDM_POP,
-            R_386_TLS_LDM_PUSH,
-            R_386_TLS_LDO_32,
-            R_386_TLS_LE,
-            R_386_TLS_LE_32,
-            R_386_TLS_TPOFF,
-            R_386_TLS_TPOFF32,
-        },
-        section_header::SHN_UNDEF,
-        sym::{
-            st_bind,
-            st_type,
-            STB_GLOBAL,
-            STB_LOCAL,
-            STB_WEAK,
-            STT_FUNC,
-            STT_OBJECT,
-        },
+    elf::reloc::{
+        R_386_16,
+        R_386_32,
+        R_386_32PLT,
+        R_386_8,
+        R_386_COPY,
+        R_386_GLOB_DAT,
+        R_386_GOT32,
+        R_386_GOT32X,
+        R_386_GOTOFF,
+        R_386_GOTPC,
+        R_386_IRELATIVE,
+        R_386_JMP_SLOT,
+        R_386_NONE,
+        R_386_NUM,
+        R_386_PC16,
+        R_386_PC32,
+        R_386_PC8,
+        R_386_PLT32,
+        R_386_RELATIVE,
+        R_386_SIZE32,
+        R_386_TLS_DESC,
+        R_386_TLS_DESC_CALL,
+        R_386_TLS_DTPMOD32,
+        R_386_TLS_DTPOFF32,
+        R_386_TLS_GD,
+        R_386_TLS_GD_32,
+        R_386_TLS_GD_CALL,
+        R_386_TLS_GD_POP,
+        R_386_TLS_GD_PUSH,
+        R_386_TLS_GOTDESC,
+        R_386_TLS_GOTIE,
+        R_386_TLS_IE,
+        R_386_TLS_IE_32,
+        R_386_TLS_LDM,
+        R_386_TLS_LDM_32,
+        R_386_TLS_LDM_CALL,
+        R_386_TLS_LDM_POP,
+        R_386_TLS_LDM_PUSH,
+        R_386_TLS_LDO_32,
+        R_386_TLS_LE,
+        R_386_TLS_LE_32,
+        R_386_TLS_TPOFF,
+        R_386_TLS_TPOFF32,
     },
     elf32::{
         reloc::{
             r_sym,
             r_type,
-            Rel,
+            Rel as RawReloc,
+        },
+        sym::Sym,
+    },
+};
+#[cfg(target_arch = "x86_64")]
+use ::goblin::{
+    elf::reloc::{
+        R_X86_64_16,
+        R_X86_64_32,
+        R_X86_64_32S,
+        R_X86_64_64,
+        R_X86_64_8,
+        R_X86_64_COPY,
+        R_X86_64_GLOB_DAT,
+        R_X86_64_GOT32,
+        R_X86_64_GOTPCREL,
+        R_X86_64_IRELATIVE,
+        R_X86_64_JUMP_SLOT,
+        R_X86_64_NONE,
+        R_X86_64_PC16,
+        R_X86_64_PC32,
+        R_X86_64_PC64,
+        R_X86_64_PC8,
+        R_X86_64_PLT32,
+        R_X86_64_RELATIVE,
+        R_X86_64_SIZE32,
+    },
+    elf64::{
+        reloc::{
+            r_sym,
+            r_type,
+            Rela as RawReloc,
         },
         sym::Sym,
     },
@@ -88,6 +125,17 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+
+/// Width of an ELF address/offset field for the active guest ABI: 32-bit on i386 (ELF32), 64-bit on
+/// x86-64 (ELF64). Used by [`Symbol`] and [`RelocationEntry`] accessors so the same high-level
+/// dynamic-linker logic works for both ABIs.
+#[cfg(not(target_arch = "x86_64"))]
+pub type ElfAddr = u32;
+/// Width of an ELF address/offset field for the active guest ABI: 32-bit on i386 (ELF32), 64-bit on
+/// x86-64 (ELF64). Used by [`Symbol`] and [`RelocationEntry`] accessors so the same high-level
+/// dynamic-linker logic works for both ABIs.
+#[cfg(target_arch = "x86_64")]
+pub type ElfAddr = u64;
 
 //==================================================================================================
 // Symbol Table
@@ -451,7 +499,7 @@ impl Symbol {
     ///
     /// The value of the symbol.
     ///
-    pub fn value(&self) -> u32 {
+    pub fn value(&self) -> ElfAddr {
         self.0.st_value
     }
 
@@ -464,7 +512,7 @@ impl Symbol {
     ///
     /// The size of the symbol.
     ///
-    pub fn size(&self) -> u32 {
+    pub fn size(&self) -> ElfAddr {
         self.0.st_size
     }
 
@@ -509,7 +557,7 @@ impl Symbol {
     ///
     /// # Returns
     ///
-    pub fn resolve(&mut self, value: u32) {
+    pub fn resolve(&mut self, value: ElfAddr) {
         self.0.st_value = value;
     }
 }
@@ -518,6 +566,7 @@ impl Symbol {
 // Relocation Types
 //==================================================================================================
 
+#[cfg(not(target_arch = "x86_64"))]
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive)]
 #[repr(u8)]
@@ -610,6 +659,54 @@ pub enum RelocationType {
     R_386_TLS_TPOFF32 = R_386_TLS_TPOFF32 as u8,
 }
 
+/// x86-64 (RELA) relocation types recognized by the guest dynamic linker. Only the subset that the
+/// freestanding fixtures and the bundled libc can emit is enumerated; any other type is reported as
+/// an unsupported relocation by the resolver.
+#[cfg(target_arch = "x86_64")]
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum RelocationType {
+    /// Direct 8-bit.
+    R_X86_64_8 = R_X86_64_8 as u8,
+    /// Direct 16-bit zero extended.
+    R_X86_64_16 = R_X86_64_16 as u8,
+    /// Direct 32-bit zero extended.
+    R_X86_64_32 = R_X86_64_32 as u8,
+    /// Direct 32-bit sign extended.
+    R_X86_64_32S = R_X86_64_32S as u8,
+    /// Direct 64-bit.
+    R_X86_64_64 = R_X86_64_64 as u8,
+    /// Copy symbol at runtime.
+    R_X86_64_COPY = R_X86_64_COPY as u8,
+    /// Create GOT entry.
+    R_X86_64_GLOB_DAT = R_X86_64_GLOB_DAT as u8,
+    /// 32-bit GOT entry.
+    R_X86_64_GOT32 = R_X86_64_GOT32 as u8,
+    /// 32-bit signed PC relative offset to GOT.
+    R_X86_64_GOTPCREL = R_X86_64_GOTPCREL as u8,
+    /// Adjust indirectly by program base.
+    R_X86_64_IRELATIVE = R_X86_64_IRELATIVE as u8,
+    /// Create PLT entry.
+    R_X86_64_JUMP_SLOT = R_X86_64_JUMP_SLOT as u8,
+    /// No relocation.
+    R_X86_64_NONE = R_X86_64_NONE as u8,
+    /// PC relative 8-bit signed.
+    R_X86_64_PC8 = R_X86_64_PC8 as u8,
+    /// PC relative 16-bit signed.
+    R_X86_64_PC16 = R_X86_64_PC16 as u8,
+    /// PC relative 32-bit signed.
+    R_X86_64_PC32 = R_X86_64_PC32 as u8,
+    /// PC relative 64-bit.
+    R_X86_64_PC64 = R_X86_64_PC64 as u8,
+    /// 32-bit PLT address.
+    R_X86_64_PLT32 = R_X86_64_PLT32 as u8,
+    /// Adjust by program base.
+    R_X86_64_RELATIVE = R_X86_64_RELATIVE as u8,
+    /// Size of symbol plus 32-bit addend.
+    R_X86_64_SIZE32 = R_X86_64_SIZE32 as u8,
+}
+
 //==================================================================================================
 // Relocation Entry
 //==================================================================================================
@@ -621,10 +718,10 @@ pub enum RelocationType {
 ///
 #[repr(C)]
 #[derive(Debug)]
-pub struct RelocationEntry(Rel);
+pub struct RelocationEntry(RawReloc);
 
-::static_assert::assert_eq_size!(RelocationEntry, mem::size_of::<Rel>());
-::static_assert::assert_eq_align!(RelocationEntry, mem::align_of::<Rel>());
+::static_assert::assert_eq_size!(RelocationEntry, mem::size_of::<RawReloc>());
+::static_assert::assert_eq_align!(RelocationEntry, mem::align_of::<RawReloc>());
 
 impl RelocationEntry {
     ///
@@ -668,8 +765,23 @@ impl RelocationEntry {
     ///
     /// The offset of the relocation entry.
     ///
-    pub fn offset(&self) -> u32 {
+    pub fn offset(&self) -> ElfAddr {
         self.0.r_offset
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the explicit addend of the relocation entry. Only the x86-64 RELA format carries an
+    /// explicit addend; on i386 the addend is stored in place at the relocation target.
+    ///
+    /// # Returns
+    ///
+    /// The signed addend stored in the relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    pub fn addend(&self) -> i64 {
+        self.0.r_addend
     }
 }
 
@@ -681,7 +793,10 @@ impl RelocationEntry {
 mod tests {
     use super::*;
     use crate::elf32::STT_NOTYPE;
+    #[cfg(not(target_arch = "x86_64"))]
     use ::goblin::elf32::sym::Sym;
+    #[cfg(target_arch = "x86_64")]
+    use ::goblin::elf64::sym::Sym;
 
     /// Builds a Symbol with the given binding (high 4 bits) and type (low 4 bits),
     /// and the given section index.
