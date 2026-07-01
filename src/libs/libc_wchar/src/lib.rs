@@ -30,6 +30,7 @@
 //==================================================================================================
 
 pub mod btowc;
+pub mod locale;
 pub mod mbstate;
 pub mod multibyte;
 pub mod utf8;

@@ -85,7 +85,9 @@ extern wchar_t *wcscat(wchar_t *dest, const wchar_t *src);
 extern int wcscmp(const wchar_t *s1, const wchar_t *s2);
 extern int wcsncmp(const wchar_t *s1, const wchar_t *s2, size_t n);
 extern int wcscoll(const wchar_t *s1, const wchar_t *s2);
+extern int wcscoll_l(const wchar_t *s1, const wchar_t *s2, locale_t locale);
 extern size_t wcsxfrm(wchar_t *dest, const wchar_t *src, size_t n);
+extern size_t wcsxfrm_l(wchar_t *dest, const wchar_t *src, size_t n, locale_t locale);
 
 /*==================================================================================================
  * Search
@@ -142,7 +144,9 @@ extern size_t wcrtomb(char *s, wchar_t wc, mbstate_t *ps);
 extern size_t mbrlen(const char *s, size_t n, mbstate_t *ps);
 extern int mbsinit(const mbstate_t *ps);
 extern size_t mbsrtowcs(wchar_t *dest, const char **src, size_t n, mbstate_t *ps);
+extern size_t mbsnrtowcs(wchar_t *dest, const char **src, size_t nmc, size_t len, mbstate_t *ps);
 extern size_t wcsrtombs(char *dest, const wchar_t **src, size_t n, mbstate_t *ps);
+extern size_t wcsnrtombs(char *dest, const wchar_t **src, size_t nwc, size_t len, mbstate_t *ps);
 
 /*==================================================================================================
  * Wide Character Time
