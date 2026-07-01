@@ -115,8 +115,16 @@ pub const VEOL2: usize = 16;
 // Baud rates
 //==================================================================================================
 
-/// 38400 baud (the default console line speed).
+/// Hang up (zero baud); lowest baud in the contiguous low range.
+pub const B0: speed_t = 0x0000;
+/// 38400 baud (the default console line speed); highest baud in the contiguous low range.
 pub const B38400: speed_t = 0x000f;
+/// Extended baud-rate flag, set by every speed above `B38400`; not itself a valid baud rate.
+pub const CBAUDEX: speed_t = 0x1000;
+/// 57600 baud; lowest baud in the extended range.
+pub const B57600: speed_t = 0x1001;
+/// 4000000 baud; highest baud in the extended range.
+pub const B4000000: speed_t = 0x100f;
 
 //==================================================================================================
 // Optional actions for tcsetattr()
@@ -128,6 +136,30 @@ pub const TCSANOW: i32 = 0;
 pub const TCSADRAIN: i32 = 1;
 /// Apply the change after queued output is transmitted and pending input is discarded.
 pub const TCSAFLUSH: i32 = 2;
+
+//==================================================================================================
+// Queue selectors for tcflush()
+//==================================================================================================
+
+/// Flush pending input.
+pub const TCIFLUSH: i32 = 0;
+/// Flush untransmitted output.
+pub const TCOFLUSH: i32 = 1;
+/// Flush both pending input and untransmitted output.
+pub const TCIOFLUSH: i32 = 2;
+
+//==================================================================================================
+// Actions for tcflow()
+//==================================================================================================
+
+/// Suspend output.
+pub const TCOOFF: i32 = 0;
+/// Resume suspended output.
+pub const TCOON: i32 = 1;
+/// Transmit a STOP character to suspend input.
+pub const TCIOFF: i32 = 2;
+/// Transmit a START character to resume input.
+pub const TCION: i32 = 3;
 
 //==================================================================================================
 // Structures
