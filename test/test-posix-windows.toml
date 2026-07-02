@@ -98,6 +98,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-dlfcn-init-concurrent"
+program = "./bin/test-c-dlfcn-init-concurrent.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-init-concurrent.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-dlfcn-init-runpath"
 program = "./bin/test-c-dlfcn-init-runpath.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-init-runpath.img"
