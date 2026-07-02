@@ -16,9 +16,9 @@ inputs:
     description: "Deployment type"
     required: true
   memory-size:
-    description: "Memory size in MB (default: 128)"
+    description: "Memory size in MB (default: 256)"
     required: false
-    default: "128"
+    default: "256"
 
 runs:
   using: "composite"
