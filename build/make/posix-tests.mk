@@ -132,6 +132,12 @@ POSIX_TEST_PIE_test-c-dlfcn-pie := yes
 POSIX_TEST_PIE_test-c-dlfcn-global := yes
 POSIX_TEST_PIE_test-c-dlfcn-needed := yes
 POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
+# dlfcn-ctor-dtor-reentry-c links PIE + --export-dynamic so the main executable's
+# `hook_open_other`/`hook_close_other`/`other_report_dtor` helpers land in
+# `.dynsym`; libhook.so's constructor and destructor -- and libother.so's
+# destructor -- then resolve those references from the loader's global symbol
+# table while they run inside the in-progress dlopen()/dlclose().
+POSIX_TEST_PIE_test-c-dlfcn-ctor-dtor-reentry := yes
 # dlfcn-dtor-reentry-c links PIE + --export-dynamic so the main executable's
 # `dtor_probe` helper (and its witness globals) land in `.dynsym`; libreentry.so's
 # destructor then resolves its `extern void dtor_probe(void)` reference from the
@@ -303,6 +309,7 @@ clean-posix-tests:
 	$(RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs.img
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent)
@@ -316,6 +323,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
@@ -740,8 +748,62 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent): $(POSIX_TEST_INIT_CONCURRE
 	$(CP_CMD) $(POSIX_TEST_INIT_CONCURRENT_LIBDIR)/libslowctor.so $(POSIX_TEST_INIT_CONCURRENT_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_INIT_CONCURRENT_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-ctor-dtor-reentry-c: constructor/destructor cross-library re-entrancy.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships TWO shared libraries (built with the same i686 freestanding toolchain as
+# the fixtures above):
+#   * libother.so - the library opened by libhook.so's constructor and closed by
+#                   its destructor. Exports other_value() for the re-entrant
+#                   dlsym() checks, and carries a `.fini_array` destructor that
+#                   calls the main executable's other_report_dtor() (left
+#                   UNDEFINED, resolved from the global scope at load time) so the
+#                   suite can confirm the destructor-time dlclose() unloaded it.
+#                   An explicit -soname pins the SONAME to the bare name
+#                   `libother.so`.
+#   * libhook.so  - carries a `.init_array` constructor that calls hook_open_other()
+#                   and a `.fini_array` destructor that calls hook_close_other()
+#                   (both UNDEFINED, resolved from the main executable's exported
+#                   global scope; the suite ELF is PIE + --export-dynamic, see
+#                   POSIX_TEST_PIE_* above). Those helpers dlopen()/dlsym()/
+#                   dlclose() libother.so from inside the in-progress outer
+#                   dlopen()/dlclose(). libhook.so does NOT DT_NEEDED libother.so
+#                   -- it reaches it purely through a runtime dlopen() -- so no
+#                   -lother link edge is recorded here.
+# Both are staged under lib/, where main.c dlopen()s libhook.so; libother.so is
+# reached through the loader's default lib/ search path.
+POSIX_TEST_CTOR_DTOR_REENTRY_SUITE  := test-c-dlfcn-ctor-dtor-reentry
+POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libs
+POSIX_TEST_CTOR_DTOR_REENTRY_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE).img
+
+# libother.so: opened/closed by libhook.so's ctor/dtor; SONAME=libother.so.
+$(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libother.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libs/other.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libother.so (.fini_array)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libother.so $@.o -o $@
+
+# libhook.so: `.init_array` opens libother.so, `.fini_array` closes it.
+$(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libhook.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libs/hook.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libhook.so (.init_array/.fini_array)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libhook.so $@.o -o $@
+
+# Per-suite RAMFS image carrying both fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry): $(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libother.so \
+		$(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libhook.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libother.so $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libhook.so $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent) \

@@ -66,6 +66,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-dlfcn-ctor-dtor-reentry"
+program = "./bin/test-c-dlfcn-ctor-dtor-reentry.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-ctor-dtor-reentry.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-dlfcn-diamond"
 program = "./bin/test-c-dlfcn-diamond.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-diamond.img"
