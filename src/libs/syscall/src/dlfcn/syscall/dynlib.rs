@@ -1142,13 +1142,15 @@ impl DynamicLibrary {
     ///
     /// This function must be called with **no** dlfcn locks held -- neither
     /// `DYNAMIC_LIBRARY_REGISTRY` nor the per-library mutex of the
-    /// originating library. The current `dlclose()` caller removes every
-    /// library it is going to unload from the registry and then releases
+    /// originating library. The `dlclose()` caller releases
     /// `DYNAMIC_LIBRARY_REGISTRY` before invoking any destructor, so a
     /// destructor may legally call back into `dlopen`/`dlclose`/`dlsym`
-    /// without deadlocking. One caveat remains: `dlsym(self_handle, ...)`
-    /// fails with `NoSuchEntry` rather than succeeding, because the closing
-    /// library has already been removed from the registry.
+    /// without deadlocking. The libraries being unloaded are left in the
+    /// registry, with their dependency edges intact, until *every* destructor
+    /// has run (see `dlclose`); therefore `dlsym(self_handle, ...)` and a
+    /// re-entrant `dlopen` of the closing library (or of one of its
+    /// still-loaded dependencies) resolve correctly during teardown instead
+    /// of failing or mapping a second copy.
     ///
     /// # Safety
     ///
