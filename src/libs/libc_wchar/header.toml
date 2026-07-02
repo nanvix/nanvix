@@ -21,6 +21,8 @@ content_order = [
     "section:4",
     "section:5",
     "section:6",
+    "section:9",
+    "section:10",
     "section:7",
     "section:8",
 ]
@@ -108,7 +110,14 @@ functions = ["btowc", "wctob"]
 
 [[sections]]
 title = "Wide Character Formatted Output"
-functions = ["swprintf", "vswprintf"]
+functions = [
+    "swprintf",
+    "vswprintf",
+    "fwprintf",
+    "wprintf",
+    "vfwprintf",
+    "vwprintf",
+]
 
 [[sections]]
 title = "Restartable Multibyte / Wide Conversion"
@@ -126,6 +135,24 @@ functions = [
 [[sections]]
 title = "Wide Character Time"
 functions = ["wcsftime"]
+
+[[sections]]
+title = "Wide Character Stream I/O"
+functions = [
+    "fgetwc",
+    "getwc",
+    "getwchar",
+    "fputwc",
+    "putwc",
+    "putwchar",
+    "fgetws",
+    "fputws",
+    "ungetwc",
+]
+
+[[sections]]
+title = "Stream Orientation"
+functions = ["fwide"]
 
 [overrides]
 wcscoll = '''

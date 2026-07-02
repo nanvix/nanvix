@@ -671,6 +671,55 @@ fn format_string<W: WriteTarget>(
     Ok(())
 }
 
+/// Formats a wide-string specifier (`%ls`) and writes to the target.
+///
+/// The argument is a pointer to an array of wide characters (`wchar_t`, i.e. `i32`). In the
+/// single-byte C/POSIX locale each wide character maps to one output byte, so a wide character
+/// outside `0..=0xff` is not representable and terminates the conversion.
+fn format_wide_string<W: WriteTarget>(
+    writer: &mut W,
+    ws: *const i32,
+    flags: &FormatFlags,
+    width: usize,
+    has_precision: bool,
+    precision: usize,
+) -> Result<(), ()> {
+    // A null pointer is rendered exactly like the narrow `%s` conversion.
+    if ws.is_null() {
+        return format_string(writer, core::ptr::null(), flags, width, has_precision, precision);
+    }
+
+    // Count the leading representable wide characters, honoring any precision cap.
+    let mut slen: usize = 0;
+    loop {
+        if has_precision && slen >= precision {
+            break;
+        }
+        // SAFETY: ws is non-null and NUL-terminated, so `slen` stays within the string.
+        let wc: i32 = unsafe { *ws.add(slen) };
+        if wc == 0 || (wc as u32) > 0xff {
+            break;
+        }
+        slen += 1;
+    }
+
+    let pad_len: usize = width.saturating_sub(slen);
+
+    if !flags.left_align {
+        write_padding(writer, b' ', pad_len)?;
+    }
+    for i in 0..slen {
+        // SAFETY: `i < slen`, so the wide character is within the string and representable.
+        let wc: i32 = unsafe { *ws.add(i) };
+        writer.write_byte((wc as u32 & 0xff) as u8)?;
+    }
+    if flags.left_align {
+        write_padding(writer, b' ', pad_len)?;
+    }
+
+    Ok(())
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -815,17 +864,35 @@ pub(crate) fn format_core<W: WriteTarget, A: ArgSource>(
                 let _ = format_unsigned_spec(writer, val, &params);
             },
             b's' => {
-                let s: *const c_char = args.next_str();
-                let _ = format_string(writer, s, &flags, width, has_precision, precision);
+                if matches!(length, LengthMod::Long) {
+                    // `%ls` consumes a `wchar_t *`; render it as bytes for the C/POSIX locale.
+                    let ws: *const i32 = args.next_str().cast::<i32>();
+                    let _ = format_wide_string(writer, ws, &flags, width, has_precision, precision);
+                } else {
+                    let s: *const c_char = args.next_str();
+                    let _ = format_string(writer, s, &flags, width, has_precision, precision);
+                }
             },
             b'c' => {
-                let c: u8 = args.next_int() as u8;
-                if width > 1 && !flags.left_align {
-                    let _ = write_padding(writer, b' ', width - 1);
+                // `%lc` consumes a `wint_t`; a wide character outside `0..=0xff` is not
+                // representable in the single-byte C/POSIX locale and yields no output byte.
+                // Plain `%c` truncates its `int` argument to a byte as usual.
+                let raw: c_int = args.next_int();
+                let byte: Option<u8> = if matches!(length, LengthMod::Long) && (raw as u32) > 0xff {
+                    Option::None
+                } else {
+                    Some(raw as u8)
+                };
+                let out_len: usize = if byte.is_some() { 1 } else { 0 };
+                let pad_len: usize = width.saturating_sub(out_len);
+                if !flags.left_align {
+                    let _ = write_padding(writer, b' ', pad_len);
                 }
-                let _ = writer.write_byte(c);
-                if width > 1 && flags.left_align {
-                    let _ = write_padding(writer, b' ', width - 1);
+                if let Some(b) = byte {
+                    let _ = writer.write_byte(b);
+                }
+                if flags.left_align {
+                    let _ = write_padding(writer, b' ', pad_len);
                 }
             },
             b'p' => {
@@ -1079,6 +1146,51 @@ mod test {
         let mut args: TestArgs = TestArgs::new();
         args.ints.push(b'A' as c_int);
         assert_eq!(fmt(b"%c\0", &mut args), "A");
+    }
+
+    #[test]
+    fn test_percent_ls() {
+        let mut args: TestArgs = TestArgs::new();
+        // A wide string is an array of wchar_t (i32); %ls renders it as bytes in the C locale.
+        let ws: [i32; 6] = [
+            b'w' as i32,
+            b'o' as i32,
+            b'r' as i32,
+            b'l' as i32,
+            b'd' as i32,
+            0,
+        ];
+        args.strs.push(ws.as_ptr().cast::<c_char>());
+        assert_eq!(fmt(b"hi %ls\0", &mut args), "hi world");
+    }
+
+    #[test]
+    fn test_percent_ls_null() {
+        let mut args: TestArgs = TestArgs::new();
+        args.strs.push(core::ptr::null());
+        assert_eq!(fmt(b"%ls\0", &mut args), "(null)");
+    }
+
+    #[test]
+    fn test_percent_ls_precision() {
+        let mut args: TestArgs = TestArgs::new();
+        let ws: [i32; 6] = [
+            b'w' as i32,
+            b'o' as i32,
+            b'r' as i32,
+            b'l' as i32,
+            b'd' as i32,
+            0,
+        ];
+        args.strs.push(ws.as_ptr().cast::<c_char>());
+        assert_eq!(fmt(b"%.3ls\0", &mut args), "wor");
+    }
+
+    #[test]
+    fn test_percent_lc() {
+        let mut args: TestArgs = TestArgs::new();
+        args.ints.push(b'A' as c_int);
+        assert_eq!(fmt(b"%lc\0", &mut args), "A");
     }
 
     #[test]

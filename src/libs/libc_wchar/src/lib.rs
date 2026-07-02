@@ -7,6 +7,8 @@
 
 // Attributes
 #![cfg_attr(not(feature = "std"), no_std)]
+// Features
+#![feature(c_variadic)]
 // Lints
 #![forbid(clippy::unwrap_used)]
 #![forbid(clippy::cast_possible_truncation)]
@@ -30,9 +32,16 @@
 //==================================================================================================
 
 pub mod btowc;
+pub mod fgetwc;
+pub mod fgetws;
+pub mod fputwc;
+pub mod fputws;
+pub mod fwide;
+pub mod fwprintf;
 pub mod locale;
 pub mod mbstate;
 pub mod multibyte;
+pub mod ungetwc;
 pub mod utf8;
 pub mod wchar_t;
 pub mod wcs_narrow;

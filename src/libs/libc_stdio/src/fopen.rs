@@ -108,6 +108,7 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
     (*file).eof = 0;
     (*file).error = 0;
     (*file).ungetc_buf = -1;
+    (*file).orientation = 0;
 
     file
 }
