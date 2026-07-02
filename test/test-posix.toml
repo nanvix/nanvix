@@ -323,6 +323,7 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 name = "posix/test-c-wchar"
 program = "./bin/test-c-wchar.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"
 expected_exit_code = 0
 
 [[tests]]
