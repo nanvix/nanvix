@@ -8,6 +8,7 @@
 use super::dynlib::{
     DlHandle,
     DynamicLibrary,
+    InitState,
 };
 use crate::dlfcn::syscall::DYNAMIC_LIBRARY_REGISTRY;
 use ::alloc::{
@@ -64,15 +65,35 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
         DYNAMIC_LIBRARY_REGISTRY.lock();
 
     // Check if dynamic library is already opened.
+    let mut already_loaded: Option<(DlHandle, Arc<Mutex<DynamicLibrary>>)> = None;
     for (dlhandle, dlfile) in registry.iter() {
         if dlfile.lock().name() == filename {
-            // If the caller requests RTLD_GLOBAL on a library that was
-            // previously loaded without it, promote it to global scope now.
-            if global {
-                super::register_library_in_global_scope(dlfile);
-            }
-            return Ok(*dlhandle);
+            already_loaded = Some((*dlhandle, dlfile.clone()));
+            break;
         }
+    }
+    if let Some((dlhandle, dlfile)) = already_loaded {
+        // If the caller requests RTLD_GLOBAL on a library that was
+        // previously loaded without it, promote it to global scope now.
+        if global {
+            super::register_library_in_global_scope(&dlfile);
+        }
+
+        // A concurrent `dlopen` may have inserted this library and released the
+        // registry lock but not yet finished running its `.init_array`
+        // constructors. Wait for them to complete so this caller never observes
+        // a handle to an uninitialized library.
+        //
+        // The registry lock is dropped BEFORE waiting: the constructing thread
+        // needs it to service the constructor's own `dlsym`/`dlopen` calls, so
+        // holding it here would deadlock them. A re-entrant open from the
+        // constructing thread itself does not wait — see
+        // `InitState::wait_until_constructed`.
+        let tid: i32 = current_tid()?;
+        let init_state: Arc<InitState> = dlfile.lock().init_state();
+        drop(registry);
+        init_state.wait_until_constructed(tid);
+        return Ok(dlhandle);
     }
 
     // Snapshot the registry keys before we start inserting, so we can roll back
@@ -124,6 +145,21 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
             },
         };
 
+    // Record the constructing thread on every newly loaded library BEFORE
+    // releasing the registry lock. A concurrent `dlopen` that observes any of
+    // them on the dedup path above then either waits for their constructors
+    // (a different thread) or skips the wait (this same thread re-entering from
+    // one of the constructors). Publishing the thread id under the registry
+    // lock guarantees no concurrent observer can see the pre-set sentinel as a
+    // constructor owner.
+    let constructor_tid: i32 = current_tid()?;
+    for dlfile in init_order.iter() {
+        dlfile
+            .lock()
+            .init_state()
+            .set_constructor_thread(constructor_tid);
+    }
+
     // Drop the registry lock before invoking `.init_array` constructors so a
     // constructor may legally call `dlsym` (and, in a future relaxation,
     // `dlopen`) without deadlocking on `DYNAMIC_LIBRARY_REGISTRY`.
@@ -139,9 +175,9 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
     // deadlock any constructor that calls `dlsym(self_handle, ...)`, because
     // `dlsym` re-locks the same library to look up symbols.
     for dlfile in init_order.iter() {
-        let (descriptor, name): (Option<(usize, usize)>, String) = {
+        let (descriptor, name, init_state): (Option<(usize, usize)>, String, Arc<InitState>) = {
             let lib: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
-            (lib.init_array_descriptor(), String::from(lib.name()))
+            (lib.init_array_descriptor(), String::from(lib.name()), lib.init_state())
         };
         // SAFETY: `descriptor` was produced under the per-library lock for
         // a library still held alive by `init_order`'s `Arc`; relocations
@@ -150,9 +186,27 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
         unsafe {
             DynamicLibrary::invoke_init_array(descriptor, &name);
         }
+        // Publish completion (leaves first) so a concurrent `dlopen` blocked in
+        // the dedup path above may now return this library's handle. Marking
+        // per-library — rather than once after the whole batch — lets a waiter
+        // for a dependency proceed as soon as that dependency is constructed,
+        // without waiting for its dependents.
+        init_state.mark_constructed();
     }
 
     Ok(handle)
+}
+
+/// Returns the raw identifier of the calling thread.
+///
+/// The identifier is mandatory: it is the only way to tell a re-entrant
+/// `dlopen` issued by a constructor running on the loading thread apart from a
+/// genuine concurrent open on another thread. Without it, such a re-entrant
+/// call would block forever in [`InitState::wait_until_constructed`] waiting for
+/// constructors that cannot finish until this very call returns. A lookup
+/// failure is therefore propagated to the caller rather than silently ignored.
+fn current_tid() -> Result<i32, Error> {
+    Ok(i32::from(::sys::kcall::pm::__kcall_gettid()?))
 }
 
 /// Recursively loads all transitive dependencies of a newly opened library.

@@ -137,6 +137,11 @@ POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
 # destructor then resolves its `extern void dtor_probe(void)` reference from the
 # loader's global symbol table while it is being torn down.
 POSIX_TEST_PIE_test-c-dlfcn-dtor-reentry := yes
+# dlfcn-init-concurrent-c links PIE + --export-dynamic so the main executable's
+# `ctor_mark_started`/`ctor_racer_arrived`/`ctor_mark_done` helpers land in
+# `.dynsym`; libslowctor.so's constructor then resolves those references from
+# the loader's global symbol table while it runs.
+POSIX_TEST_PIE_test-c-dlfcn-init-concurrent := yes
 # dlfcn-init-runpath-c links PIE with --export-dynamic so the main executable's
 # `g_dtor_ran` global lands in `.dynsym`; the loader's global symbol table then
 # satisfies libctor.so's `extern volatile int g_dtor_ran` reference at load time.
@@ -300,6 +305,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
@@ -312,6 +318,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HELLO_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SEARCHPATH_SEED)
@@ -699,10 +706,45 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry): $(POSIX_TEST_DTOR_REENTRY_LIB
 	$(CP_CMD) $(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libreentry.so $(POSIX_TEST_DTOR_REENTRY_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_DTOR_REENTRY_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-init-concurrent-c: constructor-vs-concurrent-dlopen fixture.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships ONE shared library, libslowctor.so, built with the same i686 freestanding
+# toolchain as the fixtures above. It carries a `.init_array` constructor whose
+# run is deliberately slow and observable, and leaves three symbols UNDEFINED --
+# ctor_mark_started / ctor_racer_arrived / ctor_mark_done (functions) -- which the
+# loader resolves from the main executable's exported global scope at load time
+# (the suite ELF is PIE + --export-dynamic, see POSIX_TEST_PIE_* above). An
+# explicit -soname pins the SONAME to the bare name `libslowctor.so`. Staged at
+# lib/libslowctor.so, where main.c dlopen()s it from two threads at once: a
+# correct loader makes the racing dlopen() wait for the constructor, so the
+# racing thread never observes the library before its constructor finished.
+POSIX_TEST_INIT_CONCURRENT_SUITE  := test-c-dlfcn-init-concurrent
+POSIX_TEST_INIT_CONCURRENT_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_INIT_CONCURRENT_SUITE)/libs
+POSIX_TEST_INIT_CONCURRENT_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_INIT_CONCURRENT_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_INIT_CONCURRENT_SUITE).img
+
+# libslowctor.so: slow `.init_array` constructor; SONAME=libslowctor.so.
+$(POSIX_TEST_INIT_CONCURRENT_LIBDIR)/libslowctor.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_INIT_CONCURRENT_SUITE)/libs/slowctor.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_INIT_CONCURRENT_SUITE)/libslowctor.so (.init_array)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libslowctor.so $@.o -o $@
+
+# Per-suite RAMFS image carrying libslowctor.so under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent): $(POSIX_TEST_INIT_CONCURRENT_LIBDIR)/libslowctor.so \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_INIT_CONCURRENT_LIBDIR)/libslowctor.so $(POSIX_TEST_INIT_CONCURRENT_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_INIT_CONCURRENT_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink) \

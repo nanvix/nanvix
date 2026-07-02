@@ -31,7 +31,14 @@ use ::alloc::{
     vec::Vec,
 };
 use ::arch::mem::PAGE_ALIGNMENT;
-use ::core::mem;
+use ::core::{
+    mem,
+    sync::atomic::{
+        AtomicBool,
+        AtomicI32,
+        Ordering,
+    },
+};
 use ::elf::{
     RelocationEntry,
     RelocationTable,
@@ -96,6 +103,95 @@ impl DlHandle {
 }
 
 //==================================================================================================
+// InitState
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Shared, lock-free construction state for a dynamically loaded library.
+///
+/// `dlopen` releases [`DYNAMIC_LIBRARY_REGISTRY`](super::DYNAMIC_LIBRARY_REGISTRY)
+/// before running a newly loaded library's `.init_array` constructors, so that a
+/// constructor may legally call back into the loader (`dlsym`, and — for a
+/// re-entrant open of the same library from its own constructor — `dlopen`)
+/// without deadlocking. That released window let a *concurrent* `dlopen` of the
+/// same filename observe the library as "loaded" on the dedup fast path and
+/// return its handle before the constructors had run.
+///
+/// This state closes the window. The dedup fast path waits on
+/// [`constructors_done`](Self::constructors_done) before handing back a handle,
+/// while a re-entrant open from the *constructing* thread itself is detected via
+/// [`constructor_tid`](Self::constructor_tid) and returns immediately — matching
+/// the System V gABI rule that constructors run exactly once, on the loading
+/// thread (and avoiding a self-deadlock).
+///
+/// The state lives behind an [`Arc`] so a waiting `dlopen` can hold on to it and
+/// poll it after dropping every dlfcn lock.
+///
+pub struct InitState {
+    /// Set to `true` once this library's `.init_array` constructors have
+    /// finished running. Observed with `Acquire` ordering by a concurrent
+    /// `dlopen` so the constructors' writes are visible once it returns.
+    constructors_done: AtomicBool,
+    /// Raw identifier of the thread that is running (or is about to run) this
+    /// library's constructors. Valid only while `constructors_done` is `false`;
+    /// initialized to [`Self::NO_THREAD`] when no owner is known.
+    constructor_tid: AtomicI32,
+}
+
+impl InitState {
+    /// Sentinel meaning "no constructing thread recorded yet". Distinct from
+    /// every real (non-negative) thread identifier.
+    const NO_THREAD: i32 = -1;
+
+    /// Creates a fresh state for a library whose constructors have not run.
+    fn new() -> Self {
+        Self {
+            constructors_done: AtomicBool::new(false),
+            constructor_tid: AtomicI32::new(Self::NO_THREAD),
+        }
+    }
+
+    /// Records the thread that will run this library's constructors.
+    ///
+    /// `dlopen` calls this while `DYNAMIC_LIBRARY_REGISTRY` is held — before the
+    /// lock is released and constructors begin — so no concurrent observer can
+    /// see the pre-set [`Self::NO_THREAD`] sentinel.
+    pub fn set_constructor_thread(&self, tid: i32) {
+        self.constructor_tid.store(tid, Ordering::Relaxed);
+    }
+
+    /// Marks this library's constructors as finished, releasing any concurrent
+    /// `dlopen` blocked in [`wait_until_constructed`](Self::wait_until_constructed).
+    pub fn mark_constructed(&self) {
+        self.constructors_done.store(true, Ordering::Release);
+    }
+
+    /// Blocks until this library's constructors have finished.
+    ///
+    /// Returns immediately if the constructors are already done, or if the
+    /// calling thread (`current_tid`) is the very thread running them — a
+    /// re-entrant `dlopen` from a constructor must not wait on itself.
+    /// Otherwise it spins, yielding the CPU so the constructing thread is
+    /// scheduled, until the constructors complete.
+    pub fn wait_until_constructed(&self, current_tid: i32) {
+        if self.constructors_done.load(Ordering::Acquire) {
+            return;
+        }
+        if self.constructor_tid.load(Ordering::Relaxed) == current_tid {
+            return;
+        }
+        while !self.constructors_done.load(Ordering::Acquire) {
+            // Yield so the constructing thread makes progress; fall back to a
+            // spin hint if the scheduler kernel call is unavailable.
+            let _ = ::sys::kcall::sched::__kcall_sched_yield();
+            ::core::hint::spin_loop();
+        }
+    }
+}
+
+//==================================================================================================
 // DlFile
 //==================================================================================================
 
@@ -129,6 +225,9 @@ pub struct DynamicLibrary {
     fini_array: Option<(usize, usize)>,
     /// `DT_RUNPATH` directories of this library, already split on `:`.
     runpaths: Vec<String>,
+    /// Shared construction state, used to serialize concurrent `dlopen` calls
+    /// against this library's `.init_array` constructors.
+    init_state: Arc<InitState>,
 }
 
 impl DynamicLibrary {
@@ -381,6 +480,7 @@ impl DynamicLibrary {
                     init_array,
                     fini_array,
                     runpaths,
+                    init_state: Arc::new(InitState::new()),
                 })
             },
             Err(error) => {
@@ -1065,6 +1165,13 @@ impl DynamicLibrary {
     /// Returns the `DT_RUNPATH` directories of the library, split on `:`.
     pub fn runpaths(&self) -> &[String] {
         &self.runpaths
+    }
+
+    /// Returns a cloneable handle to this library's construction state so a
+    /// concurrent `dlopen` can wait for its constructors to finish without
+    /// holding any dlfcn lock.
+    pub fn init_state(&self) -> Arc<InitState> {
+        self.init_state.clone()
     }
 
     /// Returns the loaded `.init_array` descriptor as `(base_address,
