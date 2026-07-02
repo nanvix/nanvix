@@ -53,6 +53,7 @@ pub mod guest_profiler;
 #[cfg(target_os = "linux")]
 pub mod io_thread;
 pub mod memory_thread;
+pub mod network_transport;
 pub mod orchestrator;
 pub mod pal;
 #[cfg(feature = "profile-time")]
