@@ -18,6 +18,10 @@ use crate::{
     UserVm,
     UserVmArgs,
     counters::MessageCounters,
+    network_transport::{
+        LocalNetwork,
+        NetworkTransport,
+    },
     orchestrator::{
         IoControlCommand,
         IoControlResponse,
@@ -35,7 +39,6 @@ use ::nanvix_sandbox_config::{
     HostFilter,
     NetworkingMode,
 };
-use ::networkd::NetworkDaemon;
 use ::std::{
     collections::VecDeque,
     path::PathBuf,
@@ -441,9 +444,9 @@ async fn standalone_io_handler(
     // leaving the originating syscall stuck.
     let mut worker_long_op_id: Option<::hostfs_api::OperationId> = None;
 
-    let network_daemon: Option<Arc<NetworkDaemon>> = if networking_mode.is_enabled() {
-        match NetworkDaemon::new(host_filter) {
-            Ok(nd) => Some(Arc::new(nd)),
+    let network_daemon: Option<Arc<dyn NetworkTransport>> = if networking_mode.is_enabled() {
+        match LocalNetwork::new(host_filter) {
+            Ok(nd) => Some(Arc::new(nd) as Arc<dyn NetworkTransport>),
             Err(e) => {
                 error!("standalone io_handler: failed to initialize network daemon: {e}");
                 None
@@ -963,7 +966,7 @@ async fn send_hostfs_error(
 /// blocking libc calls (accept, recv, connect, etc.) from stalling the main IO handler loop.
 ///
 fn spawn_networking_task(
-    network_daemon: Arc<NetworkDaemon>,
+    network_daemon: Arc<dyn NetworkTransport>,
     vm_stdin_tx: mpsc::Sender<IkcFrame>,
     msg: Message,
     counters: MessageCounters,
@@ -1249,7 +1252,7 @@ async fn handle_read_request(
 async fn handle_sendto_request(
     vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
-    network_daemon: &Option<Arc<NetworkDaemon>>,
+    network_daemon: &Option<Arc<dyn NetworkTransport>>,
     source: MessageSender,
     syscall_msg: SystemCallMessage,
     counters: &MessageCounters,
@@ -1270,7 +1273,7 @@ async fn handle_sendto_request(
         },
     };
 
-    let network_daemon: Arc<NetworkDaemon> = match network_daemon {
+    let network_daemon: Arc<dyn NetworkTransport> = match network_daemon {
         Some(nd) => nd.clone(),
         None => {
             warn!("standalone io_handler: networking not allowed, rejecting sendto (tid={tid:?})");
@@ -1313,7 +1316,7 @@ async fn handle_sendto_request(
 async fn handle_recvfrom_request(
     vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
-    network_daemon: &Option<Arc<NetworkDaemon>>,
+    network_daemon: &Option<Arc<dyn NetworkTransport>>,
     source: MessageSender,
     syscall_msg: SystemCallMessage,
     counters: &MessageCounters,
@@ -1336,7 +1339,7 @@ async fn handle_recvfrom_request(
         },
     };
 
-    let network_daemon: Arc<NetworkDaemon> = match network_daemon {
+    let network_daemon: Arc<dyn NetworkTransport> = match network_daemon {
         Some(nd) => nd.clone(),
         None => {
             warn!(
