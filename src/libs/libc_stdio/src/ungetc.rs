@@ -80,6 +80,7 @@ mod test {
             eof: 1,
             error: 0,
             ungetc_buf: -1,
+            orientation: 0,
         }
     }
 

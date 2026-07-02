@@ -10,7 +10,9 @@
 #include <assert.h>
 #include <errno.h>
 #include <locale.h>
+#include <stdarg.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <wchar.h>
@@ -300,6 +302,108 @@ static void test_wcsnrtombs(void)
     }
 }
 
+// Calls vfwprintf() with a freshly built variable argument list.
+static int call_vfwprintf(FILE *stream, const wchar_t *format, ...)
+{
+    va_list ap;
+    int ret;
+
+    va_start(ap, format);
+    ret = vfwprintf(stream, format, ap);
+    va_end(ap);
+
+    return ret;
+}
+
+// Calls vwprintf() with a freshly built variable argument list.
+static int call_vwprintf(const wchar_t *format, ...)
+{
+    va_list ap;
+    int ret;
+
+    va_start(ap, format);
+    ret = vwprintf(format, ap);
+    va_end(ap);
+
+    return ret;
+}
+
+// Tests the wide-character stream I/O functions by writing to a temporary file with the output
+// helpers and reading the data back with the input helpers. Nanvix uses the single-byte C/POSIX
+// locale, so each wide character round-trips through one byte.
+static void test_wide_stream_io(void)
+{
+    const char *filename = "wchar-stdio-c.tmp";
+    FILE *stream;
+    wchar_t buf[16];
+
+    stream = fopen(filename, "w+");
+    assert(stream != NULL);
+
+    // fwide() sets the stream orientation once and reports the persistent orientation after that.
+    assert(fwide(stream, 0) == 0);
+    assert(fwide(stream, 1) > 0);
+    assert(fwide(stream, -1) > 0);
+    assert(fwide(stream, 0) > 0);
+
+    // Write "abcd7-xyZ[wq]" using each of the wide output functions. Plain %s/%c take narrow
+    // char*/int arguments, while %ls/%lc take wide wchar_t*/wint_t arguments; both paths are
+    // exercised so the wide-argument conversions are validated too.
+    assert(fputwc(L'a', stream) == L'a');
+    assert(putwc(L'b', stream) == L'b');
+    assert(fputws(L"cd", stream) >= 0);
+    assert(fwprintf(stream, L"%d", 7) == 1);
+    assert(call_vfwprintf(stream, L"-%s", "xy") == 3);
+    assert(fwprintf(stream, L"%lc", (wint_t)L'Z') == 1);
+    assert(call_vfwprintf(stream, L"[%ls]", L"wq") == 4);
+
+    // Rewind and read the data back.
+    assert(fseeko(stream, 0, SEEK_SET) == 0);
+
+    assert(fgetwc(stream) == L'a');
+    assert(getwc(stream) == L'b');
+
+    // Push the last wide character back and read it again.
+    assert(ungetwc(L'b', stream) == L'b');
+    assert(fgetwc(stream) == L'b');
+
+    // Read the remaining wide characters as a string. No newline is present, so the read stops at
+    // end-of-file.
+    assert(fgetws(buf, 16, stream) == buf);
+    assert(wcscmp(buf, L"cd7-xyZ[wq]") == 0);
+
+    // A subsequent read reports end-of-file.
+    assert(fgetwc(stream) == WEOF);
+
+    assert(fclose(stream) == 0);
+    assert(remove(filename) == 0);
+
+    // A wide character outside the single-byte range cannot be written or pushed back.
+    {
+        FILE *reject = fopen(filename, "w+");
+        assert(reject != NULL);
+        errno = 0;
+        assert(fputwc((wchar_t)0x100, reject) == WEOF);
+        assert(errno == EILSEQ);
+        assert(ungetwc((wint_t)0x100, reject) == WEOF);
+        assert(fclose(reject) == 0);
+        assert(remove(filename) == 0);
+    }
+}
+
+// Tests the wide output functions that target the standard output stream. Only the return values
+// are asserted; the emitted bytes are harmless because the harness validates the exit code.
+static void test_wide_stdout(void)
+{
+    assert(putwchar(L'[') == L'[');
+    assert(wprintf(L"%d", 42) == 2);
+    assert(call_vwprintf(L":%s", "ok") == 3);
+    assert(wprintf(L"%lc", (wint_t)L'#') == 1);
+    assert(call_vwprintf(L"<%ls>", L"ok") == 4);
+    assert(putwchar(L']') == L']');
+    assert(putwchar(L'\n') == L'\n');
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -330,6 +434,8 @@ int main(int argc, const char *argv[])
     test_wcs_collation_l();
     test_mbsnrtowcs();
     test_wcsnrtombs();
+    test_wide_stream_io();
+    test_wide_stdout();
 
     // Write magic string to signal that the test passed.
     {

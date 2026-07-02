@@ -134,6 +134,30 @@ extern int wctob(wint_t c);
 
 extern int swprintf(wchar_t *ws, size_t n, const wchar_t *format, ...);
 extern int vswprintf(wchar_t *ws, size_t n, const wchar_t *format, va_list ap);
+extern int fwprintf(FILE *stream, const wchar_t *format, ...);
+extern int wprintf(const wchar_t *format, ...);
+extern int vfwprintf(FILE *stream, const wchar_t *format, va_list ap);
+extern int vwprintf(const wchar_t *format, va_list ap);
+
+/*==================================================================================================
+ * Wide Character Stream I/O
+ *==================================================================================================*/
+
+extern wint_t fgetwc(FILE *stream);
+extern wint_t getwc(FILE *stream);
+extern wint_t getwchar(void);
+extern wint_t fputwc(wchar_t wc, FILE *stream);
+extern wint_t putwc(wchar_t wc, FILE *stream);
+extern wint_t putwchar(wchar_t wc);
+extern wchar_t *fgetws(wchar_t *ws, int n, FILE *stream);
+extern int fputws(const wchar_t *ws, FILE *stream);
+extern wint_t ungetwc(wint_t wc, FILE *stream);
+
+/*==================================================================================================
+ * Stream Orientation
+ *==================================================================================================*/
+
+extern int fwide(FILE *stream, int mode);
 
 /*==================================================================================================
  * Restartable Multibyte / Wide Conversion

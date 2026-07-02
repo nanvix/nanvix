@@ -74,6 +74,7 @@ pub unsafe extern "C" fn fdopen(fd: c_int, mode: *const c_char) -> *mut FILE {
     (*file).eof = 0;
     (*file).error = 0;
     (*file).ungetc_buf = -1;
+    (*file).orientation = 0;
 
     file
 }
