@@ -10,6 +10,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <locale.h>
+#include <nl_types.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,6 +135,23 @@ static void test_stdlib_l(void)
     freelocale(loc);
 }
 
+// Tests the XSI message-catalog functions. Nanvix supports only the C/POSIX locale, which
+// defines no message catalogs, so catopen() reports failure, catgets() echoes the fallback
+// string, and catclose() succeeds.
+static void test_message_catalog(void)
+{
+    // catopen() cannot find any catalog and reports failure with the (nl_catd)-1 sentinel.
+    nl_catd catd = catopen("messages", NL_CAT_LOCALE);
+    assert(catd == (nl_catd)-1);
+
+    // catgets() returns the caller-supplied fallback string unchanged (same pointer).
+    const char *fallback = "fallback message";
+    assert((const char *)catgets(catd, NL_SETD, 1, fallback) == fallback);
+
+    // catclose() always succeeds.
+    assert(catclose(catd) == 0);
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -162,6 +180,7 @@ int main(int argc, const char *argv[])
     test_string_l();
     test_time_l();
     test_stdlib_l();
+    test_message_catalog();
 
     // Write magic string to signal that the test passed.
     {

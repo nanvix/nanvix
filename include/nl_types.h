@@ -32,6 +32,14 @@ typedef void *nl_catd;
 #define NL_SETD 1
 #define NL_CAT_LOCALE 1
 
+/*==================================================================================================
+ * Functions
+ *==================================================================================================*/
+
+extern nl_catd catopen(const char *name, int oflag);
+extern char *catgets(nl_catd catd, int set_id, int msg_id, const char *s);
+extern int catclose(nl_catd catd);
+
 #ifdef __cplusplus
 }
 #endif
