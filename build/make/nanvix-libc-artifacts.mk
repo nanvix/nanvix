@@ -169,15 +169,34 @@ NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS := \
 # incremental rebuilds, mirroring the guest-ELF bridge rule
 # (`$(BINARIES_DIR)/%.elf: all-guest-binaries ;`).
 $(NANVIX_LIBC_BUNDLE_AR): all-guest-staticlibs ;
-# libm.a forwards allocation to libc.a, but rustc still emits global `__rust_*`
-# shim symbols for it (every `alloc`-linking staticlib must declare a
-# `#[global_allocator]`). Demote those shims to LOCAL so libc.a stays the single
-# owner and a default static link of `libc.a + libm.a` needs no `-z muldefs`,
-# mirroring the crt0.o treatment below.
+# libm.a embeds two families of DEAD DUPLICATE globals that `libc.a` also owns,
+# so a default (no `-z muldefs` / no `-Wl,--allow-multiple-definition`) static
+# link of `libc.a + libm.a` would otherwise fail with "multiple definition of
+# ...". Demote both to LOCAL so `libc.a` stays their single owner, mirroring the
+# crt0.o treatment below.
+#
+#   1. Rust global-allocator shims (`__rust_alloc`, `__rust_dealloc`,
+#      `__rust_realloc`). `nanvix_libm` carries only a *forwarding*
+#      `#[global_allocator]` (see nanvix_libm/src/lib.rs) — rustc still emits
+#      these global shim symbols because every `alloc`-linking staticlib must
+#      declare a global allocator, but the real allocator lives in `libc.a`.
+#
+#   2. The `sys`-crate kernel-call / fork / thread startup stubs (`__kcall_*`,
+#      `fork_save_context`, `fork_trampoline`, `_do_start_thread`,
+#      `_do_exit_thread`). `nanvix_libm` links `nvx` (for the `#[panic_handler]`),
+#      and `nvx` depends on `sys` with the `kcall` feature, so the WHOLE `sys`
+#      kernel-call backend — whose C-ABI wrappers are `#[no_mangle]`, hence always
+#      emitted — is folded into `libm.a`. The math routines are pure-computational
+#      and the panic handler only issues `ud2`, so these stubs are dead here;
+#      `libc.a` embeds the same backend and is their single owner. The `__kcall_*`
+#      pattern is anchored (no leading `*`) so it matches only the C-ABI wrappers
+#      and leaves any name-mangled Rust `__kcall_*` reference untouched.
 $(NANVIX_LIBM_BUNDLE_AR): all-guest-staticlibs
-	@echo "[nanvix-libc] demoting libm.a allocator shims to local (single-owner)"
+	@echo "[nanvix-libc] demoting libm.a allocator shims + sys stubs to local (single-owner)"
 	$(NANVIX_LIBC_OBJCOPY) --wildcard \
 		-L '*__rust_alloc*' -L '*__rust_dealloc*' -L '*__rust_realloc*' \
+		-L '__kcall_*' -L 'fork_save_context' -L 'fork_trampoline' \
+		-L '_do_start_thread' -L '_do_exit_thread' \
 		$@
 $(NANVIX_CRT0_ARCHIVE): all-guest-staticlibs ;
 
