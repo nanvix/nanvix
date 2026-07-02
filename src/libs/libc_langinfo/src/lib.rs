@@ -30,4 +30,64 @@
 // Modules
 //==================================================================================================
 
+pub mod catgets;
 pub mod nl_langinfo;
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::sysapi::{
+    errno::__errno_location,
+    ffi::c_int,
+};
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Writes `code` to `errno`.
+///
+/// # Parameters
+///
+/// - `code`: Error code to be written to `errno`.
+///
+#[inline(always)]
+fn set_errno(code: c_int) {
+    // SAFETY: `__errno_location()` returns a valid pointer to `errno`.
+    unsafe {
+        *__errno_location() = code;
+    }
+}
+
+//==================================================================================================
+// Test Support
+//==================================================================================================
+
+// The `catopen()` stub references `__errno_location` to report `ENOENT`. That symbol is provided
+// by the C library in the guest build, but the MSVC C runtime used for host `std` unit tests on
+// Windows does not export this glibc/musl symbol, so supply a thread-local definition here to let
+// the errno-setting path link and run. On Linux hosts the system C library already provides the
+// symbol, so the shim is not compiled there.
+#[cfg(all(test, feature = "std", target_os = "windows"))]
+mod windows_errno_shim {
+    use ::core::cell::Cell;
+    use ::sysapi::ffi::c_int;
+
+    std::thread_local! {
+        static ERRNO: Cell<c_int> = const { Cell::new(0) };
+    }
+
+    /// Host-only definition of `__errno_location` for Windows `std` unit tests.
+    ///
+    /// # Safety
+    ///
+    /// The returned pointer is valid for the lifetime of the calling thread.
+    #[unsafe(no_mangle)]
+    unsafe extern "C" fn __errno_location() -> *mut c_int {
+        ERRNO.with(Cell::as_ptr)
+    }
+}
