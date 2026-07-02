@@ -17,6 +17,7 @@ ALL_POSIX_TESTS := \
 	test-c-ctor \
 	test-c-dlfcn \
 	test-c-dlfcn-ctor-dtor-reentry \
+	test-c-dlfcn-cycle \
 	test-c-dlfcn-diamond \
 	test-c-dlfcn-dtor-reentry \
 	test-c-dlfcn-global \
