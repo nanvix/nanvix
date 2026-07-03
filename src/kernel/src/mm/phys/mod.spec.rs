@@ -65,6 +65,22 @@ impl FrameAllocView
         forall|addr: int| #[trigger] frames.contains(addr) ==> self.is_free(addr)
     }
 
+    /// `true` if the `count` frames `{ base + i * PAGE_SIZE | 0 <= i < count }` are all covered
+    /// and free — i.e. there is a contiguous run of `count` free frames based at address `base`.
+    pub open spec fn contiguous_free_run_at(&self, base: int, count: int) -> bool
+    {
+        self.all_free(Set::range(0, count).map_by(
+            |i: int| base + i * spec_page_size(),
+            |addr: int| (addr - base) / spec_page_size(),
+        ))
+    }
+
+    /// `true` if the allocator has a contiguous run of `count` free frames somewhere.
+    pub open spec fn exists_contiguous_free_run(&self, count: int) -> bool
+    {
+        exists|base: int| #[trigger] self.contiguous_free_run_at(base, count)
+    }
+
     pub open spec fn wf(&self) -> bool
     {
         // Every covered frame address is page-aligned.

@@ -194,7 +194,8 @@ impl Inner {
                     })
                 },
                 Err(_) => {
-                    final(self)@ == old(self)@
+                    &&& final(self)@ == old(self)@
+                    &&& !old(self)@.exists_contiguous_free_run(count as int)
                 }
             },
     )]
