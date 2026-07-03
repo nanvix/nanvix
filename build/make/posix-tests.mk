@@ -318,6 +318,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath)
@@ -333,6 +334,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_HASH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HELLO_SEED)
@@ -905,12 +907,56 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry): $(POSIX_TEST_CTOR_DTOR_R
 	$(CP_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libhook.so $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-hash-c: DT_HASH / DT_GNU_HASH accelerated symbol lookup.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships TWO shared libraries built from the SAME self-contained source (syms.c,
+# zero undefined symbols) but with different symbol-hash tables, so the loader's
+# find() exercises each of its accelerated lookup paths end to end:
+#   * libsyms-sysv.so - linked --hash-style=sysv -> only a .hash (DT_HASH) table.
+#   * libsyms-gnu.so  - linked --hash-style=gnu  -> only a .gnu.hash (DT_GNU_HASH)
+#                       table (Bloom-filter prefixed).
+# main.c dlopen()s both, resolves every exported function plus a data object
+# through dlsym() (each result confirms the hash walk returned the correct
+# symbol), and asserts an absent name resolves to NULL (the not-found path). The
+# fixtures are opened by explicit path, so no SONAME/DT_NEEDED wiring is needed;
+# they are staged under lib/, where main.c opens them.
+POSIX_TEST_HASH_SUITE  := test-c-dlfcn-hash
+POSIX_TEST_HASH_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_HASH_SUITE)/libs
+POSIX_TEST_HASH_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_HASH_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_HASH_SUITE).img
+
+# libsyms-sysv.so: only a SysV (.hash / DT_HASH) symbol hash table.
+$(POSIX_TEST_HASH_LIBDIR)/libsyms-sysv.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_HASH_SUITE)/libs/syms.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_HASH_SUITE)/libsyms-sysv.so (--hash-style=sysv)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) --hash-style=sysv $@.o -o $@
+
+# libsyms-gnu.so: only a GNU (.gnu.hash / DT_GNU_HASH) symbol hash table.
+$(POSIX_TEST_HASH_LIBDIR)/libsyms-gnu.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_HASH_SUITE)/libs/syms.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_HASH_SUITE)/libsyms-gnu.so (--hash-style=gnu)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) --hash-style=gnu $@.o -o $@
+
+# Per-suite RAMFS image carrying both fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash): $(POSIX_TEST_HASH_LIBDIR)/libsyms-sysv.so \
+		$(POSIX_TEST_HASH_LIBDIR)/libsyms-gnu.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_HASH_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_HASH_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_HASH_LIBDIR)/libsyms-sysv.so $(POSIX_TEST_HASH_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_HASH_LIBDIR)/libsyms-gnu.so $(POSIX_TEST_HASH_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_HASH_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath) \
