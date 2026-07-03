@@ -83,6 +83,7 @@ use ::sys::error::{
 //==================================================================================================
 
 /// Physical address of the kernel page directory (set once during boot by [`init`]).
+#[verus_verify]
 static KERNEL_PD_PADDR: AtomicUsize = AtomicUsize::new(0);
 
 /// Raw value of the kernel CR3 register for address-space switching.

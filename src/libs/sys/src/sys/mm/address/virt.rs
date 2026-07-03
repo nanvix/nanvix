@@ -28,6 +28,7 @@ use crate::{
 ///
 /// A type that represents a virtual address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct VirtualAddress(usize);
 
@@ -38,6 +39,7 @@ pub struct VirtualAddress(usize);
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl VirtualAddress {
     #[verus_spec(result =>
         ensures

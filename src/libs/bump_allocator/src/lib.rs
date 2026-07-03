@@ -141,6 +141,7 @@ pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
 /// Error type returned by [`FixedSizeBumpAllocator`] operations.
 ///
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[verus_verify]
 pub enum BumpAllocError {
     /// Storage capacity exhausted.
     Exhausted,
@@ -185,6 +186,7 @@ impl fmt::Display for BumpAllocError {
 /// - the backing region is exclusively managed by this allocator API, so creating `&'static mut`
 ///   references from slots cannot alias with other mutable references.
 ///
+#[verus_verify]
 pub unsafe trait BssStorage {
     /// Number of fixed-size units that can be allocated.
     const NUM_UNITS: usize;
@@ -211,6 +213,7 @@ pub unsafe trait BssStorage {
 /// - `A`: Unit alignment in bytes.
 /// - `S`: Backing storage provider.
 ///
+#[verus_verify]
 pub struct FixedSizeBumpAllocator<const N: usize, const A: usize, S: BssStorage> {
     /// Atomic bump index for the next available slot.
     next_slot: AtomicUsize,

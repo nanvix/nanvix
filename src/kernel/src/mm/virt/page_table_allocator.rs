@@ -25,6 +25,7 @@ use ::bump_allocator::{
     BssStorage,
     FixedSizeBumpAllocator,
 };
+use vstd::prelude::*;
 
 //==================================================================================================
 // Constants
@@ -96,6 +97,7 @@ unsafe impl BssStorage for PageTableBss {
 /// Global fixed-size allocator used for kernel page-table slots during boot and after boot for
 /// lazy identity-map page table allocation.
 /// SAFETY: PAGE_TABLE_ALLOCATOR is a global allocator that exclusively manages PAGE_TABLE_STORAGE.
+#[verus_verify]
 pub static PAGE_TABLE_ALLOCATOR: FixedSizeBumpAllocator<
     PAGE_TABLE_SLOT_SIZE,
     PAGE_TABLE_SLOT_ALIGN,

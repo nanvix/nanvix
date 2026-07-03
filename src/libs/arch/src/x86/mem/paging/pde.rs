@@ -36,6 +36,7 @@ use crate::{
 ///
 /// A type that represents flags of a page directory entry.
 ///
+#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub struct PageDirectoryEntryFlags {
     /// Present flag.
@@ -56,6 +57,7 @@ pub struct PageDirectoryEntryFlags {
     page_size: PageSizeFlag,
 }
 
+#[verus_verify]
 impl PageDirectoryEntryFlags {
     ///
     /// # Description
@@ -275,6 +277,7 @@ impl PageDirectoryEntryFlags {
 ///
 /// A type that represents a page directory entry.
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct PageDirectoryEntry {
     /// Flags.
@@ -288,6 +291,7 @@ impl PageDirectoryEntry {
     pub const SIZE: usize = ::core::mem::size_of::<PteWord>();
 }
 
+#[verus_verify]
 impl PageDirectoryEntry {
     ///
     /// # Description
@@ -303,6 +307,7 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result@ == spec_pde_new(flags@, frame@),
@@ -405,6 +410,7 @@ impl PageDirectoryEntry {
     ///
     /// The physical address.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result as int == self@.frame * (crate::mem::FRAME_SIZE as int),

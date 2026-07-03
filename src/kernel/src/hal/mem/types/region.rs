@@ -35,6 +35,7 @@ use ::sys::error::{
 /// A type that represents the type of a memory region.
 ///
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[verus_verify]
 pub enum MemoryRegionType {
     /// Usable memory.
     Usable,
@@ -56,6 +57,7 @@ pub enum MemoryRegionType {
 /// Caching policy for MMIO memory regions. Controls the PWT (Page Write-Through) and PCD
 /// (Page Cache Disable) bits in the page table entries that back the region.
 ///
+#[verus_verify(external_derive)]
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct MmioCachePolicy {
     /// If `true`, the page is mapped with the Write-Through attribute (PWT=1).
@@ -133,6 +135,7 @@ impl MmioCachePolicy {
 ///
 /// A memory region.
 ///
+#[verus_verify(external_derive)]
 #[derive(Debug, Clone)]
 pub struct MemoryRegion<T: Address> {
     name: String,
@@ -287,6 +290,7 @@ impl<T: Address> Ord for MemoryRegion<T> {
 ///
 /// A memory region that has been truncated to a multiple of a page size.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone)]
 pub struct TruncatedMemoryRegion<T: Address>(MemoryRegion<PageAligned<T>>);
 

@@ -25,6 +25,7 @@ use super::{
 ///
 /// The raw representation uses [`PteWord`] — `u32` on x86.
 ///
+#[verus_verify]
 pub trait TableEntry: Copy {
     /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
     #[verus_spec(result =>
@@ -47,9 +48,11 @@ pub trait TableEntry: Copy {
 ///
 /// A validated index into a page table, guaranteed to be in `[0, PAGE_TABLE_LENGTH)`.
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableIndex(usize);
 
+#[verus_verify]
 impl TableIndex {
     ///
     /// # Description
@@ -77,6 +80,7 @@ impl TableIndex {
     ///
     /// Returns the underlying index value.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result as nat == self@,
@@ -92,6 +96,7 @@ impl TableIndex {
 //==================================================================================================
 
 /// Extracts the PD index (bits 22-31) from a virtual address as a [`TableIndex`].
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         result@ == spec_pd_index(vaddr),
@@ -104,6 +109,7 @@ pub const fn pd_index(vaddr: usize) -> TableIndex {
 }
 
 /// Extracts the PT index (bits 12-21) from a virtual address as a [`TableIndex`].
+#[verus_verify(external_body)]
 #[verus_spec(result =>
     ensures
         result@ == spec_pt_index(vaddr),
@@ -132,6 +138,7 @@ pub const fn pt_index(vaddr: usize) -> TableIndex {
 /// (i.e., a mapped virtual address). It does not own the backing memory — the caller is
 /// responsible for allocation and lifetime management.
 ///
+#[verus_verify]
 #[derive(Debug)]
 pub struct Table<E: TableEntry> {
     /// Base address of the table (must be page-aligned).
@@ -140,6 +147,7 @@ pub struct Table<E: TableEntry> {
     _marker: ::core::marker::PhantomData<E>,
 }
 
+#[verus_verify]
 impl<E: TableEntry> Table<E> {
     ///
     /// # Description

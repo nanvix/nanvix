@@ -28,6 +28,7 @@ use crate::{
 ///
 /// A type that represents a physical address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PhysicalAddress(VirtualAddress);
 

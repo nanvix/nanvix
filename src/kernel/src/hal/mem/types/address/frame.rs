@@ -27,6 +27,7 @@ use ::sys::error::Error;
 ///
 /// A type that represents a frame address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy)]
 pub struct FrameAddress(PageAligned<PhysicalAddress>);
 
@@ -51,10 +52,12 @@ impl FrameAddress {
 // Raw-value and frame-number conversions of a frame address. The frame address denotes a single
 // page-aligned physical frame; these functions expose its two equivalent identities (raw physical
 // address and frame number) and the lossless, mutually-inverse mappings between them.
+#[verus_verify]
 impl FrameAddress {
     // Constructs a frame address from a frame number. The frame's base address is
     // `frame_number * PAGE_SIZE`, page-aligned by construction, so the call always succeeds and the
     // result satisfies `inv()`.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result is Ok,
@@ -70,6 +73,7 @@ impl FrameAddress {
     // holds); representability is automatic because the underlying
     // `PhysicalAddress::into_frame_number` is total. The result is the exact inverse of
     // `from_frame_number`.
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),

@@ -49,6 +49,9 @@ use ::vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("frame.spec.rs");
 
+#[cfg(verus_keep_ghost)]
+include!("frame.proof.rs");
+
 //==================================================================================================
 // Inner
 //==================================================================================================
@@ -75,6 +78,7 @@ include!("frame.spec.rs");
 static mut REFCOUNT_STORAGE: [u8; NFRAMES] = [0; NFRAMES];
 
 /// Private state of the frame allocator singleton.
+#[verus_verify]
 struct Inner {
     /// A bitmap that keeps track of free/used frames.
     bitmap: Bitmap,
@@ -96,6 +100,7 @@ struct Inner {
     refcount: &'static mut [u8],
 }
 
+#[verus_verify]
 impl Inner {
     ///
     /// # Description
@@ -107,6 +112,7 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -170,6 +176,7 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -249,6 +256,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -322,6 +330,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -391,6 +400,7 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),
@@ -438,6 +448,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -481,6 +492,7 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(ret =>
         requires
             self.inv(),
@@ -507,6 +519,7 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),

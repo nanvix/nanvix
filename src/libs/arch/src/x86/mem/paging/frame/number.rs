@@ -26,6 +26,7 @@ use ::sys::mm::{
 /// A type that represents a frame number.
 /// A frame number is in the range from `0` to [`Self::MAX`] (inclusive).
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct FrameNumber(usize);
 
@@ -33,6 +34,7 @@ pub struct FrameNumber(usize);
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl FrameNumber {
     /// The maximum frame number.
     ///
@@ -92,6 +94,7 @@ impl FrameNumber {
     ///
     /// The raw value of the target [`FrameNumber`].
     ///
+    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result as int == self@,
@@ -102,6 +105,7 @@ impl FrameNumber {
     }
 }
 
+#[verus_verify]
 impl From<FrameNumber> for PhysicalAddress {
     #[verus_verify(external_body)]
     #[verus_spec(result =>

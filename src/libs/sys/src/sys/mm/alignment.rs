@@ -36,6 +36,7 @@ use ::vstd::prelude::*;
 // Structures
 //==================================================================================================
 
+#[verus_verify(external_derive)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Alignment {
     /// Aligned to 4 bytes.
