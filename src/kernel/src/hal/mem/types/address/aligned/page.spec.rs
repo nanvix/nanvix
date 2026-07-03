@@ -13,7 +13,7 @@ impl<T: Address> PageAligned<T>
 {
     pub open spec fn inv(&self) -> bool
     {
-        self@ % spec_page_size() == 0
+        spec_aligned(self@)
     }
 }
 
