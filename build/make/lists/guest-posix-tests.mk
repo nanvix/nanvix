@@ -46,6 +46,7 @@ ALL_POSIX_TESTS := \
 	test-c-math \
 	test-c-memory \
 	test-c-misc \
+	test-c-netdb \
 	test-c-network \
 	test-c-noop \
 	test-c-pathconf \
