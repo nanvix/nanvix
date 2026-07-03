@@ -608,15 +608,6 @@ static mut INSTANCE: MaybeUninit<Inner> = MaybeUninit::uninit();
 static INSTANCE_INIT: AtomicBool = AtomicBool::new(false);
 
 /// Returns a mutable reference to the initialized singleton.
-///
-/// Materializes the initialized singleton and exposes its abstract state to verified callers.
-#[verus_verify(external_body)]
-#[verus_spec(r =>
-    ensures
-        (*r).inv(),
-        (*r)@ == crate::mm::phys::phys_view().frames,
-        crate::mm::phys::phys_view().initialized,
-)]
 fn instance() -> &'static mut Inner {
     if unlikely(!INSTANCE_INIT.load(ORDER)) {
         panic!("frame allocator used before init()");
@@ -637,19 +628,6 @@ fn instance() -> &'static mut Inner {
 ///
 /// Must be called exactly once during boot, before any other function
 /// in this module.
-///
-/// Initializes module-level storage and publishes the corresponding abstract state.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        match result {
-            Ok(_) => {
-                &&& crate::mm::phys::phys_view().initialized
-                &&& crate::mm::phys::phys_view().frames.wf()
-            },
-            Err(_) => true,
-        },
-)]
 pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
     if unlikely(INSTANCE_INIT.load(ORDER)) {
         return Err(Error::new(ErrorCode::InvalidArgument, "frame allocator already initialized"));
@@ -692,19 +670,6 @@ pub(super) unsafe fn init(bitmap: Bitmap) -> Result<(), Error> {
 }
 
 /// Allocate a frame.
-///
-/// Singleton wrapper around `Inner::alloc`.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        match result {
-            Ok(frame) => {
-                &&& frame.inv()
-                &&& crate::mm::phys::phys_view().frames.is_allocated(frame@)
-            },
-            Err(_) => crate::mm::phys::phys_view().frames.no_free_frames(),
-        },
-)]
 pub(super) fn alloc() -> Result<FrameAddress, Error> {
     instance().alloc()
 }
@@ -717,20 +682,6 @@ pub(super) fn alloc() -> Result<FrameAddress, Error> {
 ///
 /// Returns the base `FrameAddress` of the contiguous range.
 ///
-/// Singleton wrapper around `Inner::alloc_contiguous`.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    requires
-        count > 0,
-    ensures
-        match result {
-            Ok(base) => {
-                &&& base.inv()
-                &&& base@ + (count as int) * spec_page_size() <= usize::MAX as int
-            },
-            Err(_) => true,
-        },
-)]
 pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
     instance().alloc_contiguous(count)
 }
@@ -744,27 +695,12 @@ pub(super) fn alloc_contiguous(count: usize) -> Result<FrameAddress, Error> {
 ///
 /// The number of free frames in the system.
 ///
-/// Reports the number of free frames in the global allocator.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        result as nat == crate::mm::phys::phys_view().frames.free_count(),
-)]
 pub(super) fn free_count() -> usize {
     let inner = instance();
     inner.bitmap.number_of_bits() - inner.bitmap.usage()
 }
 
 /// Free a frame previously returned by [`alloc`].
-///
-/// Best-effort release used by cleanup paths and frame-handle destructors.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        true,
-    opens_invariants none
-    no_unwind
-)]
 pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
     instance().free(frame)
 }
@@ -778,87 +714,26 @@ pub(super) fn free(frame: FrameAddress) -> Result<(), Error> {
 ///
 /// Returns `true` when the frame allocator tracks the frame at `phys_addr`.
 ///
-/// Pure coverage query over the global frame partition.
-#[verus_spec(ret =>
-    requires
-        phys_addr.inv(),
-    ensures
-        ret <==> crate::mm::phys::phys_view().frames.covers(phys_addr@),
-)]
 pub(super) fn is_covered(phys_addr: PageAligned<PhysicalAddress>) -> bool {
     instance().is_covered(phys_addr)
 }
 
 /// Reserve a frame so [`alloc`] will skip it.
-///
-/// Singleton wrapper around `Inner::book`.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    requires
-        phys_addr.inv(),
-    ensures
-        match result {
-            Ok(()) => crate::mm::phys::phys_view().frames.reserved(phys_addr@),
-            Err(_) => !crate::mm::phys::phys_view().frames.is_free(phys_addr@),
-        },
-)]
 pub(super) fn book(phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
     instance().book(phys_addr)
 }
 
 /// Book every frame in the given physical memory region.
-///
-/// Singleton wrapper around `Inner::alloc_range`.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    requires
-        region.inv(),
-    ensures
-        match result {
-            Ok(()) => crate::mm::phys::phys_view().frames.all_reserved(
-                crate::mm::phys::region_frame_addrs(region@.start, region@.size)),
-            Err(_) => !crate::mm::phys::phys_view().frames.all_free(
-                crate::mm::phys::region_frame_addrs(region@.start, region@.size)),
-        },
-)]
 pub(super) fn alloc_range(region: &TruncatedMemoryRegion<PhysicalAddress>) -> Result<(), Error> {
     instance().alloc_range(region)
 }
 
 /// Add a new reference to an already-allocated frame (e.g. for copy-on-write sharing).
-///
-/// Singleton wrapper around `Inner::share`.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    requires
-        frame.inv(),
-    ensures
-        match result {
-            Ok(()) => crate::mm::phys::phys_view().frames.is_allocated(frame@),
-            Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(frame@)
-                || crate::mm::phys::phys_view().frames.refcounts[frame@] >= 255,
-        },
-)]
 pub(super) fn share(frame: FrameAddress) -> Result<(), Error> {
     instance().share(frame)
 }
 
 /// Returns the current reference count of an already-allocated frame.
-///
-/// Singleton wrapper around `Inner::refcount`.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    requires
-        frame.inv(),
-    ensures
-        match result {
-            Ok(count) => {
-                &&& crate::mm::phys::phys_view().frames.is_allocated(frame@)
-                &&& count as int == crate::mm::phys::phys_view().frames.refcounts[frame@]
-            },
-            Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(frame@),
-        },
-)]
 pub(super) fn refcount(frame: FrameAddress) -> Result<u8, Error> {
     instance().refcount(frame)
 }

@@ -107,48 +107,6 @@ use ::core::alloc::Allocator;
 pub struct ExLinkedList<T, A: Allocator>(::alloc::collections::LinkedList<T, A>);
 
 //==================================================================================================
-// Physical-memory subsystem view
-//==================================================================================================
-
-/// Abstract view of the global physical-memory subsystem managed by `mm::phys`.
-///
-/// Pure ghost description — names no `MaybeUninit`, `AtomicBool`, bitmap, refcount slice,
-/// or any other storage mechanism. It wraps the existing frame-allocator view
-/// (`FrameAllocView`) with the two liveness facts the caller depends on.
-pub ghost struct PhysModView {
-    /// The frame allocator singleton has been initialized (`frame::init` ran
-    /// successfully). All `frames`-related guarantees are meaningful only when this holds.
-    pub initialized: bool,
-    /// Abstract frame-allocator state: which physical frames are allocated (reserved) vs.
-    /// free, with per-frame refcounts. This is the existing `FrameAllocView`.
-    pub frames: FrameAllocView,
-    /// The `PhysMemoryManager` singleton has been initialized with a fresh user page pool.
-    pub manager_ready: bool,
-}
-
-/// Current abstract state of the global physical-memory subsystem.
-///
-/// Uninterpreted accessor for module-level physical-memory state.
-pub uninterp spec fn phys_view() -> PhysModView;
-
-impl PhysModView {
-    /// Well-formedness invariant of the subsystem.
-    pub open spec fn inv(self) -> bool {
-        // Once the allocator is up, the frame partition is well formed.
-        &&& self.initialized ==> self.frames.wf()
-        // The manager layer can only be up if the allocator is up.
-        &&& self.manager_ready ==> self.initialized
-    }
-
-    /// The subsystem is fully brought up and self-consistent.
-    pub open spec fn live(self) -> bool {
-        &&& self.initialized
-        &&& self.manager_ready
-        &&& self.frames.wf()
-    }
-}
-
-//==================================================================================================
 // Frame-set vocabulary (on the existing FrameAllocView)
 //==================================================================================================
 

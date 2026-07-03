@@ -5,10 +5,6 @@
 // Imports
 //==================================================================================================
 
-use vstd::prelude::*;
-#[cfg(verus_keep_ghost)]
-include!("upool.spec.rs");
-
 use crate::{
     hal::mem::FrameAddress,
     mm::phys::frame,
@@ -45,13 +41,6 @@ impl UserFrame {
     ///
     /// A user frame.
     ///
-    #[verus_spec(result =>
-        requires
-            addr.inv(),
-        ensures
-            result@ == addr@,
-            result.inv(),
-    )]
     pub fn new(addr: FrameAddress) -> Self {
         Self { addr }
     }
@@ -65,13 +54,6 @@ impl UserFrame {
     ///
     /// The physical address of the target user frame.
     ///
-    #[verus_spec(result =>
-        requires
-            self.inv(),
-        ensures
-            result@ == self@,
-            result.inv(),
-    )]
     pub fn address(&self) -> FrameAddress {
         self.addr
     }
@@ -85,13 +67,6 @@ impl UserFrame {
     ///
     /// The frame address.
     ///
-    #[verus_spec(result =>
-        requires
-            self.inv(),
-        ensures
-            result@ == self@,
-            result.inv(),
-    )]
     pub fn leak(self) -> FrameAddress {
         let this: ManuallyDrop<Self> = ManuallyDrop::new(self);
         this.addr
@@ -113,22 +88,6 @@ impl UserFrame {
     /// On success, a new [`UserFrame`] that aliases the same physical frame as
     /// `self`. On failure, an error is returned.
     ///
-    #[verus_spec(result =>
-        requires
-            self.inv(),
-        ensures
-            match result {
-                Ok(uf) => {
-                    &&& uf@ == self@
-                    &&& uf.inv()
-                    &&& crate::mm::phys::phys_view().frames.is_allocated(self@)
-                },
-                Err(_) => {
-                    ||| !crate::mm::phys::phys_view().frames.is_allocated(self@)
-                    ||| crate::mm::phys::phys_view().frames.refcounts[self@] >= 255
-                },
-            },
-    )]
     pub fn share(&self) -> Result<UserFrame, Error> {
         frame::share(self.addr)?;
         Ok(Self { addr: self.addr })
@@ -144,28 +103,12 @@ impl UserFrame {
     /// Upon success, the current reference count of the underlying physical frame is returned.
     /// Upon failure, an error is returned instead.
     ///
-    #[verus_spec(result =>
-        requires
-            self.inv(),
-        ensures
-            match result {
-                Ok(count) => {
-                    &&& crate::mm::phys::phys_view().frames.is_allocated(self@)
-                    &&& count as int == crate::mm::phys::phys_view().frames.refcounts[self@]
-                },
-                Err(_) => !crate::mm::phys::phys_view().frames.is_allocated(self@),
-            },
-    )]
     pub fn refcount(&self) -> Result<u8, Error> {
         frame::refcount(self.addr)
     }
 }
 
 impl Drop for UserFrame {
-    #[verus_spec(
-        opens_invariants none
-        no_unwind
-    )]
     fn drop(&mut self) {
         if let Err(e) = frame::free(self.addr) {
             error!("failed to free user frame: {:?}", e);
@@ -199,12 +142,6 @@ impl Upool {
     ///
     /// A user frame pool.
     ///
-    /// Opaque pool facade backed by the global frame allocator.
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        ensures
-            result@.wf(),
-    )]
     pub(super) fn new() -> Self {
         Self { _private: () }
     }
@@ -218,24 +155,6 @@ impl Upool {
     ///
     /// Upon success, a user frame is returned. Upon failure, an error is returned instead.
     ///
-    /// Delegates to the global frame allocator and models one user-frame allocation.
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        requires
-            old(self)@.wf(),
-        ensures
-            final(self)@.wf(),
-            match result {
-                Ok(uf) => {
-                    &&& old(self)@.is_free(uf@)
-                    &&& final(self)@ == old(self)@.alloc_one(uf@)
-                },
-                Err(_) => {
-                    &&& final(self)@ == old(self)@
-                    &&& old(self)@.free_count() == 0
-                },
-            },
-    )]
     pub fn alloc(&mut self) -> Result<UserFrame, Error> {
         let addr: FrameAddress = frame::alloc()?;
         Ok(UserFrame::new(addr))
