@@ -40,12 +40,16 @@ use ::core::{
     },
 };
 use ::elf::{
+    GnuHashTable,
+    Lookup,
     RelocationEntry,
     RelocationTable,
     RelocationType,
     StringTable,
     Symbol,
+    SymbolHashTable,
     SymbolTable,
+    SysvHashTable,
 };
 use ::goblin::elf::{
     Elf,
@@ -215,6 +219,10 @@ pub struct DynamicLibrary {
     dynsym: SymbolTable,
     /// Dynamic symbols names.
     dynstr: StringTable,
+    /// Symbol-lookup accelerator (`DT_HASH` / `DT_GNU_HASH`), when the object
+    /// carries a usable hash section. `None` falls back to a linear `.dynsym`
+    /// scan in [`find`](DynamicLibrary::find).
+    hash: Option<SymbolHashTable>,
     /// Relocation table for global functions.
     dynplt: Option<RelocationTable>,
     /// Relocation table for global variables.
@@ -454,6 +462,12 @@ impl DynamicLibrary {
                 let fini_array: Option<(usize, usize)> =
                     Self::get_fini_array(&section_headers, load_address);
 
+                // Build the symbol-lookup accelerator from the object's ELF hash
+                // table, if it carries a usable one. `dynsym.len()` bounds the
+                // hash chains; a `None` result means `find()` scans linearly.
+                let hash: Option<SymbolHashTable> =
+                    Self::get_symbol_hash(&section_headers, load_address, dynsym.len());
+
                 // Collect `DT_RUNPATH` entries (goblin exposes them already
                 // resolved against `.dynstr`). Each entry may be a colon-
                 // separated list of directories; split here so the search
@@ -475,6 +489,7 @@ impl DynamicLibrary {
                     _segments: segments,
                     dynsym,
                     dynstr,
+                    hash,
                     dynplt,
                     dynrel,
                     init_array,
@@ -624,6 +639,53 @@ impl DynamicLibrary {
         }
     }
 
+    /// Builds a symbol-lookup accelerator from the object's ELF hash table.
+    ///
+    /// Prefers `.gnu.hash` (`DT_GNU_HASH`) over `.hash` (`DT_HASH`) when both are
+    /// present, since the GNU table's Bloom filter makes it the faster of the
+    /// two. Returns `None` when neither section is present or usable (for
+    /// example an older object linked without a hash table), in which case
+    /// [`find`](Self::find) falls back to a linear `.dynsym` scan. Both hash
+    /// tables index the same `.dynsym`, whose length bounds their chains.
+    fn get_symbol_hash(
+        section_headers: &BTreeMap<String, SectionHeader>,
+        load_address: VirtualAddress,
+        symtab_len: usize,
+    ) -> Option<SymbolHashTable> {
+        // Prefer the GNU hash table.
+        if let Some(header) = section_headers.get(".gnu.hash") {
+            if header.sh_addr != 0 {
+                let base: *const u8 =
+                    (load_address.into_raw_value() + header.sh_addr as usize) as *const u8;
+                let len: usize = header.sh_size as usize;
+                // SAFETY: `.gnu.hash` is `SHF_ALLOC`, so it is mapped at
+                // `load_address + sh_addr` for `sh_size` bytes; `from_raw_parts`
+                // validates the declared layout against `len` before use.
+                if let Some(table) = unsafe { GnuHashTable::from_raw_parts(base, len, symtab_len) }
+                {
+                    return Some(SymbolHashTable::Gnu(table));
+                }
+            }
+        }
+
+        // Fall back to the SysV hash table.
+        if let Some(header) = section_headers.get(".hash") {
+            if header.sh_addr != 0 {
+                let base: *const u8 =
+                    (load_address.into_raw_value() + header.sh_addr as usize) as *const u8;
+                let len: usize = header.sh_size as usize;
+                // SAFETY: `.hash` is `SHF_ALLOC`, so it is mapped at
+                // `load_address + sh_addr` for `sh_size` bytes; `from_raw_parts`
+                // validates the declared layout against `len` before use.
+                if let Some(table) = unsafe { SysvHashTable::from_raw_parts(base, len) } {
+                    return Some(SymbolHashTable::Sysv(table));
+                }
+            }
+        }
+
+        None
+    }
+
     /// Looks up a function-pointer array section (`.init_array` / `.fini_array`)
     /// by name, returning the absolute address of the first entry and the
     /// number of `usize`-sized entries it contains.
@@ -663,9 +725,49 @@ impl DynamicLibrary {
     }
 
     /// Finds a symbol in the dynamic library.
+    ///
+    /// Uses the `DT_HASH` / `DT_GNU_HASH` accelerator when the object provides
+    /// one, walking a short hash-bucket chain instead of the whole `.dynsym`.
+    /// The chain narrows the candidates by hash; the actual name is still
+    /// compared to reject hash collisions, so the result is identical to the
+    /// linear scan. Objects without a usable hash section - or whose table
+    /// proves inconsistent during the walk - fall back to
+    /// [`find_linear`](Self::find_linear).
+    ///
+    /// NOTE: a `DT_GNU_HASH` table does not index undefined symbols, so a name
+    /// that is only *referenced* (not defined) by this object is reported as
+    /// absent here. That matches the sole caller's needs: it treats an undefined
+    /// match the same as no match, resolving the symbol from the dependency tree
+    /// or the global scope regardless.
     fn find(&self, symbol_name: &str) -> Option<&Symbol> {
         ::syslog::trace!("find(): symbol={} in dlname={:?}", symbol_name, self.filename);
 
+        // Fast path: hash-bucket walk over the accelerator.
+        if let Some(hash) = self.hash.as_ref() {
+            match hash.lookup(symbol_name.as_bytes(), self.dynsym.len(), |idx| {
+                self.dynsym
+                    .get(idx as usize)
+                    .and_then(|sym| self.dynstr.get_name(sym.name_offset()).ok())
+                    .is_some_and(|name| !name.is_empty() && name == symbol_name)
+            }) {
+                Lookup::Found(index) => return self.dynsym.get(index as usize),
+                Lookup::NotFound => return None,
+                // An inconsistent hash table falls through to the linear scan, so
+                // a malformed `.hash`/`.gnu.hash` cannot hide a symbol that this
+                // object really defines.
+                Lookup::Inconsistent => {},
+            }
+        }
+
+        // Slow path: linear scan for objects without a usable hash section, or
+        // when the accelerator proved inconsistent above.
+        self.find_linear(symbol_name)
+    }
+
+    /// Linear fallback for [`find`](Self::find): scans `.dynsym` for a symbol
+    /// whose name matches `symbol_name`. Used when the object carries no usable
+    /// ELF hash table.
+    fn find_linear(&self, symbol_name: &str) -> Option<&Symbol> {
         for sym in self.dynsym.iter() {
             if let Ok(lookup_symbol_name) = self.dynstr.get_name(sym.name_offset()) {
                 if !lookup_symbol_name.is_empty() && lookup_symbol_name == symbol_name {
