@@ -405,11 +405,7 @@ jobs:
           '["release"]') }}
         machine-type: [ microvm ]
         deployment-type: [ standalone, single-process, multi-process ]
-        memory-size: ${{ fromJSON(github.event_name == 'pull_request' && '[128]' || '[128, 256]') }}
-        # 256MB images are release-only; exclude them from debug builds.
-        exclude:
-          - build-type: debug
-            memory-size: 256
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -834,11 +830,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        memory-size: ${{ fromJSON(github.event_name == 'pull_request' && '[128]' || '[128, 256]') }}
-        # 256MB images are release-only; exclude them from debug builds.
-        exclude:
-          - build-type: debug
-            memory-size: 256
+        memory-size: [ 256 ]
     runs-on: windows-latest
     permissions:
       contents: read
@@ -937,6 +929,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
+        memory-size: [ 256 ]
         # Integration tests are partitioned into disjoint shards via the harness
         # `-shard INDEX/TOTAL` option (round-robin), so new tests distribute
         # automatically. To change the shard count, update this list AND the
@@ -952,7 +945,7 @@ jobs:
       - name: "Download Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-128mb
+          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{ matrix.memory-size }}mb
           path: bin
 
       - name: "Exclude bin/ from Windows Defender"
@@ -1572,6 +1565,11 @@ jobs:
           git fetch origin dev --quiet
           git checkout origin/dev -- data/windows-baremetal
           benchmarks="boot-time,cold-start"
+          # TEMPORARY: the Windows regression threshold is raised from 40 to 60.
+          # Defaulting guest memory to 256MB (#2845) increased WHP boot-time ~40-45%
+          # because WHP commits guest RAM eagerly at VM creation (see #2851). The dev
+          # baseline still reflects 128MB and self-heals once #2845 lands on dev.
+          # Revert to 40 once the dev baseline stabilizes on 256MB: #2852.
           python3 ./scripts/benchmark.py \
             ci-gate \
             --dev-dir "data/windows-baremetal" \
@@ -1579,7 +1577,7 @@ jobs:
             --benchmarks "${benchmarks}" \
             --machine-types "microvm" \
             --archs "X64" \
-            --regression-threshold 40 \
+            --regression-threshold 60 \
             --baseline-window 20
 
       - name: "Persist results on dev"
@@ -1641,7 +1639,7 @@ jobs:
         target-arch: [ x86 ]
         machine-type: [ microvm ]
         deployment-type: [ standalone, single-process, multi-process ]
-        memory-size: [ 128, 256 ]
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -1708,7 +1706,7 @@ jobs:
       matrix:
         target-arch: [ x86 ]
         machine-type: [ microvm ]
-        memory-size: [ 128, 256 ]
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
