@@ -199,9 +199,6 @@ impl<T: Address> MemoryRegion<T> {
     }
 
     /// Returns the first valid address that lies in the target memory region.
-    // `T: Address` requires `Copy`, so this is a plain copy: the returned value has the same
-    // abstract address (`res@ == self@.start`), discharging the postcondition below. A `.clone()`
-    // here would NOT verify — `<T as Clone>::clone` on an abstract `T` carries no Verus contract.
     #[verus_spec(result =>
         ensures
             result@ == self@.start,
