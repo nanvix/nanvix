@@ -59,7 +59,7 @@ impl FrameAddress {
         ensures
             result is Ok,
             (result->Ok_0).inv(),
-            (result->Ok_0)@ == spec_from_number(spec_frame_raw_value(frame_number)),
+            (result->Ok_0)@ == frame_number@ * spec_page_size(),
     )]
     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
         Ok(Self(PageAligned::from_address(PhysicalAddress::from(frame_number))?))
@@ -74,8 +74,8 @@ impl FrameAddress {
         requires
             self.inv(),
         ensures
-            spec_frame_raw_value(result) == spec_frame_number(self@),
-            spec_from_number(spec_frame_raw_value(result)) == self@,
+            result@ == self@ / spec_page_size(),
+            result@ * spec_page_size() == self@,
     )]
     pub fn into_frame_number(self) -> FrameNumber {
         self.0.into_frame_number()

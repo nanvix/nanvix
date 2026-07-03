@@ -8,8 +8,7 @@ impl View for FrameNumber {
     type V = int;
 
     // `closed`: callers reference `self@`, but the mapping to the inner `usize` field is hidden.
-    // The abstract value is "the frame index as int". Realizes the kernel's uninterpreted
-    // `spec_frame_raw_value(frame)`.
+    // The abstract value is "the frame index as int".
     closed spec fn view(&self) -> int {
         self.0 as int
     }
@@ -22,8 +21,7 @@ impl View for FrameNumber {
 impl FrameNumber {
     // Interpreted bound: the largest representable frame index, mirroring the exec constant
     // `FrameNumber::MAX`. Defined (not `uninterp`) so the binding to `MAX` is discharged by
-    // verification rather than assumed. Realizes the kernel's `spec_max_frame_number()` (see
-    // `hal/mem/types/address/phys.spec.rs`). The `nat` result makes the bound non-negative for
+    // verification rather than assumed. The `nat` result makes the bound non-negative for
     // callers (e.g. constructing `FrameNumber::NULL`).
     //
     // The formula is the number of the highest frame fully contained in `[0, MAX_ADDRESS]`, i.e.
