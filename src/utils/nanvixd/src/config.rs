@@ -5,7 +5,7 @@
 //!
 //! This module provides configuration constants, default values, and utility functions for
 //! constructing socket addresses and managing paths used throughout the Nanvix Daemon. It
-//! handles both Unix domain sockets and TCP sockets, and supports L2 deployment modes.
+//! handles both Unix domain sockets and TCP sockets.
 
 //==================================================================================================
 // Constants
@@ -17,13 +17,6 @@
 /// Default binary directory path for Nanvix binaries.
 ///
 pub const DEFAULT_BIN_DIRECTORY: &str = "./bin";
-
-///
-/// # Description
-///
-/// Default path for the cloud-hypervisor binary directory.
-///
-pub const DEFAULT_CLH_BIN_PATH: &str = "./toolchain/bin";
 
 ///
 /// # Description
@@ -50,33 +43,3 @@ pub const DEFAULT_TMP_DIRECTORY: &str = ".";
 /// where the timestamp is appended to create unique log files for each guest session.
 ///
 pub const DEFAULT_CONSOLE_FILENAME: &str = "guest";
-
-///
-/// # Description
-///
-/// Default directory name for storing L2 snapshots.
-///
-pub const DEFAULT_L2_SNAPSHOT_DIRECTORY: &str = "images";
-
-///
-/// # Description
-///
-/// Default name for snapshot files.
-///
-/// # Notes
-///
-/// - This file must be synced with `generate-l2-snapshot.sh` script.
-///
-pub const DEFAULT_SNAPSHOT_FILE_NAME: &str = "l2_sysvm_initramfs.img";
-
-///
-/// # Description
-///
-/// Default path for the L2 snapshot.
-///
-/// We cannot define this variable as a pub const &str because it depends on
-/// SNAPSHOT_NAME which is another build-time constant.
-///
-pub fn default_l2_snapshot_path() -> String {
-    format!("./{}/{}", DEFAULT_L2_SNAPSHOT_DIRECTORY, ::nanvix::config::linuxd::SNAPSHOT_NAME)
-}

@@ -111,13 +111,6 @@ impl LinuxDaemon {
             warn!("spawn(): single-process mode ignores hwloc affinity settings (hwloc={hwloc:?})");
         }
 
-        // Check if L2 mode was requested.
-        if args.l2() {
-            let reason: &str = "single-process mode does not support L2 deployments";
-            error!("spawn(): {reason}");
-            anyhow::bail!("{reason}");
-        }
-
         // Create a socket to listen for user VM connections.
         let user_vm_listener: SocketListener = UnboundSocket::new(SocketType::Unix)
             .bind(&args.system_vm_socket_info().0)
@@ -131,22 +124,20 @@ impl LinuxDaemon {
             })?;
 
         // Create a new Linux Daemon instance.
-        let syscall_table: ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>> =
-            match args.syscall_table() {
-                Some(table) => table,
-                None => {
-                    let table: ::linuxd::syscalls::SyscallTable<T> =
-                        ::linuxd::syscalls::SyscallTable::new(
-                            T::default(),
-                            args.networking_enabled(),
-                        )
+        let syscall_table: ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>> = match args
+            .syscall_table()
+        {
+            Some(table) => table,
+            None => {
+                let table: ::linuxd::syscalls::SyscallTable<T> =
+                    ::linuxd::syscalls::SyscallTable::new(T::default(), args.networking_enabled())
                         .map_err(|e| {
                             error!("spawn(): failed to create syscall table (error={e:?})");
                             anyhow::anyhow!("failed to create syscall table: {e:?}")
                         })?;
-                    ::std::sync::Arc::new(table)
-                },
-            };
+                ::std::sync::Arc::new(table)
+            },
+        };
 
         let linuxd: EmbeddedLinuxd<T> = EmbeddedLinuxd::init(
             syscall_table,
@@ -154,7 +145,6 @@ impl LinuxDaemon {
             &args.control_plane_connect_socket_info().0,
             args.control_plane_connect_socket_info().1.to_str(),
             user_vm_listener,
-            args.l2(),
         )
         .map_err(|e| {
             let reason: &str = "failed to initialize linuxd";

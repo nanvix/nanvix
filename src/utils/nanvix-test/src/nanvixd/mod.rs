@@ -122,7 +122,6 @@ impl Nanvixd {
     ///
     /// - `config`: Runner configuration that provides binary paths.
     /// - `hwloc_file_path`: Optional hwloc topology forwarded to the Nanvix Daemon.
-    /// - `l2_enabled`: Whether L2 networking should be enabled.
     /// - `log_directory`: Directory where the Nanvix Daemon should persist component logs.
     ///
     /// # Return Value
@@ -132,7 +131,6 @@ impl Nanvixd {
     fn build_base_command(
         config: &RunnerConfig,
         hwloc_file_path: Option<&str>,
-        l2_enabled: bool,
         log_directory: &Path,
     ) -> Command {
         let mut command: Command = Command::new(config.nanvixd_binary_path.as_str());
@@ -141,16 +139,10 @@ impl Nanvixd {
         // cleanup.  This acts as a best-effort safety net during normal unwinding and shutdown
         // paths where drop handlers run, helping to prevent orphaned processes.
         command.kill_on_drop(true);
-        command.arg(::nanvixd::args::Args::OPT_CLH_BIN_PATH);
-        command.arg(format!("{}/bin", config.toolchain_path));
 
         if let Some(hwloc_file) = hwloc_file_path {
             command.arg(::nanvixd::args::Args::OPT_HWLOC);
             command.arg(hwloc_file);
-        }
-
-        if l2_enabled {
-            command.arg(::nanvixd::args::Args::OPT_L2);
         }
 
         command.arg(::nanvixd::args::Args::OPT_LOG_DIRECTORY);
@@ -515,16 +507,8 @@ impl Drop for Nanvixd {
 ///
 /// Helper that guarantees host cleanup runs even when the Nanvixd drop handler exits early.
 struct EnvironmentCleanupGuard {
-    /// Indicates whether Nanvixd was launched with L2 enabled.
-    l2_enabled: bool,
-    /// Optional HTTP port used for TIME_WAIT cleanup.
-    http_port: Option<u16>,
     /// Directory sanitized when removing Nanvix artifacts.
     tmp_directory: PathBuf,
-    /// Maximum seconds spent waiting for lingering TIME_WAIT sockets.
-    tcp_cleanup_max_wait_seconds: u64,
-    /// Seconds between TIME_WAIT socket inspections.
-    tcp_cleanup_poll_interval_seconds: u64,
 }
 
 impl EnvironmentCleanupGuard {
@@ -535,36 +519,15 @@ impl EnvironmentCleanupGuard {
     ///
     /// # Parameters
     ///
-    /// - `l2_enabled`: Indicates whether Nanvixd used L2 networking.
-    /// - `http_port`: Optional HTTP port monitored for lingering TIME_WAIT sockets.
     /// - `tmp_directory`: Directory sanitized when removing Nanvix artifacts.
-    /// - `tcp_cleanup_max_wait_seconds`: Maximum seconds spent waiting for lingering TIME_WAIT
-    ///   sockets.
-    /// - `tcp_cleanup_poll_interval_seconds`: Seconds between TIME_WAIT socket inspections.
-    fn new(
-        l2_enabled: bool,
-        http_port: Option<u16>,
-        tmp_directory: PathBuf,
-        tcp_cleanup_max_wait_seconds: u64,
-        tcp_cleanup_poll_interval_seconds: u64,
-    ) -> Self {
-        Self {
-            l2_enabled,
-            http_port,
-            tmp_directory,
-            tcp_cleanup_max_wait_seconds,
-            tcp_cleanup_poll_interval_seconds,
-        }
+    fn new(tmp_directory: PathBuf) -> Self {
+        Self { tmp_directory }
     }
 }
 
 impl Drop for EnvironmentCleanupGuard {
     fn drop(&mut self) {
-        let l2_enabled: bool = self.l2_enabled;
-        let http_port: Option<u16> = self.http_port;
         let tmp_directory: PathBuf = self.tmp_directory.clone();
-        let tcp_cleanup_max_wait_seconds: u64 = self.tcp_cleanup_max_wait_seconds;
-        let tcp_cleanup_poll_interval_seconds: u64 = self.tcp_cleanup_poll_interval_seconds;
 
         if let Ok(handle) = Handle::try_current() {
             match handle.runtime_flavor() {
@@ -572,28 +535,14 @@ impl Drop for EnvironmentCleanupGuard {
                     let tmp_clone: PathBuf = tmp_directory.clone();
                     block_in_place(|| {
                         handle.block_on(async {
-                            environment::cleanup_after_run(
-                                l2_enabled,
-                                http_port,
-                                tmp_clone.as_path(),
-                                tcp_cleanup_max_wait_seconds,
-                                tcp_cleanup_poll_interval_seconds,
-                            )
-                            .await;
+                            environment::cleanup_after_run(tmp_clone.as_path()).await;
                         });
                     });
                 },
                 RuntimeFlavor::CurrentThread => {
                     let tmp_clone: PathBuf = tmp_directory.clone();
                     handle.spawn(async move {
-                        environment::cleanup_after_run(
-                            l2_enabled,
-                            http_port,
-                            tmp_clone.as_path(),
-                            tcp_cleanup_max_wait_seconds,
-                            tcp_cleanup_poll_interval_seconds,
-                        )
-                        .await;
+                        environment::cleanup_after_run(tmp_clone.as_path()).await;
                     });
                 },
                 _ => {
@@ -604,14 +553,7 @@ impl Drop for EnvironmentCleanupGuard {
                     );
                     block_in_place(|| {
                         handle.block_on(async {
-                            environment::cleanup_after_run(
-                                l2_enabled,
-                                http_port,
-                                tmp_clone.as_path(),
-                                tcp_cleanup_max_wait_seconds,
-                                tcp_cleanup_poll_interval_seconds,
-                            )
-                            .await;
+                            environment::cleanup_after_run(tmp_clone.as_path()).await;
                         });
                     });
                 },
@@ -622,14 +564,7 @@ impl Drop for EnvironmentCleanupGuard {
         match Builder::new_current_thread().enable_all().build() {
             Ok(runtime) => {
                 runtime.block_on(async {
-                    environment::cleanup_after_run(
-                        l2_enabled,
-                        http_port,
-                        tmp_directory.as_path(),
-                        tcp_cleanup_max_wait_seconds,
-                        tcp_cleanup_poll_interval_seconds,
-                    )
-                    .await;
+                    environment::cleanup_after_run(tmp_directory.as_path()).await;
                 });
             },
             Err(error) => warn_with_policy!(

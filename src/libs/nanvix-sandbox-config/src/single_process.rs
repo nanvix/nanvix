@@ -5,7 +5,7 @@
 //!
 //! This module provides a configuration structure for the single-process sandbox cache. It only
 //! stores the parameters relevant to single-process deployments, deliberately omitting
-//! multi-process concepts such as external binary paths, L2 deployment, and network namespaces.
+//! multi-process concepts such as external binary paths.
 
 //==================================================================================================
 // Imports
@@ -48,8 +48,6 @@ pub struct SimpleSandboxCacheConfig<T> {
     kernel_binary_path: String,
     /// System call table.
     syscall_table: Option<Arc<SyscallTable<T>>>,
-    /// Path to the cloud-hypervisor binary directory.
-    clh_bin_path: String,
     /// Directory path for writing log files.
     log_directory: String,
     /// Path to the temporary directory for Unix sockets and transient files.
@@ -78,7 +76,6 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
         hwloc: Option<HwLoc>,
         kernel_binary_path: &str,
         syscall_table: Option<Arc<SyscallTable<T>>>,
-        clh_bin_path: &str,
         log_directory: &str,
         tmp_directory: &str,
         networking_mode: NetworkingMode,
@@ -92,7 +89,6 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
             hwloc,
             kernel_binary_path: kernel_binary_path.to_string(),
             syscall_table,
-            clh_bin_path: clh_bin_path.to_string(),
             log_directory: log_directory.to_string(),
             tmp_directory: tmp_directory.to_string(),
             networking_mode,
@@ -137,11 +133,6 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCacheConfig<T> {
     /// Returns a handle to the system call table.
     pub fn syscall_table(&self) -> Option<Arc<SyscallTable<T>>> {
         self.syscall_table.clone()
-    }
-
-    /// Returns the path to the cloud-hypervisor binary directory.
-    pub fn clh_bin_path(&self) -> &str {
-        &self.clh_bin_path
     }
 
     /// Returns the log directory.

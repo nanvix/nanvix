@@ -15,7 +15,7 @@ functionality.
 |----------|-----------------------|--------|----------------------|
 | `memd`   | `src/daemons/memd/`   | Guest  | Memory management.   |
 | `procd`  | `src/daemons/procd/`  | Guest  | Process management.  |
-| `linuxd` | `src/daemons/linuxd/` | Host   | L2 VM management.    |
+| `linuxd` | `src/daemons/linuxd/` | Host   | User VM management.  |
 
 ## Guest Daemons (`memd`, `procd`)
 
@@ -37,8 +37,7 @@ events/messages.
 ## Host Daemon (`linuxd`)
 
 - Runs on the host Linux system with full `std` support.
-- Manages L2 VM deployment and host-side resources.
-- Configuration in `build/linuxd_config.toml`.
+- Manages User VM deployment and host-side resources.
 - Only built for `microvm` machine.
 
 ## Building Daemons

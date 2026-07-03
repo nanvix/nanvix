@@ -21,7 +21,6 @@ toolchain
 bin/
 /lib/
 /logs/
-images/
 plots/
 target/
 /sysroot-debug/

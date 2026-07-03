@@ -4,8 +4,8 @@
 //! Sandbox cache configuration management.
 //!
 //! This module provides structures for configuring the sandbox cache within the Nanvix Daemon.
-//! It handles socket types, file paths, hardware topology settings, and deployment modes
-//! (L2 VM support) that apply to all sandboxes managed by the daemon.
+//! It handles socket types, file paths, and hardware topology settings that apply to all
+//! sandboxes managed by the daemon.
 
 //==================================================================================================
 // Imports
@@ -47,22 +47,14 @@ pub struct SandboxCacheConfig<T> {
     ramfs_filename: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology information.
     hwloc: Option<HwLoc>,
-    /// Number of network namespaces to prefill in the pool (0 enables lazy initialization).
-    netns_pool_size: usize,
     /// Path to kernel binary.
     kernel_binary_path: String,
     /// Path to the Linux Daemon binary.
     linuxd_binary_path: String,
     /// Path to the User VM binary.
     uservm_binary_path: String,
-    /// Path to the cloud-hypervisor binary directory.
-    clh_bin_path: String,
     /// Directory path for writing log files.
     log_directory: String,
-    /// Flag indicating whether to deploy linuxd inside an L2 VM (using cloud-hypervisor).
-    l2: bool,
-    /// Path to the base snapshot file in an L2 deployment.
-    l2_snapshot_path: String,
     /// Path to the temporary directory for Unix sockets and transient files.
     tmp_directory: String,
     /// Networking mode (disabled or enabled).
@@ -89,14 +81,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     /// - `console_file`: Optional file path for redirecting console output.
     /// - `ramfs_filename`: Optional RAM filesystem image filename.
     /// - `hwloc`: Optional hardware locality configuration.
-    /// - `netns_pool_size`: Number of network namespaces to prefill (0 for lazy initialization).
     /// - `kernel_binary_path`: Path to kernel binary.
     /// - `linuxd_binary_path`: Path to the Linux Daemon binary.
     /// - `uservm_binary_path`: Path to the User VM binary.
-    /// - `clh_bin_path`: Path to the cloud-hypervisor binary directory.
     /// - `log_directory`: Path to the log directory.
-    /// - `l2`: Flag to deploy linuxd inside an L2 VM.
-    /// - `l2_snapshot_path`: Path to the L2 VM's base snapshot.
     /// - `tmp_directory`: Path to the temporary directory.
     /// - `networking_mode`: Networking mode for host networking.
     ///
@@ -112,14 +100,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
         console_file: Option<String>,
         ramfs_filename: Option<String>,
         hwloc: Option<HwLoc>,
-        netns_pool_size: usize,
         kernel_binary_path: &str,
         linuxd_binary_path: &str,
         uservm_binary_path: &str,
-        clh_bin_path: &str,
         log_directory: &str,
-        l2: bool,
-        l2_snapshot_path: &str,
         tmp_directory: &str,
         networking_mode: NetworkingMode,
     ) -> Self {
@@ -130,14 +114,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
             console_file,
             ramfs_filename,
             hwloc,
-            netns_pool_size,
             kernel_binary_path: kernel_binary_path.to_string(),
             linuxd_binary_path: linuxd_binary_path.to_string(),
             uservm_binary_path: uservm_binary_path.to_string(),
-            clh_bin_path: clh_bin_path.to_string(),
             log_directory: log_directory.to_string(),
-            l2,
-            l2_snapshot_path: l2_snapshot_path.to_string(),
             tmp_directory: tmp_directory.to_string(),
             networking_mode,
             _phantom: PhantomData,
@@ -225,19 +205,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     /// # Description
     ///
-    /// Returns the size of the prefilled network namespace pool.
-    ///
-    /// # Returns
-    ///
-    /// The number of namespaces to prefill (0 for lazy initialization).
-    ///
-    pub fn netns_pool_size(&self) -> usize {
-        self.netns_pool_size
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the path to the kernel binary.
     ///
     /// # Returns
@@ -277,19 +244,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     /// # Description
     ///
-    /// Returns the path to the cloud-hypervisor binary directory.
-    ///
-    /// # Returns
-    ///
-    /// The path to the cloud-hypervisor binary directory.
-    ///
-    pub fn clh_bin_path(&self) -> &str {
-        &self.clh_bin_path
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the log directory.
     ///
     /// # Returns
@@ -298,32 +252,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCacheConfig<T> {
     ///
     pub fn log_directory(&self) -> &str {
         &self.log_directory
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the flag indicating whether linuxd should be deployed inside an L2 VM.
-    ///
-    /// # Returns
-    ///
-    /// `true` if L2 deployment is enabled; `false` otherwise.
-    ///
-    pub fn l2(&self) -> bool {
-        self.l2
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the L2 base snapshot path.
-    ///
-    /// # Returns
-    ///
-    /// The L2 base snapshot path.
-    ///
-    pub fn l2_snapshot_path(&self) -> &str {
-        &self.l2_snapshot_path
     }
 
     ///

@@ -20,9 +20,6 @@ pub mod region_tags;
 // This is to allow these values to be easily used outside Rust code (e.g., in a Shell script).
 include!(concat!(env!("OUT_DIR"), "/kernel_config.rs"));
 
-// Linuxd build-time constants are generated in a similar fashion to kernel variables.
-include!(concat!(env!("OUT_DIR"), "/linuxd_config.rs"));
-
 // Compile-time assertions on kernel build-time constants.
 //
 // Mirrored from `build.rs` so misuse of the generated constants is caught at the use site too.

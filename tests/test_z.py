@@ -152,17 +152,12 @@ class TestParseCli(unittest.TestCase):
         with patch("z.print_error"), self.assertRaises(SystemExit):
             zmod.parse_cli(["setup", "--toolchain-dir"])
 
-    # --- --nanvix-sdk and --l2-deployment ---
+    # --- --nanvix-sdk ---
 
     def test_nanvix_sdk_flag(self) -> None:
         """The --nanvix-sdk flag enables the nanvix_sdk config field."""
         _, cfg = zmod.parse_cli(["setup", "--nanvix-sdk"])
         self.assertTrue(cfg.nanvix_sdk)
-
-    def test_l2_deployment_flag(self) -> None:
-        """The --l2-deployment flag enables the l2_deployment config field."""
-        _, cfg = zmod.parse_cli(["setup", "--l2-deployment"])
-        self.assertTrue(cfg.l2_deployment)
 
     def test_verus_flag(self) -> None:
         """The --verus flag enables the verus config field."""
@@ -263,9 +258,15 @@ class TestParseCli(unittest.TestCase):
         self.assertEqual(cfg.sysroot_dir, "/opt/sysroot")
 
     def test_passthrough_vars_do_not_change_config(self) -> None:
-        """SCCACHE, MAKE_NO_PRINT, CLH_DIR, VERUS_EXECUTABLE_DIR are pass-through."""
+        """SCCACHE, MAKE_NO_PRINT, VERUS_EXECUTABLE_DIR are pass-through."""
         _, cfg = zmod.parse_cli(
-            ["build", "--", "SCCACHE=1", "MAKE_NO_PRINT=yes", "CLH_DIR=/opt/clh"]
+            [
+                "build",
+                "--",
+                "SCCACHE=1",
+                "MAKE_NO_PRINT=yes",
+                "VERUS_EXECUTABLE_DIR=/opt/verus",
+            ]
         )
         # These vars have no z.py-side effect, so config fields remain at defaults.
         self.assertEqual(cfg.machine, zmod.DEFAULT_MACHINE)
@@ -523,10 +524,10 @@ class TestAssembleBuildMakeArgs(unittest.TestCase):
 
     def test_windows_no_duplicate_deployment_mode(self) -> None:
         """User-supplied DEPLOYMENT_MODE= should not be overridden."""
-        cfg = zmod.BuildConfig(make_args=["DEPLOYMENT_MODE=l2"])
+        cfg = zmod.BuildConfig(make_args=["DEPLOYMENT_MODE=multi-process"])
         injected, user = zmod._assemble_build_make_args(_windows_plat(), cfg)
         self.assertNotIn("DEPLOYMENT_MODE=standalone", injected)
-        self.assertIn("DEPLOYMENT_MODE=l2", user)
+        self.assertIn("DEPLOYMENT_MODE=multi-process", user)
 
     def test_windows_no_duplicate_whp(self) -> None:
         """User-supplied WHP= should not be overridden."""

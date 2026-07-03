@@ -29,11 +29,11 @@ export TIMESTAMP_MSG ?= no
 # Target Host CPU
 export HOST_CPU ?=
 
-# Deployment mode: standalone, single-process, multi-process, l2
+# Deployment mode: standalone, single-process, multi-process
 export DEPLOYMENT_MODE ?= standalone
 
 # Validate DEPLOYMENT_MODE.
-VALID_DEPLOYMENT_MODES := standalone single-process multi-process l2
+VALID_DEPLOYMENT_MODES := standalone single-process multi-process
 ifeq ($(filter $(DEPLOYMENT_MODE),$(VALID_DEPLOYMENT_MODES)),)
 $(error Invalid DEPLOYMENT_MODE '$(DEPLOYMENT_MODE)'. Valid values: $(VALID_DEPLOYMENT_MODES))
 endif
@@ -89,12 +89,10 @@ export ROOT_DIR      := $(CURDIR)
 export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
-export SNAPSHOT_DIR  := $(ROOT_DIR)/images
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export INCLUDE_DIR   := $(ROOT_DIR)/include
-export CLH_DIR       ?= $(ROOT_DIR)/toolchain
 export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
 export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
@@ -398,7 +396,7 @@ WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http nanvix-sandbox-cache syscomm
 ALL_HOST_RUST_LIBS := $(filter-out $(WINDOWS_EXCLUDED_HOST_RLIBS),$(ALL_HOST_RUST_LIBS))
 endif
 ALL_HOST_UTILS := echo-client gen-headers mkimage mkramfs strace
-# linuxd is only needed for multi-process and L2 deployments (Linux-only).
+# linuxd is only needed for multi-process deployments (Linux-only).
 ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
 ALL_HOST_DAEMONS := linuxd
 else
@@ -453,8 +451,7 @@ all-nanvix: \
 	init \
 	all-guest-staticlibs \
 	all-guest-binaries \
-	all-kernel \
-	all-snapshot
+	all-kernel
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
@@ -492,7 +489,6 @@ clean: \
 	clean-guest-binaries \
 	clean-kernel \
 	clean-test-kernel \
-	clean-snapshot \
 	image-clean
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -618,12 +614,11 @@ help:
 	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
-	@echo "  CLH_DIR          Cloud-hypervisor installation directory (default: $(CLH_DIR))"
 	@echo "  MEMORY_SIZE      Memory size in megabytes (default: $(MEMORY_SIZE))"
 	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (unset: skip verification)"
 	@echo ""
 	@echo "Parameter Values"
-	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
+	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process"
 	@echo "  MACHINE         microvm"
 	@echo "  TARGET          x86, x86_64"
 	@echo "  RELEASE         yes, no"
@@ -899,11 +894,11 @@ endif
 
 # Runs system in release mode.
 run: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -clh-bin-path $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 # Runs system in debug mode.
 debug: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -clh-bin-path $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 #===================================================================================================
 # Build Rules for Test Kernel RAMFS Image
@@ -1089,8 +1084,6 @@ NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
 else
 NANVIX_TEST_CONFIG := test/test-single_process.toml
 endif
-else ifeq ($(DEPLOYMENT_MODE),l2)
-NANVIX_TEST_CONFIG := test/test-l2.toml
 else
 ifeq ($(TARGET),x86_64)
 NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
@@ -1123,8 +1116,8 @@ SMOKE_TEST_MAGIC_STRING := hello, world!
 #   compiled out of release builds, so it can only be checked in debug builds).
 #
 # Driven by a single cross-platform Python helper (scripts/run-smoke-test.py)
-# that auto-detects the host OS: on Linux it launches nanvixd against
-# cloud-hypervisor; on Windows it launches nanvixd.exe directly under WHP.
+# that auto-detects the host OS: on Linux it launches nanvixd directly; on
+# Windows it launches nanvixd.exe under WHP.
 .PHONY: run-smoke-test
 ifeq ($(DEPLOYMENT_MODE),standalone)
 SMOKE_TEST_CMD := $(PYTHON) $(SCRIPTS_DIR)/run-smoke-test.py \
@@ -1132,7 +1125,6 @@ SMOKE_TEST_CMD := $(PYTHON) $(SCRIPTS_DIR)/run-smoke-test.py \
 	--timeout $(TIMEOUT) \
 	--magic-string "$(SMOKE_TEST_MAGIC_STRING)" \
 	--expected-exit-code $(SMOKE_TEST_EXPECTED_EXIT_CODE) \
-	--clh-bin-path $(CLH_DIR)/bin \
 	--log-dir $(LOGS_DIR)
 
 run-smoke-test: image
@@ -1147,12 +1139,6 @@ else
 run-smoke-test:
 	@echo "Skipping smoke test (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
 endif
-
-#===================================================================================================
-# Build Rules for L2 System VM Snapshot
-#===================================================================================================
-
-include build/make/snapshot.mk
 
 #===================================================================================================
 # Build Rules for Generic Guest Static Libraries

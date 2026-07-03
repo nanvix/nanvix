@@ -4,7 +4,7 @@
 //! Simplified sandbox cache for single-process deployments.
 //!
 //! This module provides a lightweight sandbox cache that manages sandbox lifecycle without the
-//! multi-process concerns (L2 VMs, network namespaces, external daemon binaries). It is intended
+//! multi-process concerns (external daemon binaries). It is intended
 //! for use when the Linux Daemon and User VM are embedded within the same process.
 
 //==================================================================================================
@@ -40,8 +40,6 @@ use ::log::{
 };
 use ::std::{
     collections::HashMap,
-    fs,
-    path::PathBuf,
     sync::Arc,
 };
 use ::tokio::sync::Mutex;
@@ -63,7 +61,7 @@ pub const DEFAULT_EXIT_CODE: i32 = -1;
 /// A simplified sandbox cache for single-process deployments.
 ///
 /// This cache manages sandbox lifecycle directly using embedded Linux Daemon and User VM
-/// instances. It does not handle network namespaces, L2 VMs, or external daemon processes.
+/// instances. It does not handle external daemon processes.
 /// At most one sandbox runs at a time.
 ///
 /// # Type Parameters
@@ -226,8 +224,6 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                     control_plane_acceptor,
                 );
 
-                let gateway_l2_port: Option<crate::tcp_port::TcpPort> = None;
-
                 // Attach existing Linux Daemon if one exists for this tenant.
                 let uninitialized_sandbox: UninitializedSandbox<T> =
                     if let Some(linuxd) = self.linuxd_instances.get(tag.tenant_id()) {
@@ -254,30 +250,13 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                 let gateway_socket_address: String = gateway_sockaddr.clone();
                 let gateway_socket_type: SocketType = self.config.gateway_sockaddr_type();
 
-                // Create per-tenant temporary directory.
-                let sandbox_tmp_dir: PathBuf =
-                    PathBuf::from(self.config.tmp_directory()).join(tag.tenant_id());
-                if let Err(error) = fs::create_dir_all(&sandbox_tmp_dir) {
-                    let reason: String = format!(
-                        "failed to create sandbox temporary directory (tenant_id={}, program={}, \
-                         app_name={}, tmp_dir={sandbox_tmp_dir:?}, error={error:?})",
-                        tag.tenant_id(),
-                        tag.program(),
-                        tag.app_name()
-                    );
-                    error!("get(): {reason}");
-                    anyhow::bail!(reason);
-                }
-
                 #[cfg(feature = "single-process")]
                 let syscall_table = self.config.syscall_table();
-
-                let clh_bin_path = Some(self.config.clh_bin_path().to_string());
 
                 let config: SandboxConfig<T> = SandboxConfig::new(
                     tag.tenant_id(),
                     tag.sandbox_id(),
-                    (gateway_socket_address.clone(), gateway_socket_type, gateway_l2_port),
+                    (gateway_socket_address.clone(), gateway_socket_type),
                     (user_vm_sockaddr.clone(), self.config.system_vm_sockaddr_type()),
                     self.config.console_file().map(|s| s.to_string()),
                     self.config.hwloc().clone(),
@@ -293,9 +272,6 @@ impl<T: Sync + Send + Default + 'static> SimpleSandboxCache<T> {
                         control_plane_connect_sockaddr.clone(),
                         self.config.control_plane_sockaddr_type(),
                     ),
-                    clh_bin_path,
-                    Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
-                    Some(false), // l2 (not supported in single-process/standalone)
                     self.config.networking_mode().is_enabled(),
                 );
 

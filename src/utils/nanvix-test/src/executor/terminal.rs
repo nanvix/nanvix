@@ -157,12 +157,6 @@ pub async fn test_with_terminal_executor(
 ) -> Result<()> {
     tokio::select! {
         result = async {
-            if runner_config.l2_enabled {
-                let reason: String = "terminal executor does not support L2 deployment".to_string();
-                error!("test_with_terminal_executor(): {reason}");
-                return Err(::anyhow::anyhow!(reason));
-            }
-
             let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
             let parsed_program_args: Vec<String> = match workload.program_args() {
                 Some(args) => match shell_words::split(args) {

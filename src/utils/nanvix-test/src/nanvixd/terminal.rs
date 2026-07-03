@@ -60,13 +60,11 @@ impl NanvixdTerminal {
     /// process cannot be spawned.
     ///
     pub async fn spawn(config: &RunnerConfig, args: &NanvixdTerminalArgs) -> Result<Self> {
-        debug_assert!(!config.l2_enabled);
-
         let hwloc_file_path: Option<&str> = args.hwloc_file_path();
         let log_directory: &Path = args.log_directory();
         trace!(
             "spawn(): nanvixd_binary_path={}, working_directory={}, toolchain_path={}, mode={}, \
-             hwloc_file_path={:?}, l2=disabled",
+             hwloc_file_path={:?}",
             config.nanvixd_binary_path,
             config.working_directory,
             config.toolchain_path,
@@ -78,7 +76,7 @@ impl NanvixdTerminal {
         let program_args: &[String] = args.program_args();
 
         let mut command: Command =
-            Nanvixd::build_base_command(config, hwloc_file_path, false, log_directory);
+            Nanvixd::build_base_command(config, hwloc_file_path, log_directory);
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
@@ -105,13 +103,8 @@ impl NanvixdTerminal {
                 // We cannot fail here; otherwise, `child` would linger.
                 no_fail!(Self, {
                     debug!("spawn(): nanvixd spawned with pid {}", child.id().unwrap_or(0));
-                    let cleanup_guard: EnvironmentCleanupGuard = EnvironmentCleanupGuard::new(
-                        false,
-                        None,
-                        PathBuf::from(config.tmp_directory.as_str()),
-                        config.tcp_cleanup_max_wait_seconds,
-                        config.tcp_cleanup_poll_interval_seconds,
-                    );
+                    let cleanup_guard: EnvironmentCleanupGuard =
+                        EnvironmentCleanupGuard::new(PathBuf::from(config.tmp_directory.as_str()));
                     Ok(Self {
                         inner: Nanvixd::new(
                             child,

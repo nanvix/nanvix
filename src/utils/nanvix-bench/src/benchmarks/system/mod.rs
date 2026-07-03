@@ -17,10 +17,7 @@ mod warm_start;
 //==================================================================================================
 
 use super::DEFAULT_PAYLOAD_SIZE;
-use crate::benchmark::{
-    Benchmark,
-    LinuxdDeployment,
-};
+use crate::benchmark::Benchmark;
 use ::anyhow::Result;
 use ::log::{
     debug,
@@ -157,27 +154,18 @@ impl Benchmark {
         Ok((new_msg_headers, new_msg))
     }
 
-    /// Start nanvixd and, optionally, configure it to deploy linuxd inside an L2 VM.
-    fn start_nanvixd(&self, linuxd_deployment: &LinuxdDeployment) -> Result<Child> {
+    /// Start nanvixd.
+    fn start_nanvixd(&self) -> Result<Child> {
         let mut nanvixd_args: Vec<String> = vec![
             format!("{}/bin/nanvixd.elf", self.workspace_root.display()),
             ::nanvixd::args::Args::OPT_HTTP_SOCKADDR.to_string(),
             NANVIXD_ADDRESS.to_string(),
-            ::nanvixd::args::Args::OPT_CLH_BIN_PATH.to_string(),
-            self.nanvixd_clh_bin_path.clone(),
             ::nanvixd::args::Args::OPT_TMP_DIRECTORY.to_string(),
             self.nanvixd_tmp_dir.clone(),
         ];
-        if let Some(netns_pool_size) = self.nanvixd_netns_pool_size {
-            nanvixd_args.push(::nanvixd::args::Args::OPT_NETNS_POOL_SIZE.to_string());
-            nanvixd_args.push(netns_pool_size.to_string());
-        }
         if let Some(hwloc_file) = &self.hwloc_file {
             nanvixd_args.push(::nanvixd::args::Args::OPT_HWLOC.to_string());
             nanvixd_args.push(hwloc_file.clone());
-        }
-        if *linuxd_deployment == LinuxdDeployment::L2Vm {
-            nanvixd_args.push(::nanvixd::args::Args::OPT_L2.to_string());
         }
 
         debug!("Starting nanvixd with command: {}", nanvixd_args.join(" "));
@@ -192,8 +180,8 @@ impl Benchmark {
     }
 
     /// Configures the set-up by starting linuxd and the gateway server.
-    pub(crate) fn setup(&mut self, linuxd_deployment: &LinuxdDeployment) {
-        match self.start_nanvixd(linuxd_deployment) {
+    pub(crate) fn setup(&mut self) {
+        match self.start_nanvixd() {
             Ok(nanvixd) => self.nanvixd = Some(nanvixd),
             Err(_) => {
                 error!("error starting up nanvixd");
@@ -220,7 +208,6 @@ impl Benchmark {
         &mut self,
         payload: message::New,
         headers: HeaderMap,
-        linuxd_deployment: &LinuxdDeployment,
     ) -> Result<(UserVmIdentifier, SocketStream)> {
         let http_response: ::reqwest::Response = self
             .nanvixd_client
@@ -259,11 +246,7 @@ impl Benchmark {
         // TODO: we need to connect the SocketStream after creating the user VM (and thus adding to
         // the cold-start time) because currently nanvixd determines the gateway address at
         // deployment time.
-        let gateway_socktype: SocketType = if *linuxd_deployment == LinuxdDeployment::L2Vm {
-            SocketType::Tcp
-        } else {
-            SocketType::Unix
-        };
+        let gateway_socktype: SocketType = SocketType::Unix;
         let gateway_stream: SocketStream = {
             let deadline: Duration = Duration::from_secs(GATEWAY_CONNECT_TIMEOUT_SECS);
             match timeout(deadline, async {
@@ -419,7 +402,6 @@ impl Benchmark {
         &mut self,
         new_msg_headers: HeaderMap,
         new_msg: New,
-        linuxd_deployment: &LinuxdDeployment,
         cleanup_duration: Duration,
         latencies: Option<&mut Vec<u128>>,
         in_flight_uvms: &mut Option<Vec<(UserVmIdentifier, SocketStream)>>,
@@ -428,9 +410,8 @@ impl Benchmark {
         let mut response_payload: [u8; DEFAULT_PAYLOAD_SIZE] = [0u8; DEFAULT_PAYLOAD_SIZE];
 
         let start: Instant = Instant::now();
-        let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) = self
-            .start(new_msg, new_msg_headers, linuxd_deployment)
-            .await?;
+        let (user_vm_id, mut gateway_stream): (UserVmIdentifier, SocketStream) =
+            self.start(new_msg, new_msg_headers).await?;
         let echo_io_timeout: Duration = Duration::from_secs(ECHO_IO_TIMEOUT_SECS);
         timeout(echo_io_timeout, gateway_stream.write_all(&payload))
             .await
@@ -476,10 +457,7 @@ impl Benchmark {
 
 #[cfg(not(feature = "timestamp-messages"))]
 impl Benchmark {
-    pub async fn run_echo_breakdown(
-        &mut self,
-        _linuxd_deployment: &LinuxdDeployment,
-    ) -> Result<()> {
+    pub async fn run_echo_breakdown(&mut self) -> Result<()> {
         anyhow::bail!("echo-breakdown requires compilation with timestamp-messages feature")
     }
 }

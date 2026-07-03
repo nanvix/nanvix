@@ -9,8 +9,6 @@ developing, building, or running Nanvix on Linux.
   - [Temporary Directories (`nvx:*`)](#temporary-directories-nvx)
   - [Test Directories (`nanvix-test-*`)](#test-directories-nanvix-test-)
   - [Unix Sockets (`*.socket`)](#unix-sockets-socket)
-  - [Network Namespaces (`nvxns-*`)](#network-namespaces-nvxns-)
-  - [Cloud Hypervisor Resources](#cloud-hypervisor-resources)
   - [Complete Cleanup Script](#complete-cleanup-script)
 - [Cross-Platform Issues](#cross-platform-issues)
   - [Cached Build Options Stale (`./z`)](#cached-build-options-stale-z)
@@ -69,48 +67,6 @@ components.
 sudo rm -f /tmp/*.socket
 ```
 
-### Network Namespaces (`nvxns-*`)
-
-**Description:** Linux network namespaces created for L2 deployments to isolate VM networking.
-
-**Primary Cleanup:** `NetnsHandle::Drop` → `delete_namespace()` in
-`src/libs/nanvix-sandbox/src/netns.rs`
-
-**Manual Cleanup:**
-
-```bash
-# List stale namespaces
-sudo ip netns list | grep 'nvxns-'
-
-# Delete a specific namespace and its veth pair
-sudo ip link del nvxgw-h-<ID>
-sudo ip netns del nvxns-<ID>
-
-# Delete all stale namespaces
-for ns in $(sudo ip netns list | grep -o 'nvxns-[0-9]*'); do
-  sudo ip link del "nvxgw-h-${ns#nvxns-}" 2>/dev/null || true
-  sudo ip netns del "${ns}" 2>/dev/null || true
-done
-```
-
-### Cloud Hypervisor Resources
-
-**Description:** Resources created by Cloud Hypervisor during L2 snapshot generation.
-
-**Location:**
-
-- `/tmp/clh-console` - Console output directory
-- `/tmp/cloud-hypervisor.sock` - Cloud Hypervisor API socket
-
-**Primary Cleanup:** EXIT trap in `scripts/generate-l2-snapshot.sh`
-
-**Manual Cleanup:**
-
-```bash
-sudo rm -rf /tmp/clh-console
-sudo rm -f /tmp/cloud-hypervisor.sock
-```
-
 ### Complete Cleanup Script
 
 To clean all stale Nanvix resources at once:
@@ -121,18 +77,8 @@ To clean all stale Nanvix resources at once:
 sudo rm -rf /tmp/nvx:*
 rm -rf /tmp/nanvix-test-*
 
-# Clean Cloud Hypervisor resources
-sudo rm -rf /tmp/clh-console
-sudo rm -f /tmp/cloud-hypervisor.sock
-
 # Clean Unix sockets
 sudo rm -f /tmp/*.socket
-
-# Clean network namespaces
-for ns in $(sudo ip netns list 2>/dev/null | grep -o 'nvxns-[0-9]*' || true); do
-  sudo ip link del "nvxgw-h-${ns#nvxns-}" 2>/dev/null || true
-  sudo ip netns del "${ns}" 2>/dev/null || true
-done
 
 echo "Cleanup complete."
 ```
@@ -148,7 +94,7 @@ intervention may be needed on self-hosted runners.
 
 ### TIME_WAIT Socket Connections
 
-After L2 deployments, TCP connections may linger in `TIME_WAIT` state. The test framework waits for
+After HTTP-mode runs, TCP connections may linger in `TIME_WAIT` state. The test framework waits for
 these to clear before starting new tests. If tests timeout waiting for port availability:
 
 ```bash

@@ -178,12 +178,8 @@ gateway (`\\.\pipe\nanvix-standalone-gw-<pid>`) rather than the Unix-domain sock
 HTTP mode on Windows is intended for **single-tenant standalone** deployments. It differs from the
 Linux implementation in the following ways:
 
-- **No network-namespace isolation.** Linux isolates each guest's networking with a dedicated
-  network namespace (`netns`). Windows has no `netns` equivalent, so guests are not network
-  isolated from one another or from the host. Do not rely on Windows HTTP mode for multi-tenant
-  isolation.
 - **Named-pipe gateway.** The guest stdio gateway is a Windows named pipe instead of a
-  Unix-domain socket. TCP gateways (L2 deployments) are not available on Windows.
+  Unix-domain socket.
 - **Emulated stdin half-close.** Unix-domain sockets half-close the write direction to signal
   end-of-input (EOF) to the guest's stdin while keeping the output direction open. Windows named
   pipes have no half-close primitive, so the gateway emulates one with a small in-band framing on

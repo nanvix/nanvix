@@ -2,16 +2,12 @@
 // Licensed under the MIT License.
 
 use super::{
-    super::{
-        CLEANUP_L2_SLEEP_DURATION,
-        CLEANUP_SLEEP_DURATION,
-    },
+    super::CLEANUP_SLEEP_DURATION,
     DEFAULT_APP_NAME,
     DEFAULT_TENANT_ID,
 };
 use crate::benchmark::{
     Benchmark,
-    LinuxdDeployment,
     UserVmDeployment,
 };
 use ::anyhow::Result;
@@ -32,16 +28,11 @@ impl Benchmark {
     ///
     /// # Arguments
     ///
-    /// - `linuxd_deployment`: deployment mode for linuxd.
     /// - `uservm_deployment`: deployment mode for the user VM.
     ///
-    pub async fn run_cold_start(
-        &mut self,
-        linuxd_deployment: &LinuxdDeployment,
-        user_vm_deployment: &UserVmDeployment,
-    ) -> Result<()> {
+    pub async fn run_cold_start(&mut self, user_vm_deployment: &UserVmDeployment) -> Result<()> {
         // Start nanvixd once.
-        self.setup(linuxd_deployment);
+        self.setup();
 
         // Display a progress bar
         let pb: ProgressBar = ProgressBar::new(self.iterations.try_into().unwrap());
@@ -53,12 +44,7 @@ impl Benchmark {
         );
         pb.set_message("Benchmark progress:");
 
-        // Work-out the cleanup sleep duration depending on the linuxd deployment mode.
-        let cleanup_sleep_duration: Duration = if *linuxd_deployment == LinuxdDeployment::L2Vm {
-            Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)
-        } else {
-            Duration::from_millis(CLEANUP_SLEEP_DURATION)
-        };
+        let cleanup_sleep_duration: Duration = Duration::from_millis(CLEANUP_SLEEP_DURATION);
 
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         for iter in 0..self.iterations {
@@ -77,7 +63,6 @@ impl Benchmark {
                 self.run_user_vm_echo_once(
                     new_msg_headers.clone(),
                     new_msg.clone(),
-                    linuxd_deployment,
                     cleanup_sleep_duration,
                     None,
                     &mut None,
@@ -88,7 +73,6 @@ impl Benchmark {
             self.run_user_vm_echo_once(
                 new_msg_headers.clone(),
                 new_msg.clone(),
-                linuxd_deployment,
                 cleanup_sleep_duration,
                 Some(&mut latencies),
                 &mut None,

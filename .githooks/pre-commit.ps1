@@ -32,7 +32,6 @@ function Get-DeploymentFlag {
         "standalone" { return "DEPLOYMENT_MODE=standalone" }
         "single-process" { return "DEPLOYMENT_MODE=single-process" }
         "multi-process" { return "DEPLOYMENT_MODE=multi-process" }
-        "l2" { return "DEPLOYMENT_MODE=l2" }
         default {
             Write-Err "(pre-commit) Invalid deployment type: $Deployment"
             exit 1

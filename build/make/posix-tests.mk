@@ -1145,8 +1145,8 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 # The boot runner drives the suites through the nanvix-test harness, which boots
 # each <suite>.initrd under nanvixd in standalone mode (the `terminal` executor)
 # and asserts a guest exit code of 0. The harness is cross-platform: on Linux it
-# launches nanvixd against cloud-hypervisor; on Windows it launches nanvixd.exe
-# under WHP. The suites are i686-only (the guest C toolchain is pinned to the
+# launches nanvixd directly; on Windows it launches nanvixd.exe under WHP. The
+# suites are i686-only (the guest C toolchain is pinned to the
 # i686 ABI, TARGET=x86) and standalone-only (they bundle the guest daemons). On
 # other targets or deployment modes the suites can still be built with
 # `all-posix-tests`.

@@ -11,15 +11,8 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-use crate::netns::{
-    NetnsHandle,
-    NetnsInfo,
-};
 #[cfg(not(feature = "standalone"))]
 use crate::ControlPlaneAcceptor;
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-use crate::SnapshotDirHandle;
 #[cfg(not(feature = "standalone"))]
 use crate::{
     config::CONTROL_PLANE_ACCEPT_TIMEOUT,
@@ -75,12 +68,6 @@ pub struct UninitializedSandbox<T> {
     /// Optional handle to an existing Linux Daemon instance.
     #[cfg(not(feature = "standalone"))]
     linuxd: Option<Arc<LinuxDaemon>>,
-    /// Optional handle to a network namespace. Only used in L2 deployments.
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    netns_handle: Option<NetnsHandle>,
-    /// Optional handle to the per-instance snapshot directory. Only used in L2 deployments.
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    snapshot_dir_handle: Option<SnapshotDirHandle>,
     /// Shared control-plane acceptor used to route child connections.
     #[cfg(not(feature = "standalone"))]
     control_plane_acceptor: Option<Arc<ControlPlaneAcceptor>>,
@@ -125,10 +112,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             ramfs_filename,
             #[cfg(not(feature = "standalone"))]
             linuxd: None,
-            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-            netns_handle: None,
-            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-            snapshot_dir_handle: None,
             #[cfg(not(feature = "standalone"))]
             control_plane_acceptor: Some(control_plane_acceptor),
             config: None,
@@ -172,65 +155,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     pub fn with_linuxd(mut self, linuxd: Arc<LinuxDaemon>) -> Self {
         self.linuxd = Some(linuxd);
         self
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Adds a network namespace handle to the target uninitialized sandbox.
-    ///
-    /// # Parameters
-    ///
-    /// - `netns_handle`: Optional handle to a network namespace.
-    ///
-    /// # Returns
-    ///
-    /// The modified uninitialized sandbox with the network namespace handle attached.
-    ///
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    pub fn with_netns_handle(mut self, netns_handle: Option<NetnsHandle>) -> Self {
-        self.netns_handle = netns_handle;
-        self
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Adds a snapshot directory handle to the target uninitialized sandbox.
-    ///
-    /// # Parameters
-    ///
-    /// - `snapshot_dir_handle`: Optional handle to the per-instance snapshot directory.
-    ///
-    /// # Returns
-    ///
-    /// The modified uninitialized sandbox with the snapshot directory handle attached.
-    ///
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    pub fn with_snapshot_dir_handle(
-        mut self,
-        snapshot_dir_handle: Option<SnapshotDirHandle>,
-    ) -> Self {
-        self.snapshot_dir_handle = snapshot_dir_handle;
-        self
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the network namespace information for this sandbox.
-    ///
-    /// # Returns
-    ///
-    /// Returns the network namespace information if available, or `None` otherwise.
-    ///
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    pub fn netns_info(&self) -> Option<NetnsInfo> {
-        if let Some(netns_handle) = &self.netns_handle {
-            netns_handle.netns_info().ok()
-        } else {
-            None
-        }
     }
 
     ///
@@ -280,42 +204,9 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             None => {
                 // Build Linux Daemon arguments.
                 let linuxd_args: LinuxDaemonArgs<T> = {
-                    // Get cloud-hypervisor binary directory.
-                    let clh_bin_path: String = match config.clh_bin_path() {
-                        None => {
-                            let reason: &str = "cloud-hypervisor binary directory not provided \
-                                                and linuxd not initialized";
-                            error!("initialize(): {reason}");
-                            anyhow::bail!(reason);
-                        },
-                        Some(path) => path.to_string(),
-                    };
-
-                    // Get temporary directory.
-                    let tmp_directory: String = match config.tmp_directory() {
-                        None => {
-                            let reason: &str =
-                                "temporary directory not provided and linuxd not initialized";
-                            error!("initialize(): {reason}");
-                            anyhow::bail!(reason);
-                        },
-                        Some(path) => path.to_string(),
-                    };
-
-                    // Get L2 flag.
-                    let l2: bool = match config.l2() {
-                        None => {
-                            let reason: &str = "L2 flag not provided and linuxd not initialized";
-                            error!("initialize(): {reason}");
-                            anyhow::bail!(reason);
-                        },
-                        Some(l2) => l2,
-                    };
-
                     LinuxDaemonArgs::new(
                         config.tenant_id(),
-                        // We pass linuxd the control plane socket's connect address, which may
-                        // depend on the network namespace.
+                        // We pass linuxd the control plane socket's connect address.
                         (
                             config.control_plane_connect_socket_info().0.clone(),
                             config.control_plane_connect_socket_info().1,
@@ -324,10 +215,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                         config.hwloc(),
                         #[cfg(not(any(feature = "single-process", feature = "standalone")))]
                         config.linuxd_binary_path().to_string(),
-                        clh_bin_path,
                         config.log_directory().to_string(),
-                        tmp_directory,
-                        l2,
                         config.networking_enabled(),
                         #[cfg(feature = "single-process")]
                         config.syscall_table(),
@@ -341,17 +229,8 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                     .await?;
 
                 // Spawn linuxd.
-                let pending_linuxd: PendingLinuxDaemon = match LinuxDaemon::spawn(
-                    &linuxd_args,
-                    // Share ownership of netns handle with linux daemon process. The netns is
-                    // provisioned upstream, if it is not but we are in L2 mode, spawn will fail.
-                    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-                    self.netns_handle.clone(),
-                    // Pass ownership of the snapshot dir handle to the linuxd instance.
-                    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-                    self.snapshot_dir_handle.take(),
-                )
-                .await
+                let pending_linuxd: PendingLinuxDaemon = match LinuxDaemon::spawn(&linuxd_args)
+                    .await
                 {
                     Ok(linuxd) => linuxd,
                     Err(error) => {
@@ -414,9 +293,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             #[cfg(not(feature = "standalone"))]
             control_plane_acceptor,
             sandbox_config: config,
-            // Pass ownership of the network namespace to the initialized sandbox.
-            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-            netns_handle: self.netns_handle.take(),
             #[cfg(not(any(feature = "single-process", feature = "standalone")))]
             _phantom: PhantomData,
         })

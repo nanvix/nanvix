@@ -22,11 +22,10 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ---------------------------------------------------------------------------
-# System packages — mirrors scripts/setup/ubuntu-core.sh + ubuntu-l2.sh
+# System packages — mirrors scripts/setup/ubuntu-core.sh
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bc                    \
-        bison                 \
         bridge-utils          \
         build-essential       \
         bzip2                 \
@@ -37,7 +36,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl                  \
         dosfstools            \
         doxygen               \
-        flex                  \
         gawk                  \
         gdb-multiarch         \
         git                   \
@@ -46,8 +44,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         iproute2              \
         jq                    \
         kpartx                \
-        libelf-dev            \
-        libssl-dev            \
         libvirt-clients       \
         libvirt-daemon-system \
         mmdebstrap            \

@@ -10,11 +10,10 @@ mode it validates both the kernel magic string and the process exit code; in
 release mode it validates the process exit code only (debug-level console
 output, including the magic string, is compiled out of release builds).
 
-On Linux, nanvixd is launched against cloud-hypervisor via -clh-bin-path and
-the kernel console is wired to nanvixd's stdout via `-console-file /dev/stdout`.
-On Windows, nanvixd uses the Windows Hypervisor Platform (WHP) backend directly
-(no clh-bin-path) and the kernel console is written to a file that is tailed
-to our stdout.
+On Linux, the kernel console is wired to nanvixd's stdout via
+`-console-file /dev/stdout`. On Windows, nanvixd uses the Windows Hypervisor
+Platform (WHP) backend and the kernel console is written to a file that is
+tailed to our stdout.
 
 Usage:
     run-smoke-test.py <machine> <image> [--timeout N]
@@ -62,11 +61,6 @@ def parse_args() -> argparse.Namespace:
         "--nanvixd", help="Path to nanvixd binary (default: ./bin/nanvixd[.exe|.elf])."
     )
     p.add_argument(
-        "--clh-bin-path",
-        help="Path to cloud-hypervisor binary directory (Linux only). "
-        "Defaults to ./toolchain/bin (matches CLH_DIR in the Makefile).",
-    )
-    p.add_argument(
         "--log-dir", default="logs", help="Log output directory (default: ./logs)."
     )
     return p.parse_args()
@@ -104,20 +98,12 @@ def build_command(
     nanvixd: Path,
     console_arg: str,
     log_dir: Path,
-    is_windows: bool,
 ) -> list[str]:
     cmd: list[str] = [str(nanvixd), "-console-file", console_arg]
     # `-log-dir` is supported by nanvixd on both Linux and Windows; passing it
     # unconditionally keeps nanvixd's own logs under our chosen log directory
     # instead of leaking into the current working directory.
     cmd += ["-log-dir", str(log_dir)]
-    if not is_windows:
-        # cloud-hypervisor is only used on Linux; on Windows nanvixd uses WHP
-        # directly. Default to the repo-local ./toolchain/bin (matching
-        # CLH_DIR := $(ROOT_DIR)/toolchain in the Makefile) rather than
-        # $HOME/toolchain/bin.
-        clh_bin_path = args.clh_bin_path or os.path.join("toolchain", "bin")
-        cmd += ["-clh-bin-path", clh_bin_path]
     cmd += ["--", args.image]
     return cmd
 
@@ -228,12 +214,12 @@ def _tail_file(path: Path, sink: IO[bytes], stop_event: threading.Event) -> None
 
 
 def terminate(proc: subprocess.Popen[bytes], is_windows: bool) -> None:
-    """Terminate nanvixd and any child processes it spawned (e.g. CLH on Linux)."""
+    """Terminate nanvixd and any child processes it spawned."""
     if proc.poll() is not None:
         return
 
     # On Linux, nanvixd is launched in its own process group (start_new_session=True),
-    # so we signal the whole group to also reap the cloud-hypervisor child.
+    # so we signal the whole group to also reap any child processes.
     # `is_windows` is preferred over `os.name == "posix"` because MSYS/Cygwin
     # Python report `posix` even though nanvixd is a native Windows process
     # for which killpg is meaningless.
@@ -332,7 +318,7 @@ def main() -> int:
 
     banner(args, nanvixd, console_arg, is_windows)
 
-    cmd = build_command(args, nanvixd, console_arg, log_dir, is_windows)
+    cmd = build_command(args, nanvixd, console_arg, log_dir)
     print("Command:", " ".join(cmd), flush=True)
 
     # Search across whichever log files actually receive content.
@@ -355,7 +341,7 @@ def main() -> int:
     rc = 0
 
     # On Linux, run nanvixd in a new session so we can signal the whole process
-    # group on timeout (nanvixd spawns cloud-hypervisor as a child on Linux).
+    # group on timeout (nanvixd may spawn child processes on Linux).
     # Avoid this on Windows hosts (including MSYS/Cygwin Python) where nanvixd
     # is a native Windows process and `start_new_session` does not have the
     # same semantics.

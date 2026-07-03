@@ -154,7 +154,6 @@ async fn async_main() -> Result<ExitCode> {
         args.hwloc().clone(),
         &kernel_binary_path,
         None,
-        args.clh_bin_path(),
         args.log_directory(),
         tmp_directory.path().to_str().ok_or_else(|| {
             let reason: &str = "temporary directory path is not valid UTF-8";
@@ -187,14 +186,10 @@ async fn async_main() -> Result<ExitCode> {
         args.console_file().clone(),
         args.ramfs_filename().map(|s| s.to_string()),
         args.hwloc().clone(),
-        args.netns_pool_size(),
         &kernel_binary_path,
         &linuxd_binary_path,
         &uservm_binary_path,
-        args.clh_bin_path(),
         args.log_directory(),
-        args.l2(),
-        args.l2_snapshot_path(),
         tmp_directory.path().to_str().ok_or_else(|| {
             let reason: &str = "temporary directory path is not valid UTF-8";
             error!("main(): {reason}");
@@ -365,7 +360,7 @@ async fn ensure_all_binaries_available(args: &Args) -> Result<(String, String, S
 ///
 /// Prints startup information for the Nanvix Daemon.
 ///
-/// This function displays the version, deployment type, operation mode, L2 status, and machine type.
+/// This function displays the version, deployment type, operation mode, and machine type.
 ///
 /// # Parameters
 ///
@@ -401,10 +396,9 @@ fn print_startup_info(args: &Args) {
 
     #[cfg(feature = "multi-process")]
     info!(
-        "nanvixd {}, multi-process deployment, {} mode, l2 {}, machine {}",
+        "nanvixd {}, multi-process deployment, {} mode, machine {}",
         env!("CARGO_PKG_VERSION"),
         mode,
-        if args.l2() { "enabled" } else { "disabled" },
         DEFAULT_MACHINE_NAME
     );
 }

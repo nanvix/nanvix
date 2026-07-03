@@ -54,22 +54,14 @@ pub struct Args {
     http_sockaddr: Option<String>,
     /// Directory path containing Nanvix binaries.
     binary_directory: String,
-    /// Path to the cloud-hypervisor binary directory.
-    clh_bin_path: String,
     /// Optional file path for redirecting console output.
     console_file: Option<String>,
     /// Optional RAM filesystem image exposed to the guest.
     ramfs_filename: Option<String>,
     /// Optional hardware locality configuration for CPU affinity and topology.
     hwloc: Option<HwLoc>,
-    /// Number of network namespaces to prefill in the pool (0 enables lazy initialization).
-    netns_pool_size: usize,
     /// Directory path for writing log files when log_to_file is enabled.
     log_directory: String,
-    /// Flag indicating whether to deploy linuxd inside an L2 VM.
-    l2: bool,
-    /// File path for the L2 snapshot.
-    l2_snapshot_path: String,
     /// Optional socket type for control plane communication (nanvixd <-> linuxd).
     control_plane_socket_type: Option<SocketType>,
     /// Optional socket type for gateway communication (client <-> linuxd stdin/stdout).
@@ -119,24 +111,14 @@ impl Args {
     pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     /// Command-line option that sets the binary directory path.
     pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
-    /// Command-line option that sets the cloud-hypervisor binary directory path.
-    pub const OPT_CLH_BIN_PATH: &'static str = "-clh-bin-path";
-    /// Command-line option that sets the L2 snapshot path.
-    pub const OPT_L2_SNAPSHOT_PATH: &'static str = "-l2-snapshot-path";
     /// Command-line option that redirects the console output to a file.
     pub const OPT_CONSOLE_FILE: &'static str = "-console-file";
     /// Command-line option that loads the serialized CPU topology.
     pub const OPT_HWLOC: &'static str = "-hwloc";
     /// Command-line option that sets the log directory path.
     pub const OPT_LOG_DIRECTORY: &'static str = "-log-dir";
-    /// Command-line option that sets the network namespace pool size.
-    pub const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
     /// Command-line option that sets the RAM filesystem image filename.
     pub const OPT_RAMFS_FILENAME: &'static str = "-ramfs";
-    /// Default netns pool size for prefill mode.
-    pub const DEFAULT_NETNS_POOL_SIZE: usize = 128;
-    /// Command-line flag that enables L2 deployment mode.
-    pub const OPT_L2: &'static str = "-l2";
     /// Command-line option that sets the control plane socket type.
     pub const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
     /// Command-line option that sets the gateway socket type.
@@ -174,8 +156,7 @@ impl Args {
     /// Parses command-line arguments into an Args structure.
     ///
     /// This function processes all supported command-line flags and options, validates them,
-    /// and enforces constraints such as requiring TCP sockets for L2 deployment mode.
-    /// It also enforces mutual exclusivity between HTTP mode and interactive mode.
+    /// and enforces mutual exclusivity between HTTP mode and interactive mode.
     ///
     /// # Parameters
     ///
@@ -189,7 +170,6 @@ impl Args {
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: Option<String> = None;
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
-        let mut clh_bin_path: String = config::DEFAULT_CLH_BIN_PATH.to_string();
         #[cfg(not(feature = "single-process"))]
         let mut console_file: Option<String> = None;
         #[cfg(feature = "single-process")]
@@ -201,11 +181,8 @@ impl Args {
         ));
         let mut ramfs_filename: Option<String> = None;
         let mut hwloc: Option<HwLoc> = None;
-        let mut netns_pool_size: usize = Self::DEFAULT_NETNS_POOL_SIZE;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
         let mut log_directory_set: bool = false;
-        let mut l2: bool = false;
-        let mut l2_snapshot_path: String = String::new();
         let mut control_plane_socket_type: Option<SocketType> = None;
         let mut gateway_socket_type: Option<SocketType> = None;
         let mut system_vm_socket_type: Option<SocketType> = None;
@@ -253,10 +230,6 @@ impl Args {
                     i += 1;
                     binary_directory = args[i].clone();
                 },
-                Self::OPT_CLH_BIN_PATH => {
-                    i += 1;
-                    clh_bin_path = args[i].clone();
-                },
                 Self::OPT_CONSOLE_FILE => {
                     i += 1;
                     console_file = Some(args[i].clone());
@@ -284,13 +257,6 @@ impl Args {
                     let hwloc_reader = BufReader::new(hwloc_file);
                     hwloc = Some(serde_json::from_reader(hwloc_reader)?);
                 },
-                Self::OPT_L2 => {
-                    l2 = true;
-                },
-                Self::OPT_L2_SNAPSHOT_PATH => {
-                    i += 1;
-                    l2_snapshot_path = args[i].clone();
-                },
                 Self::OPT_CONTROL_PLANE_SOCKET_TYPE => {
                     i += 1;
                     control_plane_socket_type = Some(args[i].parse()?);
@@ -307,10 +273,6 @@ impl Args {
                     i += 1;
                     log_directory = args[i].clone();
                     log_directory_set = true;
-                },
-                Self::OPT_NETNS_POOL_SIZE => {
-                    i += 1;
-                    netns_pool_size = args[i].parse()?;
                 },
                 Self::OPT_RAMFS_FILENAME => {
                     i += 1;
@@ -470,41 +432,6 @@ impl Args {
             );
         }
 
-        // If we set the l2 snapshot path, but do not enable l2, we have an invalid configuration.
-        if !l2_snapshot_path.is_empty() && !l2 {
-            anyhow::bail!(
-                "{} must be used together with {}",
-                Self::OPT_L2_SNAPSHOT_PATH,
-                Self::OPT_L2,
-            );
-        }
-
-        // If we deploy the Linux Daemon (linuxd) in an L2 VM, we need to make sure that all socket
-        // types are set to TCP.
-        if l2 {
-            if control_plane_socket_type == Some(SocketType::Unix) {
-                anyhow::bail!("control-plane must use a tcp socket in l2 deployments");
-            }
-
-            if gateway_socket_type == Some(SocketType::Unix) {
-                anyhow::bail!("gateway must use a tcp socket in l2 deployments");
-            }
-
-            if system_vm_socket_type == Some(SocketType::Unix) {
-                anyhow::bail!("system vm must use a tcp socket in l2 deployments");
-            }
-
-            control_plane_socket_type = Some(SocketType::Tcp);
-            gateway_socket_type = Some(SocketType::Tcp);
-            system_vm_socket_type = Some(SocketType::Tcp);
-
-            // If we enable L2 deployment, and don't set a snapshot path, revert to the default
-            // path.
-            if l2_snapshot_path.is_empty() {
-                l2_snapshot_path = config::default_l2_snapshot_path();
-            }
-        }
-
         // Reject -snapshot in non-standalone builds where it would silently do nothing.
         #[cfg(not(feature = "standalone"))]
         if snapshot_path.is_some() {
@@ -521,6 +448,25 @@ impl Args {
         #[cfg(not(feature = "standalone"))]
         if kernel_args.is_some() {
             anyhow::bail!("{} is only supported in standalone builds", Self::OPT_KERNEL_ARGS);
+        }
+
+        // Reject TCP for the control-plane, gateway, and system-VM sockets. TCP transports
+        // were only ever used by the now-removed L2 deployment mode; the sockaddr builders
+        // exclusively produce Unix-domain paths, so a TCP selection would later fail when the
+        // Unix path is parsed as a `host:port` address. Reject it up front with a clear error.
+        for (opt, socket_type) in [
+            (Self::OPT_CONTROL_PLANE_SOCKET_TYPE, control_plane_socket_type),
+            (Self::OPT_GATEWAY_SOCKET_TYPE, gateway_socket_type),
+            (Self::OPT_SYSTEM_VM_SOCKET_TYPE, system_vm_socket_type),
+        ] {
+            if socket_type == Some(SocketType::Tcp) {
+                anyhow::bail!(
+                    "{} does not support the '{}' socket type (only '{}' is supported)",
+                    opt,
+                    SocketType::TCP_STR,
+                    SocketType::UNIX_STR,
+                );
+            }
         }
 
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
@@ -549,14 +495,10 @@ impl Args {
         Ok(Self {
             http_sockaddr,
             binary_directory,
-            clh_bin_path,
-            l2_snapshot_path,
             console_file,
             ramfs_filename,
             hwloc,
-            netns_pool_size,
             log_directory,
-            l2,
             control_plane_socket_type,
             gateway_socket_type,
             system_vm_socket_type,
@@ -602,21 +544,16 @@ Options:
   {console_file} <file>                     Redirect console output to a file.
   {ramfs_filename} <file>                   Attach a RAM filesystem image to spawned user VMs.
   {bin_dir} <bin_dir>                       Directory containing Nanvix binaries.
-  {clh_bin_path} <clh_bin_path>             Path to the cloud-hypervisor binary directory.
   {hwloc} <hwloc.json>                      Hardware locality configuration file for CPU \
              affinity/topology.
   {log_dir} <log_dir>                       Directory for log files (Default: \
              {DEFAULT_LOG_DIRECTORY}).
-  {netns_pool_size} <size>                  Netns pool prefill size (Default: \
-             {default_netns_pool_size}; 0 enables lazy initialization).
   {control_plane_socket_type} <socket_type> Socket type for control plane communication (nanvixd \
              <-> linuxd).
   {gateway_socket_type} <socket_type>       Socket type for gateway communication (client <-> \
              linuxd).
   {system_vm_socket_type} <socket_type>     Socket type for system VM communication (linuxd <-> \
              uservm).
-  {l2}                                      Deploy linuxd inside an L2 VM (forces TCP sockets).
-  {l2_snapshot_path} <l2_snapshot_path>     Path to the L2 snapshot.
   {tmp_dir} <tmp_dir>                       Base directory for temporary files (Default: \
              {DEFAULT_TMP_DIRECTORY}).
   {snapshot} <path>                         Restore VM from snapshot instead of cold-booting \
@@ -647,16 +584,11 @@ Options:
             console_file = Self::OPT_CONSOLE_FILE,
             ramfs_filename = Self::OPT_RAMFS_FILENAME,
             bin_dir = Self::OPT_BIN_DIRECTORY,
-            clh_bin_path = Self::OPT_CLH_BIN_PATH,
             hwloc = Self::OPT_HWLOC,
             log_dir = Self::OPT_LOG_DIRECTORY,
-            netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
-            default_netns_pool_size = Self::DEFAULT_NETNS_POOL_SIZE,
             control_plane_socket_type = Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
             gateway_socket_type = Self::OPT_GATEWAY_SOCKET_TYPE,
             system_vm_socket_type = Self::OPT_SYSTEM_VM_SOCKET_TYPE,
-            l2 = Self::OPT_L2,
-            l2_snapshot_path = Self::OPT_L2_SNAPSHOT_PATH,
             tmp_dir = Self::OPT_TMP_DIRECTORY,
             snapshot = Self::OPT_SNAPSHOT,
             mount = Self::OPT_MOUNT_DIRECTORY,
@@ -699,32 +631,6 @@ Options:
     ///
     pub fn binary_directory(&self) -> &str {
         &self.binary_directory
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the cloud-hypervisor binary directory path.
-    ///
-    /// # Returns
-    ///
-    /// The cloud-hypervisor binary directory path.
-    ///
-    pub fn clh_bin_path(&self) -> &str {
-        &self.clh_bin_path
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the L2 snapshot path.
-    ///
-    /// # Returns
-    ///
-    /// The L2 snapshot path.
-    ///
-    pub fn l2_snapshot_path(&self) -> &str {
-        &self.l2_snapshot_path
     }
 
     ///
@@ -814,19 +720,6 @@ Options:
     ///
     /// # Description
     ///
-    /// Indicates whether linuxd must be deployed in an L2 VM or not.
-    ///
-    /// # Returns
-    ///
-    /// `true` if linuxd must be deployed in an L2 VM; `false` otherwise.
-    ///
-    pub fn l2(&self) -> bool {
-        self.l2
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the log directory.
     ///
     /// # Returns
@@ -835,19 +728,6 @@ Options:
     ///
     pub fn log_directory(&self) -> &str {
         &self.log_directory
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the netns pool prefill size.
-    ///
-    /// # Returns
-    ///
-    /// The prefill size (0 for lazy initialization).
-    ///
-    pub fn netns_pool_size(&self) -> usize {
-        self.netns_pool_size
     }
 
     ///

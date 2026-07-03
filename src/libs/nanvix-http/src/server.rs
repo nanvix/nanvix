@@ -279,11 +279,9 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                     {
                         let summary: SandboxCacheStateSummary = sandbox_cache.state_summary().await;
                         info!(
-                            "shutdown snapshot: running_sandboxes={}, linuxd_instances={}, \
-                             l2_enabled={}",
+                            "shutdown snapshot: running_sandboxes={}, linuxd_instances={}",
                             summary.running_sandboxes(),
                             summary.linuxd_instances(),
-                            summary.l2_enabled()
                         );
                         sandbox_cache.cleanup().await;
                     }

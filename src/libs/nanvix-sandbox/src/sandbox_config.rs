@@ -11,8 +11,6 @@
 // Imports
 //==================================================================================================
 
-use crate::tcp_port::TcpPort;
-use ::build_utils::find_workspace_root;
 use ::chrono::Local;
 #[cfg(not(feature = "single-process"))]
 use ::std::marker::PhantomData;
@@ -43,8 +41,8 @@ pub struct SandboxConfig<T> {
     tenant_id: String,
     /// Unique identifier for the User VM.
     uservm_id: UserVmIdentifier,
-    /// Information on gateway socket (address, socket type, optional L2 TCP port).
-    gateway_socket_info: (String, SocketType, Option<TcpPort>),
+    /// Information on gateway socket (address, socket type).
+    gateway_socket_info: (String, SocketType),
     /// Information on System VM socket (address, socket type).
     system_vm_socket_info: (String, SocketType),
     /// Optional file path for redirecting console output.
@@ -74,18 +72,6 @@ pub struct SandboxConfig<T> {
     /// Information on the control plane connecting socket (address, socket type).
     /// This changes for every sandbox, and thus must be provided every time.
     control_plane_connect_socket_info: (String, SocketType),
-
-    /// Optional path to the cloud-hypervisor binary directory.
-    /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
-    clh_bin_path: Option<String>,
-
-    /// Optional path to the temporary directory for Unix sockets and transient files.
-    /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
-    tmp_directory: Option<String>,
-
-    /// Optional flag to deploy the Linux Daemon inside an L2 VM (using cloud-hypervisor).
-    /// This must be provided if a Linux Daemon instance was not provided before sandbox initialization.
-    l2: Option<bool>,
 
     /// Whether networking system calls are enabled.
     networking_enabled: bool,
@@ -132,7 +118,7 @@ impl<T> SandboxConfig<T> {
     /// # Parameters
     ///
     /// - `uservm_id`: Unique identifier for the User VM.
-    /// - `gateway_socket_info`: Information on gateway socket (address, socket type, optional L2 TCP port).
+    /// - `gateway_socket_info`: Information on gateway socket (address, socket type).
     /// - `system_vm_socket_info`: Information on System VM socket (address, socket type).
     /// - `console_file`: Optional file path for redirecting console output.
     /// - `hwloc`: Optional hardware locality configuration.
@@ -143,9 +129,6 @@ impl<T> SandboxConfig<T> {
     /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
     /// - `control_plane_bind_socket_info`: Optional information on control plane listener socket (address, socket type).
     /// - `control_plane_connect_socket_info`: Optional information on control plane connect socket (address, socket type).
-    /// - `clh_bin_path`: Optional path to the cloud-hypervisor binary directory.
-    /// - `tmp_directory`: Optional path to the temporary directory.
-    /// - `l2`: Optional flag to deploy the Linux Daemon inside an L2 VM.
     /// - `networking_enabled`: Whether networking system calls are enabled.
     ///
     /// # Returns
@@ -156,7 +139,7 @@ impl<T> SandboxConfig<T> {
     pub fn new(
         tenant_id: &str,
         uservm_id: UserVmIdentifier,
-        gateway_socket_info: (String, SocketType, Option<TcpPort>),
+        gateway_socket_info: (String, SocketType),
         system_vm_socket_info: (String, SocketType),
         console_file: Option<String>,
         hwloc: Option<hwloc::HwLoc>,
@@ -171,9 +154,6 @@ impl<T> SandboxConfig<T> {
         >,
         control_plane_bind_socket_info: Option<(String, SocketType)>,
         control_plane_connect_socket_info: (String, SocketType),
-        clh_bin_path: Option<String>,
-        tmp_directory: Option<String>,
-        l2: Option<bool>,
         networking_enabled: bool,
     ) -> Self {
         Self {
@@ -196,9 +176,6 @@ impl<T> SandboxConfig<T> {
             syscall_table,
             control_plane_bind_socket_info,
             control_plane_connect_socket_info,
-            clh_bin_path,
-            tmp_directory,
-            l2,
             networking_enabled,
             #[cfg(not(feature = "single-process"))]
             _phantom: PhantomData,
@@ -240,7 +217,7 @@ impl<T> SandboxConfig<T> {
     ///
     /// A reference to the gateway socket information tuple.
     ///
-    pub fn gateway_socket_info(&self) -> &(String, SocketType, Option<TcpPort>) {
+    pub fn gateway_socket_info(&self) -> &(String, SocketType) {
         &self.gateway_socket_info
     }
 
@@ -380,45 +357,6 @@ impl<T> SandboxConfig<T> {
     ///
     /// # Description
     ///
-    /// Returns the optional path to the cloud-hypervisor binary directory.
-    ///
-    /// # Returns
-    ///
-    /// An optional reference to the cloud-hypervisor binary directory path.
-    ///
-    pub fn clh_bin_path(&self) -> Option<&str> {
-        self.clh_bin_path.as_deref()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the optional path to the temporary directory.
-    ///
-    /// # Returns
-    ///
-    /// An optional reference to the temporary directory path.
-    ///
-    pub fn tmp_directory(&self) -> Option<&str> {
-        self.tmp_directory.as_deref()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the optional flag indicating whether the Linux Daemon should be deployed inside an L2 VM.
-    ///
-    /// # Returns
-    ///
-    /// An optional boolean flag for L2 VM deployment.
-    ///
-    pub fn l2(&self) -> Option<bool> {
-        self.l2
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns whether networking system calls are enabled.
     ///
     /// # Returns
@@ -432,41 +370,13 @@ impl<T> SandboxConfig<T> {
     ///
     /// # Description
     ///
-    /// Generates the linuxd log file in an L2 deployment. This log file is specified during
-    /// restore of the L2 snapshot.
-    ///
-    /// Each sandbox generates a different log file (with a different timestamp), but the actual
-    /// file name will be determined by the first sanbdox for the given tenant.
-    ///
-    /// # Returns
-    ///
-    /// The path to linuxd log file.
-    ///
-    pub fn l2_linuxd_log_file(&self) -> String {
-        let mut console_file: PathBuf = PathBuf::from(self.log_directory.clone()).join(format!(
-            "linuxd-l2_{}_{}.log",
-            self.tenant_id,
-            Local::now().format("%Y_%m_%d_%H_%M_%S_%f")
-        ));
-        if !console_file.is_absolute() {
-            console_file = find_workspace_root().join(console_file);
-        }
-
-        console_file.to_string_lossy().into_owned()
-    }
-
-    ///
-    /// # Description
-    ///
     /// Consumes the configuration and returns the gateway socket information tuple.
-    ///
-    /// This method is useful when ownership of the TcpPort is needed.
     ///
     /// # Returns
     ///
     /// The gateway socket information tuple.
     ///
-    pub fn into_gateway_socket_info(self) -> (String, SocketType, Option<TcpPort>) {
+    pub fn into_gateway_socket_info(self) -> (String, SocketType) {
         self.gateway_socket_info
     }
 }

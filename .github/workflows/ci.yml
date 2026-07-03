@@ -502,7 +502,6 @@ jobs:
           retention-days: 1
           path: |
             bin/
-            images/
             lib/
             sysroot-${{ matrix.build-type }}/
             nanvix-*.tar.bz2
@@ -1111,18 +1110,6 @@ jobs:
     if: ${{ !cancelled() && needs.benchmark-gate-linux.outputs.should-run == 'true' }}
 
     steps:
-      - name: "Pre-Checkout Cleanup"
-        shell: bash
-        run: |
-          # Previous runs may leave root-owned files that prevent
-          # actions/checkout from resetting the workspace. The cleanup
-          # composite action cannot run before checkout, so perform a direct cleanup
-          # of the images directory without executing any workspace scripts.
-          if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
-            echo "Removing images directory before checkout..."
-            sudo rm -rf "${GITHUB_WORKSPACE}/images"
-          fi
-
       - uses: actions/checkout@v7
 
       - name: "Isolate Cargo Home"
@@ -1379,7 +1366,7 @@ jobs:
               "--machine-type", $env:MACHINE_TYPE,
               "--iterations", $env:ITERATIONS
             )
-            if (($bench -in @("warm-start", "warm-start-l2", "warm-start-vmm")) -and
+            if (($bench -in @("warm-start", "warm-start-vmm")) -and
                 -not [string]::IsNullOrWhiteSpace($env:PAYLOAD_SIZE)) {
               $benchmarkArgs += @("--payload-size", $env:PAYLOAD_SIZE)
             }

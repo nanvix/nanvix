@@ -39,29 +39,22 @@ X86_64_ARCH = "X64"
 # Benchmark Names
 # ======================================================================
 
-L2_SUFFIX = "-l2"
 BOOT_TIME_BENCH = "boot-time"
 COLD_START_BENCH = "cold-start"
-COLD_START_L2_BENCH = COLD_START_BENCH + L2_SUFFIX
 COLD_START_UVM_BENCH = "cold-start-uvm"
 CONCURRENT_BENCH = "concurrent"
-CONCURRENT_L2_BENCH = CONCURRENT_BENCH + L2_SUFFIX
 ECHO_BREAKDOWN_BENCH = "echo-breakdown"
-ECHO_BREAKDOWN_L2_BENCH = ECHO_BREAKDOWN_BENCH + L2_SUFFIX
 ROUND_TRIP_LATENCY_BENCH = "round-trip-latency"
 SNAPSHOT_RESTORE_BENCH = "snapshot-restore"
 VFS_BENCH = "vfs-bench"
 WARM_START_BENCH = "warm-start"
-WARM_START_L2_BENCH = WARM_START_BENCH + L2_SUFFIX
 WARM_START_VMM_BENCH = "warm-start-vmm"
 PAYLOAD_SIZE_BENCHMARKS = [
     WARM_START_BENCH,
-    WARM_START_L2_BENCH,
     WARM_START_VMM_BENCH,
 ]
 SIZE_ANNOTATED_BENCHMARKS = {
     WARM_START_BENCH: [WARM_START_DEFAULT_SIZE],
-    WARM_START_L2_BENCH: [WARM_START_DEFAULT_SIZE],
 }
 SIZE_SWEEP_BENCHMARKS = {
     ROUND_TRIP_LATENCY_BENCH: ROUND_TRIP_SIZES,
@@ -88,10 +81,8 @@ BENCHMARK_TIMEOUT_SECS = 45 * 60
 PERCENTILE_BENCHMARKS = [
     BOOT_TIME_BENCH,
     COLD_START_BENCH,
-    COLD_START_L2_BENCH,
     COLD_START_UVM_BENCH,
     CONCURRENT_BENCH,
-    CONCURRENT_L2_BENCH,
     SNAPSHOT_RESTORE_BENCH,
 ]
 
@@ -127,144 +118,6 @@ def _non_negative_float(value: str) -> float:
 def _split_csv_arg(value: str) -> list[str]:
     """Split a comma-separated string, stripping whitespace and dropping empties."""
     return [item.strip() for item in value.split(",") if item.strip()]
-
-
-def wait_for_tcp_cleanup(max_wait_seconds=70):
-    """
-    Wait for TCP connections in TIME_WAIT state to clear.
-
-    This function polls the system to check if there are lingering TCP connections
-    in TIME_WAIT state (typically from previous L2 benchmark runs) and waits until
-    they are cleared or the timeout is reached.
-
-    # Parameters
-
-    - `max_wait_seconds`: Maximum time to wait in seconds (default: 70).
-
-    # Returns
-
-    True if connections cleared, False if timeout reached.
-    """
-    import time
-
-    print(f"[TCP-CLEANUP] Starting TCP cleanup check (max_wait={max_wait_seconds}s)")
-    start_time: float = time.time()
-    poll_interval: int = 2  # Check every 2 seconds.
-
-    while (time.time() - start_time) < max_wait_seconds:
-        try:
-            # Count connections in TIME_WAIT state on port 9999 (nanvixd default port).
-            print("[TCP-CLEANUP] Checking TIME_WAIT connections on port 9999...")
-            result: subprocess.CompletedProcess = subprocess.run(
-                ["ss", "-tan", "state", "time-wait", "sport", "9999"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            if result.returncode == 0:
-                # Count non-header lines.
-                lines: list = [
-                    line for line in result.stdout.splitlines() if line.strip()
-                ]
-                # First line is header, so subtract 1.
-                time_wait_count: int = max(0, len(lines) - 1)
-
-                print(f"[TCP-CLEANUP] Found {time_wait_count} TIME_WAIT connection(s)")
-
-                if time_wait_count == 0:
-                    print("[TCP-CLEANUP] All TCP connections cleared successfully.")
-                    return True
-
-                elapsed: int = int(time.time() - start_time)
-                print(
-                    f"Waiting for {time_wait_count} TIME_WAIT connection(s) "
-                    f"to clear... ({elapsed}s elapsed)"
-                )
-
-        except Exception as e:
-            print(f"[TCP-CLEANUP] ERROR: Failed to check TCP connection state: {e}")
-            print(f"[TCP-CLEANUP] Falling back to fixed wait of {max_wait_seconds}s")
-            # Fall back to fixed wait if we can't check.
-            time.sleep(max_wait_seconds)
-            return False
-
-        time.sleep(poll_interval)
-
-    print(
-        f"[TCP-CLEANUP] WARNING: Timeout reached after {max_wait_seconds}s, "
-        f"some connections may still be in TIME_WAIT"
-    )
-    return False
-
-
-def cleanup_stale_netns():
-    """
-    Cleans up any stale Nanvix network namespaces left from previous runs.
-
-    This function removes network namespaces that match the Nanvix naming pattern
-    (nvxns-*) to prevent resource conflicts when running L2 benchmarks.
-    """
-    print("[NETNS-CLEANUP] Starting network namespace cleanup...")
-    try:
-        # List all network namespaces and filter for Nanvix ones.
-        result = subprocess.run(
-            ["sudo", "ip", "netns", "list"], capture_output=True, text=True, check=False
-        )
-
-        if result.returncode != 0:
-            # If command fails, just continue (user may not have permissions).
-            print(
-                f"[NETNS-CLEANUP] WARNING: Failed to list namespaces "
-                f"(exit code {result.returncode})"
-            )
-            return
-
-        # Extract Nanvix network namespace names (nvxns-*).
-        import re
-        import time
-
-        netns_list = re.findall(r"nvxns-\d+", result.stdout)
-        print(f"[NETNS-CLEANUP] Found {len(netns_list)} Nanvix namespace(s)")
-
-        if netns_list:
-            print(
-                f"[NETNS-CLEANUP] Cleaning up {len(netns_list)} stale network namespace(s)..."
-            )
-            for ns in netns_list:
-                # Extract the namespace ID from the name.
-                ns_id = ns.replace("nvxns-", "")
-
-                # Delete veth pair first (host side).
-                veth_name = f"nvxgw-h-{ns_id}"
-                veth_result = subprocess.run(
-                    ["sudo", "ip", "link", "del", veth_name],
-                    capture_output=True,
-                    check=False,
-                )
-                if veth_result.returncode != 0:
-                    print(f"[NETNS-CLEANUP] WARNING: Failed to delete veth {veth_name}")
-
-                # Delete the namespace.
-                ns_result = subprocess.run(
-                    ["sudo", "ip", "netns", "del", ns], capture_output=True, check=False
-                )
-                if ns_result.returncode != 0:
-                    print(f"[NETNS-CLEANUP] WARNING: Failed to delete namespace {ns}")
-
-            # Give the system time to fully release network resources.
-            time.sleep(1)
-            print("[NETNS-CLEANUP] Cleanup completed successfully.")
-        else:
-            print("[NETNS-CLEANUP] No stale namespaces found.")
-    except Exception as e:
-        # Non-fatal: just log and continue.
-        print(
-            f"[NETNS-CLEANUP] ERROR: Failed to clean up stale network namespaces: {e}"
-        )
-        import traceback
-
-        print(f"[NETNS-CLEANUP] Traceback:\n{traceback.format_exc()}")
 
 
 def gen_filename_for_benchmark(benchmark: str, machine_type: str, arch: str) -> str:
@@ -606,7 +459,7 @@ def read_benchmark_values_from_file(
                 # to the size-aware (commit,size,p50,p95,p99) format. The legacy
                 # benchmark only ever exercised the default payload, so its last
                 # row maps onto the default (first) payload size. Size-annotated
-                # benchmarks (warm-start, warm-start-l2) have that as their only
+                # benchmarks (warm-start) have that as their only
                 # size; size-sweep benchmarks (warm-start-vmm) report the larger
                 # sweep sizes as NA since no scalar history exists for them.
                 result_dict = {size: NA for size in expected_sizes}
@@ -864,7 +717,7 @@ def ci_summary(args):
 
     # Echo breakdown benchmarks that we put in a collapsed section.
     echo_breakdown_summary = None
-    echo_breakdown_benchmarks = [ECHO_BREAKDOWN_BENCH, ECHO_BREAKDOWN_L2_BENCH]
+    echo_breakdown_benchmarks = [ECHO_BREAKDOWN_BENCH]
     filtered_benchmarks = list(
         filter(lambda b: b in echo_breakdown_benchmarks, benchmarks)
     )
@@ -1270,12 +1123,8 @@ def run_benchmark(args):
     # Normalize paths so that Unix-style "./" prefixes are converted to
     # platform-native form (cmd.exe does not understand "./").
     args.bin_dir = os.path.normpath(args.bin_dir)
-    args.clh_bin_path = os.path.normpath(args.clh_bin_path)
 
-    print(
-        f"[BENCHMARK] Paths: bin_dir={args.bin_dir}, "
-        f"clh_bin_path={args.clh_bin_path}"
-    )
+    print(f"[BENCHMARK] Paths: bin_dir={args.bin_dir}")
 
     # Resolve the commit SHA used to tag this benchmark result.
     commit: str = args.commit
@@ -1294,25 +1143,6 @@ def run_benchmark(args):
             )
         commit = git_result.stdout.strip()
     print(f"[BENCHMARK] Commit: {commit}")
-
-    # Before running L2 benchmarks, wait for TCP connections from previous runs to clear.
-    # This is critical when L2 benchmarks run after non-L2 benchmarks in sequence.
-    # These cleanup steps use Linux-specific tools (ss, ip netns) and are skipped on Windows.
-    if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
-        print(
-            "[BENCHMARK] This is an L2 benchmark, checking for lingering TCP connections..."
-        )
-        cleanup_success = wait_for_tcp_cleanup()
-        print(
-            f"[BENCHMARK] TCP cleanup result: {'success' if cleanup_success else 'timeout/failure'}"
-        )
-
-    # Clean up any stale network namespaces before running all benchmarks.
-    # This prevents resource conflicts from previous runs, especially when running
-    # non-L2 benchmarks after L2 benchmarks in a sequence.
-    if not IS_WINDOWS:
-        print("[BENCHMARK] Cleaning up stale network namespaces...")
-        cleanup_stale_netns()
 
     # The concurrent benchmark takes slightly different command-line arguments than the other
     # benchmarks. It does not take a `-hwloc` file, and instead of `-iterations` it takes
@@ -1355,7 +1185,6 @@ def run_benchmark(args):
             if payload_size is not None and args.benchmark in PAYLOAD_SIZE_BENCHMARKS
             else ""
         ),
-        f"-clh-bin-path {args.clh_bin_path}",
     ]
     nanvix_bench_cmd = " ".join(nanvix_bench_cmd)
     print(f"[BENCHMARK] Executing command: {nanvix_bench_cmd}")
@@ -1403,26 +1232,6 @@ def run_benchmark(args):
             print("[BENCHMARK] STDERR:")
             print(result.stderr.decode("utf-8"))
 
-            # Additional diagnostics for L2 benchmarks (Linux-only tools).
-            if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
-                print("[BENCHMARK] Running post-failure network diagnostics...")
-                diag_result = subprocess.run(
-                    ["ss", "-tan", "state", "time-wait", "sport", "9999"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                print(
-                    f"[BENCHMARK] TIME_WAIT connections on port 9999:\n{diag_result.stdout}"
-                )
-
-                netns_result = subprocess.run(
-                    ["sudo", "ip", "netns", "list"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                print(f"[BENCHMARK] Active network namespaces:\n{netns_result.stdout}")
             raise RuntimeError(
                 f"Benchmark '{args.benchmark}' failed with exit code {result.returncode}"
             )
@@ -1484,15 +1293,6 @@ def run_benchmark(args):
                 f"Benchmark '{args.benchmark}' timed out after "
                 f"{BENCHMARK_TIMEOUT_SECS}s"
             )
-
-    # After L2 benchmarks, wait for TCP connections in TIME_WAIT to clear.
-    # L2 benchmarks create many TCP connections that linger in TIME_WAIT state,
-    # which can cause connection issues for subsequent benchmarks.
-    if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
-        print("[BENCHMARK] Post-benchmark: checking for lingering TCP connections...")
-        cleanup_success = wait_for_tcp_cleanup()
-        result_str = "success" if cleanup_success else "timeout/failure"
-        print(f"[BENCHMARK] Post-benchmark TCP cleanup result: {result_str}")
 
     print(f"[BENCHMARK] Benchmark '{args.benchmark}' completed successfully.")
 
@@ -1697,11 +1497,6 @@ if __name__ == "__main__":
         default="./bin",
     )
     run_parser.add_argument(
-        "--clh-bin-path",
-        help="Cloud-hypervisor binary directory",
-        default="./toolchain/bin",
-    )
-    run_parser.add_argument(
         "--iterations",
         type=int,
         default=100,
@@ -1712,7 +1507,7 @@ if __name__ == "__main__":
         type=_positive_int,
         default=None,
         help=(
-            "Echo payload size in bytes for warm-start, warm-start-l2, and "
+            "Echo payload size in bytes for warm-start and "
             "warm-start-vmm benchmarks. For warm-start-vmm, the size includes "
             "the 4-byte length prefix. Defaults to nanvix-bench's built-in value."
         ),

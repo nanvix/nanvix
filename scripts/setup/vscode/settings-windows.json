@@ -32,7 +32,6 @@
         "**/.git/**": true,
         "**/.hg/**": true,
         "bin/**": true,
-        "images/**": true,
         "lib/**": true,
         "sysroot-*/**": true,
         "target/**": true

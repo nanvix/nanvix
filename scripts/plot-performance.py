@@ -82,10 +82,8 @@ SHORT_SHA_LEN: int = 7
 SUPPORTED_BENCHMARKS: list[str] = [
     "boot_time",
     "cold_start",
-    "cold_start_l2",
     "cold_start_uvm",
     "concurrent",
-    "concurrent_l2",
     "snapshot_restore",
 ]
 
@@ -94,7 +92,6 @@ SUPPORTED_BENCHMARKS: list[str] = [
 SIZED_BENCHMARKS: list[str] = [
     "round_trip_latency",
     "warm_start",
-    "warm_start_l2",
     "warm_start_vmm",
 ]
 
@@ -102,15 +99,12 @@ SIZED_BENCHMARKS: list[str] = [
 BENCHMARK_TITLES: dict[str, str] = {
     "boot_time": "Boot Time",
     "cold_start": "Cold Start",
-    "cold_start_l2": "Cold Start (L2)",
     "cold_start_uvm": "Cold Start (UVM)",
     "concurrent": "Concurrent",
-    "concurrent_l2": "Concurrent (L2)",
     "echo_breakdown": "Echo Breakdown",
     "round_trip_latency": "Round-Trip Latency",
     "snapshot_restore": "Snapshot Restore",
     "warm_start": "Warm Start",
-    "warm_start_l2": "Warm Start (L2)",
     "warm_start_vmm": "Warm Start (VMM)",
 }
 

@@ -4,7 +4,7 @@
 NANVIXD_FEATURES :=
 NANVIXD_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
 NANVIXD_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
-NANVIXD_FEATURES += $(if $(filter multi-process l2,$(DEPLOYMENT_MODE)),multi-process,)
+NANVIXD_FEATURES += $(if $(filter multi-process,$(DEPLOYMENT_MODE)),multi-process,)
 NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIXD_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
@@ -99,13 +99,6 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed
 	@cp -f $(BINARIES_DIR)/test-rust-fork-exec-argv-space-target.$(EXEC_FORMAT) $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test.img $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed/
-endif
-	# Only give nanvixd CAP_SYS_ADMIN and CAP_NET_ADMIN if we need to manage
-	# network namespaces. This is only the case in L2 deployments (Linux only).
-ifneq ($(IS_WINDOWS),yes)
-ifeq ($(DEPLOYMENT_MODE),l2)
-	$(SUDO_CMD) $(SETCAP_CMD) cap_sys_admin,cap_net_admin+ep $(BINARIES_DIR)/nanvixd.$(HOST_BIN_EXT)
-endif
 endif
 
 check-nanvixd:

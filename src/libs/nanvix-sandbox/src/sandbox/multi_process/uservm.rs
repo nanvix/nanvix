@@ -4,8 +4,7 @@
 //! User VM management for multi-process mode.
 //!
 //! This module provides functionality to spawn and manage User VM instances as separate
-//! processes. It handles process lifecycle, control-plane communication, gateway sockets,
-//! and supports L2 deployment with TCP port allocation.
+//! processes. It handles process lifecycle, control-plane communication, and gateway sockets.
 
 //==================================================================================================
 // Imports
@@ -15,15 +14,15 @@ use crate::{
     config::CLEANUP_TIMEOUT,
     UserVmArgs,
 };
-#[cfg(not(feature = "single-process"))]
-use crate::{
-    netns::NetnsHandle,
-    netns_exec::command_in_netns,
-};
 use ::anyhow::Result;
 use ::control_plane_api::{
     NanvixdCommand,
     NanvixdControlMessage,
+};
+use ::log::{
+    debug,
+    trace,
+    warn,
 };
 use ::std::{
     mem,
@@ -32,11 +31,9 @@ use ::std::{
         Stdio,
     },
 };
-use ::syscomm::{SocketStream, WriteAll};
-use ::log::{
-    debug,
-    trace,
-    warn,
+use ::syscomm::{
+    SocketStream,
+    WriteAll,
 };
 use ::tokio::{
     process::{
@@ -60,16 +57,10 @@ pub struct UserVm {
     child: Option<Child>,
     /// Control-plane socket stream.
     control_plane_stream: SocketStream,
-    /// Optional RAII handle to the network namespace the user VM is spawned in. Even if unused, we
-    /// tie its lifecycle to the user VM.
-    #[cfg(not(feature = "single-process"))]
-    _netns_handle: Option<NetnsHandle>,
 }
 
 pub struct PendingUserVm {
     child: Option<Child>,
-    #[cfg(not(feature = "single-process"))]
-    netns_handle: Option<NetnsHandle>,
 }
 
 //==================================================================================================
@@ -85,18 +76,13 @@ impl UserVm {
     /// # Parameters
     ///
     /// - `args`: User VM arguments.
-    /// - `control_plane_listener`: Control-plane socket listener.
-    /// - `netns_handle`: Optional handle to a network namespace (L2-mode only).
     ///
     /// # Returns
     ///
     /// On success, this function returns a handle to the spawned User VM instance. On failure,
     /// this function returns an error object instead.
     ///
-    pub async fn spawn(
-        args: &UserVmArgs,
-        #[cfg(not(feature = "single-process"))] netns_handle: Option<NetnsHandle>,
-    ) -> Result<PendingUserVm> {
+    pub async fn spawn(args: &UserVmArgs) -> Result<PendingUserVm> {
         trace!("spawn(): args={args:?}");
 
         let mut user_vm_args: Vec<String> = vec![
@@ -153,33 +139,14 @@ impl UserVm {
 
         debug!("spawning uservm (program={:?} args={:?})", args.program(), user_vm_args,);
         let mut cmd: Command = {
-            // In an L2-deployment, spawn the user VM inside a network namespace.
-            #[cfg(not(feature = "single-process"))]
-            if let Some(netns_handle) = &netns_handle {
-                command_in_netns(&netns_handle.netns_info()?, &user_vm_args[0], &user_vm_args[1..])
-            } else {
-                let mut cmd: Command = Command::new(&user_vm_args[0]);
-                cmd.args(&user_vm_args[1..]);
-                // Ensure the child process is killed if the Child handle is dropped without
-                // explicit cleanup. This acts as a best-effort safety net during normal unwinding
-                // and shutdown paths where drop handlers run, helping to prevent orphaned
-                // processes.
-                cmd.kill_on_drop(true);
-
-                cmd
-            }
-
-            #[cfg(feature = "single-process")]
-            {
-                let mut cmd: Command = Command::new(&user_vm_args[0]);
-                cmd.args(&user_vm_args[1..]);
-                // Ensure the child process is killed if the Child handle is dropped without
-                // explicit cleanup.  This acts as a best-effort safety net during normal unwinding
-                // and shutdown paths where drop handlers run, helping to prevent orphaned
-                // processes.
-                cmd.kill_on_drop(true);
-                cmd
-            }
+            let mut cmd: Command = Command::new(&user_vm_args[0]);
+            cmd.args(&user_vm_args[1..]);
+            // Ensure the child process is killed if the Child handle is dropped without
+            // explicit cleanup. This acts as a best-effort safety net during normal unwinding
+            // and shutdown paths where drop handlers run, helping to prevent orphaned
+            // processes.
+            cmd.kill_on_drop(true);
+            cmd
         };
 
         // Inherit stdout/stderr so that errors when spawning the command are surfaced to nanvixd.
@@ -197,11 +164,7 @@ impl UserVm {
             args.console_file(),
         );
 
-        Ok(PendingUserVm {
-            child: Some(child),
-            #[cfg(not(feature = "single-process"))]
-            netns_handle,
-        })
+        Ok(PendingUserVm { child: Some(child) })
     }
 
     ///
@@ -322,8 +285,6 @@ impl PendingUserVm {
         UserVm {
             child: self.child,
             control_plane_stream,
-            #[cfg(not(feature = "single-process"))]
-            _netns_handle: self.netns_handle,
         }
     }
 
