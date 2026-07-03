@@ -132,6 +132,11 @@ POSIX_TEST_PIE_test-c-dlfcn-pie := yes
 POSIX_TEST_PIE_test-c-dlfcn-global := yes
 POSIX_TEST_PIE_test-c-dlfcn-needed := yes
 POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
+# dlfcn-cycle-c dlopen()s freestanding fixtures. Its cyclic libraries are refused
+# before relocation and its positive-control library exports no undefined symbols,
+# so PIE is not strictly required; it is set anyway to match every other dlfcn
+# dlopen suite (the executable's own symbols land in .dynsym for RTLD_DEFAULT).
+POSIX_TEST_PIE_test-c-dlfcn-cycle := yes
 # dlfcn-ctor-dtor-reentry-c links PIE + --export-dynamic so the main executable's
 # `hook_open_other`/`hook_close_other`/`other_report_dtor` helpers land in
 # `.dynsym`; libhook.so's constructor and destructor -- and libother.so's
@@ -310,6 +315,7 @@ clean-posix-tests:
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent)
@@ -324,6 +330,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
@@ -531,6 +538,103 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond): $(POSIX_TEST_DIAMOND_DIR)/libbase.
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libright.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libdiamond.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_DIAMOND_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-cycle-c: DT_NEEDED cycle-rejection fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+#   libcyclea.so    DT_NEEDED libcycleb.so    --+
+#   libcycleb.so    DT_NEEDED libcyclea.so    --+  (two-node cycle)
+#   libselfcycle.so DT_NEEDED libselfcycle.so       (single-node self-loop)
+#   libok.so        (no dependencies)               (positive control)
+#
+# The loader must refuse a dlopen() of any cyclic graph with a clean NULL +
+# dlerror() result instead of recursing without bound (see
+# load_all_dependencies_recursive in
+# src/libs/syscall/src/dlfcn/syscall/dlopen.rs); dlfcn-cycle-c/main.c asserts that
+# rejection and that the dependency-free control library still loads before and
+# after it.
+#
+# A circular DT_NEEDED pair cannot be produced by a single link -- each library
+# must already exist before the other can record a DT_NEEDED entry on it -- so the
+# cycle is bootstrapped in stages. A "stage-1" image of one node is linked first
+# with NO dependency (its cross-reference to the other node is left undefined,
+# which shared objects permit) purely so the other node has something to link
+# against; the two final images are then linked against each other. Each final
+# link lists its dependency's image directly on the command line under
+# --no-as-needed, so the linker records that image's SONAME as a bare DT_NEEDED
+# entry that the loader resolves through its default lib/ search path (exactly like
+# the diamond fixture above). -soname pins each recorded name regardless of linker
+# (GNU ld vs ld.lld). Built with the same i686 freestanding toolchain as the
+# fixtures above.
+POSIX_TEST_CYCLE_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-cycle/libs
+POSIX_TEST_CYCLE_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-cycle-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-cycle.img
+
+# Positive control: dependency-free, zero undefined symbols.
+$(POSIX_TEST_CYCLE_DIR)/libok.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/ok.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libok.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libok.so $@.o -o $@
+
+# Stage-1 libcycleb.so: no DT_NEEDED yet (its cyclea_value reference is left
+# undefined) so libcyclea.so has something to link against. SONAME=libcycleb.so.
+$(POSIX_TEST_CYCLE_DIR)/libcycleb-stage1.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/cycleb.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libcycleb.so (stage 1, no DT_NEEDED)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libcycleb.so $@.o -o $@
+
+# Final libcyclea.so: DT_NEEDED libcycleb.so (linked against the stage-1 image).
+$(POSIX_TEST_CYCLE_DIR)/libcyclea.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/cyclea.c \
+		$(POSIX_TEST_CYCLE_DIR)/libcycleb-stage1.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libcyclea.so (DT_NEEDED libcycleb.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libcyclea.so \
+		$@.o --no-as-needed $(POSIX_TEST_CYCLE_DIR)/libcycleb-stage1.so -o $@
+
+# Final libcycleb.so: DT_NEEDED libcyclea.so (linked against the final
+# libcyclea.so), closing the libcyclea.so <-> libcycleb.so cycle.
+$(POSIX_TEST_CYCLE_DIR)/libcycleb.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/cycleb.c \
+		$(POSIX_TEST_CYCLE_DIR)/libcyclea.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libcycleb.so (DT_NEEDED libcyclea.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libcycleb.so \
+		$@.o --no-as-needed $(POSIX_TEST_CYCLE_DIR)/libcyclea.so -o $@
+
+# Stage-1 libselfcycle.so: no DT_NEEDED yet. SONAME=libselfcycle.so.
+$(POSIX_TEST_CYCLE_DIR)/libselfcycle-stage1.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/selfcycle.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libselfcycle.so (stage 1, no DT_NEEDED)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libselfcycle.so $@.o -o $@
+
+# Final libselfcycle.so: DT_NEEDED libselfcycle.so (linked against its own stage-1
+# image under --no-as-needed, since it references no symbol from it), forming a
+# single-node self-loop.
+$(POSIX_TEST_CYCLE_DIR)/libselfcycle.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/selfcycle.c \
+		$(POSIX_TEST_CYCLE_DIR)/libselfcycle-stage1.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libselfcycle.so (DT_NEEDED libselfcycle.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libselfcycle.so \
+		$@.o --no-as-needed $(POSIX_TEST_CYCLE_DIR)/libselfcycle-stage1.so -o $@
+
+# Per-suite RAMFS image carrying the control + cyclic fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle): $(POSIX_TEST_CYCLE_DIR)/libok.so \
+		$(POSIX_TEST_CYCLE_DIR)/libcyclea.so \
+		$(POSIX_TEST_CYCLE_DIR)/libcycleb.so \
+		$(POSIX_TEST_CYCLE_DIR)/libselfcycle.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_CYCLE_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_CYCLE_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_CYCLE_DIR)/libok.so $(POSIX_TEST_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_CYCLE_DIR)/libcyclea.so $(POSIX_TEST_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_CYCLE_DIR)/libcycleb.so $(POSIX_TEST_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_CYCLE_DIR)/libselfcycle.so $(POSIX_TEST_CYCLE_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_CYCLE_SEED)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-selflink-c: main-executable GOT/PLT self-linking fixture.
@@ -804,6 +908,7 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry): $(POSIX_TEST_CTOR_DTOR_R
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent) \
