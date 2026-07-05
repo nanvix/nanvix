@@ -95,7 +95,7 @@ impl FrameAllocView
 pub open spec fn region_frame_addrs(start: int, size: int) -> Set<int> {
     let start_frame_number = start / spec_page_size();
     let end_frame_number = (start + size) / spec_page_size();
-    vstd::set_lib::set_int_range(start_frame_number, end_frame_number)
+    Set::range(start_frame_number, end_frame_number)
         .map(|i: int| i * spec_page_size())
 }
 

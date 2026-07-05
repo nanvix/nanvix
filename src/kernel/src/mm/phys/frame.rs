@@ -527,10 +527,7 @@ impl Inner {
         ensures
             final(self).inv(),
             ({
-                let start_frame_number = region@.start / spec_page_size();
-                let end_frame_number = (region@.start + region@.size) / spec_page_size();
-                let frame_numbers = Set::range(start_frame_number, end_frame_number);
-                let frames = frame_numbers.map(|i: int| i * spec_page_size());
+                let frames = region_frame_addrs(region@.start, region@.size);
                 match result {
                     Ok(()) => {
                         &&& old(self)@.all_free(frames)

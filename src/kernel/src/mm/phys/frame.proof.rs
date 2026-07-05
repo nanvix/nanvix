@@ -1,6 +1,7 @@
 verus! {
 
 use super::FrameAllocView;
+use super::region_frame_addrs;
 use ::bitmap::BitmapView;
 use crate::hal::mem::spec_page_size;
 use vstd::map::*;
