@@ -33,6 +33,8 @@ use ::syscall::{
             connect,
             getsockname,
             listen,
+            recv,
+            send,
             socket,
         },
     },
@@ -78,6 +80,22 @@ fn new_listening_socket(addr: &SocketAddr) -> Result<i32, Error> {
     let sockfd: i32 = new_bound_socket(addr)?;
     listen(sockfd, LISTEN_BACKLOG)?;
     Ok(sockfd)
+}
+
+/// Creates a loopback TCP connection and returns `(listener, client, accepted)`.
+fn new_connected_sockets() -> Result<(i32, i32, i32), Error> {
+    let server_addr: SocketAddr =
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new([127, 0, 0, 1]), 0));
+    let server_fd: i32 = new_listening_socket(&server_addr)?;
+
+    let mut actual_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
+    getsockname(server_fd, &mut actual_addr)?;
+
+    let client_fd: i32 = new_unbound_socket()?;
+    connect(client_fd, &actual_addr)?;
+
+    let (accepted_fd, _peer_addr) = accept(server_fd)?;
+    Ok((server_fd, client_fd, accepted_fd))
 }
 
 //==================================================================================================
@@ -133,23 +151,27 @@ fn test_getsockname_listening_socket(addr: &SocketAddr) -> Result<(), Error> {
 
 /// Tests if we succeed to accept a connection on a listening socket.
 fn test_accept() -> Result<(), Error> {
-    // Create a server socket bound to an ephemeral port.
-    let server_addr: SocketAddr =
-        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new([127, 0, 0, 1]), 0));
-    let server_fd: i32 = new_listening_socket(&server_addr)?;
+    let (server_fd, client_fd, accepted_fd) = new_connected_sockets()?;
 
-    // Retrieve the actual address assigned by the OS.
-    let mut actual_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
-    getsockname(server_fd, &mut actual_addr)?;
+    close(accepted_fd)?;
+    close(client_fd)?;
+    close(server_fd)?;
+    Ok(())
+}
 
-    // Create a client socket and connect to the server.
-    let client_fd: i32 = new_unbound_socket()?;
-    connect(client_fd, &actual_addr)?;
+/// Tests if we succeed to send and receive data through connected INET sockets.
+fn test_send_recv() -> Result<(), Error> {
+    let (server_fd, client_fd, accepted_fd) = new_connected_sockets()?;
 
-    // Accept the incoming connection.
-    let (accepted_fd, _peer_addr) = accept(server_fd)?;
+    let msg: &[u8] = b"hello";
+    let sent: usize = send(client_fd, msg, 0)?;
+    assert_eq!(sent, msg.len(), "unexpected send count");
 
-    // Clean up.
+    let mut buf: [u8; 5] = [0u8; 5];
+    let received: usize = recv(accepted_fd, &mut buf, 0)?;
+    assert_eq!(received, msg.len(), "unexpected recv count");
+    assert_eq!(&buf[..received], msg, "received data mismatch");
+
     close(accepted_fd)?;
     close(client_fd)?;
     close(server_fd)?;
@@ -289,6 +311,7 @@ pub fn run() -> Result<(), Error> {
     test_getsockname_bound_socket(&addr)?;
     test_getsockname_listening_socket(&addr)?;
     test_accept()?;
+    test_send_recv()?;
 
     // Flat-namespace socket behavior is implemented only for the standalone (networkd) backend.
     #[cfg(feature = "standalone")]
