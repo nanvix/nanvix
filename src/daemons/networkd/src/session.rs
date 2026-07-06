@@ -164,7 +164,7 @@ pub fn resume_socket(
         drain_direction(epoll, backend, fd_owner, session, host_fd, Direction::Write, &mut out);
     }
 
-    rearm(epoll, session, host_fd);
+    rearm(epoll, session, host_fd, &mut out);
     out
 }
 
@@ -207,7 +207,7 @@ fn run_op(
         OpOutcome::Complete(completion) => {
             apply_completion(epoll, fd_owner, session, tid, completion, out);
         },
-        OpOutcome::WouldBlock { host_fd, dir } => park_op(epoll, session, host_fd, dir, op),
+        OpOutcome::WouldBlock { host_fd, dir } => park_op(epoll, session, host_fd, dir, op, out),
     }
 }
 
@@ -243,19 +243,29 @@ fn drain_direction(
 }
 
 /// Parks `op` on `host_fd` in `dir` and arms the socket's `epoll` interest accordingly.
-fn park_op(epoll: &Epoll, session: &mut Session, host_fd: RawFd, dir: Direction, op: NetworkOp) {
+fn park_op(
+    epoll: &Epoll,
+    session: &mut Session,
+    host_fd: RawFd,
+    dir: Direction,
+    op: NetworkOp,
+    out: &mut Vec<Vec<u8>>,
+) {
     let sock: &mut SocketState = match session.sockets.get_mut(&host_fd) {
         Some(sock) => sock,
         None => {
             // A socket must be tracked before an operation on it can block. A missing entry means
             // the guest referenced an fd the daemon does not own; there is nothing to park on.
             warn!("networkd reactor: parking operation on untracked fd {host_fd}");
+            let tid: ThreadIdentifier = op.tid();
+            if let Some(result) = ops::abort_parked(op, ErrorCode::BadFile).response {
+                out.push(NetworkResponse { tid, result }.to_frame());
+            }
             return;
         },
     };
     sock.park(dir, op);
-    let desired: u32 = sock.desired_interest();
-    update_interest(epoll, sock, desired);
+    rearm(epoll, session, host_fd, out);
 }
 
 /// Applies the lifecycle side effects of a completed operation and queues its response frame.
@@ -282,13 +292,7 @@ fn apply_completion(
                     error!("networkd reactor: failed to deregister fd {fd} from epoll: {e}");
                 }
             }
-            let parked_reads: Vec<NetworkOp> = state.parked_read.drain(..).collect();
-            for op in parked_reads.into_iter().chain(state.parked_write.drain(..)) {
-                let tid: ThreadIdentifier = op.tid();
-                if let Some(result) = ops::abort_parked(op, ErrorCode::OperationCanceled).response {
-                    out.push(NetworkResponse { tid, result }.to_frame());
-                }
-            }
+            abort_parked_ops(&mut state, ErrorCode::OperationCanceled, out);
         }
         fd_owner.remove(&fd);
     }
@@ -299,18 +303,31 @@ fn apply_completion(
 }
 
 /// Recomputes and applies `host_fd`'s `epoll` interest after its parked operations changed.
-fn rearm(epoll: &Epoll, session: &mut Session, host_fd: RawFd) {
+fn rearm(epoll: &Epoll, session: &mut Session, host_fd: RawFd, out: &mut Vec<Vec<u8>>) {
     if let Some(sock) = session.sockets.get_mut(&host_fd) {
         let desired: u32 = sock.desired_interest();
-        update_interest(epoll, sock, desired);
+        if let Err(e) = update_interest(epoll, sock, desired) {
+            error!(
+                "networkd reactor: failed to update epoll interest for fd {host_fd}: {e}; \
+                 aborting parked operations"
+            );
+            abort_parked_ops(sock, ErrorCode::IoErr, out);
+            let desired: u32 = sock.desired_interest();
+            if let Err(e) = update_interest(epoll, sock, desired) {
+                error!(
+                    "networkd reactor: failed to update epoll interest for fd {host_fd} after \
+                     aborting parked operations: {e}"
+                );
+            }
+        }
     }
 }
 
 /// Transitions `sock` to the `desired` `epoll` interest, registering, modifying, or deregistering
 /// it as required. A socket is registered with `epoll` exactly while its interest is non-zero.
-fn update_interest(epoll: &Epoll, sock: &mut SocketState, desired: u32) {
+fn update_interest(epoll: &Epoll, sock: &mut SocketState, desired: u32) -> ::std::io::Result<()> {
     if desired == sock.interest {
-        return;
+        return Ok(());
     }
     let host_fd: RawFd = sock.host_fd;
     let result: ::std::io::Result<()> = if sock.interest == 0 {
@@ -320,10 +337,20 @@ fn update_interest(epoll: &Epoll, sock: &mut SocketState, desired: u32) {
     } else {
         epoll.modify(host_fd, token(host_fd), desired)
     };
-    if let Err(e) = result {
-        error!("networkd reactor: failed to update epoll interest for fd {host_fd}: {e}");
-    }
+    result?;
     sock.interest = desired;
+    Ok(())
+}
+
+/// Aborts every operation parked on `sock`, queueing a correlated error response for each one.
+fn abort_parked_ops(sock: &mut SocketState, error: ErrorCode, out: &mut Vec<Vec<u8>>) {
+    let parked_reads: Vec<NetworkOp> = sock.parked_read.drain(..).collect();
+    for op in parked_reads.into_iter().chain(sock.parked_write.drain(..)) {
+        let tid: ThreadIdentifier = op.tid();
+        if let Some(result) = ops::abort_parked(op, error).response {
+            out.push(NetworkResponse { tid, result }.to_frame());
+        }
+    }
 }
 
 //==================================================================================================
@@ -390,6 +417,44 @@ mod tests {
         let reply: ReceiveSocketResponse = ReceiveSocketResponse::from_bytes(syscall_msg.payload);
         let count: usize = reply.count as usize;
         (count, reply.buffer[..count].to_vec())
+    }
+
+    /// If arming epoll fails after an operation parks, the reactor returns an error to the caller
+    /// and clears the parked queue instead of leaving the operation waiting for readiness forever.
+    #[test]
+    fn rearm_failure_aborts_parked_operations() {
+        let epoll: Epoll = Epoll::new().expect("epoll_create1");
+        let (response_tx, _response_rx) = mpsc::channel::<Vec<u8>>(16);
+        let mut session: Session = Session::new(0, HostFilter::AllowAll, response_tx);
+
+        // epoll_ctl rejects this fd with EBADF, which lets the test exercise the error path
+        // deterministically without depending on backend socket behavior.
+        let host_fd: RawFd = -1;
+        let tid: ThreadIdentifier = ThreadIdentifier::from(11);
+        let mut state: SocketState = SocketState::new(host_fd);
+        state.park(
+            Direction::Read,
+            NetworkOp::Message(ReceiveSocketRequest::build(tid, to_guest_fd(host_fd), 64, 0)),
+        );
+        session.sockets.insert(host_fd, state);
+
+        let mut frames: Vec<Vec<u8>> = Vec::new();
+        rearm(&epoll, &mut session, host_fd, &mut frames);
+
+        assert_eq!(frames.len(), 1, "failed rearm returns one error response");
+        let state: &SocketState = session.sockets.get(&host_fd).expect("socket still tracked");
+        assert_eq!(state.interest, 0, "failed rearm does not cache the requested interest");
+        assert!(state.parked_read.is_empty(), "parked read is aborted");
+        assert!(state.parked_write.is_empty(), "parked write queue remains empty");
+
+        let response: NetworkResponse = decode_frame(&frames[0]);
+        assert_eq!(response.tid, tid, "response stays correlated with the parked op");
+        let NetworkResult::Message(Some(messages)) = response.result else {
+            panic!("expected an inline error response");
+        };
+        assert_eq!(messages.len(), 1, "exactly one error message is returned");
+        let status: i32 = messages[0].status;
+        assert_eq!(status, i32::from(ErrorCode::IoErr));
     }
 
     /// A recv that finds no data parks on readability and is resumed once a peer send delivers it,

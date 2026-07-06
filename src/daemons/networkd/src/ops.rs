@@ -394,7 +394,7 @@ fn op_socket(
             Ok(()) => {
                 done_opened(CreateSocketResponse::build(tid, to_guest_fd(sockfd)), vec![sockfd])
             },
-            Err(code) => done(build_error(tid, code)),
+            Err(code) => nonblocking_error(backend, tid, &[sockfd], code, "socket"),
         },
         Err(e) => done(net_error(tid, e)),
     }
@@ -413,7 +413,7 @@ fn op_socketpair(
                     CreateSocketPairResponse::build(tid, to_guest_fd(fd0), to_guest_fd(fd1)),
                     vec![fd0, fd1],
                 ),
-                Err(code) => done(build_error(tid, code)),
+                Err(code) => nonblocking_error(backend, tid, &[fd0, fd1], code, "socketpair"),
             }
         },
         Err(e) => done(net_error(tid, e)),
@@ -551,7 +551,7 @@ fn op_accept(
                 AcceptSocketResponse::build(tid, to_guest_fd(new_sockfd), &addr),
                 vec![new_sockfd],
             ),
-            Err(code) => done(build_error(tid, code)),
+            Err(code) => nonblocking_error(backend, tid, &[new_sockfd], code, "accept"),
         },
         Err(e) if e.is_would_block() => OpOutcome::WouldBlock {
             host_fd,
@@ -681,6 +681,25 @@ fn set_nonblocking(backend: &NetBackend, sockfd: RawFd) -> Result<(), ErrorCode>
         NetError::Interrupted => ErrorCode::Interrupted,
         NetError::Errno(code) => code,
     })
+}
+
+/// Closes sockets that were created but cannot be tracked because non-blocking setup failed.
+fn nonblocking_error(
+    backend: &NetBackend,
+    tid: ThreadIdentifier,
+    sockets: &[RawFd],
+    code: ErrorCode,
+    op_name: &str,
+) -> OpOutcome {
+    for sockfd in sockets {
+        if let Err(e) = backend.close(*sockfd) {
+            error!(
+                "networkd::reactor::{op_name}(): failed to close fd {sockfd} after non-blocking \
+                 setup failure: {e:?}"
+            );
+        }
+    }
+    done(build_error(tid, code))
 }
 
 /// Builds an error response message from a backend error.

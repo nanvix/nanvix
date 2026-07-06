@@ -100,6 +100,7 @@ async fn main() -> Result<()> {
     // single epoll instance.
     if let Err(e) = ::networkd::reactor::run(host_filter, stream).await {
         error!("networkd: reactor terminated with an error: {e:?}");
+        return Err(e);
     }
 
     // Fail-stop teardown: exit the process outright once the user VM session ends. This guarantees
