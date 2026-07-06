@@ -62,7 +62,7 @@ boot:
 ```
 
 The three daemon binaries (`procd.elf`, `memd.elf`, `vfsd.elf`) are shipped in the release
-archive under `bin/`. Your application binary must be compiled and linked against `libposix.a`
+archive under `bin/`. Your application binary must be compiled and linked against `libc.a`
 using the `user.ld` linker script (both also in the release archive).
 
 Once the image is created, pass it to `nanvixd` as the program argument:

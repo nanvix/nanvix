@@ -147,7 +147,7 @@ For low-level debugging, the standalone UserVM is still available:
 1. Create directory at `src/user/<name>/`.
 2. Create a `Makefile` following the pattern in existing C applications.
 3. Write source files using the Nanvix POSIX layer (`#include <nanvix/...>`).
-4. The application links against `libposix.a`, `libc.a`, and the custom linker script at
+4. The application links against `libc.a` and the custom linker script at
    `build/user/linker/x86/user.ld`.
 
 ## Logging
