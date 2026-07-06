@@ -230,6 +230,7 @@ impl Terminal {
             self.config.mount_directory().map(|s| s.to_string()),
             self.config.networking_mode(),
             self.config.host_filter(),
+            self.config.networkd_endpoint(),
             #[cfg(feature = "gdb")]
             self.config.gdb_port(),
         );

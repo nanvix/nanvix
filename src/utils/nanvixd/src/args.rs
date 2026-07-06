@@ -26,6 +26,7 @@ use ::nanvix::{
     sandbox_config::{
         HostFilter,
         Ipv4Cidr,
+        NetworkdEndpoint,
         NetworkingMode,
     },
     syscomm::SocketType,
@@ -91,6 +92,13 @@ pub struct Args {
     /// Blocklist of IPv4/CIDR destinations (`-block-host`). When non-empty, all
     /// destinations except these are reachable. Mutually exclusive with `allow_hosts`.
     block_hosts: Vec<String>,
+    /// Optional decoupled `networkd` address (`-networkd-addr`). When set,
+    /// standalone mode forwards socket system calls to an external `networkd`
+    /// process at this address instead of running the daemon in-process.
+    networkd_addr: Option<String>,
+    /// Socket type used to reach the decoupled `networkd` (`-networkd-socket-type`).
+    /// Defaults to Unix when unset. Meaningful only with `networkd_addr`.
+    networkd_socket_type: Option<SocketType>,
     /// When `true`, route nanvixd's logs to stdout instead of a auto-named file.
     log_to_stdout: bool,
     /// Optional path of the standalone gateway endpoint -- the host-side
@@ -144,6 +152,10 @@ impl Args {
     pub const OPT_ALLOW_HOST: &'static str = "-allow-host";
     /// Command-line option (repeatable) adding an IPv4/CIDR to the egress blocklist.
     pub const OPT_BLOCK_HOST: &'static str = "-block-host";
+    /// Command-line option that sets the decoupled `networkd` address (standalone mode only).
+    pub const OPT_NETWORKD_ADDR: &'static str = "-networkd-addr";
+    /// Command-line option that sets the decoupled `networkd` socket type (standalone mode only).
+    pub const OPT_NETWORKD_SOCKET_TYPE: &'static str = "-networkd-socket-type";
     /// Command-line flag that routes nanvixd's logs to stdout instead of the auto-named file.
     pub const OPT_LOG_TO_STDOUT: &'static str = "-log-to-stdout";
     /// Command-line option for the standalone gateway endpoint (UDS
@@ -197,6 +209,8 @@ impl Args {
         let mut networking_mode: NetworkingMode = NetworkingMode::Disabled;
         let mut allow_hosts: Vec<String> = Vec::new();
         let mut block_hosts: Vec<String> = Vec::new();
+        let mut networkd_addr: Option<String> = None;
+        let mut networkd_socket_type: Option<SocketType> = None;
         let mut log_to_stdout: bool = false;
         let mut gateway_sockaddr: Option<String> = None;
 
@@ -376,6 +390,28 @@ impl Args {
                     }
                     block_hosts.push(args[i].clone());
                 },
+                Self::OPT_NETWORKD_ADDR => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_NETWORKD_ADDR
+                        ));
+                    }
+                    networkd_addr = Some(args[i].clone());
+                },
+                Self::OPT_NETWORKD_SOCKET_TYPE => {
+                    i += 1;
+                    if i >= args.len() {
+                        Self::usage(args[0].as_str());
+                        return Err(anyhow::anyhow!(
+                            "missing value for: {}",
+                            Self::OPT_NETWORKD_SOCKET_TYPE
+                        ));
+                    }
+                    networkd_socket_type = Some(args[i].parse()?);
+                },
                 Self::OPT_LOG_TO_STDOUT => {
                     log_to_stdout = true;
                 },
@@ -432,6 +468,46 @@ impl Args {
             );
         }
 
+        // A networkd socket type only makes sense alongside an address to
+        // connect to. Reject it on its own rather than silently ignoring it.
+        if networkd_socket_type.is_some() && networkd_addr.is_none() {
+            anyhow::bail!(
+                "{} requires {}",
+                Self::OPT_NETWORKD_SOCKET_TYPE,
+                Self::OPT_NETWORKD_ADDR,
+            );
+        }
+
+        // Forwarding to a decoupled networkd is a networking feature -- it is
+        // meaningless without host networking enabled.
+        if networkd_addr.is_some() && !networking_mode.is_enabled() {
+            anyhow::bail!(
+                "{} requires {}",
+                Self::OPT_NETWORKD_ADDR,
+                Self::OPT_ALLOW_HOST_NETWORKING,
+            );
+        }
+
+        // A decoupled networkd enforces its own egress policy at the point of
+        // egress, so any host filter passed here would be silently ignored.
+        // Reject the combination to avoid a false sense of policy.
+        if networkd_addr.is_some() && (!allow_hosts.is_empty() || !block_hosts.is_empty()) {
+            anyhow::bail!(
+                "{} / {} cannot be combined with {} (the decoupled networkd enforces egress \
+                 policy)",
+                Self::OPT_ALLOW_HOST,
+                Self::OPT_BLOCK_HOST,
+                Self::OPT_NETWORKD_ADDR,
+            );
+        }
+
+        // Decoupled networkd is only wired into the standalone network daemon
+        // path. In single-/multi-process builds the flag would be silently
+        // ignored -- reject it so the operator is not misled.
+        #[cfg(not(feature = "standalone"))]
+        if networkd_addr.is_some() {
+            anyhow::bail!("{} is only supported in standalone builds", Self::OPT_NETWORKD_ADDR);
+        }
         // Reject -snapshot in non-standalone builds where it would silently do nothing.
         #[cfg(not(feature = "standalone"))]
         if snapshot_path.is_some() {
@@ -513,6 +589,8 @@ impl Args {
             networking_mode,
             allow_hosts,
             block_hosts,
+            networkd_addr,
+            networkd_socket_type,
             log_to_stdout,
             gateway_sockaddr,
         })
@@ -570,6 +648,12 @@ Options:
   {block_host} <ip|cidr>                    (Repeatable, standalone mode only) Deny egress to this \
              IPv4/CIDR (blocklist; requires {allow_host_networking}; mutually exclusive with \
              {allow_host}).
+  {networkd_addr} <sockaddr>                (Standalone mode only) Forward socket system calls to \
+             a decoupled networkd process at this address instead of running the daemon \
+             in-process (requires {allow_host_networking}; the external networkd enforces egress \
+             policy, so it is mutually exclusive with {allow_host}/{block_host}).
+  {networkd_socket_type} <socket_type>      (Standalone mode only) Socket type used to reach the \
+             decoupled networkd (Default: unix; requires {networkd_addr}).
   {log_to_stdout}                          Route nanvixd's own logrus output to stdout instead of \
              a file in {log_dir} (file logger is otherwise the default).
   {gateway_sockaddr} <path>                 (Standalone) Path at which to expose the gateway \
@@ -596,6 +680,8 @@ Options:
             allow_host_networking = Self::OPT_ALLOW_HOST_NETWORKING,
             allow_host = Self::OPT_ALLOW_HOST,
             block_host = Self::OPT_BLOCK_HOST,
+            networkd_addr = Self::OPT_NETWORKD_ADDR,
+            networkd_socket_type = Self::OPT_NETWORKD_SOCKET_TYPE,
             log_to_stdout = Self::OPT_LOG_TO_STDOUT,
             gateway_sockaddr = Self::OPT_GATEWAY_SOCKADDR,
             gdb_port_line = if cfg!(feature = "gdb") {
@@ -849,6 +935,20 @@ Options:
         HostFilter::from_lists(&self.allow_hosts, &self.block_hosts, true)
     }
 
+    /// Returns the optional decoupled `networkd` endpoint built from
+    /// `-networkd-addr` / `-networkd-socket-type`. Returns [`None`] when no
+    /// address was given, in which case the network daemon runs in-process.
+    ///
+    /// The socket type defaults to Unix when unspecified.
+    pub fn networkd_endpoint(&self) -> Option<NetworkdEndpoint> {
+        self.networkd_addr.as_ref().map(|addr| {
+            NetworkdEndpoint::new(
+                addr.clone(),
+                self.networkd_socket_type.unwrap_or(SocketType::Unix),
+            )
+        })
+    }
+
     /// When `true`, nanvixd should route its logrus output to stdout
     /// instead of the file logger. See [`Self::OPT_LOG_TO_STDOUT`].
     pub fn log_to_stdout(&self) -> bool {
@@ -1060,6 +1160,111 @@ mod tests {
             "-allow-host-networking",
             "-allow-host",
             "1.2.3.4",
+            "--",
+            "/bin/foo",
+        ]));
+        let msg: String = format!("{:#}", res.expect_err("expected standalone-only error"));
+        assert!(msg.contains("standalone"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn networkd_endpoint_defaults_to_none() {
+        let args = Args::parse(argv(&["--", "/bin/foo"])).expect("parse");
+        assert!(args.networkd_endpoint().is_none());
+    }
+
+    #[cfg(feature = "standalone")]
+    #[test]
+    fn networkd_addr_builds_endpoint_with_unix_default() {
+        let args = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-networkd-addr",
+            "/tmp/networkd.sock",
+            "--",
+            "/bin/foo",
+        ]))
+        .expect("parse");
+        let endpoint: NetworkdEndpoint = args
+            .networkd_endpoint()
+            .expect("expected a networkd endpoint");
+        assert_eq!(endpoint.sockaddr(), "/tmp/networkd.sock");
+        assert_eq!(endpoint.socket_type(), SocketType::Unix);
+    }
+
+    #[cfg(feature = "standalone")]
+    #[test]
+    fn networkd_socket_type_overrides_default() {
+        let args = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-networkd-addr",
+            "127.0.0.1:9000",
+            "-networkd-socket-type",
+            "tcp",
+            "--",
+            "/bin/foo",
+        ]))
+        .expect("parse");
+        let endpoint: NetworkdEndpoint = args
+            .networkd_endpoint()
+            .expect("expected a networkd endpoint");
+        assert_eq!(endpoint.socket_type(), SocketType::Tcp);
+    }
+
+    #[cfg(feature = "standalone")]
+    #[test]
+    fn networkd_addr_requires_networking_enabled() {
+        let res = Args::parse(argv(&["-networkd-addr", "/tmp/networkd.sock", "--", "/bin/foo"]));
+        let msg: String = format!("{:#}", res.expect_err("expected requires-networking error"));
+        assert!(msg.contains(Args::OPT_NETWORKD_ADDR), "unexpected error: {msg}");
+        assert!(msg.contains(Args::OPT_ALLOW_HOST_NETWORKING), "unexpected error: {msg}");
+    }
+
+    #[cfg(feature = "standalone")]
+    #[test]
+    fn networkd_socket_type_requires_addr() {
+        let res = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-networkd-socket-type",
+            "tcp",
+            "--",
+            "/bin/foo",
+        ]));
+        let msg: String = format!("{:#}", res.expect_err("expected requires-address error"));
+        assert!(msg.contains(Args::OPT_NETWORKD_SOCKET_TYPE), "unexpected error: {msg}");
+        assert!(msg.contains(Args::OPT_NETWORKD_ADDR), "unexpected error: {msg}");
+    }
+
+    #[cfg(feature = "standalone")]
+    #[test]
+    fn networkd_addr_conflicts_with_host_filter() {
+        let res = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-allow-host",
+            "1.2.3.4",
+            "-networkd-addr",
+            "/tmp/networkd.sock",
+            "--",
+            "/bin/foo",
+        ]));
+        let msg: String = format!("{:#}", res.expect_err("expected conflict error"));
+        assert!(msg.contains(Args::OPT_NETWORKD_ADDR), "unexpected error: {msg}");
+        assert!(msg.contains(Args::OPT_ALLOW_HOST), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn rejects_networkd_addr_without_value() {
+        let res = Args::parse(argv(&["-networkd-addr"]));
+        let msg: String = format!("{:#}", res.expect_err("expected missing-value error"));
+        assert!(msg.contains("missing value for: -networkd-addr"), "unexpected error: {msg}");
+    }
+
+    #[cfg(not(feature = "standalone"))]
+    #[test]
+    fn networkd_addr_rejected_in_non_standalone_build() {
+        let res = Args::parse(argv(&[
+            "-allow-host-networking",
+            "-networkd-addr",
+            "/tmp/networkd.sock",
             "--",
             "/bin/foo",
         ]));

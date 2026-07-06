@@ -13,6 +13,7 @@
 
 use crate::{
     HostFilter,
+    NetworkdEndpoint,
     NetworkingMode,
 };
 
@@ -47,6 +48,10 @@ pub struct StandaloneConfig {
     /// Host egress filter applied to guest `connect()` destinations. Only
     /// meaningful when `networking_mode` is enabled.
     host_filter: HostFilter,
+    /// Optional decoupled `networkd` endpoint. When set (and networking is
+    /// enabled), the user VM forwards socket system calls to this external
+    /// `networkd` process instead of running the network daemon in-process.
+    networkd_endpoint: Option<NetworkdEndpoint>,
     /// Optional GDB server port for debugging the guest.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
@@ -83,6 +88,8 @@ impl StandaloneConfig {
     /// - `kernel_args`: Optional kernel arguments written to guest control registers.
     /// - `networking_mode`: Networking mode for host networking.
     /// - `host_filter`: Host egress filter applied to guest connections.
+    /// - `networkd_endpoint`: Optional decoupled `networkd` endpoint. When set, socket system
+    ///   calls are forwarded to an external `networkd` process instead of an in-process daemon.
     /// - `gdb_port`: Optional GDB server port.
     ///
     #[allow(clippy::too_many_arguments)]
@@ -95,6 +102,7 @@ impl StandaloneConfig {
         kernel_args: Option<String>,
         networking_mode: NetworkingMode,
         host_filter: HostFilter,
+        networkd_endpoint: Option<NetworkdEndpoint>,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
         gateway_sockaddr: Option<String>,
     ) -> Self {
@@ -107,6 +115,7 @@ impl StandaloneConfig {
             kernel_args,
             networking_mode,
             host_filter,
+            networkd_endpoint,
             #[cfg(feature = "gdb")]
             gdb_port,
             gateway_sockaddr,
@@ -151,6 +160,11 @@ impl StandaloneConfig {
     /// Returns the host egress filter.
     pub fn host_filter(&self) -> HostFilter {
         self.host_filter.clone()
+    }
+
+    /// Returns the optional decoupled `networkd` endpoint.
+    pub fn networkd_endpoint(&self) -> Option<NetworkdEndpoint> {
+        self.networkd_endpoint.clone()
     }
 
     /// Returns the optional GDB server port.

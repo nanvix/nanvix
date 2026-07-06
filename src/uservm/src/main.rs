@@ -26,6 +26,7 @@ use ::log::{
 };
 use ::nanvix_sandbox_config::{
     HostFilter,
+    NetworkdEndpoint,
     NetworkingMode,
 };
 #[cfg(target_os = "linux")]
@@ -123,6 +124,11 @@ pub async fn main() -> Result<ExitCode> {
     );
 
     if standalone {
+        let (networking_mode, host_filter, networkd_endpoint): (
+            NetworkingMode,
+            HostFilter,
+            Option<NetworkdEndpoint>,
+        ) = standalone_networking(&args)?;
         run_standalone(
             kernel_filename,
             initrd_filename,
@@ -131,6 +137,9 @@ pub async fn main() -> Result<ExitCode> {
             ramfs_filename,
             stderr,
             snapshot_path,
+            networking_mode,
+            host_filter,
+            networkd_endpoint,
             #[cfg(feature = "gdb")]
             gdb_port,
         )
@@ -184,6 +193,7 @@ pub async fn main() -> Result<ExitCode> {
 /// Returns an error if the VM task panics or if the exit status cannot be converted to a
 /// process exit code.
 ///
+#[allow(clippy::too_many_arguments)]
 async fn run_standalone(
     kernel_filename: String,
     initrd_filename: Option<String>,
@@ -192,9 +202,15 @@ async fn run_standalone(
     ramfs_filename: Option<String>,
     stderr: Option<String>,
     snapshot_path: Option<String>,
+    networking_mode: NetworkingMode,
+    host_filter: HostFilter,
+    networkd_endpoint: Option<NetworkdEndpoint>,
     #[cfg(feature = "gdb")] gdb_port: Option<u16>,
 ) -> Result<ExitCode> {
-    info!("main(): running in standalone mode (no system VM, control-plane, or gateway)");
+    info!(
+        "main(): running in standalone mode (no system VM, control-plane, or gateway; \
+         networking={networking_mode})"
+    );
 
     let (handle, _io): (StandaloneVmHandle, standalone::StandaloneVmIo) = StandaloneVmHandle::spawn(
         kernel_filename,
@@ -205,13 +221,85 @@ async fn run_standalone(
         stderr,
         snapshot_path,
         None,
-        NetworkingMode::Disabled,
-        HostFilter::AllowAll,
+        networking_mode,
+        host_filter,
+        networkd_endpoint,
         #[cfg(feature = "gdb")]
         gdb_port,
     );
 
     convert_exit_status(handle.wait().await)
+}
+
+///
+/// # Description
+///
+/// Builds the standalone networking configuration from parsed command-line arguments.
+///
+/// Host networking is enabled by `-allow-host-networking`. When a decoupled `networkd` address is
+/// supplied (`-networkd-addr`), socket system calls are forwarded to that external process;
+/// otherwise the network daemon runs in-process. The host egress filter is always
+/// [`HostFilter::AllowAll`] on this path: a decoupled `networkd` enforces its own egress policy,
+/// and the in-process daemon applies no filter here.
+///
+/// # Parameters
+///
+/// - `args`: Parsed command-line arguments.
+///
+/// # Returns
+///
+/// On success, the networking mode, host filter, and optional decoupled `networkd` endpoint.
+///
+fn standalone_networking(
+    args: &Args,
+) -> Result<(NetworkingMode, HostFilter, Option<NetworkdEndpoint>)> {
+    let networking_mode: NetworkingMode = if args.host_networking_enabled() {
+        NetworkingMode::Enabled
+    } else {
+        NetworkingMode::Disabled
+    };
+    let networkd_endpoint: Option<NetworkdEndpoint> = build_networkd_endpoint(args)?;
+    Ok((networking_mode, HostFilter::AllowAll, networkd_endpoint))
+}
+
+///
+/// # Description
+///
+/// Builds the optional decoupled `networkd` endpoint from parsed command-line arguments.
+///
+/// # Parameters
+///
+/// - `args`: Parsed command-line arguments.
+///
+/// # Returns
+///
+/// On success, the endpoint when `-networkd-addr` was supplied, or `None` for an in-process daemon.
+///
+#[cfg(target_os = "linux")]
+fn build_networkd_endpoint(args: &Args) -> Result<Option<NetworkdEndpoint>> {
+    match args.networkd_addr() {
+        Some(addr) => {
+            let socket_type_str: &str = args.networkd_socket_type().unwrap_or(SocketType::UNIX_STR);
+            let socket_type: SocketType = SocketType::from_str(socket_type_str).map_err(|e| {
+                anyhow::anyhow!("invalid networkd socket type '{socket_type_str}': {e}")
+            })?;
+            Ok(Some(NetworkdEndpoint::new(addr.to_string(), socket_type)))
+        },
+        None => Ok(None),
+    }
+}
+
+///
+/// # Description
+///
+/// Non-Linux stub: decoupled `networkd` is only supported on Linux, so this always yields `None`.
+///
+#[cfg(not(target_os = "linux"))]
+fn build_networkd_endpoint(args: &Args) -> Result<Option<NetworkdEndpoint>> {
+    if args.networkd_addr().is_some() {
+        error!("main(): decoupled networkd is not supported on this platform");
+    }
+    Ok(None)
 }
 
 ///
