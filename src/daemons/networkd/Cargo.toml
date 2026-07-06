@@ -14,12 +14,28 @@ homepage.workspace = true
 name = "networkd"
 path = "src/lib.rs"
 
+[[bin]]
+name = "networkd"
+path = "src/main.rs"
+
 [dependencies]
+anyhow = { workspace = true }
 log = { workspace = true }
 net-backend = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 syscall = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
+syslog = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["full"] }
+
+# The decoupled server transport (and its `networkd` binary) are Linux-only, matching how the
+# UserVM gates its own dependency on `syscomm`. Keeping `syscomm` out of the all-platform
+# dependency set ensures the `networkd` library still builds on Windows, where the UserVM links it
+# in-process for standalone mode. `libc` backs the epoll reactor and is Linux-only for the same
+# reason.
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { workspace = true }
+syscomm = { workspace = true }
 
 [features]
 default = []

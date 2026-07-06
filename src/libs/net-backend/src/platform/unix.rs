@@ -85,11 +85,50 @@ pub(crate) fn socket_failed(result: RawSocket) -> bool {
     result == INVALID_SOCKET
 }
 
-/// Maps a platform errno to the POSIX-like errno values used by `ErrorCode::try_from`.
-/// On Unix, errno is already POSIX.
+/// Maps a host (Linux) `errno` to the Nanvix `errno` numbering consumed by `ErrorCode::try_from`.
+///
+/// Nanvix uses a newlib-style `errno` layout (see `sysapi::errno`) whose socket/network range does
+/// not match Linux's `asm-generic` layout. For example `EINPROGRESS` is 115 on Linux but 119 on
+/// Nanvix, and `EISCONN` is 106 versus 127. Feeding a raw host `errno` into `ErrorCode::try_from`
+/// (which matches Nanvix constants) therefore mis-maps these codes: a non-blocking `connect()`
+/// returning `EINPROGRESS` would be classified as a fatal error instead of a "connection pending"
+/// condition the epoll reactor should park on.
+///
+/// `net-backend` is the only layer that converts a host socket-syscall `errno` into a Nanvix
+/// `ErrorCode`, and it only ever surfaces socket/network `errno`s, so translating that family here
+/// is sufficient. The generic low `errno`s (`EBADF`, `EINVAL`, `EAGAIN`, `EINTR`, ...) are `< 35`
+/// and identical between Linux and Nanvix, so they fall through the identity arm unchanged.
 #[inline]
 pub(crate) fn normalize_errno(errno: i32) -> i32 {
-    errno
+    // Only the socket/network `errno`s whose Nanvix numbering diverges from Linux need remapping;
+    // everything else already matches and is passed through untouched.
+    match errno {
+        libc::EADDRINUSE => ::sysapi::errno::EADDRINUSE,
+        libc::EADDRNOTAVAIL => ::sysapi::errno::EADDRNOTAVAIL,
+        libc::EAFNOSUPPORT => ::sysapi::errno::EAFNOSUPPORT,
+        libc::EALREADY => ::sysapi::errno::EALREADY,
+        libc::ECONNABORTED => ::sysapi::errno::ECONNABORTED,
+        libc::EDESTADDRREQ => ::sysapi::errno::EDESTADDRREQ,
+        libc::EHOSTDOWN => ::sysapi::errno::EHOSTDOWN,
+        libc::EHOSTUNREACH => ::sysapi::errno::EHOSTUNREACH,
+        libc::EINPROGRESS => ::sysapi::errno::EINPROGRESS,
+        libc::EISCONN => ::sysapi::errno::EISCONN,
+        libc::EMSGSIZE => ::sysapi::errno::EMSGSIZE,
+        libc::ENETDOWN => ::sysapi::errno::ENETDOWN,
+        libc::ENETRESET => ::sysapi::errno::ENETRESET,
+        libc::ENETUNREACH => ::sysapi::errno::ENETUNREACH,
+        libc::ENOPROTOOPT => ::sysapi::errno::ENOPROTOOPT,
+        libc::ENOTCONN => ::sysapi::errno::ENOTCONN,
+        libc::ENOTSOCK => ::sysapi::errno::ENOTSOCK,
+        libc::EPROTONOSUPPORT => ::sysapi::errno::EPROTONOSUPPORT,
+        libc::EPROTOTYPE => ::sysapi::errno::EPROTOTYPE,
+        libc::ESHUTDOWN => ::sysapi::errno::ESHUTDOWN,
+        libc::ESOCKTNOSUPPORT => ::sysapi::errno::ESOCKTNOSUPPORT,
+        libc::ETIMEDOUT => ::sysapi::errno::ETIMEDOUT,
+        libc::ETOOMANYREFS => ::sysapi::errno::ETOOMANYREFS,
+        libc::EUSERS => ::sysapi::errno::EUSERS,
+        other => other,
+    }
 }
 
 //==================================================================================================
@@ -206,6 +245,24 @@ pub(crate) unsafe fn raw_socketpair(
     libc::socketpair(domain, typ, protocol, sv.as_mut_ptr())
 }
 
+/// Raw operation to enable or disable non-blocking mode on a socket.
+///
+/// Uses `fcntl(F_GETFL)` followed by `fcntl(F_SETFL)` to toggle `O_NONBLOCK`. Returns 0 on success
+/// and -1 on failure, with the platform errno set.
+#[inline]
+pub(crate) unsafe fn raw_set_nonblocking(fd: RawSocket, nonblocking: bool) -> libc::c_int {
+    let flags: libc::c_int = libc::fcntl(fd, libc::F_GETFL, 0);
+    if flags < 0 {
+        return -1;
+    }
+    let new_flags: libc::c_int = if nonblocking {
+        flags | libc::O_NONBLOCK
+    } else {
+        flags & !libc::O_NONBLOCK
+    };
+    libc::fcntl(fd, libc::F_SETFL, new_flags)
+}
+
 //==================================================================================================
 // Message Flags
 //==================================================================================================
@@ -276,12 +333,52 @@ mod test {
 
     // ---- normalize_errno ------------------------------------------------------------------------
 
-    /// Tests that `normalize_errno` is identity on Unix.
+    /// Tests that `normalize_errno` passes through `errno`s that already match Nanvix numbering.
     #[test]
-    fn normalize_errno_identity() {
+    fn normalize_errno_passthrough() {
+        // Generic low `errno`s are identical between Linux and Nanvix.
         assert_eq!(normalize_errno(libc::EINTR), libc::EINTR, "EINTR should pass through");
         assert_eq!(normalize_errno(libc::EINVAL), libc::EINVAL, "EINVAL should pass through");
+        assert_eq!(normalize_errno(libc::EBADF), libc::EBADF, "EBADF should pass through");
+        // EAGAIN (11) matches on both, which is why would-block detection already worked.
+        assert_eq!(normalize_errno(libc::EAGAIN), libc::EAGAIN, "EAGAIN should pass through");
+        // A handful of socket `errno`s also happen to match and must not be remapped.
+        assert_eq!(
+            normalize_errno(libc::ECONNREFUSED),
+            libc::ECONNREFUSED,
+            "ECONNREFUSED should pass through"
+        );
         assert_eq!(normalize_errno(42), 42, "arbitrary value should pass through");
+    }
+
+    /// Tests that `normalize_errno` translates diverging socket `errno`s to Nanvix numbering, and
+    /// that the result round-trips into the `ErrorCode` variants the epoll reactor branches on.
+    #[test]
+    fn normalize_errno_translates_socket_family() {
+        use ::sys::error::ErrorCode;
+
+        // Raw Linux values differ from Nanvix values for these codes.
+        assert_eq!(normalize_errno(libc::EINPROGRESS), ::sysapi::errno::EINPROGRESS);
+        assert_eq!(normalize_errno(libc::EALREADY), ::sysapi::errno::EALREADY);
+        assert_eq!(normalize_errno(libc::EISCONN), ::sysapi::errno::EISCONN);
+
+        // Round-trip into the `ErrorCode`s the reactor's connect path depends on: without the
+        // translation these would map to unrelated variants and connect() would fail spuriously.
+        assert_eq!(
+            ErrorCode::try_from(normalize_errno(libc::EINPROGRESS)).unwrap(),
+            ErrorCode::OperationInProgress,
+            "EINPROGRESS must classify as connection-pending"
+        );
+        assert_eq!(
+            ErrorCode::try_from(normalize_errno(libc::EALREADY)).unwrap(),
+            ErrorCode::OperationAlreadyInProgress,
+            "EALREADY must classify as already-in-progress"
+        );
+        assert_eq!(
+            ErrorCode::try_from(normalize_errno(libc::EISCONN)).unwrap(),
+            ErrorCode::TransportEndpointConnected,
+            "EISCONN must classify as already-connected"
+        );
     }
 
     // ---- Boolean helpers ------------------------------------------------------------------------

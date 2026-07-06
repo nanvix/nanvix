@@ -2333,11 +2333,16 @@ dependencies = [
 name = "networkd"
 version = "0.18.54"
 dependencies = [
+ "anyhow",
+ "libc",
  "log",
  "net-backend",
  "sys",
  "sysapi",
  "syscall",
+ "syscomm",
+ "syslog",
+ "tokio",
 ]
 
 [[package]]

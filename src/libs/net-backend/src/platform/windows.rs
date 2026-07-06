@@ -292,6 +292,16 @@ pub(crate) unsafe fn raw_socketpair(
     -1
 }
 
+/// Raw operation to enable or disable non-blocking mode on a socket.
+///
+/// Uses `ioctlsocket(FIONBIO)`. Returns 0 on success and `SOCKET_ERROR` (-1) on failure, with the
+/// Winsock error retrievable via `WSAGetLastError`.
+#[inline]
+pub(crate) unsafe fn raw_set_nonblocking(fd: RawSocket, nonblocking: bool) -> libc::c_int {
+    let mut mode: libc::c_ulong = if nonblocking { 1 } else { 0 };
+    winsock::ioctlsocket(fd, winsock::FIONBIO, &mut mode as *mut libc::c_ulong)
+}
+
 //==================================================================================================
 // Message Flags
 //==================================================================================================
@@ -342,6 +352,8 @@ pub(crate) mod winsock {
     use libc::{
         c_char,
         c_int,
+        c_long,
+        c_ulong,
         sockaddr,
         SOCKET,
     };
@@ -371,6 +383,9 @@ pub(crate) mod winsock {
     pub const MSG_PEEK: c_int = 0x2;
     pub const MSG_OOB: c_int = 0x1;
     pub const MSG_WAITALL: c_int = 0x8;
+
+    // ioctlsocket command to enable/disable non-blocking mode (FIONBIO).
+    pub const FIONBIO: c_long = 0x8004667Eu32 as c_long;
 
     /// WSADATA structure for WSAStartup.
     #[repr(C)]
@@ -407,6 +422,7 @@ pub(crate) mod winsock {
         pub fn WSACleanup() -> c_int;
         pub fn WSAGetLastError() -> c_int;
         pub fn closesocket(s: SOCKET) -> c_int;
+        pub fn ioctlsocket(s: SOCKET, cmd: c_long, argp: *mut c_ulong) -> c_int;
         pub fn shutdown(s: SOCKET, how: c_int) -> c_int;
         pub fn send(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int) -> c_int;
         pub fn recv(s: SOCKET, buf: *mut c_char, len: c_int, flags: c_int) -> c_int;
