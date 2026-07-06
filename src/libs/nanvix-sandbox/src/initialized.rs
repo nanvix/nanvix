@@ -31,12 +31,11 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::log::error;
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-use ::std::marker::PhantomData;
 #[cfg(not(feature = "standalone"))]
 use ::std::sync::Arc;
 #[cfg(not(feature = "standalone"))]
 use ::syscomm::SocketStream;
+#[cfg(not(feature = "standalone"))]
 use ::syscomm::SocketType;
 #[cfg(not(feature = "standalone"))]
 use ::tokio::{
@@ -79,10 +78,6 @@ pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     pub(super) control_plane_acceptor: Arc<ControlPlaneAcceptor>,
     /// Complete configuration for the sandbox execution environment.
     pub(super) sandbox_config: SandboxConfig<T>,
-    /// Phantom data to maintain the generic type parameter `T` in the structure.
-    /// This is required because `T` is only used in single-process mode for the syscall table.
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    pub(super) _phantom: PhantomData<T>,
 }
 
 impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
@@ -101,10 +96,11 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     /// On success, returns a running sandbox with an active User VM. On failure, returns an
     /// error describing what went wrong during startup.
     ///
-    #[cfg_attr(feature = "standalone", allow(unused_variables))]
     pub async fn start(self, tag: SandboxTag) -> Result<RunningSandbox> {
         // Extract gateway socket info parts for later use.
+        #[cfg(not(feature = "standalone"))]
         let gateway_sockaddr: String = self.sandbox_config.gateway_socket_info().0.clone();
+        #[cfg(not(feature = "standalone"))]
         let gateway_socket_type: SocketType = self.sandbox_config.gateway_socket_info().1;
         #[cfg(not(feature = "standalone"))]
         let control_plane_connect_socket_info: (String, SocketType) = self
@@ -119,12 +115,9 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         let hwloc: Option<hwloc::HwLoc> = self.sandbox_config.hwloc();
         let log_directory: String = self.sandbox_config.log_directory().to_string();
         let uservm_id: ::user_vm_api::UserVmIdentifier = self.sandbox_config.uservm_id();
-        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-        let uservm_binary_path: String = self.sandbox_config.uservm_binary_path().to_string();
 
         // Extract gateway socket info (consumes the config).
-        let gateway_socket_info: (String, SocketType) =
-            self.sandbox_config.into_gateway_socket_info();
+        let gateway_socket_info = self.sandbox_config.into_gateway_socket_info();
 
         // Build User VM arguments.
         let uservm_args: UserVmArgs = UserVmArgs::new(
@@ -140,8 +133,6 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
             console_file,
             hwloc,
             self.kernel_binary_path.clone(),
-            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-            uservm_binary_path,
             log_directory,
             uservm_id,
         );

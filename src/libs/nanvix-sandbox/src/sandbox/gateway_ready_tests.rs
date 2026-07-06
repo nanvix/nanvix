@@ -3,9 +3,9 @@
 
 //! Shared tests for `wait_for_gateway_ready` and `wait_for_gateway_ready_no_buffer`.
 //!
-//! Both `multi_process::LinuxDaemon` and `single_process::LinuxDaemon` expose identical testing
-//! interfaces (`new_for_test`, `wait_for_gateway_ready`, `wait_for_gateway_ready_no_buffer`) so
-//! the test logic is defined once here and included from each `linuxd` module via `#[path]`.
+//! `single_process::LinuxDaemon` exposes testing interfaces (`new_for_test`,
+//! `wait_for_gateway_ready`, `wait_for_gateway_ready_no_buffer`) so the test logic is defined
+//! once here and included from the `linuxd` module via `#[path]`.
 
 use super::*;
 use ::control_plane_api::{

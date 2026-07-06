@@ -38,20 +38,6 @@ may leave stale resources behind that require manual cleanup.
 sudo rm -rf /tmp/nvx:*
 ```
 
-### Test Directories (`nanvix-test-*`)
-
-**Description:** Temporary directories created by unit tests in `nanvix-sandbox-cache`.
-
-**Location:** `/tmp/nanvix-test-*`
-
-**Primary Cleanup:** `TempTestDir::Drop` in `src/libs/nanvix-sandbox-cache/src/lib.rs`
-
-**Manual Cleanup:**
-
-```bash
-rm -rf /tmp/nanvix-test-*
-```
-
 ### Unix Sockets (`*.socket`)
 
 **Description:** Unix domain sockets used for inter-process communication between nanvixd

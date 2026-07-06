@@ -19,7 +19,6 @@ You will need to save this JSON file.
 - `boot-time`: measure the time to start a user VM (excluding `nanvixd`).
 - `cold-start`: measure the latency to start a linuxd and a user VM from scratch and send an HTTP echo to the guest.
 - `cold-start-uvm`: same as `cold-start`, but reuse an existing linuxd instance.
-- `concurrent`: same as `cold-start`, but keep the (one) linuxd and (many) user VM instances alive after each iteration.
 - `echo-breakdown`: break down the contribution of each step in the data-path when sending an HTTP echo (requires re-compilation with `TIMESTAMP_MSG=yes`).
 - `round-trip-latency`: measure the latency as we increase the size of the HTTP echo payload.
 - `vfs-bench`: measure VFS operation latencies (stat, open/close, read, write, readdir, create/unlink, mkdir/rmdir, rename) inside the guest VM using a FAT32 image loaded into guest memory via the RAMFS region.
@@ -95,5 +94,5 @@ This builds all components including `nanvix-bench.exe` with the standalone and 
 .\bin\nanvix-bench.exe -help
 ```
 
-> ℹ️ **Note:** HTTP-based benchmarks (`warm-start`, `round-trip-latency`, `concurrent`,
+> ℹ️ **Note:** HTTP-based benchmarks (`warm-start`, `round-trip-latency`,
 > and `echo-breakdown`) are Linux-only.

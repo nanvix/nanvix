@@ -12,7 +12,7 @@ inputs:
     description: "Target machine type"
     required: true
   deployment-type:
-    description: "Deployment type (single-process or multi-process)"
+    description: "Deployment type (single-process)"
     required: true
   memory-size:
     description: "Memory size in megabytes"

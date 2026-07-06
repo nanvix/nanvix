@@ -48,7 +48,6 @@ steps for `microvm`.
 |-----------------|-------------------|
 | standalone      | `standalone`      |
 | single-process  | `single-process`  |
-| multi-process   | `multi-process`   |
 
 ## Individual Quality Checks
 
@@ -78,8 +77,8 @@ pipeline, but matrix coverage is split across multiple jobs and run on pull requ
 Matrix coverage in GitHub Actions:
 
 - `checks`: format + spellcheck (single run).
-- `lint`, `verify`, `ci-build`: `microvm` with `standalone`,
-  `single-process`, and `multi-process`.
+- `lint`, `verify`, `ci-build`: `microvm` with `standalone`
+  and `single-process`.
 - `ci-test`: same matrix.
 
 > **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)

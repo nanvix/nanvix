@@ -20,7 +20,6 @@ hyper-util = { workspace = true, features = ["full"] }
 linuxd = { workspace = true, optional = true }
 log = { workspace = true }
 nanvix-sandbox = { workspace = true, optional = true }
-nanvix-sandbox-cache = { workspace = true, optional = true }
 nanvix-sandbox-config = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
@@ -38,29 +37,14 @@ single-process = [
     "nanvix-sandbox",
     "nanvix-sandbox/single-process",
 ]
-multi-process = [
-    "nanvix-sandbox-config",
-    "nanvix-sandbox-cache",
-    "nanvix-sandbox-cache/multi-process",
-]
 standalone = [
     "nanvix-sandbox-config",
     "nanvix-sandbox",
     "nanvix-sandbox/standalone",
 ]
 gdb = ["uservm/gdb", "nanvix-sandbox-config?/gdb"]
-microvm = [
-    "config/microvm",
-    "uservm/microvm",
-    "nanvix-sandbox-cache?/microvm",
-    "nanvix-sandbox?/microvm",
-]
-whp = [
-    "config/whp",
-    "uservm/whp",
-    "nanvix-sandbox-cache?/whp",
-    "nanvix-sandbox?/whp",
-]
+microvm = ["config/microvm", "uservm/microvm", "nanvix-sandbox?/microvm"]
+whp = ["config/whp", "uservm/whp", "nanvix-sandbox?/whp"]
 
 [lints]
 workspace = true

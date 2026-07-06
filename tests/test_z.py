@@ -524,10 +524,10 @@ class TestAssembleBuildMakeArgs(unittest.TestCase):
 
     def test_windows_no_duplicate_deployment_mode(self) -> None:
         """User-supplied DEPLOYMENT_MODE= should not be overridden."""
-        cfg = zmod.BuildConfig(make_args=["DEPLOYMENT_MODE=multi-process"])
+        cfg = zmod.BuildConfig(make_args=["DEPLOYMENT_MODE=single-process"])
         injected, user = zmod._assemble_build_make_args(_windows_plat(), cfg)
         self.assertNotIn("DEPLOYMENT_MODE=standalone", injected)
-        self.assertIn("DEPLOYMENT_MODE=multi-process", user)
+        self.assertIn("DEPLOYMENT_MODE=single-process", user)
 
     def test_windows_no_duplicate_whp(self) -> None:
         """User-supplied WHP= should not be overridden."""

@@ -69,14 +69,14 @@ Pass build parameters after `--`:
 ./z build -- all LOG_LEVEL=debug
 
 # Combine multiple parameters.
-./z build -- all RELEASE=yes DEPLOYMENT_MODE=multi-process LOG_LEVEL=error
+./z build -- all RELEASE=yes DEPLOYMENT_MODE=single-process LOG_LEVEL=error
 ```
 
 Available build parameters:
 
 | Parameter         | Default      | Values                                             |
 | ----------------- | ------------ | -------------------------------------------------- |
-| `DEPLOYMENT_MODE` | `standalone` | `standalone`, `single-process`, `multi-process`    |
+| `DEPLOYMENT_MODE` | `standalone` | `standalone`, `single-process`                     |
 | `LOG_LEVEL`       | `error`      | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
 | `MACHINE`         | `microvm`    | `microvm`                                          |
 | `PROFILER`        | `no`         | `yes`, `no`                                        |

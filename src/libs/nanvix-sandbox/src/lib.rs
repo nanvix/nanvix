@@ -5,7 +5,7 @@
 //!
 //! This library provides a high-level API for creating and managing sandboxed execution
 //! environments in Nanvix. It implements a state machine pattern for sandbox lifecycle
-//! management and supports both single-process and multi-process deployment modes.
+//! management and supports both single-process and standalone deployment modes.
 //!
 //! ## Overview
 //!
@@ -42,11 +42,6 @@
 //! The sandbox runs as a self-contained unit without external Linux Daemon or User VM
 //! processes. This is the simplest deployment mode and the default for development.
 //!
-//! ### Multi-Process Mode
-//!
-//! Linux Daemon and User VM run as separate OS processes. This mode is used by Nanvix
-//! Daemon for isolation and robustness in production deployments.
-//!
 //! ### Single-Process Mode
 //!
 //! Linux Daemon and User VM run as tasks within the same process. Enabled via the
@@ -75,10 +70,6 @@
 //!     None,  // console_file
 //!     None,  // hwloc
 //!     "/path/to/kernel.elf",  // kernel_binary_path
-//!     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-//!     "/path/to/linuxd.elf",  // linuxd_binary_path
-//!     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-//!     "/path/to/uservm.elf",  // uservm_binary_path
 //!     "/path/to/logs",  // log_directory
 //!     #[cfg(feature = "single-process")]
 //!     None,  // syscall_table
@@ -135,7 +126,14 @@
 //!
 //! - Core state types: [`UninitializedSandbox`], [`InitializedSandbox`], [`RunningSandbox`]
 //! - Configuration: [`SandboxConfig`], [`LinuxDaemonArgs`], [`UserVmArgs`]
-//! - Implementation: [`multi_process`] (default), [`single_process`] (feature-gated)
+//! - Implementation: [`single_process`] (feature-gated) or standalone
+
+//==================================================================================================
+// Deployment Mode
+//==================================================================================================
+
+#[cfg(not(any(feature = "standalone", feature = "single-process")))]
+compile_error!("one of the features `standalone` or `single-process` must be enabled");
 
 //==================================================================================================
 // Private Modules
@@ -178,12 +176,10 @@ mod uservm_args;
 ::cfg_if::cfg_if! {
     if #[cfg(feature = "standalone")] {
         pub use self::standalone::*;
-    } else if #[cfg(feature = "single-process")] {
+    } else {
         pub use self::sandbox::single_process::*;
         pub use ::linuxd::syscalls::SyscallAction;
         pub use ::linuxd::syscalls::SyscallTable;
-    } else {
-        pub use self::sandbox::multi_process::*;
     }
 }
 

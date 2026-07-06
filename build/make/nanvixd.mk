@@ -4,7 +4,6 @@
 NANVIXD_FEATURES :=
 NANVIXD_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
 NANVIXD_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
-NANVIXD_FEATURES += $(if $(filter multi-process,$(DEPLOYMENT_MODE)),multi-process,)
 NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIXD_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)

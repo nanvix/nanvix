@@ -8,14 +8,11 @@
 //! graceful shutdown on interrupt signals, and maintains the sandbox cache for all active
 //! instances.
 
-#[cfg(all(feature = "standalone", feature = "multi-process"))]
-compile_error!("features `standalone` and `multi-process` are mutually exclusive");
-
 #[cfg(all(feature = "standalone", feature = "single-process"))]
 compile_error!("features `standalone` and `single-process` are mutually exclusive");
 
-#[cfg(all(feature = "single-process", feature = "multi-process"))]
-compile_error!("features `single-process` and `multi-process` are mutually exclusive");
+#[cfg(not(any(feature = "standalone", feature = "single-process")))]
+compile_error!("one of the features `standalone` or `single-process` must be enabled");
 
 //==================================================================================================
 // Imports
@@ -34,13 +31,6 @@ use ::log::{
 };
 #[cfg(feature = "single-process")]
 use ::nanvix_sandbox::simple_cache::SimpleSandboxCache;
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-use ::nanvix_sandbox_cache::{
-    SandboxCache,
-    SandboxCacheStateSummary,
-};
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-use ::nanvix_sandbox_config::SandboxCacheConfig;
 #[cfg(feature = "single-process")]
 use ::nanvix_sandbox_config::SimpleSandboxCacheConfig;
 #[cfg(feature = "standalone")]
@@ -86,8 +76,6 @@ pub struct HttpServer<T> {
     config: SimpleSandboxCacheConfig<T>,
     #[cfg(feature = "standalone")]
     config: StandaloneConfig,
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    config: SandboxCacheConfig<T>,
     #[cfg(feature = "standalone")]
     _phantom: ::std::marker::PhantomData<T>,
 }
@@ -145,33 +133,11 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
     ///
     /// # Description
     ///
-    /// Creates a new HTTP server with the specified configuration.
-    ///
-    /// # Parameters
-    ///
-    /// - `sockaddr`: Socket address (host:port) to bind the server to.
-    /// - `config`: Configuration parameters for sandbox cache management.
-    ///
-    /// # Returns
-    ///
-    /// A new HTTP server instance ready to be started.
-    ///
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    pub fn new(sockaddr: &str, config: SandboxCacheConfig<T>) -> Self {
-        Self {
-            sockaddr: sockaddr.to_string(),
-            config,
-        }
-    }
-
-    ///
-    /// # Description
-    ///
     /// Runs the HTTP server's main event loop.
     ///
     /// This method binds to the configured address, accepts incoming connections, and dispatches
-    /// them to HTTP client handlers. In single-process mode, connections are handled sequentially.
-    /// In multi-process mode, each connection is handled in a separate tokio task.
+    /// them to HTTP client handlers. In single-process and standalone mode, connections are
+    /// handled sequentially.
     ///
     /// The server runs until a shutdown signal is received (SIGINT on Unix, Ctrl-C on Windows),
     /// at which point it performs graceful shutdown by cleaning up all active sandboxes.
@@ -191,8 +157,6 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
         #[cfg(feature = "standalone")]
         let sandbox_cache: Arc<StandaloneState> =
             Arc::new(StandaloneState::new(self.config.clone()));
-        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-        let sandbox_cache: Arc<SandboxCache<T>> = SandboxCache::new(self.config.clone()).await?;
         #[cfg(unix)]
         let mut signals: Signal = signal(SignalKind::interrupt())?;
         let http_listener: TcpListener = TcpListener::bind(&self.sockaddr).await?;
@@ -219,34 +183,14 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                             if let Err(e) = stream.set_nodelay(true) {
                                 error!("failed to set TCP_NODELAY (error={e:?})");
                             }
-                            // In single-process and standalone mode, handle connections sequentially.
-                            #[cfg(any(feature = "single-process", feature = "standalone"))]
+                            // Handle each connection sequentially.
+                            let client: HttpClient<T> = HttpClient::new(sandbox_cache.clone());
+                            let io: TokioIo<TcpStream> = TokioIo::new(stream);
+                            if let Err(e) = http1::Builder::new()
+                                .serve_connection(io, client)
+                                .await
                             {
-                                let client: HttpClient<T> =
-                                    HttpClient::new(sandbox_cache.clone());
-                                let io: TokioIo<TcpStream> = TokioIo::new(stream);
-                                if let Err(e) = http1::Builder::new()
-                                    .serve_connection(io, client)
-                                    .await
-                                {
-                                    error!("failed to serve connection (error={e:?})");
-                                }
-                            }
-                            // In multi-process mode, spawn a new task for each connection.
-                            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-                            {
-                                let sandbox_cache_clone = sandbox_cache.clone();
-                                tokio::spawn(async move {
-                                    let client: HttpClient<T> =
-                                        HttpClient::new(sandbox_cache_clone);
-                                    let io: TokioIo<TcpStream> = TokioIo::new(stream);
-                                    if let Err(e) = http1::Builder::new()
-                                        .serve_connection(io, client)
-                                        .await
-                                    {
-                                        error!("failed to serve connection (error={e:?})");
-                                    }
-                                });
+                                error!("failed to serve connection (error={e:?})");
                             }
                         },
                         Err(e) => {
@@ -273,16 +217,6 @@ impl<T: Send + Sync + Default + Clone + 'static> HttpServer<T> {
                     {
                         let has_vm: bool = sandbox_cache.has_running_vm().await;
                         info!("shutdown snapshot: has_running_vm={has_vm}");
-                        sandbox_cache.cleanup().await;
-                    }
-                    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-                    {
-                        let summary: SandboxCacheStateSummary = sandbox_cache.state_summary().await;
-                        info!(
-                            "shutdown snapshot: running_sandboxes={}, linuxd_instances={}",
-                            summary.running_sandboxes(),
-                            summary.linuxd_instances(),
-                        );
                         sandbox_cache.cleanup().await;
                     }
                     break Ok(());

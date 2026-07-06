@@ -6,7 +6,6 @@
 //==================================================================================================
 
 mod cold_start;
-mod concurrent;
 #[cfg(feature = "timestamp-messages")]
 mod echo_breakdown;
 mod round_trip_latency;

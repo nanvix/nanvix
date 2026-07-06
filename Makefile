@@ -29,11 +29,11 @@ export TIMESTAMP_MSG ?= no
 # Target Host CPU
 export HOST_CPU ?=
 
-# Deployment mode: standalone, single-process, multi-process
+# Deployment mode: standalone, single-process
 export DEPLOYMENT_MODE ?= standalone
 
 # Validate DEPLOYMENT_MODE.
-VALID_DEPLOYMENT_MODES := standalone single-process multi-process
+VALID_DEPLOYMENT_MODES := standalone single-process
 ifeq ($(filter $(DEPLOYMENT_MODE),$(VALID_DEPLOYMENT_MODES)),)
 $(error Invalid DEPLOYMENT_MODE '$(DEPLOYMENT_MODE)'. Valid values: $(VALID_DEPLOYMENT_MODES))
 endif
@@ -386,22 +386,18 @@ ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := \
 	control-plane-api hostfsd hwloc multibin multiimage net-backend profiler \
-	nanvix nanvix-http nanvix-sandbox nanvix-sandbox-cache nanvix-sandbox-config \
+	nanvix nanvix-http nanvix-sandbox nanvix-sandbox-config \
 	nanvix-terminal syscomm user-vm-api
 # Host rlibs excluded on Windows:
-#  - nanvix-http, nanvix-sandbox-cache: depend on Unix-only APIs.
+#  - nanvix-http: depends on Unix-only APIs.
 #  - syscomm: test code references cfg(unix)-gated SocketAddr::Unix variant.
 ifeq ($(IS_WINDOWS),yes)
-WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http nanvix-sandbox-cache syscomm
+WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http syscomm
 ALL_HOST_RUST_LIBS := $(filter-out $(WINDOWS_EXCLUDED_HOST_RLIBS),$(ALL_HOST_RUST_LIBS))
 endif
 ALL_HOST_UTILS := echo-client gen-headers mkimage mkramfs strace
-# linuxd is only needed for multi-process deployments (Linux-only).
-ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
-ALL_HOST_DAEMONS := linuxd
-else
+# linuxd is always embedded into nanvixd; it is never built as a standalone host daemon.
 ALL_HOST_DAEMONS :=
-endif
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 
 #===================================================================================================
@@ -618,7 +614,7 @@ help:
 	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (unset: skip verification)"
 	@echo ""
 	@echo "Parameter Values"
-	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process"
+	@echo "  DEPLOYMENT_MODE standalone, single-process"
 	@echo "  MACHINE         microvm"
 	@echo "  TARGET          x86, x86_64"
 	@echo "  RELEASE         yes, no"
@@ -1083,12 +1079,6 @@ ifeq ($(TARGET),x86_64)
 NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
 else
 NANVIX_TEST_CONFIG := test/test-single_process.toml
-endif
-else
-ifeq ($(TARGET),x86_64)
-NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
-else
-NANVIX_TEST_CONFIG := test/test-multi_process.toml
 endif
 endif
 endif

@@ -17,7 +17,6 @@ hwloc = { workspace = true }
 linuxd = { workspace = true, optional = true }
 nanvix-http = { workspace = true }
 nanvix-sandbox = { workspace = true }
-nanvix-sandbox-cache = { workspace = true, optional = true }
 nanvix-terminal = { workspace = true }
 nanvix-sandbox-config = { workspace = true }
 sys = { workspace = true, features = ["std"], optional = true }
@@ -27,7 +26,7 @@ syslog = { workspace = true, features = ["std"] }
 uservm = { workspace = true, optional = true }
 
 [features]
-default = ["microvm", "multi-process"]
+default = ["microvm", "single-process"]
 internal-api = ["sys", "syscall", "uservm"]
 single-process = [
     "linuxd",
@@ -35,13 +34,6 @@ single-process = [
     "nanvix-http/single-process",
     "nanvix-sandbox/single-process",
     "nanvix-terminal/single-process",
-]
-multi-process = [
-    "nanvix-sandbox-cache",
-    "nanvix-http/multi-process",
-    "nanvix-sandbox/multi-process",
-    "nanvix-sandbox-cache/multi-process",
-    "nanvix-terminal/multi-process",
 ]
 standalone = [
     "nanvix-http/standalone",
@@ -60,7 +52,6 @@ microvm = [
     "config/microvm",
     "nanvix-http/microvm",
     "nanvix-sandbox/microvm",
-    "nanvix-sandbox-cache?/microvm",
     "nanvix-terminal/microvm",
     "uservm?/microvm",
 ]
@@ -68,7 +59,6 @@ whp = [
     "config/whp",
     "nanvix-http/whp",
     "nanvix-sandbox/whp",
-    "nanvix-sandbox-cache?/whp",
     "nanvix-terminal/whp",
     "uservm?/whp",
 ]

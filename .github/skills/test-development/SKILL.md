@@ -56,7 +56,6 @@ Test configurations:
 - `test/test-standalone.toml` — Standalone mode (Linux).
 - `test/test-standalone-windows.toml` — Standalone mode (Windows).
 - `test/test-single_process.toml` — Single-process mode.
-- `test/test-multi_process.toml` — Multi-process mode.
 
 The `nanvix-test` utility (`src/utils/nanvix-test/`) drives
 these tests in two execution modes:

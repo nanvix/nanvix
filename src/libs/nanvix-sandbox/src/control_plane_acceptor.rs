@@ -707,7 +707,7 @@ mod tests {
             .expect("channel error on first delivery");
 
         // Simulate cleanup: drop the old stream but do NOT call unregister (matches real
-        // SandboxCache::cleanup which does not call unregister_linuxd).
+        // SimpleSandboxCache::cleanup which does not call unregister_linuxd).
         drop(stream1);
 
         // Simulate the old linuxd reconnecting (or a stale connection arriving) before the second

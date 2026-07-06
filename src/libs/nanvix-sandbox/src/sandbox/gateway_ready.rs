@@ -3,8 +3,8 @@
 
 //! Shared logic for waiting on `GatewayReady` notifications from linuxd.
 //!
-//! Both `multi_process::LinuxDaemon` and `single_process::LinuxDaemon` delegate to the functions
-//! in this module so the read-loop and buffering logic is defined exactly once.
+//! `single_process::LinuxDaemon` delegates to the functions in this module so the read-loop and
+//! buffering logic is defined exactly once.
 
 use ::anyhow::Result;
 use ::control_plane_api::{
