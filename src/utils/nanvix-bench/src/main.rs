@@ -24,10 +24,7 @@ mod benchmarks;
 //==================================================================================================
 
 #[cfg(any(feature = "multi-process", feature = "single-process"))]
-use crate::benchmark::{
-    LinuxdDeployment,
-    UserVmDeployment,
-};
+use crate::benchmark::UserVmDeployment;
 use crate::{
     args::Args,
     benchmark::{
@@ -78,7 +75,6 @@ fn validate_benchmark(flavour: &BenchmarkFlavour) -> Result<()> {
     let has_multi = cfg!(feature = "multi-process");
     let has_single = cfg!(feature = "single-process");
     let has_standalone = cfg!(feature = "standalone");
-    let has_l2 = cfg!(feature = "l2");
     let has_timestamp = cfg!(feature = "timestamp-messages");
 
     // System-level benchmarks (those using nanvixd) need multi-process, single-process, or
@@ -91,12 +87,7 @@ fn validate_benchmark(flavour: &BenchmarkFlavour) -> Result<()> {
             );
         }
 
-        // L2 benchmarks additionally need the l2 feature.
-        if flavour.is_l2() && !has_l2 {
-            anyhow::bail!("benchmark '{flavour}' requires compilation with l2");
-        }
-
-        // concurrent (non-L2) needs multi-process specifically.
+        // concurrent needs multi-process specifically.
         if matches!(flavour, BenchmarkFlavour::Concurrent) && !has_multi {
             anyhow::bail!("benchmark '{flavour}' requires compilation with multi-process");
         }
@@ -200,17 +191,11 @@ async fn main() -> Result<()> {
             .timeout(Duration::from_secs(NANVIXD_HTTP_TIMEOUT_SECS))
             .build()?,
         #[cfg(any(feature = "multi-process", feature = "single-process"))]
-        nanvixd_clh_bin_path: args.clh_bin_path(),
-        #[cfg(any(feature = "multi-process", feature = "single-process"))]
-        nanvixd_netns_pool_size: args.netns_pool_size(),
-        #[cfg(any(feature = "multi-process", feature = "single-process"))]
         nanvixd_tmp_dir: args.tmp_dir(),
         #[cfg(any(feature = "multi-process", feature = "single-process"))]
         user_vm_id: None,
     };
 
-    #[cfg(any(feature = "multi-process", feature = "single-process"))]
-    let deployment: LinuxdDeployment = benchmark.flavour.deployment();
     let result: Result<(), anyhow::Error> = match &benchmark.flavour {
         BenchmarkFlavour::BootTime => benchmark.run_boot_time().await,
         BenchmarkFlavour::ColdStart => {
@@ -220,39 +205,23 @@ async fn main() -> Result<()> {
             }
             #[cfg(not(feature = "standalone"))]
             {
-                benchmark
-                    .run_cold_start(&deployment, &UserVmDeployment::OneToOne)
-                    .await
-            }
-        },
-        BenchmarkFlavour::ColdStartL2 => {
-            #[cfg(any(feature = "multi-process", feature = "single-process"))]
-            {
-                benchmark
-                    .run_cold_start(&deployment, &UserVmDeployment::OneToOne)
-                    .await
-            }
-            #[cfg(not(any(feature = "multi-process", feature = "single-process")))]
-            {
-                anyhow::bail!("cold-start-l2 requires multi-process or single-process")
+                benchmark.run_cold_start(&UserVmDeployment::OneToOne).await
             }
         },
         BenchmarkFlavour::ColdStartUvm => {
             #[cfg(any(feature = "multi-process", feature = "single-process"))]
             {
-                benchmark
-                    .run_cold_start(&deployment, &UserVmDeployment::PreWarm)
-                    .await
+                benchmark.run_cold_start(&UserVmDeployment::PreWarm).await
             }
             #[cfg(not(any(feature = "multi-process", feature = "single-process")))]
             {
                 anyhow::bail!("cold-start-uvm requires multi-process or single-process")
             }
         },
-        BenchmarkFlavour::EchoBreakdown | BenchmarkFlavour::EchoBreakdownL2 => {
+        BenchmarkFlavour::EchoBreakdown => {
             #[cfg(any(feature = "multi-process", feature = "single-process"))]
             {
-                benchmark.run_echo_breakdown(&deployment).await
+                benchmark.run_echo_breakdown().await
             }
             #[cfg(not(any(feature = "multi-process", feature = "single-process")))]
             {
@@ -262,20 +231,18 @@ async fn main() -> Result<()> {
         BenchmarkFlavour::RoundTripLatency => {
             #[cfg(any(feature = "multi-process", feature = "single-process"))]
             {
-                benchmark.run_round_trip_latency(&deployment).await
+                benchmark.run_round_trip_latency().await
             }
             #[cfg(not(any(feature = "multi-process", feature = "single-process")))]
             {
                 anyhow::bail!("round-trip-latency requires multi-process or single-process")
             }
         },
-        BenchmarkFlavour::Concurrent | BenchmarkFlavour::ConcurrentL2 => {
+        BenchmarkFlavour::Concurrent => {
             #[cfg(any(feature = "multi-process", feature = "single-process"))]
             {
                 if let Some(num_concurrent_vms) = args.num_concurrent_vms() {
-                    benchmark
-                        .run_concurrent(&deployment, num_concurrent_vms)
-                        .await
+                    benchmark.run_concurrent(num_concurrent_vms).await
                 } else {
                     anyhow::bail!("this benchmark must be run with a set number of concurrent VMs");
                 }
@@ -285,10 +252,10 @@ async fn main() -> Result<()> {
                 anyhow::bail!("concurrent requires multi-process or single-process")
             }
         },
-        BenchmarkFlavour::WarmStart | BenchmarkFlavour::WarmStartL2 => {
+        BenchmarkFlavour::WarmStart => {
             #[cfg(any(feature = "multi-process", feature = "single-process"))]
             {
-                benchmark.run_warm_start(&deployment).await
+                benchmark.run_warm_start().await
             }
             #[cfg(not(any(feature = "multi-process", feature = "single-process")))]
             {

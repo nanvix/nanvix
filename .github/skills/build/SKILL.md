@@ -61,7 +61,7 @@ Set these as environment variables or pass them after `--` in the `z` command:
 | `PROFILER`       | `yes`, `no`              | `no`            |
 | `DEPLOYMENT_MODE`| `standalone`,            | `standalone`    |
 |                  | `single-process`,        |                 |
-|                  | `multi-process`, `l2`    |                 |
+|                  | `multi-process`          |                 |
 
 Example with custom parameters:
 

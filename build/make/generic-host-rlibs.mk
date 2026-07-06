@@ -17,12 +17,12 @@ MACHINE_FEATURES := $(strip $(MACHINE_FEATURES))
 DEPLOYMENT_FEATURES :=
 DEPLOYMENT_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
 DEPLOYMENT_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
-DEPLOYMENT_FEATURES += $(if $(filter multi-process l2,$(DEPLOYMENT_MODE)),multi-process,)
+DEPLOYMENT_FEATURES += $(if $(filter multi-process,$(DEPLOYMENT_MODE)),multi-process,)
 DEPLOYMENT_FEATURES := $(strip $(DEPLOYMENT_FEATURES))
 
 # Multi-process-only deployment features (for crates that do not support single-process).
 MULTI_PROCESS_DEPLOYMENT_FEATURES :=
-MULTI_PROCESS_DEPLOYMENT_FEATURES += $(if $(filter multi-process l2,$(DEPLOYMENT_MODE)),multi-process,)
+MULTI_PROCESS_DEPLOYMENT_FEATURES += $(if $(filter multi-process,$(DEPLOYMENT_MODE)),multi-process,)
 MULTI_PROCESS_DEPLOYMENT_FEATURES := $(strip $(MULTI_PROCESS_DEPLOYMENT_FEATURES))
 
 ALL_HOST_RLIB_FEATURES = $(strip $(MACHINE_FEATURES) $(DEPLOYMENT_FEATURES))

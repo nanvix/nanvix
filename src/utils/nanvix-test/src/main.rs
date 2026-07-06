@@ -60,10 +60,7 @@ use crate::{
         NanvixTestConfig,
         TestCaseConfig,
     },
-    environment::{
-        prepare_l2_artifacts,
-        prepare_runner_environment,
-    },
+    environment::prepare_runner_environment,
     executor::{
         ExecutorName,
         WorkloadSpec,
@@ -369,28 +366,9 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
     }
     let log_root: &Path = Path::new(log_directory);
 
-    if runner_config.l2_enabled
-        && let Err(error) = prepare_l2_artifacts(
-            runner_config.toolchain_path.as_str(),
-            Path::new(runner_config.working_directory.as_str()),
-        )
-        .await
-    {
-        let reason: String = format!(
-            "failed to prepare L2 artifacts (working_directory={}, toolchain={}, error={error})",
-            runner_config.working_directory, runner_config.toolchain_path
-        );
-        error!("main(): {reason}");
-        return Err(::anyhow::anyhow!(reason));
-    }
-
     tokio::select! {
         _ = prepare_runner_environment(
-            runner_config.l2_enabled,
-            runner_config.port_num,
             Path::new(runner_config.tmp_directory.as_str()),
-            runner_config.tcp_cleanup_max_wait_seconds,
-            runner_config.tcp_cleanup_poll_interval_seconds,
         ) => {},
         _ = cancellation_token.cancelled() => {
             error!("main(): cancelled during environment preparation");

@@ -36,14 +36,6 @@ pub(crate) const WARMUP_SLEEP_DURATION: u64 = CLEANUP_SLEEP_DURATION;
 ///
 /// # Description
 ///
-/// Sleep duration (in ms) to wait for the system to clean up after a benchmark run when deploying
-/// linuxd in an L2 VM. We need a longer clean-up for cloud-hypervisor to shutdown.
-///
-pub(crate) const CLEANUP_L2_SLEEP_DURATION: u64 = 100;
-
-///
-/// # Description
-///
 /// Maximum number messages that can be queued in a channel.
 ///
 pub(crate) const CHANNEL_CAPACITY: usize = 1024;

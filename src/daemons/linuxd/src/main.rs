@@ -87,9 +87,6 @@ pub async fn main() -> Result<()> {
     let control_plane_sockaddr: &str = args.control_plane_sockaddr();
     let user_vm_sockaddr: &str = args.user_vm_bind_sockaddr();
 
-    // Deployed in an L2 VM?
-    let in_l2: bool = args.l2();
-
     // Start listening for incoming connections from user VMs associated to this linuxd instance.
 
     let unbound_socket: UnboundSocket =
@@ -112,7 +109,6 @@ pub async fn main() -> Result<()> {
         control_plane_sockaddr,
         args.control_plane_socket_type(),
         user_vm_listener,
-        in_l2,
     ) {
         Ok(linuxd) => linuxd,
         Err(e) => panic!("failed to initialize process manager daemon (error={e:?})"),

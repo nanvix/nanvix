@@ -1,14 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use super::super::{
-    CLEANUP_L2_SLEEP_DURATION,
-    CLEANUP_SLEEP_DURATION,
-};
-use crate::benchmark::{
-    Benchmark,
-    LinuxdDeployment,
-};
+use super::super::CLEANUP_SLEEP_DURATION;
+use crate::benchmark::Benchmark;
 use ::anyhow::Result;
 use ::indicatif::{
     ProgressBar,
@@ -32,14 +26,9 @@ impl Benchmark {
     ///
     /// # Arguments
     ///
-    /// - `linuxd_deployment`: deployment mode for linuxd.
     /// - `num_concurrent_vms`: number of VMs to start concurrently.
     ///
-    pub async fn run_concurrent(
-        &mut self,
-        linuxd_deployment: &LinuxdDeployment,
-        num_concurrent_vms: usize,
-    ) -> Result<()> {
+    pub async fn run_concurrent(&mut self, num_concurrent_vms: usize) -> Result<()> {
         // Display a progress bar
         let pb: ProgressBar = ProgressBar::new(num_concurrent_vms.try_into().unwrap());
         pb.set_style(
@@ -51,14 +40,9 @@ impl Benchmark {
         pb.set_message("Benchmark progress:");
 
         // Start nanvixd once.
-        self.setup(linuxd_deployment);
+        self.setup();
 
-        // Work-out the cleanup sleep duration depending on the linuxd deployment mode.
-        let cleanup_sleep_duration: Duration = if *linuxd_deployment == LinuxdDeployment::L2Vm {
-            Duration::from_millis(CLEANUP_L2_SLEEP_DURATION)
-        } else {
-            Duration::from_millis(CLEANUP_SLEEP_DURATION)
-        };
+        let cleanup_sleep_duration: Duration = Duration::from_millis(CLEANUP_SLEEP_DURATION);
 
         let mut latencies: Vec<u128> = Vec::with_capacity(num_concurrent_vms);
         let mut in_flight_uvms: Option<Vec<(UserVmIdentifier, SocketStream)>> =
@@ -76,7 +60,6 @@ impl Benchmark {
             self.run_user_vm_echo_once(
                 new_msg_headers,
                 new_msg,
-                linuxd_deployment,
                 cleanup_sleep_duration,
                 Some(&mut latencies),
                 &mut in_flight_uvms,

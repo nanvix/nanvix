@@ -285,77 +285,6 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
     fs::write(kernel_config_output_path, constants).expect("Failed to write kernel_config.rs");
 }
 
-///
-/// # Description
-///
-/// This method converts a TOML file with build-time constants for linuxd into a file with rust
-/// constants that can be consumed by rust code.
-///
-/// # Arguments
-///
-/// - `linuxd_config_toml_path`: Path to the TOML file to load.
-/// - `linuxd_config_output_path`: Path to output the rust source file.
-///
-fn generate_linuxd_config(linuxd_config_toml_path: &Path, linuxd_config_output_path: &Path) {
-    let linuxd_config_toml: HashMap<String, String> = load_toml(linuxd_config_toml_path);
-
-    /// Helper to retrieve a required key from the linuxd config, panicking with a clear message if
-    /// missing.
-    fn required_key<'a>(config: &'a HashMap<String, String>, key: &str) -> &'a String {
-        config
-            .get(key)
-            .unwrap_or_else(|| panic!("Missing required key '{}' in linuxd_config.toml", key))
-    }
-
-    // Generate Rust constants from config.
-    let mut constants: String = String::new();
-    constants.push_str("pub mod linuxd {\n");
-
-    let tap_name: &String = required_key(&linuxd_config_toml, "tap_name");
-    constants.push_str(&format!("pub const TAP_NAME: &str = \"{tap_name}\";\n"));
-
-    let guest_tap_ip: &String = required_key(&linuxd_config_toml, "guest_tap_ip_address");
-    constants.push_str(&format!("pub const GUEST_TAP_IP_ADDRESS: &str = \"{guest_tap_ip}\";\n"));
-
-    let host_tap_ip: &String = required_key(&linuxd_config_toml, "host_tap_ip_address");
-    constants.push_str(&format!("pub const HOST_TAP_IP_ADDRESS: &str = \"{host_tap_ip}\";\n"));
-
-    let snapshot_magic_string: &String = required_key(&linuxd_config_toml, "snapshot_magic_string");
-    constants.push_str(&format!(
-        "pub const SNAPSHOT_MAGIC_STRING: &str = \"{snapshot_magic_string}\";\n"
-    ));
-
-    let snapshot_name: &String = required_key(&linuxd_config_toml, "snapshot_name");
-    constants.push_str(&format!("pub const SNAPSHOT_NAME: &str = \"{snapshot_name}\";\n"));
-
-    let val: u32 = parse_hex_or_decimal_u32(
-        required_key(&linuxd_config_toml, "control_plane_port"),
-        "control_plane_port",
-    );
-    constants.push_str(&format!("pub const CONTROL_PLANE_PORT: u32 = {val};\n"));
-
-    let val: u32 =
-        parse_hex_or_decimal_u32(required_key(&linuxd_config_toml, "user_vm_port"), "user_vm_port");
-    constants.push_str(&format!("pub const USER_VM_PORT: u32 = {val};\n"));
-
-    let val: u16 = parse_hex_or_decimal_u16(
-        required_key(&linuxd_config_toml, "gateway_port_range_begin"),
-        "gateway_port_range_begin",
-    );
-    constants.push_str(&format!("pub const GATEWAY_PORT_RANGE_BEGIN: u16 = {val};\n"));
-
-    let val: u16 = parse_hex_or_decimal_u16(
-        required_key(&linuxd_config_toml, "gateway_port_range_end"),
-        "gateway_port_range_end",
-    );
-    constants.push_str(&format!("pub const GATEWAY_PORT_RANGE_END: u16 = {val};\n"));
-
-    constants.push_str("}\n");
-
-    // Write the generated file
-    fs::write(linuxd_config_output_path, constants).expect("Failed to write linuxd_config.rs");
-}
-
 /// Macro to generate type-specific hex/decimal parsing functions.
 ///
 /// This avoids code duplication while not requiring external dependencies like `num_traits`.
@@ -376,7 +305,6 @@ macro_rules! define_parse_hex_or_decimal {
 
 define_parse_hex_or_decimal!(parse_hex_or_decimal_usize, usize);
 define_parse_hex_or_decimal!(parse_hex_or_decimal_u32, u32);
-define_parse_hex_or_decimal!(parse_hex_or_decimal_u16, u16);
 
 fn main() {
     // Find the workspace root by locating the Cargo.toml with [workspace].
@@ -388,13 +316,7 @@ fn main() {
     let kernel_dst_path: PathBuf = Path::new(&out_dir).join("kernel_config.rs");
     generate_kernel_config(&kernel_config_path, &kernel_dst_path);
 
-    // Parse linuxd configuration file.
-    let linuxd_config_path: PathBuf = Path::new(&workspace_dir).join("build/linuxd_config.toml");
-    let linuxd_dst_path: PathBuf = Path::new(&out_dir).join("linuxd_config.rs");
-    generate_linuxd_config(&linuxd_config_path, &linuxd_dst_path);
-
     // Inform Cargo to rerun the build script if the TOML changes.
     println!("cargo::rerun-if-changed=build/kernel_config.toml");
-    println!("cargo::rerun-if-changed=build/linuxd_config.toml");
     println!("cargo::rerun-if-env-changed=MEMORY_SIZE_BYTES");
 }

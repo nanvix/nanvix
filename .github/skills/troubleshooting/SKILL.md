@@ -18,17 +18,7 @@ Crashes or abnormal termination may leave stale resources.  Clean them up with:
 # Remove all stale Nanvix resources.
 sudo rm -rf /tmp/nvx:*
 rm -rf /tmp/nanvix-test-*
-sudo rm -rf /tmp/clh-console
-sudo rm -f /tmp/cloud-hypervisor.sock
 sudo rm -f /tmp/*.socket
-
-# Clean up stale network namespaces (L2 deployments).
-for ns in $(sudo ip netns list 2>/dev/null \
-    | grep -o 'nvxns-[0-9]*' || true); do
-  sudo ip link del "nvxgw-h-${ns#nvxns-}" \
-      2>/dev/null || true
-  sudo ip netns del "${ns}" 2>/dev/null || true
-done
 ```
 
 There is also a cleanup script for `nanvixd` resources:
@@ -44,8 +34,6 @@ There is also a cleanup script for `nanvixd` resources:
 | Temp directories   | `/tmp/nvx:*`        | `nanvixd`      |
 | Test directories   | `/tmp/nanvix-test-*`| Unit tests     |
 | Unix sockets       | `/tmp/*.socket`     | `syscomm`      |
-| Network namespaces | `nvxns-*`           | L2 deployments |
-| Cloud Hypervisor   | `/tmp/clh-console`  | L2 snapshot    |
 
 ## Build Failures
 
@@ -115,7 +103,7 @@ kill <PID>
 
 ### TIME_WAIT Socket Connections
 
-**Symptom**: After L2 deployments, connections linger.
+**Symptom**: After HTTP-mode runs, connections linger.
 
 **Fix**: Check and wait for them to clear:
 

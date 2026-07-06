@@ -72,23 +72,21 @@ impl NanvixdHttp {
     ///
     pub async fn spawn(config: &RunnerConfig, args: &NanvixdHttpArgs) -> Result<Self> {
         let hwloc_file_path: Option<&str> = args.hwloc_file_path();
-        let l2_enabled: bool = args.l2();
         let log_directory: &Path = args.log_directory();
         trace!(
             "spawn(): nanvixd_binary_path={}, working_directory={}, toolchain_path={}, mode=http, \
-             hwloc_file_path={:?}, l2={}",
+             hwloc_file_path={:?}",
             config.nanvixd_binary_path,
             config.working_directory,
             config.toolchain_path,
             hwloc_file_path,
-            l2_enabled,
         );
 
         let port_num: u16 = args.port_num();
         let http_address: String = format!("{}:{}", args.ipv4_addr(), port_num);
 
         let mut command: Command =
-            Nanvixd::build_base_command(config, hwloc_file_path, l2_enabled, log_directory);
+            Nanvixd::build_base_command(config, hwloc_file_path, log_directory);
 
         let stdout_file: File = args.stdout_file_handle().try_clone().map_err(|error| {
             let reason: String = format!("failed to clone nanvixd stdout log file (error={error})");
@@ -105,8 +103,6 @@ impl NanvixdHttp {
         command.stdin(Stdio::null());
         command.stdout(Stdio::from(stdout_file));
         command.stderr(Stdio::from(stderr_file));
-        command.arg(::nanvixd::args::Args::OPT_NETNS_POOL_SIZE);
-        command.arg(args.netns_pool_size().to_string());
         command.arg(::nanvixd::args::Args::OPT_HTTP_SOCKADDR);
         command.arg(http_address.as_str());
 
@@ -129,13 +125,8 @@ impl NanvixdHttp {
                 no_fail!(Self, {
                     debug!("spawn(): nanvixd spawned with pid {}", child.id().unwrap_or(0));
                     let ipv4_addr: String = args.ipv4_addr().to_string();
-                    let cleanup_guard: EnvironmentCleanupGuard = EnvironmentCleanupGuard::new(
-                        l2_enabled,
-                        Some(port_num),
-                        PathBuf::from(config.tmp_directory.as_str()),
-                        config.tcp_cleanup_max_wait_seconds,
-                        config.tcp_cleanup_poll_interval_seconds,
-                    );
+                    let cleanup_guard: EnvironmentCleanupGuard =
+                        EnvironmentCleanupGuard::new(PathBuf::from(config.tmp_directory.as_str()));
 
                     Ok(Self {
                         inner: Nanvixd::new(
@@ -231,14 +222,10 @@ pub struct NanvixdHttpArgs {
     stderr_file_handle: File,
     /// Optional hwloc topology file forwarded to the Nanvix Daemon.
     hwloc_file_path: Option<String>,
-    /// Indicates whether L2 deployment mode is enabled.
-    l2: bool,
     /// IPv4 address exposed by the daemon instance.
     ipv4_addr: String,
     /// TCP port bound by the daemon instance.
     port_num: u16,
-    /// Netns pool prefill size forwarded to the Nanvix Daemon.
-    netns_pool_size: usize,
     /// Directory where Nanvix Daemon components should emit logs.
     log_directory: PathBuf,
     /// Command-line arguments passed directly to nanvixd.
@@ -256,8 +243,6 @@ impl NanvixdHttpArgs {
     /// - `log_files`: Tuple containing stdout and stderr log file paths.
     /// - `http_endpoint`: Tuple containing the IPv4 address and TCP port for the HTTP interface.
     /// - `hwloc_file_path`: Optional hwloc topology file passed to the Nanvix Daemon.
-    /// - `l2`: Flag indicating whether the Nanvix Daemon should enable L2 deployment mode.
-    /// - `netns_pool_size`: Netns pool prefill size forwarded to the Nanvix Daemon.
     /// - `log_directory`: Path where component logs should be persisted.
     /// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
     ///
@@ -270,8 +255,6 @@ impl NanvixdHttpArgs {
         log_files: (&Path, &Path),
         http_endpoint: (&str, u16),
         hwloc_file_path: Option<String>,
-        l2: bool,
-        netns_pool_size: usize,
         log_directory: &Path,
         extra_nanvixd_args: &[String],
     ) -> Result<Self> {
@@ -315,10 +298,8 @@ impl NanvixdHttpArgs {
             stdout_file_handle,
             stderr_file_handle,
             hwloc_file_path,
-            l2,
             ipv4_addr: ipv4_addr.to_string(),
             port_num,
-            netns_pool_size,
             log_directory: log_directory.to_path_buf(),
             extra_nanvixd_args: extra_nanvixd_args.to_vec(),
         })
@@ -366,19 +347,6 @@ impl NanvixdHttpArgs {
     ///
     /// # Description
     ///
-    /// Reports whether L2 deployment mode is enabled for the Nanvix Daemon.
-    ///
-    /// # Return Value
-    ///
-    /// Returns `true` when L2 mode is enabled; otherwise returns `false`.
-    ///
-    fn l2(&self) -> bool {
-        self.l2
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the TCP port bound by the Nanvix Daemon HTTP endpoint.
     ///
     /// # Return Value
@@ -387,19 +355,6 @@ impl NanvixdHttpArgs {
     ///
     fn port_num(&self) -> u16 {
         self.port_num
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the netns pool prefill size forwarded to the Nanvix Daemon.
-    ///
-    /// # Return Value
-    ///
-    /// Returns the netns pool size.
-    ///
-    fn netns_pool_size(&self) -> usize {
-        self.netns_pool_size
     }
 
     ///

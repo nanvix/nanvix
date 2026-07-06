@@ -40,7 +40,7 @@ steps for `microvm`.
 
 | Machine       | Build Types    | Deployment Types              |
 |---------------|----------------|-------------------------------|
-| `microvm`     | debug, release | standalone, single, multi, l2 |
+| `microvm`     | debug, release | standalone, single, multi     |
 
 ### Build Parameter Mapping
 
@@ -49,7 +49,6 @@ steps for `microvm`.
 | standalone      | `standalone`      |
 | single-process  | `single-process`  |
 | multi-process   | `multi-process`   |
-| l2              | `l2`              |
 
 ## Individual Quality Checks
 
@@ -82,8 +81,6 @@ Matrix coverage in GitHub Actions:
 - `lint`, `verify`, `ci-build`: `microvm` with `standalone`,
   `single-process`, and `multi-process`.
 - `ci-test`: same matrix.
-
-> **Note:** The local pipeline covers the `l2` deployment type, but CI does not run L2 jobs.
 
 > **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)
 > and runs a smoke test using nanvixd in standalone interactive mode on WHP-enabled runners.

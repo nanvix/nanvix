@@ -41,14 +41,8 @@ pub struct LinuxDaemonArgs<T> {
     /// Path to Linux Daemon binary.
     #[cfg(not(feature = "single-process"))]
     linuxd_binary_path: String,
-    /// Path to the cloud-hypervisor binary directory.
-    clh_bin_path: String,
     /// Directory path for writing log files.
     log_directory: String,
-    /// Temporary directory path for Unix sockets and transient files.
-    tmp_directory: String,
-    /// Flag to deploy linuxd inside an L2 VM (using cloud-hypervisor).
-    l2: bool,
     /// Whether networking system calls are enabled.
     networking_enabled: bool,
     /// Optional system call table for overriding default system call behavior.
@@ -77,10 +71,7 @@ impl<T> LinuxDaemonArgs<T> {
     /// - `system_vm_socket_info`: Information on System VM socket (address, socket type).
     /// - `hwloc`: Optional hardware locality configuration for CPU affinity and topology information.
     /// - `linuxd_binary_path`: Path to Linux Daemon binary (only if not in single-process mode).
-    /// - `clh_bin_path`: Path to the cloud-hypervisor binary directory.
     /// - `log_directory`: Directory path for writing log files.
-    /// - `tmp_directory`: Temporary directory path for Unix sockets and transient files.
-    /// - `l2`: Flag to deploy linuxd inside an L2 VM (using cloud-hypervisor).
     /// - `networking_enabled`: Whether networking system calls are enabled.
     /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
     ///
@@ -95,10 +86,7 @@ impl<T> LinuxDaemonArgs<T> {
         system_vm_socket_info: (String, SocketType),
         hwloc: Option<hwloc::HwLoc>,
         #[cfg(not(feature = "single-process"))] linuxd_binary_path: String,
-        clh_bin_path: String,
         log_directory: String,
-        tmp_directory: String,
-        l2: bool,
         networking_enabled: bool,
         #[cfg(feature = "single-process")] syscall_table: Option<
             ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>,
@@ -111,10 +99,7 @@ impl<T> LinuxDaemonArgs<T> {
             hwloc,
             #[cfg(not(feature = "single-process"))]
             linuxd_binary_path,
-            clh_bin_path,
             log_directory,
-            tmp_directory,
-            l2,
             networking_enabled,
             #[cfg(feature = "single-process")]
             syscall_table,
@@ -192,19 +177,6 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     /// # Description
     ///
-    /// Returns the path to the cloud-hypervisor binary directory.
-    ///
-    /// # Returns
-    ///
-    /// The path to the cloud-hypervisor binary directory.
-    ///
-    pub fn clh_bin_path(&self) -> &str {
-        &self.clh_bin_path
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the directory path for writing log files.
     ///
     /// # Returns
@@ -213,32 +185,6 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     pub fn log_directory(&self) -> &str {
         &self.log_directory
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the temporary directory path for Unix sockets and transient files.
-    ///
-    /// # Returns
-    ///
-    /// The path to the temporary directory.
-    ///
-    pub fn tmp_directory(&self) -> &str {
-        &self.tmp_directory
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the flag indicating whether to deploy linuxd inside an L2 VM.
-    ///
-    /// # Returns
-    ///
-    /// `true` if L2 deployment is enabled; `false` otherwise.
-    ///
-    pub fn l2(&self) -> bool {
-        self.l2
     }
 
     ///

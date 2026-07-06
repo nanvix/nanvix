@@ -74,15 +74,15 @@ Pass build parameters after `--`:
 
 Available build parameters:
 
-| Parameter         | Default         | Values                                                             |
-|-------------------|-----------------|--------------------------------------------------------------------|
-| `DEPLOYMENT_MODE` | `standalone`    | `standalone`, `single-process`, `multi-process`, `l2`              |
-| `LOG_LEVEL`       | `error`         | `trace`, `debug`, `info`, `warn`, `error`, `panic`                 |
-| `MACHINE`         | `microvm`       | `microvm`                                                          |
-| `PROFILER`        | `no`            | `yes`, `no`                                                        |
-| `RELEASE`         | `no`            | `yes`, `no`                                                        |
-| `TARGET`          | `x86`           | `x86`                                                              |
-| `TIMEOUT`         | `600`           | Execution timeout in seconds                                       |
+| Parameter         | Default      | Values                                             |
+| ----------------- | ------------ | -------------------------------------------------- |
+| `DEPLOYMENT_MODE` | `standalone` | `standalone`, `single-process`, `multi-process`    |
+| `LOG_LEVEL`       | `error`      | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
+| `MACHINE`         | `microvm`    | `microvm`                                          |
+| `PROFILER`        | `no`         | `yes`, `no`                                        |
+| `RELEASE`         | `no`         | `yes`, `no`                                        |
+| `TARGET`          | `x86`        | `x86`                                              |
+| `TIMEOUT`         | `600`        | Execution timeout in seconds                       |
 
 ## Code Quality Checks
 

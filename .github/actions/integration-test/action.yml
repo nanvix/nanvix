@@ -46,7 +46,6 @@ runs:
           standalone)     TEST_CONFIG="test/test-standalone.toml" ;;
           single-process) TEST_CONFIG="test/test-single_process.toml" ;;
           multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
-          l2)             TEST_CONFIG="test/test-l2.toml" ;;
           *)
             echo "::error::Unknown deployment type: ${{ inputs.deployment-type }}"
             exit 1
@@ -82,4 +81,3 @@ runs:
             TARGET=x86 \
             "DEPLOYMENT_MODE=${{ inputs.deployment-type }}" \
             "SHARD=${{ inputs.shard-index }}/${{ inputs.shard-total }}"
-

@@ -30,7 +30,7 @@ source "${IMPORT_DIR}/logging.sh"
 # Configuration matrix for testing all supported machines.
 declare -a MACHINE_TYPES=("microvm")
 declare -a BUILD_TYPES=("debug" "release")
-declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process" "l2")
+declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process")
 declare -a STEP_TYPES=("spellcheck" "format" "lint" "build" "test")
 declare -a MACHINE_INDEPENDENT_STEPS=("spellcheck" "format")
 
@@ -95,7 +95,7 @@ get_deployment_flags() {
     local deployment_type="${1}"
 
     case "${deployment_type}" in
-        standalone|single-process|multi-process|l2)
+        standalone|single-process|multi-process)
             echo "DEPLOYMENT_MODE=${deployment_type}"
             ;;
         *)

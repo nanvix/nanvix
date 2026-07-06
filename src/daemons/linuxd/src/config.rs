@@ -5,21 +5,11 @@
 // Imports
 //==================================================================================================
 
-use ::std::{
-    net::Ipv4Addr,
-    time::Duration,
-};
+use ::std::time::Duration;
 
 //==================================================================================================
 // Constants
 //==================================================================================================
-
-///
-/// # Description
-///
-/// Port where linuxd, when deployed inside an L2 VM, will block waiting for a snapshot to happen.
-///
-const DEFAULT_RESTORE_GATE_PORT: u32 = 5555;
 
 ///
 /// # Description
@@ -50,31 +40,3 @@ pub const GATEWAY_ACCEPT_TIMEOUT: Duration = Duration::from_secs(60);
 /// bounds both the `send(Shutdown)` enqueue and the subsequent thread join.
 ///
 pub const WORKER_THREAD_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
-
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================
-
-///
-/// # Description
-///
-/// Builds the TCP address where L2-enabled linuxd deployments block waiting to be snapshotted. The
-/// L2 VM is deployed inside a separate network namespace, so they must use the IP of the halve of
-/// the VETH pair that is inside the namespace.
-///
-/// # Parameters
-///
-/// - `veth_ns_ip`: IP that we can connect to from the host to reach services in the L2 VM. If the
-///   value is None, it means we can bind to all addresses.
-///
-/// # Returns
-///
-/// The address of the socket.
-///
-pub fn restore_gate_sockaddr_builder(veth_ns_ip: Option<Ipv4Addr>) -> String {
-    if let Some(veth_ns_ip) = veth_ns_ip {
-        format!("{}:{DEFAULT_RESTORE_GATE_PORT}", veth_ns_ip)
-    } else {
-        format!("0.0.0.0:{DEFAULT_RESTORE_GATE_PORT}")
-    }
-}

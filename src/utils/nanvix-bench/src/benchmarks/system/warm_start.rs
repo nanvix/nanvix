@@ -5,10 +5,7 @@ use super::super::{
     CLEANUP_SLEEP_DURATION,
     WARMUP_SLEEP_DURATION,
 };
-use crate::benchmark::{
-    Benchmark,
-    LinuxdDeployment,
-};
+use crate::benchmark::Benchmark;
 use ::anyhow::Result;
 use ::indicatif::{
     ProgressBar,
@@ -28,7 +25,7 @@ use ::tokio::time::sleep;
 impl Benchmark {
     /// This function runs the warm start benchmark, where we measure the time to send a request
     /// into the VM once it has started executing.
-    pub async fn run_warm_start(&mut self, linuxd_deployment: &LinuxdDeployment) -> Result<()> {
+    pub async fn run_warm_start(&mut self) -> Result<()> {
         // Display a progress bar
         let iterations: u64 = u64::try_from(self.iterations)
             .map_err(|e| anyhow::anyhow!("iteration count exceeds u64: {e}"))?;
@@ -47,14 +44,12 @@ impl Benchmark {
         let (new_msg_headers, new_msg) = self.prepare_new_message(None, None)?;
 
         // Start nanvixd.
-        self.setup(linuxd_deployment);
+        self.setup();
 
         // Start User VM.
         let mut latencies: Vec<u128> = Vec::with_capacity(self.iterations);
         let user_vm_id = {
-            let (user_vm_id, mut gateway_stream) = self
-                .start(new_msg, new_msg_headers, linuxd_deployment)
-                .await?;
+            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers).await?;
             let mut response_payload: Vec<u8> = vec![0u8; payload.len()];
 
             // Warmup: send one untimed echo to trigger lazy initialization (worker thread

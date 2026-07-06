@@ -11,8 +11,6 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-use crate::netns::NetnsHandle;
 #[cfg(not(feature = "standalone"))]
 use crate::ControlPlaneAcceptor;
 #[cfg(not(feature = "standalone"))]
@@ -25,7 +23,6 @@ use crate::{
     uservm::PendingUserVm,
 };
 use crate::{
-    tcp_port::TcpPort,
     uservm::UserVm,
     RunningSandbox,
     SandboxConfig,
@@ -82,9 +79,6 @@ pub struct InitializedSandbox<T: Send + Sync + Default + 'static> {
     pub(super) control_plane_acceptor: Arc<ControlPlaneAcceptor>,
     /// Complete configuration for the sandbox execution environment.
     pub(super) sandbox_config: SandboxConfig<T>,
-    /// Handle to the network namespace (only set in L2-mode).
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    pub(super) netns_handle: Option<NetnsHandle>,
     /// Phantom data to maintain the generic type parameter `T` in the structure.
     /// This is required because `T` is only used in single-process mode for the syscall table.
     #[cfg(not(any(feature = "single-process", feature = "standalone")))]
@@ -107,12 +101,8 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
     /// On success, returns a running sandbox with an active User VM. On failure, returns an
     /// error describing what went wrong during startup.
     ///
-    #[cfg_attr(
-        any(feature = "single-process", feature = "standalone"),
-        allow(unused_mut)
-    )]
     #[cfg_attr(feature = "standalone", allow(unused_variables))]
-    pub async fn start(mut self, tag: SandboxTag) -> Result<RunningSandbox> {
+    pub async fn start(self, tag: SandboxTag) -> Result<RunningSandbox> {
         // Extract gateway socket info parts for later use.
         let gateway_sockaddr: String = self.sandbox_config.gateway_socket_info().0.clone();
         let gateway_socket_type: SocketType = self.sandbox_config.gateway_socket_info().1;
@@ -132,8 +122,8 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
         #[cfg(not(any(feature = "single-process", feature = "standalone")))]
         let uservm_binary_path: String = self.sandbox_config.uservm_binary_path().to_string();
 
-        // Extract gateway socket info (consumes the config to get ownership of TcpPort).
-        let gateway_socket_info_with_port: (String, SocketType, Option<TcpPort>) =
+        // Extract gateway socket info (consumes the config).
+        let gateway_socket_info: (String, SocketType) =
             self.sandbox_config.into_gateway_socket_info();
 
         // Build User VM arguments.
@@ -178,14 +168,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
                 .await?;
 
             // Spawn the user VM.
-            let pending_uservm: PendingUserVm = match UserVm::spawn(
-                &uservm_args,
-                // Pass ownership of the netns RAII handle to the user VM.
-                #[cfg(not(feature = "single-process"))]
-                self.netns_handle.take(),
-            )
-            .await
-            {
+            let pending_uservm: PendingUserVm = match UserVm::spawn(&uservm_args).await {
                 Ok(uservm) => uservm,
                 Err(error) => {
                     self.control_plane_acceptor
@@ -244,7 +227,7 @@ impl<T: Send + Sync + Default + 'static> InitializedSandbox<T> {
             _linuxd: self.linuxd,
             #[cfg(not(feature = "standalone"))]
             _control_plane_acceptor: self.control_plane_acceptor,
-            gateway_socket_info: gateway_socket_info_with_port,
+            gateway_socket_info,
         })
     }
 

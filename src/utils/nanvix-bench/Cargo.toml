@@ -33,7 +33,6 @@ default = ["microvm", "multi-process", "profile-time"]
 timestamp-messages = ["profiler/timestamp-messages"]
 single-process = ["nanvix/single-process"]
 multi-process = ["nanvix/multi-process"]
-l2 = ["multi-process"]
 standalone = ["nanvix/standalone", "nanvixd/standalone"]
 gdb = ["microvm", "nanvix/gdb"]
 # Enables fine-grained time profiling.

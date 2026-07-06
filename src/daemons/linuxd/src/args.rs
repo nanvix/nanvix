@@ -33,8 +33,6 @@ pub struct Args {
     log_to_file: bool,
     /// Log file directory.
     log_directory: String,
-    /// Deployed in an L2 VM?
-    l2: bool,
     /// Whether networking system calls are enabled.
     networking_enabled: bool,
 }
@@ -60,25 +58,8 @@ impl Args {
     pub const OPT_LOGFILE: &'static str = "-log-to-file";
     /// Command-line option for setting the log file directory.
     pub const OPT_LOGDIR: &'static str = "-log-dir";
-    /// Command-line option for signaling deployment in an L2 VM.
-    pub const OPT_L2: &'static str = "-l2";
     /// Command-line option for enabling networking system calls.
     pub const OPT_NETWORKING_ENABLED: &'static str = "-networking-enabled";
-
-    // Command-line options for restoring linuxd from a snapshot using cloud-hypervisor. They are
-    // only used when using linuxd as a library, so we allow dead code when building the binary.
-    /// Command-line option to indicate the API socket path.
-    #[allow(dead_code)]
-    pub const OPT_CLH_API_SOCKET: &'static str = "--api-socket";
-    /// Command-line option to indicate the restore operation.
-    #[allow(dead_code)]
-    pub const OPT_CLH_RESTORE: &'static str = "--restore";
-    /// Command-line option to indicate the seccomp option.
-    #[allow(dead_code)]
-    pub const OPT_CLH_SECCOMP: &'static str = "--seccomp";
-    /// Command-line option to indicate the resume operation to ch-remote.
-    #[allow(dead_code)]
-    pub const OPT_CH_REMOTE_RESUME: &'static str = "resume";
 
     ///
     /// # Description
@@ -102,7 +83,6 @@ impl Args {
         let mut user_vm_bind_sockaddr_type: Option<String> = None;
         let mut log_to_file: bool = false;
         let mut log_directory: Option<String> = None;
-        let mut l2: bool = false;
         let mut networking_enabled: bool = false;
 
         let mut i: usize = 1;
@@ -144,9 +124,6 @@ impl Args {
                 Self::OPT_LOGDIR => {
                     i += 1;
                     log_directory = Some(args[i].clone());
-                },
-                Self::OPT_L2 => {
-                    l2 = true;
                 },
                 Self::OPT_NETWORKING_ENABLED => {
                     networking_enabled = true;
@@ -227,7 +204,6 @@ impl Args {
             user_vm_bind_sockaddr_type,
             log_to_file,
             log_directory,
-            l2,
             networking_enabled,
         })
     }
@@ -244,7 +220,7 @@ impl Args {
     pub fn usage(program_name: &str) {
         println!(
             "Usage: {} [{} <tenant-id>] {} <control-plane-sockaddr> {} <control-plane-socktype> \
-             {} <user-vm-sockaddr> {} <user-vm-socktype> [{} [{} <log-file-dir>]] {}",
+             {} <user-vm-sockaddr> {} <user-vm-socktype> [{} [{} <log-file-dir>]]",
             program_name,
             Self::OPT_TENANT_ID,
             Self::OPT_CONTROL_PLANE_SOCKADDR,
@@ -252,8 +228,7 @@ impl Args {
             Self::OPT_USER_VM_BIND_SOCKADDR,
             Self::OPT_USER_VM_BIND_SOCKET_TYPE,
             Self::OPT_LOGFILE,
-            Self::OPT_LOGDIR,
-            Self::OPT_L2
+            Self::OPT_LOGDIR
         );
     }
 
@@ -349,19 +324,6 @@ impl Args {
     ///
     pub fn log_file_dir(&self) -> String {
         self.log_directory.clone()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns whether we are deployed inside an L2 VM.
-    ///
-    /// # Returns
-    ///
-    /// If deployed inside an L2 VM.
-    ///
-    pub fn l2(&self) -> bool {
-        self.l2
     }
 
     ///

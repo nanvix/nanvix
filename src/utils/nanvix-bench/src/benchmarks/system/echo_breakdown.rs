@@ -2,10 +2,7 @@
 // Licensed under the MIT License.
 
 use super::super::WARMUP_SLEEP_DURATION;
-use crate::benchmark::{
-    Benchmark,
-    LinuxdDeployment,
-};
+use crate::benchmark::Benchmark;
 use ::anyhow::Result;
 use ::indicatif::{
     ProgressBar,
@@ -20,13 +17,11 @@ use ::tokio::time::sleep;
 
 impl Benchmark {
     #[cfg(feature = "timestamp-messages")]
-    pub async fn run_echo_breakdown(&mut self, linuxd_deployment: &LinuxdDeployment) -> Result<()> {
+    pub async fn run_echo_breakdown(&mut self) -> Result<()> {
         // First start nanvixd and the user VM.
         let (new_msg_headers, new_msg) = self.prepare_new_message(None, None)?;
-        self.setup(linuxd_deployment);
-        let (user_vm_id, mut gateway_stream) = self
-            .start(new_msg, new_msg_headers, linuxd_deployment)
-            .await?;
+        self.setup();
+        let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers).await?;
 
         // The labels in this array are also added as comments to the line of code where the
         // timestamp is added.

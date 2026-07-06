@@ -13,7 +13,6 @@ extern crate alloc;
 
 use crate::{
     config::{
-        restore_gate_sockaddr_builder,
         CONTROL_PLANE_CONNECT_TIMEOUT,
         READER_TASK_JOIN_TIMEOUT,
         WORKER_THREAD_SHUTDOWN_TIMEOUT,
@@ -29,10 +28,7 @@ use crate::{
     worker_thread::WorkerThreadHandle,
 };
 use ::anyhow::Result;
-use ::config::{
-    kernel::IPC_MESSAGE_SIZE,
-    linuxd::SNAPSHOT_MAGIC_STRING,
-};
+use ::config::kernel::IPC_MESSAGE_SIZE;
 use ::control_plane_api::{
     self,
     ControlPlaneRegistrationMessage,
@@ -51,7 +47,6 @@ use ::std::{
         VecDeque,
     },
     io::ErrorKind,
-    net::SocketAddr,
     str::FromStr,
     sync::Arc,
 };
@@ -85,11 +80,6 @@ use ::syscomm::{
     WriteAll,
 };
 use ::tokio::{
-    io::AsyncReadExt,
-    net::{
-        TcpListener,
-        TcpStream,
-    },
     sync::{
         mpsc::{
             channel,
@@ -149,13 +139,6 @@ pub const WORKER_THREAD_CHANNEL_CAPACITY: usize = 1024;
 ///
 const USER_VM_CHANNEL_CAPACITY: usize = 1024;
 
-///
-/// # Description
-///
-/// Number of bytes used to encode the tenant identifier length in the restore-gate protocol.
-///
-const RESTORE_GATE_TENANT_ID_LEN_SIZE: usize = size_of::<u16>();
-
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -179,7 +162,6 @@ pub struct LinuxDaemon<T: Sync + Send + 'static> {
     control_plane_sockaddr_type: SocketType,
     user_vm_listener: SocketListener,
     venv: Arc<Mutex<VirtualEnviromentDirectory>>,
-    in_l2: bool,
 }
 
 //==================================================================================================
@@ -199,7 +181,6 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
     /// - `control_plane_sockaddr`: Control plane socket address.
     /// - `control_plane_sockaddr_type`: Control plane socket type.
     /// - `user_vm_listener`: User VM listener socket.
-    /// - `in_l2`: Whether the daemon is running in an L2 VM.
     ///
     /// # Returns
     ///
@@ -212,7 +193,6 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         control_plane_sockaddr: &str,
         control_plane_sockaddr_type: &str,
         user_vm_listener: SocketListener,
-        in_l2: bool,
     ) -> Result<Self, Error> {
         let control_plane_sockaddr_type_parsed: SocketType =
             match SocketType::from_str(control_plane_sockaddr_type) {
@@ -238,7 +218,6 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
             control_plane_sockaddr_type: control_plane_sockaddr_type_parsed,
             user_vm_listener,
             venv: Arc::new(Mutex::new(VirtualEnviromentDirectory::new())),
-            in_l2,
         })
     }
 
@@ -262,9 +241,6 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         &self,
         registration_key: &str,
     ) -> Result<SocketStream, Error> {
-        // The control-plane socket type depends on whether we are deploying linuxd in
-        // an L2 VM or not.
-
         let unbound_socket: UnboundSocket = UnboundSocket::new(self.control_plane_sockaddr_type);
         match timeout(
             CONTROL_PLANE_CONNECT_TIMEOUT,
@@ -313,50 +289,6 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         }
     }
 
-    ///
-    /// # Description
-    ///
-    /// This helper method will trap waiting for a message in a given port if we are about to be
-    /// snapshotted. If we are, after restore it will read the corresponding tenant ID.
-    ///
-    async fn trap_if_pending_snapshot(&self) -> Result<Option<String>> {
-        if self.in_l2 {
-            let trap_listener: TcpListener =
-                TcpListener::bind(restore_gate_sockaddr_builder(None)).await?;
-
-            // Deliberately print to stdout so that it can be captured by the snapshot creation
-            // script.
-            println!("{}", SNAPSHOT_MAGIC_STRING);
-
-            // Read the tenant ID we are restored for.
-            let (mut trap_stream, _peer_addr): (TcpStream, SocketAddr) =
-                trap_listener.accept().await?;
-            let mut tenant_id_len_bytes: [u8; RESTORE_GATE_TENANT_ID_LEN_SIZE] =
-                [0u8; RESTORE_GATE_TENANT_ID_LEN_SIZE];
-            trap_stream.read_exact(&mut tenant_id_len_bytes).await?;
-
-            let tenant_id_len: usize = usize::from(u16::from_be_bytes(tenant_id_len_bytes));
-            if tenant_id_len == 0 {
-                let reason: &str = "empty tenant identifier in restore gate payload";
-                error!("trap_if_pending_snapshot(): {reason}");
-                anyhow::bail!(reason);
-            }
-
-            let mut tenant_id_bytes: Vec<u8> = vec![0u8; tenant_id_len];
-            trap_stream.read_exact(&mut tenant_id_bytes).await?;
-            let tenant_id: String = String::from_utf8(tenant_id_bytes).map_err(|error| {
-                let reason: String =
-                    format!("invalid tenant identifier in restore gate payload (error={error:?})");
-                error!("trap_if_pending_snapshot(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
-            debug!("trap_if_pending_snapshot(): linuxd unblocked from restore gate");
-            return Ok(Some(tenant_id));
-        }
-
-        Ok(None)
-    }
-
     /// This helper method accepts connections into the main user VM listener socket, and, if
     /// necessary, accepts incoming connections for the gateway into this user VM.
     async fn accept_connections(
@@ -391,32 +323,7 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         let user_vm_reader_handle: JoinHandle<Result<()>> =
             tokio::spawn(Self::user_vm_reader_loop(user_vm_id, user_vm_reader, user_vm_event_tx));
 
-        // In an L2 deployment, linuxd is deployed inside a network namespace and the gateway
-        // address we receive from nanvixd is of the form <VETH_NS_IP>:<PER_USERVM_PORT>. This is
-        // because external clients need to send their requests to the VETH. However, linuxd is,
-        // itself, in a VM connected to the outside namespace via a TAP device. Linuxd cannot,
-        // therefore, bind to the <VETH_NS_IP> as it is not available inside the TAP. As a
-        // consequence, we translate here <VETH_NS_IP>:<PER_USER_VM_PORT> to
-        // <GUEST_TAP_IP>:<PER_USER_VM_PORT>. Note that the <VETH_NS_IP> -> <GUEST_TAP_IP>
-        // forwarding is set-up by nanvixd when creating the netns.
-        let mut gateway_sockaddr: String = new_msg.gateway_sockaddr().to_string();
-        if self.in_l2 {
-            let gateway_port: &str = gateway_sockaddr
-                .rsplit_once(":")
-                .ok_or_else(|| {
-                    let reason: &'static str = "failed to translate VETH IP to TAP IP";
-                    error!("{reason} (gateway_addr={gateway_sockaddr})");
-                    Error::new(ErrorCode::InvalidArgument, reason)
-                })?
-                .1;
-            let new_gateway_sockaddr: String =
-                format!("{}:{gateway_port}", ::config::linuxd::GUEST_TAP_IP_ADDRESS);
-            trace!(
-                "translating VETH NS IP to guest TAP IP for gateway (old={gateway_sockaddr}, \
-                 new={new_gateway_sockaddr})",
-            );
-            gateway_sockaddr = new_gateway_sockaddr;
-        }
+        let gateway_sockaddr: String = new_msg.gateway_sockaddr().to_string();
 
         // Gateway listener for this user VM.
         let user_vm_handle: UserVmHandle = UserVmHandle::new(
@@ -630,19 +537,9 @@ impl<T: Sync + Send + 'static> LinuxDaemon<T> {
         let worker_threads: Arc<Mutex<HashMap<UserVmIdentifier, VecDeque<WorkerThreadHandle>>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
-        // Right before entering the main loop, block if we are pending to be snapshotted, and
-        // accept the control-plane stream afterwards. We are pending to be snapshotted if we are
-        // in this line of code, and are deployed in an L2 VM.
-        let restored_tenant_id: Option<String> =
-            self.trap_if_pending_snapshot().await.map_err(|_| {
-                Self::log_and_error(
-                    ErrorCode::IoErr,
-                    "error conditionally trapping on snapshot gate",
-                )
-            })?;
-        let registration_key: &str = restored_tenant_id.as_deref().unwrap_or(&self.tenant_id);
+        // Accept the control-plane stream before entering the main loop.
         let control_plane_stream: SocketStream = self
-            .accept_control_plane_connection(registration_key)
+            .accept_control_plane_connection(&self.tenant_id)
             .await?;
 
         // Split the control-plane stream so that the reader stays in the main loop and the writer

@@ -23,7 +23,6 @@ pub use ::nanvix_sandbox_config::SandboxCacheConfig;
 //==================================================================================================
 
 use ::anyhow::Result;
-use ::chrono::Local;
 use ::log::{
     debug,
     error,
@@ -37,35 +36,24 @@ use ::nanvix_sandbox::{
         LinuxDaemon,
         PendingLinuxDaemon,
     },
-    netns::{
-        NetnsHandle,
-        NetnsInfo,
-        NetnsPool,
-        NetnsPoolConfig,
-        NetnsPoolInitStrategy,
-    },
     syscomm::{
         SocketListener,
         SocketStream,
         SocketType,
         UnboundSocket,
     },
-    tcp_port::TcpPort,
     user_vm_sockaddr_builder,
     ControlPlaneAcceptor,
     InitializedSandbox,
     LinuxDaemonArgs,
     RunningSandbox,
     SandboxConfig,
-    SnapshotDirHandle,
     UninitializedSandbox,
     UserVmIdentifier,
     CONTROL_PLANE_ACCEPT_TIMEOUT,
 };
 use ::std::{
     collections::HashMap,
-    fs,
-    path::PathBuf,
     sync::Arc,
 };
 use ::tokio::{
@@ -109,8 +97,6 @@ pub struct SandboxCache<T> {
     tenants: RwLock<HashMap<String, Arc<TenantState>>>,
     /// Shared acceptor that routes control-plane connections to waiting children.
     control_plane_acceptor: Arc<ControlPlaneAcceptor>,
-    /// Network namespace pool for different L2 VMs.
-    netns_pool: NetnsPool,
 }
 
 ///
@@ -135,7 +121,6 @@ struct TenantState {
 pub struct SandboxCacheStateSummary {
     running_sandboxes: usize,
     linuxd_instances: usize,
-    l2_enabled: bool,
 }
 
 impl SandboxCacheStateSummary {
@@ -156,15 +141,6 @@ impl SandboxCacheStateSummary {
     pub fn linuxd_instances(&self) -> usize {
         self.linuxd_instances
     }
-
-    ///
-    /// # Description
-    ///
-    /// Returns whether the daemon is running with L2 mode enabled.
-    ///
-    pub fn l2_enabled(&self) -> bool {
-        self.l2_enabled
-    }
 }
 
 impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
@@ -184,43 +160,16 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     ///
     /// # Errors
     ///
-    /// This function returns an error if network namespace pool initialization fails or if the
-    /// control plane socket cannot be bound.
+    /// This function returns an error if the control plane socket cannot be bound.
     ///
     pub async fn new(config: SandboxCacheConfig<T>) -> Result<Arc<Self>> {
-        // Only pre-allocate network namespaces when L2 is enabled; otherwise keep it lazy so
-        // non-L2 deployments do not try to create netns at startup (which triggers sudo+sysctl).
-        let netns_init_strategy: NetnsPoolInitStrategy = if config.l2() {
-            match config.netns_pool_size() {
-                0 => NetnsPoolInitStrategy::Lazy,
-                size => NetnsPoolInitStrategy::Prefill(size),
-            }
-        } else {
-            NetnsPoolInitStrategy::Lazy
-        };
-
         // Build control plane socket address. The control plane socket address is the same for
-        // all sandboxes regardless of network namespace, so we initialize it once at cache
-        // creation time.
-        //
-        // In L2 mode, the control plane uses TCP since linuxd runs inside a VM and communicates
-        // via the host's VETH interface. We bind to 0.0.0.0:{CONTROL_PLANE_PORT}.
-        // In non-L2 mode, we use a Unix socket in the tmp directory.
-        let control_plane_bind_sockaddr: String = if config.l2() {
-            format!("0.0.0.0:{}", ::config::linuxd::CONTROL_PLANE_PORT)
-        } else {
-            let (bind_addr, _connect_addr): (String, String) =
-                control_plane_sockaddr_builder(config.tmp_directory(), None)?;
-            bind_addr
-        };
+        // all sandboxes, so we initialize it once at cache creation time.
+        let (control_plane_bind_sockaddr, _connect_addr): (String, String) =
+            control_plane_sockaddr_builder(config.tmp_directory())?;
 
         // Bind control plane socket.
-        // In L2 mode, force TCP socket type since we communicate over the network.
-        let control_plane_bind_socket_type: SocketType = if config.l2() {
-            SocketType::Tcp
-        } else {
-            config.control_plane_sockaddr_type()
-        };
+        let control_plane_bind_socket_type: SocketType = config.control_plane_sockaddr_type();
         let unbound_socket: UnboundSocket = UnboundSocket::new(control_plane_bind_socket_type);
         let control_plane_bind_socket: SocketListener =
             match unbound_socket.bind(&control_plane_bind_sockaddr).await {
@@ -247,13 +196,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             running_sandboxes: RwLock::new(HashMap::new()),
             tenants: RwLock::new(HashMap::new()),
             control_plane_acceptor,
-            netns_pool: NetnsPool::new(
-                NetnsPoolConfig::new(
-                    ::config::linuxd::GATEWAY_PORT_RANGE_BEGIN,
-                    ::config::linuxd::GATEWAY_PORT_RANGE_END,
-                )?,
-                netns_init_strategy,
-            )?,
         }))
     }
 
@@ -278,34 +220,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
         SandboxCacheStateSummary {
             running_sandboxes,
             linuxd_instances,
-            l2_enabled: self.config.l2(),
         }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Ensures the temporary directory for a tenant exists and returns its path.
-    ///
-    /// # Arguments
-    ///
-    /// - `tenant_id`: unique tenant identifier.
-    ///
-    /// # Returns
-    ///
-    /// The path to the tenant's temporary directory.
-    ///
-    fn ensure_tenant_tmp_dir(&self, tenant_id: &str) -> Result<PathBuf> {
-        let tenant_tmp_dir: PathBuf = PathBuf::from(self.config.tmp_directory()).join(tenant_id);
-        fs::create_dir_all(&tenant_tmp_dir).map_err(|error| {
-            let reason: String = format!(
-                "failed to create tenant temporary directory (tenant_id={tenant_id}, \
-                 tmp_dir={tenant_tmp_dir:?}, error={error:?})"
-            );
-            error!("ensure_tenant_tmp_dir(): {reason}");
-            anyhow::anyhow!(reason)
-        })?;
-        Ok(tenant_tmp_dir)
     }
 
     ///
@@ -381,54 +296,10 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             return Ok(linuxd);
         }
 
-        // Allocate network namespace handle for this linuxd instance.
-        let netns_handle: Option<NetnsHandle> = if self.config.l2() {
-            Some(self.netns_pool.allocate().map_err(|error| {
-                let reason: String = format!(
-                    "failed to allocate netns for linuxd (tenant_id={tenant_id}, error={error:?})"
-                );
-                error!("get_or_create_linuxd(): {reason}");
-                anyhow::anyhow!(reason)
-            })?)
-        } else {
-            None
-        };
-        let netns_info: Option<NetnsInfo> = netns_handle
-            .as_ref()
-            .and_then(|netns_handle| netns_handle.netns_info().ok());
-
         let (_control_plane_bind_sockaddr, control_plane_connect_sockaddr): (String, String) =
-            control_plane_sockaddr_builder(self.config.tmp_directory(), netns_info.clone())?;
+            control_plane_sockaddr_builder(self.config.tmp_directory())?;
         let system_vm_sockaddr: String =
-            user_vm_sockaddr_builder(self.config.tmp_directory(), tenant_id, self.config.l2())?;
-        let linuxd_tmp_dir: PathBuf = self.ensure_tenant_tmp_dir(tenant_id)?;
-
-        // Allocate snapshot dir handle for this linuxd instance.
-        let snapshot_dir_handle: Option<SnapshotDirHandle> = if self.config.l2() {
-            let linuxd_log_file: PathBuf = PathBuf::from(self.config.log_directory()).join(
-                format!("linuxd-l2_{}_{}.log", tenant_id, Local::now().format("%Y-%m-%d_%H-%M-%S")),
-            );
-            let snapshot_dir: PathBuf =
-                linuxd_tmp_dir.join(format!("l2-sysvm-snapshot-{tenant_id}"));
-
-            Some(
-                SnapshotDirHandle::new(
-                    &snapshot_dir,
-                    self.config.l2_snapshot_path(),
-                    linuxd_log_file,
-                )
-                .map_err(|error| {
-                    let reason: String = format!(
-                        "failed to create snapshot directory handle (tenant_id={tenant_id}, \
-                         error={error:?})"
-                    );
-                    error!("get_or_create_linuxd(): {reason}");
-                    anyhow::anyhow!(reason)
-                })?,
-            )
-        } else {
-            None
-        };
+            user_vm_sockaddr_builder(self.config.tmp_directory(), tenant_id)?;
 
         let linuxd_args: LinuxDaemonArgs<T> = LinuxDaemonArgs::new(
             tenant_id,
@@ -436,10 +307,7 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             (system_vm_sockaddr, self.config.system_vm_sockaddr_type()),
             self.config.hwloc(),
             self.config.linuxd_binary_path().to_string(),
-            self.config.clh_bin_path().to_string(),
             self.config.log_directory().to_string(),
-            linuxd_tmp_dir.to_string_lossy().into_owned(),
-            self.config.l2(),
             self.config.networking_mode().is_enabled(),
         );
 
@@ -451,20 +319,18 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 .await?;
 
             // Spawn it.
-            let pending_linuxd: PendingLinuxDaemon =
-                match LinuxDaemon::spawn(&linuxd_args, netns_handle, snapshot_dir_handle).await {
-                    Ok(linuxd) => linuxd,
-                    Err(error) => {
-                        self.control_plane_acceptor
-                            .unregister_linuxd(tenant_id)
-                            .await;
-                        let reason: String = format!(
-                            "failed to spawn linuxd (tenant_id={tenant_id}, error={error:?})"
-                        );
-                        error!("get_or_create_linuxd(): {reason}");
-                        anyhow::bail!(reason);
-                    },
-                };
+            let pending_linuxd: PendingLinuxDaemon = match LinuxDaemon::spawn(&linuxd_args).await {
+                Ok(linuxd) => linuxd,
+                Err(error) => {
+                    self.control_plane_acceptor
+                        .unregister_linuxd(tenant_id)
+                        .await;
+                    let reason: String =
+                        format!("failed to spawn linuxd (tenant_id={tenant_id}, error={error:?})");
+                    error!("get_or_create_linuxd(): {reason}");
+                    anyhow::bail!(reason);
+                },
+            };
 
             // Await for the linuxd instance to send a handshake message.
             let control_plane_stream: SocketStream =
@@ -531,17 +397,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// If sandbox initialization fails after allocating resources (e.g., Linux Daemon spawns but
     /// User VM fails), resource cleanup follows these guarantees:
     ///
-    /// ## RAII-Managed Resources (Automatic Cleanup)
-    ///
-    /// - **TcpPort**: Automatically released back to the port allocator when dropped. If gateway
-    ///   port allocation succeeds but initialization fails, the port is returned to the pool via
-    ///   RAII when the `TcpPort` instance goes out of scope.
-    ///
-    /// - **NetnsHandle**: Reference count is automatically decremented when dropped. When the last
-    ///   handle to a network namespace is dropped, the namespace is returned to the pool for
-    ///   reuse. If namespace allocation succeeds but initialization fails, the namespace is
-    ///   properly cleaned up via RAII semantics.
-    ///
     /// ## Shared Resources (Retained for Reuse)
     ///
     /// - **LinuxDaemon**: Wrapped in `Arc<LinuxDaemon>` and stored per-tenant in the `tenants`
@@ -582,8 +437,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
     /// parameters:
     /// - Shared resources (Linux Daemon, control plane socket) are already initialized and will
     ///   be reused.
-    /// - RAII-managed resources (TCP ports, network namespaces) are automatically cleaned up and
-    ///   can be reallocated.
     /// - No partial state is present in the cache maps that would interfere with retry attempts.
     ///
     pub async fn get(
@@ -625,73 +478,32 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
                 anyhow::anyhow!(reason)
             })?;
 
-        // Allocate gateway port if on an L2 deployment.
-        let mut gateway_l2_port: Option<TcpPort> = None;
-        let netns_handle: Option<NetnsHandle> = linuxd.netns_handle();
-        if let Some(netns_handle) = &netns_handle {
-            let tcp_port: TcpPort = netns_handle.allocate_gateway_port().map_err(|e| {
-                let reason: String = format!(
-                    "error allocating gateway port (tenant_id={}, program={}, app_name={}, \
-                     error={e:?})",
-                    tag.tenant_id(),
-                    tag.program(),
-                    tag.app_name()
-                );
-                error!("get(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
-            gateway_l2_port = Some(tcp_port);
-        }
-
         let uninitialized_sandbox: UninitializedSandbox<T> = UninitializedSandbox::new(
             tag.program(),
             tag.program_args().cloned(),
             self.config.ramfs_filename().map(|s| s.to_string()),
             self.control_plane_acceptor.clone(),
         )
-        .with_netns_handle(netns_handle)
         .with_linuxd(linuxd);
 
-        // Work-out socket addresses. In L2 deployments these addresses depend on the
-        // network namespace, so we assign them right after setting up the netns.
-        let netns_info: Option<NetnsInfo> = uninitialized_sandbox.netns_info();
+        // Work-out socket addresses.
         let (control_plane_bind_sockaddr, control_plane_connect_sockaddr): (String, String) =
-            control_plane_sockaddr_builder(self.config.tmp_directory(), netns_info.clone())?;
-        let user_vm_sockaddr: String = user_vm_sockaddr_builder(
-            self.config.tmp_directory(),
-            tag.tenant_id(),
-            self.config.l2(),
-        )?;
+            control_plane_sockaddr_builder(self.config.tmp_directory())?;
+        let user_vm_sockaddr: String =
+            user_vm_sockaddr_builder(self.config.tmp_directory(), tag.tenant_id())?;
         let gateway_sockaddr: String = gateway_sockaddr_builder(
             self.config.tmp_directory(),
             tag.tenant_id(),
             tag.sandbox_id(),
-            netns_info.clone(),
-            &gateway_l2_port,
         )?;
 
         let gateway_socket_address: String = gateway_sockaddr.clone();
         let gateway_socket_type: SocketType = self.config.gateway_sockaddr_type();
 
-        // Work-out the temporary directory for this sandbox based on the base temporary
-        // directory for the sandbox cache, and the tenant id.
-        let sandbox_tmp_dir: PathBuf =
-            self.ensure_tenant_tmp_dir(tag.tenant_id()).map_err(|e| {
-                let reason: String = format!(
-                    "failed to prepare sandbox temporary directory (tenant_id={}, program={}, \
-                     app_name={}, error={e:?})",
-                    tag.tenant_id(),
-                    tag.program(),
-                    tag.app_name()
-                );
-                error!("get(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
-
         let config: SandboxConfig<T> = SandboxConfig::new(
             tag.tenant_id(),
             tag.sandbox_id(),
-            (gateway_socket_address.clone(), gateway_socket_type, gateway_l2_port),
+            (gateway_socket_address.clone(), gateway_socket_type),
             (user_vm_sockaddr.clone(), self.config.system_vm_sockaddr_type()),
             self.config.console_file().map(|s| s.to_string()),
             self.config.hwloc().clone(),
@@ -701,9 +513,6 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
             self.config.log_directory(),
             Some((control_plane_bind_sockaddr.clone(), self.config.control_plane_sockaddr_type())),
             (control_plane_connect_sockaddr.clone(), self.config.control_plane_sockaddr_type()),
-            Some(self.config.clh_bin_path().to_string()),
-            Some(sandbox_tmp_dir.to_string_lossy().into_owned()),
-            Some(self.config.l2()),
             self.config.networking_mode().is_enabled(),
         );
 
@@ -857,10 +666,9 @@ impl<T: Sync + Send + Default + 'static> SandboxCache<T> {
 
         let summary: SandboxCacheStateSummary = self.state_summary().await;
         debug!(
-            "cleanup summary: running_sandboxes={}, linuxd_instances={}, l2_enabled={}",
+            "cleanup summary: running_sandboxes={}, linuxd_instances={}",
             summary.running_sandboxes(),
             summary.linuxd_instances(),
-            summary.l2_enabled()
         );
     }
 }
@@ -955,14 +763,10 @@ mod tests {
             None,
             None,
             None,
-            0,
             &format!("{}/kernel.elf", tmp_dir.path()),
             &format!("{}/linuxd.elf", tmp_dir.path()),
             &format!("{}/uservm.elf", tmp_dir.path()),
-            &format!("{}/toolchain/bin", tmp_dir.path()),
             &format!("{}/logs", tmp_dir.path()),
-            false,
-            &format!("{}/snapshot", tmp_dir.path()),
             tmp_dir.path(),
             NetworkingMode::Disabled,
         );
@@ -979,7 +783,6 @@ mod tests {
     /// - `console_file`: Optional console file path.
     /// - `hwloc`: Optional hardware locality configuration.
     /// - `socket_type`: Socket type for all connections.
-    /// - `l2`: Whether to enable L2 mode.
     ///
     /// # Returns
     ///
@@ -990,11 +793,9 @@ mod tests {
         console_file: Option<String>,
         hwloc: Option<HwLoc>,
         socket_type: SocketType,
-        l2: bool,
     ) -> (SandboxCacheConfig<()>, TempTestDir) {
         let tmp_dir: TempTestDir = TempTestDir::new();
 
-        let netns_pool_size: usize = 0;
         let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
             socket_type,
             socket_type,
@@ -1002,14 +803,10 @@ mod tests {
             console_file,
             None,
             hwloc,
-            netns_pool_size,
             &format!("{}/kernel.elf", tmp_dir.path()),
             &format!("{}/linuxd.elf", tmp_dir.path()),
             &format!("{}/uservm.elf", tmp_dir.path()),
-            &format!("{}/toolchain/bin", tmp_dir.path()),
             &format!("{}/logs", tmp_dir.path()),
-            l2,
-            &format!("{}/snapshot", tmp_dir.path()),
             tmp_dir.path(),
             NetworkingMode::Disabled,
         );
@@ -1043,19 +840,6 @@ mod tests {
         let cache: Arc<SandboxCache<()>> = result.unwrap();
         assert_eq!(cache.running_sandboxes.read().await.len(), 0);
         assert_eq!(cache.tenants.read().await.len(), 0);
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Tests sandbox cache creation with L2 VM configuration.
-    ///
-    #[tokio::test]
-    async fn test_new_l2_mode() {
-        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
-            create_custom_test_config(None, None, SocketType::Unix, true);
-        let result: Result<Arc<SandboxCache<()>>> = SandboxCache::new(config).await;
-        assert!(result.is_ok());
     }
 
     ///
@@ -1146,10 +930,7 @@ mod tests {
         assert!(config.kernel_binary_path().ends_with("/kernel.elf"));
         assert!(config.linuxd_binary_path().ends_with("/linuxd.elf"));
         assert!(config.uservm_binary_path().ends_with("/uservm.elf"));
-        assert!(config.clh_bin_path().ends_with("/toolchain/bin"));
         assert!(config.log_directory().ends_with("/logs"));
-        assert!(!config.l2());
-        assert!(config.l2_snapshot_path().ends_with("/snapshot"));
         assert!(config.tmp_directory().contains("nanvix-test"));
     }
 
@@ -1163,7 +944,7 @@ mod tests {
         let tmp_dir: String = ::std::env::temp_dir().to_string_lossy().to_string();
         let console_file: String = format!("{}/console.log", tmp_dir);
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
-            create_custom_test_config(Some(console_file.clone()), None, SocketType::Unix, false);
+            create_custom_test_config(Some(console_file.clone()), None, SocketType::Unix);
         assert_eq!(config.console_file(), Some(console_file.as_str()));
     }
 
@@ -1181,24 +962,12 @@ mod tests {
     ///
     /// # Description
     ///
-    /// Tests SandboxCacheConfig with L2 enabled.
-    ///
-    #[test]
-    fn test_config_with_l2_enabled() {
-        let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
-            create_custom_test_config(None, None, SocketType::Unix, true);
-        assert!(config.l2());
-    }
-
-    ///
-    /// # Description
-    ///
     /// Tests SandboxCacheConfig with different socket types.
     ///
     #[test]
     fn test_config_socket_types() {
         let (config, _tmp_dir): (SandboxCacheConfig<()>, TempTestDir) =
-            create_custom_test_config(None, None, SocketType::Tcp, false);
+            create_custom_test_config(None, None, SocketType::Tcp);
         assert_eq!(config.control_plane_sockaddr_type(), SocketType::Tcp);
         assert_eq!(config.gateway_sockaddr_type(), SocketType::Tcp);
         assert_eq!(config.system_vm_sockaddr_type(), SocketType::Tcp);

@@ -29,7 +29,6 @@ Test configurations are auto-selected based on deployment mode:
 
 - Standalone: `test/test-standalone.toml` (Linux), `test/test-standalone-windows.toml` (Windows)
 - Single-process: `test/test-single_process.toml`
-- L2 VM: `test/test-l2.toml`
 - Multi-process: `test/test-multi_process.toml`
 
 ## All Tests
@@ -53,8 +52,8 @@ System integration tests are also available on Windows for standalone mode
 .\z.ps1 build -- run-nanvix-tests
 ```
 
-Single-process, L2 and multi-process deployment modes remain **Linux-only** as they require
-`nanvixd` with network namespace support.
+Single-process and multi-process deployment modes remain **Linux-only** as they require
+`nanvixd` in HTTP mode.
 
 ## Troubleshooting Test Failures
 

@@ -2,10 +2,7 @@
 // Licensed under the MIT License.
 
 use super::super::CLEANUP_SLEEP_DURATION;
-use crate::benchmark::{
-    Benchmark,
-    LinuxdDeployment,
-};
+use crate::benchmark::Benchmark;
 use ::anyhow::Result;
 use ::indicatif::{
     ProgressBar,
@@ -41,14 +38,7 @@ impl Benchmark {
     ///
     /// Results are reported as p50, p95, and p99 percentiles for each message size.
     ///
-    /// # Arguments
-    ///
-    /// - `linuxd_deployment`: deployment mode for linuxd.
-    ///
-    pub async fn run_round_trip_latency(
-        &mut self,
-        linuxd_deployment: &LinuxdDeployment,
-    ) -> Result<()> {
+    pub async fn run_round_trip_latency(&mut self) -> Result<()> {
         let message_sizes: Vec<(&str, u64)> = vec![
             ("32 B", 32),
             ("64 B", 64),
@@ -73,14 +63,12 @@ impl Benchmark {
         let (new_msg_headers, new_msg): (HeaderMap, New) = self.prepare_new_message(None, None)?;
 
         // Start nanvixd.
-        self.setup(linuxd_deployment);
+        self.setup();
 
         let mut latencies: HashMap<&str, Vec<u128>> = HashMap::new();
         let user_vm_id = {
             // Start User VM.
-            let (user_vm_id, mut gateway_stream) = self
-                .start(new_msg, new_msg_headers, linuxd_deployment)
-                .await?;
+            let (user_vm_id, mut gateway_stream) = self.start(new_msg, new_msg_headers).await?;
 
             // Iterate over all possible message sizes.
             for (label, message_size) in &message_sizes {

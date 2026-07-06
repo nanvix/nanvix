@@ -85,7 +85,7 @@ get_deployment_flags() {
     local deployment="${1}"
 
     case "${deployment}" in
-        standalone|single-process|multi-process|l2)
+        standalone|single-process|multi-process)
             echo "DEPLOYMENT_MODE=${deployment}"
             ;;
         *)

@@ -70,7 +70,7 @@
 //! let config: SandboxConfig<()> = SandboxConfig::new(
 //!     "tenant-1",  // tenant_id
 //!     UserVmIdentifier::new(0),  // uservm_id
-//!     ("127.0.0.1:8080".to_string(), SocketType::Tcp, None),  // gateway_socket_info
+//!     ("127.0.0.1:8080".to_string(), SocketType::Tcp),  // gateway_socket_info
 //!     ("127.0.0.1:8081".to_string(), SocketType::Tcp),  // system_vm_socket_info
 //!     None,  // console_file
 //!     None,  // hwloc
@@ -84,9 +84,6 @@
 //!     None,  // syscall_table
 //!     Some(("127.0.0.1:8082".to_string(), SocketType::Tcp)),  // control_plane_bind_socket_info
 //!     ("127.0.0.1:8081".to_string(), SocketType::Tcp),  // control_plane_connect_socket_info
-//!     Some("/path/to/toolchain/bin".to_string()),  // clh_bin_path
-//!     Some("/tmp".to_string()),  // tmp_directory
-//!     Some(false),  // l2
 //!     false,  // networking_enabled
 //! );
 //!
@@ -139,7 +136,6 @@
 //! - Core state types: [`UninitializedSandbox`], [`InitializedSandbox`], [`RunningSandbox`]
 //! - Configuration: [`SandboxConfig`], [`LinuxDaemonArgs`], [`UserVmArgs`]
 //! - Implementation: [`multi_process`] (default), [`single_process`] (feature-gated)
-//! - Utilities: [`netns`] for managing network namespaces, [`tcp_port`] for managing TCP port allocations
 
 //==================================================================================================
 // Private Modules
@@ -153,8 +149,6 @@ mod initialized;
 mod linuxd_args;
 mod running;
 mod sandbox_config;
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-mod snapshot_dir_handle;
 mod tag;
 mod uninitialized;
 mod uservm_args;
@@ -170,9 +164,6 @@ mod uservm_args;
         pub mod sandbox;
     }
 }
-
-pub mod netns;
-pub mod tcp_port;
 
 ::cfg_if::cfg_if! {
     if #[cfg(feature = "single-process")] {
@@ -196,9 +187,6 @@ pub mod tcp_port;
     }
 }
 
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-pub use self::snapshot_dir_handle::SnapshotDirHandle;
-
 #[cfg(not(feature = "standalone"))]
 pub use self::control_plane_acceptor::ControlPlaneAcceptor;
 #[cfg(not(feature = "standalone"))]
@@ -221,8 +209,5 @@ pub use config::{
     gateway_sockaddr_builder,
     user_vm_sockaddr_builder,
     NAMED_RESOURCE_PREFIX,
-    NETNS_NAME_PREFIX,
     UNIX_SOCKET_SUFFIX,
-    VETH_HOST_PREFIX,
-    VETH_NS_PREFIX,
 };
