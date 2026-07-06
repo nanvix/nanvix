@@ -622,6 +622,23 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
 
+            // Phase: Finalize guest RAM mapping.
+            // Map the loaded image regions (kernel/initrd/RAMFS) into the partition eagerly and
+            // leave anonymous gaps to be mapped lazily on first access. This keeps VM creation
+            // time on WHP independent of the configured guest memory size, mirroring the Linux
+            // `mmap(MAP_NORESERVE)` behavior even when RAMFS is placed near the top of memory.
+            let mut eager_ranges: Vec<(usize, usize)> = Vec::new();
+            if let Some(region) = guest.kernel_region() {
+                eager_ranges.push(region);
+            }
+            if let Some(region) = guest.initrd_region() {
+                eager_ranges.push(region);
+            }
+            if let Some(region) = ramfs_region {
+                eager_ranges.push(region);
+            }
+            vmem.finalize_lazy_mapping(&eager_ranges)?;
+
             // Phase: EPT pre-population.
             // Pre-populate EPT entries for the kernel and ramfs regions so the hypervisor resolves
             // SLAT entries from the host side before guest execution.  This avoids costly EPT
@@ -1121,6 +1138,32 @@ impl Vmm {
                     {
                         exit_mmio += 1;
                     }
+
+                    // Lazy guest-RAM mapping: anonymous RAM beyond the loaded image is committed
+                    // host-side but not registered with the partition at creation time (see
+                    // `VirtualMemory::finalize_lazy_mapping`). The first guest access to such a
+                    // page faults out with an unmapped-GPA memory-access exit; map the containing
+                    // chunk on demand and re-execute the faulting instruction. RIP is left
+                    // unchanged so the access is retried once the mapping is in place.
+                    //
+                    // The guard is released before matching so the abort path can re-borrow
+                    // `self` for shutdown.
+                    let mapping_result: Result<bool> =
+                        self.vmem.blocking_lock().ensure_ram_mapped(gpa);
+                    match mapping_result {
+                        Ok(true) => continue,
+                        Ok(false) => {},
+                        Err(e) => {
+                            error!(
+                                "VMM MMIO exit: failed to map guest RAM at GPA {gpa:#010x} \
+                                 (error={e:?})"
+                            );
+                            let exit_status: u16 = ErrorCode::BadAddress.into();
+                            Handle::current().block_on(self.handle_shutdown(exit_status));
+                            break Ok(exit_status);
+                        },
+                    }
+
                     // Check if access falls within the LAPIC page.
                     let page_gpa: u64 = gpa & !(::arch::mem::PAGE_SIZE as u64 - 1);
                     if page_gpa == ::config::microvm::DEFAULT_LAPIC_BASE as u64 {

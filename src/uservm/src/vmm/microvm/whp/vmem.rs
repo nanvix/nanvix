@@ -96,6 +96,11 @@ pub struct VirtualMemory {
     multi_file_remap: Option<MultiFileRemap>,
     /// File handles that must stay alive for file-backed mappings to remain valid.
     backing_files: Vec<File>,
+    /// GPA ranges currently mapped into the WHP partition, kept sorted by base address and
+    /// merged into a minimal set of non-overlapping ranges. Recorded so `Drop` can unmap them
+    /// and so lazy-fault membership/gap queries stay fast (binary search) as more chunks are
+    /// mapped. Ranges are registered piecewise (eager image ranges, file views, lazy chunks).
+    mapped_ranges: Vec<(u64, u64)>,
 }
 
 ///
@@ -187,6 +192,11 @@ const GPA_RWX: WHV_MAP_GPA_RANGE_FLAGS = WHV_MAP_GPA_RANGE_FLAGS(
 const MEM_RELEASE_PRESERVE: VIRTUAL_FREE_TYPE =
     VIRTUAL_FREE_TYPE(MEM_RELEASE.0 | MEM_PRESERVE_PLACEHOLDER.0);
 
+/// Chunk size used when mapping anonymous guest RAM lazily on first access. A larger chunk
+/// amortizes the per-fault mapping cost over more pages at the expense of mapping slightly more
+/// memory than strictly touched. 2 MiB matches the x86 large-page size.
+const LAZY_MAP_CHUNK: usize = 2 * 1024 * 1024;
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -266,6 +276,14 @@ impl VirtualMemory {
         }
 
         // Create the VirtualMemory instance (destructor will free memory on error).
+        //
+        // The guest memory is committed host-side above, but it is deliberately NOT mapped into
+        // the WHP partition here. Mapping a GPA range faults in and pins every host page, a cost
+        // that grows linearly with the configured guest memory size. Instead, the loaded image is
+        // mapped eagerly by `finalize_lazy_mapping()` once its extent is known, and the remaining
+        // anonymous RAM is mapped lazily on first access (see `ensure_ram_mapped()`), which
+        // decouples VM creation time from the guest memory size (mirroring the Linux
+        // `mmap(MAP_NORESERVE)` behavior).
         let vmem: Self = Self {
             ptr,
             size,
@@ -273,26 +291,8 @@ impl VirtualMemory {
             file_remap: None,
             multi_file_remap: None,
             backing_files: Vec::new(),
+            mapped_ranges: Vec::new(),
         };
-
-        // Map the memory into the WHP partition at guest physical address 0.
-        // SAFETY: `ptr` is a valid committed region of `size` bytes from `VirtualAlloc2`.
-        // `partition.handle()` is a valid WHP partition handle.
-        unsafe {
-            WHvMapGpaRange(
-                partition.handle(),
-                ptr as *const std::ffi::c_void,
-                0, // Guest physical address.
-                size as u64,
-                GPA_RWX,
-            )
-            .map_err(|e| {
-                let reason: String =
-                    format!("failed to map memory into WHP partition (error={e:?})");
-                error!("VirtualMemory::new(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
-        }
 
         Ok(vmem)
     }
@@ -303,6 +303,297 @@ impl VirtualMemory {
 
     pub fn get_size(&self) -> usize {
         self.size
+    }
+
+    /// Maps a guest-physical range `[gpa, gpa+len)` into the WHP partition with read/write/
+    /// execute permission and records it in `mapped_ranges` (kept sorted and merged) so `Drop`
+    /// can unmap it and lazy-fault queries stay fast. The host memory backing the range
+    /// (committed or file-backed) must already be established by the caller.
+    fn map_gpa_range(&mut self, gpa: u64, len: u64) -> Result<()> {
+        if len == 0 {
+            return Ok(());
+        }
+
+        let page_size: u64 = ::arch::mem::PAGE_SIZE as u64;
+        if !gpa.is_multiple_of(page_size) || !len.is_multiple_of(page_size) {
+            let reason: String = format!(
+                "GPA mapping must be page-aligned (gpa={gpa:#x}, len={len:#x}, \
+                 page_size={page_size:#x})"
+            );
+            error!("map_gpa_range(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        let end: u64 = gpa.checked_add(len).ok_or_else(|| {
+            let reason: String = format!("GPA mapping overflows (gpa={gpa:#x}, len={len:#x})");
+            error!("map_gpa_range(): {reason}");
+            anyhow::anyhow!(reason)
+        })?;
+        if end > self.size as u64 {
+            let reason: String = format!(
+                "GPA mapping exceeds guest RAM (range=[{gpa:#x}..{end:#x}), size={:#x})",
+                self.size
+            );
+            error!("map_gpa_range(): {reason}");
+            anyhow::bail!(reason);
+        }
+
+        // SAFETY: `self.partition_handle` is a valid WHP handle from `new()`. `gpa` and `len`
+        // lie within the guest memory region (callers bounds-check), so `self.ptr.add(gpa)`
+        // points to `len` bytes of established host backing for the duration of the call.
+        unsafe {
+            WHvMapGpaRange(
+                self.partition_handle,
+                self.ptr.add(gpa as usize) as *const std::ffi::c_void,
+                gpa,
+                len,
+                GPA_RWX,
+            )
+            .map_err(|e| {
+                let reason: String = format!(
+                    "failed to map GPA range [{gpa:#x}..{:#x}) (error={e:?})",
+                    gpa.saturating_add(len)
+                );
+                error!("map_gpa_range(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+        }
+
+        self.insert_mapped_range(gpa, len);
+        Ok(())
+    }
+
+    /// Inserts `[gpa, gpa+len)` into `mapped_ranges`, keeping the list sorted by base address
+    /// and merged into a minimal set of non-overlapping ranges. Adjacent and overlapping ranges
+    /// are coalesced so membership and gap queries stay fast as lazy chunks accumulate.
+    fn insert_mapped_range(&mut self, gpa: u64, len: u64) {
+        if len == 0 {
+            return;
+        }
+        let end: u64 = gpa.saturating_add(len);
+
+        // First existing range that could touch `[gpa, end)`: the first whose end reaches `gpa`.
+        let first: usize = self
+            .mapped_ranges
+            .partition_point(|&(base, l)| base.saturating_add(l) < gpa);
+
+        // Absorb every following range that overlaps or is adjacent to the growing span.
+        let mut new_start: u64 = gpa;
+        let mut new_end: u64 = end;
+        let mut last: usize = first;
+        while last < self.mapped_ranges.len() {
+            let (base, l) = self.mapped_ranges[last];
+            if base > new_end {
+                break;
+            }
+            new_start = new_start.min(base);
+            new_end = new_end.max(base.saturating_add(l));
+            last += 1;
+        }
+
+        self.mapped_ranges
+            .splice(first..last, std::iter::once((new_start, new_end - new_start)));
+    }
+
+    /// Normalizes guest-memory ranges to page-aligned, merged GPA ranges.
+    fn normalize_gpa_ranges(&self, ranges: &[(usize, usize)]) -> Result<Vec<(u64, u64)>> {
+        let page_size: usize = ::arch::mem::PAGE_SIZE;
+        let mut normalized: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
+
+        for &(base, size) in ranges {
+            if size == 0 {
+                continue;
+            }
+
+            let end: usize = base.checked_add(size).ok_or_else(|| {
+                let reason: String =
+                    format!("guest-memory range overflows (base={base:#x}, size={size:#x})");
+                error!("normalize_gpa_ranges(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+            if end > self.size {
+                let reason: String = format!(
+                    "guest-memory range exceeds guest RAM (range=[{base:#x}..{end:#x}), \
+                     size={:#x})",
+                    self.size
+                );
+                error!("normalize_gpa_ranges(): {reason}");
+                anyhow::bail!(reason);
+            }
+
+            let aligned_base: usize = base - (base % page_size);
+            let aligned_end: usize = end.checked_next_multiple_of(page_size).ok_or_else(|| {
+                let reason: String = format!("range end overflows when page-aligned ({end:#x})");
+                error!("normalize_gpa_ranges(): {reason}");
+                anyhow::anyhow!(reason)
+            })?;
+            if aligned_end > self.size {
+                let reason: String = format!(
+                    "page-aligned guest-memory range exceeds guest RAM \
+                     (range=[{aligned_base:#x}..{aligned_end:#x}), size={:#x})",
+                    self.size
+                );
+                error!("normalize_gpa_ranges(): {reason}");
+                anyhow::bail!(reason);
+            }
+
+            normalized.push((aligned_base, aligned_end));
+        }
+
+        normalized.sort_unstable_by_key(|&(base, _)| base);
+
+        let mut merged: Vec<(u64, u64)> = Vec::with_capacity(normalized.len());
+        for (base, end) in normalized {
+            if let Some((_, last_end)) = merged.last_mut()
+                && base as u64 <= *last_end
+            {
+                *last_end = (*last_end).max(end as u64);
+                continue;
+            }
+            merged.push((base as u64, end as u64));
+        }
+
+        Ok(merged
+            .into_iter()
+            .map(|(base, end)| (base, end - base))
+            .collect())
+    }
+
+    /// Returns `true` if `gpa` lies inside a GPA range already registered with WHP.
+    ///
+    /// `mapped_ranges` is kept sorted and merged, so this resolves with a single binary search.
+    fn is_gpa_mapped(&self, gpa: u64) -> bool {
+        // Index of the first range whose end (`base + len`) is strictly greater than `gpa`.
+        let idx: usize = self
+            .mapped_ranges
+            .partition_point(|&(base, len)| base.saturating_add(len) <= gpa);
+        self.mapped_ranges
+            .get(idx)
+            .is_some_and(|&(base, len)| gpa >= base && gpa < base.saturating_add(len))
+    }
+
+    /// Maps the portions of `[start, end)` that are not already registered with WHP.
+    ///
+    /// `mapped_ranges` is kept sorted and merged, so the already-mapped ranges overlapping
+    /// `[start, end)` form a contiguous slice located with a binary search. Only the gaps
+    /// between them are collected (usually one) before mapping, avoiding a full scan and sort of
+    /// `mapped_ranges` on every lazy fault.
+    fn map_unmapped_subranges(&mut self, start: usize, end: usize) -> Result<bool> {
+        if start >= end {
+            return Ok(false);
+        }
+
+        let start: u64 = start as u64;
+        let end: u64 = end as u64;
+
+        // Collect the unmapped gaps first (immutable borrow of `mapped_ranges`), then map them
+        // (`map_gpa_range` mutates `mapped_ranges`). The number of gaps is bounded by the holes
+        // inside `[start, end)` — typically one — so this allocation is small and independent of
+        // the `mapped_ranges` length.
+        let mut gaps: Vec<(u64, u64)> = Vec::new();
+        let mut cursor: u64 = start;
+        let first: usize = self
+            .mapped_ranges
+            .partition_point(|&(base, len)| base.saturating_add(len) <= start);
+        for &(base, len) in &self.mapped_ranges[first..] {
+            if base >= end {
+                break;
+            }
+            if cursor < base {
+                gaps.push((cursor, base - cursor));
+            }
+            cursor = cursor.max(base.saturating_add(len));
+            if cursor >= end {
+                break;
+            }
+        }
+        if cursor < end {
+            gaps.push((cursor, end - cursor));
+        }
+
+        let mut mapped_any: bool = false;
+        for (gpa, len) in gaps {
+            self.map_gpa_range(gpa, len)?;
+            mapped_any = true;
+        }
+
+        Ok(mapped_any)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Finalizes the partition mapping after the guest images have been loaded.
+    ///
+    /// The supplied loaded image ranges (kernel, initrd, RAMFS) are mapped eagerly so the guest
+    /// can begin executing immediately. Other anonymous RAM remains committed host-side but is
+    /// registered with WHP lazily on first access (see [`Self::ensure_ram_mapped`]). This keeps VM
+    /// creation time independent of large holes between loaded images.
+    ///
+    /// # Parameters
+    ///
+    /// - `eager_ranges`: Guest-memory ranges that must be registered before guest execution.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, this method returns empty. Otherwise, it returns an error.
+    ///
+    pub fn finalize_lazy_mapping(&mut self, eager_ranges: &[(usize, usize)]) -> Result<()> {
+        let ranges: Vec<(u64, u64)> = self.normalize_gpa_ranges(eager_ranges)?;
+        trace!("finalize_lazy_mapping(): eager_ranges={}, size={:#x}", ranges.len(), self.size);
+
+        for (gpa, len) in ranges {
+            self.map_unmapped_subranges(gpa as usize, gpa.saturating_add(len) as usize)?;
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Ensures the guest-physical address `gpa` is backed by a partition mapping, mapping the
+    /// containing lazy chunk on demand. Invoked from the run loop when the guest faults on an
+    /// unmapped GPA.
+    ///
+    /// # Parameters
+    ///
+    /// - `gpa`: Guest-physical address reported by the memory-access exit.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` when `gpa` is lazily-mapped guest RAM that is now mapped and the
+    /// faulting instruction should be retried. Returns `Ok(false)` when `gpa` is not
+    /// lazily-mapped guest RAM (for example an MMIO region), leaving it for the caller to
+    /// handle. Returns an error if the mapping operation fails.
+    ///
+    pub fn ensure_ram_mapped(&mut self, gpa: u64) -> Result<bool> {
+        let gpa_usize: usize = gpa as usize;
+
+        // Addresses at or beyond guest RAM are not lazily-mapped memory (for example, LAPIC MMIO).
+        if gpa_usize >= self.size {
+            return Ok(false);
+        }
+
+        // If WHP reports a fault in a range already registered with the partition, leave it to
+        // the caller. This avoids remapping over file-backed image views or eager image ranges.
+        if self.is_gpa_mapped(gpa) {
+            warn!("ensure_ram_mapped(): unexpected fault in mapped guest RAM (gpa={gpa:#x})");
+            return Ok(false);
+        }
+
+        // Map an aligned chunk within the lazy tail so a single fault amortizes over many pages.
+        // Existing eager/file-backed mappings inside the chunk are skipped by
+        // `map_unmapped_subranges()` so holes between loaded images can remain lazy.
+        let chunk_base: usize = gpa_usize & !(LAZY_MAP_CHUNK - 1);
+        let chunk_start: usize = chunk_base;
+        let chunk_end: usize = chunk_base.saturating_add(LAZY_MAP_CHUNK).min(self.size);
+
+        trace!(
+            "ensure_ram_mapped(): mapping lazy chunk [{chunk_start:#x}..{chunk_end:#x}) for \
+             gpa={gpa:#x}"
+        );
+        self.map_unmapped_subranges(chunk_start, chunk_end)
     }
 
     ///
@@ -347,8 +638,9 @@ impl VirtualMemory {
         // SAFETY: `GetCurrentProcess()` returns a pseudo-handle that is always valid.
         let current_process: HANDLE = unsafe { GetCurrentProcess() };
 
-        // Phase 1: Unmap the GPA tail from WHP and split the committed region into
-        //          placeholders: [start..start+len) and [start+len..size).
+        // Phase 1: Split the committed region into placeholders [start..start+len) and
+        //          [start+len..size). The tail is not registered with WHP yet, so there is no
+        //          GPA mapping to unmap here.
         self.prepare_placeholders(start, len)?;
 
         // Record the split immediately so `Drop` can clean up the placeholders if a later
@@ -369,14 +661,15 @@ impl VirtualMemory {
         // Update the section handle now that the file view is established.
         self.file_remap.as_mut().unwrap().section_handle = section_handle;
 
-        // Phase 3: Re-commit the tail placeholder and re-register all affected GPA segments
-        //          with the WHP partition.
+        // Phase 3: Re-commit the tail placeholder and register the file-backed view with the WHP
+        //          partition. Anonymous gaps/tail are left unmapped and faulted in lazily on
+        //          first access (see `ensure_ram_mapped()`).
         let view: FileView = FileView {
             offset: start,
             len,
             section_handle,
         };
-        self.recommit_tail_and_register_gpa(start, &[view], start + len, current_process)?;
+        self.recommit_tail_and_register_gpa(&[view], start + len, current_process)?;
 
         Ok(())
     }
@@ -384,33 +677,23 @@ impl VirtualMemory {
     ///
     /// # Description
     ///
-    /// Unmaps the GPA range `[start..size)` from the WHP partition and converts the committed
-    /// host memory in that range back to placeholders, splitting the region into up to two
-    /// placeholders: `[start..start+len)` for the file view and
-    /// `[start+len..size)` for the tail.
+    /// Converts the committed host memory in the range `[start..size)` back to placeholders,
+    /// splitting the region into up to two placeholders: `[start..start+len)` for the file view
+    /// and `[start+len..size)` for the tail.
+    ///
+    /// The range `[start..size)` is not registered with the WHP partition at this point (the
+    /// partition mapping is deferred until the loaded-image extent is known), so no
+    /// `WHvUnmapGpaRange` is performed here — only the host-side committed region is reshaped.
     ///
     fn prepare_placeholders(&mut self, start: usize, len: usize) -> Result<()> {
         let tail_start: usize = start + len;
 
-        // ── 1. Unmap [start..size) from the WHP partition ──────────────────────────────────
-        //
-        // The head [0..start) stays mapped and its committed memory is untouched, avoiding
-        // the cost of backing up and restoring kernel/initrd data.
-        let unmap_size: u64 = (self.size - start) as u64;
-        // SAFETY: `self.partition_handle` is a valid WHP handle from `new()`. The GPA range
-        // [start..size) was mapped in `new()` and has not yet been unmapped.
-        unsafe {
-            WHvUnmapGpaRange(self.partition_handle, start as u64, unmap_size).map_err(|e| {
-                let reason: String = format!(
-                    "failed to unmap GPA range for file remap (start={start:#x}, \
-                     size={unmap_size:#x}, error={e:?})"
-                );
-                error!("prepare_placeholders(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
-        }
+        // The GPA range [start..size) is not yet mapped into the partition: mapping is deferred
+        // until the loaded image extent is known (`recommit_tail_and_register_gpa` for the file
+        // views and `finalize_lazy_mapping` for the lazy boundary). Only the host-side committed
+        // region is reshaped into placeholders here; there is no partition mapping to unmap.
 
-        // ── 2. Free [start..size) back to a placeholder ────────────────────────────────────
+        // ── 1. Free [start..size) back to a placeholder ────────────────────────────────────
         //
         // `VirtualFree(addr, size, MEM_RELEASE | MEM_PRESERVE_PLACEHOLDER)` splits the
         // committed region in place: [0..start) stays committed, [start..size) becomes a
@@ -429,12 +712,12 @@ impl VirtualMemory {
                 })?;
         }
 
-        // ── 3. Split the tail placeholder if there is memory after the file region ─────────
+        // ── 2. Split the tail placeholder if there is memory after the file region ─────────
         //
-        // After step 2, [start..size) is a single placeholder. If `tail_start < size`, split
+        // After step 1, [start..size) is a single placeholder. If `tail_start < size`, split
         // it into [start..tail_start) and [tail_start..size).
         if tail_start < self.size {
-            // SAFETY: After step 2, [start..size) is a single placeholder.
+            // SAFETY: After step 1, [start..size) is a single placeholder.
             // `self.ptr.add(start)` is the base of that placeholder, and `len` is
             // within it.  This splits it into [start..tail_start) and [tail_start..size).
             unsafe {
@@ -559,22 +842,19 @@ impl VirtualMemory {
         // SAFETY: `GetCurrentProcess()` returns a pseudo-handle that is always valid.
         let current_process: HANDLE = unsafe { GetCurrentProcess() };
 
-        // Phase 1+2: Unmap GPA [split_start..size) and free to a single placeholder.
-        // When `len == self.size - split_start`, the tail split in step 3 is naturally
-        // skipped because `split_start + len == self.size`.
+        // Phase 1+2: Free GPA [split_start..size) to a single placeholder. The range is not
+        // registered with WHP yet, so nothing is unmapped here. When
+        // `len == self.size - split_start`, the tail split in step 3 is naturally skipped
+        // because `split_start + len == self.size`.
         self.prepare_placeholders(split_start, self.size - split_start)?;
 
         // Phase 3: Split placeholders, commit gaps, and map each file view.
         let (multi_remap, placeholder_base): (MultiFileRemap, usize) =
             self.split_and_map_views(regions, &view_specs, split_start, current_process)?;
 
-        // Phase 4+5: Re-commit tail and re-register all GPA segments with WHP.
-        self.recommit_tail_and_register_gpa(
-            multi_remap.split_start,
-            &multi_remap.views,
-            placeholder_base,
-            current_process,
-        )?;
+        // Phase 4+5: Re-commit tail host-side and register only the file-backed views with WHP.
+        // Committed gaps and tail remain unmapped and are faulted in lazily on first access.
+        self.recommit_tail_and_register_gpa(&multi_remap.views, placeholder_base, current_process)?;
 
         self.multi_file_remap = Some(multi_remap);
         Ok(())
@@ -755,20 +1035,22 @@ impl VirtualMemory {
         Ok(())
     }
 
-    /// Re-commits the tail placeholder `[tail_start..size)` (if any) and re-registers
-    /// all affected GPA segments (committed gaps, file-backed views, tail) with the WHP
-    /// partition. The head `[0..split_start)` is assumed to still be mapped.
+    /// Re-commits the tail placeholder `[tail_start..size)` host-side (if any) and registers the
+    /// eagerly-mapped GPA segments: the file-backed views. Committed gaps and tail memory are left
+    /// unmapped so they can be mapped lazily on first access (see [`Self::ensure_ram_mapped`]),
+    /// keeping VM creation time independent of the configured guest memory size.
     ///
     /// This is the shared finalization step used by both `remap_file_at` (single view) and
     /// `remap_files_at` (multiple views).
     fn recommit_tail_and_register_gpa(
-        &self,
-        split_start: usize,
+        &mut self,
         views: &[FileView],
         tail_start: usize,
         current_process: HANDLE,
     ) -> Result<()> {
-        // Re-commit the tail placeholder if any.
+        // Re-commit the tail placeholder host-side if any. It stays committed (cheap, demand-zero)
+        // but is deliberately not registered with the partition here; the run loop maps it lazily
+        // on first access.
         if tail_start < self.size {
             let tail_size: usize = self.size - tail_start;
             // SAFETY: `self.ptr.add(tail_start)` targets the tail placeholder.
@@ -793,74 +1075,18 @@ impl VirtualMemory {
             }
         }
 
-        // Re-register GPA segments with WHP. The head [0..split_start) was never unmapped.
-        let mut prev_end: usize = split_start;
+        // Register file-backed views with the partition. Anonymous committed memory is mapped
+        // separately by `finalize_lazy_mapping()` for loaded image ranges and by
+        // `ensure_ram_mapped()` for lazily faulted gaps.
         for view in views {
-            // Re-map committed gap before this view.
-            if view.offset > prev_end {
-                let gap_size: usize = view.offset - prev_end;
-                // SAFETY: `self.ptr.add(prev_end)` points to a re-committed gap segment.
-                unsafe {
-                    WHvMapGpaRange(
-                        self.partition_handle,
-                        self.ptr.add(prev_end) as *const std::ffi::c_void,
-                        prev_end as u64,
-                        gap_size as u64,
-                        GPA_RWX,
-                    )
-                    .map_err(|e| {
-                        let reason: String = format!(
-                            "recommit_tail_and_register_gpa(): failed to map gap GPA (error={e:?})"
-                        );
-                        error!("{reason}");
-                        anyhow::anyhow!(reason)
-                    })?;
-                }
-            }
-            // Re-map file-backed view with RWX. The initrd region contains an executable
-            // ELF, so execute permission is required. RAMFS-only views do not need execute
-            // but granting it uniformly avoids per-region flag plumbing.
-            // SAFETY: `self.ptr.add(view.offset)` points to the file-backed view.
-            unsafe {
-                WHvMapGpaRange(
-                    self.partition_handle,
-                    self.ptr.add(view.offset) as *const std::ffi::c_void,
-                    view.offset as u64,
-                    view.len as u64,
-                    GPA_RWX,
-                )
-                .map_err(|e| {
-                    let reason: String = format!(
-                        "recommit_tail_and_register_gpa(): failed to map file GPA (error={e:?})"
-                    );
-                    error!("{reason}");
-                    anyhow::anyhow!(reason)
-                })?;
-            }
-            prev_end = view.offset + view.len;
+            // Map the file-backed view with RWX. The initrd region contains an executable ELF,
+            // so execute permission is required. RAMFS-only views do not need execute but
+            // granting it uniformly avoids per-region flag plumbing.
+            self.map_gpa_range(view.offset as u64, view.len as u64)?;
         }
 
-        // Re-map committed tail.
-        if prev_end < self.size {
-            let tail_size: usize = self.size - prev_end;
-            // SAFETY: `self.ptr.add(prev_end)` points to the re-committed tail segment.
-            unsafe {
-                WHvMapGpaRange(
-                    self.partition_handle,
-                    self.ptr.add(prev_end) as *const std::ffi::c_void,
-                    prev_end as u64,
-                    tail_size as u64,
-                    GPA_RWX,
-                )
-                .map_err(|e| {
-                    let reason: String = format!(
-                        "recommit_tail_and_register_gpa(): failed to map tail GPA (error={e:?})"
-                    );
-                    error!("{reason}");
-                    anyhow::anyhow!(reason)
-                })?;
-            }
-        }
+        // Committed gaps and tail memory are intentionally left unmapped: they are mapped on
+        // demand by `ensure_ram_mapped()` when the guest first touches them.
 
         Ok(())
     }
@@ -1534,14 +1760,22 @@ impl VirtualMemory {
         // SAFETY: `GetCurrentProcess()` returns a pseudo-handle that is always valid.
         let current_process: HANDLE = unsafe { GetCurrentProcess() };
 
-        // Phase 1: Unmap the entire GPA range from the WHP partition.
-        // SAFETY: The GPA range [0..size) was mapped during `new()` and is still valid.
-        unsafe {
-            WHvUnmapGpaRange(self.partition_handle, 0, self.size as u64).map_err(|e| {
-                let reason: String = format!("failed to unmap GPA range (error={e:?})");
-                error!("load_snapshot_cow(): {reason}");
-                anyhow::anyhow!(reason)
-            })?;
+        // Phase 1: Unmap any GPA ranges currently registered with the partition. On the restore
+        // path `new()` deferred all mapping, so `mapped_ranges` is typically empty here and this
+        // is a no-op; the loop keeps the invariant correct if a mapping was ever established.
+        for (gpa, len) in std::mem::take(&mut self.mapped_ranges) {
+            // SAFETY: `self.partition_handle` is a valid WHP handle; `(gpa, len)` was previously
+            // registered via `map_gpa_range` and has not been unmapped.
+            unsafe {
+                WHvUnmapGpaRange(self.partition_handle, gpa, len).map_err(|e| {
+                    let reason: String = format!(
+                        "failed to unmap GPA range [{gpa:#x}..{:#x}) (error={e:?})",
+                        gpa.saturating_add(len)
+                    );
+                    error!("load_snapshot_cow(): {reason}");
+                    anyhow::anyhow!(reason)
+                })?;
+            }
         }
 
         // Phase 2: Convert the committed memory back to a placeholder.
@@ -1600,29 +1834,25 @@ impl VirtualMemory {
             anyhow::bail!(reason);
         }
 
-        // Phase 5: Re-register the file-backed memory with the WHP partition.
-        // SAFETY: `self.ptr` now points to a valid file-backed mapping of `self.size` bytes.
-        // WHP EPT entries handle execute permission independently of host page protection.
-        unsafe {
-            if let Err(e) = WHvMapGpaRange(
-                self.partition_handle,
-                self.ptr as *const std::ffi::c_void,
-                0,
-                self.size as u64,
-                GPA_RWX,
-            ) {
-                // Cleanup: unmap the file view and close the section handle so Drop does not
-                // encounter a file-backed region without a corresponding `file_remap` entry.
+        // Phase 5: Register the file-backed memory with the WHP partition. The whole region is a
+        // single file view, so a single mapping covers it; unlike anonymous RAM there is no lazy
+        // gap here.
+        if let Err(e) = self.map_gpa_range(0, self.size as u64) {
+            // Cleanup: unmap the file view and close the section handle so Drop does not
+            // encounter a file-backed region without a corresponding `file_remap` entry.
+            // SAFETY: `self.ptr` is the base of the file view just established, and `section`
+            // is its owning section handle.
+            unsafe {
                 let view_addr: MEMORY_MAPPED_VIEW_ADDRESS = MEMORY_MAPPED_VIEW_ADDRESS {
                     Value: self.ptr.cast(),
                 };
                 let _ = UnmapViewOfFileEx(view_addr, UNMAP_VIEW_OF_FILE_FLAGS(0));
                 let _ = CloseHandle(section);
-                let reason: String =
-                    format!("failed to re-register GPA after COW mapping (error={e:?})");
-                error!("load_snapshot_cow(): {reason}");
-                anyhow::bail!(reason);
             }
+            let reason: String =
+                format!("failed to re-register GPA after COW mapping (error={e:?})");
+            error!("load_snapshot_cow(): {reason}");
+            anyhow::bail!(reason);
         }
 
         // Track the file-backed mapping for correct cleanup in Drop.
@@ -1643,22 +1873,29 @@ impl VirtualMemory {
 
 impl Drop for VirtualMemory {
     fn drop(&mut self) {
-        // Unmap the entire GPA range from the WHP partition before releasing host memory. If the
-        // partition was already destroyed (drop ordering between `Arc<VirtualMemory>` and
-        // `Arc<WhpPartition>`), `WHvUnmapGpaRange` returns `E_HANDLE`. That outcome is benign
-        // because `WHvDeletePartition` implicitly tears down all GPA mappings, so we silently
-        // ignore it. Any other failure is unexpected and is logged as an error so it remains
-        // visible without aborting teardown.
-        // SAFETY: `self.partition_handle` was a valid WHP handle when `new()` returned. By
-        // the time `drop` runs the partition may already have been destroyed, in which case
-        // the handle is stale; `WHvUnmapGpaRange` detects that and returns `E_HANDLE`
-        // without dereferencing host memory, so the call is sound either way. The GPA range
-        // [0..size) was mapped during construction and has not been freed.
-        unsafe {
-            if let Err(e) = WHvUnmapGpaRange(self.partition_handle, 0, self.size as u64)
-                && e.code() != E_HANDLE
-            {
-                error!("WHvUnmapGpaRange() failed in Drop (error={e:?})");
+        // Unmap every GPA range registered with the partition before releasing the host memory
+        // that backs it. Ranges are mapped piecewise (eager prefix, file views, lazy tail
+        // chunks), so the whole [0..size) span cannot be unmapped in a single call; unmap each
+        // recorded range instead. If the partition was already destroyed (drop ordering between
+        // `Arc<VirtualMemory>` and `Arc<WhpPartition>`), `WHvUnmapGpaRange` returns `E_HANDLE`.
+        // That outcome is benign because `WHvDeletePartition` implicitly tears down all GPA
+        // mappings, so we silently ignore it. Any other failure is unexpected and is logged as an
+        // error so it remains visible without aborting teardown.
+        // SAFETY: `self.partition_handle` was a valid WHP handle when `new()` returned. By the
+        // time `drop` runs the partition may already have been destroyed, in which case the
+        // handle is stale; `WHvUnmapGpaRange` detects that and returns `E_HANDLE` without
+        // dereferencing host memory, so the call is sound either way. Each `(gpa, len)` in
+        // `mapped_ranges` was mapped during setup/run and has not been unmapped.
+        for &(gpa, len) in &self.mapped_ranges {
+            unsafe {
+                if let Err(e) = WHvUnmapGpaRange(self.partition_handle, gpa, len)
+                    && e.code() != E_HANDLE
+                {
+                    error!(
+                        "WHvUnmapGpaRange() failed in Drop (gpa={gpa:#x}, len={len:#x}, \
+                         error={e:?})"
+                    );
+                }
             }
         }
 
