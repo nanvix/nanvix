@@ -57,4 +57,7 @@ extern void test_pthread_rwlock_static_init(void);
 // Tests if dynamically initialized read-write locks work (init/destroy + exclusion semantics).
 extern void test_pthread_rwlock_dynamic_init(void);
 
+// Tests if unnamed POSIX semaphores can be used for synchronization.
+extern void test_semaphore(void);
+
 #endif

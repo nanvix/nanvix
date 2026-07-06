@@ -14,6 +14,9 @@ mod mutex;
 /// Read-write locks.
 mod rwlock;
 
+/// Semaphores.
+mod sem;
+
 /// Thread-specific data area.
 mod tda;
 
@@ -74,6 +77,7 @@ pub use pthread_attr_getstack::*;
 pub use pthread_attr_init::*;
 pub use pthread_getattr_np::*;
 pub use rwlock::*;
+pub use sem::*;
 pub use tda::*;
 
 //==================================================================================================
