@@ -461,6 +461,13 @@ impl Args {
             );
         }
 
+        // The decoupled networkd transport depends on Linux-only host communication primitives.
+        #[cfg(not(target_os = "linux"))]
+        if networkd_addr.is_some() {
+            Self::usage();
+            anyhow::bail!("{} is only supported on Linux", Self::OPT_NETWORKD_ADDR);
+        }
+
         // Forwarding to a decoupled networkd is a networking feature -- it is meaningless without
         // host networking enabled.
         if networkd_addr.is_some() && !host_networking {

@@ -297,7 +297,7 @@ fn build_networkd_endpoint(args: &Args) -> Result<Option<NetworkdEndpoint>> {
 #[cfg(not(target_os = "linux"))]
 fn build_networkd_endpoint(args: &Args) -> Result<Option<NetworkdEndpoint>> {
     if args.networkd_addr().is_some() {
-        error!("main(): decoupled networkd is not supported on this platform");
+        anyhow::bail!("{} is only supported on Linux", Args::OPT_NETWORKD_ADDR);
     }
     Ok(None)
 }
