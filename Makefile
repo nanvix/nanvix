@@ -402,6 +402,13 @@ ALL_HOST_DAEMONS := linuxd
 else
 ALL_HOST_DAEMONS :=
 endif
+# networkd runs as a decoupled host process alongside a standalone user VM. It depends on
+# syscomm/tokio, so it is Linux-only (syscomm is excluded on Windows).
+ifeq ($(DEPLOYMENT_MODE),standalone)
+ifneq ($(IS_WINDOWS),yes)
+ALL_HOST_DAEMONS += networkd
+endif
+endif
 ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
 
 #===================================================================================================

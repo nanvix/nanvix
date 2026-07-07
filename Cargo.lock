@@ -2341,6 +2341,7 @@ dependencies = [
  "sysapi",
  "syscall",
  "syscomm",
+ "syslog",
  "tokio",
 ]
 
