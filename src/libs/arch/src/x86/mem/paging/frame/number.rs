@@ -73,8 +73,8 @@ impl FrameNumber {
     ///
     #[verus_spec(result =>
         ensures
-            value as int <= Self::spec_max() ==> (result is Some
-                && (result->Some_0)@ == value as int),
+            value as int <= Self::spec_max() ==> (result matches Some(v)
+                && v@ == value as int),
             value as int > Self::spec_max() ==> result is None,
     )]
     pub fn from_raw_value(value: usize) -> Option<Self> {
