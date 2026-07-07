@@ -79,6 +79,11 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
             super::register_library_in_global_scope(&dlfile);
         }
 
+        // Record this additional direct open of an already-loaded library so a
+        // later `dlclose()` of one handle does not unload it while another
+        // handle is still live.
+        dlfile.lock().increment_open_count();
+
         // A concurrent `dlopen` may have inserted this library and released the
         // registry lock but not yet finished running its `.init_array`
         // constructors. Wait for them to complete so this caller never observes
@@ -144,6 +149,14 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
                 return Err(e);
             },
         };
+
+    // Record this direct `dlopen()` on the freshly loaded root library. Only
+    // the library named by the caller is counted; dependencies loaded
+    // transitively are tracked by their `Arc` edges, not by this direct open
+    // count.
+    if let Some(dlfile) = registry.get(&handle) {
+        dlfile.lock().increment_open_count();
+    }
 
     // Record the constructing thread on every newly loaded library BEFORE
     // releasing the registry lock. A concurrent `dlopen` that observes any of
