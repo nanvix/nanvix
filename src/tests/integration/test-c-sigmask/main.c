@@ -6,12 +6,19 @@
 /*
  * Integration test for the POSIX signal-mask API:
  *
- *   - sigemptyset / sigfillset / sigaddset / sigdelset / sigismember
+ *   - sigemptyset / sigfillset / sigisemptyset /
+ *     sigaddset / sigdelset / sigismember
+ *                     (membership, the empty/full predicates, the largest valid
+ *                      signal number, out-of-range EINVAL, and null-set EFAULT)
  *   - sigprocmask     (SIG_BLOCK / SIG_UNBLOCK / SIG_SETMASK, oldset round-trip,
- *                      SIGKILL/SIGSTOP cannot be blocked, EINVAL on bad `how`)
+ *                      SIGKILL/SIGSTOP cannot be blocked, EINVAL on bad `how`,
+ *                      null-set/null-oldset no-op)
  *   - pthread_sigmask (same semantics as sigprocmask but returns the error
  *                      number directly, and shares the per-thread mask with
  *                      sigprocmask)
+ *   - sigsuspend      (argument validation only: a null mask is rejected with
+ *                      EINVAL without suspending, since this exit-code-only
+ *                      harness cannot deliver a signal to end a real suspend)
  *
  * The harness is exit-code only (stdout is discarded in standalone terminal
  * mode), so every check returns a distinct non-zero code that pinpoints the
@@ -148,6 +155,89 @@ int main(int argc, char *argv[])
     /* Restore an empty mask. */
     CHECK(56, sigemptyset(&set) == 0);
     CHECK(57, pthread_sigmask(SIG_SETMASK, &set, NULL) == 0);
+
+    /*==============================================================================================
+     * sigisemptyset.
+     *============================================================================================*/
+
+    /* A freshly emptied set is reported empty; adding a signal makes it non-empty. */
+    CHECK(58, sigemptyset(&set) == 0);
+    CHECK(59, sigisemptyset(&set) == 1);
+    CHECK(60, sigaddset(&set, SIGUSR1) == 0);
+    CHECK(61, sigisemptyset(&set) == 0);
+
+    /* Removing the last member empties the set again; a full set is never empty. */
+    CHECK(62, sigdelset(&set, SIGUSR1) == 0);
+    CHECK(63, sigisemptyset(&set) == 1);
+    CHECK(64, sigfillset(&set) == 0);
+    CHECK(65, sigisemptyset(&set) == 0);
+
+    /*==============================================================================================
+     * Signal-set boundary checks.
+     *============================================================================================*/
+
+    /* The largest valid signal number (NSIG - 1) is accepted and round-trips. */
+    CHECK(66, sigemptyset(&set) == 0);
+    CHECK(67, sigaddset(&set, NSIG - 1) == 0);
+    CHECK(68, sigismember(&set, NSIG - 1) == 1);
+    CHECK(69, sigdelset(&set, NSIG - 1) == 0);
+    CHECK(70, sigismember(&set, NSIG - 1) == 0);
+
+    /* A signal number at or beyond NSIG is out of range and fails with EINVAL. */
+    errno = 0;
+    CHECK(71, sigaddset(&set, NSIG) == -1);
+    CHECK(72, errno == EINVAL);
+    errno = 0;
+    CHECK(73, sigdelset(&set, NSIG) == -1);
+    CHECK(74, errno == EINVAL);
+    errno = 0;
+    CHECK(75, sigismember(&set, NSIG) == -1);
+    CHECK(76, errno == EINVAL);
+
+    /*==============================================================================================
+     * Null-pointer handling (EFAULT).
+     *============================================================================================*/
+
+    /* Every sigsetops entry point rejects a null set with EFAULT. */
+    errno = 0;
+    CHECK(77, sigemptyset(NULL) == -1);
+    CHECK(78, errno == EFAULT);
+    errno = 0;
+    CHECK(79, sigfillset(NULL) == -1);
+    CHECK(80, errno == EFAULT);
+    errno = 0;
+    CHECK(81, sigisemptyset(NULL) == -1);
+    CHECK(82, errno == EFAULT);
+    errno = 0;
+    CHECK(83, sigaddset(NULL, SIGUSR1) == -1);
+    CHECK(84, errno == EFAULT);
+    errno = 0;
+    CHECK(85, sigdelset(NULL, SIGUSR1) == -1);
+    CHECK(86, errno == EFAULT);
+    errno = 0;
+    CHECK(87, sigismember(NULL, SIGUSR1) == -1);
+    CHECK(88, errno == EFAULT);
+
+    /*==============================================================================================
+     * Null-set query no-op.
+     *============================================================================================*/
+
+    /* A null `set` together with a null `oldset` is a well-defined no-op that succeeds. */
+    CHECK(89, sigprocmask(SIG_SETMASK, NULL, NULL) == 0);
+    CHECK(90, pthread_sigmask(SIG_SETMASK, NULL, NULL) == 0);
+
+    /*==============================================================================================
+     * sigsuspend argument validation.
+     *============================================================================================*/
+
+    /*
+     * sigsuspend() suspends until a caught signal arrives, which this exit-code-only
+     * harness cannot deliver, so only its argument-validation path is exercised: a
+     * null mask is rejected immediately, without suspending, with EINVAL.
+     */
+    errno = 0;
+    CHECK(91, sigsuspend(NULL) == -1);
+    CHECK(92, errno == EINVAL);
 
     /* Success. */
     (void)write(STDOUT_FILENO, "ok", 2);
