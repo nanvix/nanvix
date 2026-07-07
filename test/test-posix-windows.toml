@@ -313,6 +313,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-sigmask"
+program = "./bin/test-c-sigmask.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-stdio"
 program = "./bin/test-c-stdio.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"

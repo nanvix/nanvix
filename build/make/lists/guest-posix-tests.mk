@@ -53,6 +53,7 @@ ALL_POSIX_TESTS := \
 	test-c-posix-timers \
 	test-c-regex \
 	test-c-setjmp \
+	test-c-sigmask \
 	test-c-stdio \
 	test-c-termios \
 	test-c-thread \
