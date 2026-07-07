@@ -130,6 +130,7 @@ POSIX_TEST_PIE_LDFLAGS := -pie --export-dynamic --no-dynamic-linker -z notext -z
 # Suites linked as position-independent executables (PIE).
 POSIX_TEST_PIE_test-c-dlfcn-pie := yes
 POSIX_TEST_PIE_test-c-dlfcn-global := yes
+POSIX_TEST_PIE_test-c-dlfcn-handle-reuse := yes
 POSIX_TEST_PIE_test-c-dlfcn-needed := yes
 POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
 # dlfcn-cycle-c dlopen()s freestanding fixtures. Its cyclic libraries are refused
@@ -318,6 +319,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello)
@@ -334,6 +336,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HASH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
@@ -950,12 +953,55 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash): $(POSIX_TEST_HASH_LIBDIR)/libsyms-sys
 	$(CP_CMD) $(POSIX_TEST_HASH_LIBDIR)/libsyms-gnu.so $(POSIX_TEST_HASH_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_HASH_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-handle-reuse-c: stable-handle / stale-alias regression fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships TWO self-contained shared libraries (zero undefined symbols), built with
+# the same i686 freestanding toolchain as the fixtures above. Both export the
+# SAME symbol name library_id() but with a DISTINCT return value:
+#   * libalpha.so - library_id() returns 0x0A0A0A0A.
+#   * libbeta.so  - library_id() returns 0x0B0B0B0B.
+# main.c dlopen()s libalpha.so, dlclose()s it (freeing its file descriptor), then
+# dlopen()s libbeta.so -- which the loader typically maps onto the just-freed
+# descriptor. The distinct return values make any stale-handle aliasing directly
+# observable. The fixtures are opened by explicit path, so no SONAME/DT_NEEDED
+# wiring is needed; both are staged under lib/, where main.c opens them.
+POSIX_TEST_HANDLE_REUSE_SUITE  := test-c-dlfcn-handle-reuse
+POSIX_TEST_HANDLE_REUSE_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_HANDLE_REUSE_SUITE)/libs
+POSIX_TEST_HANDLE_REUSE_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_HANDLE_REUSE_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_HANDLE_REUSE_SUITE).img
+
+# libalpha.so: self-contained; library_id() returns 0x0A0A0A0A.
+$(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libalpha.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_HANDLE_REUSE_SUITE)/libs/alpha.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_HANDLE_REUSE_SUITE)/libalpha.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# libbeta.so: self-contained; library_id() returns 0x0B0B0B0B.
+$(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libbeta.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_HANDLE_REUSE_SUITE)/libs/beta.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_HANDLE_REUSE_SUITE)/libbeta.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Per-suite RAMFS image carrying both fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse): $(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libalpha.so \
+		$(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libbeta.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libalpha.so $(POSIX_TEST_HANDLE_REUSE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libbeta.so $(POSIX_TEST_HANDLE_REUSE_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_HANDLE_REUSE_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello) \

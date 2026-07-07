@@ -102,6 +102,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-dlfcn-handle-reuse"
+program = "./bin/test-c-dlfcn-handle-reuse.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-handle-reuse.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-dlfcn-hash"
 program = "./bin/test-c-dlfcn-hash.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-hash.img"
