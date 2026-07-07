@@ -244,16 +244,16 @@ pub fn dispatch_recvfrom(
 //==================================================================================================
 
 /// Shifts a host-side file descriptor into the guest socket fd range.
-fn to_guest_fd(host_fd: i32) -> i32 {
+pub(crate) fn to_guest_fd(host_fd: i32) -> i32 {
     host_fd + SOCKET_FD_BASE
 }
 
 /// Shifts a guest socket file descriptor back to the host-side value.
-fn to_host_fd(guest_fd: i32) -> i32 {
+pub(crate) fn to_host_fd(guest_fd: i32) -> i32 {
     guest_fd - SOCKET_FD_BASE
 }
 
-fn build_error(tid: ThreadIdentifier, error: ErrorCode) -> Message {
+pub(crate) fn build_error(tid: ThreadIdentifier, error: ErrorCode) -> Message {
     Message::new(
         MessageSender::new(::syscall::NETWORKD, ThreadIdentifier::NONE),
         MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

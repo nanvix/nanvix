@@ -15,11 +15,13 @@ name = "networkd"
 path = "src/lib.rs"
 
 [dependencies]
+anyhow = { workspace = true }
 log = { workspace = true }
 net-backend = { workspace = true }
 sys = { workspace = true, features = ["std"] }
 syscall = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["full"] }
 
 # The decoupled server transport (and its `networkd` binary) and the epoll wrapper are Linux-only,
 # matching how the UserVM gates its own dependency on `syscomm`. Keeping these out of the

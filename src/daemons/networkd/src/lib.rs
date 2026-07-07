@@ -10,6 +10,14 @@ mod dispatch;
 pub mod epoll;
 #[cfg(target_os = "linux")]
 pub mod framing;
+#[cfg(target_os = "linux")]
+mod ops;
+#[cfg(target_os = "linux")]
+pub mod reactor;
+#[cfg(target_os = "linux")]
+mod session;
+#[cfg(target_os = "linux")]
+mod socket_state;
 pub mod wire;
 
 //==================================================================================================
@@ -39,8 +47,11 @@ use ::syscall::{
 ///
 /// Network daemon for handling networking system calls.
 ///
-/// In embedded mode (Phase 4), this struct is instantiated directly by the host-side runtime
-/// and processes networking IKC messages via [`NetworkDaemon::handle_message`].
+/// This is the in-process (standalone) daemon: the host-side runtime instantiates it directly and
+/// processes networking IKC messages synchronously via [`NetworkDaemon::handle_message`], returning
+/// each operation's real host-socket outcome to the guest — including `send`/`sendto` writes. The
+/// decoupled `networkd` reactor preserves the same write-response contract over its socket
+/// transport.
 ///
 pub struct NetworkDaemon {
     /// Platform-agnostic networking backend.
