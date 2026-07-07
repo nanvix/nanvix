@@ -36,6 +36,7 @@ use ::core::{
     sync::atomic::{
         AtomicBool,
         AtomicI32,
+        AtomicU32,
         Ordering,
     },
 };
@@ -89,11 +90,39 @@ use ::type_safe::UnalignedPointer;
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub struct DlHandle(c_int);
 
+/// First loader-generated library handle.
+const FIRST_GENERATED_HANDLE: u32 = 1;
+
+/// Last loader-generated library handle, keeping [`DlHandle::GLOBAL`] reserved.
+const LAST_GENERATED_HANDLE: u32 = c_int::MAX as u32 - 1;
+
+/// Monotonically increasing source of loader-generated library handles.
+static NEXT_HANDLE: AtomicU32 = AtomicU32::new(FIRST_GENERATED_HANDLE);
+
 impl DlHandle {
     /// Sentinel handle returned by `dlopen(NULL)` representing the global
-    /// symbol scope (main executable + pre-loaded libraries). This value
-    /// never collides with real file-descriptor-based handles.
+    /// symbol scope (main executable + pre-loaded libraries). It is drawn from
+    /// the very top of the handle space, so it never collides with a
+    /// loader-generated handle.
     pub const GLOBAL: Self = DlHandle(c_int::MAX);
+
+    /// Allocates a fresh handle that is unique for the lifetime of the process.
+    fn allocate() -> Result<Self, Error> {
+        match NEXT_HANDLE.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            if next <= LAST_GENERATED_HANDLE {
+                Some(next + 1)
+            } else {
+                None
+            }
+        }) {
+            Ok(handle) => Ok(DlHandle(handle as c_int)),
+            Err(_) => {
+                let reason: &str = "dynamic library handle space exhausted";
+                ::syslog::warn!("allocate(): {}", reason);
+                Err(Error::new(ErrorCode::ValueOverflow, reason))
+            },
+        }
+    }
 
     /// Casts the target handle to a pointer.
     pub fn as_mut_ptr(&self) -> *mut c_void {
@@ -207,6 +236,9 @@ impl InitState {
 pub struct DynamicLibrary {
     /// Library name.
     filename: CString,
+    /// Stable, loader-generated handle that uniquely identifies this library
+    /// for its whole lifetime.
+    handle: DlHandle,
     /// Underlying file descriptor.
     fd: RegularFile,
     /// Load address.
@@ -492,6 +524,7 @@ impl DynamicLibrary {
 
                 Ok(DynamicLibrary {
                     filename,
+                    handle: DlHandle::allocate()?,
                     fd,
                     load_address,
                     dependencies,
@@ -574,9 +607,9 @@ impl DynamicLibrary {
         self.filename.to_str().unwrap_or("")
     }
 
-    /// Returns a handle that uniquely identifies the dynamic library file.
+    /// Returns the stable handle that uniquely identifies this dynamic library.
     pub fn handle(&self) -> DlHandle {
-        DlHandle(self.fd.as_raw_fd())
+        self.handle
     }
 
     /// Gets the relocation table for global variables (`.rel.dyn).
