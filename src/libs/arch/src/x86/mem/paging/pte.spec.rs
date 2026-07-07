@@ -1,29 +1,6 @@
 verus! {
 
 //==================================================================================================
-// Flag projection helpers
-//==================================================================================================
-
-// The seven flag projections shared with the sibling `pde` module (`spec_present_set`,
-// `spec_rw_set`, `spec_us_set`, `spec_pwt_set`, `spec_pcd_set`, `spec_a_set`, `spec_d_set`) are
-// reused from there to avoid duplicate definitions colliding through the `paging` glob re-export.
-use crate::x86::mem::paging::{
-    spec_present_set,
-    spec_rw_set,
-    spec_us_set,
-    spec_pwt_set,
-    spec_pcd_set,
-    spec_a_set,
-    spec_d_set,
-};
-
-// The copy-on-write projection is PTE-specific (the PDE sibling has a page-size bit instead), so it
-// is defined here. The enum is two-valued (`0` = clear, `1 << SHIFT` = set), isomorphic to `bool`.
-pub open spec fn spec_cow_set(f: CopyOnWriteFlag) -> bool {
-    f is CopyOnWrite
-}
-
-//==================================================================================================
 // PageTableEntryFlags — abstract value (the eight control bits)
 //==================================================================================================
 
@@ -55,14 +32,14 @@ impl View for PageTableEntryFlags {
 
     closed spec fn view(&self) -> PteFlagsView {
         PteFlagsView {
-            present: spec_present_set(self.present),
-            writable: spec_rw_set(self.read_write),
-            user: spec_us_set(self.user_supervisor),
-            write_through: spec_pwt_set(self.page_write_through),
-            cache_disabled: spec_pcd_set(self.page_cache_disable),
-            accessed: spec_a_set(self.accessed),
-            dirty: spec_d_set(self.dirty),
-            cow: spec_cow_set(self.cow),
+            present: self.present is Present,
+            writable: self.read_write is ReadWrite,
+            user: self.user_supervisor is User,
+            write_through: self.page_write_through is WriteThrough,
+            cache_disabled: self.page_cache_disable is CacheDisabled,
+            accessed: self.accessed is Accessed,
+            dirty: self.dirty is Dirty,
+            cow: self.cow is CopyOnWrite,
         }
     }
 }
@@ -88,13 +65,13 @@ pub open spec fn spec_pte_flags_new(
     dirty: DirtyFlag,
 ) -> PteFlagsView {
     PteFlagsView {
-        present: spec_present_set(present),
-        writable: spec_rw_set(read_write),
-        user: spec_us_set(user_supervisor),
-        write_through: spec_pwt_set(page_write_through),
-        cache_disabled: spec_pcd_set(page_cache_disable),
-        accessed: spec_a_set(accessed),
-        dirty: spec_d_set(dirty),
+        present: present is Present,
+        writable: read_write is ReadWrite,
+        user: user_supervisor is User,
+        write_through: page_write_through is WriteThrough,
+        cache_disabled: page_cache_disable is CacheDisabled,
+        accessed: accessed is Accessed,
+        dirty: dirty is Dirty,
         cow: false,
     }
 }

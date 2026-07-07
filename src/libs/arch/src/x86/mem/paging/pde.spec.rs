@@ -1,45 +1,6 @@
 verus! {
 
 //==================================================================================================
-// Flag projection helpers
-//==================================================================================================
-
-// Each paging-control enum is two-valued (`0` = clear, `1 << SHIFT` = set), i.e. isomorphic to
-// `bool`. These helpers project the "set" variant to its spec-world `bool` form. Pattern matching
-// is confined here so the View and the constructor transitions stay declarative.
-pub open spec fn spec_present_set(p: PresentFlag) -> bool {
-    p is Present
-}
-
-pub open spec fn spec_rw_set(f: ReadWriteFlag) -> bool {
-    f is ReadWrite
-}
-
-pub open spec fn spec_us_set(f: UserSupervisorFlag) -> bool {
-    f is User
-}
-
-pub open spec fn spec_pwt_set(f: PageWriteThroughFlag) -> bool {
-    f is WriteThrough
-}
-
-pub open spec fn spec_pcd_set(f: PageCacheDisableFlag) -> bool {
-    f is CacheDisabled
-}
-
-pub open spec fn spec_a_set(f: AccessedFlag) -> bool {
-    f is Accessed
-}
-
-pub open spec fn spec_d_set(f: DirtyFlag) -> bool {
-    f is Dirty
-}
-
-pub open spec fn spec_ps_set(f: PageSizeFlag) -> bool {
-    f is Large
-}
-
-//==================================================================================================
 // PageDirectoryEntryFlags — abstract value (the eight control bits)
 //==================================================================================================
 
@@ -70,14 +31,14 @@ impl View for PageDirectoryEntryFlags {
 
     closed spec fn view(&self) -> PdeFlagsView {
         PdeFlagsView {
-            present: spec_present_set(self.present),
-            writable: spec_rw_set(self.read_write),
-            user: spec_us_set(self.user_supervisor),
-            write_through: spec_pwt_set(self.page_write_through),
-            cache_disabled: spec_pcd_set(self.page_cache_disable),
-            accessed: spec_a_set(self.accessed),
-            dirty: spec_d_set(self.dirty),
-            large_page: spec_ps_set(self.page_size),
+            present: self.present is Present,
+            writable: self.read_write is ReadWrite,
+            user: self.user_supervisor is User,
+            write_through: self.page_write_through is WriteThrough,
+            cache_disabled: self.page_cache_disable is CacheDisabled,
+            accessed: self.accessed is Accessed,
+            dirty: self.dirty is Dirty,
+            large_page: self.page_size is Large,
         }
     }
 }
@@ -103,14 +64,14 @@ pub open spec fn spec_pde_flags_new(
     page_size: PageSizeFlag,
 ) -> PdeFlagsView {
     PdeFlagsView {
-        present: spec_present_set(present),
-        writable: spec_rw_set(read_write),
-        user: spec_us_set(user_supervisor),
-        write_through: spec_pwt_set(page_write_through),
-        cache_disabled: spec_pcd_set(page_cache_disable),
-        accessed: spec_a_set(accessed),
-        dirty: spec_d_set(dirty),
-        large_page: spec_ps_set(page_size),
+        present: present is Present,
+        writable: read_write is ReadWrite,
+        user: user_supervisor is User,
+        write_through: page_write_through is WriteThrough,
+        cache_disabled: page_cache_disable is CacheDisabled,
+        accessed: accessed is Accessed,
+        dirty: dirty is Dirty,
+        large_page: page_size is Large,
     }
 }
 
