@@ -236,6 +236,15 @@ pub struct DynamicLibrary {
     /// Shared construction state, used to serialize concurrent `dlopen` calls
     /// against this library's `.init_array` constructors.
     init_state: Arc<InitState>,
+    /// Number of outstanding direct `dlopen()` handles that name this library.
+    ///
+    /// Mirrors glibc's `l_direct_opencount`: every `dlopen()` that resolves to
+    /// this file — including a cache hit that returns an already-loaded handle —
+    /// increments it, and every matching `dlclose()` decrements it. The library
+    /// only becomes a candidate for unloading once this count reaches zero.
+    /// Dependencies pulled in transitively are tracked by their `Arc` edges and
+    /// are not reflected here.
+    open_count: usize,
 }
 
 impl DynamicLibrary {
@@ -496,6 +505,7 @@ impl DynamicLibrary {
                     fini_array,
                     runpaths,
                     init_state: Arc::new(InitState::new()),
+                    open_count: 0,
                 })
             },
             Err(error) => {
@@ -1274,6 +1284,29 @@ impl DynamicLibrary {
     /// holding any dlfcn lock.
     pub fn init_state(&self) -> Arc<InitState> {
         self.init_state.clone()
+    }
+
+    /// Returns the number of outstanding direct `dlopen()` handles for this
+    /// library (glibc's `l_direct_opencount`).
+    pub fn open_count(&self) -> usize {
+        self.open_count
+    }
+
+    /// Records an additional direct `dlopen()` of this library and returns the
+    /// updated open count. Invoked on both the initial load and every
+    /// subsequent cache hit so that staggered open/close sequences keep the
+    /// library loaded while any handle is still live.
+    pub fn increment_open_count(&mut self) -> usize {
+        self.open_count = self.open_count.saturating_add(1);
+        self.open_count
+    }
+
+    /// Balances a direct `dlopen()` with a `dlclose()` and returns the updated
+    /// open count. Saturates at zero so an unbalanced `dlclose()` cannot
+    /// underflow the counter.
+    pub fn decrement_open_count(&mut self) -> usize {
+        self.open_count = self.open_count.saturating_sub(1);
+        self.open_count
     }
 
     /// Returns the loaded `.init_array` descriptor as `(base_address,
