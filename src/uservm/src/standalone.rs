@@ -13,6 +13,8 @@
 // Imports
 //==================================================================================================
 
+#[cfg(target_os = "linux")]
+use crate::network_transport::RemoteNetwork;
 use crate::{
     CHANNEL_CAPACITY,
     UserVm,
@@ -37,6 +39,7 @@ use ::log::{
 };
 use ::nanvix_sandbox_config::{
     HostFilter,
+    NetworkdEndpoint,
     NetworkingMode,
 };
 use ::std::{
@@ -184,6 +187,14 @@ impl StandaloneVmHandle {
     /// - `stderr`: Optional path to a file used to capture the guest's stderr stream.
     /// - `snapshot_path`: Optional path to a snapshot from which to restore VM state instead of
     ///   cold-booting.
+    /// - `mount_directory`: Optional host directory to mount on the guest.
+    /// - `networking_mode`: Networking mode for host networking.
+    /// - `host_filter`: Host egress filter applied to guest connections when networking runs
+    ///   in-process. Ignored when `networkd_endpoint` is set, since the external `networkd`
+    ///   enforces its own policy.
+    /// - `networkd_endpoint`: Optional decoupled `networkd` endpoint. When set (and networking is
+    ///   enabled), socket system calls are forwarded to that external process instead of an
+    ///   in-process daemon.
     ///
     /// # Returns
     ///
@@ -202,6 +213,7 @@ impl StandaloneVmHandle {
         mount_directory: Option<String>,
         networking_mode: NetworkingMode,
         host_filter: HostFilter,
+        networkd_endpoint: Option<NetworkdEndpoint>,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> (Self, StandaloneVmIo) {
         // Create internal VM channels. In standalone mode these are wired directly without an
@@ -256,6 +268,7 @@ impl StandaloneVmHandle {
                 io_counters,
                 networking_mode,
                 host_filter,
+                networkd_endpoint,
                 mount_directory,
             )
             .await;
@@ -404,6 +417,66 @@ fn extract_tid(source: ::sys::ipc::MessageSender) -> ThreadIdentifier {
 ///
 /// # Description
 ///
+/// Builds the [`NetworkTransport`] backing the standalone network daemon.
+///
+/// When `networkd_endpoint` is set, socket system calls are forwarded to a decoupled `networkd`
+/// process ([`RemoteNetwork`]); otherwise the network daemon runs in-process ([`LocalNetwork`]).
+/// In the decoupled case the host egress filter is enforced by `networkd` itself, so `host_filter`
+/// is only consulted for the in-process daemon.
+///
+/// # Parameters
+///
+/// - `networkd_endpoint`: Optional decoupled `networkd` endpoint.
+/// - `host_filter`: Host egress filter for the in-process daemon.
+///
+/// # Returns
+///
+/// The transport on success, or `None` if the daemon could not be initialized or reached.
+///
+async fn build_network_transport(
+    networkd_endpoint: Option<NetworkdEndpoint>,
+    host_filter: HostFilter,
+) -> Option<Arc<dyn NetworkTransport>> {
+    match networkd_endpoint {
+        Some(endpoint) => {
+            #[cfg(target_os = "linux")]
+            {
+                match RemoteNetwork::connect(endpoint.sockaddr(), endpoint.socket_type().to_str())
+                    .await
+                {
+                    Ok(nd) => Some(Arc::new(nd) as Arc<dyn NetworkTransport>),
+                    Err(e) => {
+                        error!(
+                            "standalone io_handler: failed to connect to networkd (sockaddr={}): \
+                             {e}",
+                            endpoint.sockaddr()
+                        );
+                        None
+                    },
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                let _ = endpoint;
+                error!(
+                    "standalone io_handler: decoupled networkd is not supported on this platform"
+                );
+                None
+            }
+        },
+        None => match LocalNetwork::new(host_filter) {
+            Ok(nd) => Some(Arc::new(nd) as Arc<dyn NetworkTransport>),
+            Err(e) => {
+                error!("standalone io_handler: failed to initialize network daemon: {e}");
+                None
+            },
+        },
+    }
+}
+
+///
+/// # Description
+///
 /// Processes guest IKC messages in standalone mode, bridging the VM's IKC channel to external
 /// consumer channels.
 ///
@@ -418,6 +491,14 @@ fn extract_tid(source: ::sys::ipc::MessageSender) -> ThreadIdentifier {
 /// - `vm_stdin_tx`: Sends IKC frames to the guest (consumed by `input_fn`).
 /// - `output_tx`: Forwards application data written by the guest to the external consumer.
 /// - `input_rx`: Receives application data from the external consumer for guest reads.
+/// - `counters`: Shared message counters for observability.
+/// - `networking_mode`: Whether host networking is available to the guest.
+/// - `host_filter`: Host egress filter for the in-process network daemon. Ignored when
+///   `networkd_endpoint` is set, since the external `networkd` enforces its own policy.
+/// - `networkd_endpoint`: Optional decoupled `networkd` endpoint. When set (and networking is
+///   enabled), socket system calls are forwarded to that external process instead of an in-process
+///   daemon.
+/// - `mount_directory`: Optional host directory mounted on the guest.
 ///
 #[allow(clippy::too_many_arguments)]
 async fn standalone_io_handler(
@@ -428,6 +509,7 @@ async fn standalone_io_handler(
     counters: MessageCounters,
     networking_mode: NetworkingMode,
     host_filter: HostFilter,
+    networkd_endpoint: Option<NetworkdEndpoint>,
     mount_directory: Option<String>,
 ) {
     let mut input_buffer: VecDeque<u8> = VecDeque::new();
@@ -445,13 +527,7 @@ async fn standalone_io_handler(
     let mut worker_long_op_id: Option<::hostfs_api::OperationId> = None;
 
     let network_daemon: Option<Arc<dyn NetworkTransport>> = if networking_mode.is_enabled() {
-        match LocalNetwork::new(host_filter) {
-            Ok(nd) => Some(Arc::new(nd)),
-            Err(e) => {
-                error!("standalone io_handler: failed to initialize network transport: {e}");
-                None
-            },
-        }
+        build_network_transport(networkd_endpoint, host_filter).await
     } else {
         None
     };
@@ -756,6 +832,12 @@ async fn standalone_io_handler(
                                 Some(ErrorCode::OperationNotSupported),
                                 [0u8; Message::PAYLOAD_SIZE],
                             );
+                            // Count this frame like every other one bound for the memory thread;
+                            // omitting it lets the memory thread observe more messages than the I/O
+                            // thread and trips its flow-control debug assertion. This path is reached
+                            // whenever the network daemon is unavailable (e.g. a decoupled `networkd`
+                            // that could not be connected), not just when networking is disabled.
+                            counters.increment_io_thread_messages_received();
                             if vm_stdin_tx
                                 .send(IkcFrame::Message(error_response))
                                 .await

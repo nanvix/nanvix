@@ -17,6 +17,12 @@ mod single_process;
 mod standalone;
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::syscomm::SocketType;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -73,6 +79,53 @@ pub use ::net_backend::{
     HostFilter,
     Ipv4Cidr,
 };
+
+///
+/// # Description
+///
+/// Endpoint of a decoupled `networkd` process.
+///
+/// When set on a [`StandaloneConfig`], the user VM forwards its socket system calls to an external
+/// `networkd` process listening at this address instead of running the network daemon in-process.
+/// This keeps `networkd`'s state fully separate from the user VM it serves, so `networkd` can
+/// eventually run on a different machine.
+///
+#[derive(Clone, Debug)]
+pub struct NetworkdEndpoint {
+    /// Socket address `networkd` is listening on (a Unix-domain socket path or a `host:port` pair).
+    sockaddr: String,
+    /// Socket address family used to reach `networkd`.
+    socket_type: SocketType,
+}
+
+impl NetworkdEndpoint {
+    ///
+    /// # Description
+    ///
+    /// Creates a new decoupled `networkd` endpoint.
+    ///
+    /// # Parameters
+    ///
+    /// - `sockaddr`: Socket address `networkd` is listening on.
+    /// - `socket_type`: Socket address family used to reach `networkd`.
+    ///
+    pub fn new(sockaddr: String, socket_type: SocketType) -> Self {
+        Self {
+            sockaddr,
+            socket_type,
+        }
+    }
+
+    /// Returns the socket address `networkd` is listening on.
+    pub fn sockaddr(&self) -> &str {
+        &self.sockaddr
+    }
+
+    /// Returns the socket address family used to reach `networkd`.
+    pub fn socket_type(&self) -> SocketType {
+        self.socket_type
+    }
+}
 
 //==================================================================================================
 // Exports

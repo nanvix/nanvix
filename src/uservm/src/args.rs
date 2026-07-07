@@ -95,6 +95,14 @@ pub struct Args {
     standalone: bool,
     /// Optional snapshot path: when set, restore from snapshot instead of cold-booting.
     snapshot_path: Option<String>,
+    /// Enable host networking for the guest. Only meaningful in standalone mode.
+    host_networking: bool,
+    /// Optional decoupled `networkd` address. When set (standalone mode only), socket system calls
+    /// are forwarded to an external `networkd` process instead of an in-process daemon.
+    networkd_addr: Option<String>,
+    /// Socket type used to reach the decoupled `networkd`. Defaults to Unix when unset. Meaningful
+    /// only alongside `networkd_addr`.
+    networkd_socket_type: Option<String>,
     /// Optional GDB server port: when set, start a GDB RSP server on this TCP port and wait for a
     /// debugger to connect before running the guest. Requires standalone mode.
     #[cfg(feature = "gdb")]
@@ -142,6 +150,12 @@ impl Args {
     pub const OPT_STANDALONE: &'static str = "-standalone";
     /// Command-line option for snapshot restore path.
     pub const OPT_SNAPSHOT: &'static str = "-snapshot";
+    /// Command-line option that enables host networking for the guest (standalone mode only).
+    pub const OPT_ALLOW_HOST_NETWORKING: &'static str = "-allow-host-networking";
+    /// Command-line option that sets the decoupled `networkd` address (standalone mode only).
+    pub const OPT_NETWORKD_ADDR: &'static str = "-networkd-addr";
+    /// Command-line option that sets the decoupled `networkd` socket type (standalone mode only).
+    pub const OPT_NETWORKD_SOCKET_TYPE: &'static str = "-networkd-socket-type";
     /// Command-line option for GDB server port (standalone mode only).
     #[cfg(feature = "gdb")]
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
@@ -180,6 +194,9 @@ impl Args {
         let mut gateway_socket_type: String = String::new();
         let mut standalone: bool = false;
         let mut snapshot_path: Option<String> = None;
+        let mut host_networking: bool = false;
+        let mut networkd_addr: Option<String> = None;
+        let mut networkd_socket_type: Option<String> = None;
         #[cfg(feature = "gdb")]
         let mut gdb_port: Option<u16> = None;
 
@@ -272,6 +289,29 @@ impl Args {
                 // Set snapshot path.
                 Self::OPT_SNAPSHOT if i + 1 < args.len() => {
                     snapshot_path = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Enable host networking (standalone mode only).
+                Self::OPT_ALLOW_HOST_NETWORKING => {
+                    host_networking = true;
+                },
+                // Set decoupled networkd address (standalone mode only).
+                Self::OPT_NETWORKD_ADDR if i + 1 < args.len() => {
+                    networkd_addr = Some(args[i + 1].clone());
+                    i += 1;
+                },
+                // Set decoupled networkd socket type (standalone mode only).
+                Self::OPT_NETWORKD_SOCKET_TYPE if i + 1 < args.len() => {
+                    let socket_type: &str = &args[i + 1];
+                    if !matches!(socket_type.to_lowercase().as_str(), "unix" | "tcp") {
+                        Self::usage();
+                        anyhow::bail!(
+                            "invalid {} value (expected 'unix' or 'tcp'): {}",
+                            Self::OPT_NETWORKD_SOCKET_TYPE,
+                            socket_type
+                        );
+                    }
+                    networkd_socket_type = Some(socket_type.to_string());
                     i += 1;
                 },
                 // Set GDB server port (standalone mode only).
@@ -410,6 +450,46 @@ impl Args {
             anyhow::bail!("-gdb-port requires -standalone mode");
         }
 
+        // A networkd socket type only makes sense alongside an address to connect to. Reject it on
+        // its own rather than silently ignoring it.
+        if networkd_socket_type.is_some() && networkd_addr.is_none() {
+            Self::usage();
+            anyhow::bail!(
+                "{} requires {}",
+                Self::OPT_NETWORKD_SOCKET_TYPE,
+                Self::OPT_NETWORKD_ADDR
+            );
+        }
+
+        // The decoupled networkd transport depends on Linux-only host communication primitives.
+        #[cfg(not(target_os = "linux"))]
+        if networkd_addr.is_some() {
+            Self::usage();
+            anyhow::bail!("{} is only supported on Linux", Self::OPT_NETWORKD_ADDR);
+        }
+
+        // Forwarding to a decoupled networkd is a networking feature -- it is meaningless without
+        // host networking enabled.
+        if networkd_addr.is_some() && !host_networking {
+            Self::usage();
+            anyhow::bail!(
+                "{} requires {}",
+                Self::OPT_NETWORKD_ADDR,
+                Self::OPT_ALLOW_HOST_NETWORKING
+            );
+        }
+
+        // Host networking is only wired into the standalone I/O path. In managed mode the flags
+        // would be silently ignored, so reject them to avoid a false sense of configuration.
+        if host_networking && !standalone {
+            Self::usage();
+            anyhow::bail!(
+                "{} requires {} mode",
+                Self::OPT_ALLOW_HOST_NETWORKING,
+                Self::OPT_STANDALONE
+            );
+        }
+
         Ok(Self {
             user_vm_id,
             kernel_filename,
@@ -428,6 +508,9 @@ impl Args {
             gateway_socket_type,
             standalone,
             snapshot_path,
+            host_networking,
+            networkd_addr,
+            networkd_socket_type,
             #[cfg(feature = "gdb")]
             gdb_port,
         })
@@ -442,7 +525,7 @@ impl Args {
         eprintln!(
             "Usage: {} [{} <id>] {} <kernel> [{} <file>] [{} <file>] [{}] [{} <system-vm-addr> {} \
              <control-plane-addr> {} <gateway-addr>] [{} [{} <dir>]] [{} <args>] [{} <args>] [{} \
-             <file>] [{} <path>]{}",
+             <file>] [{} <path>] [{} [{} <addr> [{} <type>]]]{}",
             Self::PROGRAM_NAME,
             Self::OPT_USER_VM_ID,
             Self::OPT_KERNEL,
@@ -458,6 +541,9 @@ impl Args {
             Self::OPT_KERNEL_ARGS,
             Self::OPT_RAMFS,
             Self::OPT_SNAPSHOT,
+            Self::OPT_ALLOW_HOST_NETWORKING,
+            Self::OPT_NETWORKD_ADDR,
+            Self::OPT_NETWORKD_SOCKET_TYPE,
             if cfg!(feature = "gdb") {
                 " [-gdb-port <port>]"
             } else {
@@ -703,6 +789,45 @@ impl Args {
     ///
     /// # Description
     ///
+    /// Returns whether host networking is enabled for the guest.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `-allow-host-networking` was passed. `false` otherwise.
+    ///
+    pub fn host_networking_enabled(&self) -> bool {
+        self.host_networking
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the decoupled `networkd` address that was passed as a command-line argument.
+    ///
+    /// # Returns
+    ///
+    /// The `networkd` address, or `None` if the network daemon should run in-process.
+    ///
+    pub fn networkd_addr(&self) -> Option<&str> {
+        self.networkd_addr.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the socket type used to reach the decoupled `networkd`.
+    ///
+    /// # Returns
+    ///
+    /// The `networkd` socket type, or `None` when unspecified (callers default to Unix).
+    ///
+    pub fn networkd_socket_type(&self) -> Option<&str> {
+        self.networkd_socket_type.as_deref()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns the optional GDB server port.
     ///
     /// # Returns
@@ -917,5 +1042,96 @@ mod tests {
 
         let result = Args::parse(args_vec);
         assert!(result.is_err(), "-gdb-port without -standalone should fail");
+    }
+
+    fn standalone_base_args() -> Vec<String> {
+        vec![
+            String::from("uservm"),
+            Args::OPT_KERNEL.to_string(),
+            String::from("kernel.elf"),
+            Args::OPT_STANDALONE.to_string(),
+        ]
+    }
+
+    #[test]
+    fn parse_networking_defaults_to_disabled() -> AnyResult<()> {
+        let parsed_args: Args = Args::parse(standalone_base_args())?;
+        assert!(!parsed_args.host_networking_enabled(), "host networking should default off");
+        assert!(parsed_args.networkd_addr().is_none(), "networkd address should default to none");
+        assert!(parsed_args.networkd_socket_type().is_none(), "socket type should default to none");
+        Ok(())
+    }
+
+    #[test]
+    fn parse_allow_host_networking_enables_in_process() -> AnyResult<()> {
+        let mut args_vec: Vec<String> = standalone_base_args();
+        args_vec.push(Args::OPT_ALLOW_HOST_NETWORKING.to_string());
+
+        let parsed_args: Args = Args::parse(args_vec)?;
+        assert!(parsed_args.host_networking_enabled(), "host networking should be enabled");
+        assert!(
+            parsed_args.networkd_addr().is_none(),
+            "no address means the network daemon runs in-process"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_decoupled_networkd_endpoint() -> AnyResult<()> {
+        let mut args_vec: Vec<String> = standalone_base_args();
+        args_vec.push(Args::OPT_ALLOW_HOST_NETWORKING.to_string());
+        args_vec.push(Args::OPT_NETWORKD_ADDR.to_string());
+        args_vec.push(String::from("/tmp/networkd.sock"));
+        args_vec.push(Args::OPT_NETWORKD_SOCKET_TYPE.to_string());
+        args_vec.push(String::from("unix"));
+
+        let parsed_args: Args = Args::parse(args_vec)?;
+        assert!(parsed_args.host_networking_enabled());
+        assert_eq!(parsed_args.networkd_addr(), Some("/tmp/networkd.sock"));
+        assert_eq!(parsed_args.networkd_socket_type(), Some("unix"));
+        Ok(())
+    }
+
+    #[test]
+    fn parse_networkd_addr_requires_host_networking() {
+        let mut args_vec: Vec<String> = standalone_base_args();
+        args_vec.push(Args::OPT_NETWORKD_ADDR.to_string());
+        args_vec.push(String::from("/tmp/networkd.sock"));
+
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "-networkd-addr without -allow-host-networking should fail");
+    }
+
+    #[test]
+    fn parse_networkd_socket_type_requires_addr() {
+        let mut args_vec: Vec<String> = standalone_base_args();
+        args_vec.push(Args::OPT_ALLOW_HOST_NETWORKING.to_string());
+        args_vec.push(Args::OPT_NETWORKD_SOCKET_TYPE.to_string());
+        args_vec.push(String::from("unix"));
+
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "-networkd-socket-type without -networkd-addr should fail");
+    }
+
+    #[test]
+    fn parse_networkd_socket_type_rejects_unknown() {
+        let mut args_vec: Vec<String> = standalone_base_args();
+        args_vec.push(Args::OPT_ALLOW_HOST_NETWORKING.to_string());
+        args_vec.push(Args::OPT_NETWORKD_ADDR.to_string());
+        args_vec.push(String::from("/tmp/networkd.sock"));
+        args_vec.push(Args::OPT_NETWORKD_SOCKET_TYPE.to_string());
+        args_vec.push(String::from("carrier-pigeon"));
+
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "unknown networkd socket type should fail");
+    }
+
+    #[test]
+    fn parse_allow_host_networking_requires_standalone() {
+        let mut args_vec: Vec<String> = build_base_args();
+        args_vec.push(Args::OPT_ALLOW_HOST_NETWORKING.to_string());
+
+        let result = Args::parse(args_vec);
+        assert!(result.is_err(), "-allow-host-networking without -standalone should fail");
     }
 }
