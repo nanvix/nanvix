@@ -2333,6 +2333,7 @@ dependencies = [
 name = "networkd"
 version = "0.19.1"
 dependencies = [
+ "libc",
  "log",
  "net-backend",
  "sys",

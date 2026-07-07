@@ -7,6 +7,8 @@
 
 mod dispatch;
 #[cfg(target_os = "linux")]
+pub mod epoll;
+#[cfg(target_os = "linux")]
 pub mod framing;
 pub mod wire;
 
