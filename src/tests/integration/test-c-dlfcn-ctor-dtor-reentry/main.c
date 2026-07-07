@@ -29,9 +29,10 @@
  *
  * Flow: main() dlopen()s libhook.so -- running its constructor, which opens
  * libother.so from inside the still-in-progress outer dlopen(). After the outer
- * dlopen() returns, main() confirms libother.so is visible to it. main() then
- * dlclose()s libhook.so, running its destructor, which uses and closes
- * libother.so from inside the in-progress dlclose().
+ * dlopen() returns, main() confirms libother.so is visible to it, then balances
+ * its own (dedup) open of libother.so with a dlclose(). main() then dlclose()s
+ * libhook.so, running its destructor, which uses and closes libother.so from
+ * inside the in-progress dlclose().
  *
  * Pass/fail is the guest exit code (the harness discards stdout in standalone
  * mode): main() returns 0 only when both callbacks ran and every re-entrant
@@ -164,8 +165,10 @@ int main(int argc, const char *argv[])
 
     /* libother.so is visible to main() (the caller) after the outer dlopen()
      * returned: a dlopen() of it returns the SAME handle the constructor got
-     * (dedup, no second copy), and its symbol resolves. The dedup open adds no
-     * reference, so libother.so is left for the destructor to close. */
+    * (dedup, no second copy), and its symbol resolves. Per POSIX, this dedup
+    * open increments libother.so's open count, so main() must balance it with
+    * its own dlclose() below; the constructor's open is the one left for
+    * libhook.so's destructor to close. */
     void *other = dlopen("lib/libother.so", RTLD_NOW);
     if (other != g_other_handle) {
         return 4;
@@ -174,6 +177,18 @@ int main(int argc, const char *argv[])
     *(void **)(&ov) = dlsym(other, "other_value");
     if (ov == NULL || ov() != OTHER_VALUE) {
         return 5;
+    }
+
+    /* Balance main()'s own dlopen() of libother.so. This decrements its open
+     * count back to the single reference held by the constructor's open, so
+     * the library stays loaded (it must NOT be unloaded here) until the
+     * destructor closes that last handle. Confirm the balancing close did not
+     * prematurely unload it: libother.so's destructor must not have run yet. */
+    if (dlclose(other) != 0) {
+        return 9;
+    }
+    if (g_other_dtor_ran != 0) {
+        return 10;
     }
 
     /* Close libhook.so; its destructor uses and closes libother.so from inside
