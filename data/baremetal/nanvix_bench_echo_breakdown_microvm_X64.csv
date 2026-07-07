@@ -9437,7 +9437,6 @@ f49ac0fceb9d1b171ab98d606efb619ece0b5358,10,Total,223,246,253
 03ad943fd80d99b45773dd742ab4fbb06612c816,8,linuxd::worker_thread::handle_write_request(),25,31,35
 03ad943fd80d99b45773dd742ab4fbb06612c816,9,nanvix-bench::read_exact(),23,25,28
 03ad943fd80d99b45773dd742ab4fbb06612c816,10,Total,230,248,257
-<<<<<<< Updated upstream
 4582b9edbb19a40dc2d2adc5a7e3fa605fb35c6d,0,nanvix-bench::write_all(),,,
 4582b9edbb19a40dc2d2adc5a7e3fa605fb35c6d,1,linuxd::worker_thread::handle_read_request(),88,100,106
 4582b9edbb19a40dc2d2adc5a7e3fa605fb35c6d,2,uservm::io_thread::system_vm::read(),16,18,20
@@ -9449,7 +9448,6 @@ f49ac0fceb9d1b171ab98d606efb619ece0b5358,10,Total,223,246,253
 4582b9edbb19a40dc2d2adc5a7e3fa605fb35c6d,8,linuxd::worker_thread::handle_write_request(),27,31,34
 4582b9edbb19a40dc2d2adc5a7e3fa605fb35c6d,9,nanvix-bench::read_exact(),22,24,27
 4582b9edbb19a40dc2d2adc5a7e3fa605fb35c6d,10,Total,233,250,260
-=======
 e8aeb8ccf7aac4f2e813021548066b384b07083e,0,nanvix-bench::write_all(),,,
 e8aeb8ccf7aac4f2e813021548066b384b07083e,1,linuxd::worker_thread::handle_read_request(),89,102,108
 e8aeb8ccf7aac4f2e813021548066b384b07083e,2,uservm::io_thread::system_vm::read(),16,17,19
@@ -9461,7 +9459,6 @@ e8aeb8ccf7aac4f2e813021548066b384b07083e,7,uservm::io_thread::system_vm::write()
 e8aeb8ccf7aac4f2e813021548066b384b07083e,8,linuxd::worker_thread::handle_write_request(),28,32,34
 e8aeb8ccf7aac4f2e813021548066b384b07083e,9,nanvix-bench::read_exact(),22,24,27
 e8aeb8ccf7aac4f2e813021548066b384b07083e,10,Total,235,254,262
->>>>>>> Stashed changes
 b340e5a9514160ce0db5eb50d0d36daaaecd2725,0,nanvix-bench::write_all(),,,
 b340e5a9514160ce0db5eb50d0d36daaaecd2725,1,linuxd::worker_thread::handle_read_request(),78,100,108
 b340e5a9514160ce0db5eb50d0d36daaaecd2725,2,uservm::io_thread::system_vm::read(),16,17,20
