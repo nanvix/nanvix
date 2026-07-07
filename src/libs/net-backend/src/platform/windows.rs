@@ -92,50 +92,63 @@ pub(crate) fn socket_failed(result: RawSocket) -> bool {
     result == INVALID_SOCKET
 }
 
-/// Maps a Winsock error code to a POSIX-like errno value for `ErrorCode::try_from`.
-///
-/// The numeric values correspond to Linux `errno.h` constants for errors that
-/// the MSVC `libc` crate does not expose.
+/// Maps a Winsock error code to the Nanvix errno numbering consumed by `ErrorCode::try_from`.
 #[inline]
 pub(crate) fn normalize_errno(errno: i32) -> i32 {
-    // Linux errno.h constants not available via `libc` on Windows.
-    const LINUX_EMSGSIZE: i32 = 90;
-    const LINUX_EOPNOTSUPP: i32 = 95;
-    const LINUX_EADDRINUSE: i32 = 98;
-    const LINUX_EADDRNOTAVAIL: i32 = 99;
-    const LINUX_ENETUNREACH: i32 = 101;
-    const LINUX_ECONNABORTED: i32 = 103;
-    const LINUX_ECONNRESET: i32 = 104;
-    const LINUX_ENOBUFS: i32 = 105;
-    const LINUX_EISCONN: i32 = 106;
-    const LINUX_ENOTCONN: i32 = 107;
-    const LINUX_ETIMEDOUT: i32 = 110;
-    const LINUX_ECONNREFUSED: i32 = 111;
-    const LINUX_EINPROGRESS: i32 = 115;
-    const LINUX_EAGAIN: i32 = 11;
-    const LINUX_EBADFD: i32 = 77;
-
     match errno {
-        winsock::WSAEACCES => libc::EACCES,
-        winsock::WSAEADDRINUSE => LINUX_EADDRINUSE,
-        winsock::WSAEADDRNOTAVAIL => LINUX_EADDRNOTAVAIL,
-        winsock::WSAECONNABORTED => LINUX_ECONNABORTED,
-        winsock::WSAECONNREFUSED => LINUX_ECONNREFUSED,
-        winsock::WSAECONNRESET => LINUX_ECONNRESET,
-        winsock::WSAEINPROGRESS => LINUX_EINPROGRESS,
-        winsock::WSAEINTR => libc::EINTR,
-        winsock::WSAEINVAL => libc::EINVAL,
-        winsock::WSAEISCONN => LINUX_EISCONN,
-        winsock::WSAEMSGSIZE => LINUX_EMSGSIZE,
-        winsock::WSAENETUNREACH => LINUX_ENETUNREACH,
-        winsock::WSAENOBUFS => LINUX_ENOBUFS,
-        winsock::WSAENOTCONN => LINUX_ENOTCONN,
-        winsock::WSAENOTSOCK => libc::ENOTSOCK,
-        winsock::WSAEOPNOTSUPP => LINUX_EOPNOTSUPP,
-        winsock::WSAETIMEDOUT => LINUX_ETIMEDOUT,
-        winsock::WSAEWOULDBLOCK => LINUX_EAGAIN,
-        winsock::WSANOTINITIALISED => LINUX_EBADFD, // closest match
+        winsock::WSAEACCES => ::sysapi::errno::EACCES,
+        winsock::WSAEADDRINUSE => ::sysapi::errno::EADDRINUSE,
+        winsock::WSAEADDRNOTAVAIL => ::sysapi::errno::EADDRNOTAVAIL,
+        winsock::WSAEAFNOSUPPORT => ::sysapi::errno::EAFNOSUPPORT,
+        winsock::WSAEALREADY => ::sysapi::errno::EALREADY,
+        winsock::WSAEBADF => ::sysapi::errno::EBADF,
+        winsock::WSAECONNABORTED => ::sysapi::errno::ECONNABORTED,
+        winsock::WSAECONNREFUSED => ::sysapi::errno::ECONNREFUSED,
+        winsock::WSAECONNRESET => ::sysapi::errno::ECONNRESET,
+        winsock::WSAEDESTADDRREQ => ::sysapi::errno::EDESTADDRREQ,
+        winsock::WSAEFAULT => ::sysapi::errno::EFAULT,
+        winsock::WSAEHOSTDOWN => ::sysapi::errno::EHOSTDOWN,
+        winsock::WSAEHOSTUNREACH => ::sysapi::errno::EHOSTUNREACH,
+        winsock::WSAEINPROGRESS => ::sysapi::errno::EINPROGRESS,
+        winsock::WSAEINTR => ::sysapi::errno::EINTR,
+        winsock::WSAEINVAL => ::sysapi::errno::EINVAL,
+        winsock::WSAEISCONN => ::sysapi::errno::EISCONN,
+        winsock::WSAEMFILE => ::sysapi::errno::EMFILE,
+        winsock::WSAEMSGSIZE => ::sysapi::errno::EMSGSIZE,
+        winsock::WSAENETDOWN => ::sysapi::errno::ENETDOWN,
+        winsock::WSAENETRESET => ::sysapi::errno::ENETRESET,
+        winsock::WSAENETUNREACH => ::sysapi::errno::ENETUNREACH,
+        winsock::WSAENOBUFS => ::sysapi::errno::ENOBUFS,
+        winsock::WSAENOPROTOOPT => ::sysapi::errno::ENOPROTOOPT,
+        winsock::WSAENOTCONN => ::sysapi::errno::ENOTCONN,
+        winsock::WSAENOTSOCK => ::sysapi::errno::ENOTSOCK,
+        winsock::WSAEOPNOTSUPP => ::sysapi::errno::EOPNOTSUPP,
+        winsock::WSAEPFNOSUPPORT => ::sysapi::errno::EPFNOSUPPORT,
+        winsock::WSAEPROTONOSUPPORT => ::sysapi::errno::EPROTONOSUPPORT,
+        winsock::WSAEPROTOTYPE => ::sysapi::errno::EPROTOTYPE,
+        winsock::WSAESHUTDOWN => ::sysapi::errno::ESHUTDOWN,
+        winsock::WSAESOCKTNOSUPPORT => ::sysapi::errno::ESOCKTNOSUPPORT,
+        winsock::WSAETIMEDOUT => ::sysapi::errno::ETIMEDOUT,
+        winsock::WSAETOOMANYREFS => ::sysapi::errno::ETOOMANYREFS,
+        winsock::WSAEWOULDBLOCK => ::sysapi::errno::EAGAIN,
+        winsock::WSAEUSERS => ::sysapi::errno::EUSERS,
+        winsock::WSANOTINITIALISED => ::sysapi::errno::EBADFD, // closest match
         _ => errno,
+    }
+}
+
+/// Maps a Winsock `connect()` error code to the Nanvix errno numbering consumed by
+/// `ErrorCode::try_from`.
+///
+/// Winsock reports a newly pending non-blocking `connect()` as `WSAEWOULDBLOCK`, while regular
+/// non-blocking I/O uses the same code for would-block. Keep the global mapping as `EAGAIN`, but
+/// classify it as `EINPROGRESS` on the connect path.
+#[inline]
+pub(crate) fn normalize_connect_errno(errno: i32) -> i32 {
+    match errno {
+        winsock::WSAEWOULDBLOCK | winsock::WSAEINPROGRESS => ::sysapi::errno::EINPROGRESS,
+        winsock::WSAEALREADY => ::sysapi::errno::EALREADY,
+        other => normalize_errno(other),
     }
 }
 
@@ -292,6 +305,21 @@ pub(crate) unsafe fn raw_socketpair(
     -1
 }
 
+/// Raw operation to enable or disable non-blocking mode on a socket.
+///
+/// Uses `ioctlsocket(FIONBIO)`. Returns 0 on success and `SOCKET_ERROR` (-1) on failure, with the
+/// Winsock error retrievable via `WSAGetLastError`.
+///
+/// # Safety
+///
+/// `fd` must be a socket handle that is valid for `ioctlsocket()` on this process. The caller is
+/// responsible for ensuring that concurrent users of the socket tolerate mode changes.
+#[inline]
+pub(crate) unsafe fn raw_set_nonblocking(fd: RawSocket, nonblocking: bool) -> libc::c_int {
+    let mut mode: libc::c_ulong = if nonblocking { 1 } else { 0 };
+    winsock::ioctlsocket(fd, winsock::FIONBIO, &mut mode as *mut libc::c_ulong)
+}
+
 //==================================================================================================
 // Message Flags
 //==================================================================================================
@@ -342,6 +370,8 @@ pub(crate) mod winsock {
     use libc::{
         c_char,
         c_int,
+        c_long,
+        c_ulong,
         sockaddr,
         SOCKET,
     };
@@ -349,28 +379,49 @@ pub(crate) mod winsock {
     // Winsock error codes
     pub const WSANOTINITIALISED: i32 = 10093;
     pub const WSAEINTR: i32 = 10004;
+    pub const WSAEBADF: i32 = 10009;
     pub const WSAEACCES: i32 = 10013;
+    pub const WSAEFAULT: i32 = 10014;
     pub const WSAEINVAL: i32 = 10022;
+    pub const WSAEMFILE: i32 = 10024;
     pub const WSAEWOULDBLOCK: i32 = 10035;
     pub const WSAEINPROGRESS: i32 = 10036;
+    pub const WSAEALREADY: i32 = 10037;
+    pub const WSAENOTSOCK: i32 = 10038;
+    pub const WSAEDESTADDRREQ: i32 = 10039;
     pub const WSAEMSGSIZE: i32 = 10040;
+    pub const WSAEPROTOTYPE: i32 = 10041;
+    pub const WSAENOPROTOOPT: i32 = 10042;
+    pub const WSAEPROTONOSUPPORT: i32 = 10043;
+    pub const WSAESOCKTNOSUPPORT: i32 = 10044;
     pub const WSAEOPNOTSUPP: i32 = 10045;
+    pub const WSAEPFNOSUPPORT: i32 = 10046;
+    pub const WSAEAFNOSUPPORT: i32 = 10047;
     pub const WSAEADDRINUSE: i32 = 10048;
     pub const WSAEADDRNOTAVAIL: i32 = 10049;
+    pub const WSAENETDOWN: i32 = 10050;
     pub const WSAENETUNREACH: i32 = 10051;
+    pub const WSAENETRESET: i32 = 10052;
     pub const WSAECONNABORTED: i32 = 10053;
     pub const WSAECONNRESET: i32 = 10054;
     pub const WSAENOBUFS: i32 = 10055;
     pub const WSAEISCONN: i32 = 10056;
     pub const WSAENOTCONN: i32 = 10057;
+    pub const WSAESHUTDOWN: i32 = 10058;
+    pub const WSAETOOMANYREFS: i32 = 10059;
     pub const WSAETIMEDOUT: i32 = 10060;
     pub const WSAECONNREFUSED: i32 = 10061;
-    pub const WSAENOTSOCK: i32 = 10038;
+    pub const WSAEHOSTDOWN: i32 = 10064;
+    pub const WSAEHOSTUNREACH: i32 = 10065;
+    pub const WSAEUSERS: i32 = 10068;
 
     // Message flags
     pub const MSG_PEEK: c_int = 0x2;
     pub const MSG_OOB: c_int = 0x1;
     pub const MSG_WAITALL: c_int = 0x8;
+
+    // ioctlsocket command to enable/disable non-blocking mode (FIONBIO).
+    pub const FIONBIO: c_long = 0x8004667Eu32 as c_long;
 
     /// WSADATA structure for WSAStartup.
     #[repr(C)]
@@ -407,6 +458,7 @@ pub(crate) mod winsock {
         pub fn WSACleanup() -> c_int;
         pub fn WSAGetLastError() -> c_int;
         pub fn closesocket(s: SOCKET) -> c_int;
+        pub fn ioctlsocket(s: SOCKET, cmd: c_long, argp: *mut c_ulong) -> c_int;
         pub fn shutdown(s: SOCKET, how: c_int) -> c_int;
         pub fn send(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int) -> c_int;
         pub fn recv(s: SOCKET, buf: *mut c_char, len: c_int, flags: c_int) -> c_int;
@@ -457,34 +509,113 @@ mod test {
 
     // ---- normalize_errno ------------------------------------------------------------------------
 
-    /// Tests that `normalize_errno` maps `WSAECONNREFUSED` to Linux `ECONNREFUSED` (111).
+    /// Tests that `normalize_errno` maps `WSAECONNREFUSED` to Nanvix `ECONNREFUSED`.
     #[test]
     fn normalize_wsaeconnrefused() {
-        assert_eq!(normalize_errno(winsock::WSAECONNREFUSED), 111, "WSAECONNREFUSED -> 111");
+        assert_eq!(
+            normalize_errno(winsock::WSAECONNREFUSED),
+            ::sysapi::errno::ECONNREFUSED,
+            "WSAECONNREFUSED should map to ECONNREFUSED"
+        );
     }
 
-    /// Tests that `normalize_errno` maps `WSAETIMEDOUT` to Linux `ETIMEDOUT` (110).
+    /// Tests that `normalize_errno` maps `WSAETIMEDOUT` to Nanvix `ETIMEDOUT`.
     #[test]
     fn normalize_wsaetimedout() {
-        assert_eq!(normalize_errno(winsock::WSAETIMEDOUT), 110, "WSAETIMEDOUT -> 110");
+        assert_eq!(
+            normalize_errno(winsock::WSAETIMEDOUT),
+            ::sysapi::errno::ETIMEDOUT,
+            "WSAETIMEDOUT should map to ETIMEDOUT"
+        );
     }
 
-    /// Tests that `normalize_errno` maps `WSAEADDRINUSE` to Linux `EADDRINUSE` (98).
+    /// Tests that `normalize_errno` maps `WSAEADDRINUSE` to Nanvix `EADDRINUSE`.
     #[test]
     fn normalize_wsaeaddrinuse() {
-        assert_eq!(normalize_errno(winsock::WSAEADDRINUSE), 98, "WSAEADDRINUSE -> 98");
+        assert_eq!(
+            normalize_errno(winsock::WSAEADDRINUSE),
+            ::sysapi::errno::EADDRINUSE,
+            "WSAEADDRINUSE should map to EADDRINUSE"
+        );
     }
 
-    /// Tests that `normalize_errno` maps `WSAEINVAL` to `libc::EINVAL`.
+    /// Tests that `normalize_errno` maps `WSAEINVAL` to Nanvix `EINVAL`.
     #[test]
     fn normalize_wsaeinval() {
-        assert_eq!(normalize_errno(winsock::WSAEINVAL), libc::EINVAL, "WSAEINVAL -> EINVAL");
+        assert_eq!(
+            normalize_errno(winsock::WSAEINVAL),
+            ::sysapi::errno::EINVAL,
+            "WSAEINVAL should map to EINVAL"
+        );
+    }
+
+    /// Tests that socket-specific Winsock errors round-trip into the expected `ErrorCode` variants.
+    #[test]
+    fn normalize_socket_errors_roundtrip_to_error_code() {
+        use ::sys::error::ErrorCode;
+
+        let cases: [(i32, ErrorCode, &str); 12] = [
+            (winsock::WSAEAFNOSUPPORT, ErrorCode::AddressFamilyNotSupported, "WSAEAFNOSUPPORT"),
+            (winsock::WSAEADDRINUSE, ErrorCode::AddressInUse, "WSAEADDRINUSE"),
+            (winsock::WSAEDESTADDRREQ, ErrorCode::DestinationAddressRequired, "WSAEDESTADDRREQ"),
+            (winsock::WSAEHOSTUNREACH, ErrorCode::HostUnreachable, "WSAEHOSTUNREACH"),
+            (winsock::WSAEISCONN, ErrorCode::TransportEndpointConnected, "WSAEISCONN"),
+            (winsock::WSAENETDOWN, ErrorCode::NetworkDown, "WSAENETDOWN"),
+            (winsock::WSAENETRESET, ErrorCode::NetworkReset, "WSAENETRESET"),
+            (winsock::WSAEPROTONOSUPPORT, ErrorCode::ProtocolNotSupported, "WSAEPROTONOSUPPORT"),
+            (winsock::WSAEPROTOTYPE, ErrorCode::BadProtocolType, "WSAEPROTOTYPE"),
+            (winsock::WSAESHUTDOWN, ErrorCode::TransportEndpointShutdown, "WSAESHUTDOWN"),
+            (winsock::WSAESOCKTNOSUPPORT, ErrorCode::SocketTypeNotSupported, "WSAESOCKTNOSUPPORT"),
+            (winsock::WSAETIMEDOUT, ErrorCode::OperationTimedOut, "WSAETIMEDOUT"),
+        ];
+
+        for (winsock_error, expected, name) in cases {
+            assert_eq!(
+                ErrorCode::try_from(normalize_errno(winsock_error)).unwrap(),
+                expected,
+                "{name} must classify as {expected:?}"
+            );
+        }
     }
 
     /// Tests that `normalize_errno` passes through unknown error codes.
     #[test]
     fn normalize_unknown_passthrough() {
         assert_eq!(normalize_errno(99999), 99999, "unknown code should pass through");
+    }
+
+    /// Tests that `normalize_connect_errno` keeps `WSAEWOULDBLOCK` connect-specific.
+    #[test]
+    fn normalize_connect_wsaewouldblock_as_inprogress() {
+        use ::sys::error::ErrorCode;
+
+        assert_eq!(
+            normalize_errno(winsock::WSAEWOULDBLOCK),
+            ::sysapi::errno::EAGAIN,
+            "generic WSAEWOULDBLOCK should remain EAGAIN"
+        );
+        assert_eq!(
+            ErrorCode::try_from(normalize_connect_errno(winsock::WSAEWOULDBLOCK)).unwrap(),
+            ErrorCode::OperationInProgress,
+            "connect WSAEWOULDBLOCK must classify as connection-pending"
+        );
+        assert_eq!(
+            ErrorCode::try_from(normalize_connect_errno(winsock::WSAEINVAL)).unwrap(),
+            ErrorCode::InvalidArgument,
+            "connect WSAEINVAL must remain invalid-argument without socket state"
+        );
+    }
+
+    /// Tests that `normalize_connect_errno` maps already-pending connects distinctly.
+    #[test]
+    fn normalize_connect_wsaealready_as_already_inprogress() {
+        use ::sys::error::ErrorCode;
+
+        assert_eq!(
+            ErrorCode::try_from(normalize_connect_errno(winsock::WSAEALREADY)).unwrap(),
+            ErrorCode::OperationAlreadyInProgress,
+            "WSAEALREADY must classify as already-in-progress"
+        );
     }
 
     // ---- Boolean helpers ------------------------------------------------------------------------

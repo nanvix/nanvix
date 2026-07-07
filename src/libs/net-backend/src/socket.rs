@@ -12,7 +12,9 @@ use crate::{
         i32_to_raw,
         is_interrupted,
         last_socket_error,
+        normalize_connect_errno,
         normalize_errno,
+        raw_set_nonblocking,
         raw_shutdown,
         raw_socketpair,
         raw_to_i32,
@@ -204,7 +206,7 @@ impl NetBackend {
                     return Err(NetError::Interrupted);
                 }
                 error!("libc::connect(): failed with errno={errno:?}");
-                let error: ErrorCode = ErrorCode::try_from(normalize_errno(errno))
+                let error: ErrorCode = ErrorCode::try_from(normalize_connect_errno(errno))
                     .unwrap_or(ErrorCode::ValueOutOfRange);
                 Err(NetError::Errno(error))
             },
@@ -309,6 +311,32 @@ impl NetBackend {
             ret => unreachable!("libc::close() returned invalid value {ret:?}"),
         }
     }
+
+    /// Enables or disables non-blocking mode on a socket.
+    ///
+    /// When non-blocking mode is enabled, I/O operations that cannot complete immediately fail with
+    /// an error for which [`NetError::is_would_block`] returns `true`, and a `connect()` that cannot
+    /// complete immediately reports [`NetError::is_in_progress`].
+    pub fn set_nonblocking(&self, sockfd: i32, nonblocking: bool) -> Result<(), NetError> {
+        debug!("set_nonblocking(): sockfd={sockfd:?}, nonblocking={nonblocking:?}");
+
+        let raw = i32_to_raw(sockfd);
+        // SAFETY: `raw` is the platform socket handle supplied by the caller. Invalid handles are
+        // reported by the OS and converted to `NetError` below.
+        match unsafe { raw_set_nonblocking(raw, nonblocking) } {
+            0 => Ok(()),
+            _ => {
+                let errno: i32 = last_socket_error();
+                if is_interrupted(errno) {
+                    return Err(NetError::Interrupted);
+                }
+                error!("set_nonblocking(): failed with errno={errno:?}");
+                let error: ErrorCode = ErrorCode::try_from(normalize_errno(errno))
+                    .unwrap_or(ErrorCode::ValueOutOfRange);
+                Err(NetError::Errno(error))
+            },
+        }
+    }
 }
 
 //==================================================================================================
@@ -395,6 +423,40 @@ mod test {
             NetBackend::new().expect("platform initialization should succeed");
         let result: Result<(), NetError> = backend.close(-1);
         assert!(result.is_err(), "closing an invalid fd should fail");
+    }
+
+    /// Tests that a `recvfrom` on an empty non-blocking socket reports would-block.
+    #[test]
+    fn nonblocking_recvfrom_would_block() {
+        let backend: NetBackend =
+            NetBackend::new().expect("platform initialization should succeed");
+        let sockfd: i32 = backend
+            .socket(AddressFamily::Inet, SocketType::Datagram, Protocol::Udp)
+            .expect("creating a UDP socket should succeed");
+        let addr: sockaddr = sockaddr {
+            sa_len: core::mem::size_of::<sockaddr>() as u8,
+            sa_family: 2, // AF_INET
+            sa_data: [0, 0, 127, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+        };
+        backend
+            .bind(sockfd, &addr)
+            .expect("binding UDP socket should succeed");
+        backend
+            .set_nonblocking(sockfd, true)
+            .expect("enabling non-blocking mode should succeed");
+
+        let mut buf: [u8; 16] = [0; 16];
+        let buf_len: usize = buf.len();
+        let result: Result<(isize, sockaddr), NetError> =
+            backend.recvfrom(sockfd, &mut buf, buf_len, 0);
+        match result {
+            Err(ref e) => assert!(e.is_would_block(), "expected would-block, got {e:?}"),
+            Ok(_) => panic!("recvfrom on an empty non-blocking socket should not succeed"),
+        }
+
+        backend
+            .close(sockfd)
+            .expect("closing the socket should succeed");
     }
 
     /// Tests that `socket()` rejects `AddressFamily::Unspec`.
