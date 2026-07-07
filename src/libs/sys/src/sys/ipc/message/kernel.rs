@@ -266,6 +266,7 @@ impl Message {
     pub fn try_from_bytes(
         bytes: [u8; Self::HEADER_SIZE + Self::PAYLOAD_SIZE],
     ) -> Result<Self, Error> {
+        MessageType::try_from_bytes([bytes[0]])?;
         Ok(unsafe { mem::transmute::<[u8; config::kernel::IPC_MESSAGE_SIZE], Message>(bytes) })
     }
 }
