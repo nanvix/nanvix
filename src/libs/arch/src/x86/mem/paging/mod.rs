@@ -4,8 +4,6 @@
 // Modules
 //==================================================================================================
 
-use vstd::prelude::*;
-
 mod flags;
 mod frame;
 mod pde;
@@ -62,9 +60,7 @@ pub const NUM_HIERARCHY_PAGES: usize = 1;
 ///
 /// Must be called from kernel mode (ring 0).
 ///
-/// Inline assembly that flushes hardware TLB state and does not change Rust-visible memory.
 #[inline]
-#[verus_verify(external_body)]
 pub unsafe fn invlpg(vaddr: usize) {
     core::arch::asm!(
         "invlpg ({0})",

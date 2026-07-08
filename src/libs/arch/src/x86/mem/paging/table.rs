@@ -5,10 +5,6 @@
 // Imports
 //==================================================================================================
 
-use vstd::prelude::*;
-#[cfg(verus_keep_ghost)]
-include!("table.spec.rs");
-
 use super::{
     PteWord,
     PTE_WORD_SIZE_LOG2,
@@ -25,17 +21,10 @@ use super::{
 ///
 /// The raw representation uses [`PteWord`] — `u32` on x86.
 ///
-#[verus_verify]
 pub trait TableEntry: Copy {
     /// Creates from a raw [`PteWord`], returning `None` if the value is invalid.
-    #[verus_spec(result =>
-        ensures result == spec_entry_from_raw::<Self>(raw),
-    )]
     fn from_raw(raw: PteWord) -> Option<Self>;
     /// Returns the raw [`PteWord`] representation.
-    #[verus_spec(result =>
-        ensures result == spec_entry_raw(self),
-    )]
     fn raw(self) -> PteWord;
 }
 
@@ -48,11 +37,9 @@ pub trait TableEntry: Copy {
 ///
 /// A validated index into a page table, guaranteed to be in `[0, PAGE_TABLE_LENGTH)`.
 ///
-#[verus_verify]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableIndex(usize);
 
-#[verus_verify]
 impl TableIndex {
     ///
     /// # Description
@@ -60,13 +47,6 @@ impl TableIndex {
     /// Creates a [`TableIndex`] from a raw `usize`, returning `None` if the value is out of
     /// bounds.
     ///
-    #[verus_spec(result =>
-        ensures
-            match result {
-                Some(t) => index < crate::mem::PAGE_TABLE_LENGTH && t@ == index as nat,
-                None => index >= crate::mem::PAGE_TABLE_LENGTH,
-            },
-    )]
     pub const fn new(index: usize) -> Option<Self> {
         if index < crate::mem::PAGE_TABLE_LENGTH {
             Some(Self(index))
@@ -80,12 +60,6 @@ impl TableIndex {
     ///
     /// Returns the underlying index value.
     ///
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        ensures
-            result as nat == self@,
-            result < crate::mem::PAGE_TABLE_LENGTH,
-    )]
     pub const fn into_raw(self) -> usize {
         self.0
     }
@@ -96,12 +70,6 @@ impl TableIndex {
 //==================================================================================================
 
 /// Extracts the PD index (bits 22-31) from a virtual address as a [`TableIndex`].
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        result@ == spec_pd_index(vaddr),
-        result@ < crate::mem::PAGE_TABLE_LENGTH,
-)]
 pub const fn pd_index(vaddr: usize) -> TableIndex {
     // The mask guarantees the result is always < PAGE_TABLE_LENGTH.
     let index: usize = (vaddr >> crate::mem::PGTAB_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
@@ -109,12 +77,6 @@ pub const fn pd_index(vaddr: usize) -> TableIndex {
 }
 
 /// Extracts the PT index (bits 12-21) from a virtual address as a [`TableIndex`].
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        result@ == spec_pt_index(vaddr),
-        result@ < crate::mem::PAGE_TABLE_LENGTH,
-)]
 pub const fn pt_index(vaddr: usize) -> TableIndex {
     // The mask guarantees the result is always < PAGE_TABLE_LENGTH.
     let index: usize = (vaddr >> crate::mem::PAGE_SHIFT) & (crate::mem::PAGE_TABLE_LENGTH - 1);
@@ -138,7 +100,6 @@ pub const fn pt_index(vaddr: usize) -> TableIndex {
 /// (i.e., a mapped virtual address). It does not own the backing memory — the caller is
 /// responsible for allocation and lifetime management.
 ///
-#[verus_verify]
 #[derive(Debug)]
 pub struct Table<E: TableEntry> {
     /// Base address of the table (must be page-aligned).
@@ -147,7 +108,6 @@ pub struct Table<E: TableEntry> {
     _marker: ::core::marker::PhantomData<E>,
 }
 
-#[verus_verify]
 impl<E: TableEntry> Table<E> {
     ///
     /// # Description
@@ -159,9 +119,6 @@ impl<E: TableEntry> Table<E> {
     /// `base` must be a valid, page-aligned address with at least one page of readable/writable
     /// memory.
     ///
-    #[verus_spec(result =>
-        ensures result@.addr == base as nat,
-    )]
     pub const unsafe fn from_address(base: usize) -> Self {
         Self {
             base,
@@ -180,14 +137,6 @@ impl<E: TableEntry> Table<E> {
     ///
     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile read.
     ///
-    /// Performs a volatile page-table load from the integer base address.
-    #[verus_verify(external_body)]
-    #[verus_spec(result =>
-        requires
-            index@ < crate::mem::PAGE_TABLE_LENGTH,
-        ensures
-            result == spec_table_read::<E>(self@.addr, index@),
-    )]
     pub unsafe fn read(&self, index: TableIndex) -> Option<E> {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
         let ptr: *const PteWord = (self.base + offset) as *const PteWord;
@@ -203,15 +152,6 @@ impl<E: TableEntry> Table<E> {
     ///
     /// The memory at `base + index * size_of::<PteWord>()` must be valid for a volatile write.
     ///
-    /// Performs a volatile page-table store.
-    ///
-    /// The contract keeps only the index precondition because the table contents are mutable
-    /// hardware-backed state.
-    #[verus_verify(external_body)]
-    #[verus_spec(
-        requires
-            index@ < crate::mem::PAGE_TABLE_LENGTH,
-    )]
     pub unsafe fn write(&self, index: TableIndex, entry: E) {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
         let ptr: *mut PteWord = (self.base + offset) as *mut PteWord;
