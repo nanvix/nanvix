@@ -24,6 +24,7 @@ You will need to save this JSON file.
 - `round-trip-latency`: measure the latency as we increase the size of the HTTP echo payload.
 - `vfs-bench`: measure VFS operation latencies (stat, open/close, read, write, readdir, create/unlink, mkdir/rmdir, rename) inside the guest VM using a FAT32 image loaded into guest memory via the RAMFS region.
 - `warm-start`: measure only the latency to send a fixed-size HTTP echo.
+- `warm-start-socket`: measure TCP echo latency through the standalone guest networking path.
 - `warm-start-vmm`: same as above, but excluding `nanvixd`.
 
 you may see all the optional flags with:
@@ -79,6 +80,7 @@ This builds all components including `nanvix-bench.exe` with the standalone and 
 | `boot-time`      | Start a user VM (no nanvixd)                           |
 | `cold-start`     | Spawn nanvixd + VM + echo round-trip (standalone mode) |
 | `vfs-bench`      | VFS operation latencies (FAT32 image via RAMFS region) |
+| `warm-start-socket` | TCP echo latency through guest networking (standalone mode) |
 | `warm-start-vmm` | Raw round-trip latency inside the user VM              |
 
 ### Running Benchmarks on Windows
