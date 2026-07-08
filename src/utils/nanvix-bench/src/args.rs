@@ -108,6 +108,13 @@ impl Args {
   warm-start-vmm         Measure raw round-trip latency inside the user VM.",
         );
 
+        if cfg!(feature = "standalone") {
+            benchmarks.push_str(
+                "\n  warm-start-socket      Measure round-trip latency over a guest TCP echo \
+                 socket.",
+            );
+        }
+
         println!(
             "\
 Nanvix Benchmarks - Benchmarking suite for Nanvix OS performance.
@@ -123,9 +130,10 @@ Options:
   {hwloc} <hwloc.json>                Hardware locality configuration file for CPU \
              affinity/topology.
   {iterations} <num>                  Number of iterations to run (default: 100).
-  {payload_size} <bytes>              Echo payload size for warm-start and warm-start-vmm \
-             benchmarks (default: {default_payload_size}; warm-start-vmm counts its \
-             {warm_start_vmm_prefix_size}-byte prefix and sweeps sizes when omitted).
+  {payload_size} <bytes>              Echo payload size for warm-start, warm-start-vmm, and \
+             warm-start-socket benchmarks (default: {default_payload_size} for warm-start; \
+             warm-start-vmm counts its {warm_start_vmm_prefix_size}-byte prefix; warm-start-vmm \
+             and warm-start-socket sweep a range of sizes when omitted).
   {num_concurrent_vms} <num>          Number of concurrent VMs (mandatory for concurrent \
              benchmark).
   {tmp_dir} <tmp_dir>                Base directory for temporary files (default: \
@@ -284,7 +292,9 @@ Examples:
                 if payload_size.is_some()
                     && !matches!(
                         benchmark,
-                        BenchmarkFlavour::WarmStart | BenchmarkFlavour::WarmStartVMM
+                        BenchmarkFlavour::WarmStart
+                            | BenchmarkFlavour::WarmStartVMM
+                            | BenchmarkFlavour::WarmStartSocket
                     )
                 {
                     Self::usage(args[0].as_str());
@@ -389,6 +399,36 @@ mod tests {
 
         assert_eq!(args.payload_size(), 4096);
         assert_eq!(args.payload_size_override(), Some(4096));
+    }
+
+    #[test]
+    fn parse_accepts_warm_start_socket_payload_size_override() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start-socket".to_string(),
+            "-payload-size".to_string(),
+            "4096".to_string(),
+        ];
+
+        let args: Args =
+            Args::parse(args).expect("expected warm-start-socket payload size to parse");
+
+        assert_eq!(args.payload_size(), 4096);
+        assert_eq!(args.payload_size_override(), Some(4096));
+    }
+
+    #[test]
+    fn parse_keeps_warm_start_socket_payload_size_override_empty_when_omitted() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start-socket".to_string(),
+        ];
+
+        let args: Args = Args::parse(args).expect("expected warm-start-socket to parse");
+
+        assert_eq!(args.payload_size_override(), None);
     }
 
     #[test]

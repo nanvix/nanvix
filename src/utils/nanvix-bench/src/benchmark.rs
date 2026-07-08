@@ -33,6 +33,7 @@ pub enum BenchmarkFlavour {
     VfsBench,
     WarmStart,
     WarmStartVMM,
+    WarmStartSocket,
 }
 
 impl BenchmarkFlavour {
@@ -71,6 +72,9 @@ impl BenchmarkFlavour {
             BenchmarkFlavour::VfsBench => {
                 format!("{}/bin/vfs-bench-nostd.{ext}", root.display())
             },
+            BenchmarkFlavour::WarmStartSocket => {
+                format!("{}/bin/socket-echo-rust-nostd.{ext}", root.display())
+            },
             _ => {
                 format!("{}/bin/echo-rust-nostd.{ext}", root.display())
             },
@@ -101,6 +105,7 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::VfsBench => "vfs-bench",
             BenchmarkFlavour::WarmStart => "warm-start",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
+            BenchmarkFlavour::WarmStartSocket => "warm-start-socket",
         };
         write!(f, "{}", s)
     }
@@ -121,6 +126,7 @@ impl FromStr for BenchmarkFlavour {
             "vfs-bench" => Ok(BenchmarkFlavour::VfsBench),
             "warm-start" => Ok(BenchmarkFlavour::WarmStart),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
+            "warm-start-socket" => Ok(BenchmarkFlavour::WarmStartSocket),
             _ => Err(format!("Invalid benchmark type: {}", s)),
         }
     }

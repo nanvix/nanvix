@@ -80,6 +80,10 @@ fn validate_benchmark(flavour: &BenchmarkFlavour) -> Result<()> {
     // System-level benchmarks (those using nanvixd) need multi-process, single-process, or
     // standalone.
     if flavour.needs_nanvixd() {
+        if matches!(flavour, BenchmarkFlavour::WarmStartSocket) && !has_standalone {
+            anyhow::bail!("benchmark '{flavour}' requires compilation with standalone");
+        }
+
         if !has_multi && !has_single && !has_standalone {
             anyhow::bail!(
                 "benchmark '{flavour}' requires compilation with multi-process, single-process, \
@@ -97,11 +101,16 @@ fn validate_benchmark(flavour: &BenchmarkFlavour) -> Result<()> {
         if has_standalone
             && !has_multi
             && !has_single
-            && !matches!(flavour, BenchmarkFlavour::ColdStart | BenchmarkFlavour::VfsBench)
+            && !matches!(
+                flavour,
+                BenchmarkFlavour::ColdStart
+                    | BenchmarkFlavour::VfsBench
+                    | BenchmarkFlavour::WarmStartSocket
+            )
         {
             anyhow::bail!(
-                "benchmark '{flavour}' is not supported in standalone mode (only cold-start and \
-                 vfs-bench are available)"
+                "benchmark '{flavour}' is not supported in standalone mode (only cold-start, \
+                 vfs-bench, and warm-start-socket are available)"
             );
         }
     }
@@ -263,6 +272,16 @@ async fn main() -> Result<()> {
             }
         },
         BenchmarkFlavour::WarmStartVMM => benchmark.run_warm_start_vmm().await,
+        BenchmarkFlavour::WarmStartSocket => {
+            #[cfg(feature = "standalone")]
+            {
+                benchmark.run_warm_start_socket_standalone().await
+            }
+            #[cfg(not(feature = "standalone"))]
+            {
+                anyhow::bail!("warm-start-socket requires compilation with standalone")
+            }
+        },
         BenchmarkFlavour::VfsBench => {
             #[cfg(feature = "standalone")]
             {
