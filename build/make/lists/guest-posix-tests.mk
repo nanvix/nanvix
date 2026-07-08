@@ -19,6 +19,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-ctor-dtor-reentry \
 	test-c-dlfcn-cycle \
 	test-c-dlfcn-diamond \
+	test-c-dlfcn-dlclose-cycle \
 	test-c-dlfcn-dtor-reentry \
 	test-c-dlfcn-global \
 	test-c-dlfcn-handle-reuse \

@@ -133,6 +133,11 @@ POSIX_TEST_PIE_test-c-dlfcn-global := yes
 POSIX_TEST_PIE_test-c-dlfcn-handle-reuse := yes
 POSIX_TEST_PIE_test-c-dlfcn-needed := yes
 POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
+# dlfcn-dlclose-cycle-c's fixtures reference only each other (never the main
+# executable), so PIE is not strictly required; it is set anyway to match every
+# other dlfcn dlopen suite (the executable's own symbols land in .dynsym for
+# RTLD_DEFAULT).
+POSIX_TEST_PIE_test-c-dlfcn-dlclose-cycle := yes
 # dlfcn-cycle-c dlopen()s freestanding fixtures. Its cyclic libraries are refused
 # before relocation and its positive-control library exports no undefined symbols,
 # so PIE is not strictly required; it is set anyway to match every other dlfcn
@@ -318,6 +323,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash)
@@ -335,6 +341,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HASH_SEED)
@@ -543,6 +550,80 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond): $(POSIX_TEST_DIAMOND_DIR)/libbase.
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libright.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libdiamond.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_DIAMOND_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-dlclose-cycle-c: dlclose() over a multiply-referenced dependency graph.
+#---------------------------------------------------------------------------------------------------
+#
+#   libroot.so -> libmidx.so -> libleaf.so
+#              -> libmidy.so -> libleaf.so
+#              -> libleaf.so                (direct edge)
+#
+# libleaf.so is reachable from libroot.so through THREE DT_NEEDED edges, so a
+# single dlclose(libroot.so) visits it more than once while walking the
+# dependency graph. That repeated visit is what made the pre-fix dlclose() panic
+# (it removed each dependency with `extract_if` and asserted exactly one entry
+# was removed per step); the post-fix reference-count peel records visited nodes
+# and must instead unload libleaf.so exactly once, and only after every edge that
+# references it is gone. A true DT_NEEDED cycle is refused at load time, so this
+# loadable diamond-with-a-direct-edge graph is the equivalent that still drives
+# the repeated-visit teardown path.
+# Built with the same i686 freestanding toolchain as the diamond fixtures above;
+# each DT_NEEDED edge is produced by linking the dependent against its
+# dependencies with `-L<dir> -l<name>` (the linker records each found
+# `lib<name>.so` as a bare DT_NEEDED entry, resolved through the loader's default
+# lib/ search path).
+POSIX_TEST_DLCLOSE_CYCLE_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-dlclose-cycle/libs
+POSIX_TEST_DLCLOSE_CYCLE_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-dlclose-cycle-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-dlclose-cycle.img
+
+# Leaf: libleaf.so (no dependencies).
+$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-dlclose-cycle/libs/leaf.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-dlclose-cycle-c/libleaf.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Intermediate libmidx.so: DT_NEEDED libleaf.so.
+$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidx.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-dlclose-cycle/libs/midx.c \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-dlclose-cycle-c/libmidx.so (DT_NEEDED libleaf.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_DLCLOSE_CYCLE_DIR) -lleaf -o $@
+
+# Intermediate libmidy.so: DT_NEEDED libleaf.so.
+$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidy.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-dlclose-cycle/libs/midy.c \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-dlclose-cycle-c/libmidy.so (DT_NEEDED libleaf.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_DLCLOSE_CYCLE_DIR) -lleaf -o $@
+
+# Root: DT_NEEDED libmidx.so + libmidy.so + libleaf.so. The direct libleaf.so
+# edge (alongside the two intermediates that also pull it in) is what makes
+# libleaf.so reachable more than once during dlclose(libroot.so).
+$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libroot.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-dlclose-cycle/libs/root.c \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidx.so $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidy.so \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-dlclose-cycle-c/libroot.so (DT_NEEDED libmidx.so libmidy.so libleaf.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o \
+		-L$(POSIX_TEST_DLCLOSE_CYCLE_DIR) -lmidx -lmidy -lleaf -o $@
+
+# Per-suite RAMFS image carrying all four fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle): $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidx.so \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidy.so \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libroot.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidx.so $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidy.so $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libroot.so $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_DLCLOSE_CYCLE_SEED)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-cycle-c: DT_NEEDED cycle-rejection fixtures.
@@ -1000,6 +1081,7 @@ POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash) \
