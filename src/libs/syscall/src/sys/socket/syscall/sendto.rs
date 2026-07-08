@@ -72,7 +72,7 @@ pub fn sendto(
         return Err(Error::new(ErrorCode::InvalidArgument, "buffer length is zero"));
     }
 
-    // A datagram cannot be split across transfers, so it must fit in a single page-bounded push.
+    // A datagram cannot be split across transfers, so it must fit in a single scatter/gather push.
     if buffer.len() > SendToSocketRequest::MAX_DATA_SIZE {
         return Err(Error::new(
             ErrorCode::MessageTooLong,
