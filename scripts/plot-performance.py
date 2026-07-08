@@ -92,6 +92,7 @@ SUPPORTED_BENCHMARKS: list[str] = [
 SIZED_BENCHMARKS: list[str] = [
     "round_trip_latency",
     "warm_start",
+    "warm_start_socket",
     "warm_start_vmm",
 ]
 
@@ -105,6 +106,7 @@ BENCHMARK_TITLES: dict[str, str] = {
     "round_trip_latency": "Round-Trip Latency",
     "snapshot_restore": "Snapshot Restore",
     "warm_start": "Warm Start",
+    "warm_start_socket": "Warm Start Socket",
     "warm_start_vmm": "Warm Start (VMM)",
 }
 

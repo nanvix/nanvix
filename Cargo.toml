@@ -9,6 +9,7 @@ members = [
         "src/benchmarks/mount-bench-nostd",
         "src/benchmarks/noop-rust-nostd",
         "src/benchmarks/snapshot-rust-nostd",
+        "src/benchmarks/socket-echo-rust-nostd",
         "src/benchmarks/vfs-bench-nostd",
         "src/daemons/hostfsd",
         "src/daemons/linuxd",

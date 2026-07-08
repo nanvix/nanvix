@@ -1091,6 +1091,8 @@ jobs:
             echo-iterations: "1000"
             vfs-benchmarks: "vfs-bench"
             vfs-iterations: "100"
+            standalone-socket-benchmarks: "warm-start-socket"
+            standalone-socket-iterations: "100"
     runs-on:
       group: Benchmark
       labels: [ self-hosted, Linux ]
@@ -1159,8 +1161,8 @@ jobs:
           machine-type: "${{ matrix.machine-type }}"
           iterations: "${{ matrix.echo-iterations }}"
 
-      - name: "Build (Standalone VFS)"
-        if: matrix.vfs-benchmarks != ''
+      - name: "Build (Standalone Benchmarks)"
+        if: matrix.vfs-benchmarks != '' || matrix.standalone-socket-benchmarks != ''
         shell: bash
         env:
           MACHINE_TYPE: ${{ matrix.machine-type }}
@@ -1180,6 +1182,14 @@ jobs:
           benchmarks: "${{ matrix.vfs-benchmarks }}"
           machine-type: "${{ matrix.machine-type }}"
           iterations: "${{ matrix.vfs-iterations }}"
+
+      - name: "Run Standalone Socket Benchmarks"
+        if: matrix.standalone-socket-benchmarks != ''
+        uses: ./.github/actions/benchmark-run
+        with:
+          benchmarks: "${{ matrix.standalone-socket-benchmarks }}"
+          machine-type: "${{ matrix.machine-type }}"
+          iterations: "${{ matrix.standalone-socket-iterations }}"
 
       - name: "Upload Benchmark Results"
         if: always() && !cancelled()
@@ -1216,8 +1226,8 @@ jobs:
 
   # Build from source and run micro-benchmarks on self-hosted Windows baremetal
   # runners. Only standalone-mode benchmarks are supported (boot-time, cold-start,
-  # snapshot-restore, warm-start-vmm). The self-hosted runner is a dedicated
-  # machine with a known-functional WHP hypervisor, so the WHP probe and Defender
+  # snapshot-restore, vfs-bench, warm-start-vmm, warm-start-socket). The self-hosted runner is a
+  # dedicated machine with a known-functional WHP hypervisor, so the WHP probe and Defender
   # exclusion steps are omitted.
   windows-benchmark:
     name: "Windows Benchmark (${{ matrix.machine-type }})"
@@ -1233,7 +1243,8 @@ jobs:
         machine-type: [ microvm ]
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start snapshot-restore vfs-bench warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start snapshot-restore vfs-bench warm-start-vmm
+              warm-start-socket"
             standard-iterations: "100"
             payload-size: ""
             profiler: "PROFILER=yes"
@@ -1366,7 +1377,7 @@ jobs:
               "--machine-type", $env:MACHINE_TYPE,
               "--iterations", $env:ITERATIONS
             )
-            if (($bench -in @("warm-start", "warm-start-vmm")) -and
+            if (($bench -in @("warm-start", "warm-start-vmm", "warm-start-socket")) -and
                 -not [string]::IsNullOrWhiteSpace($env:PAYLOAD_SIZE)) {
               $benchmarkArgs += @("--payload-size", $env:PAYLOAD_SIZE)
             }
@@ -1442,7 +1453,8 @@ jobs:
         uses: ./.github/actions/benchmark-report
         with:
           benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,\
-            round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
+            round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm,\
+            warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/baremetal"
@@ -1473,7 +1485,8 @@ jobs:
         uses: ./.github/actions/benchmark-persist
         with:
           benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,roun\
-            d-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
+            d-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm,\
+            warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           target-dir: "data/baremetal"
@@ -1536,7 +1549,8 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm,\
+            warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/windows-baremetal"
@@ -1571,7 +1585,8 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm,\
+            warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           target-dir: "data/windows-baremetal"

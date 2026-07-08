@@ -10,7 +10,13 @@ mod system;
 mod vmm;
 
 #[cfg(feature = "standalone")]
+mod socket_echo;
+
+#[cfg(feature = "standalone")]
 mod standalone;
+
+#[cfg(feature = "standalone")]
+mod standalone_socket;
 
 #[cfg(feature = "standalone")]
 mod standalone_vfs;
