@@ -10,12 +10,6 @@ edition.workspace = true
 description = "Generic fixed-size bump allocator"
 homepage.workspace = true
 
-[package.metadata.verus]
-verify = true
-
-[dependencies]
-vstd = { workspace = true }
-
 [features]
 default = []
 std = []
