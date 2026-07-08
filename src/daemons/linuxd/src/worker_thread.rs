@@ -551,6 +551,7 @@ impl WorkerThreadHandle {
                                 // backend provider.
                                 SystemCallMessageHeader::CloseRequest
                                 | SystemCallMessageHeader::ReadRequest
+                                | SystemCallMessageHeader::ReceiveSocketRequest
                                 | SystemCallMessageHeader::WriteRequest => {
                                     match Self::handle_special_messages(
                                         &syscall_table,
@@ -597,7 +598,6 @@ impl WorkerThreadHandle {
                                 | SystemCallMessageHeader::ListenSocketRequest
                                 | SystemCallMessageHeader::PartialReadRequest
                                 | SystemCallMessageHeader::PartialWriteRequest
-                                | SystemCallMessageHeader::ReceiveSocketRequest
                                 | SystemCallMessageHeader::SeekRequest
                                 | SystemCallMessageHeader::SendSocketRequest
                                 | SystemCallMessageHeader::ShutdownSocketRequest
@@ -774,6 +774,18 @@ impl WorkerThreadHandle {
                     cancel_rx,
                 )
             },
+            SystemCallMessageHeader::ReceiveSocketRequest => {
+                let request: ReceiveSocketRequest =
+                    ReceiveSocketRequest::from_bytes(message.payload);
+                Self::handle_recv_request(
+                    syscall_table,
+                    source,
+                    request,
+                    channel_rx,
+                    uvm_stream,
+                    cancel_rx,
+                )
+            },
             header => {
                 // The following statement is unreachable, because the matching logic in this
                 // function should match the one in the `Self::run()` function.
@@ -886,11 +898,6 @@ impl WorkerThreadHandle {
             SystemCallMessageHeader::PartialWriteRequest => {
                 let request: PartialWriteRequest = PartialWriteRequest::from_bytes(message.payload);
                 unistd::do_pwrite(&syscall_table, source, request)
-            },
-            SystemCallMessageHeader::ReceiveSocketRequest => {
-                let request: ReceiveSocketRequest =
-                    ReceiveSocketRequest::from_bytes(message.payload);
-                sys_socket::do_recv(&syscall_table, source, request)
             },
             SystemCallMessageHeader::SeekRequest => {
                 let request: SeekRequest = SeekRequest::from_bytes(message.payload);
@@ -1591,6 +1598,106 @@ impl WorkerThreadHandle {
                     ))
                 }
             }
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Handles a `recv()` request.  Waits for the pull-header bulk frame the guest's `ipc::pull()`
+    /// emits after the request, performs the receive on the networking backend, pushes the
+    /// received payload directly into the guest buffer, and returns the response message.
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `request`: The receive request payload.
+    /// - `channel_rx`: Worker command channel receiver (for bulk data).
+    /// - `uvm_stream`: Writer stream to the user VM.
+    /// - `cancel_rx`: Watch receiver used to detect cancellation.
+    ///
+    /// # Returns
+    ///
+    /// The response [`Message`] on success, or a [`WorkerThreadError`] on failure.
+    ///
+    fn handle_recv_request<T>(
+        syscall_table: &SyscallTable<T>,
+        source: ThreadIdentifier,
+        request: ReceiveSocketRequest,
+        channel_rx: &mut Receiver<VenvCommand>,
+        uvm_stream: Arc<Mutex<SocketStreamWriter>>,
+        cancel_rx: &mut watch::Receiver<bool>,
+    ) -> Result<Message, WorkerThreadError> {
+        trace!("handle_recv_request(): source={source:?}, request={request:?}");
+
+        // Wait for the BulkData pull request that the guest's `ipc::pull()` emits after the
+        // request. It carries the kernel buffer address where the payload must be written. A
+        // timeout prevents the worker thread from blocking forever if the guest VM crashes
+        // mid-protocol.
+        let pull_header: ::sys::ipc::DataChunkHeader =
+            match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT, cancel_rx) {
+                Ok(VenvCommand::BulkData(bulk)) => *bulk.header(),
+                Ok(VenvCommand::Shutdown) => {
+                    debug!("handle_recv_request(): received shutdown while waiting for bulk data");
+                    return Err(WorkerThreadError::Interrupted);
+                },
+                Ok(VenvCommand::Work(_)) => {
+                    error!("handle_recv_request(): expected BulkData, got IKC message");
+                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                },
+                Err(e) => {
+                    error!("handle_recv_request(): failed to receive bulk data");
+                    return Err(e);
+                },
+            };
+
+        // Helper closure: push a bulk payload back into the guest buffer.
+        let send_bulk_response = |data: Vec<u8>, len: u32| -> Result<(), WorkerThreadError> {
+            let bulk: ::sys::ipc::DataChunk = ::sys::ipc::DataChunk::new(
+                ::sys::ipc::DataChunkHeader::new(
+                    pull_header.source_pid(),
+                    pull_header.source_tid(),
+                    pull_header.destination_pid(),
+                    pull_header.destination_tid(),
+                    pull_header.data_addr(),
+                    len,
+                ),
+                data,
+            );
+            Handle::current()
+                .block_on(Self::send_bulk(uvm_stream.clone(), &bulk))
+                .map_err(|e| {
+                    if e.kind() == ErrorKind::BrokenPipe {
+                        debug!("handle_recv_request(): UVM stream closed (broken pipe)");
+                    } else {
+                        error!("handle_recv_request(): failed to send bulk response (error={e:?})");
+                    }
+                    WorkerThreadError::Interrupted
+                })
+        };
+
+        // Perform the receive on the networking backend.
+        match sys_socket::do_recv(syscall_table, source, request) {
+            Ok((response, data)) => {
+                // The payload is bounded by the scatter/gather bulk limit, so its length fits in
+                // the bulk header field.
+                let len: u32 = data.len() as u32;
+                send_bulk_response(data, len)?;
+                Ok(response)
+            },
+            Err(WorkerThreadError::Interrupted) => {
+                // Release the guest blocked in `ipc::pull()` with an empty transfer before
+                // returning so the kernel pull thread does not block.
+                if let Err(bulk_err) = send_bulk_response(Vec::new(), 0) {
+                    warn!(
+                        "handle_recv_request(): failed to send empty bulk response on interrupt, \
+                         kernel pull thread may block (error={bulk_err:?})"
+                    );
+                }
+                Err(WorkerThreadError::Interrupted)
+            },
+            Err(e) => Err(e),
         }
     }
 

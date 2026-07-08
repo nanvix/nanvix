@@ -233,23 +233,27 @@ pub fn do_recv<T>(
     syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: ReceiveSocketRequest,
-) -> Result<Message, WorkerThreadError> {
+) -> Result<(Message, Vec<u8>), WorkerThreadError> {
     trace!("recv(): tid={tid:?}, request={request:?}");
 
     let net_backend = match &syscall_table.net_backend {
         Some(backend) => backend,
-        None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
+        None => return Ok((crate::build_error(tid, ErrorCode::OperationNotSupported), Vec::new())),
     };
 
     let recv_len: usize =
-        core::cmp::min(ReceiveSocketResponse::BUFFER_SIZE, request.count as usize);
-    let mut buffer: [u8; ReceiveSocketResponse::BUFFER_SIZE] =
-        [0; ReceiveSocketResponse::BUFFER_SIZE];
+        core::cmp::min(ReceiveSocketResponse::MAX_DATA_SIZE, request.count as usize);
+    let mut buffer: Vec<u8> = vec![0u8; recv_len];
 
     match net_backend.recv(request.sockfd, &mut buffer, recv_len, request.flags) {
-        Ok(count) => Ok(ReceiveSocketResponse::build(tid, count as u32, buffer)),
+        Ok(count) => {
+            // Trim the buffer to the bytes actually received so the bulk transfer carries only
+            // the received payload.
+            buffer.truncate(count as usize);
+            Ok((ReceiveSocketResponse::build(tid, count as u32), buffer))
+        },
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
-        Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),
+        Err(NetError::Errno(code)) => Ok((crate::build_error(tid, code), Vec::new())),
     }
 }
 

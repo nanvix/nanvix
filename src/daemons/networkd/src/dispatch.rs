@@ -164,11 +164,6 @@ pub fn dispatch_message(
             let request: ListenSocketRequest = ListenSocketRequest::from_bytes(syscall_msg.payload);
             Some(vec![do_listen(backend, tid, request)])
         },
-        SystemCallMessageHeader::ReceiveSocketRequest => {
-            let request: ReceiveSocketRequest =
-                ReceiveSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_recv(backend, tid, request)])
-        },
         SystemCallMessageHeader::SendSocketRequest => {
             let request: SendSocketRequest = SendSocketRequest::from_bytes(syscall_msg.payload);
             Some(vec![do_send(backend, tid, request)])
@@ -237,6 +232,32 @@ pub fn dispatch_recvfrom(
     let request: ReceiveFromSocketRequest =
         ReceiveFromSocketRequest::from_bytes(syscall_msg.payload);
     do_recvfrom(backend, tid, request)
+}
+
+///
+/// # Description
+///
+/// Dispatches a `recv()` request whose payload is delivered out-of-band via a scatter/gather
+/// pull.
+///
+/// # Parameters
+///
+/// - `backend`: Reference to the networking backend.
+/// - `source`: The message source (identifies the calling thread).
+/// - `syscall_msg`: The parsed `ReceiveSocketRequest` system call message.
+///
+/// # Returns
+///
+/// A tuple with the response message and the payload to push back to the guest.
+///
+pub fn dispatch_recv(
+    backend: &NetBackend,
+    source: MessageSender,
+    syscall_msg: SystemCallMessage,
+) -> (Message, Vec<u8>) {
+    let tid: ThreadIdentifier = source.tid;
+    let request: ReceiveSocketRequest = ReceiveSocketRequest::from_bytes(syscall_msg.payload);
+    do_recv(backend, tid, request)
 }
 
 //==================================================================================================
@@ -392,16 +413,24 @@ fn do_accept(backend: &NetBackend, tid: ThreadIdentifier, request: AcceptSocketR
     }
 }
 
-fn do_recv(backend: &NetBackend, tid: ThreadIdentifier, request: ReceiveSocketRequest) -> Message {
+fn do_recv(
+    backend: &NetBackend,
+    tid: ThreadIdentifier,
+    request: ReceiveSocketRequest,
+) -> (Message, Vec<u8>) {
     trace!("networkd::recv(): tid={tid:?}, request={request:?}");
     let recv_len: usize =
-        core::cmp::min(ReceiveSocketResponse::BUFFER_SIZE, request.count as usize);
-    let mut buffer: [u8; ReceiveSocketResponse::BUFFER_SIZE] =
-        [0; ReceiveSocketResponse::BUFFER_SIZE];
+        core::cmp::min(ReceiveSocketResponse::MAX_DATA_SIZE, request.count as usize);
+    let mut buffer: Vec<u8> = vec![0u8; recv_len];
     match backend.recv(to_host_fd(request.sockfd), &mut buffer, recv_len, request.flags) {
-        Ok(count) => ReceiveSocketResponse::build(tid, count as u32, buffer),
-        Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),
-        Err(NetError::Errno(code)) => build_error(tid, code),
+        Ok(count) => {
+            // Trim the buffer to the bytes actually received so the bulk transfer carries only
+            // the received payload.
+            buffer.truncate(count as usize);
+            (ReceiveSocketResponse::build(tid, count as u32), buffer)
+        },
+        Err(NetError::Interrupted) => (build_error(tid, ErrorCode::Interrupted), Vec::new()),
+        Err(NetError::Errno(code)) => (build_error(tid, code), Vec::new()),
     }
 }
 

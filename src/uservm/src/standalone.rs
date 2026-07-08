@@ -644,6 +644,17 @@ async fn standalone_io_handler(
                         )
                         .await;
                     },
+                    SystemCallMessageHeader::ReceiveSocketRequest => {
+                        handle_recv_request(
+                            &mut vm_stdout_rx,
+                            &vm_stdin_tx,
+                            &network_daemon,
+                            msg.source,
+                            syscall_msg,
+                            &counters,
+                        )
+                        .await;
+                    },
                     header if header.is_hostfs() => {
                         // For multi-part long requests, vfsd allocates a single pending
                         // entry keyed on the logical op_id but emits N SystemCallMessagePart
@@ -1358,9 +1369,9 @@ async fn handle_recvfrom_request(
         let (response, data): (Message, Vec<u8>) =
             network_daemon.handle_recvfrom(source, syscall_msg);
 
-        // The datagram payload is bounded by a single page, so its length normally fits in u32.
-        // Guard the conversion anyway, releasing the guest's pull with an empty transfer and an
-        // error on the unexpected overflow so it does not deadlock.
+        // The datagram payload is bounded by the scatter/gather bulk limit. Guard the conversion
+        // anyway, releasing the guest's pull with an empty transfer and an error on the unexpected
+        // overflow so it does not deadlock.
         let actual_len: u32 = match u32::try_from(data.len()) {
             Ok(n) => n,
             Err(_) => {
@@ -1431,8 +1442,138 @@ async fn handle_recvfrom_request(
 ///
 /// # Description
 ///
+/// Handles a guest `ReceiveSocketRequest` by consuming the pull-header bulk frame and forwarding
+/// the request to networkd on a blocking task, which pushes the received payload back to the guest
+/// followed by the response message.
+///
+async fn handle_recv_request(
+    vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    network_daemon: &Option<Arc<NetworkDaemon>>,
+    source: MessageSender,
+    syscall_msg: SystemCallMessage,
+    counters: &MessageCounters,
+) {
+    let tid: ThreadIdentifier = extract_tid(source);
+    trace!("standalone io_handler: handling ReceiveSocketRequest (tid={tid:?})");
+
+    // Wait for the pull-header bulk frame that the guest's `ipc::pull()` emits after the request.
+    // It carries the bulk location the received payload must be written to.
+    let pull_header: DataChunkHeader = match vm_stdout_rx.recv().await {
+        Some(IkcFrame::Bulk(bulk)) => *bulk.header(),
+        other => {
+            error!(
+                "standalone io_handler: expected bulk frame after ReceiveSocketRequest, got {:?}",
+                other.as_ref().map(|f| f.frame_type_byte())
+            );
+            send_networking_error(vm_stdin_tx, tid, counters).await;
+            return;
+        },
+    };
+
+    let network_daemon: Arc<NetworkDaemon> = match network_daemon {
+        Some(nd) => nd.clone(),
+        None => {
+            warn!("standalone io_handler: networking not allowed, rejecting recv (tid={tid:?})");
+            // Release the guest blocked in `ipc::pull()` with an empty transfer before reporting
+            // the error so it does not deadlock.
+            send_empty_pull_response(vm_stdin_tx, &pull_header, counters).await;
+            send_networking_error(vm_stdin_tx, tid, counters).await;
+            return;
+        },
+    };
+
+    // Run the blocking `recv()` on its own thread so a waiting socket does not stall the I/O
+    // handler loop.
+    let vm_stdin_tx: mpsc::Sender<IkcFrame> = vm_stdin_tx.clone();
+    let counters: MessageCounters = counters.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+        let (response, data): (Message, Vec<u8>) = network_daemon.handle_recv(source, syscall_msg);
+
+        // The payload is bounded by the scatter/gather bulk limit. Guard the conversion anyway,
+        // releasing the guest's pull with an empty transfer and an error on the unexpected overflow
+        // so it does not deadlock.
+        let actual_len: u32 = match u32::try_from(data.len()) {
+            Ok(n) => n,
+            Err(_) => {
+                error!("standalone io_handler: recv size overflows u32 (len={})", data.len());
+                let empty_header: DataChunkHeader = DataChunkHeader::new(
+                    pull_header.source_pid(),
+                    pull_header.source_tid(),
+                    pull_header.destination_pid(),
+                    pull_header.destination_tid(),
+                    pull_header.data_addr(),
+                    0,
+                );
+                counters.increment_io_thread_messages_received();
+                counters.increment_io_thread_messages_received();
+                if let Err(error) = vm_stdin_tx
+                    .blocking_send(IkcFrame::Bulk(DataChunk::new(empty_header, Vec::new())))
+                {
+                    error!(
+                        "standalone io_handler: failed to send empty bulk response (VM input \
+                         channel closed): {error}"
+                    );
+                }
+                let err: Message = Message::new(
+                    MessageSender::NETWORKD,
+                    MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
+                    MessageType::Ikc,
+                    Some(ErrorCode::InvalidMessage),
+                    [0u8; Message::PAYLOAD_SIZE],
+                );
+                if let Err(error) = vm_stdin_tx.blocking_send(IkcFrame::Message(err)) {
+                    error!(
+                        "standalone io_handler: failed to send recv error response (VM input \
+                         channel closed): {error}"
+                    );
+                }
+                return;
+            },
+        };
+        let response_header: DataChunkHeader = DataChunkHeader::new(
+            pull_header.source_pid(),
+            pull_header.source_tid(),
+            pull_header.destination_pid(),
+            pull_header.destination_tid(),
+            pull_header.data_addr(),
+            actual_len,
+        );
+        let response_bulk: DataChunk = DataChunk::new(response_header, data);
+
+        // Increment once for the bulk frame and once for the message response that follow.
+        counters.increment_io_thread_messages_received();
+        counters.increment_io_thread_messages_received();
+        if vm_stdin_tx
+            .blocking_send(IkcFrame::Bulk(response_bulk))
+            .is_err()
+        {
+            error!(
+                "standalone io_handler: failed to send recv bulk response (VM input channel \
+                 closed)"
+            );
+            return;
+        }
+        if vm_stdin_tx
+            .blocking_send(IkcFrame::Message(response))
+            .is_err()
+        {
+            error!("standalone io_handler: failed to send recv response (VM input channel closed)");
+        }
+    });
+
+    tokio::spawn(async move {
+        if let Err(e) = handle.await {
+            error!("standalone io_handler: recv task panicked: {e}");
+        }
+    });
+}
+
+///
+/// # Description
+///
 /// Sends a networking error response addressed to `tid`, releasing a guest blocked in
-/// `ipc::recv()` after a sendto/recvfrom request when the operation cannot proceed.
+/// `ipc::recv()` after a sendto/recvfrom/recv request when the operation cannot proceed.
 ///
 async fn send_networking_error(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
@@ -1463,7 +1604,7 @@ async fn send_networking_error(
 /// # Description
 ///
 /// Pushes an empty bulk transfer back to the guest to release a thread blocked in `ipc::pull()`
-/// when a `recvfrom()` cannot be served.
+/// when a pull-based networking request cannot be served.
 ///
 async fn send_empty_pull_response(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,

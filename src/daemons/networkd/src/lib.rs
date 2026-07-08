@@ -141,6 +141,29 @@ impl NetworkDaemon {
     ///
     /// # Description
     ///
+    /// Processes a `recv()` request whose payload is delivered out-of-band via a scatter/gather
+    /// pull.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Identifies the calling thread.
+    /// - `syscall_msg`: The parsed `ReceiveSocketRequest` system call message.
+    ///
+    /// # Returns
+    ///
+    /// A tuple with the response message and the payload to push back to the guest.
+    ///
+    pub fn handle_recv(
+        &self,
+        source: MessageSender,
+        syscall_msg: SystemCallMessage,
+    ) -> (Message, Vec<u8>) {
+        dispatch::dispatch_recv(&self.backend, source, syscall_msg)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Returns `true` if the given message header corresponds to a networking system call that
     /// this daemon handles.
     ///
