@@ -35,7 +35,7 @@ runs:
         for bench in ${BENCHMARKS}; do
           payload_args=()
           case "${bench}" in
-            warm-start|warm-start-vmm)
+            warm-start|warm-start-vmm|warm-start-socket)
               if [[ -n "${PAYLOAD_SIZE}" ]]; then
                 payload_args=(--payload-size "${PAYLOAD_SIZE}")
               fi

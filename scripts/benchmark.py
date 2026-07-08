@@ -32,6 +32,7 @@ PERCENTILES = ["p50", "p95", "p99"]
 ROUND_TRIP_SIZES = ["32B", "64B", "128B", "256B", "512B", "1KiB", "4KiB"]
 WARM_START_DEFAULT_SIZE = "32B"
 WARM_START_VMM_SIZES = ["32B", "1KiB", "4KiB", "8KiB", "16KiB", "32KiB", "64KiB"]
+WARM_START_SOCKET_SIZES = ["32B", "1KiB", "4KiB", "8KiB", "16KiB"]
 WARM_START_VMM_MIN_PAYLOAD_SIZE = 4
 X86_64_ARCH = "X64"
 
@@ -49,9 +50,11 @@ SNAPSHOT_RESTORE_BENCH = "snapshot-restore"
 VFS_BENCH = "vfs-bench"
 WARM_START_BENCH = "warm-start"
 WARM_START_VMM_BENCH = "warm-start-vmm"
+WARM_START_SOCKET_BENCH = "warm-start-socket"
 PAYLOAD_SIZE_BENCHMARKS = [
     WARM_START_BENCH,
     WARM_START_VMM_BENCH,
+    WARM_START_SOCKET_BENCH,
 ]
 SIZE_ANNOTATED_BENCHMARKS = {
     WARM_START_BENCH: [WARM_START_DEFAULT_SIZE],
@@ -59,6 +62,7 @@ SIZE_ANNOTATED_BENCHMARKS = {
 SIZE_SWEEP_BENCHMARKS = {
     ROUND_TRIP_LATENCY_BENCH: ROUND_TRIP_SIZES,
     WARM_START_VMM_BENCH: WARM_START_VMM_SIZES,
+    WARM_START_SOCKET_BENCH: WARM_START_SOCKET_SIZES,
 }
 SIZE_AWARE_BENCHMARKS = {
     **SIZE_ANNOTATED_BENCHMARKS,
@@ -1507,8 +1511,8 @@ if __name__ == "__main__":
         type=_positive_int,
         default=None,
         help=(
-            "Echo payload size in bytes for warm-start and "
-            "warm-start-vmm benchmarks. For warm-start-vmm, the size includes "
+            "Echo payload size in bytes for warm-start, warm-start-vmm, and "
+            "warm-start-socket benchmarks. For warm-start-vmm, the size includes "
             "the 4-byte length prefix. Defaults to nanvix-bench's built-in value."
         ),
     )
