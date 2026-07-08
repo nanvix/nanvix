@@ -109,6 +109,77 @@ static void test_inet_dgram_null_address(struct in_addr sin_addr)
     assert(ret == 0);
 }
 
+// Tests `send()`/`recv()` on a connected datagram socket over loopback. A message is sent to the
+// socket's own address and received back through the connected endpoint. This exercises the
+// pull-based payload transfer used by `recv()`, which delivers the payload out-of-band directly
+// into the user buffer rather than inline in the response message.
+static void test_inet_dgram_send_recv(struct in_addr sin_addr)
+{
+    struct sockaddr_in self;
+    int sockfd = new_bound_dgram_socket(sin_addr, &self);
+
+    // Connect the datagram socket to its own address so `send()`/`recv()` operate on it.
+    int ret = connect(sockfd, (const struct sockaddr *)&self, sizeof(self));
+    assert(ret == 0);
+
+    // Send a message through the connected socket.
+    const char message[] = "recv-pull";
+    const size_t message_len = sizeof(message) - 1;
+    ssize_t sent = send(sockfd, message, message_len, 0);
+    assert(sent == (ssize_t)message_len);
+
+    // Receive the message back through the connected socket. The receive buffer is larger than the
+    // payload, so `recv()` must report exactly the number of bytes delivered by the pull.
+    char buffer[16];
+    memset(buffer, 0, sizeof(buffer));
+    ssize_t received = recv(sockfd, buffer, sizeof(buffer), 0);
+    assert(received == (ssize_t)message_len);
+    assert(memcmp(buffer, message, message_len) == 0);
+
+    ret = close(sockfd);
+    assert(ret == 0);
+}
+
+// Tests that `recv()` can deliver a payload larger than a single page in one call. A multi-page
+// datagram is sent with `sendto()` -- which transfers the whole datagram atomically through a
+// single scatter/gather push -- to the socket's own address, then received back with one `recv()`.
+// This exercises the multi-page scatter/gather pull that the raised `MAX_DATA_SIZE` enables: before
+// the limit was lifted every transfer was capped at one page, so `recv()` could not return this
+// many bytes in a single call.
+static void test_inet_dgram_recv_large(struct in_addr sin_addr)
+{
+    // A three-page payload: comfortably above the old single-page limit, and well within both the
+    // scatter/gather ceiling and the socket receive buffer.
+    enum { ONE_PAGE = 4096, PAYLOAD_SIZE = 3 * ONE_PAGE };
+    static unsigned char sndbuf[PAYLOAD_SIZE];
+    static unsigned char rcvbuf[PAYLOAD_SIZE + ONE_PAGE];
+
+    struct sockaddr_in self;
+    int sockfd = new_bound_dgram_socket(sin_addr, &self);
+
+    // Fill the payload with a position-dependent pattern so truncation or reordering is detectable.
+    for (size_t i = 0; i < PAYLOAD_SIZE; i++) {
+        sndbuf[i] = (unsigned char)((i * 31u + 7u) & 0xFFu);
+    }
+
+    // `sendto()` delivers the whole datagram in a single push, so the peer receives one
+    // PAYLOAD_SIZE-byte datagram rather than page-sized fragments.
+    ssize_t sent =
+        sendto(sockfd, sndbuf, PAYLOAD_SIZE, 0, (const struct sockaddr *)&self, sizeof(self));
+    assert(sent == (ssize_t)PAYLOAD_SIZE);
+
+    // A single `recv()` must return the entire multi-page datagram. The receive buffer is larger
+    // than the datagram, so the reported count reflects the bytes actually delivered by the pull.
+    memset(rcvbuf, 0, sizeof(rcvbuf));
+    ssize_t received = recv(sockfd, rcvbuf, sizeof(rcvbuf), 0);
+    assert(received == (ssize_t)PAYLOAD_SIZE);
+    assert(received > (ssize_t)ONE_PAGE);
+    assert(memcmp(rcvbuf, sndbuf, PAYLOAD_SIZE) == 0);
+
+    int ret = close(sockfd);
+    assert(ret == 0);
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -137,4 +208,10 @@ void test_inet_sockets(in_port_t sin_port, struct in_addr sin_addr)
     // Exercise datagram sendto()/recvfrom() over loopback.
     test_inet_dgram_sendto_recvfrom(sin_addr);
     test_inet_dgram_null_address(sin_addr);
+
+    // Exercise connected-datagram send()/recv() over loopback.
+    test_inet_dgram_send_recv(sin_addr);
+
+    // Exercise a multi-page recv() that returns more than one page in a single call.
+    test_inet_dgram_recv_large(sin_addr);
 }
