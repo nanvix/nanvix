@@ -164,10 +164,6 @@ pub fn dispatch_message(
             let request: ListenSocketRequest = ListenSocketRequest::from_bytes(syscall_msg.payload);
             Some(vec![do_listen(backend, tid, request)])
         },
-        SystemCallMessageHeader::SendSocketRequest => {
-            let request: SendSocketRequest = SendSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_send(backend, tid, request)])
-        },
         SystemCallMessageHeader::ShutdownSocketRequest => {
             let request: ShutdownSocketRequest =
                 ShutdownSocketRequest::from_bytes(syscall_msg.payload);
@@ -175,6 +171,34 @@ pub fn dispatch_message(
         },
         _ => None,
     }
+}
+
+///
+/// # Description
+///
+/// Dispatches a `send()` request whose payload was delivered out-of-band via a scatter/gather
+/// push.
+///
+/// # Parameters
+///
+/// - `backend`: Reference to the networking backend.
+/// - `source`: The message source (identifies the calling thread).
+/// - `syscall_msg`: The parsed `SendSocketRequest` system call message.
+/// - `data`: The payload pulled from the caller.
+///
+/// # Returns
+///
+/// The response message to send back to the guest.
+///
+pub fn dispatch_send(
+    backend: &NetBackend,
+    source: MessageSender,
+    syscall_msg: SystemCallMessage,
+    data: &[u8],
+) -> Message {
+    let tid: ThreadIdentifier = source.tid;
+    let request: SendSocketRequest = SendSocketRequest::from_bytes(syscall_msg.payload);
+    do_send(backend, tid, request, data)
 }
 
 ///
@@ -447,14 +471,19 @@ fn do_shutdown(
     }
 }
 
-fn do_send(backend: &NetBackend, tid: ThreadIdentifier, request: SendSocketRequest) -> Message {
-    trace!("networkd::send(): tid={tid:?}, request={request:?}");
-    match backend.send(
-        to_host_fd(request.sockfd),
-        &request.buffer,
-        request.count as usize,
-        request.flags,
-    ) {
+fn do_send(
+    backend: &NetBackend,
+    tid: ThreadIdentifier,
+    request: SendSocketRequest,
+    data: &[u8],
+) -> Message {
+    trace!("networkd::send(): tid={tid:?}, request={request:?}, data.len={}", data.len());
+    let count: usize = { request.count } as usize;
+    if data.len() != count {
+        return build_error(tid, ErrorCode::InvalidArgument);
+    }
+
+    match backend.send(to_host_fd(request.sockfd), data, count, request.flags) {
         Ok(count) => SendSocketResponse::build(tid, count as i32),
         Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),
         Err(NetError::Errno(code)) => build_error(tid, code),

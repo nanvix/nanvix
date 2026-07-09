@@ -622,6 +622,17 @@ async fn standalone_io_handler(
                         )
                         .await;
                     },
+                    SystemCallMessageHeader::SendSocketRequest => {
+                        handle_send_request(
+                            &mut vm_stdout_rx,
+                            &vm_stdin_tx,
+                            &network_daemon,
+                            msg.source,
+                            syscall_msg,
+                            &counters,
+                        )
+                        .await;
+                    },
                     SystemCallMessageHeader::SendToSocketRequest => {
                         handle_sendto_request(
                             &mut vm_stdout_rx,
@@ -1245,6 +1256,70 @@ async fn handle_read_request(
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
         error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
     }
+}
+
+///
+/// # Description
+///
+/// Handles a guest `SendSocketRequest` by consuming the subsequent push data frame and forwarding
+/// the payload to networkd on a blocking task, which sends the response back to the guest.
+///
+/// The push data frame must always be drained, even when networking is disabled, otherwise the
+/// IKC frame stream desynchronizes and subsequent requests are misinterpreted.
+///
+async fn handle_send_request(
+    vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    network_daemon: &Option<Arc<NetworkDaemon>>,
+    source: MessageSender,
+    syscall_msg: SystemCallMessage,
+    counters: &MessageCounters,
+) {
+    let tid: ThreadIdentifier = extract_tid(source);
+    trace!("standalone io_handler: handling SendSocketRequest (tid={tid:?})");
+
+    // Wait for the push data frame that the guest's `ipc::push()` emits after the request.
+    let data: Vec<u8> = match vm_stdout_rx.recv().await {
+        Some(IkcFrame::Bulk(bulk)) => bulk.into_data(),
+        other => {
+            error!(
+                "standalone io_handler: expected bulk frame after SendSocketRequest, got {:?}",
+                other.as_ref().map(|f| f.frame_type_byte())
+            );
+            send_networking_error(vm_stdin_tx, tid, counters).await;
+            return;
+        },
+    };
+
+    let network_daemon: Arc<NetworkDaemon> = match network_daemon {
+        Some(nd) => nd.clone(),
+        None => {
+            warn!("standalone io_handler: networking not allowed, rejecting send (tid={tid:?})");
+            send_networking_error(vm_stdin_tx, tid, counters).await;
+            return;
+        },
+    };
+
+    // Run the (potentially blocking) backend call on its own thread so it does not stall the I/O
+    // handler loop, mirroring `spawn_networking_task`.
+    let vm_stdin_tx: mpsc::Sender<IkcFrame> = vm_stdin_tx.clone();
+    let counters: MessageCounters = counters.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+        let response: Message = network_daemon.handle_send(source, syscall_msg, &data);
+        counters.increment_io_thread_messages_received();
+        if vm_stdin_tx
+            .blocking_send(IkcFrame::Message(response))
+            .is_err()
+        {
+            error!("standalone io_handler: failed to send send response (VM input channel closed)");
+        }
+    });
+
+    tokio::spawn(async move {
+        if let Err(e) = handle.await {
+            error!("standalone io_handler: send task panicked: {e}");
+        }
+    });
 }
 
 ///

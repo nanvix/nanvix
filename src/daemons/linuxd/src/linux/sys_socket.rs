@@ -288,15 +288,21 @@ pub fn do_send<T>(
     syscall_table: &SyscallTable<T>,
     tid: ThreadIdentifier,
     request: SendSocketRequest,
+    data: &[u8],
 ) -> Result<Message, WorkerThreadError> {
-    trace!("send(): tid={tid:?}, request={request:?}");
+    trace!("send(): tid={tid:?}, request={request:?}, data.len={}", data.len());
 
     let net_backend = match &syscall_table.net_backend {
         Some(backend) => backend,
         None => return Ok(crate::build_error(tid, ErrorCode::OperationNotSupported)),
     };
 
-    match net_backend.send(request.sockfd, &request.buffer, request.count as usize, request.flags) {
+    let count: usize = { request.count } as usize;
+    if data.len() != count {
+        return Ok(crate::build_error(tid, ErrorCode::InvalidArgument));
+    }
+
+    match net_backend.send(request.sockfd, data, count, request.flags) {
         Ok(count) => Ok(SendSocketResponse::build(tid, count as i32)),
         Err(NetError::Interrupted) => Err(WorkerThreadError::Interrupted),
         Err(NetError::Errno(code)) => Ok(crate::build_error(tid, code)),

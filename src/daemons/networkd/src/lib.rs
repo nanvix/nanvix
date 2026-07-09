@@ -93,6 +93,31 @@ impl NetworkDaemon {
     ///
     /// # Description
     ///
+    /// Processes a `send()` request whose payload was delivered out-of-band via a scatter/gather
+    /// push.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Identifies the calling thread.
+    /// - `syscall_msg`: The parsed `SendSocketRequest` system call message.
+    /// - `data`: The payload pulled from the caller.
+    ///
+    /// # Returns
+    ///
+    /// The response message to send back to the guest.
+    ///
+    pub fn handle_send(
+        &self,
+        source: MessageSender,
+        syscall_msg: SystemCallMessage,
+        data: &[u8],
+    ) -> Message {
+        dispatch::dispatch_send(&self.backend, source, syscall_msg, data)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Processes a `sendto()` request whose datagram payload was delivered out-of-band via a
     /// scatter/gather push.
     ///
