@@ -993,19 +993,16 @@ fn spawn_networking_task(
     trace!("standalone io_handler: spawning networking task");
 
     let handle = tokio::task::spawn_blocking(move || match network_daemon.handle_message(msg) {
-        Some(responses) => {
-            for response in responses {
-                counters.increment_io_thread_messages_received();
-                if vm_stdin_tx
-                    .blocking_send(IkcFrame::Message(response))
-                    .is_err()
-                {
-                    error!(
-                        "standalone io_handler: failed to send networking response (VM input \
-                         channel closed)"
-                    );
-                    return;
-                }
+        Some(response) => {
+            counters.increment_io_thread_messages_received();
+            if vm_stdin_tx
+                .blocking_send(IkcFrame::Message(response))
+                .is_err()
+            {
+                error!(
+                    "standalone io_handler: failed to send networking response (VM input channel \
+                     closed)"
+                );
             }
         },
         None => {

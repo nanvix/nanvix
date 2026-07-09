@@ -105,20 +105,21 @@ pub fn is_networking_header(header: &SystemCallMessageHeader) -> bool {
 /// # Parameters
 ///
 /// - `backend`: Reference to the networking backend.
+/// - `filter`: Host egress filter applied to guest `connect()` destinations.
 /// - `source`: The message source (identifies the calling thread).
 /// - `syscall_msg`: The parsed system call message.
 ///
 /// # Returns
 ///
-/// A vector of response messages on success, or `None` if the message is not a networking
-/// message.
+/// The response message on success. Returns `None` if the message source has no thread
+/// identifier or if the message is not a networking message.
 ///
 pub fn dispatch_message(
     backend: &NetBackend,
     filter: &HostFilter,
     source: MessageSender,
     syscall_msg: SystemCallMessage,
-) -> Option<Vec<Message>> {
+) -> Option<Message> {
     let tid: ThreadIdentifier = source.tid;
     if tid.is_none() {
         error!("networkd::dispatch(): message source has no thread id");
@@ -128,46 +129,46 @@ pub fn dispatch_message(
     match syscall_msg.header {
         SystemCallMessageHeader::AcceptSocketRequest => {
             let request: AcceptSocketRequest = AcceptSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_accept(backend, tid, request)])
+            Some(do_accept(backend, tid, request))
         },
         SystemCallMessageHeader::BindSocketRequest => {
             let request: BindSocketRequest = BindSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_bind(backend, tid, request)])
+            Some(do_bind(backend, tid, request))
         },
         SystemCallMessageHeader::CloseRequest => {
             let request: CloseRequest = CloseRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_close(backend, tid, request)])
+            Some(do_close(backend, tid, request))
         },
         SystemCallMessageHeader::ConnectSocketRequest => {
             let request: ConnectSocketRequest =
                 ConnectSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_connect(backend, filter, tid, request)])
+            Some(do_connect(backend, filter, tid, request))
         },
         SystemCallMessageHeader::CreateSocketPairRequest => {
             let request: CreateSocketPairRequest =
                 CreateSocketPairRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_socketpair(backend, tid, request)])
+            Some(do_socketpair(backend, tid, request))
         },
         SystemCallMessageHeader::CreateSocketRequest => {
             let request: CreateSocketRequest = CreateSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_socket(backend, tid, request)])
+            Some(do_socket(backend, tid, request))
         },
         SystemCallMessageHeader::GetPeerNameRequest => {
             let request: GetPeerNameRequest = GetPeerNameRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_getpeername(backend, tid, request)])
+            Some(do_getpeername(backend, tid, request))
         },
         SystemCallMessageHeader::GetSockNameRequest => {
             let request: GetSockNameRequest = GetSockNameRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_getsockname(backend, tid, request)])
+            Some(do_getsockname(backend, tid, request))
         },
         SystemCallMessageHeader::ListenSocketRequest => {
             let request: ListenSocketRequest = ListenSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_listen(backend, tid, request)])
+            Some(do_listen(backend, tid, request))
         },
         SystemCallMessageHeader::ShutdownSocketRequest => {
             let request: ShutdownSocketRequest =
                 ShutdownSocketRequest::from_bytes(syscall_msg.payload);
-            Some(vec![do_shutdown(backend, tid, request)])
+            Some(do_shutdown(backend, tid, request))
         },
         _ => None,
     }

@@ -70,7 +70,7 @@ impl NetworkDaemon {
     /// # Description
     ///
     /// Processes a single IKC message containing a networking system call request and returns
-    /// the response message(s).
+    /// the response message.
     ///
     /// # Parameters
     ///
@@ -78,10 +78,12 @@ impl NetworkDaemon {
     ///
     /// # Returns
     ///
-    /// On success, returns a vector of response messages to send back to the guest.
-    /// On error (e.g., unrecognized header), returns `None`.
+    /// On success, returns the response message to send back to the guest.
+    /// Returns `None` if the payload cannot be parsed into a system call message, or if
+    /// [`dispatch::dispatch_message`] rejects the request (e.g., unrecognized header or
+    /// missing thread identifier).
     ///
-    pub fn handle_message(&self, msg: Message) -> Option<Vec<Message>> {
+    pub fn handle_message(&self, msg: Message) -> Option<Message> {
         let syscall_msg: SystemCallMessage = match SystemCallMessage::try_from_bytes(msg.payload) {
             Ok(m) => m,
             Err(_) => return None,
