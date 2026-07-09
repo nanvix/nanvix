@@ -181,6 +181,13 @@ POSIX_TEST_PIE_test-c-dlfcn-selflink := yes
 # (including `__nanvix_main`) in `.dynsym` so dlinit() seeds the loader's global
 # symbol table and the dlopen("libc.so") relocation succeeds.
 POSIX_TEST_PIE_test-c-dlfcn-searchpath := yes
+# dlfcn-scope-c links PIE + --export-dynamic so the main executable's
+# `scope_main_export` helper lands in `.dynsym` and is seeded into the loader's
+# global scope by dlinit(). The suite then asserts that dlsym(handle, ...) does
+# NOT resolve that global-only symbol (nor an RTLD_GLOBAL library's symbol)
+# through a specific handle -- only its own load group (self + DT_NEEDED). This
+# is the acceptance test for handle-scoped lookup.
+POSIX_TEST_PIE_test-c-dlfcn-scope := yes
 
 # Per-suite hooks consumed by POSIX_TEST_RULE: extra link-time prerequisites and
 # extra linker arguments appended AFTER the libc/libm `--end-group`. Used by
@@ -329,6 +336,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
@@ -346,6 +354,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HASH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_SCOPE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HELLO_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SEARCHPATH_SEED)
@@ -476,6 +485,63 @@ $$(POSIX_TEST_RAMFS_IMG_$(1)): $$(POSIX_TEST_SOLIB_DIR_$(1))/libprovider.so \
 endef
 
 $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(eval $(call POSIX_TEST_SOLIB_RULE,$(suite))))
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-scope-c: load-group-only dlsym(handle) fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+#   libfoo.so -> libdep.so        (DT_NEEDED: scope_dep_value lives in the group)
+#   libother.so                   (isolated; dlopen'd with RTLD_GLOBAL at run time)
+#
+# libfoo.so is the object the test obtains a handle to. It carries a DT_NEEDED
+# edge on libdep.so (it calls scope_dep_value()), so both scope_foo_value() and
+# scope_dep_value() are in libfoo.so's load group and must resolve through
+# dlsym(libfoo_handle, ...). libother.so has NO relationship with libfoo.so; the
+# suite dlopen()s it with RTLD_GLOBAL to publish scope_other_value() into the
+# loader's global scope. The acceptance criterion is that neither
+# scope_other_value() (RTLD_GLOBAL) nor the main executable's scope_main_export()
+# (--export-dynamic) is reachable through libfoo.so's handle -- only through
+# RTLD_DEFAULT. Built with the same i686 freestanding toolchain as the
+# global/needed/diamond fixtures above; the DT_NEEDED edge is produced by linking
+# libfoo.so against libdep.so with `-L<dir> -ldep` (the linker records the found
+# libdep.so as a bare DT_NEEDED entry, resolved through the loader's default
+# lib/ search path).
+POSIX_TEST_SCOPE_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-scope/libs
+POSIX_TEST_SCOPE_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-scope-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-scope.img
+
+# Dependency: libdep.so (no dependencies).
+$(POSIX_TEST_SCOPE_DIR)/libdep.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-scope/libs/dep.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-scope-c/libdep.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Handle library: DT_NEEDED libdep.so (calls scope_dep_value()).
+$(POSIX_TEST_SCOPE_DIR)/libfoo.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-scope/libs/foo.c \
+		$(POSIX_TEST_SCOPE_DIR)/libdep.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-scope-c/libfoo.so (DT_NEEDED libdep.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_SCOPE_DIR) -ldep -o $@
+
+# Isolated library published with RTLD_GLOBAL at run time (no dependencies).
+$(POSIX_TEST_SCOPE_DIR)/libother.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-scope/libs/other.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-scope-c/libother.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Per-suite RAMFS image carrying all three fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope): $(POSIX_TEST_SCOPE_DIR)/libdep.so \
+		$(POSIX_TEST_SCOPE_DIR)/libfoo.so \
+		$(POSIX_TEST_SCOPE_DIR)/libother.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_SCOPE_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_SCOPE_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_SCOPE_DIR)/libdep.so $(POSIX_TEST_SCOPE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_SCOPE_DIR)/libfoo.so $(POSIX_TEST_SCOPE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_SCOPE_DIR)/libother.so $(POSIX_TEST_SCOPE_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_SCOPE_SEED)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-diamond-c: four-library diamond DT_NEEDED fixture.
@@ -1087,6 +1153,7 @@ POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup) \
