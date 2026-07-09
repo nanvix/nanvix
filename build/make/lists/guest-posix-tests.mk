@@ -31,6 +31,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-needed \
 	test-c-dlfcn-pie \
 	test-c-dlfcn-refcount \
+	test-c-dlfcn-scope \
 	test-c-dlfcn-searchpath \
 	test-c-dlfcn-selflink \
 	test-c-dlfcn-startup \
