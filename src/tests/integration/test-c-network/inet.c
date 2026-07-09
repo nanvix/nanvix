@@ -10,10 +10,12 @@
 #include "common.h"
 #include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
 #include <netinet/in.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 //==================================================================================================
@@ -180,6 +182,153 @@ static void test_inet_dgram_recv_large(struct in_addr sin_addr)
     assert(ret == 0);
 }
 
+// Tests scatter-gather `sendmsg()`/`recvmsg()` with an explicit destination address. A message
+// split across multiple iovecs is sent to the socket's own address and received back into a
+// different set of iovecs, validating payload reassembly and the reported source address.
+static void test_inet_dgram_sendmsg_recvmsg(struct in_addr sin_addr)
+{
+    struct sockaddr_in self;
+    int sockfd = new_bound_dgram_socket(sin_addr, &self);
+
+    // Assemble the outgoing message from three separate buffers.
+    const char part0[] = "hello, ";
+    const char part1[] = "scatter-";
+    const char part2[] = "gather";
+    const size_t total_len = (sizeof(part0) - 1) + (sizeof(part1) - 1) + (sizeof(part2) - 1);
+    struct iovec send_iov[3] = {
+        {.iov_base = (void *)part0, .iov_len = sizeof(part0) - 1},
+        {.iov_base = (void *)part1, .iov_len = sizeof(part1) - 1},
+        {.iov_base = (void *)part2, .iov_len = sizeof(part2) - 1},
+    };
+    struct msghdr send_msg;
+    memset(&send_msg, 0, sizeof(send_msg));
+    send_msg.msg_name = &self;
+    send_msg.msg_namelen = sizeof(self);
+    send_msg.msg_iov = send_iov;
+    send_msg.msg_iovlen = 3;
+
+    ssize_t sent = sendmsg(sockfd, &send_msg, 0);
+    assert(sent == (ssize_t)total_len);
+
+    // Receive the datagram back, scattering it across two buffers and capturing the source address.
+    char head[8];
+    char tail[32];
+    memset(head, 0, sizeof(head));
+    memset(tail, 0, sizeof(tail));
+    struct iovec recv_iov[2] = {
+        {.iov_base = head, .iov_len = sizeof(head)},
+        {.iov_base = tail, .iov_len = sizeof(tail)},
+    };
+    struct sockaddr_in source;
+    memset(&source, 0, sizeof(source));
+    struct msghdr recv_msg;
+    memset(&recv_msg, 0, sizeof(recv_msg));
+    recv_msg.msg_name = &source;
+    recv_msg.msg_namelen = sizeof(source);
+    recv_msg.msg_iov = recv_iov;
+    recv_msg.msg_iovlen = 2;
+
+    ssize_t received = recvmsg(sockfd, &recv_msg, 0);
+    assert(received == (ssize_t)total_len);
+
+    // Reassemble the payload from the scatter buffers and validate it.
+    const char expected[] = "hello, scatter-gather";
+    char assembled[64];
+    memset(assembled, 0, sizeof(assembled));
+    memcpy(assembled, head, sizeof(head));
+    memcpy(assembled + sizeof(head), tail, total_len - sizeof(head));
+    assert(memcmp(assembled, expected, total_len) == 0);
+
+    // The message header must report the source address of the datagram (loopback self-send).
+    assert(recv_msg.msg_namelen == sizeof(source));
+    assert(source.sin_family == AF_INET);
+    assert(source.sin_addr.s_addr == self.sin_addr.s_addr);
+    assert(source.sin_port == self.sin_port);
+
+    // No ancillary data was delivered.
+    assert(recv_msg.msg_controllen == 0);
+
+    int ret = close(sockfd);
+    assert(ret == 0);
+}
+
+// Tests scatter-gather `sendmsg()`/`recvmsg()` with a NULL address on a connected socket. When no
+// address is supplied, the calls must behave like `send()`/`recv()` while still honoring the
+// scatter-gather buffers.
+static void test_inet_dgram_sendmsg_recvmsg_connected(struct in_addr sin_addr)
+{
+    struct sockaddr_in self;
+    int sockfd = new_bound_dgram_socket(sin_addr, &self);
+
+    // Connect the datagram socket to its own address so a NULL destination is valid.
+    int ret = connect(sockfd, (const struct sockaddr *)&self, sizeof(self));
+    assert(ret == 0);
+
+    // With a NULL address, `sendmsg()` behaves like `send()`.
+    const char part0[] = "msg-";
+    const char part1[] = "connected";
+    const size_t total_len = (sizeof(part0) - 1) + (sizeof(part1) - 1);
+    struct iovec send_iov[2] = {
+        {.iov_base = (void *)part0, .iov_len = sizeof(part0) - 1},
+        {.iov_base = (void *)part1, .iov_len = sizeof(part1) - 1},
+    };
+    struct msghdr send_msg;
+    memset(&send_msg, 0, sizeof(send_msg));
+    send_msg.msg_iov = send_iov;
+    send_msg.msg_iovlen = 2;
+
+    ssize_t sent = sendmsg(sockfd, &send_msg, 0);
+    assert(sent == (ssize_t)total_len);
+
+    // With a NULL address, `recvmsg()` behaves like `recv()`.
+    char buffer[32];
+    memset(buffer, 0, sizeof(buffer));
+    struct iovec recv_iov[1] = {
+        {.iov_base = buffer, .iov_len = sizeof(buffer)},
+    };
+    struct msghdr recv_msg;
+    memset(&recv_msg, 0, sizeof(recv_msg));
+    recv_msg.msg_iov = recv_iov;
+    recv_msg.msg_iovlen = 1;
+
+    ssize_t received = recvmsg(sockfd, &recv_msg, 0);
+    assert(received == (ssize_t)total_len);
+    assert(memcmp(buffer, "msg-connected", total_len) == 0);
+
+    ret = close(sockfd);
+    assert(ret == 0);
+}
+
+// Tests that `sendmsg()` does not silently ignore ancillary data. Control messages are not
+// supported yet, so a caller that provides a control buffer must receive an explicit error.
+static void test_inet_dgram_sendmsg_control_unsupported(struct in_addr sin_addr)
+{
+    struct sockaddr_in self;
+    int sockfd = new_bound_dgram_socket(sin_addr, &self);
+
+    const char message[] = "control";
+    struct iovec send_iov[1] = {
+        {.iov_base = (void *)message, .iov_len = sizeof(message) - 1},
+    };
+    char control[sizeof(int)];
+    struct msghdr send_msg;
+    memset(&send_msg, 0, sizeof(send_msg));
+    send_msg.msg_name = &self;
+    send_msg.msg_namelen = sizeof(self);
+    send_msg.msg_iov = send_iov;
+    send_msg.msg_iovlen = 1;
+    send_msg.msg_control = control;
+    send_msg.msg_controllen = sizeof(control);
+
+    errno = 0;
+    ssize_t sent = sendmsg(sockfd, &send_msg, 0);
+    assert(sent == -1);
+    assert(errno == EOPNOTSUPP);
+
+    int ret = close(sockfd);
+    assert(ret == 0);
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -214,4 +363,9 @@ void test_inet_sockets(in_port_t sin_port, struct in_addr sin_addr)
 
     // Exercise a multi-page recv() that returns more than one page in a single call.
     test_inet_dgram_recv_large(sin_addr);
+
+    // Exercise scatter-gather sendmsg()/recvmsg() over loopback.
+    test_inet_dgram_sendmsg_recvmsg(sin_addr);
+    test_inet_dgram_sendmsg_recvmsg_connected(sin_addr);
+    test_inet_dgram_sendmsg_control_unsupported(sin_addr);
 }

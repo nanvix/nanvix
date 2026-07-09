@@ -285,6 +285,7 @@ fn map_ident_to_c(ident: &str) -> Option<&'static str> {
         "sockaddr_un" => "struct sockaddr_un",
         "in_addr" => "struct in_addr",
         "iovec" => "struct iovec",
+        "msghdr" => "struct msghdr",
         "timeval" => "struct timeval",
         "tms" => "struct tms",
         "sched_param" => "struct sched_param",
