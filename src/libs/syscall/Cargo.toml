@@ -49,7 +49,6 @@ dlfcn = ["dep:sysalloc", "dep:elf", "dep:goblin"]
 rustc-dep-of-std = [
     "core",
     "alloc",
-    "sigaction",
     "arch/rustc-dep-of-std",
     "libc_stdlib/rustc-dep-of-std",
     "cfg-if/rustc-dep-of-std",
@@ -65,10 +64,6 @@ rustc-dep-of-std = [
     "spin/rustc-dep-of-std",
 ]
 standalone = ["dep:sysalloc", "dep:proc"]
-
-# TODO (#798): remove these feature flags once the signal module is stable.
-sigaction = []
-signal = ["sigaction"]
 
 # Logging
 error = ["syslog/error"]

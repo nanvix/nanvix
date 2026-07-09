@@ -6,7 +6,7 @@
 //==================================================================================================
 
 pub mod kill;
-#[cfg(feature = "sigaction")]
+#[cfg(feature = "rustc-dep-of-std")]
 pub mod sigaction;
-#[cfg(feature = "signal")]
+#[cfg(feature = "rustc-dep-of-std")]
 pub mod sigprocmask;
