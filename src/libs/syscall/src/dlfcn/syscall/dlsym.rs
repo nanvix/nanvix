@@ -43,7 +43,12 @@ pub fn dlsym(handle: &DlHandle, symbol: &str) -> Result<VirtualAddress, Error> {
         Some(dlfile) => {
             let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
 
-            match dlfile.lookup(symbol)? {
+            // POSIX: `dlsym(handle, name)` searches only the object's load
+            // group (self + DT_NEEDED dependencies), never the global scope.
+            // Global-scope lookups are reserved for the RTLD_DEFAULT /
+            // dlopen(NULL) handle, which is serviced by the DlHandle::GLOBAL
+            // branch above.
+            match dlfile.lookup_load_group(symbol)? {
                 Some((base, offset)) => Ok(VirtualAddress::from_raw_value(base + offset)),
                 None => {
                     let reason: &str = "symbol not found";

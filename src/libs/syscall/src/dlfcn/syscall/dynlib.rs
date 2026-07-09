@@ -822,39 +822,61 @@ impl DynamicLibrary {
         None
     }
 
-    /// Looks up a symbol in the dynamic library.
+    /// Looks up a symbol for **relocation resolution**, with global fallback.
     ///
     /// Search order:
     /// 1. The library itself (defined symbols).
-    /// 2. The library's DT_NEEDED dependency tree (recursive, no global fallback).
-    /// 3. The global symbol table (main executable symbols).
+    /// 2. The library's DT_NEEDED dependency tree (recursive).
+    /// 3. The global symbol table (main executable + `RTLD_GLOBAL` symbols).
     ///
-    /// NOTE: Step 3 is needed for relocation resolution (symbols from the main
-    /// executable). Strictly, POSIX `dlsym(handle, ...)` should only search
-    /// the object's load group (steps 1-2), not the global scope. Separating
-    /// the two lookup paths is tracked in #2130.
+    /// Step 3 is required when binding a library's relocations against symbols
+    /// exported by the main executable (`--export-dynamic`) or by libraries
+    /// promoted with `RTLD_GLOBAL`. This global fallback is correct for
+    /// relocation resolution but MUST NOT be used to service
+    /// `dlsym(handle, ...)`: per POSIX, a request against a specific handle
+    /// only searches the object's own load group. `dlsym()` therefore calls
+    /// [`lookup_load_group`](Self::lookup_load_group) instead.
     pub fn lookup(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
         ::syslog::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
-        // Search self and dependency tree without global fallback.
-        // The visited set tracks which dependencies have been traversed in
-        // this lookup to avoid re-searching in diamond-shaped graphs and to
-        // prevent infinite recursion on cyclic dependencies.
-        let mut visited: BTreeSet<usize> = BTreeSet::new();
-        if let Some(result) = self.lookup_in_load_group(symbol_name, &mut visited)? {
+        // Search self and dependency tree (the load group) without global
+        // fallback first.
+        if let Some(result) = self.lookup_load_group(symbol_name)? {
             return Ok(Some(result));
         }
 
         // Fall back to the global symbol table (symbols from the main
-        // executable, registered via --export-dynamic). This fallback is
-        // performed only once at the top level, not during recursive
-        // dependency traversal.
+        // executable, registered via --export-dynamic, plus any library
+        // promoted with RTLD_GLOBAL). This fallback is performed only once at
+        // the top level, not during recursive dependency traversal.
         if let Some(addr) = super::global_symbol_lookup(symbol_name) {
             // Global symbols are absolute addresses, so base is 0.
             return Ok(Some((0, addr)));
         }
 
         Ok(None)
+    }
+
+    /// Looks up a symbol in this library's **load group only**: the object
+    /// itself plus its `DT_NEEDED` dependency tree — with NO global-scope
+    /// fallback.
+    ///
+    /// This is the lookup path POSIX mandates for `dlsym(handle, name)`: a
+    /// request against a specific handle must resolve only within the object
+    /// and the objects it was loaded with, never the global scope. Using the
+    /// global-fallback [`lookup`](Self::lookup) here would incorrectly resolve
+    /// symbols exported by the main executable (`--export-dynamic`) or by other
+    /// libraries promoted with `RTLD_GLOBAL`. Global-scope searches are reserved
+    /// for the `RTLD_DEFAULT` / `dlopen(NULL)` handle, which `dlsym()` routes to
+    /// `global_symbol_lookup()` separately.
+    pub fn lookup_load_group(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
+        ::syslog::trace!("lookup_load_group(): symbol={}, dlname={:?}", symbol_name, self.filename);
+
+        // The visited set tracks which dependencies have been traversed in
+        // this lookup to avoid re-searching in diamond-shaped graphs and to
+        // prevent infinite recursion on cyclic dependencies.
+        let mut visited: BTreeSet<usize> = BTreeSet::new();
+        self.lookup_in_load_group(symbol_name, &mut visited)
     }
 
     /// Searches for a symbol in this library and its dependency tree only.
