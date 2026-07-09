@@ -30,6 +30,12 @@
     // Rust Analyzer Settings
     //==============================================================================================
     "rust-analyzer.cargo.allTargets": false,
+    "rust-analyzer.cargo.extraEnv": {
+        "MEMORY_SIZE_BYTES": "268435456"
+    },
+    "rust-analyzer.check.extraEnv": {
+        "MEMORY_SIZE_BYTES": "268435456"
+    },
     "rust-analyzer.checkOnSave": true,
     "rust-analyzer.check.overrideCommand": [
         "./z",
