@@ -20,6 +20,7 @@ use ::sys::{
         MessageReceiver,
         MessageSender,
         MessageType,
+        SG_BULK_MAX_BYTES,
     },
     pm::{
         ProcessIdentifier,
@@ -47,9 +48,9 @@ pub struct SendToSocketRequest {
 
 impl SendToSocketRequest {
     /// Maximum number of payload bytes a single `sendto()` datagram may carry. The data travels
-    /// out-of-band via a scatter/gather push, so it is bounded by a single page rather than by the
-    /// IPC message payload.
-    pub const MAX_DATA_SIZE: usize = ::arch::mem::PAGE_SIZE;
+    /// out-of-band via a scatter/gather push, so it is bounded by the maximum scatter/gather
+    /// transfer size rather than by a single page or by the IPC message payload.
+    pub const MAX_DATA_SIZE: usize = SG_BULK_MAX_BYTES;
 
     pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
