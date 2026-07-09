@@ -55,6 +55,7 @@ ALL_POSIX_TESTS := \
 	test-c-pathconf \
 	test-c-posix-timers \
 	test-c-regex \
+	test-c-send \
 	test-c-setjmp \
 	test-c-sigmask \
 	test-c-stdio \
