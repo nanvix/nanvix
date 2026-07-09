@@ -330,6 +330,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-send"
+program = "./bin/test-c-send.initrd"
+extra_nanvixd_args = "-allow-host-networking"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-setjmp"
 program = "./bin/test-c-setjmp.initrd"
 expected_exit_code = 0

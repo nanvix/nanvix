@@ -552,6 +552,7 @@ impl WorkerThreadHandle {
                                 SystemCallMessageHeader::CloseRequest
                                 | SystemCallMessageHeader::ReadRequest
                                 | SystemCallMessageHeader::ReceiveSocketRequest
+                                | SystemCallMessageHeader::SendSocketRequest
                                 | SystemCallMessageHeader::WriteRequest => {
                                     match Self::handle_special_messages(
                                         &syscall_table,
@@ -599,7 +600,6 @@ impl WorkerThreadHandle {
                                 | SystemCallMessageHeader::PartialReadRequest
                                 | SystemCallMessageHeader::PartialWriteRequest
                                 | SystemCallMessageHeader::SeekRequest
-                                | SystemCallMessageHeader::SendSocketRequest
                                 | SystemCallMessageHeader::ShutdownSocketRequest
                                 | SystemCallMessageHeader::TimesRequest
                                 | SystemCallMessageHeader::PipeRequest
@@ -786,6 +786,10 @@ impl WorkerThreadHandle {
                     cancel_rx,
                 )
             },
+            SystemCallMessageHeader::SendSocketRequest => {
+                let request: SendSocketRequest = SendSocketRequest::from_bytes(message.payload);
+                Self::handle_send_request(syscall_table, source, request, channel_rx, cancel_rx)
+            },
             header => {
                 // The following statement is unreachable, because the matching logic in this
                 // function should match the one in the `Self::run()` function.
@@ -902,10 +906,6 @@ impl WorkerThreadHandle {
             SystemCallMessageHeader::SeekRequest => {
                 let request: SeekRequest = SeekRequest::from_bytes(message.payload);
                 unistd::do_lseek(&syscall_table, source, request)
-            },
-            SystemCallMessageHeader::SendSocketRequest => {
-                let request: SendSocketRequest = SendSocketRequest::from_bytes(message.payload);
-                sys_socket::do_send(&syscall_table, source, request)
             },
             SystemCallMessageHeader::ShutdownSocketRequest => {
                 let request: ShutdownSocketRequest =
@@ -1408,6 +1408,56 @@ impl WorkerThreadHandle {
                 }
             }
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Handles a socket `send()` request.  Receives the bulk data that carries the payload from
+    /// the channel, then forwards it to the networking backend.  The payload travels out-of-band
+    /// via a page-bounded scatter/gather push, mirroring [`Self::handle_write_request`].
+    ///
+    /// # Parameters
+    ///
+    /// - `syscall_table`: Shared syscall dispatch table.
+    /// - `source`: Thread identifier of the requesting guest thread.
+    /// - `request`: The send request payload.
+    /// - `channel_rx`: Worker command channel receiver (for bulk data).
+    /// - `cancel_rx`: Watch receiver used to detect cancellation.
+    ///
+    /// # Returns
+    ///
+    /// The response [`Message`] on success, or a [`WorkerThreadError`] on failure.
+    ///
+    fn handle_send_request<T>(
+        syscall_table: &SyscallTable<T>,
+        source: ThreadIdentifier,
+        request: SendSocketRequest,
+        channel_rx: &mut Receiver<VenvCommand>,
+        cancel_rx: &mut watch::Receiver<bool>,
+    ) -> Result<Message, WorkerThreadError> {
+        trace!("handle_send_request(): source={source:?}, request={request:?}");
+
+        // Receive bulk data that carries the actual send payload. A timeout prevents the worker
+        // thread from blocking forever if the guest VM crashes mid-protocol.
+        let bulk_data: Vec<u8> =
+            match Self::recv_with_timeout(channel_rx, BULK_DATA_TIMEOUT, cancel_rx) {
+                Ok(VenvCommand::BulkData(bulk)) => bulk.into_data(),
+                Ok(VenvCommand::Shutdown) => {
+                    debug!("handle_send_request(): received shutdown while waiting for bulk data");
+                    return Err(WorkerThreadError::Interrupted);
+                },
+                Ok(VenvCommand::Work(_)) => {
+                    error!("handle_send_request(): expected bulk data, got IKC message");
+                    return Ok(build_error(source, ErrorCode::InvalidMessage));
+                },
+                Err(e) => {
+                    error!("handle_send_request(): failed to receive bulk data");
+                    return Err(e);
+                },
+            };
+
+        sys_socket::do_send(syscall_table, source, request, &bulk_data)
     }
 
     ///

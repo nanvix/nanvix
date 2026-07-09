@@ -37,22 +37,28 @@ pub struct SendSocketRequest {
     pub sockfd: i32,
     pub count: u32,
     pub flags: i32,
-    pub buffer: [u8; Self::BUFFER_SIZE],
+    _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(SendSocketRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl SendSocketRequest {
-    pub const BUFFER_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
+    /// Maximum number of payload bytes a single `send()` transfer may carry. The data travels
+    /// out-of-band via a scatter/gather push, so it is bounded by a single page rather than by the
+    /// IPC message payload. A stream `send()` may transfer fewer bytes than requested, so a caller
+    /// with a larger buffer resubmits the remainder on the resulting short send.
+    pub const MAX_DATA_SIZE: usize = ::arch::mem::PAGE_SIZE;
+
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<i32>()
         - mem::size_of::<u32>()
         - mem::size_of::<i32>();
 
-    pub fn new(sockfd: i32, count: c_size_t, flags: i32, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
+    pub fn new(sockfd: i32, count: c_size_t, flags: i32) -> Self {
         Self {
             sockfd,
             count,
             flags,
-            buffer,
+            _padding: [0; Self::PADDING_SIZE],
         }
     }
 
@@ -64,14 +70,8 @@ impl SendSocketRequest {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(
-        tid: ThreadIdentifier,
-        sockfd: i32,
-        count: c_size_t,
-        flags: i32,
-        buffer: [u8; Self::BUFFER_SIZE],
-    ) -> Message {
-        let message: SendSocketRequest = SendSocketRequest::new(sockfd, count, flags, buffer);
+    pub fn build(tid: ThreadIdentifier, sockfd: i32, count: c_size_t, flags: i32) -> Message {
+        let message: SendSocketRequest = SendSocketRequest::new(sockfd, count, flags);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::SendSocketRequest,
             message.into_bytes(),
