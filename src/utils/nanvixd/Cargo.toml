@@ -31,6 +31,8 @@ standalone = ["nanvix/standalone"]
 gdb = ["nanvix/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["nanvix/profile-time"]
+# Enables message timestamping.
+timestamp-messages = ["nanvix/timestamp-messages"]
 microvm = ["nanvix/microvm"]
 whp = ["nanvix/whp"]
 

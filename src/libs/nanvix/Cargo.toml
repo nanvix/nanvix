@@ -48,6 +48,8 @@ gdb = [
 ]
 # Enables fine-grained time profiling.
 profile-time = ["nanvix-sandbox/profile-time", "nanvix-terminal/profile-time"]
+# Enables message timestamping.
+timestamp-messages = ["nanvix-sandbox/timestamp-messages"]
 microvm = [
     "config/microvm",
     "nanvix-http/microvm",

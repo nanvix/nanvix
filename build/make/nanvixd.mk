@@ -7,6 +7,7 @@ NANVIXD_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-proc
 NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIXD_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
+NANVIXD_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
 NANVIXD_FEATURES := $(strip $(NANVIXD_FEATURES))
 NANVIXD_CARGO_FEATURES := $(if $(NANVIXD_FEATURES),--features "$(NANVIXD_FEATURES)")
 
