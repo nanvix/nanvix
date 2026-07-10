@@ -23,6 +23,8 @@ pub use kernel::{
     Message,
     MessageReceiver,
     MessageSender,
+    PullArgs,
+    PushArgs,
     SegmentCount,
     Timeout,
     VmBusMessage,

@@ -1179,3 +1179,107 @@ impl Timeout {
         }
     }
 }
+
+///
+/// # Description
+///
+/// Arguments for a rendezvous push kernel call, passed by pointer.
+///
+/// `push` and `pull` already consume all four kernel-call argument registers for their mandatory
+/// operands, leaving no register for the optional [`Timeout`]. The operands are therefore gathered
+/// into this descriptor, which the guest builds on its stack and passes by address; the kernel
+/// copies it into kernel space before use, exactly as it does for a [`Message`]. All fields are
+/// fixed-width and naturally aligned, so the layout is identical on the 32-bit guest and the kernel.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct PushArgs {
+    /// Destination process identifier.
+    pub dst_pid: ProcessIdentifier,
+    /// Destination thread identifier.
+    pub dst_tid: ThreadIdentifier,
+    /// Address of the source buffer in the caller's user space.
+    pub buffer: u32,
+    /// Number of bytes to transfer.
+    pub len: u32,
+    /// Optional timeout that bounds the blocking wait.
+    pub timeout: Timeout,
+}
+::static_assert::assert_eq_size!(PushArgs, 7 * mem::size_of::<u32>());
+
+impl PushArgs {
+    /// Size of the descriptor in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates a zeroed descriptor suitable as a destination for a copy from user space. The
+    /// identifier fields are set to the kernel sentinels (raw value zero); every field is
+    /// overwritten by the copy before use.
+    ///
+    /// # Returns
+    ///
+    /// The zeroed descriptor.
+    ///
+    pub const fn zeroed() -> Self {
+        Self {
+            dst_pid: ProcessIdentifier::KERNEL,
+            dst_tid: ThreadIdentifier::KERNEL,
+            buffer: 0,
+            len: 0,
+            timeout: Timeout::infinite(),
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Arguments for a rendezvous pull kernel call, passed by pointer.
+///
+/// This is the receive-side counterpart of [`PushArgs`]; see that type for the rationale behind the
+/// pointer-passed descriptor. All fields are fixed-width and naturally aligned, so the layout is
+/// identical on the 32-bit guest and the kernel.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct PullArgs {
+    /// Source (expected sender) process identifier.
+    pub src_pid: ProcessIdentifier,
+    /// Source (expected sender) thread identifier.
+    pub src_tid: ThreadIdentifier,
+    /// Address of the destination buffer in the caller's user space.
+    pub buffer: u32,
+    /// Maximum number of bytes to receive.
+    pub len: u32,
+    /// Optional timeout that bounds the blocking wait.
+    pub timeout: Timeout,
+}
+::static_assert::assert_eq_size!(PullArgs, 7 * mem::size_of::<u32>());
+
+impl PullArgs {
+    /// Size of the descriptor in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates a zeroed descriptor suitable as a destination for a copy from user space. The
+    /// identifier fields are set to the kernel sentinels (raw value zero); every field is
+    /// overwritten by the copy before use.
+    ///
+    /// # Returns
+    ///
+    /// The zeroed descriptor.
+    ///
+    pub const fn zeroed() -> Self {
+        Self {
+            src_pid: ProcessIdentifier::KERNEL,
+            src_tid: ThreadIdentifier::KERNEL,
+            buffer: 0,
+            len: 0,
+            timeout: Timeout::infinite(),
+        }
+    }
+}
