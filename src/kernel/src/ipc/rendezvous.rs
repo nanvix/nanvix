@@ -8,6 +8,8 @@
 use crate::{
     hal::mem::VirtualAddress,
     pm::{
+        clock,
+        InterruptReason,
         ProcessManager,
         SleepError,
     },
@@ -22,16 +24,19 @@ use ::core::{
         AtomicUsize,
         Ordering,
     },
+    time::Duration,
 };
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
+    ipc::Timeout,
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    time::SystemTime,
 };
 
 //==================================================================================================
@@ -41,6 +46,89 @@ use ::sys::{
 /// Ordering used for all atomic operations. Relaxed is safe because Nanvix is a single-core system
 /// and the kernel runs with interrupts disabled.
 const ORDER: Ordering = Ordering::Relaxed;
+
+//==================================================================================================
+// Rendezvous Timeout
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Resolved timeout for a rendezvous operation, derived from the caller-supplied [`Timeout`]
+/// descriptor. It expresses the three-point spectrum — poll, bounded wait, block — that bounds a
+/// blocking rendezvous.
+///
+#[derive(Debug, Clone, Copy)]
+pub enum RendezvousTimeout {
+    /// Block until the counterpart arrives.
+    Infinite,
+    /// Return immediately if no counterpart is ready, without registering a pending entry or
+    /// sleeping.
+    NonBlocking,
+    /// Block until the given absolute deadline, then report a timeout.
+    Deadline(SystemTime),
+}
+
+impl RendezvousTimeout {
+    ///
+    /// # Description
+    ///
+    /// Resolves a wire [`Timeout`] descriptor into a [`RendezvousTimeout`], computing the absolute
+    /// deadline of a finite, non-zero timeout from the monotonic clock.
+    ///
+    /// # Parameters
+    ///
+    /// - `timeout`: The timeout descriptor supplied by the caller.
+    ///
+    /// # Returns
+    ///
+    /// On success, the resolved timeout. On failure (a deadline that overflows the system clock),
+    /// an error is returned instead.
+    ///
+    pub fn resolve(timeout: Timeout) -> Result<Self, Error> {
+        match timeout.as_finite()? {
+            // Infinite: block until the counterpart arrives.
+            None => Ok(Self::Infinite),
+            // Finite, zero duration: non-blocking probe.
+            Some((0, 0)) => Ok(Self::NonBlocking),
+            // Finite, non-zero duration: compute an absolute deadline from the monotonic clock.
+            Some((secs, nanos)) => {
+                let duration: Duration = Duration::new(secs as u64, nanos);
+                let now: SystemTime = clock::now();
+                match now.checked_add_duration(&duration) {
+                    Some(deadline) => Ok(Self::Deadline(deadline)),
+                    None => Err(Error::new(
+                        ErrorCode::InvalidArgument,
+                        "rendezvous timeout overflows the system clock",
+                    )),
+                }
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the absolute deadline to sleep until: [`None`] for an infinite wait, or [`Some`]
+    /// deadline for a bounded or non-blocking wait. A non-blocking timeout yields the current time,
+    /// so the wait expires immediately.
+    ///
+    /// This is used by the guest-to-host bulk pull path, which — unlike the intra-guest rendezvous
+    /// — cannot short-circuit a non-blocking request before emitting it, and so treats it as an
+    /// immediate deadline.
+    ///
+    /// # Returns
+    ///
+    /// The optional sleep deadline.
+    ///
+    pub fn deadline(&self) -> Option<SystemTime> {
+        match self {
+            Self::Infinite => None,
+            Self::NonBlocking => Some(clock::now()),
+            Self::Deadline(deadline) => Some(*deadline),
+        }
+    }
+}
 
 //==================================================================================================
 // Structures
@@ -202,6 +290,7 @@ fn cross_process_copy(
 /// - `dst_tid`: Destination thread identifier.
 /// - `buffer`: Buffer address in the caller's user space.
 /// - `transfer_len`: Number of bytes to transfer.
+/// - `timeout`: Bounds the blocking wait when no matching pull is present.
 ///
 /// # Returns
 ///
@@ -214,6 +303,7 @@ pub fn do_push(
     dst_tid: ThreadIdentifier,
     buffer: usize,
     transfer_len: usize,
+    timeout: RendezvousTimeout,
 ) -> Result<(), SleepError> {
     // Prevent self-deadlock: a thread cannot push to itself.
     if caller_tid == dst_tid {
@@ -297,7 +387,20 @@ pub fn do_push(
 
         Ok(())
     } else {
-        // No matching pull found: register this push and sleep until a matching pull arrives.
+        // No matching pull found.
+        //
+        // A non-blocking probe must not register a pending entry or sleep: report a timeout
+        // immediately so the caller can decide what to do (the syscall layer maps this to EAGAIN
+        // for non-blocking descriptors).
+        if let RendezvousTimeout::NonBlocking = timeout {
+            trace!(
+                "push would block, non-blocking probe reports timeout (caller_tid={caller_tid:?}, \
+                 dst_tid={dst_tid:?})"
+            );
+            return Err(SleepError::Interrupted(InterruptReason::TimedOut));
+        }
+
+        // Register this push and sleep until a matching pull arrives or the deadline expires.
         // SAFETY: single-core system with interrupts disabled.
         let pending_pushes: &mut Vec<PendingPush> = unsafe { PENDING.pushes() };
         pending_pushes.push(PendingPush {
@@ -314,12 +417,19 @@ pub fn do_push(
              dst_pid={dst_pid:?}, dst_tid={dst_tid:?})"
         );
 
-        // Sleep until a matching pull arrives and performs the copy.
+        // A finite timeout sleeps until its deadline; an infinite timeout sleeps indefinitely.
+        let alarm: Option<SystemTime> = match timeout {
+            RendezvousTimeout::Deadline(deadline) => Some(deadline),
+            _ => None,
+        };
+
+        // Sleep until a matching pull arrives and performs the copy, the deadline expires, or the
+        // thread is interrupted.
         // SAFETY: no global resources are held, the calling thread is not the kernel.
-        match unsafe { ProcessManager::sleep(None) } {
+        match unsafe { ProcessManager::sleep(alarm) } {
             Ok(()) => Ok(()),
             Err(error) => {
-                // Remove the pending push if the thread was interrupted.
+                // Remove the pending push if the thread was interrupted or timed out.
                 // NOTE: if a matching pull arrived between `sleep()` returning and this
                 // `retain()` call, the counterpart already consumed the entry via
                 // `swap_remove` and completed the transfer. In that case `retain()` is a
@@ -349,6 +459,7 @@ pub fn do_push(
 /// - `src_tid`: Source thread identifier (expected sender).
 /// - `buffer`: Buffer address in the caller's user space.
 /// - `transfer_len`: Maximum number of bytes to receive.
+/// - `timeout`: Bounds the blocking wait when no matching push is present.
 ///
 /// # Returns
 ///
@@ -362,6 +473,7 @@ pub fn do_pull(
     src_tid: ThreadIdentifier,
     buffer: usize,
     transfer_len: usize,
+    timeout: RendezvousTimeout,
 ) -> Result<usize, SleepError> {
     // Prevent self-deadlock: a thread cannot pull from itself.
     if caller_tid == src_tid {
@@ -442,7 +554,20 @@ pub fn do_pull(
 
         Ok(actual_len)
     } else {
-        // No matching push found: register this pull and sleep until a matching push arrives.
+        // No matching push found.
+        //
+        // A non-blocking probe must not register a pending entry or sleep: report a timeout
+        // immediately so the caller can decide what to do (the syscall layer maps this to EAGAIN
+        // for non-blocking descriptors).
+        if let RendezvousTimeout::NonBlocking = timeout {
+            trace!(
+                "pull would block, non-blocking probe reports timeout (caller_tid={caller_tid:?}, \
+                 src_tid={src_tid:?})"
+            );
+            return Err(SleepError::Interrupted(InterruptReason::TimedOut));
+        }
+
+        // Register this pull and sleep until a matching push arrives or the deadline expires.
         let bytes_transferred: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let bytes_transferred_clone: Arc<AtomicUsize> = bytes_transferred.clone();
 
@@ -463,15 +588,22 @@ pub fn do_pull(
              src_pid={src_pid:?}, src_tid={src_tid:?})"
         );
 
-        // Sleep until a matching push arrives and performs the copy.
+        // A finite timeout sleeps until its deadline; an infinite timeout sleeps indefinitely.
+        let alarm: Option<SystemTime> = match timeout {
+            RendezvousTimeout::Deadline(deadline) => Some(deadline),
+            _ => None,
+        };
+
+        // Sleep until a matching push arrives and performs the copy, the deadline expires, or the
+        // thread is interrupted.
         // SAFETY: no global resources are held, the calling thread is not the kernel.
-        match unsafe { ProcessManager::sleep(None) } {
+        match unsafe { ProcessManager::sleep(alarm) } {
             Ok(()) => {
                 let actual: usize = bytes_transferred.load(ORDER);
                 Ok(actual)
             },
             Err(error) => {
-                // Remove the pending pull if the thread was interrupted.
+                // Remove the pending pull if the thread was interrupted or timed out.
                 // NOTE: if a matching push arrived between `sleep()` returning and this
                 // `retain()` call, the counterpart already consumed the entry via
                 // `swap_remove` and completed the transfer. In that case `retain()` is a

@@ -7,10 +7,13 @@
 
 use ::alloc::alloc::Layout;
 use ::config::memory_layout::USER_THREAD_STACK_SIZE;
-use ::core::sync::atomic::{
-    AtomicBool,
-    AtomicU32,
-    Ordering,
+use ::core::{
+    sync::atomic::{
+        AtomicBool,
+        AtomicU32,
+        Ordering,
+    },
+    time::Duration,
 };
 use ::sys::{
     error::{
@@ -2450,6 +2453,534 @@ fn test_interleaved_pending_order() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Timeout Semantics
+//==================================================================================================
+
+/// Payload used by the timeout tests.
+const TIMEOUT_PAYLOAD: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+
+/// Finite timeout used by the "timeout fires" tests. Long enough to prove the caller actually
+/// blocked and was woken by the timer, yet short enough to keep the test fast.
+const TIMEOUT_FIRES_DELAY: Duration = Duration::from_millis(50);
+
+/// Generous finite timeout used by the "timeout not reached" test. The counterpart always arrives
+/// well within this window, so the call must complete normally instead of timing out.
+const TIMEOUT_GENEROUS_DELAY: Duration = Duration::from_secs(10);
+
+/// Number of times the main thread yields so a child thread can register a pending rendezvous entry
+/// before the main thread probes for it. One yield is sufficient on a single-core system; a small
+/// margin is used for robustness.
+const PENDING_REGISTER_YIELDS: usize = 8;
+
+/// Release flag that lets the idle child thread exit once the main thread finishes probing it.
+static IDLE_RELEASE: AtomicBool = AtomicBool::new(false);
+
+///
+/// # Description
+///
+/// Idle child thread that stays alive without ever pushing or pulling, providing a stable thread
+/// identifier for the main thread to probe against. It exits once [`IDLE_RELEASE`] is set.
+///
+extern "C" fn idle_child(_arg: usize) -> usize {
+    while !IDLE_RELEASE.load(ORDER) {
+        if sched::__kcall_sched_yield().is_err() {
+            return 1;
+        }
+    }
+    0
+}
+
+///
+/// # Description
+///
+/// Child thread that pushes [`TIMEOUT_PAYLOAD`] to the main thread with an infinite timeout,
+/// blocking until the main thread pulls.
+///
+extern "C" fn pusher_child_timeout(_arg: usize) -> usize {
+    let (pid, main_tid): (ProcessIdentifier, ThreadIdentifier) = match load_parent_ids() {
+        Ok(ids) => ids,
+        Err(()) => return 1,
+    };
+
+    match ipc::__kcall_push(pid, main_tid, &TIMEOUT_PAYLOAD) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+///
+/// # Description
+///
+/// Child thread that pulls [`TIMEOUT_PAYLOAD`] from the main thread with an infinite timeout,
+/// blocking until the main thread pushes.
+///
+extern "C" fn puller_child_timeout(_arg: usize) -> usize {
+    let (pid, main_tid): (ProcessIdentifier, ThreadIdentifier) = match load_parent_ids() {
+        Ok(ids) => ids,
+        Err(()) => return 1,
+    };
+
+    let mut recv_buf: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    match ipc::__kcall_pull(pid, main_tid, &mut recv_buf) {
+        Ok(n) if n == TIMEOUT_PAYLOAD.len() && recv_buf == TIMEOUT_PAYLOAD => 0,
+        _ => 1,
+    }
+}
+
+///
+/// # Description
+///
+/// Verifies that `result` failed with [`ErrorCode::OperationTimedOut`], the kernel-level status the
+/// syscall layer maps to `EAGAIN`.  Logs and returns a descriptive error otherwise.
+///
+/// # Parameters
+///
+/// - `test`: Name of the calling test, used for diagnostics.
+/// - `result`: Result to inspect.
+///
+fn expect_timed_out(test: &str, result: Result<(), Error>) -> Result<(), Error> {
+    match result {
+        Err(e) if e.code == ErrorCode::OperationTimedOut => Ok(()),
+        Err(e) => {
+            ::syslog::error!("{test}: expected OperationTimedOut, got error {:?}", e.code);
+            Err(Error::new(e.code, "expected OperationTimedOut"))
+        },
+        Ok(()) => {
+            ::syslog::error!("{test}: expected OperationTimedOut, but the call succeeded");
+            Err(Error::new(ErrorCode::OperationNotPermitted, "expected a timeout"))
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Consumes the pending push emitted by [`pusher_child_timeout`] via an infinite pull, so a child
+/// that a misbehaving timed pull failed to unblock cannot leave `join` hanging forever. Used only
+/// on the failure path of the success-oriented timeout tests.
+///
+/// # Parameters
+///
+/// - `pid`: Process identifier shared by the child and the main thread.
+/// - `child_tid`: Thread identifier of the pushing child.
+///
+fn drain_pending_push(pid: ProcessIdentifier, child_tid: ThreadIdentifier) {
+    let mut sink: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    let _ = ipc::__kcall_pull(pid, child_tid, &mut sink);
+}
+
+///
+/// # Description
+///
+/// Satisfies the pending pull emitted by [`puller_child_timeout`] with an infinite push, so a child
+/// that a misbehaving timed push failed to unblock cannot leave `join` hanging forever. Used only
+/// on the failure path of the success-oriented timeout tests.
+///
+/// # Parameters
+///
+/// - `pid`: Process identifier shared by the child and the main thread.
+/// - `child_tid`: Thread identifier of the pulling child.
+///
+fn drain_pending_pull(pid: ProcessIdentifier, child_tid: ThreadIdentifier) {
+    let _ = ipc::__kcall_push(pid, child_tid, &TIMEOUT_PAYLOAD);
+}
+
+//==================================================================================================
+// Timeout Test T1: Non-Blocking Pull With No Counterpart
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A non-blocking pull (zero timeout) with no pending push returns immediately with
+/// [`ErrorCode::OperationTimedOut`], without registering a pending entry or sleeping.
+///
+fn test_pull_nonblocking_times_out() -> Result<(), Error> {
+    ::syslog::info!("test_pull_nonblocking_times_out: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    IDLE_RELEASE.store(false, ORDER);
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(idle_child, stack_base)?;
+
+    // The idle child never pushes, so a zero-timeout pull must report a timeout at once.
+    let mut recv_buf: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    let result: Result<usize, Error> =
+        ipc::__kcall_pull_timed(pid, child_tid, &mut recv_buf, Some(Duration::ZERO));
+
+    IDLE_RELEASE.store(true, ORDER);
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    expect_timed_out("test_pull_nonblocking_times_out", result.map(|_| ()))?;
+
+    ::syslog::info!("test_pull_nonblocking_times_out: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T2: Non-Blocking Push With No Counterpart
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A non-blocking push (zero timeout) with no pending pull returns immediately with
+/// [`ErrorCode::OperationTimedOut`], without registering a pending entry or sleeping.
+///
+fn test_push_nonblocking_times_out() -> Result<(), Error> {
+    ::syslog::info!("test_push_nonblocking_times_out: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    IDLE_RELEASE.store(false, ORDER);
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(idle_child, stack_base)?;
+
+    // The idle child never pulls, so a zero-timeout push must report a timeout at once.
+    let result: Result<(), Error> =
+        ipc::__kcall_push_timed(pid, child_tid, &TIMEOUT_PAYLOAD, Some(Duration::ZERO));
+
+    IDLE_RELEASE.store(true, ORDER);
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    expect_timed_out("test_push_nonblocking_times_out", result)?;
+
+    ::syslog::info!("test_push_nonblocking_times_out: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T3: Non-Blocking Pull With a Ready Counterpart
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A non-blocking pull (zero timeout) completes immediately when a matching push is already
+/// pending, transferring the payload rather than reporting a timeout.
+///
+fn test_pull_nonblocking_ready() -> Result<(), Error> {
+    ::syslog::info!("test_pull_nonblocking_ready: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(pusher_child_timeout, stack_base)?;
+
+    // Yield so the child registers its pending push before we probe for it.
+    for _ in 0..PENDING_REGISTER_YIELDS {
+        sched::__kcall_sched_yield()?;
+    }
+
+    let mut recv_buf: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    let result: Result<usize, Error> =
+        ipc::__kcall_pull_timed(pid, child_tid, &mut recv_buf, Some(Duration::ZERO));
+
+    // A successful pull already unblocked the child; otherwise drain it so join cannot hang.
+    if result.is_err() {
+        drain_pending_push(pid, child_tid);
+    }
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    let bytes_transferred: usize = result?;
+    if bytes_transferred != TIMEOUT_PAYLOAD.len() {
+        ::syslog::error!(
+            "test_pull_nonblocking_ready: wrong byte count (expected={}, got={})",
+            TIMEOUT_PAYLOAD.len(),
+            bytes_transferred
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, "byte count mismatch"));
+    }
+    if recv_buf != TIMEOUT_PAYLOAD {
+        ::syslog::error!("test_pull_nonblocking_ready: payload mismatch");
+        return Err(Error::new(ErrorCode::InvalidArgument, "payload mismatch"));
+    }
+
+    ::syslog::info!("test_pull_nonblocking_ready: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T4: Non-Blocking Push With a Ready Counterpart
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A non-blocking push (zero timeout) completes immediately when a matching pull is already
+/// pending, transferring the payload rather than reporting a timeout.
+///
+fn test_push_nonblocking_ready() -> Result<(), Error> {
+    ::syslog::info!("test_push_nonblocking_ready: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(puller_child_timeout, stack_base)?;
+
+    // Yield so the child registers its pending pull before we probe for it.
+    for _ in 0..PENDING_REGISTER_YIELDS {
+        sched::__kcall_sched_yield()?;
+    }
+
+    let result: Result<(), Error> =
+        ipc::__kcall_push_timed(pid, child_tid, &TIMEOUT_PAYLOAD, Some(Duration::ZERO));
+
+    // A successful push already unblocked the child; otherwise drain it so join cannot hang.
+    if result.is_err() {
+        drain_pending_pull(pid, child_tid);
+    }
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    result?;
+
+    ::syslog::info!("test_push_nonblocking_ready: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T5: Finite Pull Timeout Fires
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A finite pull timeout with no counterpart blocks until the deadline elapses and then reports
+/// [`ErrorCode::OperationTimedOut`], proving the caller actually slept and the timer woke it.
+///
+fn test_pull_timeout_fires() -> Result<(), Error> {
+    ::syslog::info!("test_pull_timeout_fires: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    IDLE_RELEASE.store(false, ORDER);
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(idle_child, stack_base)?;
+
+    let mut recv_buf: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    let result: Result<usize, Error> =
+        ipc::__kcall_pull_timed(pid, child_tid, &mut recv_buf, Some(TIMEOUT_FIRES_DELAY));
+
+    IDLE_RELEASE.store(true, ORDER);
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    expect_timed_out("test_pull_timeout_fires", result.map(|_| ()))?;
+
+    ::syslog::info!("test_pull_timeout_fires: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T6: Finite Push Timeout Fires
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A finite push timeout with no counterpart blocks until the deadline elapses and then reports
+/// [`ErrorCode::OperationTimedOut`].
+///
+fn test_push_timeout_fires() -> Result<(), Error> {
+    ::syslog::info!("test_push_timeout_fires: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    IDLE_RELEASE.store(false, ORDER);
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(idle_child, stack_base)?;
+
+    let result: Result<(), Error> =
+        ipc::__kcall_push_timed(pid, child_tid, &TIMEOUT_PAYLOAD, Some(TIMEOUT_FIRES_DELAY));
+
+    IDLE_RELEASE.store(true, ORDER);
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    expect_timed_out("test_push_timeout_fires", result)?;
+
+    ::syslog::info!("test_push_timeout_fires: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T7: Finite Pull Timeout Not Reached
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A finite pull timeout completes normally when the counterpart pushes before the deadline: the
+/// generous timeout is never reached, so the payload is transferred and no timeout is reported.
+///
+fn test_pull_timeout_not_reached() -> Result<(), Error> {
+    ::syslog::info!("test_pull_timeout_not_reached: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(pusher_child_timeout, stack_base)?;
+
+    // The main thread's pull registers first and sleeps; the child then pushes well within the
+    // generous deadline, so the call completes rather than timing out.
+    let mut recv_buf: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    let result: Result<usize, Error> =
+        ipc::__kcall_pull_timed(pid, child_tid, &mut recv_buf, Some(TIMEOUT_GENEROUS_DELAY));
+
+    if result.is_err() {
+        drain_pending_push(pid, child_tid);
+    }
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    let bytes_transferred: usize = result?;
+    if bytes_transferred != TIMEOUT_PAYLOAD.len() {
+        ::syslog::error!(
+            "test_pull_timeout_not_reached: wrong byte count (expected={}, got={})",
+            TIMEOUT_PAYLOAD.len(),
+            bytes_transferred
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, "byte count mismatch"));
+    }
+    if recv_buf != TIMEOUT_PAYLOAD {
+        ::syslog::error!("test_pull_timeout_not_reached: payload mismatch");
+        return Err(Error::new(ErrorCode::InvalidArgument, "payload mismatch"));
+    }
+
+    ::syslog::info!("test_pull_timeout_not_reached: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T8: Finite Push Timeout Not Reached
+//==================================================================================================
+
+///
+/// # Description
+///
+/// A finite push timeout completes normally when the counterpart pulls before the deadline: the
+/// generous timeout is never reached, so the payload is transferred and no timeout is reported.
+///
+fn test_push_timeout_not_reached() -> Result<(), Error> {
+    ::syslog::info!("test_push_timeout_not_reached: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(puller_child_timeout, stack_base)?;
+
+    // The main thread's push registers first and sleeps; the child then pulls well within the
+    // generous deadline, so the call completes rather than timing out.
+    let result: Result<(), Error> =
+        ipc::__kcall_push_timed(pid, child_tid, &TIMEOUT_PAYLOAD, Some(TIMEOUT_GENEROUS_DELAY));
+
+    if result.is_err() {
+        drain_pending_pull(pid, child_tid);
+    }
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    result?;
+
+    ::syslog::info!("test_push_timeout_not_reached: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T9: Infinite Pull Timeout via the Timed API
+//==================================================================================================
+
+///
+/// # Description
+///
+/// An infinite timeout (`None`) requested through the timed pull entry point behaves exactly like
+/// the historical blocking pull: it waits until the counterpart pushes and then transfers the
+/// payload.  This guards backward compatibility of the timed ABI.
+///
+fn test_pull_infinite_timeout() -> Result<(), Error> {
+    ::syslog::info!("test_pull_infinite_timeout: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(pusher_child_timeout, stack_base)?;
+
+    let mut recv_buf: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    let result: Result<usize, Error> = ipc::__kcall_pull_timed(pid, child_tid, &mut recv_buf, None);
+
+    if result.is_err() {
+        drain_pending_push(pid, child_tid);
+    }
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    let bytes_transferred: usize = result?;
+    if bytes_transferred != TIMEOUT_PAYLOAD.len() {
+        ::syslog::error!(
+            "test_pull_infinite_timeout: wrong byte count (expected={}, got={})",
+            TIMEOUT_PAYLOAD.len(),
+            bytes_transferred
+        );
+        return Err(Error::new(ErrorCode::InvalidArgument, "byte count mismatch"));
+    }
+    if recv_buf != TIMEOUT_PAYLOAD {
+        ::syslog::error!("test_pull_infinite_timeout: payload mismatch");
+        return Err(Error::new(ErrorCode::InvalidArgument, "payload mismatch"));
+    }
+
+    ::syslog::info!("test_pull_infinite_timeout: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Timeout Test T10: Infinite Push Timeout via the Timed API
+//==================================================================================================
+
+///
+/// # Description
+///
+/// An infinite timeout (`None`) requested through the timed push entry point behaves exactly like
+/// the historical blocking push: it waits until the counterpart pulls and then transfers the
+/// payload. This guards backward compatibility of the timed ABI.
+///
+fn test_push_infinite_timeout() -> Result<(), Error> {
+    ::syslog::info!("test_push_infinite_timeout: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(puller_child_timeout, stack_base)?;
+
+    let result: Result<(), Error> = ipc::__kcall_push_timed(pid, child_tid, &TIMEOUT_PAYLOAD, None);
+
+    if result.is_err() {
+        drain_pending_pull(pid, child_tid);
+    }
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    result?;
+
+    ::syslog::info!("test_push_infinite_timeout: passed");
+    Ok(())
+}
+
+//==================================================================================================
 // Public Entry Point
 //==================================================================================================
 
@@ -2517,6 +3048,19 @@ pub fn run() -> Result<(), Error> {
     // Cleanup and pending list integrity tests.
     test_thread_exit_cleanup()?;
     test_interleaved_pending_order()?;
+
+    // Timeout semantics: non-blocking probes, finite timeouts that fire, finite timeouts that are
+    // not reached, and the infinite timeout requested through the timed ABI.
+    test_pull_nonblocking_times_out()?;
+    test_push_nonblocking_times_out()?;
+    test_pull_nonblocking_ready()?;
+    test_push_nonblocking_ready()?;
+    test_pull_timeout_fires()?;
+    test_push_timeout_fires()?;
+    test_pull_timeout_not_reached()?;
+    test_push_timeout_not_reached()?;
+    test_pull_infinite_timeout()?;
+    test_push_infinite_timeout()?;
 
     ::syslog::info!("rendezvous test suite: all tests passed");
     Ok(())

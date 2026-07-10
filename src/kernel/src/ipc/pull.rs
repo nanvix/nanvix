@@ -5,11 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::pm::SleepError;
 #[cfg(feature = "stdio")]
-use crate::{
-    hal::mem::VirtualAddress,
-    pm::ProcessManager,
+use crate::hal::mem::VirtualAddress;
+use crate::pm::{
+    ProcessManager,
+    SleepError,
+};
+#[cfg(feature = "stdio")]
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 #[cfg(feature = "stdio")]
 use ::sys::ipc::{
@@ -18,10 +23,7 @@ use ::sys::ipc::{
     SG_BULK_MAX_BYTES,
 };
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+    ipc::PullArgs,
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -44,10 +46,7 @@ use ::sys::{
 ///
 /// - `caller_pid`: Identifier of the calling process.
 /// - `caller_tid`: Identifier of the calling thread.
-/// - `sender_raw`: Raw identifier of the sender process.
-/// - `sender_tid_raw`: Raw identifier of the sender thread.
-/// - `buffer_raw`: Raw pointer to the buffer where data will be stored.
-/// - `transfer_len_raw`: Raw length of data to be transferred.
+/// - `args_ptr`: User-space pointer to the [`PullArgs`] descriptor.
 ///
 /// # Returns
 ///
@@ -57,43 +56,46 @@ use ::sys::{
 pub fn pull(
     caller_pid: ProcessIdentifier,
     caller_tid: ThreadIdentifier,
-    sender_raw: u32,
-    sender_tid_raw: u32,
-    buffer_raw: usize,
-    transfer_len_raw: u32,
+    args_ptr: u32,
 ) -> Result<usize, SleepError> {
-    // Convert sender process identifier.
-    let sender_pid: ProcessIdentifier =
-        ProcessIdentifier::try_from(sender_raw).map_err(|error| {
-            let reason: &str = "invalid sender process identifier";
-            error!(
-                "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
-                 sender_raw={sender_raw}, error={error:?})"
-            );
-            SleepError::Generic(error)
-        })?;
+    // Copy the argument descriptor from user space into kernel space.
+    let mut args: PullArgs = PullArgs::zeroed();
+    {
+        // SAFETY: the process manager is initialized and access is synchronized.
+        let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+        crate::pm::copy_from_user(pm, caller_pid, &mut args, args_ptr as *const PullArgs)
+            .map_err(SleepError::Generic)?;
+    }
 
-    // Convert sender thread identifier.
-    let sender_tid: ThreadIdentifier =
-        ThreadIdentifier::try_from(sender_tid_raw).map_err(|error| {
-            let reason: &str = "invalid sender thread identifier";
-            error!(
-                "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
-                 sender_tid_raw={sender_tid_raw}, error={error:?})"
-            );
-            SleepError::Generic(error)
-        })?;
+    let sender_pid: ProcessIdentifier = args.src_pid;
+    let sender_tid: ThreadIdentifier = args.src_tid;
+    let buffer_raw: usize = args.buffer as usize;
+    let transfer_len: usize = args.len as usize;
 
-    // Convert transfer length.
-    let transfer_len: usize = usize::try_from(transfer_len_raw).map_err(|_| {
-        let reason: &str = "transfer length is too large";
+    // Validate the sender identifiers copied from user space. The by-pointer ABI lets a caller place
+    // an arbitrary raw value in the descriptor, so reject the negative/sentinel identifiers that the
+    // previous register-based ABI rejected while converting an unsigned register value into an
+    // identifier. Converting the identifier back to a `u32` fails for exactly those negative values,
+    // so invalid identifiers keep failing early and predictably with `InvalidArgument`.
+    u32::try_from(sender_pid).map_err(|error| {
+        let reason: &str = "invalid sender process identifier";
         error!(
             "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
-             sender_pid={sender_pid:?}, sender_tid={sender_tid:?}, \
-             transfer_len_raw={transfer_len_raw})"
+             sender_pid={sender_pid:?}, error={error:?})"
         );
-        SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason))
+        SleepError::Generic(error)
     })?;
+    u32::try_from(sender_tid).map_err(|error| {
+        let reason: &str = "invalid sender thread identifier";
+        error!(
+            "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
+             sender_tid={sender_tid:?}, error={error:?})"
+        );
+        SleepError::Generic(error)
+    })?;
+
+    let timeout: super::rendezvous::RendezvousTimeout =
+        super::rendezvous::RendezvousTimeout::resolve(args.timeout).map_err(SleepError::Generic)?;
 
     trace!(
         "tid={:?}, pid={:?}, src_tid={:?}, src_pid={:?}, buffer={:#x}, len={}",
@@ -143,13 +145,21 @@ pub fn pull(
             sender_tid,
             GuestSgBulkKind::Pull,
             &segments,
-            transfer_len_raw,
+            args.len,
         )
         .map_err(SleepError::Generic)?;
 
         // Register a pending bulk pull and sleep until the completion arrives. UserVM scatters the
-        // response into the guest physical segments before waking this thread.
-        return super::bulk_pull::register_and_sleep(caller_tid);
+        // response into the guest physical segments before waking this thread. The deadline bounds
+        // the wait so a slow or wedged host cannot block the guest thread forever.
+        //
+        // NOTE: a finite deadline does not cancel the in-flight host transfer, so it is safe only
+        // against a non-responding host — a slow host that replies after the deadline still scatters
+        // into the caller's (possibly freed or reused) buffer. See the caveat on
+        // `bulk_pull::register_and_sleep` and issue #2908
+        // (https://github.com/nanvix/nanvix/issues/2908). All current callers use the infinite
+        // variant.
+        return super::bulk_pull::register_and_sleep(caller_tid, timeout.deadline());
     }
 
     super::rendezvous::do_pull(
@@ -159,5 +169,6 @@ pub fn pull(
         sender_tid,
         buffer_raw,
         transfer_len,
+        timeout,
     )
 }

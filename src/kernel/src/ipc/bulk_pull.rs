@@ -7,6 +7,7 @@
 
 use crate::pm::{
     sync::condvar::Condvar,
+    InterruptReason,
     SleepError,
 };
 use ::alloc::{
@@ -18,11 +19,16 @@ use ::core::sync::atomic::{
     Ordering,
 };
 use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::{
         DataChunkHeader,
         Message,
     },
     pm::ThreadIdentifier,
+    time::SystemTime,
 };
 
 //==================================================================================================
@@ -58,6 +64,31 @@ struct PendingBulkPull {
 static mut PENDING_BULK_PULLS: BTreeMap<ThreadIdentifier, PendingBulkPull> = BTreeMap::new();
 
 //==================================================================================================
+// Private Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Tests whether a sleep error was caused by a timeout rather than by a real abort condition.
+///
+/// # Parameters
+///
+/// - `error`: Sleep error to inspect.
+///
+/// # Returns
+///
+/// This function returns `true` if the wait timed out, and `false` otherwise.
+///
+fn is_timeout(error: &SleepError) -> bool {
+    match error {
+        SleepError::Interrupted(InterruptReason::TimedOut) => true,
+        SleepError::Generic(error) if error.code == ErrorCode::OperationTimedOut => true,
+        _ => false,
+    }
+}
+
+//==================================================================================================
 // Public Functions
 //==================================================================================================
 
@@ -70,13 +101,39 @@ static mut PENDING_BULK_PULLS: BTreeMap<ThreadIdentifier, PendingBulkPull> = BTr
 /// # Parameters
 ///
 /// - `caller_tid`: Thread identifier of the thread requesting the pull.
+/// - `alarm`: Optional absolute deadline that bounds the wait. [`None`] blocks until the host
+///   responds; [`Some`] reports [`ErrorCode::OperationTimedOut`](sys::error::ErrorCode) once the
+///   deadline elapses, so a slow or wedged host cannot block the guest thread forever.
 ///
 /// # Returns
 ///
 /// Upon successful completion (after being woken), the number of bytes transferred is returned.
 /// On failure, a sleep error is returned instead.
 ///
-pub fn register_and_sleep(caller_tid: ThreadIdentifier) -> Result<usize, SleepError> {
+/// # Errors
+///
+/// Fails with [`ErrorCode::ResourceBusy`] if a previous bulk pull from the same thread timed out
+/// while its host completion was still in flight and that completion has not yet drained. The new
+/// request is refused until then, because completions are correlated back to the thread by
+/// identifier alone and overwriting the pending entry would let the stale completion be
+/// mis-delivered to this request.
+///
+/// # Caveats
+///
+/// A finite `alarm` bounds only the *guest* wait; it does **not** cancel the transfer already in
+/// flight on the host. UserVM has been handed the caller's buffer as guest physical segments and
+/// will scatter linuxd's reply into them whenever it eventually arrives, with no liveness check. A
+/// finite deadline is therefore safe only against a host that never responds: if the host is merely
+/// slow and replies *after* the deadline, it can write into buffer pages the caller may have since
+/// freed or reused. Because of this, finite timeouts on the bulk (host) pull path must not be
+/// exposed to callers until the guest-to-host cancel protocol is in place; all current callers use
+/// the infinite variant. Tracked in issue #2908
+/// (<https://github.com/nanvix/nanvix/issues/2908>).
+///
+pub fn register_and_sleep(
+    caller_tid: ThreadIdentifier,
+    alarm: Option<SystemTime>,
+) -> Result<usize, SleepError> {
     let condvar: Condvar = Condvar::new();
     let bytes_transferred: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
@@ -88,6 +145,20 @@ pub fn register_and_sleep(caller_tid: ThreadIdentifier) -> Result<usize, SleepEr
     // SAFETY: single-core system with interrupts disabled.
     let pending: &mut BTreeMap<ThreadIdentifier, PendingBulkPull> =
         unsafe { &mut PENDING_BULK_PULLS };
+
+    // Refuse to overwrite an entry left behind by a previous bulk pull from this thread. Such an
+    // entry lingers only when that earlier request timed out while its host completion was still in
+    // flight: the pending map is keyed solely by thread identifier, so the late completion is
+    // correlated back to this thread by TID alone. Because the calling thread is synchronous, an
+    // existing entry can only be such a leftover, and overwriting it would let the stale completion
+    // wake and complete this new request with the earlier request's data. Fail fast until the
+    // in-flight completion drains the entry.
+    if pending.contains_key(&caller_tid) {
+        let reason: &str = "a previous bulk pull from this thread is still in flight";
+        warn!("register_and_sleep(): {reason} (caller_tid={caller_tid:?})");
+        return Err(SleepError::Generic(Error::new(ErrorCode::ResourceBusy, reason)));
+    }
+
     pending.insert(
         caller_tid,
         PendingBulkPull {
@@ -98,19 +169,27 @@ pub fn register_and_sleep(caller_tid: ThreadIdentifier) -> Result<usize, SleepEr
 
     trace!("bulk pull sleeping (caller_tid={caller_tid:?})");
 
-    // Sleep on the condition variable until the completion handler wakes us up.
+    // Sleep on the condition variable until the completion handler wakes us up or the deadline
+    // expires.
     // SAFETY: no global resources are held, the calling thread is not the kernel.
-    match unsafe { condvar.wait(None) } {
+    match unsafe { condvar.wait(alarm) } {
         Ok(()) => {
             let actual: usize = bytes_transferred.load(ORDER);
             Ok(actual)
         },
         Err(error) => {
-            // Remove the pending entry if the thread was interrupted.
-            // SAFETY: single-core system with interrupts disabled.
-            let pending: &mut BTreeMap<ThreadIdentifier, PendingBulkPull> =
-                unsafe { &mut PENDING_BULK_PULLS };
-            pending.remove(&caller_tid);
+            if !is_timeout(&error) {
+                // Remove the pending entry only if the wait was truly aborted. On timeout the
+                // host request is still in flight, so a late completion must be allowed to consume
+                // the entry rather than being dropped as stale. The entry is left keyed by this
+                // thread; a subsequent bulk pull from the same thread is refused (see the guard
+                // above) until that late completion drains it, so the completion can never be
+                // mis-delivered to a different request.
+                // SAFETY: single-core system with interrupts disabled.
+                let pending: &mut BTreeMap<ThreadIdentifier, PendingBulkPull> =
+                    unsafe { &mut PENDING_BULK_PULLS };
+                pending.remove(&caller_tid);
+            }
             Err(error)
         },
     }
