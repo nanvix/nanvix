@@ -20,8 +20,12 @@ use crate::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    time::NANOSECONDS_PER_SECOND,
 };
-use ::core::mem;
+use ::core::{
+    mem,
+    time::Duration,
+};
 
 //==================================================================================================
 // Constants
@@ -1044,5 +1048,134 @@ impl GuestSgBulkHeader {
         // SAFETY: All bit patterns are valid because the header contains only fixed-width integer
         // fields and a segment whose bit patterns are all valid.
         Ok(unsafe { mem::transmute::<[u8; Self::SIZE], GuestSgBulkHeader>(bytes) })
+    }
+}
+
+///
+/// # Description
+///
+/// Optional timeout for a rendezvous push/pull kernel call.
+///
+/// `push`/`pull` bound their blocking wait with the three-point spectrum common to
+/// synchronous-rendezvous microkernels:
+///
+/// - **Infinite** (`kind == KIND_INFINITE`): block until the counterpart arrives. This is the
+///   historical, unbounded behavior.
+/// - **Finite** (`kind == KIND_FINITE`): block for at most `secs` seconds plus `nanos` nanoseconds.
+///   A finite timeout of zero duration is a non-blocking probe that never sleeps.
+///
+/// This is a plain-old-data encoding carried across the kernel-call boundary inside [`PushArgs`]
+/// and [`PullArgs`]. All fields are fixed-width and naturally aligned, so the layout is identical on
+/// the 32-bit guest and the kernel.
+///
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
+pub struct Timeout {
+    /// Discriminant selecting the timeout mode: [`Self::KIND_INFINITE`] or [`Self::KIND_FINITE`].
+    kind: u32,
+    /// Seconds component of a finite timeout.
+    secs: u32,
+    /// Nanoseconds component of a finite timeout.
+    nanos: u32,
+}
+::static_assert::assert_eq_size!(Timeout, 3 * mem::size_of::<u32>());
+
+impl Timeout {
+    /// Discriminant value for an infinite (unbounded) timeout.
+    const KIND_INFINITE: u32 = 0;
+
+    /// Discriminant value for a finite (bounded) timeout.
+    const KIND_FINITE: u32 = 1;
+
+    /// Size of the descriptor in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates an infinite timeout, i.e. one that blocks until the counterpart arrives.
+    ///
+    /// # Returns
+    ///
+    /// The new infinite timeout.
+    ///
+    pub const fn infinite() -> Self {
+        Self {
+            kind: Self::KIND_INFINITE,
+            secs: 0,
+            nanos: 0,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a finite timeout of the given duration. A zero duration is a non-blocking probe.
+    ///
+    /// # Parameters
+    ///
+    /// - `secs`: Seconds component of the timeout.
+    /// - `nanos`: Nanoseconds component of the timeout.
+    ///
+    /// # Returns
+    ///
+    /// The new finite timeout.
+    ///
+    pub const fn finite(secs: u32, nanos: u32) -> Self {
+        Self {
+            kind: Self::KIND_FINITE,
+            secs,
+            nanos,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a timeout from an optional [`Duration`]: [`None`] yields an infinite timeout, while
+    /// [`Some`] yields a finite one. A duration whose whole-seconds component exceeds [`u32::MAX`]
+    /// is saturated, which still bounds the wait far beyond any practical deadline.
+    ///
+    /// # Parameters
+    ///
+    /// - `timeout`: The optional duration to convert.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding timeout.
+    ///
+    pub fn from_duration(timeout: Option<Duration>) -> Self {
+        match timeout {
+            None => Self::infinite(),
+            Some(duration) => {
+                let secs: u32 = u32::try_from(duration.as_secs()).unwrap_or(u32::MAX);
+                Self::finite(secs, duration.subsec_nanos())
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the finite duration components `(secs, nanos)`, or [`None`] if the timeout is
+    /// infinite.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the descriptor carries an unknown timeout kind or an
+    /// invalid nanosecond component.
+    ///
+    pub fn as_finite(&self) -> Result<Option<(u32, u32)>, Error> {
+        match self.kind {
+            Self::KIND_INFINITE => Ok(None),
+            Self::KIND_FINITE if self.nanos < NANOSECONDS_PER_SECOND => {
+                Ok(Some((self.secs, self.nanos)))
+            },
+            Self::KIND_FINITE => Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "timeout nanoseconds component is out of range",
+            )),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid timeout kind")),
+        }
     }
 }

@@ -24,6 +24,7 @@ pub use kernel::{
     MessageReceiver,
     MessageSender,
     SegmentCount,
+    Timeout,
     VmBusMessage,
     VmBusMessageKind,
     SG_BULK_MAX_BYTES,
