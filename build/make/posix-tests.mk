@@ -133,6 +133,10 @@ POSIX_TEST_PIE_test-c-dlfcn-global := yes
 POSIX_TEST_PIE_test-c-dlfcn-handle-reuse := yes
 POSIX_TEST_PIE_test-c-dlfcn-needed := yes
 POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
+# dlfcn-order-c dlopen()s libroot.so, whose two providers both export
+# provider_id(); the executable's own symbols land in .dynsym for RTLD_DEFAULT,
+# matching every other dlfcn dlopen suite.
+POSIX_TEST_PIE_test-c-dlfcn-order := yes
 # dlfcn-dlclose-cycle-c's fixtures reference only each other (never the main
 # executable), so PIE is not strictly required; it is set anyway to match every
 # other dlfcn dlopen suite (the executable's own symbols land in .dynsym for
@@ -330,6 +334,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-order)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse)
@@ -349,6 +354,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_ORDER_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)
@@ -616,6 +622,65 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond): $(POSIX_TEST_DIAMOND_DIR)/libbase.
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libright.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libdiamond.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_DIAMOND_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-order-c: DT_NEEDED dependency search-order fixture (issue #2091).
+#---------------------------------------------------------------------------------------------------
+#
+#   libroot.so -> libbravo.so    (provider_id() == 2)  [first  in DT_NEEDED]
+#              -> libalpha.so     (provider_id() == 1)  [second in DT_NEEDED]
+#
+# Both providers export the SAME symbol provider_id(). libroot.so records its
+# DT_NEEDED entries as (libbravo.so, libalpha.so) -- pinned by the `-lbravo
+# -lalpha` link order -- which is the REVERSE of the alphabetical order of the
+# names. A loader that searches a load group in DT_NEEDED order (BFS, matching
+# glibc's l_searchlist) resolves provider_id() through libroot.so's handle to
+# libbravo.so (2); a loader that searches alphabetically resolves it to
+# libalpha.so (1). The suite asserts the former. Built with the same i686
+# freestanding toolchain as the diamond fixtures above; each DT_NEEDED edge is a
+# bare name recorded by linking with `-L<dir> -l<name>`, resolved through the
+# loader's default lib/ search path where the per-suite RAMFS stages the .so
+# files.
+POSIX_TEST_ORDER_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-order/libs
+POSIX_TEST_ORDER_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-order-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-order := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-order.img
+
+# Provider: libalpha.so (no dependencies). Exports provider_id() == 1.
+$(POSIX_TEST_ORDER_DIR)/libalpha.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-order/libs/alpha.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-order-c/libalpha.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Provider: libbravo.so (no dependencies). Exports provider_id() == 2.
+$(POSIX_TEST_ORDER_DIR)/libbravo.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-order/libs/bravo.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-order-c/libbravo.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Root: DT_NEEDED libbravo.so then libalpha.so. The `-lbravo -lalpha` order pins
+# the DT_NEEDED order to bravo-before-alpha (the reverse of alphabetical), so the
+# search order is observable. Built after both providers so the linker records
+# the edges.
+$(POSIX_TEST_ORDER_DIR)/libroot.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-order/libs/root.c \
+		$(POSIX_TEST_ORDER_DIR)/libbravo.so $(POSIX_TEST_ORDER_DIR)/libalpha.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-order-c/libroot.so (DT_NEEDED libbravo.so libalpha.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o \
+		-L$(POSIX_TEST_ORDER_DIR) -lbravo -lalpha -o $@
+
+# Per-suite RAMFS image carrying all three fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-order): $(POSIX_TEST_ORDER_DIR)/libalpha.so \
+		$(POSIX_TEST_ORDER_DIR)/libbravo.so \
+		$(POSIX_TEST_ORDER_DIR)/libroot.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_ORDER_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_ORDER_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_ORDER_DIR)/libalpha.so $(POSIX_TEST_ORDER_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_ORDER_DIR)/libbravo.so $(POSIX_TEST_ORDER_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_ORDER_DIR)/libroot.so $(POSIX_TEST_ORDER_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_ORDER_SEED)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-dlclose-cycle-c: dlclose() over a multiply-referenced dependency graph.
@@ -1147,6 +1212,7 @@ POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-order) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse) \
