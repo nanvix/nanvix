@@ -19,6 +19,7 @@ use ::alloc::{
     collections::{
         btree_map::BTreeMap,
         btree_set::BTreeSet,
+        vec_deque::VecDeque,
     },
     ffi::CString,
     fmt,
@@ -245,8 +246,13 @@ pub struct DynamicLibrary {
     load_address: VirtualAddress,
     /// Memory segments.
     _segments: Vec<MemorySegment>, // Keep this here to prevent memory drop.
-    /// Dependencies.
-    dependencies: BTreeMap<String, Option<Arc<Mutex<Self>>>>,
+    /// Dependencies, in `DT_NEEDED` order.
+    ///
+    /// Stored as an ordered list rather than a map so symbol resolution can
+    /// search dependencies in the exact order the linker recorded them — the
+    /// order glibc walks when it builds an object's `l_searchlist` — instead of
+    /// an arbitrary alphabetical order.
+    dependencies: Vec<(String, Option<Arc<Mutex<Self>>>)>,
     /// Dynamic symbols.
     dynsym: SymbolTable,
     /// Dynamic symbols names.
@@ -454,13 +460,19 @@ impl DynamicLibrary {
                     }
                 }
 
-                // Collect dependencies.
-                let mut dependencies: BTreeMap<String, Option<Arc<Mutex<Self>>>> = BTreeMap::new();
-                if !elf.libraries.is_empty() {
-                    for library in elf.libraries.iter() {
-                        ::syslog::debug!("load(): depends on library '{}'", library);
-                        dependencies.insert(library.to_string(), None);
+                // Collect dependencies, preserving the `DT_NEEDED` order the
+                // linker recorded them in. Symbol resolution searches this list
+                // in order, so the order must not be lost. Duplicate entries are
+                // dropped: a repeated `DT_NEEDED` name refers to the same
+                // dependency and must occupy a single slot.
+                let mut dependencies: Vec<(String, Option<Arc<Mutex<Self>>>)> = Vec::new();
+                for library in elf.libraries.iter() {
+                    ::syslog::debug!("load(): depends on library '{}'", library);
+                    let name: String = library.to_string();
+                    if dependencies.iter().any(|(existing, _)| existing == &name) {
+                        continue;
                     }
+                    dependencies.push((name, None));
                 }
 
                 // Collect section headers.
@@ -872,57 +884,72 @@ impl DynamicLibrary {
     pub fn lookup_load_group(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
         ::syslog::trace!("lookup_load_group(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
-        // The visited set tracks which dependencies have been traversed in
-        // this lookup to avoid re-searching in diamond-shaped graphs and to
-        // prevent infinite recursion on cyclic dependencies.
-        let mut visited: BTreeSet<usize> = BTreeSet::new();
-        self.lookup_in_load_group(symbol_name, &mut visited)
-    }
+        // POSIX / System V symbol resolution searches a load group in
+        // breadth-first `DT_NEEDED` order: the object itself first, then its
+        // direct dependencies in the order the linker recorded them, then the
+        // dependencies of those, and so on. This mirrors the order glibc walks
+        // when it services a lookup against an object's `l_searchlist`, so a
+        // symbol defined by more than one object in the group resolves to the
+        // first definition in `DT_NEEDED` order rather than to an
+        // alphabetically-first one.
 
-    /// Searches for a symbol in this library and its dependency tree only.
-    ///
-    /// Does NOT fall back to the global symbol table. This ensures that
-    /// recursive dependency searches do not short-circuit to the global scope
-    /// before the entire dependency tree has been checked.
-    ///
-    /// The `visited` set tracks `Arc` allocation addresses of dependencies
-    /// already traversed in this lookup, preventing redundant work on
-    /// diamond-shaped graphs and avoiding false-positive cycle detection.
-    fn lookup_in_load_group(
-        &self,
-        symbol_name: &str,
-        visited: &mut BTreeSet<usize>,
-    ) -> Result<Option<(usize, usize)>, Error> {
+        // The root object itself is the head of the search list.
         if let Some(symbol) = self.find(symbol_name) {
             if !symbol.is_undefined() {
-                // Symbol is defined in this library.
                 return Ok(Some((self.load_address.into_raw_value(), symbol.value() as usize)));
             }
         }
 
-        // Symbol is either undefined in this library or not in its dynsym at
-        // all. Per POSIX, dlsym must search the full dependency tree regardless
-        // of whether the root library references the symbol.
-        for dlfile in self.dependencies.values().flatten() {
-            // Guard against deadlock: if the mutex is held by an ancestor
-            // in our call chain (true cycle back to a locked parent) or by
-            // a concurrent lookup, skip rather than spinning forever.
+        // `visited` records the `Arc` allocation addresses of dependencies
+        // already searched in this lookup, so a diamond-shaped graph searches
+        // each object at most once. `queue` drives the breadth-first walk:
+        // direct dependencies are enqueued in `DT_NEEDED` order and each searched
+        // object appends its own dependencies to the back, so shallower and
+        // earlier `DT_NEEDED` objects are always searched first. A `DT_NEEDED`
+        // cycle is rejected at load time, so the bound graph is acyclic and the
+        // queue is bounded by the number of dependency edges.
+        let mut visited: BTreeSet<usize> = BTreeSet::new();
+        let mut queue: VecDeque<Arc<Mutex<Self>>> = VecDeque::new();
+        for dependency in self.dependencies.iter().filter_map(|(_, dep)| dep.as_ref()) {
+            queue.push_back(dependency.clone());
+        }
+
+        while let Some(dlfile) = queue.pop_front() {
+            // Skip a dependency already searched via a shorter or earlier path
+            // (diamond-shaped graph).
+            let id: usize = Arc::as_ptr(&dlfile) as usize;
+            if visited.contains(&id) {
+                continue;
+            }
+
+            // Guard against deadlock: if the mutex is held by an ancestor in our
+            // call chain (a cycle back to a locked parent) or by a concurrent
+            // lookup, skip rather than spinning forever. Leave it unmarked so
+            // another queued edge may still search it once it is free.
             if dlfile.is_locked() {
                 continue;
             }
-
-            // Use the Arc's heap allocation address as a unique,
-            // lock-free identifier for this dependency. Skip if already
-            // traversed in this lookup (diamond-shaped dependency).
-            let id: usize = Arc::as_ptr(dlfile) as usize;
-            if !visited.insert(id) {
-                continue;
-            }
+            visited.insert(id);
 
             let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
 
-            if let Some(result) = dlfile.lookup_in_load_group(symbol_name, visited)? {
-                return Ok(Some(result));
+            if let Some(symbol) = dlfile.find(symbol_name) {
+                if !symbol.is_undefined() {
+                    return Ok(Some((
+                        dlfile.load_address.into_raw_value(),
+                        symbol.value() as usize,
+                    )));
+                }
+            }
+
+            // Append this object's dependencies to the back of the queue in
+            // `DT_NEEDED` order, preserving the breadth-first search order.
+            for dependency in dlfile
+                .dependencies
+                .iter()
+                .filter_map(|(_, dep)| dep.as_ref())
+            {
+                queue.push_back(dependency.clone());
             }
         }
 
@@ -1249,16 +1276,16 @@ impl DynamicLibrary {
         storage_unit.write_unaligned(final_value as u32);
     }
 
-    /// Returns the file descriptor of the dynamic library.
-    pub fn dependencies(&self) -> BTreeMap<String, Option<Arc<Mutex<Self>>>> {
+    /// Returns a clone of this library's dependency list, in `DT_NEEDED` order.
+    pub fn dependencies(&self) -> Vec<(String, Option<Arc<Mutex<Self>>>)> {
         self.dependencies.clone()
     }
 
     /// Returns the handles of all bound dependencies.
     pub fn dependency_handles(&self) -> Vec<DlHandle> {
         self.dependencies
-            .values()
-            .filter_map(|dep| dep.as_ref().map(|d| d.lock().handle()))
+            .iter()
+            .filter_map(|(_, dep)| dep.as_ref().map(|d| d.lock().handle()))
             .collect()
     }
 
@@ -1294,19 +1321,19 @@ impl DynamicLibrary {
         name: String,
         library: Arc<Mutex<Self>>,
     ) -> Result<(), Error> {
-        match self.dependencies.get(&name) {
-            Some(None) => {
-                self.dependencies.insert(name, Some(library));
+        match self.dependencies.iter_mut().find(|entry| entry.0 == name) {
+            Some(entry) => {
+                if entry.1.is_some() {
+                    let reason: &str = "dependency already loaded";
+                    ::syslog::warn!("bind_dependency(): {}", reason);
+                    return Err(Error::new(ErrorCode::BadFile, reason));
+                }
+                entry.1 = Some(library);
                 Ok(())
-            },
-            Some(Some(_)) => {
-                let reason: &str = "dependency already loaded";
-                ::syslog::warn!("load_dependency(): {}", reason);
-                Err(Error::new(ErrorCode::BadFile, reason))
             },
             None => {
                 let reason: &str = "dependency not listed";
-                ::syslog::warn!("load_dependency(): {}", reason);
+                ::syslog::warn!("bind_dependency(): {}", reason);
                 Err(Error::new(ErrorCode::BadFile, reason))
             },
         }
