@@ -1566,11 +1566,6 @@ jobs:
           git fetch origin dev --quiet
           git checkout origin/dev -- data/windows-baremetal
           benchmarks="boot-time,cold-start"
-          # TEMPORARY: the Windows regression threshold is raised from 40 to 60.
-          # Defaulting guest memory to 256MB (#2845) increased WHP boot-time ~40-45%
-          # because WHP commits guest RAM eagerly at VM creation (see #2851). The dev
-          # baseline still reflects 128MB and self-heals once #2845 lands on dev.
-          # Revert to 40 once the dev baseline stabilizes on 256MB: #2852.
           python3 ./scripts/benchmark.py \
             ci-gate \
             --dev-dir "data/windows-baremetal" \
@@ -1578,7 +1573,7 @@ jobs:
             --benchmarks "${benchmarks}" \
             --machine-types "microvm" \
             --archs "X64" \
-            --regression-threshold 60 \
+            --regression-threshold 40 \
             --baseline-window 20
 
       - name: "Persist results on dev"
