@@ -61,8 +61,16 @@ impl<T: Address> PageAligned<T> {
     }
 }
 
-#[verus_verify]
+verus! {
+
 impl<T: Address> Address for PageAligned<T> {
+    // A raw value yields a valid `PageAligned<T>` exactly when it is valid for the inner address
+    // type `T` *and* page-aligned. This mirrors `from_address`, which validates (but does not
+    // normalize) alignment, so `from_raw_value` returns `Ok` iff both conditions hold.
+    open spec fn spec_valid_raw(raw_addr: usize) -> bool {
+        T::spec_valid_raw(raw_addr) && spec_aligned(raw_addr as int)
+    }
+
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }
@@ -159,6 +167,8 @@ impl<T: Address> Address for PageAligned<T> {
         self.0.as_mut_ptr()
     }
 }
+
+} // verus!
 
 impl<T: Address> core::fmt::Debug for PageAligned<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {

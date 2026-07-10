@@ -32,11 +32,26 @@ use crate::{
 // Traits
 //==================================================================================================
 
-#[verus_verify]
+// `Address` carries its own specification-level validity predicate, `spec_valid_raw`. It is
+// declared as a `spec fn` member of the trait so that [`Address::from_raw_value`] can state its
+// success/failure condition in terms of a per-type validity predicate. The trait therefore lives
+// inside a `verus!` block, because Verus attribute mode (`#[verus_verify]`) cannot declare a
+// `spec fn` member directly inside a trait. The default meaning is "every raw value is valid",
+// which fits types whose constructor never fails (such as a plain virtual address); types with a
+// restricted address space (physical, page-aligned, …) override it.
+verus! {
+
 pub trait Address
 where
     Self: core::fmt::Debug + Clone + Copy + PartialEq + Eq + PartialOrd + Ord + View<V = int>,
 {
+    // Whether `raw_addr` denotes a valid address of this type. The default admits every raw value;
+    // address types with a restricted address space override it. `from_raw_value` returns `Ok`
+    // exactly when this predicate holds.
+    open spec fn spec_valid_raw(raw_addr: usize) -> bool {
+        true
+    }
+
     ///
     /// # Description
     ///
@@ -51,20 +66,17 @@ where
     /// - `Ok(Self)`: The new address.
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
-    #[verus_spec(result =>
+    fn from_raw_value(raw_addr: usize) -> (result: Result<Self, Error>)
         ensures
             match result {
-                Ok(a) => a@ == raw_addr as int,
-                Err(e) => e.code == crate::error::ErrorCode::BadAddress,
-            },
-    )]
-    fn from_raw_value(raw_addr: usize) -> Result<Self, Error>;
+                Ok(a) => Self::spec_valid_raw(raw_addr) && a@ == raw_addr as int,
+                Err(e) => !Self::spec_valid_raw(raw_addr)
+                    && e.code == crate::error::ErrorCode::BadAddress,
+            };
 
-    #[verus_spec(result =>
+    fn into_raw_value(self) -> (result: usize)
         ensures
-            result as int == self@,
-    )]
-    fn into_raw_value(self) -> usize;
+            result as int == self@;
 
     ///
     /// # Description
@@ -112,12 +124,10 @@ where
     /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
     /// an error is returned instead.
     ///
-    #[verus_spec(result =>
+    fn is_aligned(&self, align: Alignment) -> (result: Result<bool, Error>)
         ensures
             result matches Ok(aligned)
-                && aligned == spec_addr_is_aligned(self@, align),
-    )]
-    fn is_aligned(&self, align: Alignment) -> Result<bool, Error>;
+                && aligned == spec_addr_is_aligned(self@, align);
 
     ///
     /// # Description
@@ -134,3 +144,5 @@ where
 
     fn as_mut_ptr(&self) -> *mut u8;
 }
+
+} // verus!

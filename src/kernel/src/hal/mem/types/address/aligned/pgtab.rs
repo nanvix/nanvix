@@ -5,7 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::mem::Address;
+use crate::hal::mem::{
+    Address,
+};
 use ::arch::mem::PGTAB_ALIGNMENT;
 use ::core::ops::Deref;
 use ::sys::{

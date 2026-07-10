@@ -123,7 +123,16 @@ impl PhysicalAddress {
     }
 }
 
+verus! {
+
 impl Address for PhysicalAddress {
+    // A raw value denotes a valid physical address exactly when it lies within the physical
+    // address space, i.e. it is strictly below the physical memory size. This matches
+    // `is_valid_physical_address` and, through it, the `Ok`/`Err` outcome of `from_raw_value`.
+    open spec fn spec_valid_raw(raw_addr: usize) -> bool {
+        (raw_addr as int) < spec_physical_memory_size()
+    }
+
     ///
     /// # Description
     ///
@@ -138,6 +147,7 @@ impl Address for PhysicalAddress {
     /// - `Ok(Self)`: The new address.
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
+    #[verifier::external_body]
     fn from_raw_value(value: usize) -> Result<Self, Error> {
         Self::from_virtual_address(VirtualAddress::from_raw_value(value))
     }
@@ -156,6 +166,7 @@ impl Address for PhysicalAddress {
     ///
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
+    #[verifier::external_body]
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
         let aligned: VirtualAddress = self
             .0
@@ -178,6 +189,7 @@ impl Address for PhysicalAddress {
     ///
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
+    #[verifier::external_body]
     fn align_down(&self, align: Alignment) -> Result<Self, Error> {
         Self::from_virtual_address(self.0.align_down(align))
     }
@@ -196,6 +208,7 @@ impl Address for PhysicalAddress {
     /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
     /// an error is returned instead.
     ///
+    #[verifier::external_body]
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error> {
         Ok(self.0.is_aligned(align))
     }
@@ -209,22 +222,28 @@ impl Address for PhysicalAddress {
     ///
     /// The maximum [`PhysicalAddress`].
     ///
+    #[verifier::external_body]
     fn max_addr() -> usize {
         ::config::kernel::MEMORY_SIZE - 1
     }
 
+    #[verifier::external_body]
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }
 
+    #[verifier::external_body]
     fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
     }
 
+    #[verifier::external_body]
     fn as_mut_ptr(&self) -> *mut u8 {
         self.0.as_mut_ptr()
     }
 }
+
+} // verus!
 
 impl core::fmt::Debug for PhysicalAddress {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
@@ -305,5 +324,11 @@ impl View for PhysicalAddress {
         self.0@
     }
 }
+
+// Abstract size of the physical address space. Its concrete value is the build-time constant
+// `config::kernel::MEMORY_SIZE`, which Verus cannot read because `config` is intentionally outside
+// the verified crate set. `spec_physical_memory_size` names that value abstractly so that the
+// physical-address validity predicate can refer to it.
+pub uninterp spec fn spec_physical_memory_size() -> int;
 
 } // end verus!
