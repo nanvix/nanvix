@@ -731,9 +731,11 @@ name = "error"
 version = "0.19.17"
 dependencies = [
  "compiler_builtins",
+ "libc",
  "rustc-std-workspace-core",
  "sysapi",
  "vstd",
+ "windows",
 ]
 
 [[package]]

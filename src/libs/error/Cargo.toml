@@ -22,6 +22,12 @@ compiler_builtins = { workspace = true, optional = true }
 sysapi = { workspace = true }
 vstd = { workspace = true, optional = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_Networking_WinSock"] }
+
 [features]
 default = []
 std = []
