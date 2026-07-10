@@ -84,8 +84,6 @@ pub use nanvix_http as http;
 pub use nanvix_sandbox as sandbox;
 #[cfg(feature = "single-process")]
 pub use nanvix_sandbox::simple_cache as sandbox_cache;
-#[cfg(feature = "multi-process")]
-pub use nanvix_sandbox_cache as sandbox_cache;
 pub use nanvix_sandbox_config as sandbox_config;
 pub use nanvix_terminal as terminal;
 pub use syscomm;

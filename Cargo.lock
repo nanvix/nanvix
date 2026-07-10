@@ -2029,7 +2029,6 @@ dependencies = [
  "linuxd",
  "nanvix-http",
  "nanvix-sandbox",
- "nanvix-sandbox-cache",
  "nanvix-sandbox-config",
  "nanvix-terminal",
  "sys",
@@ -2074,7 +2073,6 @@ dependencies = [
  "linuxd",
  "log",
  "nanvix-sandbox",
- "nanvix-sandbox-cache",
  "nanvix-sandbox-config",
  "serde",
  "serde_json",
@@ -2117,20 +2115,6 @@ dependencies = [
  "tokio",
  "user-vm-api",
  "uservm",
-]
-
-[[package]]
-name = "nanvix-sandbox-cache"
-version = "0.19.22"
-dependencies = [
- "anyhow",
- "chrono",
- "config",
- "log",
- "nanvix-sandbox",
- "nanvix-sandbox-config",
- "rand 0.10.2",
- "tokio",
 ]
 
 [[package]]
@@ -2216,7 +2200,6 @@ dependencies = [
  "libc",
  "log",
  "nanvix-sandbox",
- "nanvix-sandbox-cache",
  "nanvix-sandbox-config",
  "tokio",
  "user-vm-api",

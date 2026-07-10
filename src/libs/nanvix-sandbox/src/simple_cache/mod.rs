@@ -3,8 +3,8 @@
 
 //! Simplified sandbox cache for single-process deployments.
 //!
-//! This module provides a lightweight sandbox cache that manages sandbox lifecycle without the
-//! multi-process concerns (external daemon binaries). It is intended
+//! This module provides a lightweight sandbox cache that manages sandbox lifecycle without
+//! external daemon binaries. It is intended
 //! for use when the Linux Daemon and User VM are embedded within the same process.
 
 //==================================================================================================

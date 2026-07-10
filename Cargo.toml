@@ -32,7 +32,6 @@ members = [
         "src/libs/nanvix",
         "src/libs/nanvix-http",
         "src/libs/nanvix-sandbox",
-        "src/libs/nanvix-sandbox-cache",
         "src/libs/nanvix-sandbox-config",
         "src/libs/nanvix-terminal",
         "src/libs/no_fail",
@@ -235,7 +234,6 @@ net-backend = { path = "src/libs/net-backend", default-features = false }
 networkd = { path = "src/daemons/networkd", default-features = false }
 nanvix-oci = { path = "src/libs/nanvix-oci" }
 nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
-nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
 nanvix-sandbox-config = { path = "src/libs/nanvix-sandbox-config", default-features = false }
 nanvix-shim-core = { path = "src/libs/nanvix-shim-core" }
 nanvix-shim-proto = { path = "src/libs/nanvix-shim-proto" }
@@ -337,7 +335,9 @@ uuid = { version = "1.23.1", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 vfs = { path = "src/libs/vfs", default-features = false }
 vfs-bench-common = { path = "src/libs/vfs-bench-common", default-features = false }
-vstd = { version = "=0.0.0-2026-06-14-0213", default-features = false, features = ["alloc"] }
+vstd = { version = "=0.0.0-2026-06-14-0213", default-features = false, features = [
+        "alloc",
+] }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 windows = { version = "0.62", features = [
         "Win32_Foundation",

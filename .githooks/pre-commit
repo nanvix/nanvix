@@ -62,7 +62,7 @@ source "${IMPORT_DIR}/logging.sh"
 
 # Configuration matrix matching CI (ci.yml).
 declare -a MACHINE_TYPES=("microvm")
-declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process")
+declare -a DEPLOYMENT_TYPES=("standalone" "single-process")
 
 #===================================================================================================
 # Functions
@@ -79,13 +79,13 @@ declare -a DEPLOYMENT_TYPES=("standalone" "single-process" "multi-process")
 #   String with DEPLOYMENT_MODE value.
 #
 # USAGE EXAMPLE
-#   flags=$(get_deployment_flags "multi-process")
+#   flags=$(get_deployment_flags "single-process")
 #
 get_deployment_flags() {
     local deployment="${1}"
 
     case "${deployment}" in
-        standalone|single-process|multi-process)
+        standalone|single-process)
             echo "DEPLOYMENT_MODE=${deployment}"
             ;;
         *)

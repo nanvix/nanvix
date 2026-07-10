@@ -83,7 +83,6 @@ SUPPORTED_BENCHMARKS: list[str] = [
     "boot_time",
     "cold_start",
     "cold_start_uvm",
-    "concurrent",
     "snapshot_restore",
 ]
 
@@ -101,7 +100,6 @@ BENCHMARK_TITLES: dict[str, str] = {
     "boot_time": "Boot Time",
     "cold_start": "Cold Start",
     "cold_start_uvm": "Cold Start (UVM)",
-    "concurrent": "Concurrent",
     "echo_breakdown": "Echo Breakdown",
     "round_trip_latency": "Round-Trip Latency",
     "snapshot_restore": "Snapshot Restore",

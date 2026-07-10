@@ -16,14 +16,8 @@
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 
-#[cfg(all(feature = "standalone", feature = "multi-process"))]
-compile_error!("features `standalone` and `multi-process` are mutually exclusive");
-
 #[cfg(all(feature = "standalone", feature = "single-process"))]
 compile_error!("features `standalone` and `single-process` are mutually exclusive");
-
-#[cfg(all(feature = "single-process", feature = "multi-process"))]
-compile_error!("features `single-process` and `multi-process` are mutually exclusive");
 
 //==================================================================================================
 // Imports
@@ -34,8 +28,8 @@ use ::log::{
     error,
     info,
 };
-#[cfg(feature = "multi-process")]
-use ::nanvix::sandbox_config::SandboxCacheConfig;
+#[cfg(not(feature = "standalone"))]
+use ::nanvix::sandbox::NAMED_RESOURCE_PREFIX;
 #[cfg(feature = "single-process")]
 use ::nanvix::sandbox_config::SimpleSandboxCacheConfig;
 #[cfg(feature = "standalone")]
@@ -43,21 +37,22 @@ use ::nanvix::sandbox_config::StandaloneConfig;
 use ::nanvix::{
     config::system::DEFAULT_MACHINE_NAME,
     http::HttpServer,
-    sandbox::NAMED_RESOURCE_PREFIX,
     terminal::Terminal,
 };
-use ::nanvixd::{
-    args::Args,
-    tempdir::TemporaryDirectory,
-};
+use ::nanvixd::args::Args;
+#[cfg(not(feature = "standalone"))]
+use ::nanvixd::tempdir::TemporaryDirectory;
+#[cfg(not(feature = "standalone"))]
 use ::std::{
     path::PathBuf,
-    process::ExitCode,
-    sync::Arc,
     time::{
         SystemTime,
         UNIX_EPOCH,
     },
+};
+use ::std::{
+    process::ExitCode,
+    sync::Arc,
 };
 use ::tokio::fs;
 
@@ -74,12 +69,6 @@ const MAX_EXIT_CODE: i32 = 255;
 
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
-/// Binary name for Linux Daemon.
-#[cfg(feature = "multi-process")]
-const LINUXD_BINARY_NAME: &str = "linuxd.elf";
-/// Binary name for User VM.
-#[cfg(feature = "multi-process")]
-const USERVM_BINARY_NAME: &str = "uservm.elf";
 
 //==================================================================================================
 // Standalone Functions
@@ -130,13 +119,8 @@ async fn async_main() -> Result<ExitCode> {
 
     print_startup_info(&args);
 
-    // Ensure all required binaries are available.
-    #[cfg(any(feature = "single-process", feature = "standalone"))]
-    let (kernel_binary_path, _, _) = ensure_all_binaries_available(&args).await?;
-
-    #[cfg(feature = "multi-process")]
-    let (kernel_binary_path, linuxd_binary_path, uservm_binary_path) =
-        ensure_all_binaries_available(&args).await?;
+    // Ensure the kernel binary is available.
+    let kernel_binary_path = ensure_kernel_binary_available(&args).await?;
 
     // Create temporary directory that will be automatically cleaned up on drop.
     // Standalone mode does not use the temporary directory, so skip creating it
@@ -178,26 +162,6 @@ async fn async_main() -> Result<ExitCode> {
         args.gateway_sockaddr().map(|s| s.to_string()),
     );
 
-    #[cfg(feature = "multi-process")]
-    let config: SandboxCacheConfig<()> = SandboxCacheConfig::new(
-        args.control_plane_socket_type(),
-        args.gateway_socket_type(),
-        args.system_vm_socket_type(),
-        args.console_file().clone(),
-        args.ramfs_filename().map(|s| s.to_string()),
-        args.hwloc().clone(),
-        &kernel_binary_path,
-        &linuxd_binary_path,
-        &uservm_binary_path,
-        args.log_directory(),
-        tmp_directory.path().to_str().ok_or_else(|| {
-            let reason: &str = "temporary directory path is not valid UTF-8";
-            error!("main(): {reason}");
-            anyhow::anyhow!(reason)
-        })?,
-        args.networking_mode(),
-    );
-
     // Check for interactive mode or HTTP mode.
     if args.interactive_mode() {
         let guest_binary_path: String = match args.program_name() {
@@ -222,9 +186,6 @@ async fn async_main() -> Result<ExitCode> {
         // In standalone mode, the terminal drives the VM directly (no linuxd).
         #[cfg(feature = "standalone")]
         let mut terminal: Terminal = Terminal::new(config);
-        // In multi-process mode, the terminal connects through the sandbox cache.
-        #[cfg(feature = "multi-process")]
-        let mut terminal: Terminal<()> = Terminal::new(config);
         let exit_code: i32 = terminal
             .run(None, None, &guest_binary_path, &guest_binary_args)
             .await?;
@@ -263,8 +224,7 @@ async fn async_main() -> Result<ExitCode> {
 ///
 /// # Description
 ///
-/// Ensures all required binaries are available. Checks if all binaries exist locally first.
-/// If any binary is missing, fails with an error listing the missing binaries.
+/// Ensures that the kernel binary is available locally.
 ///
 /// # Parameters
 ///
@@ -272,51 +232,24 @@ async fn async_main() -> Result<ExitCode> {
 ///
 /// # Returns
 ///
-/// On success, returns a tuple containing paths to (kernel, linuxd, uservm) binaries.
-/// On failure, returns an error describing what went wrong.
+/// On success, returns the path to the kernel binary. On failure, returns an error
+/// describing what went wrong.
 ///
-async fn ensure_all_binaries_available(args: &Args) -> Result<(String, String, String)> {
+async fn ensure_kernel_binary_available(args: &Args) -> Result<String> {
     let kernel_binary_path: String = format!("{}/{}", args.binary_directory(), KERNEL_BINARY_NAME);
 
-    #[cfg(feature = "multi-process")]
-    let linuxd_binary_path: String = format!("{}/{}", args.binary_directory(), LINUXD_BINARY_NAME);
-
-    #[cfg(feature = "multi-process")]
-    let uservm_binary_path: String = format!("{}/{}", args.binary_directory(), USERVM_BINARY_NAME);
-
-    // Check if all binaries are available locally.
+    // Check if the kernel binary is available locally.
     let kernel_metadata_result: Result<std::fs::Metadata, std::io::Error> =
         fs::metadata(&kernel_binary_path).await;
     let kernel_available: bool = kernel_metadata_result.is_ok();
 
-    #[cfg(any(feature = "single-process", feature = "standalone"))]
-    let all_available: bool = kernel_available;
-
-    #[cfg(feature = "multi-process")]
-    let all_available: bool = {
-        let linuxd_available: bool = fs::metadata(&linuxd_binary_path).await.is_ok();
-        let uservm_available: bool = fs::metadata(&uservm_binary_path).await.is_ok();
-        kernel_available && linuxd_available && uservm_available
-    };
-
-    // If all binaries are available locally, use them.
-    if all_available {
+    // If the kernel binary is available locally, use it.
+    if kernel_available {
         info!("using local binary {}: {}", KERNEL_BINARY_NAME, kernel_binary_path);
-
-        #[cfg(feature = "multi-process")]
-        {
-            info!("using local binary {}: {}", LINUXD_BINARY_NAME, linuxd_binary_path);
-            info!("using local binary {}: {}", USERVM_BINARY_NAME, uservm_binary_path);
-        }
-
-        #[cfg(any(feature = "single-process", feature = "standalone"))]
-        return Ok((kernel_binary_path, String::new(), String::new()));
-
-        #[cfg(feature = "multi-process")]
-        return Ok((kernel_binary_path, linuxd_binary_path, uservm_binary_path));
+        return Ok(kernel_binary_path);
     }
 
-    // Standalone mode requires all binaries to be available locally.
+    // Standalone mode requires the kernel binary to be available locally.
     #[cfg(feature = "standalone")]
     {
         // Safety: we only reach here when kernel_available is false, so the result must be Err.
@@ -327,30 +260,21 @@ async fn ensure_all_binaries_available(args: &Args) -> Result<(String, String, S
             ),
             Ok(_) => unreachable!(),
         };
-        error!("ensure_all_binaries_available(): {reason}");
+        error!("ensure_kernel_binary_available(): {reason}");
         anyhow::bail!(reason);
     }
 
     #[cfg(not(feature = "standalone"))]
     {
-        let mut missing: Vec<&str> = Vec::new();
-        if !kernel_available {
-            missing.push(KERNEL_BINARY_NAME);
-        }
-
-        #[cfg(feature = "multi-process")]
-        {
-            if fs::metadata(&linuxd_binary_path).await.is_err() {
-                missing.push(LINUXD_BINARY_NAME);
-            }
-            if fs::metadata(&uservm_binary_path).await.is_err() {
-                missing.push(USERVM_BINARY_NAME);
-            }
-        }
-
-        let reason: String =
-            format!("required binaries not available locally: {}", missing.join(", "));
-        error!("ensure_all_binaries_available(): {reason}");
+        // Safety: we only reach here when kernel_available is false, so the result must be Err.
+        let reason: String = match kernel_metadata_result {
+            Err(err) => format!(
+                "required kernel binary not available locally: {}: {}",
+                kernel_binary_path, err
+            ),
+            Ok(_) => unreachable!(),
+        };
+        error!("ensure_kernel_binary_available(): {reason}");
         anyhow::bail!(reason);
     }
 }
@@ -393,14 +317,6 @@ fn print_startup_info(args: &Args) {
     if let Some(snapshot) = args.snapshot_path() {
         info!("snapshot restore from: {}", snapshot);
     }
-
-    #[cfg(feature = "multi-process")]
-    info!(
-        "nanvixd {}, multi-process deployment, {} mode, machine {}",
-        env!("CARGO_PKG_VERSION"),
-        mode,
-        DEFAULT_MACHINE_NAME
-    );
 }
 
 ///
@@ -422,7 +338,7 @@ fn print_startup_info(args: &Args) {
 /// On success, returns a `TemporaryDirectory` instance that manages the lifecycle of the created
 /// directory. On failure, returns an error describing what went wrong during directory creation.
 ///
-#[cfg_attr(feature = "standalone", allow(dead_code))]
+#[cfg(not(feature = "standalone"))]
 async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
     // Get current timestamp in microseconds.
     let timestamp_micros: u128 = SystemTime::now()
@@ -475,6 +391,7 @@ async fn create_tmp_dir(tmp_directory: &str) -> Result<TemporaryDirectory> {
 /// A base64url-encoded string representation of the input number using RFC 4648 compliant
 /// filename-safe characters. Zero is encoded as `"A"`.
 ///
+#[cfg(any(not(feature = "standalone"), test))]
 fn encode_base64_filename(mut num: u128) -> String {
     const BASE64_CHARS: &[char] = &[
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
@@ -507,6 +424,8 @@ fn encode_base64_filename(mut num: u128) -> String {
 #[allow(clippy::needless_range_loop)]
 mod tests {
     use super::*;
+    #[cfg(feature = "standalone")]
+    use ::std::path::PathBuf;
 
     ///
     /// # Description
@@ -675,11 +594,11 @@ mod tests {
     ///
     /// # Description
     ///
-    /// Tests that `ensure_all_binaries_available` succeeds when the kernel binary exists locally.
+    /// Tests that `ensure_kernel_binary_available` succeeds when the kernel binary exists locally.
     ///
     #[cfg(feature = "standalone")]
     #[tokio::test]
-    async fn test_ensure_all_binaries_available_kernel_present() {
+    async fn test_ensure_kernel_binary_available_kernel_present() {
         use ::tempfile::TempDir;
 
         let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
@@ -695,24 +614,22 @@ mod tests {
         ])
         .expect("failed to parse args");
 
-        let result = ensure_all_binaries_available(&args).await;
+        let result = ensure_kernel_binary_available(&args).await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
 
-        let (kernel, linuxd, uservm) = result.expect("already checked");
+        let kernel = result.expect("already checked");
         assert_eq!(kernel, kernel_path.to_str().expect("invalid path"));
-        assert!(linuxd.is_empty());
-        assert!(uservm.is_empty());
     }
 
     ///
     /// # Description
     ///
-    /// Tests that `ensure_all_binaries_available` fails with a descriptive error when the kernel
+    /// Tests that `ensure_kernel_binary_available` fails with a descriptive error when the kernel
     /// binary does not exist locally in standalone mode.
     ///
     #[cfg(feature = "standalone")]
     #[tokio::test]
-    async fn test_ensure_all_binaries_available_kernel_missing() {
+    async fn test_ensure_kernel_binary_available_kernel_missing() {
         use ::tempfile::TempDir;
 
         let tmp_dir: TempDir = TempDir::new().expect("failed to create temp dir");
@@ -726,7 +643,7 @@ mod tests {
         ])
         .expect("failed to parse args");
 
-        let result = ensure_all_binaries_available(&args).await;
+        let result = ensure_kernel_binary_available(&args).await;
         assert!(result.is_err(), "expected Err, got: {:?}", result);
 
         let err_msg: String = format!("{}", result.expect_err("already checked"));

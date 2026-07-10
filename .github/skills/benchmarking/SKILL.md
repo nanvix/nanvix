@@ -30,7 +30,6 @@ Benchmarks require a release build with panic-level logging.
 | `boot-time`             | Start a user VM (no linuxd)           |
 | `cold-start`            | Start linuxd + VM + HTTP echo         |
 | `cold-start-uvm`        | `cold-start` reusing linuxd           |
-| `concurrent`            | `cold-start` with many VMs alive      |
 | `echo-breakdown`        | HTTP echo step-by-step breakdown      |
 | `round-trip-latency`    | Latency vs. echo payload size         |
 | `warm-start`            | Fixed-size HTTP echo latency          |
@@ -134,5 +133,5 @@ from process spawn to the first echo round-trip.
 .\bin\nanvix-bench.exe -help
 ```
 
-> **Note:** HTTP-based benchmarks (`warm-start`, `round-trip-latency`, `concurrent`,
+> **Note:** HTTP-based benchmarks (`warm-start`, `round-trip-latency`,
 > and `echo-breakdown`) are Linux-only.

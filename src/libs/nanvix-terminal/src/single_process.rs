@@ -5,8 +5,7 @@
 //!
 //! In single-process mode, the terminal connects to a gateway socket provided by the
 //! simplified sandbox cache (which embeds linuxd as an async task) and streams I/O between
-//! stdin/stdout and the gateway. This mirrors the multi-process architecture but uses
-//! `SimpleSandboxCache` instead of `SandboxCache`, keeping everything in a single process.
+//! stdin/stdout and the gateway, keeping everything in a single process.
 
 //==================================================================================================
 // Imports

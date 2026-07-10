@@ -5,7 +5,7 @@
 //!
 //! This module provides a configuration structure for the single-process sandbox cache. It only
 //! stores the parameters relevant to single-process deployments, deliberately omitting
-//! multi-process concepts such as external binary paths.
+//! concepts such as external binary paths.
 
 //==================================================================================================
 // Imports

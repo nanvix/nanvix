@@ -420,7 +420,7 @@ impl Args {
         }
 
         // Host egress filtering is only consulted on the standalone network
-        // daemon path. In single-/multi-process builds the flags would be
+        // daemon path. In single-process builds the flags would be
         // silently ignored, giving a false sense of policy -- reject them so the
         // operator is not misled into believing egress is restricted.
         #[cfg(not(feature = "standalone"))]

@@ -51,12 +51,6 @@ pub struct SandboxConfig<T> {
     hwloc: Option<hwloc::HwLoc>,
     /// Path to kernel binary.
     kernel_binary_path: String,
-    /// Path to the Linux Daemon binary.
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    linuxd_binary_path: String,
-    /// Path to the User VM binary.
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    uservm_binary_path: String,
     /// Directory path for writing log files.
     log_directory: String,
     /// Optional system call table for overriding default system call behavior.
@@ -123,8 +117,6 @@ impl<T> SandboxConfig<T> {
     /// - `console_file`: Optional file path for redirecting console output.
     /// - `hwloc`: Optional hardware locality configuration.
     /// - `kernel_binary_path`: Path to kernel binary.
-    /// - `linuxd_binary_path`: Path to the Linux Daemon binary (only if not in single-process mode).
-    /// - `uservm_binary_path`: Path to the User VM binary (only if not in single-process mode).
     /// - `log_directory`: Path to the log directory.
     /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
     /// - `control_plane_bind_socket_info`: Optional information on control plane listener socket (address, socket type).
@@ -144,10 +136,6 @@ impl<T> SandboxConfig<T> {
         console_file: Option<String>,
         hwloc: Option<hwloc::HwLoc>,
         kernel_binary_path: &str,
-        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-        linuxd_binary_path: &str,
-        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-        uservm_binary_path: &str,
         log_directory: &str,
         #[cfg(feature = "single-process")] syscall_table: Option<
             ::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>,
@@ -167,10 +155,6 @@ impl<T> SandboxConfig<T> {
             ),
             hwloc,
             kernel_binary_path: kernel_binary_path.to_string(),
-            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-            linuxd_binary_path: linuxd_binary_path.to_string(),
-            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-            uservm_binary_path: uservm_binary_path.to_string(),
             log_directory: log_directory.to_string(),
             #[cfg(feature = "single-process")]
             syscall_table,
@@ -271,34 +255,6 @@ impl<T> SandboxConfig<T> {
     ///
     pub fn kernel_binary_path(&self) -> &str {
         &self.kernel_binary_path
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the path to the Linux Daemon binary.
-    ///
-    /// # Returns
-    ///
-    /// The path to the Linux Daemon binary.
-    ///
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    pub fn linuxd_binary_path(&self) -> &str {
-        &self.linuxd_binary_path
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the path to the User VM binary.
-    ///
-    /// # Returns
-    ///
-    /// The path to the User VM binary.
-    ///
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    pub fn uservm_binary_path(&self) -> &str {
-        &self.uservm_binary_path
     }
 
     ///

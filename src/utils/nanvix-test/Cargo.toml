@@ -35,9 +35,8 @@ libc = { workspace = true }
 cmdline = { workspace = true, features = ["std"] }
 
 [features]
-default = ["microvm", "multi-process"]
+default = ["microvm", "single-process"]
 single-process = ["nanvix/single-process", "nanvixd/single-process"]
-multi-process = ["nanvix/multi-process", "nanvixd/multi-process"]
 standalone = ["nanvix/standalone", "nanvixd/standalone", "dep:koptions"]
 microvm = ["nanvix/microvm", "nanvixd/microvm"]
 whp = ["nanvix/whp", "nanvixd/whp"]

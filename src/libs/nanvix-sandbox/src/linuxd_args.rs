@@ -11,8 +11,6 @@
 // Imports
 //==================================================================================================
 
-#[cfg(not(feature = "single-process"))]
-use ::std::marker::PhantomData;
 use ::syscomm::SocketType;
 
 //==================================================================================================
@@ -38,9 +36,6 @@ pub struct LinuxDaemonArgs<T> {
     system_vm_socket_info: (String, SocketType),
     /// Optional hardware locality configuration for CPU affinity and topology information.
     hwloc: Option<hwloc::HwLoc>,
-    /// Path to Linux Daemon binary.
-    #[cfg(not(feature = "single-process"))]
-    linuxd_binary_path: String,
     /// Directory path for writing log files.
     log_directory: String,
     /// Whether networking system calls are enabled.
@@ -48,10 +43,6 @@ pub struct LinuxDaemonArgs<T> {
     /// Optional system call table for overriding default system call behavior.
     #[cfg(feature = "single-process")]
     syscall_table: Option<::std::sync::Arc<::linuxd::syscalls::SyscallTable<T>>>,
-    /// Phantom data to maintain the generic type parameter `T` in the structure.
-    /// This is required because `T` is only used in single-process mode for the syscall table.
-    #[cfg(not(feature = "single-process"))]
-    _phantom: PhantomData<T>,
 }
 
 //==================================================================================================
@@ -70,7 +61,6 @@ impl<T> LinuxDaemonArgs<T> {
     /// - `control_plane_connect_socket_info`: Information on control plane socket (address, socket type).
     /// - `system_vm_socket_info`: Information on System VM socket (address, socket type).
     /// - `hwloc`: Optional hardware locality configuration for CPU affinity and topology information.
-    /// - `linuxd_binary_path`: Path to Linux Daemon binary (only if not in single-process mode).
     /// - `log_directory`: Directory path for writing log files.
     /// - `networking_enabled`: Whether networking system calls are enabled.
     /// - `syscall_table`: Optional system call table for overriding default system call behavior (only if in single-process mode).
@@ -85,7 +75,6 @@ impl<T> LinuxDaemonArgs<T> {
         control_plane_connect_socket_info: (String, SocketType),
         system_vm_socket_info: (String, SocketType),
         hwloc: Option<hwloc::HwLoc>,
-        #[cfg(not(feature = "single-process"))] linuxd_binary_path: String,
         log_directory: String,
         networking_enabled: bool,
         #[cfg(feature = "single-process")] syscall_table: Option<
@@ -97,14 +86,10 @@ impl<T> LinuxDaemonArgs<T> {
             control_plane_connect_socket_info,
             system_vm_socket_info,
             hwloc,
-            #[cfg(not(feature = "single-process"))]
-            linuxd_binary_path,
             log_directory,
             networking_enabled,
             #[cfg(feature = "single-process")]
             syscall_table,
-            #[cfg(not(feature = "single-process"))]
-            _phantom: PhantomData,
         }
     }
 
@@ -158,20 +143,6 @@ impl<T> LinuxDaemonArgs<T> {
     ///
     pub fn hwloc(&self) -> Option<&hwloc::HwLoc> {
         self.hwloc.as_ref()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the path to the Linux Daemon binary.
-    ///
-    /// # Returns
-    ///
-    /// The path to the Linux Daemon binary.
-    ///
-    #[cfg(not(feature = "single-process"))]
-    pub fn linuxd_binary_path(&self) -> &str {
-        &self.linuxd_binary_path
     }
 
     ///

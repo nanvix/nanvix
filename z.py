@@ -32,7 +32,6 @@ VALID_MACHINES: tuple[str, ...] = ("microvm",)
 VALID_DEPLOYMENT_MODES: tuple[str, ...] = (
     "standalone",
     "single-process",
-    "multi-process",
 )
 VALID_LOG_LEVELS: tuple[str, ...] = ("trace", "debug", "info", "warn", "error", "panic")
 VALID_TARGETS: tuple[str, ...] = ("x86", "x86_64")
@@ -1038,7 +1037,7 @@ Options:
 Build Parameters (after --):
   MACHINE=microvm                Target machine (default: microvm).
   RELEASE=yes|no                 Release mode.
-  DEPLOYMENT_MODE=MODE           standalone|single-process|multi-process.
+  DEPLOYMENT_MODE=MODE           standalone|single-process.
   LOG_LEVEL=LEVEL                trace|debug|info|warn|error|panic.
   PROFILER=yes|no                Enable profiling.
   TIMEOUT=SECONDS                Execution timeout (default: 600).

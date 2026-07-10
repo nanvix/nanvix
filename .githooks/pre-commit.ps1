@@ -6,8 +6,8 @@
 $ErrorActionPreference = "Continue"
 
 $MachineTypes = @("microvm")
-# Windows only supports standalone deployment (single-process and multi-process
-# require Linux-only daemons and APIs that cannot compile on Windows).
+# Windows only supports standalone deployment (single-process requires
+# Linux-only daemons and APIs that cannot compile on Windows).
 $DeploymentTypes = @("standalone")
 
 function Write-Info {
@@ -31,7 +31,6 @@ function Get-DeploymentFlag {
     switch ($Deployment) {
         "standalone" { return "DEPLOYMENT_MODE=standalone" }
         "single-process" { return "DEPLOYMENT_MODE=single-process" }
-        "multi-process" { return "DEPLOYMENT_MODE=multi-process" }
         default {
             Write-Err "(pre-commit) Invalid deployment type: $Deployment"
             exit 1

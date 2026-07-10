@@ -45,7 +45,6 @@ runs:
         case "${{ inputs.deployment-type }}" in
           standalone)     TEST_CONFIG="test/test-standalone.toml" ;;
           single-process) TEST_CONFIG="test/test-single_process.toml" ;;
-          multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
           *)
             echo "::error::Unknown deployment type: ${{ inputs.deployment-type }}"
             exit 1

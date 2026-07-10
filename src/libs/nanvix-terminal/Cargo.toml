@@ -16,7 +16,6 @@ config = { workspace = true, optional = true }
 libc = { workspace = true }
 log = { workspace = true }
 nanvix-sandbox = { workspace = true, optional = true }
-nanvix-sandbox-cache = { workspace = true, optional = true }
 nanvix-sandbox-config = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["full"] }
 user-vm-api = { workspace = true }
@@ -30,27 +29,12 @@ single-process = [
     "nanvix-sandbox",
     "nanvix-sandbox/single-process",
 ]
-multi-process = [
-    "nanvix-sandbox-config",
-    "nanvix-sandbox-cache",
-    "nanvix-sandbox-cache/multi-process",
-]
 standalone = ["config", "nanvix-sandbox-config", "uservm"]
 gdb = ["uservm?/gdb", "nanvix-sandbox-config?/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["uservm?/profile-time", "nanvix-sandbox?/profile-time"]
-microvm = [
-    "config?/microvm",
-    "uservm?/microvm",
-    "nanvix-sandbox?/microvm",
-    "nanvix-sandbox-cache?/microvm",
-]
-whp = [
-    "config?/whp",
-    "uservm?/whp",
-    "nanvix-sandbox?/whp",
-    "nanvix-sandbox-cache?/whp",
-]
+microvm = ["config?/microvm", "uservm?/microvm", "nanvix-sandbox?/microvm"]
+whp = ["config?/whp", "uservm?/whp", "nanvix-sandbox?/whp"]
 
 [lints]
 workspace = true

@@ -40,7 +40,6 @@ single-process = [
     "nanvix-sandbox-config",
     "nanvix-sandbox-config/single-process",
 ]
-multi-process = ["linuxd"]
 standalone = []
 gdb = ["uservm/gdb"]
 # Enables fine-grained time profiling.

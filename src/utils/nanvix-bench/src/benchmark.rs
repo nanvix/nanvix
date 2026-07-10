@@ -5,8 +5,7 @@
 // Imports
 //==================================================================================================
 
-use ::nanvix::hwloc::HwLoc;
-#[cfg(any(feature = "multi-process", feature = "single-process"))]
+#[cfg(feature = "single-process")]
 use ::std::process::Child;
 use ::std::{
     fmt,
@@ -26,7 +25,6 @@ pub enum BenchmarkFlavour {
     BootTime,
     ColdStart,
     ColdStartUvm,
-    Concurrent,
     EchoBreakdown,
     RoundTripLatency,
     SnapshotRestore,
@@ -82,6 +80,7 @@ impl BenchmarkFlavour {
     }
 
     /// Returns the ramfs image path for this benchmark, if one is required.
+    #[cfg(feature = "standalone")]
     pub fn get_ramfs(&self, root: &Path) -> Option<String> {
         match self {
             BenchmarkFlavour::VfsBench => {
@@ -98,7 +97,6 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::ColdStartUvm => "cold-start-uvm",
-            BenchmarkFlavour::Concurrent => "concurrent",
             BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
             BenchmarkFlavour::RoundTripLatency => "round-trip-latency",
             BenchmarkFlavour::SnapshotRestore => "snapshot-restore",
@@ -119,7 +117,6 @@ impl FromStr for BenchmarkFlavour {
             "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "cold-start-uvm" => Ok(BenchmarkFlavour::ColdStartUvm),
-            "concurrent" => Ok(BenchmarkFlavour::Concurrent),
             "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
             "round-trip-latency" => Ok(BenchmarkFlavour::RoundTripLatency),
             "snapshot-restore" => Ok(BenchmarkFlavour::SnapshotRestore),
@@ -134,20 +131,19 @@ impl FromStr for BenchmarkFlavour {
 
 pub struct Benchmark {
     pub iterations: usize,
+    #[cfg(feature = "single-process")]
     pub payload_size: usize,
     pub payload_size_override: Option<usize>,
+    #[cfg(feature = "single-process")]
     pub hwloc_file: Option<String>,
-    pub hwloc: Option<HwLoc>,
     pub flavour: BenchmarkFlavour,
     pub workspace_root: PathBuf,
-    #[cfg(any(feature = "multi-process", feature = "single-process"))]
+    #[cfg(feature = "single-process")]
     pub nanvixd: Option<Child>,
-    #[cfg(any(feature = "multi-process", feature = "single-process"))]
+    #[cfg(feature = "single-process")]
     pub nanvixd_client: reqwest::Client,
-    #[cfg(any(feature = "multi-process", feature = "single-process"))]
+    #[cfg(feature = "single-process")]
     pub nanvixd_tmp_dir: String,
-    #[cfg(any(feature = "multi-process", feature = "single-process"))]
-    pub user_vm_id: Option<String>,
 }
 
 ///
@@ -155,7 +151,7 @@ pub struct Benchmark {
 ///
 /// User VM deployment mode.
 ///
-#[cfg(any(feature = "multi-process", feature = "single-process"))]
+#[cfg(feature = "single-process")]
 #[derive(PartialEq)]
 pub enum UserVmDeployment {
     /// Ensure each user VM gets a different linuxd instance.

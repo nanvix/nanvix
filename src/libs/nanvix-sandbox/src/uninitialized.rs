@@ -28,8 +28,6 @@ use crate::{
 };
 use ::anyhow::Result;
 use ::log::error;
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-use ::std::marker::PhantomData;
 #[cfg(not(feature = "standalone"))]
 use ::std::sync::Arc;
 #[cfg(not(feature = "standalone"))]
@@ -73,10 +71,6 @@ pub struct UninitializedSandbox<T> {
     control_plane_acceptor: Option<Arc<ControlPlaneAcceptor>>,
     /// Optional sandbox configuration parameters.
     config: Option<SandboxConfig<T>>,
-    /// Phantom data to maintain the generic type parameter `T` in the structure.
-    /// This is required because `T` is only used in single-process mode for the syscall table.
-    #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-    _phantom: PhantomData<T>,
 }
 
 //==================================================================================================
@@ -115,8 +109,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             #[cfg(not(feature = "standalone"))]
             control_plane_acceptor: Some(control_plane_acceptor),
             config: None,
-            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-            _phantom: PhantomData,
         }
     }
 
@@ -164,7 +156,7 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
     /// transitions the sandbox from uninitialized to initialized state.
     ///
     /// The control plane socket must be provided via `new()` before calling this method. The
-    /// socket is expected to be pre-bound by the caller (typically `SandboxCache::new()`).
+    /// socket is expected to be pre-bound by the caller (typically `SimpleSandboxCache::new()`).
     ///
     /// # Returns
     ///
@@ -213,8 +205,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
                         ),
                         config.system_vm_socket_info().clone(),
                         config.hwloc(),
-                        #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-                        config.linuxd_binary_path().to_string(),
                         config.log_directory().to_string(),
                         config.networking_enabled(),
                         #[cfg(feature = "single-process")]
@@ -293,8 +283,6 @@ impl<T: Sync + Send + Default + 'static> UninitializedSandbox<T> {
             #[cfg(not(feature = "standalone"))]
             control_plane_acceptor,
             sandbox_config: config,
-            #[cfg(not(any(feature = "single-process", feature = "standalone")))]
-            _phantom: PhantomData,
         })
     }
 }

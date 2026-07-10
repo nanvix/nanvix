@@ -294,7 +294,7 @@ jobs:
       fail-fast: false
       matrix:
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
+        deployment-type: [ standalone, single-process ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -347,7 +347,7 @@ jobs:
       fail-fast: false
       matrix:
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
+        deployment-type: [ standalone, single-process ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -404,7 +404,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
+        deployment-type: [ standalone, single-process ]
         memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     container:
@@ -534,7 +534,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
+        deployment-type: [ standalone, single-process ]
         # The TOML-driven integration suites are partitioned into disjoint shards
         # that run on independent runners. The harness selects this shard's tests
         # via `-shard INDEX/TOTAL` (round-robin), so tests added to the TOML
@@ -611,7 +611,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
+        deployment-type: [ standalone, single-process ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -1083,7 +1083,7 @@ jobs:
         machine-type: [ microvm ]
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent
+            standard-benchmarks: "boot-time cold-start cold-start-uvm
               round-trip-latency snapshot-restore warm-start warm-start-vmm"
             standard-iterations: "100"
             payload-size: ""
@@ -1452,7 +1452,7 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,\
+          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,\
             round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm,\
             warm-start-socket"
           machine-types: "microvm"
@@ -1469,7 +1469,7 @@ jobs:
         run: |
           git fetch origin dev --quiet
           git checkout origin/dev -- data/baremetal
-          benchmarks="boot-time,cold-start,cold-start-uvm,concurrent,warm-start"
+          benchmarks="boot-time,cold-start,cold-start-uvm,warm-start"
           python3 ./scripts/benchmark.py \
             ci-gate \
             --dev-dir "data/baremetal" \
@@ -1484,8 +1484,8 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,roun\
-            d-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm,\
+          benchmarks: "boot-time,cold-start,cold-start-uvm,echo-breakdown,round-\
+            trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm,\
             warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
@@ -1635,7 +1635,7 @@ jobs:
       matrix:
         target-arch: [ x86 ]
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
+        deployment-type: [ standalone, single-process ]
         memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     permissions:

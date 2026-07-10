@@ -43,7 +43,6 @@ X86_64_ARCH = "X64"
 BOOT_TIME_BENCH = "boot-time"
 COLD_START_BENCH = "cold-start"
 COLD_START_UVM_BENCH = "cold-start-uvm"
-CONCURRENT_BENCH = "concurrent"
 ECHO_BREAKDOWN_BENCH = "echo-breakdown"
 ROUND_TRIP_LATENCY_BENCH = "round-trip-latency"
 SNAPSHOT_RESTORE_BENCH = "snapshot-restore"
@@ -73,12 +72,9 @@ SIZE_AWARE_BENCHMARKS = {
 # Benchmark Constants
 # ======================================================================
 
-# How many user VMs do we spawn in parallel in the CONCURRENT* benchmarks.
-NUM_CONCURRENT_VMS = 100
-
-# Per-benchmark timeout in seconds. The concurrent benchmark spawns 100 VMs
-# and can take up to ~25 minutes on resource-constrained GitHub runners.
-# A 45-minute timeout provides headroom while preventing indefinite hangs.
+# Per-benchmark timeout in seconds. Long-running benchmarks (e.g. size sweeps)
+# can take many minutes on resource-constrained GitHub runners. A 45-minute
+# timeout provides headroom while preventing indefinite hangs.
 BENCHMARK_TIMEOUT_SECS = 45 * 60
 
 # Benchmarks that report simple p50/p95/p99 percentile values.
@@ -86,7 +82,6 @@ PERCENTILE_BENCHMARKS = [
     BOOT_TIME_BENCH,
     COLD_START_BENCH,
     COLD_START_UVM_BENCH,
-    CONCURRENT_BENCH,
     SNAPSHOT_RESTORE_BENCH,
 ]
 
@@ -1148,11 +1143,6 @@ def run_benchmark(args):
         commit = git_result.stdout.strip()
     print(f"[BENCHMARK] Commit: {commit}")
 
-    # The concurrent benchmark takes slightly different command-line arguments than the other
-    # benchmarks. It does not take a `-hwloc` file, and instead of `-iterations` it takes
-    # a number of concurrent user VMs.
-    is_concurrent_bench = args.benchmark.startswith(CONCURRENT_BENCH)
-    print(f"[BENCHMARK] Is concurrent benchmark: {is_concurrent_bench}")
     payload_size = args.payload_size
     print(
         f"[BENCHMARK] Configuration: iterations={args.iterations}, "
@@ -1178,12 +1168,8 @@ def run_benchmark(args):
     nanvix_bench_cmd = [
         os.path.join(args.bin_dir, NANVIX_BENCH_BINARY),
         f"-benchmark {args.benchmark}",
-        f"-hwloc {args.hwloc}" if (not is_concurrent_bench and args.hwloc) else "",
-        (
-            f"-iterations {args.iterations}"
-            if not is_concurrent_bench
-            else f"-num-concurrent-vms {NUM_CONCURRENT_VMS}"
-        ),
+        f"-hwloc {args.hwloc}" if args.hwloc else "",
+        f"-iterations {args.iterations}",
         (
             f"-payload-size {payload_size}"
             if payload_size is not None and args.benchmark in PAYLOAD_SIZE_BENCHMARKS

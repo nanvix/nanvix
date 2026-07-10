@@ -29,10 +29,9 @@ tokio = { workspace = true, features = ["full"] }
 vfs-bench-common = { workspace = true }
 
 [features]
-default = ["microvm", "multi-process", "profile-time"]
+default = ["microvm", "single-process", "profile-time"]
 timestamp-messages = ["profiler/timestamp-messages"]
 single-process = ["nanvix/single-process"]
-multi-process = ["nanvix/multi-process"]
 standalone = ["nanvix/standalone", "nanvixd/standalone"]
 gdb = ["microvm", "nanvix/gdb"]
 # Enables fine-grained time profiling.

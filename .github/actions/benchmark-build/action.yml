@@ -33,5 +33,5 @@ runs:
           VERBOSE=yes \
           RELEASE=yes \
           ${SCCACHE:+"SCCACHE=${SCCACHE}"} \
-          DEPLOYMENT_MODE=multi-process \
+          DEPLOYMENT_MODE=single-process \
           ${TIMESTAMP_MSG_FLAG}
