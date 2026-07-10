@@ -251,11 +251,11 @@ fn load_all_dependencies(
         // re-locking the (already held) `DynamicLibrary` mutex.
         let self_name: String = new_dlfile.name().to_string();
 
-        // Collect the name of all dependencies.
+        // Collect the name of all dependencies, in DT_NEEDED order.
         let mut dependencies: Vec<String> = new_dlfile
             .dependencies()
-            .keys()
-            .map(|dlname| dlname.to_string())
+            .into_iter()
+            .map(|(dlname, _)| dlname)
             .collect();
 
         // Bind to already loaded dependencies and remove them from the list.
@@ -328,7 +328,10 @@ fn load_all_dependencies(
             true
         });
 
-        // Load remaining dependencies.
+        // Load remaining dependencies in DT_NEEDED order. The loop below uses
+        // `pop()` for ownership, so reverse once to consume the original front
+        // of the list first.
+        dependencies.reverse();
         while let Some(dependency) = dependencies.pop() {
             // Resolve bare library names to full paths using search directories.
             let resolved_dep: String = super::resolve_library_path(&dependency, Some(&runpaths));

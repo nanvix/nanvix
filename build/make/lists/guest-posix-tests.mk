@@ -29,6 +29,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-init-runpath \
 	test-c-dlfcn-initfini \
 	test-c-dlfcn-needed \
+	test-c-dlfcn-order \
 	test-c-dlfcn-pie \
 	test-c-dlfcn-refcount \
 	test-c-dlfcn-scope \

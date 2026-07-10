@@ -166,6 +166,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-dlfcn-order"
+program = "./bin/test-c-dlfcn-order.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-order.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-dlfcn-pie"
 program = "./bin/test-c-dlfcn-pie.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"
