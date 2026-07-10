@@ -11,7 +11,6 @@ use crate::{
         i32_to_raw,
         is_interrupted,
         last_socket_error,
-        normalize_errno,
         raw_recv,
         raw_recvfrom,
         raw_send,
@@ -31,7 +30,10 @@ use ::log::{
     debug,
     error,
 };
-use ::sys::error::ErrorCode;
+use ::sys::error::{
+    errno_to_error_code,
+    ErrorCode,
+};
 use ::sysapi::sys_socket::sockaddr;
 
 //==================================================================================================
@@ -81,8 +83,7 @@ impl NetBackend {
                 return Err(NetError::Interrupted);
             }
             error!("libc::send(): failed with errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(normalize_errno(errno)).unwrap_or(ErrorCode::ValueOutOfRange);
+            let error: ErrorCode = errno_to_error_code(errno);
             Err(NetError::Errno(error))
         }
     }
@@ -129,8 +130,7 @@ impl NetBackend {
                 return Err(NetError::Interrupted);
             }
             error!("libc::recv(): failed with errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(normalize_errno(errno)).unwrap_or(ErrorCode::ValueOutOfRange);
+            let error: ErrorCode = errno_to_error_code(errno);
             Err(NetError::Errno(error))
         }
     }
@@ -197,8 +197,7 @@ impl NetBackend {
                 return Err(NetError::Interrupted);
             }
             error!("libc::sendto(): failed with errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(normalize_errno(errno)).unwrap_or(ErrorCode::ValueOutOfRange);
+            let error: ErrorCode = errno_to_error_code(errno);
             Err(NetError::Errno(error))
         }
     }
@@ -262,8 +261,7 @@ impl NetBackend {
                 return Err(NetError::Interrupted);
             }
             error!("libc::recvfrom(): failed with errno={errno:?}");
-            let error: ErrorCode =
-                ErrorCode::try_from(normalize_errno(errno)).unwrap_or(ErrorCode::ValueOutOfRange);
+            let error: ErrorCode = errno_to_error_code(errno);
             Err(NetError::Errno(error))
         }
     }
