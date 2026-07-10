@@ -142,12 +142,12 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
             Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
         },
         // SAFETY: The calling thread is not the kernel and no resources are held.
-        KcallNumber::Push => match ipc::push(pid, tid, arg0, arg1, arg2 as usize, arg3) {
+        KcallNumber::Push => match ipc::push(pid, tid, arg0) {
             Ok(()) => KcallResult::ok(),
             Err(sleep_error) => handle_sleep_error(sleep_error, number, arg0, arg1, arg2, arg3),
         },
         // SAFETY: The calling thread is not the kernel and no resources are held.
-        KcallNumber::Pull => match ipc::pull(pid, tid, arg0, arg1, arg2 as usize, arg3) {
+        KcallNumber::Pull => match ipc::pull(pid, tid, arg0) {
             Ok(bytes_transferred) => match u32::try_from(bytes_transferred) {
                 Ok(bytes_u32) => KcallResult::Success(bytes_u32.into()),
                 Err(_) => KcallResult::Error(ErrorCode::InvalidArgument.into()),
