@@ -22,6 +22,8 @@
 #![forbid(clippy::unimplemented)]
 #![forbid(clippy::todo)]
 #![forbid(clippy::unreachable)]
+// Nanvix uses a fixed-width C ABI where c_size_t and usize are both 32-bit.
+#![allow(suspicious_runtime_symbol_definitions)]
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 
