@@ -22,13 +22,23 @@ use ::user_vm_api::UserVmIdentifier;
 ///
 /// # Description
 ///
-/// Timeout for waiting for graceful shutdown of UserVM instances.
+/// Timeout for waiting for graceful shutdown of standalone UserVM instances.
 ///
-/// We use control-plane messages to synchronize the graceful shutdown of different components.
-/// However, if components are faulty or hang, the sandbox cannot block. Instead, we wait for this
-/// timeout and revert to non-graceful shutdowns if the timeout is met.
+/// Standalone workloads normally terminate themselves, so this is a short final cleanup bound.
 ///
-pub const CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
+#[cfg(feature = "standalone")]
+pub const STANDALONE_CLEANUP_TIMEOUT: Duration = Duration::from_secs(1);
+
+///
+/// # Description
+///
+/// Timeout for waiting for graceful shutdown of single-process UserVM instances.
+///
+/// This exceeds the UserVM's five-second vCPU shutdown watchdog and its two bounded worker joins,
+/// preventing the sandbox from detaching a teardown task while those safeguards are still active.
+///
+#[cfg(feature = "single-process")]
+pub const SINGLE_PROCESS_CLEANUP_TIMEOUT: Duration = Duration::from_secs(16);
 
 ///
 /// # Description

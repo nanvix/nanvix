@@ -310,6 +310,11 @@ impl VirtualProcessor {
         Ok(())
     }
 
+    /// Returns a pointer to KVM's immediate-exit byte for this vCPU.
+    pub fn immediate_exit_ptr(&mut self) -> *mut u8 {
+        &mut self.fd.get_kvm_run().immediate_exit
+    }
+
     ///
     /// # Description
     ///

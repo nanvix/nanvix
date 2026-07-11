@@ -300,7 +300,12 @@ impl Benchmark {
             .await?;
 
         if response.exit_code != 0 {
-            error!("error killing user VM (id={user_vm_id}, exit-code={})", response.exit_code);
+            let reason: String = format!(
+                "error killing user VM (id={user_vm_id}, exit-code={})",
+                response.exit_code
+            );
+            error!("{reason}");
+            anyhow::bail!(reason);
         }
 
         Ok(())

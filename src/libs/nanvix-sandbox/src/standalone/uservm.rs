@@ -14,7 +14,7 @@
 //==================================================================================================
 
 use crate::{
-    config::CLEANUP_TIMEOUT,
+    config::STANDALONE_CLEANUP_TIMEOUT,
     UserVmArgs,
 };
 use ::anyhow::Result;
@@ -214,7 +214,7 @@ impl UserVm {
         trace!("shutdown()");
 
         if let Some(task) = self.task.take() {
-            match timeout(CLEANUP_TIMEOUT, task).await {
+            match timeout(STANDALONE_CLEANUP_TIMEOUT, task).await {
                 Ok(join_result) => match join_result {
                     Ok(Ok(raw_code)) => {
                         return Some(exit_status_from_exit_code(raw_code));
