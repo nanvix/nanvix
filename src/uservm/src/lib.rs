@@ -633,8 +633,8 @@ fn resume_microvm(guest: Arc<Mutex<Guest>>, vmem: Arc<Mutex<VirtualMemory>>) -> 
 }
 
 fn shutdown_vcpu_fn(vmm: Vmm) -> Box<ShutdownVcpuFn> {
-    Box::new(move || {
-        vmm.request_shutdown();
+    Box::new(move |vcpu_tid| {
+        vmm.request_shutdown(vcpu_tid);
     })
 }
 

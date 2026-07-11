@@ -57,6 +57,7 @@ use crate::{
 use ::anyhow::Result;
 #[cfg(target_os = "linux")]
 use ::kvm_ioctls::{
+    Cap,
     Kvm,
     VmFd,
 };
@@ -75,6 +76,7 @@ use ::log::{
 };
 #[cfg(target_os = "linux")]
 use ::std::{
+    cell::Cell,
     ffi::OsStr,
     fs::File,
     io::Write,
@@ -264,10 +266,6 @@ pub const INTERRUPT_SIGNAL: c_int = SIGUSR1;
 #[cfg(target_os = "linux")]
 pub const PROFILER_SIGNAL: c_int = libc::SIGUSR2;
 
-/// Signal used to kill the vCPU thread.
-#[cfg(target_os = "linux")]
-pub const KILL_SIGNAL: c_int = libc::SIGKILL;
-
 //==================================================================================================
 // Thread-Local Variables (Linux/KVM only)
 //==================================================================================================
@@ -284,11 +282,40 @@ thread_local! {
     /// process.
     ///
     static SHUTDOWN: AtomicBool = const { AtomicBool::new(false) };
+
+    /// Address of KVM's immediate-exit byte for the vCPU running on this thread.
+    static KVM_IMMEDIATE_EXIT: Cell<*mut u8> = const { Cell::new(::core::ptr::null_mut()) };
 }
 
 //==================================================================================================
 // Structures (Linux/KVM only)
 //==================================================================================================
+
+/// Clears the thread-local KVM immediate-exit pointer when the vCPU run loop exits.
+#[cfg(target_os = "linux")]
+struct KvmImmediateExitGuard;
+
+#[cfg(target_os = "linux")]
+impl KvmImmediateExitGuard {
+    /// Registers KVM's immediate-exit byte for the current vCPU thread.
+    ///
+    /// # Safety
+    ///
+    /// `immediate_exit` must remain valid and writable until the returned guard is dropped.
+    unsafe fn register(immediate_exit: *mut u8) -> Self {
+        // SAFETY: The caller guarantees that `immediate_exit` points into the live vCPU mapping.
+        unsafe { immediate_exit.write_volatile(0) };
+        KVM_IMMEDIATE_EXIT.with(|slot| slot.set(immediate_exit));
+        Self
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for KvmImmediateExitGuard {
+    fn drop(&mut self) {
+        KVM_IMMEDIATE_EXIT.with(|slot| slot.set(::core::ptr::null_mut()));
+    }
+}
 
 ///
 /// # Description
@@ -374,6 +401,15 @@ pub type StderrFn = dyn Write + Send;
 #[cfg(target_os = "linux")]
 extern "C" fn vcpu_thread_signal_handler(_: i32) {
     SHUTDOWN.with(|shutdown| shutdown.store(true, Ordering::SeqCst));
+    KVM_IMMEDIATE_EXIT.with(|slot| {
+        let immediate_exit: *mut u8 = slot.get();
+        if !immediate_exit.is_null() {
+            // SAFETY: The pointer is registered while the vCPU mapping is live and is cleared
+            // before that mapping can be dropped. The KVM API permits this write from a signal
+            // handler to make a subsequent KVM_RUN return with EINTR.
+            unsafe { immediate_exit.write_volatile(1) };
+        }
+    });
 }
 
 /// No-op signal handler for profiler timer. Only purpose is to interrupt
@@ -420,6 +456,11 @@ impl Vmm {
         let partition_create_start: Instant = Instant::now();
 
         let mut kvm: Kvm = Kvm::new()?;
+        if !kvm.check_extension(Cap::ImmediateExit) {
+            let reason: String = "KVM_CAP_IMMEDIATE_EXIT is required".to_string();
+            error!("new(): {reason}");
+            anyhow::bail!(reason);
+        }
         let mut vm: VmFd = kvm.create_vm()?;
 
         let irqchip: IrqChip = IrqChip::new(&mut kvm, &mut vm)?;
@@ -631,11 +672,7 @@ impl Vmm {
     }
 
     pub fn spawn(mut self) -> tokio::task::JoinHandle<Result<u16>> {
-        task::spawn_blocking(move || {
-            let pthread_id: libc::pthread_t = unsafe { libc::pthread_self() };
-            Handle::current().block_on(self.send_tid(pthread_id))?;
-            self.run()
-        })
+        task::spawn_blocking(move || self.run())
     }
 
     ///
@@ -785,6 +822,12 @@ impl Vmm {
         // Reset shutdown flag from any previous runs.
         SHUTDOWN.with(|shutdown| shutdown.store(false, Ordering::SeqCst));
 
+        let immediate_exit: *mut u8 = self.vcpu.blocking_lock().immediate_exit_ptr();
+        // SAFETY: `immediate_exit` points into the vCPU mapping owned by `self`. The guard is
+        // dropped before `self` and clears the thread-local pointer on every return path.
+        let _immediate_exit_guard: KvmImmediateExitGuard =
+            unsafe { KvmImmediateExitGuard::register(immediate_exit) };
+
         let profiling: bool = self.guest_profiler.is_some();
 
         // Install signal handlers in the virtual processor's thread.
@@ -792,6 +835,11 @@ impl Vmm {
         if profiling {
             Self::install_profiler_signal_handler();
         }
+
+        // Publish the vCPU thread ID only after its shutdown handler and immediate-exit pointer
+        // are ready, so the orchestrator cannot race an early shutdown request with setup.
+        let pthread_id: libc::pthread_t = unsafe { libc::pthread_self() };
+        Handle::current().block_on(self.send_tid(pthread_id))?;
 
         // When GDB server is enabled, delegate to the GDB event loop instead of the normal loop.
         #[cfg(feature = "gdb")]
@@ -1161,8 +1209,8 @@ impl Vmm {
             },
             Err(error) => {
                 warn!("handle_shutdown(): failed to notify orchestrator thread (error={error:?})");
-                // Don't bail as we are shutting down anyway. The orchestrator will detect
-                // this via timeout and forcefully terminate the vCPU thread if needed.
+                // Don't bail as we are shutting down anyway. The orchestrator will retry the
+                // backend shutdown request if its wait times out.
             },
         }
     }
@@ -1389,8 +1437,14 @@ impl Vmm {
         Ok(())
     }
 
-    /// No-op on the KVM/microvm backend. Shutdown is handled via `pthread_kill`.
-    pub fn request_shutdown(&self) {}
+    /// Requests shutdown of the KVM vCPU thread.
+    pub fn request_shutdown(&self, vcpu_tid: u64) {
+        let pthread_id: libc::pthread_t = vcpu_tid as libc::pthread_t;
+        let result: c_int = unsafe { libc::pthread_kill(pthread_id, INTERRUPT_SIGNAL) };
+        if result != 0 {
+            warn!("request_shutdown(): failed to signal vCPU thread (error={result})");
+        }
+    }
 
     //==============================================================================================
     // Diagnostic Dump Helpers
@@ -1638,5 +1692,35 @@ impl Vmm {
 
             current_rbp = saved_rbp;
         }
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_signal_sets_kvm_immediate_exit() {
+        let mut immediate_exit: u8 = 7;
+        let immediate_exit_ptr: *mut u8 = ::core::ptr::addr_of_mut!(immediate_exit);
+        // SAFETY: `immediate_exit` remains live until after the guard is dropped.
+        let guard: KvmImmediateExitGuard =
+            unsafe { KvmImmediateExitGuard::register(immediate_exit_ptr) };
+
+        assert_eq!(immediate_exit, 0);
+        SHUTDOWN.with(|shutdown| shutdown.store(false, Ordering::SeqCst));
+
+        vcpu_thread_signal_handler(INTERRUPT_SIGNAL);
+
+        assert!(SHUTDOWN.with(|shutdown| shutdown.load(Ordering::SeqCst)));
+        assert_eq!(immediate_exit, 1);
+
+        drop(guard);
+        assert!(KVM_IMMEDIATE_EXIT.with(|slot| slot.get().is_null()));
+        SHUTDOWN.with(|shutdown| shutdown.store(false, Ordering::SeqCst));
     }
 }

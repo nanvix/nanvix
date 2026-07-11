@@ -12,7 +12,7 @@
 //==================================================================================================
 
 use crate::{
-    config::CLEANUP_TIMEOUT,
+    config::SINGLE_PROCESS_CLEANUP_TIMEOUT,
     UserVmArgs,
 };
 use ::anyhow::Result;
@@ -111,9 +111,7 @@ impl UserVm {
     /// On success, this function returns a handle to the spawned User VM instance. On failure,
     /// this function returns an error object instead.
     ///
-    pub async fn spawn(
-        args: &UserVmArgs,
-    ) -> Result<PendingUserVm> {
+    pub async fn spawn(args: &UserVmArgs) -> Result<PendingUserVm> {
         trace!("spawn(): args={args:?}");
 
         // Check if CPU affinity settings were provided.
@@ -363,7 +361,7 @@ impl UserVm {
 
         // Wait for User VM to finish.
         if let Some(task) = self.task.take() {
-            match timeout(CLEANUP_TIMEOUT, task).await {
+            match timeout(SINGLE_PROCESS_CLEANUP_TIMEOUT, task).await {
                 Ok(join_result) => match join_result {
                     Ok(Ok(raw_code)) => {
                         let exit_code: ExitCode = ExitCode::from(raw_code);
