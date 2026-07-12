@@ -360,25 +360,6 @@ pub unsafe extern "C" fn __nanvix_sigsuspend(_mask: *const libc_signal::signal::
     -1
 }
 
-//==================================================================================================
-// Stub symbols required by libstdc++ but not yet implemented
-//==================================================================================================
-
-/// C++ ABI: register a function to be called at exit or when a shared library is unloaded.
-///
-/// # Safety
-///
-/// This is a C++ runtime ABI function.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn __cxa_atexit(
-    _func: Option<unsafe extern "C" fn(*mut c_void)>,
-    _arg: *mut c_void,
-    _dso_handle: *mut c_void,
-) -> c_int {
-    // Stub — atexit handlers are not supported in this environment.
-    0
-}
-
 /// Wrapper to make a raw pointer `Sync` for use as a static.
 #[allow(dead_code)]
 #[repr(transparent)]

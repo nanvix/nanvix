@@ -243,6 +243,14 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     // based on which crt0 feature is active.
     let status: i32 = unsafe { __nanvix_main(argc, argv_ptr) };
 
+    // Returning from main() is equivalent to calling exit(), so run every registered process-exit
+    // handler before global destructors and runtime teardown. C applications use the `staticlib`
+    // feature, which pulls in the libc_stdlib registry; lean Rust no_std binaries do not.
+    #[cfg(feature = "staticlib")]
+    unsafe {
+        ::libc_stdlib::call_atexit_handlers();
+    }
+
     // Run global destructors after `main` returns, in REVERSE registration
     // order, before the heap is torn down (a destructor may still allocate or
     // free).  Mirrors the constructor walk above and is gated on the same
