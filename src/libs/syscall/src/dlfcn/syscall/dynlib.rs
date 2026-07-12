@@ -109,7 +109,7 @@ impl DlHandle {
 
     /// Allocates a fresh handle that is unique for the lifetime of the process.
     fn allocate() -> Result<Self, Error> {
-        match NEXT_HANDLE.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+        match NEXT_HANDLE.try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
             if next <= LAST_GENERATED_HANDLE {
                 Some(next + 1)
             } else {
