@@ -14,6 +14,7 @@
 # single line, minimizing merge conflicts between branches that each add a suite.
 ALL_POSIX_TESTS := \
 	test-c-bindings \
+	test-c-cxa-atexit \
 	test-c-ctor \
 	test-c-dlfcn \
 	test-c-dlfcn-ctor-dtor-reentry \

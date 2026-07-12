@@ -47,6 +47,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-cxa-atexit"
+program = "./bin/test-c-cxa-atexit.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-ctor"
 program = "./bin/test-c-ctor.initrd"
 expected_exit_code = 0
