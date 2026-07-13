@@ -21,11 +21,11 @@ sys = { workspace = true, features = ["std"] }
 syscall = { workspace = true, features = ["std"] }
 sysapi = { workspace = true, features = ["std"] }
 
-# The decoupled server transport (and its `networkd` binary) are Linux-only, matching how the
-# UserVM gates its own dependency on `syscomm`. Keeping `syscomm` out of the all-platform
-# dependency set ensures the `networkd` library still builds on Windows, where the UserVM links it
-# in-process for standalone mode.
+# The decoupled server transport (and its `networkd` binary) and the epoll wrapper are Linux-only.
+# Keeping `libc` and `syscomm` out of the all-platform dependency set ensures the `networkd`
+# library still builds on Windows, where the UserVM links it in-process for standalone mode.
 [target.'cfg(target_os = "linux")'.dependencies]
+libc = { workspace = true }
 syscomm = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
