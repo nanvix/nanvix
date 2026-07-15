@@ -284,7 +284,7 @@ fn load_all_dependencies(
         let self_name: String = new_dlfile.name().to_string();
 
         // Collect the name of all dependencies, in DT_NEEDED order.
-        let mut dependencies: Vec<String> = new_dlfile
+        let dependencies: Vec<String> = new_dlfile
             .dependencies()
             .into_iter()
             .map(|(dlname, _)| dlname)
@@ -292,7 +292,7 @@ fn load_all_dependencies(
 
         // Bind to already loaded dependencies and remove them from the list.
         //
-        // The closure below calls `dlfile.lock()` on every other entry in the
+        // The scan below calls `dlfile.lock()` on every other entry in the
         // registry while looking for a matching name. Those locks must skip
         // BOTH the current library (`new_dlhandle`) AND every ancestor still
         // held by an outer recursive frame — otherwise any non-trivial
@@ -301,11 +301,11 @@ fn load_all_dependencies(
         //
         //   dlopen(libdiamond.so)                  // holds libdiamond lock
         //     -> recurse into libright.so          // also holds libright lock
-        //          -> retain() iterates dlfiles    // tries to lock libdiamond
-        //             ^ blocks forever, libdiamond is still held by the
-        //               outer frame.
+        //          -> pre-load scan probes registry // tries to lock libdiamond
+        //             ^ blocks forever, libdiamond is still held by the outer
+        //               frame.
         //
-        // What this `retain` legitimately consolidates is a dependency that a
+        // What this scan legitimately consolidates is a dependency that a
         // PRIOR, already-finished iteration of an OUTER frame loaded. In the
         // classic diamond
         //
@@ -313,7 +313,7 @@ fn load_all_dependencies(
         //                 -> libright.so -> libbase.so
         //
         // libdiamond finishes libleft first (recursing in and loading
-        // libbase), then starts libright's frame; libright's `retain` then
+        // libbase), then starts libright's frame; libright's pre-load scan then
         // sees libbase already resident and binds libright's `libbase` edge to
         // that single shared instance here. (The other shape — a sibling
         // pulled in LATER within the *same* frame's own dependency list — is
@@ -323,16 +323,17 @@ fn load_all_dependencies(
         // legitimately resolve to an ancestor is a `DT_NEEDED` cycle, which is
         // detected and rejected explicitly in the load loop below (see the
         // `self_name`/`ancestors` cycle check), so it never reaches this scan.
-        dependencies.retain(|dependency| {
+        let mut unloaded_dependencies: Vec<String> = Vec::new();
+        for dependency in dependencies {
             // Resolve bare name so we can match against loaded libraries
             // that were opened with a full path.
-            let resolved_dep: String = super::resolve_library_path(dependency, Some(&runpaths));
+            let resolved_dep: String = super::resolve_library_path(&dependency, Some(&runpaths));
             if let Some((dlhandle, dlfile)) = find_loaded_dependency(
                 registry,
                 staging,
                 new_dlhandle,
                 ancestors,
-                dependency,
+                &dependency,
                 &resolved_dep,
             ) {
                 ::syslog::debug!(
@@ -342,19 +343,16 @@ fn load_all_dependencies(
                     dlhandle
                 );
                 // Update the dependency to the already loaded file.
-                if let Err(_error) = new_dlfile.bind_dependency(dependency.clone(), dlfile) {
-                    // TODO: comment
-                    unreachable!("cannot fail to bind dependency");
-                }
-
-                return false;
+                new_dlfile.bind_dependency(dependency, dlfile)?;
+            } else {
+                unloaded_dependencies.push(dependency);
             }
-            true
-        });
+        }
 
         // Load remaining dependencies in DT_NEEDED order. The loop below uses
         // `pop()` for ownership, so reverse once to consume the original front
         // of the list first.
+        let mut dependencies: Vec<String> = unloaded_dependencies;
         dependencies.reverse();
         while let Some(dependency) = dependencies.pop() {
             // Resolve bare library names to full paths using search directories.
@@ -365,8 +363,8 @@ fn load_all_dependencies(
             // ancestor still being loaded by an outer recursive frame cannot be
             // followed: the ancestor's mutex is held, so we can neither recurse
             // into it nor lock it to consolidate onto it, and skipping it by
-            // handle (as `retain` and the re-check do) would just open a fresh
-            // copy on a new handle and recurse forever. Cycles in `DT_NEEDED`
+            // handle (as the pre-load scan and the re-check do) would just open
+            // a fresh copy on a new handle and recurse forever. Cycles in `DT_NEEDED`
             // are pathological — no sane toolchain emits them — so reject the
             // load cleanly; `dlopen` then discards every entry staged during
             // this call.
@@ -387,9 +385,10 @@ fn load_all_dependencies(
 
             // Re-check the registry and staging map before opening: an EARLIER
             // iteration of THIS frame's own load loop may have already loaded
-            // this exact dependency transitively. `retain` above runs only once,
-            // at frame entry, before any sibling is processed, so it cannot see
-            // a sibling that a later-processed sibling pulls in. Concretely,
+            // this exact dependency transitively. The pre-load scan above runs
+            // only once, at frame entry, before any sibling is processed, so it
+            // cannot see a sibling that a later-processed sibling pulls in.
+            // Concretely,
             // when a parent directly `DT_NEEDED`s both `libX` and `libbase` and
             // `libX -> libbase`:
             //

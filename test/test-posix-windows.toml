@@ -221,6 +221,14 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-dlfcn-staging"
+program = "./bin/test-c-dlfcn-staging.initrd"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-staging.img"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-dlfcn-startup"
 program = "./bin/test-c-dlfcn-startup.initrd"
 extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs-test-c-dlfcn-startup.img"

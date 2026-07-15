@@ -133,6 +133,7 @@ POSIX_TEST_PIE_test-c-dlfcn-global := yes
 POSIX_TEST_PIE_test-c-dlfcn-handle-reuse := yes
 POSIX_TEST_PIE_test-c-dlfcn-needed := yes
 POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
+POSIX_TEST_PIE_test-c-dlfcn-staging := yes
 # dlfcn-order-c dlopen()s libroot.so, whose two providers both export
 # provider_id(); the executable's own symbols land in .dynsym for RTLD_DEFAULT,
 # matching every other dlfcn dlopen suite.
@@ -344,6 +345,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
+	$(RM_CMD) $(POSIX_TEST_STAGING_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini)
 	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
@@ -362,6 +364,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SCOPE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_STAGING_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HELLO_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SEARCHPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_STARTUP_SEED)
@@ -548,6 +551,71 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope): $(POSIX_TEST_SCOPE_DIR)/libdep.so \
 	$(CP_CMD) $(POSIX_TEST_SCOPE_DIR)/libfoo.so $(POSIX_TEST_SCOPE_SEED)/lib/
 	$(CP_CMD) $(POSIX_TEST_SCOPE_DIR)/libother.so $(POSIX_TEST_SCOPE_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_SCOPE_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-staging-c: failed-load staging fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+#   libfailed-root.so -> libstaged.so
+#                     -> libbad.so -> missing_value (strong undefined symbol)
+#
+# The failed root reaches relocation only after all three libraries have been
+# opened. The loader must discard that staged graph when libbad.so cannot be
+# resolved. A later direct load of libstaged.so must therefore open a fresh copy
+# and run its constructor. libgood-root.so then verifies that a newly staged root
+# can bind against the now-resident libstaged.so from the stable registry.
+POSIX_TEST_STAGING_DIR := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-staging/libs
+POSIX_TEST_STAGING_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-staging-seed
+POSIX_TEST_STAGING_IMG := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-staging.img
+
+$(POSIX_TEST_STAGING_DIR)/libstaged.so: \
+		$(POSIX_TESTS_SRCDIR)/test-c-dlfcn-staging/libs/staged.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-staging-c/libstaged.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libstaged.so $@.o -o $@
+
+$(POSIX_TEST_STAGING_DIR)/libbad.so: \
+		$(POSIX_TESTS_SRCDIR)/test-c-dlfcn-staging/libs/bad.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-staging-c/libbad.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libbad.so $@.o -o $@
+
+$(POSIX_TEST_STAGING_DIR)/libfailed-root.so: \
+		$(POSIX_TESTS_SRCDIR)/test-c-dlfcn-staging/libs/failed_root.c \
+		$(POSIX_TEST_STAGING_DIR)/libstaged.so \
+		$(POSIX_TEST_STAGING_DIR)/libbad.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-staging-c/libfailed-root.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libfailed-root.so $@.o \
+		--no-as-needed $(POSIX_TEST_STAGING_DIR)/libstaged.so \
+		$(POSIX_TEST_STAGING_DIR)/libbad.so -o $@
+
+$(POSIX_TEST_STAGING_DIR)/libgood-root.so: \
+		$(POSIX_TESTS_SRCDIR)/test-c-dlfcn-staging/libs/good_root.c \
+		$(POSIX_TEST_STAGING_DIR)/libstaged.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-staging-c/libgood-root.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libgood-root.so $@.o \
+		--no-as-needed $(POSIX_TEST_STAGING_DIR)/libstaged.so -o $@
+
+POSIX_TEST_STAGING_LIBS := \
+	libstaged.so \
+	libbad.so \
+	libfailed-root.so \
+	libgood-root.so
+
+$(POSIX_TEST_STAGING_IMG): \
+		$(foreach lib,$(POSIX_TEST_STAGING_LIBS),$(POSIX_TEST_STAGING_DIR)/$(lib)) \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_STAGING_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_STAGING_SEED)/lib
+	$(CP_CMD) $(foreach lib,$(POSIX_TEST_STAGING_LIBS),$(POSIX_TEST_STAGING_DIR)/$(lib)) \
+		$(POSIX_TEST_STAGING_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_STAGING_SEED)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-diamond-c: four-library diamond DT_NEEDED fixture.
@@ -1397,6 +1465,7 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
 		$(POSIX_TEST_SOLIB_IMGS) \
 		$(POSIX_TEST_RUNPATH_IMG) \
+		$(POSIX_TEST_STAGING_IMG) \
 		$(POSIX_TEST_WEAK_IMG) \
 		$(POSIX_TEST_EXECVP_IMG)
 	@echo "All POSIX C test-suite images built."
@@ -1430,7 +1499,10 @@ ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
 else ifeq ($(DEPLOYMENT_MODE),standalone)
-run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_WEAK_IMG) $(POSIX_TEST_EXECVP_IMG)
+run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) \
+		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
+		$(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) \
+		$(POSIX_TEST_WEAK_IMG) $(POSIX_TEST_EXECVP_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }

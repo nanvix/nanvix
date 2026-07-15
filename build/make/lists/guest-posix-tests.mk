@@ -36,6 +36,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-scope \
 	test-c-dlfcn-searchpath \
 	test-c-dlfcn-selflink \
+	test-c-dlfcn-staging \
 	test-c-dlfcn-startup \
 	test-c-dlfcn-weak \
 	test-c-echo \
