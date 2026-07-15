@@ -13,6 +13,4 @@ pub(super) mod datasync;
 pub(super) mod is_a_terminal;
 pub(super) mod seek;
 pub(super) mod sync;
-#[cfg(not(feature = "standalone"))]
-pub(super) mod timestamps;
 pub(super) mod write_read;

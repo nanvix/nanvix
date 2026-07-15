@@ -92,7 +92,6 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
                 // returns a freshly allocated descriptor. Drop any cached resolution for that
                 // number so its first use re-resolves against vfsd's table rather than answering
                 // from an entry that described the number's previous occupant.
-                #[cfg(feature = "standalone")]
                 if is_dup_command(cmd) && ret >= 0 {
                     crate::fdtable::invalidate(ret);
                 }
@@ -116,7 +115,6 @@ pub fn fcntl(fd: i32, cmd: i32, arg: Option<c_int>) -> Result<c_int, Error> {
 /// Returns whether `cmd` is one of the descriptor-duplication `fcntl` commands (`F_DUPFD` and its
 /// close-on-exec / close-on-fork variants), which allocate a new descriptor rather than querying or
 /// setting a flag.
-#[cfg(feature = "standalone")]
 fn is_dup_command(cmd: i32) -> bool {
     use ::sysapi::fcntl::file_control_request::{
         F_DUPFD,

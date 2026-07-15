@@ -10,15 +10,13 @@ Refer to `doc/gdb.md` for the user-facing documentation.
 
 ## Prerequisites
 
-- Nanvix built in standalone mode (`DEPLOYMENT_MODE=standalone`). The `standalone` feature
-  automatically enables the `gdb` Cargo feature in `nanvixd` and `nanvix-bench`. At the crate
-  level, the `gdb` feature requires `microvm` (enforced via feature dependency).
+- Nanvix built with the `gdb` Cargo feature. At the crate level, `gdb` requires `microvm`.
 - A GDB client with x86_64 target support (`gdb-multiarch` or `x86_64-elf-gdb`).
 
 ## Build
 
 ```bash
-./z build -- all DEPLOYMENT_MODE=standalone
+./z build -- all
 ```
 
 ## Launch
@@ -35,7 +33,7 @@ Through uservm directly:
 RUST_LOG=info ./bin/uservm.elf \
     -kernel ./bin/kernel.elf \
     -initrd ./bin/hello-rust-nostd.elf \
-    -standalone -gdb-port 1234
+    -gdb-port 1234
 ```
 
 The guest halts at its first instruction until a GDB client connects.
@@ -109,7 +107,6 @@ launched from the project directory.
 
 - **Linux only.** GDB debugging requires the `microvm` machine type with KVM, which is not
   available on Windows. The WHP backend does not expose a GDB server.
-- **Standalone mode only.** `-gdb-port` requires `DEPLOYMENT_MODE=standalone`.
 - **Physical addresses only.** The kernel uses identity mapping (GVA == GPA).
 - **No hardware breakpoints.** Only software breakpoints (`INT3`).
 - **Single vCPU.** Single-threaded debugging model.
@@ -122,6 +119,4 @@ launched from the project directory.
 - GDB server uses the `gdbstub` crate (v0.7), feature-gated behind `gdb`.
 - Server runs synchronously in the vCPU thread (KVM register ioctls are thread-specific).
 - Software breakpoints patch guest memory with `INT3` (0xCC); KVM delivers `VcpuExit::Debug`.
-- The `gdb` feature is enabled by the `standalone` feature in `nanvixd` and `nanvix-bench`.
-  At the crate level, `gdb` requires `microvm` (enforced via feature dependency). The
-  `-gdb-port` flag is validated at runtime to require `-standalone` mode.
+- At the crate level, `gdb` requires `microvm` through its feature dependency.

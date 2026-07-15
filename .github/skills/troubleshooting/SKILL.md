@@ -140,8 +140,7 @@ Bypass the full stack for low-level kernel debugging:
 ```bash
 RUST_LOG=debug ./bin/uservm.elf \
     -kernel ./bin/kernel.elf \
-    -initrd ./bin/hello-rust-nostd.elf \
-    -standalone
+    -initrd ./bin/hello-rust-nostd.elf
 ```
 
 ### Check Build Errors

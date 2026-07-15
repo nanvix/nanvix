@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! Standalone deployment mode implementation for the terminal.
+//! Standalone terminal implementation.
 //!
 //! In standalone mode, the terminal directly drives a User VM instance via `StandaloneVmHandle`,
 //! bypassing the sandbox cache, gateway sockets, and control-plane infrastructure. Guest I/O is

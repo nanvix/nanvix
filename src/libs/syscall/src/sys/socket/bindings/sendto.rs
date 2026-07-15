@@ -5,13 +5,13 @@
 // Imports
 //==================================================================================================
 
-use crate::errno::__errno_location;
-#[cfg(feature = "standalone")]
-use crate::sys::{
-    socket,
-    socket::SocketAddr,
+use crate::{
+    errno::__errno_location,
+    sys::{
+        socket,
+        socket::SocketAddr,
+    },
 };
-#[cfg(feature = "standalone")]
 use ::core::slice;
 use ::sys::error::ErrorCode;
 use ::sysapi::{
@@ -86,110 +86,96 @@ pub unsafe extern "C" fn sendto(
     sockaddr: *const sockaddr,
     addrlen: socklen_t,
 ) -> c_ssize_t {
-    #[cfg(feature = "standalone")]
-    {
-        // Check if `buf` is valid.
-        if buf.is_null() {
-            ::syslog::warn!(
-                "sendto(): invalid buffer (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
-                 flags={flags:?})"
-            );
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        }
-
-        // NOTE: `len` is not validated here. POSIX permits zero-length datagrams, but the
-        // standalone syscall path (`send`/`sendto`) currently rejects empty buffers with EINVAL.
-
-        // Check if `flags` is valid.
-        if flags != 0 {
-            ::syslog::warn!(
-                "sendto(): unsupported flags (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
-                 flags={flags:?})"
-            );
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
-        }
-
-        // Attempt to convert `len` to `usize`.
-        let len: usize = match len.try_into() {
-            Ok(len) => len,
-            Err(_error) => {
-                ::syslog::warn!(
-                    "sendto(): failed to convert length (sockfd={sockfd:?}, buf={buf:?}, \
-                     len={len:?}, flags={flags:?})"
-                );
-                *__errno_location() = ErrorCode::InvalidArgument.get();
-                return -1;
-            },
-        };
-
-        // Attempt to convert buffer.
-        let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len) };
-
-        // When no destination address is supplied, `sendto()` behaves like `send()`.
-        let result: Result<usize, ::sys::error::Error> = if sockaddr.is_null() {
-            socket::syscall::send(sockfd, buf, flags)
-        } else {
-            // Validate that `addrlen` covers a full `sockaddr` before dereferencing the pointer.
-            // A non-NULL pointer with a too-small `addrlen` would otherwise cause an
-            // out-of-bounds read when the address is dereferenced below.
-            if (addrlen as usize) < ::core::mem::size_of::<sockaddr>() {
-                ::syslog::warn!(
-                    "sendto(): invalid socket address length (sockfd={sockfd:?}, \
-                     sockaddr={sockaddr:?}, addrlen={addrlen:?})"
-                );
-                *__errno_location() = ErrorCode::InvalidArgument.get();
-                return -1;
-            }
-
-            // Attempt to convert socket address.
-            let sockaddr: SocketAddr = match TryFrom::<&sockaddr>::try_from(&*sockaddr) {
-                Ok(sockaddr) => sockaddr,
-                Err(error) => {
-                    ::syslog::warn!(
-                        "sendto(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
-                         addrlen={addrlen:?})"
-                    );
-                    *__errno_location() = error.code.get();
-                    return -1;
-                },
-            };
-
-            socket::syscall::sendto(sockfd, buf, flags, &sockaddr)
-        };
-
-        // Check for errors.
-        match result {
-            Ok(bytes_sent) => match bytes_sent.try_into() {
-                Ok(bytes_sent) => bytes_sent,
-                Err(_error) => {
-                    ::syslog::warn!(
-                        "sendto(): failed to convert bytes sent (sockfd={sockfd:?}, buf={buf:?}, \
-                         len={len:?}, flags={flags:?})"
-                    );
-                    *__errno_location() = ErrorCode::ValueOutOfRange.get();
-                    -1
-                },
-            },
-            Err(error) => {
-                ::syslog::warn!(
-                    "sendto(): {error:?} (sockfd={sockfd:?}, len={len:?}, flags={flags:?})"
-                );
-                *__errno_location() = error.code.get();
-                -1
-            },
-        }
+    // Check if `buf` is valid.
+    if buf.is_null() {
+        ::syslog::warn!(
+            "sendto(): invalid buffer (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
+             flags={flags:?})"
+        );
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
     }
 
-    // TODO: https://github.com/nanvix/nanvix/issues/589
-    #[cfg(not(feature = "standalone"))]
-    {
-        let _ = (sockfd, buf, len, flags, sockaddr, addrlen);
-        ::syslog::debug!("sendto(): not implemented");
-        unsafe {
-            *__errno_location() = ErrorCode::InvalidSysCall.get();
+    // NOTE: `len` is not validated here. POSIX permits zero-length datagrams, but the
+    // syscall path (`send`/`sendto`) currently rejects empty buffers with EINVAL.
+
+    // Check if `flags` is valid.
+    if flags != 0 {
+        ::syslog::warn!(
+            "sendto(): unsupported flags (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
+             flags={flags:?})"
+        );
+        *__errno_location() = ErrorCode::InvalidArgument.get();
+        return -1;
+    }
+
+    // Attempt to convert `len` to `usize`.
+    let len: usize = match len.try_into() {
+        Ok(len) => len,
+        Err(_error) => {
+            ::syslog::warn!(
+                "sendto(): failed to convert length (sockfd={sockfd:?}, buf={buf:?}, len={len:?}, \
+                 flags={flags:?})"
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
+        },
+    };
+
+    // Attempt to convert buffer.
+    let buf: &[u8] = unsafe { slice::from_raw_parts(buf as *const u8, len) };
+
+    // When no destination address is supplied, `sendto()` behaves like `send()`.
+    let result: Result<usize, ::sys::error::Error> = if sockaddr.is_null() {
+        socket::syscall::send(sockfd, buf, flags)
+    } else {
+        // Validate that `addrlen` covers a full `sockaddr` before dereferencing the pointer.
+        // A non-NULL pointer with a too-small `addrlen` would otherwise cause an
+        // out-of-bounds read when the address is dereferenced below.
+        if (addrlen as usize) < ::core::mem::size_of::<sockaddr>() {
+            ::syslog::warn!(
+                "sendto(): invalid socket address length (sockfd={sockfd:?}, \
+                 sockaddr={sockaddr:?}, addrlen={addrlen:?})"
+            );
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+            return -1;
         }
-        -1
+
+        // Attempt to convert socket address.
+        let sockaddr: SocketAddr = match TryFrom::<&sockaddr>::try_from(&*sockaddr) {
+            Ok(sockaddr) => sockaddr,
+            Err(error) => {
+                ::syslog::warn!(
+                    "sendto(): {error:?} (sockfd={sockfd:?}, sockaddr={sockaddr:?}, \
+                     addrlen={addrlen:?})"
+                );
+                *__errno_location() = error.code.get();
+                return -1;
+            },
+        };
+
+        socket::syscall::sendto(sockfd, buf, flags, &sockaddr)
+    };
+
+    // Check for errors.
+    match result {
+        Ok(bytes_sent) => match bytes_sent.try_into() {
+            Ok(bytes_sent) => bytes_sent,
+            Err(_error) => {
+                ::syslog::warn!(
+                    "sendto(): failed to convert bytes sent (sockfd={sockfd:?}, buf={buf:?}, \
+                     len={len:?}, flags={flags:?})"
+                );
+                *__errno_location() = ErrorCode::ValueOutOfRange.get();
+                -1
+            },
+        },
+        Err(error) => {
+            ::syslog::warn!(
+                "sendto(): {error:?} (sockfd={sockfd:?}, len={len:?}, flags={flags:?})"
+            );
+            *__errno_location() = error.code.get();
+            -1
+        },
     }
 }

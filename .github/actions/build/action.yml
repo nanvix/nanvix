@@ -17,10 +17,6 @@ inputs:
     description: "Machine type"
     required: true
     default: "microvm"
-  deployment-type:
-    description: "Deployment type"
-    required: true
-    default: "single-process"
 
 runs:
   using: "composite"
@@ -36,5 +32,4 @@ runs:
           "LOG_LEVEL=${{ inputs.log-level }}" \
           VERBOSE=yes \
           ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
-          ${SCCACHE:+"SCCACHE=${SCCACHE}"} \
-          "DEPLOYMENT_MODE=${{ inputs.deployment-type }}"
+          ${SCCACHE:+"SCCACHE=${SCCACHE}"}

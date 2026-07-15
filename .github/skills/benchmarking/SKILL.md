@@ -16,24 +16,21 @@ Benchmarks require a release build with panic-level logging.
 ## Building for Benchmarks
 
 ```bash
-# Standard benchmarks.
 ./z build -- all RELEASE=yes LOG_LEVEL=panic
-
-# Echo-breakdown benchmark (requires message timestamping).
-./z build -- all RELEASE=yes LOG_LEVEL=panic TIMESTAMP_MSG=yes
 ```
 
 ## Available Benchmarks
 
-| Benchmark               | Description                           |
-|-------------------------|---------------------------------------|
-| `boot-time`             | Start a user VM (no linuxd)           |
-| `cold-start`            | Start linuxd + VM + HTTP echo         |
-| `cold-start-uvm`        | `cold-start` reusing linuxd           |
-| `echo-breakdown`        | HTTP echo step-by-step breakdown      |
-| `round-trip-latency`    | Latency vs. echo payload size         |
-| `warm-start`            | Fixed-size HTTP echo latency          |
-| `warm-start-vmm`        | `warm-start` without linuxd           |
+| Benchmark           | Description                                  |
+|---------------------|----------------------------------------------|
+| `boot-time`         | Start a user VM without nanvixd              |
+| `cold-start`        | Spawn nanvixd + VM + first echo round trip   |
+| `cold-start-uvm`    | Start a user VM + first gateway echo         |
+| `snapshot-restore`  | Compare snapshot restore with cold boot      |
+| `vfs-bench`         | Measure guest VFS operation latency          |
+| `warm-start-gateway` | Round-trip latency through the VM gateway    |
+| `warm-start-vmm`    | Raw round-trip latency inside the user VM    |
+| `warm-start-socket` | TCP echo latency through guest networking    |
 
 
 ## Running Benchmarks
@@ -41,8 +38,10 @@ Benchmarks require a release build with panic-level logging.
 ```bash
 # Basic usage.
 ./bin/nanvix-bench.elf -benchmark cold-start
-./bin/nanvix-bench.elf -benchmark warm-start
-./bin/nanvix-bench.elf -benchmark echo-breakdown
+./bin/nanvix-bench.elf -benchmark cold-start-uvm
+./bin/nanvix-bench.elf -benchmark warm-start-gateway
+./bin/nanvix-bench.elf -benchmark warm-start-vmm
+./bin/nanvix-bench.elf -benchmark warm-start-socket
 
 # See all options.
 ./bin/nanvix-bench.elf -help
@@ -54,9 +53,7 @@ For best performance, pin components to different CPU dies.  Create a JSON confi
 
 ```json
 {
-    "client_core_str": "0-9",
-    "linuxd_core_str": "10-14",
-    "nanovm_core_str": "15-19"
+    "client_core_str": "0-9"
 }
 ```
 
@@ -102,9 +99,8 @@ python3 scripts/benchmark.py
 
 ## Benchmarking on Windows
 
-On Windows, `nanvix-bench` runs in standalone mode (no HTTP, no linuxd). The standalone cold-start
-benchmark spawns a fresh `nanvixd` process per iteration in interactive mode and measures the time
-from process spawn to the first echo round-trip.
+On Windows, the cold-start benchmark spawns a fresh `nanvixd` process per iteration and measures
+the time from process spawn to the first echo round trip.
 
 ### Building
 
@@ -117,8 +113,10 @@ from process spawn to the first echo round-trip.
 | Benchmark          | Description                                             |
 |--------------------|---------------------------------------------------------|
 | `boot-time`        | Start a user VM (no nanvixd)                            |
-| `cold-start`       | Spawn nanvixd + VM + echo round-trip (standalone mode)  |
+| `cold-start`       | Spawn nanvixd + VM + echo round-trip                    |
+| `cold-start-uvm`   | Start a user VM + first gateway echo                    |
 | `snapshot-restore` | Measure snapshot restore latency vs boot-time           |
+| `warm-start-gateway` | Round-trip latency through the VM gateway              |
 | `warm-start-vmm`   | Raw round-trip latency inside the user VM               |
 
 ### Running
@@ -133,5 +131,4 @@ from process spawn to the first echo round-trip.
 .\bin\nanvix-bench.exe -help
 ```
 
-> **Note:** HTTP-based benchmarks (`warm-start`, `round-trip-latency`,
-> and `echo-breakdown`) are Linux-only.
+Use `-help` to list all benchmark options supported by the current build.

@@ -23,29 +23,15 @@ use ::sysapi::ffi::c_int;
 /// works across every backend — including the cross-backend redirections (`dup2(file_fd, 1)`) that
 /// the previous split descriptor model could not express.
 ///
-/// This is standalone-only. Unlike `dup`/`fcntl(F_DUPFD)` — which name no target slot and so are
-/// served by linuxd in hosted mode — re-pointing an exact descriptor requires vfsd's authoritative
-/// slot table, which exists only in standalone mode. In hosted mode this returns
-/// `ErrorCode::InvalidSysCall` (`ENOSYS`).
+/// Unlike `dup`/`fcntl(F_DUPFD)` — which name no target slot — re-pointing an exact descriptor
+/// requires vfsd's authoritative slot table.
 pub fn dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Error> {
     ::syslog::trace!("dup2(): oldfd={:?}, newfd={:?}", oldfd, newfd);
-
-    // dup2 is an authoritative slot-table operation owned by vfsd; it is only meaningful where vfsd
-    // owns the descriptor table (standalone mode).
-    #[cfg(feature = "standalone")]
-    {
-        dup2_via_vfsd(oldfd, newfd)
-    }
-    #[cfg(not(feature = "standalone"))]
-    {
-        let _ = (oldfd, newfd);
-        Err(Error::new(ErrorCode::InvalidSysCall, "dup2() is only supported in standalone mode"))
-    }
+    dup2_via_vfsd(oldfd, newfd)
 }
 
 /// Re-points `newfd` at `oldfd` by asking vfsd to perform the slot-table mutation on its
 /// authoritative table.
-#[cfg(feature = "standalone")]
 fn dup2_via_vfsd(oldfd: c_int, newfd: c_int) -> Result<c_int, Error> {
     use crate::{
         unistd::message::{

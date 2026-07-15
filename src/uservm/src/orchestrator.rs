@@ -73,9 +73,9 @@ pub struct Orchestrator {
     state: State,
     /// Thread ID of the vCPU thread.
     vcpu_tid: u64,
-    /// Channel that receives commands from the I/O thread.
+    /// Channel that receives commands from the I/O handler.
     io_control_rx: Receiver<IoControlCommand>,
-    /// Channel that sends commands to the I/O thread.
+    /// Channel that sends commands to the I/O handler.
     io_control_tx: Sender<IoControlResponse>,
     /// Channel that receives commands from the memory thread.
     _memory_control_rx: Receiver<MemoryControlResponse>,
@@ -124,7 +124,7 @@ enum State {
 ///
 /// # Description
 ///
-/// Control plane commands from the I/O thread to the VMM.
+/// Control commands from the I/O handler to the VMM.
 ///
 #[derive(PartialEq)]
 pub enum IoControlCommand {
@@ -140,7 +140,7 @@ pub enum IoControlCommand {
 ///
 /// # Description
 ///
-/// Control plane command responses from the VMM to the I/O thread.
+/// Control command responses from the VMM to the I/O handler.
 ///
 #[derive(Debug, PartialEq)]
 pub enum IoControlResponse {
@@ -154,7 +154,7 @@ pub enum IoControlResponse {
 ///
 /// # Description
 ///
-/// Control plane commands from the VMM to the memory thread.
+/// Control commands from the VMM to the memory thread.
 ///
 #[derive(PartialEq)]
 pub enum MemoryControlCommand {
@@ -164,7 +164,7 @@ pub enum MemoryControlCommand {
 ///
 /// # Description
 ///
-/// Control plane command responses from the memory thread to the VMM.
+/// Control command responses from the memory thread to the VMM.
 ///
 #[derive(PartialEq)]
 pub enum MemoryControlResponse {}
@@ -172,7 +172,7 @@ pub enum MemoryControlResponse {}
 ///
 /// # Description
 ///
-/// Control plane commands from the VMM to the vCPU thread.
+/// Control commands from the VMM to the vCPU thread.
 ///
 #[derive(PartialEq)]
 pub enum VcpuControlCommand {
@@ -183,7 +183,7 @@ pub enum VcpuControlCommand {
 ///
 /// # Description
 ///
-/// Control plane command responses from the vCPU thread to the VMM.
+/// Control command responses from the vCPU thread to the VMM.
 ///
 #[derive(Debug, PartialEq)]
 pub enum VcpuControlResponse {
@@ -269,7 +269,7 @@ impl Orchestrator {
                 result = self.io_control_rx.recv() => {
                     match result {
                         Some(command) => {
-                            match self.try_receive_from_io_thread(command).await? {
+                            match self.handle_io_control_command(command).await? {
                                 Continue(()) => continue,
                                 Break(()) => break,
                             }
@@ -277,7 +277,7 @@ impl Orchestrator {
                         None => {
                             let reason: String =
                                 "disconnected from the input control command channel".to_string();
-                            error!("try_receive_from_io_thread(): {reason}");
+                            error!("handle_io_control_command(): {reason}");
                             break;
                         },
                     }
@@ -389,7 +389,7 @@ impl Orchestrator {
         })
     }
 
-    async fn try_receive_from_io_thread(
+    async fn handle_io_control_command(
         &mut self,
         command: IoControlCommand,
     ) -> Result<ControlFlow<()>> {
@@ -408,18 +408,18 @@ impl Orchestrator {
                     if let Err(e) = (self.load_snapshot)().await {
                         let reason: String =
                             format!("LoadSnapshotAndRun: failed to load snapshot: {e:?}");
-                        error!("handle_command(): {reason}");
+                        error!("handle_io_control_command(): {reason}");
                         anyhow::bail!(reason);
                     }
                     trace!("State: PreBoot -> Paused");
 
-                    // The Linux daemon should send messages to PreBoot VMMs by default,
-                    // so there's no need to tell it to resume sending messages.
+                    // The I/O handler sends messages to pre-boot VMs by default, so it does not
+                    // need an explicit resume notification.
 
                     if let Err(e) = self.resume_protocol().await {
                         let reason: String =
                             format!("LoadSnapshotAndRun: failed to resume microvm: {e:?}");
-                        error!("try_receive_from_io_thread(): {reason}");
+                        error!("handle_io_control_command(): {reason}");
                         anyhow::bail!(reason);
                     }
                 }
@@ -430,7 +430,7 @@ impl Orchestrator {
                     && let Err(e) = self.pause_protocol().await
                 {
                     let reason: String = format!("PauseMicroVm: failed to pause microvm: {e:?}");
-                    error!("try_receive_from_io_thread(): {reason}");
+                    error!("handle_io_control_command(): {reason}");
                     anyhow::bail!(reason);
                 }
                 Ok(Continue(()))
@@ -446,7 +446,7 @@ impl Orchestrator {
                             "CreateSnapshot: failed to send CreateSnapshot command to vCPU: \
                              {error:?}"
                         );
-                        error!("try_receive_from_io_thread(): {reason}");
+                        error!("handle_io_control_command(): {reason}");
                         anyhow::bail!(reason);
                     }
 
@@ -457,20 +457,20 @@ impl Orchestrator {
                         Some(VcpuControlResponse::SnapshotCreationFailed) => {
                             let reason: String =
                                 "vCPU reported snapshot creation failure".to_string();
-                            error!("try_receive_from_io_thread(): {reason}");
+                            error!("handle_io_control_command(): {reason}");
                             anyhow::bail!(reason);
                         },
                         Some(other) => {
                             let reason: String = format!(
                                 "unexpected vCPU response during snapshot creation: {other:?}"
                             );
-                            error!("try_receive_from_io_thread(): {reason}");
+                            error!("handle_io_control_command(): {reason}");
                             anyhow::bail!(reason);
                         },
                         None => {
                             let reason: String =
                                 "disconnected from the vCPU control response channel".to_string();
-                            error!("try_receive_from_io_thread(): {reason}");
+                            error!("handle_io_control_command(): {reason}");
                             anyhow::bail!(reason);
                         },
                     }
@@ -479,11 +479,11 @@ impl Orchestrator {
             },
             IoControlCommand::_ResumeMicroVm => {
                 if self.state == State::Paused {
-                    // TODO: tell linuxd it's fine to send more messages https://github.com/nanvix/nanvix/issues/945
+                    // TODO (#945): Tell the I/O handler that it may resume sending messages.
                     if let Err(error) = self.resume_protocol().await {
                         let reason: String =
                             format!("ResumeMicroVm: failed to resume microvm: {error:?}");
-                        error!("try_receive_from_io_thread(): {reason}");
+                        error!("handle_io_control_command(): {reason}");
                         anyhow::bail!(reason);
                     }
                 }
@@ -496,12 +496,12 @@ impl Orchestrator {
                 Ok(Continue(()))
             },
             IoControlCommand::Shutdown => {
-                debug!("try_receive_from_io_thread(): received shutdown command");
+                debug!("handle_io_control_command(): received shutdown command");
 
                 // After requesting vCPU shutdown, continue processing messages until the vCPU
                 // thread confirms that it stopped.
                 debug!(
-                    "try_receive_from_io_thread(): signaling to vcpu thread (tid={})",
+                    "handle_io_control_command(): signaling to vcpu thread (tid={})",
                     self.vcpu_tid
                 );
                 (self.shutdown_vcpu)(self.vcpu_tid);
@@ -556,14 +556,14 @@ impl Orchestrator {
     ///
     /// # Description
     ///
-    /// Attempts to pause the execution of the MicroVM and the communication with the Linux daemon.
+    /// Attempts to pause the MicroVM and its I/O communication.
     ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     async fn pause_protocol(&mut self) -> Result<()> {
-        // TODO: tell linuxd to flush (Running -> Flushing) https://github.com/nanvix/nanvix/issues/945
+        // TODO (#945): Tell the I/O handler to flush before pausing.
         (self.pause_microvm)().await?;
         // Wait for the MicroVM to confirm it has paused without busy spinning.
         let start: Instant = Instant::now();
@@ -598,12 +598,11 @@ impl Orchestrator {
             }
         }
         trace!("MicroVM paused");
-        // Flush output to linuxd
+        // Flush pending output.
         self.io_control_tx
             .send(IoControlResponse::FlushOutput)
             .await?;
-        // TODO: tell linuxd to stop sending messages (Flushing -> Paused) https://github.com/nanvix/nanvix/issues/945
-        // TODO: get a response from linuxd https://github.com/nanvix/nanvix/issues/945
+        // TODO (#945): Stop input delivery while paused and wait for acknowledgement.
         self.io_control_tx
             .send(IoControlResponse::FlushInput)
             .await?;
@@ -876,7 +875,7 @@ mod tests {
         // Request pause.
         h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
 
-        // Simulate vCPU acknowledging pause and linux daemon flush.
+        // Simulate the vCPU acknowledging the pause and the I/O handler completing its flush.
         let vcpu_resp_tx_clone: mpsc::Sender<VcpuControlResponse> = h.vcpu_resp_tx.clone();
         let io_cmd_tx_clone: mpsc::Sender<IoControlCommand> = h.io_cmd_tx.clone();
         tokio::spawn(async move {

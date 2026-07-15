@@ -121,29 +121,19 @@ impl Nanvixd {
     /// # Parameters
     ///
     /// - `config`: Runner configuration that provides binary paths.
-    /// - `hwloc_file_path`: Optional hwloc topology forwarded to the Nanvix Daemon.
     /// - `log_directory`: Directory where the Nanvix Daemon should persist component logs.
     ///
     /// # Return Value
     ///
     /// Returns a configured command ready for Nanvix Daemon-specific arguments.
     ///
-    fn build_base_command(
-        config: &RunnerConfig,
-        hwloc_file_path: Option<&str>,
-        log_directory: &Path,
-    ) -> Command {
+    fn build_base_command(config: &RunnerConfig, log_directory: &Path) -> Command {
         let mut command: Command = Command::new(config.nanvixd_binary_path.as_str());
         command.current_dir(&config.working_directory);
         // Ensure the child process is killed if the Child handle is dropped without explicit
         // cleanup.  This acts as a best-effort safety net during normal unwinding and shutdown
         // paths where drop handlers run, helping to prevent orphaned processes.
         command.kill_on_drop(true);
-
-        if let Some(hwloc_file) = hwloc_file_path {
-            command.arg(::nanvixd::args::Args::OPT_HWLOC);
-            command.arg(hwloc_file);
-        }
 
         command.arg(::nanvixd::args::Args::OPT_LOG_DIRECTORY);
         command.arg(log_directory);

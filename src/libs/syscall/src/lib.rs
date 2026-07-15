@@ -92,13 +92,11 @@ pub mod stdlib;
 pub(crate) mod path;
 
 /// Client-side file-descriptor resolution cache.
-///
-/// Compiled for descriptor syscalls that need VFS routing helpers and for standalone cache tests.
-#[cfg(any(feature = "syscall", feature = "standalone", test))]
+#[cfg(feature = "syscall")]
 pub(crate) mod fdtable;
 
 /// Backend selection for resolved `close()` requests.
-#[cfg(any(feature = "standalone", test))]
+#[cfg(feature = "syscall")]
 pub(crate) mod close_route;
 
 // Safe wrappers.
@@ -135,10 +133,8 @@ use ::sys::{
 // so pin the layout with a compile-time check: a daemon renumbering, or a change to the guest
 // daemon set, becomes a build error instead of silently re-pointing the root at the wrong process.
 //
-// This lives in `syscall` (rather than nearer the kernel or VFS) because `syscall` already carries
-// the `standalone` deployment feature, and the fixed three-daemon layout pinned below is the
-// standalone deployment's boot contract — other deployment modes spawn a different guest set.
-#[cfg(feature = "standalone")]
+// This lives in `syscall` because the fixed three-daemon layout pinned below is part of the system
+// call interface's boot contract.
 mod boot_order_invariants {
     use ::sys::pm::ProcessIdentifier;
 
@@ -663,9 +659,9 @@ pub struct SystemCallMessage {
 ///
 /// # Description
 ///
-/// Process identifier of the system call provider.
+/// Process identifier used to route system calls to the host I/O handler.
 ///
-pub const LINUXD: ProcessIdentifier = ProcessIdentifier::KERNEL;
+pub const HOST_IO: ProcessIdentifier = ProcessIdentifier::KERNEL;
 
 ///
 /// # Description
@@ -675,19 +671,12 @@ pub const LINUXD: ProcessIdentifier = ProcessIdentifier::KERNEL;
 pub const NETWORKD: ProcessIdentifier = ProcessIdentifier::NETWORKD;
 
 /// Destination process for networking system call requests.
-#[cfg(feature = "standalone")]
 pub const NETWORK_DESTINATION: ProcessIdentifier = NETWORKD;
-#[cfg(not(feature = "standalone"))]
-pub const NETWORK_DESTINATION: ProcessIdentifier = LINUXD;
 
 /// Source process for networking system call responses.
 ///
-/// Must match the daemon that actually handles the request so that responses
-/// carry the correct origin in both deployment modes.
-#[cfg(feature = "standalone")]
+/// Must match the daemon that handles the request so responses carry the correct origin.
 pub const NETWORK_SOURCE: ProcessIdentifier = NETWORKD;
-#[cfg(not(feature = "standalone"))]
-pub const NETWORK_SOURCE: ProcessIdentifier = LINUXD;
 
 ///
 /// # Description
@@ -698,36 +687,21 @@ pub const VFSD: ProcessIdentifier = ProcessIdentifier::VFSD;
 
 /// Destination process for VFS/filesystem system call requests.
 ///
-/// In standalone mode, requests are routed to the guest-side vfsd daemon.
-/// In non-standalone modes, requests are routed to linuxd on the host.
-#[cfg(feature = "standalone")]
+/// Requests are routed to the guest-side vfsd daemon.
 pub const VFS_DESTINATION: ProcessIdentifier = VFSD;
-#[cfg(not(feature = "standalone"))]
-pub const VFS_DESTINATION: ProcessIdentifier = LINUXD;
 
 /// Message type for VFS/filesystem system call requests.
 ///
-/// In standalone mode, messages use local IPC (routed within the guest kernel).
-/// In non-standalone modes, messages use IKC (routed to the host via kernel stdio).
-#[cfg(feature = "standalone")]
+/// Messages use local IPC routed within the guest kernel.
 pub const VFS_MESSAGE_TYPE: ::sys::ipc::MessageType = ::sys::ipc::MessageType::Ipc;
-#[cfg(not(feature = "standalone"))]
-pub const VFS_MESSAGE_TYPE: ::sys::ipc::MessageType = ::sys::ipc::MessageType::Ikc;
 
 /// Process identifier for push/pull data transfers in VFS operations.
 ///
-/// In standalone mode, data is transferred directly between the caller and vfsd via rendezvous.
-/// In non-standalone modes, data goes through kernel stdio to linuxd.
-#[cfg(feature = "standalone")]
+/// Data is transferred directly between the caller and vfsd via rendezvous.
 pub const VFS_PUSH_PULL_PID: ProcessIdentifier = ProcessIdentifier::VFSD;
-#[cfg(not(feature = "standalone"))]
-pub const VFS_PUSH_PULL_PID: ProcessIdentifier = ProcessIdentifier::KERNEL;
 
 /// Thread identifier for push/pull data transfers in VFS operations.
-#[cfg(feature = "standalone")]
 pub const VFS_PUSH_PULL_TID: ::sys::pm::ThreadIdentifier = ::sys::pm::ThreadIdentifier::VFSD;
-#[cfg(not(feature = "standalone"))]
-pub const VFS_PUSH_PULL_TID: ::sys::pm::ThreadIdentifier = ::sys::pm::ThreadIdentifier::KERNEL;
 
 //==================================================================================================
 // Implementations

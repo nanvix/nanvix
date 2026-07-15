@@ -67,12 +67,9 @@ impl ProcessIdentifier {
 
     /// Raw identifier for the network daemon sentinel.
     ///
-    /// NOTE: In standalone deployment mode, `networkd` does not run as a guest process. Network
-    /// messages use IKC routing and are intercepted by the host-side I/O handler. This constant
-    /// serves as a message tag for host-side dispatch and does **not** correspond to an actual
-    /// guest PID. Its value intentionally aliases [`Self::MEMD_RAW`] because both cannot coexist
-    /// in the same deployment: `memd` runs in standalone mode (guest), while `networkd` is
-    /// handled on the host.
+    /// Network messages use IKC routing and are intercepted by the host-side I/O handler. This
+    /// constant is a dispatch tag, not a guest PID. It aliases [`Self::MEMD_RAW`] because it is
+    /// consumed before guest process routing.
     pub const NETWORKD_RAW: i32 = 2;
 
     /// Sentinel identifier for the network daemon (host-only, see [`Self::NETWORKD_RAW`]).

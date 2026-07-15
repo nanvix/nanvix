@@ -6,10 +6,11 @@
 //==================================================================================================
 
 use crate::sys::stat::message::FileStatRequest;
-#[cfg(feature = "standalone")]
-use ::sys::error::ErrorCode;
 use ::sys::{
-    error::Error,
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::Message,
     pm::ThreadIdentifier,
 };
@@ -37,35 +38,25 @@ use sysapi::sys_stat;
 pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
     ::syslog::trace!("fstat(): fd={:?}", fd);
 
-    // In standalone mode, route by the descriptor's resolved backend. Both vfsd-served objects and
+    // Route by the descriptor's resolved backend. Both vfsd-served objects and
     // console descriptors are answered by vfsd from the slot it owns; the console reports as a
     // character device with a stable, dup-shared identity synthesized by vfsd.
     let backend_fd: i32 = {
-        #[cfg(feature = "standalone")]
-        {
-            use crate::fdtable::{
-                resolve,
-                Route,
-            };
-            match resolve(fd) {
-                // A vfsd-served object or a console descriptor: vfsd answers `fstat` from the slot
-                // it owns, addressed by the caller-facing flat descriptor. For a console this is the
-                // slot number, not the stream number used to route I/O — the slot is the operand,
-                // so a `dup`'d console descriptor shares its source's character-device identity.
-                Some(res) if matches!(res.route, Route::Vfs | Route::Console) => fd,
-                // Sockets and unroutable descriptors have no stat here.
-                _ => {
-                    ::syslog::warn!("fstat(): bad file descriptor fd={fd} in standalone mode");
-                    return Err(Error::new(
-                        ErrorCode::BadFile,
-                        "fstat: fd is not a VFS fd in standalone mode",
-                    ));
-                },
-            }
-        }
-        #[cfg(not(feature = "standalone"))]
-        {
-            fd
+        use crate::fdtable::{
+            resolve,
+            Route,
+        };
+        match resolve(fd) {
+            // A vfsd-served object or a console descriptor: vfsd answers `fstat` from the slot
+            // it owns, addressed by the caller-facing flat descriptor. For a console this is the
+            // slot number, not the stream number used to route I/O — the slot is the operand,
+            // so a `dup`'d console descriptor shares its source's character-device identity.
+            Some(res) if matches!(res.route, Route::Vfs | Route::Console) => fd,
+            // Sockets and unroutable descriptors have no stat here.
+            _ => {
+                ::syslog::warn!("fstat(): bad file descriptor fd={fd}");
+                return Err(Error::new(ErrorCode::BadFile, "fstat: fd is not a VFS fd"));
+            },
         }
     };
 

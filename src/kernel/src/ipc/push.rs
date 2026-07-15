@@ -39,7 +39,7 @@ use ::sys::{
 ///
 /// Pushes data to a destination process using rendezvous synchronization.
 ///
-/// When the destination is the kernel (linuxd), data is transferred via the vmbus scatter/gather
+/// When the destination is the host I/O backend, data is transferred via the vmbus scatter/gather
 /// data chunk transfer path.
 ///
 /// # Parameters
@@ -107,7 +107,7 @@ pub fn push(
         transfer_len
     );
 
-    // When the destination is the kernel (linuxd), use the vmbus for data chunk transfer instead
+    // When the destination is the host I/O backend, use the vmbus for data chunk transfer instead
     // of the rendezvous cross-process copy. The user buffer virtual address is translated to a
     // guest physical address so the VMM can directly read the data without an intermediate kernel
     // buffer copy.

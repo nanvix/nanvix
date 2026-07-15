@@ -20,9 +20,8 @@ use ::syslog::trace_syscall;
 ///
 /// # Description
 ///
-/// Sets the process-group ID of a process. In standalone mode this is routed to the process manager
-/// daemon, which moves the target into the requested process group subject to the POSIX
-/// constraints; in hosted modes it validates its arguments and reports success.
+/// Sets the process-group ID of a process. This is routed to the process manager daemon, which
+/// moves the target into the requested process group subject to the POSIX constraints.
 ///
 /// # Parameters
 ///
@@ -44,23 +43,16 @@ pub extern "C" fn setpgid(pid: pid_t, pgid: pid_t) -> c_int {
         return -1;
     }
 
-    #[cfg(feature = "standalone")]
-    {
-        use ::sys::pm::ProcessIdentifier;
+    use ::sys::pm::ProcessIdentifier;
 
-        match ::proc::setpgid(ProcessIdentifier::from(pid), ProcessIdentifier::from(pgid)) {
-            Ok(()) => 0,
-            Err(e) => {
-                // SAFETY: writing to the thread-local `errno` location is sound.
-                unsafe {
-                    *__errno_location() = e.code.get();
-                }
-                -1
-            },
-        }
-    }
-    #[cfg(not(feature = "standalone"))]
-    {
-        0
+    match ::proc::setpgid(ProcessIdentifier::from(pid), ProcessIdentifier::from(pgid)) {
+        Ok(()) => 0,
+        Err(e) => {
+            // SAFETY: writing to the thread-local `errno` location is sound.
+            unsafe {
+                *__errno_location() = e.code.get();
+            }
+            -1
+        },
     }
 }

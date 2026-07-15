@@ -56,8 +56,8 @@ fn format_with_relative_path(
     let file_path: &str = if let Some(file) = record.file() {
         // Find the last occurrence of "/nanvix/" and strip everything before it (including "/nanvix/")
         // This will convert paths like:
-        // "/opt/github/actions-runner/_work/nanvix/nanvix/src/libs/nanvix-sandbox/src/initialized.rs"
-        // to: "src/libs/nanvix-sandbox/src/initialized.rs"
+        // "/opt/github/actions-runner/_work/nanvix/nanvix/src/libs/syslog/src/hosted.rs"
+        // to: "src/libs/syslog/src/hosted.rs"
         if let Some(pos) = file.rfind("/nanvix/") {
             &file[pos + 8..] // +8 to skip "/nanvix/"
         } else {

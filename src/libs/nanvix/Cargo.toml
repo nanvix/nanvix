@@ -14,9 +14,7 @@ homepage.workspace = true
 anyhow = { workspace = true }
 config = { workspace = true }
 hwloc = { workspace = true }
-linuxd = { workspace = true, optional = true }
 nanvix-http = { workspace = true }
-nanvix-sandbox = { workspace = true }
 nanvix-terminal = { workspace = true }
 nanvix-sandbox-config = { workspace = true }
 sys = { workspace = true, features = ["std"], optional = true }
@@ -26,44 +24,18 @@ syslog = { workspace = true, features = ["std"] }
 uservm = { workspace = true, optional = true }
 
 [features]
-default = ["microvm", "single-process"]
+default = ["microvm"]
 internal-api = ["sys", "syscall", "uservm"]
-single-process = [
-    "linuxd",
-    "nanvix-sandbox-config/single-process",
-    "nanvix-http/single-process",
-    "nanvix-sandbox/single-process",
-    "nanvix-terminal/single-process",
-]
-standalone = [
-    "nanvix-http/standalone",
-    "nanvix-sandbox/standalone",
-    "nanvix-terminal/standalone",
-]
-gdb = [
-    "nanvix-sandbox-config/gdb",
-    "nanvix-http/gdb",
-    "nanvix-sandbox/gdb",
-    "nanvix-terminal/gdb",
-]
+gdb = ["nanvix-sandbox-config/gdb", "nanvix-http/gdb", "nanvix-terminal/gdb"]
 # Enables fine-grained time profiling.
-profile-time = ["nanvix-sandbox/profile-time", "nanvix-terminal/profile-time"]
-# Enables message timestamping.
-timestamp-messages = ["nanvix-sandbox/timestamp-messages"]
+profile-time = ["nanvix-terminal/profile-time"]
 microvm = [
     "config/microvm",
     "nanvix-http/microvm",
-    "nanvix-sandbox/microvm",
     "nanvix-terminal/microvm",
     "uservm?/microvm",
 ]
-whp = [
-    "config/whp",
-    "nanvix-http/whp",
-    "nanvix-sandbox/whp",
-    "nanvix-terminal/whp",
-    "uservm?/whp",
-]
+whp = ["config/whp", "nanvix-http/whp", "nanvix-terminal/whp", "uservm?/whp"]
 
 [lints]
 workspace = true

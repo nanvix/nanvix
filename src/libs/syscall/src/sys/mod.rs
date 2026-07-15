@@ -28,7 +28,7 @@ pub mod ioctl;
 /// Memory management operations.
 pub mod mman;
 
-/// Mount/umount operations (standalone mode).
+/// Mount/umount operations.
 pub mod mount;
 
 /// Synchronous I/O multiplexing.

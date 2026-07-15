@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use ::sys::error::Error;
-#[cfg(feature = "standalone")]
 use ::sysapi::{
     ffi::c_int,
     sys_types::pid_t,
@@ -15,8 +14,6 @@ use ::sysapi::{
         wifexited,
     },
 };
-#[cfg(feature = "standalone")]
-use ::syscall::unistd::bindings;
 use ::syscall::{
     netinet::in_::{
         Ipv4Addr,
@@ -40,7 +37,10 @@ use ::syscall::{
             socket,
         },
     },
-    unistd::close,
+    unistd::{
+        bindings,
+        close,
+    },
 };
 
 //==================================================================================================
@@ -53,15 +53,12 @@ const LISTEN_BACKLOG: i32 = 5;
 const SEND_RECV_MESSAGE: &[u8] = b"hello";
 
 /// Port used by the process-exit socket reclaim regression test.
-#[cfg(feature = "standalone")]
 const SOCKET_RECLAIM_PORT: u16 = 1993;
 
 /// Exit status used by a child that completed the socket reclaim setup.
-#[cfg(feature = "standalone")]
 const CHILD_EXIT_SUCCESS: c_int = 0;
 
 /// Exit status used by a child that failed the socket reclaim setup.
-#[cfg(feature = "standalone")]
 const CHILD_EXIT_FAILURE: c_int = 101;
 
 //==================================================================================================
@@ -228,7 +225,6 @@ fn test_send_recv() -> Result<(), Error> {
 /// the lowest free one, so the next socket reuses it. This is the unified lowest-free allocation
 /// that replaced the former reserved socket range — a socket is no longer numbered apart from every
 /// other object.
-#[cfg(feature = "standalone")]
 fn test_socket_fd_is_flat() -> Result<(), Error> {
     let first: i32 = new_unbound_socket()?;
     let second: i32 = new_unbound_socket()?;
@@ -251,7 +247,6 @@ fn test_socket_fd_is_flat() -> Result<(), Error> {
 /// by the same socket slot, so it reports the same bound address; closing the original — not the
 /// last reference — must leave the duplicate fully usable, and only closing the duplicate drops the
 /// last reference that releases the endpoint on `networkd`.
-#[cfg(feature = "standalone")]
 fn test_dup2_socket_shares_endpoint() -> Result<(), Error> {
     use ::syscall::unistd::dup2;
 
@@ -293,7 +288,6 @@ fn test_dup2_socket_shares_endpoint() -> Result<(), Error> {
 }
 
 /// Creates a duplicated socket endpoint and leaves both descriptors open for process exit.
-#[cfg(feature = "standalone")]
 fn leave_duplicated_socket_for_exit(addr: &SocketAddr) -> Result<(), Error> {
     use ::syscall::unistd::dup2;
 
@@ -311,7 +305,6 @@ fn leave_duplicated_socket_for_exit(addr: &SocketAddr) -> Result<(), Error> {
 /// Tests that process exit reclaims a duplicated socket endpoint exactly enough for the address to
 /// be immediately reusable by the parent. The child exits with both aliases open; vfsd must treat
 /// them as one underlying `networkd` endpoint when forwarding exit-time close requests.
-#[cfg(feature = "standalone")]
 fn test_process_exit_reclaims_duplicated_socket_endpoint() -> Result<(), Error> {
     let addr: SocketAddr =
         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new([127, 0, 0, 1]), SOCKET_RECLAIM_PORT));
@@ -357,14 +350,9 @@ pub fn run() -> Result<(), Error> {
     test_getsockname_listening_socket(&addr)?;
     test_accept()?;
     test_send_recv()?;
-
-    // Flat-namespace socket behavior is implemented only for the standalone (networkd) backend.
-    #[cfg(feature = "standalone")]
-    {
-        test_socket_fd_is_flat()?;
-        test_dup2_socket_shares_endpoint()?;
-        test_process_exit_reclaims_duplicated_socket_endpoint()?;
-    }
+    test_socket_fd_is_flat()?;
+    test_dup2_socket_shares_endpoint()?;
+    test_process_exit_reclaims_duplicated_socket_endpoint()?;
 
     Ok(())
 }

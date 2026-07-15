@@ -159,7 +159,6 @@ async fn run_iterations(
         combined
     };
 
-    let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
     let log_directory: PathBuf = log_layout.test_directory().to_path_buf();
     let log_root: &Path = Path::new(runner_config.log_directory.as_str());
     let guest_log_tracker: GuestLogTracker = GuestLogTracker::capture(log_root)?;
@@ -175,7 +174,6 @@ async fn run_iterations(
         prepare_snapshots_dir(&snapshots_dir)?;
 
         let nanvixd_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
-            hwloc_file_path.clone(),
             snapshot_program.as_str(),
             combined_args.as_slice(),
             log_directory.as_path(),

@@ -17,7 +17,7 @@ inputs:
     required: true
     default: "100"
   payload-size:
-    description: "Optional echo payload size for warm-start benchmarks (warm-start-vmm minimum: 4)"
+    description: "Optional echo payload size (warm-start-vmm minimum: 4)"
     required: false
     default: ""
 
@@ -35,7 +35,7 @@ runs:
         for bench in ${BENCHMARKS}; do
           payload_args=()
           case "${bench}" in
-            warm-start|warm-start-vmm|warm-start-socket)
+            warm-start-gateway|warm-start-vmm|warm-start-socket)
               if [[ -n "${PAYLOAD_SIZE}" ]]; then
                 payload_args=(--payload-size "${PAYLOAD_SIZE}")
               fi

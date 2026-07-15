@@ -5,13 +5,8 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    benchmark::BenchmarkFlavour,
-    benchmarks::DEFAULT_PAYLOAD_SIZE,
-};
+use crate::benchmark::BenchmarkFlavour;
 use ::anyhow::Result;
-#[cfg(feature = "single-process")]
-use ::nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use ::std::str::FromStr;
 
 //==================================================================================================
@@ -22,11 +17,7 @@ pub struct Args {
     benchmark: BenchmarkFlavour,
     hwloc_file: Option<String>,
     iterations: usize,
-    #[cfg(feature = "single-process")]
-    payload_size: usize,
     payload_size_override: Option<usize>,
-    #[cfg(feature = "single-process")]
-    tmp_dir: String,
 }
 
 //==================================================================================================
@@ -40,81 +31,17 @@ impl Args {
     const OPT_ITERATIONS: &'static str = "-iterations";
     const OPT_PAYLOAD_SIZE: &'static str = "-payload-size";
     const WARM_START_VMM_PAYLOAD_PREFIX_SIZE: usize = ::std::mem::size_of::<u32>();
-    #[cfg(feature = "single-process")]
-    const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
     fn usage(program_name: &str) {
-        let mut benchmarks = String::new();
-
-        // VMM-level benchmarks are always available.
-        benchmarks.push_str(
-            "\
-  boot-time              Measure raw user VM boot latency.\n",
-        );
-
-        // System-level benchmarks require single-process or standalone.
-        if cfg!(any(feature = "single-process", feature = "standalone")) {
-            benchmarks.push_str(
-                "\
-  cold-start             Measure start-up latency from client's perspective.\n",
-            );
-        }
-
-        if cfg!(feature = "single-process") {
-            benchmarks.push_str(
-                "\
-  cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
-  round-trip-latency     Measure latency (warm-start) as we increase the payload size.\n",
-            );
-        }
-
-        // echo-breakdown requires timestamp-messages in addition to single-process.
-        if cfg!(feature = "timestamp-messages") {
-            benchmarks.push_str(
-                "\
-  echo-breakdown         Analyze the latency contributions of each step in the data path.\n",
-            );
-        }
-
-        benchmarks.push_str(
-            "\
-  snapshot-restore       Measure snapshot restore latency vs boot-time.\n",
-        );
-
-        if cfg!(feature = "standalone") {
-            benchmarks.push_str(
-                "\
-  vfs-bench              Measure VFS operation latencies on a dense ramfs (standalone).\n",
-            );
-        }
-
-        if cfg!(feature = "single-process") {
-            benchmarks.push_str(
-                "\
-  warm-start             Measure round-trip latency from client's perspective.\n",
-            );
-        }
-
-        benchmarks.push_str(
-            "\
-  warm-start-vmm         Measure raw round-trip latency inside the user VM.",
-        );
-
-        if cfg!(feature = "standalone") {
-            benchmarks.push_str(
-                "\n  warm-start-socket      Measure round-trip latency over a guest TCP echo \
-                 socket.",
-            );
-        }
-
-        #[cfg(feature = "single-process")]
-        let tmp_dir_option: String = format!(
-            "  {} <tmp_dir>                Base directory for temporary files (default: {}).\n",
-            Self::OPT_TMP_DIR,
-            DEFAULT_TMP_DIRECTORY,
-        );
-        #[cfg(not(feature = "single-process"))]
-        let tmp_dir_option: String = String::new();
+        let benchmarks: &str = "\
+  boot-time              Measure raw user VM boot latency.
+  cold-start             Measure start-up latency from client's perspective.
+    cold-start-uvm         Measure User VM start-up through its first gateway response.
+  snapshot-restore       Measure snapshot restore latency vs boot-time.
+  vfs-bench              Measure VFS operation latencies on a dense ramfs.
+    warm-start-gateway     Measure round-trip latency through the standalone gateway.
+  warm-start-vmm         Measure raw round-trip latency inside the user VM.
+  warm-start-socket      Measure round-trip latency over a guest TCP echo socket.";
 
         let help_option: String = format!(
             "  {}                              Show this help message and exit.\n",
@@ -136,11 +63,10 @@ Options:
   {hwloc} <hwloc.json>                Hardware locality configuration file for CPU \
              affinity/topology.
   {iterations} <num>                  Number of iterations to run (default: 100).
-  {payload_size} <bytes>              Echo payload size for warm-start, warm-start-vmm, and \
-             warm-start-socket benchmarks (default: {default_payload_size} for warm-start; \
-             warm-start-vmm counts its {warm_start_vmm_prefix_size}-byte prefix; warm-start-vmm \
-             and warm-start-socket sweep a range of sizes when omitted).
-{tmp_dir_option}{help_option}
+    {payload_size} <bytes>              Echo payload size for warm-start-gateway, warm-start-vmm, \
+             and warm-start-socket benchmarks (warm-start-vmm counts its \
+             {warm_start_vmm_prefix_size}-byte prefix; all sweep a range of sizes when omitted).
+{help_option}
 
 Examples:
   # Run the cold-start benchmark
@@ -149,17 +75,15 @@ Examples:
   # Run boot-time with a custom hwloc and 1000 iterations
   {program_name} {benchmark} boot-time {hwloc} hwloc.json {iterations} 1000
 
-  # Run warm-start-vmm with a 32KiB payload
-  {program_name} {benchmark} warm-start-vmm {payload_size} 32768
+    # Run warm-start-gateway with a 1KiB payload
+    {program_name} {benchmark} warm-start-gateway {payload_size} 1024
 ",
             program_name = program_name,
             benchmark = Self::OPT_BENCHMARK,
             hwloc = Self::OPT_HWLOC,
             iterations = Self::OPT_ITERATIONS,
             payload_size = Self::OPT_PAYLOAD_SIZE,
-            default_payload_size = DEFAULT_PAYLOAD_SIZE,
             warm_start_vmm_prefix_size = Self::WARM_START_VMM_PAYLOAD_PREFIX_SIZE,
-            tmp_dir_option = tmp_dir_option,
             help_option = help_option,
         );
     }
@@ -169,8 +93,6 @@ Examples:
         let mut hwloc_file: Option<String> = None;
         let mut iterations: usize = 100;
         let mut payload_size: Option<usize> = None;
-        #[cfg(feature = "single-process")]
-        let mut tmp_dir: String = DEFAULT_TMP_DIRECTORY.to_string();
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -223,15 +145,6 @@ Examples:
                     }
                     payload_size = Some(parsed_payload_size);
                 },
-                #[cfg(feature = "single-process")]
-                Self::OPT_TMP_DIR => {
-                    i += 1;
-                    if i >= args.len() {
-                        Self::usage(args[0].as_str());
-                        return Err(::anyhow::anyhow!("missing value for: {}", Self::OPT_TMP_DIR));
-                    }
-                    tmp_dir = args[i].clone();
-                },
                 arg => {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
@@ -247,7 +160,7 @@ Examples:
                 if payload_size.is_some()
                     && !matches!(
                         benchmark,
-                        BenchmarkFlavour::WarmStart
+                        BenchmarkFlavour::WarmStartGateway
                             | BenchmarkFlavour::WarmStartVMM
                             | BenchmarkFlavour::WarmStartSocket
                     )
@@ -276,11 +189,7 @@ Examples:
                     benchmark,
                     hwloc_file,
                     iterations,
-                    #[cfg(feature = "single-process")]
-                    payload_size: payload_size.unwrap_or(DEFAULT_PAYLOAD_SIZE),
                     payload_size_override: payload_size,
-                    #[cfg(feature = "single-process")]
-                    tmp_dir,
                 })
             },
             Err(_) => {
@@ -302,18 +211,8 @@ Examples:
         self.iterations
     }
 
-    #[cfg(feature = "single-process")]
-    pub fn payload_size(&self) -> usize {
-        self.payload_size
-    }
-
     pub fn payload_size_override(&self) -> Option<usize> {
         self.payload_size_override
-    }
-
-    #[cfg(feature = "single-process")]
-    pub fn tmp_dir(&self) -> String {
-        self.tmp_dir.clone()
     }
 }
 
@@ -326,7 +225,7 @@ mod tests {
         let args: Vec<String> = vec![
             "nanvix-bench".to_string(),
             "-benchmark".to_string(),
-            "warm-start".to_string(),
+            "warm-start-socket".to_string(),
             "-payload-size".to_string(),
             "0".to_string(),
         ];
@@ -351,8 +250,35 @@ mod tests {
 
         let args: Args = Args::parse(args).expect("expected warm-start-vmm payload size to parse");
 
-        #[cfg(feature = "single-process")]
-        assert_eq!(args.payload_size(), 4096);
+        assert_eq!(args.payload_size_override(), Some(4096));
+    }
+
+    #[test]
+    fn parse_accepts_cold_start_uvm() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "cold-start-uvm".to_string(),
+        ];
+
+        let args: Args = Args::parse(args).expect("expected cold-start-uvm to parse");
+
+        assert!(matches!(args.benchmark(), super::BenchmarkFlavour::ColdStartUvm));
+    }
+
+    #[test]
+    fn parse_accepts_warm_start_gateway_payload_size_override() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start-gateway".to_string(),
+            "-payload-size".to_string(),
+            "4096".to_string(),
+        ];
+
+        let args: Args =
+            Args::parse(args).expect("expected warm-start-gateway payload size to parse");
+
         assert_eq!(args.payload_size_override(), Some(4096));
     }
 
@@ -369,8 +295,6 @@ mod tests {
         let args: Args =
             Args::parse(args).expect("expected warm-start-socket payload size to parse");
 
-        #[cfg(feature = "single-process")]
-        assert_eq!(args.payload_size(), 4096);
         assert_eq!(args.payload_size_override(), Some(4096));
     }
 

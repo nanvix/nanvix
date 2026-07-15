@@ -15,15 +15,15 @@ use containerd_shim_protos::{
     ttrpc,
 };
 
-use nanvix_shim_core::execution::ExecutionMode;
+use nanvix_shim_core::runtime::WorkloadRuntime;
 
 pub struct NanvixSandboxService {
-    mode: Arc<dyn ExecutionMode>,
+    runtime: Arc<dyn WorkloadRuntime>,
 }
 
 impl NanvixSandboxService {
-    pub fn new(mode: Arc<dyn ExecutionMode>) -> Self {
-        Self { mode }
+    pub fn new(runtime: Arc<dyn WorkloadRuntime>) -> Self {
+        Self { runtime }
     }
 }
 
@@ -69,7 +69,7 @@ impl sandbox_async::Sandbox for NanvixSandboxService {
     ) -> ttrpc::Result<sandbox_api::StopSandboxResponse> {
         // This will finally delete the System VM or the system process, but we will kill it first to be sure
         log::info!("[{}] Sandbox.StopSandbox", req.sandbox_id);
-        let _ = self.mode.kill(9).await;
+        let _ = self.runtime.kill(9).await;
         Ok(sandbox_api::StopSandboxResponse::new())
     }
 
@@ -79,7 +79,7 @@ impl sandbox_async::Sandbox for NanvixSandboxService {
         req: sandbox_api::WaitSandboxRequest,
     ) -> ttrpc::Result<sandbox_api::WaitSandboxResponse> {
         log::info!("[{}] Sandbox.WaitSandbox", req.sandbox_id);
-        let (exit_code, _) = self.mode.wait().await;
+        let (exit_code, _) = self.runtime.wait().await;
         let mut resp = sandbox_api::WaitSandboxResponse::new();
         resp.exit_status = exit_code;
         Ok(resp)
@@ -111,7 +111,7 @@ impl sandbox_async::Sandbox for NanvixSandboxService {
         req: sandbox_api::ShutdownSandboxRequest,
     ) -> ttrpc::Result<sandbox_api::ShutdownSandboxResponse> {
         log::info!("[{}] Sandbox.ShutdownSandbox", req.sandbox_id);
-        let _ = self.mode.cleanup().await;
+        let _ = self.runtime.cleanup().await;
         Ok(sandbox_api::ShutdownSandboxResponse::new())
     }
 }

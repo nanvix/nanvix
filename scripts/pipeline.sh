@@ -30,7 +30,6 @@ source "${IMPORT_DIR}/logging.sh"
 # Configuration matrix for testing all supported machines.
 declare -a MACHINE_TYPES=("microvm")
 declare -a BUILD_TYPES=("debug" "release")
-declare -a DEPLOYMENT_TYPES=("standalone" "single-process")
 declare -a STEP_TYPES=("spellcheck" "format" "lint" "build" "test")
 declare -a MACHINE_INDEPENDENT_STEPS=("spellcheck" "format")
 
@@ -73,33 +72,6 @@ get_release_flag() {
             ;;
         *)
             print_error "(pipeline) Invalid build type: ${build_type}"
-            exit 1
-            ;;
-    esac
-}
-
-#
-# Description
-#   Converts deployment type to build flags.
-#
-# Arguments
-#   $1 - Deployment type.
-#
-# Returns
-#   String with DEPLOYMENT_MODE value.
-#
-# Usage Example
-#   flags=$(get_deployment_flags "single-process")
-#
-get_deployment_flags() {
-    local deployment_type="${1}"
-
-    case "${deployment_type}" in
-        standalone|single-process)
-            echo "DEPLOYMENT_MODE=${deployment_type}"
-            ;;
-        *)
-            print_error "(pipeline) Invalid deployment type: ${deployment_type}"
             exit 1
             ;;
     esac
@@ -178,23 +150,20 @@ is_machine_independent() {
 #   $2 - Step type (format, spellcheck, lint, build, test).
 #   $3 - Temporary file path for capturing output.
 #   $4 - Machine type (optional, empty for machine-independent steps).
-#   $5 - Deployment type (optional, empty for machine-independent steps).
 #
 # Returns
 #   0 on success, non-zero on failure.
 #
 # Usage Example
-#   run_step "debug" "lint" "/tmp/output" "" ""
-#   run_step "release" "build" "/tmp/output" "microvm" "single-process"
+#   run_step "debug" "lint" "/tmp/output" ""
+#   run_step "release" "build" "/tmp/output" "microvm"
 #
 run_step() {
     local build_type="${1}"
     local step="${2}"
     local tmpfile="${3}"
     local machine="${4-}"
-    local deployment="${5-}"
     local release_flag
-    local deployment_flags
     local make_target
     local msg
     local start_time
@@ -210,8 +179,7 @@ run_step() {
     if [[ -z "${machine}" ]]; then
         msg="${build_type} ${step}"
     else
-        deployment_flags=$(get_deployment_flags "${deployment}")
-        msg="${build_type} ${step} ${machine} ${deployment}"
+        msg="${build_type} ${step} ${machine}"
     fi
     printf "%-${PADDING}s" "${msg}"
 
@@ -225,8 +193,7 @@ run_step() {
             return_code=$?
         fi
     else
-        # shellcheck disable=SC2086 # deployment_flags is a list of VAR=VAL words; allow word splitting into separate args
-        if "${Z_SCRIPT}" build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" ${deployment_flags} "${make_target}" > "${tmpfile}" 2>&1; then
+        if "${Z_SCRIPT}" build -- MACHINE="${machine}" LOG_LEVEL=trace "${release_flag}" "${make_target}" > "${tmpfile}" 2>&1; then
             return_code=0
         else
             return_code=$?
@@ -274,29 +241,27 @@ main() {
     trap 'rm -f "$tmpfile"' EXIT
 
     print_info "(pipeline) Running CI pipeline for all configurations..."
-    print_info "(pipeline) Matrix: ${#BUILD_TYPES[@]} build types x ${#MACHINE_TYPES[@]} machines x ${#DEPLOYMENT_TYPES[@]} deployments x ${#STEP_TYPES[@]} steps"
+    print_info "(pipeline) Matrix: ${#BUILD_TYPES[@]} build types x ${#MACHINE_TYPES[@]} machines x ${#STEP_TYPES[@]} steps"
 
     # Track which machine-independent steps have been run for each build type.
     declare -A run_machine_independent_steps
 
-    # Iterate through all build types, machines, deployments, and steps.
+    # Iterate through all build types, machines, and steps.
     for build_type in "${BUILD_TYPES[@]}"; do
         for machine in "${MACHINE_TYPES[@]}"; do
-            for deployment in "${DEPLOYMENT_TYPES[@]}"; do
-                for step in "${STEP_TYPES[@]}"; do
-                    # Check if this step is machine-independent.
-                    if is_machine_independent "${step}"; then
-                        # Run machine-independent steps only once per build type.
-                        local key="${build_type}_${step}"
-                        if [[ -z "${run_machine_independent_steps[${key}]+isset}" ]]; then
-                            run_step "${build_type}" "${step}" "${tmpfile}" "" ""
-                            run_machine_independent_steps["${key}"]=1
-                        fi
-                    else
-                        # Run machine-dependent steps for each machine/deployment combination.
-                        run_step "${build_type}" "${step}" "${tmpfile}" "${machine}" "${deployment}"
+            for step in "${STEP_TYPES[@]}"; do
+                # Check if this step is machine-independent.
+                if is_machine_independent "${step}"; then
+                    # Run machine-independent steps only once per build type.
+                    local key="${build_type}_${step}"
+                    if [[ -z "${run_machine_independent_steps[${key}]+isset}" ]]; then
+                        run_step "${build_type}" "${step}" "${tmpfile}" ""
+                        run_machine_independent_steps["${key}"]=1
                     fi
-                done
+                else
+                    # Run machine-dependent steps for each machine.
+                    run_step "${build_type}" "${step}" "${tmpfile}" "${machine}"
+                fi
             done
         done
     done

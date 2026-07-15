@@ -59,8 +59,6 @@ Set these as environment variables or pass them after `--` in the `z` command:
 |                  | `info`, `warn`,          |                 |
 |                  | `error`, `panic`         |                 |
 | `PROFILER`       | `yes`, `no`              | `no`            |
-| `DEPLOYMENT_MODE`| `standalone`,            | `standalone`    |
-|                  | `single-process`         |                 |
 
 Example with custom parameters:
 
@@ -75,8 +73,6 @@ Example with custom parameters:
 ./z build -- all
 # Release build.
 ./z build -- all RELEASE=yes LOG_LEVEL=panic
-# For echo-breakdown benchmark.
-./z build -- all RELEASE=yes LOG_LEVEL=panic TIMESTAMP_MSG=yes
 ```
 
 ### Building on Windows (using `z.ps1`)
@@ -184,15 +180,8 @@ Nanvix uses Verus for formal verification of selected kernel crates. The expecte
 ./scripts/pipeline.sh
 ```
 
-The pipeline covers: spell checking, formatting, linting, building, and testing across multiple
-machine and deployment configurations.
-
-> **Validate across deployment modes before declaring success.** Lint runs with
-> `-- -D warnings`, so warnings like `dead_code` become hard failures; code compiled only under
-> a non-default `DEPLOYMENT_MODE` (for example, a helper used only with `standalone`) may build
-> cleanly in the default config but fail the pre-commit hook and CI under `single-process`. Do
-> not report a change as done after checking only the default mode — run
-> `./scripts/pipeline.sh`, or repeat the relevant `lint-check`/`build` across `DEPLOYMENT_MODE={standalone,single-process}`.
+The pipeline covers spell checking, formatting, linting, building, and testing for `microvm` in
+debug and release configurations. Run `./scripts/pipeline.sh` before declaring broad changes done.
 
 ## IDE Setup (Optional)
 

@@ -3,7 +3,7 @@
 
 //! Integration tests for the Nanvix containerd shim.
 //!
-//! These tests exercise the full `StandaloneMode` lifecycle using real Nanvix binaries.
+//! These tests exercise the full `StandaloneRuntime` lifecycle using real Nanvix binaries.
 //! They require Nanvix binaries. Set `NANVIX_DIR` to the Nanvix source tree root
 //! (e.g., `export NANVIX_DIR=$HOME/nanvix`). Binaries are expected at `$NANVIX_DIR/bin/`.
 //!
@@ -20,13 +20,13 @@ use std::{
 use nanvix_oci::NanvixImageConfig;
 use nanvix_shim_core::{
     config::NanvixRuntimeConfig,
-    execution::{
-        ExecutionMode,
+    runtime::{
         SandboxConfig,
+        WorkloadRuntime,
     },
     state::WorkloadState,
 };
-use nanvix_shim_standalone::StandaloneMode;
+use nanvix_shim_standalone::StandaloneRuntime;
 
 /// Resolve paths to the Nanvix binaries, or return None if not found.
 struct NanvixPaths {
@@ -73,7 +73,6 @@ impl NanvixPaths {
             kernel_path: self.nanvixd.clone(),
             mkramfs_path: self.mkramfs.clone(),
             temp_dir: temp_dir.to_path_buf(),
-            execution_mode: "standalone".to_string(),
             // TODO(windows): `/dev/null` is Unix-only. On Windows the equivalent is
             // `NUL`. When Windows support is fully integrated, use a `cfg`-gated
             // constant: `if cfg!(windows) { "NUL" } else { "/dev/null" }`.
@@ -116,7 +115,6 @@ fn make_sandbox_config(
             },
             arch: "x86".to_string(),
             version: None,
-            execution_mode: None,
         },
         runtime_config: runtime_config.clone(),
         stdin: PathBuf::new(),
@@ -145,7 +143,7 @@ async fn test_standalone_lifecycle_no_ramfs() {
     build_rootfs(&rootfs, &paths.hello_elf, false);
 
     let runtime_config = paths.runtime_config(tmp.path());
-    let mode = StandaloneMode::new("test-no-ramfs".to_string(), runtime_config.clone());
+    let runtime = StandaloneRuntime::new("test-no-ramfs".to_string(), runtime_config.clone());
     let mut sandbox_config = make_sandbox_config("test-no-ramfs", &rootfs, &runtime_config, false);
 
     // Point stdout to a temp file so we can verify it after execution.
@@ -153,30 +151,30 @@ async fn test_standalone_lifecycle_no_ramfs() {
     sandbox_config.stdout = stdout_file.clone();
 
     // Initial state
-    assert!(matches!(mode.state().await.unwrap(), WorkloadState::Stopped { .. }));
+    assert!(matches!(runtime.state().await.unwrap(), WorkloadState::Stopped { .. }));
 
     // Prepare
-    mode.prepare(&sandbox_config).await.unwrap();
-    assert!(matches!(mode.state().await.unwrap(), WorkloadState::Created));
+    runtime.prepare(&sandbox_config).await.unwrap();
+    assert!(matches!(runtime.state().await.unwrap(), WorkloadState::Created));
 
     // Start — spawns the application inside nanvixd via the HTTP API.
-    let pid = mode.start().await.unwrap();
+    let pid = runtime.start().await.unwrap();
     assert!(pid > 0, "Expected a valid PID, got {}", pid);
-    assert!(matches!(mode.state().await.unwrap(), WorkloadState::Running { .. }));
+    assert!(matches!(runtime.state().await.unwrap(), WorkloadState::Running { .. }));
 
     // Give the application a moment to execute.
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
     // TODO(windows): Signal 9 (`SIGKILL`) is a Unix concept. On Windows, process
     // termination uses `TerminateProcess` and there is no direct signal equivalent.
-    // When Windows support is fully integrated, verify that `StandaloneMode::kill()`
+    // When Windows support is fully integrated, verify that `StandaloneRuntime::kill()`
     // handles signal translation internally, or use a platform-appropriate constant here.
 
     // Kill — terminates the application via the HTTP API and retrieves its exit code.
-    mode.kill(9).await.unwrap();
+    runtime.kill(9).await.unwrap();
 
     // Wait — returns the exit code set by kill().
-    let (exit_code, _) = mode.wait().await;
+    let (exit_code, _) = runtime.wait().await;
     eprintln!("  nanvixd exited with code {}", exit_code);
 
     // Verify stdout — the guest console output should have been written to the file.
@@ -189,8 +187,8 @@ async fn test_standalone_lifecycle_no_ramfs() {
     eprintln!("  stdout ({} bytes): {}", stdout_output.len(), stdout_output.trim());
 
     // Cleanup — stops the daemon and removes temp files.
-    mode.cleanup().await.unwrap();
-    assert!(matches!(mode.state().await.unwrap(), WorkloadState::Stopped { .. }));
+    runtime.cleanup().await.unwrap();
+    assert!(matches!(runtime.state().await.unwrap(), WorkloadState::Stopped { .. }));
 }
 
 // ─── Full lifecycle: with ramfs ──────────────────────────────────────────────
@@ -212,7 +210,7 @@ async fn test_standalone_lifecycle_with_ramfs() {
     build_rootfs(&rootfs, &paths.hello_elf, true);
 
     let runtime_config = paths.runtime_config(tmp.path());
-    let mode = StandaloneMode::new("test-with-ramfs".to_string(), runtime_config.clone());
+    let runtime = StandaloneRuntime::new("test-with-ramfs".to_string(), runtime_config.clone());
     let mut sandbox_config = make_sandbox_config("test-with-ramfs", &rootfs, &runtime_config, true);
 
     // Point stdout to a temp file so we can verify it after execution.
@@ -220,7 +218,7 @@ async fn test_standalone_lifecycle_with_ramfs() {
     sandbox_config.stdout = stdout_file.clone();
 
     // Prepare — should invoke mkramfs
-    mode.prepare(&sandbox_config).await.unwrap();
+    runtime.prepare(&sandbox_config).await.unwrap();
 
     // Verify ramfs image was created
     let img_path = tmp.path().join("test-with-ramfs.img");
@@ -228,7 +226,7 @@ async fn test_standalone_lifecycle_with_ramfs() {
     assert!(std::fs::metadata(&img_path).unwrap().len() > 0, "ramfs image is empty");
 
     // Start
-    let pid = mode.start().await.unwrap();
+    let pid = runtime.start().await.unwrap();
     assert!(pid > 0);
 
     // Give the application a moment to execute.
@@ -236,8 +234,8 @@ async fn test_standalone_lifecycle_with_ramfs() {
 
     // TODO(windows): Same signal concern as `test_standalone_lifecycle_no_ramfs`.
     // Kill + Wait
-    mode.kill(9).await.unwrap();
-    let (exit_code, _) = mode.wait().await;
+    runtime.kill(9).await.unwrap();
+    let (exit_code, _) = runtime.wait().await;
     eprintln!("  nanvixd (with ramfs) exited with code {}", exit_code);
 
     // Verify stdout — the guest console output should have been written to the file.
@@ -250,7 +248,7 @@ async fn test_standalone_lifecycle_with_ramfs() {
     eprintln!("  stdout ({} bytes): {}", stdout_output.len(), stdout_output.trim());
 
     // Cleanup — should remove the ramfs image
-    mode.cleanup().await.unwrap();
+    runtime.cleanup().await.unwrap();
     assert!(!img_path.exists(), "ramfs image should have been cleaned up");
 }
 
@@ -271,10 +269,10 @@ async fn test_standalone_prepare_missing_initrd() {
     std::fs::create_dir_all(&rootfs).unwrap();
 
     let runtime_config = paths.runtime_config(tmp.path());
-    let mode = StandaloneMode::new("test-missing".to_string(), runtime_config.clone());
+    let runtime = StandaloneRuntime::new("test-missing".to_string(), runtime_config.clone());
     let sandbox_config = make_sandbox_config("test-missing", &rootfs, &runtime_config, false);
 
-    let result = mode.prepare(&sandbox_config).await;
+    let result = runtime.prepare(&sandbox_config).await;
     assert!(result.is_err());
     assert!(
         result
@@ -299,9 +297,9 @@ async fn test_standalone_start_without_prepare() {
 
     let tmp = tempfile::tempdir().unwrap();
     let runtime_config = paths.runtime_config(tmp.path());
-    let mode = StandaloneMode::new("test-no-prepare".to_string(), runtime_config);
+    let runtime = StandaloneRuntime::new("test-no-prepare".to_string(), runtime_config);
 
-    let result = mode.start().await;
+    let result = runtime.start().await;
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("not prepared"));
 }
@@ -322,22 +320,4 @@ async fn test_oci_annotation_parsing_roundtrip() {
     assert_eq!(config.initrd_args, vec!["arg1", "arg2"]);
     assert_eq!(config.ramfs_root, Some("/ramfs".to_string()));
     assert_eq!(config.arch, "x86");
-}
-
-// ─── Mode registry ─────────────────────────────────────────────────────────
-
-#[tokio::test]
-async fn test_mode_registry() {
-    use nanvix_shim_core::registry::ModeRegistry;
-    use std::sync::Arc;
-
-    let mut registry = ModeRegistry::new();
-    registry.register("standalone", |id, config| {
-        Arc::new(StandaloneMode::new(id.to_string(), config.clone()))
-    });
-
-    let config = NanvixRuntimeConfig::default();
-
-    assert!(registry.create("standalone", "test-id", &config).is_ok());
-    assert!(registry.create("unknown", "test-id", &config).is_err());
 }

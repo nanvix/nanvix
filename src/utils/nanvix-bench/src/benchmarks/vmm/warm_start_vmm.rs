@@ -340,7 +340,7 @@ async fn run_echo_cycle(
 impl Benchmark {
     /// In this micro-benchmark we measure the time for a message to travel
     /// all the way from the VMM to the guest application and back. To achieve
-    /// this, we connect the user VM to a gateway that emulates linuxd.
+    /// this, we connect the user VM to a gateway that handles guest I/O.
     pub async fn run_warm_start_vmm(&mut self) -> Result<()> {
         let payloads: Vec<(String, Vec<u8>)> = message_payloads(self.payload_size_override)?;
         let total_iterations: usize = self
@@ -360,7 +360,7 @@ impl Benchmark {
 
         let (vcpu_thread_stdout_tx, mut vcpu_thread_stdout_rx) =
             mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
-        let (io_thread_data_tx, memory_thread_data_rx) =
+        let (io_handler_data_tx, memory_thread_data_rx) =
             mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
         let (io_control_command_tx, io_control_rx) =
             mpsc::channel::<IoControlCommand>(CHANNEL_CAPACITY);
@@ -405,13 +405,13 @@ impl Benchmark {
                 receive_guest_request(&mut vcpu_thread_stdout_rx, "warmup").await?;
             let (tid, count): (ThreadIdentifier, usize) = run_echo_cycle(
                 &mut vcpu_thread_stdout_rx,
-                &io_thread_data_tx,
+                &io_handler_data_tx,
                 first_request,
                 payload,
                 "warmup",
             )
             .await?;
-            send_write_response(&io_thread_data_tx, tid, count, "warmup").await?;
+            send_write_response(&io_handler_data_tx, tid, count, "warmup").await?;
 
             sleep(std::time::Duration::from_millis(WARMUP_SLEEP_DURATION)).await;
         }
@@ -425,7 +425,7 @@ impl Benchmark {
                 let start = Instant::now();
                 let (tid, count): (ThreadIdentifier, usize) = run_echo_cycle(
                     &mut vcpu_thread_stdout_rx,
-                    &io_thread_data_tx,
+                    &io_handler_data_tx,
                     first_request,
                     payload,
                     "run_warm_start_vmm()",
@@ -436,7 +436,8 @@ impl Benchmark {
                     .or_default()
                     .push(start.elapsed().as_micros());
 
-                send_write_response(&io_thread_data_tx, tid, count, "run_warm_start_vmm()").await?;
+                send_write_response(&io_handler_data_tx, tid, count, "run_warm_start_vmm()")
+                    .await?;
 
                 sleep(std::time::Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
 
@@ -462,7 +463,7 @@ impl Benchmark {
             anyhow::bail!(reason);
         }
 
-        drop(io_thread_data_tx);
+        drop(io_handler_data_tx);
         drop(io_control_command_tx);
 
         match user_vm_handle.await {

@@ -292,180 +292,17 @@ pub fn test() {
         },
     }
 
-    #[cfg(not(feature = "standalone"))]
     test_pipe();
-
-    #[cfg(feature = "standalone")]
-    test_pipe_standalone();
 }
 
-#[cfg(not(feature = "standalone"))]
-fn test_pipe() {
-    use ::alloc::boxed::Box;
-    use ::sysapi::fcntl::file_creation_flags::O_DIRECTORY;
-    use ::syscall::dirent::{
-        self,
-        DirectoryStream,
-    };
-
-    let [read_fd, write_fd]: [i32; 2] = match unistd::pipe() {
-        Ok(fds) => {
-            ::syslog::info!("created pipe with fds ({}, {})", fds[0], fds[1]);
-            fds
-        },
-        Err(e) => {
-            panic!("failed to create pipe: {:?}", e);
-        },
-    };
-
-    // Write to pipe.
-    let write_buffer: [u8; 128] = [1; 128];
-    match unistd::write(write_fd, &write_buffer) {
-        Ok(128) => {
-            ::syslog::info!("wrote 128 bytes to pipe");
-        },
-        Ok(n) => {
-            panic!("failed to write 128 bytes to pipe: (n={:?})", n);
-        },
-        Err(error) => {
-            panic!("failed to write 128 bytes to pipe (error={:?})", error);
-        },
-    }
-
-    // Read from pipe.
-    let mut read_buffer: [u8; 128] = [0; 128];
-    match unistd::read(read_fd, &mut read_buffer) {
-        Ok(128) => {
-            ::syslog::info!("read 128 bytes from pipe");
-        },
-        Ok(n) => {
-            panic!("failed to read 128 bytes from pipe: (n={:?})", n);
-        },
-        errno => {
-            panic!("failed to read 128 bytes from pipe: {:?}", errno);
-        },
-    }
-
-    // Check if contents of read buffer matches write buffer.
-    (0..128).for_each(|i| {
-        if read_buffer[i] != write_buffer[i] {
-            panic!("read buffer does not match write buffer");
-        }
-    });
-
-    // Close read end of pipe.
-    match unistd::close(read_fd) {
-        Ok(()) => {
-            ::syslog::info!("closed read end of pipe");
-        },
-        Err(error) => {
-            panic!("failed to close read end of pipe: {:?}", error);
-        },
-    }
-
-    // Close write end of pipe.
-    match unistd::close(write_fd) {
-        Ok(()) => {
-            ::syslog::info!("closed write end of pipe");
-        },
-        Err(error) => {
-            panic!("failed to close write end of pipe: {:?}", error);
-        },
-    }
-
-    // Get current working directory.
-    match unistd::getcwd() {
-        Ok(cwd) => {
-            ::syslog::info!("got current working directory: {}", cwd);
-        },
-        Err(e) => {
-            panic!("failed to get current working directory: {:?}", e);
-        },
-    };
-
-    // Open directory.
-    let dir_fd: i32 = match fcntl::openat(AT_FDCWD, ".", O_DIRECTORY, 0) {
-        Ok(fd) => {
-            ::syslog::info!("opened directory with fd {}", fd);
-            fd
-        },
-        Err(error) => {
-            panic!("failed to open directory: {:?}", error);
-        },
-    };
-
-    loop {
-        match dirent::posix_getdents(dir_fd, 1) {
-            Ok(buffer) => {
-                if buffer.is_empty() {
-                    break;
-                }
-                for d in buffer.iter() {
-                    ::syslog::info!("directory entry: {:?}", d);
-                }
-            },
-            Err(error) => {
-                panic!("failed to get directory entries: {:?}", error);
-            },
-        }
-    }
-
-    // Close directory.
-    match unistd::close(dir_fd) {
-        Ok(()) => {
-            ::syslog::info!("closed directory");
-        },
-        Err(error) => {
-            panic!("failed to close directory: {:?}", error);
-        },
-    }
-
-    // Open directory stream.
-    let mut dir: Box<DirectoryStream> = match dirent::opendir(".") {
-        Ok(dir) => {
-            ::syslog::info!("opened directory");
-            dir
-        },
-        Err(error) => {
-            panic!("failed to open directory: {:?}", error);
-        },
-    };
-
-    // Read directory stream.
-    loop {
-        match dirent::readdir(&mut dir) {
-            Ok(Some(dirent)) => {
-                ::syslog::info!("directory entry: {:?}", dirent);
-            },
-            Ok(None) => {
-                break;
-            },
-            Err(error) => {
-                panic!("failed to read directory: {:?}", error);
-            },
-        }
-    }
-
-    // Close directory stream.
-    match dirent::closedir(&mut dir) {
-        Ok(()) => {
-            ::syslog::info!("closed directory");
-        },
-        Err(error) => {
-            panic!("failed to close directory: {:?}", error);
-        },
-    }
-}
-
-/// Exercises unnamed pipes in standalone mode (routed through vfsd).
+/// Exercises unnamed pipes routed through vfsd.
 ///
-/// Covers the single-process paths that do not require a peer: creation, `fstat` reporting
+/// Covers process-local pipe behavior: creation, `fstat` reporting
 /// `S_IFIFO`, `lseek` returning `ESPIPE`, `fcntl` round-tripping `O_NONBLOCK`, non-blocking
 /// `EAGAIN` on an empty read and on a full write, a byte-exact round trip, end-of-file after the
 /// write end closes, and `EPIPE` after the read end closes. Cross-process blocking is covered by
 /// the dedicated `pipe-test` binary.
-#[cfg(feature = "standalone")]
-fn test_pipe_standalone() {
+fn test_pipe() {
     use ::sys::error::ErrorCode;
     use ::sysapi::{
         fcntl::{
@@ -485,7 +322,7 @@ fn test_pipe_standalone() {
     /// Pipe buffer capacity in vfsd; filling this many bytes makes the pipe full.
     const PIPE_CAPACITY: usize = 64 * 1024;
 
-    ::syslog::info!("testing unnamed pipes in standalone mode");
+    ::syslog::info!("testing unnamed pipes");
 
     let [read_fd, write_fd]: [i32; 2] = match unistd::pipe() {
         Ok(fds) => {
@@ -641,7 +478,7 @@ fn test_pipe_standalone() {
     test_pipe_eof_on_writer_exit();
     test_pipe_epipe_on_reader_exit();
 
-    ::syslog::info!("pipe standalone test passed");
+    ::syslog::info!("pipe test passed");
 }
 
 /// Streams more than one pipe buffer's worth of data from a parent to a forked child, forcing the
@@ -650,7 +487,6 @@ fn test_pipe_standalone() {
 /// The parent writes a deterministic ramp larger than the pipe capacity; the child drains and
 /// verifies it, then reports a pass/fail verdict over IPC. The child exits without returning to the
 /// shared flow, so only the parent continues.
-#[cfg(feature = "standalone")]
 fn test_pipe_blocking_fork() {
     use ::sys::{
         ipc::{
@@ -768,7 +604,6 @@ fn test_pipe_blocking_fork() {
 /// The first read is retried up to `max_first_attempts` times to absorb the window in which a
 /// freshly forked child's descriptors have not yet been duplicated into vfsd. Returns whether the
 /// full stream was received and validated.
-#[cfg(feature = "standalone")]
 fn pipe_child_drain(read_fd: i32, total: usize, chunk: usize, max_first_attempts: u32) -> bool {
     let mut buf: [u8; 4096] = [0u8; 4096];
     let mut offset: usize = 0;
@@ -808,7 +643,6 @@ fn pipe_child_drain(read_fd: i32, total: usize, chunk: usize, max_first_attempts
 /// without writing. The parent closes its own write end first, so the child holds the sole
 /// remaining writer reference at exit. Whether the parent parks before the child exits or reads
 /// afterward, the observable result is the same: a clean EOF.
-#[cfg(feature = "standalone")]
 fn test_pipe_eof_on_writer_exit() {
     use ::sys::{
         ipc::{
@@ -924,7 +758,6 @@ fn test_pipe_eof_on_writer_exit() {
 /// without draining. The parent closes its own read end first, so the child holds the sole
 /// remaining reader reference at exit. The parent fills the pipe until it blocks; the child's
 /// exit then fails the parked writer with EPIPE.
-#[cfg(feature = "standalone")]
 fn test_pipe_epipe_on_reader_exit() {
     use ::sys::{
         error::ErrorCode,
@@ -1057,7 +890,6 @@ fn test_pipe_epipe_on_reader_exit() {
 ///
 /// A successful close proves the fork-clone has landed (the descriptor now resolves) and drops the
 /// child's reference to the unused pipe end. Returns whether the close eventually succeeded.
-#[cfg(feature = "standalone")]
 fn pipe_close_after_fork_clone(fd: i32, max_attempts: u32) -> bool {
     let mut attempts: u32 = 0;
     loop {

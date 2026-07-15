@@ -19,7 +19,6 @@ log = { workspace = true }
 [features]
 default = []
 auto-calibrate = []
-timestamp-messages = []
 
 [lints]
 workspace = true

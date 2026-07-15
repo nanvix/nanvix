@@ -28,7 +28,7 @@ Run a guest application via `nanvixd` in standalone interactive mode:
 - [HTTP Mode](#http-mode)
   - [Limitations vs. Linux HTTP Mode](#limitations-vs-linux-http-mode)
 - [Logging](#logging)
-- [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)
+- [Expert Mode: Direct UserVM](#expert-mode-direct-uservm)
   - [Recognised Kernel Arguments](#recognised-kernel-arguments)
 - [Benchmarking](#benchmarking)
   - [Quick Start](#quick-start-1)
@@ -37,9 +37,8 @@ Run a guest application via `nanvixd` in standalone interactive mode:
 
 ## Creating Multibinary Images
 
-In standalone deployment mode, guest applications run alongside system daemons (`procd`, `memd`,
-and `vfsd`) inside a single VM. These components must be bundled together into a **multibinary
-image** using the `mkimage` tool before they can be launched.
+Guest applications run alongside system daemons (`procd`, `memd`, and `vfsd`) inside a single VM.
+These components must be bundled into a **multibinary image** with `mkimage` before launch.
 
 The `mkimage` tool takes an output path and a list of `<path>;<name>` pairs, where `<path>` is
 the path to the ELF binary and `<name>` is the logical name the kernel uses to identify it at
@@ -157,7 +156,7 @@ To include a literal `;` in any section, escape it as `\;`:
 
 > **Note:** Kernel arguments can be passed via `-kernel-args` on `nanvixd` (see
 > [Passing Kernel Arguments](#passing-kernel-arguments)) or directly on the UserVM (see
-> [Expert Mode: Standalone UserVM](#expert-mode-standalone-uservm)). They are not embedded in
+> [Expert Mode: Direct UserVM](#expert-mode-direct-uservm)). They are not embedded in
 > the initrd arguments string.
 
 ## HTTP Mode
@@ -211,7 +210,7 @@ By default, `nanvixd`'s own structured (`logrus`) records are written to an auto
 This is useful when a parent process captures `nanvixd`'s stdout and forwards it to its own
 log sink. `-log-to-stdout` and `-log-dir` are mutually exclusive.
 
-## Expert Mode: Standalone UserVM
+## Expert Mode: Direct UserVM
 
 > **Warning:** This is an expert-level feature intended for low-level debugging and kernel
 > development. Most users should use `nanvixd` instead (see [Running nanvixd Directly](#running-nanvixd-directly)).
@@ -219,21 +218,20 @@ log sink. `-log-to-stdout` and `-log-dir` are mutually exclusive.
 For low-level debugging, you can bypass `nanvixd` and run the UserVM directly:
 
 ```powershell
-.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf
 ```
 
 Optional flags:
 
-| Flag                     | Description                                                      |
-| ------------------------ | ---------------------------------------------------------------- |
-| `-stderr <file>`         | Redirect guest stderr to a file instead of host stderr.          |
-| `-initrd_args <args>`    | Arguments forwarded to the initrd payload.                       |
-| `-kernel-args <args>`    | Kernel arguments written to guest control registers (see below). |
-| `-ramfs <file>`          | Path to a RAM filesystem image exposed to the guest.             |
-| `-user-vm-id <id>`       | VM identifier (defaults to `0` in standalone mode).              |
-| `-log-to-file`           | Write logs to files instead of stdout.                           |
-| `-log-dir <dir>`         | Directory for log files (used with `-log-to-file`).              |
-| `-allow-host-networking` | Enable host networking for the guest (disabled when omitted).    |
+| Flag                  | Description                                                      |
+| --------------------- | ---------------------------------------------------------------- |
+| `-stderr <file>`      | Redirect guest stderr to a file instead of host stderr.          |
+| `-initrd_args <args>` | Arguments forwarded to the initrd payload.                       |
+| `-kernel-args <args>` | Kernel arguments written to guest control registers (see below). |
+| `-ramfs <file>`       | Path to a RAM filesystem image exposed to the guest.             |
+| `-user-vm-id <id>`    | VM identifier (defaults to `0`).                                 |
+| `-log-to-file`        | Write logs to files instead of stdout.                           |
+| `-log-dir <dir>`      | Directory for log files (used with `-log-to-file`).              |
 
 ### Recognised Kernel Arguments
 
@@ -247,14 +245,14 @@ Example:
 
 ```powershell
 .\bin\uservm.exe -kernel .\bin\kernel.elf `
-    -initrd .\bin\snapshot-rust-nostd.elf -standalone `
+  -initrd .\bin\snapshot-rust-nostd.elf `
     -kernel-args snapshot
 ```
 
 Enable verbose logging with `RUST_LOG`:
 
 ```powershell
-$env:RUST_LOG="trace"; .\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+$env:RUST_LOG="trace"; .\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf
 ```
 
 ## Benchmarking

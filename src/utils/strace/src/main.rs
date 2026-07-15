@@ -539,9 +539,9 @@ mod tests {
 
     #[test]
     fn parse_trace_line_ignores_other_targets() {
-        // Ensures unrelated targets (e.g., linuxd) are treated as filtered events.
+        // Ensures unrelated targets are treated as filtered events.
         let line: &str =
-            "TRACE [linuxd::linux::fcntl] openat(): tid=42, request=OpenAtRequest { dirfd: -100 }";
+            "TRACE [other::linux::fcntl] openat(): tid=42, request=OpenAtRequest { dirfd: -100 }";
         match parse_trace_line(line).expect("parse failure") {
             Some(TraceLine::NonSyscall) => {},
             other => panic!("expected non-syscall classification, got {other:?}"),

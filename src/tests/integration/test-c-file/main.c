@@ -98,7 +98,7 @@ int main(int argc, const char *argv[])
     test_create_unlink(); // tests open() and unlink().
     test_write_read();    // tests open(), close() and unlink.
 #ifndef __NANVIX_STANDALONE__
-    // poll() and select() have no VFS implementation in standalone mode.
+    // poll() and select() have no VFS implementation.
     test_poll();            // tests open(), close(), write(), read(), poll() and unlink().
     test_select();          // tests open(), close(), write(), read(), select() and unlink().
 #endif                      // __NANVIX_STANDALONE__

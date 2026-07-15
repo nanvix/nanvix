@@ -1,12 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # `kill()` Standalone Regression Tests
+//! # `kill()` Regression Tests
 //!
-//! Exercises the POSIX `kill()` library call end-to-end in standalone mode, verifying that posting
-//! a fatal signal whose default action is *terminate* (`SIGTERM`) tears down the target process
-//! regardless of the scheduling state it is in when the signal arrives. The three states covered
-//! mirror the kernel process-state lists that the in-kernel termination path walks:
+//! Exercises the POSIX `kill()` library call end-to-end, verifying that posting a fatal signal
+//! whose default action is *terminate* (`SIGTERM`) tears down the target process regardless of the
+//! scheduling state it is in when the signal arrives. The three states covered mirror the kernel
+//! process-state lists that the in-kernel termination path walks:
 //!
 //! 1. **Sleeping** — the target is blocked indefinitely in a kernel wait (`recv()` with no pending
 //!    alarm). The signal must wake a candidate thread and terminate the process.
@@ -33,7 +33,6 @@
 //!
 //! The following aspects of the signals design are intentionally out of scope here:
 //!
-//! - The non-standalone deployment gate is a compile-time concern.
 //! - `SIGKILL`'s unconditional short-circuit and signal masking are validated separately. Caught
 //!   (handler) dispositions are exercised by a self-directed delivery test at the end of this
 //!   suite, which redirects the caller through a handler and back via `sigreturn()`.

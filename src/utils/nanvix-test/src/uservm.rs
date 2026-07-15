@@ -22,7 +22,6 @@ use ::nanvix::{
         New,
         NewResponse,
     },
-    sandbox::UserVmIdentifier,
     syscomm::{
         ReadExact,
         SocketStream,
@@ -30,6 +29,7 @@ use ::nanvix::{
         WriteAll,
     },
 };
+use ::user_vm_api::UserVmIdentifier;
 // The socket-based gateway transport is only used on Unix; on Windows the standalone gateway is
 // exposed as a named pipe (see `GatewayStream::connect`).
 #[cfg(unix)]

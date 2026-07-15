@@ -3,15 +3,12 @@
 
 //! Sandbox configuration structures for Nanvix.
 //!
-//! This crate provides the configuration types used by the various sandbox deployment modes:
-//! single-process (`SimpleSandboxCacheConfig`) and standalone (`StandaloneConfig`).
+//! This crate provides the configuration types used by standalone deployments.
 
 //==================================================================================================
 // Public Modules
 //==================================================================================================
 
-#[cfg(feature = "single-process")]
-mod single_process;
 mod standalone;
 
 //==================================================================================================
@@ -76,6 +73,4 @@ pub use ::net_backend::{
 // Exports
 //==================================================================================================
 
-#[cfg(feature = "single-process")]
-pub use self::single_process::SimpleSandboxCacheConfig;
 pub use self::standalone::StandaloneConfig;

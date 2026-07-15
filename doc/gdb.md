@@ -1,7 +1,6 @@
 # GDB Remote Debugging
 
-> **Prerequisite:** Build Nanvix in standalone mode before debugging. See
-> [build-linux.md](build-linux.md) for instructions.
+> **Prerequisite:** Build Nanvix with the `gdb` Cargo feature before debugging.
 
 The microvm machine type exposes a GDB Remote Serial Protocol (RSP) server over TCP for
 interactively debugging the Nanvix guest kernel.
@@ -16,11 +15,10 @@ interactively debugging the Nanvix guest kernel.
 
 ## Building for Debug
 
-Build Nanvix in standalone mode. The `standalone` feature automatically enables the `gdb` Cargo
-feature in `nanvixd` and `nanvix-bench`:
+Build Nanvix, enabling the `gdb` feature for the host component you use to launch the VM:
 
 ```bash
-./z build -- all DEPLOYMENT_MODE=standalone
+./z build -- all
 ```
 
 You also need a GDB client with x86_64 target support (`gdb-multiarch` or `x86_64-elf-gdb`).
@@ -43,7 +41,6 @@ You can also launch `uservm` directly:
 RUST_LOG=info ./bin/uservm.elf \
     -kernel ./bin/kernel.elf \
     -initrd ./bin/hello-rust-nostd.elf \
-    -standalone \
     -gdb-port 1234
 ```
 
@@ -67,20 +64,18 @@ gdb-multiarch
 
 ## Supported Features
 
-| Feature              | Description                                      |
-| -------------------- | -------------------------------------------------|
-| Register read/write  | All x86_64 GPRs, RIP, RFLAGS, segment registers  |
-| Memory read/write    | Guest physical memory (identity-mapped)          |
-| Software breakpoints | `INT3`-based, unlimited count                    |
-| Single-stepping      | `stepi` executes one guest instruction           |
-| Continue             | Resumes guest execution                          |
-| Ctrl+C break-in      | Interrupts running guest from GDB (see note)     |
+| Feature              | Description                                     |
+| -------------------- | ----------------------------------------------- |
+| Register read/write  | All x86_64 GPRs, RIP, RFLAGS, segment registers |
+| Memory read/write    | Guest physical memory (identity-mapped)         |
+| Software breakpoints | `INT3`-based, unlimited count                   |
+| Single-stepping      | `stepi` executes one guest instruction          |
+| Continue             | Resumes guest execution                         |
+| Ctrl+C break-in      | Interrupts running guest from GDB (see note)    |
 
 ## Limitations
 
-- **Standalone mode only.** The `-gdb-port` flag requires `-standalone` mode (enforced at runtime).
-  At the crate level, the `gdb` feature requires `microvm` (enforced via feature dependency at
-  compile time).
+- **MicroVM only.** At the crate level, the `gdb` feature requires `microvm`.
 - **Physical addresses only.** Memory access uses guest physical addresses. The kernel uses identity
   mapping, so virtual and physical addresses match for kernel code.
 - **No hardware breakpoints.** Only software breakpoints (`INT3`) are supported.

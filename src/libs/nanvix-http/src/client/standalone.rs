@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! Standalone deployment mode implementation for the HTTP client.
+//! Standalone HTTP client implementation.
 //!
 //! In standalone mode, the HTTP client directly drives User VM instances without going through a
 //! sandbox cache, system VM, control-plane, or gateway. Each NEW request spawns a VM with IKC-based
@@ -48,7 +48,6 @@ use ::log::{
 use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::{
     future::Future,
-    marker::PhantomData,
     pin::Pin,
     sync::Arc,
 };
@@ -169,21 +168,16 @@ impl StandaloneState {
 /// This structure implements the Hyper Service trait to process incoming HTTP requests.
 /// It directly drives User VM instances without going through a sandbox cache.
 ///
-/// # Type Parameters
-///
-/// - `T`: Unused type parameter kept for API compatibility with other deployment modes.
-///
-pub(crate) struct HttpClient<T> {
+pub(crate) struct HttpClient {
     /// Shared standalone state holding configuration and running VMs.
     state: Arc<StandaloneState>,
-    _phantom: PhantomData<T>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
+impl super::HttpClient {
     ///
     /// # Description
     ///
@@ -198,10 +192,7 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
     /// A new HTTP client handler ready to process requests.
     ///
     pub(crate) fn new(state: Arc<StandaloneState>) -> Self {
-        Self {
-            state,
-            _phantom: PhantomData,
-        }
+        Self { state }
     }
 
     ///
@@ -370,7 +361,7 @@ impl<T: Send + Sync + Default + 'static> super::HttpClient<T> {
     }
 }
 
-impl<T: Send + Sync + Default + 'static> Service<Request<Incoming>> for HttpClient<T> {
+impl Service<Request<Incoming>> for HttpClient {
     type Response = Response<Full<Bytes>>;
     type Error = hyper::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;

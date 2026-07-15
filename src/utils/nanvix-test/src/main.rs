@@ -51,10 +51,6 @@ macro_rules! warn_with_policy {
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "standalone")]
-use crate::executor::snapshot_restore::test_with_snapshot_restore_executor;
-#[cfg(feature = "standalone")]
-use crate::executor::snapshot_save_exit::test_with_snapshot_save_exit_executor;
 use crate::{
     config::{
         NanvixTestConfig,
@@ -66,6 +62,8 @@ use crate::{
         WorkloadSpec,
         empty::empty,
         http::test_with_http_executor,
+        snapshot_restore::test_with_snapshot_restore_executor,
+        snapshot_save_exit::test_with_snapshot_save_exit_executor,
         terminal::test_with_terminal_executor,
     },
     log_layout::{
@@ -617,7 +615,6 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             },
-            #[cfg(feature = "standalone")]
             (ExecutorName::SnapshotRestore, Some(program_path)) => {
                 if !Path::new(program_path.as_str()).exists() {
                     warn_with_policy!(
@@ -660,7 +657,6 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 );
                 warning::fail_if_triggered(context.as_str())?;
             },
-            #[cfg(feature = "standalone")]
             (ExecutorName::SnapshotRestore, None) => {
                 let reason: String = "test entries with snapshot-restore executor must define the \
                                       'program' field"
@@ -668,7 +664,6 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             },
-            #[cfg(feature = "standalone")]
             (ExecutorName::SnapshotSaveExit, Some(program_path)) => {
                 if !Path::new(program_path.as_str()).exists() {
                     warn_with_policy!(
@@ -711,7 +706,6 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 );
                 warning::fail_if_triggered(context.as_str())?;
             },
-            #[cfg(feature = "standalone")]
             (ExecutorName::SnapshotSaveExit, None) => {
                 let reason: String = "test entries with snapshot-save-exit executor must define \
                                       the 'program' field"

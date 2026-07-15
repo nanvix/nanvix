@@ -16,23 +16,18 @@ build-utils = { workspace = true }
 fatfs = { workspace = true, features = ["std", "alloc", "lfn"] }
 indicatif = { workspace = true }
 koptions = { workspace = true, features = ["std"] }
-libc = { workspace = true }
 log = { workspace = true }
 nanvixd = { workspace = true }
 nanvix = { workspace = true, features = ["internal-api"] }
-profiler = { workspace = true, optional = true }
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
+user-vm-api = { workspace = true }
 vfs-bench-common = { workspace = true }
 
 [features]
-default = ["microvm", "single-process", "profile-time"]
-timestamp-messages = ["profiler/timestamp-messages"]
-single-process = ["nanvix/single-process"]
-standalone = ["nanvix/standalone", "nanvixd/standalone"]
+default = ["microvm", "profile-time"]
 gdb = ["microvm", "nanvix/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["nanvixd/profile-time", "nanvix/profile-time"]

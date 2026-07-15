@@ -21,12 +21,9 @@
  * surface), which the loader resolves through the same "lib/" search path and
  * consolidates onto the libc.so instance opened below.
  *
- * Runtime layout / standalone limitation: in standalone single-process mode the
- * UserVM has no shared rootfs, so each suite ships the libraries it needs in its
- * own per-suite RAMFS (handed to nanvixd via -ramfs), staged under lib/. The
- * multi-daemon / rootfs deployments instead ship libc.so/libm.so once in the
- * system image; either way the loader finds them through the same default lib/
- * search path exercised here.
+ * The UserVM has no shared rootfs, so each suite ships the libraries it needs in
+ * its own per-suite RAMFS (handed to nanvixd via -ramfs), staged under lib/. The
+ * loader finds them through the default lib/ search path exercised here.
  *
  * The suite is linked PIE + --export-dynamic (see the build wiring): libc.so
  * carries an UNDEFINED `__nanvix_main` (the app entry symbol, normally supplied

@@ -600,13 +600,11 @@ pub unsafe fn execvp_from_c(file: *const c_char, argv: *const *const c_char) -> 
 /// The barrier is best-effort: the image has already been replaced and an `exec` cannot be undone,
 /// so any failure to reach the daemons is logged and tolerated rather than blocking `main` forever.
 ///
-/// This runs at the start of every standalone image — both a genuine `exec` and a fresh process
+/// This runs at the start of every image — both a genuine `exec` and a fresh process
 /// start. For a fresh start there are no `FD_CLOEXEC` descriptors to drop, so the round-trip is a
-/// harmless no-op against an empty or console-only table. The process manager daemon itself (and
-/// any minimal deployment whose root image runs as pid `PROCD`) has no distinct peer to query, so
-/// it skips the barrier entirely rather than address the request to itself.
-///
-#[cfg(feature = "standalone")]
+/// harmless once `vfsd` is available. The fixed boot daemons start concurrently before `vfsd` can
+/// service requests, so they skip the barrier to avoid a startup cycle. This also covers a minimal
+/// image whose root process occupies a daemon identifier.
 pub fn exec_startup_barrier() {
     use ::proc::{
         exec_request,
@@ -634,14 +632,11 @@ pub fn exec_startup_barrier() {
         },
     };
 
-    // If this image is itself the process manager daemon, there is no distinct peer to synchronize
-    // with: the request below is addressed to `PROCD`, which is our own pid, so it would loop
-    // straight back to us instead of eliciting an independent acknowledgement — and a process
-    // parked in this barrier cannot service its own mailbox to produce one, so the wait could never
-    // complete. This also covers minimal deployments where the root image runs as pid `PROCD` with
-    // no separate daemon. In either case there is no foreign descriptor table to reconcile, so the
-    // barrier is a no-op.
-    if pid == ProcessIdentifier::PROCD {
+    // The boot daemons enter crt0 concurrently. If memd waits for vfsd before vfsd has completed
+    // its own crt0 barrier, procd relays the request to a process that is itself blocked waiting for
+    // procd. None of these freshly spawned daemons has an inherited descriptor table to reconcile,
+    // so bypass synchronization until the init workload starts after the daemon PID block.
+    if matches!(pid, ProcessIdentifier::PROCD | ProcessIdentifier::MEMD | ProcessIdentifier::VFSD) {
         return;
     }
 
@@ -745,13 +740,3 @@ pub fn exec_startup_barrier() {
         },
     }
 }
-
-///
-/// # Description
-///
-/// In run modes without a guest `vfsd`/`procd`, descriptors are interpreted directly by the host
-/// and there is no flat descriptor table to synchronize with, so the exec startup barrier is a
-/// no-op.
-///
-#[cfg(not(feature = "standalone"))]
-pub fn exec_startup_barrier() {}

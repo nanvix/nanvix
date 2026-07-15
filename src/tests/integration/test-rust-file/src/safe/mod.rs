@@ -56,19 +56,9 @@ pub fn test() {
     file::chmod::test();
     file::datasync::test();
 
-    // The ramfs backend used in standalone mode does not support futimens()
-    // or hard/symbolic links, so skip these tests when compiled with the
-    // standalone feature.
-    #[cfg(not(feature = "standalone"))]
-    file::timestamps::test();
-
     // The following tests depend on `FileSystem::get_file_attributes()` and
     // `FileSystem::remove_file()`.
     fs::chmod::test();
-    #[cfg(not(feature = "standalone"))]
-    fs::link::test();
-    #[cfg(not(feature = "standalone"))]
-    fs::symlink::test();
     fs::rename::test();
     fs::mkdir::test();
 }

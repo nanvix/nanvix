@@ -3,9 +3,7 @@
 
 //! Nanvix Daemon (nanvixd) library.
 //!
-//! This library provides the core functionality for the Nanvix Daemon, which manages
-//! sandboxed user VM instances and Linux Daemon instances. It includes HTTP server
-//! capabilities for client communication, sandbox management, and configuration handling.
+//! This library provides argument parsing and configuration for the Nanvix Daemon.
 
 //==================================================================================================
 // Modules
@@ -13,4 +11,3 @@
 
 pub mod args;
 pub mod config;
-pub mod tempdir;

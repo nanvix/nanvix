@@ -17,10 +17,6 @@ inputs:
     description: "Machine type"
     required: true
     default: "microvm"
-  deployment-type:
-    description: "Deployment type"
-    required: true
-    default: "single-process"
 
 runs:
   using: "composite"
@@ -35,5 +31,4 @@ runs:
           TARGET=x86 \
           "LOG_LEVEL=${{ inputs.log-level }}" \
           VERBOSE=yes \
-          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
-          "DEPLOYMENT_MODE=${{ inputs.deployment-type }}"
+          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}

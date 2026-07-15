@@ -30,7 +30,6 @@ pub use self::syscall::getopt;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
-        #[cfg(feature = "standalone")]
         pub mod fork;
         pub mod exec;
         pub use self::exec::{

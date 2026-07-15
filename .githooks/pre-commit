@@ -62,38 +62,10 @@ source "${IMPORT_DIR}/logging.sh"
 
 # Configuration matrix matching CI (ci.yml).
 declare -a MACHINE_TYPES=("microvm")
-declare -a DEPLOYMENT_TYPES=("standalone" "single-process")
 
 #===================================================================================================
 # Functions
 #===================================================================================================
-
-#
-# DESCRIPTION
-#   Converts deployment type to DEPLOYMENT_MODE flag.
-#
-# ARGUMENTS
-#   $1 - Deployment type.
-#
-# RETURNS
-#   String with DEPLOYMENT_MODE value.
-#
-# USAGE EXAMPLE
-#   flags=$(get_deployment_flags "single-process")
-#
-get_deployment_flags() {
-    local deployment="${1}"
-
-    case "${deployment}" in
-        standalone|single-process)
-            echo "DEPLOYMENT_MODE=${deployment}"
-            ;;
-        *)
-            print_error "(pre-commit) Invalid deployment type: ${deployment}"
-            exit 1
-            ;;
-    esac
-}
 
 #
 # DESCRIPTION
@@ -159,8 +131,7 @@ main() {
 
     # Note: We run format-check, lint-check, and spellcheck only once since they are
     # configuration-independent (they check source code style, not runtime behavior).
-    # However, we iterate through all machine/deployment combinations to ensure the
-    # build system can be configured for each combination, matching CI behavior.
+    # However, we iterate through all machines to match CI behavior.
 
     print_info "(pre-commit) Running pre-commit checks for all CI configurations..."
 
@@ -169,44 +140,38 @@ main() {
     local release_flag
     release_flag=$(get_release_flag "${build_type}")
 
-    # Iterate through all machine/deployment combinations matching the CI matrix.
+    # Iterate through all machines matching the CI matrix.
     for machine in "${MACHINE_TYPES[@]}"; do
-        for deployment in "${DEPLOYMENT_TYPES[@]}"; do
-            total_configs=$((total_configs + 1))
-            checked_configs=$((checked_configs + 1))
+        total_configs=$((total_configs + 1))
+        checked_configs=$((checked_configs + 1))
 
-            # Get configuration flags.
-            local deployment_flags
-            deployment_flags=$(get_deployment_flags "${deployment}")
+        print_info "(pre-commit) Checking configuration: ${build_type}, ${machine}..."
 
-            print_info "(pre-commit) Checking configuration: ${build_type}, ${machine}, ${deployment}..."
+        # Build command with all parameters.
+        local build_command="./z build -- MACHINE=${machine} LOG_LEVEL=trace ${release_flag}"
 
-            # Build command with all parameters.
-            local build_command="./z build -- MACHINE=${machine} LOG_LEVEL=trace ${release_flag} ${deployment_flags}"
+        # Run code formatting check.
+        if ! eval "${build_command} format-check" > "${tmpfile}" 2>&1 ; then
+            cat "${tmpfile}"
+            print_error "(pre-commit) Format check failed for: ${build_type}, ${machine}."
+            exit 1
+        fi
 
-            # Run code formatting check.
-            if ! eval "${build_command} format-check" > "${tmpfile}" 2>&1 ; then
-                cat "${tmpfile}"
-                print_error "(pre-commit) Format check failed for: ${build_type}, ${machine}, ${deployment}."
-                exit 1
-            fi
+        # Run code linting check.
+        if ! eval "${build_command} lint-check" > "${tmpfile}" 2>&1 ; then
+            cat "${tmpfile}"
+            print_error "(pre-commit) Lint check failed for: ${build_type}, ${machine}."
+            exit 1
+        fi
 
-            # Run code linting check.
-            if ! eval "${build_command} lint-check" > "${tmpfile}" 2>&1 ; then
-                cat "${tmpfile}"
-                print_error "(pre-commit) Lint check failed for: ${build_type}, ${machine}, ${deployment}."
-                exit 1
-            fi
+        # Run spell check.
+        if ! eval "${build_command} spellcheck" > "${tmpfile}" 2>&1 ; then
+            cat "${tmpfile}"
+            print_error "(pre-commit) Spell check failed for: ${build_type}, ${machine}."
+            exit 1
+        fi
 
-            # Run spell check.
-            if ! eval "${build_command} spellcheck" > "${tmpfile}" 2>&1 ; then
-                cat "${tmpfile}"
-                print_error "(pre-commit) Spell check failed for: ${build_type}, ${machine}, ${deployment}."
-                exit 1
-            fi
-
-            print_success "(pre-commit) Configuration passed: ${build_type}, ${machine}, ${deployment}."
-        done
+        print_success "(pre-commit) Configuration passed: ${build_type}, ${machine}."
     done
 
     print_success "(pre-commit) All checks passed successfully (${checked_configs}/${total_configs} configurations checked)."

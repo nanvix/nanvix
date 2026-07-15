@@ -38,8 +38,7 @@ use ::syslog::trace_libcall;
 ///
 /// # Notes
 ///
-/// In standalone mode this is `ioctl(fd, TCGETS, termios_p)`, backed by the vfsd console terminal.
-/// Hosted deployments have no guest terminal device, so the call fails with `ENOSYS`.
+/// This is `ioctl(fd, TCGETS, termios_p)`, backed by the vfsd console terminal.
 ///
 /// # Safety
 ///
@@ -49,26 +48,14 @@ use ::syslog::trace_libcall;
 #[unsafe(no_mangle)]
 #[trace_libcall]
 pub unsafe extern "C" fn tcgetattr(fd: c_int, termios_p: *mut c_void) -> c_int {
-    #[cfg(feature = "standalone")]
-    {
-        match unsafe { ::syscall::sys::ioctl::ioctl(fd, ::sysapi::sys_ioctl::TCGETS, termios_p) } {
-            Ok(_) => 0,
-            Err(error) => {
-                unsafe {
-                    *__errno_location() = error.code.get();
-                }
-                -1
-            },
-        }
-    }
-    #[cfg(not(feature = "standalone"))]
-    {
-        let _ = (fd, termios_p);
-        ::syslog::debug!("tcgetattr(): not implemented");
-        unsafe {
-            *__errno_location() = ErrorCode::InvalidSysCall.get();
-        }
-        -1
+    match unsafe { ::syscall::sys::ioctl::ioctl(fd, ::sysapi::sys_ioctl::TCGETS, termios_p) } {
+        Ok(_) => 0,
+        Err(error) => {
+            unsafe {
+                *__errno_location() = error.code.get();
+            }
+            -1
+        },
     }
 }
 
@@ -90,10 +77,9 @@ pub unsafe extern "C" fn tcgetattr(fd: c_int, termios_p: *mut c_void) -> c_int {
 ///
 /// # Notes
 ///
-/// In standalone mode this is `ioctl(fd, TCSETS, termios_p)`, backed by the vfsd console terminal.
+/// This is `ioctl(fd, TCSETS, termios_p)`, backed by the vfsd console terminal.
 /// The console has no output queue to drain or input queue to flush, so `optional_actions` modes
-/// (`TCSANOW`/`TCSADRAIN`/`TCSAFLUSH`) are equivalent and the change is applied immediately. Hosted
-/// deployments have no guest terminal device, so the call fails with `ENOSYS`.
+/// (`TCSANOW`/`TCSADRAIN`/`TCSAFLUSH`) are equivalent and the change is applied immediately.
 ///
 /// # Safety
 ///
@@ -107,39 +93,27 @@ pub unsafe extern "C" fn tcsetattr(
     optional_actions: c_int,
     termios_p: *const c_void,
 ) -> c_int {
-    #[cfg(feature = "standalone")]
-    {
-        match optional_actions {
-            ::sysapi::termios::TCSANOW
-            | ::sysapi::termios::TCSADRAIN
-            | ::sysapi::termios::TCSAFLUSH => {},
-            _ => {
-                unsafe {
-                    *__errno_location() = ErrorCode::InvalidArgument.get();
-                }
-                return -1;
-            },
-        }
-        match unsafe {
-            ::syscall::sys::ioctl::ioctl(fd, ::sysapi::sys_ioctl::TCSETS, termios_p as *mut c_void)
-        } {
-            Ok(_) => 0,
-            Err(error) => {
-                unsafe {
-                    *__errno_location() = error.code.get();
-                }
-                -1
-            },
-        }
+    match optional_actions {
+        ::sysapi::termios::TCSANOW
+        | ::sysapi::termios::TCSADRAIN
+        | ::sysapi::termios::TCSAFLUSH => {},
+        _ => {
+            unsafe {
+                *__errno_location() = ErrorCode::InvalidArgument.get();
+            }
+            return -1;
+        },
     }
-    #[cfg(not(feature = "standalone"))]
-    {
-        let _ = (fd, optional_actions, termios_p);
-        ::syslog::debug!("tcsetattr(): not implemented");
-        unsafe {
-            *__errno_location() = ErrorCode::InvalidSysCall.get();
-        }
-        -1
+    match unsafe {
+        ::syscall::sys::ioctl::ioctl(fd, ::sysapi::sys_ioctl::TCSETS, termios_p as *mut c_void)
+    } {
+        Ok(_) => 0,
+        Err(error) => {
+            unsafe {
+                *__errno_location() = error.code.get();
+            }
+            -1
+        },
     }
 }
 
@@ -155,8 +129,6 @@ pub unsafe extern "C" fn tcsetattr(
 ///
 /// On a non-terminal or invalid descriptor this sets `errno` (`ENOTTY` or `EBADF`, respectively) as
 /// a side effect of `isatty`, so the terminal-control calls below can simply propagate the failure.
-/// Works in both standalone and hosted deployments, since `isatty` resolves the descriptor against
-/// whichever backend is active.
 fn fd_is_terminal(fd: c_int) -> bool {
     extern "C" {
         fn isatty(fd: c_int) -> c_int;

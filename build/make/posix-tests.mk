@@ -14,9 +14,7 @@
 # like `build/make/guest-c-apps.mk`, whose compiler/flag definitions this fragment
 # reuses.
 #
-# The suites build against the bundled libc; the boot runner
-# (`run-posix-tests`) is gated on DEPLOYMENT_MODE=standalone, the only mode it
-# supports.
+# The suites build against the bundled libc and run in standalone mode.
 #
 # Like the other guest test binaries, the suites are never shipped in releases:
 # `install`/`release` copy only the kernel, daemons, libraries, and host tools.
@@ -1498,7 +1496,7 @@ POSIX_TEST_SHARD_FLAG := $(if $(strip $(SHARD)),-shard $(strip $(SHARD)))
 ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
-else ifeq ($(DEPLOYMENT_MODE),standalone)
+else
 run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
 		$(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) \
@@ -1509,7 +1507,4 @@ run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) \
 	@test -f $(USERVM) || { echo "ERROR: $(USERVM) missing; run './z build -- all' first."; exit 1; }
 	@echo "Running ported POSIX C test suites with configuration: $(POSIX_TEST_CONFIG)$(if $(strip $(SHARD)), (shard $(strip $(SHARD))))"
 	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(POSIX_TEST_SHARD_FLAG) $(POSIX_TEST_CONFIG)
-else
-run-posix-tests:
-	@echo "Skipping POSIX C test suites (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
 endif

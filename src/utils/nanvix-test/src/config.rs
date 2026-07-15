@@ -7,7 +7,6 @@
 
 use ::anyhow::Result;
 use ::globset::GlobSet;
-use ::nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use ::std::{
     fs,
     path::{
@@ -31,8 +30,7 @@ use ::toml::{
 // sending SIGINT. If the timeout is exceeded, SIGKILL is sent.
 //
 // 10 attempts × 100ms = 1 second total.
-// This is sufficient for nanvixd to propagate shutdown to linuxd (which has an internal 1-second
-// shutdown timeout) and perform basic cleanup.
+// This is sufficient for nanvixd to stop the user VM and perform basic cleanup.
 // -------------------------------------------------------------------------------------------------
 
 /// Default number of Nanvix Daemon shutdown attempts when omitted in the TOML file.
@@ -86,8 +84,8 @@ const DEFAULT_STREAM_COLLECTION_TIMEOUT_MS: u64 = 300_000;
 // Gateway Connection Configuration
 // -------------------------------------------------------------------------------------------------
 // These values control the client-side connection loop when connecting to a User VM gateway
-// socket. User VM startup time is variable (depends on kernel boot, linuxd initialization,
-// workload size), so exponential backoff is used.
+// socket. User VM startup time is variable (depends on kernel boot and workload size), so
+// exponential backoff is used.
 //
 // Max attempts: 100, with exponential backoff from 10ms to 500ms.
 // Total timeout: 15 seconds hard cap on the connection loop.
@@ -105,6 +103,14 @@ const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS: u64 = 15_000;
 // -------------------------------------------------------------------------------------------------
 // Miscellaneous
 // -------------------------------------------------------------------------------------------------
+
+/// Default temporary directory used for runner cleanup on Unix hosts.
+#[cfg(unix)]
+const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
+
+/// Default temporary directory used for runner cleanup on Windows hosts.
+#[cfg(windows)]
+const DEFAULT_TMP_DIRECTORY: &str = ".";
 
 /// Placeholder token replaced with the configured sysroot path inside test definitions.
 const SYSROOT_PATH_PLACEHOLDER: &str = "${sysroot_path}";
@@ -264,9 +270,6 @@ pub struct RunnerConfig {
     pub ipv4_addr: String,
     /// TCP port where the Nanvix Daemon exposes its HTTP endpoint.
     pub port_num: u16,
-    /// Optional hwloc topology description forwarded to the Nanvix Daemon. Empty strings are
-    /// treated as unset values.
-    pub hwloc_file_path: Option<String>,
     /// Flag enabling fatal mode, causing warnings to fail tests when set to `true`.
     pub fatal: bool,
     /// Path to the toolchain root; its `bin/` directory is forwarded to the Nanvix Daemon.
@@ -332,7 +335,6 @@ impl RunnerConfig {
             )?,
             ipv4_addr: read_required_string(table, "ipv4_addr", "runner.ipv4_addr")?,
             port_num: read_u16_required(table, "port_num", "runner.port_num")?,
-            hwloc_file_path: read_hwloc_file_path(table)?,
             fatal: read_bool_with_default(table, "fatal", "runner.fatal", false)?,
             toolchain_path: read_required_string(table, "toolchain_path", "runner.toolchain_path")?,
             sysroot_path: read_required_non_empty_string(
@@ -456,15 +458,6 @@ impl RunnerConfig {
             self.sysroot_path.as_str(),
             "runner.sysroot_path",
         )?;
-
-        if let Some(path) = self.hwloc_file_path.clone() {
-            self.hwloc_file_path = Some(resolve_with_invocation_dirs(
-                base_dir,
-                invocation_dir.as_path(),
-                path.as_str(),
-                "runner.hwloc_file_path",
-            )?);
-        }
 
         Ok(())
     }
@@ -1478,33 +1471,6 @@ fn read_optional_string_array(
 ///
 /// # Description
 ///
-/// Reads an optional string and filters out whitespace-only values.
-///
-/// # Parameters
-///
-/// - `table`: Table that stores the target field.
-/// - `key`: Key used to retrieve the string.
-/// - `field_name`: Fully qualified field name used in error messages.
-///
-/// # Return Value
-///
-/// Returns `Some(String)` when the field exists and is non-empty; otherwise returns `None`.
-///
-/// # Errors
-///
-/// Returns an error when the field exists but is not a string.
-///
-fn read_optional_non_empty_string(
-    table: &Table,
-    key: &str,
-    field_name: &str,
-) -> Result<Option<String>> {
-    Ok(read_optional_string(table, key, field_name)?.filter(|value| !value.trim().is_empty()))
-}
-
-///
-/// # Description
-///
 /// Reads a boolean field from the TOML table, applying a default when the field is absent.
 ///
 /// # Parameters
@@ -1691,27 +1657,6 @@ fn parse_non_negative_integer(value: &Value, field_name: &str) -> Result<u64> {
             Err(::anyhow::anyhow!(reason))
         },
     }
-}
-
-///
-/// # Description
-///
-/// Reads the optional `hwloc_file_path` field from the runner table, ignoring empty strings.
-///
-/// # Parameters
-///
-/// - `table`: Table that stores the optional hwloc path.
-///
-/// # Return Value
-///
-/// Returns `Some(String)` when the field exists and is non-empty; otherwise returns `None`.
-///
-/// # Errors
-///
-/// Returns an error when the field exists but is not a string.
-///
-fn read_hwloc_file_path(table: &Table) -> Result<Option<String>> {
-    read_optional_non_empty_string(table, "hwloc_file_path", "runner.hwloc_file_path")
 }
 
 //==================================================================================================

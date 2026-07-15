@@ -23,8 +23,6 @@ syslog = { workspace = true, default-features = true }
 default = []
 # Enables the use of the Rust Standard Library.
 std = []
-# Routes terminal control calls to the vfsd console terminal via `ioctl`.
-standalone = []
 
 # Logging
 trace = ["syslog/trace"]

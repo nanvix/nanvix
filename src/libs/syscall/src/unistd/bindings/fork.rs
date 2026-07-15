@@ -27,20 +27,7 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn fork() -> pid_t {
-    #[cfg(not(feature = "standalone"))]
-    {
-        use crate::errno::__errno_location;
-        use ::sys::error::ErrorCode;
-
-        ::syslog::debug!("fork(): not supported");
-        // SAFETY: `__errno_location()` returns a valid pointer to the thread-local `errno`.
-        unsafe {
-            *__errno_location() = ErrorCode::InvalidSysCall.get();
-        }
-        -1
-    }
-
-    #[cfg(all(feature = "standalone", target_arch = "x86"))]
+    #[cfg(target_arch = "x86")]
     {
         use crate::errno::__errno_location;
 
@@ -56,7 +43,7 @@ pub extern "C" fn fork() -> pid_t {
         }
     }
 
-    #[cfg(all(feature = "standalone", not(target_arch = "x86")))]
+    #[cfg(not(target_arch = "x86"))]
     {
         use crate::errno::__errno_location;
         use ::sys::error::ErrorCode;

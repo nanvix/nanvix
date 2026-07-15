@@ -5,20 +5,12 @@
 // Modules
 //==================================================================================================
 
-#[cfg(feature = "single-process")]
-mod system;
 mod vmm;
 
-#[cfg(feature = "standalone")]
+mod gateway;
 mod socket_echo;
-
-#[cfg(feature = "standalone")]
 mod standalone;
-
-#[cfg(feature = "standalone")]
 mod standalone_socket;
-
-#[cfg(feature = "standalone")]
 mod standalone_vfs;
 
 //==================================================================================================
@@ -45,10 +37,3 @@ pub(crate) const WARMUP_SLEEP_DURATION: u64 = CLEANUP_SLEEP_DURATION;
 /// Maximum number messages that can be queued in a channel.
 ///
 pub(crate) const CHANNEL_CAPACITY: usize = 1024;
-
-///
-/// # Description
-///
-/// Default size of the message we are sending to the user VM.
-///
-pub(crate) const DEFAULT_PAYLOAD_SIZE: usize = 32;

@@ -1,58 +1,6 @@
 // Copyright(c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-//==================================================================================================
-// Macros
-//==================================================================================================
-
-#[allow(unused)]
-#[macro_export]
-#[cfg(feature = "timestamp-messages")]
-macro_rules! timestamp_message {
-    ($buffer_expr:expr, $buffer_offset:expr) => {{
-        log::trace!(
-            "timestamp injected at {}:{}",
-            std::panic::Location::caller().file(),
-            std::panic::Location::caller().line()
-        );
-
-        let header_offset: usize = $buffer_offset;
-        let header_size: usize = 1;
-
-        // Parse the current step count (first byte).
-        let current_step = $buffer_expr[header_offset] as usize;
-
-        // Only allow up to 16 steps (0..15).
-        if current_step < 16 {
-            let offset = header_offset + header_size + (current_step as usize) * 2;
-
-            let now = std::time::SystemTime::now();
-            let duration = now
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("Time went backwards");
-            let timestamp = (duration.as_micros() & 0xFFFF) as u16;
-            let ts_bytes = timestamp.to_le_bytes();
-
-            $buffer_expr[offset..offset + 2].copy_from_slice(&ts_bytes);
-
-            // Write next step in the header.
-            $buffer_expr[header_offset] = (current_step + 1) as u8;
-        }
-    }};
-}
-
-/// This macro compiles to a no-op in release builds, but prevents the compiler from emitting
-/// warnings when setting variables as `mut` (needed to use the previous macro) but the macro is
-/// not enabled.
-#[allow(unused)]
-#[macro_export]
-#[cfg(not(feature = "timestamp-messages"))]
-macro_rules! timestamp_message {
-    ($buffer:expr, $offset:expr) => {{
-        let _ = &mut $buffer;
-    }};
-}
-
 //======================================================================================================================
 // Exports
 //======================================================================================================================

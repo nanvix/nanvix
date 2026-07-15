@@ -7,16 +7,10 @@
 //! It deserializes messages, routes them to appropriate handlers (NEW, KILL), and constructs
 //! JSON responses. The implementation uses Hyper's Service trait for async request handling.
 
-#[cfg(all(feature = "standalone", feature = "single-process"))]
-compile_error!("features `standalone` and `single-process` are mutually exclusive");
-
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-#[cfg(feature = "single-process")]
-mod single_process;
-#[cfg(feature = "standalone")]
 mod standalone;
 
 //==================================================================================================
@@ -40,18 +34,14 @@ use ::log::error;
 // Re-Exports
 //==================================================================================================
 
-#[cfg(feature = "single-process")]
-pub(crate) use self::single_process::HttpClient;
-#[cfg(feature = "standalone")]
 pub(crate) use self::standalone::HttpClient;
-#[cfg(feature = "standalone")]
 pub use self::standalone::StandaloneState;
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<T: Send + Sync + Default + 'static> HttpClient<T> {
+impl HttpClient {
     ///
     /// # Description
     ///

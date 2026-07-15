@@ -71,22 +71,16 @@ impl NanvixdHttp {
     /// child process cannot be spawned or the readiness checks fail.
     ///
     pub async fn spawn(config: &RunnerConfig, args: &NanvixdHttpArgs) -> Result<Self> {
-        let hwloc_file_path: Option<&str> = args.hwloc_file_path();
         let log_directory: &Path = args.log_directory();
         trace!(
-            "spawn(): nanvixd_binary_path={}, working_directory={}, toolchain_path={}, mode=http, \
-             hwloc_file_path={:?}",
-            config.nanvixd_binary_path,
-            config.working_directory,
-            config.toolchain_path,
-            hwloc_file_path,
+            "spawn(): nanvixd_binary_path={}, working_directory={}, toolchain_path={}, mode=http",
+            config.nanvixd_binary_path, config.working_directory, config.toolchain_path,
         );
 
         let port_num: u16 = args.port_num();
         let http_address: String = format!("{}:{}", args.ipv4_addr(), port_num);
 
-        let mut command: Command =
-            Nanvixd::build_base_command(config, hwloc_file_path, log_directory);
+        let mut command: Command = Nanvixd::build_base_command(config, log_directory);
 
         let stdout_file: File = args.stdout_file_handle().try_clone().map_err(|error| {
             let reason: String = format!("failed to clone nanvixd stdout log file (error={error})");
@@ -220,8 +214,6 @@ pub struct NanvixdHttpArgs {
     stdout_file_handle: File,
     /// File handle that captures Nanvix Daemon stderr.
     stderr_file_handle: File,
-    /// Optional hwloc topology file forwarded to the Nanvix Daemon.
-    hwloc_file_path: Option<String>,
     /// IPv4 address exposed by the daemon instance.
     ipv4_addr: String,
     /// TCP port bound by the daemon instance.
@@ -242,7 +234,6 @@ impl NanvixdHttpArgs {
     ///
     /// - `log_files`: Tuple containing stdout and stderr log file paths.
     /// - `http_endpoint`: Tuple containing the IPv4 address and TCP port for the HTTP interface.
-    /// - `hwloc_file_path`: Optional hwloc topology file passed to the Nanvix Daemon.
     /// - `log_directory`: Path where component logs should be persisted.
     /// - `extra_nanvixd_args`: Command-line arguments passed directly to nanvixd.
     ///
@@ -254,7 +245,6 @@ impl NanvixdHttpArgs {
     pub fn new(
         log_files: (&Path, &Path),
         http_endpoint: (&str, u16),
-        hwloc_file_path: Option<String>,
         log_directory: &Path,
         extra_nanvixd_args: &[String],
     ) -> Result<Self> {
@@ -297,7 +287,6 @@ impl NanvixdHttpArgs {
         Ok(Self {
             stdout_file_handle,
             stderr_file_handle,
-            hwloc_file_path,
             ipv4_addr: ipv4_addr.to_string(),
             port_num,
             log_directory: log_directory.to_path_buf(),
@@ -329,19 +318,6 @@ impl NanvixdHttpArgs {
     ///
     fn stderr_file_handle(&self) -> &File {
         &self.stderr_file_handle
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Retrieves the optional hwloc topology file path passed to the Nanvix Daemon.
-    ///
-    /// # Return Value
-    ///
-    /// Returns the optional hwloc path as a string slice.
-    ///
-    fn hwloc_file_path(&self) -> Option<&str> {
-        self.hwloc_file_path.as_deref()
     }
 
     ///

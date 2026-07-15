@@ -5,8 +5,6 @@
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "single-process")]
-use ::std::process::Child;
 use ::std::{
     fmt,
     path::{
@@ -25,23 +23,16 @@ pub enum BenchmarkFlavour {
     BootTime,
     ColdStart,
     ColdStartUvm,
-    EchoBreakdown,
-    RoundTripLatency,
     SnapshotRestore,
     VfsBench,
-    WarmStart,
+    WarmStartGateway,
     WarmStartVMM,
     WarmStartSocket,
 }
 
 impl BenchmarkFlavour {
-    /// Returns `true` when this benchmark requires the `timestamp-messages` feature.
-    pub fn requires_timestamp_messages(&self) -> bool {
-        matches!(self, BenchmarkFlavour::EchoBreakdown)
-    }
-
-    /// Returns `true` when this benchmark needs nanvixd (system-level benchmark).
-    pub fn needs_nanvixd(&self) -> bool {
+    /// Returns `true` when this benchmark needs an initrd containing the guest daemon stack.
+    pub fn needs_standalone_image(&self) -> bool {
         !matches!(
             self,
             BenchmarkFlavour::BootTime
@@ -55,7 +46,7 @@ impl BenchmarkFlavour {
         // without nanvixd, so they always use the bare .elf binary. System benchmarks that need
         // the daemon stack use .initrd in standalone mode to bundle procd, memd, vfsd, and the
         // application binary.
-        let ext: &str = if cfg!(feature = "standalone") && self.needs_nanvixd() {
+        let ext: &str = if self.needs_standalone_image() {
             "initrd"
         } else {
             "elf"
@@ -80,7 +71,6 @@ impl BenchmarkFlavour {
     }
 
     /// Returns the ramfs image path for this benchmark, if one is required.
-    #[cfg(feature = "standalone")]
     pub fn get_ramfs(&self, root: &Path) -> Option<String> {
         match self {
             BenchmarkFlavour::VfsBench => {
@@ -97,11 +87,9 @@ impl fmt::Display for BenchmarkFlavour {
             BenchmarkFlavour::BootTime => "boot-time",
             BenchmarkFlavour::ColdStart => "cold-start",
             BenchmarkFlavour::ColdStartUvm => "cold-start-uvm",
-            BenchmarkFlavour::EchoBreakdown => "echo-breakdown",
-            BenchmarkFlavour::RoundTripLatency => "round-trip-latency",
             BenchmarkFlavour::SnapshotRestore => "snapshot-restore",
             BenchmarkFlavour::VfsBench => "vfs-bench",
-            BenchmarkFlavour::WarmStart => "warm-start",
+            BenchmarkFlavour::WarmStartGateway => "warm-start-gateway",
             BenchmarkFlavour::WarmStartVMM => "warm-start-vmm",
             BenchmarkFlavour::WarmStartSocket => "warm-start-socket",
         };
@@ -117,11 +105,9 @@ impl FromStr for BenchmarkFlavour {
             "boot-time" => Ok(BenchmarkFlavour::BootTime),
             "cold-start" => Ok(BenchmarkFlavour::ColdStart),
             "cold-start-uvm" => Ok(BenchmarkFlavour::ColdStartUvm),
-            "echo-breakdown" => Ok(BenchmarkFlavour::EchoBreakdown),
-            "round-trip-latency" => Ok(BenchmarkFlavour::RoundTripLatency),
             "snapshot-restore" => Ok(BenchmarkFlavour::SnapshotRestore),
             "vfs-bench" => Ok(BenchmarkFlavour::VfsBench),
-            "warm-start" => Ok(BenchmarkFlavour::WarmStart),
+            "warm-start-gateway" => Ok(BenchmarkFlavour::WarmStartGateway),
             "warm-start-vmm" => Ok(BenchmarkFlavour::WarmStartVMM),
             "warm-start-socket" => Ok(BenchmarkFlavour::WarmStartSocket),
             _ => Err(format!("Invalid benchmark type: {}", s)),
@@ -131,31 +117,7 @@ impl FromStr for BenchmarkFlavour {
 
 pub struct Benchmark {
     pub iterations: usize,
-    #[cfg(feature = "single-process")]
-    pub payload_size: usize,
     pub payload_size_override: Option<usize>,
-    #[cfg(feature = "single-process")]
-    pub hwloc_file: Option<String>,
     pub flavour: BenchmarkFlavour,
     pub workspace_root: PathBuf,
-    #[cfg(feature = "single-process")]
-    pub nanvixd: Option<Child>,
-    #[cfg(feature = "single-process")]
-    pub nanvixd_client: reqwest::Client,
-    #[cfg(feature = "single-process")]
-    pub nanvixd_tmp_dir: String,
-}
-
-///
-/// # Description
-///
-/// User VM deployment mode.
-///
-#[cfg(feature = "single-process")]
-#[derive(PartialEq)]
-pub enum UserVmDeployment {
-    /// Ensure each user VM gets a different linuxd instance.
-    OneToOne,
-    /// Start a pre-warm user VM with the same configuration and kill it.
-    PreWarm,
 }

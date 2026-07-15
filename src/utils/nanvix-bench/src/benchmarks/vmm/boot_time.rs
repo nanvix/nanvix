@@ -67,7 +67,7 @@ impl Benchmark {
                     async move { while io_control_response_rx.recv().await.is_some() {} },
                 );
 
-            let (io_thread_data_tx, memory_thread_data_rx) =
+            let (io_handler_data_tx, memory_thread_data_rx) =
                 mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
 
             let kernel_filename: String =
@@ -100,7 +100,7 @@ impl Benchmark {
 
             let join_result = user_vm_handle.await;
 
-            drop(io_thread_data_tx);
+            drop(io_handler_data_tx);
             drop(io_control_command_tx);
 
             if let Err(error) = stdout_drain.await {

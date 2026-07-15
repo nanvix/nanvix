@@ -1,22 +1,15 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-NANVIXD_FEATURES :=
-NANVIXD_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
-NANVIXD_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
-NANVIXD_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
+NANVIXD_FEATURES := $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIXD_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIXD_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
-NANVIXD_FEATURES += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
 NANVIXD_FEATURES := $(strip $(NANVIXD_FEATURES))
 NANVIXD_CARGO_FEATURES := $(if $(NANVIXD_FEATURES),--features "$(NANVIXD_FEATURES)")
 
-# In standalone mode, nanvixd needs mkramfs to produce the rootfs image
-# and guest binaries (which build shared libraries like libmul.so that
-# are bundled into the standalone rootfs).
-ifeq ($(DEPLOYMENT_MODE),standalone)
+# Nanvixd needs mkramfs to produce the rootfs image and guest binaries, which build shared
+# libraries such as libmul.so that are bundled into the standalone rootfs.
 all-nanvixd: all-host-binaries-mkramfs all-guest-binaries
-endif
 
 # PDB filename for Windows symbol resolution (xperf, WPA, debuggers).
 NANVIXD_PDB := nanvixd.pdb
@@ -31,7 +24,6 @@ ifeq ($(IS_WINDOWS),yes)
 	fi
 endif
 	# Build the standalone rootfs image from a seed directory using mkramfs.
-ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/lib
 	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/src
 	@cp -f $(ROOT_DIR)/README.md $(BINARIES_DIR)/standalone-rootfs-seed/
@@ -99,7 +91,6 @@ ifeq ($(DEPLOYMENT_MODE),standalone)
 	@mkdir -p $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed
 	@cp -f $(BINARIES_DIR)/test-rust-fork-exec-argv-space-target.$(EXEC_FORMAT) $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test.img $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed/
-endif
 
 check-nanvixd:
 	@$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd

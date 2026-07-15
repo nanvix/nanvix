@@ -60,23 +60,19 @@ impl NanvixdTerminal {
     /// process cannot be spawned.
     ///
     pub async fn spawn(config: &RunnerConfig, args: &NanvixdTerminalArgs) -> Result<Self> {
-        let hwloc_file_path: Option<&str> = args.hwloc_file_path();
         let log_directory: &Path = args.log_directory();
         trace!(
-            "spawn(): nanvixd_binary_path={}, working_directory={}, toolchain_path={}, mode={}, \
-             hwloc_file_path={:?}",
+            "spawn(): nanvixd_binary_path={}, working_directory={}, toolchain_path={}, mode={}",
             config.nanvixd_binary_path,
             config.working_directory,
             config.toolchain_path,
             args.mode_label(),
-            hwloc_file_path,
         );
 
         let program_path: &str = args.program_path();
         let program_args: &[String] = args.program_args();
 
-        let mut command: Command =
-            Nanvixd::build_base_command(config, hwloc_file_path, log_directory);
+        let mut command: Command = Nanvixd::build_base_command(config, log_directory);
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
@@ -186,8 +182,6 @@ impl NanvixdTerminal {
 /// terminal mode.
 ///
 pub struct NanvixdTerminalArgs {
-    /// Optional hwloc topology file forwarded to the Nanvix Daemon.
-    hwloc_file_path: Option<String>,
     /// Program executed by the daemon when running interactively.
     program_path: String,
     /// Command-line arguments forwarded to the interactive workload.
@@ -207,7 +201,6 @@ impl NanvixdTerminalArgs {
     ///
     /// # Parameters
     ///
-    /// - `hwloc_file_path`: Optional hwloc topology file passed to the Nanvix Daemon.
     /// - `program_path`: Path to the workload that should execute inside the sandbox.
     /// - `program_args`: Command-line arguments forwarded to the workload.
     /// - `log_directory`: Directory where the Nanvix Daemon should emit component logs.
@@ -219,32 +212,17 @@ impl NanvixdTerminalArgs {
     /// filesystem during construction.
     ///
     pub fn new(
-        hwloc_file_path: Option<String>,
         program_path: &str,
         program_args: &[String],
         log_directory: &Path,
         extra_nanvixd_args: &[String],
     ) -> Result<Self> {
         Ok(Self {
-            hwloc_file_path,
             program_path: program_path.to_string(),
             program_args: program_args.to_vec(),
             log_directory: log_directory.to_path_buf(),
             extra_nanvixd_args: extra_nanvixd_args.to_vec(),
         })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Retrieves the optional hwloc topology file path passed to the Nanvix Daemon.
-    ///
-    /// # Return Value
-    ///
-    /// Returns the optional hwloc path as a string slice.
-    ///
-    pub fn hwloc_file_path(&self) -> Option<&str> {
-        self.hwloc_file_path.as_deref()
     }
 
     ///

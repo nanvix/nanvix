@@ -69,27 +69,23 @@ Pass build parameters after `--`:
 # Release build.
 .\z.ps1 build -- all RELEASE=yes
 
-# Set deployment mode.
-.\z.ps1 build -- all DEPLOYMENT_MODE=standalone
-
 # Set log level.
 .\z.ps1 build -- all LOG_LEVEL=debug
 
 # Combine multiple parameters.
-.\z.ps1 build -- all RELEASE=yes DEPLOYMENT_MODE=standalone LOG_LEVEL=error
+.\z.ps1 build -- all RELEASE=yes LOG_LEVEL=error
 ```
 
 Available build parameters:
 
-| Parameter         | Default      | Values                                             |
-|-------------------|--------------|----------------------------------------------------|
-| `DEPLOYMENT_MODE` | `standalone` | `standalone`                                       |
-| `LOG_LEVEL`       | `error`      | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
-| `MACHINE`         | `microvm`    | `microvm`                                          |
-| `MESSAGE_FORMAT`  | (none)       | `json`, `json-diagnostic-rendered-ansi`            |
-| `RELEASE`         | `no`         | `yes`, `no`                                        |
-| `TARGET`          | `x86`        | `x86`                                              |
-| `TIMEOUT`         | `600`        | Execution timeout in seconds                       |
+| Parameter        | Default   | Values                                             |
+| ---------------- | --------- | -------------------------------------------------- |
+| `LOG_LEVEL`      | `error`   | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
+| `MACHINE`        | `microvm` | `microvm`                                          |
+| `MESSAGE_FORMAT` | (none)    | `json`, `json-diagnostic-rendered-ansi`            |
+| `RELEASE`        | `no`      | `yes`, `no`                                        |
+| `TARGET`         | `x86`     | `x86`                                              |
+| `TIMEOUT`        | `600`     | Execution timeout in seconds                       |
 
 ## Code Quality Checks
 

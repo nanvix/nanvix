@@ -473,11 +473,11 @@ mod tests {
         let args = vec![
             "nanvix-test".to_string(),
             "-list".to_string(),
-            "test/test.toml".to_string(),
+            "test/test-standalone.toml".to_string(),
         ];
         let parsed = super::Args::parse(args).expect("Failed to parse -list flag");
         assert!(parsed.list(), "-list flag must set list to true");
-        assert_eq!(parsed.config_file_path(), "test/test.toml");
+        assert_eq!(parsed.config_file_path(), "test/test-standalone.toml");
     }
     #[test]
     fn list_flag_combined_with_test_filter() {
@@ -486,16 +486,19 @@ mod tests {
             "-list".to_string(),
             "-test".to_string(),
             "http/*".to_string(),
-            "test/test.toml".to_string(),
+            "test/test-standalone.toml".to_string(),
         ];
         let parsed = super::Args::parse(args).expect("Failed to parse -list with -test filter");
         assert!(parsed.list(), "-list flag must be set");
         assert_eq!(parsed.test_filter(), Some("http/*"));
-        assert_eq!(parsed.config_file_path(), "test/test.toml");
+        assert_eq!(parsed.config_file_path(), "test/test-standalone.toml");
     }
     #[test]
     fn no_list_flag_defaults_to_false() {
-        let args = vec!["nanvix-test".to_string(), "test/test.toml".to_string()];
+        let args = vec![
+            "nanvix-test".to_string(),
+            "test/test-standalone.toml".to_string(),
+        ];
         let parsed = super::Args::parse(args).expect("Failed to parse args without -list");
         assert!(!parsed.list(), "list must default to false");
     }
@@ -505,17 +508,20 @@ mod tests {
             "nanvix-test".to_string(),
             "-shard".to_string(),
             "2/4".to_string(),
-            "test/test.toml".to_string(),
+            "test/test-standalone.toml".to_string(),
         ];
         let parsed = super::Args::parse(args).expect("Failed to parse -shard flag");
         let shard = parsed.shard().expect("shard must be set");
         assert_eq!(shard.index(), 2, "one-based shard index must be 2");
         assert_eq!(shard.total(), 4, "shard total must be 4");
-        assert_eq!(parsed.config_file_path(), "test/test.toml");
+        assert_eq!(parsed.config_file_path(), "test/test-standalone.toml");
     }
     #[test]
     fn shard_flag_defaults_to_none() {
-        let args = vec!["nanvix-test".to_string(), "test/test.toml".to_string()];
+        let args = vec![
+            "nanvix-test".to_string(),
+            "test/test-standalone.toml".to_string(),
+        ];
         let parsed = super::Args::parse(args).expect("Failed to parse args without -shard");
         assert!(parsed.shard().is_none(), "shard must default to None");
     }
@@ -525,7 +531,7 @@ mod tests {
             "nanvix-test".to_string(),
             "-shard".to_string(),
             "1/4".to_string(),
-            "test/test.toml".to_string(),
+            "test/test-standalone.toml".to_string(),
         ];
         let parsed = super::Args::parse(args).expect("Failed to parse -shard flag");
         let shard = parsed.shard().expect("shard must be set");
@@ -541,7 +547,7 @@ mod tests {
             "nanvix-test".to_string(),
             "-shard".to_string(),
             "1/0".to_string(),
-            "test/test.toml".to_string(),
+            "test/test-standalone.toml".to_string(),
         ];
         assert!(super::Args::parse(args).is_err(), "zero TOTAL must be rejected");
     }
@@ -551,7 +557,7 @@ mod tests {
             "nanvix-test".to_string(),
             "-shard".to_string(),
             "5/4".to_string(),
-            "test/test.toml".to_string(),
+            "test/test-standalone.toml".to_string(),
         ];
         assert!(super::Args::parse(args).is_err(), "INDEX greater than TOTAL must be rejected");
     }
@@ -561,7 +567,7 @@ mod tests {
             "nanvix-test".to_string(),
             "-shard".to_string(),
             "0/4".to_string(),
-            "test/test.toml".to_string(),
+            "test/test-standalone.toml".to_string(),
         ];
         assert!(super::Args::parse(args).is_err(), "zero INDEX must be rejected");
     }
@@ -571,7 +577,7 @@ mod tests {
             "nanvix-test".to_string(),
             "-shard".to_string(),
             "abc".to_string(),
-            "test/test.toml".to_string(),
+            "test/test-standalone.toml".to_string(),
         ];
         assert!(super::Args::parse(args).is_err(), "malformed shard value must be rejected");
     }

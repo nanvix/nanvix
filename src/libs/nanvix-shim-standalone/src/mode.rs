@@ -5,7 +5,7 @@
 // Configuration
 //==================================================================================================
 
-//! Standalone execution mode implementation.
+//! Standalone workload runtime implementation.
 //!
 //! In standalone mode, `nanvixd` runs in HTTP mode as a long-lived server.
 //! The shim spawns `nanvixd -http-addr <addr>` during `prepare()`, then uses the
@@ -47,9 +47,9 @@ use tokio::sync::Mutex;
 
 use nanvix_shim_core::{
     config::NanvixRuntimeConfig,
-    execution::{
-        ExecutionMode,
+    runtime::{
         SandboxConfig,
+        WorkloadRuntime,
     },
     state::WorkloadState,
 };
@@ -74,7 +74,7 @@ const SERVER_READY_TIMEOUT_SECS: u64 = 30;
 // Types
 //==================================================================================================
 
-/// Standalone execution mode.
+/// Standalone workload runtime.
 ///
 /// Runs `nanvixd` in HTTP mode and manages applications via its REST API.
 ///
@@ -84,7 +84,7 @@ const SERVER_READY_TIMEOUT_SECS: u64 = 30;
 /// must be passed at daemon startup. Ideally, `nanvixd` should be started once per
 /// sandbox (via `CreateSandbox`), and ramfs should be attached per-application in the
 /// `NEW` request. This requires changes to the nanvixd HTTP API.
-pub struct StandaloneMode {
+pub struct StandaloneRuntime {
     id: String,
     config: NanvixRuntimeConfig,
     sandbox: Mutex<Option<PreparedSandbox>>,
@@ -111,8 +111,8 @@ struct PreparedSandbox {
 // Implementations
 //==================================================================================================
 
-impl StandaloneMode {
-    /// Create a new standalone execution mode instance.
+impl StandaloneRuntime {
+    /// Create a new standalone workload runtime.
     pub fn new(id: String, config: NanvixRuntimeConfig) -> Self {
         let (exit_tx, exit_rx) = tokio::sync::watch::channel(None);
         Self {
@@ -259,7 +259,7 @@ impl StandaloneMode {
 }
 
 #[async_trait]
-impl ExecutionMode for StandaloneMode {
+impl WorkloadRuntime for StandaloneRuntime {
     async fn prepare(&self, config: &SandboxConfig) -> anyhow::Result<()> {
         log::info!("[{}] preparing standalone sandbox", self.id);
 

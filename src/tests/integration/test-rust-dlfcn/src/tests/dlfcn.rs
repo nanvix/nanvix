@@ -196,12 +196,9 @@ fn test_dladdr() -> Result<(), Error> {
 /// of the filesystem root, silently breaking `dlopen("/lib/foo.so")` for any
 /// caller whose CWD was not the directory the path was anchored against.
 ///
-/// The absolute path is derived from the startup CWD rather than hard-coded:
-/// under the linuxd-backed deployments the guest filesystem is the host
-/// filesystem rooted at the daemon's CWD, so a literal `/lib/libmul.so` would
-/// escape to the host root. Building the path from `getcwd()` keeps the test
-/// valid across backends while still exercising the bug, since a stripped
-/// leading `/` would re-anchor the path against the (changed) CWD and fail.
+/// The absolute path is derived from the startup CWD rather than hard-coded. Building the path
+/// from `getcwd()` keeps the test independent of its launch directory while still exercising the
+/// bug, since a stripped leading `/` would re-anchor the path against the changed CWD and fail.
 fn test_dlopen_absolute_path_from_non_root_cwd() -> Result<(), Error> {
     // Build an absolute path to the library from the startup CWD.
     let start_cwd: String = unistd::getcwd()?;

@@ -11,10 +11,10 @@
 //!
 //! ## Timing and buffering
 //!
-//! In the standalone deployment `procd` is always spawned first (it is the init process), so by the
-//! time this test runs `procd` already owns the scheduling-event class and drains creation and
-//! termination events asynchronously. A rapid burst of `duplicate()` calls therefore produces
-//! events faster than `procd` can consume them, exercising the kernel-side buffering
+//! `procd` is spawned first as the init process, so by the time this test runs it already owns the
+//! scheduling-event class and drains creation and termination events asynchronously. A rapid burst
+//! of `duplicate()` calls therefore produces events faster than `procd` can consume them,
+//! exercising the kernel-side buffering
 //! (`pending_creations`, `pending_terminations`, the single FIFO `pending_scheduling` queue, and
 //! zombie harvesting). If that buffering were insufficient, events would be lost or the kernel
 //! would become unstable under the burst.
