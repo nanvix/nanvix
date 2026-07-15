@@ -18,7 +18,7 @@
  * guest stack overflows. That failure mode is silent (an OOM / fault, not a
  * clean error), so this suite pins the fixed behavior: dlopen() of a cyclic
  * graph returns NULL cleanly, with dlerror() set, and every entry the failed
- * call added is rolled back so the loader stays usable afterwards.
+ * call staged is discarded so the loader stays usable afterwards.
  *
  * A correct loader:
  *   * loads the dependency-free control library libok.so (proves the RAMFS
@@ -26,8 +26,8 @@
  *   * refuses dlopen("lib/libcyclea.so") and dlopen("lib/libcycleb.so") with
  *     a NULL handle + non-NULL dlerror() (the two-node cycle), then
  *   * still refuses a repeat dlopen of the cyclic library deterministically
- *     and still loads libok.so afterwards (rollback left the registry
- *     clean), then
+ *     and still loads libok.so afterwards (discarding staging left the
+ *     registry clean), then
  *   * refuses dlopen("lib/libselfcycle.so") the same way (the self-loop).
  *
  * A broken (pre-fix) loader instead recurses without bound on the cyclic
@@ -63,7 +63,7 @@ static void fail(const char *name, const char *reason)
  * Loads the dependency-free control library and confirms one of its symbols
  * returns the expected sentinel. Returns 1 on success, 0 on failure. Used
  * both as the opening sanity check and to prove the loader still works after
- * the cyclic loads have been rejected and rolled back.
+ * the cyclic loads have been rejected and their staged entries discarded.
  */
 static int load_control(const char *name)
 {
@@ -139,19 +139,19 @@ static void test_two_node_cycle(void)
 }
 
 /*
- * Test 2: rejecting a cycle must roll back every entry the failed dlopen()
- * added, so a repeat attempt fails identically (not, say, by finding a
+ * Test 2: rejecting a cycle must discard every entry the failed dlopen()
+ * staged, so a repeat attempt fails identically (not, say, by finding a
  * half-loaded stale copy) and an unrelated well-formed library still loads.
  */
-static void test_cycle_rollback(void)
+static void test_cycle_cleanup(void)
 {
-    if (!expect_cycle_rejected("lib/libcyclea.so", "re-dlopen(libcyclea.so) [rollback]")) {
+    if (!expect_cycle_rejected("lib/libcyclea.so", "re-dlopen(libcyclea.so) [cleanup]")) {
         return;
     }
-    if (!load_control("dlopen(libok.so) after rejected cycle [rollback]")) {
+    if (!load_control("dlopen(libok.so) after rejected cycle [cleanup]")) {
         return;
     }
-    pass("cycle rejection rolled back cleanly (loader still usable)");
+    pass("cycle rejection cleaned up cleanly (loader still usable)");
 }
 
 /*
@@ -176,7 +176,7 @@ int main(int argc, const char *argv[])
 
     test_positive_control();
     test_two_node_cycle();
-    test_cycle_rollback();
+    test_cycle_cleanup();
     test_self_cycle();
 
     printf("\n%d passed, %d failed\n", tests_passed, tests_failed);
