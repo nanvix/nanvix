@@ -1,0 +1,51 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Manual Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: "Release bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: manual-release
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  create-release:
+    name: "Create Release"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v7
+        with:
+          ref: dev
+          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
+          fetch-depth: 0
+
+      - name: "Create Release"
+        uses: ./.github/actions/create-release
+        with:
+          bump-type: ${{ github.event.inputs.release-type }}
+          skip-merge-check: "true"
+          skip-ci: "true"
+
+      - name: "Dispatch Release Pipeline"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci.yml --repo "${GITHUB_REPOSITORY}" --ref dev
