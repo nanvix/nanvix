@@ -11,12 +11,15 @@
 // Imports
 //==================================================================================================
 
-use crate::sys_types::{
-    pthread_cond_t,
-    pthread_mutex_t,
-    pthread_once_t,
-    pthread_rwlock_t,
-    pthread_t,
+use crate::{
+    ffi::c_int,
+    sys_types::{
+        pthread_cond_t,
+        pthread_mutex_t,
+        pthread_once_t,
+        pthread_rwlock_t,
+        pthread_t,
+    },
 };
 
 //==================================================================================================
@@ -25,6 +28,12 @@ use crate::sys_types::{
 
 /// Used to identify the null thread.
 pub const PTHREAD_NULL: pthread_t = 0;
+
+/// Indicates that a thread is created joinable.
+pub const PTHREAD_CREATE_JOINABLE: c_int = 0;
+
+/// Indicates that a thread is created detached.
+pub const PTHREAD_CREATE_DETACHED: c_int = 1;
 
 /// Used to initialize a condition variable statically
 pub const PTHREAD_COND_INITIALIZER: pthread_cond_t = 0xffffffff;
