@@ -13,6 +13,10 @@ inputs:
     description: "Skip the merge commit verification (for manual dispatch releases)"
     required: false
     default: "false"
+  skip-ci:
+    description: "Add [skip ci] to the release commit message"
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
@@ -57,5 +61,8 @@ runs:
         EXTRA_ARGS=""
         if [ "${{ inputs.skip-merge-check }}" = "true" ]; then
           EXTRA_ARGS="--skip-merge-check"
+        fi
+        if [ "${{ inputs.skip-ci }}" = "true" ]; then
+          EXTRA_ARGS="${EXTRA_ARGS} --skip-ci"
         fi
         python3 scripts/create-release.py --${{ inputs.bump-type }} --push ${EXTRA_ARGS}

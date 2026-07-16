@@ -1843,6 +1843,8 @@ jobs:
   # Manual release via workflow_dispatch.
   # Allows selecting patch/minor/major bump type from the GitHub Actions UI.
   # No `needs:` gate — the caller is responsible for ensuring dev is green.
+  # Mark the resulting commit with [skip ci] so this dispatch remains the only
+  # pipeline that writes benchmark baseline data for the manual release.
   create-release-manual:
     name: "Create Release (Manual)"
     # Only run on manual dispatch; exclude bot to prevent loops.
@@ -1863,3 +1865,4 @@ jobs:
         with:
           bump-type: ${{ github.event.inputs.release-type }}
           skip-merge-check: "true"
+          skip-ci: "true"
