@@ -15,27 +15,8 @@ MISC_RUST_FEATURES := $(GUEST_BINARY_FEATURES)
 MISC_RUST_FEATURES := $(strip $(MISC_RUST_FEATURES))
 MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_FEATURES)")
 
-# Guest binaries that support standalone deployment mode.
-STANDALONE_GUEST_BINARIES := \
-	test-rust-file test-rust-fork-guestfs test-rust-fork-hostfs test-rust-fork-kcall test-rust-waitpid \
-	test-rust-kill test-rust-job-control test-rust-setenv test-rust-linux-app test-rust-thread test-rust-stress test-rust-arch test-rust-mount-test \
-	test-rust-mount-multipart-test mount-bench-nostd test-rust-cmdline-len test-rust-network socket-echo-rust-nostd \
-	test-rust-execv-test test-rust-execv-target test-rust-execv-big-target test-rust-pipe-dup2 test-rust-fork-exec-vfsd-test \
-	test-rust-fork-exec-vfsd-target test-rust-fork-exec-write-test test-rust-fork-exec-write-target \
-	test-rust-thread-vfs-test test-rust-fork-exec-loop-test test-rust-fork-exec-loop-target test-rust-socket-fork \
-	test-rust-fork-exec-pipe-bulk-test test-rust-fork-exec-pipe-bulk-target \
-	test-rust-fork-exec-pipe-loop-test test-rust-fork-exec-pipe-loop-target \
-	test-rust-fork-exec-argv-space-test test-rust-fork-exec-argv-space-target
-
-# Computes the cargo features string for a guest binary package.
-# test-kernel has its own overrides. When DEPLOYMENT_MODE=standalone, packages
-# listed in STANDALONE_GUEST_BINARIES also get the 'standalone' cargo feature.
-_STANDALONE_FEATURE := standalone
-_standalone_feature = $(if $(and $(filter standalone,$(DEPLOYMENT_MODE)),$(filter $(STANDALONE_GUEST_BINARIES),$(1))),$(_STANDALONE_FEATURE))
-_pkg_features = $(strip $(GUEST_BINARY_FEATURES) $(call _standalone_feature,$(1)))
-
 # Returns package-specific cargo features, falling back to generic features.
-GUEST_BINARY_PKG_FEATURES = $(if $(filter test-rust-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(filter test-rust-misc,$(1)),$(MISC_RUST_CARGO_FEATURES),$(if $(call _pkg_features,$(1)),--features "$(call _pkg_features,$(1))")))
+GUEST_BINARY_PKG_FEATURES = $(if $(filter test-rust-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(filter test-rust-misc,$(1)),$(MISC_RUST_CARGO_FEATURES),$(GUEST_BINARY_CARGO_FEATURES)))
 
 # Per-package rules retained for direct invocation (e.g., make all-guest-binaries-<pkg>).
 define GUEST_BINARY_RULES
@@ -65,35 +46,19 @@ endef
 
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
 
-# Batched build/check/lint grouping: split guest binaries by feature set.
-# - Regular: all except test-kernel and c-bindings-rust (and standalone-capable in standalone mode).
-# - Standalone: standalone-capable binaries (only in standalone mode).
+# Batched build/check/lint grouping.
+# - Common: all except test-kernel and c-bindings-rust.
 # - test-kernel: always separate (unique features).
 # - c-bindings-rust: built separately to avoid Cargo feature unification masking
 #   missing symbols (it validates that all expected C symbols link without
 #   features contributed by sibling crates like network-rust).
 _GUEST_BINS_COMMON := $(filter-out test-rust-kernel test-rust-c-bindings,$(ALL_GUEST_BINARIES))
-
-ifeq ($(DEPLOYMENT_MODE),standalone)
-_GUEST_BINS_STANDALONE := $(filter $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
-_GUEST_BINS_REGULAR := $(filter-out $(STANDALONE_GUEST_BINARIES),$(_GUEST_BINS_COMMON))
-_GUEST_BINS_STANDALONE_FEATURES := $(strip $(GUEST_BINARY_FEATURES) $(_STANDALONE_FEATURE))
-_GUEST_BINS_STANDALONE_CARGO_FEATURES := $(if $(_GUEST_BINS_STANDALONE_FEATURES),--features "$(_GUEST_BINS_STANDALONE_FEATURES)")
-else
-_GUEST_BINS_REGULAR := $(_GUEST_BINS_COMMON)
-_GUEST_BINS_STANDALONE :=
-endif
-
-_GUEST_BINS_REGULAR_PKGS := $(foreach pkg,$(_GUEST_BINS_REGULAR),-p $(pkg))
-_GUEST_BINS_STANDALONE_PKGS := $(foreach pkg,$(_GUEST_BINS_STANDALONE),-p $(pkg))
+_GUEST_BINS_COMMON_PKGS := $(foreach pkg,$(_GUEST_BINS_COMMON),-p $(pkg))
 
 # Batched build: group guest binaries by feature set, then copy all artifacts.
 all-guest-binaries: init all-guest-staticlibs
-ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
-	$(GUEST_CARGO_BUILD_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES)
-endif
-ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
-	$(GUEST_CARGO_BUILD_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES)
+ifneq ($(_GUEST_BINS_COMMON_PKGS),)
+	$(GUEST_CARGO_BUILD_CMD) $(_GUEST_BINS_COMMON_PKGS) $(GUEST_BINARY_CARGO_FEATURES)
 endif
 ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_BUILD_CMD) -p test-rust-kernel $(TEST_KERNEL_CARGO_FEATURES)
@@ -125,11 +90,8 @@ endif
 	@dd if=/dev/zero bs=4096 count=1 2>/dev/null | tr '\0' '\253' > $(BINARIES_DIR)/mount-bench-data/bench-4k.bin
 
 check-guest-binaries:
-ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
-	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES)
-endif
-ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
-	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES)
+ifneq ($(_GUEST_BINS_COMMON_PKGS),)
+	@$(GUEST_CARGO_CHECK_CMD) $(_GUEST_BINS_COMMON_PKGS) $(GUEST_BINARY_CARGO_FEATURES)
 endif
 ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
 	@$(GUEST_CARGO_CHECK_CMD) -p test-rust-kernel $(TEST_KERNEL_CARGO_FEATURES)
@@ -148,13 +110,10 @@ format-check-guest-binaries:
 
 clean-guest-binaries: $(foreach target,$(ALL_GUEST_BINARIES),clean-guest-binaries-$(target))
 
-# Batched lint: group guest binaries by feature set (same as check).
+# Batched lint for guest binaries.
 rust-lint-guest-binaries:
-ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
-endif
-ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+ifneq ($(_GUEST_BINS_COMMON_PKGS),)
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_COMMON_PKGS) $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
 endif
 ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_CLIPPY_CMD) -p test-rust-kernel $(TEST_KERNEL_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
@@ -164,11 +123,8 @@ ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
 endif
 
 rust-lint-check-guest-binaries:
-ifneq ($(_GUEST_BINS_REGULAR_PKGS),)
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_REGULAR_PKGS) $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
-endif
-ifneq ($(_GUEST_BINS_STANDALONE_PKGS),)
-	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_STANDALONE_PKGS) $(_GUEST_BINS_STANDALONE_CARGO_FEATURES) -- -D warnings
+ifneq ($(_GUEST_BINS_COMMON_PKGS),)
+	$(GUEST_CARGO_CLIPPY_CMD) $(_GUEST_BINS_COMMON_PKGS) $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
 endif
 ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_CLIPPY_CMD) -p test-rust-kernel $(TEST_KERNEL_CARGO_FEATURES) -- -D warnings

@@ -29,18 +29,12 @@ from typing import NoReturn, Sequence
 # ==================================================================================================
 
 VALID_MACHINES: tuple[str, ...] = ("microvm",)
-VALID_DEPLOYMENT_MODES: tuple[str, ...] = (
-    "standalone",
-    "single-process",
-)
 VALID_LOG_LEVELS: tuple[str, ...] = ("trace", "debug", "info", "warn", "error", "panic")
 VALID_TARGETS: tuple[str, ...] = ("x86", "x86_64")
 VALID_MESSAGE_FORMATS: tuple[str, ...] = ("json", "json-diagnostic-rendered-ansi")
 
 DEFAULT_MACHINE = "microvm"
 DEFAULT_TARGET = "x86"
-DEFAULT_DEPLOYMENT_MODE_LINUX = "standalone"
-DEFAULT_DEPLOYMENT_MODE_WINDOWS = "standalone"
 DEFAULT_LOG_LEVEL_DEBUG = "trace"
 DEFAULT_LOG_LEVEL_RELEASE = "warn"
 DEFAULT_TIMEOUT = 600
@@ -54,11 +48,9 @@ KNOWN_MAKE_VARS: frozenset[str] = frozenset(
         "TARGET",
         "MACHINE",
         "RELEASE",
-        "DEPLOYMENT_MODE",
         "LOG_LEVEL",
         "TIMEOUT",
         "PROFILER",
-        "TIMESTAMP_MSG",
         "WHP",
         "IMAGE",
         "HOST_CPU",
@@ -241,12 +233,10 @@ class BuildConfig:
     target: str = DEFAULT_TARGET
     release: bool = False
     profile: bool = False
-    deployment_mode: str = ""
     log_level: str = ""
     timeout: int = DEFAULT_TIMEOUT
 
     profiler: bool = False
-    timestamp_msg: bool = False
     whp: bool = False
 
     nanvix_sdk: bool = False
@@ -267,11 +257,6 @@ class BuildConfig:
 
     def apply_platform_defaults(self, plat: PlatformInfo) -> None:
         """Apply platform-specific defaults that weren't set by the user."""
-        if not self.deployment_mode:
-            if plat.is_windows:
-                self.deployment_mode = DEFAULT_DEPLOYMENT_MODE_WINDOWS
-            else:
-                self.deployment_mode = DEFAULT_DEPLOYMENT_MODE_LINUX
         if not self.log_level:
             self.log_level = (
                 DEFAULT_LOG_LEVEL_RELEASE if self.release else DEFAULT_LOG_LEVEL_DEBUG
@@ -303,12 +288,6 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
             config.target = val
         case "RELEASE":
             config.release = val.lower() == "yes"
-        case "DEPLOYMENT_MODE":
-            if val not in VALID_DEPLOYMENT_MODES:
-                die(
-                    f"Invalid DEPLOYMENT_MODE={val}. Valid: {', '.join(VALID_DEPLOYMENT_MODES)}"
-                )
-            config.deployment_mode = val
         case "LOG_LEVEL":
             if val not in VALID_LOG_LEVELS:
                 die(f"Invalid LOG_LEVEL={val}. Valid: {', '.join(VALID_LOG_LEVELS)}")
@@ -320,8 +299,6 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
                 die(f"Invalid TIMEOUT={val}. Must be an integer.")
         case "PROFILER":
             config.profiler = val.lower() == "yes"
-        case "TIMESTAMP_MSG":
-            config.timestamp_msg = val.lower() == "yes"
         case "WHP":
             config.whp = val.lower() == "yes"
         case "HOST_CPU":
@@ -794,8 +771,6 @@ def _assemble_build_make_args(
 
     # Windows platform defaults.
     if plat.is_windows:
-        if not any(a.startswith("DEPLOYMENT_MODE=") for a in user_args):
-            injected.append("DEPLOYMENT_MODE=standalone")
         if config.machine == "microvm" and not any(
             a.startswith("WHP=") for a in user_args
         ):
@@ -1037,14 +1012,12 @@ Options:
 Build Parameters (after --):
   MACHINE=microvm                Target machine (default: microvm).
   RELEASE=yes|no                 Release mode.
-  DEPLOYMENT_MODE=MODE           standalone|single-process.
   LOG_LEVEL=LEVEL                trace|debug|info|warn|error|panic.
   PROFILER=yes|no                Enable profiling.
   TIMEOUT=SECONDS                Execution timeout (default: 600).
   WHP=yes|no                     Windows Hypervisor Platform.
   HOST_CPU=CPU                   Target CPU for host builds.
   MEMORY_SIZE=MB                 Memory size in megabytes (default: 128).
-  TIMESTAMP_MSG=yes|no           Enable message timestamping.
 
 Run Options (after --):
   -program <path>       Path to guest binary (default: bin/hello-rust-nostd.elf).

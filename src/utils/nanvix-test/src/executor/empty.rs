@@ -55,7 +55,6 @@ pub(crate) async fn empty(
 ) -> Result<()> {
     tokio::select! {
         result = async {
-            let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
             let log_root: &Path = Path::new(runner_config.log_directory.as_str());
             let guest_log_tracker: GuestLogTracker = GuestLogTracker::capture(log_root)?;
 
@@ -68,7 +67,6 @@ pub(crate) async fn empty(
                 let nanvixd_http_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
                     (stdout_file_path.as_path(), stderr_file_path.as_path()),
                     (runner_config.ipv4_addr.as_str(), runner_config.port_num),
-                    hwloc_file_path.clone(),
                     log_layout.test_directory(),
                     extra_nanvixd_args,
                 )?;

@@ -51,39 +51,28 @@ use ::sysapi::sys_types::{
 pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_size_t, Error> {
     ::syslog::trace!("pwrite(): fd={}, buffer={:?}, offset={}", fd, buffer, offset);
 
-    // POSIX requires pwrite on a non-seekable fd (pipe/stdio) to return ESPIPE. In standalone mode,
-    // route by the descriptor's resolved backend.
+    // POSIX requires pwrite on a non-seekable fd (pipe/stdio) to return ESPIPE.
     let backend_fd: RawFileDescriptor = {
-        #[cfg(feature = "standalone")]
-        {
-            use crate::fdtable::{
-                resolve,
-                Route,
-            };
-            match resolve(fd) {
-                // VFS-backed descriptors fall through to the vfsd write path below.
-                Some(res) if res.route == Route::Vfs => res.backend_fd,
-                // The console (stdin/stdout/stderr) is not seekable.
-                Some(res) if res.route == Route::Console => {
-                    ::syslog::warn!(
-                        "pwrite(): illegal seek on stdio (fd={fd:?}, buffer={buffer:?}, \
-                         offset={offset})",
-                    );
-                    return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
-                },
-                // Sockets and unroutable descriptors are not writable here.
-                _ => {
-                    ::syslog::warn!("pwrite(): bad file descriptor fd={fd} in standalone mode");
-                    return Err(Error::new(
-                        ErrorCode::BadFile,
-                        "pwrite: fd is not a VFS fd in standalone mode",
-                    ));
-                },
-            }
-        }
-        #[cfg(not(feature = "standalone"))]
-        {
-            fd
+        use crate::fdtable::{
+            resolve,
+            Route,
+        };
+        match resolve(fd) {
+            // VFS-backed descriptors fall through to the vfsd write path below.
+            Some(res) if res.route == Route::Vfs => res.backend_fd,
+            // The console (stdin/stdout/stderr) is not seekable.
+            Some(res) if res.route == Route::Console => {
+                ::syslog::warn!(
+                    "pwrite(): illegal seek on stdio (fd={fd:?}, buffer={buffer:?}, \
+                     offset={offset})",
+                );
+                return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
+            },
+            // Sockets and unroutable descriptors are not writable here.
+            _ => {
+                ::syslog::warn!("pwrite(): bad file descriptor fd={fd}");
+                return Err(Error::new(ErrorCode::BadFile, "pwrite: fd is not a VFS fd"));
+            },
         }
     };
 

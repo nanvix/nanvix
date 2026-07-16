@@ -29,7 +29,7 @@
  * GIL) in the child. The bug surfaced there as
  * "create_gil: PyMUTEX_INIT failed" and aborted the forked interpreter.
  *
- * What this program demonstrates (run in standalone mode)
+ * What this program demonstrates
  * -------------------------------------------------------
  *   PTHREAD-START     - the test starts.
  *   PARENT-INIT-OK    - the parent initialized a mutex + cond and locked/

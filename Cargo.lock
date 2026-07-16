@@ -401,20 +401,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "control-plane-api"
-version = "0.20.15"
-dependencies = [
- "anyhow",
- "config",
- "log",
- "num_enum",
- "serde",
- "serde_json",
- "tokio",
- "user-vm-api",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1859,29 +1845,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
-name = "linuxd"
-version = "0.20.15"
-dependencies = [
- "anyhow",
- "config",
- "control-plane-api",
- "libc",
- "log",
- "net-backend",
- "profiler",
- "rand 0.10.2",
- "signal-hook",
- "static_assert",
- "sys",
- "sysapi",
- "syscall",
- "syscomm",
- "syslog",
- "tokio",
- "user-vm-api",
-]
-
-[[package]]
 name = "litemap"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2026,9 +1989,7 @@ dependencies = [
  "anyhow",
  "config",
  "hwloc",
- "linuxd",
  "nanvix-http",
- "nanvix-sandbox",
  "nanvix-sandbox-config",
  "nanvix-terminal",
  "sys",
@@ -2047,16 +2008,14 @@ dependencies = [
  "fatfs",
  "indicatif",
  "koptions",
- "libc",
  "log",
  "nanvix",
  "nanvixd",
- "profiler",
  "rand 0.10.2",
  "reqwest",
- "serde",
  "serde_json",
  "tokio",
+ "user-vm-api",
  "vfs-bench-common",
 ]
 
@@ -2065,18 +2024,14 @@ name = "nanvix-http"
 version = "0.20.15"
 dependencies = [
  "anyhow",
- "config",
  "http",
  "http-body-util",
  "hyper",
  "hyper-util",
- "linuxd",
  "log",
- "nanvix-sandbox",
  "nanvix-sandbox-config",
  "serde",
  "serde_json",
- "syscomm",
  "tokio",
  "user-vm-api",
  "uservm",
@@ -2093,38 +2048,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanvix-sandbox"
-version = "0.20.15"
-dependencies = [
- "anyhow",
- "build-utils",
- "cfg-if",
- "chrono",
- "config",
- "control-plane-api",
- "hwloc",
- "indexmap 2.14.0",
- "libc",
- "linuxd",
- "log",
- "nanvix-sandbox-config",
- "rand 0.10.2",
- "serde_json",
- "sys",
- "syscomm",
- "tokio",
- "user-vm-api",
- "uservm",
-]
-
-[[package]]
 name = "nanvix-sandbox-config"
 version = "0.20.15"
 dependencies = [
- "hwloc",
- "linuxd",
  "net-backend",
- "syscomm",
 ]
 
 [[package]]
@@ -2139,7 +2066,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 2.0.18",
  "toml",
 ]
 
@@ -2196,13 +2122,10 @@ name = "nanvix-terminal"
 version = "0.20.15"
 dependencies = [
  "anyhow",
- "config",
  "libc",
  "log",
- "nanvix-sandbox",
  "nanvix-sandbox-config",
  "tokio",
- "user-vm-api",
  "uservm",
 ]
 
@@ -2226,6 +2149,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml",
+ "user-vm-api",
 ]
 
 [[package]]
@@ -3035,16 +2959,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "signal-hook"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2a0c28ca5908dbdbcd52e6fdaa00358ab88637f8ab33e1f188dd510eb44b53d"
-dependencies = [
- "libc",
- "signal-hook-registry",
-]
 
 [[package]]
 name = "signal-hook-registry"
@@ -4426,12 +4340,7 @@ dependencies = [
 name = "user-vm-api"
 version = "0.20.15"
 dependencies = [
- "anyhow",
- "config",
- "log",
  "serde",
- "syscomm",
- "tokio",
 ]
 
 [[package]]
@@ -4442,7 +4351,6 @@ dependencies = [
  "arch",
  "cfg-if",
  "config",
- "control-plane-api",
  "elf",
  "gdbstub",
  "gdbstub_arch",
@@ -4464,7 +4372,6 @@ dependencies = [
  "static_assert",
  "sys",
  "syscall",
- "syscomm",
  "syslog",
  "tokio",
  "user-vm-api",

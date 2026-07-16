@@ -38,16 +38,9 @@ The pipeline runs these steps in order:
 `scripts/pipeline.sh` executes machine-dependent
 steps for `microvm`.
 
-| Machine       | Build Types    | Deployment Types              |
-|---------------|----------------|-------------------------------|
-| `microvm`     | debug, release | standalone, single, multi     |
-
-### Build Parameter Mapping
-
-| Deployment Type | `DEPLOYMENT_MODE` |
-|-----------------|-------------------|
-| standalone      | `standalone`      |
-| single-process  | `single-process`  |
+| Machine       | Build Types    |
+|---------------|----------------|
+| `microvm`     | debug, release |
 
 ## Individual Quality Checks
 
@@ -77,8 +70,7 @@ pipeline, but matrix coverage is split across multiple jobs and run on pull requ
 Matrix coverage in GitHub Actions:
 
 - `checks`: format + spellcheck (single run).
-- `lint`, `verify`, `ci-build`: `microvm` with `standalone`
-  and `single-process`.
+- `lint`, `verify`, `ci-build`: `microvm` in debug and release configurations.
 - `ci-test`: same matrix.
 
 > **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)
@@ -91,7 +83,7 @@ Matrix coverage in GitHub Actions:
 ./z build -- release
 
 # The archive name follows this pattern:
-# nanvix-<ver>-<target>-<machine>-<deploy>-<mode>-<log>-<memory>mb.tar.bz2
+# nanvix-<ver>-<target>-<machine>-standalone-<mode>-<log>-<memory>mb.tar.bz2
 ```
 
 Releases can be created with:

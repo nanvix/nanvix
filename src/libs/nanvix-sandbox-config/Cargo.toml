@@ -11,14 +11,9 @@ description = "Sandbox configuration structures for Nanvix"
 homepage.workspace = true
 
 [dependencies]
-hwloc = { workspace = true }
-linuxd = { workspace = true, optional = true }
 net-backend = { workspace = true }
-syscomm = { workspace = true }
 
 [features]
-default = []
-single-process = ["linuxd"]
 gdb = []
 
 [lints]

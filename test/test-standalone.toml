@@ -5,7 +5,6 @@ log_directory = "logs"
 tmp_directory = "/tmp"
 ipv4_addr = "127.0.0.1"
 port_num = 9999
-hwloc_file_path = ""
 fatal = true
 toolchain_path = "toolchain"
 sysroot_path = "./sysroot"
@@ -79,6 +78,32 @@ expected_output = "hello world!"
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-thread.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-file.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-misc.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["release"]
+executor = "http"
+program = "./bin/test-rust-memory.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-dlfcn.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 
 [[tests]]
@@ -186,6 +211,32 @@ expected_output = "hello world"
 build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-thread.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-file.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-misc.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["release"]
+executor = "terminal"
+program = "./bin/test-rust-memory.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-dlfcn.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 
 [[tests]]

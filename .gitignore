@@ -35,8 +35,6 @@ sysroot
 *.o
 *.obj
 .z.cache
-linuxd.stdout
-linuxd.stderr
 
 # Python cache
 __pycache__/

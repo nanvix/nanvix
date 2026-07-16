@@ -5,10 +5,10 @@
 // Imports
 //==================================================================================================
 
-use crate::errno::__errno_location;
-#[cfg(feature = "standalone")]
-use crate::sys::socket;
-#[cfg(feature = "standalone")]
+use crate::{
+    errno::__errno_location,
+    sys::socket,
+};
 use ::core::{
     mem,
     slice,
@@ -85,7 +85,6 @@ pub unsafe extern "C" fn recvfrom(
     sockaddr: *mut sockaddr,
     addrlen: *mut socklen_t,
 ) -> c_ssize_t {
-    #[cfg(feature = "standalone")]
     {
         // Check if `buf` is valid.
         if buf.is_null() {
@@ -184,16 +183,5 @@ pub unsafe extern "C" fn recvfrom(
                 -1
             },
         }
-    }
-
-    // TODO: https://github.com/nanvix/nanvix/issues/590
-    #[cfg(not(feature = "standalone"))]
-    {
-        let _ = (sockfd, buf, len, flags, sockaddr, addrlen);
-        ::syslog::debug!("recvfrom(): not implemented");
-        unsafe {
-            *__errno_location() = ErrorCode::InvalidSysCall.get();
-        }
-        -1
     }
 }

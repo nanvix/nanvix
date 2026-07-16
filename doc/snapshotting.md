@@ -7,13 +7,13 @@ standalone build modes, with emphasis on interactions with RAMFS and host-mounte
 
 A snapshot captures the full execution state of a Nanvix guest VM at a specific point in time,
 enabling fast warm-start restores that skip kernel boot, initrd loading, and daemon initialization.
-Snapshots are supported only in standalone builds (`DEPLOYMENT_MODE=standalone`).
+Snapshots are supported by the standard Nanvix build.
 
 A snapshot consists of two files stored in `snapshots/` relative to the working directory:
 
-| Platform | Memory file | State file |
-| --- | --- | --- |
-| Linux/KVM | `snapshots/<stem>.vmem` | `snapshots/<stem>.kvm.json` |
+| Platform    | Memory file             | State file                  |
+| ----------- | ----------------------- | --------------------------- |
+| Linux/KVM   | `snapshots/<stem>.vmem` | `snapshots/<stem>.kvm.json` |
 | Windows/WHP | `snapshots/<stem>.vmem` | `snapshots/<stem>.whp.cbor` |
 
 Where `<stem>` is derived from the kernel filename (e.g., `kernel` from `bin/kernel.elf`).
@@ -22,25 +22,25 @@ Where `<stem>` is derived from the kernel filename (e.g., `kernel` from `bin/ker
 
 ### 2.1 Deterministic State (Included)
 
-| Component | Storage | Notes |
-| --- | --- | --- |
-| Guest physical memory | `.vmem` file | All pages, including kernel heap, stacks, and daemon data |
-| vCPU registers | State file | RIP, RSP, general-purpose, segment, control registers |
-| Interrupt controller | State file | LAPIC/IOAPIC state |
-| Timer state | State file | PIT/LAPIC timer configuration |
-| RAMFS contents | Guest memory | RAMFS is loaded into guest physical memory; any modifications are captured |
-| vfsd state | Guest memory | File descriptor table, pending queue, hostfs enabled flag |
+| Component             | Storage      | Notes                                                                      |
+| --------------------- | ------------ | -------------------------------------------------------------------------- |
+| Guest physical memory | `.vmem` file | All pages, including kernel heap, stacks, and daemon data                  |
+| vCPU registers        | State file   | RIP, RSP, general-purpose, segment, control registers                      |
+| Interrupt controller  | State file   | LAPIC/IOAPIC state                                                         |
+| Timer state           | State file   | PIT/LAPIC timer configuration                                              |
+| RAMFS contents        | Guest memory | RAMFS is loaded into guest physical memory; any modifications are captured |
+| vfsd state            | Guest memory | File descriptor table, pending queue, hostfs enabled flag                  |
 
 ### 2.2 Non-Deterministic State (Not Included)
 
-| Component | Reason |
-| --- | --- |
-| Host TSC value | Host CPU timestamp counter continues independently |
-| Wall-clock time | `pvclock boot_time_ns` is not re-written on restore |
-| IKC channels | Host-side Tokio mpsc channels are recreated on each spawn |
-| hostfsd worker thread | Host OS thread with open file descriptors; spawned fresh |
-| Host file descriptors | Kernel fd table entries are per-process, not serialized |
-| Network sockets | Host kernel state; not captured |
+| Component             | Reason                                                    |
+| --------------------- | --------------------------------------------------------- |
+| Host TSC value        | Host CPU timestamp counter continues independently        |
+| Wall-clock time       | `pvclock boot_time_ns` is not re-written on restore       |
+| IKC channels          | Host-side Tokio mpsc channels are recreated on each spawn |
+| hostfsd worker thread | Host OS thread with open file descriptors; spawned fresh  |
+| Host file descriptors | Kernel fd table entries are per-process, not serialized   |
+| Network sockets       | Host kernel state; not captured                           |
 
 ## 3. Guidelines for Deterministic Snapshots
 
@@ -230,7 +230,7 @@ latencies.push(start.elapsed());
 
 ## 7. Checklist for Deterministic Snapshots
 
-- [ ] Build with `DEPLOYMENT_MODE=standalone`.
+- [ ] Build Nanvix.
 - [ ] Pass `"snapshot"` as a kernel argument during the cold-boot phase.
 - [ ] Ensure `snapshots/` directory exists before taking the snapshot.
 - [ ] Take the snapshot **before** calling `mount("", "/mnt", "hostfs", 0)`.

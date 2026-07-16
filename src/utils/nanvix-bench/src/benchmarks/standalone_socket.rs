@@ -50,7 +50,7 @@ impl Benchmark {
         let nanvixd_bin = self.standalone_nanvixd_path();
         if !nanvixd_bin.exists() {
             anyhow::bail!(
-                "nanvixd binary not found at {} (build with DEPLOYMENT_MODE=standalone)",
+                "nanvixd binary not found at {} (build the nanvixd target first)",
                 nanvixd_bin.display()
             );
         }

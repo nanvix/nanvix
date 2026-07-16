@@ -19,7 +19,30 @@ use ::alloc::{
 };
 use ::sys::error::Error;
 use ::sysapi::{
+    ffi::{
+        c_int,
+        c_void,
+    },
+    sys_ioctl::{
+        TCGETS,
+        TCSETS,
+    },
     sys_types::c_ssize_t,
+    termios::{
+        Termios,
+        ECHO,
+        ECHOE,
+        ECHOK,
+        ICANON,
+        ICRNL,
+        IEXTEN,
+        ISIG,
+        IXON,
+        ONLCR,
+        OPOST,
+        VMIN,
+        VTIME,
+    },
     unistd::{
         STDIN_FILENO,
         STDOUT_FILENO,
@@ -38,11 +61,37 @@ const MAX_REQUEST_SIZE: usize = 64 * 1024;
 // Standalone Functions
 //==================================================================================================
 
+/// Configures the shared console as a byte-oriented stream for the echo workload.
+fn configure_raw_terminal(fd: c_int) -> Result<(), Error> {
+    let mut termios: Termios = Termios::console_default();
+
+    // SAFETY: the argument points to a valid, writable `Termios` for the duration of the call.
+    if unsafe { ::syscall::sys::ioctl::ioctl(fd, TCGETS, (&raw mut termios).cast::<c_void>()) }
+        .is_err()
+    {
+        // The direct VMM benchmark exposes a byte stream without terminal ioctl support.
+        return Ok(());
+    }
+
+    termios.c_iflag &= !(ICRNL | IXON);
+    termios.c_oflag &= !(OPOST | ONLCR);
+    termios.c_lflag &= !(ISIG | ICANON | ECHO | ECHOE | ECHOK | IEXTEN);
+    termios.c_cc[VMIN] = 1;
+    termios.c_cc[VTIME] = 0;
+
+    // SAFETY: the argument points to a valid, readable `Termios` for the duration of the call.
+    unsafe { ::syscall::sys::ioctl::ioctl(fd, TCSETS, (&raw mut termios).cast::<c_void>()) }?;
+
+    Ok(())
+}
+
 #[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
-    let stdin: i32 = STDIN_FILENO;
-    let stdout: i32 = STDOUT_FILENO;
+    let stdin: c_int = STDIN_FILENO;
+    let stdout: c_int = STDOUT_FILENO;
     let mut buffer: Vec<u8> = vec![0; MAX_REQUEST_SIZE];
+
+    configure_raw_terminal(stdin)?;
 
     loop {
         let nread: c_ssize_t = match unistd::read(stdin, &mut buffer) {

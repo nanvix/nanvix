@@ -2,11 +2,6 @@
 # Licensed under the MIT License.
 
 GUEST_STATICLIB_FEATURES := $(LOG_LEVEL)
-# Enable standalone mode: routes stdout/stderr to debug kcall,
-# file I/O to in-memory VFS, and disables IPC-based syscalls (no linuxd).
-ifeq ($(DEPLOYMENT_MODE),standalone)
-GUEST_STATICLIB_FEATURES += standalone
-endif
 GUEST_STATICLIB_FEATURES := $(strip $(GUEST_STATICLIB_FEATURES))
 GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$(GUEST_STATICLIB_FEATURES)")
 
@@ -14,7 +9,7 @@ GUEST_STATICLIB_CARGO_FEATURES := $(if $(GUEST_STATICLIB_FEATURES),--features "$
 # Per-package feature overrides
 #===================================================================================================
 # Some staticlib packages take a different feature set than the default
-# `$(LOG_LEVEL) [+ standalone]` combination above. Define the overrides here
+# default log-level feature set above. Define the overrides here
 # as `GUEST_STATICLIB_FEATURES_<package>` and the lookup helper below picks
 # them up.
 #
@@ -52,12 +47,11 @@ GUEST_STATICLIB_FEATURES_nvx-crt0 := $(strip $(GUEST_STATICLIB_FEATURES_nvx-crt0
 # dependency (sysalloc, libc_stdlib, sys, nvx, syslog) to ONE instance, which
 # structurally prevents the duplicate-`sysalloc`/duplicate-`HEAP` bug the old
 # separate-build + `ar`-merge produced. It therefore takes the DEFAULT feature
-# set ($(LOG_LEVEL) [+ standalone]). It is the only library C applications link
+# set ($(LOG_LEVEL)). It is the only library C applications link
 # against — there is no separate libposix.a.
 
-# nanvix_libm produces libm.a (libc_math + the nvx panic handler). It has no
-# standalone-specific behaviour and pulls no syscall backend, so it takes ONLY
-# the log level (never the `standalone` feature, which it does not define).
+# nanvix_libm produces libm.a (libc_math + the nvx panic handler). It pulls no
+# syscall backend, so it takes only the log level.
 GUEST_STATICLIB_FEATURES_nanvix_libm := $(LOG_LEVEL)
 GUEST_STATICLIB_FEATURES_nanvix_libm := $(strip $(GUEST_STATICLIB_FEATURES_nanvix_libm))
 

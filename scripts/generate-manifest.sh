@@ -16,9 +16,8 @@
 #   $2 - version          Release version string.
 #   $3 - machine          Target machine type.
 #   $4 - target           Target architecture.
-#   $5 - deployment_mode  Deployment mode.
-#   $6 - build_mode       Build mode (debug or release).
-#   $7 - log_level        Log level.
+#   $5 - build_mode       Build mode (debug or release).
+#   $6 - log_level        Log level.
 #
 
 #===================================================================================================
@@ -53,7 +52,7 @@ print_help() {
     cat << EOF
 Generates a JSON manifest file with build metadata and git information.
 
-Usage: $0 <output-file> <version> <machine> <target> <deployment_mode> <build_mode> <log_level>
+Usage: $0 <output-file> <version> <machine> <target> <build_mode> <log_level>
 
 Environment Variables:
   MEMORY_SIZE_BYTES  Memory size in bytes (required, exported by the Makefile).
@@ -63,7 +62,6 @@ Arguments:
   version          Release version string.
   machine          Target machine type.
   target           Target architecture.
-  deployment_mode  Deployment mode.
   build_mode       Build mode (debug or release).
   log_level        Log level.
 EOF
@@ -86,8 +84,8 @@ if [[ "${1:-}" == "--help" ]]; then
     exit 0
 fi
 
-if [[ $# -ne 7 ]]; then
-    print_error "Expected 7 arguments, got $#."
+if [[ $# -ne 6 ]]; then
+  print_error "Expected 6 arguments, got $#."
     print_help >&2
     exit 1
 fi
@@ -101,9 +99,8 @@ OUTPUT_FILE="$1"
 VERSION="$2"
 MACHINE="$3"
 TARGET="$4"
-DEPLOYMENT_MODE="$5"
-BUILD_MODE="$6"
-LOG_LEVEL="$7"
+BUILD_MODE="$5"
+LOG_LEVEL="$6"
 
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Get git commit hash, or "unknown" if we're not in a git repository.
@@ -128,7 +125,6 @@ jq -n \
   --arg version         "${VERSION}" \
   --arg machine         "${MACHINE}" \
   --arg target          "${TARGET}" \
-  --arg deployment_mode "${DEPLOYMENT_MODE}" \
   --arg build_mode      "${BUILD_MODE}" \
   --arg log_level       "${LOG_LEVEL}" \
   --arg timestamp       "${TIMESTAMP}" \
@@ -138,7 +134,6 @@ jq -n \
     version: $version,
     machine: $machine,
     target: $target,
-    deployment_mode: $deployment_mode,
     build_mode: $build_mode,
     log_level: $log_level,
     timestamp: $timestamp,

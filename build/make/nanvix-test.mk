@@ -1,10 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-NANVIX_TEST_FEATURES :=
-NANVIX_TEST_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
-NANVIX_TEST_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
-NANVIX_TEST_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
+NANVIX_TEST_FEATURES := $(if $(filter microvm,$(MACHINE)),microvm,)
 NANVIX_TEST_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 NANVIX_TEST_FEATURES := $(strip $(NANVIX_TEST_FEATURES))
 NANVIX_TEST_CARGO_FEATURES := $(if $(NANVIX_TEST_FEATURES),--features "$(NANVIX_TEST_FEATURES)")

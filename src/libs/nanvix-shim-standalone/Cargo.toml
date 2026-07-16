@@ -3,7 +3,7 @@
 
 [package]
 name = "nanvix-shim-standalone"
-description = "Standalone execution mode for the Nanvix containerd shim"
+description = "Standalone runtime for the Nanvix containerd shim"
 version.workspace = true
 edition.workspace = true
 homepage.workspace = true

@@ -81,7 +81,7 @@ pub struct PipeResponse {
     /// The `vfsd` table generation at the time these descriptors were allocated.
     ///
     /// libposix stamps both descriptors' resolution-cache entries with this epoch so a later table
-    /// mutation can mark them stale. Hosted (`linuxd`) pipes have no `vfsd` table and report `0`.
+    /// mutation can mark them stale.
     pub epoch: u64,
     _padding: [u8; Self::PADDING_SIZE],
 }

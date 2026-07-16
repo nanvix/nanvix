@@ -211,7 +211,6 @@ async fn run_iterations(
     let restore_combined_args: Vec<String> =
         build_combined_program_args(&parsed_program_args, false, workload.program_env());
 
-    let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
     let log_directory: PathBuf = log_layout.test_directory().to_path_buf();
     // Capture pre-existing legacy guest-component logs so they are not later overwritten by
     // the multiple nanvixd spawns this executor performs. The tracker is then used to move
@@ -235,7 +234,6 @@ async fn run_iterations(
         );
         let save_exit: i32 = spawn_nanvixd(
             runner_config,
-            hwloc_file_path.as_deref().map(str::to_string),
             snapshot_program.as_str(),
             save_combined_args.as_slice(),
             log_directory.as_path(),
@@ -279,7 +277,6 @@ async fn run_iterations(
         );
         let restore_exit: i32 = spawn_nanvixd(
             runner_config,
-            hwloc_file_path.as_deref().map(str::to_string),
             snapshot_program.as_str(),
             restore_combined_args.as_slice(),
             log_directory.as_path(),
@@ -361,7 +358,6 @@ fn build_extra_args(base: &[String], phase: &[String]) -> Vec<String> {
 /// # Parameters
 ///
 /// - `runner_config`: Runner configuration used to locate the daemon binary and runtime layout.
-/// - `hwloc_file_path`: Optional hwloc topology file forwarded to the daemon.
 /// - `program_path`: Guest workload binary executed inside the sandbox.
 /// - `program_args`: Command-line arguments forwarded to the workload.
 /// - `log_directory`: Directory where daemon components emit logs.
@@ -374,19 +370,13 @@ fn build_extra_args(base: &[String], phase: &[String]) -> Vec<String> {
 ///
 async fn spawn_nanvixd(
     runner_config: &RunnerConfig,
-    hwloc_file_path: Option<String>,
     program_path: &str,
     program_args: &[String],
     log_directory: &Path,
     extra_nanvixd_args: &[String],
 ) -> Result<i32> {
-    let nanvixd_args: NanvixdTerminalArgs = NanvixdTerminalArgs::new(
-        hwloc_file_path,
-        program_path,
-        program_args,
-        log_directory,
-        extra_nanvixd_args,
-    )?;
+    let nanvixd_args: NanvixdTerminalArgs =
+        NanvixdTerminalArgs::new(program_path, program_args, log_directory, extra_nanvixd_args)?;
 
     let mut nanvixd: NanvixdTerminal = NanvixdTerminal::spawn(runner_config, &nanvixd_args).await?;
 

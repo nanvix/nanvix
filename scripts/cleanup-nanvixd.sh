@@ -14,7 +14,7 @@
 #   cleanup-nanvixd.sh [OPTIONS]
 #
 # Options:
-#   --kill-processes          Kill dangling Nanvix processes (linuxd, nanvixd, uservm).
+#   --kill-processes          Kill dangling Nanvix processes (nanvixd and uservm).
 #   --kill-process-group      Kill a specific process group gracefully (SIGTERM then SIGKILL).
 #   --process-group-pid PID   PID of the process group to kill (requires --kill-process-group).
 #   --graceful-timeout SEC    Timeout for graceful shutdown in seconds (default: 10).
@@ -145,7 +145,7 @@ cleanup_kill_processes() {
 
     # Use -f to match against full command line instead of -x (exact comm match).
     # The comm field in /proc/[pid]/comm may differ from the executable name.
-    for proc in linuxd.elf nanvixd.elf uservm.elf; do
+    for proc in nanvixd.elf uservm.elf; do
         if pgrep -f "${proc}" > /dev/null 2>&1; then
             log_verbose "Killing ${proc} processes..."
             sudo pkill -9 -f "${proc}" 2>/dev/null || true

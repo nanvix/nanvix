@@ -1,7 +1,7 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! Standalone deployment mode configuration.
+//! Standalone VM configuration.
 //!
 //! This module provides the configuration structure for standalone mode, where the HTTP client
 //! directly drives User VM instances without going through a sandbox cache, system VM,

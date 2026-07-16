@@ -1,11 +1,11 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # `waitpid()` Standalone Regression Tests
+//! # `waitpid()` Regression Tests
 //!
-//! Exercises the POSIX `waitpid()`/`wait()` library calls end-to-end in standalone mode, building
-//! on `fork()` to create the children that are reaped. The following scenarios from the design
-//! testing strategy are covered deterministically:
+//! Exercises the POSIX `waitpid()`/`wait()` library calls end-to-end, building on `fork()` to
+//! create the children that are reaped. The following scenarios from the design testing strategy
+//! are covered deterministically:
 //!
 //! 1. **`ECHILD`** — `waitpid()` with no children returns `-1` and sets `errno` to `ECHILD`.
 //! 2. **`EINVAL`** — `waitpid()` with unsupported `options` bits returns `-1` and sets `EINVAL`.
@@ -16,7 +16,7 @@
 //! 4. **Wait-for-any drain** — `wait()` reaps an arbitrary child; repeated calls drain every child
 //!    and a final call returns `ECHILD`.
 //! 5. **Orphan adoption** — a grandchild whose intermediate parent terminates while the grandchild
-//!    is still alive is re-parented onto the init process (the standalone test process itself), so
+//!    is still alive is re-parented onto the init process (the test process itself), so
 //!    init can subsequently `waitpid()` for it and collect its exit status. Were the orphan not
 //!    adopted, that wait would instead fail with `ECHILD`.
 //!
@@ -27,7 +27,6 @@
 //!
 //! The following aspects of the `waitpid()` design are intentionally out of scope here:
 //!
-//! - The non-standalone deployment gate is a compile-time concern.
 //! - Job-control reporting (`WUNTRACED`/`WCONTINUED`) and signal deaths are accepted no-ops.
 //! - VM-shutdown propagation on init termination is a daemon-level behavior exercised by the
 //!   broader system test suite.
@@ -300,13 +299,13 @@ fn test_wait_any_drains_children() -> Result<(), Error> {
 
 /// Verifies that an orphaned process is adopted by the init process.
 ///
-/// Builds a three-generation lineage rooted at the standalone test process, which runs as the init
-/// process: the test forks an intermediate child, the intermediate child forks a grandchild that
-/// blocks on an IPC barrier, and the intermediate child then terminates while the grandchild is
-/// still alive. With its parent gone, the grandchild is an orphan that procd must re-parent onto
-/// init. The adoption is observable because init can subsequently release the grandchild and reap
-/// it with `waitpid()`, collecting its exit status — an operation only a parent may perform. Were
-/// the orphan not adopted, that final `waitpid()` would instead fail with `ECHILD`.
+/// Builds a three-generation lineage rooted at the test process, which runs as the init process:
+/// the test forks an intermediate child, the intermediate child forks a grandchild that blocks on
+/// an IPC barrier, and the intermediate child then terminates while the grandchild is still alive.
+/// With its parent gone, the grandchild is an orphan that procd must re-parent onto init. The
+/// adoption is observable because init can subsequently release the grandchild and reap it with
+/// `waitpid()`, collecting its exit status — an operation only a parent may perform. Were the orphan
+/// not adopted, that final `waitpid()` would instead fail with `ECHILD`.
 ///
 /// The IPC barrier makes the ordering deterministic: the grandchild cannot exit until init releases
 /// it, and init does not release it until after it has reaped the intermediate child. Reaping the

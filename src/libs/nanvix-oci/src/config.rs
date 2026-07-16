@@ -22,8 +22,6 @@ pub struct NanvixImageConfig {
     pub arch: String,
     /// Optional Nanvix version hint.
     pub version: Option<String>,
-    /// Execution mode override. If `None`, uses the host-level default.
-    pub execution_mode: Option<String>,
 }
 
 impl NanvixImageConfig {
@@ -67,11 +65,6 @@ impl NanvixImageConfig {
             .filter(|s| !s.is_empty())
             .cloned();
 
-        let execution_mode = labels
-            .get(annotations::EXECUTION_MODE)
-            .filter(|s| !s.is_empty())
-            .cloned();
-
         Some(NanvixImageConfig {
             initrd_path,
             initrd_args,
@@ -79,7 +72,6 @@ impl NanvixImageConfig {
             ramfs_root,
             arch,
             version,
-            execution_mode,
         })
     }
 

@@ -1,14 +1,12 @@
 # Nanvix Benchmarks
 
-Nanvix ships with a small benchmarking tool, `nanvix-bench`, that you can use to measure the system's baseline performance.
+Nanvix ships with `nanvix-bench` for measuring baseline system performance.
 
-To get the best performance out of Nanvix, we recommend pinning different components to different sets of cores. In particular, we recommend pinning `linuxd`, the user VM, and the client to different core dies, the latter preferably in a different NUMA domain. For example, in a server with 4 CPU dies, each with 5 cores, the following is a good pinning strategy:
+For stable results, pin the benchmark client to an isolated CPU set:
 
 ```json
 {
-    "client_core_str": "0-9",
-    "linuxd_core_str": "10-14",
-    "nanovm_core_str": "15-19"
+    "client_core_str": "0-9"
 }
 ```
 
@@ -17,14 +15,13 @@ You will need to save this JSON file.
 `nanvix-bench` currently supports the following benchmarks:
 
 - `boot-time`: measure the time to start a user VM (excluding `nanvixd`).
-- `cold-start`: measure the latency to start a linuxd and a user VM from scratch and send an HTTP echo to the guest.
-- `cold-start-uvm`: same as `cold-start`, but reuse an existing linuxd instance.
-- `echo-breakdown`: break down the contribution of each step in the data-path when sending an HTTP echo (requires re-compilation with `TIMESTAMP_MSG=yes`).
-- `round-trip-latency`: measure the latency as we increase the size of the HTTP echo payload.
+- `cold-start`: spawn `nanvixd` and a user VM, then complete the first echo round trip.
+- `cold-start-uvm`: start a user VM and complete its first standalone gateway echo.
+- `snapshot-restore`: compare snapshot restore latency with cold boot.
 - `vfs-bench`: measure VFS operation latencies (stat, open/close, read, write, readdir, create/unlink, mkdir/rmdir, rename) inside the guest VM using a FAT32 image loaded into guest memory via the RAMFS region.
-- `warm-start`: measure only the latency to send a fixed-size HTTP echo.
-- `warm-start-socket`: measure TCP echo latency through the standalone guest networking path.
-- `warm-start-vmm`: same as above, but excluding `nanvixd`.
+- `warm-start-gateway`: measure steady-state round-trip latency through the standalone gateway.
+- `warm-start-socket`: measure TCP echo latency through guest networking.
+- `warm-start-vmm`: measure raw round-trip latency inside the user VM.
 
 you may see all the optional flags with:
 
@@ -49,9 +46,8 @@ WPR/ETW tracing, flamegraph generation, and A/B regression detection -- see the
 
 ## Benchmarking on Windows
 
-On Windows, `nanvix-bench` supports a subset of benchmarks in standalone mode. The standalone
-cold-start benchmark spawns a fresh `nanvixd` process per iteration in interactive mode and
-measures the time from process spawn to the first echo response.
+On Windows, the cold-start benchmark spawns a fresh `nanvixd` process per iteration and measures
+the time from process spawn to the first echo response.
 
 ### Windows Defender Exclusion
 
@@ -70,17 +66,19 @@ This exclusion is recursive and covers all files and subdirectories under `bin/`
 .\z.ps1 build -- all RELEASE=yes LOG_LEVEL=panic
 ```
 
-This builds all components including `nanvix-bench.exe` with the standalone and WHP features.
+This builds all components including `nanvix-bench.exe` with the WHP backend.
 
 ### Available Benchmarks on Windows
 
-| Benchmark        | Description                                            |
-| ---------------- | ------------------------------------------------------ |
-| `boot-time`      | Start a user VM (no nanvixd)                           |
-| `cold-start`     | Spawn nanvixd + VM + echo round-trip (standalone mode) |
-| `vfs-bench`      | VFS operation latencies (FAT32 image via RAMFS region) |
-| `warm-start-socket` | TCP echo latency through guest networking (standalone mode) |
-| `warm-start-vmm` | Raw round-trip latency inside the user VM              |
+| Benchmark            | Description                                            |
+| -------------------- | ------------------------------------------------------ |
+| `boot-time`          | Start a user VM (no nanvixd)                           |
+| `cold-start`         | Spawn nanvixd + VM + echo round-trip                   |
+| `cold-start-uvm`     | Start a user VM + first gateway echo                   |
+| `vfs-bench`          | VFS operation latencies (FAT32 image via RAMFS region) |
+| `warm-start-gateway` | Round-trip latency through the standalone gateway      |
+| `warm-start-socket`  | TCP echo latency through guest networking              |
+| `warm-start-vmm`     | Raw round-trip latency inside the user VM              |
 
 ### Running Benchmarks on Windows
 
@@ -94,5 +92,4 @@ This builds all components including `nanvix-bench.exe` with the standalone and 
 .\bin\nanvix-bench.exe -help
 ```
 
-> ℹ️ **Note:** HTTP-based benchmarks (`warm-start`, `round-trip-latency`,
-> and `echo-breakdown`) are Linux-only.
+Use `-help` to list all benchmark options supported by the current build.

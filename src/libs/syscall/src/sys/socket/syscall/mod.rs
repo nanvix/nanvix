@@ -40,7 +40,7 @@ pub use self::{
 };
 
 //==================================================================================================
-// Socket-slot registration helpers (standalone)
+// Socket-slot registration helpers
 //==================================================================================================
 
 /// Registers a `networkd` socket endpoint as a flat descriptor slot in vfsd.
@@ -51,7 +51,6 @@ pub use self::{
 /// cache (`route = Socket`, `backend_fd = remote_fd`) so socket I/O resolves to `remote_fd` without
 /// a further `vfsd` round-trip. If the registration fails on either leg, the `networkd` endpoint is
 /// closed so a failed creation never strands an endpoint.
-#[cfg(feature = "standalone")]
 pub(crate) fn register_socket_slot(
     remote_fd: ::sysapi::ffi::c_int,
 ) -> Result<::sysapi::ffi::c_int, ::sys::error::Error> {
@@ -127,7 +126,6 @@ pub(crate) fn register_socket_slot(
 /// Used to roll back the `networkd` endpoint when binding its flat slot in vfsd fails, so a failed
 /// socket creation does not strand an endpoint. The acknowledgement is drained but its status is
 /// ignored: the creation has already failed and there is nothing to retry.
-#[cfg(feature = "standalone")]
 fn close_networkd_endpoint(remote_fd: ::sysapi::ffi::c_int) {
     use crate::unistd::message::CloseRequest;
     use ::sys::ipc::MessageType;

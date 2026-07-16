@@ -10,15 +10,12 @@
 //!
 //! Core abstractions for the Nanvix containerd shim.
 //!
-//! This crate defines the `ExecutionMode` trait — the primary extension point for
-//! supporting different Nanvix deployment modes (standalone, distributed, etc.).
+//! This crate defines the workload runtime interface used by the standalone container shim.
 
 pub mod config;
-pub mod execution;
-pub mod registry;
+pub mod runtime;
 pub mod state;
 
 pub use config::NanvixRuntimeConfig;
-pub use execution::ExecutionMode;
-pub use registry::create_execution_mode;
+pub use runtime::WorkloadRuntime;
 pub use state::WorkloadState;

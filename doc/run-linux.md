@@ -38,16 +38,15 @@ Run a hello-world application and see its output on the terminal:
   - [HTTP API Reference](#http-api-reference)
   - [HTTP Error Codes](#http-error-codes)
 - [Logging](#logging)
-- [Expert Mode: Standalone User VM](#expert-mode-standalone-user-vm)
+- [Expert Mode: Direct User VM](#expert-mode-direct-user-vm)
   - [Recognised Kernel Arguments](#recognised-kernel-arguments)
 
 ---
 
 ## Creating Multibinary Images
 
-In standalone deployment mode, guest applications run alongside system daemons (`procd`, `memd`,
-and `vfsd`) inside a single VM. These components must be bundled together into a **multibinary
-image** using the `mkimage` tool before they can be launched.
+Guest applications run alongside system daemons (`procd`, `memd`, and `vfsd`) inside a single VM.
+These components must be bundled into a **multibinary image** with `mkimage` before launch.
 
 The `mkimage` tool takes an output path and a list of `<path>;<name>` pairs, where `<path>` is
 the path to the ELF binary and `<name>` is the logical name the kernel uses to identify it at
@@ -80,13 +79,12 @@ Interactive mode runs a single application, waits for it to exit, and forwards i
 
 ### Shim Configuration
 
-| Key              | Description                               | Default         |
-| ---------------- | ----------------------------------------- | --------------- |
-| `kernel_path`    | Path to `nanvixd.elf` on the host.        | `nanvixd.elf`   |
-| `mkramfs_path`   | Path to `mkramfs.elf` on the host.        | `mkramfs.elf`   |
-| `temp_dir`       | Directory for generated ramfs images.     | System temp dir |
-| `execution_mode` | Execution mode (`"standalone"` for V1).   | `"standalone"`  |
-| `extra_args`     | Additional arguments passed to `nanvixd`. | `[]`            |
+| Key            | Description                               | Default         |
+| -------------- | ----------------------------------------- | --------------- |
+| `kernel_path`  | Path to `nanvixd.elf` on the host.        | `nanvixd.elf`   |
+| `mkramfs_path` | Path to `mkramfs.elf` on the host.        | `mkramfs.elf`   |
+| `temp_dir`     | Directory for generated ramfs images.     | System temp dir |
+| `extra_args`   | Additional arguments passed to `nanvixd`. | `[]`            |
 
 Example:
 
@@ -94,7 +92,6 @@ Example:
 kernel_path = "/opt/nanvix/bin/nanvixd.elf"
 mkramfs_path = "/opt/nanvix/bin/mkramfs.elf"
 temp_dir = "/tmp"
-execution_mode = "standalone"
 extra_args = ["-console-file", "/dev/null"]
 ```
 
@@ -189,7 +186,7 @@ To include a literal `;` in any section, escape it as `\;`:
 
 > **Note:** Kernel arguments can be passed via `-kernel-args` on `nanvixd` (see
 > [Passing Kernel Arguments](#passing-kernel-arguments)) or directly on the UserVM (see
-> [Expert Mode: Standalone User VM](#expert-mode-standalone-user-vm)). They are not embedded in
+> [Expert Mode: Direct User VM](#expert-mode-direct-user-vm)). They are not embedded in
 > the initrd arguments string.
 
 ## HTTP Mode
@@ -360,32 +357,29 @@ This is useful when a parent process (for example, the Nanvix containerd shim) c
 `nanvixd`'s stdout and forwards it to its own log sink. `-log-to-stdout` and `-log-dir` are
 mutually exclusive.
 
-## Expert Mode: Standalone User VM
+## Expert Mode: Direct User VM
 
 > **Warning:** This is an expert-level feature intended for low-level debugging and kernel
 > development. Most users should use `nanvixd` instead (see [Interactive Mode](#interactive-mode)).
 
-The `uservm.elf` binary can be launched directly in **standalone mode**, bypassing the full Nanvix
-orchestration stack (no `nanvixd`, system VM, control-plane, or gateway connections). In this mode
-the guest kernel boots, runs the initrd payload, and exits. Outbound I/O messages from the guest
-are silently discarded.
+The `uservm.elf` binary can be launched directly, bypassing `nanvixd`. The guest kernel boots,
+runs the initrd payload, and exits.
 
 ```bash
-./bin/uservm.elf -kernel ./bin/kernel.elf -initrd ./bin/hello-rust-nostd.elf -standalone
+./bin/uservm.elf -kernel ./bin/kernel.elf -initrd ./bin/hello-rust-nostd.elf
 ```
 
 Optional flags:
 
-| Flag                     | Description                                                      |
-| ------------------------ | ---------------------------------------------------------------- |
-| `-stderr <file>`         | Redirect guest stderr to a file instead of host stderr.          |
-| `-initrd_args <args>`    | Arguments forwarded to the initrd payload.                       |
-| `-kernel-args <args>`    | Kernel arguments written to guest control registers (see below). |
-| `-ramfs <file>`          | Path to a RAM filesystem image exposed to the guest.             |
-| `-user-vm-id <id>`       | VM identifier (defaults to `0` in standalone mode).              |
-| `-log-to-file`           | Write logs to files instead of stdout.                           |
-| `-log-dir <dir>`         | Directory for log files (used with `-log-to-file`).              |
-| `-allow-host-networking` | Enable host networking for the guest (disabled when omitted).    |
+| Flag                  | Description                                                      |
+| --------------------- | ---------------------------------------------------------------- |
+| `-stderr <file>`      | Redirect guest stderr to a file instead of host stderr.          |
+| `-initrd_args <args>` | Arguments forwarded to the initrd payload.                       |
+| `-kernel-args <args>` | Kernel arguments written to guest control registers (see below). |
+| `-ramfs <file>`       | Path to a RAM filesystem image exposed to the guest.             |
+| `-user-vm-id <id>`    | VM identifier (defaults to `0`).                                 |
+| `-log-to-file`        | Write logs to files instead of stdout.                           |
+| `-log-dir <dir>`      | Directory for log files (used with `-log-to-file`).              |
 
 ### Recognised Kernel Arguments
 
@@ -399,7 +393,7 @@ Example:
 
 ```bash
 ./bin/uservm.elf -kernel ./bin/kernel.elf \
-    -initrd ./bin/snapshot-rust-nostd.elf -standalone \
+  -initrd ./bin/snapshot-rust-nostd.elf \
     -kernel-args snapshot
 ```
 
@@ -407,5 +401,5 @@ Enable verbose logging with `RUST_LOG`:
 
 ```bash
 RUST_LOG=debug ./bin/uservm.elf -kernel ./bin/kernel.elf \
-    -initrd ./bin/hello-rust-nostd.elf -standalone
+  -initrd ./bin/hello-rust-nostd.elf
 ```

@@ -9,10 +9,6 @@ inputs:
     description: "Machine type"
     required: true
     default: "microvm"
-  deployment-type:
-    description: "Deployment type"
-    required: true
-    default: "standalone"
   github-token:
     description: "GitHub token for authenticated Verus downloads"
     required: false
@@ -68,8 +64,7 @@ runs:
           TARGET=x86 \
           LOG_LEVEL=trace \
           VERBOSE=yes \
-          BUILD_OPT=no \
-          "DEPLOYMENT_MODE=${{ inputs.deployment-type }}"
+          BUILD_OPT=no
 
     - name: "Verify (Windows)"
       if: runner.os == 'Windows'
@@ -81,8 +76,7 @@ runs:
           TARGET=x86 `
           LOG_LEVEL=trace `
           VERBOSE=yes `
-          BUILD_OPT=no `
-          "DEPLOYMENT_MODE=${{ inputs.deployment-type }}"
+          BUILD_OPT=no
 
     - name: "Save Verus Archive Cache"
       if: steps.verus-cache.outputs.cache-hit != 'true'

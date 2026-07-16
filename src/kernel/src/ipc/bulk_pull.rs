@@ -47,7 +47,7 @@ const ORDER: Ordering = Ordering::Relaxed;
 /// # Description
 ///
 /// A pending bulk pull request: a thread that is sleeping on a condition variable while waiting for
-/// linuxd to supply the requested data via the vmbus.
+/// the host I/O backend to supply the requested data via the vmbus.
 ///
 struct PendingBulkPull {
     /// Condition variable on which the pulling thread is sleeping.
@@ -96,7 +96,7 @@ fn is_timeout(error: &SleepError) -> bool {
 /// # Description
 ///
 /// Registers a pending bulk pull for the calling thread and puts it to sleep. The thread is woken
-/// by [`complete`] when linuxd responds with the bulk data.
+/// by [`complete`] when the host responds with the bulk data.
 ///
 /// # Parameters
 ///
@@ -122,7 +122,7 @@ fn is_timeout(error: &SleepError) -> bool {
 ///
 /// A finite `alarm` bounds only the *guest* wait; it does **not** cancel the transfer already in
 /// flight on the host. UserVM has been handed the caller's buffer as guest physical segments and
-/// will scatter linuxd's reply into them whenever it eventually arrives, with no liveness check. A
+/// will scatter the host reply into them whenever it eventually arrives, with no liveness check. A
 /// finite deadline is therefore safe only against a host that never responds: if the host is merely
 /// slow and replies *after* the deadline, it can write into buffer pages the caller may have since
 /// freed or reused. Because of this, finite timeouts on the bulk (host) pull path must not be

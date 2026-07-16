@@ -4,9 +4,6 @@
 HOST_COMMON_FEATURES :=
 HOST_COMMON_FEATURES := $(strip $(HOST_COMMON_FEATURES))
 
-HOST_BINARIES_FEATURES.nanvix-bench += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
-HOST_BINARIES_FEATURES.linuxd += $(if $(filter yes,$(TIMESTAMP_MSG)),timestamp-messages,)
-
 host_binary_features = $(strip $(HOST_COMMON_FEATURES) $(HOST_BINARIES_FEATURES.$1))
 host_cargo_features = $(if $1,--features "$1")
 

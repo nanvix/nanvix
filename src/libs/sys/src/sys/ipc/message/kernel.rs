@@ -108,11 +108,9 @@ impl MessageSender {
 
     /// The kernel process is the sender of the message.
     pub const KERNEL: Self = Self::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
-    /// The memory management daemon is the sender of the message (standalone mode only).
-    /// NOTE: Aliases [`Self::NETWORKD`] — these are mutually exclusive deployment modes.
+    /// The memory management daemon is the sender of the message.
     pub const MEMD: Self = Self::new(ProcessIdentifier::MEMD, ThreadIdentifier::NONE);
-    /// The network daemon is the sender of the message (hosted mode only).
-    /// NOTE: Aliases [`Self::MEMD`] — these are mutually exclusive deployment modes.
+    /// Host network-service routing tag. The host consumes it before guest process dispatch.
     pub const NETWORKD: Self = Self::new(ProcessIdentifier::NETWORKD, ThreadIdentifier::NONE);
     /// The VFS daemon is the sender of the message.
     pub const VFSD: Self = Self::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE);
@@ -153,11 +151,9 @@ impl MessageReceiver {
 
     /// The kernel process is the receiver of the message.
     pub const KERNEL: Self = Self::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
-    /// The memory management daemon is the receiver of the message (standalone mode only).
-    /// NOTE: Aliases [`Self::NETWORKD`] — these are mutually exclusive deployment modes.
+    /// The memory management daemon is the receiver of the message.
     pub const MEMD: Self = Self::new(ProcessIdentifier::MEMD, ThreadIdentifier::NONE);
-    /// The network daemon is the receiver of the message (hosted mode only).
-    /// NOTE: Aliases [`Self::MEMD`] — these are mutually exclusive deployment modes.
+    /// Host network-service routing tag. The host consumes it before guest process dispatch.
     pub const NETWORKD: Self = Self::new(ProcessIdentifier::NETWORKD, ThreadIdentifier::NONE);
     /// The VFS daemon is the receiver of the message.
     pub const VFSD: Self = Self::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE);
@@ -509,7 +505,7 @@ impl VmBusMessage {
 ///
 /// # Description
 ///
-/// Header structure describing a contiguous data chunk transfer between UserVM and linuxd.
+/// Header structure describing a contiguous data chunk transfer between UserVM and its host.
 ///
 /// # Notes
 ///
@@ -680,7 +676,7 @@ impl HostBulkTransferHeader {
     }
 }
 
-/// Backwards-compatible name for the contiguous UserVM/linuxd bulk header.
+/// Backwards-compatible name for the contiguous UserVM/host bulk header.
 pub type DataChunkHeader = HostBulkTransferHeader;
 
 ///
@@ -691,9 +687,9 @@ pub type DataChunkHeader = HostBulkTransferHeader;
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuestSgBulkKind {
-    /// UserVM should gather guest memory and send it to linuxd.
+    /// UserVM should gather guest memory and send it to the host I/O backend.
     Push = 1,
-    /// UserVM should register guest memory as the destination for a later linuxd response.
+    /// UserVM should register guest memory as the destination for a later host response.
     Pull = 2,
 }
 

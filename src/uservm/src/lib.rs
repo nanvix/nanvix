@@ -6,8 +6,7 @@
 //!
 //! This crate wires together the asynchronous runtime, virtual machine monitor (VMM), and
 //! supporting worker threads that collectively emulate a user virtual machine. It exposes a public
-//! API consumed by the Linux daemon and control-plane components to spawn, supervise, and interact
-//! with UserVM instances.
+//! API used by standalone host components to spawn, supervise, and interact with UserVM instances.
 
 //==================================================================================================
 // Lint Configuration
@@ -50,8 +49,6 @@ pub mod counters;
 /// Library module for manipulating ELF binaries.
 pub mod elf;
 pub mod guest_profiler;
-#[cfg(target_os = "linux")]
-pub mod io_thread;
 pub mod memory_thread;
 pub mod orchestrator;
 pub mod pal;
@@ -153,20 +150,6 @@ use ::tokio::{
 ///
 /// # Description
 ///
-/// Timeout for connecting to System VM.
-///
-pub const SYSTEM_VM_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-
-///
-/// # Description
-///
-/// Timeout for connecting to control-plane.
-///
-pub const CONTROL_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-
-///
-/// # Description
-///
 /// Maximum number messages that can be queued in a channel.
 ///
 pub const CHANNEL_CAPACITY: usize = 1024;
@@ -257,7 +240,7 @@ pub struct UserVmArgs {
     pub stderr: Option<String>,
     /// Channel used to forward port-I/O writes (messages and data chunk transfers) from the guest.
     pub vcpu_thread_stdout_tx: Sender<IkcFrame>,
-    /// Channel providing transfers emitted by the Linux daemon destined for the guest.
+    /// Channel providing transfers emitted by the host I/O handler destined for the guest.
     pub memory_thread_data_rx: Receiver<IkcFrame>,
     /// Channel receiving control commands from the orchestrator's I/O subsystem.
     pub io_control_rx: Receiver<IoControlCommand>,
@@ -904,12 +887,13 @@ fn is_windows_named_pipe(path: &str) -> bool {
 ///
 /// # Description
 ///
-/// Builds an input callback that delivers messages from the Linux daemon to the virtual machine.
+/// Builds an input callback that delivers messages from the host I/O handler to the virtual
+/// machine.
 ///
 /// # Parameters
 ///
-/// - `input_queue` - Channel used to receive emulated port-I/O requests originating from the
-///   Linux daemon.
+/// - `input_queue` - Channel used to receive emulated port-I/O requests originating from the host
+///   I/O handler.
 /// - `counters` - Shared counters for tracking message flow across threads.
 ///
 /// # Returns
@@ -942,30 +926,16 @@ fn build_input_fn(
             Some(transfer) => {
                 match transfer {
                     IkcFrame::Message(mut msg) => {
-                        // Label: uservm::lib::vm_input::vm_exit()
-                        profiler::timestamp_message!(
-                            &mut msg.payload,
-                            mem::offset_of!(syscall::SystemCallMessage, payload)
-                                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                        );
-
                         on_message_received_from_memory_thread(&counters);
                         msg.message_type = MessageType::Ikc;
                         let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
                         let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
 
-                        // Label: uservm::lib::vm_input::vm_write_bytes()
-                        profiler::timestamp_message!(
-                            &mut msg.payload,
-                            mem::offset_of!(syscall::SystemCallMessage, payload)
-                                + mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                        );
-
                         locked_vm.write_bytes(data as u64, &msg.to_bytes())?;
                         locked_guest.consume_credit(&mut locked_vm)?;
                         ikc_pending.store(false, std::sync::atomic::Ordering::Release);
                     },
-                    IkcFrame::Bulk(mut bulk) => {
+                    IkcFrame::Bulk(bulk) => {
                         // Write bulk data directly into guest memory at the address specified
                         // by the pull request.
                         //
@@ -976,8 +946,6 @@ fn build_input_fn(
                         // because the kernel processes messages sequentially, but the
                         // invariant should be preserved if the design evolves.
                         on_message_received_from_memory_thread(&counters);
-                        // Label: uservm::lib::vm_input::vmexit()
-                        profiler::timestamp_message!(bulk.data_mut(), 0);
                         let mut locked_guest: MutexGuard<'_, Guest> = guest.blocking_lock();
                         let mut locked_vm: MutexGuard<'_, VirtualMemory> = vmem.blocking_lock();
 
@@ -999,8 +967,6 @@ fn build_input_fn(
                                 "input(): scattering {actual_len} bulk bytes to guest \
                                  (transfer_id={transfer_id})"
                             );
-                            // Label: uservm::lib::vm_input::vm_write_bytes()
-                            profiler::timestamp_message!(bulk.data_mut(), 0);
                             let mut copied: usize = 0;
                             for segment in &pending_pull.segments {
                                 if copied == actual_len {
@@ -1039,8 +1005,6 @@ fn build_input_fn(
                                 "input(): writing {actual_len} legacy bulk bytes to guest at \
                                  {dest_addr:#x}"
                             );
-                            // Label: uservm::lib::vm_input::vm_write_bytes()
-                            profiler::timestamp_message!(bulk.data_mut(), 0);
                             locked_vm.write_bytes(dest_addr, bulk.data())?;
                         }
 
@@ -1134,7 +1098,7 @@ fn output_fn(
                 vm.blocking_lock()
                     .read_bytes(envelope.message_addr() as u64, &mut bytes)?;
 
-                let mut message: Message = match Message::try_from_bytes(bytes) {
+                let message: Message = match Message::try_from_bytes(bytes) {
                     Ok(message) => message,
                     Err(err) => {
                         let reason: String = format!("failed to parse message: {err:?}");
@@ -1142,13 +1106,6 @@ fn output_fn(
                         anyhow::bail!(reason);
                     },
                 };
-
-                // Label: uservm::lib::vm_output::send()
-                profiler::timestamp_message!(
-                    &mut message.payload,
-                    std::mem::offset_of!(syscall::SystemCallMessage, payload)
-                        + std::mem::offset_of!(syscall::unistd::message::WriteRequest, buffer)
-                );
 
                 trace!("output(): forwarding message to system VM");
                 if let Err(e) = sink.send(IkcFrame::Message(message)) {
@@ -1179,9 +1136,6 @@ fn output_fn(
                 let mut data: Vec<u8> = vec![0u8; data_len];
                 trace!("output(): reading {data_len} bytes from guest memory at {data_addr:#x}");
                 vm.blocking_lock().read_bytes(data_addr, &mut data)?;
-
-                // Label: uservm::lib::vm_output::send()
-                profiler::timestamp_message!(&mut data, 0);
 
                 let bulk: DataChunk = DataChunk::new(header, data);
 
@@ -1222,9 +1176,6 @@ fn output_fn(
                                 offset += segment_len;
                             }
                         }
-
-                        // Label: uservm::lib::vm_output::send()
-                        profiler::timestamp_message!(&mut data, 0);
 
                         let header: HostBulkTransferHeader = HostBulkTransferHeader::new(
                             sg_bulk.source_pid,

@@ -13,7 +13,6 @@ log_directory = "logs"
 tmp_directory = "."
 ipv4_addr = "127.0.0.1"
 port_num = 9999
-hwloc_file_path = ""
 fatal = true
 toolchain_path = "toolchain"
 sysroot_path = "./sysroot"

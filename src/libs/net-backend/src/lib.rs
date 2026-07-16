@@ -27,8 +27,7 @@ pub use filter::{
 /// This struct encapsulates all platform-specific networking logic and provides a clean Rust API
 /// for socket operations. On Linux, it calls libc directly. On Windows, it uses the Winsock2 API.
 ///
-/// `NetBackend` is designed to be shared between `linuxd` and the future `networkd` daemon without
-/// code duplication.
+/// `NetBackend` centralizes host socket operations for the network daemon.
 pub struct NetBackend;
 
 impl NetBackend {

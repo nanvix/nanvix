@@ -124,7 +124,7 @@ impl Benchmark {
                     async move { while io_control_response_rx.recv().await.is_some() {} },
                 );
 
-            let (_io_thread_data_tx, memory_thread_data_rx) =
+            let (_io_handler_data_tx, memory_thread_data_rx) =
                 mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
 
             let counters: MessageCounters = MessageCounters::new();
@@ -210,7 +210,7 @@ impl Benchmark {
                     async move { while io_control_response_rx.recv().await.is_some() {} },
                 );
 
-            let (_io_thread_data_tx, memory_thread_data_rx) =
+            let (_io_handler_data_tx, memory_thread_data_rx) =
                 mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
 
             let counters: MessageCounters = MessageCounters::new();
@@ -372,7 +372,7 @@ impl Benchmark {
                     async move { while io_control_response_rx.recv().await.is_some() {} },
                 );
 
-            let (_io_thread_data_tx, memory_thread_data_rx) =
+            let (_io_handler_data_tx, memory_thread_data_rx) =
                 mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
 
             let counters: MessageCounters = MessageCounters::new();

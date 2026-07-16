@@ -29,7 +29,6 @@ cfg-if = { workspace = true }
 
 [features]
 default = ["panic"]
-standalone = ["syscall/standalone"]
 trace = ["nvx/trace", "nvx-crt0/trace"]
 debug = ["nvx/debug", "nvx-crt0/debug"]
 info = ["nvx/info", "nvx-crt0/info"]

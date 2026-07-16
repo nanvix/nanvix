@@ -34,39 +34,27 @@ use ::sysapi::{
 pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_t, Error> {
     ::syslog::trace!("lseek(): fd={:?}, offset={}, whence={}", fd, offset, whence);
 
-    // POSIX requires lseek on a pipe/FIFO/socket/stdio fd to return ESPIPE. In standalone mode,
-    // route by the descriptor's resolved backend.
+    // POSIX requires lseek on a pipe/FIFO/socket/stdio fd to return ESPIPE.
     let backend_fd: RawFileDescriptor = {
-        #[cfg(feature = "standalone")]
-        {
-            use crate::fdtable::{
-                resolve,
-                Route,
-            };
-            match resolve(fd) {
-                // VFS-backed descriptors fall through to the vfsd seek path below.
-                Some(res) if res.route == Route::Vfs => res.backend_fd,
-                // Seeking the console (stdin/stdout/stderr) is an illegal seek.
-                Some(res) if res.route == Route::Console => {
-                    ::syslog::warn!(
-                        "lseek(): illegal seek on stdio (fd={fd:?}, offset={offset}, \
-                         whence={whence})",
-                    );
-                    return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
-                },
-                // Sockets and unroutable descriptors are not seekable here.
-                _ => {
-                    ::syslog::warn!("lseek(): bad file descriptor fd={fd} in standalone mode");
-                    return Err(Error::new(
-                        ErrorCode::BadFile,
-                        "lseek: fd is not a VFS fd in standalone mode",
-                    ));
-                },
-            }
-        }
-        #[cfg(not(feature = "standalone"))]
-        {
-            fd
+        use crate::fdtable::{
+            resolve,
+            Route,
+        };
+        match resolve(fd) {
+            // VFS-backed descriptors fall through to the vfsd seek path below.
+            Some(res) if res.route == Route::Vfs => res.backend_fd,
+            // Seeking the console (stdin/stdout/stderr) is an illegal seek.
+            Some(res) if res.route == Route::Console => {
+                ::syslog::warn!(
+                    "lseek(): illegal seek on stdio (fd={fd:?}, offset={offset}, whence={whence})",
+                );
+                return Err(Error::new(ErrorCode::IllegalSeek, "illegal seek on stdio"));
+            },
+            // Sockets and unroutable descriptors are not seekable here.
+            _ => {
+                ::syslog::warn!("lseek(): bad file descriptor fd={fd}");
+                return Err(Error::new(ErrorCode::BadFile, "lseek: fd is not a VFS fd"));
+            },
         }
     };
 

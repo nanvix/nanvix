@@ -71,7 +71,7 @@ impl MemoryThread {
     ///
     /// # Parameters
     ///
-    /// - `data_rx`: Receives data messages from the I/O thread.
+    /// - `data_rx`: Receives data messages from the I/O handler.
     /// - `data_tx`: Sends data messages to the virtual machine's stdin.
     /// - `control_rx`: Receives control commands from the VMM.
     /// - `control_tx`: Sends control responses to the VMM.
@@ -135,25 +135,9 @@ impl MemoryThread {
                     msg = data_rx.recv() => {
                         match msg {
                             Some(transfer) => {
-                                // Apply profiler timestamp for both Message and Data chunk transfers.
-                                let mut stamped_transfer: IkcFrame = transfer;
-                                match stamped_transfer {
-                                    IkcFrame::Message(ref mut msg) => {
-                                        // Label: uservm::memory_thread::data_rx::recv()
-                                        profiler::timestamp_message!(&mut msg.payload,
-                                            std::mem::offset_of!(syscall::SystemCallMessage, payload)
-                                                + std::mem::offset_of!(syscall::unistd::message::ReadResponse, buffer)
-                                        );
-                                    },
-                                    IkcFrame::Bulk(ref mut bulk) => {
-                                        // Label: uservm::memory_thread::data_rx::recv()
-                                        profiler::timestamp_message!(bulk.data_mut(), 0);
-                                    },
-                                }
+                                on_message_received_from_io_handler(&counters);
 
-                                on_message_received_from_io_thread(&counters);
-
-                                if let Err(e) = data_tx.send(stamped_transfer).await {
+                                if let Err(e) = data_tx.send(transfer).await {
                                     error!("spawn(): failed to send transfer: {e}");
                                     continue;
                                 }
@@ -187,13 +171,13 @@ impl MemoryThread {
 ///
 /// # Description
 ///
-/// Handler to be called whenever a message is received from the I/O thread.
+/// Handler to be called whenever a message is received from the I/O handler.
 ///
 /// # Parameters
 ///
 /// - `counters` - Shared counters for tracking message flow across threads.
 ///
-fn on_message_received_from_io_thread(counters: &MessageCounters) {
+fn on_message_received_from_io_handler(counters: &MessageCounters) {
     counters.increment_mem_thread_messages_received();
 
     // Sanity check that no messages are lost.
@@ -206,15 +190,14 @@ fn on_message_received_from_io_thread(counters: &MessageCounters) {
         let cached_mem_thread_num_messages_received: usize =
             counters.get_mem_thread_messages_received();
 
-        let cached_io_thread_num_messages_received: usize =
-            counters.get_io_thread_messages_received();
+        let cached_io_handler_num_messages_sent: usize = counters.get_io_handler_messages_sent();
 
         debug_assert!(
-            cached_mem_thread_num_messages_received <= cached_io_thread_num_messages_received,
-            "memory thread has received more messages than the i/o thread (
+            cached_mem_thread_num_messages_received <= cached_io_handler_num_messages_sent,
+            "memory thread has received more messages than the I/O handler sent (
                                         {} > {})",
             cached_mem_thread_num_messages_received,
-            cached_io_thread_num_messages_received
+            cached_io_handler_num_messages_sent
         );
     }
 }
@@ -305,9 +288,9 @@ mod tests {
 
         // Send a message that should be forwarded.
         let original: Message = Message::default();
-        // Pre-increment the I/O counter to satisfy the debug_assert in
-        // on_message_received_from_io_thread (mem_received <= io_received).
-        counters.increment_io_thread_messages_received();
+        // Pre-increment the I/O counter to satisfy the debug assertion in
+        // on_message_received_from_io_handler (mem_received <= io_sent).
+        counters.increment_io_handler_messages_sent();
         io_tx
             .send(IkcFrame::Message(original.clone()))
             .await
@@ -400,9 +383,9 @@ mod tests {
             });
 
         let msg: Message = Message::default();
-        // Pre-increment the I/O counter to satisfy the debug_assert in
-        // on_message_received_from_io_thread (mem_received <= io_received).
-        counters.increment_io_thread_messages_received();
+        // Pre-increment the I/O counter to satisfy the debug assertion in
+        // on_message_received_from_io_handler (mem_received <= io_sent).
+        counters.increment_io_handler_messages_sent();
         io_tx
             .send(IkcFrame::Message(msg.clone()))
             .await

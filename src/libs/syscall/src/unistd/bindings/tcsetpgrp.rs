@@ -20,10 +20,9 @@ use ::syslog::trace_syscall;
 ///
 /// # Description
 ///
-/// Sets the foreground process group of the terminal referred to by `fd`. In standalone mode this
-/// is implemented through the `TIOCSPGRP` ioctl, which the process manager daemon answers as the
-/// owner of the controlling terminal's foreground group; in hosted modes it reports success without
-/// acting.
+/// Sets the foreground process group of the terminal referred to by `fd`. This is implemented
+/// through the `TIOCSPGRP` ioctl, which the process manager daemon answers as the owner of the
+/// controlling terminal's foreground group.
 ///
 /// # Parameters
 ///
@@ -45,30 +44,22 @@ pub extern "C" fn tcsetpgrp(fd: c_int, pgrp: pid_t) -> c_int {
         return -1;
     }
 
-    #[cfg(feature = "standalone")]
-    {
-        use ::sysapi::{
-            ffi::c_void,
-            sys_ioctl::TIOCSPGRP,
-        };
+    use ::sysapi::{
+        ffi::c_void,
+        sys_ioctl::TIOCSPGRP,
+    };
 
-        let mut arg: pid_t = pgrp;
-        let arg_ptr: *mut c_void = ::core::ptr::addr_of_mut!(arg).cast();
-        // SAFETY: `TIOCSPGRP` reads a single `pid_t` through `arg_ptr`, which points to `arg`.
-        match unsafe { crate::sys::ioctl::ioctl(fd, TIOCSPGRP, arg_ptr) } {
-            Ok(_) => 0,
-            Err(e) => {
-                // SAFETY: writing to the thread-local `errno` location is sound.
-                unsafe {
-                    *__errno_location() = e.code.get();
-                }
-                -1
-            },
-        }
-    }
-    #[cfg(not(feature = "standalone"))]
-    {
-        let _ = fd;
-        0
+    let mut arg: pid_t = pgrp;
+    let arg_ptr: *mut c_void = ::core::ptr::addr_of_mut!(arg).cast();
+    // SAFETY: `TIOCSPGRP` reads a single `pid_t` through `arg_ptr`, which points to `arg`.
+    match unsafe { crate::sys::ioctl::ioctl(fd, TIOCSPGRP, arg_ptr) } {
+        Ok(_) => 0,
+        Err(e) => {
+            // SAFETY: writing to the thread-local `errno` location is sound.
+            unsafe {
+                *__errno_location() = e.code.get();
+            }
+            -1
+        },
     }
 }

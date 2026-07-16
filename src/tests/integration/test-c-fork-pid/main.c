@@ -24,7 +24,7 @@
  * pid, so a child acting under the parent's identity fails those calls with
  * EACCES. This is what broke fork()+exec() of a fresh interpreter.
  *
- * What this program demonstrates (run in standalone mode)
+ * What this program demonstrates
  * -------------------------------------------------------
  *   PID-START          - the test starts.
  *   PARENT-PID-OK      - the parent obtained a non-zero pid.

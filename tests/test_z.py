@@ -192,11 +192,6 @@ class TestParseCli(unittest.TestCase):
         _, cfg = zmod.parse_cli(["build", "--", "TARGET=x86"])
         self.assertEqual(cfg.target, "x86")
 
-    def test_key_value_deployment_mode(self) -> None:
-        """DEPLOYMENT_MODE=standalone in make_args sets cfg.deployment_mode."""
-        _, cfg = zmod.parse_cli(["build", "--", "DEPLOYMENT_MODE=standalone"])
-        self.assertEqual(cfg.deployment_mode, "standalone")
-
     def test_key_value_log_level(self) -> None:
         """LOG_LEVEL=warn in make_args sets cfg.log_level."""
         _, cfg = zmod.parse_cli(["build", "--", "LOG_LEVEL=warn"])
@@ -226,11 +221,6 @@ class TestParseCli(unittest.TestCase):
         """WHP=yes in make_args enables cfg.whp."""
         _, cfg = zmod.parse_cli(["build", "--", "WHP=yes"])
         self.assertTrue(cfg.whp)
-
-    def test_key_value_timestamp_msg(self) -> None:
-        """TIMESTAMP_MSG=yes in make_args enables cfg.timestamp_msg."""
-        _, cfg = zmod.parse_cli(["build", "--", "TIMESTAMP_MSG=yes"])
-        self.assertTrue(cfg.timestamp_msg)
 
     def test_key_value_verbose(self) -> None:
         """VERBOSE=yes in make_args enables cfg.verbose."""
@@ -282,11 +272,6 @@ class TestParseCli(unittest.TestCase):
         """An unsupported TARGET value causes a fatal exit."""
         with patch("z.print_error"), self.assertRaises(SystemExit):
             zmod.parse_cli(["build", "--", "TARGET=arm"])
-
-    def test_invalid_deployment_mode_dies(self) -> None:
-        """An invalid DEPLOYMENT_MODE value causes a fatal exit."""
-        with patch("z.print_error"), self.assertRaises(SystemExit):
-            zmod.parse_cli(["build", "--", "DEPLOYMENT_MODE=invalid"])
 
     def test_invalid_log_level_dies(self) -> None:
         """An unrecognized LOG_LEVEL value causes a fatal exit."""
@@ -349,7 +334,6 @@ class TestBuildConfig(unittest.TestCase):
         self.assertEqual(cfg.target, zmod.DEFAULT_TARGET)
         self.assertFalse(cfg.release)
         self.assertFalse(cfg.profile)
-        self.assertEqual(cfg.deployment_mode, "")
         self.assertEqual(cfg.log_level, "")
         self.assertEqual(cfg.timeout, zmod.DEFAULT_TIMEOUT)
         self.assertFalse(cfg.profiler)
@@ -357,12 +341,6 @@ class TestBuildConfig(unittest.TestCase):
         self.assertEqual(cfg.make_args, [])
 
     # --- apply_platform_defaults on Linux ---
-
-    def test_linux_default_deployment_mode(self) -> None:
-        """On Linux, apply_platform_defaults fills in the Linux deployment mode."""
-        cfg = zmod.BuildConfig()
-        cfg.apply_platform_defaults(_linux_plat())
-        self.assertEqual(cfg.deployment_mode, zmod.DEFAULT_DEPLOYMENT_MODE_LINUX)
 
     def test_linux_default_log_level_debug(self) -> None:
         """On Linux in debug mode, the default log level is the debug-mode default."""
@@ -391,12 +369,6 @@ class TestBuildConfig(unittest.TestCase):
 
     # --- apply_platform_defaults on Windows ---
 
-    def test_windows_default_deployment_mode(self) -> None:
-        """On Windows, apply_platform_defaults fills in the Windows deployment mode."""
-        cfg = zmod.BuildConfig()
-        cfg.apply_platform_defaults(_windows_plat())
-        self.assertEqual(cfg.deployment_mode, zmod.DEFAULT_DEPLOYMENT_MODE_WINDOWS)
-
     def test_windows_default_toolchain_dir(self) -> None:
         """On Windows, the default toolchain directory is <repo>/toolchain."""
         plat = _windows_plat()
@@ -420,12 +392,6 @@ class TestBuildConfig(unittest.TestCase):
         self.assertTrue(cfg.profiler)
 
     # --- User-set values are preserved ---
-
-    def test_user_deployment_mode_preserved(self) -> None:
-        """A user-set deployment_mode is not overwritten by platform defaults."""
-        cfg = zmod.BuildConfig(deployment_mode="standalone")
-        cfg.apply_platform_defaults(_linux_plat())
-        self.assertEqual(cfg.deployment_mode, "standalone")
 
     def test_user_log_level_preserved(self) -> None:
         """A user-set log_level is not overwritten by platform defaults."""
@@ -510,24 +476,11 @@ class TestAssembleBuildMakeArgs(unittest.TestCase):
 
     # --- Windows-specific defaults ---
 
-    def test_windows_injects_deployment_mode_standalone(self) -> None:
-        """On Windows, DEPLOYMENT_MODE=standalone is auto-injected."""
-        cfg = zmod.BuildConfig(make_args=["all"])
-        injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
-        self.assertIn("DEPLOYMENT_MODE=standalone", injected)
-
     def test_windows_injects_whp_yes_for_microvm(self) -> None:
         """On Windows with machine=microvm, WHP=yes is auto-injected."""
         cfg = zmod.BuildConfig(machine="microvm", make_args=["all"])
         injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
         self.assertIn("WHP=yes", injected)
-
-    def test_windows_no_duplicate_deployment_mode(self) -> None:
-        """User-supplied DEPLOYMENT_MODE= should not be overridden."""
-        cfg = zmod.BuildConfig(make_args=["DEPLOYMENT_MODE=single-process"])
-        injected, user = zmod._assemble_build_make_args(_windows_plat(), cfg)
-        self.assertNotIn("DEPLOYMENT_MODE=standalone", injected)
-        self.assertIn("DEPLOYMENT_MODE=single-process", user)
 
     def test_windows_no_duplicate_whp(self) -> None:
         """User-supplied WHP= should not be overridden."""
@@ -537,12 +490,6 @@ class TestAssembleBuildMakeArgs(unittest.TestCase):
         self.assertIn("WHP=no", user)
 
     # --- Linux does not inject Windows defaults ---
-
-    def test_linux_no_deployment_mode_injection(self) -> None:
-        """On Linux, no DEPLOYMENT_MODE= is auto-injected into build args."""
-        cfg = zmod.BuildConfig(make_args=["all"])
-        injected, _ = zmod._assemble_build_make_args(_linux_plat(), cfg)
-        self.assertFalse(any(a.startswith("DEPLOYMENT_MODE=") for a in injected))
 
     def test_linux_no_whp_injection(self) -> None:
         """On Linux, WHP=yes is never auto-injected."""
@@ -1201,13 +1148,6 @@ class TestCmdHelp(unittest.TestCase):
 class TestParseMakeVar(unittest.TestCase):
     """Tests for _parse_make_var."""
 
-    def test_valid_deployment_modes(self) -> None:
-        """All values in VALID_DEPLOYMENT_MODES are accepted by _parse_make_var."""
-        for mode in zmod.VALID_DEPLOYMENT_MODES:
-            cfg = zmod.BuildConfig()
-            zmod._parse_make_var(cfg, "DEPLOYMENT_MODE", mode)
-            self.assertEqual(cfg.deployment_mode, mode)
-
     def test_valid_log_levels(self) -> None:
         """All values in VALID_LOG_LEVELS are accepted by _parse_make_var."""
         for level in zmod.VALID_LOG_LEVELS:
@@ -1245,14 +1185,6 @@ class TestParseMakeVar(unittest.TestCase):
         self.assertTrue(cfg.whp)
         zmod._parse_make_var(cfg, "WHP", "no")
         self.assertFalse(cfg.whp)
-
-    def test_timestamp_msg_yes_no(self) -> None:
-        """TIMESTAMP_MSG toggles cfg.timestamp_msg between True and False."""
-        cfg = zmod.BuildConfig()
-        zmod._parse_make_var(cfg, "TIMESTAMP_MSG", "yes")
-        self.assertTrue(cfg.timestamp_msg)
-        zmod._parse_make_var(cfg, "TIMESTAMP_MSG", "no")
-        self.assertFalse(cfg.timestamp_msg)
 
     def test_verbose_yes_no(self) -> None:
         """VERBOSE toggles cfg.verbose between True and False."""

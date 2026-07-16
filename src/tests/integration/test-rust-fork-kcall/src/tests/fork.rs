@@ -25,7 +25,6 @@
 //! The following aspects of the `fork()` design are intentionally out of scope here:
 //!
 //! - Reaping a child via `waitpid()` is covered separately, as `waitpid()` is a follow-up feature.
-//! - The non-standalone deployment gate is a compile-time concern.
 //! - Failure paths (such as resource exhaustion) are not reliably reproducible at runtime.
 
 //==================================================================================================

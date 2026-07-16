@@ -24,8 +24,6 @@
 //! - **Hardware Topology** (`hwloc`) - Hardware locality and topology information
 //! - **HTTP Communication** (`http`) - HTTP client and server functionality
 //! - **Registry** (`registry`) - Service registry for component discovery
-//! - **Sandbox** (`sandbox`) - Process sandboxing and isolation
-//! - **Sandbox Cache** (`sandbox_cache`) - Caching layer for sandboxed processes
 //! - **Terminal** (`terminal`) - Terminal and console interaction
 //! - **System Communication** (`syscomm`) - Inter-process communication primitives
 //! - **System Logging** (`log`) - Structured logging facilities
@@ -43,11 +41,6 @@
 //!
 //! **Warning:** This feature provides direct access to unsafe system interfaces and should only
 //! be used by trusted system components.
-//!
-//! #### `single-process`
-//!
-//! Enables single-process execution mode where all daemons run within a single process. This
-//! feature is useful for development, testing, and resource-constrained environments.
 //!
 //! ## Architecture
 //!
@@ -68,8 +61,6 @@
 //! - [`hwloc`] - Hardware topology
 //! - [`http`] - HTTP communication
 //! - [`registry`] - Service registry
-//! - [`sandbox`] - Process sandboxing
-//! - [`sandbox_cache`] - Sandbox caching
 //! - [`terminal`] - Terminal interaction
 //! - [`syscomm`] - System communication
 //! - [`log`] - System logging
@@ -81,9 +72,6 @@
 pub use config;
 pub use hwloc;
 pub use nanvix_http as http;
-pub use nanvix_sandbox as sandbox;
-#[cfg(feature = "single-process")]
-pub use nanvix_sandbox::simple_cache as sandbox_cache;
 pub use nanvix_sandbox_config as sandbox_config;
 pub use nanvix_terminal as terminal;
 pub use syscomm;

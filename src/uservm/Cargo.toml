@@ -23,7 +23,6 @@ arch = { workspace = true, features = ["cpuid", "msr"] }
 serde_cbor = { workspace = true }
 cfg-if = { workspace = true }
 config = { workspace = true }
-control-plane-api = { workspace = true }
 elf = { workspace = true, features = ["std"] }
 gdbstub = { workspace = true, optional = true }
 gdbstub_arch = { workspace = true, optional = true }
@@ -40,16 +39,15 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"], optional = true }
 static_assert = { workspace = true }
 sys = { workspace = true, features = ["std"] }
-syscall = { workspace = true }
+syscall = { workspace = true, default-features = false }
 syslog = { workspace = true, features = ["std"] }
 tokio = { workspace = true, features = ["full"] }
+user-vm-api = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 kvm-bindings = { workspace = true, features = ["fam-wrappers", "serde"] }
 kvm-ioctls = { workspace = true }
 libc = { workspace = true }
-syscomm = { workspace = true }
-user-vm-api = { workspace = true }
 vmm-sys-util = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -62,7 +60,6 @@ microvm = ["config/microvm"]
 whp = ["microvm", "config/whp"]
 # Enables fine-grained time profiling.
 profile-time = ["dep:serde_json"]
-timestamp-messages = ["profiler/timestamp-messages"]
 # Enables nightly performance optimizations that trade defensive guarantees for
 # speed. Enabled automatically for release builds (RELEASE=yes). Currently this
 # skips zero-filling the BSS region of loaded ELF segments, relying on the VMM

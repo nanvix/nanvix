@@ -1,8 +1,8 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-# Host rlibs that depend on uservm and require machine + deployment features.
-USERVM_DEPENDENT_RLIBS := nanvix nanvix-sandbox nanvix-http nanvix-terminal
+# Host rlibs that depend on uservm and require machine features.
+USERVM_DEPENDENT_RLIBS := nanvix nanvix-http nanvix-terminal
 
 # Machine-specific feature flags for host rlibs that depend on uservm.
 MACHINE_FEATURES :=
@@ -10,17 +10,11 @@ MACHINE_FEATURES += $(if $(filter microvm,$(MACHINE)),microvm,)
 MACHINE_FEATURES += $(if $(filter yes,$(WHP)),whp,)
 MACHINE_FEATURES := $(strip $(MACHINE_FEATURES))
 
-# Deployment-mode feature flags for host rlibs that depend on uservm.
-DEPLOYMENT_FEATURES :=
-DEPLOYMENT_FEATURES += $(if $(filter standalone,$(DEPLOYMENT_MODE)),standalone,)
-DEPLOYMENT_FEATURES += $(if $(filter single-process,$(DEPLOYMENT_MODE)),single-process,)
-DEPLOYMENT_FEATURES := $(strip $(DEPLOYMENT_FEATURES))
-
-ALL_HOST_RLIB_FEATURES = $(strip $(MACHINE_FEATURES) $(DEPLOYMENT_FEATURES))
+ALL_HOST_RLIB_FEATURES = $(strip $(MACHINE_FEATURES))
 ALL_HOST_RLIB_CARGO_FEATURES = $(if $(ALL_HOST_RLIB_FEATURES),--features "$(ALL_HOST_RLIB_FEATURES)",)
 
 # Resolve Cargo features for a given host rlib:
-#  - Crates in USERVM_DEPENDENT_RLIBS get all deployment + machine features.
+#  - Crates in USERVM_DEPENDENT_RLIBS get machine features.
 #  - All other crates get no extra features.
 HOST_RLIBS_CARGO_FEATURES = $(if $(filter $(1),$(USERVM_DEPENDENT_RLIBS)),$(ALL_HOST_RLIB_CARGO_FEATURES),)
 
@@ -49,7 +43,7 @@ $(foreach target,$(ALL_HOST_RUST_LIBS),$(eval $(call HOST_RLIB_RULES,$(target)))
 
 # Batched check: group host rlibs by feature set.
 # - Plain: no extra features.
-# - Uservm-dependent: machine + deployment features.
+# - Uservm-dependent: machine features.
 _HOST_RLIBS_PLAIN := $(filter-out $(USERVM_DEPENDENT_RLIBS),$(ALL_HOST_RUST_LIBS))
 _HOST_RLIBS_USERVM := $(filter $(USERVM_DEPENDENT_RLIBS),$(ALL_HOST_RUST_LIBS))
 

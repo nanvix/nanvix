@@ -65,18 +65,11 @@ pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
 
                     // `networkd` created the accepted endpoint (the remote fd); `vfsd` allocates the
                     // application-visible flat descriptor that routes to it.
-                    #[cfg(feature = "standalone")]
-                    {
-                        if remote_fd < 0 {
-                            Ok((remote_fd, sockaddr))
-                        } else {
-                            let fd: c_int = super::register_socket_slot(remote_fd)?;
-                            Ok((fd, sockaddr))
-                        }
-                    }
-                    #[cfg(not(feature = "standalone"))]
-                    {
+                    if remote_fd < 0 {
                         Ok((remote_fd, sockaddr))
+                    } else {
+                        let fd: c_int = super::register_socket_slot(remote_fd)?;
+                        Ok((fd, sockaddr))
                     }
                 },
                 // Response was not successfully parsed.

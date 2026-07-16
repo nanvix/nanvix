@@ -29,41 +29,18 @@ use ::sys::{
 pub fn pipe() -> Result<[i32; 2], Error> {
     ::syslog::trace!("pipe()");
 
-    // In standalone mode, route the request to the guest-side vfsd daemon.
-    #[cfg(feature = "standalone")]
-    {
-        pipe_vfsd()
-    }
-
-    // Otherwise, forward to linuxd via IKC.
-    #[cfg(not(feature = "standalone"))]
-    pipe_linuxd()
+    pipe_vfsd()
 }
 
 /// Sends a `pipe` request to vfsd via IPC and parses the response.
 ///
 /// Mirrors the short-syscall convention used by `close`: send the request, then receive the reply.
 /// vfsd allocates the shared pipe buffer and the two descriptors and returns them.
-#[cfg(feature = "standalone")]
 fn pipe_vfsd() -> Result<[i32; 2], Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it to vfsd over local IPC.
     let request: Message = PipeRequest::build(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
-
-    // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
-    parse_pipe_response(response)
-}
-
-/// Forwards a `pipe` request to linuxd via IPC.
-#[cfg(not(feature = "standalone"))]
-fn pipe_linuxd() -> Result<[i32; 2], Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
-
-    // Build request and send it.
-    let request: Message = PipeRequest::build(tid, crate::LINUXD, ::sys::ipc::MessageType::Ikc);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
@@ -96,29 +73,21 @@ fn parse_pipe_response(response: Message) -> Result<[i32; 2], Error> {
 
                     // Seed the resolution cache so both pipe ends resolve from the cache rather than
                     // by number. They are vfsd-served descriptors carrying the table generation they
-                    // were allocated at. (Hosted pipes report epoch 0 and are not cached.)
-                    #[cfg(feature = "standalone")]
-                    {
-                        // `PipeResponse` is `#[repr(C, packed)]`, so read `epoch` through a raw
-                        // pointer to avoid forming an unaligned reference.
-                        let epoch: u64 =
-                            unsafe { ::core::ptr::addr_of!(response.epoch).read_unaligned() };
-                        if read_fd >= 0 {
-                            crate::fdtable::record(
-                                read_fd,
-                                crate::fdtable::Route::Vfs,
-                                read_fd,
-                                epoch,
-                            );
-                        }
-                        if write_fd >= 0 {
-                            crate::fdtable::record(
-                                write_fd,
-                                crate::fdtable::Route::Vfs,
-                                write_fd,
-                                epoch,
-                            );
-                        }
+                    // were allocated at.
+                    // `PipeResponse` is `#[repr(C, packed)]`, so read `epoch` through a raw
+                    // pointer to avoid forming an unaligned reference.
+                    let epoch: u64 =
+                        unsafe { ::core::ptr::addr_of!(response.epoch).read_unaligned() };
+                    if read_fd >= 0 {
+                        crate::fdtable::record(read_fd, crate::fdtable::Route::Vfs, read_fd, epoch);
+                    }
+                    if write_fd >= 0 {
+                        crate::fdtable::record(
+                            write_fd,
+                            crate::fdtable::Route::Vfs,
+                            write_fd,
+                            epoch,
+                        );
                     }
 
                     Ok([read_fd, write_fd])

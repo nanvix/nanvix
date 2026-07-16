@@ -5,15 +5,14 @@
 // Imports
 //==================================================================================================
 
-use crate::errno::__errno_location;
-#[cfg(feature = "standalone")]
-use crate::sys::socket::{
-    self,
-    SocketAddr,
+use crate::{
+    errno::__errno_location,
+    sys::socket::{
+        self,
+        SocketAddr,
+    },
 };
-#[cfg(feature = "standalone")]
 use ::alloc::vec::Vec;
-#[cfg(feature = "standalone")]
 use ::core::{
     mem,
     slice,
@@ -21,14 +20,11 @@ use ::core::{
 use ::sys::error::ErrorCode;
 use ::sysapi::{
     ffi::c_int,
+    sys_socket::sockaddr,
     sys_types::{
         c_ssize_t,
         msghdr,
     },
-};
-#[cfg(feature = "standalone")]
-use ::sysapi::{
-    sys_socket::sockaddr,
     sys_uio::iovec,
 };
 use ::syslog::trace_syscall;
@@ -80,7 +76,6 @@ use ::syslog::trace_syscall;
 #[unsafe(no_mangle)]
 #[trace_syscall]
 pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int) -> c_ssize_t {
-    #[cfg(feature = "standalone")]
     {
         // Check if `msg` is valid.
         if msg.is_null() {
@@ -206,16 +201,5 @@ pub unsafe extern "C" fn sendmsg(sockfd: c_int, msg: *const msghdr, flags: c_int
                 -1
             },
         }
-    }
-
-    // TODO: https://github.com/nanvix/nanvix/issues/599.
-    #[cfg(not(feature = "standalone"))]
-    {
-        let _ = (sockfd, msg, flags);
-        ::syslog::debug!("sendmsg(): not implemented");
-        unsafe {
-            *__errno_location() = ErrorCode::InvalidSysCall.get();
-        }
-        -1
     }
 }

@@ -3,7 +3,7 @@
 
 [package]
 name = "nanvix-shim-core"
-description = "Core abstractions for the Nanvix containerd shim (ExecutionMode trait, config, state)"
+description = "Core abstractions for the Nanvix containerd shim runtime"
 version.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -19,7 +19,6 @@ log = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true, features = ["std"] }
 toml = { workspace = true, features = ["parse"] }
-thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

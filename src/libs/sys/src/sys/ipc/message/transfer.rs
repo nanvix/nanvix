@@ -17,7 +17,7 @@ use crate::ipc::{
 ///
 /// # Description
 ///
-/// Represents a contiguous bulk transfer between UserVM and linuxd. This structure pairs the
+/// Represents a contiguous bulk transfer between UserVM and its host. This structure pairs the
 /// fixed-size [`DataChunkHeader`] with a variable-length data buffer that holds the actual payload
 /// bytes.
 ///

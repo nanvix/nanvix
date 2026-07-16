@@ -798,7 +798,7 @@ impl ProcessDaemon {
 
         // POSIX `kill()` overloads the sign of the target pid to select a process group: a positive
         // pid names a single process, while `0`, `-1`, and `< -1` name the caller's group, every
-        // process, and a specific group respectively. The single-process path is unchanged; the
+        // process, and a specific group respectively. The single-target path is unchanged; the
         // group selectors fan the signal out across every matching member.
         let raw_target: i32 = target.into();
         let error: i32 = if raw_target > 0 {
@@ -1138,7 +1138,7 @@ impl ProcessDaemon {
 
     /// Implements `tcgetpgrp()`: returns the foreground process group of the controlling terminal.
     /// When no foreground group has been established, the caller's own group is reported, matching
-    /// the single-process default in which the caller is the foreground process.
+    /// the default in which the caller is the foreground process.
     fn job_control_tcgetpgrp(&self, caller: ProcessIdentifier) -> Result<ProcessIdentifier, Error> {
         if let Some(pgrp) = self.foreground_pgrp {
             return Ok(pgrp);

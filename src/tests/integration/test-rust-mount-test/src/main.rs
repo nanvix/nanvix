@@ -10,7 +10,7 @@
 //! 2. Runs comprehensive file and filesystem tests over `/mnt`.
 //! 3. Unmounts and verifies mount lifecycle invariants.
 //!
-//! This test is valid only for standalone mode (uses `-mount <host-dir>` feature).
+//! This test uses the `-mount <host-dir>` feature.
 //! Exit code 0 indicates all checks passed.
 
 //==================================================================================================

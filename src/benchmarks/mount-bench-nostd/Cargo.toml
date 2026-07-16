@@ -32,7 +32,6 @@ mkramfs = { workspace = true }
 
 [features]
 default = ["panic"]
-standalone = ["syscall/standalone"]
 trace = ["nvx/trace", "syscall/trace", "syslog/trace", "nvx-crt0/trace"]
 debug = ["nvx/debug", "syscall/debug", "syslog/debug", "nvx-crt0/debug"]
 info = ["nvx/info", "syscall/info", "syslog/info", "nvx-crt0/info"]

@@ -61,10 +61,10 @@ OCI Image
 
 The `/initrd/` and `/ramfs/` directories serve distinct roles in Nanvix's execution model:
 
-| Directory | Purpose | Maps to nanvixd flag |
-|-----------|---------|---------------------|
-| `/initrd/` | Application binary (the program to execute) | `-- <app.elf>` |
-| `/ramfs/` | Filesystem contents (libs, data, config) | `-ramfs <generated.img>` |
+| Directory  | Purpose                                     | Maps to nanvixd flag     |
+| ---------- | ------------------------------------------- | ------------------------ |
+| `/initrd/` | Application binary (the program to execute) | `-- <app.elf>`           |
+| `/ramfs/`  | Filesystem contents (libs, data, config)    | `-ramfs <generated.img>` |
 
 This separation is important because:
 - The initrd binary is passed directly to the VM as the entry point
@@ -124,13 +124,12 @@ Pulling `my-python-app:v2` on a machine that already has `v1` downloads only Lay
 
 ## Annotation Reference
 
-| Annotation | Required | Description |
-|------------|----------|-------------|
-| `com.nanvix.os` | Yes | Target OS (always `"nanvix"`) |
-| `com.nanvix.arch` | Yes | Target architecture (`"x86"`) |
-| `com.nanvix.initrd.path` | Yes | Path to the application binary within the image |
-| `com.nanvix.ramfs.root` | No | Path to the ramfs directory. If absent, no ramfs is attached. |
-| `com.nanvix.initrd.args` | No | Arguments passed to the application (space-separated) |
-| `com.nanvix.initrd.env` | No | Environment variables (`"KEY1=val1 KEY2=val2"`) |
-| `com.nanvix.execution-mode` | No | Execution mode override (`"standalone"`). Uses host default if absent. |
-| `com.nanvix.version` | No | Nanvix version compatibility hint |
+| Annotation               | Required | Description                                                   |
+| ------------------------ | -------- | ------------------------------------------------------------- |
+| `com.nanvix.os`          | Yes      | Target OS (always `"nanvix"`)                                 |
+| `com.nanvix.arch`        | Yes      | Target architecture (`"x86"`)                                 |
+| `com.nanvix.initrd.path` | Yes      | Path to the application binary within the image               |
+| `com.nanvix.ramfs.root`  | No       | Path to the ramfs directory. If absent, no ramfs is attached. |
+| `com.nanvix.initrd.args` | No       | Arguments passed to the application (space-separated)         |
+| `com.nanvix.initrd.env`  | No       | Environment variables (`"KEY1=val1 KEY2=val2"`)               |
+| `com.nanvix.version`     | No       | Nanvix version compatibility hint                             |

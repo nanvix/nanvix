@@ -42,28 +42,18 @@ use sysapi::sys_types::mode_t;
 pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     ::syslog::trace!("fchmod(): fd={:?}, mode={:o}", fd, mode);
 
-    // In standalone mode, only VFS-backed descriptors are routable here.
+    // Only VFS-backed descriptors are routable here.
     let backend_fd: RawFileDescriptor = {
-        #[cfg(feature = "standalone")]
-        {
-            use crate::fdtable::{
-                resolve,
-                Route,
-            };
-            match resolve(fd) {
-                Some(res) if res.route == Route::Vfs => res.backend_fd,
-                _ => {
-                    ::syslog::warn!("fchmod(): bad file descriptor fd={fd} in standalone mode");
-                    return Err(Error::new(
-                        ErrorCode::BadFile,
-                        "fchmod: fd is not a VFS fd in standalone mode",
-                    ));
-                },
-            }
-        }
-        #[cfg(not(feature = "standalone"))]
-        {
-            fd
+        use crate::fdtable::{
+            resolve,
+            Route,
+        };
+        match resolve(fd) {
+            Some(res) if res.route == Route::Vfs => res.backend_fd,
+            _ => {
+                ::syslog::warn!("fchmod(): bad file descriptor fd={fd}");
+                return Err(Error::new(ErrorCode::BadFile, "fchmod: fd is not a VFS fd"));
+            },
         }
     };
 

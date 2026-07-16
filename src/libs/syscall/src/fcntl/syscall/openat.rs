@@ -96,7 +96,6 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
                     // Seed the resolution cache with the descriptor vfsd just handed back, stamped
                     // with the table generation vfsd reported, so later descriptor syscalls resolve
                     // it from the cache instead of re-deriving it from the number.
-                    #[cfg(feature = "standalone")]
                     if fd >= 0 {
                         // `OpenAtResponse` is `#[repr(C, packed)]`, so `epoch` is not guaranteed to
                         // be aligned. Read it through a raw pointer to avoid forming an unaligned

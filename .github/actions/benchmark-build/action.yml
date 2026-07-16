@@ -2,27 +2,20 @@
 # Licensed under the MIT License.
 
 name: "Benchmark Build"
-description: "Build Nanvix for benchmarking with optional TIMESTAMP_MSG flag"
+description: "Build Nanvix for benchmarking"
 
 inputs:
   machine-type:
     description: "Target machine type"
     required: true
     default: "microvm"
-  timestamp-msg:
-    description: "Enable TIMESTAMP_MSG for echo-breakdown benchmarks (yes/no)"
-    required: false
-    default: "no"
-
 runs:
   using: "composite"
   steps:
-    - name: "Build (${{ inputs.timestamp-msg == 'yes' && 'Echo-Breakdown' ||
-        'Standard' }})"
+    - name: "Build"
       shell: bash
       env:
         MACHINE_TYPE: ${{ inputs.machine-type }}
-        TIMESTAMP_MSG_FLAG: ${{ inputs.timestamp-msg == 'yes' && 'TIMESTAMP_MSG=yes' || '' }}
       run: |
         ./z build \
           -- \
@@ -32,6 +25,4 @@ runs:
           LOG_LEVEL=panic \
           VERBOSE=yes \
           RELEASE=yes \
-          ${SCCACHE:+"SCCACHE=${SCCACHE}"} \
-          DEPLOYMENT_MODE=single-process \
-          ${TIMESTAMP_MSG_FLAG}
+          ${SCCACHE:+"SCCACHE=${SCCACHE}"}

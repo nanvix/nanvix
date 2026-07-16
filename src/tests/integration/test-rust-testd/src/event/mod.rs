@@ -164,10 +164,9 @@ fn test_unsubscribe_without_capability() -> bool {
 ///
 /// Attempts to subscribe to a scheduling event that is already owned by the process manager daemon.
 ///
-/// In the standalone deployment, `procd` is always spawned and subscribes to
-/// [`SchedulingEvent::ProcessTermination`] for its entire lifetime. Because the kernel owns
-/// scheduling events as a single, class-wide ownership (one owner for all scheduling events), any
-/// other process that holds the required capability must be rejected with
+/// `procd` subscribes to [`SchedulingEvent::ProcessTermination`] for its entire lifetime. Because
+/// the kernel owns scheduling events as a single, class-wide ownership (one owner for all
+/// scheduling events), any other process that holds the required capability must be rejected with
 /// [`ErrorCode::ResourceBusy`] when it attempts to register for the same event.
 ///
 /// # Returns
