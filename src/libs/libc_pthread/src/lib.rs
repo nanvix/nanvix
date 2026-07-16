@@ -913,9 +913,10 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_attr_setschedparam(): not supported, failing");
-    ErrorCode::OperationNotSupported.get()
+    // Store the scheduling parameters.
+    (*attr).schedparam = *param;
+
+    0
 }
 
 //==================================================================================================

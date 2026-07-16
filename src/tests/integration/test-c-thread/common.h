@@ -45,6 +45,9 @@ extern void test_pthread_attr_init_destroy(void);
 // Tests if the detach state attribute can be set and retrieved.
 extern void test_pthread_attr_setdetachstate(void);
 
+// Tests if scheduling parameters can be set and retrieved.
+extern void test_pthread_attr_setschedparam(void);
+
 // Tests if the mutex type attribute can be set and retrieved.
 extern void test_pthread_mutexattr_settype(void);
 
