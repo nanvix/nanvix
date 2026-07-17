@@ -22,6 +22,7 @@
 
 use crate::{
     fat32_backend,
+    filesystem,
     line_discipline::{
         ConsoleReadOutcome,
         LineDiscipline,
@@ -1019,7 +1020,7 @@ pub fn vfs_current_generation() -> u64 {
 
 /// Returns `true` if the given path is handled by the VFS.
 pub fn is_vfs_path(path: &str) -> bool {
-    fat32_backend::exists(path)
+    fat32_backend::exists(&current_cwd(), path)
 }
 
 /// Resolves a flat descriptor to its backend route and the descriptor that backend expects.
@@ -1086,7 +1087,10 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
 
     // Relative path with AT_FDCWD: resolve against VFS cwd.
     if dirfd == AT_FDCWD {
-        let cwd: String = crate::cwd().ok()?;
+        if !crate::state::is_initialized() {
+            return None;
+        }
+        let cwd: String = current_cwd();
         return if cwd.ends_with('/') {
             Some(alloc::format!("{}{}", cwd, path))
         } else {
@@ -1118,17 +1122,18 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
 
 /// Opens a file through the VFS and allocates a system-wide FD.
 pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
+    let cwd: String = current_cwd();
     // If O_DIRECTORY is set, verify the path is a directory before opening.
     if flags & file_creation_flags::O_DIRECTORY != 0 {
-        let info: VfsStat = fat32_backend::stat(path)?;
+        let info: VfsStat = fat32_backend::stat(&cwd, path)?;
         if !info.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
-        let normalized: String = crate::normalize(path)?;
+        let normalized: String = crate::filesystem::normalize(&cwd, path)?;
         let handle: VfsFileHandle = VfsFileHandle::Directory(DirectoryHandle::new(normalized));
         return alloc_fd(handle);
     }
-    let handle: VfsFileHandle = fat32_backend::open(path, flags)?;
+    let handle: VfsFileHandle = fat32_backend::open(&cwd, path, flags)?;
     alloc_fd(handle)
 }
 
@@ -1514,7 +1519,7 @@ pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
 
 /// Gets file status for a path through the VFS.
 pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
-    let info: VfsStat = fat32_backend::stat(path)?;
+    let info: VfsStat = fat32_backend::stat(&current_cwd(), path)?;
 
     // Zero-initialize the stat buffer.
     unsafe {
@@ -1549,17 +1554,17 @@ pub fn vfs_fstatat(
 ///
 /// Both paths must be on the same VFS mount.
 pub fn vfs_rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
-    crate::rename(old_path, new_path)
+    filesystem::rename(&current_cwd(), old_path, new_path)
 }
 
 /// Deletes a file through the VFS.
 pub fn vfs_unlink(path: &str) -> Result<(), Fat32Error> {
-    crate::unlink(path)
+    filesystem::unlink(&current_cwd(), path)
 }
 
 /// Creates a directory through the VFS.
 pub fn vfs_mkdir(path: &str) -> Result<(), Fat32Error> {
-    crate::mkdir(path)
+    filesystem::mkdir(&current_cwd(), path)
 }
 
 /// Creates a directory relative to a directory file descriptor through the VFS.
@@ -1579,12 +1584,15 @@ pub fn vfs_mkdirat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
 
 /// Removes an empty directory through the VFS.
 pub fn vfs_rmdir(path: &str) -> Result<(), Fat32Error> {
-    crate::rmdir(path)
+    filesystem::rmdir(&current_cwd(), path)
 }
 
 /// Changes the VFS current working directory.
 pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
-    crate::chdir(path)
+    let cwd: String = current_cwd();
+    let normalized: String = filesystem::change_directory(&cwd, path)?;
+    set_current_cwd(normalized);
+    Ok(())
 }
 
 /// Changes the current working directory to the directory referenced by a VFS FD.
@@ -1601,19 +1609,22 @@ pub fn vfs_fchdir(fd: c_int) -> Result<(), Fat32Error> {
             _ => return Err(Fat32Error::NotADirectory),
         }
     };
-    crate::chdir(&path)
+    vfs_chdir(&path)
 }
 
 /// Gets the VFS current working directory.
 pub fn vfs_getcwd() -> Result<alloc::string::String, Fat32Error> {
-    crate::cwd()
+    if !crate::state::is_initialized() {
+        return Err(Fat32Error::NotInitialized);
+    }
+    Ok(current_cwd())
 }
 
 /// Lists directory contents through the VFS.
 ///
 /// Returns a vector of directory entries.
-pub fn vfs_readdir(path: &str) -> Result<alloc::vec::Vec<crate::DirEntry>, Fat32Error> {
-    crate::read_dir(path)
+pub fn vfs_readdir(path: &str) -> Result<alloc::vec::Vec<filesystem::DirEntry>, Fat32Error> {
+    filesystem::read_dir(&current_cwd(), path)
 }
 
 /// Truncates a VFS file descriptor to the given length.
@@ -1908,7 +1919,7 @@ pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat3
 /// FAT32 does not support POSIX permission bits, so the mode is accepted
 /// but silently ignored. Returns `Err` if the path does not exist.
 pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), Fat32Error> {
-    crate::stat(path).map(|_| ())
+    filesystem::stat(&current_cwd(), path).map(|_| ())
 }
 
 /// Checks file accessibility through the VFS.
@@ -1916,7 +1927,7 @@ pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), F
 /// Returns `Ok(())` if the path exists, `Err` otherwise.
 /// FAT32 does not have UNIX permissions, so only existence is checked.
 pub fn vfs_access(path: &str) -> Result<(), Fat32Error> {
-    crate::stat(path).map(|_| ())
+    filesystem::stat(&current_cwd(), path).map(|_| ())
 }
 
 /// Checks the accessibility of a file relative to a directory file descriptor.
@@ -1994,7 +2005,7 @@ pub fn vfs_getdents(
         _ => return Err(Fat32Error::InvalidArgument),
     };
 
-    let entries: Vec<crate::DirEntry> = dir_handle.read_entries(count)?;
+    let entries: Vec<filesystem::DirEntry> = dir_handle.read_entries(count)?;
 
     // FAT32 has no real inodes; use synthetic 1-based indices.
     let mut result: Vec<posix_dent> = Vec::new();
@@ -2047,7 +2058,7 @@ pub fn vfs_renameat(
         vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
     let new_resolved: String =
         vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
-    crate::rename(&old_resolved, &new_resolved)
+    filesystem::rename(&current_cwd(), &old_resolved, &new_resolved)
 }
 
 /// Unlinks a file or removes a directory relative to a directory file descriptor through the VFS.
@@ -2070,9 +2081,9 @@ pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32E
     use ::sysapi::fcntl::atflags::AT_REMOVEDIR;
     let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     if flags & AT_REMOVEDIR != 0 {
-        crate::rmdir(&resolved)
+        filesystem::rmdir(&current_cwd(), &resolved)
     } else {
-        crate::unlink(&resolved)
+        filesystem::unlink(&current_cwd(), &resolved)
     }
 }
 
@@ -2144,7 +2155,7 @@ pub fn vfs_fchmodat(
 ) -> Result<(), Fat32Error> {
     let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    crate::stat(&resolved).map(|_| ())
+    filesystem::stat(&current_cwd(), &resolved).map(|_| ())
 }
 
 /// Changes the owner and group of a file relative to a directory file descriptor through the VFS.
@@ -2173,7 +2184,7 @@ pub fn vfs_fchownat(
 ) -> Result<(), Fat32Error> {
     let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    crate::stat(&resolved).map(|_| ())
+    filesystem::stat(&current_cwd(), &resolved).map(|_| ())
 }
 
 /// Sets file access and modification times through the VFS.
@@ -2205,7 +2216,7 @@ pub fn vfs_utimensat(
     }
     let path: String = vfs_resolve_path(dirfd, pathname).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    crate::stat(&path).map(|_| ())
+    filesystem::stat(&current_cwd(), &path).map(|_| ())
 }
 
 //==================================================================================================

@@ -15,8 +15,8 @@ use super::{
     SocketHandle,
 };
 use crate::{
+    filesystem::File,
     pipe::PipeEnd,
-    File,
 };
 use ::fat32::Fat32Error;
 use ::sysapi::{

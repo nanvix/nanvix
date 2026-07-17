@@ -7,7 +7,10 @@
 // Imports
 //==================================================================================================
 
-use crate::DirEntry;
+use crate::filesystem::{
+    self,
+    DirEntry,
+};
 use ::alloc::{
     string::String,
     vec::Vec,
@@ -57,7 +60,7 @@ impl DirectoryHandle {
     /// up to `count` entries per invocation.
     pub fn read_entries(&mut self, count: usize) -> Result<Vec<DirEntry>, Fat32Error> {
         if self.entries.is_none() {
-            self.entries = Some(crate::read_dir(&self.path)?);
+            self.entries = Some(filesystem::read_dir("/", &self.path)?);
         }
         let all: &[DirEntry] = self.entries.as_ref().unwrap();
         let remaining: &[DirEntry] = if self.cursor < all.len() {
