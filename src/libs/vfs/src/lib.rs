@@ -83,9 +83,6 @@ pub mod line_discipline;
 /// Mount table and path resolution.
 pub mod mount;
 
-/// Path-resolution cache used by the mount table.
-mod path_cache;
-
 /// In-memory pipe buffers for POSIX unnamed pipes.
 pub mod pipe;
 
