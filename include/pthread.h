@@ -104,6 +104,7 @@ extern int pthread_equal(pthread_t thread1, pthread_t thread2);
 extern int pthread_attr_init(pthread_attr_t *attr);
 extern int pthread_attr_destroy(pthread_attr_t *attr);
 extern int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate);
+extern int pthread_attr_getguardsize(const pthread_attr_t *attr, size_t *guardsize);
 extern int pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate);
 extern int pthread_attr_getschedparam(const pthread_attr_t *attr, struct sched_param *param);
 extern int pthread_attr_setschedparam(pthread_attr_t *attr, const struct sched_param *param);

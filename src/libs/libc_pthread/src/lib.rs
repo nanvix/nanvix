@@ -161,10 +161,10 @@ pub unsafe extern "C" fn pthread_attr_getguardsize(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_attr_getguardsize(): not supported, failing");
+    // Nanvix does not currently provide guard areas for user thread stacks.
+    *guardsize = 0;
 
-    ErrorCode::OperationNotSupported.get()
+    0
 }
 
 //==================================================================================================
