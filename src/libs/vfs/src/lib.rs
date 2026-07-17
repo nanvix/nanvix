@@ -59,6 +59,9 @@ extern crate alloc;
 // Modules
 //==================================================================================================
 
+/// Backend-neutral descriptor handle types.
+mod descriptor;
+
 /// FAT32 backend: translates VFS operations to `fat32` crate calls.
 pub mod fat32_backend;
 

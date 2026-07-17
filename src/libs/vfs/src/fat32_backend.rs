@@ -11,7 +11,7 @@
 // Imports
 //==================================================================================================
 
-use crate::fd::{
+use crate::descriptor::{
     DirectReadHandle,
     DirectoryHandle,
     VfsFileHandle,
