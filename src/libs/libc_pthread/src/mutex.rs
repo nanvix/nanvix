@@ -90,7 +90,19 @@ pub unsafe extern "C" fn pthread_mutexattr_init(attr: *mut pthread_mutexattr_t) 
 #[unsafe(no_mangle)]
 #[trace_libcall]
 pub unsafe extern "C" fn pthread_mutexattr_destroy(attr: *mut pthread_mutexattr_t) -> c_int {
-    // TODO: https://github.com/nanvix/nanvix/issues/509
+    // Check if `attr` is not valid.
+    if attr.is_null() {
+        ::syslog::warn!("pthread_mutexattr_destroy(): invalid attr pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if the mutex attributes object is initialized.
+    if !(*attr).is_initialized() {
+        ::syslog::warn!("pthread_mutexattr_destroy(): attr is not initialized");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    (*attr).uninitialize();
     0
 }
 
