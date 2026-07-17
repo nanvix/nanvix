@@ -24,8 +24,8 @@ pub use crate::{
 //==================================================================================================
 
 use crate::{
-    fd,
     filesystem,
+    process,
     state,
 };
 use ::alloc::{
@@ -45,13 +45,13 @@ use ::fat32::Fat32Error;
 /// Returns an error when the filesystem is not initialized, the path is invalid, or the file does
 /// not exist.
 pub fn open(path: &str) -> Result<File, Fat32Error> {
-    filesystem::open(&fd::current_cwd(), path)
+    filesystem::open(&process::current_cwd(), path)
 }
 
 /// Returns a pointer and size for zero-copy access to a file's data.
 #[must_use]
 pub fn file_raw_region(path: &str) -> Option<(*const u8, usize)> {
-    filesystem::file_raw_region(&fd::current_cwd(), path)
+    filesystem::file_raw_region(&process::current_cwd(), path)
 }
 
 /// Gets file metadata without opening the file.
@@ -60,7 +60,7 @@ pub fn file_raw_region(path: &str) -> Option<(*const u8, usize)> {
 ///
 /// Returns an error when the filesystem is not initialized or the path does not exist.
 pub fn stat(path: &str) -> Result<Stat, Fat32Error> {
-    filesystem::stat(&fd::current_cwd(), path)
+    filesystem::stat(&process::current_cwd(), path)
 }
 
 /// Creates a directory.
@@ -69,7 +69,7 @@ pub fn stat(path: &str) -> Result<Stat, Fat32Error> {
 ///
 /// Returns an error when the path is invalid, already exists, or belongs to a read-only mount.
 pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
-    filesystem::mkdir(&fd::current_cwd(), path)
+    filesystem::mkdir(&process::current_cwd(), path)
 }
 
 /// Removes an empty directory.
@@ -78,7 +78,7 @@ pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Returns an error when the path is invalid, nonempty, or belongs to a read-only mount.
 pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
-    filesystem::rmdir(&fd::current_cwd(), path)
+    filesystem::rmdir(&process::current_cwd(), path)
 }
 
 /// Deletes a file.
@@ -87,7 +87,7 @@ pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Returns an error when the path is invalid, names a directory, or belongs to a read-only mount.
 pub fn unlink(path: &str) -> Result<(), Fat32Error> {
-    filesystem::unlink(&fd::current_cwd(), path)
+    filesystem::unlink(&process::current_cwd(), path)
 }
 
 /// Lists the contents of a directory.
@@ -96,7 +96,7 @@ pub fn unlink(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Returns an error when the filesystem is not initialized or the path is not a directory.
 pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
-    filesystem::read_dir(&fd::current_cwd(), path)
+    filesystem::read_dir(&process::current_cwd(), path)
 }
 
 /// Renames a file or directory.
@@ -106,7 +106,7 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
 /// Returns an error when either path is invalid, the paths resolve to different mounts, or the
 /// mount is read-only.
 pub fn rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
-    filesystem::rename(&fd::current_cwd(), old_path, new_path)
+    filesystem::rename(&process::current_cwd(), old_path, new_path)
 }
 
 /// Gets the current working directory.
@@ -118,7 +118,7 @@ pub fn cwd() -> Result<String, Fat32Error> {
     if !state::is_initialized() {
         return Err(Fat32Error::NotInitialized);
     }
-    Ok(fd::current_cwd())
+    Ok(process::current_cwd())
 }
 
 /// Changes the current working directory.
@@ -127,9 +127,9 @@ pub fn cwd() -> Result<String, Fat32Error> {
 ///
 /// Returns an error when the filesystem is not initialized or the path cannot be resolved.
 pub fn chdir(path: &str) -> Result<(), Fat32Error> {
-    let cwd: String = fd::current_cwd();
+    let cwd: String = process::current_cwd();
     let normalized: String = filesystem::change_directory(&cwd, path)?;
-    fd::set_current_cwd(normalized);
+    process::set_current_cwd(normalized);
     Ok(())
 }
 
@@ -139,7 +139,7 @@ pub fn chdir(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Returns an error when the filesystem is not initialized or the path is malformed.
 pub fn normalize(path: &str) -> Result<String, Fat32Error> {
-    filesystem::normalize(&fd::current_cwd(), path)
+    filesystem::normalize(&process::current_cwd(), path)
 }
 
 //==================================================================================================
@@ -156,7 +156,7 @@ pub(crate) fn open_with_options(
     truncate: bool,
 ) -> Result<File, Fat32Error> {
     filesystem::open_with_options(
-        &fd::current_cwd(),
+        &process::current_cwd(),
         path,
         read,
         write,

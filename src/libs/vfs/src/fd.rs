@@ -28,6 +28,19 @@ use crate::{
         LineDiscipline,
         TerminalSignal,
     },
+    process::{
+        current_cwd,
+        current_pid,
+        root_process_identifier,
+        set_current_cwd,
+        OpenFile,
+        ProcessState,
+        Slot,
+        VfsEntry,
+        DEFAULT_CWD,
+        PROCESSES,
+        ROOT_CONSOLE_SEEDED,
+    },
 };
 use ::alloc::{
     collections::{
@@ -38,11 +51,7 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
-use ::core::sync::atomic::{
-    AtomicBool,
-    AtomicI32,
-    Ordering,
-};
+use ::core::sync::atomic::Ordering;
 use ::fat32::Fat32Error;
 use ::spin::Mutex;
 use ::sys::pm::ProcessIdentifier;
@@ -84,238 +93,32 @@ const STAT_BLOCK_SIZE: i64 = 4096;
 /// Sector size used for `st_blocks` computation (POSIX convention: 512 bytes).
 const STAT_SECTOR_SIZE: u64 = 512;
 
-/// Working directory assigned to a process that has no recorded directory of its own.
-///
-/// [`ProcessState::new`] seeds every freshly created state — including the placeholder that
-/// [`set_current_process`] inserts lazily — with this value, so a state whose `cwd` still equals it
-/// has never been the target of an explicit `chdir`.
-const DEFAULT_CWD: &str = "/";
-
 //==================================================================================================
 // Public Re-Exports
 //==================================================================================================
 
-pub use crate::descriptor::{
-    ConsoleHandle,
-    ConsoleStream,
-    DirectReadHandle,
-    DirectoryHandle,
-    FdFlags,
-    HostFsHandle,
-    PipeClosure,
-    ProcessExitReclaim,
-    SocketHandle,
-    TtyError,
-    VfsFileHandle,
-    VfsRoute,
-    VfsStat,
+pub use crate::{
+    descriptor::{
+        ConsoleHandle,
+        ConsoleStream,
+        DirectReadHandle,
+        DirectoryHandle,
+        FdFlags,
+        HostFsHandle,
+        PipeClosure,
+        ProcessExitReclaim,
+        SocketHandle,
+        TtyError,
+        VfsFileHandle,
+        VfsRoute,
+        VfsStat,
+    },
+    process::set_current_process,
 };
 
 //==================================================================================================
 // File Descriptor Table
 //==================================================================================================
-
-/// An open file description managed by the VFS.
-///
-/// Tracks a POSIX-compliant virtual position independently of the
-/// underlying backend. This is necessary because FAT32 (via fatfs)
-/// clamps seeks past EOF, while POSIX `lseek` allows it.
-///
-/// An open file description is shared (via [`Arc`]) by every file descriptor that refers to it.
-/// `fork()` duplicates the file descriptors of a process by cloning these shared references, so the
-/// parent and child observe the same file offset — matching POSIX semantics — while each holds an
-/// independent descriptor that can be closed on its own.
-struct VfsEntry {
-    /// The file handle from any backend.
-    handle: VfsFileHandle,
-    /// POSIX-compliant virtual file position (may exceed file size).
-    virtual_pos: off_t,
-    /// Open file status flags (the mutable subset settable via `fcntl(F_SETFL)`).
-    ///
-    /// Only `O_NONBLOCK` is honored today; it is consulted by vfsd's pipe read/write handlers to
-    /// choose `EAGAIN` over blocking. Non-pipe descriptors are unaffected because they never block.
-    status_flags: c_int,
-}
-
-// SAFETY: VfsEntry contains FAT filesystem types that use `Cell` internally
-// (e.g., `FsStatusFlags`), which prevents auto-impl of `Send`. This is safe
-// because all access to VfsEntry goes through a `spin::Mutex`, ensuring
-// exclusive access. The Cell is never shared across threads without the mutex.
-unsafe impl Send for VfsEntry {}
-
-/// A shared, reference-counted open file description.
-///
-/// Every file descriptor that refers to the same open file description holds one of these
-/// references. The description is dropped — and its backend handle released — only when the last
-/// referring descriptor is closed. This is the mechanism by which `fork()` shares open files
-/// between a parent and its child.
-type OpenFile = Arc<Mutex<VfsEntry>>;
-
-/// A single file-descriptor slot: a reference to an open file description plus the per-descriptor
-/// flags that belong to this descriptor alone.
-///
-/// The flags live here, not on the shared [`VfsEntry`], so that descriptors which share one open
-/// file description through `dup` or `fork` keep independent `FD_CLOEXEC`/`FD_CLOFORK` settings.
-#[derive(Clone)]
-struct Slot {
-    /// The shared open file description this descriptor refers to.
-    file: OpenFile,
-    /// Per-descriptor flags (`FD_CLOEXEC`, `FD_CLOFORK`).
-    fd_flags: FdFlags,
-}
-
-impl Slot {
-    /// Creates a slot referring to `file` with default (empty) descriptor flags.
-    fn new(file: OpenFile) -> Self {
-        Self {
-            file,
-            fd_flags: FdFlags::default(),
-        }
-    }
-}
-
-/// Per-process VFS state: the open file descriptor table and the current working directory.
-///
-/// Each process is given its own descriptor table so that closing a descriptor in one process does
-/// not affect another, and its own working directory so that `chdir()` is process-local. `fork()`
-/// gives the child a copy of this state: the descriptor slots are cloned as shared references to
-/// the parent's open file descriptions, while the working directory is deep-copied.
-///
-/// The slot table is a flat map keyed by the raw descriptor number: it holds the low console
-/// descriptors (`0`/`1`/`2`, seeded by [`vfs_seed_root_console`]) and the descriptors handed out by
-/// [`alloc_fd`] in one structure. [`alloc_fd`] allocates the lowest free number across that whole
-/// namespace, so the first `open` in a fresh process returns `3` and a freed number is reused
-/// before any higher one. A descriptor number therefore no longer encodes its backend; vfsd answers
-/// what each number is through [`vfs_resolve`].
-struct ProcessState {
-    /// File descriptor slots keyed by the raw file descriptor number.
-    slots: BTreeMap<c_int, Slot>,
-    /// Current working directory (always absolute, never ends with "/").
-    cwd: String,
-    /// Whether this state has been explicitly initialized rather than lazily conjured.
-    ///
-    /// A freshly created state is an uninitialized *placeholder*: [`set_current_process`] inserts
-    /// one the first time it sees a pid, so that a forked child whose first request races ahead of
-    /// its fork-clone notification has somewhere to record an early `chdir`. A state becomes
-    /// initialized — *active* — when [`vfs_seed_root_console`] seeds the root, when [`fork`] clones
-    /// a child, or when [`alloc_fd`] allocates a descriptor. [`vfs_fork_clone`] overwrites a child
-    /// entry only while it is still a placeholder, replacing the descriptor-count test that the
-    /// removed `is_empty` predicate used: a seeded state may legitimately hold console descriptors
-    /// and an active state may have closed all of them, so "holds no descriptors" can no longer
-    /// stand in for "safe to overwrite."
-    ///
-    /// [`fork`]: ProcessState::fork
-    initialized: bool,
-    /// Monotonic generation counter, bumped on every descriptor-table mutation (`open`, `close`,
-    /// and per-descriptor flag changes).
-    ///
-    /// libposix's resolution cache records the generation each cached entry was learned at and uses
-    /// it as a coherence epoch: once descriptor numbers stop encoding their backend (a later plan),
-    /// an entry older than the table's current generation is treated as stale and re-resolved. The
-    /// counter is plumbed and returned with descriptor responses now so the coherence substrate is
-    /// in place; in this plan routing still follows the descriptor number, so the epoch never alters
-    /// a routing decision.
-    generation: u64,
-}
-
-impl ProcessState {
-    /// Creates a new, uninitialized placeholder state whose working directory defaults to
-    /// [`DEFAULT_CWD`] and whose descriptor table is empty.
-    fn new() -> Self {
-        Self {
-            slots: BTreeMap::new(),
-            cwd: String::from(DEFAULT_CWD),
-            initialized: false,
-            generation: 0,
-        }
-    }
-
-    /// Creates a copy of this state for a freshly forked child.
-    ///
-    /// Each descriptor slot is cloned: the open file description is shared as a reference (so the
-    /// parent and child share file offsets) while the per-descriptor flags are copied, giving the
-    /// child its own independent `FD_CLOEXEC`/`FD_CLOFORK` settings. The working directory is
-    /// deep-copied. The child is born *active*: a forked process is a real process, never an
-    /// overwritable placeholder.
-    fn fork(&self) -> Self {
-        Self {
-            slots: self.slots.clone(),
-            cwd: self.cwd.clone(),
-            initialized: true,
-            // The child's table starts as an exact copy of the parent's, so it inherits the
-            // parent's generation: any entry libposix cached against the parent is equally coherent
-            // for the child until the child mutates its own table.
-            generation: self.generation,
-        }
-    }
-
-    /// Advances the descriptor-table generation, marking every previously cached resolution as
-    /// potentially stale. Called on each table-mutating operation.
-    fn bump_generation(&mut self) {
-        // Saturate rather than wrap so the generation stays monotonic: a wrap back to `0` could
-        // make a stale cached epoch compare equal to a fresh one once coherence becomes
-        // load-bearing. Saturating at `u64::MAX` is unreachable in practice.
-        self.generation = self.generation.saturating_add(1);
-    }
-}
-
-/// Registry of per-process VFS state, keyed by process identifier.
-static PROCESSES: Mutex<BTreeMap<ProcessIdentifier, ProcessState>> = Mutex::new(BTreeMap::new());
-
-/// Identifier of the process on whose behalf the VFS is currently operating.
-///
-/// The daemon sets this before handling each request so that the descriptor and working-directory
-/// operations below resolve against the correct process. The default (`0`) provides a single
-/// implicit process for callers — such as unit tests and benchmarks — that never set it explicitly.
-///
-/// This is process-global. Any unit test that mutates it (directly or via [`set_current_process`])
-/// or that depends on the per-process registry must serialize against every other such test by
-/// holding `FORK_TEST_GUARD`, since the test harness runs tests concurrently.
-static CURRENT_PID: AtomicI32 = AtomicI32::new(0);
-
-/// Returns the identifier of the process the VFS is currently operating on behalf of.
-#[inline]
-fn current_pid() -> ProcessIdentifier {
-    ProcessIdentifier::from(CURRENT_PID.load(Ordering::Relaxed))
-}
-
-/// Returns the identifier assigned to the root/init process.
-///
-/// The root identity comes from a single authoritative definition, [`ProcessIdentifier::INIT`]:
-/// the kernel creates the fixed daemon set first (`procd`, `memd`, then `vfsd`) and assigns the
-/// boot workload the next pid. Deriving the root from that constant — rather than recomputing
-/// `VFSD_RAW + 1` here — keeps the boot-order assumption in one place and avoids treating whichever
-/// process happens to issue the first VFS request as the root, which would break the fork-race
-/// placeholder path that [`vfs_fork_clone`] preserves.
-fn root_process_identifier() -> ProcessIdentifier {
-    ProcessIdentifier::INIT
-}
-
-/// Selects the process on whose behalf subsequent VFS operations are performed.
-///
-/// The daemon must call this before dispatching a request so that descriptor and working-directory
-/// operations resolve against the requesting process. The process's state is created lazily on
-/// first use if it does not already exist.
-pub fn set_current_process(pid: ProcessIdentifier) {
-    {
-        let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
-            PROCESSES.lock();
-        procs.entry(pid).or_insert_with(ProcessState::new);
-    }
-    CURRENT_PID.store(i32::from(pid), Ordering::Relaxed);
-}
-
-/// Returns the working directory of the process the VFS is operating on behalf of.
-///
-/// The working directory is owned solely by the per-process state; the VFS itself stores none.
-/// Defaults to "/" if the process has no recorded state yet.
-pub(crate) fn current_cwd() -> String {
-    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
-    procs
-        .get(&current_pid())
-        .map(|state| state.cwd.clone())
-        .unwrap_or_else(|| String::from("/"))
-}
 
 /// Returns a shared reference to the open file description for `fd` in the current process.
 ///
@@ -373,20 +176,6 @@ fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
     // Allocating a descriptor mutates the table; advance the coherence generation.
     state.bump_generation();
     Ok(fd)
-}
-
-/// Records the current working directory for the process the VFS is operating on behalf of.
-///
-/// This persists the directory in the per-process registry so that it is restored by
-/// [`set_current_process`] on the process's next request and copied to children by
-/// [`vfs_fork_clone`].
-pub(crate) fn set_current_cwd(cwd: String) {
-    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
-        PROCESSES.lock();
-    procs
-        .entry(current_pid())
-        .or_insert_with(ProcessState::new)
-        .cwd = cwd;
 }
 
 /// Duplicates the filesystem state of `parent` onto a freshly forked `child`.
@@ -468,15 +257,6 @@ pub fn vfs_fork_clone(
     procs.insert(child, child_state);
     Ok(())
 }
-
-/// Tracks whether the root process's console descriptors have been seeded.
-///
-/// Seeding the root is a one-time event: [`vfs_seed_root_console`] reads and sets this only after
-/// verifying that the target pid is the root. Non-root calls are no-ops and do not consume the
-/// latch, which is what keeps a racing child placeholder overwritable until its fork-clone arrives.
-/// It is process-global, so any unit test that drives seeding must serialize on `FORK_TEST_GUARD`
-/// and reset it on cleanup.
-static ROOT_CONSOLE_SEEDED: AtomicBool = AtomicBool::new(false);
 
 /// Seeds the root process's standard console descriptors (`0`/`1`/`2`) and marks its state active.
 ///
@@ -2227,6 +2007,7 @@ pub fn vfs_utimensat(
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::process::CURRENT_PID;
     use ::sysapi::fcntl::file_descriptor_flags::{
         FD_CLOEXEC,
         FD_CLOFORK,
