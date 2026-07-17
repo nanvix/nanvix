@@ -129,6 +129,7 @@ int main(int argc, const char *argv[])
     test_pthread_mutexattr_settype();
     test_pthread_mutex_trylock();
     test_pthread_mutex_timedlock();
+    test_pthread_condattr_init();
     test_pthread_rwlock_static_init();
     test_pthread_rwlock_dynamic_init();
     test_pthread_cond_static_init();
