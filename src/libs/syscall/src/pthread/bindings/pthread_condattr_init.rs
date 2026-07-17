@@ -29,11 +29,6 @@ use ::syslog::trace_libcall;
 ///
 /// On success, returns 0. Otherwise, returns an error code.
 ///
-/// # Notes
-///
-/// This is a dummy implementation. It only validates the input pointer and then returns success.
-/// A full implementation should set default values and mark the object as initialized.
-///
 /// # Safety
 ///
 /// This function is unsafe because it dereferences raw pointers.
@@ -59,9 +54,7 @@ pub unsafe extern "C" fn pthread_condattr_init(attr: *mut pthread_condattr_t) ->
         return ErrorCode::InvalidArgument.get();
     }
 
-    // Dummy initialization: write default structure.
     ::core::ptr::write(attr, pthread_condattr_t::default());
-    ::syslog::warn!("pthread_condattr_init(): dummy implementation (attr={attr:p})");
 
     0
 }

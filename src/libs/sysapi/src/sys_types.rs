@@ -28,6 +28,7 @@ use crate::{
         sched_policy::SCHED_OTHER,
     },
     sys_socket::socklen_t,
+    time::clock_ids::CLOCK_REALTIME,
 };
 use ::config::memory_layout::{
     USER_STACK_TOP_RAW,
@@ -219,7 +220,7 @@ impl Default for pthread_condattr_t {
     fn default() -> Self {
         Self {
             is_initialized: 1,
-            clock: 0,
+            clock: CLOCK_REALTIME as clock_t,
         }
     }
 }
