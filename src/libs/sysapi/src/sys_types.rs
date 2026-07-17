@@ -254,6 +254,16 @@ impl pthread_mutexattr_t {
     pub const SIZE: usize =
         Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_TYPE + Self::SIZE_OF_RECURSIVE;
 
+    /// Returns whether the mutex attributes object is initialized.
+    pub fn is_initialized(&self) -> bool {
+        self.is_initialized != 0
+    }
+
+    /// Marks the mutex attributes object as uninitialized.
+    pub fn uninitialize(&mut self) {
+        self.is_initialized = 0;
+    }
+
     /// Returns the mutex type stored in the attributes object.
     pub fn type_(&self) -> c_int {
         self.type_
