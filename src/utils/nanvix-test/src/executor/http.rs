@@ -365,9 +365,9 @@ async fn collect_uservm_payload(
                 ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset | ErrorKind::BrokenPipe => {
                     if expect_empty_output {
                         if response_payload.is_empty() && expected_pattern.is_none() {
-                            warn!(
-                                "collect_uservm_payload(): gateway closed before emitting payload \
-                                 (error_kind={:?})",
+                            trace!(
+                                "collect_uservm_payload(): gateway closed with expected empty \
+                                 payload (error_kind={:?})",
                                 error.kind()
                             );
                         } else if !response_payload.is_empty() {
