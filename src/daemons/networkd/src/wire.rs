@@ -41,7 +41,7 @@ pub const MAX_PAYLOAD_BYTES: usize = SG_BULK_MAX_BYTES;
 
 /// Maximum metadata overhead, in bytes, of any wire frame body.
 ///
-/// The largest frame metadata appears in [`NetworkResult::RecvFrom`]: an op discriminator, explicit
+/// The largest frame metadata appears in [`NetworkResult::Pull`]: an op discriminator, explicit
 /// response `tid`, embedded [`Message`], and a `u32` bulk payload length.
 const MAX_FRAME_METADATA_BYTES: usize = OP_BYTES + TID_BYTES + MESSAGE_BYTES + LENGTH_PREFIX_BYTES;
 
@@ -106,20 +106,20 @@ impl ::std::error::Error for WireError {}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 enum WireOp {
-    /// Inline networking message (`send`, `connect`, ...).
+    /// Inline networking message (`connect`, `socket`, ...).
     Message = 1,
-    /// `sendto` with a bulk payload.
-    SendTo = 2,
-    /// `recvfrom` request or response.
-    RecvFrom = 3,
+    /// Scatter/gather push request or response (`send` or `sendto`).
+    Push = 2,
+    /// Scatter/gather pull request or response (`recv` or `recvfrom`).
+    Pull = 3,
 }
 
 impl WireOp {
     fn to_u8(self) -> u8 {
         match self {
             Self::Message => 1,
-            Self::SendTo => 2,
-            Self::RecvFrom => 3,
+            Self::Push => 2,
+            Self::Pull => 3,
         }
     }
 }
@@ -130,8 +130,8 @@ impl TryFrom<u8> for WireOp {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             1 => Ok(Self::Message),
-            2 => Ok(Self::SendTo),
-            3 => Ok(Self::RecvFrom),
+            2 => Ok(Self::Push),
+            3 => Ok(Self::Pull),
             other => Err(WireError::InvalidOp(other)),
         }
     }
@@ -181,11 +181,12 @@ impl TryFrom<u8> for Presence {
 ///
 /// A request forwarded from the user VM to a decoupled `networkd` process.
 ///
-/// Every request carries the original [`Message`] plus, for `sendto`, the already-drained bulk
-/// payload. The server reconstructs the `source` and decoded system-call message from the embedded
-/// [`Message`] exactly as the in-process handler does, so no additional metadata needs to cross
-/// the wire. The originating guest thread identifier — used to correlate the eventual response —
-/// is already carried inside the embedded [`Message`], so requests need no explicit correlation field.
+/// Every request carries the original [`Message`] plus, for scatter/gather push operations, the
+/// already-drained bulk payload. The server reconstructs the `source` and decoded system-call
+/// message from the embedded [`Message`] exactly as the in-process handler does, so no additional
+/// metadata needs to cross the wire. The originating guest thread identifier — used to correlate
+/// the eventual response — is already carried inside the embedded [`Message`], so requests need no
+/// explicit correlation field.
 ///
 #[derive(Debug)]
 pub struct NetworkRequest {
@@ -200,17 +201,17 @@ pub struct NetworkRequest {
 ///
 #[derive(Debug)]
 pub enum NetworkOp {
-    /// An inline networking message (e.g. `send`, `connect`, `socket`).
+    /// An inline networking message (e.g. `connect` or `socket`).
     Message(Message),
-    /// A `sendto` request whose bulk payload has been drained from the transport.
-    SendTo {
+    /// A `send` or `sendto` request whose bulk payload has been drained from the transport.
+    Push {
         /// The original request message.
         msg: Message,
         /// The payload bytes to send.
         data: Vec<u8>,
     },
-    /// A `recvfrom` request.
-    RecvFrom(Message),
+    /// A `recv` or `recvfrom` request.
+    Pull(Message),
 }
 
 impl NetworkOp {
@@ -225,7 +226,7 @@ impl NetworkOp {
     ///
     pub fn tid(&self) -> ThreadIdentifier {
         match self {
-            NetworkOp::Message(msg) | NetworkOp::RecvFrom(msg) | NetworkOp::SendTo { msg, .. } => {
+            NetworkOp::Message(msg) | NetworkOp::Pull(msg) | NetworkOp::Push { msg, .. } => {
                 msg.source.tid
             },
         }
@@ -251,13 +252,13 @@ impl NetworkRequest {
                 write_op(&mut out, WireOp::Message);
                 write_message(&mut out, msg);
             },
-            NetworkOp::SendTo { msg, data } => {
-                write_op(&mut out, WireOp::SendTo);
+            NetworkOp::Push { msg, data } => {
+                write_op(&mut out, WireOp::Push);
                 write_message(&mut out, msg);
                 write_bytes(&mut out, data)?;
             },
-            NetworkOp::RecvFrom(msg) => {
-                write_op(&mut out, WireOp::RecvFrom);
+            NetworkOp::Pull(msg) => {
+                write_op(&mut out, WireOp::Pull);
                 write_message(&mut out, msg);
             },
         }
@@ -267,10 +268,10 @@ impl NetworkRequest {
 
     fn encoded_len(&self) -> Result<usize, WireError> {
         match &self.op {
-            NetworkOp::Message(_) | NetworkOp::RecvFrom(_) => {
+            NetworkOp::Message(_) | NetworkOp::Pull(_) => {
                 checked_frame_len(&[OP_BYTES, MESSAGE_BYTES])
             },
-            NetworkOp::SendTo { data, .. } => {
+            NetworkOp::Push { data, .. } => {
                 ensure_payload_len(data.len())?;
                 checked_frame_len(&[OP_BYTES, MESSAGE_BYTES, LENGTH_PREFIX_BYTES, data.len()])
             },
@@ -292,12 +293,12 @@ impl NetworkRequest {
         let op: WireOp = cursor.read_op()?;
         let op: NetworkOp = match op {
             WireOp::Message => NetworkOp::Message(cursor.read_message()?),
-            WireOp::SendTo => {
+            WireOp::Push => {
                 let msg: Message = cursor.read_message()?;
                 let data: Vec<u8> = cursor.read_bytes()?;
-                NetworkOp::SendTo { msg, data }
+                NetworkOp::Push { msg, data }
             },
-            WireOp::RecvFrom => NetworkOp::RecvFrom(cursor.read_message()?),
+            WireOp::Pull => NetworkOp::Pull(cursor.read_message()?),
         };
         cursor.finish()?;
         Ok(Self { op })
@@ -311,8 +312,7 @@ impl NetworkRequest {
     ///
     /// # Errors
     ///
-    /// Returns [`WireError::PayloadTooLarge`] if a bulk payload exceeds [`MAX_PAYLOAD_BYTES`], or
-    /// [`WireError::FrameTooLarge`] if the encoded body exceeds [`MAX_FRAME_BYTES`].
+    /// Returns the same errors as [`NetworkRequest::encode`].
     ///
     pub fn to_frame(&self) -> Result<Vec<u8>, WireError> {
         frame_body(&self.encode()?)
@@ -351,10 +351,10 @@ pub struct NetworkResponse {
 pub enum NetworkResult {
     /// Result of an inline [`NetworkOp::Message`]: zero or more response messages, or nothing.
     Message(Option<Vec<Message>>),
-    /// Result of a [`NetworkOp::SendTo`]: a single response message.
-    SendTo(Message),
-    /// Result of a [`NetworkOp::RecvFrom`]: a response message plus the received payload.
-    RecvFrom {
+    /// Result of a [`NetworkOp::Push`]: a single response message.
+    Push(Message),
+    /// Result of a [`NetworkOp::Pull`]: a response message plus the received payload.
+    Pull {
         /// The response message.
         msg: Message,
         /// The received payload bytes to push back to the guest.
@@ -392,13 +392,13 @@ impl NetworkResponse {
                     },
                 }
             },
-            NetworkResult::SendTo(msg) => {
-                write_op(&mut out, WireOp::SendTo);
+            NetworkResult::Push(msg) => {
+                write_op(&mut out, WireOp::Push);
                 write_tid(&mut out, self.tid);
                 write_message(&mut out, msg);
             },
-            NetworkResult::RecvFrom { msg, data } => {
-                write_op(&mut out, WireOp::RecvFrom);
+            NetworkResult::Pull { msg, data } => {
+                write_op(&mut out, WireOp::Pull);
                 write_tid(&mut out, self.tid);
                 write_message(&mut out, msg);
                 write_bytes(&mut out, data)?;
@@ -423,8 +423,8 @@ impl NetworkResponse {
                     messages_bytes,
                 ])
             },
-            NetworkResult::SendTo(_) => checked_frame_len(&[OP_BYTES, TID_BYTES, MESSAGE_BYTES]),
-            NetworkResult::RecvFrom { data, .. } => {
+            NetworkResult::Push(_) => checked_frame_len(&[OP_BYTES, TID_BYTES, MESSAGE_BYTES]),
+            NetworkResult::Pull { data, .. } => {
                 ensure_payload_len(data.len())?;
                 checked_frame_len(&[
                     OP_BYTES,
@@ -467,11 +467,11 @@ impl NetworkResponse {
                     NetworkResult::Message(Some(messages))
                 },
             },
-            WireOp::SendTo => NetworkResult::SendTo(cursor.read_message()?),
-            WireOp::RecvFrom => {
+            WireOp::Push => NetworkResult::Push(cursor.read_message()?),
+            WireOp::Pull => {
                 let msg: Message = cursor.read_message()?;
                 let data: Vec<u8> = cursor.read_bytes()?;
-                NetworkResult::RecvFrom { msg, data }
+                NetworkResult::Pull { msg, data }
             },
         };
         cursor.finish()?;
@@ -486,8 +486,7 @@ impl NetworkResponse {
     ///
     /// # Errors
     ///
-    /// Returns [`WireError::PayloadTooLarge`] if a bulk payload exceeds [`MAX_PAYLOAD_BYTES`], or
-    /// [`WireError::FrameTooLarge`] if the encoded body exceeds [`MAX_FRAME_BYTES`].
+    /// Returns the same errors as [`NetworkResponse::encode`].
     ///
     pub fn to_frame(&self) -> Result<Vec<u8>, WireError> {
         frame_body(&self.encode()?)
@@ -698,6 +697,7 @@ impl<'a> Cursor<'a> {
 mod tests {
     use super::*;
     use ::sys::{
+        error::ErrorCode,
         ipc::{
             MessageReceiver,
             MessageSender,
@@ -720,6 +720,16 @@ mod tests {
         )
     }
 
+    fn sample_error_message() -> Message {
+        Message::new(
+            MessageSender::NETWORKD,
+            MessageReceiver::KERNEL,
+            MessageType::Ikc,
+            Some(ErrorCode::InvalidArgument),
+            [0; Message::PAYLOAD_SIZE],
+        )
+    }
+
     fn message_bytes(msg: &Message) -> [u8; MESSAGE_BYTES] {
         msg.clone().to_bytes()
     }
@@ -739,17 +749,17 @@ mod tests {
     }
 
     #[test]
-    fn request_sendto_roundtrip() {
+    fn request_push_roundtrip() {
         let data: Vec<u8> = (0..4096u32).map(|v| v as u8).collect();
         let req = NetworkRequest {
-            op: NetworkOp::SendTo {
+            op: NetworkOp::Push {
                 msg: sample_message(7),
                 data: data.clone(),
             },
         };
         let decoded = NetworkRequest::decode(&req.encode().unwrap()).unwrap();
         match decoded.op {
-            NetworkOp::SendTo {
+            NetworkOp::Push {
                 msg,
                 data: decoded_data,
             } => {
@@ -761,12 +771,12 @@ mod tests {
     }
 
     #[test]
-    fn request_recvfrom_roundtrip() {
+    fn request_pull_roundtrip() {
         let req = NetworkRequest {
-            op: NetworkOp::RecvFrom(sample_message(9)),
+            op: NetworkOp::Pull(sample_message(9)),
         };
         let decoded = NetworkRequest::decode(&req.encode().unwrap()).unwrap();
-        assert!(matches!(decoded.op, NetworkOp::RecvFrom(_)));
+        assert!(matches!(decoded.op, NetworkOp::Pull(_)));
     }
 
     #[test]
@@ -801,15 +811,15 @@ mod tests {
     }
 
     #[test]
-    fn response_sendto_roundtrip() {
+    fn response_push_roundtrip() {
         let resp = NetworkResponse {
             tid: ThreadIdentifier::from(42),
-            result: NetworkResult::SendTo(sample_message(6)),
+            result: NetworkResult::Push(sample_message(6)),
         };
         let decoded = NetworkResponse::decode(&resp.encode().unwrap()).unwrap();
         assert_eq!(decoded.tid, ThreadIdentifier::from(42));
         match decoded.result {
-            NetworkResult::SendTo(msg) => {
+            NetworkResult::Push(msg) => {
                 assert_eq!(message_bytes(&msg), message_bytes(&sample_message(6)));
             },
             _ => panic!("variant mismatch"),
@@ -817,11 +827,11 @@ mod tests {
     }
 
     #[test]
-    fn response_recvfrom_roundtrip() {
+    fn response_pull_roundtrip() {
         let data: Vec<u8> = vec![0xAB; 1500];
         let resp = NetworkResponse {
             tid: ThreadIdentifier::from(77),
-            result: NetworkResult::RecvFrom {
+            result: NetworkResult::Pull {
                 msg: sample_message(4),
                 data: data.clone(),
             },
@@ -829,7 +839,7 @@ mod tests {
         let decoded = NetworkResponse::decode(&resp.encode().unwrap()).unwrap();
         assert_eq!(decoded.tid, ThreadIdentifier::from(77));
         match decoded.result {
-            NetworkResult::RecvFrom {
+            NetworkResult::Pull {
                 msg,
                 data: decoded_data,
             } => {
@@ -841,10 +851,45 @@ mod tests {
     }
 
     #[test]
-    fn response_recvfrom_max_payload_reaches_max_frame_size() {
+    fn response_bulk_roundtrip_supports_errors() {
+        let push_msg: Message = sample_error_message();
+        let expected_push_msg: [u8; MESSAGE_BYTES] = message_bytes(&push_msg);
+        let push_resp = NetworkResponse {
+            tid: ThreadIdentifier::from(42),
+            result: NetworkResult::Push(push_msg),
+        };
+        let decoded: NetworkResponse =
+            NetworkResponse::decode(&push_resp.encode().unwrap()).unwrap();
+        match decoded.result {
+            NetworkResult::Push(msg) => assert_eq!(message_bytes(&msg), expected_push_msg),
+            _ => panic!("variant mismatch"),
+        }
+
+        let pull_msg: Message = sample_error_message();
+        let expected_pull_msg: [u8; MESSAGE_BYTES] = message_bytes(&pull_msg);
+        let pull_resp = NetworkResponse {
+            tid: ThreadIdentifier::from(77),
+            result: NetworkResult::Pull {
+                msg: pull_msg,
+                data: Vec::new(),
+            },
+        };
+        let decoded: NetworkResponse =
+            NetworkResponse::decode(&pull_resp.encode().unwrap()).unwrap();
+        match decoded.result {
+            NetworkResult::Pull { msg, data } => {
+                assert_eq!(message_bytes(&msg), expected_pull_msg);
+                assert!(data.is_empty());
+            },
+            _ => panic!("variant mismatch"),
+        }
+    }
+
+    #[test]
+    fn response_pull_max_payload_reaches_max_frame_size() {
         let resp = NetworkResponse {
             tid: ThreadIdentifier::from(77),
-            result: NetworkResult::RecvFrom {
+            result: NetworkResult::Pull {
                 msg: sample_message(4),
                 data: vec![0xAB; MAX_PAYLOAD_BYTES],
             },
@@ -883,7 +928,7 @@ mod tests {
     #[test]
     fn decode_rejects_trailing_bytes() {
         let mut body: Vec<u8> = NetworkRequest {
-            op: NetworkOp::RecvFrom(sample_message(1)),
+            op: NetworkOp::Pull(sample_message(1)),
         }
         .encode()
         .unwrap();
@@ -912,7 +957,7 @@ mod tests {
     #[test]
     fn encode_rejects_oversized_payload() {
         let req = NetworkRequest {
-            op: NetworkOp::SendTo {
+            op: NetworkOp::Push {
                 msg: sample_message(1),
                 data: vec![0; MAX_PAYLOAD_BYTES + 1],
             },
@@ -924,7 +969,7 @@ mod tests {
     #[test]
     fn request_decode_rejects_oversized_payload_before_allocating() {
         let mut body: Vec<u8> = Vec::new();
-        body.push(WireOp::SendTo.to_u8());
+        body.push(WireOp::Push.to_u8());
         body.extend_from_slice(&sample_message(1).to_bytes());
         body.extend_from_slice(&(u32::try_from(MAX_PAYLOAD_BYTES).unwrap() + 1).to_le_bytes());
 
@@ -938,7 +983,7 @@ mod tests {
     fn response_encode_rejects_oversized_payload() {
         let resp = NetworkResponse {
             tid: ThreadIdentifier::from(5),
-            result: NetworkResult::RecvFrom {
+            result: NetworkResult::Pull {
                 msg: sample_message(1),
                 data: vec![0; MAX_PAYLOAD_BYTES + 1],
             },
@@ -950,7 +995,7 @@ mod tests {
     #[test]
     fn response_decode_rejects_oversized_payload_before_allocating() {
         let mut body: Vec<u8> = Vec::new();
-        body.push(WireOp::RecvFrom.to_u8());
+        body.push(WireOp::Pull.to_u8());
         body.extend_from_slice(&i32::from(ThreadIdentifier::from(5)).to_le_bytes());
         body.extend_from_slice(&sample_message(1).to_bytes());
         body.extend_from_slice(&(u32::try_from(MAX_PAYLOAD_BYTES).unwrap() + 1).to_le_bytes());
