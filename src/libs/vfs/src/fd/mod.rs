@@ -14,14 +14,20 @@
 //! backends. To add a new backend:
 //! 1. Add a variant to [`VfsFileHandle`].
 //! 2. Implement `read`, `write`, `seek`, and `size` for the new variant.
-//! 3. Update [`crate::fat32_backend`] (or create a new backend module).
+//! 3. Update the descriptor open adapter (or create a new backend module).
+
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+mod open;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
+use self::open as open_adapter;
 use crate::{
-    fat32_backend,
     filesystem,
     line_discipline::{
         ConsoleReadOutcome,
@@ -800,7 +806,7 @@ pub fn vfs_current_generation() -> u64 {
 
 /// Returns `true` if the given path is handled by the VFS.
 pub fn is_vfs_path(path: &str) -> bool {
-    fat32_backend::exists(&current_cwd(), path)
+    open_adapter::exists(&current_cwd(), path)
 }
 
 /// Resolves a flat descriptor to its backend route and the descriptor that backend expects.
@@ -905,7 +911,7 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
     let cwd: String = current_cwd();
     // If O_DIRECTORY is set, verify the path is a directory before opening.
     if flags & file_creation_flags::O_DIRECTORY != 0 {
-        let info: VfsStat = fat32_backend::stat(&cwd, path)?;
+        let info: VfsStat = open_adapter::stat(&cwd, path)?;
         if !info.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
@@ -913,7 +919,7 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
         let handle: VfsFileHandle = VfsFileHandle::Directory(DirectoryHandle::new(normalized));
         return alloc_fd(handle);
     }
-    let handle: VfsFileHandle = fat32_backend::open(&cwd, path, flags)?;
+    let handle: VfsFileHandle = open_adapter::open(&cwd, path, flags)?;
     alloc_fd(handle)
 }
 
@@ -1299,7 +1305,7 @@ pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
 
 /// Gets file status for a path through the VFS.
 pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
-    let info: VfsStat = fat32_backend::stat(&current_cwd(), path)?;
+    let info: VfsStat = open_adapter::stat(&current_cwd(), path)?;
 
     // Zero-initialize the stat buffer.
     unsafe {
