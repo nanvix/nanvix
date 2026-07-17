@@ -49,10 +49,6 @@ use ::sysapi::{
     fcntl::{
         file_control_request,
         file_creation_flags,
-        file_descriptor_flags::{
-            FD_CLOEXEC,
-            FD_CLOFORK,
-        },
         file_status_flags,
     },
     ffi::c_int,
@@ -103,9 +99,14 @@ pub use crate::descriptor::{
     ConsoleStream,
     DirectReadHandle,
     DirectoryHandle,
+    FdFlags,
     HostFsHandle,
+    PipeClosure,
+    ProcessExitReclaim,
     SocketHandle,
+    TtyError,
     VfsFileHandle,
+    VfsRoute,
     VfsStat,
 };
 
@@ -148,75 +149,6 @@ unsafe impl Send for VfsEntry {}
 /// referring descriptor is closed. This is the mechanism by which `fork()` shares open files
 /// between a parent and its child.
 type OpenFile = Arc<Mutex<VfsEntry>>;
-
-/// Per-descriptor flags carried by a single file-descriptor slot.
-///
-/// These hold the POSIX `fcntl(F_GETFD/F_SETFD)` descriptor flags — `FD_CLOEXEC` and `FD_CLOFORK`.
-/// They are stored on the slot rather than on the shared [`VfsEntry`] because POSIX requires them to
-/// be *per descriptor*, not per open file description: two descriptors that share one description
-/// through `dup` (or `fork`) each carry an independent copy, so setting `FD_CLOEXEC` on one must not
-/// affect the other.
-///
-/// The default is empty (no flags set), so a freshly allocated descriptor behaves exactly as it did
-/// before these flags existed. The flags are stored and cloned but not yet acted upon — honoring
-/// `FD_CLOFORK` at fork and `FD_CLOEXEC` at exec lands in later plans.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct FdFlags(c_int);
-
-impl FdFlags {
-    /// Builds the descriptor flags from a raw `fcntl(F_SETFD)` argument, rejecting any bit outside
-    /// the recognized set (`FD_CLOEXEC`, `FD_CLOFORK`).
-    ///
-    /// POSIX requires `fcntl(F_SETFD)` to fail with `EINVAL` when an unsupported descriptor-flag bit
-    /// is set rather than silently masking it. Rejecting here keeps this layer in agreement with the
-    /// syscall-side validation in `syscall::safe::FileDescriptorFlags` and prevents a later
-    /// `F_GETFD` from reporting flags the caller never set.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Fat32Error::InvalidArgument`] if `raw` sets any bit other than `FD_CLOEXEC` or
-    /// `FD_CLOFORK`.
-    pub fn try_from_bits(raw: c_int) -> Result<Self, Fat32Error> {
-        if raw & !(FD_CLOEXEC | FD_CLOFORK) != 0 {
-            return Err(Fat32Error::InvalidArgument);
-        }
-        Ok(Self(raw))
-    }
-
-    /// Returns the raw flag bits, as reported by `fcntl(F_GETFD)`.
-    pub const fn bits(self) -> c_int {
-        self.0
-    }
-
-    /// Returns whether the close-on-exec (`FD_CLOEXEC`) flag is set.
-    pub const fn close_on_exec(self) -> bool {
-        self.0 & FD_CLOEXEC != 0
-    }
-
-    /// Returns whether the close-on-fork (`FD_CLOFORK`) flag is set.
-    pub const fn close_on_fork(self) -> bool {
-        self.0 & FD_CLOFORK != 0
-    }
-
-    /// Sets or clears the close-on-exec (`FD_CLOEXEC`) flag.
-    pub fn set_close_on_exec(&mut self, enable: bool) {
-        self.set(FD_CLOEXEC, enable);
-    }
-
-    /// Sets or clears the close-on-fork (`FD_CLOFORK`) flag.
-    pub fn set_close_on_fork(&mut self, enable: bool) {
-        self.set(FD_CLOFORK, enable);
-    }
-
-    /// Sets or clears `flag` according to `enable`.
-    fn set(&mut self, flag: c_int, enable: bool) {
-        if enable {
-            self.0 |= flag;
-        } else {
-            self.0 &= !flag;
-        }
-    }
-}
 
 /// A single file-descriptor slot: a reference to an open file description plus the per-descriptor
 /// flags that belong to this descriptor alone.
@@ -594,31 +526,6 @@ pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
     // placeholder/active invariant uniform across every code path.)
     state.initialized = true;
     state.bump_generation();
-}
-
-/// Pipe count-to-zero transitions surfaced by [`vfs_process_exit`].
-///
-/// Each entry records that the exiting process held the final reference to one end of a pipe, so
-/// that end's reference count dropped to zero when its open file description was released. vfsd
-/// uses these to run the corresponding wakeup (EOF for readers when a write end vanishes, `EPIPE`
-/// for writers when a read end vanishes).
-pub struct PipeClosure {
-    /// Stable identity of the affected pipe.
-    pub pipe_id: u64,
-    /// Whether the released end was the write end (`true`) or the read end (`false`).
-    pub was_write: bool,
-}
-
-/// Resources surfaced by [`vfs_process_exit`] that the daemon must act on after a process exits.
-pub struct ProcessExitReclaim {
-    /// Remote file descriptors of host-backed descriptions for which the process held the final
-    /// reference. Each must be closed on hostfsd or the remote handle leaks.
-    pub orphaned_hostfs_fds: Vec<i32>,
-    /// `networkd` descriptors of socket slots for which the process held the final reference. Each
-    /// must be closed on `networkd` or the socket endpoint leaks.
-    pub orphaned_socket_fds: Vec<i32>,
-    /// Pipe ends whose reference count reached zero because the process held the final reference.
-    pub pipe_closures: Vec<PipeClosure>,
 }
 
 /// Reclaims the per-process filesystem state of a terminated process.
@@ -1113,21 +1020,6 @@ pub fn vfs_current_generation() -> u64 {
 /// Returns `true` if the given path is handled by the VFS.
 pub fn is_vfs_path(path: &str) -> bool {
     fat32_backend::exists(path)
-}
-
-/// The backend a descriptor's slot is bound to, as reported by [`vfs_resolve`].
-///
-/// vfsd is the routing authority once descriptor numbers no longer encode their backend: it answers
-/// what a flat number like `4` actually is — a console stream, a vfsd-served object, or a socket —
-/// from its authoritative slot table.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum VfsRoute {
-    /// A console stream; the `backend_fd` is the standard stream number (`0`/`1`/`2`).
-    Console,
-    /// A vfsd-served object (regular file, directory, host file, or pipe end).
-    Vfs,
-    /// A socket; the `backend_fd` is the descriptor `networkd` assigned.
-    Socket,
 }
 
 /// Resolves a flat descriptor to its backend route and the descriptor that backend expects.
@@ -1850,15 +1742,6 @@ pub fn vfs_isatty(fd: c_int) -> bool {
     matches!(vfs_resolve(fd), Some((VfsRoute::Console, _)))
 }
 
-/// Error from a terminal-control query on a descriptor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TtyError {
-    /// The descriptor has no slot in the current process (maps to `EBADF`).
-    BadFd,
-    /// The descriptor is valid but does not refer to a terminal (maps to `ENOTTY`).
-    NotTty,
-}
-
 /// Returns the shared terminal device state of `fd` when it is a console descriptor.
 ///
 /// The shared [`Arc`] is cloned out from under the registry lock and the per-entry lock is released
@@ -2333,6 +2216,10 @@ pub fn vfs_utimensat(
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use ::sysapi::fcntl::file_descriptor_flags::{
+        FD_CLOEXEC,
+        FD_CLOFORK,
+    };
 
     // -- VfsStat tests -----------------------------------------------------------
 
