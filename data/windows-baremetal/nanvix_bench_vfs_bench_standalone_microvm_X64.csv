@@ -220,6 +220,7 @@ e4e90e79e98821b58de5bd8cf5d3326b760d2f6c,Read-only mount,stat,100,199,297,487
 e4e90e79e98821b58de5bd8cf5d3326b760d2f6c,Read-only mount,open+close,100,218,319,454
 e4e90e79e98821b58de5bd8cf5d3326b760d2f6c,Read-only mount,readdir,100,221,318,413
 e4e90e79e98821b58de5bd8cf5d3326b760d2f6c,Read-only mount,seq_read,100,35,154,6341
+<<<<<<< Updated upstream
 b3cc6bb06b6b34de57f56414be53df19bd236bda,VM setup,ramfs_load,10,16658,16690,16690
 b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,protocol,100,306,334,340
 b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,stat,100,208,316,465
@@ -237,3 +238,22 @@ b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,stat,100,193,281,438
 b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,open+close,100,209,316,420
 b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,readdir,100,210,301,380
 b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,seq_read,100,38,236,6200
+=======
+b3cc6bb06b6b34de57f56414be53df19bd236bda,VM setup,ramfs_load,10,16637,16674,16674
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,protocol,100,349,386,399
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,stat,100,215,354,730
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,open+close,100,213,346,496
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,readdir,100,222,307,423
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,create_scratch,100,45,85,1585
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,seq_read,100,42,154,5566
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,create+close+unlink,100,7,40,54
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,mkdir+rmdir,100,10,278,9726
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,create+close+rename,100,12,58,81
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Writable mount,write+flush,100,16,86,1348
+b3cc6bb06b6b34de57f56414be53df19bd236bda,VM setup,ramfs_load,5,16655,16677,16677
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,protocol,100,383,411,474
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,stat,100,213,351,414
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,open+close,100,202,297,415
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,readdir,100,209,311,423
+b3cc6bb06b6b34de57f56414be53df19bd236bda,Read-only mount,seq_read,100,45,168,6206
+>>>>>>> Stashed changes
