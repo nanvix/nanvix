@@ -36,6 +36,7 @@ pub struct PhysicalAddress(VirtualAddress);
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl PhysicalAddress {
     ///
     /// # Description
@@ -54,6 +55,14 @@ impl PhysicalAddress {
     ///
     /// This function returns an error if the address is outside the physical address space.
     ///
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(a) => addr@ < spec_physical_memory_size() && a@ == addr@,
+                Err(e) => !(addr@ < spec_physical_memory_size())
+                    && e.code == ErrorCode::BadAddress,
+            },
+    )]
     pub fn from_virtual_address(addr: VirtualAddress) -> Result<Self, Error> {
         if !is_valid_physical_address(addr) {
             return Err(Error::new(
@@ -82,6 +91,7 @@ impl PhysicalAddress {
     ///
     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
     ///
+    #[verus_verify(external_body)]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Self {
         Self(addr)
     }
@@ -113,6 +123,7 @@ impl PhysicalAddress {
     /// Upon success, the new [`PhysicalAddress`] is returned. Upon failure (overflow), `None` is
     /// returned instead.
     ///
+    #[verus_verify(external_body)]
     pub fn checked_add(&self, rhs: usize) -> Option<Self> {
         self.0
             .checked_add(rhs)
@@ -147,7 +158,6 @@ impl Address for PhysicalAddress {
     /// - `Ok(Self)`: The new address.
     /// - `Err(Error::BadAddress)`: If the provided address is invalid.
     ///
-    #[verifier::external_body]
     fn from_raw_value(value: usize) -> Result<Self, Error> {
         Self::from_virtual_address(VirtualAddress::from_raw_value(value))
     }
@@ -227,7 +237,6 @@ impl Address for PhysicalAddress {
         ::config::kernel::MEMORY_SIZE - 1
     }
 
-    #[verifier::external_body]
     fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }
@@ -306,8 +315,13 @@ impl From<PhysicalAddress> for usize {
 /// `true` if `addr` falls within the physical address space, `false` otherwise.
 ///
 #[inline(always)]
+#[verus_verify]
+#[verus_spec(result =>
+    ensures
+        result == (addr@ < spec_physical_memory_size()),
+)]
 pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
-    addr < VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE)
+    addr.into_raw_value() < physical_memory_size()
 }
 
 //==================================================================================================
@@ -327,8 +341,23 @@ impl View for PhysicalAddress {
 
 // Abstract size of the physical address space. Its concrete value is the build-time constant
 // `config::kernel::MEMORY_SIZE`, which Verus cannot read because `config` is intentionally outside
-// the verified crate set. `spec_physical_memory_size` names that value abstractly so that the
-// physical-address validity predicate can refer to it.
+// the verified crate set. `spec_physical_memory_size` names that value abstractly; the trusted
+// `physical_memory_size` accessor below is the single point where it enters the verified world.
 pub uninterp spec fn spec_physical_memory_size() -> int;
 
 } // end verus!
+
+// Trusted bridge that imports the physical memory size from the (unverified) `config` crate.
+//
+// `external_body` is justified here because `config::kernel::MEMORY_SIZE` is generated at build
+// time and lives outside the verified crate set, so Verus cannot evaluate it. This is the *only*
+// trusted boundary for the physical memory bound: its postcondition ties the concrete constant to
+// the abstract `spec_physical_memory_size`, and every specification refers to the abstract value.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        result as int == spec_physical_memory_size(),
+)]
+fn physical_memory_size() -> usize {
+    config::kernel::MEMORY_SIZE
+}

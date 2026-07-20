@@ -189,6 +189,7 @@ impl VirtualAddress {
     }
 }
 
+#[verus_verify]
 impl Address for VirtualAddress {
     ///
     /// # Description
@@ -221,6 +222,7 @@ impl Address for VirtualAddress {
     ///
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     fn align_up(&self, align: Alignment) -> Result<Self, Error> {
         self.align_up(align)
             .ok_or_else(|| Error::new(ErrorCode::BadAddress, "align_up overflow"))
@@ -240,6 +242,7 @@ impl Address for VirtualAddress {
     ///
     /// Upon success, the aligned address is returned. Upon failure, an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     fn align_down(&self, align: Alignment) -> Result<Self, Error> {
         Ok(self.align_down(align))
     }
@@ -258,6 +261,7 @@ impl Address for VirtualAddress {
     /// Upon success, `true` is returned if the address is aligned, otherwise `false`. Upon failure,
     /// an error is returned instead.
     ///
+    #[verus_verify(external_body)]
     fn is_aligned(&self, align: Alignment) -> Result<bool, Error> {
         Ok(self.is_aligned(align))
     }
@@ -271,6 +275,7 @@ impl Address for VirtualAddress {
     ///
     /// The maximum [`VirtualAddress`].
     ///
+    #[verus_verify(external_body)]
     fn max_addr() -> usize {
         usize::MAX
     }
@@ -279,10 +284,12 @@ impl Address for VirtualAddress {
         self.0
     }
 
+    #[verus_verify(external_body)]
     fn as_ptr(&self) -> *const u8 {
         self.0 as *const u8
     }
 
+    #[verus_verify(external_body)]
     fn as_mut_ptr(&self) -> *mut u8 {
         self.0 as *mut u8
     }
