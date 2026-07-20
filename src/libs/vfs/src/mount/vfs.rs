@@ -11,7 +11,9 @@
 //! The VFS maintains:
 //! - A mount table mapping paths to FAT backends (sorted by path length for
 //!   longest-prefix matching)
-//! - A current working directory for relative path resolution
+//! - A path-resolution cache keyed by normalized absolute paths
+//!
+//! Callers provide the current working directory when resolving relative paths.
 
 //==================================================================================================
 // Imports

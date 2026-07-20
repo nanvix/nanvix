@@ -12,6 +12,7 @@ use ::alloc::{
     string::String,
     vec::Vec,
 };
+use ::core::mem::ManuallyDrop;
 use ::fat32::{
     Fat32Error,
     FatFile,
@@ -43,7 +44,7 @@ use ::sysapi::unistd::file_seek;
 /// ```
 pub struct File {
     /// The underlying FAT file handle.
-    inner: FatFile<'static>,
+    inner: ManuallyDrop<FatFile<'static>>,
     /// The mount path this file belongs to (for open file tracking).
     mount_path: String,
 }
@@ -55,19 +56,22 @@ pub struct File {
 impl File {
     /// Creates a file handle and associates it with its mount point.
     pub(super) fn new(inner: FatFile<'static>, mount_path: String) -> Self {
-        Self { inner, mount_path }
+        Self {
+            inner: ManuallyDrop::new(inner),
+            mount_path,
+        }
     }
 
     /// Returns true if this file supports writing.
     #[must_use]
     pub fn is_writable(&self) -> bool {
-        self.inner.can_write()
+        state::with_storage_lock(|| self.inner.can_write())
     }
 
     /// Returns true if this file supports reading.
     #[must_use]
     pub fn is_readable(&self) -> bool {
-        self.inner.can_read()
+        state::with_storage_lock(|| self.inner.can_read())
     }
 
     /// Reads data from the file.
@@ -85,7 +89,7 @@ impl File {
     /// - [`Fat32Error::PermissionDenied`] if file is not open for reading.
     /// - [`Fat32Error::IoError`] on read failure.
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Fat32Error> {
-        self.inner.read(buf)
+        state::with_storage_lock(|| self.inner.read(buf))
     }
 
     /// Writes data to the file.
@@ -104,7 +108,7 @@ impl File {
     /// - [`Fat32Error::NoSpace`] if filesystem is full.
     /// - [`Fat32Error::IoError`] on write failure.
     pub fn write(&mut self, buf: &[u8]) -> Result<usize, Fat32Error> {
-        self.inner.write(buf)
+        state::with_storage_lock(|| self.inner.write(buf))
     }
 
     /// Seeks to a position in the file.
@@ -135,7 +139,7 @@ impl File {
             file_seek::SEEK_END => ::fatfs::SeekFrom::End(offset),
             _ => return Err(Fat32Error::InvalidArgument),
         };
-        self.inner.seek(pos)
+        state::with_storage_lock(|| self.inner.seek(pos))
     }
 
     /// Flushes any buffered data to the filesystem.
@@ -144,7 +148,7 @@ impl File {
     ///
     /// - [`Fat32Error::IoError`] on flush failure.
     pub fn flush(&mut self) -> Result<(), Fat32Error> {
-        self.inner.flush()
+        state::with_storage_lock(|| self.inner.flush())
     }
 
     /// Gets the file size in bytes.
@@ -153,7 +157,7 @@ impl File {
     ///
     /// - [`Fat32Error::IoError`] if seeking fails.
     pub fn size(&mut self) -> Result<u64, Fat32Error> {
-        self.inner.len()
+        state::with_storage_lock(|| self.inner.len())
     }
 
     /// Truncates the file at the current position.
@@ -163,7 +167,7 @@ impl File {
     /// - [`Fat32Error::ReadOnly`] if file is not open for writing.
     /// - [`Fat32Error::IoError`] on truncate failure.
     pub fn truncate(&mut self) -> Result<(), Fat32Error> {
-        self.inner.truncate()
+        state::with_storage_lock(|| self.inner.truncate())
     }
 
     /// Reads the entire file contents into a newly allocated `Vec`.
@@ -181,27 +185,30 @@ impl File {
     /// - [`Fat32Error::OutOfMemory`] if the file size exceeds addressable memory.
     /// - [`Fat32Error::IoError`] on read failure.
     pub fn read_to_vec(&mut self) -> Result<Vec<u8>, Fat32Error> {
-        if !self.inner.can_read() {
-            return Err(Fat32Error::PermissionDenied);
-        }
-
-        let file_size: u64 = self.inner.seek(::fatfs::SeekFrom::End(0))?;
-        self.inner.seek(::fatfs::SeekFrom::Start(0))?;
-
-        let buf_size: usize = usize::try_from(file_size).map_err(|_| Fat32Error::OutOfMemory)?;
-        let mut buf: Vec<u8> = alloc::vec![0u8; buf_size];
-        let mut total_read: usize = 0;
-
-        while total_read < buf.len() {
-            let n: usize = self.inner.read(&mut buf[total_read..])?;
-            if n == 0 {
-                break;
+        state::with_storage_lock(|| {
+            if !self.inner.can_read() {
+                return Err(Fat32Error::PermissionDenied);
             }
-            total_read += n;
-        }
 
-        buf.truncate(total_read);
-        Ok(buf)
+            let file_size: u64 = self.inner.seek(::fatfs::SeekFrom::End(0))?;
+            self.inner.seek(::fatfs::SeekFrom::Start(0))?;
+
+            let buf_size: usize =
+                usize::try_from(file_size).map_err(|_| Fat32Error::OutOfMemory)?;
+            let mut buf: Vec<u8> = alloc::vec![0u8; buf_size];
+            let mut total_read: usize = 0;
+
+            while total_read < buf.len() {
+                let n: usize = self.inner.read(&mut buf[total_read..])?;
+                if n == 0 {
+                    break;
+                }
+                total_read += n;
+            }
+
+            buf.truncate(total_read);
+            Ok(buf)
+        })
     }
 }
 
@@ -216,6 +223,11 @@ impl core::fmt::Debug for File {
 
 impl Drop for File {
     fn drop(&mut self) {
+        state::with_storage_lock(|| {
+            // SAFETY: `inner` is wrapped in `ManuallyDrop` and is dropped exactly once here while
+            // holding the same lock that serializes every other FAT filesystem operation.
+            unsafe { ManuallyDrop::drop(&mut self.inner) };
+        });
         state::decrement_open_count(&self.mount_path);
     }
 }

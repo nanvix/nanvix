@@ -49,7 +49,11 @@ pub(crate) struct VfsEntry {
     pub(crate) status_flags: c_int,
 }
 
-// SAFETY: all access to an entry is serialized by its `spin::Mutex`.
+// SAFETY: `VfsEntry` is private and every shared instance is accessed through its `spin::Mutex`.
+// The `Fat32` variant's `FatFile` is intentionally not `Send`; all operations on it, including
+// destruction, acquire the global storage lock also used for mount-level FAT operations. The
+// `DirectRead` variant dereferences its image pointer only while holding that same lock. Thus no
+// filesystem object or backing image is accessed concurrently when an entry crosses threads.
 unsafe impl Send for VfsEntry {}
 
 /// Shared open file description.

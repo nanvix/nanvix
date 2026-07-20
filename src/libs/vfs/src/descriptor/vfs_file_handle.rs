@@ -17,6 +17,7 @@ use super::{
 use crate::{
     filesystem::File,
     pipe::PipeEnd,
+    state,
 };
 use ::fat32::Fat32Error;
 use ::sysapi::{
@@ -60,7 +61,7 @@ impl VfsFileHandle {
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Fat32Error> {
         match self {
             VfsFileHandle::Fat32(file) => file.read(buf),
-            VfsFileHandle::DirectRead(handle) => Ok(handle.read(buf)),
+            VfsFileHandle::DirectRead(handle) => state::with_storage_lock(|| Ok(handle.read(buf))),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
