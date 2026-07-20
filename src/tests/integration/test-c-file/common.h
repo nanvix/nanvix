@@ -126,6 +126,12 @@ extern void test_symlinkat(void);
 // Tests whether we can remove a file.
 extern void test_unlinkat(void);
 
+// Tests whether we can set the file mode creation mask.
+extern void test_umask(void);
+
+// Tests whether we can create a RAMFS file while a file mode creation mask is active.
+extern void test_umask_ramfs(void);
+
 // Tests whether we can change file access and modification times.
 extern void test_utimensat(void);
 

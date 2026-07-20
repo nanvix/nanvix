@@ -114,7 +114,7 @@ POSIX_TEST_FILES_test-c-file := \
 	main.c open_close.c create_unlink.c write_read.c posix_fadvise.c lseek.c \
 	posix_fallocate.c readv.c preadv.c writev.c pwritev.c pread.c pwrite.c \
 	fdatasync.c stat.c ftruncate.c truncate.c renameat.c unlinkat.c mkdirat.c mkdir.c \
-	mkfifo.c mknod.c dirent.c getcwd.c chdir.c fchdir.c
+	mkfifo.c mknod.c umask_ramfs.c umask.c dirent.c getcwd.c chdir.c fchdir.c
 
 # Extra link flags for position-independent executables. The dlfcn PIE variants
 # build as PIE so the linker emits .dynsym/.dynstr/.dynamic and the executable's
@@ -293,6 +293,9 @@ $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_RULE,$(suite))))
 
 # Per-suite environment variables (space-separated KEY=VALUE entries). Empty unless set.
 POSIX_TEST_ENV_test-c-misc := NANVIX_TEST=1
+ifneq ($(IS_WINDOWS),yes)
+POSIX_TEST_ENV_test-c-file := NANVIX_TEST_HOSTFS_PERMISSIONS=1
+endif
 
 # $(1) = suite name.
 define POSIX_TEST_IMAGE_RULE
