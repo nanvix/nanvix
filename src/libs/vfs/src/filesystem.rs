@@ -5,7 +5,6 @@
 //!
 //! This module provides:
 //! - [`File`]: A unified file handle for FAT filesystem files.
-//! - [`File`]: A unified file handle for FAT filesystem files.
 //! - Free functions that resolve paths against an explicit working directory.
 
 //==================================================================================================
@@ -133,7 +132,7 @@ pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 
     // Root of a mount always exists — return AlreadyExists (mirrors stat()).
     if relative_path.is_empty() {
-        return Err(Fat32Error::NotFound);
+        return Err(Fat32Error::AlreadyExists);
     }
 
     check_writable(mount_idx)?;

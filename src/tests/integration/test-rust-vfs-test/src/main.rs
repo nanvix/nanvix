@@ -210,6 +210,14 @@ fn test_create_mount() -> Result<(), Error> {
     // Create an in-memory FAT mount.
     vfs::create_mount("/scratch", 128 * 1024).map_err(|e| fat_err(e, "create_mount failed"))?;
 
+    // The mount root already exists and must report EEXIST-style behavior.
+    if !matches!(vfs::mkdir("/scratch"), Err(vfs::Fat32Error::AlreadyExists)) {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "mkdir on mount root should report AlreadyExists",
+        ));
+    }
+
     // Write a file.
     {
         let mut file: vfs::File = vfs::OpenOptions::new()
