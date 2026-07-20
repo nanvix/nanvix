@@ -14,18 +14,38 @@
 //! backends. To add a new backend:
 //! 1. Add a variant to [`VfsFileHandle`].
 //! 2. Implement `read`, `write`, `seek`, and `size` for the new variant.
-//! 3. Update [`crate::fat32_backend`] (or create a new backend module).
+//! 3. Update the descriptor open adapter (or create a new backend module).
+
+//==================================================================================================
+// Modules
+//==================================================================================================
+
+mod open;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
+use self::open as open_adapter;
 use crate::{
-    fat32_backend,
+    filesystem,
     line_discipline::{
         ConsoleReadOutcome,
         LineDiscipline,
         TerminalSignal,
+    },
+    process::{
+        current_cwd,
+        current_pid,
+        root_process_identifier,
+        set_current_cwd,
+        OpenFile,
+        ProcessState,
+        Slot,
+        VfsEntry,
+        DEFAULT_CWD,
+        PROCESSES,
+        ROOT_CONSOLE_SEEDED,
     },
 };
 use ::alloc::{
@@ -37,11 +57,7 @@ use ::alloc::{
     sync::Arc,
     vec::Vec,
 };
-use ::core::sync::atomic::{
-    AtomicBool,
-    AtomicI32,
-    Ordering,
-};
+use ::core::sync::atomic::Ordering;
 use ::fat32::Fat32Error;
 use ::spin::Mutex;
 use ::sys::pm::ProcessIdentifier;
@@ -49,10 +65,6 @@ use ::sysapi::{
     fcntl::{
         file_control_request,
         file_creation_flags,
-        file_descriptor_flags::{
-            FD_CLOEXEC,
-            FD_CLOFORK,
-        },
         file_status_flags,
     },
     ffi::c_int,
@@ -87,698 +99,32 @@ const STAT_BLOCK_SIZE: i64 = 4096;
 /// Sector size used for `st_blocks` computation (POSIX convention: 512 bytes).
 const STAT_SECTOR_SIZE: u64 = 512;
 
-/// Working directory assigned to a process that has no recorded directory of its own.
-///
-/// [`ProcessState::new`] seeds every freshly created state — including the placeholder that
-/// [`set_current_process`] inserts lazily — with this value, so a state whose `cwd` still equals it
-/// has never been the target of an explicit `chdir`.
-const DEFAULT_CWD: &str = "/";
-
 //==================================================================================================
-// Metadata
+// Public Re-Exports
 //==================================================================================================
 
-/// File metadata returned by stat operations.
-///
-/// This is the VFS-level metadata type, independent of any concrete
-/// filesystem. Backend modules translate their native metadata into this
-/// type.
-pub struct VfsStat {
-    /// File size in bytes (0 for directories).
-    size: u64,
-    /// Whether this entry is a directory.
-    is_dir: bool,
-}
-
-impl VfsStat {
-    /// Creates a new `VfsStat`.
-    pub fn new(size: u64, is_dir: bool) -> Self {
-        Self { size, is_dir }
-    }
-
-    /// Returns the file size in bytes.
-    pub fn size(&self) -> u64 {
-        self.size
-    }
-
-    /// Returns whether this entry is a directory.
-    pub fn is_dir(&self) -> bool {
-        self.is_dir
-    }
-}
-
-//==================================================================================================
-// Direct Read Handle
-//==================================================================================================
-
-/// Zero-copy direct memory access handle for file reads.
-///
-/// When a file's data is stored contiguously in an in-memory filesystem
-/// image, reads can be served directly from the image buffer via memcpy,
-/// bypassing all cluster chain traversal.
-pub struct DirectReadHandle {
-    /// Pointer to the file's data within the filesystem image.
-    data: *const u8,
-    /// File size in bytes.
-    size: usize,
-    /// Current read position.
-    position: usize,
-}
-
-impl DirectReadHandle {
-    /// Creates a new direct read handle.
-    pub fn new(data: *const u8, size: usize) -> Self {
-        Self {
-            data,
-            size,
-            position: 0,
-        }
-    }
-
-    /// Reads data from the direct memory region.
-    pub fn read(&mut self, buf: &mut [u8]) -> usize {
-        let remaining: usize = self.size.saturating_sub(self.position);
-        let to_read: usize = buf.len().min(remaining);
-        if to_read == 0 {
-            return 0;
-        }
-        // SAFETY: data pointer is valid for the lifetime of the filesystem
-        // image, and position + to_read <= size (guaranteed by min above).
-        unsafe {
-            let src: *const u8 = self.data.add(self.position);
-            core::ptr::copy_nonoverlapping(src, buf.as_mut_ptr(), to_read);
-        }
-        self.position += to_read;
-        to_read
-    }
-
-    /// Seeks to a position in the direct memory region.
-    pub fn seek(&mut self, offset: off_t, whence: c_int) -> Result<off_t, Fat32Error> {
-        let new_pos: i64 = match whence {
-            file_seek::SEEK_SET => offset,
-            file_seek::SEEK_CUR => self.position as i64 + offset,
-            file_seek::SEEK_END => self.size as i64 + offset,
-            _ => return Err(Fat32Error::InvalidArgument),
-        };
-        if new_pos < 0 || new_pos > self.size as i64 {
-            return Err(Fat32Error::InvalidSeek);
-        }
-        self.position = new_pos as usize;
-        Ok(new_pos as off_t)
-    }
-
-    /// Returns the file size.
-    pub fn size(&self) -> usize {
-        self.size
-    }
-}
-
-//==================================================================================================
-// VFS File Handle
-//==================================================================================================
-
-/// An open file handle managed by the VFS.
-///
-/// Each variant corresponds to a concrete filesystem backend or an
-/// optimization path. The VFS FD table stores these handles and
-/// dispatches operations to the appropriate variant.
-pub enum VfsFileHandle {
-    /// File opened through the FAT32 backend.
-    Fat32(crate::File),
-    /// Zero-copy direct memory read (contiguous file optimization).
-    DirectRead(DirectReadHandle),
-    /// Open directory handle for `readdir()`/`getdents()` operations.
-    Directory(DirectoryHandle),
-    /// Remote file opened through the host filesystem daemon (hostfsd).
-    /// Operations on this handle must be forwarded via IKC by the caller (vfsd).
-    HostFs(HostFsHandle),
-    /// One end of a POSIX unnamed pipe.
-    Pipe(crate::pipe::PipeEnd),
-    /// Routing token for a console stream (stdin/stdout/stderr).
-    ///
-    /// The handle lets vfsd own the descriptor slot, its per-descriptor flags, and the shared
-    /// console line discipline. The daemon still drives host I/O around this token.
-    Console(ConsoleHandle),
-    /// Routing token for a socket, holding the descriptor assigned by `networkd`.
-    ///
-    /// Socket I/O is not served by vfsd; like [`VfsFileHandle::HostFs`] this token only stores the
-    /// remote descriptor so vfsd can own the slot and its per-descriptor flags. vfsd closes the
-    /// remote descriptor on `networkd` when the last reference to the slot is dropped.
-    Socket(SocketHandle),
-}
-
-/// Handle for a file opened on the host filesystem via hostfsd.
-///
-/// This handle stores the remote file descriptor returned by hostfsd.
-/// The VFS cannot perform I/O on this handle directly — all operations
-/// must be forwarded via IKC by the owning daemon (vfsd).
-///
-/// The `is_dir` flag is set once at open time and never re-checked. If the
-/// host-side path changes type out-of-band (e.g., replaced by a directory),
-/// subsequent operations will use the stale classification.
-pub struct HostFsHandle {
-    /// Remote file descriptor on the host side.
-    remote_fd: i32,
-    /// Whether this is a directory.
-    is_dir: bool,
-    /// Absolute path used to open this handle (stored only for directories to support dirfd).
-    path: Option<String>,
-    /// Next directory entry index to return on the following `getdents` call.
-    ///
-    /// hostfsd serves directory listings via offset-based iteration (one entry per
-    /// `offset`), so vfsd tracks the per-FD cursor here. It advances as entries are
-    /// consumed and is meaningful only for directory handles.
-    readdir_offset: u32,
-}
-
-impl HostFsHandle {
-    /// Creates a new HostFs handle with the given remote file descriptor.
-    ///
-    /// The `path` argument is only meaningful for directory handles (used by dirfd resolution).
-    /// Pass `None` for regular file handles to avoid unnecessary allocations.
-    pub fn new(remote_fd: i32, is_dir: bool, path: Option<String>) -> Self {
-        Self {
-            remote_fd,
-            is_dir,
-            path: if is_dir { path } else { None },
-            readdir_offset: 0,
-        }
-    }
-
-    /// Returns the remote file descriptor.
-    pub fn remote_fd(&self) -> i32 {
-        self.remote_fd
-    }
-
-    /// Returns whether this is a directory handle.
-    pub fn is_dir(&self) -> bool {
-        self.is_dir
-    }
-
-    /// Returns the path used to open this handle (only available for directories).
-    pub fn path(&self) -> Option<&str> {
-        self.path.as_deref()
-    }
-
-    /// Returns the current directory iteration cursor.
-    pub fn readdir_offset(&self) -> u32 {
-        self.readdir_offset
-    }
-
-    /// Sets the directory iteration cursor.
-    pub fn set_readdir_offset(&mut self, offset: u32) {
-        self.readdir_offset = offset;
-    }
-}
-
-/// Identifies which standard console stream a [`ConsoleHandle`] represents.
-///
-/// A console-backed descriptor performs no I/O of its own; the stream identity is the only state it
-/// needs so that `fstat` can synthesize a stable device identity in a later plan.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ConsoleStream {
-    /// Standard input (descriptor 0).
-    Stdin,
-    /// Standard output (descriptor 1).
-    Stdout,
-    /// Standard error (descriptor 2).
-    Stderr,
-}
-
-/// Routing token for a console-backed descriptor.
-///
-/// A console handle records which standard stream the descriptor represents and a reference to the
-/// shared line discipline (terminal attributes plus cooked input), but performs no I/O of its own.
-/// It exists so that vfsd can own the descriptor slot, its per-descriptor flags, and the terminal
-/// device state while the actual console I/O is driven from the daemon.
-pub struct ConsoleHandle {
-    /// Which standard stream this descriptor represents.
-    stream: ConsoleStream,
-    /// Shared line discipline (terminal attributes and cooked input), referenced by every console
-    /// descriptor of the device.
-    terminal: Arc<Mutex<LineDiscipline>>,
-}
-
-impl ConsoleHandle {
-    /// Creates a console handle for the given standard stream with its own fresh line discipline.
-    ///
-    /// Use [`ConsoleHandle::with_terminal`] when several handles must share one terminal device, as
-    /// the standard streams do.
-    pub fn new(stream: ConsoleStream) -> Self {
-        Self::with_terminal(stream, Arc::new(Mutex::new(LineDiscipline::default())))
-    }
-
-    /// Creates a console handle for the given standard stream that references `terminal`.
-    ///
-    /// The three standard streams are created this way from a single shared line discipline so that
-    /// they observe one consistent `termios`/`winsize` and one shared input buffer.
-    pub fn with_terminal(stream: ConsoleStream, terminal: Arc<Mutex<LineDiscipline>>) -> Self {
-        Self { stream, terminal }
-    }
-
-    /// Returns the standard stream this handle represents.
-    pub fn stream(&self) -> ConsoleStream {
-        self.stream
-    }
-
-    /// Returns a reference to the shared line discipline backing this console descriptor.
-    pub fn terminal(&self) -> &Arc<Mutex<LineDiscipline>> {
-        &self.terminal
-    }
-}
-
-/// Routing token for a socket-backed descriptor.
-///
-/// A socket handle stores the descriptor that `networkd` assigned to the socket (its remote fd),
-/// analogous to [`HostFsHandle::remote_fd`]. Socket I/O is not served by vfsd; this token only lets
-/// vfsd own the descriptor slot and its per-descriptor flags. vfsd closes the remote descriptor on
-/// `networkd` when the last reference to the slot is dropped.
-pub struct SocketHandle {
-    /// Descriptor assigned by `networkd` (the remote fd).
-    remote_fd: i32,
-}
-
-impl SocketHandle {
-    /// Creates a socket handle for the given `networkd` descriptor.
-    pub fn new(remote_fd: i32) -> Self {
-        Self { remote_fd }
-    }
-
-    /// Returns the `networkd` descriptor (remote fd) backing this socket.
-    pub fn remote_fd(&self) -> i32 {
-        self.remote_fd
-    }
-}
-
-/// Handle for an open directory.
-///
-/// Stores the resolved path and lazily-loaded directory entries.
-/// Entries are loaded on the first `getdents()` call and returned
-/// in subsequent calls via an internal cursor.
-pub struct DirectoryHandle {
-    /// Absolute path of the directory in the VFS.
-    path: String,
-    /// Cached directory entries (populated on first read).
-    entries: Option<Vec<crate::DirEntry>>,
-    /// Cursor into `entries` for sequential reads.
-    cursor: usize,
-}
-
-impl DirectoryHandle {
-    /// Creates a new directory handle for the given VFS path.
-    pub fn new(path: String) -> Self {
-        Self {
-            path,
-            entries: None,
-            cursor: 0,
-        }
-    }
-
-    /// Returns the next batch of directory entries.
-    ///
-    /// Lazily loads entries from the VFS on the first call and returns
-    /// up to `count` entries per invocation.
-    pub fn read_entries(&mut self, count: usize) -> Result<Vec<crate::DirEntry>, Fat32Error> {
-        if self.entries.is_none() {
-            self.entries = Some(crate::read_dir(&self.path)?);
-        }
-        let all: &[crate::DirEntry] = self.entries.as_ref().unwrap();
-        let remaining: &[crate::DirEntry] = if self.cursor < all.len() {
-            &all[self.cursor..]
-        } else {
-            &[]
-        };
-        let take: usize = core::cmp::min(count, remaining.len());
-        let batch: Vec<crate::DirEntry> = remaining[..take].to_vec();
-        self.cursor += take;
-        Ok(batch)
-    }
-}
-
-impl VfsFileHandle {
-    /// Reads data from the file.
-    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, Fat32Error> {
-        match self {
-            VfsFileHandle::Fat32(file) => file.read(buf),
-            VfsFileHandle::DirectRead(handle) => Ok(handle.read(buf)),
-            VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
-            VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
-            // Pipes are served by vfsd through the dedicated non-blocking primitives.
-            VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
-            // Console and socket tokens are inert routing markers; vfsd serves no I/O on them.
-            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
-        }
-    }
-
-    /// Writes data to the file.
-    pub fn write(&mut self, buf: &[u8]) -> Result<usize, Fat32Error> {
-        match self {
-            VfsFileHandle::Fat32(file) => file.write(buf),
-            VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-            VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
-            VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
-            // Pipes are served by vfsd through the dedicated non-blocking primitives.
-            VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
-            // Console and socket tokens are inert routing markers; vfsd serves no I/O on them.
-            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
-        }
-    }
-
-    /// Seeks to a position in the file.
-    pub fn seek(&mut self, offset: off_t, whence: c_int) -> Result<off_t, Fat32Error> {
-        match self {
-            VfsFileHandle::Fat32(file) => {
-                let pos: u64 = file.seek(whence, offset)?;
-                Ok(pos as off_t)
-            },
-            VfsFileHandle::DirectRead(handle) => handle.seek(offset, whence),
-            VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
-            VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
-            // A pipe is not seekable (`ESPIPE`); the daemon rejects seeks before reaching here.
-            VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
-            // Console and socket tokens are inert routing markers; vfsd serves no I/O on them.
-            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
-        }
-    }
-
-    /// Returns the file size in bytes.
-    pub fn size(&mut self) -> Result<u64, Fat32Error> {
-        match self {
-            VfsFileHandle::Fat32(file) => file.size(),
-            VfsFileHandle::DirectRead(handle) => Ok(handle.size() as u64),
-            VfsFileHandle::Directory(_) => Ok(0),
-            VfsFileHandle::HostFs(_) => Ok(0),
-            VfsFileHandle::Pipe(_) => Ok(0),
-            // Console and socket tokens have no size of their own.
-            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Ok(0),
-        }
-    }
-
-    /// Returns whether this handle is a directory.
-    pub fn is_dir(&self) -> bool {
-        match self {
-            VfsFileHandle::Directory(_) => true,
-            VfsFileHandle::HostFs(h) => h.is_dir(),
-            _ => false,
-        }
-    }
-
-    /// Returns whether this handle is backed by the host filesystem.
-    pub fn is_hostfs(&self) -> bool {
-        matches!(self, VfsFileHandle::HostFs(_))
-    }
-
-    /// Returns the remote FD if this is a HostFs handle.
-    pub fn hostfs_remote_fd(&self) -> Option<i32> {
-        match self {
-            VfsFileHandle::HostFs(h) => Some(h.remote_fd()),
-            _ => None,
-        }
-    }
-
-    /// Returns the pipe end if this handle is one end of a pipe.
-    pub fn pipe_end(&self) -> Option<&crate::pipe::PipeEnd> {
-        match self {
-            VfsFileHandle::Pipe(end) => Some(end),
-            _ => None,
-        }
-    }
-}
+pub use crate::{
+    descriptor::{
+        ConsoleHandle,
+        ConsoleStream,
+        DirectReadHandle,
+        DirectoryHandle,
+        FdFlags,
+        HostFsHandle,
+        PipeClosure,
+        ProcessExitReclaim,
+        SocketHandle,
+        TtyError,
+        VfsFileHandle,
+        VfsRoute,
+        VfsStat,
+    },
+    process::set_current_process,
+};
 
 //==================================================================================================
 // File Descriptor Table
 //==================================================================================================
-
-/// An open file description managed by the VFS.
-///
-/// Tracks a POSIX-compliant virtual position independently of the
-/// underlying backend. This is necessary because FAT32 (via fatfs)
-/// clamps seeks past EOF, while POSIX `lseek` allows it.
-///
-/// An open file description is shared (via [`Arc`]) by every file descriptor that refers to it.
-/// `fork()` duplicates the file descriptors of a process by cloning these shared references, so the
-/// parent and child observe the same file offset — matching POSIX semantics — while each holds an
-/// independent descriptor that can be closed on its own.
-struct VfsEntry {
-    /// The file handle from any backend.
-    handle: VfsFileHandle,
-    /// POSIX-compliant virtual file position (may exceed file size).
-    virtual_pos: off_t,
-    /// Open file status flags (the mutable subset settable via `fcntl(F_SETFL)`).
-    ///
-    /// Only `O_NONBLOCK` is honored today; it is consulted by vfsd's pipe read/write handlers to
-    /// choose `EAGAIN` over blocking. Non-pipe descriptors are unaffected because they never block.
-    status_flags: c_int,
-}
-
-// SAFETY: VfsEntry contains FAT filesystem types that use `Cell` internally
-// (e.g., `FsStatusFlags`), which prevents auto-impl of `Send`. This is safe
-// because all access to VfsEntry goes through a `spin::Mutex`, ensuring
-// exclusive access. The Cell is never shared across threads without the mutex.
-unsafe impl Send for VfsEntry {}
-
-/// A shared, reference-counted open file description.
-///
-/// Every file descriptor that refers to the same open file description holds one of these
-/// references. The description is dropped — and its backend handle released — only when the last
-/// referring descriptor is closed. This is the mechanism by which `fork()` shares open files
-/// between a parent and its child.
-type OpenFile = Arc<Mutex<VfsEntry>>;
-
-/// Per-descriptor flags carried by a single file-descriptor slot.
-///
-/// These hold the POSIX `fcntl(F_GETFD/F_SETFD)` descriptor flags — `FD_CLOEXEC` and `FD_CLOFORK`.
-/// They are stored on the slot rather than on the shared [`VfsEntry`] because POSIX requires them to
-/// be *per descriptor*, not per open file description: two descriptors that share one description
-/// through `dup` (or `fork`) each carry an independent copy, so setting `FD_CLOEXEC` on one must not
-/// affect the other.
-///
-/// The default is empty (no flags set), so a freshly allocated descriptor behaves exactly as it did
-/// before these flags existed. The flags are stored and cloned but not yet acted upon — honoring
-/// `FD_CLOFORK` at fork and `FD_CLOEXEC` at exec lands in later plans.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct FdFlags(c_int);
-
-impl FdFlags {
-    /// Builds the descriptor flags from a raw `fcntl(F_SETFD)` argument, rejecting any bit outside
-    /// the recognized set (`FD_CLOEXEC`, `FD_CLOFORK`).
-    ///
-    /// POSIX requires `fcntl(F_SETFD)` to fail with `EINVAL` when an unsupported descriptor-flag bit
-    /// is set rather than silently masking it. Rejecting here keeps this layer in agreement with the
-    /// syscall-side validation in `syscall::safe::FileDescriptorFlags` and prevents a later
-    /// `F_GETFD` from reporting flags the caller never set.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Fat32Error::InvalidArgument`] if `raw` sets any bit other than `FD_CLOEXEC` or
-    /// `FD_CLOFORK`.
-    pub fn try_from_bits(raw: c_int) -> Result<Self, Fat32Error> {
-        if raw & !(FD_CLOEXEC | FD_CLOFORK) != 0 {
-            return Err(Fat32Error::InvalidArgument);
-        }
-        Ok(Self(raw))
-    }
-
-    /// Returns the raw flag bits, as reported by `fcntl(F_GETFD)`.
-    pub const fn bits(self) -> c_int {
-        self.0
-    }
-
-    /// Returns whether the close-on-exec (`FD_CLOEXEC`) flag is set.
-    pub const fn close_on_exec(self) -> bool {
-        self.0 & FD_CLOEXEC != 0
-    }
-
-    /// Returns whether the close-on-fork (`FD_CLOFORK`) flag is set.
-    pub const fn close_on_fork(self) -> bool {
-        self.0 & FD_CLOFORK != 0
-    }
-
-    /// Sets or clears the close-on-exec (`FD_CLOEXEC`) flag.
-    pub fn set_close_on_exec(&mut self, enable: bool) {
-        self.set(FD_CLOEXEC, enable);
-    }
-
-    /// Sets or clears the close-on-fork (`FD_CLOFORK`) flag.
-    pub fn set_close_on_fork(&mut self, enable: bool) {
-        self.set(FD_CLOFORK, enable);
-    }
-
-    /// Sets or clears `flag` according to `enable`.
-    fn set(&mut self, flag: c_int, enable: bool) {
-        if enable {
-            self.0 |= flag;
-        } else {
-            self.0 &= !flag;
-        }
-    }
-}
-
-/// A single file-descriptor slot: a reference to an open file description plus the per-descriptor
-/// flags that belong to this descriptor alone.
-///
-/// The flags live here, not on the shared [`VfsEntry`], so that descriptors which share one open
-/// file description through `dup` or `fork` keep independent `FD_CLOEXEC`/`FD_CLOFORK` settings.
-#[derive(Clone)]
-struct Slot {
-    /// The shared open file description this descriptor refers to.
-    file: OpenFile,
-    /// Per-descriptor flags (`FD_CLOEXEC`, `FD_CLOFORK`).
-    fd_flags: FdFlags,
-}
-
-impl Slot {
-    /// Creates a slot referring to `file` with default (empty) descriptor flags.
-    fn new(file: OpenFile) -> Self {
-        Self {
-            file,
-            fd_flags: FdFlags::default(),
-        }
-    }
-}
-
-/// Per-process VFS state: the open file descriptor table and the current working directory.
-///
-/// Each process is given its own descriptor table so that closing a descriptor in one process does
-/// not affect another, and its own working directory so that `chdir()` is process-local. `fork()`
-/// gives the child a copy of this state: the descriptor slots are cloned as shared references to
-/// the parent's open file descriptions, while the working directory is deep-copied.
-///
-/// The slot table is a flat map keyed by the raw descriptor number: it holds the low console
-/// descriptors (`0`/`1`/`2`, seeded by [`vfs_seed_root_console`]) and the descriptors handed out by
-/// [`alloc_fd`] in one structure. [`alloc_fd`] allocates the lowest free number across that whole
-/// namespace, so the first `open` in a fresh process returns `3` and a freed number is reused
-/// before any higher one. A descriptor number therefore no longer encodes its backend; vfsd answers
-/// what each number is through [`vfs_resolve`].
-struct ProcessState {
-    /// File descriptor slots keyed by the raw file descriptor number.
-    slots: BTreeMap<c_int, Slot>,
-    /// Current working directory (always absolute, never ends with "/").
-    cwd: String,
-    /// Whether this state has been explicitly initialized rather than lazily conjured.
-    ///
-    /// A freshly created state is an uninitialized *placeholder*: [`set_current_process`] inserts
-    /// one the first time it sees a pid, so that a forked child whose first request races ahead of
-    /// its fork-clone notification has somewhere to record an early `chdir`. A state becomes
-    /// initialized — *active* — when [`vfs_seed_root_console`] seeds the root, when [`fork`] clones
-    /// a child, or when [`alloc_fd`] allocates a descriptor. [`vfs_fork_clone`] overwrites a child
-    /// entry only while it is still a placeholder, replacing the descriptor-count test that the
-    /// removed `is_empty` predicate used: a seeded state may legitimately hold console descriptors
-    /// and an active state may have closed all of them, so "holds no descriptors" can no longer
-    /// stand in for "safe to overwrite."
-    ///
-    /// [`fork`]: ProcessState::fork
-    initialized: bool,
-    /// Monotonic generation counter, bumped on every descriptor-table mutation (`open`, `close`,
-    /// and per-descriptor flag changes).
-    ///
-    /// libposix's resolution cache records the generation each cached entry was learned at and uses
-    /// it as a coherence epoch: once descriptor numbers stop encoding their backend (a later plan),
-    /// an entry older than the table's current generation is treated as stale and re-resolved. The
-    /// counter is plumbed and returned with descriptor responses now so the coherence substrate is
-    /// in place; in this plan routing still follows the descriptor number, so the epoch never alters
-    /// a routing decision.
-    generation: u64,
-}
-
-impl ProcessState {
-    /// Creates a new, uninitialized placeholder state whose working directory defaults to
-    /// [`DEFAULT_CWD`] and whose descriptor table is empty.
-    fn new() -> Self {
-        Self {
-            slots: BTreeMap::new(),
-            cwd: String::from(DEFAULT_CWD),
-            initialized: false,
-            generation: 0,
-        }
-    }
-
-    /// Creates a copy of this state for a freshly forked child.
-    ///
-    /// Each descriptor slot is cloned: the open file description is shared as a reference (so the
-    /// parent and child share file offsets) while the per-descriptor flags are copied, giving the
-    /// child its own independent `FD_CLOEXEC`/`FD_CLOFORK` settings. The working directory is
-    /// deep-copied. The child is born *active*: a forked process is a real process, never an
-    /// overwritable placeholder.
-    fn fork(&self) -> Self {
-        Self {
-            slots: self.slots.clone(),
-            cwd: self.cwd.clone(),
-            initialized: true,
-            // The child's table starts as an exact copy of the parent's, so it inherits the
-            // parent's generation: any entry libposix cached against the parent is equally coherent
-            // for the child until the child mutates its own table.
-            generation: self.generation,
-        }
-    }
-
-    /// Advances the descriptor-table generation, marking every previously cached resolution as
-    /// potentially stale. Called on each table-mutating operation.
-    fn bump_generation(&mut self) {
-        // Saturate rather than wrap so the generation stays monotonic: a wrap back to `0` could
-        // make a stale cached epoch compare equal to a fresh one once coherence becomes
-        // load-bearing. Saturating at `u64::MAX` is unreachable in practice.
-        self.generation = self.generation.saturating_add(1);
-    }
-}
-
-/// Registry of per-process VFS state, keyed by process identifier.
-static PROCESSES: Mutex<BTreeMap<ProcessIdentifier, ProcessState>> = Mutex::new(BTreeMap::new());
-
-/// Identifier of the process on whose behalf the VFS is currently operating.
-///
-/// The daemon sets this before handling each request so that the descriptor and working-directory
-/// operations below resolve against the correct process. The default (`0`) provides a single
-/// implicit process for callers — such as unit tests and benchmarks — that never set it explicitly.
-///
-/// This is process-global. Any unit test that mutates it (directly or via [`set_current_process`])
-/// or that depends on the per-process registry must serialize against every other such test by
-/// holding `FORK_TEST_GUARD`, since the test harness runs tests concurrently.
-static CURRENT_PID: AtomicI32 = AtomicI32::new(0);
-
-/// Returns the identifier of the process the VFS is currently operating on behalf of.
-#[inline]
-fn current_pid() -> ProcessIdentifier {
-    ProcessIdentifier::from(CURRENT_PID.load(Ordering::Relaxed))
-}
-
-/// Returns the identifier assigned to the root/init process.
-///
-/// The root identity comes from a single authoritative definition, [`ProcessIdentifier::INIT`]:
-/// the kernel creates the fixed daemon set first (`procd`, `memd`, then `vfsd`) and assigns the
-/// boot workload the next pid. Deriving the root from that constant — rather than recomputing
-/// `VFSD_RAW + 1` here — keeps the boot-order assumption in one place and avoids treating whichever
-/// process happens to issue the first VFS request as the root, which would break the fork-race
-/// placeholder path that [`vfs_fork_clone`] preserves.
-fn root_process_identifier() -> ProcessIdentifier {
-    ProcessIdentifier::INIT
-}
-
-/// Selects the process on whose behalf subsequent VFS operations are performed.
-///
-/// The daemon must call this before dispatching a request so that descriptor and working-directory
-/// operations resolve against the requesting process. The process's state is created lazily on
-/// first use if it does not already exist.
-pub fn set_current_process(pid: ProcessIdentifier) {
-    {
-        let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
-            PROCESSES.lock();
-        procs.entry(pid).or_insert_with(ProcessState::new);
-    }
-    CURRENT_PID.store(i32::from(pid), Ordering::Relaxed);
-}
-
-/// Returns the working directory of the process the VFS is operating on behalf of.
-///
-/// The working directory is owned solely by the per-process state; the VFS itself stores none.
-/// Defaults to "/" if the process has no recorded state yet.
-pub(crate) fn current_cwd() -> String {
-    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
-    procs
-        .get(&current_pid())
-        .map(|state| state.cwd.clone())
-        .unwrap_or_else(|| String::from("/"))
-}
 
 /// Returns a shared reference to the open file description for `fd` in the current process.
 ///
@@ -836,20 +182,6 @@ fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
     // Allocating a descriptor mutates the table; advance the coherence generation.
     state.bump_generation();
     Ok(fd)
-}
-
-/// Records the current working directory for the process the VFS is operating on behalf of.
-///
-/// This persists the directory in the per-process registry so that it is restored by
-/// [`set_current_process`] on the process's next request and copied to children by
-/// [`vfs_fork_clone`].
-pub(crate) fn set_current_cwd(cwd: String) {
-    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
-        PROCESSES.lock();
-    procs
-        .entry(current_pid())
-        .or_insert_with(ProcessState::new)
-        .cwd = cwd;
 }
 
 /// Duplicates the filesystem state of `parent` onto a freshly forked `child`.
@@ -932,15 +264,6 @@ pub fn vfs_fork_clone(
     Ok(())
 }
 
-/// Tracks whether the root process's console descriptors have been seeded.
-///
-/// Seeding the root is a one-time event: [`vfs_seed_root_console`] reads and sets this only after
-/// verifying that the target pid is the root. Non-root calls are no-ops and do not consume the
-/// latch, which is what keeps a racing child placeholder overwritable until its fork-clone arrives.
-/// It is process-global, so any unit test that drives seeding must serialize on `FORK_TEST_GUARD`
-/// and reset it on cleanup.
-static ROOT_CONSOLE_SEEDED: AtomicBool = AtomicBool::new(false);
-
 /// Seeds the root process's standard console descriptors (`0`/`1`/`2`) and marks its state active.
 ///
 /// The root process is the one process not born from a fork: the kernel spawns it directly, so it
@@ -990,31 +313,6 @@ pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
     // placeholder/active invariant uniform across every code path.)
     state.initialized = true;
     state.bump_generation();
-}
-
-/// Pipe count-to-zero transitions surfaced by [`vfs_process_exit`].
-///
-/// Each entry records that the exiting process held the final reference to one end of a pipe, so
-/// that end's reference count dropped to zero when its open file description was released. vfsd
-/// uses these to run the corresponding wakeup (EOF for readers when a write end vanishes, `EPIPE`
-/// for writers when a read end vanishes).
-pub struct PipeClosure {
-    /// Stable identity of the affected pipe.
-    pub pipe_id: u64,
-    /// Whether the released end was the write end (`true`) or the read end (`false`).
-    pub was_write: bool,
-}
-
-/// Resources surfaced by [`vfs_process_exit`] that the daemon must act on after a process exits.
-pub struct ProcessExitReclaim {
-    /// Remote file descriptors of host-backed descriptions for which the process held the final
-    /// reference. Each must be closed on hostfsd or the remote handle leaks.
-    pub orphaned_hostfs_fds: Vec<i32>,
-    /// `networkd` descriptors of socket slots for which the process held the final reference. Each
-    /// must be closed on `networkd` or the socket endpoint leaks.
-    pub orphaned_socket_fds: Vec<i32>,
-    /// Pipe ends whose reference count reached zero because the process held the final reference.
-    pub pipe_closures: Vec<PipeClosure>,
 }
 
 /// Reclaims the per-process filesystem state of a terminated process.
@@ -1508,22 +806,7 @@ pub fn vfs_current_generation() -> u64 {
 
 /// Returns `true` if the given path is handled by the VFS.
 pub fn is_vfs_path(path: &str) -> bool {
-    fat32_backend::exists(path)
-}
-
-/// The backend a descriptor's slot is bound to, as reported by [`vfs_resolve`].
-///
-/// vfsd is the routing authority once descriptor numbers no longer encode their backend: it answers
-/// what a flat number like `4` actually is — a console stream, a vfsd-served object, or a socket —
-/// from its authoritative slot table.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum VfsRoute {
-    /// A console stream; the `backend_fd` is the standard stream number (`0`/`1`/`2`).
-    Console,
-    /// A vfsd-served object (regular file, directory, host file, or pipe end).
-    Vfs,
-    /// A socket; the `backend_fd` is the descriptor `networkd` assigned.
-    Socket,
+    open_adapter::exists(&current_cwd(), path)
 }
 
 /// Resolves a flat descriptor to its backend route and the descriptor that backend expects.
@@ -1590,7 +873,10 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
 
     // Relative path with AT_FDCWD: resolve against VFS cwd.
     if dirfd == AT_FDCWD {
-        let cwd: String = crate::cwd().ok()?;
+        if !crate::state::is_initialized() {
+            return None;
+        }
+        let cwd: String = current_cwd();
         return if cwd.ends_with('/') {
             Some(alloc::format!("{}{}", cwd, path))
         } else {
@@ -1604,7 +890,7 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
     let file: OpenFile = entry_arc(dirfd).ok()?;
     let guard = file.lock();
     let dir_path: &str = match &guard.handle {
-        VfsFileHandle::Directory(dh) => &dh.path,
+        VfsFileHandle::Directory(dh) => dh.path(),
         VfsFileHandle::HostFs(hh) if hh.is_dir() => hh.path()?,
         _ => return None, // fd is not a directory
     };
@@ -1622,17 +908,18 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
 
 /// Opens a file through the VFS and allocates a system-wide FD.
 pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
+    let cwd: String = current_cwd();
     // If O_DIRECTORY is set, verify the path is a directory before opening.
     if flags & file_creation_flags::O_DIRECTORY != 0 {
-        let info: VfsStat = fat32_backend::stat(path)?;
+        let info: VfsStat = open_adapter::stat(&cwd, path)?;
         if !info.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
-        let normalized: String = crate::normalize(path)?;
+        let normalized: String = crate::filesystem::normalize(&cwd, path)?;
         let handle: VfsFileHandle = VfsFileHandle::Directory(DirectoryHandle::new(normalized));
         return alloc_fd(handle);
     }
-    let handle: VfsFileHandle = fat32_backend::open(path, flags)?;
+    let handle: VfsFileHandle = open_adapter::open(&cwd, path, flags)?;
     alloc_fd(handle)
 }
 
@@ -2018,7 +1305,7 @@ pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
 
 /// Gets file status for a path through the VFS.
 pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
-    let info: VfsStat = fat32_backend::stat(path)?;
+    let info: VfsStat = open_adapter::stat(&current_cwd(), path)?;
 
     // Zero-initialize the stat buffer.
     unsafe {
@@ -2053,17 +1340,17 @@ pub fn vfs_fstatat(
 ///
 /// Both paths must be on the same VFS mount.
 pub fn vfs_rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
-    crate::rename(old_path, new_path)
+    filesystem::rename(&current_cwd(), old_path, new_path)
 }
 
 /// Deletes a file through the VFS.
 pub fn vfs_unlink(path: &str) -> Result<(), Fat32Error> {
-    crate::unlink(path)
+    filesystem::unlink(&current_cwd(), path)
 }
 
 /// Creates a directory through the VFS.
 pub fn vfs_mkdir(path: &str) -> Result<(), Fat32Error> {
-    crate::mkdir(path)
+    filesystem::mkdir(&current_cwd(), path)
 }
 
 /// Creates a directory relative to a directory file descriptor through the VFS.
@@ -2083,12 +1370,15 @@ pub fn vfs_mkdirat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
 
 /// Removes an empty directory through the VFS.
 pub fn vfs_rmdir(path: &str) -> Result<(), Fat32Error> {
-    crate::rmdir(path)
+    filesystem::rmdir(&current_cwd(), path)
 }
 
 /// Changes the VFS current working directory.
 pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
-    crate::chdir(path)
+    let cwd: String = current_cwd();
+    let normalized: String = filesystem::change_directory(&cwd, path)?;
+    set_current_cwd(normalized);
+    Ok(())
 }
 
 /// Changes the current working directory to the directory referenced by a VFS FD.
@@ -2101,23 +1391,26 @@ pub fn vfs_fchdir(fd: c_int) -> Result<(), Fat32Error> {
     let path: String = {
         let guard = file.lock();
         match &guard.handle {
-            VfsFileHandle::Directory(dir) => dir.path.clone(),
+            VfsFileHandle::Directory(dir) => String::from(dir.path()),
             _ => return Err(Fat32Error::NotADirectory),
         }
     };
-    crate::chdir(&path)
+    vfs_chdir(&path)
 }
 
 /// Gets the VFS current working directory.
 pub fn vfs_getcwd() -> Result<alloc::string::String, Fat32Error> {
-    crate::cwd()
+    if !crate::state::is_initialized() {
+        return Err(Fat32Error::NotInitialized);
+    }
+    Ok(current_cwd())
 }
 
 /// Lists directory contents through the VFS.
 ///
 /// Returns a vector of directory entries.
-pub fn vfs_readdir(path: &str) -> Result<alloc::vec::Vec<crate::DirEntry>, Fat32Error> {
-    crate::read_dir(path)
+pub fn vfs_readdir(path: &str) -> Result<alloc::vec::Vec<filesystem::DirEntry>, Fat32Error> {
+    filesystem::read_dir(&current_cwd(), path)
 }
 
 /// Truncates a VFS file descriptor to the given length.
@@ -2244,15 +1537,6 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
 /// descriptor with no slot answers `false` (the caller maps the absent slot to `EBADF`).
 pub fn vfs_isatty(fd: c_int) -> bool {
     matches!(vfs_resolve(fd), Some((VfsRoute::Console, _)))
-}
-
-/// Error from a terminal-control query on a descriptor.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TtyError {
-    /// The descriptor has no slot in the current process (maps to `EBADF`).
-    BadFd,
-    /// The descriptor is valid but does not refer to a terminal (maps to `ENOTTY`).
-    NotTty,
 }
 
 /// Returns the shared terminal device state of `fd` when it is a console descriptor.
@@ -2421,7 +1705,7 @@ pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat3
 /// FAT32 does not support POSIX permission bits, so the mode is accepted
 /// but silently ignored. Returns `Err` if the path does not exist.
 pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), Fat32Error> {
-    crate::stat(path).map(|_| ())
+    filesystem::stat(&current_cwd(), path).map(|_| ())
 }
 
 /// Checks file accessibility through the VFS.
@@ -2429,7 +1713,7 @@ pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), F
 /// Returns `Ok(())` if the path exists, `Err` otherwise.
 /// FAT32 does not have UNIX permissions, so only existence is checked.
 pub fn vfs_access(path: &str) -> Result<(), Fat32Error> {
-    crate::stat(path).map(|_| ())
+    filesystem::stat(&current_cwd(), path).map(|_| ())
 }
 
 /// Checks the accessibility of a file relative to a directory file descriptor.
@@ -2507,7 +1791,7 @@ pub fn vfs_getdents(
         _ => return Err(Fat32Error::InvalidArgument),
     };
 
-    let entries: Vec<crate::DirEntry> = dir_handle.read_entries(count)?;
+    let entries: Vec<filesystem::DirEntry> = dir_handle.read_entries(count)?;
 
     // FAT32 has no real inodes; use synthetic 1-based indices.
     let mut result: Vec<posix_dent> = Vec::new();
@@ -2560,7 +1844,7 @@ pub fn vfs_renameat(
         vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
     let new_resolved: String =
         vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
-    crate::rename(&old_resolved, &new_resolved)
+    filesystem::rename(&current_cwd(), &old_resolved, &new_resolved)
 }
 
 /// Unlinks a file or removes a directory relative to a directory file descriptor through the VFS.
@@ -2583,9 +1867,9 @@ pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32E
     use ::sysapi::fcntl::atflags::AT_REMOVEDIR;
     let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     if flags & AT_REMOVEDIR != 0 {
-        crate::rmdir(&resolved)
+        filesystem::rmdir(&current_cwd(), &resolved)
     } else {
-        crate::unlink(&resolved)
+        filesystem::unlink(&current_cwd(), &resolved)
     }
 }
 
@@ -2657,7 +1941,7 @@ pub fn vfs_fchmodat(
 ) -> Result<(), Fat32Error> {
     let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    crate::stat(&resolved).map(|_| ())
+    filesystem::stat(&current_cwd(), &resolved).map(|_| ())
 }
 
 /// Changes the owner and group of a file relative to a directory file descriptor through the VFS.
@@ -2686,7 +1970,7 @@ pub fn vfs_fchownat(
 ) -> Result<(), Fat32Error> {
     let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    crate::stat(&resolved).map(|_| ())
+    filesystem::stat(&current_cwd(), &resolved).map(|_| ())
 }
 
 /// Sets file access and modification times through the VFS.
@@ -2718,7 +2002,7 @@ pub fn vfs_utimensat(
     }
     let path: String = vfs_resolve_path(dirfd, pathname).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    crate::stat(&path).map(|_| ())
+    filesystem::stat(&current_cwd(), &path).map(|_| ())
 }
 
 //==================================================================================================
@@ -2729,6 +2013,11 @@ pub fn vfs_utimensat(
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::process::CURRENT_PID;
+    use ::sysapi::fcntl::file_descriptor_flags::{
+        FD_CLOEXEC,
+        FD_CLOFORK,
+    };
 
     // -- VfsStat tests -----------------------------------------------------------
 

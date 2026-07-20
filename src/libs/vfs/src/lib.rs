@@ -59,8 +59,17 @@ extern crate alloc;
 // Modules
 //==================================================================================================
 
-/// FAT32 backend: translates VFS operations to `fat32` crate calls.
-pub mod fat32_backend;
+/// Backend-neutral descriptor handle types.
+mod descriptor;
+
+/// Process-independent filesystem operations.
+mod filesystem;
+
+/// Process-aware file opening options.
+mod open_options;
+
+/// Per-process descriptor and working-directory state.
+mod process;
 
 /// File descriptor table and POSIX-compatible FD operations.
 pub mod fd;
@@ -73,9 +82,6 @@ pub mod line_discipline;
 
 /// Mount table and path resolution.
 pub mod mount;
-
-/// Path-resolution cache used by the mount table.
-mod path_cache;
 
 /// In-memory pipe buffers for POSIX unnamed pipes.
 pub mod pipe;

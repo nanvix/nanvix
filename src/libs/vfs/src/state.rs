@@ -10,9 +10,9 @@
 //!
 //! # Thread Safety
 //!
-//! All global state is protected by [`spin::Mutex`] to ensure safe concurrent
-//! access. Nanvix guests may create kernel threads, so the filesystem state
-//! must be properly synchronized.
+//! All FAT filesystem and open-file-handle access is serialized by [`VFS_STATE`]. Nanvix guests
+//! may create kernel threads, so [`crate::filesystem::File`] operations use this same lock after a
+//! handle escapes the mount table.
 
 //==================================================================================================
 // Imports
@@ -48,7 +48,7 @@ pub const MAX_FAT_SIZE: usize = 128 * 1024 * 1024;
 // Global State
 //==================================================================================================
 
-/// Global VFS state, protected by a spin mutex.
+/// Global VFS state and serialization lock for FAT filesystem access.
 static VFS_STATE: Mutex<Option<Vfs>> = Mutex::new(None);
 
 /// Tracks guest-created mounts for unmount permission checks and
@@ -373,6 +373,19 @@ pub fn unmount(mount_path: &str) -> Result<(), Fat32Error> {
 //==================================================================================================
 // Internal Functions
 //==================================================================================================
+
+/// Executes a closure while holding the lock that serializes access to FAT storage.
+///
+/// Unlike [`with_vfs`] and [`with_vfs_mut`], this helper does not require the VFS to be initialized
+/// because an open file handle already proves that its backing filesystem was initialized. It is
+/// used when the handle itself, rather than the mount table, is sufficient to perform an operation.
+pub(crate) fn with_storage_lock<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    let _state = VFS_STATE.lock();
+    f()
+}
 
 /// Executes a closure with a shared reference to the VFS.
 ///
