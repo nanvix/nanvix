@@ -49,6 +49,7 @@ typedef struct {
     int is_initialized; /**< Whether the attributes are initialized. */
     int type;           /**< Type of mutex.                          */
     int recursive;      /**< Whether the mutex is recursive.         */
+    int pshared;        /**< Process-sharing attribute.               */
 } pthread_mutexattr_t;
 
 /** @brief Read-write lock attributes. */
@@ -80,7 +81,9 @@ text = '''
 #define PTHREAD_RWLOCK_INITIALIZER 0xffffffff /**< Static read-write lock initializer. */
 #define PTHREAD_NULL 0 /**< Null thread identifier. */
 #define PTHREAD_CREATE_JOINABLE 0 /**< Thread is created joinable. */
-#define PTHREAD_CREATE_DETACHED 1 /**< Thread is created detached. */'''
+#define PTHREAD_CREATE_DETACHED 1 /**< Thread is created detached. */
+#define PTHREAD_PROCESS_PRIVATE 0 /**< Synchronization object is private to a process. */
+#define PTHREAD_PROCESS_SHARED 1 /**< Synchronization object is shared between processes. */'''
 
 [[sections]]
 title = "Threads"
@@ -124,6 +127,7 @@ functions = [
     "pthread_mutex_timedlock",
     "pthread_mutexattr_init",
     "pthread_mutexattr_destroy",
+    "pthread_mutexattr_getpshared",
     "pthread_mutexattr_settype",
     "pthread_mutexattr_gettype",
 ]
