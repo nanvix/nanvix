@@ -619,11 +619,11 @@ def ci_summary(args):
         fh.write(bench_summary)
 
 
-def _read_baseline_moving_avg(
+def _read_baseline_moving_median(
     benchmark: str, file_path: str, window: int = 20
 ) -> Optional[float]:
     """
-    Read the last ``window`` p50 values from a baseline CSV and return their average.
+    Read the last ``window`` p50 values from a baseline CSV and return their median.
 
     Works for scalar percentile benchmarks using the ``commit,p50,p95,p99`` schema.
     Returns ``None`` when the file is missing or contains no valid p50 values.
@@ -632,7 +632,7 @@ def _read_baseline_moving_avg(
 
     - ``benchmark``: Name of the benchmark.
     - ``file_path``: Path to the baseline CSV file.
-    - ``window``: Number of most-recent data rows to average.
+    - ``window``: Number of most-recent data rows used to compute the moving median.
     """
     if benchmark not in PERCENTILE_BENCHMARKS:
         return None
@@ -674,7 +674,16 @@ def _read_baseline_moving_avg(
         print(f"WARNING: no valid p50 values in baseline: {file_path}")
         return None
 
-    return sum(p50_values) / len(p50_values)
+    return _solve_median(p50_values)
+
+
+def _solve_median(values: list[float]) -> float:
+    values.sort()
+    n = len(values)
+    mid = n // 2
+    if n % 2 != 0:
+        return values[mid]
+    return (values[mid - 1] + values[mid]) / 2
 
 
 def ci_gate(args) -> int:
@@ -682,7 +691,7 @@ def ci_gate(args) -> int:
     Check benchmark results for performance regressions against baseline.
 
     Compares the p50 value of each benchmark CSV in target-dir against the
-    moving average of the last N baseline p50 values in dev-dir. Exits
+    moving median of the last N baseline p50 values in dev-dir. Exits
     non-zero if any benchmark regresses beyond the configured threshold.
 
     Scalar percentile benchmarks are checked. Size-sweep benchmarks and benchmarks with missing
@@ -707,14 +716,14 @@ def ci_gate(args) -> int:
             dev_path = os.path.join(args.dev_dir, csv_name)
             tgt_path = os.path.join(args.target_dir, csv_name)
 
-            # Read baseline moving average of p50 values.
-            dev_avg = _read_baseline_moving_avg(benchmark, dev_path, window)
-            if dev_avg is None:
+            # Read baseline moving median of p50 values.
+            baseline_median = _read_baseline_moving_median(benchmark, dev_path, window)
+            if baseline_median is None:
                 print(f"SKIP: no baseline for {benchmark} ({machine}/{arch})")
                 continue
-            if dev_avg == 0:
+            if baseline_median == 0:
                 print(
-                    f"WARNING: zero baseline avg for {benchmark} "
+                    f"WARNING: zero baseline median for {benchmark} "
                     f"({machine}/{arch}), skipping"
                 )
                 continue
@@ -735,7 +744,7 @@ def ci_gate(args) -> int:
 
             checked += 1
 
-            delta_pct = (tgt_p50 - dev_avg) / dev_avg * 100
+            delta_pct = (tgt_p50 - baseline_median) / baseline_median * 100
 
             if delta_pct > threshold:
                 regressions.append(
@@ -743,27 +752,27 @@ def ci_gate(args) -> int:
                         "benchmark": benchmark,
                         "machine": machine,
                         "arch": arch,
-                        "dev_avg": round(dev_avg, 1),
+                        "baseline_median": round(baseline_median, 1),
                         "tgt_p50": tgt_p50,
                         "delta_pct": round(delta_pct, 1),
                     }
                 )
                 print(
                     f"REGRESSION: {benchmark} ({machine}/{arch}): "
-                    f"p50 {tgt_p50} vs baseline avg {round(dev_avg, 1)} "
+                    f"p50 {tgt_p50} vs baseline median {round(baseline_median, 1)} "
                     f"(+{round(delta_pct, 1)}%, threshold: {threshold}%)"
                 )
             else:
                 status = f"+{delta_pct:.1f}%" if delta_pct > 0 else f"{delta_pct:.1f}%"
                 print(
                     f"OK: {benchmark} ({machine}/{arch}): "
-                    f"p50 {tgt_p50} vs baseline avg {round(dev_avg, 1)} ({status})"
+                    f"p50 {tgt_p50} vs baseline median {round(baseline_median, 1)} ({status})"
                 )
 
     print(
         f"\nChecked {checked} benchmark(s), "
         f"found {len(regressions)} regression(s) "
-        f"(threshold: >{threshold}% vs {window}-point moving avg)."
+        f"(threshold: >{threshold}% vs {window}-point moving median)."
     )
 
     if regressions:
@@ -1299,7 +1308,7 @@ if __name__ == "__main__":
         "--baseline-window",
         type=_positive_int,
         default=20,
-        help="Number of most-recent baseline data points to average (default: 20)",
+        help="Number of most-recent baseline data points used for the moving median (default: 20)",
     )
     ci_gate_parser.set_defaults(func=ci_gate)
 
