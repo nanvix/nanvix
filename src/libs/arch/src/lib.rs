@@ -3,6 +3,9 @@
 
 #![no_std]
 #![allow(clippy::all)]
+// To support attributes on statements (e.g., inline `proof!{}` blocks) under Verus,
+// we need `proc_macro_hygiene`.
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_hygiene))]
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86;

@@ -94,13 +94,13 @@ impl FrameNumber {
     ///
     /// The raw value of the target [`FrameNumber`].
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result as int == self@,
             0 <= self@ <= Self::spec_max(),
     )]
     pub fn into_raw_value(self) -> usize {
+        proof! { use_type_invariant(self); }
         self.0
     }
 }
