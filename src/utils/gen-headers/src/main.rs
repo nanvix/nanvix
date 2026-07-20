@@ -305,7 +305,7 @@ fn map_ident_to_c(ident: &str) -> Option<&'static str> {
 fn map_type(ty: &syn::Type) -> String {
     match ty {
         syn::Type::Ptr(ptr) => {
-            let is_const: bool = ptr.const_token.is_some();
+            let is_const: bool = matches!(&ptr.mutability, syn::PointerMutability::Const(_));
             let inner: String = map_type(&ptr.elem);
             if inner == "void" {
                 return if is_const {
@@ -329,7 +329,7 @@ fn map_type(ty: &syn::Type) -> String {
             }
         },
         syn::Type::Never(_) => "void".to_string(),
-        syn::Type::BareFn(bare) => map_bare_fn(bare),
+        syn::Type::FnPtr(fn_ptr) => map_fn_ptr(fn_ptr),
         syn::Type::Path(path) => map_type_path(path),
         // Strip a redundant outer parenthesis or group, then map the inner type.
         syn::Type::Paren(inner) => map_type(&inner.elem),
@@ -365,13 +365,13 @@ fn map_type_path(path: &syn::TypePath) -> String {
     }
 }
 
-/// Maps a bare function pointer type to a C function pointer placeholder.
-fn map_bare_fn(bare: &syn::TypeBareFn) -> String {
-    let ret: String = match &bare.output {
+/// Maps a function pointer type to a C function pointer placeholder.
+fn map_fn_ptr(fn_ptr: &syn::TypeFnPtr) -> String {
+    let ret: String = match &fn_ptr.output {
         syn::ReturnType::Default => "void".to_string(),
-        syn::ReturnType::Type(_, ty) => map_type(ty),
+        syn::ReturnType::Type(_, ty) => map_type(ty.as_ref()),
     };
-    let params: Vec<String> = bare.inputs.iter().map(|arg| map_type(&arg.ty)).collect();
+    let params: Vec<String> = fn_ptr.inputs.iter().map(|arg| map_type(&arg.ty)).collect();
     let params_str: String = if params.is_empty() {
         "void".to_string()
     } else {

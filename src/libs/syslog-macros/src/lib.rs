@@ -276,8 +276,23 @@ fn build_auto_message(function: &ItemFn) -> Result<(LitStr, Vec<TokenStream2>)> 
     for input in &function.sig.inputs {
         match input {
             FnArg::Receiver(receiver) => {
-                let is_reference: bool = receiver.reference.is_some();
-                let is_mutable: bool = receiver.mutability.is_some();
+                let (is_reference, is_mutable): (bool, bool) = match &receiver.kind {
+                    syn::ReceiverKind::Reference(_, _, mutability) => (true, mutability.is_some()),
+                    // A typed receiver such as `self: &Self` / `self: &mut Self` carries the
+                    // reference in its type, so derive reference/mutability from it. Non-reference
+                    // typed receivers (e.g. `self: Box<Self>`) fall back to value behavior.
+                    syn::ReceiverKind::Typed(_, ty) => match ty.as_ref() {
+                        syn::Type::Reference(reference) => (true, reference.mutability.is_some()),
+                        _ => (false, receiver.mutability.is_some()),
+                    },
+                    syn::ReceiverKind::Value => (false, receiver.mutability.is_some()),
+                    _ => {
+                        return Err(syn::Error::new(
+                            receiver.span(),
+                            "trace_* macros do not support this receiver kind",
+                        ));
+                    },
+                };
 
                 let label: String = match (is_reference, is_mutable) {
                     (false, _) => "self={:?}".to_string(),
