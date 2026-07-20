@@ -15,7 +15,7 @@ publish = false
 anyhow = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
-syn = { version = "2", features = ["full"] }
+syn = { version = "3", features = ["full"] }
 toml = { workspace = true }
 
 [lints]
