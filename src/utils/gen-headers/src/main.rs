@@ -1102,3 +1102,34 @@ fn main() -> Result<()> {
 
     Ok(())
 }
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::syn::parse_quote;
+
+    #[test]
+    fn map_type_maps_raw_pointer_mutability() {
+        let const_void: syn::Type = parse_quote!(*const c_void);
+        let mut_void: syn::Type = parse_quote!(*mut c_void);
+        let const_char: syn::Type = parse_quote!(*const c_char);
+        let mut_char: syn::Type = parse_quote!(*mut c_char);
+
+        assert_eq!(map_type(&const_void), "const void *");
+        assert_eq!(map_type(&mut_void), "void *");
+        assert_eq!(map_type(&const_char), "const char *");
+        assert_eq!(map_type(&mut_char), "char *");
+    }
+
+    #[test]
+    fn map_type_maps_function_pointer() {
+        let fn_ptr: syn::Type =
+            parse_quote!(unsafe extern "C" fn(*const c_void, c_size_t) -> c_int);
+
+        assert_eq!(map_type(&fn_ptr), "int (*)(const void *, size_t)");
+    }
+}
