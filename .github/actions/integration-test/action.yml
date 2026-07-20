@@ -12,9 +12,6 @@ inputs:
   machine-type:
     description: "Machine type"
     required: true
-  deployment-type:
-    description: "Deployment type"
-    required: true
   shard-index:
     description: "1-based index of this shard (e.g. 1)"
     required: true
@@ -25,7 +22,7 @@ inputs:
 runs:
   using: "composite"
   steps:
-    # Run this shard's slice of the deployment's integration suite directly from
+    # Run this shard's slice of the standalone integration suite directly from
     # the downloaded artifacts. The harness selects a disjoint, round-robin
     # subset via `-shard INDEX/TOTAL`, so new tests added to the TOML config are
     # automatically distributed across shards with no workflow changes. The
@@ -41,21 +38,9 @@ runs:
       run: |
         set -Eeuo pipefail
 
-        # Determine test config based on deployment type.
-        case "${{ inputs.deployment-type }}" in
-          standalone)     TEST_CONFIG="test/test-standalone.toml" ;;
-          single-process) TEST_CONFIG="test/test-single_process.toml" ;;
-          multi-process)  TEST_CONFIG="test/test-multi_process.toml" ;;
-          l2)             TEST_CONFIG="test/test-l2.toml" ;;
-          *)
-            echo "::error::Unknown deployment type: ${{ inputs.deployment-type }}"
-            exit 1
-            ;;
-        esac
-
         SHARD="${{ inputs.shard-index }}/${{ inputs.shard-total }}"
-        echo "Running: ./bin/nanvix-test.elf -shard ${SHARD} ${TEST_CONFIG}"
-        ./bin/nanvix-test.elf -shard "${SHARD}" "${TEST_CONFIG}"
+        echo "Running: ./bin/nanvix-test.elf -shard ${SHARD} test/test-standalone.toml"
+        ./bin/nanvix-test.elf -shard "${SHARD}" test/test-standalone.toml
 
     # Ported POSIX C test suites. Standalone-only: the runner boots each suite
     # under nanvixd in standalone mode and uses the guest exit code as the
@@ -63,7 +48,6 @@ runs:
     # each runner executes a disjoint slice. This also exercises the freestanding
     # guest C toolchain (build/make/guest-c-apps.mk) that no other CI step compiles.
     - name: "POSIX C Suites (${{ inputs.machine-type }}, shard ${{ inputs.shard-index }}/${{ inputs.shard-total }})"
-      if: inputs.deployment-type == 'standalone'
       shell: bash
       # No RUST_LOG here (unlike the direct-invocation step above): this step
       # drives the harness through `./z build -- run-posix-tests`, whose recipe
@@ -80,6 +64,4 @@ runs:
         ./z build ${RELEASE_FLAG} -- run-posix-tests \
             "MACHINE=${{ inputs.machine-type }}" \
             TARGET=x86 \
-            "DEPLOYMENT_MODE=${{ inputs.deployment-type }}" \
             "SHARD=${{ inputs.shard-index }}/${{ inputs.shard-total }}"
-

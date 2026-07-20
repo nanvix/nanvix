@@ -29,9 +29,9 @@ IS_WINDOWS = platform.system() == "Windows"
 NA = "NA"
 NANVIX_BENCH_BINARY = "nanvix-bench.exe" if IS_WINDOWS else "nanvix-bench.elf"
 PERCENTILES = ["p50", "p95", "p99"]
-ROUND_TRIP_SIZES = ["32B", "64B", "128B", "256B", "512B", "1KiB", "4KiB"]
-WARM_START_DEFAULT_SIZE = "32B"
 WARM_START_VMM_SIZES = ["32B", "1KiB", "4KiB", "8KiB", "16KiB", "32KiB", "64KiB"]
+WARM_START_SOCKET_SIZES = ["32B", "1KiB", "4KiB", "8KiB", "16KiB"]
+WARM_START_GATEWAY_SIZES = ["32B", "64B", "128B", "256B", "512B", "1KiB", "4KiB"]
 WARM_START_VMM_MIN_PAYLOAD_SIZE = 4
 X86_64_ARCH = "X64"
 
@@ -39,59 +39,44 @@ X86_64_ARCH = "X64"
 # Benchmark Names
 # ======================================================================
 
-L2_SUFFIX = "-l2"
 BOOT_TIME_BENCH = "boot-time"
 COLD_START_BENCH = "cold-start"
-COLD_START_L2_BENCH = COLD_START_BENCH + L2_SUFFIX
 COLD_START_UVM_BENCH = "cold-start-uvm"
-CONCURRENT_BENCH = "concurrent"
-CONCURRENT_L2_BENCH = CONCURRENT_BENCH + L2_SUFFIX
-ECHO_BREAKDOWN_BENCH = "echo-breakdown"
-ECHO_BREAKDOWN_L2_BENCH = ECHO_BREAKDOWN_BENCH + L2_SUFFIX
-ROUND_TRIP_LATENCY_BENCH = "round-trip-latency"
 SNAPSHOT_RESTORE_BENCH = "snapshot-restore"
 VFS_BENCH = "vfs-bench"
-WARM_START_BENCH = "warm-start"
-WARM_START_L2_BENCH = WARM_START_BENCH + L2_SUFFIX
+WARM_START_GATEWAY_BENCH = "warm-start-gateway"
 WARM_START_VMM_BENCH = "warm-start-vmm"
+WARM_START_SOCKET_BENCH = "warm-start-socket"
 PAYLOAD_SIZE_BENCHMARKS = [
-    WARM_START_BENCH,
-    WARM_START_L2_BENCH,
+    WARM_START_GATEWAY_BENCH,
     WARM_START_VMM_BENCH,
+    WARM_START_SOCKET_BENCH,
 ]
-SIZE_ANNOTATED_BENCHMARKS = {
-    WARM_START_BENCH: [WARM_START_DEFAULT_SIZE],
-    WARM_START_L2_BENCH: [WARM_START_DEFAULT_SIZE],
-}
 SIZE_SWEEP_BENCHMARKS = {
-    ROUND_TRIP_LATENCY_BENCH: ROUND_TRIP_SIZES,
+    WARM_START_GATEWAY_BENCH: WARM_START_GATEWAY_SIZES,
     WARM_START_VMM_BENCH: WARM_START_VMM_SIZES,
+    WARM_START_SOCKET_BENCH: WARM_START_SOCKET_SIZES,
 }
-SIZE_AWARE_BENCHMARKS = {
-    **SIZE_ANNOTATED_BENCHMARKS,
-    **SIZE_SWEEP_BENCHMARKS,
-}
+SIZE_AWARE_BENCHMARKS = SIZE_SWEEP_BENCHMARKS
+
+# Start distinct histories for the standalone implementations while preserving the public
+# benchmark names used by the command-line interface.
+RESULT_FILE_BENCHMARK_SUFFIX = "-standalone"
 
 # ======================================================================
 # Benchmark Constants
 # ======================================================================
 
-# How many user VMs do we spawn in parallel in the CONCURRENT* benchmarks.
-NUM_CONCURRENT_VMS = 100
-
-# Per-benchmark timeout in seconds. The concurrent benchmark spawns 100 VMs
-# and can take up to ~25 minutes on resource-constrained GitHub runners.
-# A 45-minute timeout provides headroom while preventing indefinite hangs.
+# Per-benchmark timeout in seconds. Long-running benchmarks (e.g. size sweeps)
+# can take many minutes on resource-constrained GitHub runners. A 45-minute
+# timeout provides headroom while preventing indefinite hangs.
 BENCHMARK_TIMEOUT_SECS = 45 * 60
 
 # Benchmarks that report simple p50/p95/p99 percentile values.
 PERCENTILE_BENCHMARKS = [
     BOOT_TIME_BENCH,
     COLD_START_BENCH,
-    COLD_START_L2_BENCH,
     COLD_START_UVM_BENCH,
-    CONCURRENT_BENCH,
-    CONCURRENT_L2_BENCH,
     SNAPSHOT_RESTORE_BENCH,
 ]
 
@@ -129,146 +114,9 @@ def _split_csv_arg(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-def wait_for_tcp_cleanup(max_wait_seconds=70):
-    """
-    Wait for TCP connections in TIME_WAIT state to clear.
-
-    This function polls the system to check if there are lingering TCP connections
-    in TIME_WAIT state (typically from previous L2 benchmark runs) and waits until
-    they are cleared or the timeout is reached.
-
-    # Parameters
-
-    - `max_wait_seconds`: Maximum time to wait in seconds (default: 70).
-
-    # Returns
-
-    True if connections cleared, False if timeout reached.
-    """
-    import time
-
-    print(f"[TCP-CLEANUP] Starting TCP cleanup check (max_wait={max_wait_seconds}s)")
-    start_time: float = time.time()
-    poll_interval: int = 2  # Check every 2 seconds.
-
-    while (time.time() - start_time) < max_wait_seconds:
-        try:
-            # Count connections in TIME_WAIT state on port 9999 (nanvixd default port).
-            print("[TCP-CLEANUP] Checking TIME_WAIT connections on port 9999...")
-            result: subprocess.CompletedProcess = subprocess.run(
-                ["ss", "-tan", "state", "time-wait", "sport", "9999"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            if result.returncode == 0:
-                # Count non-header lines.
-                lines: list = [
-                    line for line in result.stdout.splitlines() if line.strip()
-                ]
-                # First line is header, so subtract 1.
-                time_wait_count: int = max(0, len(lines) - 1)
-
-                print(f"[TCP-CLEANUP] Found {time_wait_count} TIME_WAIT connection(s)")
-
-                if time_wait_count == 0:
-                    print("[TCP-CLEANUP] All TCP connections cleared successfully.")
-                    return True
-
-                elapsed: int = int(time.time() - start_time)
-                print(
-                    f"Waiting for {time_wait_count} TIME_WAIT connection(s) "
-                    f"to clear... ({elapsed}s elapsed)"
-                )
-
-        except Exception as e:
-            print(f"[TCP-CLEANUP] ERROR: Failed to check TCP connection state: {e}")
-            print(f"[TCP-CLEANUP] Falling back to fixed wait of {max_wait_seconds}s")
-            # Fall back to fixed wait if we can't check.
-            time.sleep(max_wait_seconds)
-            return False
-
-        time.sleep(poll_interval)
-
-    print(
-        f"[TCP-CLEANUP] WARNING: Timeout reached after {max_wait_seconds}s, "
-        f"some connections may still be in TIME_WAIT"
-    )
-    return False
-
-
-def cleanup_stale_netns():
-    """
-    Cleans up any stale Nanvix network namespaces left from previous runs.
-
-    This function removes network namespaces that match the Nanvix naming pattern
-    (nvxns-*) to prevent resource conflicts when running L2 benchmarks.
-    """
-    print("[NETNS-CLEANUP] Starting network namespace cleanup...")
-    try:
-        # List all network namespaces and filter for Nanvix ones.
-        result = subprocess.run(
-            ["sudo", "ip", "netns", "list"], capture_output=True, text=True, check=False
-        )
-
-        if result.returncode != 0:
-            # If command fails, just continue (user may not have permissions).
-            print(
-                f"[NETNS-CLEANUP] WARNING: Failed to list namespaces "
-                f"(exit code {result.returncode})"
-            )
-            return
-
-        # Extract Nanvix network namespace names (nvxns-*).
-        import re
-        import time
-
-        netns_list = re.findall(r"nvxns-\d+", result.stdout)
-        print(f"[NETNS-CLEANUP] Found {len(netns_list)} Nanvix namespace(s)")
-
-        if netns_list:
-            print(
-                f"[NETNS-CLEANUP] Cleaning up {len(netns_list)} stale network namespace(s)..."
-            )
-            for ns in netns_list:
-                # Extract the namespace ID from the name.
-                ns_id = ns.replace("nvxns-", "")
-
-                # Delete veth pair first (host side).
-                veth_name = f"nvxgw-h-{ns_id}"
-                veth_result = subprocess.run(
-                    ["sudo", "ip", "link", "del", veth_name],
-                    capture_output=True,
-                    check=False,
-                )
-                if veth_result.returncode != 0:
-                    print(f"[NETNS-CLEANUP] WARNING: Failed to delete veth {veth_name}")
-
-                # Delete the namespace.
-                ns_result = subprocess.run(
-                    ["sudo", "ip", "netns", "del", ns], capture_output=True, check=False
-                )
-                if ns_result.returncode != 0:
-                    print(f"[NETNS-CLEANUP] WARNING: Failed to delete namespace {ns}")
-
-            # Give the system time to fully release network resources.
-            time.sleep(1)
-            print("[NETNS-CLEANUP] Cleanup completed successfully.")
-        else:
-            print("[NETNS-CLEANUP] No stale namespaces found.")
-    except Exception as e:
-        # Non-fatal: just log and continue.
-        print(
-            f"[NETNS-CLEANUP] ERROR: Failed to clean up stale network namespaces: {e}"
-        )
-        import traceback
-
-        print(f"[NETNS-CLEANUP] Traceback:\n{traceback.format_exc()}")
-
-
 def gen_filename_for_benchmark(benchmark: str, machine_type: str, arch: str) -> str:
     """Generate the CSV filename for a given benchmark, machine type, and architecture."""
+    benchmark = f"{benchmark}{RESULT_FILE_BENCHMARK_SUFFIX}"
     benchmark = benchmark.replace("-", "_")
     return f"nanvix_bench_{benchmark}_{machine_type}_{arch}.csv"
 
@@ -349,24 +197,6 @@ def filter_benchmark_stdout(
         data = commit + "," + ",".join(str(values[p]) for p in PERCENTILES)
         filtered_stdout = header + "\n" + data
 
-    elif benchmark in SIZE_ANNOTATED_BENCHMARKS:
-        values = _parse_percentile_values(benchmark, raw_stdout)
-        if expected_sizes is None:
-            expected_sizes = SIZE_ANNOTATED_BENCHMARKS[benchmark]
-        if len(expected_sizes) != 1:
-            print(f"ERROR: expected one size for '{benchmark}' - got: {expected_sizes}")
-            raise ValueError("Invalid size annotation")
-
-        header = "commit,size," + ",".join(PERCENTILES)
-        data = (
-            commit
-            + ","
-            + expected_sizes[0]
-            + ","
-            + ",".join(str(values[p]) for p in PERCENTILES)
-        )
-        filtered_stdout = header + "\n" + data
-
     elif benchmark in SIZE_SWEEP_BENCHMARKS:
         header = "commit,size," + ",".join(PERCENTILES)
         data_lines = []
@@ -399,52 +229,6 @@ def filter_benchmark_stdout(
             raise ValueError("Not expected values.")
 
         filtered_stdout = header + "\n" + "\n".join(data_lines)
-
-    elif benchmark.startswith(ECHO_BREAKDOWN_BENCH):
-        columns = ["commit", "step", "label", "p50", "p95", "p99"]
-        buf = io.StringIO()
-        writer = csv.writer(buf, lineterminator="\n")
-        writer.writerow(columns)
-
-        row_count: int = 0
-        for line in raw_stdout.splitlines():
-            line_stripped = line.strip()
-            if not line_stripped:
-                continue
-
-            # Match data steps with p50/p95/p99 values.
-            m = re.match(
-                r"^(\d+)\s*\|\s*(.+?)\s*\|\s*p50:\s*(\d+)\s*\|\s*p95:\s*(\d+)"
-                r"\s*\|\s*p99:?\s+(\d+)",
-                line_stripped,
-            )
-            if m:
-                step = m.group(1)
-                label = m.group(2).strip()
-                p50 = m.group(3)
-                p95 = m.group(4)
-                p99 = m.group(5)
-                writer.writerow([commit, step, label, p50, p95, p99])
-                row_count += 1
-                continue
-
-            # Match step 0 (first step, no metric values).
-            m = re.match(
-                r"^(\d+)\s*\|\s*(.+?)\s*\|\s*First Step",
-                line_stripped,
-            )
-            if m:
-                step = m.group(1)
-                label = m.group(2).strip()
-                writer.writerow([commit, step, label, "", "", ""])
-                row_count += 1
-                continue
-
-        if row_count == 0:
-            print("ERROR: no data parsed from echo-breakdown output")
-            raise ValueError("No data in echo-breakdown output")
-
-        filtered_stdout = buf.getvalue().rstrip("\r\n")
 
     elif benchmark == VFS_BENCH:
         # VFS benchmark prints two tables (raw operations and paired
@@ -504,52 +288,6 @@ def filter_benchmark_stdout(
     return filtered_stdout
 
 
-def format_echo_breakdown_for_report(file_path: str) -> str:
-    """
-    Read an echo-breakdown CSV and format it as a readable table for the CI
-    report.
-
-    # Parameters
-
-    - ``file_path``: Path to the echo-breakdown CSV file.
-
-    # Returns
-
-    A human-readable table string reconstructed from the CSV data.
-    """
-    try:
-        with open(file_path, "r", newline="") as fh:
-            reader = csv.reader(fh)
-            rows = list(reader)
-    except FileNotFoundError:
-        return "No data available\n"
-
-    if len(rows) < 2:
-        return "No data available\n"
-
-    # Find the latest commit's rows.
-    if not rows[-1]:
-        return "No data available\n"
-    last_commit: str = rows[-1][0]
-
-    output_lines: list[str] = []
-    for row in rows[1:]:
-        if len(row) < 6:
-            continue
-        commit, step, label, p50, p95, p99 = row[:6]
-        if commit != last_commit:
-            continue
-
-        if p50 == "" and p95 == "" and p99 == "":
-            output_lines.append(f"{step:>2} | {label:<48} | First Step")
-        else:
-            output_lines.append(
-                f"{step:>2} | {label:<48} | p50: {p50:>5} | p95: {p95:>5} | p99 {p99:>5}"
-            )
-
-    return "\n".join(output_lines) + "\n"
-
-
 def read_benchmark_values_from_file(
     benchmark: str, file_path: str, percentile: Optional[str] = None
 ) -> dict[str, str]:
@@ -598,27 +336,7 @@ def read_benchmark_values_from_file(
             if percentile is None:
                 percentile = PERCENTILES[0]
 
-            header = lines[0].split(",")
             expected_sizes: list[str] = SIZE_AWARE_BENCHMARKS[benchmark]
-            if header == ["commit", *PERCENTILES]:
-                # Transitional compatibility for histories recorded before a
-                # benchmark migrated from the scalar (commit,p50,p95,p99) format
-                # to the size-aware (commit,size,p50,p95,p99) format. The legacy
-                # benchmark only ever exercised the default payload, so its last
-                # row maps onto the default (first) payload size. Size-annotated
-                # benchmarks (warm-start, warm-start-l2) have that as their only
-                # size; size-sweep benchmarks (warm-start-vmm) report the larger
-                # sweep sizes as NA since no scalar history exists for them.
-                result_dict = {size: NA for size in expected_sizes}
-                last_commit = lines[-1].split(",")[0]
-                col_idx = PERCENTILES.index(percentile) + 1
-                default_size = expected_sizes[0]
-                for line in lines[1:]:
-                    parts = line.split(",")
-                    if parts[0] == last_commit:
-                        result_dict[default_size] = parts[col_idx]
-                return result_dict
-
             # Find the last commit present in the file.
             last_commit = lines[-1].split(",")[0]
 
@@ -850,47 +568,13 @@ def ci_summary(args):
                     archs,
                     percentile,
                 )
-        elif benchmark.startswith(ECHO_BREAKDOWN_BENCH):
-            # We handle the echo-breakdown benchmarks separately.
-            continue
         elif benchmark == VFS_BENCH:
-            # VFS benchmark results are reported in a collapsed section
-            # similar to echo-breakdown — skip the standard table.
+            # VFS benchmark results are reported in a collapsed section.
             continue
         else:
             print(f"ERROR: unrecognized benchmark '{benchmark}'")
             raise ValueError("Unrecognized benchmark")
     bench_summary += "```" + "\n"
-
-    # Echo breakdown benchmarks that we put in a collapsed section.
-    echo_breakdown_summary = None
-    echo_breakdown_benchmarks = [ECHO_BREAKDOWN_BENCH, ECHO_BREAKDOWN_L2_BENCH]
-    filtered_benchmarks = list(
-        filter(lambda b: b in echo_breakdown_benchmarks, benchmarks)
-    )
-    if len(filtered_benchmarks) > 0:
-        # For the echo-breakdown benchmarks we dump whatever the benchmark
-        # outputs in a collapsed section.
-        echo_breakdown_summary = (
-            "<details>\n<summary>Data-Path Breakdown</summary>\n\n```"
-        )
-        table_width = 91
-
-        for benchmark in filtered_benchmarks:
-            for machine, arch in list(itertools.product(machines, archs)):
-                echo_breakdown_summary += "\n" + make_header(
-                    f"{benchmark} {machine}", table_width
-                )
-
-                file_name = gen_filename_for_benchmark(benchmark, machine, arch)
-                file_path = os.path.join(args.target_dir, file_name)
-                echo_breakdown_summary += format_echo_breakdown_for_report(file_path)
-                echo_breakdown_summary += "=" * table_width + "\n"
-
-        echo_breakdown_summary += "\n```\n</details>\n"
-
-    if echo_breakdown_summary is not None:
-        bench_summary += "\n" + echo_breakdown_summary
 
     # VFS benchmark collapsed section.
     if VFS_BENCH in benchmarks:
@@ -936,15 +620,13 @@ def ci_summary(args):
 
 
 def _read_baseline_moving_avg(
-    benchmark: str, file_path: str, window: int = 20, size: Optional[str] = None
+    benchmark: str, file_path: str, window: int = 20
 ) -> Optional[float]:
     """
     Read the last ``window`` p50 values from a baseline CSV and return their average.
 
-    Works for scalar percentile benchmarks (``commit,p50,p95,p99``) and size-annotated
-    warm-start benchmarks (``commit,size,p50,p95,p99``). Legacy warm-start files in
-    scalar format are read as the default ``32B`` payload size. Returns ``None`` when
-    the file is missing or contains no valid p50 values.
+    Works for scalar percentile benchmarks using the ``commit,p50,p95,p99`` schema.
+    Returns ``None`` when the file is missing or contains no valid p50 values.
 
     # Parameters
 
@@ -952,10 +634,7 @@ def _read_baseline_moving_avg(
     - ``file_path``: Path to the baseline CSV file.
     - ``window``: Number of most-recent data rows to average.
     """
-    if (
-        benchmark not in PERCENTILE_BENCHMARKS
-        and benchmark not in SIZE_ANNOTATED_BENCHMARKS
-    ):
+    if benchmark not in PERCENTILE_BENCHMARKS:
         return None
 
     try:
@@ -966,38 +645,11 @@ def _read_baseline_moving_avg(
             if header is None:
                 print(f"WARNING: no data rows in baseline: {file_path}")
                 return None
-            header_cols = header.strip().split(",")
             p50_idx = 1
-            size_idx = None
-            expected_size = size
-            if benchmark in SIZE_ANNOTATED_BENCHMARKS:
-                if expected_size is None:
-                    expected_size = SIZE_ANNOTATED_BENCHMARKS[benchmark][0]
-                if header_cols == ["commit", *PERCENTILES]:
-                    if expected_size != SIZE_ANNOTATED_BENCHMARKS[benchmark][0]:
-                        return None
-                    size_idx = None
-                elif header_cols == ["commit", "size", *PERCENTILES]:
-                    p50_idx = 2
-                    size_idx = 1
-                else:
-                    print(
-                        f"WARNING: unsupported baseline header for {benchmark}: "
-                        f"{header.strip()}"
-                    )
-                    return None
             tail: collections.deque[str] = collections.deque(maxlen=window)
             for line in reader:
                 stripped = line.strip()
                 if not stripped:
-                    continue
-                parts = stripped.split(",")
-                if (
-                    size_idx is not None
-                    and expected_size is not None
-                    and len(parts) > size_idx
-                    and parts[size_idx] != expected_size
-                ):
                     continue
                 tail.append(stripped)
     except FileNotFoundError:
@@ -1033,9 +685,8 @@ def ci_gate(args) -> int:
     moving average of the last N baseline p50 values in dev-dir. Exits
     non-zero if any benchmark regresses beyond the configured threshold.
 
-    Scalar percentile benchmarks (commit,p50,p95,p99) and size-annotated warm-start
-    benchmarks are checked. Size-sweep benchmarks and benchmarks with missing baseline
-    or missing results are skipped with a warning.
+    Scalar percentile benchmarks are checked. Size-sweep benchmarks and benchmarks with missing
+    baseline or missing results are skipped with a warning.
     """
     threshold = args.regression_threshold
     window = args.baseline_window
@@ -1047,10 +698,7 @@ def ci_gate(args) -> int:
     checked = 0
 
     for benchmark in benchmarks:
-        if (
-            benchmark not in PERCENTILE_BENCHMARKS
-            and benchmark not in SIZE_ANNOTATED_BENCHMARKS
-        ):
+        if benchmark not in PERCENTILE_BENCHMARKS:
             print(f"SKIP: '{benchmark}' is not a regression-gated benchmark")
             continue
 
@@ -1058,79 +706,6 @@ def ci_gate(args) -> int:
             csv_name = gen_filename_for_benchmark(benchmark, machine, arch)
             dev_path = os.path.join(args.dev_dir, csv_name)
             tgt_path = os.path.join(args.target_dir, csv_name)
-
-            if benchmark in SIZE_ANNOTATED_BENCHMARKS:
-                tgt_vals = read_benchmark_values_from_file(benchmark, tgt_path, "p50")
-                saw_result_size = False
-                checked_any_size = False
-                for size, tgt_val in tgt_vals.items():
-                    if tgt_val == NA:
-                        continue
-                    saw_result_size = True
-
-                    dev_avg = _read_baseline_moving_avg(
-                        benchmark, dev_path, window, size
-                    )
-                    if dev_avg is None:
-                        print(
-                            f"SKIP: no baseline for {benchmark} {size} "
-                            f"({machine}/{arch})"
-                        )
-                        continue
-                    if dev_avg == 0:
-                        print(
-                            f"WARNING: zero baseline avg for {benchmark} {size} "
-                            f"({machine}/{arch}), skipping"
-                        )
-                        continue
-
-                    try:
-                        tgt_p50 = float(tgt_val)
-                    except (ValueError, TypeError) as e:
-                        print(
-                            f"SKIP: invalid p50 value for {benchmark} {size} "
-                            f"({machine}/{arch}): {e}"
-                        )
-                        continue
-
-                    checked += 1
-                    checked_any_size = True
-                    delta_pct = (tgt_p50 - dev_avg) / dev_avg * 100
-
-                    if delta_pct > threshold:
-                        regressions.append(
-                            {
-                                "benchmark": f"{benchmark} {size}",
-                                "machine": machine,
-                                "arch": arch,
-                                "dev_avg": round(dev_avg, 1),
-                                "tgt_p50": tgt_p50,
-                                "delta_pct": round(delta_pct, 1),
-                            }
-                        )
-                        print(
-                            f"REGRESSION: {benchmark} {size} ({machine}/{arch}): "
-                            f"p50 {tgt_p50} vs baseline avg {round(dev_avg, 1)} "
-                            f"(+{round(delta_pct, 1)}%, threshold: {threshold}%)"
-                        )
-                    else:
-                        status = (
-                            f"+{delta_pct:.1f}%"
-                            if delta_pct > 0
-                            else f"{delta_pct:.1f}%"
-                        )
-                        print(
-                            f"OK: {benchmark} {size} ({machine}/{arch}): "
-                            f"p50 {tgt_p50} vs baseline avg {round(dev_avg, 1)} ({status})"
-                        )
-
-                if not saw_result_size:
-                    print(f"SKIP: no results for {benchmark} ({machine}/{arch})")
-                elif not checked_any_size:
-                    print(
-                        f"SKIP: no comparable baseline for {benchmark} ({machine}/{arch})"
-                    )
-                continue
 
             # Read baseline moving average of p50 values.
             dev_avg = _read_baseline_moving_avg(benchmark, dev_path, window)
@@ -1270,12 +845,8 @@ def run_benchmark(args):
     # Normalize paths so that Unix-style "./" prefixes are converted to
     # platform-native form (cmd.exe does not understand "./").
     args.bin_dir = os.path.normpath(args.bin_dir)
-    args.clh_bin_path = os.path.normpath(args.clh_bin_path)
 
-    print(
-        f"[BENCHMARK] Paths: bin_dir={args.bin_dir}, "
-        f"clh_bin_path={args.clh_bin_path}"
-    )
+    print(f"[BENCHMARK] Paths: bin_dir={args.bin_dir}")
 
     # Resolve the commit SHA used to tag this benchmark result.
     commit: str = args.commit
@@ -1295,30 +866,6 @@ def run_benchmark(args):
         commit = git_result.stdout.strip()
     print(f"[BENCHMARK] Commit: {commit}")
 
-    # Before running L2 benchmarks, wait for TCP connections from previous runs to clear.
-    # This is critical when L2 benchmarks run after non-L2 benchmarks in sequence.
-    # These cleanup steps use Linux-specific tools (ss, ip netns) and are skipped on Windows.
-    if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
-        print(
-            "[BENCHMARK] This is an L2 benchmark, checking for lingering TCP connections..."
-        )
-        cleanup_success = wait_for_tcp_cleanup()
-        print(
-            f"[BENCHMARK] TCP cleanup result: {'success' if cleanup_success else 'timeout/failure'}"
-        )
-
-    # Clean up any stale network namespaces before running all benchmarks.
-    # This prevents resource conflicts from previous runs, especially when running
-    # non-L2 benchmarks after L2 benchmarks in a sequence.
-    if not IS_WINDOWS:
-        print("[BENCHMARK] Cleaning up stale network namespaces...")
-        cleanup_stale_netns()
-
-    # The concurrent benchmark takes slightly different command-line arguments than the other
-    # benchmarks. It does not take a `-hwloc` file, and instead of `-iterations` it takes
-    # a number of concurrent user VMs.
-    is_concurrent_bench = args.benchmark.startswith(CONCURRENT_BENCH)
-    print(f"[BENCHMARK] Is concurrent benchmark: {is_concurrent_bench}")
     payload_size = args.payload_size
     print(
         f"[BENCHMARK] Configuration: iterations={args.iterations}, "
@@ -1344,18 +891,13 @@ def run_benchmark(args):
     nanvix_bench_cmd = [
         os.path.join(args.bin_dir, NANVIX_BENCH_BINARY),
         f"-benchmark {args.benchmark}",
-        f"-hwloc {args.hwloc}" if (not is_concurrent_bench and args.hwloc) else "",
-        (
-            f"-iterations {args.iterations}"
-            if not is_concurrent_bench
-            else f"-num-concurrent-vms {NUM_CONCURRENT_VMS}"
-        ),
+        f"-hwloc {args.hwloc}" if args.hwloc else "",
+        f"-iterations {args.iterations}",
         (
             f"-payload-size {payload_size}"
             if payload_size is not None and args.benchmark in PAYLOAD_SIZE_BENCHMARKS
             else ""
         ),
-        f"-clh-bin-path {args.clh_bin_path}",
     ]
     nanvix_bench_cmd = " ".join(nanvix_bench_cmd)
     print(f"[BENCHMARK] Executing command: {nanvix_bench_cmd}")
@@ -1403,26 +945,6 @@ def run_benchmark(args):
             print("[BENCHMARK] STDERR:")
             print(result.stderr.decode("utf-8"))
 
-            # Additional diagnostics for L2 benchmarks (Linux-only tools).
-            if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
-                print("[BENCHMARK] Running post-failure network diagnostics...")
-                diag_result = subprocess.run(
-                    ["ss", "-tan", "state", "time-wait", "sport", "9999"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                print(
-                    f"[BENCHMARK] TIME_WAIT connections on port 9999:\n{diag_result.stdout}"
-                )
-
-                netns_result = subprocess.run(
-                    ["sudo", "ip", "netns", "list"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                print(f"[BENCHMARK] Active network namespaces:\n{netns_result.stdout}")
             raise RuntimeError(
                 f"Benchmark '{args.benchmark}' failed with exit code {result.returncode}"
             )
@@ -1484,15 +1006,6 @@ def run_benchmark(args):
                 f"Benchmark '{args.benchmark}' timed out after "
                 f"{BENCHMARK_TIMEOUT_SECS}s"
             )
-
-    # After L2 benchmarks, wait for TCP connections in TIME_WAIT to clear.
-    # L2 benchmarks create many TCP connections that linger in TIME_WAIT state,
-    # which can cause connection issues for subsequent benchmarks.
-    if not IS_WINDOWS and args.benchmark.endswith(L2_SUFFIX):
-        print("[BENCHMARK] Post-benchmark: checking for lingering TCP connections...")
-        cleanup_success = wait_for_tcp_cleanup()
-        result_str = "success" if cleanup_success else "timeout/failure"
-        print(f"[BENCHMARK] Post-benchmark TCP cleanup result: {result_str}")
 
     print(f"[BENCHMARK] Benchmark '{args.benchmark}' completed successfully.")
 
@@ -1697,11 +1210,6 @@ if __name__ == "__main__":
         default="./bin",
     )
     run_parser.add_argument(
-        "--clh-bin-path",
-        help="Cloud-hypervisor binary directory",
-        default="./toolchain/bin",
-    )
-    run_parser.add_argument(
         "--iterations",
         type=int,
         default=100,
@@ -1712,8 +1220,8 @@ if __name__ == "__main__":
         type=_positive_int,
         default=None,
         help=(
-            "Echo payload size in bytes for warm-start, warm-start-l2, and "
-            "warm-start-vmm benchmarks. For warm-start-vmm, the size includes "
+            "Echo payload size in bytes for warm-start-vmm and warm-start-socket benchmarks. "
+            "For warm-start-vmm, the size includes "
             "the 4-byte length prefix. Defaults to nanvix-bench's built-in value."
         ),
     )

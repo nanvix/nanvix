@@ -8,7 +8,7 @@
 #![deny(clippy::all)]
 //! # nanvix-shim-standalone
 //!
-//! Standalone execution mode for the Nanvix containerd shim.
+//! Standalone workload runtime for the Nanvix containerd shim.
 //!
 //! In standalone mode, the entire Nanvix kernel runs inside a single VM via `nanvixd.elf`.
 //! The shim invokes `mkramfs.elf` to build a FAT32 filesystem image from the OCI layers,
@@ -20,4 +20,4 @@ pub mod mode;
 #[cfg_attr(windows, path = "sys/windows/process.rs")]
 mod process;
 
-pub use mode::StandaloneMode;
+pub use mode::StandaloneRuntime;

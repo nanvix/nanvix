@@ -5,8 +5,6 @@
 // Imports
 //==================================================================================================
 
-#[cfg(target_os = "linux")]
-use crate::vmm::KILL_SIGNAL;
 use ::anyhow::Result;
 use ::log::{
     debug,
@@ -45,7 +43,7 @@ use ::tokio::{
 pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 
 /// Timeout for shutdown operations.
-/// After this timeout, the orchestrator will forcefully terminate the vCPU thread.
+/// After this timeout, the orchestrator retries the backend shutdown request.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(5000);
 
 //==================================================================================================
@@ -58,7 +56,7 @@ pub type CreateSnapshotFn =
     dyn Fn() -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + 'static;
 pub type LoadSnapshotFn =
     dyn Fn() -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + 'static;
-pub type ShutdownVcpuFn = dyn Fn() + Send + 'static;
+pub type ShutdownVcpuFn = dyn Fn(u64) + Send + 'static;
 
 //==================================================================================================
 // Structure
@@ -75,9 +73,9 @@ pub struct Orchestrator {
     state: State,
     /// Thread ID of the vCPU thread.
     vcpu_tid: u64,
-    /// Channel that receives commands from the I/O thread.
+    /// Channel that receives commands from the I/O handler.
     io_control_rx: Receiver<IoControlCommand>,
-    /// Channel that sends commands to the I/O thread.
+    /// Channel that sends commands to the I/O handler.
     io_control_tx: Sender<IoControlResponse>,
     /// Channel that receives commands from the memory thread.
     _memory_control_rx: Receiver<MemoryControlResponse>,
@@ -98,6 +96,8 @@ pub struct Orchestrator {
     /// Callback function to request vCPU shutdown (sets shared flag and cancels the vCPU run).
     #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     shutdown_vcpu: Box<ShutdownVcpuFn>,
+    /// Maximum time to wait for the vCPU to confirm shutdown.
+    shutdown_timeout: Duration,
 }
 
 //==================================================================================================
@@ -124,7 +124,7 @@ enum State {
 ///
 /// # Description
 ///
-/// Control plane commands from the I/O thread to the VMM.
+/// Control commands from the I/O handler to the VMM.
 ///
 #[derive(PartialEq)]
 pub enum IoControlCommand {
@@ -140,7 +140,7 @@ pub enum IoControlCommand {
 ///
 /// # Description
 ///
-/// Control plane command responses from the VMM to the I/O thread.
+/// Control command responses from the VMM to the I/O handler.
 ///
 #[derive(Debug, PartialEq)]
 pub enum IoControlResponse {
@@ -154,7 +154,7 @@ pub enum IoControlResponse {
 ///
 /// # Description
 ///
-/// Control plane commands from the VMM to the memory thread.
+/// Control commands from the VMM to the memory thread.
 ///
 #[derive(PartialEq)]
 pub enum MemoryControlCommand {
@@ -164,7 +164,7 @@ pub enum MemoryControlCommand {
 ///
 /// # Description
 ///
-/// Control plane command responses from the memory thread to the VMM.
+/// Control command responses from the memory thread to the VMM.
 ///
 #[derive(PartialEq)]
 pub enum MemoryControlResponse {}
@@ -172,7 +172,7 @@ pub enum MemoryControlResponse {}
 ///
 /// # Description
 ///
-/// Control plane commands from the VMM to the vCPU thread.
+/// Control commands from the VMM to the vCPU thread.
 ///
 #[derive(PartialEq)]
 pub enum VcpuControlCommand {
@@ -183,7 +183,7 @@ pub enum VcpuControlCommand {
 ///
 /// # Description
 ///
-/// Control plane command responses from the vCPU thread to the VMM.
+/// Control command responses from the vCPU thread to the VMM.
 ///
 #[derive(Debug, PartialEq)]
 pub enum VcpuControlResponse {
@@ -228,6 +228,7 @@ impl Orchestrator {
             _create_snapshot: create_snapshot,
             load_snapshot,
             shutdown_vcpu,
+            shutdown_timeout: SHUTDOWN_TIMEOUT,
         }
     }
 
@@ -244,7 +245,7 @@ impl Orchestrator {
         loop {
             // If we're in shutting down state, add timeout to prevent indefinite hang.
             if self.state == State::ShuttingDown {
-                match timeout(SHUTDOWN_TIMEOUT, self.wait_for_shutdown()).await {
+                match timeout(self.shutdown_timeout, self.wait_for_shutdown()).await {
                     Ok(Ok(())) => break,
                     Ok(Err(error)) => {
                         error!("run(): error during shutdown: {error:?}");
@@ -252,20 +253,12 @@ impl Orchestrator {
                     },
                     Err(_) => {
                         error!(
-                            "run(): shutdown timeout after {}ms, forcefully terminating vCPU \
-                             thread",
-                            SHUTDOWN_TIMEOUT.as_millis()
+                            "run(): shutdown timeout after {}ms, retrying vCPU shutdown request",
+                            self.shutdown_timeout.as_millis()
                         );
-                        // Forcefully terminate the vCPU thread.
-                        #[cfg(target_os = "linux")]
-                        {
-                            let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
-                            unsafe { ::libc::pthread_kill(pthread_id, KILL_SIGNAL) };
-                        }
-                        #[cfg(target_os = "windows")]
-                        {
-                            (self.shutdown_vcpu)();
-                        }
+                        // Retry the backend-specific shutdown request. A process-directed fatal
+                        // signal cannot safely terminate only the vCPU thread.
+                        (self.shutdown_vcpu)(self.vcpu_tid);
                         break;
                     },
                 }
@@ -276,7 +269,7 @@ impl Orchestrator {
                 result = self.io_control_rx.recv() => {
                     match result {
                         Some(command) => {
-                            match self.try_receive_from_io_thread(command).await? {
+                            match self.handle_io_control_command(command).await? {
                                 Continue(()) => continue,
                                 Break(()) => break,
                             }
@@ -284,7 +277,7 @@ impl Orchestrator {
                         None => {
                             let reason: String =
                                 "disconnected from the input control command channel".to_string();
-                            error!("try_receive_from_io_thread(): {reason}");
+                            error!("handle_io_control_command(): {reason}");
                             break;
                         },
                     }
@@ -332,14 +325,16 @@ impl Orchestrator {
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     async fn wait_for_shutdown(&mut self) -> Result<()> {
+        let mut io_control_open: bool = true;
         loop {
             select! {
-                result = self.io_control_rx.recv() => {
+                result = self.io_control_rx.recv(), if io_control_open => {
                     // Ignore I/O commands during shutdown.
                     if result.is_none() {
                         let reason: String =
                             "I/O control channel closed during shutdown".to_string();
                         warn!("wait_for_shutdown(): {reason}");
+                        io_control_open = false;
                     }
                 },
 
@@ -394,7 +389,7 @@ impl Orchestrator {
         })
     }
 
-    async fn try_receive_from_io_thread(
+    async fn handle_io_control_command(
         &mut self,
         command: IoControlCommand,
     ) -> Result<ControlFlow<()>> {
@@ -413,18 +408,18 @@ impl Orchestrator {
                     if let Err(e) = (self.load_snapshot)().await {
                         let reason: String =
                             format!("LoadSnapshotAndRun: failed to load snapshot: {e:?}");
-                        error!("handle_command(): {reason}");
+                        error!("handle_io_control_command(): {reason}");
                         anyhow::bail!(reason);
                     }
                     trace!("State: PreBoot -> Paused");
 
-                    // The Linux daemon should send messages to PreBoot VMMs by default,
-                    // so there's no need to tell it to resume sending messages.
+                    // The I/O handler sends messages to pre-boot VMs by default, so it does not
+                    // need an explicit resume notification.
 
                     if let Err(e) = self.resume_protocol().await {
                         let reason: String =
                             format!("LoadSnapshotAndRun: failed to resume microvm: {e:?}");
-                        error!("try_receive_from_io_thread(): {reason}");
+                        error!("handle_io_control_command(): {reason}");
                         anyhow::bail!(reason);
                     }
                 }
@@ -435,7 +430,7 @@ impl Orchestrator {
                     && let Err(e) = self.pause_protocol().await
                 {
                     let reason: String = format!("PauseMicroVm: failed to pause microvm: {e:?}");
-                    error!("try_receive_from_io_thread(): {reason}");
+                    error!("handle_io_control_command(): {reason}");
                     anyhow::bail!(reason);
                 }
                 Ok(Continue(()))
@@ -451,7 +446,7 @@ impl Orchestrator {
                             "CreateSnapshot: failed to send CreateSnapshot command to vCPU: \
                              {error:?}"
                         );
-                        error!("try_receive_from_io_thread(): {reason}");
+                        error!("handle_io_control_command(): {reason}");
                         anyhow::bail!(reason);
                     }
 
@@ -462,20 +457,20 @@ impl Orchestrator {
                         Some(VcpuControlResponse::SnapshotCreationFailed) => {
                             let reason: String =
                                 "vCPU reported snapshot creation failure".to_string();
-                            error!("try_receive_from_io_thread(): {reason}");
+                            error!("handle_io_control_command(): {reason}");
                             anyhow::bail!(reason);
                         },
                         Some(other) => {
                             let reason: String = format!(
                                 "unexpected vCPU response during snapshot creation: {other:?}"
                             );
-                            error!("try_receive_from_io_thread(): {reason}");
+                            error!("handle_io_control_command(): {reason}");
                             anyhow::bail!(reason);
                         },
                         None => {
                             let reason: String =
                                 "disconnected from the vCPU control response channel".to_string();
-                            error!("try_receive_from_io_thread(): {reason}");
+                            error!("handle_io_control_command(): {reason}");
                             anyhow::bail!(reason);
                         },
                     }
@@ -484,11 +479,11 @@ impl Orchestrator {
             },
             IoControlCommand::_ResumeMicroVm => {
                 if self.state == State::Paused {
-                    // TODO: tell linuxd it's fine to send more messages https://github.com/nanvix/nanvix/issues/945
+                    // TODO (#945): Tell the I/O handler that it may resume sending messages.
                     if let Err(error) = self.resume_protocol().await {
                         let reason: String =
                             format!("ResumeMicroVm: failed to resume microvm: {error:?}");
-                        error!("try_receive_from_io_thread(): {reason}");
+                        error!("handle_io_control_command(): {reason}");
                         anyhow::bail!(reason);
                     }
                 }
@@ -501,29 +496,15 @@ impl Orchestrator {
                 Ok(Continue(()))
             },
             IoControlCommand::Shutdown => {
-                debug!("try_receive_from_io_thread(): received shutdown command");
+                debug!("handle_io_control_command(): received shutdown command");
 
-                // After sending an interrupt to the vCPU thread, we continue processing
-                // messages until we receive a shutdown message from the vCPU thread itself.
-                // SAFETY: we call pthread_kill on a non-zero TID that we have received from
-                // the VCPU thread after boot, so this is safe.
+                // After requesting vCPU shutdown, continue processing messages until the vCPU
+                // thread confirms that it stopped.
                 debug!(
-                    "try_receive_from_io_thread(): signaling to vcpu thread (tid={})",
+                    "handle_io_control_command(): signaling to vcpu thread (tid={})",
                     self.vcpu_tid
                 );
-                #[cfg(target_os = "linux")]
-                {
-                    let pthread_id: libc::pthread_t = self.vcpu_tid as libc::pthread_t;
-                    unsafe { ::libc::pthread_kill(pthread_id, crate::vmm::INTERRUPT_SIGNAL) };
-                }
-                #[cfg(target_os = "windows")]
-                {
-                    debug!(
-                        "try_receive_from_io_thread(): requesting vCPU shutdown (tid={})",
-                        self.vcpu_tid
-                    );
-                    (self.shutdown_vcpu)();
-                }
+                (self.shutdown_vcpu)(self.vcpu_tid);
 
                 // Transition to shutting down state.
                 self.state = State::ShuttingDown;
@@ -575,14 +556,14 @@ impl Orchestrator {
     ///
     /// # Description
     ///
-    /// Attempts to pause the execution of the MicroVM and the communication with the Linux daemon.
+    /// Attempts to pause the MicroVM and its I/O communication.
     ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned.
     ///
     async fn pause_protocol(&mut self) -> Result<()> {
-        // TODO: tell linuxd to flush (Running -> Flushing) https://github.com/nanvix/nanvix/issues/945
+        // TODO (#945): Tell the I/O handler to flush before pausing.
         (self.pause_microvm)().await?;
         // Wait for the MicroVM to confirm it has paused without busy spinning.
         let start: Instant = Instant::now();
@@ -617,12 +598,11 @@ impl Orchestrator {
             }
         }
         trace!("MicroVM paused");
-        // Flush output to linuxd
+        // Flush pending output.
         self.io_control_tx
             .send(IoControlResponse::FlushOutput)
             .await?;
-        // TODO: tell linuxd to stop sending messages (Flushing -> Paused) https://github.com/nanvix/nanvix/issues/945
-        // TODO: get a response from linuxd https://github.com/nanvix/nanvix/issues/945
+        // TODO (#945): Stop input delivery while paused and wait for acknowledgement.
         self.io_control_tx
             .send(IoControlResponse::FlushInput)
             .await?;
@@ -730,6 +710,7 @@ mod tests {
         vcpu_cmd_rx: mpsc::Receiver<VcpuControlCommand>,
         pause_called: Arc<AtomicBool>,
         resume_called: Arc<AtomicBool>,
+        shutdown_called: Arc<AtomicBool>,
     }
 
     fn build_harness() -> Harness {
@@ -744,10 +725,12 @@ mod tests {
         let pause_called: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let resume_called: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let snapshot_called: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let shutdown_called: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
         let pause_flag: Arc<AtomicBool> = pause_called.clone();
         let resume_flag: Arc<AtomicBool> = resume_called.clone();
         let snapshot_flag: Arc<AtomicBool> = snapshot_called.clone();
+        let shutdown_flag: Arc<AtomicBool> = shutdown_called.clone();
 
         let orchestrator: Orchestrator = Orchestrator::new(
             0, // vcpu_tid (unused for these tests)
@@ -788,7 +771,7 @@ mod tests {
                     })
                 })
             },
-            Box::new(|| {}),
+            Box::new(move |_vcpu_tid| shutdown_flag.store(true, Ordering::SeqCst)),
         );
 
         Harness {
@@ -800,6 +783,7 @@ mod tests {
             vcpu_cmd_rx,
             pause_called,
             resume_called,
+            shutdown_called,
         }
     }
 
@@ -837,6 +821,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shutdown_timeout_uses_backend_callback() -> AnyResult<()> {
+        let mut h: Harness = build_harness();
+        h.orchestrator.state = State::ShuttingDown;
+        h.orchestrator.shutdown_timeout = Duration::from_millis(1);
+        let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+        let mem_cmd: MemoryControlCommand =
+            timeout(Duration::from_millis(500), h.mem_cmd_rx.recv())
+                .await?
+                .expect("memory control channel closed unexpectedly");
+        assert!(matches!(mem_cmd, MemoryControlCommand::Shutdown));
+        assert!(h.shutdown_called.load(Ordering::SeqCst));
+
+        let io_resp: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+        assert!(matches!(io_resp, IoControlResponse::Shutdown));
+
+        let result: Result<()> = handle.await.expect("orchestrator join failed");
+        assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn shutdown_ignores_closed_io_control_channel() -> AnyResult<()> {
+        let mut h: Harness = build_harness();
+        h.orchestrator.state = State::ShuttingDown;
+        drop(h.io_cmd_tx);
+
+        let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+        h.vcpu_resp_tx.send(VcpuControlResponse::Shutdown).await?;
+
+        let mem_cmd: MemoryControlCommand =
+            timeout(Duration::from_millis(500), h.mem_cmd_rx.recv())
+                .await?
+                .expect("memory control channel closed unexpectedly");
+        assert!(matches!(mem_cmd, MemoryControlCommand::Shutdown));
+
+        let io_resp: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+        assert!(matches!(io_resp, IoControlResponse::Shutdown));
+
+        let result: Result<()> = handle.await.expect("orchestrator join failed");
+        assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn pause_and_resume_flow() -> AnyResult<()> {
         let mut h: Harness = build_harness();
         let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
@@ -846,7 +875,7 @@ mod tests {
         // Request pause.
         h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
 
-        // Simulate vCPU acknowledging pause and linux daemon flush.
+        // Simulate the vCPU acknowledging the pause and the I/O handler completing its flush.
         let vcpu_resp_tx_clone: mpsc::Sender<VcpuControlResponse> = h.vcpu_resp_tx.clone();
         let io_cmd_tx_clone: mpsc::Sender<IoControlCommand> = h.io_cmd_tx.clone();
         tokio::spawn(async move {

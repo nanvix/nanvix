@@ -36,7 +36,11 @@ use ::sysapi::{
         c_int,
         c_void,
     },
-    pthread::PTHREAD_MUTEX_INITIALIZER,
+    pthread::{
+        PTHREAD_CREATE_DETACHED,
+        PTHREAD_CREATE_JOINABLE,
+        PTHREAD_MUTEX_INITIALIZER,
+    },
     sched::sched_param,
     sys_types::{
         c_size_t,
@@ -157,10 +161,10 @@ pub unsafe extern "C" fn pthread_attr_getguardsize(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_attr_getguardsize(): not supported, failing");
+    // Nanvix does not currently provide guard areas for user thread stacks.
+    *guardsize = 0;
 
-    ErrorCode::OperationNotSupported.get()
+    0
 }
 
 //==================================================================================================
@@ -809,9 +813,16 @@ pub unsafe extern "C" fn pthread_attr_setdetachstate(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_attr_setdetachstate(): not supported, failing");
-    ErrorCode::OperationNotSupported.get()
+    // Check if `detachstate` is not valid.
+    if detachstate != PTHREAD_CREATE_JOINABLE && detachstate != PTHREAD_CREATE_DETACHED {
+        ::syslog::warn!("pthread_attr_setdetachstate(): invalid detach state");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Store the detach state.
+    (*attr).detachstate = detachstate;
+
+    0
 }
 
 //==================================================================================================
@@ -902,9 +913,10 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_attr_setschedparam(): not supported, failing");
-    ErrorCode::OperationNotSupported.get()
+    // Store the scheduling parameters.
+    (*attr).schedparam = *param;
+
+    0
 }
 
 //==================================================================================================

@@ -13,12 +13,13 @@ homepage.workspace = true
 crate-type = ["lib"]
 
 [dependencies]
+libc_stdio = { workspace = true }
 sysapi = { workspace = true }
 
 [features]
 default = []
 # Enables the use of the Rust Standard Library.
-std = []
+std = ["libc_stdio/std"]
 
 [lints]
 workspace = true

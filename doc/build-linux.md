@@ -62,27 +62,23 @@ Pass build parameters after `--`:
 # Release build.
 ./z build -- all RELEASE=yes
 
-# Set deployment mode.
-./z build -- all DEPLOYMENT_MODE=standalone
-
 # Set log level.
 ./z build -- all LOG_LEVEL=debug
 
 # Combine multiple parameters.
-./z build -- all RELEASE=yes DEPLOYMENT_MODE=multi-process LOG_LEVEL=error
+./z build -- all RELEASE=yes LOG_LEVEL=error
 ```
 
 Available build parameters:
 
-| Parameter         | Default         | Values                                                             |
-|-------------------|-----------------|--------------------------------------------------------------------|
-| `DEPLOYMENT_MODE` | `standalone`    | `standalone`, `single-process`, `multi-process`, `l2`              |
-| `LOG_LEVEL`       | `error`         | `trace`, `debug`, `info`, `warn`, `error`, `panic`                 |
-| `MACHINE`         | `microvm`       | `microvm`                                                          |
-| `PROFILER`        | `no`            | `yes`, `no`                                                        |
-| `RELEASE`         | `no`            | `yes`, `no`                                                        |
-| `TARGET`          | `x86`           | `x86`                                                              |
-| `TIMEOUT`         | `600`           | Execution timeout in seconds                                       |
+| Parameter   | Default   | Values                                             |
+| ----------- | --------- | -------------------------------------------------- |
+| `LOG_LEVEL` | `error`   | `trace`, `debug`, `info`, `warn`, `error`, `panic` |
+| `MACHINE`   | `microvm` | `microvm`                                          |
+| `PROFILER`  | `no`      | `yes`, `no`                                        |
+| `RELEASE`   | `no`      | `yes`, `no`                                        |
+| `TARGET`    | `x86`     | `x86`                                              |
+| `TIMEOUT`   | `600`     | Execution timeout in seconds                       |
 
 ## Code Quality Checks
 

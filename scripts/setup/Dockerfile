@@ -56,4 +56,4 @@ RUN curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_
 
 # Build toolchain.
 RUN cd /opt/nanvix/src/nanvix && \
-    ./z setup --nanvix-sdk --l2-deployment --toolchain-dir /opt/nanvix
+    ./z setup --nanvix-sdk --toolchain-dir /opt/nanvix

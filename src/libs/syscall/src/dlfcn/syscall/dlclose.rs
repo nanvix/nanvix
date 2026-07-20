@@ -59,6 +59,15 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
             },
         };
 
+        // Balance this handle's `dlopen()`. Per POSIX the library only becomes a
+        // candidate for unloading once every direct `dlopen()` has been matched
+        // by a `dlclose()`; while any handle is still live, keep it loaded. This
+        // also covers cache-hit opens that share a handle, which do not each hold
+        // their own `Arc`.
+        if root.lock().decrement_open_count() > 0 {
+            return Ok(());
+        }
+
         // The closing library can only be unloaded if the registry holds the
         // last reference to it. A higher count means another loaded library
         // still depends on it, or it is pinned in the global scope
@@ -108,8 +117,17 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
                 // Once only the registry still references the dependency, it too
                 // becomes part of the unload set. A dependency shared with a
                 // library outside the set (or pinned in the global scope) never
-                // reaches `1` and is correctly left loaded.
-                if *count == 1 && visited.insert(dependency) {
+                // reaches `1` and is correctly left loaded. A dependency that is
+                // ALSO held open by a direct `dlopen()` (its `open_count` is
+                // non-zero) is likewise left loaded even once its edges are gone.
+                if *count == 1
+                    && registry
+                        .get(&dependency)
+                        .map(|dep| dep.lock().open_count())
+                        .unwrap_or(0)
+                        == 0
+                    && visited.insert(dependency)
+                {
                     order.push(dependency);
                     stack.push(dependency);
                 }
@@ -167,6 +185,18 @@ pub fn dlclose(handle: &DlHandle) -> Result<(), Error> {
         for dlfile in fini_order.iter() {
             let handle: DlHandle = dlfile.lock().handle();
             if !registry.contains_key(&handle) {
+                continue;
+            }
+
+            // A destructor (phase 2) may have re-opened this library through a
+            // cache-hit `dlopen()`, which bumps its direct open count without
+            // adding a lasting `Arc`. Honor that open like the entry guard does
+            // and leave the library loaded.
+            if dlfile.lock().open_count() > 0 {
+                ::syslog::debug!(
+                    "dlclose(): keeping re-opened library loaded (handle={:?})",
+                    handle
+                );
                 continue;
             }
 

@@ -14,9 +14,7 @@
 # like `build/make/guest-c-apps.mk`, whose compiler/flag definitions this fragment
 # reuses.
 #
-# The suites build against the bundled libc; the boot runner
-# (`run-posix-tests`) is gated on DEPLOYMENT_MODE=standalone, the only mode it
-# supports.
+# The suites build against the bundled libc and run in standalone mode.
 #
 # Like the other guest test binaries, the suites are never shipped in releases:
 # `install`/`release` copy only the kernel, daemons, libraries, and host tools.
@@ -130,13 +128,40 @@ POSIX_TEST_PIE_LDFLAGS := -pie --export-dynamic --no-dynamic-linker -z notext -z
 # Suites linked as position-independent executables (PIE).
 POSIX_TEST_PIE_test-c-dlfcn-pie := yes
 POSIX_TEST_PIE_test-c-dlfcn-global := yes
+POSIX_TEST_PIE_test-c-dlfcn-handle-reuse := yes
 POSIX_TEST_PIE_test-c-dlfcn-needed := yes
 POSIX_TEST_PIE_test-c-dlfcn-diamond := yes
+POSIX_TEST_PIE_test-c-dlfcn-staging := yes
+# dlfcn-order-c dlopen()s libroot.so, whose two providers both export
+# provider_id(); the executable's own symbols land in .dynsym for RTLD_DEFAULT,
+# matching every other dlfcn dlopen suite.
+POSIX_TEST_PIE_test-c-dlfcn-order := yes
+# dlfcn-dlclose-cycle-c's fixtures reference only each other (never the main
+# executable), so PIE is not strictly required; it is set anyway to match every
+# other dlfcn dlopen suite (the executable's own symbols land in .dynsym for
+# RTLD_DEFAULT).
+POSIX_TEST_PIE_test-c-dlfcn-dlclose-cycle := yes
+# dlfcn-cycle-c dlopen()s freestanding fixtures. Its cyclic libraries are refused
+# before relocation and its positive-control library exports no undefined symbols,
+# so PIE is not strictly required; it is set anyway to match every other dlfcn
+# dlopen suite (the executable's own symbols land in .dynsym for RTLD_DEFAULT).
+POSIX_TEST_PIE_test-c-dlfcn-cycle := yes
+# dlfcn-ctor-dtor-reentry-c links PIE + --export-dynamic so the main executable's
+# `hook_open_other`/`hook_close_other`/`other_report_dtor` helpers land in
+# `.dynsym`; libhook.so's constructor and destructor -- and libother.so's
+# destructor -- then resolve those references from the loader's global symbol
+# table while they run inside the in-progress dlopen()/dlclose().
+POSIX_TEST_PIE_test-c-dlfcn-ctor-dtor-reentry := yes
 # dlfcn-dtor-reentry-c links PIE + --export-dynamic so the main executable's
 # `dtor_probe` helper (and its witness globals) land in `.dynsym`; libreentry.so's
 # destructor then resolves its `extern void dtor_probe(void)` reference from the
 # loader's global symbol table while it is being torn down.
 POSIX_TEST_PIE_test-c-dlfcn-dtor-reentry := yes
+# dlfcn-init-concurrent-c links PIE + --export-dynamic so the main executable's
+# `ctor_mark_started`/`ctor_racer_arrived`/`ctor_mark_done` helpers land in
+# `.dynsym`; libslowctor.so's constructor then resolves those references from
+# the loader's global symbol table while it runs.
+POSIX_TEST_PIE_test-c-dlfcn-init-concurrent := yes
 # dlfcn-init-runpath-c links PIE with --export-dynamic so the main executable's
 # `g_dtor_ran` global lands in `.dynsym`; the loader's global symbol table then
 # satisfies libctor.so's `extern volatile int g_dtor_ran` reference at load time.
@@ -159,6 +184,13 @@ POSIX_TEST_PIE_test-c-dlfcn-selflink := yes
 # (including `__nanvix_main`) in `.dynsym` so dlinit() seeds the loader's global
 # symbol table and the dlopen("libc.so") relocation succeeds.
 POSIX_TEST_PIE_test-c-dlfcn-searchpath := yes
+# dlfcn-scope-c links PIE + --export-dynamic so the main executable's
+# `scope_main_export` helper lands in `.dynsym` and is seeded into the loader's
+# global scope by dlinit(). The suite then asserts that dlsym(handle, ...) does
+# NOT resolve that global-only symbol (nor an RTLD_GLOBAL library's symbol)
+# through a specific handle -- only its own load group (self + DT_NEEDED). This
+# is the acceptance test for handle-scoped lookup.
+POSIX_TEST_PIE_test-c-dlfcn-scope := yes
 
 # Per-suite hooks consumed by POSIX_TEST_RULE: extra link-time prerequisites and
 # extra linker arguments appended AFTER the libc/libm `--end-group`. Used by
@@ -298,11 +330,20 @@ clean-posix-tests:
 	$(RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs.img
 	$(RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite).img)
 	$(RM_CMD) $(POSIX_TEST_RUNPATH_IMG)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-order)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello)
+	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink)
+	$(RM_CMD) $(POSIX_TEST_STAGING_IMG)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup)
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini)
 	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
@@ -310,9 +351,18 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DIAMOND_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_ORDER_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_DTOR_REENTRY_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_HASH_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_SCOPE_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SELFLINK_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_STAGING_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_HELLO_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_SEARCHPATH_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_STARTUP_SEED)
@@ -368,7 +418,7 @@ POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite
 # into lib/) so dlfcn-c can dlopen("lib/libmul.so"). Suites that need the image
 # are listed in POSIX_TEST_RAMFS_SUITES. Suites with their own fixtures (the
 # dlfcn global/needed variants, below) override the image with a per-suite one.
-POSIX_TEST_RAMFS_SUITES := test-c-file test-c-stdio test-c-dlfcn test-c-dlfcn-pie test-c-dlfcn-global test-c-dlfcn-needed test-c-dlfcn-diamond
+POSIX_TEST_RAMFS_SUITES := test-c-file test-c-stdio test-c-dlfcn test-c-dlfcn-refcount test-c-dlfcn-pie test-c-dlfcn-global test-c-dlfcn-needed test-c-dlfcn-diamond
 POSIX_TEST_RAMFS_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-seed
 POSIX_TEST_RAMFS_IMG    := $(BINARIES_DIR)/posix-tests-ramfs.img
 
@@ -444,6 +494,128 @@ endef
 $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(eval $(call POSIX_TEST_SOLIB_RULE,$(suite))))
 
 #---------------------------------------------------------------------------------------------------
+# dlfcn-scope-c: load-group-only dlsym(handle) fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+#   libfoo.so -> libdep.so        (DT_NEEDED: scope_dep_value lives in the group)
+#   libother.so                   (isolated; dlopen'd with RTLD_GLOBAL at run time)
+#
+# libfoo.so is the object the test obtains a handle to. It carries a DT_NEEDED
+# edge on libdep.so (it calls scope_dep_value()), so both scope_foo_value() and
+# scope_dep_value() are in libfoo.so's load group and must resolve through
+# dlsym(libfoo_handle, ...). libother.so has NO relationship with libfoo.so; the
+# suite dlopen()s it with RTLD_GLOBAL to publish scope_other_value() into the
+# loader's global scope. The acceptance criterion is that neither
+# scope_other_value() (RTLD_GLOBAL) nor the main executable's scope_main_export()
+# (--export-dynamic) is reachable through libfoo.so's handle -- only through
+# RTLD_DEFAULT. Built with the same i686 freestanding toolchain as the
+# global/needed/diamond fixtures above; the DT_NEEDED edge is produced by linking
+# libfoo.so against libdep.so with `-L<dir> -ldep` (the linker records the found
+# libdep.so as a bare DT_NEEDED entry, resolved through the loader's default
+# lib/ search path).
+POSIX_TEST_SCOPE_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-scope/libs
+POSIX_TEST_SCOPE_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-scope-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-scope.img
+
+# Dependency: libdep.so (no dependencies).
+$(POSIX_TEST_SCOPE_DIR)/libdep.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-scope/libs/dep.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-scope-c/libdep.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Handle library: DT_NEEDED libdep.so (calls scope_dep_value()).
+$(POSIX_TEST_SCOPE_DIR)/libfoo.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-scope/libs/foo.c \
+		$(POSIX_TEST_SCOPE_DIR)/libdep.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-scope-c/libfoo.so (DT_NEEDED libdep.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_SCOPE_DIR) -ldep -o $@
+
+# Isolated library published with RTLD_GLOBAL at run time (no dependencies).
+$(POSIX_TEST_SCOPE_DIR)/libother.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-scope/libs/other.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-scope-c/libother.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Per-suite RAMFS image carrying all three fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope): $(POSIX_TEST_SCOPE_DIR)/libdep.so \
+		$(POSIX_TEST_SCOPE_DIR)/libfoo.so \
+		$(POSIX_TEST_SCOPE_DIR)/libother.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_SCOPE_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_SCOPE_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_SCOPE_DIR)/libdep.so $(POSIX_TEST_SCOPE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_SCOPE_DIR)/libfoo.so $(POSIX_TEST_SCOPE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_SCOPE_DIR)/libother.so $(POSIX_TEST_SCOPE_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_SCOPE_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-staging-c: failed-load staging fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+#   libfailed-root.so -> libstaged.so
+#                     -> libbad.so -> missing_value (strong undefined symbol)
+#
+# The failed root reaches relocation only after all three libraries have been
+# opened. The loader must discard that staged graph when libbad.so cannot be
+# resolved. A later direct load of libstaged.so must therefore open a fresh copy
+# and run its constructor. libgood-root.so then verifies that a newly staged root
+# can bind against the now-resident libstaged.so from the stable registry.
+POSIX_TEST_STAGING_DIR := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-staging/libs
+POSIX_TEST_STAGING_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-staging-seed
+POSIX_TEST_STAGING_IMG := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-staging.img
+
+$(POSIX_TEST_STAGING_DIR)/libstaged.so: \
+		$(POSIX_TESTS_SRCDIR)/test-c-dlfcn-staging/libs/staged.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-staging-c/libstaged.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libstaged.so $@.o -o $@
+
+$(POSIX_TEST_STAGING_DIR)/libbad.so: \
+		$(POSIX_TESTS_SRCDIR)/test-c-dlfcn-staging/libs/bad.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-staging-c/libbad.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libbad.so $@.o -o $@
+
+$(POSIX_TEST_STAGING_DIR)/libfailed-root.so: \
+		$(POSIX_TESTS_SRCDIR)/test-c-dlfcn-staging/libs/failed_root.c \
+		$(POSIX_TEST_STAGING_DIR)/libstaged.so \
+		$(POSIX_TEST_STAGING_DIR)/libbad.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-staging-c/libfailed-root.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libfailed-root.so $@.o \
+		--no-as-needed $(POSIX_TEST_STAGING_DIR)/libstaged.so \
+		$(POSIX_TEST_STAGING_DIR)/libbad.so -o $@
+
+$(POSIX_TEST_STAGING_DIR)/libgood-root.so: \
+		$(POSIX_TESTS_SRCDIR)/test-c-dlfcn-staging/libs/good_root.c \
+		$(POSIX_TEST_STAGING_DIR)/libstaged.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-staging-c/libgood-root.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libgood-root.so $@.o \
+		--no-as-needed $(POSIX_TEST_STAGING_DIR)/libstaged.so -o $@
+
+POSIX_TEST_STAGING_LIBS := \
+	libstaged.so \
+	libbad.so \
+	libfailed-root.so \
+	libgood-root.so
+
+$(POSIX_TEST_STAGING_IMG): \
+		$(foreach lib,$(POSIX_TEST_STAGING_LIBS),$(POSIX_TEST_STAGING_DIR)/$(lib)) \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_STAGING_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_STAGING_SEED)/lib
+	$(CP_CMD) $(foreach lib,$(POSIX_TEST_STAGING_LIBS),$(POSIX_TEST_STAGING_DIR)/$(lib)) \
+		$(POSIX_TEST_STAGING_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_STAGING_SEED)
+
+#---------------------------------------------------------------------------------------------------
 # dlfcn-diamond-c: four-library diamond DT_NEEDED fixture.
 #---------------------------------------------------------------------------------------------------
 #
@@ -516,6 +688,236 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond): $(POSIX_TEST_DIAMOND_DIR)/libbase.
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libright.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(CP_CMD) $(POSIX_TEST_DIAMOND_DIR)/libdiamond.so $(POSIX_TEST_DIAMOND_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_DIAMOND_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-order-c: DT_NEEDED dependency search-order fixture (issue #2091).
+#---------------------------------------------------------------------------------------------------
+#
+#   libroot.so -> libbravo.so    (provider_id() == 2)  [first  in DT_NEEDED]
+#              -> libalpha.so     (provider_id() == 1)  [second in DT_NEEDED]
+#
+# Both providers export the SAME symbol provider_id(). libroot.so records its
+# DT_NEEDED entries as (libbravo.so, libalpha.so) -- pinned by the `-lbravo
+# -lalpha` link order -- which is the REVERSE of the alphabetical order of the
+# names. A loader that searches a load group in DT_NEEDED order (BFS, matching
+# glibc's l_searchlist) resolves provider_id() through libroot.so's handle to
+# libbravo.so (2); a loader that searches alphabetically resolves it to
+# libalpha.so (1). The suite asserts the former. Built with the same i686
+# freestanding toolchain as the diamond fixtures above; each DT_NEEDED edge is a
+# bare name recorded by linking with `-L<dir> -l<name>`, resolved through the
+# loader's default lib/ search path where the per-suite RAMFS stages the .so
+# files.
+POSIX_TEST_ORDER_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-order/libs
+POSIX_TEST_ORDER_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-order-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-order := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-order.img
+
+# Provider: libalpha.so (no dependencies). Exports provider_id() == 1.
+$(POSIX_TEST_ORDER_DIR)/libalpha.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-order/libs/alpha.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-order-c/libalpha.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Provider: libbravo.so (no dependencies). Exports provider_id() == 2.
+$(POSIX_TEST_ORDER_DIR)/libbravo.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-order/libs/bravo.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-order-c/libbravo.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Root: DT_NEEDED libbravo.so then libalpha.so. The `-lbravo -lalpha` order pins
+# the DT_NEEDED order to bravo-before-alpha (the reverse of alphabetical), so the
+# search order is observable. Built after both providers so the linker records
+# the edges.
+$(POSIX_TEST_ORDER_DIR)/libroot.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-order/libs/root.c \
+		$(POSIX_TEST_ORDER_DIR)/libbravo.so $(POSIX_TEST_ORDER_DIR)/libalpha.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-order-c/libroot.so (DT_NEEDED libbravo.so libalpha.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o \
+		-L$(POSIX_TEST_ORDER_DIR) -lbravo -lalpha -o $@
+
+# Per-suite RAMFS image carrying all three fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-order): $(POSIX_TEST_ORDER_DIR)/libalpha.so \
+		$(POSIX_TEST_ORDER_DIR)/libbravo.so \
+		$(POSIX_TEST_ORDER_DIR)/libroot.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_ORDER_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_ORDER_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_ORDER_DIR)/libalpha.so $(POSIX_TEST_ORDER_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_ORDER_DIR)/libbravo.so $(POSIX_TEST_ORDER_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_ORDER_DIR)/libroot.so $(POSIX_TEST_ORDER_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_ORDER_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-dlclose-cycle-c: dlclose() over a multiply-referenced dependency graph.
+#---------------------------------------------------------------------------------------------------
+#
+#   libroot.so -> libmidx.so -> libleaf.so
+#              -> libmidy.so -> libleaf.so
+#              -> libleaf.so                (direct edge)
+#
+# libleaf.so is reachable from libroot.so through THREE DT_NEEDED edges, so a
+# single dlclose(libroot.so) visits it more than once while walking the
+# dependency graph. That repeated visit is what made the pre-fix dlclose() panic
+# (it removed each dependency with `extract_if` and asserted exactly one entry
+# was removed per step); the post-fix reference-count peel records visited nodes
+# and must instead unload libleaf.so exactly once, and only after every edge that
+# references it is gone. A true DT_NEEDED cycle is refused at load time, so this
+# loadable diamond-with-a-direct-edge graph is the equivalent that still drives
+# the repeated-visit teardown path.
+# Built with the same i686 freestanding toolchain as the diamond fixtures above;
+# each DT_NEEDED edge is produced by linking the dependent against its
+# dependencies with `-L<dir> -l<name>` (the linker records each found
+# `lib<name>.so` as a bare DT_NEEDED entry, resolved through the loader's default
+# lib/ search path).
+POSIX_TEST_DLCLOSE_CYCLE_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-dlclose-cycle/libs
+POSIX_TEST_DLCLOSE_CYCLE_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-dlclose-cycle-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-dlclose-cycle.img
+
+# Leaf: libleaf.so (no dependencies).
+$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-dlclose-cycle/libs/leaf.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-dlclose-cycle-c/libleaf.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Intermediate libmidx.so: DT_NEEDED libleaf.so.
+$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidx.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-dlclose-cycle/libs/midx.c \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-dlclose-cycle-c/libmidx.so (DT_NEEDED libleaf.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_DLCLOSE_CYCLE_DIR) -lleaf -o $@
+
+# Intermediate libmidy.so: DT_NEEDED libleaf.so.
+$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidy.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-dlclose-cycle/libs/midy.c \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-dlclose-cycle-c/libmidy.so (DT_NEEDED libleaf.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -L$(POSIX_TEST_DLCLOSE_CYCLE_DIR) -lleaf -o $@
+
+# Root: DT_NEEDED libmidx.so + libmidy.so + libleaf.so. The direct libleaf.so
+# edge (alongside the two intermediates that also pull it in) is what makes
+# libleaf.so reachable more than once during dlclose(libroot.so).
+$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libroot.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-dlclose-cycle/libs/root.c \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidx.so $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidy.so \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-dlclose-cycle-c/libroot.so (DT_NEEDED libmidx.so libmidy.so libleaf.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o \
+		-L$(POSIX_TEST_DLCLOSE_CYCLE_DIR) -lmidx -lmidy -lleaf -o $@
+
+# Per-suite RAMFS image carrying all four fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle): $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidx.so \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidy.so \
+		$(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libroot.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libleaf.so $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidx.so $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libmidy.so $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_DLCLOSE_CYCLE_DIR)/libroot.so $(POSIX_TEST_DLCLOSE_CYCLE_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_DLCLOSE_CYCLE_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-cycle-c: DT_NEEDED cycle-rejection fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+#   libcyclea.so    DT_NEEDED libcycleb.so    --+
+#   libcycleb.so    DT_NEEDED libcyclea.so    --+  (two-node cycle)
+#   libselfcycle.so DT_NEEDED libselfcycle.so       (single-node self-loop)
+#   libok.so        (no dependencies)               (positive control)
+#
+# The loader must refuse a dlopen() of any cyclic graph with a clean NULL +
+# dlerror() result instead of recursing without bound (see
+# load_all_dependencies_recursive in
+# src/libs/syscall/src/dlfcn/syscall/dlopen.rs); dlfcn-cycle-c/main.c asserts that
+# rejection and that the dependency-free control library still loads before and
+# after it.
+#
+# A circular DT_NEEDED pair cannot be produced by a single link -- each library
+# must already exist before the other can record a DT_NEEDED entry on it -- so the
+# cycle is bootstrapped in stages. A "stage-1" image of one node is linked first
+# with NO dependency (its cross-reference to the other node is left undefined,
+# which shared objects permit) purely so the other node has something to link
+# against; the two final images are then linked against each other. Each final
+# link lists its dependency's image directly on the command line under
+# --no-as-needed, so the linker records that image's SONAME as a bare DT_NEEDED
+# entry that the loader resolves through its default lib/ search path (exactly like
+# the diamond fixture above). -soname pins each recorded name regardless of linker
+# (GNU ld vs ld.lld). Built with the same i686 freestanding toolchain as the
+# fixtures above.
+POSIX_TEST_CYCLE_DIR  := $(POSIX_TESTS_OBJDIR)/test-c-dlfcn-cycle/libs
+POSIX_TEST_CYCLE_SEED := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-cycle-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle := $(BINARIES_DIR)/posix-tests-ramfs-test-c-dlfcn-cycle.img
+
+# Positive control: dependency-free, zero undefined symbols.
+$(POSIX_TEST_CYCLE_DIR)/libok.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/ok.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libok.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libok.so $@.o -o $@
+
+# Stage-1 libcycleb.so: no DT_NEEDED yet (its cyclea_value reference is left
+# undefined) so libcyclea.so has something to link against. SONAME=libcycleb.so.
+$(POSIX_TEST_CYCLE_DIR)/libcycleb-stage1.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/cycleb.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libcycleb.so (stage 1, no DT_NEEDED)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libcycleb.so $@.o -o $@
+
+# Final libcyclea.so: DT_NEEDED libcycleb.so (linked against the stage-1 image).
+$(POSIX_TEST_CYCLE_DIR)/libcyclea.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/cyclea.c \
+		$(POSIX_TEST_CYCLE_DIR)/libcycleb-stage1.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libcyclea.so (DT_NEEDED libcycleb.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libcyclea.so \
+		$@.o --no-as-needed $(POSIX_TEST_CYCLE_DIR)/libcycleb-stage1.so -o $@
+
+# Final libcycleb.so: DT_NEEDED libcyclea.so (linked against the final
+# libcyclea.so), closing the libcyclea.so <-> libcycleb.so cycle.
+$(POSIX_TEST_CYCLE_DIR)/libcycleb.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/cycleb.c \
+		$(POSIX_TEST_CYCLE_DIR)/libcyclea.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libcycleb.so (DT_NEEDED libcyclea.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libcycleb.so \
+		$@.o --no-as-needed $(POSIX_TEST_CYCLE_DIR)/libcyclea.so -o $@
+
+# Stage-1 libselfcycle.so: no DT_NEEDED yet. SONAME=libselfcycle.so.
+$(POSIX_TEST_CYCLE_DIR)/libselfcycle-stage1.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/selfcycle.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libselfcycle.so (stage 1, no DT_NEEDED)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libselfcycle.so $@.o -o $@
+
+# Final libselfcycle.so: DT_NEEDED libselfcycle.so (linked against its own stage-1
+# image under --no-as-needed, since it references no symbol from it), forming a
+# single-node self-loop.
+$(POSIX_TEST_CYCLE_DIR)/libselfcycle.so: $(POSIX_TESTS_SRCDIR)/test-c-dlfcn-cycle/libs/selfcycle.c \
+		$(POSIX_TEST_CYCLE_DIR)/libselfcycle-stage1.so
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building dlfcn-cycle-c/libselfcycle.so (DT_NEEDED libselfcycle.so)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libselfcycle.so \
+		$@.o --no-as-needed $(POSIX_TEST_CYCLE_DIR)/libselfcycle-stage1.so -o $@
+
+# Per-suite RAMFS image carrying the control + cyclic fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle): $(POSIX_TEST_CYCLE_DIR)/libok.so \
+		$(POSIX_TEST_CYCLE_DIR)/libcyclea.so \
+		$(POSIX_TEST_CYCLE_DIR)/libcycleb.so \
+		$(POSIX_TEST_CYCLE_DIR)/libselfcycle.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_CYCLE_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_CYCLE_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_CYCLE_DIR)/libok.so $(POSIX_TEST_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_CYCLE_DIR)/libcyclea.so $(POSIX_TEST_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_CYCLE_DIR)/libcycleb.so $(POSIX_TEST_CYCLE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_CYCLE_DIR)/libselfcycle.so $(POSIX_TEST_CYCLE_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_CYCLE_SEED)
 
 #---------------------------------------------------------------------------------------------------
 # dlfcn-selflink-c: main-executable GOT/PLT self-linking fixture.
@@ -699,11 +1101,191 @@ $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry): $(POSIX_TEST_DTOR_REENTRY_LIB
 	$(CP_CMD) $(POSIX_TEST_DTOR_REENTRY_LIBDIR)/libreentry.so $(POSIX_TEST_DTOR_REENTRY_SEED)/lib/
 	$(MKRAMFS) -o $@ $(POSIX_TEST_DTOR_REENTRY_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# dlfcn-init-concurrent-c: constructor-vs-concurrent-dlopen fixture.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships ONE shared library, libslowctor.so, built with the same i686 freestanding
+# toolchain as the fixtures above. It carries a `.init_array` constructor whose
+# run is deliberately slow and observable, and leaves three symbols UNDEFINED --
+# ctor_mark_started / ctor_racer_arrived / ctor_mark_done (functions) -- which the
+# loader resolves from the main executable's exported global scope at load time
+# (the suite ELF is PIE + --export-dynamic, see POSIX_TEST_PIE_* above). An
+# explicit -soname pins the SONAME to the bare name `libslowctor.so`. Staged at
+# lib/libslowctor.so, where main.c dlopen()s it from two threads at once: a
+# correct loader makes the racing dlopen() wait for the constructor, so the
+# racing thread never observes the library before its constructor finished.
+POSIX_TEST_INIT_CONCURRENT_SUITE  := test-c-dlfcn-init-concurrent
+POSIX_TEST_INIT_CONCURRENT_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_INIT_CONCURRENT_SUITE)/libs
+POSIX_TEST_INIT_CONCURRENT_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_INIT_CONCURRENT_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_INIT_CONCURRENT_SUITE).img
+
+# libslowctor.so: slow `.init_array` constructor; SONAME=libslowctor.so.
+$(POSIX_TEST_INIT_CONCURRENT_LIBDIR)/libslowctor.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_INIT_CONCURRENT_SUITE)/libs/slowctor.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_INIT_CONCURRENT_SUITE)/libslowctor.so (.init_array)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libslowctor.so $@.o -o $@
+
+# Per-suite RAMFS image carrying libslowctor.so under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent): $(POSIX_TEST_INIT_CONCURRENT_LIBDIR)/libslowctor.so \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_INIT_CONCURRENT_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_INIT_CONCURRENT_LIBDIR)/libslowctor.so $(POSIX_TEST_INIT_CONCURRENT_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_INIT_CONCURRENT_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-ctor-dtor-reentry-c: constructor/destructor cross-library re-entrancy.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships TWO shared libraries (built with the same i686 freestanding toolchain as
+# the fixtures above):
+#   * libother.so - the library opened by libhook.so's constructor and closed by
+#                   its destructor. Exports other_value() for the re-entrant
+#                   dlsym() checks, and carries a `.fini_array` destructor that
+#                   calls the main executable's other_report_dtor() (left
+#                   UNDEFINED, resolved from the global scope at load time) so the
+#                   suite can confirm the destructor-time dlclose() unloaded it.
+#                   An explicit -soname pins the SONAME to the bare name
+#                   `libother.so`.
+#   * libhook.so  - carries a `.init_array` constructor that calls hook_open_other()
+#                   and a `.fini_array` destructor that calls hook_close_other()
+#                   (both UNDEFINED, resolved from the main executable's exported
+#                   global scope; the suite ELF is PIE + --export-dynamic, see
+#                   POSIX_TEST_PIE_* above). Those helpers dlopen()/dlsym()/
+#                   dlclose() libother.so from inside the in-progress outer
+#                   dlopen()/dlclose(). libhook.so does NOT DT_NEEDED libother.so
+#                   -- it reaches it purely through a runtime dlopen() -- so no
+#                   -lother link edge is recorded here.
+# Both are staged under lib/, where main.c dlopen()s libhook.so; libother.so is
+# reached through the loader's default lib/ search path.
+POSIX_TEST_CTOR_DTOR_REENTRY_SUITE  := test-c-dlfcn-ctor-dtor-reentry
+POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libs
+POSIX_TEST_CTOR_DTOR_REENTRY_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE).img
+
+# libother.so: opened/closed by libhook.so's ctor/dtor; SONAME=libother.so.
+$(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libother.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libs/other.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libother.so (.fini_array)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libother.so $@.o -o $@
+
+# libhook.so: `.init_array` opens libother.so, `.fini_array` closes it.
+$(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libhook.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libs/hook.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_CTOR_DTOR_REENTRY_SUITE)/libhook.so (.init_array/.fini_array)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) -soname libhook.so $@.o -o $@
+
+# Per-suite RAMFS image carrying both fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry): $(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libother.so \
+		$(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libhook.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libother.so $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_CTOR_DTOR_REENTRY_LIBDIR)/libhook.so $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_CTOR_DTOR_REENTRY_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-hash-c: DT_HASH / DT_GNU_HASH accelerated symbol lookup.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships TWO shared libraries built from the SAME self-contained source (syms.c,
+# zero undefined symbols) but with different symbol-hash tables, so the loader's
+# find() exercises each of its accelerated lookup paths end to end:
+#   * libsyms-sysv.so - linked --hash-style=sysv -> only a .hash (DT_HASH) table.
+#   * libsyms-gnu.so  - linked --hash-style=gnu  -> only a .gnu.hash (DT_GNU_HASH)
+#                       table (Bloom-filter prefixed).
+# main.c dlopen()s both, resolves every exported function plus a data object
+# through dlsym() (each result confirms the hash walk returned the correct
+# symbol), and asserts an absent name resolves to NULL (the not-found path). The
+# fixtures are opened by explicit path, so no SONAME/DT_NEEDED wiring is needed;
+# they are staged under lib/, where main.c opens them.
+POSIX_TEST_HASH_SUITE  := test-c-dlfcn-hash
+POSIX_TEST_HASH_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_HASH_SUITE)/libs
+POSIX_TEST_HASH_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_HASH_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_HASH_SUITE).img
+
+# libsyms-sysv.so: only a SysV (.hash / DT_HASH) symbol hash table.
+$(POSIX_TEST_HASH_LIBDIR)/libsyms-sysv.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_HASH_SUITE)/libs/syms.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_HASH_SUITE)/libsyms-sysv.so (--hash-style=sysv)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) --hash-style=sysv $@.o -o $@
+
+# libsyms-gnu.so: only a GNU (.gnu.hash / DT_GNU_HASH) symbol hash table.
+$(POSIX_TEST_HASH_LIBDIR)/libsyms-gnu.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_HASH_SUITE)/libs/syms.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_HASH_SUITE)/libsyms-gnu.so (--hash-style=gnu)"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) --hash-style=gnu $@.o -o $@
+
+# Per-suite RAMFS image carrying both fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash): $(POSIX_TEST_HASH_LIBDIR)/libsyms-sysv.so \
+		$(POSIX_TEST_HASH_LIBDIR)/libsyms-gnu.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_HASH_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_HASH_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_HASH_LIBDIR)/libsyms-sysv.so $(POSIX_TEST_HASH_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_HASH_LIBDIR)/libsyms-gnu.so $(POSIX_TEST_HASH_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_HASH_SEED)
+
+#---------------------------------------------------------------------------------------------------
+# dlfcn-handle-reuse-c: stable-handle / stale-alias regression fixtures.
+#---------------------------------------------------------------------------------------------------
+#
+# Ships TWO self-contained shared libraries (zero undefined symbols), built with
+# the same i686 freestanding toolchain as the fixtures above. Both export the
+# SAME symbol name library_id() but with a DISTINCT return value:
+#   * libalpha.so - library_id() returns 0x0A0A0A0A.
+#   * libbeta.so  - library_id() returns 0x0B0B0B0B.
+# main.c dlopen()s libalpha.so, dlclose()s it (freeing its file descriptor), then
+# dlopen()s libbeta.so -- which the loader typically maps onto the just-freed
+# descriptor. The distinct return values make any stale-handle aliasing directly
+# observable. The fixtures are opened by explicit path, so no SONAME/DT_NEEDED
+# wiring is needed; both are staged under lib/, where main.c opens them.
+POSIX_TEST_HANDLE_REUSE_SUITE  := test-c-dlfcn-handle-reuse
+POSIX_TEST_HANDLE_REUSE_LIBDIR := $(POSIX_TESTS_OBJDIR)/$(POSIX_TEST_HANDLE_REUSE_SUITE)/libs
+POSIX_TEST_HANDLE_REUSE_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_HANDLE_REUSE_SUITE)-seed
+POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_HANDLE_REUSE_SUITE).img
+
+# libalpha.so: self-contained; library_id() returns 0x0A0A0A0A.
+$(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libalpha.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_HANDLE_REUSE_SUITE)/libs/alpha.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_HANDLE_REUSE_SUITE)/libalpha.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# libbeta.so: self-contained; library_id() returns 0x0B0B0B0B.
+$(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libbeta.so: $(POSIX_TESTS_SRCDIR)/$(POSIX_TEST_HANDLE_REUSE_SUITE)/libs/beta.c
+	@$(MKDIR_CMD) $(dir $@)
+	@echo "[posix-test] building $(POSIX_TEST_HANDLE_REUSE_SUITE)/libbeta.so"
+	$(GUEST_C_APP_CC) $(POSIX_TEST_SOLIB_CFLAGS) -c $< -o $@.o
+	$(GUEST_C_APP_LD) $(POSIX_TEST_SOLIB_LDFLAGS) $@.o -o $@
+
+# Per-suite RAMFS image carrying both fixtures under lib/.
+$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse): $(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libalpha.so \
+		$(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libbeta.so all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_HANDLE_REUSE_SEED)/lib
+	$(CP_CMD) $(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libalpha.so $(POSIX_TEST_HANDLE_REUSE_SEED)/lib/
+	$(CP_CMD) $(POSIX_TEST_HANDLE_REUSE_LIBDIR)/libbeta.so $(POSIX_TEST_HANDLE_REUSE_SEED)/lib/
+	$(MKRAMFS) -o $@ $(POSIX_TEST_HANDLE_REUSE_SEED)
+
 # All per-suite RAMFS images (built on demand by the runner).
 POSIX_TEST_SOLIB_IMGS := $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(POSIX_TEST_RAMFS_IMG_$(suite))) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-ctor-dtor-reentry) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-diamond) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-order) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dlclose-cycle) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-dtor-reentry) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-handle-reuse) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hash) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-init-concurrent) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-hello) \
+	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-scope) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-searchpath) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-selflink) \
 	$(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-startup) \
@@ -881,6 +1463,7 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
 		$(POSIX_TEST_SOLIB_IMGS) \
 		$(POSIX_TEST_RUNPATH_IMG) \
+		$(POSIX_TEST_STAGING_IMG) \
 		$(POSIX_TEST_WEAK_IMG) \
 		$(POSIX_TEST_EXECVP_IMG)
 	@echo "All POSIX C test-suite images built."
@@ -890,8 +1473,8 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 # The boot runner drives the suites through the nanvix-test harness, which boots
 # each <suite>.initrd under nanvixd in standalone mode (the `terminal` executor)
 # and asserts a guest exit code of 0. The harness is cross-platform: on Linux it
-# launches nanvixd against cloud-hypervisor; on Windows it launches nanvixd.exe
-# under WHP. The suites are i686-only (the guest C toolchain is pinned to the
+# launches nanvixd directly; on Windows it launches nanvixd.exe under WHP. The
+# suites are i686-only (the guest C toolchain is pinned to the
 # i686 ABI, TARGET=x86) and standalone-only (they bundle the guest daemons). On
 # other targets or deployment modes the suites can still be built with
 # `all-posix-tests`.
@@ -913,15 +1496,15 @@ POSIX_TEST_SHARD_FLAG := $(if $(strip $(SHARD)),-shard $(strip $(SHARD)))
 ifneq ($(TARGET),x86)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (guest C toolchain is i686-only; TARGET=$(TARGET) unsupported)."
-else ifeq ($(DEPLOYMENT_MODE),standalone)
-run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_WEAK_IMG) $(POSIX_TEST_EXECVP_IMG)
+else
+run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) \
+		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
+		$(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) \
+		$(POSIX_TEST_WEAK_IMG) $(POSIX_TEST_EXECVP_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(USERVM) || { echo "ERROR: $(USERVM) missing; run './z build -- all' first."; exit 1; }
 	@echo "Running ported POSIX C test suites with configuration: $(POSIX_TEST_CONFIG)$(if $(strip $(SHARD)), (shard $(strip $(SHARD))))"
 	RUST_LOG=$(LOG_LEVEL) $(NANVIX_TEST_BIN) $(POSIX_TEST_SHARD_FLAG) $(POSIX_TEST_CONFIG)
-else
-run-posix-tests:
-	@echo "Skipping POSIX C test suites (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
 endif

@@ -56,6 +56,18 @@ pub struct lconv {
     pub p_sign_posn: c_char,
     /// Positioning of negative sign for monetary values.
     pub n_sign_posn: c_char,
+    /// 1 if `int_curr_symbol` precedes a positive international monetary value.
+    pub int_p_cs_precedes: c_char,
+    /// 1 if a space separates `int_curr_symbol` from a positive international monetary value.
+    pub int_p_sep_by_space: c_char,
+    /// 1 if `int_curr_symbol` precedes a negative international monetary value.
+    pub int_n_cs_precedes: c_char,
+    /// 1 if a space separates `int_curr_symbol` from a negative international monetary value.
+    pub int_n_sep_by_space: c_char,
+    /// Positioning of positive sign for international monetary values.
+    pub int_p_sign_posn: c_char,
+    /// Positioning of negative sign for international monetary values.
+    pub int_n_sign_posn: c_char,
 }
 
 //==================================================================================================
@@ -101,6 +113,12 @@ static C_LCONV: SyncLconv = SyncLconv(lconv {
     n_sep_by_space: CHAR_MAX,
     p_sign_posn: CHAR_MAX,
     n_sign_posn: CHAR_MAX,
+    int_p_cs_precedes: CHAR_MAX,
+    int_p_sep_by_space: CHAR_MAX,
+    int_n_cs_precedes: CHAR_MAX,
+    int_n_sep_by_space: CHAR_MAX,
+    int_p_sign_posn: CHAR_MAX,
+    int_n_sign_posn: CHAR_MAX,
 });
 
 //==================================================================================================

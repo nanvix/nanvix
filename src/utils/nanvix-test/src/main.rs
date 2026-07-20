@@ -51,24 +51,19 @@ macro_rules! warn_with_policy {
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "standalone")]
-use crate::executor::snapshot_restore::test_with_snapshot_restore_executor;
-#[cfg(feature = "standalone")]
-use crate::executor::snapshot_save_exit::test_with_snapshot_save_exit_executor;
 use crate::{
     config::{
         NanvixTestConfig,
         TestCaseConfig,
     },
-    environment::{
-        prepare_l2_artifacts,
-        prepare_runner_environment,
-    },
+    environment::prepare_runner_environment,
     executor::{
         ExecutorName,
         WorkloadSpec,
         empty::empty,
         http::test_with_http_executor,
+        snapshot_restore::test_with_snapshot_restore_executor,
+        snapshot_save_exit::test_with_snapshot_save_exit_executor,
         terminal::test_with_terminal_executor,
     },
     log_layout::{
@@ -369,28 +364,9 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
     }
     let log_root: &Path = Path::new(log_directory);
 
-    if runner_config.l2_enabled
-        && let Err(error) = prepare_l2_artifacts(
-            runner_config.toolchain_path.as_str(),
-            Path::new(runner_config.working_directory.as_str()),
-        )
-        .await
-    {
-        let reason: String = format!(
-            "failed to prepare L2 artifacts (working_directory={}, toolchain={}, error={error})",
-            runner_config.working_directory, runner_config.toolchain_path
-        );
-        error!("main(): {reason}");
-        return Err(::anyhow::anyhow!(reason));
-    }
-
     tokio::select! {
         _ = prepare_runner_environment(
-            runner_config.l2_enabled,
-            runner_config.port_num,
             Path::new(runner_config.tmp_directory.as_str()),
-            runner_config.tcp_cleanup_max_wait_seconds,
-            runner_config.tcp_cleanup_poll_interval_seconds,
         ) => {},
         _ = cancellation_token.cancelled() => {
             error!("main(): cancelled during environment preparation");
@@ -639,7 +615,6 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             },
-            #[cfg(feature = "standalone")]
             (ExecutorName::SnapshotRestore, Some(program_path)) => {
                 if !Path::new(program_path.as_str()).exists() {
                     warn_with_policy!(
@@ -682,7 +657,6 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 );
                 warning::fail_if_triggered(context.as_str())?;
             },
-            #[cfg(feature = "standalone")]
             (ExecutorName::SnapshotRestore, None) => {
                 let reason: String = "test entries with snapshot-restore executor must define the \
                                       'program' field"
@@ -690,7 +664,6 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             },
-            #[cfg(feature = "standalone")]
             (ExecutorName::SnapshotSaveExit, Some(program_path)) => {
                 if !Path::new(program_path.as_str()).exists() {
                     warn_with_policy!(
@@ -733,7 +706,6 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
                 );
                 warning::fail_if_triggered(context.as_str())?;
             },
-            #[cfg(feature = "standalone")]
             (ExecutorName::SnapshotSaveExit, None) => {
                 let reason: String = "test entries with snapshot-save-exit executor must define \
                                       the 'program' field"

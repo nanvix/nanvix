@@ -18,9 +18,8 @@ use ::syslog::trace_syscall;
 /// # Description
 ///
 /// Returns the process-group ID of the process identified by `pid`, or of the calling process when
-/// `pid` is zero. In standalone mode this is answered by the process manager daemon, which tracks
-/// the process group of every process; in hosted modes each process is treated as the leader of its
-/// own group, so the answer is the process ID for the caller and any other process is unknown.
+/// `pid` is zero. This is answered by the process manager daemon, which tracks the process group of
+/// every process.
 ///
 /// # Parameters
 ///
@@ -41,45 +40,16 @@ pub extern "C" fn getpgid(pid: pid_t) -> pid_t {
         return -1 as pid_t;
     }
 
-    #[cfg(feature = "standalone")]
-    {
-        use ::sys::pm::ProcessIdentifier;
+    use ::sys::pm::ProcessIdentifier;
 
-        match ::proc::getpgid(ProcessIdentifier::from(pid)) {
-            Ok(pgid) => i32::from(pgid),
-            Err(e) => {
-                // SAFETY: writing to the thread-local `errno` location is sound.
-                unsafe {
-                    *__errno_location() = e.code.get();
-                }
-                -1 as pid_t
-            },
-        }
-    }
-    #[cfg(not(feature = "standalone"))]
-    {
-        use crate::unistd;
-
-        match unistd::getpid() {
-            Ok(self_pid) => {
-                let self_pid: pid_t = self_pid.into();
-                if pid == 0 || pid == self_pid {
-                    self_pid
-                } else {
-                    // SAFETY: writing to the thread-local `errno` location is sound.
-                    unsafe {
-                        *__errno_location() = ErrorCode::NoSuchProcess.get();
-                    }
-                    -1 as pid_t
-                }
-            },
-            Err(e) => {
-                // SAFETY: writing to the thread-local `errno` location is sound.
-                unsafe {
-                    *__errno_location() = e.code.get();
-                }
-                -1 as pid_t
-            },
-        }
+    match ::proc::getpgid(ProcessIdentifier::from(pid)) {
+        Ok(pgid) => i32::from(pgid),
+        Err(e) => {
+            // SAFETY: writing to the thread-local `errno` location is sound.
+            unsafe {
+                *__errno_location() = e.code.get();
+            }
+            -1 as pid_t
+        },
     }
 }

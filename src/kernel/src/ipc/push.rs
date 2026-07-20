@@ -5,11 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::pm::SleepError;
 #[cfg(feature = "stdio")]
-use crate::{
-    hal::mem::VirtualAddress,
-    pm::ProcessManager,
+use crate::hal::mem::VirtualAddress;
+use crate::pm::{
+    ProcessManager,
+    SleepError,
+};
+#[cfg(feature = "stdio")]
+use ::sys::error::{
+    Error,
+    ErrorCode,
 };
 #[cfg(feature = "stdio")]
 use ::sys::ipc::{
@@ -18,10 +23,7 @@ use ::sys::ipc::{
     SG_BULK_MAX_BYTES,
 };
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+    ipc::PushArgs,
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -37,17 +39,14 @@ use ::sys::{
 ///
 /// Pushes data to a destination process using rendezvous synchronization.
 ///
-/// When the destination is the kernel (linuxd), data is transferred via the vmbus scatter/gather
+/// When the destination is the host I/O backend, data is transferred via the vmbus scatter/gather
 /// data chunk transfer path.
 ///
 /// # Parameters
 ///
 /// - `caller_pid`: Identifier of the calling process.
 /// - `caller_tid`: Identifier of the calling thread.
-/// - `destination_raw`: Raw identifier of the destination process.
-/// - `destination_tid_raw`: Raw identifier of the destination thread.
-/// - `buffer_raw`: Raw pointer to the buffer whose contents will be sent.
-/// - `transfer_len_raw`: Raw length of data to be transferred.
+/// - `args_ptr`: User-space pointer to the [`PushArgs`] descriptor.
 ///
 /// # Returns
 ///
@@ -57,40 +56,46 @@ use ::sys::{
 pub fn push(
     caller_pid: ProcessIdentifier,
     caller_tid: ThreadIdentifier,
-    destination_raw: u32,
-    destination_tid_raw: u32,
-    buffer_raw: usize,
-    transfer_len_raw: u32,
+    args_ptr: u32,
 ) -> Result<(), SleepError> {
-    let destination_pid: ProcessIdentifier =
-        ProcessIdentifier::try_from(destination_raw).map_err(|error| {
-            let reason: &str = "invalid destination process identifier";
-            error!(
-                "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
-                 destination_raw={destination_raw}, error={error:?})"
-            );
-            SleepError::Generic(error)
-        })?;
+    // Copy the argument descriptor from user space into kernel space.
+    let mut args: PushArgs = PushArgs::zeroed();
+    {
+        // SAFETY: the process manager is initialized and access is synchronized.
+        let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+        crate::pm::copy_from_user(pm, caller_pid, &mut args, args_ptr as *const PushArgs)
+            .map_err(SleepError::Generic)?;
+    }
 
-    let destination_tid: ThreadIdentifier = ThreadIdentifier::try_from(destination_tid_raw)
-        .map_err(|error| {
-            let reason: &str = "invalid destination thread identifier";
-            error!(
-                "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
-                 destination_tid_raw={destination_tid_raw}, error={error:?})"
-            );
-            SleepError::Generic(error)
-        })?;
+    let destination_pid: ProcessIdentifier = args.dst_pid;
+    let destination_tid: ThreadIdentifier = args.dst_tid;
+    let buffer_raw: usize = args.buffer as usize;
+    let transfer_len: usize = args.len as usize;
 
-    let transfer_len: usize = usize::try_from(transfer_len_raw).map_err(|_| {
-        let reason: &str = "transfer length is too large";
+    // Validate the destination identifiers copied from user space. The by-pointer ABI lets a caller
+    // place an arbitrary raw value in the descriptor, so reject the negative/sentinel identifiers
+    // that the previous register-based ABI rejected while converting an unsigned register value into
+    // an identifier. Converting the identifier back to a `u32` fails for exactly those negative
+    // values, so invalid identifiers keep failing early and predictably with `InvalidArgument`.
+    u32::try_from(destination_pid).map_err(|error| {
+        let reason: &str = "invalid destination process identifier";
         error!(
             "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
-             destination_pid={destination_pid:?}, destination_tid={destination_tid:?}, \
-             transfer_len_raw={transfer_len_raw})"
+             destination_pid={destination_pid:?}, error={error:?})"
         );
-        SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason))
+        SleepError::Generic(error)
     })?;
+    u32::try_from(destination_tid).map_err(|error| {
+        let reason: &str = "invalid destination thread identifier";
+        error!(
+            "{reason} (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
+             destination_tid={destination_tid:?}, error={error:?})"
+        );
+        SleepError::Generic(error)
+    })?;
+
+    let timeout: super::rendezvous::RendezvousTimeout =
+        super::rendezvous::RendezvousTimeout::resolve(args.timeout).map_err(SleepError::Generic)?;
 
     trace!(
         "tid={:?}, pid={:?}, dst_tid={:?}, dst_pid={:?}, buffer={:#x}, len={}",
@@ -102,7 +107,7 @@ pub fn push(
         transfer_len
     );
 
-    // When the destination is the kernel (linuxd), use the vmbus for data chunk transfer instead
+    // When the destination is the host I/O backend, use the vmbus for data chunk transfer instead
     // of the rendezvous cross-process copy. The user buffer virtual address is translated to a
     // guest physical address so the VMM can directly read the data without an intermediate kernel
     // buffer copy.
@@ -140,7 +145,7 @@ pub fn push(
             destination_tid,
             GuestSgBulkKind::Push,
             &segments,
-            transfer_len_raw,
+            args.len,
         )
         .map_err(SleepError::Generic);
     }
@@ -152,5 +157,6 @@ pub fn push(
         destination_tid,
         buffer_raw,
         transfer_len,
+        timeout,
     )
 }

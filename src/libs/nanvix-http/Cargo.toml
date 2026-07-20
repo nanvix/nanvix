@@ -12,55 +12,23 @@ homepage.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-config = { workspace = true }
 http = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["full"] }
 hyper-util = { workspace = true, features = ["full"] }
-linuxd = { workspace = true, optional = true }
 log = { workspace = true }
-nanvix-sandbox = { workspace = true, optional = true }
-nanvix-sandbox-cache = { workspace = true, optional = true }
-nanvix-sandbox-config = { workspace = true, optional = true }
+nanvix-sandbox-config = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["std"] }
-syscomm = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 uservm = { workspace = true }
 user-vm-api = { workspace = true }
 
 [features]
-default = ["microvm", "standalone"]
-single-process = [
-    "nanvix-sandbox-config",
-    "nanvix-sandbox-config/single-process",
-    "linuxd",
-    "nanvix-sandbox",
-    "nanvix-sandbox/single-process",
-]
-multi-process = [
-    "nanvix-sandbox-config",
-    "nanvix-sandbox-cache",
-    "nanvix-sandbox-cache/multi-process",
-]
-standalone = [
-    "nanvix-sandbox-config",
-    "nanvix-sandbox",
-    "nanvix-sandbox/standalone",
-]
-gdb = ["uservm/gdb", "nanvix-sandbox-config?/gdb"]
-microvm = [
-    "config/microvm",
-    "uservm/microvm",
-    "nanvix-sandbox-cache?/microvm",
-    "nanvix-sandbox?/microvm",
-]
-whp = [
-    "config/whp",
-    "uservm/whp",
-    "nanvix-sandbox-cache?/whp",
-    "nanvix-sandbox?/whp",
-]
+default = ["microvm"]
+gdb = ["uservm/gdb", "nanvix-sandbox-config/gdb"]
+microvm = ["uservm/microvm"]
+whp = ["uservm/whp"]
 
 [lints]
 workspace = true

@@ -5,8 +5,6 @@ log_directory = "logs"
 tmp_directory = "/tmp"
 ipv4_addr = "127.0.0.1"
 port_num = 9999
-hwloc_file_path = ""
-l2_enabled = false
 fatal = true
 toolchain_path = "toolchain"
 sysroot_path = "./sysroot"
@@ -15,10 +13,7 @@ nanvixd_shutdown_retry_interval_ms = 100
 nanvixd_ready_attempts_max = 50
 nanvixd_ready_retry_interval_ms = 100
 cleanup_uservm_sleep_duration_ms = 10
-cleanup_l2_uservm_sleep_duration_ms = 100
 stream_collection_timeout_ms = 300000
-tcp_cleanup_max_wait_seconds = 70
-tcp_cleanup_poll_interval_seconds = 2
 gateway_connect_max_attempts = 100
 gateway_connect_initial_backoff_ms = 10
 gateway_connect_max_backoff_ms = 500
@@ -83,6 +78,32 @@ expected_output = "hello world!"
 build_modes = ["debug", "release"]
 executor = "http"
 program = "./bin/test-rust-thread.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-file.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-misc.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["release"]
+executor = "http"
+program = "./bin/test-rust-memory.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "http"
+program = "./bin/test-rust-dlfcn.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 
 [[tests]]
@@ -190,6 +211,32 @@ expected_output = "hello world"
 build_modes = ["debug", "release"]
 executor = "terminal"
 program = "./bin/test-rust-thread.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-file.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-misc.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["release"]
+executor = "terminal"
+program = "./bin/test-rust-memory.initrd"
+expected_output = "ok"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+program = "./bin/test-rust-dlfcn.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 
 [[tests]]

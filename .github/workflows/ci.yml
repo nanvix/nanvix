@@ -8,17 +8,8 @@ on:
     # Publish release artifacts for the latest version nightly at midnight UTC.
     - cron: "0 0 * * *"
 
+  # Dispatched by manual-release.yml after it pushes the version bump to dev.
   workflow_dispatch:
-    inputs:
-      release-type:
-        description: "Release bump type (only used for manual releases)"
-        required: false
-        default: "patch"
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
   pull_request:
     types:
@@ -282,19 +273,16 @@ jobs:
   # spellcheck) since they are independent source checks that only need
   # precheck. ci-build waits for all of them (checks + lint + verify) to pass.
   #
-  # Lint is config-dependent (features differ per machine-type + deployment-type)
-  # but does NOT depend on build-type (debug vs release). Run lint once per
-  # unique (machine-type, deployment-type) pair (3 jobs) instead of once per
-  # build matrix entry (6 jobs).
+  # Lint is machine-dependent but does NOT depend on build-type (debug vs release). Run lint once
+  # per machine instead of once per build matrix entry.
   lint:
-    name: "Lint (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+    name: "Lint (${{ matrix.machine-type }})"
     needs: [ precheck ]
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -334,20 +322,17 @@ jobs:
             TARGET=x86 \
             LOG_LEVEL=trace \
             VERBOSE=yes \
-            BUILD_OPT=no \
-            "DEPLOYMENT_MODE=${{ matrix.deployment-type }}"
+            BUILD_OPT=no
 
-  # Verus formal verification is config-dependent (kernel cargo flags vary per
-  # machine-type + deployment-type) and runs once per unique pair, like lint.
+  # Verus formal verification is machine-dependent and runs once per machine, like lint.
   verify:
-    name: "Verify (${{ matrix.machine-type }}, ${{ matrix.deployment-type }})"
+    name: "Verify (${{ matrix.machine-type }})"
     needs: [ precheck ]
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -381,7 +366,6 @@ jobs:
         uses: ./.github/actions/verify
         with:
           machine-type: ${{ matrix.machine-type }}
-          deployment-type: ${{ matrix.deployment-type }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # Each matrix entry builds on a GitHub-hosted runner. Integration tests run
@@ -391,7 +375,7 @@ jobs:
   # completes.
   ci-build:
     name: "Build (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{
-      matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
+      matrix.memory-size }}mb)"
     needs: [ precheck, checks, lint, verify ]
     timeout-minutes: 120
     strategy:
@@ -404,12 +388,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
-        memory-size: ${{ fromJSON(github.event_name == 'pull_request' && '[128]' || '[128, 256]') }}
-        # 256MB images are release-only; exclude them from debug builds.
-        exclude:
-          - build-type: debug
-            memory-size: 256
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -494,19 +473,17 @@ jobs:
             VERBOSE=yes \
             BUILD_OPT=yes \
             ${RELEASE_FLAG} \
-            "DEPLOYMENT_MODE=${{ matrix.deployment-type }}" \
             "MEMORY_SIZE=${{ matrix.memory-size }}"
 
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
         with:
           name: ci-build-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{
-            matrix.deployment-type }}-${{ matrix.memory-size }}mb
+            matrix.memory-size }}mb
           overwrite: true
           retention-days: 1
           path: |
             bin/
-            images/
             lib/
             sysroot-${{ matrix.build-type }}/
             nanvix-*.tar.bz2
@@ -516,8 +493,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-ci-logs-${{ github.event.pull_request.number || github.run_number
-            }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{
-            matrix.deployment-type }}-${{ matrix.memory-size }}mb
+            }}-${{ matrix.build-type }}-${{ matrix.machine-type }}-${{ matrix.memory-size }}mb
           overwrite: "true"
           path: |
             logs/
@@ -526,8 +502,8 @@ jobs:
             **/*.err
 
   ci-test:
-    name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{
-      matrix.deployment-type }}, shard ${{ matrix.shard }}/4)"
+    name: "Test (${{ matrix.build-type }}, ${{ matrix.machine-type }}, shard ${{
+      matrix.shard }}/4)"
     needs: [ ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.ci-build.result == 'success' }}
@@ -539,7 +515,6 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
         # The TOML-driven integration suites are partitioned into disjoint shards
         # that run on independent runners. The harness selects this shard's tests
         # via `-shard INDEX/TOTAL` (round-robin), so tests added to the TOML
@@ -573,14 +548,12 @@ jobs:
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
-          deployment-type: "${{ matrix.deployment-type }}"
 
       - name: "Integration Test"
         uses: ./.github/actions/integration-test
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
-          deployment-type: "${{ matrix.deployment-type }}"
           shard-index: "${{ matrix.shard }}"
           shard-total: "4"
 
@@ -590,7 +563,7 @@ jobs:
         with:
           name: nanvix-integration-logs-${{ github.event.pull_request.number ||
             github.run_number }}-${{ matrix.build-type }}-${{
-            matrix.machine-type }}-${{ matrix.deployment-type }}-shard${{ matrix.shard }}
+            matrix.machine-type }}-shard${{ matrix.shard }}
           overwrite: "true"
           path: |
             logs/
@@ -603,8 +576,7 @@ jobs:
   # integration test. Kept in a dedicated job so the sharded ci-test runners
   # execute only disjoint slices of the TOML suites.
   ci-test-extras:
-    name: "Test Extras (${{ matrix.build-type }}, ${{ matrix.machine-type }}, ${{
-      matrix.deployment-type }})"
+    name: "Test Extras (${{ matrix.build-type }}, ${{ matrix.machine-type }})"
     needs: [ ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.ci-build.result == 'success' }}
@@ -616,7 +588,6 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/nanvix/ci:ubuntu-24.04
@@ -643,14 +614,12 @@ jobs:
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
-          deployment-type: "${{ matrix.deployment-type }}"
 
       - name: "In-Kernel & Smoke Tests"
         uses: ./.github/actions/integration-test-extras
         with:
           build-type: "${{ matrix.build-type }}"
           machine-type: "${{ matrix.machine-type }}"
-          deployment-type: "${{ matrix.deployment-type }}"
 
       - name: "Shim Integration Test"
         shell: bash
@@ -667,8 +636,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-integration-extras-logs-${{ github.event.pull_request.number ||
-            github.run_number }}-${{ matrix.build-type }}-${{
-            matrix.machine-type }}-${{ matrix.deployment-type }}
+            github.run_number }}-${{ matrix.build-type }}-${{ matrix.machine-type }}
           overwrite: "true"
           path: |
             logs/
@@ -834,11 +802,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
-        memory-size: ${{ fromJSON(github.event_name == 'pull_request' && '[128]' || '[128, 256]') }}
-        # 256MB images are release-only; exclude them from debug builds.
-        exclude:
-          - build-type: debug
-            memory-size: 256
+        memory-size: [ 256 ]
     runs-on: windows-latest
     permissions:
       contents: read
@@ -937,6 +901,7 @@ jobs:
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
         machine-type: [ microvm ]
+        memory-size: [ 256 ]
         # Integration tests are partitioned into disjoint shards via the harness
         # `-shard INDEX/TOTAL` option (round-robin), so new tests distribute
         # automatically. To change the shard count, update this list AND the
@@ -952,7 +917,7 @@ jobs:
       - name: "Download Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-128mb
+          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{ matrix.memory-size }}mb
           path: bin
 
       - name: "Exclude bin/ from Windows Defender"
@@ -1091,14 +1056,14 @@ jobs:
         machine-type: [ microvm ]
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start cold-start-uvm concurrent
-              round-trip-latency snapshot-restore warm-start warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start cold-start-uvm snapshot-restore
+              warm-start-gateway warm-start-vmm"
             standard-iterations: "100"
             payload-size: ""
-            echo-benchmarks: "echo-breakdown"
-            echo-iterations: "1000"
             vfs-benchmarks: "vfs-bench"
             vfs-iterations: "100"
+            standalone-socket-benchmarks: "warm-start-socket"
+            standalone-socket-iterations: "100"
     runs-on:
       group: Benchmark
       labels: [ self-hosted, Linux ]
@@ -1118,18 +1083,6 @@ jobs:
     if: ${{ !cancelled() && needs.benchmark-gate-linux.outputs.should-run == 'true' }}
 
     steps:
-      - name: "Pre-Checkout Cleanup"
-        shell: bash
-        run: |
-          # Previous runs may leave root-owned files that prevent
-          # actions/checkout from resetting the workspace. The cleanup
-          # composite action cannot run before checkout, so perform a direct cleanup
-          # of the images directory without executing any workspace scripts.
-          if [[ -d "${GITHUB_WORKSPACE}/images" ]]; then
-            echo "Removing images directory before checkout..."
-            sudo rm -rf "${GITHUB_WORKSPACE}/images"
-          fi
-
       - uses: actions/checkout@v7
 
       - name: "Isolate Cargo Home"
@@ -1164,35 +1117,6 @@ jobs:
           iterations: "${{ matrix.standard-iterations }}"
           payload-size: "${{ matrix.payload-size }}"
 
-      - name: "Build (Echo-Breakdown)"
-        if: matrix.echo-benchmarks != ''
-        uses: ./.github/actions/benchmark-build
-        with:
-          machine-type: "${{ matrix.machine-type }}"
-          timestamp-msg: "yes"
-
-      - name: "Run Echo-Breakdown Benchmarks"
-        if: matrix.echo-benchmarks != ''
-        uses: ./.github/actions/benchmark-run
-        with:
-          benchmarks: "${{ matrix.echo-benchmarks }}"
-          machine-type: "${{ matrix.machine-type }}"
-          iterations: "${{ matrix.echo-iterations }}"
-
-      - name: "Build (Standalone VFS)"
-        if: matrix.vfs-benchmarks != ''
-        shell: bash
-        env:
-          MACHINE_TYPE: ${{ matrix.machine-type }}
-        run: |
-          ./z build -- all \
-            "MACHINE=${MACHINE_TYPE}" \
-            TARGET=x86 \
-            LOG_LEVEL=panic \
-            VERBOSE=yes \
-            RELEASE=yes \
-            DEPLOYMENT_MODE=standalone
-
       - name: "Run VFS Benchmarks"
         if: matrix.vfs-benchmarks != ''
         uses: ./.github/actions/benchmark-run
@@ -1200,6 +1124,14 @@ jobs:
           benchmarks: "${{ matrix.vfs-benchmarks }}"
           machine-type: "${{ matrix.machine-type }}"
           iterations: "${{ matrix.vfs-iterations }}"
+
+      - name: "Run Standalone Socket Benchmarks"
+        if: matrix.standalone-socket-benchmarks != ''
+        uses: ./.github/actions/benchmark-run
+        with:
+          benchmarks: "${{ matrix.standalone-socket-benchmarks }}"
+          machine-type: "${{ matrix.machine-type }}"
+          iterations: "${{ matrix.standalone-socket-iterations }}"
 
       - name: "Upload Benchmark Results"
         if: always() && !cancelled()
@@ -1236,9 +1168,9 @@ jobs:
 
   # Build from source and run micro-benchmarks on self-hosted Windows baremetal
   # runners. Only standalone-mode benchmarks are supported (boot-time, cold-start,
-  # snapshot-restore, warm-start-vmm). The self-hosted runner is a dedicated
-  # machine with a known-functional WHP hypervisor, so the WHP probe and Defender
-  # exclusion steps are omitted.
+  # snapshot-restore, vfs-bench, warm-start-gateway, warm-start-vmm, warm-start-socket). The
+  # self-hosted runner is a dedicated machine with a known-functional WHP hypervisor, so the WHP
+  # probe and Defender exclusion steps are omitted.
   windows-benchmark:
     name: "Windows Benchmark (${{ matrix.machine-type }})"
     needs: [ benchmark-gate-windows ]
@@ -1253,7 +1185,8 @@ jobs:
         machine-type: [ microvm ]
         include:
           - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start snapshot-restore vfs-bench warm-start-vmm"
+            standard-benchmarks: "boot-time cold-start cold-start-uvm snapshot-restore vfs-bench
+              warm-start-gateway warm-start-vmm warm-start-socket"
             standard-iterations: "100"
             payload-size: ""
             profiler: "PROFILER=yes"
@@ -1386,7 +1319,7 @@ jobs:
               "--machine-type", $env:MACHINE_TYPE,
               "--iterations", $env:ITERATIONS
             )
-            if (($bench -in @("warm-start", "warm-start-l2", "warm-start-vmm")) -and
+            if (($bench -in @("warm-start-gateway", "warm-start-vmm", "warm-start-socket")) -and
                 -not [string]::IsNullOrWhiteSpace($env:PAYLOAD_SIZE)) {
               $benchmarkArgs += @("--payload-size", $env:PAYLOAD_SIZE)
             }
@@ -1461,8 +1394,8 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,\
-            round-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
+            warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/baremetal"
@@ -1472,12 +1405,11 @@ jobs:
       - name: "Gate on Performance Regressions"
         if: github.ref_name != 'dev'
         shell: bash
-        # vfs-bench and echo-breakdown are excluded: they use different CSV schemas
-        # (not percentile-based). Size-sweep benchmarks are also excluded (multi-row).
+        # vfs-bench uses a different CSV schema. Size-sweep benchmarks are also excluded.
         run: |
           git fetch origin dev --quiet
           git checkout origin/dev -- data/baremetal
-          benchmarks="boot-time,cold-start,cold-start-uvm,concurrent,warm-start"
+          benchmarks="boot-time,cold-start,cold-start-uvm,snapshot-restore"
           python3 ./scripts/benchmark.py \
             ci-gate \
             --dev-dir "data/baremetal" \
@@ -1492,8 +1424,8 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,concurrent,echo-breakdown,roun\
-            d-trip-latency,snapshot-restore,vfs-bench,warm-start,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
+            warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           target-dir: "data/baremetal"
@@ -1556,7 +1488,8 @@ jobs:
       - name: "Report Benchmark Results"
         uses: ./.github/actions/benchmark-report
         with:
-          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
+            warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           dev-dir: "data/windows-baremetal"
@@ -1571,7 +1504,7 @@ jobs:
         run: |
           git fetch origin dev --quiet
           git checkout origin/dev -- data/windows-baremetal
-          benchmarks="boot-time,cold-start"
+          benchmarks="boot-time,cold-start,cold-start-uvm"
           python3 ./scripts/benchmark.py \
             ci-gate \
             --dev-dir "data/windows-baremetal" \
@@ -1586,7 +1519,8 @@ jobs:
         if: github.ref_name == 'dev'
         uses: ./.github/actions/benchmark-persist
         with:
-          benchmarks: "boot-time,cold-start,snapshot-restore,vfs-bench,warm-start-vmm"
+          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
+            warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
           target-dir: "data/windows-baremetal"
@@ -1611,7 +1545,7 @@ jobs:
   # Create release archives for all applicable configurations.
   release-archive:
     name: "Release Archive (${{ matrix.target-arch }}, ${{ matrix.machine-type }},
-      ${{ matrix.deployment-type }}, ${{ matrix.memory-size }}mb)"
+      ${{ matrix.memory-size }}mb)"
     needs:
       - ci-test
       - ci-test-extras
@@ -1640,8 +1574,7 @@ jobs:
       matrix:
         target-arch: [ x86 ]
         machine-type: [ microvm ]
-        deployment-type: [ standalone, single-process, multi-process ]
-        memory-size: [ 128, 256 ]
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -1652,8 +1585,7 @@ jobs:
       - name: "Download CI Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.deployment-type
-            }}-${{ matrix.memory-size }}mb
+          name: ci-build-release-${{ matrix.machine-type }}-${{ matrix.memory-size }}mb
           path: .
 
       - name: "Package Release Archive"
@@ -1662,19 +1594,17 @@ jobs:
         with:
           target-arch: "${{ matrix.target-arch }}"
           machine-type: "${{ matrix.machine-type }}"
-          deployment-type: "${{ matrix.deployment-type }}"
           memory-size: "${{ matrix.memory-size }}"
 
       - name: "Upload Release Artifact"
         uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target-arch }}-${{ matrix.machine-type }}-${{
-            matrix.deployment-type }}-${{ matrix.memory-size }}mb
+            matrix.memory-size }}mb
           path: ${{ steps.release-archive.outputs.archive-path }}
           overwrite: true
 
   # Package Windows standalone binaries into a release archive (.zip).
-  # Windows only supports standalone deployment mode.
   windows-release-archive:
     name: "Windows Release Archive (${{ matrix.target-arch }}, ${{
       matrix.machine-type }}, ${{ matrix.memory-size }}mb)"
@@ -1708,7 +1638,7 @@ jobs:
       matrix:
         target-arch: [ x86 ]
         machine-type: [ microvm ]
-        memory-size: [ 128, 256 ]
+        memory-size: [ 256 ]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -1900,27 +1830,3 @@ jobs:
         uses: ./.github/actions/create-release
         with:
           bump-type: "patch"
-
-  # Manual release via workflow_dispatch.
-  # Allows selecting patch/minor/major bump type from the GitHub Actions UI.
-  # No `needs:` gate — the caller is responsible for ensuring dev is green.
-  create-release-manual:
-    name: "Create Release (Manual)"
-    # Only run on manual dispatch; exclude bot to prevent loops.
-    if: >-
-      github.event_name == 'workflow_dispatch' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-
-    steps:
-      - name: "Checkout repository"
-        uses: actions/checkout@v7
-        with:
-          ssh-key: ${{ secrets.DEPLOY_PRIVATE_SSH_KEY }}
-          fetch-depth: 0
-
-      - name: "Create Release"
-        uses: ./.github/actions/create-release
-        with:
-          bump-type: ${{ github.event.inputs.release-type }}
-          skip-merge-check: "true"

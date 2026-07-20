@@ -221,7 +221,9 @@ def is_default_branch() -> bool:
     return current == default
 
 
-def git_commit(cargo_toml: str, cargo_lock: str, new_version: str) -> None:
+def git_commit(
+    cargo_toml: str, cargo_lock: str, new_version: str, skip_ci: bool
+) -> None:
     """Commit the version bump if there are changes."""
     toml_changed = _git("diff", "--quiet", cargo_toml).returncode != 0
     lock_changed = _git("diff", "--quiet", cargo_lock).returncode != 0
@@ -232,7 +234,10 @@ def git_commit(cargo_toml: str, cargo_lock: str, new_version: str) -> None:
         if result.returncode != 0:
             print_error("Failed to stage files for commit.")
             sys.exit(1)
-        result = _git("commit", "--no-verify", "-m", f"Nanvix {new_version}")
+        commit_message = f"Nanvix {new_version}"
+        if skip_ci:
+            commit_message += " [skip ci]"
+        result = _git("commit", "--no-verify", "-m", commit_message)
         if result.returncode != 0:
             print_error("Failed to commit version bump.")
             sys.exit(1)
@@ -300,6 +305,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip the merge commit requirement (for manual releases).",
     )
+    parser.add_argument(
+        "--skip-ci",
+        action="store_true",
+        help="Add [skip ci] to the release commit message.",
+    )
     return parser.parse_args()
 
 
@@ -332,7 +342,7 @@ def main() -> None:
 
     update_cargo_toml(cargo_toml, new_version)
     update_cargo_lock(repo_root)
-    git_commit(cargo_toml, cargo_lock, new_version)
+    git_commit(cargo_toml, cargo_lock, new_version, args.skip_ci)
 
     if args.push:
         git_push()

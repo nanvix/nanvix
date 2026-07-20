@@ -126,7 +126,7 @@ exec $SHELL
 > [!NOTE]
 > **Expert Mode** — The command above downloads a pre-built toolchain, which is
 > sufficient for most development workflows. If you need to build the
-> cross-compilation toolchain from source or set up L2 deployment, use the
+> cross-compilation toolchain from source, use the
 > optional flags below:
 >
 > ```bash
@@ -139,8 +139,6 @@ exec $SHELL
 >   users can rely on the pre-built toolchain instead).
 > - `--toolchain-dir <path>` — Directory for the toolchain (must be outside the
 >   repository root).
-> - `--l2-deployment` — Also build Cloud Hypervisor for L2 benchmarking
->   scenarios.
 >
 
 ## 8. Updating Your Development Tools

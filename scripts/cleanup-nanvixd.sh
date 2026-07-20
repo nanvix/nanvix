@@ -14,18 +14,14 @@
 #   cleanup-nanvixd.sh [OPTIONS]
 #
 # Options:
-#   --kill-processes          Kill dangling Nanvix processes (linuxd, nanvixd, uservm, cloud-hypervisor).
+#   --kill-processes          Kill dangling Nanvix processes (nanvixd and uservm).
 #   --kill-process-group      Kill a specific process group gracefully (SIGTERM then SIGKILL).
 #   --process-group-pid PID   PID of the process group to kill (requires --kill-process-group).
 #   --graceful-timeout SEC    Timeout for graceful shutdown in seconds (default: 10).
-#   --netns                   Clean up stale network namespaces (nvxns-*).
 #   --sockets                 Clean up stale socket files (/tmp/*.socket).
-#   --temp-dirs               Clean up temporary directories (nvx:*, nanvix-test-*, clh-console, etc.).
-#   --images                  Clean up images directory.
+#   --temp-dirs               Clean up temporary directories (nvx:*, nanvix-test-*, etc.).
 #   --wait-port PORT          Wait for a TCP port to become available.
 #   --wait-port-timeout SEC   Maximum time to wait for port (default: 70).
-#   --wait-tcp-cleanup PORT   Wait for TCP TIME_WAIT connections to clear on port.
-#   --tcp-cleanup-timeout SEC Maximum time to wait for TCP cleanup (default: 70).
 #   --all                     Perform all cleanup actions (except process group kill and port wait).
 #   --verbose                 Enable verbose output.
 #   --help                    Show this help message.
@@ -40,7 +36,6 @@ set -euo pipefail
 readonly SCRIPT_NAME="cleanup-nanvixd.sh"
 readonly DEFAULT_GRACEFUL_TIMEOUT=10
 readonly DEFAULT_PORT_WAIT_TIMEOUT=70
-readonly DEFAULT_TCP_CLEANUP_TIMEOUT=70
 readonly POLL_INTERVAL_SECONDS=2
 readonly POLL_INTERVAL_DECISECONDS=1
 
@@ -53,14 +48,10 @@ DO_KILL_PROCESSES=false
 DO_KILL_PROCESS_GROUP=false
 PROCESS_GROUP_PID=""
 GRACEFUL_TIMEOUT="${DEFAULT_GRACEFUL_TIMEOUT}"
-DO_NETNS=false
 DO_SOCKETS=false
 DO_TEMP_DIRS=false
-DO_IMAGES=false
 WAIT_PORT=""
 PORT_WAIT_TIMEOUT="${DEFAULT_PORT_WAIT_TIMEOUT}"
-WAIT_TCP_CLEANUP_PORT=""
-TCP_CLEANUP_TIMEOUT="${DEFAULT_TCP_CLEANUP_TIMEOUT}"
 
 #===================================================================================================
 # Helper Functions
@@ -116,14 +107,10 @@ Options:
   --kill-process-group    Kill a specific process group gracefully
   --process-group-pid PID PID of the process group to kill
   --graceful-timeout SEC  Timeout for graceful shutdown (default: ${DEFAULT_GRACEFUL_TIMEOUT})
-  --netns                 Clean up stale network namespaces
   --sockets               Clean up stale socket files
   --temp-dirs             Clean up temporary directories
-  --images                Clean up images directory
   --wait-port PORT        Wait for a TCP port to become available
   --wait-port-timeout SEC Maximum time to wait for port (default: ${DEFAULT_PORT_WAIT_TIMEOUT})
-  --wait-tcp-cleanup PORT Wait for TCP TIME_WAIT to clear on port
-  --tcp-cleanup-timeout   Timeout for TCP cleanup (default: ${DEFAULT_TCP_CLEANUP_TIMEOUT})
   --all                   Perform all cleanup actions
   --verbose               Enable verbose output
   --help                  Show this help message
@@ -133,7 +120,7 @@ Examples:
   ${SCRIPT_NAME} --all --verbose
 
   # Clean up after a test run
-  ${SCRIPT_NAME} --netns --sockets --temp-dirs
+  ${SCRIPT_NAME} --sockets --temp-dirs
 
   # Kill dangling processes and wait for port
   ${SCRIPT_NAME} --kill-processes --wait-port 9999
@@ -158,7 +145,7 @@ cleanup_kill_processes() {
 
     # Use -f to match against full command line instead of -x (exact comm match).
     # The comm field in /proc/[pid]/comm may differ from the executable name.
-    for proc in linuxd.elf nanvixd.elf uservm.elf cloud-hypervisor; do
+    for proc in nanvixd.elf uservm.elf; do
         if pgrep -f "${proc}" > /dev/null 2>&1; then
             log_verbose "Killing ${proc} processes..."
             sudo pkill -9 -f "${proc}" 2>/dev/null || true
@@ -228,44 +215,6 @@ cleanup_kill_process_group() {
 #
 # Description
 #
-#   Cleans up stale Nanvix network namespaces.
-#
-cleanup_netns() {
-    log_info "Cleaning up network namespaces..."
-
-    local netns_list
-    netns_list=$(sudo ip netns list 2>/dev/null | grep -o 'nvxns-[0-9]*' || true)
-
-    if [ -n "${netns_list}" ]; then
-        local count
-        count=$(echo "${netns_list}" | wc -w)
-        log_verbose "Found ${count} Nanvix namespace(s)."
-
-        for ns in ${netns_list}; do
-            local ns_id="${ns#nvxns-}"
-
-            # Delete veth pair first (host side).
-            local veth_name="nvxgw-h-${ns_id}"
-            if ! sudo ip link del "${veth_name}" 2>/dev/null; then
-                log_verbose "Veth ${veth_name} not found or already deleted."
-            fi
-
-            # Delete the namespace.
-            if ! sudo ip netns del "${ns}" 2>/dev/null; then
-                log_warning "Failed to delete namespace ${ns}."
-            else
-                log_verbose "Deleted namespace ${ns}."
-            fi
-        done
-        log_info "Network namespace cleanup completed."
-    else
-        log_verbose "No stale namespaces found."
-    fi
-}
-
-#
-# Description
-#
 #   Cleans up stale socket files.
 #
 cleanup_sockets() {
@@ -290,38 +239,7 @@ cleanup_temp_dirs() {
     rm -rf /tmp/nanvix-test-* 2>/dev/null || true
     log_verbose "Removed nanvix-test-* directories."
 
-    # Cloud Hypervisor console directory.
-    sudo rm -rf /tmp/clh-console 2>/dev/null || true
-    log_verbose "Removed clh-console directory."
-
-    # Cloud Hypervisor socket.
-    sudo rm -f /tmp/cloud-hypervisor.sock 2>/dev/null || true
-    log_verbose "Removed cloud-hypervisor.sock."
-
     log_info "Temporary directory cleanup completed."
-}
-
-#
-# Description
-#
-#   Cleans up images directory.
-#
-cleanup_images() {
-    log_info "Cleaning up images directory..."
-    # Resolve repository root to avoid deleting unintended directories.
-    local repo_root
-    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
-    if [ -n "${repo_root}" ] && [ -d "${repo_root}/images" ]; then
-        # Unmount any leftover pseudo-filesystems before deletion.
-        for mp in sys proc dev; do
-            sudo umount -lf "${repo_root}/images/l2-sysvm-rootfs/${mp}" 2>/dev/null || true
-        done
-        sudo rm -rf "${repo_root}/images" 2>/dev/null || true
-        log_verbose "Removed ${repo_root}/images."
-    else
-        log_verbose "Images directory not found or not in a git repository."
-    fi
-    log_verbose "Images cleanup completed."
 }
 
 #
@@ -408,59 +326,6 @@ wait_for_port() {
     done
 }
 
-#
-# Description
-#
-#   Waits for TCP TIME_WAIT connections to clear on a port.
-#
-# Arguments
-#
-#   $1 - Port number.
-#   $2 - Maximum wait time in seconds.
-#
-# Return Value
-#
-#   Returns 0 if connections clear, 1 on timeout.
-#
-wait_for_tcp_cleanup() {
-    local port="$1"
-    local max_wait="$2"
-    local start_time
-    start_time=$(date +%s)
-
-    log_info "Waiting for TCP TIME_WAIT to clear on port ${port} (max ${max_wait}s)..."
-
-    while true; do
-        local current_time
-        current_time=$(date +%s)
-        local elapsed=$((current_time - start_time))
-
-        if [ "${elapsed}" -ge "${max_wait}" ]; then
-            log_warning "Timeout after ${max_wait}s, some connections may still be in TIME_WAIT."
-            return 1
-        fi
-
-        # Count connections in TIME_WAIT state.
-        local time_wait_count=0
-        if command -v ss &> /dev/null; then
-            time_wait_count=$(ss -tan state time-wait "sport = :${port}" 2>/dev/null | tail -n +2 | wc -l)
-        elif command -v netstat &> /dev/null; then
-            time_wait_count=$(netstat -tan | grep -E ":${port}[[:space:]]+" | grep -c TIME_WAIT || echo 0)
-        else
-            log_warning "Neither 'ss' nor 'netstat' available, skipping TCP cleanup check."
-            return 0
-        fi
-
-        if [ "${time_wait_count}" -eq 0 ]; then
-            log_info "All TCP connections on port ${port} cleared."
-            return 0
-        fi
-
-        log_verbose "Waiting for ${time_wait_count} TIME_WAIT connection(s) to clear... (${elapsed}s elapsed)"
-        sleep "${POLL_INTERVAL_SECONDS}"
-    done
-}
-
 #===================================================================================================
 # Argument Parsing
 #===================================================================================================
@@ -490,20 +355,12 @@ parse_arguments() {
                 GRACEFUL_TIMEOUT="$1"
                 shift
                 ;;
-            --netns)
-                DO_NETNS=true
-                shift
-                ;;
             --sockets)
                 DO_SOCKETS=true
                 shift
                 ;;
             --temp-dirs)
                 DO_TEMP_DIRS=true
-                shift
-                ;;
-            --images)
-                DO_IMAGES=true
                 shift
                 ;;
             --wait-port)
@@ -520,26 +377,10 @@ parse_arguments() {
                 PORT_WAIT_TIMEOUT="$1"
                 shift
                 ;;
-            --wait-tcp-cleanup)
-                shift
-                [ $# -eq 0 ] && { log_error "Missing value for --wait-tcp-cleanup."; exit 1; }
-                validate_positive_integer "$1" "--wait-tcp-cleanup"
-                WAIT_TCP_CLEANUP_PORT="$1"
-                shift
-                ;;
-            --tcp-cleanup-timeout)
-                shift
-                [ $# -eq 0 ] && { log_error "Missing value for --tcp-cleanup-timeout."; exit 1; }
-                validate_positive_integer "$1" "--tcp-cleanup-timeout"
-                TCP_CLEANUP_TIMEOUT="$1"
-                shift
-                ;;
             --all)
                 DO_KILL_PROCESSES=true
-                DO_NETNS=true
                 DO_SOCKETS=true
                 DO_TEMP_DIRS=true
-                DO_IMAGES=true
                 shift
                 ;;
             --verbose)
@@ -588,11 +429,6 @@ main() {
         any_action=true
     fi
 
-    if [ "${DO_NETNS}" = true ]; then
-        cleanup_netns
-        any_action=true
-    fi
-
     if [ "${DO_SOCKETS}" = true ]; then
         cleanup_sockets
         any_action=true
@@ -603,20 +439,10 @@ main() {
         any_action=true
     fi
 
-    if [ "${DO_IMAGES}" = true ]; then
-        cleanup_images
-        any_action=true
-    fi
-
     if [ -n "${WAIT_PORT}" ]; then
         if ! wait_for_port "${WAIT_PORT}" "${PORT_WAIT_TIMEOUT}"; then
             exit 1
         fi
-        any_action=true
-    fi
-
-    if [ -n "${WAIT_TCP_CLEANUP_PORT}" ]; then
-        wait_for_tcp_cleanup "${WAIT_TCP_CLEANUP_PORT}" "${TCP_CLEANUP_TIMEOUT}"
         any_action=true
     fi
 

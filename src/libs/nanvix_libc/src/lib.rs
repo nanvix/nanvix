@@ -141,13 +141,9 @@ use ::sysapi::{
         c_char,
         c_int,
         c_long,
-        c_uint,
         c_void,
     },
-    sys_types::{
-        c_size_t,
-        pid_t,
-    },
+    sys_types::c_size_t,
 };
 
 /// Thread-local errno storage (single-threaded: a plain static suffices).
@@ -364,25 +360,6 @@ pub unsafe extern "C" fn __nanvix_sigsuspend(_mask: *const libc_signal::signal::
     -1
 }
 
-//==================================================================================================
-// Stub symbols required by libstdc++ but not yet implemented
-//==================================================================================================
-
-/// C++ ABI: register a function to be called at exit or when a shared library is unloaded.
-///
-/// # Safety
-///
-/// This is a C++ runtime ABI function.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn __cxa_atexit(
-    _func: Option<unsafe extern "C" fn(*mut c_void)>,
-    _arg: *mut c_void,
-    _dso_handle: *mut c_void,
-) -> c_int {
-    // Stub — atexit handlers are not supported in this environment.
-    0
-}
-
 /// Wrapper to make a raw pointer `Sync` for use as a static.
 #[allow(dead_code)]
 #[repr(transparent)]
@@ -392,130 +369,6 @@ unsafe impl Sync for SyncPtr {}
 /// C++ ABI: DSO handle symbol required by __cxa_atexit.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub static __dso_handle: SyncPtr = SyncPtr(core::ptr::null_mut());
-
-//==================================================================================================
-// Terminal interface stubs (no interactive terminal in standalone mode)
-//==================================================================================================
-//
-// `tcgetattr`/`tcsetattr` are provided by the `libc_termios` crate; the
-// remaining terminal helpers below are not, so they live here.
-
-/// Stub `tcsendbreak` — no terminal hardware, so this is a no-op success.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn tcsendbreak(_fd: c_int, _duration: c_int) -> c_int {
-    0
-}
-
-/// Stub `tcdrain` — no terminal hardware, so this is a no-op success.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn tcdrain(_fd: c_int) -> c_int {
-    0
-}
-
-/// Stub `tcflush` — no terminal hardware, so this is a no-op success.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn tcflush(_fd: c_int, _queue_selector: c_int) -> c_int {
-    0
-}
-
-/// Stub `tcflow` — no terminal hardware, so this is a no-op success.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn tcflow(_fd: c_int, _action: c_int) -> c_int {
-    0
-}
-
-/// Stub `cfgetispeed` — returns the default `B9600` line speed.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn cfgetispeed(_termios_p: *const c_void) -> c_uint {
-    13
-}
-
-/// Stub `cfgetospeed` — returns the default `B9600` line speed.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn cfgetospeed(_termios_p: *const c_void) -> c_uint {
-    13
-}
-
-/// Stub `cfsetispeed` — no terminal hardware, so this is a no-op success.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn cfsetispeed(_termios_p: *mut c_void, _speed: c_uint) -> c_int {
-    0
-}
-
-/// Stub `cfsetospeed` — no terminal hardware, so this is a no-op success.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn cfsetospeed(_termios_p: *mut c_void, _speed: c_uint) -> c_int {
-    0
-}
-
-/// Stub `cfsetspeed` — sets both input and output line speed. No terminal hardware, so this is a
-/// no-op success.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn cfsetspeed(_termios_p: *mut c_void, _speed: c_uint) -> c_int {
-    0
-}
-
-/// `cfmakeraw` — places the terminal attributes pointed to by `termios_p` in "raw" mode.
-///
-/// Unlike line-speed configuration, this is a pure in-memory transformation of the caller's
-/// `struct termios` and requires no terminal hardware. It clears canonical input (`ICANON`), echo
-/// (`ECHO`), signal generation (`ISIG`), extended input processing (`IEXTEN`), CR-to-NL mapping
-/// (`ICRNL`), start/stop output control (`IXON`), and output post-processing (`OPOST`), then sets a
-/// one-byte, no-timeout non-canonical read (`VMIN = 1`, `VTIME = 0`) — the flags honored by the
-/// vfsd console line discipline. A null pointer is ignored.
-///
-/// # Safety
-///
-/// `termios_p` must be null or point to a valid, writable `struct termios`; a non-null pointer is
-/// dereferenced and overwritten.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn cfmakeraw(termios_p: *mut c_void) {
-    use ::sysapi::termios::{
-        Termios,
-        ECHO,
-        ICANON,
-        ICRNL,
-        IEXTEN,
-        ISIG,
-        IXON,
-        OPOST,
-        VMIN,
-        VTIME,
-    };
-
-    if termios_p.is_null() {
-        return;
-    }
-
-    // SAFETY: the caller guarantees `termios_p` points to a valid, writable `struct termios`.
-    let termios: &mut Termios = unsafe { &mut *(termios_p as *mut Termios) };
-    termios.c_iflag &= !(ICRNL | IXON);
-    termios.c_oflag &= !OPOST;
-    termios.c_lflag &= !(ICANON | ECHO | ISIG | IEXTEN);
-    termios.c_cc[VMIN] = 1;
-    termios.c_cc[VTIME] = 0;
-}
-
-/// `tcgetsid` — returns the session ID of the terminal referred to by `fd`.
-///
-/// Nanvix has no sessions or process groups, so a process is treated as its own session leader:
-/// when `fd` refers to a terminal, the returned session ID is the caller's process ID. If `fd` does
-/// not refer to a terminal, returns `-1` with `errno` set, as reported by `isatty`.
-#[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn tcgetsid(fd: c_int) -> pid_t {
-    extern "C" {
-        fn isatty(fd: c_int) -> c_int;
-        fn getpid() -> pid_t;
-    }
-
-    // SAFETY: FFI to the runtime `isatty`, which validates `fd` and sets `errno` on error.
-    if unsafe { isatty(fd) } == 0 {
-        return -1 as pid_t;
-    }
-
-    // SAFETY: FFI to the runtime `getpid`, which has no preconditions.
-    unsafe { getpid() }
-}
 
 //==================================================================================================
 // Time zone globals (fixed UTC; Nanvix has no time-zone database)

@@ -9,7 +9,9 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <locale.h>
+#include <nl_types.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -134,6 +136,62 @@ static void test_stdlib_l(void)
     freelocale(loc);
 }
 
+// Tests the XSI message-catalog functions. Nanvix supports only the C/POSIX locale, which
+// defines no message catalogs, so catopen() reports failure, catgets() echoes the fallback
+// string, and catclose() succeeds.
+static void test_message_catalog(void)
+{
+    // catopen() cannot find any catalog and reports failure with the (nl_catd)-1 sentinel.
+    nl_catd catd = catopen("messages", NL_CAT_LOCALE);
+    assert(catd == (nl_catd)-1);
+
+    // catgets() returns the caller-supplied fallback string unchanged (same pointer).
+    const char *fallback = "fallback message";
+    assert((const char *)catgets(catd, NL_SETD, 1, fallback) == fallback);
+
+    // catclose() always succeeds.
+    assert(catclose(catd) == 0);
+}
+
+// Tests localeconv(): in the C/POSIX locale the decimal point is ".", every other string field is
+// empty, and every numeric field is CHAR_MAX ("not available"). This includes the six C99
+// international monetary members (int_p_cs_precedes and friends).
+static void test_localeconv(void)
+{
+    struct lconv *lc = localeconv();
+    assert(lc != NULL);
+
+    // Only the decimal point is non-empty in the C locale; all other string fields are empty.
+    assert(strcmp(lc->decimal_point, ".") == 0);
+    assert(strcmp(lc->thousands_sep, "") == 0);
+    assert(strcmp(lc->grouping, "") == 0);
+    assert(strcmp(lc->int_curr_symbol, "") == 0);
+    assert(strcmp(lc->currency_symbol, "") == 0);
+    assert(strcmp(lc->mon_decimal_point, "") == 0);
+    assert(strcmp(lc->mon_thousands_sep, "") == 0);
+    assert(strcmp(lc->mon_grouping, "") == 0);
+    assert(strcmp(lc->positive_sign, "") == 0);
+    assert(strcmp(lc->negative_sign, "") == 0);
+
+    // Local numeric and monetary members are all CHAR_MAX in the C locale.
+    assert(lc->int_frac_digits == CHAR_MAX);
+    assert(lc->frac_digits == CHAR_MAX);
+    assert(lc->p_cs_precedes == CHAR_MAX);
+    assert(lc->p_sep_by_space == CHAR_MAX);
+    assert(lc->n_cs_precedes == CHAR_MAX);
+    assert(lc->n_sep_by_space == CHAR_MAX);
+    assert(lc->p_sign_posn == CHAR_MAX);
+    assert(lc->n_sign_posn == CHAR_MAX);
+
+    // C99 international monetary members.
+    assert(lc->int_p_cs_precedes == CHAR_MAX);
+    assert(lc->int_p_sep_by_space == CHAR_MAX);
+    assert(lc->int_n_cs_precedes == CHAR_MAX);
+    assert(lc->int_n_sep_by_space == CHAR_MAX);
+    assert(lc->int_p_sign_posn == CHAR_MAX);
+    assert(lc->int_n_sign_posn == CHAR_MAX);
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -162,6 +220,8 @@ int main(int argc, const char *argv[])
     test_string_l();
     test_time_l();
     test_stdlib_l();
+    test_message_catalog();
+    test_localeconv();
 
     // Write magic string to signal that the test passed.
     {

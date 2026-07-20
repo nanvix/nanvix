@@ -22,21 +22,8 @@ export TIMEOUT ?= 600
 # Enable Microvm profiler?
 export PROFILER ?= no
 
-# Enable message timestamping
-# WARNING: use only with the echo-breakdown benchmark
-export TIMESTAMP_MSG ?= no
-
 # Target Host CPU
 export HOST_CPU ?=
-
-# Deployment mode: standalone, single-process, multi-process, l2
-export DEPLOYMENT_MODE ?= standalone
-
-# Validate DEPLOYMENT_MODE.
-VALID_DEPLOYMENT_MODES := standalone single-process multi-process l2
-ifeq ($(filter $(DEPLOYMENT_MODE),$(VALID_DEPLOYMENT_MODES)),)
-$(error Invalid DEPLOYMENT_MODE '$(DEPLOYMENT_MODE)'. Valid values: $(VALID_DEPLOYMENT_MODES))
-endif
 
 # Log Level
 ifeq ($(RELEASE),yes)
@@ -52,8 +39,7 @@ export IMAGE ?= nanvix.img
 export WHP ?= no
 
 # Memory size in megabytes. Exported as MEMORY_SIZE_BYTES for build.rs scripts.
-# Example: make all MEMORY_SIZE=256
-export MEMORY_SIZE ?= 128
+export MEMORY_SIZE ?= 256
 
 #===================================================================================================
 # OS Detection
@@ -90,12 +76,10 @@ export ROOT_DIR      := $(CURDIR)
 export BINARIES_DIR  := $(ROOT_DIR)/bin
 export LIBRARIES_DIR := $(ROOT_DIR)/lib
 export BUILD_DIR     := $(ROOT_DIR)/build
-export SNAPSHOT_DIR  := $(ROOT_DIR)/images
 export LOGS_DIR      := $(ROOT_DIR)/logs
 export SCRIPTS_DIR   := $(ROOT_DIR)/scripts
 export SOURCES_DIR   := $(ROOT_DIR)/src
 export INCLUDE_DIR   := $(ROOT_DIR)/include
-export CLH_DIR       ?= $(ROOT_DIR)/toolchain
 export SYSROOT_DIR   ?= $(ROOT_DIR)/sysroot$(if $(filter yes,$(RELEASE)),-release,-debug)
 export SYSROOT_LINK  := $(ROOT_DIR)/sysroot
 export TARGETS_DIR   := $(BUILD_DIR)/targets
@@ -144,7 +128,6 @@ endif
 # Release Artifact Configuration
 #===================================================================================================
 
-RELEASE_DEPLOYMENT_MODE := $(subst -,_,$(DEPLOYMENT_MODE))
 RELEASE_BUILD_MODE := $(if $(filter yes,$(RELEASE)),release,debug)
 RELEASE_VERSION := $(strip $(shell cargo metadata --no-deps --format-version 1 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -n1))
 
@@ -164,7 +147,7 @@ export MEMORY_SIZE_BYTES := $(shell echo $$(($(MEMORY_SIZE_MB) * 1048576)))
 # VFS benchmark image filename.
 export VFS_BENCH_IMG ?= vfs-bench.img
 
-RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(TARGET)-$(MACHINE)-$(RELEASE_DEPLOYMENT_MODE)-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL)-$(MEMORY_SIZE_MB)mb.tar.bz2
+RELEASE_ARCHIVE := nanvix-$(RELEASE_VERSION)-$(TARGET)-$(MACHINE)-standalone-$(RELEASE_BUILD_MODE)-$(LOG_LEVEL)-$(MEMORY_SIZE_MB)mb.tar.bz2
 MANIFEST_FILE := $(SYSROOT_DIR)/manifest.json
 
 #===================================================================================================
@@ -178,7 +161,6 @@ export LIBNVX_CRT0 := $(LIBRARIES_DIR)/libnvx_crt0.a
 
 # Binaries.
 KERNEL := $(BINARIES_DIR)/kernel.$(EXEC_FORMAT)
-LINUXD := $(BINARIES_DIR)/linuxd.$(HOST_BIN_EXT)
 MEMD := $(BINARIES_DIR)/memd.$(EXEC_FORMAT)
 MKIMAGE := $(BINARIES_DIR)/mkimage.$(HOST_BIN_EXT)
 MKRAMFS := $(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT)
@@ -388,24 +370,18 @@ ALL_GUEST_BINARIES += $(ALL_GUEST_TESTS)
 ALL_WASM_BINARIES := echo-wasm-rust hello-wasm noop-wasm-rust
 
 ALL_HOST_RUST_LIBS := \
-	control-plane-api hostfsd hwloc multibin multiimage net-backend profiler \
-	nanvix nanvix-http nanvix-sandbox nanvix-sandbox-cache nanvix-sandbox-config \
+	hostfsd hwloc multibin multiimage net-backend profiler \
+	nanvix nanvix-http nanvix-sandbox-config \
 	nanvix-terminal syscomm user-vm-api
 # Host rlibs excluded on Windows:
-#  - nanvix-http, nanvix-sandbox-cache: depend on Unix-only APIs.
+#  - nanvix-http: depends on Unix-only APIs.
 #  - syscomm: test code references cfg(unix)-gated SocketAddr::Unix variant.
 ifeq ($(IS_WINDOWS),yes)
-WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http nanvix-sandbox-cache syscomm
+WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http syscomm
 ALL_HOST_RUST_LIBS := $(filter-out $(WINDOWS_EXCLUDED_HOST_RLIBS),$(ALL_HOST_RUST_LIBS))
 endif
 ALL_HOST_UTILS := echo-client gen-headers mkimage mkramfs strace
-# linuxd is only needed for multi-process and L2 deployments (Linux-only).
-ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
-ALL_HOST_DAEMONS := linuxd
-else
-ALL_HOST_DAEMONS :=
-endif
-ALL_HOST_BINARIES := $(ALL_HOST_UTILS) $(ALL_HOST_DAEMONS)
+ALL_HOST_BINARIES := $(ALL_HOST_UTILS)
 
 #===================================================================================================
 # Sysroot Symlink Management
@@ -454,19 +430,12 @@ all-nanvix: \
 	init \
 	all-guest-staticlibs \
 	all-guest-binaries \
-	all-kernel \
-	all-snapshot
+	all-kernel
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 all-nanvix: all-host-binaries all-nanvixd all-uservm all-nanvix-test all-test-kernel-ramfs
-# The containerd shim is not needed in standalone mode.
-ifneq ($(DEPLOYMENT_MODE),standalone)
-all-nanvix: all-nanvix-shim
-endif
-# Standalone mode bundles daemon binaries into per-test multibinary images.
-ifeq ($(DEPLOYMENT_MODE),standalone)
+# Bundle daemon binaries into per-test multibinary images.
 all-nanvix: standalone-images
-endif
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -493,7 +462,6 @@ clean: \
 	clean-guest-binaries \
 	clean-kernel \
 	clean-test-kernel \
-	clean-snapshot \
 	image-clean
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
@@ -540,15 +508,9 @@ ifneq ($(strip $(filter $(MACHINE),microvm)),)
 	@cp ${NANVIXD} ${SYSROOT_DIR}/bin/
 	@cp ${MKIMAGE} ${SYSROOT_DIR}/bin/
 	@cp ${MKRAMFS} ${SYSROOT_DIR}/bin/
-ifneq ($(filter standalone,$(DEPLOYMENT_MODE)),)
 	@cp ${MEMD} ${SYSROOT_DIR}/bin/
 	@cp ${PROCD} ${SYSROOT_DIR}/bin/
 	@cp ${VFSD} ${SYSROOT_DIR}/bin/
-endif
-ifeq ($(filter standalone single-process,$(DEPLOYMENT_MODE)),)
-	@cp ${LINUXD} ${SYSROOT_DIR}/bin/
-	@cp ${USERVM} ${SYSROOT_DIR}/bin/
-endif
 endif
 	@cp ${LIBNVX_CRT0} ${SYSROOT_DIR}/lib/
 	@cp ${NANVIX_LIBC_BUNDLE_INSTALL_ARTIFACTS} ${SYSROOT_DIR}/lib/
@@ -568,7 +530,7 @@ release-generate-manifest:
 	@echo "Generating manifest $(MANIFEST_FILE)..."
 	@MEMORY_SIZE_MB="$(MEMORY_SIZE_MB)" MEMORY_SIZE_BYTES="$(MEMORY_SIZE_BYTES)" \
 		bash $(SCRIPTS_DIR)/generate-manifest.sh $(MANIFEST_FILE) \
-		$(RELEASE_VERSION) $(MACHINE) $(TARGET) $(DEPLOYMENT_MODE) $(RELEASE_BUILD_MODE) $(LOG_LEVEL)
+		$(RELEASE_VERSION) $(MACHINE) $(TARGET) $(RELEASE_BUILD_MODE) $(LOG_LEVEL)
 
 release: all install release-generate-manifest
 	@test -n "$(MEMORY_SIZE_MB)" || { echo "ERROR: MEMORY_SIZE is not set"; exit 1; }
@@ -609,7 +571,6 @@ help:
 	@echo "  run      Run system in release mode"
 	@echo ""
 	@echo "Build Parameters (override with VAR=value, see Parameter Values section below)"
-	@echo "  DEPLOYMENT_MODE  Deployment mode (default: $(DEPLOYMENT_MODE))"
 	@echo "  LOG_LEVEL        Logging verbosity (default: $(LOG_LEVEL))"
 	@echo "  MACHINE          Target machine type (default: $(MACHINE))"
 	@echo "  MAKE_NO_PRINT    Suppress directory printing in recursive make (default: $(MAKE_NO_PRINT))"
@@ -619,12 +580,10 @@ help:
 	@echo "  SYSROOT_DIR      Sysroot directory (default: $(SYSROOT_DIR))"
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
-	@echo "  CLH_DIR          Cloud-hypervisor installation directory (default: $(CLH_DIR))"
 	@echo "  MEMORY_SIZE      Memory size in megabytes (default: $(MEMORY_SIZE))"
 	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (unset: skip verification)"
 	@echo ""
 	@echo "Parameter Values"
-	@echo "  DEPLOYMENT_MODE standalone, single-process, multi-process, l2"
 	@echo "  MACHINE         microvm"
 	@echo "  TARGET          x86, x86_64"
 	@echo "  RELEASE         yes, no"
@@ -900,11 +859,11 @@ endif
 
 # Runs system in release mode.
 run: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -clh-bin-path $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 # Runs system in debug mode.
 debug: image
-	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -clh-bin-path $(CLH_DIR)/bin -log-dir $(LOGS_DIR) -- $(IMAGE)
+	RUST_LOG=$(LOG_LEVEL) $(NANVIXD) -console-file /dev/stdout -log-dir $(LOGS_DIR) -- $(IMAGE)
 
 #===================================================================================================
 # Build Rules for Test Kernel RAMFS Image
@@ -1001,9 +960,8 @@ $(MKIMAGE): all-host-binaries-mkimage ;
 # itself) as normal prerequisites, so an incremental `make standalone-images` only re-runs
 # mkimage for images whose inputs have actually changed.
 #
-# Note: we intentionally do NOT depend on all-nanvix here, because in standalone mode all-nanvix
-# itself depends on standalone-images (see DEPLOYMENT_MODE handling above), which would create a
-# circular dependency.
+# Do not depend on all-nanvix here because all-nanvix depends on standalone-images, which would
+# create a circular dependency.
 $(STANDALONE_WITH_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
 		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
@@ -1057,47 +1015,24 @@ run-unit-tests: test-python
 endif
 
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
+run-unit-tests: test-nanvix-bench
+
 # On Windows, only test uservm (other host rlibs have Unix-only test dependencies).
 ifeq ($(IS_WINDOWS),yes)
 run-unit-tests: test-uservm
 else
 run-unit-tests: test-host-rlibs
-# The containerd shim tests are not needed in standalone mode.
-ifneq ($(DEPLOYMENT_MODE),standalone)
-run-unit-tests: test-nanvix-shim
-endif
 endif
 endif
 
-# Determine the test configuration file based on deployment mode and architecture.
+# Determine the standalone test configuration file based on host and architecture.
 ifeq ($(IS_WINDOWS),yes)
-ifeq ($(DEPLOYMENT_MODE),standalone)
 NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
 else
-$(warning Windows host only supports 'standalone' DEPLOYMENT_MODE for tests. Using standalone Windows test configuration.)
-NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
-endif
-else
-ifeq ($(DEPLOYMENT_MODE),standalone)
 ifeq ($(TARGET),x86_64)
 NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
 else
 NANVIX_TEST_CONFIG := test/test-standalone.toml
-endif
-else ifneq ($(filter single-process,$(DEPLOYMENT_MODE)),)
-ifeq ($(TARGET),x86_64)
-NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
-else
-NANVIX_TEST_CONFIG := test/test-single_process.toml
-endif
-else ifeq ($(DEPLOYMENT_MODE),l2)
-NANVIX_TEST_CONFIG := test/test-l2.toml
-else
-ifeq ($(TARGET),x86_64)
-NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
-else
-NANVIX_TEST_CONFIG := test/test-multi_process.toml
-endif
 endif
 endif
 
@@ -1117,23 +1052,20 @@ SMOKE_TEST_EXPECTED_EXIT_CODE := 4
 SMOKE_TEST_MAGIC_STRING := hello, world!
 
 # Smoke test: boot the system image and verify correct behavior.
-# Only applicable in standalone mode (the smoke image bundles guest daemons).
 # - Release mode (RELEASE=yes): validates the VM exits with the expected status code.
 # - Debug mode (RELEASE=no): validates the kernel magic string appears in console
 #   output AND the VM exits with the expected status code (the magic string is
 #   compiled out of release builds, so it can only be checked in debug builds).
 #
 # Driven by a single cross-platform Python helper (scripts/run-smoke-test.py)
-# that auto-detects the host OS: on Linux it launches nanvixd against
-# cloud-hypervisor; on Windows it launches nanvixd.exe directly under WHP.
+# that auto-detects the host OS: on Linux it launches nanvixd directly; on
+# Windows it launches nanvixd.exe under WHP.
 .PHONY: run-smoke-test
-ifeq ($(DEPLOYMENT_MODE),standalone)
 SMOKE_TEST_CMD := $(PYTHON) $(SCRIPTS_DIR)/run-smoke-test.py \
 	$(MACHINE) $(IMAGE) \
 	--timeout $(TIMEOUT) \
 	--magic-string "$(SMOKE_TEST_MAGIC_STRING)" \
 	--expected-exit-code $(SMOKE_TEST_EXPECTED_EXIT_CODE) \
-	--clh-bin-path $(CLH_DIR)/bin \
 	--log-dir $(LOGS_DIR)
 
 run-smoke-test: image
@@ -1144,16 +1076,6 @@ else
 	@echo "Running smoke test (magic string + expected exit code=$(SMOKE_TEST_EXPECTED_EXIT_CODE))..."
 	@$(SMOKE_TEST_CMD)
 endif
-else
-run-smoke-test:
-	@echo "Skipping smoke test (DEPLOYMENT_MODE=$(DEPLOYMENT_MODE), requires standalone)."
-endif
-
-#===================================================================================================
-# Build Rules for L2 System VM Snapshot
-#===================================================================================================
-
-include build/make/snapshot.mk
 
 #===================================================================================================
 # Build Rules for Generic Guest Static Libraries

@@ -272,6 +272,8 @@ fn map_ident_to_c(ident: &str) -> Option<&'static str> {
         "pthread_spinlock_t" => "pthread_spinlock_t",
         "pthread_key_t" => "pthread_key_t",
         "pthread_once_t" => "pthread_once_t",
+        // POSIX unnamed semaphore (sysapi/sys_types.rs).
+        "sem_t" => "sem_t",
         // POSIX struct types (the C side spells these `struct X`; the Rust side
         // refers to them by the bare struct name, possibly module-qualified —
         // `map_type_path` already reduces a path to its last segment).
@@ -283,6 +285,7 @@ fn map_ident_to_c(ident: &str) -> Option<&'static str> {
         "sockaddr_un" => "struct sockaddr_un",
         "in_addr" => "struct in_addr",
         "iovec" => "struct iovec",
+        "msghdr" => "struct msghdr",
         "timeval" => "struct timeval",
         "tms" => "struct tms",
         "sched_param" => "struct sched_param",

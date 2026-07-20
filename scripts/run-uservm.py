@@ -83,7 +83,7 @@ def run_uservm(
     kernel_args: str,
 ) -> None:
     """Boot the standalone UserVM and check results."""
-    cmd = [uservm, "-standalone", "-kernel", kernel]
+    cmd = [uservm, "-kernel", kernel]
     if kernel_args:
         cmd.extend(["-kernel-args", kernel_args])
 

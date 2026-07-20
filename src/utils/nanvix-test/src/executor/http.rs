@@ -75,8 +75,6 @@ pub(crate) async fn test_with_http_executor(
 ) -> Result<()> {
     tokio::select! {
         result = async {
-            let l2_enabled: bool = runner_config.l2_enabled;
-            let hwloc_file_path: Option<String> = runner_config.hwloc_file_path.clone();
             let program_path: String = workload.program_path().to_string();
             let request_payload: Option<Vec<u8>> = workload.input().map(|value| value.as_bytes().to_vec());
             let response_timeout: Duration =
@@ -123,9 +121,6 @@ pub(crate) async fn test_with_http_executor(
             let nanvixd_args: NanvixdHttpArgs = NanvixdHttpArgs::new(
                 (stdout_file_path.as_path(), stderr_file_path.as_path()),
                 (runner_config.ipv4_addr.as_str(), resolved_port),
-                hwloc_file_path.clone(),
-                l2_enabled,
-                runner_config.netns_pool_size,
                 log_layout.test_directory(),
                 extra_nanvixd_args,
             )?;
@@ -142,7 +137,6 @@ pub(crate) async fn test_with_http_executor(
                         program_path.as_str(),
                         workload.program_args(),
                         workload.program_env(),
-                        l2_enabled,
                     )?;
 
                     let mut user_vm: UserVm = UserVm::spawn(runner_config, &uservm_args).await?;

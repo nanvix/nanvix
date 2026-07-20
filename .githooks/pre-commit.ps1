@@ -6,9 +6,6 @@
 $ErrorActionPreference = "Continue"
 
 $MachineTypes = @("microvm")
-# Windows only supports standalone deployment (single-process and multi-process
-# require Linux-only daemons and APIs that cannot compile on Windows).
-$DeploymentTypes = @("standalone")
 
 function Write-Info {
     param([string]$Msg)
@@ -23,21 +20,6 @@ function Write-Success {
 function Write-Err {
     param([string]$Msg)
     Write-Host "[ERROR] $Msg" -ForegroundColor Red
-}
-
-function Get-DeploymentFlag {
-    param([string]$Deployment)
-
-    switch ($Deployment) {
-        "standalone" { return "DEPLOYMENT_MODE=standalone" }
-        "single-process" { return "DEPLOYMENT_MODE=single-process" }
-        "multi-process" { return "DEPLOYMENT_MODE=multi-process" }
-        "l2" { return "DEPLOYMENT_MODE=l2" }
-        default {
-            Write-Err "(pre-commit) Invalid deployment type: $Deployment"
-            exit 1
-        }
-    }
 }
 
 function Get-ReleaseFlag {
@@ -58,11 +40,9 @@ function Invoke-Check {
         [string]$ZScript,
         [string]$Machine,
         [string]$ReleaseFlag,
-        [string]$DeploymentFlag,
         [string]$Target,
         [string]$TempFile,
-        [string]$BuildType,
-        [string]$Deployment
+        [string]$BuildType
     )
 
     Clear-Content -Path $TempFile
@@ -73,7 +53,6 @@ function Invoke-Check {
         "MACHINE=$Machine",
         "LOG_LEVEL=trace",
         $ReleaseFlag,
-        $DeploymentFlag,
         $Target
     )
 
@@ -85,16 +64,16 @@ function Invoke-Check {
     Get-Content -Path $TempFile
     switch ($Target) {
         "format-check" {
-            Write-Err "(pre-commit) Format check failed for: $BuildType, $Machine, $Deployment."
+            Write-Err "(pre-commit) Format check failed for: $BuildType, $Machine."
         }
         "lint-check" {
-            Write-Err "(pre-commit) Lint check failed for: $BuildType, $Machine, $Deployment."
+            Write-Err "(pre-commit) Lint check failed for: $BuildType, $Machine."
         }
         "spellcheck" {
-            Write-Err "(pre-commit) Spell check failed for: $BuildType, $Machine, $Deployment."
+            Write-Err "(pre-commit) Spell check failed for: $BuildType, $Machine."
         }
         default {
-            Write-Err "(pre-commit) Check '$Target' failed for: $BuildType, $Machine, $Deployment."
+            Write-Err "(pre-commit) Check '$Target' failed for: $BuildType, $Machine."
         }
     }
 
@@ -120,29 +99,24 @@ try {
     Write-Info "(pre-commit) Running pre-commit checks for all CI configurations..."
 
     foreach ($machine in $MachineTypes) {
-        foreach ($deployment in $DeploymentTypes) {
-            $totalConfigs += 1
-            $checkedConfigs += 1
-            $deploymentFlag = Get-DeploymentFlag -Deployment $deployment
+        $totalConfigs += 1
+        $checkedConfigs += 1
 
-            Write-Info "(pre-commit) Checking configuration: $buildType, $machine, $deployment..."
+        Write-Info "(pre-commit) Checking configuration: $buildType, $machine..."
 
-            $checkArgs = @{
-                ZScript        = $zScript
-                Machine        = $machine
-                ReleaseFlag    = $releaseFlag
-                DeploymentFlag = $deploymentFlag
-                TempFile       = $tempFile
-                BuildType      = $buildType
-                Deployment     = $deployment
-            }
-
-            Invoke-Check @checkArgs -Target "format-check"
-            Invoke-Check @checkArgs -Target "lint-check"
-            Invoke-Check @checkArgs -Target "spellcheck"
-
-            Write-Success "(pre-commit) Configuration passed: $buildType, $machine, $deployment."
+        $checkArgs = @{
+            ZScript     = $zScript
+            Machine     = $machine
+            ReleaseFlag = $releaseFlag
+            TempFile    = $tempFile
+            BuildType   = $buildType
         }
+
+        Invoke-Check @checkArgs -Target "format-check"
+        Invoke-Check @checkArgs -Target "lint-check"
+        Invoke-Check @checkArgs -Target "spellcheck"
+
+        Write-Success "(pre-commit) Configuration passed: $buildType, $machine."
     }
 
     Write-Success "(pre-commit) All checks passed successfully ($checkedConfigs/$totalConfigs configurations checked)."

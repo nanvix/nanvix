@@ -5,34 +5,21 @@
 //!
 //! This module provides functionality to parse and validate command-line arguments passed to
 //! the Nanvix Daemon. It handles various configuration options including network settings,
-//! directory paths, hardware topology, and deployment modes.
+//! directory paths and guest execution settings.
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "single-process")]
-use crate::config::DEFAULT_CONSOLE_FILENAME;
-use crate::config::{
-    self,
-    DEFAULT_TMP_DIRECTORY,
-};
+use crate::config;
 use ::anyhow::Result;
-#[cfg(feature = "single-process")]
-use ::chrono::Local;
 use ::nanvix::{
-    hwloc::HwLoc,
     log::DEFAULT_LOG_DIRECTORY,
     sandbox_config::{
         HostFilter,
         Ipv4Cidr,
         NetworkingMode,
     },
-    syscomm::SocketType,
-};
-use ::std::{
-    fs::File,
-    io::BufReader,
 };
 
 //==================================================================================================
@@ -46,7 +33,7 @@ use ::std::{
 ///
 /// This structure holds all configuration parameters provided via command-line arguments,
 /// including network settings, directory paths, hardware topology information, socket types,
-/// and deployment mode flags.
+/// and workload execution flags.
 ///
 #[derive(Debug, Clone)]
 pub struct Args {
@@ -54,44 +41,26 @@ pub struct Args {
     http_sockaddr: Option<String>,
     /// Directory path containing Nanvix binaries.
     binary_directory: String,
-    /// Path to the cloud-hypervisor binary directory.
-    clh_bin_path: String,
     /// Optional file path for redirecting console output.
     console_file: Option<String>,
     /// Optional RAM filesystem image exposed to the guest.
     ramfs_filename: Option<String>,
-    /// Optional hardware locality configuration for CPU affinity and topology.
-    hwloc: Option<HwLoc>,
-    /// Number of network namespaces to prefill in the pool (0 enables lazy initialization).
-    netns_pool_size: usize,
     /// Directory path for writing log files when log_to_file is enabled.
     log_directory: String,
-    /// Flag indicating whether to deploy linuxd inside an L2 VM.
-    l2: bool,
-    /// File path for the L2 snapshot.
-    l2_snapshot_path: String,
-    /// Optional socket type for control plane communication (nanvixd <-> linuxd).
-    control_plane_socket_type: Option<SocketType>,
-    /// Optional socket type for gateway communication (client <-> linuxd stdin/stdout).
-    gateway_socket_type: Option<SocketType>,
-    /// Optional socket type for system VM communication (linuxd <-> uservm).
-    system_vm_socket_type: Option<SocketType>,
     /// Program name for interactive mode (first word after `--` separator).
     program_name: Option<String>,
     /// Program arguments for interactive mode (remaining words after `--` separator).
     program_args: Vec<String>,
-    /// Base directory path for creating temporary directories.
-    tmp_directory: String,
     /// Optional snapshot path: when set, restore from snapshot instead of cold-booting.
     snapshot_path: Option<String>,
-    /// Optional host directory to mount on the guest (standalone mode only).
+    /// Optional host directory to mount on the guest.
     mount_directory: Option<String>,
-    /// Optional kernel arguments written to guest control registers (standalone mode only).
+    /// Optional kernel arguments written to guest control registers.
     kernel_args: Option<String>,
     /// Optional GDB server port: when set, the uservm starts a GDB RSP server on this TCP port.
     #[cfg(feature = "gdb")]
     gdb_port: Option<u16>,
-    /// Networking mode (applies to all deployment modes).
+    /// Networking mode.
     networking_mode: NetworkingMode,
     /// Allowlist of IPv4/CIDR destinations (`-allow-host`). When non-empty, only
     /// these destinations are reachable. Mutually exclusive with `block_hosts`.
@@ -119,41 +88,21 @@ impl Args {
     pub const OPT_HTTP_SOCKADDR: &'static str = "-http-addr";
     /// Command-line option that sets the binary directory path.
     pub const OPT_BIN_DIRECTORY: &'static str = "-bin-dir";
-    /// Command-line option that sets the cloud-hypervisor binary directory path.
-    pub const OPT_CLH_BIN_PATH: &'static str = "-clh-bin-path";
-    /// Command-line option that sets the L2 snapshot path.
-    pub const OPT_L2_SNAPSHOT_PATH: &'static str = "-l2-snapshot-path";
     /// Command-line option that redirects the console output to a file.
     pub const OPT_CONSOLE_FILE: &'static str = "-console-file";
-    /// Command-line option that loads the serialized CPU topology.
-    pub const OPT_HWLOC: &'static str = "-hwloc";
     /// Command-line option that sets the log directory path.
     pub const OPT_LOG_DIRECTORY: &'static str = "-log-dir";
-    /// Command-line option that sets the network namespace pool size.
-    pub const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
     /// Command-line option that sets the RAM filesystem image filename.
     pub const OPT_RAMFS_FILENAME: &'static str = "-ramfs";
-    /// Default netns pool size for prefill mode.
-    pub const DEFAULT_NETNS_POOL_SIZE: usize = 128;
-    /// Command-line flag that enables L2 deployment mode.
-    pub const OPT_L2: &'static str = "-l2";
-    /// Command-line option that sets the control plane socket type.
-    pub const OPT_CONTROL_PLANE_SOCKET_TYPE: &'static str = "-control-plane-socket-type";
-    /// Command-line option that sets the gateway socket type.
-    pub const OPT_GATEWAY_SOCKET_TYPE: &'static str = "-gateway-socket-type";
-    /// Command-line option that sets the system VM socket type.
-    pub const OPT_SYSTEM_VM_SOCKET_TYPE: &'static str = "-system-vm-socket-type";
     /// Command-line separator for interactive mode program and arguments.
     pub const OPT_SEPARATOR: &'static str = "--";
-    /// Command-line option that sets the base temporary directory path.
-    pub const OPT_TMP_DIRECTORY: &'static str = "-tmp-dir";
     /// Command-line option for snapshot path.
     pub const OPT_SNAPSHOT: &'static str = "-snapshot";
-    /// Command-line option for host directory to mount on the guest (standalone mode only).
+    /// Command-line option for host directory to mount on the guest.
     pub const OPT_MOUNT_DIRECTORY: &'static str = "-mount";
-    /// Command-line option for kernel arguments (standalone mode only).
+    /// Command-line option for kernel arguments.
     pub const OPT_KERNEL_ARGS: &'static str = "-kernel-args";
-    /// Command-line option for GDB server port (standalone mode only).
+    /// Command-line option for GDB server port.
     #[cfg(feature = "gdb")]
     pub const OPT_GDB_PORT: &'static str = "-gdb-port";
     /// Command-line flag that enables host networking for the guest.
@@ -174,8 +123,7 @@ impl Args {
     /// Parses command-line arguments into an Args structure.
     ///
     /// This function processes all supported command-line flags and options, validates them,
-    /// and enforces constraints such as requiring TCP sockets for L2 deployment mode.
-    /// It also enforces mutual exclusivity between HTTP mode and interactive mode.
+    /// and enforces mutual exclusivity between HTTP mode and interactive mode.
     ///
     /// # Parameters
     ///
@@ -189,29 +137,12 @@ impl Args {
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: Option<String> = None;
         let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
-        let mut clh_bin_path: String = config::DEFAULT_CLH_BIN_PATH.to_string();
-        #[cfg(not(feature = "single-process"))]
         let mut console_file: Option<String> = None;
-        #[cfg(feature = "single-process")]
-        let mut console_file: Option<String> = Some(format!(
-            "{}/{}_{}.log",
-            DEFAULT_LOG_DIRECTORY,
-            DEFAULT_CONSOLE_FILENAME,
-            Local::now().format("%Y_%m_%d_%H_%M")
-        ));
         let mut ramfs_filename: Option<String> = None;
-        let mut hwloc: Option<HwLoc> = None;
-        let mut netns_pool_size: usize = Self::DEFAULT_NETNS_POOL_SIZE;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
         let mut log_directory_set: bool = false;
-        let mut l2: bool = false;
-        let mut l2_snapshot_path: String = String::new();
-        let mut control_plane_socket_type: Option<SocketType> = None;
-        let mut gateway_socket_type: Option<SocketType> = None;
-        let mut system_vm_socket_type: Option<SocketType> = None;
         let mut program_name: Option<String> = None;
         let mut program_args: Vec<String> = Vec::new();
-        let mut tmp_directory: String = DEFAULT_TMP_DIRECTORY.to_string();
         let mut snapshot_path: Option<String> = None;
         let mut mount_directory: Option<String> = None;
         let mut kernel_args: Option<String> = None;
@@ -253,10 +184,6 @@ impl Args {
                     i += 1;
                     binary_directory = args[i].clone();
                 },
-                Self::OPT_CLH_BIN_PATH => {
-                    i += 1;
-                    clh_bin_path = args[i].clone();
-                },
                 Self::OPT_CONSOLE_FILE => {
                     i += 1;
                     console_file = Some(args[i].clone());
@@ -272,60 +199,14 @@ impl Args {
                     }
                     gateway_sockaddr = Some(args[i].clone());
                 },
-                Self::OPT_HWLOC => {
-                    i += 1;
-                    if i >= args.len() {
-                        Self::usage(args[0].as_str());
-                        return Err(anyhow::anyhow!("missing value for: {}", Self::OPT_HWLOC));
-                    }
-
-                    // Parse hwloc from JSON file.
-                    let hwloc_file = File::open(args[i].clone())?;
-                    let hwloc_reader = BufReader::new(hwloc_file);
-                    hwloc = Some(serde_json::from_reader(hwloc_reader)?);
-                },
-                Self::OPT_L2 => {
-                    l2 = true;
-                },
-                Self::OPT_L2_SNAPSHOT_PATH => {
-                    i += 1;
-                    l2_snapshot_path = args[i].clone();
-                },
-                Self::OPT_CONTROL_PLANE_SOCKET_TYPE => {
-                    i += 1;
-                    control_plane_socket_type = Some(args[i].parse()?);
-                },
-                Self::OPT_GATEWAY_SOCKET_TYPE => {
-                    i += 1;
-                    gateway_socket_type = Some(args[i].parse()?);
-                },
-                Self::OPT_SYSTEM_VM_SOCKET_TYPE => {
-                    i += 1;
-                    system_vm_socket_type = Some(args[i].parse()?);
-                },
                 Self::OPT_LOG_DIRECTORY => {
                     i += 1;
                     log_directory = args[i].clone();
                     log_directory_set = true;
                 },
-                Self::OPT_NETNS_POOL_SIZE => {
-                    i += 1;
-                    netns_pool_size = args[i].parse()?;
-                },
                 Self::OPT_RAMFS_FILENAME => {
                     i += 1;
                     ramfs_filename = Some(args[i].clone());
-                },
-                Self::OPT_TMP_DIRECTORY => {
-                    i += 1;
-                    if i >= args.len() {
-                        Self::usage(args[0].as_str());
-                        return Err(anyhow::anyhow!(
-                            "missing value for: {}",
-                            Self::OPT_TMP_DIRECTORY
-                        ));
-                    }
-                    tmp_directory = args[i].clone();
                 },
                 Self::OPT_SNAPSHOT => {
                     i += 1;
@@ -369,7 +250,7 @@ impl Args {
                     }
                     kernel_args = Some(args[i].clone());
                 },
-                // Set GDB server port (standalone mode only).
+                // Set GDB server port.
                 #[cfg(feature = "gdb")]
                 Self::OPT_GDB_PORT => {
                     i += 1;
@@ -457,72 +338,6 @@ impl Args {
             );
         }
 
-        // Host egress filtering is only consulted on the standalone network
-        // daemon path. In single-/multi-process builds the flags would be
-        // silently ignored, giving a false sense of policy -- reject them so the
-        // operator is not misled into believing egress is restricted.
-        #[cfg(not(feature = "standalone"))]
-        if !allow_hosts.is_empty() || !block_hosts.is_empty() {
-            anyhow::bail!(
-                "{} / {} are only supported in standalone builds",
-                Self::OPT_ALLOW_HOST,
-                Self::OPT_BLOCK_HOST,
-            );
-        }
-
-        // If we set the l2 snapshot path, but do not enable l2, we have an invalid configuration.
-        if !l2_snapshot_path.is_empty() && !l2 {
-            anyhow::bail!(
-                "{} must be used together with {}",
-                Self::OPT_L2_SNAPSHOT_PATH,
-                Self::OPT_L2,
-            );
-        }
-
-        // If we deploy the Linux Daemon (linuxd) in an L2 VM, we need to make sure that all socket
-        // types are set to TCP.
-        if l2 {
-            if control_plane_socket_type == Some(SocketType::Unix) {
-                anyhow::bail!("control-plane must use a tcp socket in l2 deployments");
-            }
-
-            if gateway_socket_type == Some(SocketType::Unix) {
-                anyhow::bail!("gateway must use a tcp socket in l2 deployments");
-            }
-
-            if system_vm_socket_type == Some(SocketType::Unix) {
-                anyhow::bail!("system vm must use a tcp socket in l2 deployments");
-            }
-
-            control_plane_socket_type = Some(SocketType::Tcp);
-            gateway_socket_type = Some(SocketType::Tcp);
-            system_vm_socket_type = Some(SocketType::Tcp);
-
-            // If we enable L2 deployment, and don't set a snapshot path, revert to the default
-            // path.
-            if l2_snapshot_path.is_empty() {
-                l2_snapshot_path = config::default_l2_snapshot_path();
-            }
-        }
-
-        // Reject -snapshot in non-standalone builds where it would silently do nothing.
-        #[cfg(not(feature = "standalone"))]
-        if snapshot_path.is_some() {
-            anyhow::bail!("{} is only supported in standalone builds", Self::OPT_SNAPSHOT);
-        }
-
-        // Reject -mount in non-standalone builds.
-        #[cfg(not(feature = "standalone"))]
-        if mount_directory.is_some() {
-            anyhow::bail!("{} is only supported in standalone builds", Self::OPT_MOUNT_DIRECTORY);
-        }
-
-        // Reject -kernel-args in non-standalone builds.
-        #[cfg(not(feature = "standalone"))]
-        if kernel_args.is_some() {
-            anyhow::bail!("{} is only supported in standalone builds", Self::OPT_KERNEL_ARGS);
-        }
-
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
         // interactive mode is active if `--` separator with program name is provided.
         let http_mode: bool = http_sockaddr.is_some();
@@ -549,20 +364,11 @@ impl Args {
         Ok(Self {
             http_sockaddr,
             binary_directory,
-            clh_bin_path,
-            l2_snapshot_path,
             console_file,
             ramfs_filename,
-            hwloc,
-            netns_pool_size,
             log_directory,
-            l2,
-            control_plane_socket_type,
-            gateway_socket_type,
-            system_vm_socket_type,
             program_name,
             program_args,
-            tmp_directory,
             snapshot_path,
             mount_directory,
             kernel_args,
@@ -602,44 +408,24 @@ Options:
   {console_file} <file>                     Redirect console output to a file.
   {ramfs_filename} <file>                   Attach a RAM filesystem image to spawned user VMs.
   {bin_dir} <bin_dir>                       Directory containing Nanvix binaries.
-  {clh_bin_path} <clh_bin_path>             Path to the cloud-hypervisor binary directory.
-  {hwloc} <hwloc.json>                      Hardware locality configuration file for CPU \
-             affinity/topology.
   {log_dir} <log_dir>                       Directory for log files (Default: \
              {DEFAULT_LOG_DIRECTORY}).
-  {netns_pool_size} <size>                  Netns pool prefill size (Default: \
-             {default_netns_pool_size}; 0 enables lazy initialization).
-  {control_plane_socket_type} <socket_type> Socket type for control plane communication (nanvixd \
-             <-> linuxd).
-  {gateway_socket_type} <socket_type>       Socket type for gateway communication (client <-> \
-             linuxd).
-  {system_vm_socket_type} <socket_type>     Socket type for system VM communication (linuxd <-> \
-             uservm).
-  {l2}                                      Deploy linuxd inside an L2 VM (forces TCP sockets).
-  {l2_snapshot_path} <l2_snapshot_path>     Path to the L2 snapshot.
-  {tmp_dir} <tmp_dir>                       Base directory for temporary files (Default: \
-             {DEFAULT_TMP_DIRECTORY}).
-  {snapshot} <path>                         Restore VM from snapshot instead of cold-booting \
-             (standalone mode only).
-  {mount} <host-dir>                       Mount a host directory on the guest at /mnt (standalone \
-             mode only).
-  {kernel_args} <args>                      Pass kernel arguments to guest control registers \
-             (standalone mode only).
+  {snapshot} <path>                         Restore VM from snapshot instead of cold-booting .
+  {mount} <host-dir>                        Mount a host directory on the guest at /mnt.
+  {kernel_args} <args>                      Pass kernel arguments to guest control registers .
   {allow_host_networking}                   Enable host networking for the guest (disabled when \
              omitted).
-  {allow_host} <ip|cidr>                    (Repeatable, standalone mode only) Permit egress to \
-             this IPv4/CIDR (allowlist; requires {allow_host_networking}; mutually exclusive with \
-             {block_host}; DNS on port 53 is also permitted).
-  {block_host} <ip|cidr>                    (Repeatable, standalone mode only) Deny egress to this \
-             IPv4/CIDR (blocklist; requires {allow_host_networking}; mutually exclusive with \
-             {allow_host}).
+    {allow_host} <ip|cidr>                    (Repeatable) Permit egress to this IPv4/CIDR \
+             (allowlist; requires {allow_host_networking}; mutually exclusive with {block_host}; \
+             DNS on port 53 is also permitted).
+    {block_host} <ip|cidr>                    (Repeatable) Deny egress to this IPv4/CIDR \
+             (blocklist; requires {allow_host_networking}; mutually exclusive with {allow_host}).
   {log_to_stdout}                          Route nanvixd's own logrus output to stdout instead of \
              a file in {log_dir} (file logger is otherwise the default).
-  {gateway_sockaddr} <path>                 (Standalone) Path at which to expose the gateway \
-             endpoint -- the host-side rendezvous point where a consumer (e.g. the containerd \
-             shim) reads the guest's stdout/stderr and writes to its stdin. UDS path on Unix, \
-             named pipe path on Windows. Defaults to a per-process auto path when \
-             omitted.{gdb_port_line}
+    {gateway_sockaddr} <path>                 Path at which to expose the gateway endpoint -- the \
+             host-side rendezvous point where a consumer (e.g. the containerd shim) reads the \
+             guest's stdout/stderr and writes to its stdin. UDS path on Unix, named pipe path on \
+             Windows. Defaults to a per-process auto path when omitted.{gdb_port_line}
 ",
             http_usage = http_usage,
             program_name = program_name,
@@ -647,17 +433,7 @@ Options:
             console_file = Self::OPT_CONSOLE_FILE,
             ramfs_filename = Self::OPT_RAMFS_FILENAME,
             bin_dir = Self::OPT_BIN_DIRECTORY,
-            clh_bin_path = Self::OPT_CLH_BIN_PATH,
-            hwloc = Self::OPT_HWLOC,
             log_dir = Self::OPT_LOG_DIRECTORY,
-            netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
-            default_netns_pool_size = Self::DEFAULT_NETNS_POOL_SIZE,
-            control_plane_socket_type = Self::OPT_CONTROL_PLANE_SOCKET_TYPE,
-            gateway_socket_type = Self::OPT_GATEWAY_SOCKET_TYPE,
-            system_vm_socket_type = Self::OPT_SYSTEM_VM_SOCKET_TYPE,
-            l2 = Self::OPT_L2,
-            l2_snapshot_path = Self::OPT_L2_SNAPSHOT_PATH,
-            tmp_dir = Self::OPT_TMP_DIRECTORY,
             snapshot = Self::OPT_SNAPSHOT,
             mount = Self::OPT_MOUNT_DIRECTORY,
             kernel_args = Self::OPT_KERNEL_ARGS,
@@ -667,8 +443,7 @@ Options:
             log_to_stdout = Self::OPT_LOG_TO_STDOUT,
             gateway_sockaddr = Self::OPT_GATEWAY_SOCKADDR,
             gdb_port_line = if cfg!(feature = "gdb") {
-                "\n  -gdb-port <port>                         GDB server port (standalone mode \
-                 only)."
+                "\n  -gdb-port <port>                         GDB server port."
             } else {
                 ""
             },
@@ -699,32 +474,6 @@ Options:
     ///
     pub fn binary_directory(&self) -> &str {
         &self.binary_directory
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the cloud-hypervisor binary directory path.
-    ///
-    /// # Returns
-    ///
-    /// The cloud-hypervisor binary directory path.
-    ///
-    pub fn clh_bin_path(&self) -> &str {
-        &self.clh_bin_path
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the L2 snapshot path.
-    ///
-    /// # Returns
-    ///
-    /// The L2 snapshot path.
-    ///
-    pub fn l2_snapshot_path(&self) -> &str {
-        &self.l2_snapshot_path
     }
 
     ///
@@ -801,32 +550,6 @@ Options:
     ///
     /// # Description
     ///
-    /// Returns the CPU topology.
-    ///
-    /// # Returns
-    ///
-    /// The CPU topology.
-    ///
-    pub fn hwloc(&self) -> Option<HwLoc> {
-        self.hwloc.clone()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Indicates whether linuxd must be deployed in an L2 VM or not.
-    ///
-    /// # Returns
-    ///
-    /// `true` if linuxd must be deployed in an L2 VM; `false` otherwise.
-    ///
-    pub fn l2(&self) -> bool {
-        self.l2
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the log directory.
     ///
     /// # Returns
@@ -835,58 +558,6 @@ Options:
     ///
     pub fn log_directory(&self) -> &str {
         &self.log_directory
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the netns pool prefill size.
-    ///
-    /// # Returns
-    ///
-    /// The prefill size (0 for lazy initialization).
-    ///
-    pub fn netns_pool_size(&self) -> usize {
-        self.netns_pool_size
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the control plane socket type.
-    ///
-    /// # Returns
-    ///
-    /// The control plane socket type.
-    ///
-    pub fn control_plane_socket_type(&self) -> SocketType {
-        self.control_plane_socket_type.unwrap_or(SocketType::Unix)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the gateway socket type.
-    ///
-    /// # Returns
-    ///
-    /// The gateway socket type.
-    ///
-    pub fn gateway_socket_type(&self) -> SocketType {
-        self.gateway_socket_type.unwrap_or(SocketType::Unix)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the system VM socket type.
-    ///
-    /// # Returns
-    ///
-    /// The system VM socket type.
-    ///
-    pub fn system_vm_socket_type(&self) -> SocketType {
-        self.system_vm_socket_type.unwrap_or(SocketType::Unix)
     }
 
     ///
@@ -926,19 +597,6 @@ Options:
     ///
     pub fn program_args(&self) -> &[String] {
         &self.program_args
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the base temporary directory path.
-    ///
-    /// # Returns
-    ///
-    /// The base temporary directory path.
-    ///
-    pub fn tmp_directory(&self) -> &str {
-        &self.tmp_directory
     }
 
     ///
@@ -1093,7 +751,6 @@ mod tests {
         assert!(msg.contains("missing value for: -gateway-sockaddr"), "unexpected error: {msg}");
     }
 
-    #[cfg(feature = "standalone")]
     #[test]
     fn allow_host_builds_allowlist_filter() {
         let args = Args::parse(argv(&[
@@ -1112,7 +769,6 @@ mod tests {
         assert!(!filter.permits([8, 8, 8, 8]));
     }
 
-    #[cfg(feature = "standalone")]
     #[test]
     fn block_host_builds_blocklist_filter() {
         let args = Args::parse(argv(&[
@@ -1128,7 +784,6 @@ mod tests {
         assert!(filter.permits([1, 2, 3, 4]));
     }
 
-    #[cfg(feature = "standalone")]
     #[test]
     fn allow_and_block_host_are_mutually_exclusive() {
         let res = Args::parse(argv(&[
@@ -1145,7 +800,6 @@ mod tests {
         assert!(msg.contains(Args::OPT_BLOCK_HOST), "unexpected error: {msg}");
     }
 
-    #[cfg(feature = "standalone")]
     #[test]
     fn host_filter_requires_networking_enabled() {
         let res = Args::parse(argv(&["-allow-host", "1.2.3.4", "--", "/bin/foo"]));
@@ -1153,7 +807,6 @@ mod tests {
         assert!(msg.contains(Args::OPT_ALLOW_HOST_NETWORKING), "unexpected error: {msg}");
     }
 
-    #[cfg(feature = "standalone")]
     #[test]
     fn rejects_invalid_host_entry() {
         let res = Args::parse(argv(&[
@@ -1171,19 +824,5 @@ mod tests {
     fn host_filter_defaults_to_allow_all() {
         let args = Args::parse(argv(&["-allow-host-networking", "--", "/bin/foo"])).expect("parse");
         assert!(matches!(args.host_filter(), HostFilter::AllowAll));
-    }
-
-    #[cfg(not(feature = "standalone"))]
-    #[test]
-    fn host_filter_flags_rejected_in_non_standalone_build() {
-        let res = Args::parse(argv(&[
-            "-allow-host-networking",
-            "-allow-host",
-            "1.2.3.4",
-            "--",
-            "/bin/foo",
-        ]));
-        let msg: String = format!("{:#}", res.expect_err("expected standalone-only error"));
-        assert!(msg.contains("standalone"), "unexpected error: {msg}");
     }
 }

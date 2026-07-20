@@ -8,6 +8,7 @@
 use super::dynlib::{
     DlHandle,
     DynamicLibrary,
+    InitState,
 };
 use crate::dlfcn::syscall::DYNAMIC_LIBRARY_REGISTRY;
 use ::alloc::{
@@ -64,65 +65,113 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
         DYNAMIC_LIBRARY_REGISTRY.lock();
 
     // Check if dynamic library is already opened.
+    let mut already_loaded: Option<(DlHandle, Arc<Mutex<DynamicLibrary>>)> = None;
     for (dlhandle, dlfile) in registry.iter() {
         if dlfile.lock().name() == filename {
-            // If the caller requests RTLD_GLOBAL on a library that was
-            // previously loaded without it, promote it to global scope now.
-            if global {
-                super::register_library_in_global_scope(dlfile);
-            }
-            return Ok(*dlhandle);
+            already_loaded = Some((*dlhandle, dlfile.clone()));
+            break;
         }
     }
+    if let Some((dlhandle, dlfile)) = already_loaded {
+        // If the caller requests RTLD_GLOBAL on a library that was
+        // previously loaded without it, promote it to global scope now.
+        if global {
+            super::register_library_in_global_scope(&dlfile);
+        }
 
-    // Snapshot the registry keys before we start inserting, so we can roll back
-    // all new entries on failure. This ensures a failed dlopen never leaves
-    // stale handles with unpatched relocations in the registry.
-    let handles_before: BTreeSet<DlHandle> = registry.keys().copied().collect();
+        // Record this additional direct open of an already-loaded library so a
+        // later `dlclose()` of one handle does not unload it while another
+        // handle is still live.
+        dlfile.lock().increment_open_count();
+
+        // A concurrent `dlopen` may have inserted this library and released the
+        // registry lock but not yet finished running its `.init_array`
+        // constructors. Wait for them to complete so this caller never observes
+        // a handle to an uninitialized library.
+        //
+        // The registry lock is dropped BEFORE waiting: the constructing thread
+        // needs it to service the constructor's own `dlsym`/`dlopen` calls, so
+        // holding it here would deadlock them. A re-entrant open from the
+        // constructing thread itself does not wait — see
+        // `InitState::wait_until_constructed`.
+        let tid: i32 = current_tid()?;
+        let init_state: Arc<InitState> = dlfile.lock().init_state();
+        drop(registry);
+        init_state.wait_until_constructed(tid);
+        return Ok(dlhandle);
+    }
+
+    // Keep newly opened libraries out of the global registry until the complete
+    // dependency graph has been loaded and resolved successfully.
+    let mut staging: BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>> = BTreeMap::new();
 
     // Open and pre-load the dynamic library file.
     let new_dlfile: DynamicLibrary = DynamicLibrary::open(filename)?;
     let handle: DlHandle = new_dlfile.handle();
     let new_dlfile: Arc<Mutex<DynamicLibrary>> = Arc::new(Mutex::new(new_dlfile));
 
-    // Insert the opened file into the map.
-    registry.insert(handle, new_dlfile.clone());
+    // Stage the opened file while its dependency graph is assembled.
+    staging.insert(handle, new_dlfile.clone());
 
-    // Load dependencies and resolve symbols. If either step fails, remove all
-    // entries that were added during this call (the library itself and any
-    // transitive dependencies) so subsequent dlopen calls start fresh.
+    // Load dependencies and resolve symbols. If either step fails, dropping the
+    // staging map cleans up every library opened during this call without
+    // scanning or mutating the global registry.
     let init_order: Vec<Arc<Mutex<DynamicLibrary>>> =
-        match load_all_dependencies(&mut registry, new_dlfile)
-            .and_then(|_| resolve_all_symbols(&mut registry, &handles_before))
+        match load_all_dependencies(&registry, &mut staging, new_dlfile)
+            .and_then(|_| resolve_all_symbols(&staging))
         {
-            Ok(order) => {
-                // If RTLD_GLOBAL was requested, publish the library's exported
-                // symbols into the global symbol table so subsequently loaded
-                // libraries can resolve them.
-                if global {
-                    if let Some(dlfile) = registry.get(&handle) {
-                        super::register_library_in_global_scope(dlfile);
-                    }
-                }
-                order
-            },
-            Err(e) => {
-                let new_handles: Vec<DlHandle> = registry
-                    .keys()
-                    .filter(|h| !handles_before.contains(h))
-                    .copied()
-                    .collect();
+            Ok(order) => order,
+            Err(error) => {
                 ::syslog::warn!(
-                    "dlopen(): rolling back {} entries after failure (error={:?})",
-                    new_handles.len(),
-                    e
+                    "dlopen(): discarding {} staged entries after failure (error={:?})",
+                    staging.len(),
+                    error
                 );
-                for h in new_handles {
-                    registry.remove(&h);
-                }
-                return Err(e);
+                return Err(error);
             },
         };
+
+    // Resolve the constructor owner before publishing the staged graph. A
+    // lookup failure must leave the global registry unchanged.
+    let constructor_tid: i32 = current_tid()?;
+
+    // Promote the fully resolved graph to the global registry in one step while
+    // the registry lock is still held.
+    for (staged_handle, staged_dlfile) in staging {
+        if let Some(dlfile) = registry.insert(staged_handle, staged_dlfile) {
+            unreachable!("dlopen(): library file already loaded (dlfile={:?})", dlfile);
+        }
+    }
+
+    // If RTLD_GLOBAL was requested, publish the root library's exported symbols
+    // so subsequently loaded libraries can resolve them.
+    if global {
+        if let Some(dlfile) = registry.get(&handle) {
+            super::register_library_in_global_scope(dlfile);
+        }
+    }
+
+    // Record this direct `dlopen()` on the freshly loaded root library. Only
+    // the library named by the caller is counted; dependencies loaded
+    // transitively are tracked by their `Arc` edges, not by this direct open
+    // count.
+    if let Some(dlfile) = registry.get(&handle) {
+        dlfile.lock().increment_open_count();
+    }
+
+    // Record the constructing thread on every newly loaded library BEFORE
+    // releasing the registry lock. A concurrent `dlopen` that observes any of
+    // them on the dedup path above then either waits for their constructors
+    // (a different thread) or skips the wait (this same thread re-entering from
+    // one of the constructors). Publishing the thread id under the registry
+    // lock guarantees no concurrent observer can see the pre-set sentinel as a
+    // constructor owner.
+    for dlfile in init_order.iter() {
+        dlfile
+            .lock()
+            .init_state()
+            .set_constructor_thread(constructor_tid);
+    }
 
     // Drop the registry lock before invoking `.init_array` constructors so a
     // constructor may legally call `dlsym` (and, in a future relaxation,
@@ -139,9 +188,9 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
     // deadlock any constructor that calls `dlsym(self_handle, ...)`, because
     // `dlsym` re-locks the same library to look up symbols.
     for dlfile in init_order.iter() {
-        let (descriptor, name): (Option<(usize, usize)>, String) = {
+        let (descriptor, name, init_state): (Option<(usize, usize)>, String, Arc<InitState>) = {
             let lib: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
-            (lib.init_array_descriptor(), String::from(lib.name()))
+            (lib.init_array_descriptor(), String::from(lib.name()), lib.init_state())
         };
         // SAFETY: `descriptor` was produced under the per-library lock for
         // a library still held alive by `init_order`'s `Arc`; relocations
@@ -150,24 +199,74 @@ pub fn dlopen(filename: &str, global: bool) -> Result<DlHandle, Error> {
         unsafe {
             DynamicLibrary::invoke_init_array(descriptor, &name);
         }
+        // Publish completion (leaves first) so a concurrent `dlopen` blocked in
+        // the dedup path above may now return this library's handle. Marking
+        // per-library — rather than once after the whole batch — lets a waiter
+        // for a dependency proceed as soon as that dependency is constructed,
+        // without waiting for its dependents.
+        init_state.mark_constructed();
     }
 
     Ok(handle)
 }
 
+/// Returns the raw identifier of the calling thread.
+///
+/// The identifier is mandatory: it is the only way to tell a re-entrant
+/// `dlopen` issued by a constructor running on the loading thread apart from a
+/// genuine concurrent open on another thread. Without it, such a re-entrant
+/// call would block forever in [`InitState::wait_until_constructed`] waiting for
+/// constructors that cannot finish until this very call returns. A lookup
+/// failure is therefore propagated to the caller rather than silently ignored.
+fn current_tid() -> Result<i32, Error> {
+    Ok(i32::from(::sys::kcall::pm::__kcall_gettid()?))
+}
+
 /// Recursively loads all transitive dependencies of a newly opened library.
 ///
-/// For each `DT_NEEDED` entry, checks if it is already loaded in the registry,
-/// and if not, opens and inserts it. Recurses into each dependency's own
-/// `DT_NEEDED` entries.
+/// For each `DT_NEEDED` entry, checks if it is already loaded in the registry or
+/// staging map and, if not, opens and stages it. Recurses into each dependency's
+/// own `DT_NEEDED` entries.
 fn load_all_dependencies(
-    dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
+    registry: &BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>,
+    staging: &mut BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>,
     new_dlfile: Arc<Mutex<DynamicLibrary>>,
 ) -> Result<(), Error> {
     ::syslog::trace!("load_all_dependencies(): new_dlfile={:?}", new_dlfile.lock().name());
 
+    fn find_loaded_dependency(
+        registry: &BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>,
+        staging: &BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>,
+        new_dlhandle: &DlHandle,
+        ancestors: &BTreeMap<DlHandle, String>,
+        dependency: &str,
+        resolved_dependency: &str,
+    ) -> Option<(DlHandle, Arc<Mutex<DynamicLibrary>>)> {
+        for dlfiles in [registry, staging] {
+            for (dlhandle, dlfile) in dlfiles.iter() {
+                // Skip the dynamic library itself and any ancestor held by an
+                // outer frame's lock.
+                if dlhandle == new_dlhandle || ancestors.contains_key(dlhandle) {
+                    continue;
+                }
+
+                let is_match: bool = {
+                    let loaded_file: spin::MutexGuard<'_, DynamicLibrary> = dlfile.lock();
+                    let loaded_name: &str = loaded_file.name();
+                    loaded_name == dependency || loaded_name == resolved_dependency
+                };
+                if is_match {
+                    return Some((*dlhandle, dlfile.clone()));
+                }
+            }
+        }
+
+        None
+    }
+
     fn load_all_dependencies_recursive(
-        dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
+        registry: &BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>,
+        staging: &mut BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>,
         new_dlhandle: &DlHandle,
         new_dlfile: &mut MutexGuard<'_, DynamicLibrary>,
         ancestors: &mut BTreeMap<DlHandle, String>,
@@ -184,16 +283,16 @@ fn load_all_dependencies(
         // re-locking the (already held) `DynamicLibrary` mutex.
         let self_name: String = new_dlfile.name().to_string();
 
-        // Collect the name of all dependencies.
-        let mut dependencies: Vec<String> = new_dlfile
+        // Collect the name of all dependencies, in DT_NEEDED order.
+        let dependencies: Vec<String> = new_dlfile
             .dependencies()
-            .keys()
-            .map(|dlname| dlname.to_string())
+            .into_iter()
+            .map(|(dlname, _)| dlname)
             .collect();
 
         // Bind to already loaded dependencies and remove them from the list.
         //
-        // The closure below calls `dlfile.lock()` on every other entry in the
+        // The scan below calls `dlfile.lock()` on every other entry in the
         // registry while looking for a matching name. Those locks must skip
         // BOTH the current library (`new_dlhandle`) AND every ancestor still
         // held by an outer recursive frame — otherwise any non-trivial
@@ -202,11 +301,11 @@ fn load_all_dependencies(
         //
         //   dlopen(libdiamond.so)                  // holds libdiamond lock
         //     -> recurse into libright.so          // also holds libright lock
-        //          -> retain() iterates dlfiles    // tries to lock libdiamond
-        //             ^ blocks forever, libdiamond is still held by the
-        //               outer frame.
+        //          -> pre-load scan probes registry // tries to lock libdiamond
+        //             ^ blocks forever, libdiamond is still held by the outer
+        //               frame.
         //
-        // What this `retain` legitimately consolidates is a dependency that a
+        // What this scan legitimately consolidates is a dependency that a
         // PRIOR, already-finished iteration of an OUTER frame loaded. In the
         // classic diamond
         //
@@ -214,7 +313,7 @@ fn load_all_dependencies(
         //                 -> libright.so -> libbase.so
         //
         // libdiamond finishes libleft first (recursing in and loading
-        // libbase), then starts libright's frame; libright's `retain` then
+        // libbase), then starts libright's frame; libright's pre-load scan then
         // sees libbase already resident and binds libright's `libbase` edge to
         // that single shared instance here. (The other shape — a sibling
         // pulled in LATER within the *same* frame's own dependency list — is
@@ -224,44 +323,37 @@ fn load_all_dependencies(
         // legitimately resolve to an ancestor is a `DT_NEEDED` cycle, which is
         // detected and rejected explicitly in the load loop below (see the
         // `self_name`/`ancestors` cycle check), so it never reaches this scan.
-        dependencies.retain(|dependency| {
+        let mut unloaded_dependencies: Vec<String> = Vec::new();
+        for dependency in dependencies {
             // Resolve bare name so we can match against loaded libraries
             // that were opened with a full path.
-            let resolved_dep: String = super::resolve_library_path(dependency, Some(&runpaths));
-            for (dlhandle, dlfile) in dlfiles.iter() {
-                // Skip the dynamic library itself and any ancestor held by
-                // an outer frame's lock — locking them would deadlock.
-                if dlhandle == new_dlhandle || ancestors.contains_key(dlhandle) {
-                    continue;
-                }
-
-                let is_match: bool = {
-                    let loaded_file: spin::MutexGuard<'_, DynamicLibrary> = dlfile.lock();
-                    let loaded_name: &str = loaded_file.name();
-                    loaded_name == dependency.as_str() || loaded_name == resolved_dep
-                };
-                if is_match {
-                    ::syslog::debug!(
-                        "load_all_dependencies_recursive(): already loaded dependency '{}' \
-                         (handle={:?})",
-                        dependency,
-                        dlhandle
-                    );
-                    // Update the dependency to the already loaded file.
-                    if let Err(_error) =
-                        new_dlfile.bind_dependency(dependency.clone(), dlfile.clone())
-                    {
-                        // TODO: comment
-                        unreachable!("cannot fail to bind dependency");
-                    }
-
-                    return false;
-                }
+            let resolved_dep: String = super::resolve_library_path(&dependency, Some(&runpaths));
+            if let Some((dlhandle, dlfile)) = find_loaded_dependency(
+                registry,
+                staging,
+                new_dlhandle,
+                ancestors,
+                &dependency,
+                &resolved_dep,
+            ) {
+                ::syslog::debug!(
+                    "load_all_dependencies_recursive(): already loaded dependency '{}' \
+                     (handle={:?})",
+                    dependency,
+                    dlhandle
+                );
+                // Update the dependency to the already loaded file.
+                new_dlfile.bind_dependency(dependency, dlfile)?;
+            } else {
+                unloaded_dependencies.push(dependency);
             }
-            true
-        });
+        }
 
-        // Load remaining dependencies.
+        // Load remaining dependencies in DT_NEEDED order. The loop below uses
+        // `pop()` for ownership, so reverse once to consume the original front
+        // of the list first.
+        let mut dependencies: Vec<String> = unloaded_dependencies;
+        dependencies.reverse();
         while let Some(dependency) = dependencies.pop() {
             // Resolve bare library names to full paths using search directories.
             let resolved_dep: String = super::resolve_library_path(&dependency, Some(&runpaths));
@@ -271,10 +363,10 @@ fn load_all_dependencies(
             // ancestor still being loaded by an outer recursive frame cannot be
             // followed: the ancestor's mutex is held, so we can neither recurse
             // into it nor lock it to consolidate onto it, and skipping it by
-            // handle (as `retain` and the re-check do) would just open a fresh
-            // copy on a new handle and recurse forever. Cycles in `DT_NEEDED`
+            // handle (as the pre-load scan and the re-check do) would just open
+            // a fresh copy on a new handle and recurse forever. Cycles in `DT_NEEDED`
             // are pathological — no sane toolchain emits them — so reject the
-            // load cleanly; `dlopen` then rolls back every entry added during
+            // load cleanly; `dlopen` then discards every entry staged during
             // this call.
             if self_name == dependency
                 || self_name == resolved_dep
@@ -291,12 +383,13 @@ fn load_all_dependencies(
                 return Err(Error::new(ErrorCode::BadFile, reason));
             }
 
-            // Re-check the registry before opening: an EARLIER iteration of
-            // THIS frame's own load loop may have already loaded this exact
-            // dependency transitively. `retain` above runs only once, at frame
-            // entry, before any sibling is processed, so it cannot see a
-            // sibling that a later-processed sibling pulls in. Concretely, when
-            // a parent directly `DT_NEEDED`s both `libX` and `libbase` and
+            // Re-check the registry and staging map before opening: an EARLIER
+            // iteration of THIS frame's own load loop may have already loaded
+            // this exact dependency transitively. The pre-load scan above runs
+            // only once, at frame entry, before any sibling is processed, so it
+            // cannot see a sibling that a later-processed sibling pulls in.
+            // Concretely,
+            // when a parent directly `DT_NEEDED`s both `libX` and `libbase` and
             // `libX -> libbase`:
             //
             //   libdiamond.so -> libright.so -> libbase.so   (processed first)
@@ -310,19 +403,15 @@ fn load_all_dependencies(
             // second time — two distinct in-memory copies with two private
             // `unique_counter`s — or trip the `unreachable!()` below if the VFS
             // recycles the underlying file descriptor.
-            let already_loaded: Option<Arc<Mutex<DynamicLibrary>>> =
-                dlfiles.iter().find_map(|(dlhandle, dlfile)| {
-                    if dlhandle == new_dlhandle || ancestors.contains_key(dlhandle) {
-                        return None;
-                    }
-                    let loaded_file: spin::MutexGuard<'_, DynamicLibrary> = dlfile.lock();
-                    let loaded_name: &str = loaded_file.name();
-                    if loaded_name == dependency.as_str() || loaded_name == resolved_dep {
-                        Some(dlfile.clone())
-                    } else {
-                        None
-                    }
-                });
+            let already_loaded: Option<Arc<Mutex<DynamicLibrary>>> = find_loaded_dependency(
+                registry,
+                staging,
+                new_dlhandle,
+                ancestors,
+                &dependency,
+                &resolved_dep,
+            )
+            .map(|(_, dlfile)| dlfile);
             if let Some(existing) = already_loaded {
                 ::syslog::debug!(
                     "load_all_dependencies_recursive(): dependency '{}' loaded transitively \
@@ -338,8 +427,8 @@ fn load_all_dependencies(
             let handle: DlHandle = dep_dlfile.handle();
             let dep_dlfile: Arc<Mutex<DynamicLibrary>> = Arc::new(Mutex::new(dep_dlfile));
 
-            // Insert the opened file into the map.
-            if let Some(dlfile) = dlfiles.insert(handle, dep_dlfile.clone()) {
+            // Insert the opened file into the staging map.
+            if let Some(dlfile) = staging.insert(handle, dep_dlfile.clone()) {
                 unreachable!("dlopen(): library file already loaded (dlfile={:?})", dlfile);
             }
 
@@ -352,7 +441,8 @@ fn load_all_dependencies(
             // cycle back to us for a brand-new library.
             ancestors.insert(*new_dlhandle, self_name.clone());
             let mut dlfile: MutexGuard<'_, DynamicLibrary> = dep_dlfile.lock();
-            let result = load_all_dependencies_recursive(dlfiles, &handle, &mut dlfile, ancestors);
+            let result =
+                load_all_dependencies_recursive(registry, staging, &handle, &mut dlfile, ancestors);
             ancestors.remove(new_dlhandle);
             result?;
         }
@@ -363,30 +453,31 @@ fn load_all_dependencies(
     let mut new_dlfile = new_dlfile.lock();
     let new_dlhandle = new_dlfile.handle();
     let mut ancestors: BTreeMap<DlHandle, String> = BTreeMap::new();
-    load_all_dependencies_recursive(dlfiles, &new_dlhandle, &mut new_dlfile, &mut ancestors)?;
+    load_all_dependencies_recursive(
+        registry,
+        staging,
+        &new_dlhandle,
+        &mut new_dlfile,
+        &mut ancestors,
+    )?;
 
     Ok(())
 }
 
-/// Resolves all relocations for libraries added during this `dlopen` call and
-/// returns them in dependency order (leaves first, root last) so the caller
-/// can invoke `.init_array` constructors in the correct sequence.
+/// Resolves all relocations for staged libraries and returns them in dependency
+/// order (leaves first, root last) so the caller can invoke `.init_array`
+/// constructors in the correct sequence.
 ///
 /// Libraries are resolved in dependency order. This ensures that when a
 /// library's relocations reference symbols from its dependencies, those
 /// dependencies are already fully resolved.
 fn resolve_all_symbols(
-    dlfiles: &mut MutexGuard<'_, BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>>,
-    handles_before: &BTreeSet<DlHandle>,
+    staging: &BTreeMap<DlHandle, Arc<Mutex<DynamicLibrary>>>,
 ) -> Result<Vec<Arc<Mutex<DynamicLibrary>>>, Error> {
     ::syslog::trace!("resolve_all_symbols()");
 
-    // Collect all newly added libraries.
-    let new_handles: Vec<DlHandle> = dlfiles
-        .keys()
-        .filter(|h| !handles_before.contains(h))
-        .copied()
-        .collect();
+    // Collect all newly staged libraries.
+    let new_handles: Vec<DlHandle> = staging.keys().copied().collect();
 
     // Build a resolution order: resolve dependencies before their dependents.
     // A library can be resolved once all its bound dependencies (that are also
@@ -408,12 +499,12 @@ fn resolve_all_symbols(
 
             // Check if all of this library's dependencies that are new in
             // this dlopen call have been resolved.
-            let dlfile: &Arc<Mutex<DynamicLibrary>> = match dlfiles.get(&handle) {
+            let dlfile: &Arc<Mutex<DynamicLibrary>> = match staging.get(&handle) {
                 Some(f) => f,
                 None => {
-                    // Handle came from dlfiles.keys(), so this should not happen.
+                    // Handle came from staging.keys(), so this should not happen.
                     ::syslog::warn!(
-                        "resolve_all_symbols(): handle {:?} missing from registry",
+                        "resolve_all_symbols(): handle {:?} missing from staging map",
                         handle
                     );
                     continue;
@@ -423,8 +514,9 @@ fn resolve_all_symbols(
             let all_deps_resolved: bool = {
                 let lib: spin::MutexGuard<'_, DynamicLibrary> = dlfile.lock();
                 lib.dependency_handles().iter().all(|dep_handle| {
-                    // Dependencies that existed before this dlopen are already resolved.
-                    handles_before.contains(dep_handle) || resolved.contains(dep_handle)
+                    // Dependencies outside staging existed before this dlopen and
+                    // are already resolved.
+                    !staging.contains_key(dep_handle) || resolved.contains(dep_handle)
                 })
             };
 
@@ -458,7 +550,7 @@ fn resolve_all_symbols(
     // Resolve in dependency order (leaves first).
     let mut init_order: Vec<Arc<Mutex<DynamicLibrary>>> = Vec::with_capacity(ordered.len());
     for handle in ordered {
-        if let Some(dlfile) = dlfiles.get(&handle) {
+        if let Some(dlfile) = staging.get(&handle) {
             dlfile.lock().resolve_all()?;
             init_order.push(dlfile.clone());
         }

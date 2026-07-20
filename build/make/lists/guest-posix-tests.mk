@@ -14,18 +14,29 @@
 # single line, minimizing merge conflicts between branches that each add a suite.
 ALL_POSIX_TESTS := \
 	test-c-bindings \
+	test-c-cxa-atexit \
 	test-c-ctor \
 	test-c-dlfcn \
+	test-c-dlfcn-ctor-dtor-reentry \
+	test-c-dlfcn-cycle \
 	test-c-dlfcn-diamond \
+	test-c-dlfcn-dlclose-cycle \
 	test-c-dlfcn-dtor-reentry \
 	test-c-dlfcn-global \
+	test-c-dlfcn-handle-reuse \
+	test-c-dlfcn-hash \
 	test-c-dlfcn-hello \
+	test-c-dlfcn-init-concurrent \
 	test-c-dlfcn-init-runpath \
 	test-c-dlfcn-initfini \
 	test-c-dlfcn-needed \
+	test-c-dlfcn-order \
 	test-c-dlfcn-pie \
+	test-c-dlfcn-refcount \
+	test-c-dlfcn-scope \
 	test-c-dlfcn-searchpath \
 	test-c-dlfcn-selflink \
+	test-c-dlfcn-staging \
 	test-c-dlfcn-startup \
 	test-c-dlfcn-weak \
 	test-c-echo \
@@ -42,12 +53,15 @@ ALL_POSIX_TESTS := \
 	test-c-math \
 	test-c-memory \
 	test-c-misc \
+	test-c-netdb \
 	test-c-network \
 	test-c-noop \
 	test-c-pathconf \
 	test-c-posix-timers \
 	test-c-regex \
+	test-c-send \
 	test-c-setjmp \
+	test-c-sigmask \
 	test-c-stdio \
 	test-c-termios \
 	test-c-thread \

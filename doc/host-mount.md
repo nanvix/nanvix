@@ -38,7 +38,7 @@ operations.
 
 ### Non-Goals
 
-- Replacing `linuxd`. The mount feature covers only filesystem access to a specific host directory,
+- General host integration. The mount feature covers only filesystem access to a specific host directory,
   not the full POSIX syscall surface.
 - Supporting network-remote filesystems (NFS, SMB). The host directory is always local to the
   `nanvixd` host.

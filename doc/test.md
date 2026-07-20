@@ -33,9 +33,7 @@ build parameters.
 
 ## Running System Integration Tests (MicroVM Only)
 
-> ℹ️ System integration tests are available on `microvm`
-machines on both Linux and Windows. On Windows, only standalone mode (`DEPLOYMENT_MODE=standalone`)
-is supported.
+> ℹ️ System integration tests are available on `microvm` machines on both Linux and Windows.
 
 The system integration tests can be run directly using:
 
@@ -45,18 +43,12 @@ The system integration tests can be run directly using:
 ```
 
 ```powershell
-# Windows (standalone mode only)
+# Windows
 .\z.ps1 build -- run-nanvix-tests
 ```
 
-The appropriate test configuration is automatically selected based on the
-deployment mode:
-
-- **Standalone mode** (`DEPLOYMENT_MODE=standalone`): Uses `test/test-standalone.toml` on Linux and
-  `test/test-standalone-windows.toml` on Windows
-- **Single-process mode** (`DEPLOYMENT_MODE=single-process`): Uses `test/test-single_process.toml`
-- **L2 VM mode** (`DEPLOYMENT_MODE=l2`): Uses `test/test-l2.toml`
-- **Multi-process mode** (default): Uses `test/test-multi_process.toml`
+The runner uses `test/test-standalone.toml` on Linux and
+`test/test-standalone-windows.toml` on Windows.
 
 ### Test Modes
 
@@ -71,7 +63,6 @@ The `nanvix-test.elf` utility supports two execution modes:
 
 - Programs are invoked directly by nanvixd with a terminal interface.
 - Only supports native executables (ELF binaries).
-- Not available for L2 VM deployments (`DEPLOYMENT_MODE=l2`); L2 configurations always use the HTTP executor.
 
 ## Running All Tests
 

@@ -85,13 +85,6 @@ pub(crate) fn socket_failed(result: RawSocket) -> bool {
     result == INVALID_SOCKET
 }
 
-/// Maps a platform errno to the POSIX-like errno values used by `ErrorCode::try_from`.
-/// On Unix, errno is already POSIX.
-#[inline]
-pub(crate) fn normalize_errno(errno: i32) -> i32 {
-    errno
-}
-
 //==================================================================================================
 // Socket Close
 //==================================================================================================
@@ -206,6 +199,29 @@ pub(crate) unsafe fn raw_socketpair(
     libc::socketpair(domain, typ, protocol, sv.as_mut_ptr())
 }
 
+/// Raw operation to enable or disable non-blocking mode on a socket.
+///
+/// Uses `fcntl(F_GETFL)` followed by `fcntl(F_SETFL)` to toggle `O_NONBLOCK`. Returns 0 on success
+/// and -1 on failure, with the platform errno set.
+///
+/// # Safety
+///
+/// `fd` must be a file descriptor that is valid for `fcntl()` on this process. The caller is
+/// responsible for ensuring that concurrent users of the descriptor tolerate status-flag changes.
+#[inline]
+pub(crate) unsafe fn raw_set_nonblocking(fd: RawSocket, nonblocking: bool) -> libc::c_int {
+    let flags: libc::c_int = libc::fcntl(fd, libc::F_GETFL, 0);
+    if flags < 0 {
+        return -1;
+    }
+    let new_flags: libc::c_int = if nonblocking {
+        flags | libc::O_NONBLOCK
+    } else {
+        flags & !libc::O_NONBLOCK
+    };
+    libc::fcntl(fd, libc::F_SETFL, new_flags)
+}
+
 //==================================================================================================
 // Message Flags
 //==================================================================================================
@@ -272,16 +288,6 @@ mod test {
         let input: [u8; 14] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
         let result: [u8; 14] = sa_data_to_u8(sa_data_from_u8(input));
         assert_eq!(result, input, "non-zero roundtrip should be identity");
-    }
-
-    // ---- normalize_errno ------------------------------------------------------------------------
-
-    /// Tests that `normalize_errno` is identity on Unix.
-    #[test]
-    fn normalize_errno_identity() {
-        assert_eq!(normalize_errno(libc::EINTR), libc::EINTR, "EINTR should pass through");
-        assert_eq!(normalize_errno(libc::EINVAL), libc::EINVAL, "EINVAL should pass through");
-        assert_eq!(normalize_errno(42), 42, "arbitrary value should pass through");
     }
 
     // ---- Boolean helpers ------------------------------------------------------------------------

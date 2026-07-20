@@ -136,6 +136,7 @@ pub unsafe extern "C" fn freopen(
     (*stream).eof = 0;
     (*stream).error = 0;
     (*stream).ungetc_buf = -1;
+    (*stream).orientation = 0;
 
     stream
 }

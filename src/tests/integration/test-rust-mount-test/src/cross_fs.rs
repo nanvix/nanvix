@@ -7,9 +7,8 @@
 //! across both RAMFS and the host-mounted filesystem (hostfs). Operations are performed
 //! on both filesystems and results are compared.
 //!
-//! In standalone mode with a minimal initrd, the ramfs root does not support file creation.
-//! This module creates `/tmp` as a writable scratch directory before running cross-filesystem
-//! comparisons.
+//! With a minimal initrd, the ramfs root does not support file creation. This module creates
+//! `/tmp` as a writable scratch directory before running cross-filesystem comparisons.
 
 use ::sys::error::{
     Error,
@@ -28,9 +27,9 @@ const RAMFS_SCRATCH: &str = "/tmp";
 
 pub fn test() -> Result<(), Error> {
     // Ensure the scratch directory exists (may already exist in full ramfs images).
-    // In standalone mode with a minimal initrd the root ramfs is read-only, so mkdir
-    // will fail.  When that happens, skip the cross-filesystem comparison tests —
-    // the mount/file/fs phases already validate hostfs behavior.
+    // With a minimal initrd the root ramfs is read-only, so mkdir will fail. When that happens,
+    // skip the cross-filesystem comparison tests — the mount/file/fs phases already validate
+    // hostfs behavior.
     let dir_perms: FileSystemPermissions = FileSystemPermissions::empty()
         .user_read(true)
         .user_write(true)

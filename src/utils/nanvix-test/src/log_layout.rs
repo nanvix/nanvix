@@ -35,19 +35,13 @@ use ::std::{
 const RUNNER_COMPONENT: &str = "runner";
 /// File prefix applied to guest logs emitted by the sandbox runtime.
 const GUEST_LOG_PREFIX: &str = "guest_";
-/// File prefix applied to legacy Linux Daemon logs.
-const LINUXD_LEGACY_PREFIX: &str = "linuxd_";
 /// File prefix applied to legacy Nanvix Daemon logs.
 const NANVIXD_LEGACY_PREFIX: &str = "nanvixd_";
 /// File prefix applied to legacy User VM logs.
 const USERVM_LEGACY_PREFIX: &str = "uservm_";
 
 /// Component normalization rules indexed by legacy on-disk prefix.
-const COMPONENT_NORMALIZATION_RULES: [LegacyComponentRule; 4] = [
-    LegacyComponentRule {
-        component: "linuxd",
-        legacy_prefix: LINUXD_LEGACY_PREFIX,
-    },
+const COMPONENT_NORMALIZATION_RULES: [LegacyComponentRule; 3] = [
     LegacyComponentRule {
         component: "nanvixd",
         legacy_prefix: NANVIXD_LEGACY_PREFIX,
@@ -473,7 +467,7 @@ impl TestLogLayout {
     ///
     /// # Description
     ///
-    /// Renames legacy component logs (linuxd, nanvixd, uservm) so they follow the
+    /// Renames legacy component logs (nanvixd, uservm, guest) so they follow the
     /// `<component>-<stream>-<iter>.log` convention.
     ///
     /// # Parameters
@@ -553,7 +547,7 @@ fn normalize_filename_segment(segment: &str) -> String {
 ///
 /// # Parameters
 ///
-/// - `component`: Sanitized component name (runner, linuxd, uservm, etc.).
+/// - `component`: Sanitized component name (runner, nanvixd, uservm, etc.).
 /// - `iteration`: Optional iteration index associated with the artifact.
 /// - `stream`: Log stream label (`stdout` or `stderr`).
 ///
@@ -748,7 +742,7 @@ fn is_guest_log(path: &Path) -> bool {
 /// # Parameters
 ///
 /// - `test_dir`: Directory that stores the artifacts for the current test case.
-/// - `component`: Canonical component name (e.g., `linuxd`).
+/// - `component`: Canonical component name (e.g., `nanvixd`).
 /// - `iteration`: Iteration index recorded in the final filename.
 /// - `legacy_prefix`: On-disk prefix used by the legacy component logs.
 ///

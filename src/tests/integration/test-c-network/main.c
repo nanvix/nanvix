@@ -140,7 +140,7 @@ int main(int argc, const char *argv[])
 
     test_inet_sockets(sin_port, sin_addr);
 
-    // Unix-domain sockets require linuxd; networkd only supports AF_INET sockets.
+    // The network service supports only AF_INET sockets.
 #ifndef __NANVIX_STANDALONE__
     {
         char sun_path[UNIX_SOCKET_NAME_LEN];

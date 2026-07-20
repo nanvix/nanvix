@@ -28,6 +28,7 @@ use crate::{
         sched_policy::SCHED_OTHER,
     },
     sys_socket::socklen_t,
+    time::clock_ids::CLOCK_REALTIME,
 };
 use ::config::memory_layout::{
     USER_STACK_TOP_RAW,
@@ -219,7 +220,7 @@ impl Default for pthread_condattr_t {
     fn default() -> Self {
         Self {
             is_initialized: 1,
-            clock: 0,
+            clock: CLOCK_REALTIME as clock_t,
         }
     }
 }
@@ -252,6 +253,16 @@ impl pthread_mutexattr_t {
     /// Size of `pthread_mutexattr_t` structure.
     pub const SIZE: usize =
         Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_TYPE + Self::SIZE_OF_RECURSIVE;
+
+    /// Returns whether the mutex attributes object is initialized.
+    pub fn is_initialized(&self) -> bool {
+        self.is_initialized != 0
+    }
+
+    /// Marks the mutex attributes object as uninitialized.
+    pub fn uninitialize(&mut self) {
+        self.is_initialized = 0;
+    }
 
     /// Returns the mutex type stored in the attributes object.
     pub fn type_(&self) -> c_int {
@@ -404,6 +415,41 @@ impl pthread_once_t {
         // SAFETY: caller guarantees `once` is valid.  No Rust reference is constructed.
         unsafe { ::core::ptr::addr_of_mut!((*once).init_executed) }
     }
+}
+
+///
+/// # Description
+///
+/// Unnamed semaphore.
+///
+/// This is the backing storage for a POSIX unnamed semaphore. It is built on top of the kernel
+/// mutex and condition variable primitives: `lock` serializes access to `count`, while `cond`
+/// blocks waiters until the semaphore value becomes positive. The `lock` and `cond` fields are
+/// identified by their addresses, exactly like a `pthread_mutex_t` / `pthread_cond_t`, so each
+/// distinct `sem_t` owns a distinct pair of kernel synchronization objects.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct sem_t {
+    /// Current value of the semaphore.
+    pub count: c_int,
+    /// Mutex that guards the semaphore value.
+    pub lock: pthread_mutex_t,
+    /// Condition variable used to block waiters.
+    pub cond: pthread_cond_t,
+}
+::static_assert::assert_eq_size!(sem_t, sem_t::SIZE);
+
+impl sem_t {
+    /// Size of the `count` field.
+    const SIZE_OF_COUNT: usize = size_of::<c_int>();
+    /// Size of the `lock` field.
+    const SIZE_OF_LOCK: usize = size_of::<pthread_mutex_t>();
+    /// Size of the `cond` field.
+    const SIZE_OF_COND: usize = size_of::<pthread_cond_t>();
+
+    /// Size of `sem_t` structure.
+    pub const SIZE: usize = Self::SIZE_OF_COUNT + Self::SIZE_OF_LOCK + Self::SIZE_OF_COND;
 }
 
 #[derive(Debug, Clone, Copy)]

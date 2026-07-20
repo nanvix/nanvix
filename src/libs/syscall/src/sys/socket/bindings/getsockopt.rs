@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use crate::errno::__errno_location;
-use ::sys::error::ErrorCode;
 use ::sysapi::{
     ffi::{
         c_int,
@@ -57,7 +56,6 @@ use ::syslog::trace_syscall;
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]
-#[allow(unreachable_code)]
 pub unsafe extern "C" fn getsockopt(
     sockfd: c_int,
     level: c_int,
@@ -65,17 +63,7 @@ pub unsafe extern "C" fn getsockopt(
     optval: *mut c_void,
     optlen: *mut socklen_t,
 ) -> c_int {
-    #[cfg(feature = "standalone")]
-    {
-        let _ = (sockfd, level, optname, optval, optlen);
-        *__errno_location() = ::sys::error::ErrorCode::OperationNotSupported.get();
-        return -1;
-    }
-
-    // TODO: https://github.com/nanvix/nanvix/issues/591
-    ::syslog::debug!("getsockopt(): not implemented");
-    unsafe {
-        *__errno_location() = ErrorCode::InvalidSysCall.get();
-    }
+    let _ = (sockfd, level, optname, optval, optlen);
+    *__errno_location() = ::sys::error::ErrorCode::OperationNotSupported.get();
     -1
 }

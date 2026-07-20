@@ -11,7 +11,6 @@ use crate::{
         i32_to_raw,
         is_interrupted,
         last_socket_error,
-        normalize_errno,
         sa_data_to_u8,
         SocklenT,
     },
@@ -21,7 +20,10 @@ use ::log::{
     debug,
     error,
 };
-use ::sys::error::ErrorCode;
+use ::sys::error::{
+    errno_to_error_code,
+    ErrorCode,
+};
 use ::sysapi::sys_socket::sockaddr;
 
 //==================================================================================================
@@ -44,8 +46,7 @@ impl NetBackend {
                     return Err(NetError::Interrupted);
                 }
                 error!("libc::getpeername(): failed with errno={errno:?}");
-                let error: ErrorCode = ErrorCode::try_from(normalize_errno(errno))
-                    .unwrap_or(ErrorCode::ValueOutOfRange);
+                let error: ErrorCode = errno_to_error_code(errno);
                 Err(NetError::Errno(error))
             },
             _ => {
@@ -74,8 +75,7 @@ impl NetBackend {
                     return Err(NetError::Interrupted);
                 }
                 error!("libc::getsockname(): failed with errno={errno:?}");
-                let error: ErrorCode = ErrorCode::try_from(normalize_errno(errno))
-                    .unwrap_or(ErrorCode::ValueOutOfRange);
+                let error: ErrorCode = errno_to_error_code(errno);
                 Err(NetError::Errno(error))
             },
             _ => {

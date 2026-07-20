@@ -242,8 +242,7 @@ pub struct OpenAtResponse {
     /// The `vfsd` descriptor-table generation at the time this descriptor was returned.
     ///
     /// libposix stamps the resolution-cache entry for `ret` with this epoch so that a later plan
-    /// can recognize a stale entry once descriptor numbers no longer encode their backend. Hosted
-    /// (`linuxd`) responses, which have no `vfsd` table, report `0`.
+    /// can recognize a stale entry once descriptor numbers no longer encode their backend.
     pub epoch: u64,
     _padding: [u8; Self::PADDING_SIZE],
 }

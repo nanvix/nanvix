@@ -41,10 +41,8 @@ use ::syslog::trace_syscall;
 ///
 /// # Availability
 ///
-/// This function is available only in standalone mode, where vfsd owns the flat descriptor table
-/// that `dup2()` re-points. In hosted mode it returns `-1` with `errno` set to `ENOSYS`. This
-/// differs from `dup()`, which is expressed as `fcntl(fd, F_DUPFD, 0)` and is therefore served by
-/// linuxd in hosted mode; naming an exact target slot, as `dup2()` does, has no linuxd equivalent.
+/// This function re-points an exact descriptor slot in vfsd's flat descriptor table. This differs
+/// from `dup()`, which is expressed as `fcntl(fd, F_DUPFD, 0)`.
 ///
 /// # Safety
 ///

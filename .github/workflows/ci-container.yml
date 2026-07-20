@@ -20,7 +20,6 @@ on:
     paths:
       - "docker/ci/Dockerfile"
       - "scripts/setup/ubuntu-core.sh"
-      - "scripts/setup/ubuntu-l2.sh"
       - "rust-toolchain"
       - "requirements.txt"
       - ".github/workflows/ci-container.yml"
@@ -30,7 +29,6 @@ on:
     paths:
       - "docker/ci/Dockerfile"
       - "scripts/setup/ubuntu-core.sh"
-      - "scripts/setup/ubuntu-l2.sh"
       - "rust-toolchain"
       - "requirements.txt"
       - ".github/workflows/ci-container.yml"

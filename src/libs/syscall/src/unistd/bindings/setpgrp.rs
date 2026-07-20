@@ -15,9 +15,8 @@ use ::syslog::trace_syscall;
 ///
 /// # Description
 ///
-/// Sets the process group of the calling process, equivalent to `setpgid(0, 0)`: the caller becomes
-/// the leader of a new process group. In standalone mode this is routed to the process manager
-/// daemon; in hosted modes it reports success without acting.
+/// Sets the process group of the calling process, equivalent to `setpgid(0, 0)`: the caller
+/// becomes the leader of a new process group. This is routed to the process manager daemon.
 ///
 /// # Returns
 ///
@@ -26,25 +25,18 @@ use ::syslog::trace_syscall;
 #[trace_syscall]
 #[unsafe(no_mangle)]
 pub extern "C" fn setpgrp() -> c_int {
-    #[cfg(feature = "standalone")]
-    {
-        use crate::errno::__errno_location;
-        use ::sys::pm::ProcessIdentifier;
+    use crate::errno::__errno_location;
+    use ::sys::pm::ProcessIdentifier;
 
-        match ::proc::setpgid(ProcessIdentifier::from(0), ProcessIdentifier::from(0)) {
-            Ok(()) => 0,
-            Err(e) => {
-                ::syslog::warn!("setpgrp(): failed (error={:?})", e);
-                // SAFETY: writing to the thread-local `errno` location is sound.
-                unsafe {
-                    *__errno_location() = e.code.get();
-                }
-                -1
-            },
-        }
-    }
-    #[cfg(not(feature = "standalone"))]
-    {
-        0
+    match ::proc::setpgid(ProcessIdentifier::from(0), ProcessIdentifier::from(0)) {
+        Ok(()) => 0,
+        Err(e) => {
+            ::syslog::warn!("setpgrp(): failed (error={:?})", e);
+            // SAFETY: writing to the thread-local `errno` location is sound.
+            unsafe {
+                *__errno_location() = e.code.get();
+            }
+            -1
+        },
     }
 }

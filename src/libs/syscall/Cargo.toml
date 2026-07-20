@@ -43,13 +43,18 @@ compiler_builtins = { workspace = true, optional = true }
 default = ["syscall"]
 # Enable this, if this library is to be used as a static library.
 staticlib = ["dep:libc_stdlib"]
-syscall = ["dep:sysalloc", "dep:syslog", "sys/kcall", "dep:libc_stdlib"]
+syscall = [
+    "dep:proc",
+    "dep:sysalloc",
+    "dep:syslog",
+    "sys/kcall",
+    "dep:libc_stdlib",
+]
 std = []
 dlfcn = ["dep:sysalloc", "dep:elf", "dep:goblin"]
 rustc-dep-of-std = [
     "core",
     "alloc",
-    "sigaction",
     "arch/rustc-dep-of-std",
     "libc_stdlib/rustc-dep-of-std",
     "cfg-if/rustc-dep-of-std",
@@ -64,12 +69,6 @@ rustc-dep-of-std = [
     "type-safe/rustc-dep-of-std",
     "spin/rustc-dep-of-std",
 ]
-standalone = ["dep:sysalloc", "dep:proc"]
-
-# TODO (#798): remove these feature flags once the signal module is stable.
-sigaction = []
-signal = ["sigaction"]
-
 # Logging
 error = ["syslog/error"]
 trace = ["syslog/trace"]

@@ -6,6 +6,12 @@
 //==================================================================================================
 
 mod dispatch;
+#[cfg(target_os = "linux")]
+#[allow(dead_code)]
+pub(crate) mod epoll;
+#[cfg(target_os = "linux")]
+pub mod framing;
+pub mod wire;
 
 //==================================================================================================
 // Imports
@@ -70,7 +76,7 @@ impl NetworkDaemon {
     /// # Description
     ///
     /// Processes a single IKC message containing a networking system call request and returns
-    /// the response message(s).
+    /// the response message.
     ///
     /// # Parameters
     ///
@@ -78,16 +84,43 @@ impl NetworkDaemon {
     ///
     /// # Returns
     ///
-    /// On success, returns a vector of response messages to send back to the guest.
-    /// On error (e.g., unrecognized header), returns `None`.
+    /// On success, returns the response message to send back to the guest.
+    /// Returns `None` if the payload cannot be parsed into a system call message, or if
+    /// [`dispatch::dispatch_message`] rejects the request (e.g., unrecognized header or
+    /// missing thread identifier).
     ///
-    pub fn handle_message(&self, msg: Message) -> Option<Vec<Message>> {
+    pub fn handle_message(&self, msg: Message) -> Option<Message> {
         let syscall_msg: SystemCallMessage = match SystemCallMessage::try_from_bytes(msg.payload) {
             Ok(m) => m,
             Err(_) => return None,
         };
 
         dispatch::dispatch_message(&self.backend, &self.filter, msg.source, syscall_msg)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Processes a `send()` request whose payload was delivered out-of-band via a scatter/gather
+    /// push.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Identifies the calling thread.
+    /// - `syscall_msg`: The parsed `SendSocketRequest` system call message.
+    /// - `data`: The payload pulled from the caller.
+    ///
+    /// # Returns
+    ///
+    /// The response message to send back to the guest.
+    ///
+    pub fn handle_send(
+        &self,
+        source: MessageSender,
+        syscall_msg: SystemCallMessage,
+        data: &[u8],
+    ) -> Message {
+        dispatch::dispatch_send(&self.backend, source, syscall_msg, data)
     }
 
     ///
@@ -136,6 +169,29 @@ impl NetworkDaemon {
         syscall_msg: SystemCallMessage,
     ) -> (Message, Vec<u8>) {
         dispatch::dispatch_recvfrom(&self.backend, source, syscall_msg)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Processes a `recv()` request whose payload is delivered out-of-band via a scatter/gather
+    /// pull.
+    ///
+    /// # Parameters
+    ///
+    /// - `source`: Identifies the calling thread.
+    /// - `syscall_msg`: The parsed `ReceiveSocketRequest` system call message.
+    ///
+    /// # Returns
+    ///
+    /// A tuple with the response message and the payload to push back to the guest.
+    ///
+    pub fn handle_recv(
+        &self,
+        source: MessageSender,
+        syscall_msg: SystemCallMessage,
+    ) -> (Message, Vec<u8>) {
+        dispatch::dispatch_recv(&self.backend, source, syscall_msg)
     }
 
     ///

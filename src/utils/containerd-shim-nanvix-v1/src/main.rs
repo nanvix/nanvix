@@ -8,18 +8,18 @@
 #![deny(clippy::all)]
 use std::sync::Arc;
 
-use nanvix_shim_core::registry::ModeRegistry;
+use nanvix_shim_core::{
+    runtime::WorkloadRuntime,
+    NanvixRuntimeConfig,
+};
 use nanvix_shim_proto::args::{
     parse_args,
     Action,
 };
 
-fn build_registry() -> ModeRegistry {
-    let mut registry = ModeRegistry::new();
-    registry.register("standalone", |id, config| {
-        Arc::new(nanvix_shim_standalone::StandaloneMode::new(id.to_string(), config.clone()))
-    });
-    registry
+fn build_runtime(id: &str) -> Arc<dyn WorkloadRuntime> {
+    let config: NanvixRuntimeConfig = NanvixRuntimeConfig::load_or_default();
+    Arc::new(nanvix_shim_standalone::StandaloneRuntime::new(id.to_string(), config))
 }
 
 fn main() {
@@ -34,11 +34,10 @@ fn main() {
         },
     };
 
-    let registry = build_registry();
-
     match action {
         Action::Start(shim_args) => {
-            let mut executor = nanvix_shim_proto::executor::ShimExecutor::new(shim_args, registry);
+            let runtime: Arc<dyn WorkloadRuntime> = build_runtime(&shim_args.id);
+            let mut executor = nanvix_shim_proto::executor::ShimExecutor::new(shim_args, runtime);
             if let Err(e) = executor.start() {
                 eprintln!("start failed: {e:?}");
                 std::process::exit(1);
@@ -46,7 +45,8 @@ fn main() {
         },
         Action::Delete(shim_args) => {
             let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-            let mut executor = nanvix_shim_proto::executor::ShimExecutor::new(shim_args, registry);
+            let runtime: Arc<dyn WorkloadRuntime> = build_runtime(&shim_args.id);
+            let mut executor = nanvix_shim_proto::executor::ShimExecutor::new(shim_args, runtime);
             if let Err(e) = rt.block_on(executor.delete()) {
                 eprintln!("delete failed: {e:?}");
                 std::process::exit(1);
@@ -54,7 +54,8 @@ fn main() {
         },
         Action::Run(shim_args) => {
             let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-            let mut executor = nanvix_shim_proto::executor::ShimExecutor::new(shim_args, registry);
+            let runtime: Arc<dyn WorkloadRuntime> = build_runtime(&shim_args.id);
+            let mut executor = nanvix_shim_proto::executor::ShimExecutor::new(shim_args, runtime);
             if let Err(e) = rt.block_on(executor.run()) {
                 eprintln!("run failed: {e:?}");
                 std::process::exit(1);

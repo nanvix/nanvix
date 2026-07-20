@@ -109,12 +109,6 @@ pub use vmem::VirtualMemory;
 // Constants
 //==================================================================================================
 
-/// Signal used to interrupt the vCPU thread (unused on Windows, but required by orchestrator).
-pub const INTERRUPT_SIGNAL: i32 = 0;
-
-/// Signal used to kill the vCPU thread (unused on Windows, but required by orchestrator).
-pub const KILL_SIGNAL: i32 = 0;
-
 /// IDT vector for IRQ 9 (IKC): PIC2 base (0x28) + (IRQ 9 - 8) = 0x29.
 const IKC_VECTOR: u32 = 0x29;
 
@@ -359,6 +353,8 @@ pub struct Vmm {
     /// Shared shutdown flag. When set to `true` from any thread, the VMM
     /// run loop will break on the next iteration.
     shutdown_flag: Arc<AtomicBool>,
+    /// Indicates that the vCPU is about to enter or is blocked in `WHvRunVirtualProcessor`.
+    run_pending: Arc<AtomicBool>,
     /// Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     inner: Arc<Mutex<InteriorWhpHandle>>,
     /// Pvclock time base in nanoseconds. When restoring from a snapshot, this is set to
@@ -397,6 +393,35 @@ struct InteriorWhpHandle {
     /// When true, the guest is entitled to take exactly one snapshot.
     /// Set from the `snapshot` kernel option; consumed on the first successful request.
     snapshot_allowed: bool,
+}
+
+/// Clears the WHP run-pending flag whenever a vCPU entry attempt finishes or unwinds.
+struct RunPendingGuard<'a> {
+    run_pending: &'a AtomicBool,
+}
+
+impl<'a> RunPendingGuard<'a> {
+    fn new(run_pending: &'a AtomicBool) -> Self {
+        run_pending.store(true, Ordering::SeqCst);
+        Self { run_pending }
+    }
+}
+
+impl Drop for RunPendingGuard<'_> {
+    fn drop(&mut self) {
+        self.run_pending.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Repeatedly requests cancellation until the pending or active WHP run finishes.
+fn cancel_while_run_pending<F>(run_pending: &AtomicBool, mut cancel: F)
+where
+    F: FnMut(),
+{
+    while run_pending.load(Ordering::SeqCst) {
+        cancel();
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 }
 
 //==================================================================================================
@@ -622,6 +647,23 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             perf_timings.set_vcpu_reset(vcpu_reset_start.elapsed().as_micros() as u64);
 
+            // Phase: Finalize guest RAM mapping.
+            // Map the loaded image regions (kernel/initrd/RAMFS) into the partition eagerly and
+            // leave anonymous gaps to be mapped lazily on first access. This keeps VM creation
+            // time on WHP independent of the configured guest memory size, mirroring the Linux
+            // `mmap(MAP_NORESERVE)` behavior even when RAMFS is placed near the top of memory.
+            let mut eager_ranges: Vec<(usize, usize)> = Vec::new();
+            if let Some(region) = guest.kernel_region() {
+                eager_ranges.push(region);
+            }
+            if let Some(region) = guest.initrd_region() {
+                eager_ranges.push(region);
+            }
+            if let Some(region) = ramfs_region {
+                eager_ranges.push(region);
+            }
+            vmem.finalize_lazy_mapping(&eager_ranges)?;
+
             // Phase: EPT pre-population.
             // Pre-populate EPT entries for the kernel and ramfs regions so the hypervisor resolves
             // SLAT entries from the host side before guest execution.  This avoids costly EPT
@@ -665,6 +707,7 @@ impl Vmm {
             partition_handle,
             timer,
             shutdown_flag,
+            run_pending: Arc::new(AtomicBool::new(false)),
             inner: Arc::new(Mutex::new(InteriorWhpHandle {
                 _partition: partition,
                 emulator,
@@ -684,9 +727,6 @@ impl Vmm {
 
     pub fn spawn(mut self) -> tokio::task::JoinHandle<Result<u16>> {
         task::spawn_blocking(move || {
-            let thread_id: u64 =
-                unsafe { windows::Win32::System::Threading::GetCurrentThreadId() as u64 };
-            Handle::current().block_on(self.send_tid(thread_id))?;
             warn!("VMM spawn_blocking: calling run()");
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run()));
             warn!("VMM spawn_blocking: run() returned (is_ok={})", result.is_ok());
@@ -716,6 +756,12 @@ impl Vmm {
 
         // Reset shutdown flag from any previous runs.
         self.shutdown_flag.store(false, Ordering::SeqCst);
+
+        // Publish the vCPU thread ID only after the shutdown flag is initialized. Otherwise an
+        // early request from the orchestrator could be overwritten by the reset above.
+        let thread_id: u64 =
+            unsafe { windows::Win32::System::Threading::GetCurrentThreadId() as u64 };
+        Handle::current().block_on(self.send_tid(thread_id))?;
 
         let loop_start: Instant = Instant::now();
 
@@ -860,10 +906,25 @@ impl Vmm {
                     );
                     break Ok(locked_vcpu.exit_status());
                 }
+
+                // Publish intent before the final shutdown check. If shutdown races with this
+                // boundary, either this check observes it or the shutdown callback observes
+                // `run_pending` and keeps canceling until the WHP call returns.
+                let run_pending_guard: RunPendingGuard<'_> =
+                    RunPendingGuard::new(self.run_pending.as_ref());
+                if self.shutdown_flag.load(Ordering::SeqCst) {
+                    drop(run_pending_guard);
+                    drop(locked_vcpu);
+                    let exit_status: u16 = 0;
+                    warn!("VMM exit: SHUTDOWN flag before vCPU entry");
+                    Handle::current().block_on(self.handle_shutdown(exit_status));
+                    break Ok(exit_status);
+                }
                 #[cfg(feature = "profile-time")]
                 let run_start: Instant = Instant::now();
 
                 let ctx: VirtualProcessorExitContext = locked_vcpu.run();
+                drop(run_pending_guard);
 
                 #[cfg(feature = "profile-time")]
                 {
@@ -1121,6 +1182,32 @@ impl Vmm {
                     {
                         exit_mmio += 1;
                     }
+
+                    // Lazy guest-RAM mapping: anonymous RAM beyond the loaded image is committed
+                    // host-side but not registered with the partition at creation time (see
+                    // `VirtualMemory::finalize_lazy_mapping`). The first guest access to such a
+                    // page faults out with an unmapped-GPA memory-access exit; map the containing
+                    // chunk on demand and re-execute the faulting instruction. RIP is left
+                    // unchanged so the access is retried once the mapping is in place.
+                    //
+                    // The guard is released before matching so the abort path can re-borrow
+                    // `self` for shutdown.
+                    let mapping_result: Result<bool> =
+                        self.vmem.blocking_lock().ensure_ram_mapped(gpa);
+                    match mapping_result {
+                        Ok(true) => continue,
+                        Ok(false) => {},
+                        Err(e) => {
+                            error!(
+                                "VMM MMIO exit: failed to map guest RAM at GPA {gpa:#010x} \
+                                 (error={e:?})"
+                            );
+                            let exit_status: u16 = ErrorCode::BadAddress.into();
+                            Handle::current().block_on(self.handle_shutdown(exit_status));
+                            break Ok(exit_status);
+                        },
+                    }
+
                     // Check if access falls within the LAPIC page.
                     let page_gpa: u64 = gpa & !(::arch::mem::PAGE_SIZE as u64 - 1);
                     if page_gpa == ::config::microvm::DEFAULT_LAPIC_BASE as u64 {
@@ -1376,18 +1463,36 @@ impl Vmm {
     /// `WHvRunVirtualProcessor` call so the VMM loop can observe the flag
     /// on its next iteration.
     ///
-    pub fn request_shutdown(&self) {
+    pub fn request_shutdown(&self, _vcpu_tid: u64) {
         self.shutdown_flag.store(true, Ordering::SeqCst);
-        // SAFETY: `partition_handle` is a valid WHP partition handle that outlives this call.
-        unsafe {
-            let hr = windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
-                self.partition_handle,
-                0,
-                0,
-            );
-            if hr.is_err() {
-                warn!("WHvCancelRunVirtualProcessor(0) failed during request_shutdown(): {hr:?}");
-            }
+
+        if self.run_pending.load(Ordering::SeqCst) {
+            let inner: Arc<Mutex<InteriorWhpHandle>> = self.inner.clone();
+            let partition_handle = self.partition_handle;
+            let run_pending: Arc<AtomicBool> = self.run_pending.clone();
+            let vcpu: Arc<Mutex<VirtualProcessor>> = self.vcpu.clone();
+            let _cancel_worker: std::thread::JoinHandle<()> = std::thread::spawn(move || {
+                let mut error_logged: bool = false;
+                cancel_while_run_pending(run_pending.as_ref(), || {
+                    // SAFETY: `inner` and `vcpu` keep the WHP partition and virtual processor
+                    // alive until this worker exits.
+                    unsafe {
+                        if let Err(error) =
+                            windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
+                                partition_handle,
+                                0,
+                                0,
+                            )
+                            && !error_logged
+                        {
+                            warn!("request_shutdown(): failed to cancel vCPU (error={error:?})");
+                            error_logged = true;
+                        }
+                    }
+                });
+                drop(vcpu);
+                drop(inner);
+            });
         }
     }
 
@@ -1592,5 +1697,39 @@ impl Vmm {
         // Even version signals "stable snapshot".
         *pvclock_version += 1;
         let _ = vmem.write_bytes(gpa, &pvclock_version.to_le_bytes());
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_pending_guard_tracks_vcpu_entry() {
+        let run_pending: AtomicBool = AtomicBool::new(false);
+        {
+            let _guard: RunPendingGuard<'_> = RunPendingGuard::new(&run_pending);
+            assert!(run_pending.load(Ordering::SeqCst));
+        }
+        assert!(!run_pending.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn cancellation_retries_until_run_finishes() {
+        let run_pending: AtomicBool = AtomicBool::new(true);
+        let mut attempts: usize = 0;
+
+        cancel_while_run_pending(&run_pending, || {
+            attempts += 1;
+            if attempts == 2 {
+                run_pending.store(false, Ordering::SeqCst);
+            }
+        });
+
+        assert_eq!(attempts, 2);
     }
 }

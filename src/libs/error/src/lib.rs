@@ -13,6 +13,9 @@
 
 use ::sysapi::errno::*;
 
+#[cfg(target_os = "windows")]
+use ::windows::Win32::Networking::WinSock as winsock_errno;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -24,7 +27,8 @@ use ::sysapi::errno::*;
 ///
 /// # Notes
 ///
-/// The values in this enumeration intentionally match the error codes defined in the Linux kernel.
+/// The numeric discriminants in this enumeration are the Nanvix errno values exported by
+/// `sysapi::errno`, not host OS errno values.
 ///
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(i32)]
@@ -284,6 +288,241 @@ impl ErrorCode {
     pub fn get(&self) -> i32 {
         *self as i32
     }
+
+    /// Converts a Linux host `errno` value into an [`ErrorCode`].
+    ///
+    /// Linux and Nanvix do not use the same numeric layout for all `errno`s, so callers that are
+    /// translating host syscall failures should use this instead of [`ErrorCode::try_from`].
+    #[cfg(target_os = "linux")]
+    fn try_from_linux_errno(errno: i32) -> Result<Self, Error> {
+        let errno: i32 = normalize_host_errno_value(errno);
+        match errno {
+            libc::EPERM => Ok(Self::OperationNotPermitted),
+            libc::ENOENT => Ok(Self::NoSuchEntry),
+            libc::ESRCH => Ok(Self::NoSuchProcess),
+            libc::EINTR => Ok(Self::Interrupted),
+            libc::EIO => Ok(Self::IoErr),
+            libc::ENXIO => Ok(Self::NoSuchDeviceOrAddress),
+            libc::E2BIG => Ok(Self::TooBig),
+            libc::ENOEXEC => Ok(Self::InvalidExecutableFormat),
+            libc::EBADF => Ok(Self::BadFile),
+            libc::ECHILD => Ok(Self::NoChildProcess),
+            libc::EAGAIN => Ok(Self::TryAgain),
+            libc::ENOMEM => Ok(Self::OutOfMemory),
+            libc::EACCES => Ok(Self::PermissionDenied),
+            libc::EFAULT => Ok(Self::BadAddress),
+            libc::ENOTBLK => Ok(Self::NotBlockDevice),
+            libc::EBUSY => Ok(Self::ResourceBusy),
+            libc::EEXIST => Ok(Self::EntryExists),
+            libc::EXDEV => Ok(Self::CrossDeviceLink),
+            libc::ENODEV => Ok(Self::NoSuchDevice),
+            libc::ENOTDIR => Ok(Self::InvalidDirectory),
+            libc::EISDIR => Ok(Self::IsDirectory),
+            libc::EINVAL => Ok(Self::InvalidArgument),
+            libc::ENFILE => Ok(Self::FileTableOVerflow),
+            libc::EMFILE => Ok(Self::TooManyOpenFiles),
+            libc::ENOTTY => Ok(Self::NotTerminal),
+            libc::ETXTBSY => Ok(Self::TextFileBusy),
+            libc::EFBIG => Ok(Self::FileTooLarge),
+            libc::ENOSPC => Ok(Self::NoSpaceOnDevice),
+            libc::ESPIPE => Ok(Self::IllegalSeek),
+            libc::EROFS => Ok(Self::ReadOnlyFileSystem),
+            libc::EMLINK => Ok(Self::TooManyLinks),
+            libc::EPIPE => Ok(Self::BrokenPipe),
+            libc::EDOM => Ok(Self::MathArgDomainErr),
+            libc::ERANGE => Ok(Self::ValueOutOfRange),
+            libc::EDEADLK => Ok(Self::Deadlock),
+            libc::ENAMETOOLONG => Ok(Self::NameTooLong),
+            libc::ENOLCK => Ok(Self::LockNotAvailable),
+            libc::ENOSYS => Ok(Self::InvalidSysCall),
+            libc::ENOTEMPTY => Ok(Self::DirectoryNotEmpty),
+            libc::ELOOP => Ok(Self::SymbolicLinkLoop),
+            libc::ENOMSG => Ok(Self::NoMessageAvailable),
+            libc::EIDRM => Ok(Self::IdentifierRemoved),
+            libc::ECHRNG => Ok(Self::OutOfRangeChannel),
+            libc::EL2NSYNC => Ok(Self::Level2NotSynchronized),
+            libc::EL3HLT => Ok(Self::Level3Halted),
+            libc::EL3RST => Ok(Self::Level3Reset),
+            libc::ELNRNG => Ok(Self::InvalidLinkNumber),
+            libc::EUNATCH => Ok(Self::InvalidProtocolDriver),
+            libc::ENOCSI => Ok(Self::NoStructAvailable),
+            libc::EL2HLT => Ok(Self::Level2Halted),
+            libc::EBADE => Ok(Self::InvalidExchange),
+            libc::EBADR => Ok(Self::InvalidRequestDescriptor),
+            libc::EXFULL => Ok(Self::ExchangeFull),
+            libc::ENOANO => Ok(Self::InvalidAnode),
+            libc::EBADRQC => Ok(Self::InvalidRequestCode),
+            libc::EBADSLT => Ok(Self::InvalidSlot),
+            libc::EBFONT => Ok(Self::BadFontFormat),
+            libc::ENOSTR => Ok(Self::NoStreamDeviceAvailable),
+            libc::ENODATA => Ok(Self::NoDataAvailable),
+            libc::ETIME => Ok(Self::TimerExpired),
+            libc::ENOSR => Ok(Self::NoStreamResources),
+            libc::ENONET => Ok(Self::NoNetwork),
+            libc::ENOPKG => Ok(Self::MissingPackage),
+            libc::EREMOTE => Ok(Self::RemoteObject),
+            libc::ENOLINK => Ok(Self::NoLink),
+            libc::EADV => Ok(Self::AdvertiseErr),
+            libc::ESRMNT => Ok(Self::MountErr),
+            libc::ECOMM => Ok(Self::CommunicationErr),
+            libc::EPROTO => Ok(Self::ProtocolErr),
+            libc::EMULTIHOP => Ok(Self::MultipleHopAttemped),
+            libc::EDOTDOT => Ok(Self::RfsErr),
+            libc::EBADMSG => Ok(Self::InvalidMessage),
+            libc::EOVERFLOW => Ok(Self::ValueOverflow),
+            libc::ENOTUNIQ => Ok(Self::NonUniqueName),
+            libc::EBADFD => Ok(Self::InvalidFileDescriptor),
+            libc::EREMCHG => Ok(Self::RemoteAddressChanged),
+            libc::ELIBACC => Ok(Self::LibraryAccessErr),
+            libc::ELIBBAD => Ok(Self::InvalidLibraryAccess),
+            libc::ELIBSCN => Ok(Self::CorruptedLibSection),
+            libc::ELIBMAX => Ok(Self::ExcessiveLibraryLinkCount),
+            libc::ELIBEXEC => Ok(Self::InvalidExecSharedLibrary),
+            libc::EILSEQ => Ok(Self::IllegalByteSequence),
+            libc::ESTRPIPE => Ok(Self::StreamPipeErr),
+            libc::EUSERS => Ok(Self::TooManyUsers),
+            libc::ENOTSOCK => Ok(Self::NotSocketFile),
+            libc::EDESTADDRREQ => Ok(Self::DestinationAddressRequired),
+            libc::EMSGSIZE => Ok(Self::MessageTooLong),
+            libc::EPROTOTYPE => Ok(Self::BadProtocolType),
+            libc::ENOPROTOOPT => Ok(Self::ProtocolOptionNotAvailable),
+            libc::EPROTONOSUPPORT => Ok(Self::ProtocolNotSupported),
+            libc::ESOCKTNOSUPPORT => Ok(Self::SocketTypeNotSupported),
+            libc::EOPNOTSUPP => Ok(Self::OperationNotSupportedOnSocket),
+            libc::EPFNOSUPPORT => Ok(Self::ProtocolFamilyNotSupported),
+            libc::EAFNOSUPPORT => Ok(Self::AddressFamilyNotSupported),
+            libc::EADDRINUSE => Ok(Self::AddressInUse),
+            libc::EADDRNOTAVAIL => Ok(Self::AddressNotAvailable),
+            libc::ENETDOWN => Ok(Self::NetworkDown),
+            libc::ENETUNREACH => Ok(Self::NetworkUnreachable),
+            libc::ENETRESET => Ok(Self::NetworkReset),
+            libc::ECONNABORTED => Ok(Self::ConnectionAborted),
+            libc::ECONNRESET => Ok(Self::ConnectionReset),
+            libc::ENOBUFS => Ok(Self::NoBufferSpace),
+            libc::EISCONN => Ok(Self::TransportEndpointConnected),
+            libc::ENOTCONN => Ok(Self::TransportEndpointNotConnected),
+            libc::ESHUTDOWN => Ok(Self::TransportEndpointShutdown),
+            libc::ETOOMANYREFS => Ok(Self::TooManyReferences),
+            libc::ETIMEDOUT => Ok(Self::OperationTimedOut),
+            libc::ECONNREFUSED => Ok(Self::ConnectionRefused),
+            libc::EHOSTDOWN => Ok(Self::HostDown),
+            libc::EHOSTUNREACH => Ok(Self::HostUnreachable),
+            libc::EALREADY => Ok(Self::OperationAlreadyInProgress),
+            libc::EINPROGRESS => Ok(Self::OperationInProgress),
+            libc::ESTALE => Ok(Self::StaleHandle),
+            libc::EDQUOT => Ok(Self::QuotaExceeded),
+            libc::ENOMEDIUM => Ok(Self::MediumNotFound),
+            libc::ECANCELED => Ok(Self::OperationCanceled),
+            libc::EOWNERDEAD => Ok(Self::DeadOwner),
+            libc::ENOTRECOVERABLE => Ok(Self::UnrecoverableState),
+            _ => Err(invalid_error_code(errno)),
+        }
+    }
+
+    /// Converts a Winsock error value into an [`ErrorCode`].
+    #[cfg(target_os = "windows")]
+    fn try_from_winsock_errno(errno: i32) -> Result<Self, Error> {
+        let errno: i32 = normalize_host_errno_value(errno);
+        match winsock_errno::WSA_ERROR(errno) {
+            winsock_errno::WSAEINTR => Ok(Self::Interrupted),
+            winsock_errno::WSAEBADF => Ok(Self::BadFile),
+            winsock_errno::WSAEACCES => Ok(Self::PermissionDenied),
+            winsock_errno::WSAEFAULT => Ok(Self::BadAddress),
+            winsock_errno::WSAEINVAL => Ok(Self::InvalidArgument),
+            winsock_errno::WSAEMFILE => Ok(Self::TooManyOpenFiles),
+            winsock_errno::WSAEWOULDBLOCK => Ok(Self::TryAgain),
+            winsock_errno::WSAEINPROGRESS => Ok(Self::OperationInProgress),
+            winsock_errno::WSAEALREADY => Ok(Self::OperationAlreadyInProgress),
+            winsock_errno::WSAENOTSOCK => Ok(Self::NotSocketFile),
+            winsock_errno::WSAEDESTADDRREQ => Ok(Self::DestinationAddressRequired),
+            winsock_errno::WSAEMSGSIZE => Ok(Self::MessageTooLong),
+            winsock_errno::WSAEPROTOTYPE => Ok(Self::BadProtocolType),
+            winsock_errno::WSAENOPROTOOPT => Ok(Self::ProtocolOptionNotAvailable),
+            winsock_errno::WSAEPROTONOSUPPORT => Ok(Self::ProtocolNotSupported),
+            winsock_errno::WSAESOCKTNOSUPPORT => Ok(Self::SocketTypeNotSupported),
+            winsock_errno::WSAEOPNOTSUPP => Ok(Self::OperationNotSupportedOnSocket),
+            winsock_errno::WSAEPFNOSUPPORT => Ok(Self::ProtocolFamilyNotSupported),
+            winsock_errno::WSAEAFNOSUPPORT => Ok(Self::AddressFamilyNotSupported),
+            winsock_errno::WSAEADDRINUSE => Ok(Self::AddressInUse),
+            winsock_errno::WSAEADDRNOTAVAIL => Ok(Self::AddressNotAvailable),
+            winsock_errno::WSAENETDOWN => Ok(Self::NetworkDown),
+            winsock_errno::WSAENETUNREACH => Ok(Self::NetworkUnreachable),
+            winsock_errno::WSAENETRESET => Ok(Self::NetworkReset),
+            winsock_errno::WSAECONNABORTED => Ok(Self::ConnectionAborted),
+            winsock_errno::WSAECONNRESET => Ok(Self::ConnectionReset),
+            winsock_errno::WSAENOBUFS => Ok(Self::NoBufferSpace),
+            winsock_errno::WSAEISCONN => Ok(Self::TransportEndpointConnected),
+            winsock_errno::WSAENOTCONN => Ok(Self::TransportEndpointNotConnected),
+            winsock_errno::WSAESHUTDOWN => Ok(Self::TransportEndpointShutdown),
+            winsock_errno::WSAETOOMANYREFS => Ok(Self::TooManyReferences),
+            winsock_errno::WSAETIMEDOUT => Ok(Self::OperationTimedOut),
+            winsock_errno::WSAECONNREFUSED => Ok(Self::ConnectionRefused),
+            winsock_errno::WSAELOOP => Ok(Self::SymbolicLinkLoop),
+            winsock_errno::WSAENAMETOOLONG => Ok(Self::NameTooLong),
+            winsock_errno::WSAEHOSTDOWN => Ok(Self::HostDown),
+            winsock_errno::WSAEHOSTUNREACH => Ok(Self::HostUnreachable),
+            winsock_errno::WSAENOTEMPTY => Ok(Self::DirectoryNotEmpty),
+            winsock_errno::WSAEUSERS => Ok(Self::TooManyUsers),
+            winsock_errno::WSAEDQUOT => Ok(Self::QuotaExceeded),
+            winsock_errno::WSAESTALE => Ok(Self::StaleHandle),
+            winsock_errno::WSAEREMOTE => Ok(Self::RemoteObject),
+            winsock_errno::WSANOTINITIALISED => Ok(Self::InvalidFileDescriptor),
+            _ => Err(invalid_error_code(errno)),
+        }
+    }
+
+    /// Converts a Winsock `connect()` error value into an [`ErrorCode`].
+    ///
+    /// Winsock reports a newly pending non-blocking `connect()` as `WSAEWOULDBLOCK`, while regular
+    /// non-blocking I/O uses the same code for would-block.
+    #[cfg(target_os = "windows")]
+    fn try_from_winsock_connect_errno(errno: i32) -> Result<Self, Error> {
+        let errno: i32 = normalize_host_errno_value(errno);
+        match winsock_errno::WSA_ERROR(errno) {
+            winsock_errno::WSAEWOULDBLOCK => Ok(Self::OperationInProgress),
+            _ => Self::try_from_winsock_errno(errno),
+        }
+    }
+}
+
+/// Converts a host errno value into an [`ErrorCode`] for the current target OS.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub fn errno_to_error_code(errno: i32) -> ErrorCode {
+    #[cfg(target_os = "linux")]
+    {
+        ErrorCode::try_from_linux_errno(errno).unwrap_or(ErrorCode::ValueOutOfRange)
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        ErrorCode::try_from_winsock_errno(errno).unwrap_or(ErrorCode::ValueOutOfRange)
+    }
+}
+
+/// Converts a host `connect()` errno value into an [`ErrorCode`] for the current target OS.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub fn connect_errno_to_error_code(errno: i32) -> ErrorCode {
+    #[cfg(target_os = "linux")]
+    {
+        errno_to_error_code(errno)
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        ErrorCode::try_from_winsock_connect_errno(errno).unwrap_or(ErrorCode::ValueOutOfRange)
+    }
+}
+
+#[allow(dead_code)]
+fn normalize_host_errno_value(value: i32) -> i32 {
+    if value < 0 {
+        match value.checked_abs() {
+            Some(abs) => abs,
+            None => value,
+        }
+    } else {
+        value
+    }
 }
 
 // Manual conversion from i32 to ErrorCode using constants.
@@ -433,7 +672,7 @@ impl TryFrom<i32> for ErrorCode {
 ///
 /// # Description
 ///
-/// Constructs a default error.
+/// Constructs the error returned when a value is not a valid Nanvix error code.
 ///
 /// # Parameters
 ///
@@ -443,7 +682,7 @@ impl TryFrom<i32> for ErrorCode {
 ///
 /// Default error.
 ///
-fn invalid_error_code(_value: i32) -> Error {
+pub fn invalid_error_code(_value: i32) -> Error {
     Error {
         code: ErrorCode::InvalidArgument,
         reason: "invalid error code",
@@ -516,6 +755,95 @@ impl TryFrom<i64> for ErrorCode {
         // Attempt to convert i32 to ErrorCode.
         ErrorCode::try_from(value)
             .map_err(|_| Error::new(ErrorCode::InvalidArgument, "invalid error code"))
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tests that Linux errno values that collide with unrelated Nanvix errno values are translated
+    /// by semantic name instead of by raw number.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn try_from_linux_errno_translates_socket_family() {
+        assert_eq!(
+            ErrorCode::try_from_linux_errno(libc::EINPROGRESS).unwrap(),
+            ErrorCode::OperationInProgress
+        );
+        assert_eq!(
+            ErrorCode::try_from_linux_errno(libc::EALREADY).unwrap(),
+            ErrorCode::OperationAlreadyInProgress
+        );
+        assert_eq!(
+            ErrorCode::try_from_linux_errno(libc::EISCONN).unwrap(),
+            ErrorCode::TransportEndpointConnected
+        );
+    }
+
+    /// Tests that unknown Linux errno values do not fall through into Nanvix errno numbering.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn try_from_linux_errno_rejects_unknown_values() {
+        assert!(ErrorCode::try_from_linux_errno(41).is_err());
+    }
+
+    /// Tests that Winsock errno values are translated by semantic name.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn try_from_winsock_errno_translates_socket_family() {
+        let cases: [(i32, ErrorCode); 12] = [
+            (winsock_errno::WSAEAFNOSUPPORT.0, ErrorCode::AddressFamilyNotSupported),
+            (winsock_errno::WSAEADDRINUSE.0, ErrorCode::AddressInUse),
+            (winsock_errno::WSAEDESTADDRREQ.0, ErrorCode::DestinationAddressRequired),
+            (winsock_errno::WSAEHOSTUNREACH.0, ErrorCode::HostUnreachable),
+            (winsock_errno::WSAEISCONN.0, ErrorCode::TransportEndpointConnected),
+            (winsock_errno::WSAENETDOWN.0, ErrorCode::NetworkDown),
+            (winsock_errno::WSAENETRESET.0, ErrorCode::NetworkReset),
+            (winsock_errno::WSAEPROTONOSUPPORT.0, ErrorCode::ProtocolNotSupported),
+            (winsock_errno::WSAEPROTOTYPE.0, ErrorCode::BadProtocolType),
+            (winsock_errno::WSAESHUTDOWN.0, ErrorCode::TransportEndpointShutdown),
+            (winsock_errno::WSAESOCKTNOSUPPORT.0, ErrorCode::SocketTypeNotSupported),
+            (winsock_errno::WSAETIMEDOUT.0, ErrorCode::OperationTimedOut),
+        ];
+
+        for (winsock_error, expected) in cases {
+            assert_eq!(ErrorCode::try_from_winsock_errno(winsock_error).unwrap(), expected);
+        }
+    }
+
+    /// Tests that `WSAEWOULDBLOCK` is connect-specific: generic I/O sees `TryAgain`, while
+    /// `connect()` sees `OperationInProgress`.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn try_from_winsock_connect_errno_handles_wouldblock() {
+        assert_eq!(
+            ErrorCode::try_from_winsock_errno(winsock_errno::WSAEWOULDBLOCK.0).unwrap(),
+            ErrorCode::TryAgain
+        );
+        assert_eq!(
+            ErrorCode::try_from_winsock_connect_errno(winsock_errno::WSAEWOULDBLOCK.0).unwrap(),
+            ErrorCode::OperationInProgress
+        );
+        assert_eq!(
+            ErrorCode::try_from_winsock_connect_errno(winsock_errno::WSAEINVAL.0).unwrap(),
+            ErrorCode::InvalidArgument
+        );
+        assert_eq!(
+            ErrorCode::try_from_winsock_connect_errno(winsock_errno::WSAEALREADY.0).unwrap(),
+            ErrorCode::OperationAlreadyInProgress
+        );
+    }
+
+    /// Tests that unknown Winsock errno values do not fall through into Nanvix errno numbering.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn try_from_winsock_errno_rejects_unknown_values() {
+        assert!(ErrorCode::try_from_winsock_errno(99999).is_err());
     }
 }
 

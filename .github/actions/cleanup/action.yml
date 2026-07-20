@@ -35,7 +35,7 @@ runs:
           exit 1
         fi
 
-        # Run full cleanup (kills processes, cleans namespaces, sockets, temp dirs, images).
+        # Run full cleanup (kills processes, cleans sockets, temp dirs).
         ${CLEANUP_SCRIPT} --all --verbose
 
         # Port availability handling differs by phase.

@@ -3,8 +3,7 @@
 
 //! NanvixTaskService — implements the containerd ttrpc Task API.
 //!
-//! Each method delegates to the `ExecutionMode` trait, making the task service
-//! independent of any specific Nanvix execution mode.
+//! Each method delegates to the workload runtime.
 
 use std::sync::Arc;
 
@@ -15,15 +14,15 @@ use containerd_shim_protos::{
     ttrpc,
 };
 
-use nanvix_shim_core::execution::ExecutionMode;
+use nanvix_shim_core::runtime::WorkloadRuntime;
 
 pub struct NanvixTaskService {
-    mode: Arc<dyn ExecutionMode>,
+    runtime: Arc<dyn WorkloadRuntime>,
 }
 
 impl NanvixTaskService {
-    pub fn new(mode: Arc<dyn ExecutionMode>) -> Self {
-        Self { mode }
+    pub fn new(runtime: Arc<dyn WorkloadRuntime>) -> Self {
+        Self { runtime }
     }
 }
 
@@ -36,7 +35,7 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
     ) -> ttrpc::Result<api::StateResponse> {
         log::info!("[{}] Task.State", req.id);
 
-        let ws = self.mode.state().await.map_err(ttrpc_err)?;
+        let ws = self.runtime.state().await.map_err(ttrpc_err)?;
         let mut resp = api::StateResponse::new();
         resp.id = req.id;
         resp.bundle = req.exec_id;
@@ -80,13 +79,6 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
                 ttrpc::Error::Others("not a Nanvix image (missing com.nanvix.* annotations)".into())
             })?;
 
-        // Log if the image requests a specific execution mode.
-        // In V1, only standalone is supported; future versions will use the
-        // registry to create the requested mode per container.
-        if let Some(ref requested_mode) = image_config.execution_mode {
-            log::info!("[{}] image requests execution mode: {}", req.id, requested_mode);
-        }
-
         let runtime_config = nanvix_shim_core::config::NanvixRuntimeConfig::load_or_default();
 
         // Resolve the rootfs path from the OCI spec.
@@ -97,16 +89,8 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
         //
         // containerd also passes `req.rootfs` with mount instructions (typically
         // overlayfs combining all image layers). Both the resolved path and the
-        // mount instructions are forwarded to the ExecutionMode via SandboxConfig,
-        // because each mode handles rootfs differently:
-        //
-        //  - Standalone: mounts the overlayfs at rootfs_path, then passes files
-        //    (initrd, ramfs) directly to the single VM runner.
-        //  - Process-based split: similar to standalone — the host process that
-        //    serves filesystem requests has direct access to the mounted rootfs.
-        //  - VM-based split: the rootfs is mounted into the system VM (created
-        //    during sandbox creation); the user VM issues filesystem requests
-        //    that are routed to the system VM, which reads from the mount.
+        // Mount instructions are forwarded through SandboxConfig so the standalone runtime can
+        // mount the overlayfs and pass initrd and ramfs files to the user VM.
         let rootfs_path: std::path::PathBuf = {
             let root_path: std::path::PathBuf = match spec.root().as_ref() {
                 Some(root) => root.path().clone(),
@@ -120,14 +104,14 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
             }
         };
 
-        // Convert containerd mount info for the execution mode to handle.
+        // Convert containerd mount information for the runtime.
         let rootfs_mounts: Vec<(String, String, Vec<String>)> = req
             .rootfs
             .iter()
             .map(|m| (m.type_.clone(), m.source.clone(), m.options.clone()))
             .collect();
 
-        let sandbox_config = nanvix_shim_core::execution::SandboxConfig {
+        let sandbox_config = nanvix_shim_core::runtime::SandboxConfig {
             id: req.id.clone(),
             bundle_path: bundle_path.clone(),
             rootfs_path,
@@ -139,7 +123,7 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
             rootfs_mounts,
         };
 
-        self.mode
+        self.runtime
             .prepare(&sandbox_config)
             .await
             .map_err(ttrpc_err)?;
@@ -156,7 +140,7 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
     ) -> ttrpc::Result<api::StartResponse> {
         log::info!("[{}] Task.Start", req.id);
 
-        let pid = self.mode.start().await.map_err(ttrpc_err)?;
+        let pid = self.runtime.start().await.map_err(ttrpc_err)?;
 
         let mut resp = api::StartResponse::new();
         resp.pid = pid;
@@ -170,7 +154,7 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
     ) -> ttrpc::Result<api::DeleteResponse> {
         log::info!("[{}] Task.Delete", req.id);
 
-        self.mode.cleanup().await.map_err(ttrpc_err)?;
+        self.runtime.cleanup().await.map_err(ttrpc_err)?;
 
         let mut resp = api::DeleteResponse::new();
         resp.exit_status = 0;
@@ -185,7 +169,7 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
     ) -> ttrpc::Result<api::Empty> {
         log::info!("[{}] Task.Kill signal={}", req.id, req.signal);
 
-        self.mode.kill(req.signal).await.map_err(ttrpc_err)?;
+        self.runtime.kill(req.signal).await.map_err(ttrpc_err)?;
 
         Ok(api::Empty::new())
     }
@@ -197,7 +181,7 @@ impl containerd_shim_protos::shim_async::Task for NanvixTaskService {
     ) -> ttrpc::Result<api::WaitResponse> {
         log::info!("[{}] Task.Wait", req.id);
 
-        let (exit_code, exited_at) = self.mode.wait().await;
+        let (exit_code, exited_at) = self.runtime.wait().await;
 
         let mut resp = api::WaitResponse::new();
         resp.exit_status = exit_code;

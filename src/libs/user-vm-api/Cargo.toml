@@ -11,14 +11,7 @@ description = "User VM API Library"
 homepage.workspace = true
 
 [dependencies]
-config = { workspace = true }
-syscomm = { workspace = true }
-log = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
 serde = { workspace = true, features = ["derive"] }
-
-[dev-dependencies]
-anyhow = { workspace = true }
 
 [features]
 default = []

@@ -5,12 +5,8 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    benchmark::BenchmarkFlavour,
-    benchmarks::DEFAULT_PAYLOAD_SIZE,
-};
+use crate::benchmark::BenchmarkFlavour;
 use ::anyhow::Result;
-use ::nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use ::std::str::FromStr;
 
 //==================================================================================================
@@ -21,12 +17,7 @@ pub struct Args {
     benchmark: BenchmarkFlavour,
     hwloc_file: Option<String>,
     iterations: usize,
-    payload_size: usize,
     payload_size_override: Option<usize>,
-    num_concurrent_vms: Option<usize>,
-    netns_pool_size: Option<usize>,
-    clh_bin_path: String,
-    tmp_dir: String,
 }
 
 //==================================================================================================
@@ -39,89 +30,22 @@ impl Args {
     const OPT_HWLOC: &'static str = "-hwloc";
     const OPT_ITERATIONS: &'static str = "-iterations";
     const OPT_PAYLOAD_SIZE: &'static str = "-payload-size";
-    const OPT_NUM_CONCURRENT_VMS: &'static str = "-num-concurrent-vms";
-    const OPT_NETNS_POOL_SIZE: &'static str = "-netns-pool-size";
-    const DEFAULT_NETNS_POOL_SIZE: usize = ::nanvixd::args::Args::DEFAULT_NETNS_POOL_SIZE;
     const WARM_START_VMM_PAYLOAD_PREFIX_SIZE: usize = ::std::mem::size_of::<u32>();
-    const OPT_CLH_BIN_PATH: &'static str = "-clh-bin-path";
-    const OPT_TMP_DIR: &'static str = "-tmp-dir";
 
     fn usage(program_name: &str) {
-        let mut benchmarks = String::new();
+        let benchmarks: &str = "\
+  boot-time              Measure raw user VM boot latency.
+  cold-start             Measure start-up latency from client's perspective.
+    cold-start-uvm         Measure User VM start-up through its first gateway response.
+  snapshot-restore       Measure snapshot restore latency vs boot-time.
+  vfs-bench              Measure VFS operation latencies on a dense ramfs.
+    warm-start-gateway     Measure round-trip latency through the standalone gateway.
+  warm-start-vmm         Measure raw round-trip latency inside the user VM.
+  warm-start-socket      Measure round-trip latency over a guest TCP echo socket.";
 
-        // VMM-level benchmarks are always available.
-        benchmarks.push_str(
-            "\
-  boot-time              Measure raw user VM boot latency.\n",
-        );
-
-        // System-level benchmarks require multi-process, single-process, or standalone.
-        if cfg!(any(feature = "multi-process", feature = "single-process", feature = "standalone"))
-        {
-            benchmarks.push_str(
-                "\
-  cold-start             Measure start-up latency from client's perspective.\n",
-            );
-        }
-
-        if cfg!(any(feature = "multi-process", feature = "single-process")) {
-            benchmarks.push_str(
-                "\
-  cold-start-uvm         Measure start-up latency of the user VM only, excluding linuxd.
-  round-trip-latency     Measure latency (warm-start) as we increase the payload size.\n",
-            );
-        }
-
-        // echo-breakdown requires timestamp-messages in addition to multi/single-process.
-        if cfg!(feature = "timestamp-messages") {
-            benchmarks.push_str(
-                "\
-  echo-breakdown         Analyze the latency contributions of each step in the data path.\n",
-            );
-        }
-
-        // concurrent requires multi-process specifically.
-        if cfg!(feature = "multi-process") {
-            benchmarks.push_str(
-                "\
-  concurrent             Measure cold-start times as we increase the number of concurrent user \
-                 VMs.\n",
-            );
-        }
-
-        // L2 variants.
-        if cfg!(feature = "l2") {
-            benchmarks.push_str(
-                "\
-  cold-start-l2          Same as cold-start, but deploy linuxd inside an L2 VM.
-  concurrent-l2          Same as concurrent, but deploy linuxd inside an L2 VM.
-  echo-breakdown-l2      Same as echo-breakdown, but deploy linuxd inside L2 VM.
-  warm-start-l2          Same as warm-start, but deploy linuxd inside an L2 VM.\n",
-            );
-        }
-
-        benchmarks.push_str(
-            "\
-  snapshot-restore       Measure snapshot restore latency vs boot-time.\n",
-        );
-
-        if cfg!(feature = "standalone") {
-            benchmarks.push_str(
-                "\
-  vfs-bench              Measure VFS operation latencies on a dense ramfs (standalone).\n",
-            );
-        }
-
-        if cfg!(any(feature = "multi-process", feature = "single-process")) {
-            benchmarks.push_str(
-                "\
-  warm-start             Measure round-trip latency from client's perspective.\n",
-            );
-        }
-
-        benchmarks.push_str(
-            "\
-  warm-start-vmm         Measure raw round-trip latency inside the user VM.",
+        let help_option: String = format!(
+            "  {}                              Show this help message and exit.\n",
+            Self::OPT_HELP,
         );
 
         println!(
@@ -139,18 +63,10 @@ Options:
   {hwloc} <hwloc.json>                Hardware locality configuration file for CPU \
              affinity/topology.
   {iterations} <num>                  Number of iterations to run (default: 100).
-  {payload_size} <bytes>              Echo payload size for warm-start, warm-start-l2, and \
-             warm-start-vmm benchmarks (default: {default_payload_size}; warm-start-vmm counts \
-             its {warm_start_vmm_prefix_size}-byte prefix and sweeps sizes when omitted).
-  {num_concurrent_vms} <num>          Number of concurrent VMs (mandatory for concurrent and \
-             concurrent-l2 benchmarks).
-  {netns_pool_size} <size>            Netns pool prefill size for nanvixd (concurrent-l2 only; \
-             default: {default_netns_pool_size}). Other L2 benchmarks use 1; non-L2 benchmarks \
-             ignore this flag.
-  {clh_bin_path} <clh_bin_path>       Path to the cloud-hypervisor binary directory.
-  {tmp_dir} <tmp_dir>                Base directory for temporary files (default: \
-             {DEFAULT_TMP_DIRECTORY}).
-  {help}                              Show this help message and exit.
+    {payload_size} <bytes>              Echo payload size for warm-start-gateway, warm-start-vmm, \
+             and warm-start-socket benchmarks (warm-start-vmm counts its \
+             {warm_start_vmm_prefix_size}-byte prefix; all sweep a range of sizes when omitted).
+{help_option}
 
 Examples:
   # Run the cold-start benchmark
@@ -159,26 +75,16 @@ Examples:
   # Run boot-time with a custom hwloc and 1000 iterations
   {program_name} {benchmark} boot-time {hwloc} hwloc.json {iterations} 1000
 
-  # Run warm-start with a 32KiB payload
-  {program_name} {benchmark} warm-start {payload_size} 32768
-
-  # Run concurrent benchmark with 4 concurrent VMs
-  {program_name} {benchmark} concurrent {num_concurrent_vms} 4
+    # Run warm-start-gateway with a 1KiB payload
+    {program_name} {benchmark} warm-start-gateway {payload_size} 1024
 ",
             program_name = program_name,
             benchmark = Self::OPT_BENCHMARK,
             hwloc = Self::OPT_HWLOC,
             iterations = Self::OPT_ITERATIONS,
             payload_size = Self::OPT_PAYLOAD_SIZE,
-            default_payload_size = DEFAULT_PAYLOAD_SIZE,
             warm_start_vmm_prefix_size = Self::WARM_START_VMM_PAYLOAD_PREFIX_SIZE,
-            num_concurrent_vms = Self::OPT_NUM_CONCURRENT_VMS,
-            netns_pool_size = Self::OPT_NETNS_POOL_SIZE,
-            default_netns_pool_size = Self::DEFAULT_NETNS_POOL_SIZE,
-            clh_bin_path = Self::OPT_CLH_BIN_PATH,
-            tmp_dir = Self::OPT_TMP_DIR,
-            DEFAULT_TMP_DIRECTORY = DEFAULT_TMP_DIRECTORY,
-            help = Self::OPT_HELP,
+            help_option = help_option,
         );
     }
 
@@ -187,10 +93,6 @@ Examples:
         let mut hwloc_file: Option<String> = None;
         let mut iterations: usize = 100;
         let mut payload_size: Option<usize> = None;
-        let mut num_concurrent_vms: Option<usize> = None;
-        let mut netns_pool_size: Option<usize> = None;
-        let mut clh_bin_path: String = "./toolchain/bin".to_string();
-        let mut tmp_dir: String = DEFAULT_TMP_DIRECTORY.to_string();
 
         let mut i: usize = 1;
         while i < args.len() {
@@ -243,47 +145,6 @@ Examples:
                     }
                     payload_size = Some(parsed_payload_size);
                 },
-                Self::OPT_NUM_CONCURRENT_VMS => {
-                    i += 1;
-                    if i >= args.len() {
-                        Self::usage(args[0].as_str());
-                        return Err(anyhow::anyhow!(
-                            "missing value for: {}",
-                            Self::OPT_NUM_CONCURRENT_VMS
-                        ));
-                    }
-                    num_concurrent_vms = Some(args[i].parse::<usize>()?);
-                },
-                Self::OPT_NETNS_POOL_SIZE => {
-                    i += 1;
-                    if i >= args.len() {
-                        Self::usage(args[0].as_str());
-                        return Err(anyhow::anyhow!(
-                            "missing value for: {}",
-                            Self::OPT_NETNS_POOL_SIZE
-                        ));
-                    }
-                    netns_pool_size = Some(args[i].parse::<usize>()?);
-                },
-                Self::OPT_CLH_BIN_PATH => {
-                    i += 1;
-                    if i >= args.len() {
-                        Self::usage(args[0].as_str());
-                        return Err(anyhow::anyhow!(
-                            "missing value for: {}",
-                            Self::OPT_CLH_BIN_PATH
-                        ));
-                    }
-                    clh_bin_path = args[i].clone();
-                },
-                Self::OPT_TMP_DIR => {
-                    i += 1;
-                    if i >= args.len() {
-                        Self::usage(args[0].as_str());
-                        return Err(::anyhow::anyhow!("missing value for: {}", Self::OPT_TMP_DIR));
-                    }
-                    tmp_dir = args[i].clone();
-                },
                 arg => {
                     Self::usage(args[0].as_str());
                     return Err(anyhow::anyhow!("invalid argument: {arg}"));
@@ -295,59 +156,13 @@ Examples:
 
         match BenchmarkFlavour::from_str(benchmark_str.as_str()) {
             Ok(benchmark) => {
-                match benchmark {
-                    // The concurrent benchmarks take slightly different command-line arguments.
-                    BenchmarkFlavour::Concurrent | BenchmarkFlavour::ConcurrentL2 => {
-                        // Must pass -num-concurrent-vms
-                        if num_concurrent_vms.is_none() {
-                            Self::usage(args[0].as_str());
-                            return Err(anyhow::anyhow!(
-                                "missing value for: {}",
-                                Self::OPT_NUM_CONCURRENT_VMS
-                            ));
-                        }
-
-                        // Must not pass -hwloc.
-                        if hwloc_file.is_some() {
-                            Self::usage(args[0].as_str());
-                            return Err(anyhow::anyhow!(
-                                "{benchmark} benchmark does not take {} flag",
-                                Self::OPT_HWLOC,
-                            ));
-                        }
-                    },
-                    _ => {
-                        if num_concurrent_vms.is_some() {
-                            Self::usage(args[0].as_str());
-                            return Err(anyhow::anyhow!(
-                                "unsupported argument for this benchmark: {}",
-                                Self::OPT_NUM_CONCURRENT_VMS
-                            ));
-                        }
-                    },
-                }
-
-                // Reject -netns-pool-size when it would be silently ignored.
-                if netns_pool_size.is_some() {
-                    match benchmark {
-                        BenchmarkFlavour::ConcurrentL2 => {},
-                        _ => {
-                            Self::usage(args[0].as_str());
-                            return Err(anyhow::anyhow!(
-                                "{benchmark} benchmark does not accept {}",
-                                Self::OPT_NETNS_POOL_SIZE,
-                            ));
-                        },
-                    }
-                }
-
                 // Reject -payload-size when it would be silently ignored.
                 if payload_size.is_some()
                     && !matches!(
                         benchmark,
-                        BenchmarkFlavour::WarmStart
-                            | BenchmarkFlavour::WarmStartL2
+                        BenchmarkFlavour::WarmStartGateway
                             | BenchmarkFlavour::WarmStartVMM
+                            | BenchmarkFlavour::WarmStartSocket
                     )
                 {
                     Self::usage(args[0].as_str());
@@ -370,25 +185,11 @@ Examples:
                     ));
                 }
 
-                // Derive netns pool size from the benchmark flavour.
-                let netns_pool_size = match benchmark {
-                    BenchmarkFlavour::ConcurrentL2 => {
-                        Some(netns_pool_size.unwrap_or(Self::DEFAULT_NETNS_POOL_SIZE))
-                    },
-                    _ if benchmark.is_l2() => Some(1),
-                    _ => None,
-                };
-
                 Ok(Self {
                     benchmark,
                     hwloc_file,
                     iterations,
-                    payload_size: payload_size.unwrap_or(DEFAULT_PAYLOAD_SIZE),
                     payload_size_override: payload_size,
-                    num_concurrent_vms,
-                    netns_pool_size,
-                    clh_bin_path,
-                    tmp_dir,
                 })
             },
             Err(_) => {
@@ -410,28 +211,8 @@ Examples:
         self.iterations
     }
 
-    pub fn payload_size(&self) -> usize {
-        self.payload_size
-    }
-
     pub fn payload_size_override(&self) -> Option<usize> {
         self.payload_size_override
-    }
-
-    pub fn num_concurrent_vms(&self) -> Option<usize> {
-        self.num_concurrent_vms
-    }
-
-    pub fn clh_bin_path(&self) -> String {
-        self.clh_bin_path.clone()
-    }
-
-    pub fn netns_pool_size(&self) -> Option<usize> {
-        self.netns_pool_size
-    }
-
-    pub fn tmp_dir(&self) -> String {
-        self.tmp_dir.clone()
     }
 }
 
@@ -444,7 +225,7 @@ mod tests {
         let args: Vec<String> = vec![
             "nanvix-bench".to_string(),
             "-benchmark".to_string(),
-            "warm-start".to_string(),
+            "warm-start-socket".to_string(),
             "-payload-size".to_string(),
             "0".to_string(),
         ];
@@ -469,8 +250,65 @@ mod tests {
 
         let args: Args = Args::parse(args).expect("expected warm-start-vmm payload size to parse");
 
-        assert_eq!(args.payload_size(), 4096);
         assert_eq!(args.payload_size_override(), Some(4096));
+    }
+
+    #[test]
+    fn parse_accepts_cold_start_uvm() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "cold-start-uvm".to_string(),
+        ];
+
+        let args: Args = Args::parse(args).expect("expected cold-start-uvm to parse");
+
+        assert!(matches!(args.benchmark(), super::BenchmarkFlavour::ColdStartUvm));
+    }
+
+    #[test]
+    fn parse_accepts_warm_start_gateway_payload_size_override() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start-gateway".to_string(),
+            "-payload-size".to_string(),
+            "4096".to_string(),
+        ];
+
+        let args: Args =
+            Args::parse(args).expect("expected warm-start-gateway payload size to parse");
+
+        assert_eq!(args.payload_size_override(), Some(4096));
+    }
+
+    #[test]
+    fn parse_accepts_warm_start_socket_payload_size_override() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start-socket".to_string(),
+            "-payload-size".to_string(),
+            "4096".to_string(),
+        ];
+
+        let args: Args =
+            Args::parse(args).expect("expected warm-start-socket payload size to parse");
+
+        assert_eq!(args.payload_size_override(), Some(4096));
+    }
+
+    #[test]
+    fn parse_keeps_warm_start_socket_payload_size_override_empty_when_omitted() {
+        let args: Vec<String> = vec![
+            "nanvix-bench".to_string(),
+            "-benchmark".to_string(),
+            "warm-start-socket".to_string(),
+        ];
+
+        let args: Args = Args::parse(args).expect("expected warm-start-socket to parse");
+
+        assert_eq!(args.payload_size_override(), None);
     }
 
     #[test]

@@ -38,18 +38,9 @@ The pipeline runs these steps in order:
 `scripts/pipeline.sh` executes machine-dependent
 steps for `microvm`.
 
-| Machine       | Build Types    | Deployment Types              |
-|---------------|----------------|-------------------------------|
-| `microvm`     | debug, release | standalone, single, multi, l2 |
-
-### Build Parameter Mapping
-
-| Deployment Type | `DEPLOYMENT_MODE` |
-|-----------------|-------------------|
-| standalone      | `standalone`      |
-| single-process  | `single-process`  |
-| multi-process   | `multi-process`   |
-| l2              | `l2`              |
+| Machine       | Build Types    |
+|---------------|----------------|
+| `microvm`     | debug, release |
 
 ## Individual Quality Checks
 
@@ -79,11 +70,8 @@ pipeline, but matrix coverage is split across multiple jobs and run on pull requ
 Matrix coverage in GitHub Actions:
 
 - `checks`: format + spellcheck (single run).
-- `lint`, `verify`, `ci-build`: `microvm` with `standalone`,
-  `single-process`, and `multi-process`.
+- `lint`, `verify`, `ci-build`: `microvm` in debug and release configurations.
 - `ci-test`: same matrix.
-
-> **Note:** The local pipeline covers the `l2` deployment type, but CI does not run L2 jobs.
 
 > **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)
 > and runs a smoke test using nanvixd in standalone interactive mode on WHP-enabled runners.
@@ -95,7 +83,7 @@ Matrix coverage in GitHub Actions:
 ./z build -- release
 
 # The archive name follows this pattern:
-# nanvix-<ver>-<target>-<machine>-<deploy>-<mode>-<log>-<memory>mb.tar.bz2
+# nanvix-<ver>-<target>-<machine>-standalone-<mode>-<log>-<memory>mb.tar.bz2
 ```
 
 Releases can be created with:

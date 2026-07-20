@@ -29,20 +29,12 @@ from typing import NoReturn, Sequence
 # ==================================================================================================
 
 VALID_MACHINES: tuple[str, ...] = ("microvm",)
-VALID_DEPLOYMENT_MODES: tuple[str, ...] = (
-    "standalone",
-    "single-process",
-    "multi-process",
-    "l2",
-)
 VALID_LOG_LEVELS: tuple[str, ...] = ("trace", "debug", "info", "warn", "error", "panic")
 VALID_TARGETS: tuple[str, ...] = ("x86", "x86_64")
 VALID_MESSAGE_FORMATS: tuple[str, ...] = ("json", "json-diagnostic-rendered-ansi")
 
 DEFAULT_MACHINE = "microvm"
 DEFAULT_TARGET = "x86"
-DEFAULT_DEPLOYMENT_MODE_LINUX = "standalone"
-DEFAULT_DEPLOYMENT_MODE_WINDOWS = "standalone"
 DEFAULT_LOG_LEVEL_DEBUG = "trace"
 DEFAULT_LOG_LEVEL_RELEASE = "warn"
 DEFAULT_TIMEOUT = 600
@@ -56,14 +48,11 @@ KNOWN_MAKE_VARS: frozenset[str] = frozenset(
         "TARGET",
         "MACHINE",
         "RELEASE",
-        "DEPLOYMENT_MODE",
         "LOG_LEVEL",
         "TIMEOUT",
         "PROFILER",
-        "TIMESTAMP_MSG",
         "WHP",
         "IMAGE",
-        "CLH_DIR",
         "HOST_CPU",
         "MAKE_NO_PRINT",
         "MEMORY_SIZE",
@@ -244,16 +233,13 @@ class BuildConfig:
     target: str = DEFAULT_TARGET
     release: bool = False
     profile: bool = False
-    deployment_mode: str = ""
     log_level: str = ""
     timeout: int = DEFAULT_TIMEOUT
 
     profiler: bool = False
-    timestamp_msg: bool = False
     whp: bool = False
 
     nanvix_sdk: bool = False
-    l2_deployment: bool = False
     verus: bool = False
     _user_set_toolchain_dir: bool = False
 
@@ -271,11 +257,6 @@ class BuildConfig:
 
     def apply_platform_defaults(self, plat: PlatformInfo) -> None:
         """Apply platform-specific defaults that weren't set by the user."""
-        if not self.deployment_mode:
-            if plat.is_windows:
-                self.deployment_mode = DEFAULT_DEPLOYMENT_MODE_WINDOWS
-            else:
-                self.deployment_mode = DEFAULT_DEPLOYMENT_MODE_LINUX
         if not self.log_level:
             self.log_level = (
                 DEFAULT_LOG_LEVEL_RELEASE if self.release else DEFAULT_LOG_LEVEL_DEBUG
@@ -307,12 +288,6 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
             config.target = val
         case "RELEASE":
             config.release = val.lower() == "yes"
-        case "DEPLOYMENT_MODE":
-            if val not in VALID_DEPLOYMENT_MODES:
-                die(
-                    f"Invalid DEPLOYMENT_MODE={val}. Valid: {', '.join(VALID_DEPLOYMENT_MODES)}"
-                )
-            config.deployment_mode = val
         case "LOG_LEVEL":
             if val not in VALID_LOG_LEVELS:
                 die(f"Invalid LOG_LEVEL={val}. Valid: {', '.join(VALID_LOG_LEVELS)}")
@@ -324,8 +299,6 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
                 die(f"Invalid TIMEOUT={val}. Must be an integer.")
         case "PROFILER":
             config.profiler = val.lower() == "yes"
-        case "TIMESTAMP_MSG":
-            config.timestamp_msg = val.lower() == "yes"
         case "WHP":
             config.whp = val.lower() == "yes"
         case "HOST_CPU":
@@ -354,7 +327,7 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
             config.sysroot_dir = val
         case "VERBOSE":
             config.verbose = val.lower() == "yes"
-        case "SCCACHE" | "MAKE_NO_PRINT" | "VERUS_EXECUTABLE_DIR" | "CLH_DIR":
+        case "SCCACHE" | "MAKE_NO_PRINT" | "VERUS_EXECUTABLE_DIR":
             pass  # Passed through to Make verbatim; no z.py-side effect.
 
 
@@ -396,8 +369,6 @@ def parse_cli(argv: Sequence[str]) -> tuple[str, BuildConfig]:
             config.release = True
         elif arg == "--nanvix-sdk":
             config.nanvix_sdk = True
-        elif arg == "--l2-deployment":
-            config.l2_deployment = True
         elif arg == "--verus":
             config.verus = True
         elif arg == "--toolchain-dir":
@@ -800,8 +771,6 @@ def _assemble_build_make_args(
 
     # Windows platform defaults.
     if plat.is_windows:
-        if not any(a.startswith("DEPLOYMENT_MODE=") for a in user_args):
-            injected.append("DEPLOYMENT_MODE=standalone")
         if config.machine == "microvm" and not any(
             a.startswith("WHP=") for a in user_args
         ):
@@ -1038,20 +1007,17 @@ Options:
   --profile             Enable profiling (implies --release, passes PROFILER=yes).
   --release             Build in release mode.
   --nanvix-sdk          Build the Nanvix cross-compilation toolchain (setup only, Linux).
-  --l2-deployment       Build Cloud Hypervisor for L2 deployment (setup only, Linux).
   --toolchain-dir DIR   Toolchain directory (setup only, Linux, default: ~/toolchain).
 
 Build Parameters (after --):
   MACHINE=microvm                Target machine (default: microvm).
   RELEASE=yes|no                 Release mode.
-  DEPLOYMENT_MODE=MODE           standalone|single-process|multi-process|l2.
   LOG_LEVEL=LEVEL                trace|debug|info|warn|error|panic.
   PROFILER=yes|no                Enable profiling.
   TIMEOUT=SECONDS                Execution timeout (default: 600).
   WHP=yes|no                     Windows Hypervisor Platform.
   HOST_CPU=CPU                   Target CPU for host builds.
   MEMORY_SIZE=MB                 Memory size in megabytes (default: 128).
-  TIMESTAMP_MSG=yes|no           Enable message timestamping.
 
 Run Options (after --):
   -program <path>       Path to guest binary (default: bin/hello-rust-nostd.elf).
@@ -1067,8 +1033,6 @@ Examples:
   ./z clean                               Clean build artifacts.
   ./z setup                                Install core dev prerequisites.
   ./z setup --nanvix-sdk                   Also build the cross-compilation toolchain.
-  ./z setup --l2-deployment                Also build Cloud Hypervisor for L2.
-  ./z setup --nanvix-sdk --l2-deployment   Full setup including SDK and L2 support.
 """
 
 
@@ -1222,14 +1186,8 @@ def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
     print_info("Setting up Nanvix development environment...")
 
     # Warn if --toolchain-dir is provided without an opt-in flag.
-    if (
-        config._user_set_toolchain_dir
-        and not config.nanvix_sdk
-        and not config.l2_deployment
-    ):
-        print_warning(
-            "--toolchain-dir has no effect without --nanvix-sdk or --l2-deployment."
-        )
+    if config._user_set_toolchain_dir and not config.nanvix_sdk:
+        print_warning("--toolchain-dir has no effect without --nanvix-sdk.")
 
     # Always install core system dependencies.
     core_script = plat.repo_root / "scripts" / "setup" / "ubuntu-core.sh"
@@ -1252,19 +1210,8 @@ def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
         else:
             print_warning(f"Setup script not found: {sdk_script}")
 
-    # Install L2 deployment build dependencies (kernel build needs bison, flex, etc.).
-    if config.l2_deployment:
-        l2_script = plat.repo_root / "scripts" / "setup" / "ubuntu-l2.sh"
-        if l2_script.exists():
-            print_info("Installing L2 deployment dependencies (requires sudo)...")
-            rc = subprocess.run(["sudo", str(l2_script)]).returncode
-            if rc != 0:
-                die("Failed to install L2 deployment dependencies.")
-        else:
-            print_warning(f"Setup script not found: {l2_script}")
-
     # Validate and prepare toolchain directory when needed.
-    if config.nanvix_sdk or config.l2_deployment:
+    if config.nanvix_sdk:
         print_info(f"Toolchain directory: {config.toolchain_dir}")
         validate_toolchain_dir_location(config.toolchain_dir, plat.repo_root)
 
@@ -1299,17 +1246,6 @@ def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
         ).returncode
         if rc != 0:
             die("Toolchain setup failed.")
-
-    # Build Cloud Hypervisor for L2 deployment.
-    if config.l2_deployment:
-        clh_script = plat.repo_root / "scripts" / "setup" / "cloud-hypervisor.sh"
-        if not clh_script.exists():
-            die(f"Cloud Hypervisor setup script not found: {clh_script}")
-
-        print_info(f"Running Cloud Hypervisor setup: {clh_script}")
-        rc = subprocess.run([str(clh_script), str(config.toolchain_dir)]).returncode
-        if rc != 0:
-            die("Cloud Hypervisor setup failed.")
 
     # Verus formal verification toolchain (optional).
     if config.verus:

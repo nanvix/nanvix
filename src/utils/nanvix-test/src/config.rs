@@ -7,7 +7,6 @@
 
 use ::anyhow::Result;
 use ::globset::GlobSet;
-use ::nanvixd::config::DEFAULT_TMP_DIRECTORY;
 use ::std::{
     fs,
     path::{
@@ -30,13 +29,8 @@ use ::toml::{
 // These values control how long the test harness waits for nanvixd to exit gracefully after
 // sending SIGINT. If the timeout is exceeded, SIGKILL is sent.
 //
-// Default (non-L2): 10 attempts × 100ms = 1 second total.
-// This is sufficient for nanvixd to propagate shutdown to linuxd (which has an internal 1-second
-// shutdown timeout) and perform basic cleanup.
-//
-// L2 mode uses higher values (60 attempts × 300ms = 18 seconds) because shutdown must propagate
-// through multiple layers: nanvixd → cloud-hypervisor → guest Linux VM. Each layer adds latency
-// and the nested VM may have pending I/O or cleanup work.
+// 10 attempts × 100ms = 1 second total.
+// This is sufficient for nanvixd to stop the user VM and perform basic cleanup.
 // -------------------------------------------------------------------------------------------------
 
 /// Default number of Nanvix Daemon shutdown attempts when omitted in the TOML file.
@@ -69,15 +63,11 @@ const DEFAULT_TEST_ITERATIONS: usize = 1;
 // -------------------------------------------------------------------------------------------------
 // User VM Cleanup Configuration
 // -------------------------------------------------------------------------------------------------
-// Brief pause between User VM teardowns to avoid resource contention (file descriptors, sockets,
-// network namespaces). L2 mode requires longer delays because cloud-hypervisor process teardown
-// and nested VM cleanup are slower.
+// Brief pause between User VM teardowns to avoid resource contention (file descriptors, sockets).
 // -------------------------------------------------------------------------------------------------
 
 /// Default delay (in milliseconds) before launching another User VM.
 const DEFAULT_CLEANUP_USERVM_SLEEP_DURATION_MS: u64 = 10;
-/// Default delay (in milliseconds) before launching another User VM when L2 mode is enabled.
-const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 500;
 
 // -------------------------------------------------------------------------------------------------
 // Stream Collection Configuration
@@ -91,27 +81,11 @@ const DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS: u64 = 500;
 const DEFAULT_STREAM_COLLECTION_TIMEOUT_MS: u64 = 300_000;
 
 // -------------------------------------------------------------------------------------------------
-// TCP TIME_WAIT Cleanup Configuration
-// -------------------------------------------------------------------------------------------------
-// After nanvixd exits, its HTTP port may linger in TCP TIME_WAIT state for up to 60 seconds
-// (Linux default: 2 × MSL where MSL = 30 seconds). The test harness waits for this state to
-// clear before the next test iteration to avoid "address already in use" errors.
-//
-// Max wait: 70 seconds (60s TIME_WAIT + 10s headroom).
-// Poll interval: 2 seconds balances responsiveness with avoiding excessive syscalls.
-// -------------------------------------------------------------------------------------------------
-
-/// Default maximum duration (in seconds) spent waiting for lingering TCP TIME_WAIT sockets.
-const DEFAULT_TCP_CLEANUP_MAX_WAIT_SECONDS: u64 = 70;
-/// Default polling interval (in seconds) used while monitoring TIME_WAIT sockets.
-const DEFAULT_TCP_CLEANUP_POLL_INTERVAL_SECONDS: u64 = 2;
-
-// -------------------------------------------------------------------------------------------------
 // Gateway Connection Configuration
 // -------------------------------------------------------------------------------------------------
 // These values control the client-side connection loop when connecting to a User VM gateway
-// socket. User VM startup time is variable (depends on kernel boot, linuxd initialization,
-// workload size), so exponential backoff is used.
+// socket. User VM startup time is variable (depends on kernel boot and workload size), so
+// exponential backoff is used.
 //
 // Max attempts: 100, with exponential backoff from 10ms to 500ms.
 // Total timeout: 15 seconds hard cap on the connection loop.
@@ -129,6 +103,14 @@ const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS: u64 = 15_000;
 // -------------------------------------------------------------------------------------------------
 // Miscellaneous
 // -------------------------------------------------------------------------------------------------
+
+/// Default temporary directory used for runner cleanup on Unix hosts.
+#[cfg(unix)]
+const DEFAULT_TMP_DIRECTORY: &str = "/tmp";
+
+/// Default temporary directory used for runner cleanup on Windows hosts.
+#[cfg(windows)]
+const DEFAULT_TMP_DIRECTORY: &str = ".";
 
 /// Placeholder token replaced with the configured sysroot path inside test definitions.
 const SYSROOT_PATH_PLACEHOLDER: &str = "${sysroot_path}";
@@ -288,11 +270,6 @@ pub struct RunnerConfig {
     pub ipv4_addr: String,
     /// TCP port where the Nanvix Daemon exposes its HTTP endpoint.
     pub port_num: u16,
-    /// Optional hwloc topology description forwarded to the Nanvix Daemon. Empty strings are
-    /// treated as unset values.
-    pub hwloc_file_path: Option<String>,
-    /// Flag indicating whether the Nanvix Daemon should run with L2 mode enabled.
-    pub l2_enabled: bool,
     /// Flag enabling fatal mode, causing warnings to fail tests when set to `true`.
     pub fatal: bool,
     /// Path to the toolchain root; its `bin/` directory is forwarded to the Nanvix Daemon.
@@ -307,19 +284,10 @@ pub struct RunnerConfig {
     pub nanvixd_ready_attempts_max: usize,
     /// Interval (in milliseconds) between readiness probes for the Nanvix Daemon HTTP endpoint.
     pub nanvixd_ready_retry_interval_ms: u64,
-    /// Netns pool prefill size forwarded to the Nanvix Daemon.
-    pub netns_pool_size: usize,
     /// Milliseconds to wait after tearing down a User VM before spawning the next workload.
     pub cleanup_uservm_sleep_duration_ms: u64,
-    /// Milliseconds to wait after tearing down a User VM when L2 mode is enabled.
-    pub cleanup_l2_uservm_sleep_duration_ms: u64,
     /// Maximum time (in milliseconds) allowed for collecting interactive stdout/stderr streams.
     pub stream_collection_timeout_ms: u64,
-    /// Maximum duration (in seconds) spent waiting for lingering TIME_WAIT sockets during
-    /// cleanup.
-    pub tcp_cleanup_max_wait_seconds: u64,
-    /// Polling interval (in seconds) used between TIME_WAIT socket inspections.
-    pub tcp_cleanup_poll_interval_seconds: u64,
     /// Maximum number of attempts performed while connecting to a uservm gateway.
     pub gateway_connect_max_attempts: usize,
     /// Initial backoff (in milliseconds) between uservm gateway connection retries.
@@ -367,8 +335,6 @@ impl RunnerConfig {
             )?,
             ipv4_addr: read_required_string(table, "ipv4_addr", "runner.ipv4_addr")?,
             port_num: read_u16_required(table, "port_num", "runner.port_num")?,
-            hwloc_file_path: read_hwloc_file_path(table)?,
-            l2_enabled: read_bool_with_default(table, "l2_enabled", "runner.l2_enabled", false)?,
             fatal: read_bool_with_default(table, "fatal", "runner.fatal", false)?,
             toolchain_path: read_required_string(table, "toolchain_path", "runner.toolchain_path")?,
             sysroot_path: read_required_non_empty_string(
@@ -400,41 +366,17 @@ impl RunnerConfig {
                 "runner.nanvixd_ready_retry_interval_ms",
                 default_nanvixd_ready_retry_interval_ms(),
             )?,
-            netns_pool_size: read_usize_with_default(
-                table,
-                "netns_pool_size",
-                "runner.netns_pool_size",
-                default_netns_pool_size(),
-            )?,
             cleanup_uservm_sleep_duration_ms: read_u64_with_default(
                 table,
                 "cleanup_uservm_sleep_duration_ms",
                 "runner.cleanup_uservm_sleep_duration_ms",
                 default_cleanup_uservm_sleep_duration_ms(),
             )?,
-            cleanup_l2_uservm_sleep_duration_ms: read_u64_with_default(
-                table,
-                "cleanup_l2_uservm_sleep_duration_ms",
-                "runner.cleanup_l2_uservm_sleep_duration_ms",
-                default_cleanup_l2_uservm_sleep_duration_ms(),
-            )?,
             stream_collection_timeout_ms: read_u64_with_default(
                 table,
                 "stream_collection_timeout_ms",
                 "runner.stream_collection_timeout_ms",
                 default_stream_collection_timeout_ms(),
-            )?,
-            tcp_cleanup_max_wait_seconds: read_u64_with_default(
-                table,
-                "tcp_cleanup_max_wait_seconds",
-                "runner.tcp_cleanup_max_wait_seconds",
-                default_tcp_cleanup_max_wait_seconds(),
-            )?,
-            tcp_cleanup_poll_interval_seconds: read_u64_with_default(
-                table,
-                "tcp_cleanup_poll_interval_seconds",
-                "runner.tcp_cleanup_poll_interval_seconds",
-                default_tcp_cleanup_poll_interval_seconds(),
             )?,
             gateway_connect_max_attempts: read_usize_with_default(
                 table,
@@ -516,15 +458,6 @@ impl RunnerConfig {
             self.sysroot_path.as_str(),
             "runner.sysroot_path",
         )?;
-
-        if let Some(path) = self.hwloc_file_path.clone() {
-            self.hwloc_file_path = Some(resolve_with_invocation_dirs(
-                base_dir,
-                invocation_dir.as_path(),
-                path.as_str(),
-                "runner.hwloc_file_path",
-            )?);
-        }
 
         Ok(())
     }
@@ -924,19 +857,6 @@ fn default_nanvixd_ready_retry_interval_ms() -> u64 {
 ///
 /// # Description
 ///
-/// Returns the default netns pool prefill size for the Nanvix Daemon.
-///
-/// # Return Value
-///
-/// Returns the netns pool size applied when the field is omitted.
-///
-fn default_netns_pool_size() -> usize {
-    ::nanvixd::args::Args::DEFAULT_NETNS_POOL_SIZE
-}
-
-///
-/// # Description
-///
 /// Returns the default temporary directory path applied when the configuration omits the field.
 ///
 /// # Return Value
@@ -976,19 +896,6 @@ fn default_cleanup_uservm_sleep_duration_ms() -> u64 {
 ///
 /// # Description
 ///
-/// Provides the default cleanup delay between User VMs when L2 mode is enabled.
-///
-/// # Return Value
-///
-/// Returns the milliseconds spent waiting before launching the next User VM under L2 mode.
-///
-fn default_cleanup_l2_uservm_sleep_duration_ms() -> u64 {
-    DEFAULT_CLEANUP_L2_USERVM_SLEEP_DURATION_MS
-}
-
-///
-/// # Description
-///
 /// Provides the default timeout applied when collecting interactive stdout/stderr streams.
 ///
 /// # Return Value
@@ -997,32 +904,6 @@ fn default_cleanup_l2_uservm_sleep_duration_ms() -> u64 {
 ///
 fn default_stream_collection_timeout_ms() -> u64 {
     DEFAULT_STREAM_COLLECTION_TIMEOUT_MS
-}
-
-///
-/// # Description
-///
-/// Provides the default timeout applied when waiting for lingering TCP TIME_WAIT sockets.
-///
-/// # Return Value
-///
-/// Returns the maximum number of seconds spent waiting for TCP cleanup.
-///
-fn default_tcp_cleanup_max_wait_seconds() -> u64 {
-    DEFAULT_TCP_CLEANUP_MAX_WAIT_SECONDS
-}
-
-///
-/// # Description
-///
-/// Provides the default polling interval applied when monitoring TCP TIME_WAIT sockets.
-///
-/// # Return Value
-///
-/// Returns the number of seconds spent between TCP cleanup polls.
-///
-fn default_tcp_cleanup_poll_interval_seconds() -> u64 {
-    DEFAULT_TCP_CLEANUP_POLL_INTERVAL_SECONDS
 }
 
 ///
@@ -1590,33 +1471,6 @@ fn read_optional_string_array(
 ///
 /// # Description
 ///
-/// Reads an optional string and filters out whitespace-only values.
-///
-/// # Parameters
-///
-/// - `table`: Table that stores the target field.
-/// - `key`: Key used to retrieve the string.
-/// - `field_name`: Fully qualified field name used in error messages.
-///
-/// # Return Value
-///
-/// Returns `Some(String)` when the field exists and is non-empty; otherwise returns `None`.
-///
-/// # Errors
-///
-/// Returns an error when the field exists but is not a string.
-///
-fn read_optional_non_empty_string(
-    table: &Table,
-    key: &str,
-    field_name: &str,
-) -> Result<Option<String>> {
-    Ok(read_optional_string(table, key, field_name)?.filter(|value| !value.trim().is_empty()))
-}
-
-///
-/// # Description
-///
 /// Reads a boolean field from the TOML table, applying a default when the field is absent.
 ///
 /// # Parameters
@@ -1803,27 +1657,6 @@ fn parse_non_negative_integer(value: &Value, field_name: &str) -> Result<u64> {
             Err(::anyhow::anyhow!(reason))
         },
     }
-}
-
-///
-/// # Description
-///
-/// Reads the optional `hwloc_file_path` field from the runner table, ignoring empty strings.
-///
-/// # Parameters
-///
-/// - `table`: Table that stores the optional hwloc path.
-///
-/// # Return Value
-///
-/// Returns `Some(String)` when the field exists and is non-empty; otherwise returns `None`.
-///
-/// # Errors
-///
-/// Returns an error when the field exists but is not a string.
-///
-fn read_hwloc_file_path(table: &Table) -> Result<Option<String>> {
-    read_optional_non_empty_string(table, "hwloc_file_path", "runner.hwloc_file_path")
 }
 
 //==================================================================================================

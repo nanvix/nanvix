@@ -10,7 +10,7 @@
 //!
 //! This module routes a descriptor through a single seam, [`resolve`]. The answer comes from, in
 //! order: a coherent cache entry; otherwise an authoritative query to `vfsd` ([`resolve_via_vfsd`]).
-//! If no guest `vfsd` exists in the current run mode, the standard streams fall back to the kernel
+//! If no guest `vfsd` exists, the standard streams fall back to the kernel
 //! console by number. A descriptor created locally (`open`, `pipe`, `socket`) or learned from
 //! `vfsd` is recorded, so the `vfsd` query is reached only on a genuine miss or after an entry goes
 //! stale.
@@ -20,19 +20,15 @@
 //! `vfsd`. An entry older than that ([`is_coherent`]) is treated as stale and re-resolved, so a
 //! number reused for a different backend can never be answered from an outdated entry.
 
-#[cfg(any(feature = "standalone", test))]
 use ::alloc::collections::BTreeMap;
 #[cfg(test)]
 use ::core::sync::atomic::AtomicBool;
-#[cfg(any(feature = "standalone", test))]
 use ::core::sync::atomic::{
     AtomicU64,
     Ordering,
 };
-#[cfg(any(feature = "standalone", test))]
 use ::spin::Mutex;
 use ::sys::error::Error;
-#[cfg(any(feature = "standalone", test))]
 use ::sysapi::unistd::{
     STDERR_FILENO,
     STDIN_FILENO,
@@ -44,7 +40,6 @@ use ::sysapi::unistd::{
 //==================================================================================================
 
 /// The backend that serves a descriptor's operations.
-#[cfg(any(feature = "standalone", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Route {
     /// A console stream (`stdin`/`stdout`/`stderr`); I/O flows directly to the kernel.
@@ -62,7 +57,6 @@ pub(crate) enum Route {
 /// the standard stream number it aliases (`0`/`1`/`2`), and a socket reports the descriptor
 /// `networkd` assigned. Call sites address their backend through `backend_fd` rather than the
 /// caller-facing number.
-#[cfg(any(feature = "standalone", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Resolution {
     /// The backend that serves the descriptor.
@@ -72,7 +66,6 @@ pub(crate) struct Resolution {
 }
 
 /// Result of resolving a descriptor specifically for console I/O.
-#[cfg(feature = "standalone")]
 pub(crate) enum ConsoleLookup {
     /// The descriptor is a console stream.
     Console {
@@ -88,7 +81,6 @@ pub(crate) enum ConsoleLookup {
 }
 
 /// A cached resolution together with the `vfsd` table generation it was learned at.
-#[cfg(any(feature = "standalone", test))]
 #[derive(Debug, Clone, Copy)]
 struct CacheEntry {
     /// The backend that serves the descriptor.
@@ -100,7 +92,6 @@ struct CacheEntry {
 }
 
 /// Outcome of asking `vfsd` for an authoritative descriptor route.
-#[cfg(any(feature = "standalone", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VfsdResolution {
     /// `vfsd` returned an authoritative route.
@@ -120,7 +111,6 @@ enum VfsdResolution {
 /// Guarded by a [`spin::Mutex`] held only for the duration of a single map operation so the hot
 /// `read`/`write` path is never blocked on anything but a peer lookup, and never allocates on a
 /// resolve.
-#[cfg(any(feature = "standalone", test))]
 static CACHE: Mutex<BTreeMap<i32, CacheEntry>> = Mutex::new(BTreeMap::new());
 
 /// The newest `vfsd` table generation this process has observed.
@@ -129,20 +119,17 @@ static CACHE: Mutex<BTreeMap<i32, CacheEntry>> = Mutex::new(BTreeMap::new());
 /// resolution query) advances this through [`observe_epoch`]. A cache entry learned at an older
 /// generation is stale ([`is_coherent`]) and must be re-resolved, because the descriptor it
 /// describes may since have been closed and the number reused for a different backend.
-#[cfg(any(feature = "standalone", test))]
 static EXPECTED_EPOCH: AtomicU64 = AtomicU64::new(0);
 
 /// Records that `vfsd` has advanced its table generation to at least `epoch`.
 ///
 /// Monotonic via a max, so an out-of-order or duplicated response can never move the observed
 /// generation backwards and resurrect a stale entry.
-#[cfg(any(feature = "standalone", test))]
 fn observe_epoch(epoch: u64) {
     EXPECTED_EPOCH.fetch_max(epoch, Ordering::Relaxed);
 }
 
-/// Derives the fallback console route for run modes that have no guest `vfsd`.
-#[cfg(any(feature = "standalone", test))]
+/// Derives the fallback console route when no guest `vfsd` is available.
 fn derive_console(fd: i32) -> Option<Resolution> {
     if fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO {
         Some(Resolution {
@@ -161,7 +148,6 @@ fn derive_console(fd: i32) -> Option<Resolution> {
 /// has observed from `vfsd`. A descriptor-table mutation advances that generation, so an entry that
 /// predates the latest one is treated as stale and re-resolved, guaranteeing a reused number is
 /// never answered from an entry that described its previous occupant.
-#[cfg(any(feature = "standalone", test))]
 fn is_coherent(entry_epoch: u64) -> bool {
     entry_epoch >= EXPECTED_EPOCH.load(Ordering::Relaxed)
 }
@@ -173,7 +159,6 @@ fn is_coherent(entry_epoch: u64) -> bool {
 /// ([`resolve_via_vfsd`]).
 /// A cache hit on a coherent entry holds the lock only across a single map probe and never
 /// round-trips, so tight `read`/`write` loops stay local.
-#[cfg(any(feature = "standalone", test))]
 pub(crate) fn resolve(fd: i32) -> Option<Resolution> {
     {
         let cache: ::spin::MutexGuard<'_, BTreeMap<i32, CacheEntry>> = CACHE.lock();
@@ -196,7 +181,6 @@ pub(crate) fn resolve(fd: i32) -> Option<Resolution> {
 }
 
 /// Resolves `fd` for console I/O and reports whether vfsd owns the descriptor slot.
-#[cfg(feature = "standalone")]
 pub(crate) fn resolve_console(fd: i32) -> ConsoleLookup {
     {
         let cache: ::spin::MutexGuard<'_, BTreeMap<i32, CacheEntry>> = CACHE.lock();
@@ -235,10 +219,8 @@ pub(crate) fn resolve_console(fd: i32) -> ConsoleLookup {
 
 /// Resolves `fd` and returns the descriptor expected by `vfsd`.
 ///
-/// In standalone mode, fd-taking VFS syscalls must reject console, socket, and invalid descriptors
-/// rather than sending the caller-facing number directly to `vfsd`. In hosted mode descriptors are
-/// still interpreted by `linuxd`, so the raw descriptor is already the backend descriptor.
-#[cfg(feature = "standalone")]
+/// File-descriptor-taking VFS syscalls must reject console, socket, and invalid descriptors rather
+/// than sending the caller-facing number directly to `vfsd`.
 pub(crate) fn resolve_vfs(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
@@ -251,22 +233,12 @@ pub(crate) fn resolve_vfs(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     }
 }
 
-/// Resolves `fd` and returns the descriptor expected by the VFS backend.
-///
-/// Non-standalone builds route these syscalls to `linuxd`, which interprets the caller-facing
-/// descriptor directly.
-#[cfg(not(feature = "standalone"))]
-pub(crate) fn resolve_vfs(fd: i32, _syscall_name: &str) -> Result<i32, Error> {
-    Ok(fd)
-}
-
 /// Resolves `fd` and returns the `networkd` descriptor backing the socket.
 ///
 /// Socket I/O syscalls take a flat descriptor but must address `networkd` by the descriptor it
-/// assigned (the backend fd). In standalone mode this consults the resolution cache (querying
+/// assigned (the backend fd). This consults the resolution cache (querying
 /// `vfsd` on a miss); a descriptor that is not a socket is rejected with `ENOTSOCK`. The flat
 /// descriptor never reaches `networkd`.
-#[cfg(feature = "standalone")]
 pub(crate) fn resolve_socket(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
@@ -279,15 +251,6 @@ pub(crate) fn resolve_socket(fd: i32, syscall_name: &str) -> Result<i32, Error> 
     }
 }
 
-/// Resolves `fd` to the descriptor expected by the socket backend in hosted mode.
-///
-/// Non-standalone builds route socket syscalls to the host, which interprets the caller-facing
-/// descriptor directly, so the descriptor is returned unchanged.
-#[cfg(not(feature = "standalone"))]
-pub(crate) fn resolve_socket(fd: i32, _syscall_name: &str) -> Result<i32, Error> {
-    Ok(fd)
-}
-
 /// Resolves `fd` for an operation that `vfsd` serves on its flat slot table itself — the descriptor
 /// flag and identity queries (`fcntl(F_GETFD/F_SETFD/F_GETFL/F_SETFL)`, `fstat`) and the descriptor
 /// duplication family (`dup`/`dup2`/`fcntl(F_DUPFD)`).
@@ -298,7 +261,6 @@ pub(crate) fn resolve_socket(fd: i32, _syscall_name: &str) -> Result<i32, Error>
 /// route I/O to the kernel, but these operations act on the slot `vfsd` owns, which is addressed by
 /// the flat number. Sockets and unknown descriptors are rejected (socket participation in this
 /// table lands in a later plan).
-#[cfg(feature = "standalone")]
 pub(crate) fn resolve_table_op(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
@@ -311,15 +273,6 @@ pub(crate) fn resolve_table_op(fd: i32, syscall_name: &str) -> Result<i32, Error
     }
 }
 
-/// Resolves `fd` for a `vfsd` flat-table operation in hosted mode.
-///
-/// Non-standalone builds route these syscalls to `linuxd`, which interprets the caller-facing
-/// descriptor directly, so the descriptor is returned unchanged.
-#[cfg(not(feature = "standalone"))]
-pub(crate) fn resolve_table_op(fd: i32, _syscall_name: &str) -> Result<i32, Error> {
-    Ok(fd)
-}
-
 /// Resolves `fd` for a terminal-control `ioctl` request (`TCGETS`/`TCSETS`/`TIOCGWINSZ`/
 /// `TIOCSWINSZ`) and returns the flat descriptor `vfsd` expects.
 ///
@@ -328,7 +281,6 @@ pub(crate) fn resolve_table_op(fd: i32, _syscall_name: &str) -> Result<i32, Erro
 /// non-console descriptor is rejected with `ENOTTY`; an unknown descriptor is rejected with `EBADF`.
 /// This is the ioctl counterpart of [`resolve_socket`] and [`resolve_vfs`], the "new resolver arm"
 /// for terminal probing.
-#[cfg(feature = "standalone")]
 pub(crate) fn resolve_tty(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
@@ -352,7 +304,6 @@ pub(crate) fn resolve_tty(fd: i32, syscall_name: &str) -> Result<i32, Error> {
 /// so the cache holds an authoritative entry rather than re-querying on every use. The reported
 /// generation also advances [`EXPECTED_EPOCH`], so an entry recorded now is coherent against the
 /// table state that produced it. An existing entry for `fd` is replaced.
-#[cfg(any(feature = "standalone", test))]
 pub(crate) fn record(fd: i32, route: Route, backend_fd: i32, epoch: u64) {
     observe_epoch(epoch);
     CACHE.lock().insert(
@@ -371,7 +322,7 @@ pub(crate) fn record(fd: i32, route: Route, backend_fd: i32, epoch: u64) {
 /// that this process did not itself create, or one whose entry went stale. The answer is recorded
 /// so subsequent uses hit the cache. Returns `None` if `vfsd` reports no slot for `fd` (an invalid
 /// descriptor).
-#[cfg(all(feature = "standalone", not(test)))]
+#[cfg(not(test))]
 fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
     use crate::{
         unistd::message::{
@@ -394,6 +345,11 @@ fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
         Ok(pid) => pid,
         Err(_) => return VfsdResolution::Unavailable,
     };
+    // A no-vfs image may assign the reserved vfsd pid to its workload. In that case a resolution
+    // request would loop back to the caller instead of reaching a descriptor authority.
+    if pid == crate::VFS_DESTINATION {
+        return VfsdResolution::Unavailable;
+    }
 
     // Send the resolution query to vfsd and await its authoritative answer.
     let request: Message =
@@ -444,9 +400,9 @@ fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
 
 /// Test stand-in for the `vfsd` resolution query.
 ///
-/// Host unit tests run without the `standalone` feature, so they cannot perform the real IPC. This
-/// reads the descriptor's authoritative route from [`MOCK_VFSD`], which a test populates to model
-/// `vfsd`'s table, and records it exactly as the production path would.
+/// Host unit tests cannot perform the real IPC. This reads the descriptor's authoritative route
+/// from [`MOCK_VFSD`], which a test populates to model `vfsd`'s table, and records it exactly as
+/// the production path would.
 #[cfg(test)]
 fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
     if MOCK_VFSD_UNAVAILABLE.load(Ordering::Relaxed) {
@@ -463,7 +419,7 @@ fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
 #[cfg(test)]
 static MOCK_VFSD: Mutex<BTreeMap<i32, (Route, i32, u64)>> = Mutex::new(BTreeMap::new());
 
-/// Test switch that models a run mode without a guest `vfsd`.
+/// Test switch that models an unavailable guest `vfsd`.
 #[cfg(test)]
 static MOCK_VFSD_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 
@@ -471,7 +427,6 @@ static MOCK_VFSD_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
 ///
 /// Called when a descriptor is destroyed (`close`) so a number later reused by a different backend
 /// cannot be answered from a stale entry.
-#[cfg(any(feature = "standalone", test))]
 pub(crate) fn invalidate(fd: i32) {
     CACHE.lock().remove(&fd);
 }
@@ -565,7 +520,7 @@ mod tests {
         clear();
     }
 
-    /// Tests the direct-ELF run mode where no guest `vfsd` is available: standard descriptors still
+    /// Tests the direct-ELF path where no guest `vfsd` is available: standard descriptors still
     /// route to the kernel console so stdout/stderr tests can report results.
     #[test]
     fn standard_descriptor_falls_back_when_vfsd_unavailable() {
@@ -621,46 +576,6 @@ mod tests {
             Some(STDOUT_FILENO),
             "backend_fd collides with the live console's own flat slot"
         );
-
-        clear();
-    }
-
-    /// Tests that hosted builds leave VFS descriptor interpretation to linuxd.
-    #[test]
-    fn hosted_resolve_vfs_returns_raw_fd() {
-        let _guard = CACHE_TEST_GUARD.lock();
-        clear();
-
-        let backend_fd: i32 = resolve_vfs(7, "test").expect("hosted resolve_vfs should succeed");
-        assert_eq!(backend_fd, 7, "hosted mode must pass raw descriptors through");
-
-        clear();
-    }
-
-    /// Tests that hosted builds pass a flat-table operation's descriptor through unchanged, leaving
-    /// interpretation to linuxd.
-    #[test]
-    fn hosted_resolve_table_op_returns_raw_fd() {
-        let _guard = CACHE_TEST_GUARD.lock();
-        clear();
-
-        let backend_fd: i32 =
-            resolve_table_op(9, "test").expect("hosted resolve_table_op should succeed");
-        assert_eq!(backend_fd, 9, "hosted mode must pass raw descriptors through");
-
-        clear();
-    }
-
-    /// Tests that hosted builds leave socket descriptor interpretation to the host backend, passing
-    /// the descriptor through unchanged.
-    #[test]
-    fn hosted_resolve_socket_returns_raw_fd() {
-        let _guard = CACHE_TEST_GUARD.lock();
-        clear();
-
-        let backend_fd: i32 =
-            resolve_socket(11, "test").expect("hosted resolve_socket should succeed");
-        assert_eq!(backend_fd, 11, "hosted mode must pass raw descriptors through");
 
         clear();
     }

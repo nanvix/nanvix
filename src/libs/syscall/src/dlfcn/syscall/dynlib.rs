@@ -19,6 +19,7 @@ use ::alloc::{
     collections::{
         btree_map::BTreeMap,
         btree_set::BTreeSet,
+        vec_deque::VecDeque,
     },
     ffi::CString,
     fmt,
@@ -31,14 +32,26 @@ use ::alloc::{
     vec::Vec,
 };
 use ::arch::mem::PAGE_ALIGNMENT;
-use ::core::mem;
+use ::core::{
+    mem,
+    sync::atomic::{
+        AtomicBool,
+        AtomicI32,
+        AtomicU32,
+        Ordering,
+    },
+};
 use ::elf::{
+    GnuHashTable,
+    Lookup,
     RelocationEntry,
     RelocationTable,
     RelocationType,
     StringTable,
     Symbol,
+    SymbolHashTable,
     SymbolTable,
+    SysvHashTable,
 };
 use ::goblin::elf::{
     Elf,
@@ -78,11 +91,39 @@ use ::type_safe::UnalignedPointer;
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub struct DlHandle(c_int);
 
+/// First loader-generated library handle.
+const FIRST_GENERATED_HANDLE: u32 = 1;
+
+/// Last loader-generated library handle, keeping [`DlHandle::GLOBAL`] reserved.
+const LAST_GENERATED_HANDLE: u32 = c_int::MAX as u32 - 1;
+
+/// Monotonically increasing source of loader-generated library handles.
+static NEXT_HANDLE: AtomicU32 = AtomicU32::new(FIRST_GENERATED_HANDLE);
+
 impl DlHandle {
     /// Sentinel handle returned by `dlopen(NULL)` representing the global
-    /// symbol scope (main executable + pre-loaded libraries). This value
-    /// never collides with real file-descriptor-based handles.
+    /// symbol scope (main executable + pre-loaded libraries). It is drawn from
+    /// the very top of the handle space, so it never collides with a
+    /// loader-generated handle.
     pub const GLOBAL: Self = DlHandle(c_int::MAX);
+
+    /// Allocates a fresh handle that is unique for the lifetime of the process.
+    fn allocate() -> Result<Self, Error> {
+        match NEXT_HANDLE.try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            if next <= LAST_GENERATED_HANDLE {
+                Some(next + 1)
+            } else {
+                None
+            }
+        }) {
+            Ok(handle) => Ok(DlHandle(handle as c_int)),
+            Err(_) => {
+                let reason: &str = "dynamic library handle space exhausted";
+                ::syslog::warn!("allocate(): {}", reason);
+                Err(Error::new(ErrorCode::ValueOverflow, reason))
+            },
+        }
+    }
 
     /// Casts the target handle to a pointer.
     pub fn as_mut_ptr(&self) -> *mut c_void {
@@ -92,6 +133,95 @@ impl DlHandle {
     /// Casts a mutable pointer to the target handle.
     pub fn from_mut_ptr(ptr: *mut c_void) -> Self {
         DlHandle(ptr as c_int)
+    }
+}
+
+//==================================================================================================
+// InitState
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Shared, lock-free construction state for a dynamically loaded library.
+///
+/// `dlopen` releases [`DYNAMIC_LIBRARY_REGISTRY`](super::DYNAMIC_LIBRARY_REGISTRY)
+/// before running a newly loaded library's `.init_array` constructors, so that a
+/// constructor may legally call back into the loader (`dlsym`, and — for a
+/// re-entrant open of the same library from its own constructor — `dlopen`)
+/// without deadlocking. That released window let a *concurrent* `dlopen` of the
+/// same filename observe the library as "loaded" on the dedup fast path and
+/// return its handle before the constructors had run.
+///
+/// This state closes the window. The dedup fast path waits on
+/// [`constructors_done`](Self::constructors_done) before handing back a handle,
+/// while a re-entrant open from the *constructing* thread itself is detected via
+/// [`constructor_tid`](Self::constructor_tid) and returns immediately — matching
+/// the System V gABI rule that constructors run exactly once, on the loading
+/// thread (and avoiding a self-deadlock).
+///
+/// The state lives behind an [`Arc`] so a waiting `dlopen` can hold on to it and
+/// poll it after dropping every dlfcn lock.
+///
+pub struct InitState {
+    /// Set to `true` once this library's `.init_array` constructors have
+    /// finished running. Observed with `Acquire` ordering by a concurrent
+    /// `dlopen` so the constructors' writes are visible once it returns.
+    constructors_done: AtomicBool,
+    /// Raw identifier of the thread that is running (or is about to run) this
+    /// library's constructors. Valid only while `constructors_done` is `false`;
+    /// initialized to [`Self::NO_THREAD`] when no owner is known.
+    constructor_tid: AtomicI32,
+}
+
+impl InitState {
+    /// Sentinel meaning "no constructing thread recorded yet". Distinct from
+    /// every real (non-negative) thread identifier.
+    const NO_THREAD: i32 = -1;
+
+    /// Creates a fresh state for a library whose constructors have not run.
+    fn new() -> Self {
+        Self {
+            constructors_done: AtomicBool::new(false),
+            constructor_tid: AtomicI32::new(Self::NO_THREAD),
+        }
+    }
+
+    /// Records the thread that will run this library's constructors.
+    ///
+    /// `dlopen` calls this while `DYNAMIC_LIBRARY_REGISTRY` is held — before the
+    /// lock is released and constructors begin — so no concurrent observer can
+    /// see the pre-set [`Self::NO_THREAD`] sentinel.
+    pub fn set_constructor_thread(&self, tid: i32) {
+        self.constructor_tid.store(tid, Ordering::Relaxed);
+    }
+
+    /// Marks this library's constructors as finished, releasing any concurrent
+    /// `dlopen` blocked in [`wait_until_constructed`](Self::wait_until_constructed).
+    pub fn mark_constructed(&self) {
+        self.constructors_done.store(true, Ordering::Release);
+    }
+
+    /// Blocks until this library's constructors have finished.
+    ///
+    /// Returns immediately if the constructors are already done, or if the
+    /// calling thread (`current_tid`) is the very thread running them — a
+    /// re-entrant `dlopen` from a constructor must not wait on itself.
+    /// Otherwise it spins, yielding the CPU so the constructing thread is
+    /// scheduled, until the constructors complete.
+    pub fn wait_until_constructed(&self, current_tid: i32) {
+        if self.constructors_done.load(Ordering::Acquire) {
+            return;
+        }
+        if self.constructor_tid.load(Ordering::Relaxed) == current_tid {
+            return;
+        }
+        while !self.constructors_done.load(Ordering::Acquire) {
+            // Yield so the constructing thread makes progress; fall back to a
+            // spin hint if the scheduler kernel call is unavailable.
+            let _ = ::sys::kcall::sched::__kcall_sched_yield();
+            ::core::hint::spin_loop();
+        }
     }
 }
 
@@ -107,18 +237,30 @@ impl DlHandle {
 pub struct DynamicLibrary {
     /// Library name.
     filename: CString,
+    /// Stable, loader-generated handle that uniquely identifies this library
+    /// for its whole lifetime.
+    handle: DlHandle,
     /// Underlying file descriptor.
     fd: RegularFile,
     /// Load address.
     load_address: VirtualAddress,
     /// Memory segments.
     _segments: Vec<MemorySegment>, // Keep this here to prevent memory drop.
-    /// Dependencies.
-    dependencies: BTreeMap<String, Option<Arc<Mutex<Self>>>>,
+    /// Dependencies, in `DT_NEEDED` order.
+    ///
+    /// Stored as an ordered list rather than a map so symbol resolution can
+    /// search dependencies in the exact order the linker recorded them — the
+    /// order glibc walks when it builds an object's `l_searchlist` — instead of
+    /// an arbitrary alphabetical order.
+    dependencies: Vec<(String, Option<Arc<Mutex<Self>>>)>,
     /// Dynamic symbols.
     dynsym: SymbolTable,
     /// Dynamic symbols names.
     dynstr: StringTable,
+    /// Symbol-lookup accelerator (`DT_HASH` / `DT_GNU_HASH`), when the object
+    /// carries a usable hash section. `None` falls back to a linear `.dynsym`
+    /// scan in [`find`](DynamicLibrary::find).
+    hash: Option<SymbolHashTable>,
     /// Relocation table for global functions.
     dynplt: Option<RelocationTable>,
     /// Relocation table for global variables.
@@ -129,6 +271,18 @@ pub struct DynamicLibrary {
     fini_array: Option<(usize, usize)>,
     /// `DT_RUNPATH` directories of this library, already split on `:`.
     runpaths: Vec<String>,
+    /// Shared construction state, used to serialize concurrent `dlopen` calls
+    /// against this library's `.init_array` constructors.
+    init_state: Arc<InitState>,
+    /// Number of outstanding direct `dlopen()` handles that name this library.
+    ///
+    /// Mirrors glibc's `l_direct_opencount`: every `dlopen()` that resolves to
+    /// this file — including a cache hit that returns an already-loaded handle —
+    /// increments it, and every matching `dlclose()` decrements it. The library
+    /// only becomes a candidate for unloading once this count reaches zero.
+    /// Dependencies pulled in transitively are tracked by their `Arc` edges and
+    /// are not reflected here.
+    open_count: usize,
 }
 
 impl DynamicLibrary {
@@ -306,13 +460,19 @@ impl DynamicLibrary {
                     }
                 }
 
-                // Collect dependencies.
-                let mut dependencies: BTreeMap<String, Option<Arc<Mutex<Self>>>> = BTreeMap::new();
-                if !elf.libraries.is_empty() {
-                    for library in elf.libraries.iter() {
-                        ::syslog::debug!("load(): depends on library '{}'", library);
-                        dependencies.insert(library.to_string(), None);
+                // Collect dependencies, preserving the `DT_NEEDED` order the
+                // linker recorded them in. Symbol resolution searches this list
+                // in order, so the order must not be lost. Duplicate entries are
+                // dropped: a repeated `DT_NEEDED` name refers to the same
+                // dependency and must occupy a single slot.
+                let mut dependencies: Vec<(String, Option<Arc<Mutex<Self>>>)> = Vec::new();
+                for library in elf.libraries.iter() {
+                    ::syslog::debug!("load(): depends on library '{}'", library);
+                    let name: String = library.to_string();
+                    if dependencies.iter().any(|(existing, _)| existing == &name) {
+                        continue;
                     }
+                    dependencies.push((name, None));
                 }
 
                 // Collect section headers.
@@ -355,6 +515,12 @@ impl DynamicLibrary {
                 let fini_array: Option<(usize, usize)> =
                     Self::get_fini_array(&section_headers, load_address);
 
+                // Build the symbol-lookup accelerator from the object's ELF hash
+                // table, if it carries a usable one. `dynsym.len()` bounds the
+                // hash chains; a `None` result means `find()` scans linearly.
+                let hash: Option<SymbolHashTable> =
+                    Self::get_symbol_hash(&section_headers, load_address, dynsym.len());
+
                 // Collect `DT_RUNPATH` entries (goblin exposes them already
                 // resolved against `.dynstr`). Each entry may be a colon-
                 // separated list of directories; split here so the search
@@ -370,17 +536,21 @@ impl DynamicLibrary {
 
                 Ok(DynamicLibrary {
                     filename,
+                    handle: DlHandle::allocate()?,
                     fd,
                     load_address,
                     dependencies,
                     _segments: segments,
                     dynsym,
                     dynstr,
+                    hash,
                     dynplt,
                     dynrel,
                     init_array,
                     fini_array,
                     runpaths,
+                    init_state: Arc::new(InitState::new()),
+                    open_count: 0,
                 })
             },
             Err(error) => {
@@ -449,9 +619,9 @@ impl DynamicLibrary {
         self.filename.to_str().unwrap_or("")
     }
 
-    /// Returns a handle that uniquely identifies the dynamic library file.
+    /// Returns the stable handle that uniquely identifies this dynamic library.
     pub fn handle(&self) -> DlHandle {
-        DlHandle(self.fd.as_raw_fd())
+        self.handle
     }
 
     /// Gets the relocation table for global variables (`.rel.dyn).
@@ -524,6 +694,53 @@ impl DynamicLibrary {
         }
     }
 
+    /// Builds a symbol-lookup accelerator from the object's ELF hash table.
+    ///
+    /// Prefers `.gnu.hash` (`DT_GNU_HASH`) over `.hash` (`DT_HASH`) when both are
+    /// present, since the GNU table's Bloom filter makes it the faster of the
+    /// two. Returns `None` when neither section is present or usable (for
+    /// example an older object linked without a hash table), in which case
+    /// [`find`](Self::find) falls back to a linear `.dynsym` scan. Both hash
+    /// tables index the same `.dynsym`, whose length bounds their chains.
+    fn get_symbol_hash(
+        section_headers: &BTreeMap<String, SectionHeader>,
+        load_address: VirtualAddress,
+        symtab_len: usize,
+    ) -> Option<SymbolHashTable> {
+        // Prefer the GNU hash table.
+        if let Some(header) = section_headers.get(".gnu.hash") {
+            if header.sh_addr != 0 {
+                let base: *const u8 =
+                    (load_address.into_raw_value() + header.sh_addr as usize) as *const u8;
+                let len: usize = header.sh_size as usize;
+                // SAFETY: `.gnu.hash` is `SHF_ALLOC`, so it is mapped at
+                // `load_address + sh_addr` for `sh_size` bytes; `from_raw_parts`
+                // validates the declared layout against `len` before use.
+                if let Some(table) = unsafe { GnuHashTable::from_raw_parts(base, len, symtab_len) }
+                {
+                    return Some(SymbolHashTable::Gnu(table));
+                }
+            }
+        }
+
+        // Fall back to the SysV hash table.
+        if let Some(header) = section_headers.get(".hash") {
+            if header.sh_addr != 0 {
+                let base: *const u8 =
+                    (load_address.into_raw_value() + header.sh_addr as usize) as *const u8;
+                let len: usize = header.sh_size as usize;
+                // SAFETY: `.hash` is `SHF_ALLOC`, so it is mapped at
+                // `load_address + sh_addr` for `sh_size` bytes; `from_raw_parts`
+                // validates the declared layout against `len` before use.
+                if let Some(table) = unsafe { SysvHashTable::from_raw_parts(base, len) } {
+                    return Some(SymbolHashTable::Sysv(table));
+                }
+            }
+        }
+
+        None
+    }
+
     /// Looks up a function-pointer array section (`.init_array` / `.fini_array`)
     /// by name, returning the absolute address of the first entry and the
     /// number of `usize`-sized entries it contains.
@@ -563,9 +780,49 @@ impl DynamicLibrary {
     }
 
     /// Finds a symbol in the dynamic library.
+    ///
+    /// Uses the `DT_HASH` / `DT_GNU_HASH` accelerator when the object provides
+    /// one, walking a short hash-bucket chain instead of the whole `.dynsym`.
+    /// The chain narrows the candidates by hash; the actual name is still
+    /// compared to reject hash collisions, so the result is identical to the
+    /// linear scan. Objects without a usable hash section - or whose table
+    /// proves inconsistent during the walk - fall back to
+    /// [`find_linear`](Self::find_linear).
+    ///
+    /// NOTE: a `DT_GNU_HASH` table does not index undefined symbols, so a name
+    /// that is only *referenced* (not defined) by this object is reported as
+    /// absent here. That matches the sole caller's needs: it treats an undefined
+    /// match the same as no match, resolving the symbol from the dependency tree
+    /// or the global scope regardless.
     fn find(&self, symbol_name: &str) -> Option<&Symbol> {
         ::syslog::trace!("find(): symbol={} in dlname={:?}", symbol_name, self.filename);
 
+        // Fast path: hash-bucket walk over the accelerator.
+        if let Some(hash) = self.hash.as_ref() {
+            match hash.lookup(symbol_name.as_bytes(), self.dynsym.len(), |idx| {
+                self.dynsym
+                    .get(idx as usize)
+                    .and_then(|sym| self.dynstr.get_name(sym.name_offset()).ok())
+                    .is_some_and(|name| !name.is_empty() && name == symbol_name)
+            }) {
+                Lookup::Found(index) => return self.dynsym.get(index as usize),
+                Lookup::NotFound => return None,
+                // An inconsistent hash table falls through to the linear scan, so
+                // a malformed `.hash`/`.gnu.hash` cannot hide a symbol that this
+                // object really defines.
+                Lookup::Inconsistent => {},
+            }
+        }
+
+        // Slow path: linear scan for objects without a usable hash section, or
+        // when the accelerator proved inconsistent above.
+        self.find_linear(symbol_name)
+    }
+
+    /// Linear fallback for [`find`](Self::find): scans `.dynsym` for a symbol
+    /// whose name matches `symbol_name`. Used when the object carries no usable
+    /// ELF hash table.
+    fn find_linear(&self, symbol_name: &str) -> Option<&Symbol> {
         for sym in self.dynsym.iter() {
             if let Ok(lookup_symbol_name) = self.dynstr.get_name(sym.name_offset()) {
                 if !lookup_symbol_name.is_empty() && lookup_symbol_name == symbol_name {
@@ -577,33 +834,33 @@ impl DynamicLibrary {
         None
     }
 
-    /// Looks up a symbol in the dynamic library.
+    /// Looks up a symbol for **relocation resolution**, with global fallback.
     ///
     /// Search order:
     /// 1. The library itself (defined symbols).
-    /// 2. The library's DT_NEEDED dependency tree (recursive, no global fallback).
-    /// 3. The global symbol table (main executable symbols).
+    /// 2. The library's DT_NEEDED dependency tree (recursive).
+    /// 3. The global symbol table (main executable + `RTLD_GLOBAL` symbols).
     ///
-    /// NOTE: Step 3 is needed for relocation resolution (symbols from the main
-    /// executable). Strictly, POSIX `dlsym(handle, ...)` should only search
-    /// the object's load group (steps 1-2), not the global scope. Separating
-    /// the two lookup paths is tracked in #2130.
+    /// Step 3 is required when binding a library's relocations against symbols
+    /// exported by the main executable (`--export-dynamic`) or by libraries
+    /// promoted with `RTLD_GLOBAL`. This global fallback is correct for
+    /// relocation resolution but MUST NOT be used to service
+    /// `dlsym(handle, ...)`: per POSIX, a request against a specific handle
+    /// only searches the object's own load group. `dlsym()` therefore calls
+    /// [`lookup_load_group`](Self::lookup_load_group) instead.
     pub fn lookup(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
         ::syslog::trace!("lookup(): symbol={}, dlname={:?}", symbol_name, self.filename);
 
-        // Search self and dependency tree without global fallback.
-        // The visited set tracks which dependencies have been traversed in
-        // this lookup to avoid re-searching in diamond-shaped graphs and to
-        // prevent infinite recursion on cyclic dependencies.
-        let mut visited: BTreeSet<usize> = BTreeSet::new();
-        if let Some(result) = self.lookup_in_load_group(symbol_name, &mut visited)? {
+        // Search self and dependency tree (the load group) without global
+        // fallback first.
+        if let Some(result) = self.lookup_load_group(symbol_name)? {
             return Ok(Some(result));
         }
 
         // Fall back to the global symbol table (symbols from the main
-        // executable, registered via --export-dynamic). This fallback is
-        // performed only once at the top level, not during recursive
-        // dependency traversal.
+        // executable, registered via --export-dynamic, plus any library
+        // promoted with RTLD_GLOBAL). This fallback is performed only once at
+        // the top level, not during recursive dependency traversal.
         if let Some(addr) = super::global_symbol_lookup(symbol_name) {
             // Global symbols are absolute addresses, so base is 0.
             return Ok(Some((0, addr)));
@@ -612,50 +869,87 @@ impl DynamicLibrary {
         Ok(None)
     }
 
-    /// Searches for a symbol in this library and its dependency tree only.
+    /// Looks up a symbol in this library's **load group only**: the object
+    /// itself plus its `DT_NEEDED` dependency tree — with NO global-scope
+    /// fallback.
     ///
-    /// Does NOT fall back to the global symbol table. This ensures that
-    /// recursive dependency searches do not short-circuit to the global scope
-    /// before the entire dependency tree has been checked.
-    ///
-    /// The `visited` set tracks `Arc` allocation addresses of dependencies
-    /// already traversed in this lookup, preventing redundant work on
-    /// diamond-shaped graphs and avoiding false-positive cycle detection.
-    fn lookup_in_load_group(
-        &self,
-        symbol_name: &str,
-        visited: &mut BTreeSet<usize>,
-    ) -> Result<Option<(usize, usize)>, Error> {
+    /// This is the lookup path POSIX mandates for `dlsym(handle, name)`: a
+    /// request against a specific handle must resolve only within the object
+    /// and the objects it was loaded with, never the global scope. Using the
+    /// global-fallback [`lookup`](Self::lookup) here would incorrectly resolve
+    /// symbols exported by the main executable (`--export-dynamic`) or by other
+    /// libraries promoted with `RTLD_GLOBAL`. Global-scope searches are reserved
+    /// for the `RTLD_DEFAULT` / `dlopen(NULL)` handle, which `dlsym()` routes to
+    /// `global_symbol_lookup()` separately.
+    pub fn lookup_load_group(&self, symbol_name: &str) -> Result<Option<(usize, usize)>, Error> {
+        ::syslog::trace!("lookup_load_group(): symbol={}, dlname={:?}", symbol_name, self.filename);
+
+        // POSIX / System V symbol resolution searches a load group in
+        // breadth-first `DT_NEEDED` order: the object itself first, then its
+        // direct dependencies in the order the linker recorded them, then the
+        // dependencies of those, and so on. This mirrors the order glibc walks
+        // when it services a lookup against an object's `l_searchlist`, so a
+        // symbol defined by more than one object in the group resolves to the
+        // first definition in `DT_NEEDED` order rather than to an
+        // alphabetically-first one.
+
+        // The root object itself is the head of the search list.
         if let Some(symbol) = self.find(symbol_name) {
             if !symbol.is_undefined() {
-                // Symbol is defined in this library.
                 return Ok(Some((self.load_address.into_raw_value(), symbol.value() as usize)));
             }
         }
 
-        // Symbol is either undefined in this library or not in its dynsym at
-        // all. Per POSIX, dlsym must search the full dependency tree regardless
-        // of whether the root library references the symbol.
-        for dlfile in self.dependencies.values().flatten() {
-            // Guard against deadlock: if the mutex is held by an ancestor
-            // in our call chain (true cycle back to a locked parent) or by
-            // a concurrent lookup, skip rather than spinning forever.
+        // `visited` records the `Arc` allocation addresses of dependencies
+        // already searched in this lookup, so a diamond-shaped graph searches
+        // each object at most once. `queue` drives the breadth-first walk:
+        // direct dependencies are enqueued in `DT_NEEDED` order and each searched
+        // object appends its own dependencies to the back, so shallower and
+        // earlier `DT_NEEDED` objects are always searched first. A `DT_NEEDED`
+        // cycle is rejected at load time, so the bound graph is acyclic and the
+        // queue is bounded by the number of dependency edges.
+        let mut visited: BTreeSet<usize> = BTreeSet::new();
+        let mut queue: VecDeque<Arc<Mutex<Self>>> = VecDeque::new();
+        for dependency in self.dependencies.iter().filter_map(|(_, dep)| dep.as_ref()) {
+            queue.push_back(dependency.clone());
+        }
+
+        while let Some(dlfile) = queue.pop_front() {
+            // Skip a dependency already searched via a shorter or earlier path
+            // (diamond-shaped graph).
+            let id: usize = Arc::as_ptr(&dlfile) as usize;
+            if visited.contains(&id) {
+                continue;
+            }
+
+            // Guard against deadlock: if the mutex is held by an ancestor in our
+            // call chain (a cycle back to a locked parent) or by a concurrent
+            // lookup, skip rather than spinning forever. Leave it unmarked so
+            // another queued edge may still search it once it is free.
             if dlfile.is_locked() {
                 continue;
             }
-
-            // Use the Arc's heap allocation address as a unique,
-            // lock-free identifier for this dependency. Skip if already
-            // traversed in this lookup (diamond-shaped dependency).
-            let id: usize = Arc::as_ptr(dlfile) as usize;
-            if !visited.insert(id) {
-                continue;
-            }
+            visited.insert(id);
 
             let dlfile: MutexGuard<'_, DynamicLibrary> = dlfile.lock();
 
-            if let Some(result) = dlfile.lookup_in_load_group(symbol_name, visited)? {
-                return Ok(Some(result));
+            if let Some(symbol) = dlfile.find(symbol_name) {
+                if !symbol.is_undefined() {
+                    return Ok(Some((
+                        dlfile.load_address.into_raw_value(),
+                        symbol.value() as usize,
+                    )));
+                }
+            }
+
+            // Append this object's dependencies to the back of the queue in
+            // `DT_NEEDED` order, preserving the breadth-first search order.
+            for dependency in dlfile
+                .dependencies
+                .iter()
+                .filter_map(|(_, dep)| dep.as_ref())
+            {
+                queue.push_back(dependency.clone());
             }
         }
 
@@ -982,16 +1276,16 @@ impl DynamicLibrary {
         storage_unit.write_unaligned(final_value as u32);
     }
 
-    /// Returns the file descriptor of the dynamic library.
-    pub fn dependencies(&self) -> BTreeMap<String, Option<Arc<Mutex<Self>>>> {
+    /// Returns a clone of this library's dependency list, in `DT_NEEDED` order.
+    pub fn dependencies(&self) -> Vec<(String, Option<Arc<Mutex<Self>>>)> {
         self.dependencies.clone()
     }
 
     /// Returns the handles of all bound dependencies.
     pub fn dependency_handles(&self) -> Vec<DlHandle> {
         self.dependencies
-            .values()
-            .filter_map(|dep| dep.as_ref().map(|d| d.lock().handle()))
+            .iter()
+            .filter_map(|(_, dep)| dep.as_ref().map(|d| d.lock().handle()))
             .collect()
     }
 
@@ -1027,19 +1321,19 @@ impl DynamicLibrary {
         name: String,
         library: Arc<Mutex<Self>>,
     ) -> Result<(), Error> {
-        match self.dependencies.get(&name) {
-            Some(None) => {
-                self.dependencies.insert(name, Some(library));
+        match self.dependencies.iter_mut().find(|entry| entry.0 == name) {
+            Some(entry) => {
+                if entry.1.is_some() {
+                    let reason: &str = "dependency already loaded";
+                    ::syslog::warn!("bind_dependency(): {}", reason);
+                    return Err(Error::new(ErrorCode::BadFile, reason));
+                }
+                entry.1 = Some(library);
                 Ok(())
-            },
-            Some(Some(_)) => {
-                let reason: &str = "dependency already loaded";
-                ::syslog::warn!("load_dependency(): {}", reason);
-                Err(Error::new(ErrorCode::BadFile, reason))
             },
             None => {
                 let reason: &str = "dependency not listed";
-                ::syslog::warn!("load_dependency(): {}", reason);
+                ::syslog::warn!("bind_dependency(): {}", reason);
                 Err(Error::new(ErrorCode::BadFile, reason))
             },
         }
@@ -1065,6 +1359,36 @@ impl DynamicLibrary {
     /// Returns the `DT_RUNPATH` directories of the library, split on `:`.
     pub fn runpaths(&self) -> &[String] {
         &self.runpaths
+    }
+
+    /// Returns a cloneable handle to this library's construction state so a
+    /// concurrent `dlopen` can wait for its constructors to finish without
+    /// holding any dlfcn lock.
+    pub fn init_state(&self) -> Arc<InitState> {
+        self.init_state.clone()
+    }
+
+    /// Returns the number of outstanding direct `dlopen()` handles for this
+    /// library (glibc's `l_direct_opencount`).
+    pub fn open_count(&self) -> usize {
+        self.open_count
+    }
+
+    /// Records an additional direct `dlopen()` of this library and returns the
+    /// updated open count. Invoked on both the initial load and every
+    /// subsequent cache hit so that staggered open/close sequences keep the
+    /// library loaded while any handle is still live.
+    pub fn increment_open_count(&mut self) -> usize {
+        self.open_count = self.open_count.saturating_add(1);
+        self.open_count
+    }
+
+    /// Balances a direct `dlopen()` with a `dlclose()` and returns the updated
+    /// open count. Saturates at zero so an unbalanced `dlclose()` cannot
+    /// underflow the counter.
+    pub fn decrement_open_count(&mut self) -> usize {
+        self.open_count = self.open_count.saturating_sub(1);
+        self.open_count
     }
 
     /// Returns the loaded `.init_array` descriptor as `(base_address,

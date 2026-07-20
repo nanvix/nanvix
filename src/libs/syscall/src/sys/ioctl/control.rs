@@ -16,9 +16,10 @@
 // Imports
 //==================================================================================================
 
-use ::sys::error::Error;
-#[cfg(feature = "standalone")]
-use ::sys::error::ErrorCode;
+use ::sys::error::{
+    Error,
+    ErrorCode,
+};
 use ::sysapi::ffi::{
     c_int,
     c_void,
@@ -51,25 +52,11 @@ use ::sysapi::ffi::{
 /// For terminal-control requests, `arg` must point to a valid object of the type the request
 /// expects (`struct termios` for `TCGETS`/`TCSETS`, `struct winsize` for `TIOCGWINSZ`/`TIOCSWINSZ`).
 pub unsafe fn ioctl(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int, Error> {
-    #[cfg(feature = "standalone")]
-    {
-        ioctl_standalone(fd, request, arg)
-    }
-    #[cfg(not(feature = "standalone"))]
-    {
-        // Hosted deployments have no vfsd console backend to answer terminal requests; preserve the
-        // historical permissive behavior of ignoring the request.
-        let _ = (fd, arg);
-        ::syslog::debug!(
-            "ioctl(): not implemented in hosted mode, ignoring (request={request:#x})"
-        );
-        Ok(0)
-    }
+    ioctl_vfsd(fd, request, arg)
 }
 
 /// Routes a terminal-control request to vfsd, or ignores a non-terminal request.
-#[cfg(feature = "standalone")]
-fn ioctl_standalone(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int, Error> {
+fn ioctl_vfsd(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int, Error> {
     use ::sysapi::{
         sys_ioctl::{
             Winsize,
@@ -129,7 +116,6 @@ fn ioctl_standalone(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int
 /// These two requests back `tcgetpgrp()`/`tcsetpgrp()`; the argument is a `pid_t` rather than a
 /// `termios`/`winsize` payload, so they are answered here directly instead of through the vfsd
 /// push/pull transfer used by the other terminal requests.
-#[cfg(feature = "standalone")]
 fn ioctl_pgrp(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int, Error> {
     use ::sys::pm::ProcessIdentifier;
     use ::sysapi::{
@@ -165,7 +151,6 @@ fn ioctl_pgrp(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int, Erro
 ///
 /// Sends the metadata request, pulls the `len`-byte payload that vfsd pushes, then receives the
 /// status response — mirroring the `read` bulk-transfer protocol.
-#[cfg(feature = "standalone")]
 fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, Error> {
     use crate::sys::ioctl::message::TtyControlRequest;
     use ::sys::ipc::Message;
@@ -206,7 +191,6 @@ fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, 
 ///
 /// Sends the metadata request, pushes the `len`-byte payload to vfsd, then receives the status
 /// response — mirroring the `write` bulk-transfer protocol.
-#[cfg(feature = "standalone")]
 fn tty_push(fd: i32, request: c_int, data: &[u8]) -> Result<c_int, Error> {
     use crate::sys::ioctl::message::TtyControlRequest;
     use ::sys::ipc::Message;
@@ -229,7 +213,6 @@ fn tty_push(fd: i32, request: c_int, data: &[u8]) -> Result<c_int, Error> {
 }
 
 /// Maps a non-zero response status to an [`Error`].
-#[cfg(feature = "standalone")]
 fn check_status(response: &::sys::ipc::Message) -> Result<(), Error> {
     let status: i32 = response.status;
     if status == 0 {

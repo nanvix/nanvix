@@ -27,6 +27,10 @@ cfg_if::cfg_if! {
         pub use syscall::pthread_rwlock_rdlock;
         pub use syscall::pthread_rwlock_wrlock;
         pub use syscall::pthread_rwlock_unlock;
+        pub use syscall::sem_init;
+        pub use syscall::sem_destroy;
+        pub use syscall::sem_post;
+        pub use syscall::sem_wait;
         pub use syscall::pthread_cond_broadcast;
         pub use syscall::pthread_cond_destroy;
         pub use syscall::pthread_cond_init;

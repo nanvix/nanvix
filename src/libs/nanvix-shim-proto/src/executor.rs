@@ -31,10 +31,7 @@ use containerd_shim_protos::{
     shim_async,
     ttrpc,
 };
-use nanvix_shim_core::{
-    execution::ExecutionMode,
-    registry::ModeRegistry,
-};
+use nanvix_shim_core::runtime::WorkloadRuntime;
 
 //==================================================================================================
 // Types
@@ -44,8 +41,8 @@ use nanvix_shim_core::{
 pub struct ShimExecutor {
     /// Command-line arguments passed to the shim.
     pub args: ShimArgs,
-    /// Registry of available execution modes.
-    pub registry: ModeRegistry,
+    /// Standalone workload execution implementation.
+    pub runtime: Arc<dyn WorkloadRuntime>,
 }
 
 //==================================================================================================
@@ -54,8 +51,8 @@ pub struct ShimExecutor {
 
 impl ShimExecutor {
     /// Create a new shim executor.
-    pub fn new(args: ShimArgs, registry: ModeRegistry) -> Self {
-        Self { args, registry }
+    pub fn new(args: ShimArgs, runtime: Arc<dyn WorkloadRuntime>) -> Self {
+        Self { args, runtime }
     }
 
     /// Compute a deterministic socket/pipe address from namespace + id.
@@ -152,14 +149,10 @@ impl ShimExecutor {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         log::info!("[{}] shim run — starting ttrpc server", self.args.id);
 
-        // Create the execution mode from registry.
-        let runtime_config = nanvix_shim_core::config::NanvixRuntimeConfig::load_or_default();
-        let mode: Arc<dyn ExecutionMode> =
-            self.registry
-                .create(&runtime_config.execution_mode, &self.args.id, &runtime_config)?;
+        let runtime: Arc<dyn WorkloadRuntime> = self.runtime.clone();
 
         // Set up ttrpc server.
-        let mut server = self.create_ttrpc_server(mode.clone()).await?;
+        let mut server = self.create_ttrpc_server(runtime.clone()).await?;
 
         server.start().await?;
 
@@ -190,7 +183,7 @@ impl ShimExecutor {
     /// Create the ttrpc server with Task and Sandbox services registered.
     async fn create_ttrpc_server(
         &self,
-        mode: Arc<dyn ExecutionMode>,
+        runtime: Arc<dyn WorkloadRuntime>,
     ) -> anyhow::Result<ttrpc::asynchronous::Server> {
         if self.args.socket.is_empty() {
             anyhow::bail!("no socket address provided");
@@ -211,12 +204,12 @@ impl ShimExecutor {
 
         // Register Task service.
         let task_svc: Arc<dyn shim_async::Task + Send + Sync> =
-            Arc::new(NanvixTaskService::new(mode.clone()));
+            Arc::new(NanvixTaskService::new(runtime.clone()));
         let server = server.register_service(shim_async::create_task(task_svc));
 
         // Register Sandbox service.
         let sandbox_svc: Arc<dyn sandbox_async::Sandbox + Send + Sync> =
-            Arc::new(NanvixSandboxService::new(mode));
+            Arc::new(NanvixSandboxService::new(runtime));
         let server = server.register_service(sandbox_async::create_sandbox(sandbox_svc));
 
         Ok(server)

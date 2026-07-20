@@ -5,8 +5,7 @@
 //!
 //! Exercises the POSIX `getenv()`, `setenv()`, and `unsetenv()` runtime environment API provided
 //! by `libc_stdlib`, within a single process (no `fork()`). The `fork()`-based isolation scenarios
-//! are covered by the standalone `setenv-rust` test, because `fork()` is only available in
-//! standalone mode.
+//! are covered by the dedicated `setenv-rust` test.
 //!
 //! Behavior conforms to the POSIX specification:
 //! - <https://pubs.opengroup.org/onlinepubs/9799919799/functions/getenv.html>

@@ -55,7 +55,7 @@ SECTIONS
 	/*
 	 * Constructor / destructor arrays (the primary ctor/dtor mechanism).
 	 *
-	 * `__nanvix_libc_start_main` (libposix start.rs) walks `.preinit_array`
+	 * `__nanvix_libc_start_main` (nanvix_libc start.rs) walks `.preinit_array`
 	 * then `.init_array` before calling `main`, and `.fini_array` (in reverse)
 	 * after `main` returns.  The bound symbols below are provided HERE — not by
 	 * GCC crtbegin/crtend — because Nanvix ships no crti/crtn/crtbegin/crtend.

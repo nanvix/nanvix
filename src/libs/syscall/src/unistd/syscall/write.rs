@@ -106,7 +106,7 @@ fn write_chunk(
 
             if count < 0 {
                 ::syslog::warn!(
-                    "write_chunk(): linuxd returned negative count (fd={:?}, count={:?})",
+                    "write_chunk(): backend returned negative count (fd={:?}, count={:?})",
                     fd,
                     count
                 );
@@ -118,7 +118,7 @@ fn write_chunk(
 
             if (count as usize) > chunk.len() {
                 ::syslog::warn!(
-                    "write_chunk(): linuxd returned oversized count (fd={:?}, count={:?}, \
+                    "write_chunk(): backend returned oversized count (fd={:?}, count={:?}, \
                      chunk.len={:?})",
                     fd,
                     count,
@@ -165,65 +165,51 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
         ::syslog::trace!("write(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // In standalone mode, route by the descriptor's resolved backend so flat descriptors are
-    // dispatched through vfsd's authoritative table.
-    #[cfg(feature = "standalone")]
-    {
-        use crate::fdtable::{
-            resolve,
-            Route,
-        };
-        match resolve(fd) {
-            // stdout/stderr writes flow directly to the kernel over IKC.
-            Some(res)
-                if res.route == Route::Console
-                    && (res.backend_fd == STDOUT_FILENO || res.backend_fd == STDERR_FILENO) =>
-            {
-                if !buffer.is_empty() {
-                    notify_terminal_write();
-                }
-                write_ipc(
-                    res.backend_fd,
-                    buffer,
-                    crate::LINUXD,
-                    MessageType::Ikc,
-                    ProcessIdentifier::KERNEL,
-                    ThreadIdentifier::KERNEL,
-                )
-            },
-            // VFS-backed descriptors go to vfsd.
-            Some(res) if res.route == Route::Vfs => write_ipc(
+    // Route by the descriptor's resolved backend so flat descriptors are dispatched through vfsd's
+    // authoritative table.
+    use crate::fdtable::{
+        resolve,
+        Route,
+    };
+    match resolve(fd) {
+        // stdout/stderr writes flow directly to the kernel over IKC.
+        Some(res)
+            if res.route == Route::Console
+                && (res.backend_fd == STDOUT_FILENO || res.backend_fd == STDERR_FILENO) =>
+        {
+            if !buffer.is_empty() {
+                notify_terminal_write();
+            }
+            write_ipc(
                 res.backend_fd,
                 buffer,
-                crate::VFS_DESTINATION,
-                crate::VFS_MESSAGE_TYPE,
-                crate::VFS_PUSH_PULL_PID,
-                crate::VFS_PUSH_PULL_TID,
-            ),
-            // stdin, sockets, and unroutable descriptors are not writable here.
-            _ => {
-                ::syslog::warn!("write(): bad file descriptor fd={fd} in standalone mode");
-                Err(Error::new(ErrorCode::BadFile, "write: fd is not a VFS fd in standalone mode"))
-            },
-        }
+                crate::HOST_IO,
+                MessageType::Ikc,
+                ProcessIdentifier::KERNEL,
+                ThreadIdentifier::KERNEL,
+            )
+        },
+        // VFS-backed descriptors go to vfsd.
+        Some(res) if res.route == Route::Vfs => write_ipc(
+            res.backend_fd,
+            buffer,
+            crate::VFS_DESTINATION,
+            crate::VFS_MESSAGE_TYPE,
+            crate::VFS_PUSH_PULL_PID,
+            crate::VFS_PUSH_PULL_TID,
+        ),
+        // stdin, sockets, and unroutable descriptors are not writable here.
+        _ => {
+            ::syslog::warn!("write(): bad file descriptor fd={fd}");
+            Err(Error::new(ErrorCode::BadFile, "write: fd is not a VFS fd"))
+        },
     }
-
-    #[cfg(not(feature = "standalone"))]
-    write_ipc(
-        fd,
-        buffer,
-        crate::VFS_DESTINATION,
-        crate::VFS_MESSAGE_TYPE,
-        crate::VFS_PUSH_PULL_PID,
-        crate::VFS_PUSH_PULL_TID,
-    )
 }
 
 /// Notifies the process manager daemon that the calling process wrote to the console.
 ///
 /// Console output bypasses vfsd and flows directly to the kernel, so this self-report is the only
 /// path that lets job control raise `SIGTTOU` for background stdout/stderr writes.
-#[cfg(feature = "standalone")]
 fn notify_terminal_write() {
     let caller: ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,

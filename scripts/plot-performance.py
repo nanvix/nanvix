@@ -21,10 +21,7 @@ runner-specific plots are saved with ``linux_baremetal_``, ``linux_github_``,
 ``windows_baremetal_``, and ``windows_github_`` prefixes.
 
 Benchmarks whose CSV files follow the ``commit,p50,p95,p99`` schema and the
-``commit,size,p50,p95,p99`` schema (e.g. ``round_trip_latency``) are
-supported.  Benchmarks with other schemas (e.g. ``echo_breakdown`` which
-uses ``commit,step,label,p50,p95,p99``) are not yet supported and will be
-skipped.
+``commit,size,p50,p95,p99`` schema are supported. Benchmarks with other schemas are skipped.
 
 # Usage
 
@@ -32,7 +29,9 @@ skipped.
 
     python scripts/plot-performance.py                 # defaults
     python scripts/plot-performance.py --max-commits 50 --output-dir plots
-    python scripts/plot-performance.py --data-dir data --benchmarks cold_start warm_start
+    python scripts/plot-performance.py \
+        --data-dir data \
+        --benchmarks cold_start_standalone warm_start_vmm_standalone
 """
 
 # ======================================================================
@@ -77,41 +76,31 @@ OUTPUT_DIR: str = "plots"
 SHORT_SHA_LEN: int = 7
 
 # Supported benchmarks whose CSV files follow the ``commit,p50,p95,p99``
-# schema.  Benchmarks with different schemas are intentionally excluded:
-#   - ``echo_breakdown``: uses ``commit,step,label,p50,p95,p99``.
+# schema.
 SUPPORTED_BENCHMARKS: list[str] = [
-    "boot_time",
-    "cold_start",
-    "cold_start_l2",
-    "cold_start_uvm",
-    "concurrent",
-    "concurrent_l2",
-    "snapshot_restore",
+    "boot_time_standalone",
+    "cold_start_standalone",
+    "cold_start_uvm_standalone",
+    "snapshot_restore_standalone",
 ]
 
 # Benchmarks whose CSV files follow the ``commit,size,p50,p95,p99`` schema.
 # Each produces one plot per message size.
 SIZED_BENCHMARKS: list[str] = [
-    "round_trip_latency",
-    "warm_start",
-    "warm_start_l2",
-    "warm_start_vmm",
+    "warm_start_gateway_standalone",
+    "warm_start_socket_standalone",
+    "warm_start_vmm_standalone",
 ]
 
 # Human-readable titles for each benchmark.
 BENCHMARK_TITLES: dict[str, str] = {
-    "boot_time": "Boot Time",
-    "cold_start": "Cold Start",
-    "cold_start_l2": "Cold Start (L2)",
-    "cold_start_uvm": "Cold Start (UVM)",
-    "concurrent": "Concurrent",
-    "concurrent_l2": "Concurrent (L2)",
-    "echo_breakdown": "Echo Breakdown",
-    "round_trip_latency": "Round-Trip Latency",
-    "snapshot_restore": "Snapshot Restore",
-    "warm_start": "Warm Start",
-    "warm_start_l2": "Warm Start (L2)",
-    "warm_start_vmm": "Warm Start (VMM)",
+    "boot_time_standalone": "Boot Time",
+    "cold_start_standalone": "Cold Start",
+    "cold_start_uvm_standalone": "Cold Start (User VM Gateway)",
+    "snapshot_restore_standalone": "Snapshot Restore",
+    "warm_start_gateway_standalone": "Warm Start (Gateway)",
+    "warm_start_socket_standalone": "Warm Start Socket",
+    "warm_start_vmm_standalone": "Warm Start (VMM)",
 }
 
 # Y-axis label for all latency plots.
@@ -194,7 +183,7 @@ def discover_csv_files(data_dir: str) -> list[CsvFileInfo]:
     for csv_file in sorted(data_path.glob(f"{prefix}*.csv")):
         # Strip the prefix and the last two underscore-separated tokens
         # (machine type and architecture) to recover the benchmark name.
-        stem: str = csv_file.stem  # e.g. nanvix_bench_boot_time_microvm_X64
+        stem: str = csv_file.stem  # e.g. nanvix_bench_boot_time_standalone_microvm_X64
         tokens: list[str] = stem[len(prefix) :].rsplit("_", 2)
         if len(tokens) < 3:
             continue

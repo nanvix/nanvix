@@ -25,12 +25,10 @@ integration tests, and the combined test suite exposed through the `z` utility.
 ./z build -- run-nanvix-tests
 ```
 
-Test configurations are auto-selected based on deployment mode:
+Test configurations are selected by host platform:
 
-- Standalone: `test/test-standalone.toml` (Linux), `test/test-standalone-windows.toml` (Windows)
-- Single-process: `test/test-single_process.toml`
-- L2 VM: `test/test-l2.toml`
-- Multi-process: `test/test-multi_process.toml`
+- Linux: `test/test-standalone.toml`
+- Windows: `test/test-standalone-windows.toml`
 
 ## All Tests
 
@@ -46,15 +44,11 @@ On Windows, unit tests can be run natively through `z.ps1`:
 .\z.ps1 build -- run-unit-tests
 ```
 
-System integration tests are also available on Windows for standalone mode
-(`DEPLOYMENT_MODE=standalone`) on `microvm` machines:
+System integration tests are also available on Windows on `microvm` machines:
 
 ```powershell
 .\z.ps1 build -- run-nanvix-tests
 ```
-
-Single-process, L2 and multi-process deployment modes remain **Linux-only** as they require
-`nanvixd` with network namespace support.
 
 ## Troubleshooting Test Failures
 

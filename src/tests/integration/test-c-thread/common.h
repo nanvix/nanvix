@@ -21,6 +21,9 @@ extern void test_pthread_mutex_static_init(void);
 // Tests if dynamically initialized mutexes can be used for synchronization.
 extern void test_pthread_mutex_dynamic_init(void);
 
+// Tests if condition variable attributes can be initialized.
+extern void test_pthread_condattr_init(void);
+
 // Tests if calling exit() causes the program to exit even if there are other threads running.
 extern void test_pthread_nowait(void);
 
@@ -42,8 +45,20 @@ extern void test_thread_local(void);
 // Tests if pthread attributes can be initialized and destroyed.
 extern void test_pthread_attr_init_destroy(void);
 
+// Tests if the detach state attribute can be set and retrieved.
+extern void test_pthread_attr_setdetachstate(void);
+
+// Tests if the guard size attribute can be retrieved.
+extern void test_pthread_attr_getguardsize(void);
+
+// Tests if scheduling parameters can be set and retrieved.
+extern void test_pthread_attr_setschedparam(void);
+
 // Tests if the mutex type attribute can be set and retrieved.
 extern void test_pthread_mutexattr_settype(void);
+
+// Tests if mutex attributes can be destroyed.
+extern void test_pthread_mutexattr_destroy(void);
 
 // Tests if pthread_getattr_np() can retrieve attributes and they can be destroyed.
 extern void test_pthread_getattr_np_destroy(void);
@@ -56,5 +71,8 @@ extern void test_pthread_rwlock_static_init(void);
 
 // Tests if dynamically initialized read-write locks work (init/destroy + exclusion semantics).
 extern void test_pthread_rwlock_dynamic_init(void);
+
+// Tests if unnamed POSIX semaphores can be used for synchronization.
+extern void test_semaphore(void);
 
 #endif

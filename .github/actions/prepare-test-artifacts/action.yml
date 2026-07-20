@@ -12,13 +12,10 @@ inputs:
   machine-type:
     description: "Machine type"
     required: true
-  deployment-type:
-    description: "Deployment type"
-    required: true
   memory-size:
-    description: "Memory size in MB (default: 128)"
+    description: "Memory size in MB (default: 256)"
     required: false
-    default: "128"
+    default: "256"
 
 runs:
   using: "composite"
@@ -27,7 +24,7 @@ runs:
       uses: actions/download-artifact@v7
       with:
         name: ci-build-${{ inputs.build-type }}-${{ inputs.machine-type }}-${{
-          inputs.deployment-type }}-${{ inputs.memory-size }}mb
+          inputs.memory-size }}mb
         path: .
 
     - name: "Make binaries executable"

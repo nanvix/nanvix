@@ -54,79 +54,62 @@ use ::syslog::trace_syscall;
 #[unsafe(no_mangle)]
 #[trace_syscall]
 pub unsafe extern "C" fn waitpid(pid: pid_t, status: *mut c_int, options: c_int) -> pid_t {
-    #[cfg(not(feature = "standalone"))]
-    {
-        use crate::errno::__errno_location;
-        use ::sys::error::ErrorCode;
+    use crate::errno::__errno_location;
+    use ::proc::{
+        WaitOutcome,
+        WaitTarget,
+    };
+    use ::sys::{
+        error::ErrorCode,
+        pm::ProcessIdentifier,
+    };
+    use ::sysapi::sys_wait::{
+        WCONTINUED,
+        WNOHANG,
+        WUNTRACED,
+    };
 
-        let _ = (pid, status, options);
-        ::syslog::debug!("waitpid(): not supported");
+    // Reject unknown option bits.
+    if options & !(WNOHANG | WUNTRACED | WCONTINUED) != 0 {
         // SAFETY: `__errno_location()` returns a valid pointer to the thread-local `errno`.
         unsafe {
-            *__errno_location() = ErrorCode::InvalidSysCall.get();
+            *__errno_location() = ErrorCode::InvalidArgument.get();
         }
-        -1
+        return -1;
     }
 
-    #[cfg(feature = "standalone")]
-    {
-        use crate::errno::__errno_location;
-        use ::proc::{
-            WaitOutcome,
-            WaitTarget,
-        };
-        use ::sys::{
-            error::ErrorCode,
-            pm::ProcessIdentifier,
-        };
-        use ::sysapi::sys_wait::{
-            WCONTINUED,
-            WNOHANG,
-            WUNTRACED,
-        };
+    // Map the POSIX `pid` selector onto a wait target. A positive `pid` selects that specific
+    // child; `-1`, `0`, and `< -1` all select any child of the caller, because process groups
+    // are not supported.
+    let target: WaitTarget = if pid > 0 {
+        WaitTarget::Pid(ProcessIdentifier::from(pid))
+    } else {
+        WaitTarget::Any
+    };
 
-        // Reject unknown option bits.
-        if options & !(WNOHANG | WUNTRACED | WCONTINUED) != 0 {
+    match ::proc::wait(target, options) {
+        Ok(WaitOutcome::Reaped {
+            child,
+            status: raw_status,
+        }) => {
+            // Encode the child's raw exit code into the POSIX wait-status format so that the
+            // `WIFEXITED`/`WEXITSTATUS` macros decode it correctly.
+            if !status.is_null() {
+                let encoded: c_int = (raw_status & 0xff) << 8;
+                // SAFETY: The caller guarantees that `status` points to a valid `c_int`.
+                unsafe {
+                    *status = encoded;
+                }
+            }
+            i32::from(child)
+        },
+        Ok(WaitOutcome::NoneReady) => 0,
+        Err(e) => {
             // SAFETY: `__errno_location()` returns a valid pointer to the thread-local `errno`.
             unsafe {
-                *__errno_location() = ErrorCode::InvalidArgument.get();
+                *__errno_location() = e.code.get();
             }
-            return -1;
-        }
-
-        // Map the POSIX `pid` selector onto a wait target. A positive `pid` selects that specific
-        // child; `-1`, `0`, and `< -1` all select any child of the caller, because process groups
-        // are not supported.
-        let target: WaitTarget = if pid > 0 {
-            WaitTarget::Pid(ProcessIdentifier::from(pid))
-        } else {
-            WaitTarget::Any
-        };
-
-        match ::proc::wait(target, options) {
-            Ok(WaitOutcome::Reaped {
-                child,
-                status: raw_status,
-            }) => {
-                // Encode the child's raw exit code into the POSIX wait-status format so that the
-                // `WIFEXITED`/`WEXITSTATUS` macros decode it correctly.
-                if !status.is_null() {
-                    let encoded: c_int = (raw_status & 0xff) << 8;
-                    // SAFETY: The caller guarantees that `status` points to a valid `c_int`.
-                    unsafe {
-                        *status = encoded;
-                    }
-                }
-                i32::from(child)
-            },
-            Ok(WaitOutcome::NoneReady) => 0,
-            Err(e) => {
-                // SAFETY: `__errno_location()` returns a valid pointer to the thread-local `errno`.
-                unsafe {
-                    *__errno_location() = e.code.get();
-                }
-                -1
-            },
-        }
+            -1
+        },
     }
 }

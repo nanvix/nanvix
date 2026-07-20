@@ -64,19 +64,10 @@ pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Res
                     // `vfsd` allocates the application-visible flat descriptor that routes to it.
                     // The flat slot is recorded in the resolution cache so socket I/O reaches
                     // `networkd` directly by `remote_fd`.
-                    #[cfg(feature = "standalone")]
-                    {
-                        if remote_fd < 0 {
-                            Ok(remote_fd)
-                        } else {
-                            super::register_socket_slot(remote_fd)
-                        }
-                    }
-                    // Hosted mode has no guest `vfsd`: the backend numbers the descriptor and the
-                    // application sees it directly.
-                    #[cfg(not(feature = "standalone"))]
-                    {
+                    if remote_fd < 0 {
                         Ok(remote_fd)
+                    } else {
+                        super::register_socket_slot(remote_fd)
                     }
                 },
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),

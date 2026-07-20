@@ -39,7 +39,6 @@ temp/
 # Runtime directories (created during execution or Docker builds)
 home/
 mnt/
-images/
 
 # Documentation
 doc/

@@ -17,19 +17,10 @@ inputs:
     description: "Machine type"
     required: true
     default: "microvm"
-  deployment-type:
-    description: "Deployment type"
-    required: true
-    default: "single-process"
 
 runs:
   using: "composite"
   steps:
-    - id: deployment
-      uses: ./.github/actions/deployment-features
-      with:
-        deployment-type: "${{ inputs.deployment-type }}"
-
     - name: "Unit Tests (${{ inputs.machine-type }})"
       shell: bash
       run: |
@@ -40,8 +31,7 @@ runs:
           TARGET=x86 \
           "LOG_LEVEL=${{ inputs.log-level }}" \
           VERBOSE=yes \
-          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
-          ${{ steps.deployment.outputs.make-flags }}
+          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}
 
     - name: "Integration Tests (${{ inputs.machine-type }})"
       shell: bash
@@ -53,5 +43,4 @@ runs:
           TARGET=x86 \
           "LOG_LEVEL=${{ inputs.log-level }}" \
           VERBOSE=yes \
-          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
-          ${{ steps.deployment.outputs.make-flags }}
+          ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }}

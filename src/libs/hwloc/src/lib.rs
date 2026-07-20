@@ -28,21 +28,11 @@ use anyhow::Result;
 #[derive(Clone, Debug, Deserialize)]
 pub struct HwLoc {
     client_core_str: String,
-    linuxd_core_str: String,
-    nanovm_core_str: String,
 }
 
 impl HwLoc {
     pub fn get_client_core_str(&self) -> String {
         self.client_core_str.clone()
-    }
-
-    pub fn get_linuxd_core_str(&self) -> String {
-        self.linuxd_core_str.clone()
-    }
-
-    pub fn get_nanovm_core_str(&self) -> String {
-        self.nanovm_core_str.clone()
     }
 }
 

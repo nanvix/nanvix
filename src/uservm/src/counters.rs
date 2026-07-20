@@ -24,8 +24,8 @@ use ::std::sync::{
 ///
 #[derive(Clone)]
 pub struct MessageCounters {
-    /// Tracks the number of messages received by the I/O thread.
-    io_thread_num_messages_received: Arc<AtomicUsize>,
+    /// Tracks the number of messages sent by the I/O handler.
+    io_handler_num_messages_sent: Arc<AtomicUsize>,
     /// Tracks the number of messages received by the memory thread.
     mem_thread_num_messages_received: Arc<AtomicUsize>,
     /// Tracks the number of messages received by the VMM thread.
@@ -52,7 +52,7 @@ impl MessageCounters {
     ///
     pub fn new() -> Self {
         Self {
-            io_thread_num_messages_received: Arc::new(AtomicUsize::new(0)),
+            io_handler_num_messages_sent: Arc::new(AtomicUsize::new(0)),
             mem_thread_num_messages_received: Arc::new(AtomicUsize::new(0)),
             vmm_thread_num_messages_received: Arc::new(AtomicUsize::new(0)),
             vmm_thread_num_input_calls: Arc::new(AtomicUsize::new(0)),
@@ -62,20 +62,20 @@ impl MessageCounters {
     ///
     /// # Description
     ///
-    /// Increments the counter for messages received by the I/O thread.
+    /// Increments the counter for messages sent by the I/O handler.
     ///
-    pub fn increment_io_thread_messages_received(&self) {
-        self.io_thread_num_messages_received
+    pub fn increment_io_handler_messages_sent(&self) {
+        self.io_handler_num_messages_sent
             .fetch_add(1, Ordering::SeqCst);
     }
 
     ///
     /// # Description
     ///
-    /// Returns the current count of messages received by the I/O thread.
+    /// Returns the current count of messages sent by the I/O handler.
     ///
-    pub fn get_io_thread_messages_received(&self) -> usize {
-        self.io_thread_num_messages_received.load(Ordering::SeqCst)
+    pub fn get_io_handler_messages_sent(&self) -> usize {
+        self.io_handler_num_messages_sent.load(Ordering::SeqCst)
     }
 
     ///

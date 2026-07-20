@@ -9,14 +9,10 @@ description = '''
 Declares the socket address structures, the address-family and socket-type
 constants, and the core socket interfaces. The constants and layouts mirror the
 Rust definitions in the sysapi crate (sys_socket.rs).'''
-includes = ["sys/types.h"]
+includes = ["sys/types.h", "sys/uio.h"]
 guard = "_NANVIX_SYS_SOCKET_H"
 scan_crates = ["syscall"]
-content_order = [
-    "raw:0",
-    "types",
-    "section:0",
-]
+content_order = ["raw:0", "types", "section:0"]
 
 [[types]]
 text = '''
@@ -44,6 +40,17 @@ struct sockaddr_storage {
 struct linger {
     int l_onoff;  /**< Whether linger is enabled. */
     int l_linger; /**< Linger time, in seconds.   */
+};
+
+/** @brief Message header for scatter/gather I/O with sendmsg() and recvmsg(). */
+struct msghdr {
+    void *msg_name;           /**< Optional address.             */
+    socklen_t msg_namelen;    /**< Size of the address.          */
+    struct iovec *msg_iov;    /**< Scatter/gather array.         */
+    int msg_iovlen;           /**< Number of elements in msg_iov. */
+    void *msg_control;        /**< Ancillary data.               */
+    socklen_t msg_controllen; /**< Ancillary data buffer length. */
+    int msg_flags;            /**< Flags on the received message. */
 };'''
 
 [[raw_sections]]
@@ -88,4 +95,22 @@ text = '''
 
 [[sections]]
 title = "Sockets"
-functions = ["socket", "socketpair", "bind", "listen", "accept", "connect", "getsockname", "getpeername", "send", "recv", "sendto", "recvfrom", "setsockopt", "getsockopt", "shutdown"]
+functions = [
+    "socket",
+    "socketpair",
+    "bind",
+    "listen",
+    "accept",
+    "connect",
+    "getsockname",
+    "getpeername",
+    "send",
+    "recv",
+    "sendto",
+    "recvfrom",
+    "sendmsg",
+    "recvmsg",
+    "setsockopt",
+    "getsockopt",
+    "shutdown",
+]

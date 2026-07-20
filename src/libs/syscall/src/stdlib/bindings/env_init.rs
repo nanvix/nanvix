@@ -26,9 +26,9 @@ use ::sysapi::ffi::c_char;
 ///
 /// # Note
 ///
-/// In standalone mode, tilde expansion (`~` → `$HOME`) is performed client-side by the syscall
-/// layer (see [`crate::path::expand_path`]) before paths are sent to vfsd via IPC. The `HOME`
-/// value is read from the process-local environment table populated by this function.
+/// Tilde expansion (`~` → `$HOME`) is performed client-side by the syscall layer (see
+/// [`crate::path::expand_path`]) before paths are sent to vfsd via IPC. The `HOME` value is read
+/// from the process-local environment table populated by this function.
 ///
 /// # Safety
 ///

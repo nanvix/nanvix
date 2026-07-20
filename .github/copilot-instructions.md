@@ -35,13 +35,12 @@ Nanvix supports two host platforms:
 - **Windows 11** — Host-side development with the Windows Hypervisor Platform (WHP)
   backend. Guest components (kernel, user binaries) are cross-compiled using a local
   toolchain; the UserVM is built natively. Only standalone interactive mode is available
-  (no HTTP mode or L2 deployments). Use `z.ps1` instead of `./z`.
+  (no HTTP mode). Use `z.ps1` instead of `./z`.
 
 When modifying or generating code, keep platform differences in mind:
 
 - Use `z.ps1` for Windows commands and `./z` for Linux commands.
-- Linux-only features: HTTP mode, L2 deployments,
-  GDB debugging, network namespaces.
+- Linux-only features: HTTP mode, GDB debugging.
 - Windows-supported features: standalone interactive mode, benchmarking
   (`boot-time`, `cold-start`, `warm-start-vmm`).
 - Windows-only concerns: WHP enablement, Developer Mode for symlinks, GNU Make

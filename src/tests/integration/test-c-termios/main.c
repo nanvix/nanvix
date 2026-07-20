@@ -179,8 +179,218 @@ static void test_tc_attr_enotty(void)
     fprintf(stderr, "passed\n");
 }
 
+// Tests tcdrain(): succeeds on a terminal (the console has no output queue to drain) and fails with
+// EBADF / ENOTTY on invalid / non-terminal descriptors.
+static void test_tcdrain(void)
+{
+    fprintf(stderr, "testing tcdrain() ... ");
+
+    // A terminal descriptor drains successfully.
+    assert(tcdrain(STDIN_FILENO) == 0);
+
+    // -1 is never a valid descriptor, so it deterministically yields EBADF.
+    errno = 0;
+    assert(tcdrain(-1) == -1);
+    assert(errno == EBADF);
+
+    // A pipe end is a valid descriptor that is not a terminal.
+    int fds[2];
+    assert(pipe(fds) == 0);
+    errno = 0;
+    assert(tcdrain(fds[0]) == -1);
+    assert(errno == ENOTTY);
+    assert(close(fds[0]) == 0);
+    assert(close(fds[1]) == 0);
+
+    fprintf(stderr, "passed\n");
+}
+
+// Tests tcsendbreak(): succeeds on a terminal (the console has no serial line to signal) regardless
+// of the duration argument, and fails with EBADF / ENOTTY on invalid / non-terminal descriptors.
+static void test_tcsendbreak(void)
+{
+    fprintf(stderr, "testing tcsendbreak() ... ");
+
+    // A terminal descriptor accepts a break request; the duration is ignored.
+    assert(tcsendbreak(STDIN_FILENO, 0) == 0);
+    assert(tcsendbreak(STDIN_FILENO, 100) == 0);
+
+    errno = 0;
+    assert(tcsendbreak(-1, 0) == -1);
+    assert(errno == EBADF);
+
+    int fds[2];
+    assert(pipe(fds) == 0);
+    errno = 0;
+    assert(tcsendbreak(fds[0], 0) == -1);
+    assert(errno == ENOTTY);
+    assert(close(fds[0]) == 0);
+    assert(close(fds[1]) == 0);
+
+    fprintf(stderr, "passed\n");
+}
+
+// Tests tcflush(): accepts the three POSIX queue selectors on a terminal, rejects any other
+// selector with EINVAL, and fails with EBADF / ENOTTY on invalid / non-terminal descriptors.
+static void test_tcflush(void)
+{
+    fprintf(stderr, "testing tcflush() ... ");
+
+    // All three POSIX queue selectors are accepted on a terminal descriptor.
+    assert(tcflush(STDIN_FILENO, TCIFLUSH) == 0);
+    assert(tcflush(STDIN_FILENO, TCOFLUSH) == 0);
+    assert(tcflush(STDIN_FILENO, TCIOFLUSH) == 0);
+
+    // An unrecognized selector is rejected with EINVAL, even on a valid terminal.
+    errno = 0;
+    assert(tcflush(STDIN_FILENO, 0x7fff) == -1);
+    assert(errno == EINVAL);
+
+    // A valid selector on an invalid descriptor yields EBADF.
+    errno = 0;
+    assert(tcflush(-1, TCIFLUSH) == -1);
+    assert(errno == EBADF);
+
+    // The descriptor is validated before the selector: an invalid descriptor paired with an
+    // invalid selector still reports EBADF, not EINVAL.
+    errno = 0;
+    assert(tcflush(-1, 0x7fff) == -1);
+    assert(errno == EBADF);
+
+    // A valid selector on a non-terminal descriptor yields ENOTTY.
+    int fds[2];
+    assert(pipe(fds) == 0);
+    errno = 0;
+    assert(tcflush(fds[0], TCIFLUSH) == -1);
+    assert(errno == ENOTTY);
+    assert(close(fds[0]) == 0);
+    assert(close(fds[1]) == 0);
+
+    fprintf(stderr, "passed\n");
+}
+
+// Tests tcflow(): accepts the four POSIX actions on a terminal, rejects any other action with
+// EINVAL, and fails with EBADF / ENOTTY on invalid / non-terminal descriptors.
+static void test_tcflow(void)
+{
+    fprintf(stderr, "testing tcflow() ... ");
+
+    // All four POSIX actions are accepted on a terminal descriptor.
+    assert(tcflow(STDIN_FILENO, TCOOFF) == 0);
+    assert(tcflow(STDIN_FILENO, TCOON) == 0);
+    assert(tcflow(STDIN_FILENO, TCIOFF) == 0);
+    assert(tcflow(STDIN_FILENO, TCION) == 0);
+
+    // An unrecognized action is rejected with EINVAL, even on a valid terminal.
+    errno = 0;
+    assert(tcflow(STDIN_FILENO, 0x7fff) == -1);
+    assert(errno == EINVAL);
+
+    // A valid action on an invalid descriptor yields EBADF.
+    errno = 0;
+    assert(tcflow(-1, TCOON) == -1);
+    assert(errno == EBADF);
+
+    // The descriptor is validated before the action: an invalid descriptor paired with an
+    // invalid action still reports EBADF, not EINVAL.
+    errno = 0;
+    assert(tcflow(-1, 0x7fff) == -1);
+    assert(errno == EBADF);
+
+    // A valid action on a non-terminal descriptor yields ENOTTY.
+    int fds[2];
+    assert(pipe(fds) == 0);
+    errno = 0;
+    assert(tcflow(fds[0], TCOON) == -1);
+    assert(errno == ENOTTY);
+    assert(close(fds[0]) == 0);
+    assert(close(fds[1]) == 0);
+
+    fprintf(stderr, "passed\n");
+}
+
+// Tests the cfgetispeed()/cfgetospeed()/cfsetispeed()/cfsetospeed() line-speed accessors. These
+// operate purely on the caller's struct termios: the getters read the stored fields, the setters
+// store a requested baud independently per direction, and an unsupported baud is rejected with
+// EINVAL without disturbing the struct.
+static void test_cfspeed_getset(void)
+{
+    fprintf(stderr, "testing cfget/cfset i/o speed ... ");
+
+    struct termios tio;
+    memset(&tio, 0, sizeof(tio));
+
+    // The getters return the actual stored fields, not a hardcoded constant. Distinct values for
+    // the two directions catch a getter that reads the wrong field.
+    tio.c_ispeed = B38400;
+    tio.c_ospeed = B19200;
+    assert(cfgetispeed(&tio) == (speed_t)B38400);
+    assert(cfgetospeed(&tio) == (speed_t)B19200);
+
+    // The setters store the requested baud and round-trip through the getters.
+    assert(cfsetispeed(&tio, B9600) == 0);
+    assert(cfsetospeed(&tio, B115200) == 0);
+    assert(cfgetispeed(&tio) == (speed_t)B9600);
+    assert(cfgetospeed(&tio) == (speed_t)B115200);
+
+    // B0 (hang up) is a valid baud rate.
+    assert(cfsetispeed(&tio, B0) == 0);
+    assert(cfgetispeed(&tio) == (speed_t)B0);
+
+    // Setting one direction must not disturb the other.
+    assert(cfsetispeed(&tio, B2400) == 0);
+    assert(cfgetospeed(&tio) == (speed_t)B115200);
+    assert(cfsetospeed(&tio, B4800) == 0);
+    assert(cfgetispeed(&tio) == (speed_t)B2400);
+
+    // An unsupported baud value is rejected with EINVAL and leaves the struct untouched.
+    errno = 0;
+    assert(cfsetispeed(&tio, 0x1234) == -1);
+    assert(errno == EINVAL);
+    assert(cfgetispeed(&tio) == (speed_t)B2400);
+
+    // The bare CBAUDEX bit is not itself a baud rate.
+    errno = 0;
+    assert(cfsetospeed(&tio, CBAUDEX) == -1);
+    assert(errno == EINVAL);
+    assert(cfgetospeed(&tio) == (speed_t)B4800);
+
+    fprintf(stderr, "passed\n");
+}
+
+// Tests cfsetspeed(): stores the requested baud in both directions at once, rejects a non-baud
+// value with EINVAL, and leaves the struct untouched on rejection.
+static void test_cfsetspeed(void)
+{
+    fprintf(stderr, "testing cfsetspeed() ... ");
+
+    struct termios tio;
+    memset(&tio, 0, sizeof(tio));
+
+    // A valid baud is written to both the input and output directions in a single call.
+    assert(cfsetspeed(&tio, B9600) == 0);
+    assert(cfgetispeed(&tio) == (speed_t)B9600);
+    assert(cfgetospeed(&tio) == (speed_t)B9600);
+
+    // A later call overwrites both directions, including B0 (hang up).
+    assert(cfsetspeed(&tio, B0) == 0);
+    assert(cfgetispeed(&tio) == (speed_t)B0);
+    assert(cfgetospeed(&tio) == (speed_t)B0);
+
+    // A non-baud value is rejected with EINVAL and leaves both directions untouched.
+    assert(cfsetspeed(&tio, B38400) == 0);
+    errno = 0;
+    assert(cfsetspeed(&tio, 0x1234) == -1);
+    assert(errno == EINVAL);
+    assert(cfgetispeed(&tio) == (speed_t)B38400);
+    assert(cfgetospeed(&tio) == (speed_t)B38400);
+
+    fprintf(stderr, "passed\n");
+}
+
 /**
- * @brief Tests the terminal-attribute interfaces tcgetattr() and tcsetattr().
+ * @brief Tests the terminal-control interfaces: tcgetattr()/tcsetattr(), the line-control calls
+ * tcdrain()/tcsendbreak()/tcflush()/tcflow(), and the cfget/cfset line-speed accessors.
  *
  * @param argc Number of command-line arguments (unused).
  * @param argv List of command-line arguments (unused).
@@ -198,6 +408,12 @@ int main(int argc, const char *argv[])
     test_tcsetattr_optional_actions();
     test_tc_attr_ebadf();
     test_tc_attr_enotty();
+    test_tcdrain();
+    test_tcsendbreak();
+    test_tcflush();
+    test_tcflow();
+    test_cfspeed_getset();
+    test_cfsetspeed();
 
     return 0;
 }

@@ -77,10 +77,11 @@ extern "C" {
  * Fields should not be accessed directly; use the accessor functions below.
  */
 typedef struct {
-    int fd;         /**< Underlying file descriptor. */
-    int eof;        /**< End-of-file indicator.      */
-    int error;      /**< Error indicator.             */
-    int ungetc_buf; /**< Push-back character buffer.  */
+    int fd;          /**< Underlying file descriptor.       */
+    int eof;         /**< End-of-file indicator.            */
+    int error;       /**< Error indicator.                  */
+    int ungetc_buf;  /**< Push-back character buffer.       */
+    int orientation; /**< 0 unoriented, >0 wide, <0 byte.   */
 } FILE;
 
 /*==================================================================================================

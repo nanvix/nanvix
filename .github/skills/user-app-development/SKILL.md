@@ -67,8 +67,7 @@ curl --silent \
 ```bash
 ./bin/uservm.elf \
     -kernel ./bin/kernel.elf \
-    -initrd ./bin/hello-rust-nostd.elf \
-    -standalone
+    -initrd ./bin/hello-rust-nostd.elf
 ```
 
 ### Running on Windows
@@ -94,7 +93,7 @@ You can also launch a run via `z.ps1`:
 For low-level debugging, the standalone UserVM is still available:
 
 ```powershell
-.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf
 ```
 
 > **Note:** HTTP mode is Linux-only. On Windows, only standalone interactive mode
@@ -147,7 +146,7 @@ For low-level debugging, the standalone UserVM is still available:
 1. Create directory at `src/user/<name>/`.
 2. Create a `Makefile` following the pattern in existing C applications.
 3. Write source files using the Nanvix POSIX layer (`#include <nanvix/...>`).
-4. The application links against `libposix.a`, `libc.a`, and the custom linker script at
+4. The application links against `libc.a` and the custom linker script at
    `build/user/linker/x86/user.ld`.
 
 ## Logging

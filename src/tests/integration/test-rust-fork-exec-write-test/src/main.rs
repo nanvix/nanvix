@@ -33,7 +33,7 @@
 //! `close()`, the parent reads the payload back and the test passes.
 //!
 //! `/exec_write.out` is NOT pre-seeded; the target creates it. The target is bundled at `/target`
-//! by the test harness (see the standalone image wiring).
+//! by the test harness (see the test image wiring).
 
 //==================================================================================================
 // Modules

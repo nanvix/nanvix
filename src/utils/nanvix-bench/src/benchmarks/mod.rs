@@ -5,14 +5,12 @@
 // Modules
 //==================================================================================================
 
-#[cfg(any(feature = "multi-process", feature = "single-process"))]
-mod system;
 mod vmm;
 
-#[cfg(feature = "standalone")]
+mod gateway;
+mod socket_echo;
 mod standalone;
-
-#[cfg(feature = "standalone")]
+mod standalone_socket;
 mod standalone_vfs;
 
 //==================================================================================================
@@ -36,21 +34,6 @@ pub(crate) const WARMUP_SLEEP_DURATION: u64 = CLEANUP_SLEEP_DURATION;
 ///
 /// # Description
 ///
-/// Sleep duration (in ms) to wait for the system to clean up after a benchmark run when deploying
-/// linuxd in an L2 VM. We need a longer clean-up for cloud-hypervisor to shutdown.
-///
-pub(crate) const CLEANUP_L2_SLEEP_DURATION: u64 = 100;
-
-///
-/// # Description
-///
 /// Maximum number messages that can be queued in a channel.
 ///
 pub(crate) const CHANNEL_CAPACITY: usize = 1024;
-
-///
-/// # Description
-///
-/// Default size of the message we are sending to the user VM.
-///
-pub(crate) const DEFAULT_PAYLOAD_SIZE: usize = 32;

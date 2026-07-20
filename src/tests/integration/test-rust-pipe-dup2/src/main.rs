@@ -148,12 +148,11 @@ fn test_dup2_redirects_stdout() -> Result<(), Error> {
 
 /// Probes the vfsd console terminal through `isatty` and the terminal-control `ioctl`s.
 ///
-/// Exercises the standalone `isatty`/`ioctl` routing end to end: a console descriptor reports as a
+/// Exercises the `isatty`/`ioctl` routing end to end: a console descriptor reports as a
 /// terminal, a pipe end does not, an invalid descriptor fails with `EBADF`, the stored window size
 /// and terminal attributes are returned, a `TCSETS` through one console descriptor is observed
 /// through another (the shared terminal), and a terminal `ioctl` on a non-terminal fails with
 /// `ENOTTY`. The original attributes are restored so the console is left as found.
-#[cfg(feature = "standalone")]
 fn test_tty_probing() -> Result<(), Error> {
     use ::sys::error::ErrorCode;
     use ::sysapi::{
@@ -300,13 +299,9 @@ fn test_tty_probing() -> Result<(), Error> {
 pub fn main() -> Result<(), Error> {
     ::syslog::info!("test-rust-pipe-dup2: starting dup2() pipe-redirection regression test");
 
-    // Probe the vfsd console terminal (isatty/ioctl/termios). This exercises the standalone
-    // syscall -> vfsd routing, so it only runs when that routing is compiled in.
-    #[cfg(feature = "standalone")]
-    {
-        test_tty_probing()?;
-        ::syslog::info!("test-rust-pipe-dup2: PASS - tty_probing");
-    }
+    // Probe the vfsd console terminal (isatty/ioctl/termios).
+    test_tty_probing()?;
+    ::syslog::info!("test-rust-pipe-dup2: PASS - tty_probing");
 
     test_dup2_redirects_stdout()?;
     ::syslog::info!("test-rust-pipe-dup2: PASS - dup2_redirects_stdout");

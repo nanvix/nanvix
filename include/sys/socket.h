@@ -16,6 +16,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/uio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -92,6 +93,17 @@ struct linger {
     int l_linger; /**< Linger time, in seconds.   */
 };
 
+/** @brief Message header for scatter/gather I/O with sendmsg() and recvmsg(). */
+struct msghdr {
+    void *msg_name;           /**< Optional address.             */
+    socklen_t msg_namelen;    /**< Size of the address.          */
+    struct iovec *msg_iov;    /**< Scatter/gather array.         */
+    int msg_iovlen;           /**< Number of elements in msg_iov. */
+    void *msg_control;        /**< Ancillary data.               */
+    socklen_t msg_controllen; /**< Ancillary data buffer length. */
+    int msg_flags;            /**< Flags on the received message. */
+};
+
 /*==================================================================================================
  * Sockets
  *==================================================================================================*/
@@ -108,6 +120,8 @@ extern ssize_t send(int sockfd, const void *buf, size_t len, int flags);
 extern ssize_t recv(int sockfd, void *buf, size_t len, int flags);
 extern ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *sockaddr, socklen_t addrlen);
 extern ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *sockaddr, socklen_t *addrlen);
+extern ssize_t sendmsg(int sockfd, const struct msghdr *msg, int flags);
+extern ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
 extern int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen);
 extern int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen);
 extern int shutdown(int sockfd, int how);

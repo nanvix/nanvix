@@ -234,9 +234,9 @@ fn test_unsetenv_equals_einval() {
 // Public Entry Point
 //==================================================================================================
 
-/// Runs all single-process environment-variable tests.
+/// Runs all process-local environment-variable tests.
 pub fn run() -> Result<(), Error> {
-    ::syslog::info!("test-rust-setenv: starting single-process getenv/setenv/unsetenv tests");
+    ::syslog::info!("test-rust-setenv: starting process-local getenv/setenv/unsetenv tests");
 
     test_set_and_get();
     test_get_missing();
@@ -256,6 +256,6 @@ pub fn run() -> Result<(), Error> {
     test_unsetenv_empty_einval();
     test_unsetenv_equals_einval();
 
-    ::syslog::info!("test-rust-setenv: PASS - single-process tests");
+    ::syslog::info!("test-rust-setenv: PASS - process-local tests");
     Ok(())
 }

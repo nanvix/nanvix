@@ -20,8 +20,12 @@ use crate::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
+    time::NANOSECONDS_PER_SECOND,
 };
-use ::core::mem;
+use ::core::{
+    mem,
+    time::Duration,
+};
 
 //==================================================================================================
 // Constants
@@ -104,11 +108,9 @@ impl MessageSender {
 
     /// The kernel process is the sender of the message.
     pub const KERNEL: Self = Self::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
-    /// The memory management daemon is the sender of the message (standalone mode only).
-    /// NOTE: Aliases [`Self::NETWORKD`] — these are mutually exclusive deployment modes.
+    /// The memory management daemon is the sender of the message.
     pub const MEMD: Self = Self::new(ProcessIdentifier::MEMD, ThreadIdentifier::NONE);
-    /// The network daemon is the sender of the message (hosted mode only).
-    /// NOTE: Aliases [`Self::MEMD`] — these are mutually exclusive deployment modes.
+    /// Host network-service routing tag. The host consumes it before guest process dispatch.
     pub const NETWORKD: Self = Self::new(ProcessIdentifier::NETWORKD, ThreadIdentifier::NONE);
     /// The VFS daemon is the sender of the message.
     pub const VFSD: Self = Self::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE);
@@ -149,11 +151,9 @@ impl MessageReceiver {
 
     /// The kernel process is the receiver of the message.
     pub const KERNEL: Self = Self::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
-    /// The memory management daemon is the receiver of the message (standalone mode only).
-    /// NOTE: Aliases [`Self::NETWORKD`] — these are mutually exclusive deployment modes.
+    /// The memory management daemon is the receiver of the message.
     pub const MEMD: Self = Self::new(ProcessIdentifier::MEMD, ThreadIdentifier::NONE);
-    /// The network daemon is the receiver of the message (hosted mode only).
-    /// NOTE: Aliases [`Self::MEMD`] — these are mutually exclusive deployment modes.
+    /// Host network-service routing tag. The host consumes it before guest process dispatch.
     pub const NETWORKD: Self = Self::new(ProcessIdentifier::NETWORKD, ThreadIdentifier::NONE);
     /// The VFS daemon is the receiver of the message.
     pub const VFSD: Self = Self::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE);
@@ -266,6 +266,7 @@ impl Message {
     pub fn try_from_bytes(
         bytes: [u8; Self::HEADER_SIZE + Self::PAYLOAD_SIZE],
     ) -> Result<Self, Error> {
+        MessageType::try_from_bytes([bytes[0]])?;
         Ok(unsafe { mem::transmute::<[u8; config::kernel::IPC_MESSAGE_SIZE], Message>(bytes) })
     }
 }
@@ -504,7 +505,7 @@ impl VmBusMessage {
 ///
 /// # Description
 ///
-/// Header structure describing a contiguous data chunk transfer between UserVM and linuxd.
+/// Header structure describing a contiguous data chunk transfer between UserVM and its host.
 ///
 /// # Notes
 ///
@@ -675,7 +676,7 @@ impl HostBulkTransferHeader {
     }
 }
 
-/// Backwards-compatible name for the contiguous UserVM/linuxd bulk header.
+/// Backwards-compatible name for the contiguous UserVM/host bulk header.
 pub type DataChunkHeader = HostBulkTransferHeader;
 
 ///
@@ -686,9 +687,9 @@ pub type DataChunkHeader = HostBulkTransferHeader;
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuestSgBulkKind {
-    /// UserVM should gather guest memory and send it to linuxd.
+    /// UserVM should gather guest memory and send it to the host I/O backend.
     Push = 1,
-    /// UserVM should register guest memory as the destination for a later linuxd response.
+    /// UserVM should register guest memory as the destination for a later host response.
     Pull = 2,
 }
 
@@ -1044,5 +1045,238 @@ impl GuestSgBulkHeader {
         // SAFETY: All bit patterns are valid because the header contains only fixed-width integer
         // fields and a segment whose bit patterns are all valid.
         Ok(unsafe { mem::transmute::<[u8; Self::SIZE], GuestSgBulkHeader>(bytes) })
+    }
+}
+
+///
+/// # Description
+///
+/// Optional timeout for a rendezvous push/pull kernel call.
+///
+/// `push`/`pull` bound their blocking wait with the three-point spectrum common to
+/// synchronous-rendezvous microkernels:
+///
+/// - **Infinite** (`kind == KIND_INFINITE`): block until the counterpart arrives. This is the
+///   historical, unbounded behavior.
+/// - **Finite** (`kind == KIND_FINITE`): block for at most `secs` seconds plus `nanos` nanoseconds.
+///   A finite timeout of zero duration is a non-blocking probe that never sleeps.
+///
+/// This is a plain-old-data encoding carried across the kernel-call boundary inside [`PushArgs`]
+/// and [`PullArgs`]. All fields are fixed-width and naturally aligned, so the layout is identical on
+/// the 32-bit guest and the kernel.
+///
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(C)]
+pub struct Timeout {
+    /// Discriminant selecting the timeout mode: [`Self::KIND_INFINITE`] or [`Self::KIND_FINITE`].
+    kind: u32,
+    /// Seconds component of a finite timeout.
+    secs: u32,
+    /// Nanoseconds component of a finite timeout.
+    nanos: u32,
+}
+::static_assert::assert_eq_size!(Timeout, 3 * mem::size_of::<u32>());
+
+impl Timeout {
+    /// Discriminant value for an infinite (unbounded) timeout.
+    const KIND_INFINITE: u32 = 0;
+
+    /// Discriminant value for a finite (bounded) timeout.
+    const KIND_FINITE: u32 = 1;
+
+    /// Size of the descriptor in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates an infinite timeout, i.e. one that blocks until the counterpart arrives.
+    ///
+    /// # Returns
+    ///
+    /// The new infinite timeout.
+    ///
+    pub const fn infinite() -> Self {
+        Self {
+            kind: Self::KIND_INFINITE,
+            secs: 0,
+            nanos: 0,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a finite timeout of the given duration. A zero duration is a non-blocking probe.
+    ///
+    /// # Parameters
+    ///
+    /// - `secs`: Seconds component of the timeout.
+    /// - `nanos`: Nanoseconds component of the timeout.
+    ///
+    /// # Returns
+    ///
+    /// The new finite timeout.
+    ///
+    pub const fn finite(secs: u32, nanos: u32) -> Self {
+        Self {
+            kind: Self::KIND_FINITE,
+            secs,
+            nanos,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Creates a timeout from an optional [`Duration`]: [`None`] yields an infinite timeout, while
+    /// [`Some`] yields a finite one. A duration whose whole-seconds component exceeds [`u32::MAX`]
+    /// is saturated, which still bounds the wait far beyond any practical deadline.
+    ///
+    /// # Parameters
+    ///
+    /// - `timeout`: The optional duration to convert.
+    ///
+    /// # Returns
+    ///
+    /// The corresponding timeout.
+    ///
+    pub fn from_duration(timeout: Option<Duration>) -> Self {
+        match timeout {
+            None => Self::infinite(),
+            Some(duration) => {
+                let secs: u32 = u32::try_from(duration.as_secs()).unwrap_or(u32::MAX);
+                Self::finite(secs, duration.subsec_nanos())
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the finite duration components `(secs, nanos)`, or [`None`] if the timeout is
+    /// infinite.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the descriptor carries an unknown timeout kind or an
+    /// invalid nanosecond component.
+    ///
+    pub fn as_finite(&self) -> Result<Option<(u32, u32)>, Error> {
+        match self.kind {
+            Self::KIND_INFINITE => Ok(None),
+            Self::KIND_FINITE if self.nanos < NANOSECONDS_PER_SECOND => {
+                Ok(Some((self.secs, self.nanos)))
+            },
+            Self::KIND_FINITE => Err(Error::new(
+                ErrorCode::InvalidArgument,
+                "timeout nanoseconds component is out of range",
+            )),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid timeout kind")),
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Arguments for a rendezvous push kernel call, passed by pointer.
+///
+/// `push` and `pull` already consume all four kernel-call argument registers for their mandatory
+/// operands, leaving no register for the optional [`Timeout`]. The operands are therefore gathered
+/// into this descriptor, which the guest builds on its stack and passes by address; the kernel
+/// copies it into kernel space before use, exactly as it does for a [`Message`]. All fields are
+/// fixed-width and naturally aligned, so the layout is identical on the 32-bit guest and the kernel.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct PushArgs {
+    /// Destination process identifier.
+    pub dst_pid: ProcessIdentifier,
+    /// Destination thread identifier.
+    pub dst_tid: ThreadIdentifier,
+    /// Address of the source buffer in the caller's user space.
+    pub buffer: u32,
+    /// Number of bytes to transfer.
+    pub len: u32,
+    /// Optional timeout that bounds the blocking wait.
+    pub timeout: Timeout,
+}
+::static_assert::assert_eq_size!(PushArgs, 7 * mem::size_of::<u32>());
+
+impl PushArgs {
+    /// Size of the descriptor in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates a zeroed descriptor suitable as a destination for a copy from user space. The
+    /// identifier fields are set to the kernel sentinels (raw value zero); every field is
+    /// overwritten by the copy before use.
+    ///
+    /// # Returns
+    ///
+    /// The zeroed descriptor.
+    ///
+    pub const fn zeroed() -> Self {
+        Self {
+            dst_pid: ProcessIdentifier::KERNEL,
+            dst_tid: ThreadIdentifier::KERNEL,
+            buffer: 0,
+            len: 0,
+            timeout: Timeout::infinite(),
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Arguments for a rendezvous pull kernel call, passed by pointer.
+///
+/// This is the receive-side counterpart of [`PushArgs`]; see that type for the rationale behind the
+/// pointer-passed descriptor. All fields are fixed-width and naturally aligned, so the layout is
+/// identical on the 32-bit guest and the kernel.
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct PullArgs {
+    /// Source (expected sender) process identifier.
+    pub src_pid: ProcessIdentifier,
+    /// Source (expected sender) thread identifier.
+    pub src_tid: ThreadIdentifier,
+    /// Address of the destination buffer in the caller's user space.
+    pub buffer: u32,
+    /// Maximum number of bytes to receive.
+    pub len: u32,
+    /// Optional timeout that bounds the blocking wait.
+    pub timeout: Timeout,
+}
+::static_assert::assert_eq_size!(PullArgs, 7 * mem::size_of::<u32>());
+
+impl PullArgs {
+    /// Size of the descriptor in bytes.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    ///
+    /// # Description
+    ///
+    /// Creates a zeroed descriptor suitable as a destination for a copy from user space. The
+    /// identifier fields are set to the kernel sentinels (raw value zero); every field is
+    /// overwritten by the copy before use.
+    ///
+    /// # Returns
+    ///
+    /// The zeroed descriptor.
+    ///
+    pub const fn zeroed() -> Self {
+        Self {
+            src_pid: ProcessIdentifier::KERNEL,
+            src_tid: ThreadIdentifier::KERNEL,
+            buffer: 0,
+            len: 0,
+            timeout: Timeout::infinite(),
+        }
     }
 }

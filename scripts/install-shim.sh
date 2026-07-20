@@ -61,8 +61,6 @@ mkramfs_path = "$MKRAMFS_PATH"
 # Temporary directory for generated ramfs images
 temp_dir = "/tmp"
 
-# Execution mode (only "standalone" is supported in v1)
-execution_mode = "standalone"
 
 # Additional arguments passed to nanvixd
 # -console-file /dev/null suppresses guest console output

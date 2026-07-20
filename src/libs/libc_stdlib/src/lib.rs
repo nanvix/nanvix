@@ -138,7 +138,12 @@ use ::sysapi::{
 pub use abort::abort;
 pub use abs_fn::abs;
 pub use aligned_alloc::aligned_alloc;
-pub use atexit::atexit;
+pub use atexit::{
+    __cxa_atexit,
+    __cxa_finalize,
+    atexit,
+    call_atexit_handlers,
+};
 pub use atof::atof;
 pub use atoi::atoi;
 pub use atol::atol;

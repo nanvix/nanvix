@@ -9,9 +9,9 @@ members = [
         "src/benchmarks/mount-bench-nostd",
         "src/benchmarks/noop-rust-nostd",
         "src/benchmarks/snapshot-rust-nostd",
+        "src/benchmarks/socket-echo-rust-nostd",
         "src/benchmarks/vfs-bench-nostd",
         "src/daemons/hostfsd",
-        "src/daemons/linuxd",
         "src/daemons/memd",
         "src/daemons/networkd",
         "src/daemons/procd",
@@ -22,7 +22,6 @@ members = [
         "src/libs/bump_allocator",
         "src/libs/build-utils",
         "src/libs/config",
-        "src/libs/control-plane-api",
         "src/libs/elf",
         "src/libs/error",
         "src/libs/fat32",
@@ -30,8 +29,6 @@ members = [
         "src/libs/hwloc",
         "src/libs/nanvix",
         "src/libs/nanvix-http",
-        "src/libs/nanvix-sandbox",
-        "src/libs/nanvix-sandbox-cache",
         "src/libs/nanvix-sandbox-config",
         "src/libs/nanvix-terminal",
         "src/libs/no_fail",
@@ -169,7 +166,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.18.34"
+version = "0.21.9"
 license-file = "LICENSE.txt"
 authors = ["The Maintainers of Nanvix"]
 edition = "2021"
@@ -194,7 +191,6 @@ clap = { version = "4.6.1", default-features = false, features = [
 compiler_builtins = "0.1.160"
 config = { path = "src/libs/config", default-features = false }
 containerd-shim-protos = { version = "0.11.0", features = ["async", "sandbox"] }
-control-plane-api = { path = "src/libs/control-plane-api", default-features = false }
 dirs = "6.0"
 elf = { path = "src/libs/elf", default-features = false }
 env_logger = "0.11.10"
@@ -220,7 +216,6 @@ hwloc = { path = "src/libs/hwloc", default-features = false }
 kvm-bindings = "0.14.0"
 kvm-ioctls = "0.25.0"
 libc = "0.2.186"
-linuxd = { path = "src/daemons/linuxd", default-features = false }
 log = "0.4.32"
 cache = { path = "src/libs/cache", default-features = false }
 cmdline = { path = "src/libs/cmdline", default-features = false }
@@ -233,8 +228,6 @@ nanvix-http = { path = "src/libs/nanvix-http", default-features = false }
 net-backend = { path = "src/libs/net-backend", default-features = false }
 networkd = { path = "src/daemons/networkd", default-features = false }
 nanvix-oci = { path = "src/libs/nanvix-oci" }
-nanvix-sandbox = { path = "src/libs/nanvix-sandbox", default-features = false }
-nanvix-sandbox-cache = { path = "src/libs/nanvix-sandbox-cache", default-features = false }
 nanvix-sandbox-config = { path = "src/libs/nanvix-sandbox-config", default-features = false }
 nanvix-shim-core = { path = "src/libs/nanvix-shim-core" }
 nanvix-shim-proto = { path = "src/libs/nanvix-shim-proto" }
@@ -336,7 +329,9 @@ uuid = { version = "1.23.1", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 vfs = { path = "src/libs/vfs", default-features = false }
 vfs-bench-common = { path = "src/libs/vfs-bench-common", default-features = false }
-vstd = { version = "=0.0.0-2026-06-14-0213", default-features = false, features = ["alloc"] }
+vstd = { version = "=0.0.0-2026-06-14-0213", default-features = false, features = [
+        "alloc",
+] }
 vmm-sys-util = { version = "0.15.0", default-features = false }
 windows = { version = "0.62", features = [
         "Win32_Foundation",

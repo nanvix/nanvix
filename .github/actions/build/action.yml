@@ -17,18 +17,10 @@ inputs:
     description: "Machine type"
     required: true
     default: "microvm"
-  deployment-type:
-    description: "Deployment type"
-    required: true
-    default: "single-process"
 
 runs:
   using: "composite"
   steps:
-    - id: deployment
-      uses: ./.github/actions/deployment-features
-      with:
-        deployment-type: "${{ inputs.deployment-type }}"
     - name: "Build (${{ inputs.machine-type }})"
       shell: bash
       run: |
@@ -40,5 +32,4 @@ runs:
           "LOG_LEVEL=${{ inputs.log-level }}" \
           VERBOSE=yes \
           ${{ inputs.release == 'release' && 'RELEASE=yes' || '' }} \
-          ${SCCACHE:+"SCCACHE=${SCCACHE}"} \
-          ${{ steps.deployment.outputs.make-flags }}
+          ${SCCACHE:+"SCCACHE=${SCCACHE}"}

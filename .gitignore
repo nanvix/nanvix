@@ -21,7 +21,6 @@ toolchain
 bin/
 /lib/
 /logs/
-images/
 plots/
 target/
 /sysroot-debug/
@@ -36,8 +35,6 @@ sysroot
 *.o
 *.obj
 .z.cache
-linuxd.stdout
-linuxd.stderr
 
 # Python cache
 __pycache__/

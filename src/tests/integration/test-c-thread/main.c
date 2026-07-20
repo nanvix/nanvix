@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include <pthread.h>
+#include <semaphore.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -108,22 +109,35 @@ int main(int argc, const char *argv[])
     // Sanity check size of `pthread_rwlockattr_t` type.
     STATIC_ASSERT_SIZE(pthread_rwlockattr_t, sizeof(int));
 
+    // Sanity check size of `sem_t` type.
+    STATIC_ASSERT_SIZE(sem_t,
+                       sizeof(int) +                    // count
+                           sizeof(pthread_mutex_t) +    // lock
+                           sizeof(pthread_cond_t)       // cond
+    );
+
     test_pthread_self();
     test_pthread_attr_init_destroy();
+    test_pthread_attr_setdetachstate();
+    test_pthread_attr_getguardsize();
+    test_pthread_attr_setschedparam();
     test_pthread_attr_getstack();
     test_pthread_getattr_np_destroy();
     test_pthread_create_join();
     test_pthread_mutex_static_init();
     test_pthread_mutex_dynamic_init();
     test_pthread_mutexattr_settype();
+    test_pthread_mutexattr_destroy();
     test_pthread_mutex_trylock();
     test_pthread_mutex_timedlock();
+    test_pthread_condattr_init();
     test_pthread_rwlock_static_init();
     test_pthread_rwlock_dynamic_init();
     test_pthread_cond_static_init();
     test_pthread_cond_timedwait();
     test_pthread_tda();
     test_thread_local();
+    test_semaphore();
 
     // Must be last test.
     test_pthread_nowait();

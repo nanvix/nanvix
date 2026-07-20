@@ -201,8 +201,7 @@ impl StandaloneVmHandle {
         host_filter: HostFilter,
         #[cfg(feature = "gdb")] gdb_port: Option<u16>,
     ) -> (Self, StandaloneVmIo) {
-        // Create internal VM channels. In standalone mode these are wired directly without an
-        // I/O thread.
+        // Create internal VM channels and wire them directly to the standalone I/O handler.
         let (vcpu_thread_stdout_tx, standalone_data_rx) =
             mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
         let (inbound_data_tx, memory_thread_data_rx) = mpsc::channel::<IkcFrame>(CHANNEL_CAPACITY);
@@ -404,10 +403,9 @@ fn extract_tid(source: ::sys::ipc::MessageSender) -> ThreadIdentifier {
 /// Processes guest IKC messages in standalone mode, bridging the VM's IKC channel to external
 /// consumer channels.
 ///
-/// This handler replaces linuxd for standalone deployments: it receives WriteRequest and
-/// ReadRequest messages from the guest via the VM's stdout channel, processes them, and sends
-/// responses back via the VM's stdin channel. Application data is forwarded to/from external
-/// channels that consumers (terminal, HTTP gateway) use.
+/// This handler receives `WriteRequest` and `ReadRequest` messages from the guest via the VM's
+/// stdout channel, processes them, and sends responses back via the VM's stdin channel.
+/// Application data is forwarded to/from external channels used by terminal and HTTP consumers.
 ///
 /// # Parameters
 ///
@@ -532,12 +530,7 @@ async fn standalone_io_handler(
                                     None,
                                     payload,
                                 );
-                                // NOTE: `increment_io_thread_messages_received()`
-                                // counts messages flowing from the IO thread back
-                                // into the VM, not messages the IO thread receives.
-                                // The name is a project-wide convention; renaming is
-                                // out of scope here.
-                                counters.increment_io_thread_messages_received();
+                                counters.increment_io_handler_messages_sent();
                                 if response_tx
                                     .blocking_send(IkcFrame::Message(response))
                                     .is_err()
@@ -622,6 +615,17 @@ async fn standalone_io_handler(
                         )
                         .await;
                     },
+                    SystemCallMessageHeader::SendSocketRequest => {
+                        handle_send_request(
+                            &mut vm_stdout_rx,
+                            &vm_stdin_tx,
+                            &network_daemon,
+                            msg.source,
+                            syscall_msg,
+                            &counters,
+                        )
+                        .await;
+                    },
                     SystemCallMessageHeader::SendToSocketRequest => {
                         handle_sendto_request(
                             &mut vm_stdout_rx,
@@ -635,6 +639,17 @@ async fn standalone_io_handler(
                     },
                     SystemCallMessageHeader::ReceiveFromSocketRequest => {
                         handle_recvfrom_request(
+                            &mut vm_stdout_rx,
+                            &vm_stdin_tx,
+                            &network_daemon,
+                            msg.source,
+                            syscall_msg,
+                            &counters,
+                        )
+                        .await;
+                    },
+                    SystemCallMessageHeader::ReceiveSocketRequest => {
+                        handle_recv_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
                             &network_daemon,
@@ -944,7 +959,7 @@ async fn send_hostfs_error(
         None,
         err_payload,
     );
-    counters.increment_io_thread_messages_received();
+    counters.increment_io_handler_messages_sent();
     if vm_stdin_tx
         .send(IkcFrame::Message(err_response))
         .await
@@ -971,19 +986,16 @@ fn spawn_networking_task(
     trace!("standalone io_handler: spawning networking task");
 
     let handle = tokio::task::spawn_blocking(move || match network_daemon.handle_message(msg) {
-        Some(responses) => {
-            for response in responses {
-                counters.increment_io_thread_messages_received();
-                if vm_stdin_tx
-                    .blocking_send(IkcFrame::Message(response))
-                    .is_err()
-                {
-                    error!(
-                        "standalone io_handler: failed to send networking response (VM input \
-                         channel closed)"
-                    );
-                    return;
-                }
+        Some(response) => {
+            counters.increment_io_handler_messages_sent();
+            if vm_stdin_tx
+                .blocking_send(IkcFrame::Message(response))
+                .is_err()
+            {
+                error!(
+                    "standalone io_handler: failed to send networking response (VM input channel \
+                     closed)"
+                );
             }
         },
         None => {
@@ -1026,7 +1038,7 @@ async fn handle_write_request(
             );
             let response: Message =
                 WriteResponse::build(tid, 0, ProcessIdentifier::KERNEL, MessageType::Ikc);
-            counters.increment_io_thread_messages_received();
+            counters.increment_io_handler_messages_sent();
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
                     "standalone io_handler: failed to send WriteResponse (VM input channel closed)"
@@ -1041,7 +1053,7 @@ async fn handle_write_request(
         warn!("standalone io_handler: rejecting write to unsupported fd={fd} (tid={tid:?})");
         let response: Message =
             WriteResponse::build(tid, -1, ProcessIdentifier::KERNEL, MessageType::Ikc);
-        counters.increment_io_thread_messages_received();
+        counters.increment_io_handler_messages_sent();
         if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
             error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
         }
@@ -1054,7 +1066,7 @@ async fn handle_write_request(
             error!("standalone io_handler: write size overflows i32 (len={})", data.len());
             let response: Message =
                 WriteResponse::build(tid, -1, ProcessIdentifier::KERNEL, MessageType::Ikc);
-            counters.increment_io_thread_messages_received();
+            counters.increment_io_handler_messages_sent();
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
                     "standalone io_handler: failed to send WriteResponse (VM input channel closed)"
@@ -1071,7 +1083,7 @@ async fn handle_write_request(
         trace!("standalone io_handler: output channel closed, discarding write data");
         let response: Message =
             WriteResponse::build(tid, -1, ProcessIdentifier::KERNEL, MessageType::Ikc);
-        counters.increment_io_thread_messages_received();
+        counters.increment_io_handler_messages_sent();
         if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
             error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
         }
@@ -1082,7 +1094,7 @@ async fn handle_write_request(
     let response: Message =
         WriteResponse::build(tid, written, ProcessIdentifier::KERNEL, MessageType::Ikc);
     trace!("standalone io_handler: sending WriteResponse (written={written}, tid={tid:?})");
-    counters.increment_io_thread_messages_received();
+    counters.increment_io_handler_messages_sent();
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
         error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
     }
@@ -1121,7 +1133,7 @@ async fn handle_read_request(
             );
             let response: Message =
                 ReadResponse::eof(tid, ProcessIdentifier::KERNEL, MessageType::Ikc);
-            counters.increment_io_thread_messages_received();
+            counters.increment_io_handler_messages_sent();
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
                     "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
@@ -1144,8 +1156,8 @@ async fn handle_read_request(
             0,
         );
         let error_bulk: DataChunk = DataChunk::new(error_header, Vec::new());
-        counters.increment_io_thread_messages_received();
-        counters.increment_io_thread_messages_received();
+        counters.increment_io_handler_messages_sent();
+        counters.increment_io_handler_messages_sent();
         if vm_stdin_tx.send(IkcFrame::Bulk(error_bulk)).await.is_err() {
             error!("standalone io_handler: failed to send bulk response (VM input channel closed)");
             return;
@@ -1186,7 +1198,7 @@ async fn handle_read_request(
                 ProcessIdentifier::KERNEL,
                 MessageType::Ikc,
             );
-            counters.increment_io_thread_messages_received();
+            counters.increment_io_handler_messages_sent();
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
                     "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
@@ -1210,8 +1222,8 @@ async fn handle_read_request(
     let response_bulk: DataChunk = DataChunk::new(response_header, data);
 
     // Increment once for the bulk frame and once for the message response that follow.
-    counters.increment_io_thread_messages_received();
-    counters.increment_io_thread_messages_received();
+    counters.increment_io_handler_messages_sent();
+    counters.increment_io_handler_messages_sent();
     if vm_stdin_tx
         .send(IkcFrame::Bulk(response_bulk))
         .await
@@ -1234,6 +1246,70 @@ async fn handle_read_request(
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
         error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
     }
+}
+
+///
+/// # Description
+///
+/// Handles a guest `SendSocketRequest` by consuming the subsequent push data frame and forwarding
+/// the payload to networkd on a blocking task, which sends the response back to the guest.
+///
+/// The push data frame must always be drained, even when networking is disabled, otherwise the
+/// IKC frame stream desynchronizes and subsequent requests are misinterpreted.
+///
+async fn handle_send_request(
+    vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    network_daemon: &Option<Arc<NetworkDaemon>>,
+    source: MessageSender,
+    syscall_msg: SystemCallMessage,
+    counters: &MessageCounters,
+) {
+    let tid: ThreadIdentifier = extract_tid(source);
+    trace!("standalone io_handler: handling SendSocketRequest (tid={tid:?})");
+
+    // Wait for the push data frame that the guest's `ipc::push()` emits after the request.
+    let data: Vec<u8> = match vm_stdout_rx.recv().await {
+        Some(IkcFrame::Bulk(bulk)) => bulk.into_data(),
+        other => {
+            error!(
+                "standalone io_handler: expected bulk frame after SendSocketRequest, got {:?}",
+                other.as_ref().map(|f| f.frame_type_byte())
+            );
+            send_networking_error(vm_stdin_tx, tid, counters).await;
+            return;
+        },
+    };
+
+    let network_daemon: Arc<NetworkDaemon> = match network_daemon {
+        Some(nd) => nd.clone(),
+        None => {
+            warn!("standalone io_handler: networking not allowed, rejecting send (tid={tid:?})");
+            send_networking_error(vm_stdin_tx, tid, counters).await;
+            return;
+        },
+    };
+
+    // Run the (potentially blocking) backend call on its own thread so it does not stall the I/O
+    // handler loop, mirroring `spawn_networking_task`.
+    let vm_stdin_tx: mpsc::Sender<IkcFrame> = vm_stdin_tx.clone();
+    let counters: MessageCounters = counters.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+        let response: Message = network_daemon.handle_send(source, syscall_msg, &data);
+        counters.increment_io_handler_messages_sent();
+        if vm_stdin_tx
+            .blocking_send(IkcFrame::Message(response))
+            .is_err()
+        {
+            error!("standalone io_handler: failed to send send response (VM input channel closed)");
+        }
+    });
+
+    tokio::spawn(async move {
+        if let Err(e) = handle.await {
+            error!("standalone io_handler: send task panicked: {e}");
+        }
+    });
 }
 
 ///
@@ -1285,7 +1361,7 @@ async fn handle_sendto_request(
     let counters: MessageCounters = counters.clone();
     let handle = tokio::task::spawn_blocking(move || {
         let response: Message = network_daemon.handle_sendto(source, syscall_msg, &data);
-        counters.increment_io_thread_messages_received();
+        counters.increment_io_handler_messages_sent();
         if vm_stdin_tx
             .blocking_send(IkcFrame::Message(response))
             .is_err()
@@ -1358,9 +1434,9 @@ async fn handle_recvfrom_request(
         let (response, data): (Message, Vec<u8>) =
             network_daemon.handle_recvfrom(source, syscall_msg);
 
-        // The datagram payload is bounded by a single page, so its length normally fits in u32.
-        // Guard the conversion anyway, releasing the guest's pull with an empty transfer and an
-        // error on the unexpected overflow so it does not deadlock.
+        // The datagram payload is bounded by the scatter/gather bulk limit. Guard the conversion
+        // anyway, releasing the guest's pull with an empty transfer and an error on the unexpected
+        // overflow so it does not deadlock.
         let actual_len: u32 = match u32::try_from(data.len()) {
             Ok(n) => n,
             Err(_) => {
@@ -1373,8 +1449,8 @@ async fn handle_recvfrom_request(
                     pull_header.data_addr(),
                     0,
                 );
-                counters.increment_io_thread_messages_received();
-                counters.increment_io_thread_messages_received();
+                counters.increment_io_handler_messages_sent();
+                counters.increment_io_handler_messages_sent();
                 let _ = vm_stdin_tx
                     .blocking_send(IkcFrame::Bulk(DataChunk::new(empty_header, Vec::new())));
                 let err: Message = Message::new(
@@ -1399,8 +1475,8 @@ async fn handle_recvfrom_request(
         let response_bulk: DataChunk = DataChunk::new(response_header, data);
 
         // Increment once for the bulk frame and once for the message response that follow.
-        counters.increment_io_thread_messages_received();
-        counters.increment_io_thread_messages_received();
+        counters.increment_io_handler_messages_sent();
+        counters.increment_io_handler_messages_sent();
         if vm_stdin_tx
             .blocking_send(IkcFrame::Bulk(response_bulk))
             .is_err()
@@ -1431,8 +1507,138 @@ async fn handle_recvfrom_request(
 ///
 /// # Description
 ///
+/// Handles a guest `ReceiveSocketRequest` by consuming the pull-header bulk frame and forwarding
+/// the request to networkd on a blocking task, which pushes the received payload back to the guest
+/// followed by the response message.
+///
+async fn handle_recv_request(
+    vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    network_daemon: &Option<Arc<NetworkDaemon>>,
+    source: MessageSender,
+    syscall_msg: SystemCallMessage,
+    counters: &MessageCounters,
+) {
+    let tid: ThreadIdentifier = extract_tid(source);
+    trace!("standalone io_handler: handling ReceiveSocketRequest (tid={tid:?})");
+
+    // Wait for the pull-header bulk frame that the guest's `ipc::pull()` emits after the request.
+    // It carries the bulk location the received payload must be written to.
+    let pull_header: DataChunkHeader = match vm_stdout_rx.recv().await {
+        Some(IkcFrame::Bulk(bulk)) => *bulk.header(),
+        other => {
+            error!(
+                "standalone io_handler: expected bulk frame after ReceiveSocketRequest, got {:?}",
+                other.as_ref().map(|f| f.frame_type_byte())
+            );
+            send_networking_error(vm_stdin_tx, tid, counters).await;
+            return;
+        },
+    };
+
+    let network_daemon: Arc<NetworkDaemon> = match network_daemon {
+        Some(nd) => nd.clone(),
+        None => {
+            warn!("standalone io_handler: networking not allowed, rejecting recv (tid={tid:?})");
+            // Release the guest blocked in `ipc::pull()` with an empty transfer before reporting
+            // the error so it does not deadlock.
+            send_empty_pull_response(vm_stdin_tx, &pull_header, counters).await;
+            send_networking_error(vm_stdin_tx, tid, counters).await;
+            return;
+        },
+    };
+
+    // Run the blocking `recv()` on its own thread so a waiting socket does not stall the I/O
+    // handler loop.
+    let vm_stdin_tx: mpsc::Sender<IkcFrame> = vm_stdin_tx.clone();
+    let counters: MessageCounters = counters.clone();
+    let handle = tokio::task::spawn_blocking(move || {
+        let (response, data): (Message, Vec<u8>) = network_daemon.handle_recv(source, syscall_msg);
+
+        // The payload is bounded by the scatter/gather bulk limit. Guard the conversion anyway,
+        // releasing the guest's pull with an empty transfer and an error on the unexpected overflow
+        // so it does not deadlock.
+        let actual_len: u32 = match u32::try_from(data.len()) {
+            Ok(n) => n,
+            Err(_) => {
+                error!("standalone io_handler: recv size overflows u32 (len={})", data.len());
+                let empty_header: DataChunkHeader = DataChunkHeader::new(
+                    pull_header.source_pid(),
+                    pull_header.source_tid(),
+                    pull_header.destination_pid(),
+                    pull_header.destination_tid(),
+                    pull_header.data_addr(),
+                    0,
+                );
+                counters.increment_io_handler_messages_sent();
+                counters.increment_io_handler_messages_sent();
+                if let Err(error) = vm_stdin_tx
+                    .blocking_send(IkcFrame::Bulk(DataChunk::new(empty_header, Vec::new())))
+                {
+                    error!(
+                        "standalone io_handler: failed to send empty bulk response (VM input \
+                         channel closed): {error}"
+                    );
+                }
+                let err: Message = Message::new(
+                    MessageSender::NETWORKD,
+                    MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
+                    MessageType::Ikc,
+                    Some(ErrorCode::InvalidMessage),
+                    [0u8; Message::PAYLOAD_SIZE],
+                );
+                if let Err(error) = vm_stdin_tx.blocking_send(IkcFrame::Message(err)) {
+                    error!(
+                        "standalone io_handler: failed to send recv error response (VM input \
+                         channel closed): {error}"
+                    );
+                }
+                return;
+            },
+        };
+        let response_header: DataChunkHeader = DataChunkHeader::new(
+            pull_header.source_pid(),
+            pull_header.source_tid(),
+            pull_header.destination_pid(),
+            pull_header.destination_tid(),
+            pull_header.data_addr(),
+            actual_len,
+        );
+        let response_bulk: DataChunk = DataChunk::new(response_header, data);
+
+        // Increment once for the bulk frame and once for the message response that follow.
+        counters.increment_io_handler_messages_sent();
+        counters.increment_io_handler_messages_sent();
+        if vm_stdin_tx
+            .blocking_send(IkcFrame::Bulk(response_bulk))
+            .is_err()
+        {
+            error!(
+                "standalone io_handler: failed to send recv bulk response (VM input channel \
+                 closed)"
+            );
+            return;
+        }
+        if vm_stdin_tx
+            .blocking_send(IkcFrame::Message(response))
+            .is_err()
+        {
+            error!("standalone io_handler: failed to send recv response (VM input channel closed)");
+        }
+    });
+
+    tokio::spawn(async move {
+        if let Err(e) = handle.await {
+            error!("standalone io_handler: recv task panicked: {e}");
+        }
+    });
+}
+
+///
+/// # Description
+///
 /// Sends a networking error response addressed to `tid`, releasing a guest blocked in
-/// `ipc::recv()` after a sendto/recvfrom request when the operation cannot proceed.
+/// `ipc::recv()` after a sendto/recvfrom/recv request when the operation cannot proceed.
 ///
 async fn send_networking_error(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
@@ -1446,7 +1652,7 @@ async fn send_networking_error(
         Some(ErrorCode::OperationNotSupported),
         [0u8; Message::PAYLOAD_SIZE],
     );
-    counters.increment_io_thread_messages_received();
+    counters.increment_io_handler_messages_sent();
     if vm_stdin_tx
         .send(IkcFrame::Message(error_response))
         .await
@@ -1463,7 +1669,7 @@ async fn send_networking_error(
 /// # Description
 ///
 /// Pushes an empty bulk transfer back to the guest to release a thread blocked in `ipc::pull()`
-/// when a `recvfrom()` cannot be served.
+/// when a pull-based networking request cannot be served.
 ///
 async fn send_empty_pull_response(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
@@ -1479,7 +1685,7 @@ async fn send_empty_pull_response(
         0,
     );
     let bulk: DataChunk = DataChunk::new(header, Vec::new());
-    counters.increment_io_thread_messages_received();
+    counters.increment_io_handler_messages_sent();
     if vm_stdin_tx.send(IkcFrame::Bulk(bulk)).await.is_err() {
         error!(
             "standalone io_handler: failed to send empty pull response (VM input channel closed)"

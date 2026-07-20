@@ -32,7 +32,6 @@
         "**/.git/**": true,
         "**/.hg/**": true,
         "bin/**": true,
-        "images/**": true,
         "lib/**": true,
         "sysroot-*/**": true,
         "target/**": true
@@ -46,6 +45,12 @@
     // Rust Analyzer Settings
     //==============================================================================================
     "rust-analyzer.cargo.allTargets": false,
+    "rust-analyzer.cargo.extraEnv": {
+        "MEMORY_SIZE_BYTES": "268435456"
+    },
+    "rust-analyzer.check.extraEnv": {
+        "MEMORY_SIZE_BYTES": "268435456"
+    },
     "rust-analyzer.checkOnSave": true,
     "rust-analyzer.files.exclude": [
         "target",

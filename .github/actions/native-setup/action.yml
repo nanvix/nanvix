@@ -10,10 +10,6 @@ inputs:
       (e.g., 'rustfmt clippy')"
     required: false
     default: ""
-  install-cloud-hypervisor:
-    description: "Build and install cloud-hypervisor from source (for benchmark runs)"
-    required: false
-    default: "false"
 
 runs:
   using: "composite"
@@ -63,12 +59,7 @@ runs:
     - name: "Install System Dependencies"
       if: steps.detect-container.outputs.in-container != 'true'
       shell: bash
-      run: |
-        if [ "${{ inputs.install-cloud-hypervisor }}" = "true" ]; then
-          ./z setup --l2-deployment
-        else
-          ./z setup
-        fi
+      run: ./z setup
 
     - name: "Setup Python Environment"
       shell: bash

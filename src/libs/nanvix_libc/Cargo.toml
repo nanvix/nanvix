@@ -148,10 +148,6 @@ c-main = ["syscall?/staticlib"]
 # sections (bounded by the `__*_array_{start,end}` symbols from `user.ld`).
 init-array = []
 
-# Standalone deployment: routes stdout/stderr to the debug kcall and file I/O to
-# the in-memory VFS.
-standalone = ["syscall?/standalone", "libc_termios?/standalone"]
-
 # Logging
 trace = ["syslog/trace"]
 debug = ["syslog/debug"]

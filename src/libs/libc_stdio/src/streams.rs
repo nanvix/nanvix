@@ -22,6 +22,8 @@ pub struct FILE {
     pub error: c_int,
     /// One-character push-back buffer for [`ungetc`](`crate::ungetc::ungetc`) (-1 = empty).
     pub ungetc_buf: c_int,
+    /// Stream orientation (0 = unoriented, >0 = wide, <0 = byte).
+    pub orientation: c_int,
 }
 
 //==================================================================================================
@@ -34,6 +36,7 @@ static mut STDIN_FILE: FILE = FILE {
     eof: 0,
     error: 0,
     ungetc_buf: -1,
+    orientation: 0,
 };
 /// Standard output stream.
 static mut STDOUT_FILE: FILE = FILE {
@@ -41,6 +44,7 @@ static mut STDOUT_FILE: FILE = FILE {
     eof: 0,
     error: 0,
     ungetc_buf: -1,
+    orientation: 0,
 };
 /// Standard error stream.
 static mut STDERR_FILE: FILE = FILE {
@@ -48,6 +52,7 @@ static mut STDERR_FILE: FILE = FILE {
     eof: 0,
     error: 0,
     ungetc_buf: -1,
+    orientation: 0,
 };
 
 //==================================================================================================
@@ -131,13 +136,14 @@ mod test {
     }
 
     #[test]
-    fn standard_streams_start_without_errors_or_pushback() {
+    fn standard_streams_start_without_errors_pushback_or_orientation() {
         // SAFETY: the accessors return valid pointers to the static standard streams.
         unsafe {
             let s: *mut super::FILE = stdin();
             assert_eq!((*s).eof, 0);
             assert_eq!((*s).error, 0);
             assert_eq!((*s).ungetc_buf, -1);
+            assert_eq!((*s).orientation, 0);
         }
     }
 

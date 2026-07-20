@@ -11,6 +11,8 @@
 #![deny(clippy::as_conversions)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
+// Nanvix uses a fixed-width C ABI where c_size_t and usize are both 32-bit.
+#![allow(suspicious_runtime_symbol_definitions)]
 
 //==================================================================================================
 // Modules

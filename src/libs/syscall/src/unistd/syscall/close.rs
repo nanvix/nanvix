@@ -33,51 +33,42 @@ use ::sys::{
 //==================================================================================================
 
 pub fn close(fd: i32) -> Result<(), Error> {
-    // In standalone mode, route based on the descriptor's resolved backend.
-    #[cfg(feature = "standalone")]
-    {
-        use crate::{
-            close_route::{
-                close_target,
-                CloseTarget,
-            },
-            fdtable::resolve,
-        };
-        let result: Result<(), Error> = match resolve(fd) {
-            Some(res) => {
-                let target: CloseTarget = close_target(fd, res);
-                close_ipc(
-                    target.fd,
-                    target.destination,
-                    target.message_type,
-                    target.tolerate_missing_backend,
-                )
-            },
-            // Unknown fd: no handler available.
-            None => {
-                ::syslog::warn!("close(): bad file descriptor fd={fd}");
-                Err(Error::new(ErrorCode::BadFile, "bad file descriptor"))
-            },
-        };
-        // Drop any cached resolution once the descriptor is gone, so a number later reused by a
-        // different backend is never answered from a stale entry. Only a successful close frees the
-        // descriptor; a failed close leaves it open, so its resolution stays valid.
-        if result.is_ok() {
-            crate::fdtable::invalidate(fd);
-        }
-        result
+    use crate::{
+        close_route::{
+            close_target,
+            CloseTarget,
+        },
+        fdtable::resolve,
+    };
+    let result: Result<(), Error> = match resolve(fd) {
+        Some(res) => {
+            let target: CloseTarget = close_target(fd, res);
+            close_ipc(
+                target.fd,
+                target.destination,
+                target.message_type,
+                target.tolerate_missing_backend,
+            )
+        },
+        // Unknown fd: no handler available.
+        None => {
+            ::syslog::warn!("close(): bad file descriptor fd={fd}");
+            Err(Error::new(ErrorCode::BadFile, "bad file descriptor"))
+        },
+    };
+    // Drop any cached resolution once the descriptor is gone, so a number later reused by a
+    // different backend is never answered from a stale entry. Only a successful close frees the
+    // descriptor; a failed close leaves it open, so its resolution stays valid.
+    if result.is_ok() {
+        crate::fdtable::invalidate(fd);
     }
-
-    #[cfg(not(feature = "standalone"))]
-    {
-        close_ipc(fd, crate::LINUXD, MessageType::Ikc, false)
-    }
+    result
 }
 /// Forwards a `close` request via IPC to the given destination.
 ///
 /// When `tolerate_missing_backend` is set, a failure to deliver the request (no such backend
 /// process) is reported as success rather than an error. This is used for console descriptors,
-/// which own no local resource: in a run mode with no guest vfsd there is no flat-table slot to
+/// which own no local resource: when no guest vfsd is available there is no flat-table slot to
 /// release, so closing one is a no-op. The backend's own response is always honored, so a genuine
 /// error returned by a reachable backend still propagates.
 fn close_ipc(

@@ -25,10 +25,6 @@ pub struct NanvixRuntimeConfig {
     #[serde(default = "default_temp_dir")]
     pub temp_dir: PathBuf,
 
-    /// Default execution mode name (e.g., "standalone").
-    #[serde(default = "default_execution_mode")]
-    pub execution_mode: String,
-
     /// Additional arguments passed to nanvixd.
     #[serde(default)]
     pub extra_args: Vec<String>,
@@ -40,7 +36,6 @@ impl Default for NanvixRuntimeConfig {
             kernel_path: default_kernel_path(),
             mkramfs_path: default_mkramfs_path(),
             temp_dir: default_temp_dir(),
-            execution_mode: default_execution_mode(),
             extra_args: Vec::new(),
         }
     }
@@ -56,10 +51,6 @@ fn default_mkramfs_path() -> PathBuf {
 
 fn default_temp_dir() -> PathBuf {
     std::env::temp_dir()
-}
-
-fn default_execution_mode() -> String {
-    "standalone".to_string()
 }
 
 impl NanvixRuntimeConfig {

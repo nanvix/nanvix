@@ -1,12 +1,12 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! # Job-Control Standalone Regression Tests
+//! # Job-Control Regression Tests
 //!
-//! Exercises the POSIX job-control surface end-to-end in standalone mode, verifying that the process
-//! manager daemon establishes and reports session, process-group, and controlling-terminal
-//! foreground state consistently, and that a signal addressed to a process group reaches every
-//! member of that group and no one else.
+//! Exercises the POSIX job-control surface end-to-end, verifying that the process manager daemon
+//! establishes and reports session, process-group, and controlling-terminal foreground state
+//! consistently, and that a signal addressed to a process group reaches every member of that group
+//! and no one else.
 //!
 //! The suite covers:
 //!

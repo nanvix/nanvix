@@ -8,9 +8,6 @@ use ::sys::error::Error;
 //==================================================================================================
 
 mod inet;
-// Unix-domain sockets require linuxd; networkd only supports AF_INET sockets.
-#[cfg(not(feature = "standalone"))]
-mod unix;
 
 //==================================================================================================
 // Standalone Functions
@@ -19,8 +16,5 @@ mod unix;
 /// Runs every network socket test.
 pub fn run_all() -> Result<(), Error> {
     inet::run()?;
-    // Unix-domain sockets are only available through linuxd.
-    #[cfg(not(feature = "standalone"))]
-    unix::run()?;
     Ok(())
 }

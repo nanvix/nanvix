@@ -76,6 +76,13 @@ use ::sys::{
 // efficient for small segment counts.
 const MAX_LOAD_SEGMENTS: usize = 16;
 
+// Maximum number of pages allocated by one ELF loader batch. Keeping this bounded allows the
+// temporary UserFrame vector to fit in the kernel heap's largest slab on all supported targets.
+const ELF_LOAD_BATCH_SIZE: usize = 32;
+::static_assert::assert_eq!(
+    ELF_LOAD_BATCH_SIZE * ::core::mem::size_of::<UserFrame>() <= ::config::kernel::MAX_SLAB_SIZE
+);
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -459,30 +466,43 @@ fn do_elf32_load(
                 error!("{reason} (p_offset={:#x}, p_filesz={:#x})", phdr.p_offset, phdr.p_filesz);
                 Error::new(ErrorCode::BadFile, reason)
             })?;
+        source.check_bounds(file_off_base, phdr.p_filesz as usize)?;
 
-        // Load segment page by page.
+        // Load segment by batch-allocating pages before copying data.
         debug!(
             "loading segment (virt_addr_base={:#x}, virt_addr_end={:#x}, file_off_base={:#x}, \
              file_off_end={:#x}, access={:?})",
             virt_addr_base, virt_addr_end, file_off_base, file_off_end, access
         );
 
-        let mut uframe_buf: Vec<UserFrame> = crate::mm::try_vec_with_capacity(1)?;
-        for vaddr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
-            let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
+        if !dry_run {
+            let (mut uframe_buf, load_batch_size): (Vec<UserFrame>, usize) =
+                match crate::mm::try_vec_with_capacity(ELF_LOAD_BATCH_SIZE) {
+                    Ok(uframes) => (uframes, ELF_LOAD_BATCH_SIZE),
+                    Err(_) => (crate::mm::try_vec_with_capacity(1)?, 1),
+                };
+            let mut batch_start: Option<usize> = None;
+            let mut batch_count: usize = 0;
+            let mut batch_clear: bool = false;
 
-            // Check if address lies in user space.
-            if vaddr < USER_BASE {
-                let reason: &str = "invalid load address";
-                error!("{reason}");
-                return Err(Error::new(ErrorCode::BadFile, reason));
-            }
+            let flush_batch = |mm: &mut VirtMemoryManager,
+                               vmem: &mut Vmem,
+                               start: usize,
+                               count: usize,
+                               clear: bool,
+                               uframes: &mut Vec<UserFrame>|
+             -> Result<(), Error> {
+                let start_vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(start)?;
+                mm.alloc_upages(vmem, start_vaddr, access, clear, count, uframes)
+            };
 
-            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_address(vaddr)?;
-
-            // Check if we should perform the allocation.
-            if !dry_run {
-                let page_addr: usize = vaddr.into_raw_value();
+            for page_addr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
+                let page_vaddr: VirtualAddress = VirtualAddress::new(page_addr);
+                if page_vaddr < USER_BASE {
+                    let reason: &str = "invalid load address";
+                    error!("{reason}");
+                    return Err(Error::new(ErrorCode::BadFile, reason));
+                }
 
                 // Scan prior segment ranges to detect overlap and compute the merged
                 // permission from all segments that cover this page.
@@ -496,8 +516,13 @@ fn do_elf32_load(
                 }
 
                 if already_mapped {
-                    // Page already mapped by a prior segment — apply merged permissions
-                    // to accommodate all segments sharing this page.
+                    if let Some(start) = batch_start.take() {
+                        flush_batch(mm, vmem, start, batch_count, batch_clear, &mut uframe_buf)?;
+                        batch_count = 0;
+                    }
+
+                    let vaddr: PageAligned<VirtualAddress> =
+                        PageAligned::from_raw_value(page_addr)?;
                     mm.ctrl_upage(vmem, vaddr, merged)?;
                 } else {
                     // Only clear pages that will NOT be fully overwritten by segment data.
@@ -505,7 +530,7 @@ fn do_elf32_load(
                     // the entire PAGE_SIZE bytes; in that case clearing is redundant.
 
                     // File offset of the source-backed data for this page.
-                    let page_offset_in_segment: usize = vaddr.into_raw_value() - virt_addr_base;
+                    let page_offset_in_segment: usize = page_addr - virt_addr_base;
                     let page_file_off: usize =
                         match file_off_base.checked_add(page_offset_in_segment) {
                             Some(off) => off,
@@ -531,16 +556,47 @@ fn do_elf32_load(
                     // be zeroed.
                     let page_is_partially_covered: bool =
                         page_file_off < file_off_end && page_file_off_end > file_off_end;
-                    mm.alloc_upages(
-                        vmem,
-                        vaddr,
-                        access,
-                        page_lies_in_bss || page_is_partially_covered,
-                        1,
-                        &mut uframe_buf,
-                    )?;
+                    let needs_clear: bool = page_lies_in_bss || page_is_partially_covered;
+
+                    if let Some(start) = batch_start {
+                        if batch_clear != needs_clear || batch_count == load_batch_size {
+                            flush_batch(
+                                mm,
+                                vmem,
+                                start,
+                                batch_count,
+                                batch_clear,
+                                &mut uframe_buf,
+                            )?;
+                            batch_start = None;
+                            batch_count = 0;
+                        }
+                    }
+
+                    if batch_start.is_none() {
+                        batch_start = Some(page_addr);
+                        batch_clear = needs_clear;
+                    }
+                    batch_count += 1;
                 }
             }
+
+            if let Some(start) = batch_start {
+                flush_batch(mm, vmem, start, batch_count, batch_clear, &mut uframe_buf)?;
+            }
+        }
+
+        for vaddr in (virt_addr_base..virt_addr_end).step_by(mem::PAGE_SIZE) {
+            let vaddr: VirtualAddress = VirtualAddress::new(vaddr);
+
+            // This check is also required during dry-run validation, when allocation is skipped.
+            if vaddr < USER_BASE {
+                let reason: &str = "invalid load address";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            }
+
+            let vaddr: PageAligned<VirtualAddress> = PageAligned::from_address(vaddr)?;
 
             // Update last address.
             if vaddr.into_raw_value() + mem::PAGE_SIZE > last_address {

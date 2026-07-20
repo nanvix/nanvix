@@ -1,6 +1,6 @@
 ---
 name: daemon-development
-description: Guide for developing and debugging Nanvix daemons, including guest daemons and host linuxd behavior. Use this when asked about daemon architecture or daemon changes.
+description: Guide for developing and debugging Nanvix guest daemons. Use this when asked about daemon architecture or daemon changes.
 ---
 
 # Daemon Development
@@ -15,7 +15,6 @@ functionality.
 |----------|-----------------------|--------|----------------------|
 | `memd`   | `src/daemons/memd/`   | Guest  | Memory management.   |
 | `procd`  | `src/daemons/procd/`  | Guest  | Process management.  |
-| `linuxd` | `src/daemons/linuxd/` | Host   | L2 VM management.    |
 
 ## Guest Daemons (`memd`, `procd`)
 
@@ -34,13 +33,6 @@ events/messages.
 - Manages process lifecycle (creation, termination, scheduling).
 - Handles IPC-based process management requests.
 
-## Host Daemon (`linuxd`)
-
-- Runs on the host Linux system with full `std` support.
-- Manages L2 VM deployment and host-side resources.
-- Configuration in `build/linuxd_config.toml`.
-- Only built for `microvm` machine.
-
 ## Building Daemons
 
 ```bash
@@ -48,7 +40,6 @@ events/messages.
 ./z build -- all
 
 # Guest daemons: GUEST_CARGO_BUILD_CMD.
-# Host daemons (linuxd): HOST_CARGO_BUILD_CMD.
 ```
 
 ## Creating a New Guest Daemon

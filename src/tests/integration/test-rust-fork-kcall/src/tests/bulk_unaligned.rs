@@ -22,8 +22,8 @@
 //!    the kernel and confirms the call succeeds — it was previously rejected with an
 //!    `InvalidArgument` error because only the first page was translated.
 //!
-//! `push()` does not wait for a reply, so the kernel-peer test is deterministic and does not block
-//! even in standalone deployments where no Linux daemon completes the transfer.
+//! `push()` does not wait for a reply, so the kernel-peer test is deterministic even though no
+//! Linux daemon completes the transfer.
 
 //==================================================================================================
 // Imports
@@ -186,8 +186,7 @@ fn assert_straddles_page(offset: usize, len: usize) {
 /// as scatter/gather segments.
 ///
 /// `pull()` is intentionally not exercised here: it would block waiting for a completion that no
-/// Linux daemon supplies in this standalone test. `push()` does not wait, so it stays
-/// deterministic.
+/// Linux daemon supplies. `push()` does not wait, so it stays deterministic.
 fn test_kernel_bulk_push_page_crossing() -> Result<(), Error> {
     // SAFETY: single-threaded; the slice is the only live reference to the source region.
     let buffer: &mut [u8] = unsafe { arena_region(ptr::addr_of_mut!(SRC_ARENA), SRC_OFFSET) };

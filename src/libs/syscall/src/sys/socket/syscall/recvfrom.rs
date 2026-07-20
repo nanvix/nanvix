@@ -66,7 +66,7 @@ pub fn recvfrom(
     }
 
     // A datagram cannot be reassembled across transfers, so cap the request at a single
-    // page-bounded pull.
+    // scatter/gather pull.
     let recv_len: usize = cmp::min(ReceiveFromSocketResponse::MAX_DATA_SIZE, buffer.len());
 
     // Build metadata-only request and send it via IPC message.

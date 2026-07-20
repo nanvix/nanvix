@@ -7,24 +7,10 @@
 //! It deserializes messages, routes them to appropriate handlers (NEW, KILL), and constructs
 //! JSON responses. The implementation uses Hyper's Service trait for async request handling.
 
-#[cfg(all(feature = "standalone", feature = "multi-process"))]
-compile_error!("features `standalone` and `multi-process` are mutually exclusive");
-
-#[cfg(all(feature = "standalone", feature = "single-process"))]
-compile_error!("features `standalone` and `single-process` are mutually exclusive");
-
-#[cfg(all(feature = "single-process", feature = "multi-process"))]
-compile_error!("features `single-process` and `multi-process` are mutually exclusive");
-
 //==================================================================================================
 // Modules
 //==================================================================================================
 
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-mod multi_process;
-#[cfg(feature = "single-process")]
-mod single_process;
-#[cfg(feature = "standalone")]
 mod standalone;
 
 //==================================================================================================
@@ -48,20 +34,14 @@ use ::log::error;
 // Re-Exports
 //==================================================================================================
 
-#[cfg(not(any(feature = "single-process", feature = "standalone")))]
-pub(crate) use self::multi_process::HttpClient;
-#[cfg(feature = "single-process")]
-pub(crate) use self::single_process::HttpClient;
-#[cfg(feature = "standalone")]
 pub(crate) use self::standalone::HttpClient;
-#[cfg(feature = "standalone")]
 pub use self::standalone::StandaloneState;
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<T: Send + Sync + Default + 'static> HttpClient<T> {
+impl HttpClient {
     ///
     /// # Description
     ///

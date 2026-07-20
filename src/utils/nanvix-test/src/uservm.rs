@@ -22,7 +22,6 @@ use ::nanvix::{
         New,
         NewResponse,
     },
-    sandbox::UserVmIdentifier,
     syscomm::{
         ReadExact,
         SocketStream,
@@ -30,6 +29,7 @@ use ::nanvix::{
         WriteAll,
     },
 };
+use ::user_vm_api::UserVmIdentifier;
 // The socket-based gateway transport is only used on Unix; on Windows the standalone gateway is
 // exposed as a named pipe (see `GatewayStream::connect`).
 #[cfg(unix)]
@@ -69,12 +69,8 @@ pub struct UserVm {
     user_vm_id: UserVmIdentifier,
     /// Socket stream wired to the User VM gateway for I/O.
     gateway_stream: GatewayStream,
-    /// Milliseconds to wait after shutting down a User VM when L2 is disabled.
+    /// Milliseconds to wait after shutting down a User VM.
     cleanup_uservm_sleep_duration_ms: u64,
-    /// Milliseconds to wait after shutting down a User VM when L2 is enabled.
-    cleanup_l2_uservm_sleep_duration_ms: u64,
-    /// Indicates whether this User VM handle operates in L2 mode.
-    l2_enabled: bool,
     /// Indicates whether the User VM has been explicitly terminated.
     terminated: bool,
 }
@@ -101,8 +97,7 @@ impl UserVm {
         let http_endpoint: String = config.http_endpoint();
         let request_url: String = format!("http://{http_endpoint}");
         let client: Client = Self::build_control_plane_client()?;
-        let l2_enabled: bool = uservm_args.l2_enabled();
-        trace!("spawn(): http_endpoint={}, l2_enabled={}", http_endpoint, l2_enabled);
+        trace!("spawn(): http_endpoint={}", http_endpoint);
 
         let payload: New = New {
             tenant_id: uservm_args.tenant_id.clone(),
@@ -155,11 +150,7 @@ impl UserVm {
 
         debug!("spawn(): uservm id={}, gateway={}", response.user_vm_id, response.gateway_sockaddr);
 
-        let gateway_socktype: SocketType = if l2_enabled {
-            SocketType::Tcp
-        } else {
-            SocketType::Unix
-        };
+        let gateway_socktype: SocketType = SocketType::Unix;
 
         let gateway_stream: GatewayStream =
             Self::connect_to_gateway(config, response.gateway_sockaddr.as_str(), gateway_socktype)
@@ -172,8 +163,6 @@ impl UserVm {
             user_vm_id: response.user_vm_id,
             gateway_stream,
             cleanup_uservm_sleep_duration_ms: config.cleanup_uservm_sleep_duration_ms,
-            cleanup_l2_uservm_sleep_duration_ms: config.cleanup_l2_uservm_sleep_duration_ms,
-            l2_enabled,
             terminated: false,
         })
     }
@@ -296,13 +285,7 @@ impl UserVm {
     /// Returns the duration callers should wait before launching another User VM.
     ///
     fn cleanup_delay(&self) -> Duration {
-        let sleep_ms: u64 = if self.l2_enabled {
-            self.cleanup_l2_uservm_sleep_duration_ms
-        } else {
-            self.cleanup_uservm_sleep_duration_ms
-        };
-
-        Duration::from_millis(sleep_ms)
+        Duration::from_millis(self.cleanup_uservm_sleep_duration_ms)
     }
 
     ///
@@ -540,9 +523,9 @@ impl Drop for UserVm {
 /// The standalone gateway is a single point at which the test harness exchanges guest stdio.
 /// Its underlying transport is platform-dependent:
 ///
-/// - **Unix**: a Unix-domain socket (or a TCP socket in L2 mode), wrapped in [`SocketStream`].
-/// - **Windows**: a named pipe (`\\.\pipe\...`), since Unix-domain sockets are unavailable. TCP
-///   (L2 mode) is not available on Windows, which only supports standalone deployments. Because
+/// - **Unix**: a Unix-domain socket, wrapped in [`SocketStream`].
+/// - **Windows**: a named pipe (`\\.\pipe\...`), since Unix-domain sockets are unavailable.
+///   Windows only supports standalone deployments. Because
 ///   named pipes have no half-close primitive, the input (stdin) direction is framed to emulate
 ///   one: each record is a little-endian `u32` length followed by that many payload bytes, and a
 ///   zero-length record signals EOF. The output direction stays a raw byte stream.
@@ -566,7 +549,7 @@ impl GatewayStream {
     ///
     /// # Parameters
     ///
-    /// - `socket_type`: Transport requested by the caller (`Unix` for standalone, `Tcp` for L2).
+    /// - `socket_type`: Transport requested by the caller (`Unix` for standalone deployments).
     /// - `address`: Gateway endpoint address returned by nanvixd.
     ///
     /// # Return Value
@@ -576,7 +559,7 @@ impl GatewayStream {
     ///
     pub(crate) async fn connect(socket_type: SocketType, address: &str) -> ::std::io::Result<Self> {
         // On Windows the standalone gateway is exposed as a named pipe rather than a
-        // Unix-domain socket, which the platform does not provide. TCP (L2 mode) gateways are
+        // Unix-domain socket, which the platform does not provide. TCP gateways are
         // not supported on Windows, so reject them up front rather than falling through to the
         // socket path and surfacing confusing connection retries/timeouts.
         #[cfg(windows)]
@@ -589,7 +572,7 @@ impl GatewayStream {
                 },
                 SocketType::Tcp => Err(::std::io::Error::new(
                     ::std::io::ErrorKind::Unsupported,
-                    "TCP (L2 mode) gateways are not supported on Windows",
+                    "TCP gateways are not supported on Windows",
                 )),
             }
         }
@@ -696,8 +679,6 @@ pub struct UserVmArgs {
     /// Optional environment variables forwarded to the workload (combined into program_args
     /// using the documented `<args>;<env>` format before sending to nanvixd).
     program_env: Option<String>,
-    /// Indicates whether the Nanvix Daemon should provision L2 networking.
-    l2_enabled: bool,
 }
 
 impl UserVmArgs {
@@ -714,11 +695,10 @@ impl UserVmArgs {
     /// - `program_path`: Absolute path to the executable launched inside the User VM.
     /// - `program_args`: Optional command-line arguments forwarded to the executable.
     /// - `program_env`: Optional environment variables forwarded to the executable.
-    /// - `l2_enabled`: Flag indicating whether the request should enable L2 networking mode.
     ///
     /// # Return Value
     ///
-    /// Returns a fully prepared argument bundle with headers, metadata, and L2 flag when header
+    /// Returns a fully prepared argument bundle with headers and metadata when header
     /// construction succeeds; returns an error if the message-type header value cannot be built.
     ///
     pub fn new(
@@ -727,7 +707,6 @@ impl UserVmArgs {
         program_path: &str,
         program_args: Option<&str>,
         program_env: Option<&str>,
-        l2_enabled: bool,
     ) -> Result<Self> {
         let mut headers: HeaderMap = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -751,7 +730,6 @@ impl UserVmArgs {
             program_path: program_path.to_string(),
             program_args: program_args.map(|value| value.to_string()),
             program_env: program_env.map(|value| value.to_string()),
-            l2_enabled,
         })
     }
 
@@ -767,20 +745,6 @@ impl UserVmArgs {
     ///
     pub fn headers(&self) -> HeaderMap {
         self.headers.clone()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Reports whether the caller asked for L2 networking mode when building these arguments.
-    ///
-    /// # Return Value
-    ///
-    /// Returns `true` if L2 networking mode should be enabled for the User VM; otherwise returns
-    /// `false`.
-    ///
-    pub fn l2_enabled(&self) -> bool {
-        self.l2_enabled
     }
 
     ///
@@ -815,7 +779,7 @@ mod tests {
     /// calls `combined_program_args()`.
     fn combine(args: Option<&str>, env: Option<&str>) -> String {
         let uva: UserVmArgs =
-            UserVmArgs::new("t", "a", "p", args, env, false).expect("UserVmArgs::new failed");
+            UserVmArgs::new("t", "a", "p", args, env).expect("UserVmArgs::new failed");
         uva.combined_program_args()
     }
 

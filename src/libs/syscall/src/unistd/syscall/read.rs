@@ -108,7 +108,7 @@ fn read_chunk(
             // Guard against a negative count that would wrap when cast to usize.
             if count < 0 {
                 ::syslog::warn!(
-                    "read_chunk(): linuxd returned negative count (fd={:?}, count={:?})",
+                    "read_chunk(): backend returned negative count (fd={:?}, count={:?})",
                     fd,
                     count
                 );
@@ -118,7 +118,7 @@ fn read_chunk(
                 ));
             }
 
-            // Sanity-check: the number of bytes reported by linuxd should match the bytes
+            // Sanity-check: the number of bytes reported by the backend should match the bytes
             // actually pulled via the data chunk transfer.
             if (count as usize) != bytes_pulled {
                 ::syslog::warn!(
@@ -167,76 +167,63 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         ::syslog::trace!("read(): fd={:?}, buffer.len={:?}", fd, buffer.len());
     }
 
-    // In standalone mode, route by the descriptor's resolved backend so flat descriptors are
-    // dispatched through vfsd's authoritative table.
-    #[cfg(feature = "standalone")]
-    {
-        use crate::fdtable::{
-            resolve,
-            resolve_console,
-            ConsoleLookup,
-            Route,
-        };
-        match resolve_console(fd) {
-            // When vfsd owns the console slot, use the flat descriptor so vfsd can apply the
-            // shared terminal line discipline. In direct-ELF standalone runs without vfsd, keep the
-            // historical direct kernel-console path.
-            ConsoleLookup::Console {
-                backend_fd: STDIN_FILENO,
-                via_vfsd,
-            } => {
-                if via_vfsd {
-                    read_ipc(
-                        fd,
-                        buffer,
-                        crate::VFS_DESTINATION,
-                        crate::VFS_MESSAGE_TYPE,
-                        crate::VFS_PUSH_PULL_PID,
-                        crate::VFS_PUSH_PULL_TID,
-                    )
-                } else {
-                    read_ipc(
-                        STDIN_FILENO,
-                        buffer,
-                        crate::LINUXD,
-                        MessageType::Ikc,
-                        ProcessIdentifier::KERNEL,
-                        ThreadIdentifier::KERNEL,
-                    )
-                }
-            },
-            ConsoleLookup::Console { .. } | ConsoleLookup::BadFile => {
-                ::syslog::warn!("read(): bad file descriptor fd={fd} in standalone mode");
-                Err(Error::new(ErrorCode::BadFile, "read: bad file descriptor"))
-            },
-            ConsoleLookup::Other => match resolve(fd) {
-                // VFS-backed descriptors go to vfsd.
-                Some(res) if res.route == Route::Vfs => read_ipc(
-                    res.backend_fd,
+    // Route by the descriptor's resolved backend so flat descriptors are dispatched through vfsd's
+    // authoritative table.
+    use crate::fdtable::{
+        resolve,
+        resolve_console,
+        ConsoleLookup,
+        Route,
+    };
+    match resolve_console(fd) {
+        // When vfsd owns the console slot, use the flat descriptor so vfsd can apply the shared
+        // terminal line discipline. In direct-ELF runs without vfsd, keep the historical direct
+        // kernel-console path.
+        ConsoleLookup::Console {
+            backend_fd: STDIN_FILENO,
+            via_vfsd,
+        } => {
+            if via_vfsd {
+                read_ipc(
+                    fd,
                     buffer,
                     crate::VFS_DESTINATION,
                     crate::VFS_MESSAGE_TYPE,
                     crate::VFS_PUSH_PULL_PID,
                     crate::VFS_PUSH_PULL_TID,
-                ),
-                // stdout/stderr, sockets, and unroutable descriptors are not readable here.
-                _ => {
-                    ::syslog::warn!("read(): bad file descriptor fd={fd} in standalone mode");
-                    Err(Error::new(ErrorCode::BadFile, "read: bad file descriptor"))
-                },
+                )
+            } else {
+                read_ipc(
+                    STDIN_FILENO,
+                    buffer,
+                    crate::HOST_IO,
+                    MessageType::Ikc,
+                    ProcessIdentifier::KERNEL,
+                    ThreadIdentifier::KERNEL,
+                )
+            }
+        },
+        ConsoleLookup::Console { .. } | ConsoleLookup::BadFile => {
+            ::syslog::warn!("read(): bad file descriptor fd={fd}");
+            Err(Error::new(ErrorCode::BadFile, "read: bad file descriptor"))
+        },
+        ConsoleLookup::Other => match resolve(fd) {
+            // VFS-backed descriptors go to vfsd.
+            Some(res) if res.route == Route::Vfs => read_ipc(
+                res.backend_fd,
+                buffer,
+                crate::VFS_DESTINATION,
+                crate::VFS_MESSAGE_TYPE,
+                crate::VFS_PUSH_PULL_PID,
+                crate::VFS_PUSH_PULL_TID,
+            ),
+            // stdout/stderr, sockets, and unroutable descriptors are not readable here.
+            _ => {
+                ::syslog::warn!("read(): bad file descriptor fd={fd}");
+                Err(Error::new(ErrorCode::BadFile, "read: bad file descriptor"))
             },
-        }
+        },
     }
-
-    #[cfg(not(feature = "standalone"))]
-    read_ipc(
-        fd,
-        buffer,
-        crate::VFS_DESTINATION,
-        crate::VFS_MESSAGE_TYPE,
-        crate::VFS_PUSH_PULL_PID,
-        crate::VFS_PUSH_PULL_TID,
-    )
 }
 
 /// Forwards a `read` request via IPC, splitting the buffer into page-aligned chunks.

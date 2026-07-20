@@ -12,9 +12,6 @@ inputs:
   machine-type:
     description: "Machine type"
     required: true
-  deployment-type:
-    description: "Deployment type"
-    required: true
 
 runs:
   using: "composite"
@@ -53,5 +50,4 @@ runs:
 
         ./z build ${RELEASE_FLAG} -- run-smoke-test \
             "MACHINE=${{ inputs.machine-type }}" \
-            "DEPLOYMENT_MODE=${{ inputs.deployment-type }}" \
             "TIMEOUT=${TIMEOUT}"

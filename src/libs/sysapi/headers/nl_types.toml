@@ -8,10 +8,7 @@ brief = "Message catalog and language information types."
 description = '''
 '''
 guard = "_NANVIX_NL_TYPES_H"
-content_order = [
-    "types",
-    "raw:0",
-]
+content_order = ["types", "raw:0", "raw:1"]
 
 [[types]]
 text = '''
@@ -26,3 +23,10 @@ title = "Constants"
 text = '''
 #define NL_SETD 1
 #define NL_CAT_LOCALE 1'''
+
+[[raw_sections]]
+title = "Functions"
+text = '''
+extern nl_catd catopen(const char *name, int oflag);
+extern char *catgets(nl_catd catd, int set_id, int msg_id, const char *s);
+extern int catclose(nl_catd catd);'''

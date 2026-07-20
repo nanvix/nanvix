@@ -23,10 +23,11 @@ serde = { workspace = true, features = ["derive"] }
 toml = { workspace = true }
 shell-words = { workspace = true }
 globset = { workspace = true }
-koptions = { workspace = true, features = ["std"], optional = true }
+koptions = { workspace = true, features = ["std"] }
 # Control-plane HTTP client used by the test harness (cross-platform: the HTTP
 # executor now runs on Windows too, driving nanvixd in standalone HTTP mode).
 reqwest = { workspace = true, features = ["json"] }
+user-vm-api = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
@@ -35,10 +36,7 @@ libc = { workspace = true }
 cmdline = { workspace = true, features = ["std"] }
 
 [features]
-default = ["microvm", "multi-process"]
-single-process = ["nanvix/single-process", "nanvixd/single-process"]
-multi-process = ["nanvix/multi-process", "nanvixd/multi-process"]
-standalone = ["nanvix/standalone", "nanvixd/standalone", "dep:koptions"]
+default = ["microvm"]
 microvm = ["nanvix/microvm", "nanvixd/microvm"]
 whp = ["nanvix/whp", "nanvixd/whp"]
 

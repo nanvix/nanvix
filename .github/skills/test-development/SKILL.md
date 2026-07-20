@@ -38,8 +38,7 @@ Libraries with unit tests are listed in
 
 ### System Integration Tests
 
-System tests are available on `microvm` machines. On Linux, all deployment
-modes are supported (`nanvixd` + kernel + guest). On Windows, only standalone mode is supported.
+System tests are available on `microvm` machines on Linux and Windows.
 
 ```bash
 # Linux
@@ -47,17 +46,14 @@ modes are supported (`nanvixd` + kernel + guest). On Windows, only standalone mo
 ```
 
 ```powershell
-# Windows (standalone mode only)
+# Windows
 .\z.ps1 build -- run-nanvix-tests
 ```
 
 Test configurations:
 
-- `test/test-standalone.toml` — Standalone mode (Linux).
-- `test/test-standalone-windows.toml` — Standalone mode (Windows).
-- `test/test-single_process.toml` — Single-process mode.
-- `test/test-multi_process.toml` — Multi-process mode.
-- `test/test-l2.toml` — L2 VM mode.
+- `test/test-standalone.toml` — Linux.
+- `test/test-standalone-windows.toml` — Windows.
 
 The `nanvix-test` utility (`src/utils/nanvix-test/`) drives
 these tests in two execution modes:

@@ -16,6 +16,7 @@ use ::sys::{
         MessageReceiver,
         MessageSender,
         MessageType,
+        SG_BULK_MAX_BYTES,
     },
     pm::{
         ProcessIdentifier,
@@ -86,15 +87,23 @@ impl ReceiveSocketRequest {
 #[repr(C, packed)]
 pub struct ReceiveSocketResponse {
     pub count: c_size_t,
-    pub buffer: [u8; Self::BUFFER_SIZE],
+    _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(ReceiveSocketResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl ReceiveSocketResponse {
-    pub const BUFFER_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<c_size_t>();
+    /// Maximum number of payload bytes a single `recv()` transfer may carry. The data travels
+    /// out-of-band via a scatter/gather pull, so it is bounded by the maximum scatter/gather
+    /// transfer size rather than by a single page or by the IPC message payload.
+    pub const MAX_DATA_SIZE: usize = SG_BULK_MAX_BYTES;
 
-    pub fn new(count: c_size_t, buffer: [u8; Self::BUFFER_SIZE]) -> Self {
-        Self { count, buffer }
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<c_size_t>();
+
+    pub fn new(count: c_size_t) -> Self {
+        Self {
+            count,
+            _padding: [0; Self::PADDING_SIZE],
+        }
     }
 
     pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
@@ -105,12 +114,8 @@ impl ReceiveSocketResponse {
         unsafe { mem::transmute(self) }
     }
 
-    pub fn build(
-        tid: ThreadIdentifier,
-        count: c_size_t,
-        buffer: [u8; Self::BUFFER_SIZE],
-    ) -> Message {
-        let message: ReceiveSocketResponse = ReceiveSocketResponse::new(count, buffer);
+    pub fn build(tid: ThreadIdentifier, count: c_size_t) -> Message {
+        let message: ReceiveSocketResponse = ReceiveSocketResponse::new(count);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageHeader::ReceiveSocketResponse,
             message.into_bytes(),

@@ -17,7 +17,7 @@ inputs:
     required: true
     default: "100"
   payload-size:
-    description: "Optional echo payload size for warm-start benchmarks (warm-start-vmm minimum: 4)"
+    description: "Optional echo payload size (warm-start-vmm minimum: 4)"
     required: false
     default: ""
 
@@ -35,7 +35,7 @@ runs:
         for bench in ${BENCHMARKS}; do
           payload_args=()
           case "${bench}" in
-            warm-start|warm-start-l2|warm-start-vmm)
+            warm-start-gateway|warm-start-vmm|warm-start-socket)
               if [[ -n "${PAYLOAD_SIZE}" ]]; then
                 payload_args=(--payload-size "${PAYLOAD_SIZE}")
               fi
@@ -49,7 +49,6 @@ runs:
             --hwloc "$HOME/hwloc.json" \
             --iterations "${ITERATIONS}" \
             "${payload_args[@]}" \
-            --clh-bin-path "$HOME/toolchain/bin" \
             --output-dir "$(pwd)" \
             --commit "${{ github.sha }}"
         done

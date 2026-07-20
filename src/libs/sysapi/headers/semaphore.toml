@@ -1,0 +1,27 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# C header specification for semaphore.h.
+
+file = "semaphore.h"
+brief = "Semaphores."
+description = '''
+Declares the POSIX unnamed semaphore type and operations. The semaphore is
+built on top of the kernel mutex and condition variable primitives; its layout
+mirrors the Rust definition in the sysapi crate (sys_types.rs).'''
+includes = ["sys/types.h"]
+guard = "_NANVIX_SEMAPHORE_H"
+scan_crates = ["syscall"]
+
+[[types]]
+text = '''
+/** @brief Unnamed semaphore. */
+typedef struct {
+    int __count;            /**< Current value of the semaphore.          */
+    pthread_mutex_t __lock; /**< Mutex that guards the semaphore state.    */
+    pthread_cond_t __cond;  /**< Condition variable used to block waiters. */
+} sem_t;'''
+
+[[sections]]
+title = "Semaphores"
+functions = ["sem_init", "sem_destroy", "sem_post", "sem_wait"]

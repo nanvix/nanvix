@@ -445,6 +445,19 @@ impl Guest {
     ///
     /// # Description
     ///
+    /// Returns the base address and size (in bytes) of the kernel image loaded in memory.
+    ///
+    /// # Returns
+    ///
+    /// `Some((base, size))` if the kernel has been loaded, or `None` otherwise.
+    ///
+    pub fn kernel_region(&self) -> Option<(usize, usize)> {
+        self.kernel
+    }
+
+    ///
+    /// # Description
+    ///
     /// Computes GPA ranges that should be pre-populated in the EPT/SLAT before guest execution.
     /// The returned ranges cover the kernel image and initrd.
     ///

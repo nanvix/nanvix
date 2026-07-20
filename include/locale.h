@@ -49,6 +49,12 @@ struct lconv {
     char n_sep_by_space;     /**< Space separates symbol and negative.*/
     char p_sign_posn;        /**< Positive sign position.             */
     char n_sign_posn;        /**< Negative sign position.             */
+    char int_p_cs_precedes;  /**< Int. symbol precedes positive.      */
+    char int_p_sep_by_space; /**< Int. space separates positive.      */
+    char int_n_cs_precedes;  /**< Int. symbol precedes negative.      */
+    char int_n_sep_by_space; /**< Int. space separates negative.      */
+    char int_p_sign_posn;    /**< Int. positive sign position.        */
+    char int_n_sign_posn;    /**< Int. negative sign position.        */
 };
 
 /*==================================================================================================

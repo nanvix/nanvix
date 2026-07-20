@@ -23,12 +23,7 @@ tokio = { workspace = true, features = ["full"] }
 tempfile = { workspace = true }
 
 [features]
-default = ["microvm", "standalone"]
-# If enabled this feature is enabled, the Linux Daemon (linuxd) and User VM (uservm) are embedded
-# into Nanvix Daemon (nanvixd).
-single-process = ["nanvix/single-process"]
-multi-process = ["nanvix/multi-process"]
-standalone = ["nanvix/standalone"]
+default = ["microvm"]
 gdb = ["nanvix/gdb"]
 # Enables fine-grained time profiling.
 profile-time = ["nanvix/profile-time"]

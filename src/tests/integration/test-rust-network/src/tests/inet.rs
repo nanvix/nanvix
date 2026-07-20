@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use ::sys::error::Error;
-#[cfg(feature = "standalone")]
 use ::sysapi::{
     ffi::c_int,
     sys_types::pid_t,
@@ -15,8 +14,6 @@ use ::sysapi::{
         wifexited,
     },
 };
-#[cfg(feature = "standalone")]
-use ::syscall::unistd::bindings;
 use ::syscall::{
     netinet::in_::{
         Ipv4Addr,
@@ -25,6 +22,7 @@ use ::syscall::{
     },
     sys::socket::{
         AddressFamily,
+        Shutdown,
         SocketAddr,
         SocketType,
         syscall::{
@@ -33,10 +31,16 @@ use ::syscall::{
             connect,
             getsockname,
             listen,
+            recv,
+            send,
+            shutdown,
             socket,
         },
     },
-    unistd::close,
+    unistd::{
+        bindings,
+        close,
+    },
 };
 
 //==================================================================================================
@@ -45,16 +49,16 @@ use ::syscall::{
 
 const LISTEN_BACKLOG: i32 = 5;
 
+/// Payload used by the INET send/recv test.
+const SEND_RECV_MESSAGE: &[u8] = b"hello";
+
 /// Port used by the process-exit socket reclaim regression test.
-#[cfg(feature = "standalone")]
 const SOCKET_RECLAIM_PORT: u16 = 1993;
 
 /// Exit status used by a child that completed the socket reclaim setup.
-#[cfg(feature = "standalone")]
 const CHILD_EXIT_SUCCESS: c_int = 0;
 
 /// Exit status used by a child that failed the socket reclaim setup.
-#[cfg(feature = "standalone")]
 const CHILD_EXIT_FAILURE: c_int = 101;
 
 //==================================================================================================
@@ -69,15 +73,69 @@ fn new_unbound_socket() -> Result<i32, Error> {
 /// Creates a new IPv4 stream socket bound to the given address.
 fn new_bound_socket(addr: &SocketAddr) -> Result<i32, Error> {
     let sockfd: i32 = new_unbound_socket()?;
-    bind(sockfd, addr)?;
+    if let Err(error) = bind(sockfd, addr) {
+        let _ = close(sockfd);
+        return Err(error);
+    }
     Ok(sockfd)
 }
 
 /// Creates a new IPv4 listening socket bound to the given address.
 fn new_listening_socket(addr: &SocketAddr) -> Result<i32, Error> {
     let sockfd: i32 = new_bound_socket(addr)?;
-    listen(sockfd, LISTEN_BACKLOG)?;
+    if let Err(error) = listen(sockfd, LISTEN_BACKLOG) {
+        let _ = close(sockfd);
+        return Err(error);
+    }
     Ok(sockfd)
+}
+
+/// Creates a loopback TCP connection and returns `(listener, client, accepted)`.
+fn new_connected_sockets() -> Result<(i32, i32, i32), Error> {
+    let server_addr: SocketAddr =
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new([127, 0, 0, 1]), 0));
+    let server_fd: i32 = new_listening_socket(&server_addr)?;
+
+    let mut actual_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
+    if let Err(error) = getsockname(server_fd, &mut actual_addr) {
+        let _ = close(server_fd);
+        return Err(error);
+    }
+
+    let client_fd: i32 = match new_unbound_socket() {
+        Ok(sockfd) => sockfd,
+        Err(error) => {
+            let _ = close(server_fd);
+            return Err(error);
+        },
+    };
+    if let Err(error) = connect(client_fd, &actual_addr) {
+        let _ = close(client_fd);
+        let _ = close(server_fd);
+        return Err(error);
+    }
+
+    let (accepted_fd, _peer_addr) = match accept(server_fd) {
+        Ok((accepted_fd, peer_addr)) => (accepted_fd, peer_addr),
+        Err(error) => {
+            let _ = close(client_fd);
+            let _ = close(server_fd);
+            return Err(error);
+        },
+    };
+    Ok((server_fd, client_fd, accepted_fd))
+}
+
+/// Closes connected sockets and returns the first close error, if any.
+fn close_connected_sockets(server_fd: i32, client_fd: i32, accepted_fd: i32) -> Result<(), Error> {
+    let accepted_result = close(accepted_fd);
+    let client_result = close(client_fd);
+    let server_result = close(server_fd);
+
+    accepted_result?;
+    client_result?;
+    server_result?;
+    Ok(())
 }
 
 //==================================================================================================
@@ -131,29 +189,35 @@ fn test_getsockname_listening_socket(addr: &SocketAddr) -> Result<(), Error> {
     Ok(())
 }
 
-/// Tests if we succeed to accept a connection on a listening socket.
+/// Tests that we can accept a connection on a listening socket.
 fn test_accept() -> Result<(), Error> {
-    // Create a server socket bound to an ephemeral port.
-    let server_addr: SocketAddr =
-        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new([127, 0, 0, 1]), 0));
-    let server_fd: i32 = new_listening_socket(&server_addr)?;
+    let (server_fd, client_fd, accepted_fd) = new_connected_sockets()?;
+    close_connected_sockets(server_fd, client_fd, accepted_fd)
+}
 
-    // Retrieve the actual address assigned by the OS.
-    let mut actual_addr: SocketAddr = SocketAddr::V4(SocketAddrV4::default());
-    getsockname(server_fd, &mut actual_addr)?;
+/// Tests that we can send and receive data through connected INET sockets.
+fn test_send_recv() -> Result<(), Error> {
+    let (server_fd, client_fd, accepted_fd) = new_connected_sockets()?;
 
-    // Create a client socket and connect to the server.
-    let client_fd: i32 = new_unbound_socket()?;
-    connect(client_fd, &actual_addr)?;
+    let mut sent: usize = 0;
+    while sent < SEND_RECV_MESSAGE.len() {
+        let count: usize = send(client_fd, &SEND_RECV_MESSAGE[sent..], 0)?;
+        assert!(count > 0, "send made no progress");
+        sent += count;
+    }
+    shutdown(client_fd, Shutdown::Write)?;
 
-    // Accept the incoming connection.
-    let (accepted_fd, _peer_addr) = accept(server_fd)?;
+    let mut buf: [u8; SEND_RECV_MESSAGE.len()] = [0u8; SEND_RECV_MESSAGE.len()];
+    let mut received: usize = 0;
+    while received < SEND_RECV_MESSAGE.len() {
+        let count: usize = recv(accepted_fd, &mut buf[received..], 0)?;
+        assert!(count > 0, "recv made no progress before completing message");
+        received += count;
+    }
 
-    // Clean up.
-    close(accepted_fd)?;
-    close(client_fd)?;
-    close(server_fd)?;
-    Ok(())
+    assert_eq!(&buf[..], SEND_RECV_MESSAGE, "received data mismatch");
+
+    close_connected_sockets(server_fd, client_fd, accepted_fd)
 }
 
 /// Tests that a socket draws its application-visible descriptor from the flat namespace, exactly
@@ -161,7 +225,6 @@ fn test_accept() -> Result<(), Error> {
 /// the lowest free one, so the next socket reuses it. This is the unified lowest-free allocation
 /// that replaced the former reserved socket range — a socket is no longer numbered apart from every
 /// other object.
-#[cfg(feature = "standalone")]
 fn test_socket_fd_is_flat() -> Result<(), Error> {
     let first: i32 = new_unbound_socket()?;
     let second: i32 = new_unbound_socket()?;
@@ -184,7 +247,6 @@ fn test_socket_fd_is_flat() -> Result<(), Error> {
 /// by the same socket slot, so it reports the same bound address; closing the original — not the
 /// last reference — must leave the duplicate fully usable, and only closing the duplicate drops the
 /// last reference that releases the endpoint on `networkd`.
-#[cfg(feature = "standalone")]
 fn test_dup2_socket_shares_endpoint() -> Result<(), Error> {
     use ::syscall::unistd::dup2;
 
@@ -226,7 +288,6 @@ fn test_dup2_socket_shares_endpoint() -> Result<(), Error> {
 }
 
 /// Creates a duplicated socket endpoint and leaves both descriptors open for process exit.
-#[cfg(feature = "standalone")]
 fn leave_duplicated_socket_for_exit(addr: &SocketAddr) -> Result<(), Error> {
     use ::syscall::unistd::dup2;
 
@@ -244,7 +305,6 @@ fn leave_duplicated_socket_for_exit(addr: &SocketAddr) -> Result<(), Error> {
 /// Tests that process exit reclaims a duplicated socket endpoint exactly enough for the address to
 /// be immediately reusable by the parent. The child exits with both aliases open; vfsd must treat
 /// them as one underlying `networkd` endpoint when forwarding exit-time close requests.
-#[cfg(feature = "standalone")]
 fn test_process_exit_reclaims_duplicated_socket_endpoint() -> Result<(), Error> {
     let addr: SocketAddr =
         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new([127, 0, 0, 1]), SOCKET_RECLAIM_PORT));
@@ -289,14 +349,10 @@ pub fn run() -> Result<(), Error> {
     test_getsockname_bound_socket(&addr)?;
     test_getsockname_listening_socket(&addr)?;
     test_accept()?;
-
-    // Flat-namespace socket behavior is implemented only for the standalone (networkd) backend.
-    #[cfg(feature = "standalone")]
-    {
-        test_socket_fd_is_flat()?;
-        test_dup2_socket_shares_endpoint()?;
-        test_process_exit_reclaims_duplicated_socket_endpoint()?;
-    }
+    test_send_recv()?;
+    test_socket_fd_is_flat()?;
+    test_dup2_socket_shares_endpoint()?;
+    test_process_exit_reclaims_duplicated_socket_endpoint()?;
 
     Ok(())
 }

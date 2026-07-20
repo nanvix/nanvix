@@ -7,7 +7,7 @@
 	"target-c-int-width": 32,
 	"max-atomic-width": 64,
 	"features": "-mmx,-avx,-avx2,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,+soft-float",
-	"rustc-abi": "x86-softfloat",
+	"rustc-abi": "softfloat",
 	"os": "nanvix",
 	"target-family": [
 		"unix"
