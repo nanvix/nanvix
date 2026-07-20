@@ -479,10 +479,14 @@ pub unsafe extern "C" fn mkfifo(path: *const c_char, mode: mode_t) -> c_int {
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]
-pub unsafe extern "C" fn umask(mask: u16) -> u16 {
-    // TODO: https://github.com/nanvix/nanvix/issues/597.
-    ::syslog::debug!("umask(): not implemented");
-    0
+pub unsafe extern "C" fn umask(mask: mode_t) -> mode_t {
+    match stat::umask(mask) {
+        Ok(previous_mask) => previous_mask,
+        Err(error) => {
+            ::syslog::error!("umask(): failed (mask={:?}, error={:?})", mask, error);
+            0
+        },
+    }
 }
 
 ///

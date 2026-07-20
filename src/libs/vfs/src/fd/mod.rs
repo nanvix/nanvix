@@ -76,6 +76,7 @@ use ::sysapi::{
     sys_types::{
         c_size_t,
         gid_t,
+        mode_t,
         off_t,
         uid_t,
     },
@@ -98,6 +99,12 @@ const STAT_BLOCK_SIZE: i64 = 4096;
 
 /// Sector size used for `st_blocks` computation (POSIX convention: 512 bytes).
 const STAT_SECTOR_SIZE: u64 = 512;
+
+/// Default file mode creation mask.
+const DEFAULT_FILE_CREATION_MASK: mode_t = 0;
+
+/// File permission bits affected by the file mode creation mask.
+const FILE_PERMISSION_BITS: mode_t = file_mode::S_IRWXU | file_mode::S_IRWXG | file_mode::S_IRWXO;
 
 //==================================================================================================
 // Public Re-Exports
@@ -230,8 +237,10 @@ pub fn vfs_fork_clone(
     //
     // The placeholder can still carry a working directory: the racing child may have issued a
     // `chdir` before this notification arrived. Capture a directory that differs from the default
-    // so the clone below keeps the child's own cwd instead of reverting it to the parent's.
+    // so the clone below keeps the child's own cwd instead of reverting it to the parent's. An
+    // explicit file creation mask is preserved for the same reason, including `umask(0)`.
     let mut child_cwd: Option<String> = None;
+    let mut child_file_creation_mask: Option<mode_t> = None;
     if let Some(existing) = procs.get(&child) {
         if existing.initialized {
             return Err(Fat32Error::AlreadyExists);
@@ -239,6 +248,7 @@ pub fn vfs_fork_clone(
         if existing.cwd != DEFAULT_CWD {
             child_cwd = Some(existing.cwd.clone());
         }
+        child_file_creation_mask = existing.file_creation_mask;
     }
     // The parent must already be registered. `procd` registers every process at creation and is the
     // sole authority for doing so, so forking from an unregistered parent is a contract violation:
@@ -260,8 +270,33 @@ pub fn vfs_fork_clone(
     if let Some(cwd) = child_cwd {
         child_state.cwd = cwd;
     }
+    if child_file_creation_mask.is_some() {
+        child_state.file_creation_mask = child_file_creation_mask;
+    }
     procs.insert(child, child_state);
     Ok(())
+}
+
+/// Sets the current process's file mode creation mask and returns the previous mask.
+pub fn vfs_umask(mask: mode_t) -> mode_t {
+    let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+        PROCESSES.lock();
+    let state: &mut ProcessState = procs.entry(current_pid()).or_insert_with(ProcessState::new);
+    let previous: mode_t = state
+        .file_creation_mask
+        .unwrap_or(DEFAULT_FILE_CREATION_MASK);
+    state.file_creation_mask = Some(mask & FILE_PERMISSION_BITS);
+    previous
+}
+
+/// Applies the current process's file mode creation mask to `mode`.
+pub fn vfs_apply_umask(mode: mode_t) -> mode_t {
+    let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
+    let mask: mode_t = procs
+        .get(&current_pid())
+        .and_then(|state| state.file_creation_mask)
+        .unwrap_or(DEFAULT_FILE_CREATION_MASK);
+    mode & !mask
 }
 
 /// Seeds the root process's standard console descriptors (`0`/`1`/`2`) and marks its state active.
@@ -2368,6 +2403,31 @@ mod tests {
         CURRENT_PID.store(0, Ordering::Relaxed);
         // Clear the one-shot root-seeding latch so a later test starts from a pristine state.
         ROOT_CONSOLE_SEEDED.store(false, Ordering::Relaxed);
+    }
+
+    /// Tests file creation mask normalization, fork inheritance, and exec preservation.
+    #[test]
+    fn umask_follows_process_lifecycle() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+            (ProcessIdentifier::from(0x7103), ProcessIdentifier::from(0x7104));
+
+        set_current_process(parent);
+        assert_eq!(vfs_umask(0o1277), 0, "a new process starts with an empty mask");
+        assert_eq!(vfs_apply_umask(0o7777), 0o7500, "only the low nine permission bits are masked");
+
+        vfs_fork_clone(parent, child).expect("fork clone should succeed");
+        set_current_process(child);
+        assert_eq!(vfs_apply_umask(0o7777), 0o7500, "a child inherits its parent's mask");
+
+        drop(vfs_exec_cloexec(child));
+        assert_eq!(vfs_apply_umask(0o7777), 0o7500, "exec must preserve the process mask");
+        assert_eq!(vfs_umask(0), 0o277, "umask returns the normalized previous mask");
+
+        set_current_process(parent);
+        assert_eq!(vfs_apply_umask(0o7777), 0o7500, "the child's mask change is isolated");
+
+        forget_processes(&[parent, child]);
     }
 
     /// Tests that the descriptor-table generation advances on every table mutation (open, flag

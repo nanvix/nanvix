@@ -55,8 +55,8 @@ use crate::OperationId;
 /// Maximum length of a single path in the long-message wire format (u16::MAX).
 pub const MAX_PATH_LEN: usize = u16::MAX as usize;
 
-/// Header size for long open: op_id(4) + flags(4) + path_len(2) = 10
-pub const OPEN_HEADER_SIZE: usize = 10;
+/// Header size for long open: op_id(4) + flags(4) + mode(4) + path_len(2) = 14.
+pub const OPEN_HEADER_SIZE: usize = 14;
 
 /// Header size for long unlink: op_id(4) + path_len(2) = 6
 pub const UNLINK_HEADER_SIZE: usize = 6;
@@ -330,6 +330,7 @@ pub fn deserialize_long_readdir_response(bytes: &[u8]) -> Option<LongReaddirResp
 pub struct LongOpenRequest {
     pub op_id: OperationId,
     pub flags: i32,
+    pub mode: u32,
     pub path: std::string::String,
 }
 
@@ -341,7 +342,8 @@ pub fn deserialize_long_open(bytes: &[u8]) -> Option<LongOpenRequest> {
     }
     let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
     let flags = i32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
-    let path_len = u16::from_le_bytes([bytes[8], bytes[9]]) as usize;
+    let mode = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+    let path_len = u16::from_le_bytes([bytes[12], bytes[13]]) as usize;
     if bytes.len() < OPEN_HEADER_SIZE + path_len {
         return None;
     }
@@ -349,7 +351,12 @@ pub fn deserialize_long_open(bytes: &[u8]) -> Option<LongOpenRequest> {
         bytes[OPEN_HEADER_SIZE..OPEN_HEADER_SIZE + path_len].to_vec(),
     )
     .ok()?;
-    Some(LongOpenRequest { op_id, flags, path })
+    Some(LongOpenRequest {
+        op_id,
+        flags,
+        mode,
+        path,
+    })
 }
 
 /// Result of deserializing a long UNLINK request.
@@ -558,13 +565,19 @@ pub fn deserialize_long_lstat(bytes: &[u8]) -> Option<LongLstatRequest> {
 
 /// Serializes the body of a long OPEN request.
 ///
-/// Wire format: `[op_id:4][flags:4][path_len:2][path:N]`. Returns `None` if `path`
+/// Wire format: `[op_id:4][flags:4][mode:4][path_len:2][path:N]`. Returns `None` if `path`
 /// is longer than [`MAX_PATH_LEN`].
-pub fn serialize_long_open_request(op_id: OperationId, flags: i32, path: &[u8]) -> Option<Vec<u8>> {
+pub fn serialize_long_open_request(
+    op_id: OperationId,
+    flags: i32,
+    mode: u32,
+    path: &[u8],
+) -> Option<Vec<u8>> {
     let path_len: u16 = u16::try_from(path.len()).ok()?;
     let mut buf: Vec<u8> = Vec::with_capacity(OPEN_HEADER_SIZE + path.len());
     buf.extend_from_slice(&op_id.to_le_bytes());
     buf.extend_from_slice(&flags.to_le_bytes());
+    buf.extend_from_slice(&mode.to_le_bytes());
     buf.extend_from_slice(&path_len.to_le_bytes());
     buf.extend_from_slice(path);
     Some(buf)

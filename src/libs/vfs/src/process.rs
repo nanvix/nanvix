@@ -25,7 +25,10 @@ use ::spin::Mutex;
 use ::sys::pm::ProcessIdentifier;
 use ::sysapi::{
     ffi::c_int,
-    sys_types::off_t,
+    sys_types::{
+        mode_t,
+        off_t,
+    },
 };
 
 //==================================================================================================
@@ -84,6 +87,8 @@ pub(crate) struct ProcessState {
     pub(crate) slots: BTreeMap<c_int, Slot>,
     /// Current working directory.
     pub(crate) cwd: String,
+    /// Explicit file mode creation mask, or `None` for the default mask.
+    pub(crate) file_creation_mask: Option<mode_t>,
     /// Whether this state is active rather than a lazy placeholder.
     pub(crate) initialized: bool,
     /// Descriptor-table coherence generation.
@@ -96,6 +101,7 @@ impl ProcessState {
         Self {
             slots: BTreeMap::new(),
             cwd: String::from(DEFAULT_CWD),
+            file_creation_mask: None,
             initialized: false,
             generation: 0,
         }
@@ -106,6 +112,7 @@ impl ProcessState {
         Self {
             slots: self.slots.clone(),
             cwd: self.cwd.clone(),
+            file_creation_mask: self.file_creation_mask,
             initialized: true,
             generation: self.generation,
         }

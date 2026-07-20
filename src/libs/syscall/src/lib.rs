@@ -331,6 +331,8 @@ pub enum SystemCallMessageHeader {
     SendToSocketResponse,
     ReceiveFromSocketRequest,
     ReceiveFromSocketResponse,
+    FileCreationMaskRequest,
+    FileCreationMaskResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -506,6 +508,8 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == SendToSocketResponse as u16 => Ok(SendToSocketResponse),
             x if x == ReceiveFromSocketRequest as u16 => Ok(ReceiveFromSocketRequest),
             x if x == ReceiveFromSocketResponse as u16 => Ok(ReceiveFromSocketResponse),
+            x if x == FileCreationMaskRequest as u16 => Ok(FileCreationMaskRequest),
+            x if x == FileCreationMaskResponse as u16 => Ok(FileCreationMaskResponse),
             _ => Err(()),
         }
     }

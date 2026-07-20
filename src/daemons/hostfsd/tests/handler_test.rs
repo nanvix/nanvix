@@ -13,6 +13,8 @@ use hostfs_api::{
     *,
 };
 use hostfsd::HostFsHandler;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     fs,
     path::PathBuf,
@@ -28,6 +30,7 @@ use sysapi::{
         file_creation_flags::{
             O_CREAT,
             O_DIRECTORY,
+            O_EXCL,
             O_TRUNC,
         },
     },
@@ -51,9 +54,9 @@ fn setup() -> (HostFsHandler, TempDir) {
     (handler, tmp)
 }
 
-/// Builds an Open request payload for the given path and flags.
-fn make_open_request(path: &str, flags: i32) -> [u8; Message::PAYLOAD_SIZE] {
-    let req: OpenRequest = OpenRequest::from_path(flags, path.as_bytes())
+/// Builds an Open request payload for the given path, flags, and mode.
+fn make_open_request(path: &str, flags: i32, mode: u32) -> [u8; Message::PAYLOAD_SIZE] {
+    let req: OpenRequest = OpenRequest::from_path(flags, mode, path.as_bytes())
         .expect("test path fits in MAX_INLINE_PATH_LEN");
     req.serialize(
         SystemCallMessageHeader::HostFsOpenRequest as u16,
@@ -194,7 +197,7 @@ fn make_readdir_request_at(fd: i32, offset: u32) -> [u8; Message::PAYLOAD_SIZE] 
 
 /// Opens a file via the handler and returns the remote FD.
 fn open_file(handler: &mut HostFsHandler, path: &str, flags: i32) -> i32 {
-    let payload: [u8; Message::PAYLOAD_SIZE] = make_open_request(path, flags);
+    let payload: [u8; Message::PAYLOAD_SIZE] = make_open_request(path, flags, 0o666);
     let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
     let resp: OpenResponse = OpenResponse::decode(&response);
     resp.fd
@@ -239,6 +242,40 @@ fn test_open_create_flag() {
 
     // Verify file was actually created on disk.
     assert!(tmp.path().join("new-file.txt").exists());
+    #[cfg(unix)]
+    assert_eq!(
+        fs::metadata(tmp.path().join("new-file.txt"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o666,
+        "open should apply the requested creation mode"
+    );
+
+    let exclusive_fd: i32 = open_file(&mut handler, "new-file.txt", O_WRONLY | O_CREAT | O_EXCL);
+    assert!(exclusive_fd < 0, "exclusive creation of an existing file should fail");
+
+    #[cfg(unix)]
+    {
+        let payload: [u8; Message::PAYLOAD_SIZE] =
+            make_open_request("new-file.txt", O_WRONLY | O_CREAT, 0o600);
+        let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
+        let existing_fd: i32 = OpenResponse::decode(&response).fd;
+        assert!(existing_fd > 0, "opening an existing file with O_CREAT should succeed");
+        assert_eq!(
+            fs::metadata(tmp.path().join("new-file.txt"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o666,
+            "open should preserve the mode of an existing file"
+        );
+        handler
+            .handle_request(&make_close_request(existing_fd))
+            .unwrap();
+    }
 
     // Close.
     let payload: [u8; Message::PAYLOAD_SIZE] = make_close_request(fd);
@@ -905,7 +942,7 @@ fn test_op_id_echoed_in_response() {
     fs::write(tmp.path().join("opid.txt"), b"test").unwrap();
 
     // Build a request with a specific op_id.
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = make_open_request("opid.txt", O_RDONLY);
+    let mut payload: [u8; Message::PAYLOAD_SIZE] = make_open_request("opid.txt", O_RDONLY, 0);
     set_op_id(&mut payload, OperationId::from_raw(42));
 
     let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
@@ -935,7 +972,7 @@ fn test_op_id_zero_is_valid() {
     let (mut handler, tmp) = setup();
     fs::write(tmp.path().join("zero.txt"), b"z").unwrap();
 
-    let mut payload: [u8; Message::PAYLOAD_SIZE] = make_open_request("zero.txt", O_RDONLY);
+    let mut payload: [u8; Message::PAYLOAD_SIZE] = make_open_request("zero.txt", O_RDONLY, 0);
     set_op_id(&mut payload, OperationId::from_raw(0));
 
     let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
@@ -979,15 +1016,17 @@ fn make_part_payload(
 fn make_long_open_parts(
     path: &str,
     flags: i32,
+    mode: u32,
     op_id: OperationId,
 ) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
     let path_bytes: &[u8] = path.as_bytes();
     let path_len: u16 = path_bytes.len() as u16;
 
-    // Serialize: [op_id:4][flags:4][path_len:2][path:N]
+    // Serialize: [op_id:4][flags:4][mode:4][path_len:2][path:N]
     let mut data: Vec<u8> = Vec::new();
     data.extend_from_slice(&op_id.to_le_bytes());
     data.extend_from_slice(&flags.to_le_bytes());
+    data.extend_from_slice(&mode.to_le_bytes());
     data.extend_from_slice(&path_len.to_le_bytes());
     data.extend_from_slice(path_bytes);
 
@@ -1007,7 +1046,7 @@ fn test_long_open_single_part() {
     let (mut handler, tmp) = setup();
     fs::write(tmp.path().join("short.txt"), b"data").unwrap();
 
-    let parts = make_long_open_parts("short.txt", O_RDONLY, OperationId::from_raw(7));
+    let parts = make_long_open_parts("short.txt", O_RDONLY, 0, OperationId::from_raw(7));
     assert_eq!(parts.len(), 1, "short path should fit in one part");
 
     let response = handler.handle_request(&parts[0]);
@@ -1016,6 +1055,26 @@ fn test_long_open_single_part() {
     assert_eq!(get_op_id(&response), OperationId::from_raw(7));
     let resp: OpenResponse = OpenResponse::decode(&response);
     assert!(resp.fd > 0, "open should succeed");
+}
+
+#[cfg(unix)]
+#[test]
+fn test_long_open_create_preserves_existing_mode() {
+    let (mut handler, tmp) = setup();
+    let host_path: PathBuf = tmp.path().join("existing.txt");
+    fs::write(&host_path, b"data").unwrap();
+    fs::set_permissions(&host_path, fs::Permissions::from_mode(0o640)).unwrap();
+
+    let parts: Vec<[u8; Message::PAYLOAD_SIZE]> =
+        make_long_open_parts("existing.txt", O_WRONLY | O_CREAT, 0o600, OperationId::from_raw(8));
+    let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&parts[0]).unwrap();
+    let resp: OpenResponse = OpenResponse::decode(&response);
+    assert!(resp.fd > 0, "opening an existing file with O_CREAT should succeed");
+    assert_eq!(
+        fs::metadata(&host_path).unwrap().permissions().mode() & 0o777,
+        0o640,
+        "long open should preserve the mode of an existing file"
+    );
 }
 
 #[test]
@@ -1027,7 +1086,7 @@ fn test_long_open_multi_part() {
     let file_name: String = format!("{}/file.txt", long_name);
     fs::write(tmp.path().join(&file_name), b"hello").unwrap();
 
-    let parts = make_long_open_parts(&file_name, O_RDONLY, OperationId::from_raw(42));
+    let parts = make_long_open_parts(&file_name, O_RDONLY, 0, OperationId::from_raw(42));
     assert!(parts.len() >= 2, "long path should require multiple parts, got {}", parts.len());
 
     // Feed intermediate parts — should return None.
@@ -1049,7 +1108,7 @@ fn test_long_open_multi_part() {
 fn test_long_open_nonexistent_file() {
     let (mut handler, _tmp) = setup();
 
-    let parts = make_long_open_parts("does-not-exist.txt", O_RDONLY, OperationId::from_raw(10));
+    let parts = make_long_open_parts("does-not-exist.txt", O_RDONLY, 0, OperationId::from_raw(10));
     let response = handler.handle_request(&parts[0]).unwrap();
     assert_eq!(get_op_id(&response), OperationId::from_raw(10));
     let ds: usize = HOSTFS_DATA_START;

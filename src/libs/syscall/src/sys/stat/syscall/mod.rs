@@ -15,6 +15,7 @@ mod lstat;
 mod mkdir;
 mod mkdirat;
 mod stat;
+mod umask;
 mod utimensat;
 
 //==================================================================================================
@@ -55,6 +56,7 @@ pub use lstat::lstat;
 pub use mkdir::mkdir;
 pub use mkdirat::mkdirat;
 pub use stat::stat;
+pub use umask::umask;
 pub use utimensat::utimensat;
 
 //==================================================================================================

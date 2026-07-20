@@ -184,11 +184,12 @@ fn send_long_request(
 pub fn send_open_request(
     path: &str,
     flags: i32,
+    mode: u32,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
     let relative: &str = strip_mount_prefix(path);
     let buf: alloc::vec::Vec<u8> =
-        long_msg::serialize_long_open_request(op_id, flags, relative.as_bytes())
+        long_msg::serialize_long_open_request(op_id, flags, mode, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageHeader::HostFsOpenRequestPart)
