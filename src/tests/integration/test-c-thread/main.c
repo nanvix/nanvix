@@ -89,8 +89,9 @@ int main(int argc, const char *argv[])
 
     // Sanity check size of `pthread_condattr_t` type.
     STATIC_ASSERT_SIZE(pthread_condattr_t,
-                       sizeof(int) +       // is_initialized
-                           sizeof(clock_t) // clock
+                       sizeof(int) +        // is_initialized
+                           sizeof(clock_t) + // clock
+                           sizeof(int)       // pshared
     );
 
     // Sanity check size of `pthread_mutex_t` type.
@@ -133,6 +134,7 @@ int main(int argc, const char *argv[])
     test_pthread_mutex_trylock();
     test_pthread_mutex_timedlock();
     test_pthread_condattr_init();
+    test_pthread_condattr_getpshared();
     test_pthread_rwlock_static_init();
     test_pthread_rwlock_dynamic_init();
     test_pthread_cond_static_init();
@@ -145,10 +147,7 @@ int main(int argc, const char *argv[])
     test_pthread_nowait();
 
     // Write magic string to signal that the test passed.
-    {
-        const char *magic_string = "ok";
-        write(STDOUT_FILENO, magic_string, 2);
-    }
+    write(STDOUT_FILENO, "ok", 2);
 
     return (0);
 }

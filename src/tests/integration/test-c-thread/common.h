@@ -24,6 +24,9 @@ extern void test_pthread_mutex_dynamic_init(void);
 // Tests if condition variable attributes can be initialized.
 extern void test_pthread_condattr_init(void);
 
+// Tests if the process-sharing attribute can be retrieved.
+extern void test_pthread_condattr_getpshared(void);
+
 // Tests if calling exit() causes the program to exit even if there are other threads running.
 extern void test_pthread_nowait(void);
 
