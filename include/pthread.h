@@ -37,6 +37,8 @@ extern "C" {
 #define PTHREAD_NULL 0 /**< Null thread identifier. */
 #define PTHREAD_CREATE_JOINABLE 0 /**< Thread is created joinable. */
 #define PTHREAD_CREATE_DETACHED 1 /**< Thread is created detached. */
+#define PTHREAD_PROCESS_PRIVATE 0 /**< Synchronization object is private to a process. */
+#define PTHREAD_PROCESS_SHARED 1 /**< Synchronization object is shared between processes. */
 
 /*==================================================================================================
  * Types
@@ -66,6 +68,7 @@ typedef struct {
     int is_initialized; /**< Whether the attributes are initialized. */
     int type;           /**< Type of mutex.                          */
     int recursive;      /**< Whether the mutex is recursive.         */
+    int pshared;        /**< Process-sharing attribute.               */
 } pthread_mutexattr_t;
 
 /** @brief Read-write lock attributes. */
@@ -128,6 +131,7 @@ extern int pthread_mutex_trylock(pthread_mutex_t *mutex);
 extern int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec *abstime);
 extern int pthread_mutexattr_init(pthread_mutexattr_t *attr);
 extern int pthread_mutexattr_destroy(pthread_mutexattr_t *attr);
+extern int pthread_mutexattr_getpshared(const pthread_mutexattr_t *attr, int *pshared);
 extern int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type_);
 extern int pthread_mutexattr_gettype(const pthread_mutexattr_t *attr, int *type_);
 

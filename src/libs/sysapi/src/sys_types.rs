@@ -22,7 +22,10 @@ use crate::{
         c_ushort,
         c_void,
     },
-    pthread::pthread_mutex_type::PTHREAD_MUTEX_DEFAULT,
+    pthread::{
+        PTHREAD_PROCESS_PRIVATE,
+        pthread_mutex_type::PTHREAD_MUTEX_DEFAULT,
+    },
     sched::{
         sched_param,
         sched_policy::SCHED_OTHER,
@@ -239,6 +242,8 @@ pub struct pthread_mutexattr_t {
     type_: c_int,
     /// Whether the mutex is recursive.
     recursive: c_int,
+    /// Process-sharing attribute.
+    pshared: c_int,
 }
 ::static_assert::assert_eq_size!(pthread_mutexattr_t, pthread_mutexattr_t::SIZE);
 
@@ -249,10 +254,14 @@ impl pthread_mutexattr_t {
     const SIZE_OF_TYPE: usize = size_of::<c_int>();
     /// Size of the `recursive` field.
     const SIZE_OF_RECURSIVE: usize = size_of::<c_int>();
+    /// Size of the `pshared` field.
+    const SIZE_OF_PSHARED: usize = size_of::<c_int>();
 
     /// Size of `pthread_mutexattr_t` structure.
-    pub const SIZE: usize =
-        Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_TYPE + Self::SIZE_OF_RECURSIVE;
+    pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED
+        + Self::SIZE_OF_TYPE
+        + Self::SIZE_OF_RECURSIVE
+        + Self::SIZE_OF_PSHARED;
 
     /// Returns whether the mutex attributes object is initialized.
     pub fn is_initialized(&self) -> bool {
@@ -275,6 +284,11 @@ impl pthread_mutexattr_t {
         self.recursive = (type_ == crate::pthread::pthread_mutex_type::PTHREAD_MUTEX_RECURSIVE)
             as crate::ffi::c_int;
     }
+
+    /// Returns the process-sharing attribute.
+    pub fn pshared(&self) -> c_int {
+        self.pshared
+    }
 }
 
 impl Default for pthread_mutexattr_t {
@@ -283,6 +297,7 @@ impl Default for pthread_mutexattr_t {
             is_initialized: 1,
             type_: PTHREAD_MUTEX_DEFAULT,
             recursive: 0,
+            pshared: PTHREAD_PROCESS_PRIVATE,
         }
     }
 }

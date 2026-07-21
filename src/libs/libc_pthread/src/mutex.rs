@@ -107,6 +107,61 @@ pub unsafe extern "C" fn pthread_mutexattr_destroy(attr: *mut pthread_mutexattr_
 }
 
 //==================================================================================================
+// pthread_mutexattr_getpshared()
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Gets the process-shared attribute from a mutex attributes object.
+///
+/// # Parameters
+///
+/// - `attr`: Pointer to the mutex attributes object.
+/// - `pshared`: Pointer where the process-shared attribute is stored on success.
+///
+/// # Returns
+///
+/// The `pthread_mutexattr_getpshared()` function returns `0` on success. On error, it returns an
+/// error number.
+///
+/// # Safety
+///
+/// This function is unsafe because it may dereference raw pointers.
+///
+/// It is safe to call this function if the following conditions are met:
+/// - `attr` points to a valid `pthread_mutexattr_t` object.
+/// - `pshared` points to a valid `int` object.
+///
+#[unsafe(no_mangle)]
+#[trace_libcall]
+pub unsafe extern "C" fn pthread_mutexattr_getpshared(
+    attr: *const pthread_mutexattr_t,
+    pshared: *mut c_int,
+) -> c_int {
+    // Check if `attr` is not valid.
+    if attr.is_null() {
+        ::syslog::warn!("pthread_mutexattr_getpshared(): invalid attr pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `pshared` is not valid.
+    if pshared.is_null() {
+        ::syslog::warn!("pthread_mutexattr_getpshared(): invalid pshared pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if the mutex attributes object is initialized.
+    if !(*attr).is_initialized() {
+        ::syslog::warn!("pthread_mutexattr_getpshared(): attr is not initialized");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    *pshared = (*attr).pshared();
+    0
+}
+
+//==================================================================================================
 // pthread_mutexattr_settype()
 //==================================================================================================
 
