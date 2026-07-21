@@ -61,6 +61,7 @@ typedef struct {
 typedef struct {
     int is_initialized; /**< Whether the attributes are initialized. */
     clock_t clock;      /**< Clock used for timeouts.                */
+    int pshared;        /**< Process-sharing attribute.               */
 } pthread_condattr_t;
 
 /** @brief Mutex attributes. */
@@ -146,6 +147,7 @@ extern int pthread_cond_broadcast(const pthread_cond_t *cond);
 extern int pthread_cond_wait(const pthread_cond_t *cond, pthread_mutex_t *mutex);
 extern int pthread_cond_timedwait(const pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *abstime);
 extern int pthread_condattr_init(pthread_condattr_t *attr);
+extern int pthread_condattr_getpshared(const pthread_condattr_t *attr, int *pshared);
 extern int pthread_condattr_setclock(pthread_condattr_t *attr, clockid_t clock_id);
 
 /*==================================================================================================
