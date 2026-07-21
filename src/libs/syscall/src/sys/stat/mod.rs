@@ -31,6 +31,7 @@ cfg_if::cfg_if! {
             futimens,
             mkdir,
             mkdirat,
+            umask,
             utimensat,
         };
         pub mod bindings;

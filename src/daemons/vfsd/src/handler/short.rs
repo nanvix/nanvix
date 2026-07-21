@@ -32,6 +32,8 @@ use ::syscall::{
     sys::stat::message::{
         FileChmodRequest,
         FileChmodResponse,
+        FileCreationMaskRequest,
+        FileCreationMaskResponse,
         UpdateFileAccessTimeRequest,
         UpdateFileAccessTimeResponse,
     },
@@ -248,6 +250,17 @@ pub(crate) fn handle_fchmod(source: ThreadIdentifier, msg: SystemCallMessage) ->
     // fchmod on an fd: our VFS does not support fchmod by fd directly. Return success as a stub.
     ::syslog::trace!("handle_fchmod(): stubbed (fd={}, mode={})", fd, mode);
     FileChmodResponse::build(source, ProcessIdentifier::VFSD, MessageType::Ipc)
+}
+
+pub(crate) fn handle_umask(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {
+    let request: FileCreationMaskRequest = FileCreationMaskRequest::from_bytes(msg.payload);
+    let previous_mask = ::vfs::fd::vfs_umask(request.mask);
+    FileCreationMaskResponse::build(
+        source,
+        previous_mask,
+        ProcessIdentifier::VFSD,
+        MessageType::Ipc,
+    )
 }
 
 pub(crate) fn handle_fchdir(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {

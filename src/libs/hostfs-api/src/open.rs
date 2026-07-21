@@ -12,15 +12,20 @@ use crate::{
 };
 use ::sys::ipc::Message;
 
+/// Maximum path length in an inline open request.
+const MAX_INLINE_OPEN_PATH_LEN: usize = MAX_INLINE_PATH_LEN - 4;
+
 /// Open request: open a file at the given relative path.
 #[derive(Debug, Clone)]
 pub struct OpenRequest {
     /// POSIX open flags (O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, etc.).
     pub flags: i32,
+    /// Mode used when creating a file.
+    pub mode: u32,
     /// Relative path within the mounted directory.
     pub path_len: u16,
-    /// Path bytes (up to `MAX_INLINE_PATH_LEN`).
-    pub path: [u8; MAX_INLINE_PATH_LEN],
+    /// Path bytes.
+    pub path: [u8; MAX_INLINE_OPEN_PATH_LEN],
 }
 
 /// Open response: contains the remote file descriptor and directory flag.
@@ -33,19 +38,20 @@ pub struct OpenResponse {
 }
 
 impl OpenRequest {
-    /// Builds an inline [`OpenRequest`] from a path slice and POSIX `flags`.
+    /// Builds an inline [`OpenRequest`] from a path slice, POSIX `flags`, and creation `mode`.
     ///
-    /// Returns `None` if `path` is longer than [`MAX_INLINE_PATH_LEN`]. Callers must
+    /// Returns `None` if `path` is longer than the inline request capacity. Callers must
     /// fall back to the multi-part request form in [`long_msg`](crate::long_msg) when
     /// this returns `None`.
-    pub fn from_path(flags: i32, path: &[u8]) -> Option<Self> {
-        if path.len() > MAX_INLINE_PATH_LEN {
+    pub fn from_path(flags: i32, mode: u32, path: &[u8]) -> Option<Self> {
+        if path.len() > MAX_INLINE_OPEN_PATH_LEN {
             return None;
         }
-        let mut buf: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
+        let mut buf: [u8; MAX_INLINE_OPEN_PATH_LEN] = [0u8; MAX_INLINE_OPEN_PATH_LEN];
         buf[..path.len()].copy_from_slice(path);
         Some(Self {
             flags,
+            mode,
             path_len: path.len() as u16,
             path: buf,
         })
@@ -58,11 +64,13 @@ impl OpenRequest {
         set_op_id(&mut payload, op_id);
         let data_start: usize = HOSTFS_DATA_START;
         let flags_bytes: [u8; 4] = self.flags.to_le_bytes();
+        let mode_bytes: [u8; 4] = self.mode.to_le_bytes();
         let path_len_bytes: [u8; 2] = self.path_len.to_le_bytes();
         payload[data_start..data_start + 4].copy_from_slice(&flags_bytes);
-        payload[data_start + 4..data_start + 6].copy_from_slice(&path_len_bytes);
-        let path_copy_len: usize = (self.path_len as usize).min(MAX_INLINE_PATH_LEN);
-        payload[data_start + 6..data_start + 6 + path_copy_len]
+        payload[data_start + 4..data_start + 8].copy_from_slice(&mode_bytes);
+        payload[data_start + 8..data_start + 10].copy_from_slice(&path_len_bytes);
+        let path_copy_len: usize = (self.path_len as usize).min(MAX_INLINE_OPEN_PATH_LEN);
+        payload[data_start + 10..data_start + 10 + path_copy_len]
             .copy_from_slice(&self.path[..path_copy_len]);
         payload
     }
@@ -72,13 +80,16 @@ impl OpenRequest {
         let data_start: usize = HOSTFS_DATA_START;
         let flags: i32 =
             i32::from_le_bytes(payload[data_start..data_start + 4].try_into().unwrap());
+        let mode: u32 =
+            u32::from_le_bytes(payload[data_start + 4..data_start + 8].try_into().unwrap());
         let path_len: u16 =
-            u16::from_le_bytes(payload[data_start + 4..data_start + 6].try_into().unwrap());
-        let mut path: [u8; MAX_INLINE_PATH_LEN] = [0u8; MAX_INLINE_PATH_LEN];
-        let copy_len: usize = (path_len as usize).min(MAX_INLINE_PATH_LEN);
-        path[..copy_len].copy_from_slice(&payload[data_start + 6..data_start + 6 + copy_len]);
+            u16::from_le_bytes(payload[data_start + 8..data_start + 10].try_into().unwrap());
+        let mut path: [u8; MAX_INLINE_OPEN_PATH_LEN] = [0u8; MAX_INLINE_OPEN_PATH_LEN];
+        let copy_len: usize = (path_len as usize).min(MAX_INLINE_OPEN_PATH_LEN);
+        path[..copy_len].copy_from_slice(&payload[data_start + 10..data_start + 10 + copy_len]);
         Self {
             flags,
+            mode,
             path_len,
             path,
         }

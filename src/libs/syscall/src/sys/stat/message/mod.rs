@@ -11,6 +11,7 @@ mod fstat;
 mod fstatat;
 mod futimens;
 mod mkdirat;
+mod umask;
 mod utimensat;
 
 //==================================================================================================
@@ -38,6 +39,10 @@ pub use self::{
     mkdirat::{
         MakeDirectoryAtRequest,
         MakeDirectoryAtResponse,
+    },
+    umask::{
+        FileCreationMaskRequest,
+        FileCreationMaskResponse,
     },
     utimensat::{
         UpdateFileAccessTimeAtRequest,

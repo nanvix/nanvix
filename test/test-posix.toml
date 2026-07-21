@@ -261,7 +261,7 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 name = "posix/test-c-file"
 program = "./bin/test-c-file.initrd"
-extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img"
+extra_nanvixd_args = "-ramfs ./bin/posix-tests-ramfs.img -mount ./bin/posix-tests-ramfs-seed"
 expected_exit_code = 0
 
 [[tests]]

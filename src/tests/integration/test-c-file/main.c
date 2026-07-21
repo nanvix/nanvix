@@ -129,6 +129,8 @@ int main(int argc, const char *argv[])
     test_mkdir();      // requires stat() and unlinkat().
     test_mkfifo();     // mkfifo() is unsupported; verifies it fails with ENOTSUP.
     test_mknod();      // mknod() is unsupported; verifies it fails with ENOTSUP.
+    test_umask_ramfs(); // tests umask(), open(), close(), stat(), and unlink() on RAMFS.
+    test_umask();      // tests umask(), open(), stat(), mkdir(), and unlinkat().
     test_dirent();
     test_getcwd();
     test_chdir(); // requires getcwd().

@@ -29,6 +29,7 @@ use ::sysapi::{
         file_creation_flags::{
             O_CREAT,
             O_DIRECTORY,
+            O_EXCL,
             O_TRUNC,
         },
         file_status_flags::O_APPEND,
@@ -62,6 +63,37 @@ use std::{
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+
+fn open_regular_file(
+    options: &OpenOptions,
+    host_path: &PathBuf,
+    create: bool,
+    exclusive: bool,
+) -> io::Result<(File, bool)> {
+    if !create {
+        return options.open(host_path).map(|file| (file, false));
+    }
+
+    let mut create_options: OpenOptions = options.clone();
+    create_options.create_new(true);
+
+    let mut existing_options: OpenOptions = options.clone();
+    existing_options.create(false);
+
+    loop {
+        match create_options.open(host_path) {
+            Ok(file) => return Ok((file, true)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists && !exclusive => {
+                match existing_options.open(host_path) {
+                    Ok(file) => return Ok((file, false)),
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+                    Err(error) => return Err(error),
+                }
+            },
+            Err(error) => return Err(error),
+        }
+    }
+}
 
 /// The host filesystem request handler.
 ///
@@ -399,6 +431,7 @@ impl HostFsHandler {
         let wronly: bool = (flags & O_ACCMODE) == O_WRONLY;
         let rdwr: bool = (flags & O_ACCMODE) == O_RDWR;
         let o_creat: bool = (flags & O_CREAT) != 0;
+        let o_excl: bool = (flags & O_EXCL) != 0;
         let o_trunc: bool = (flags & O_TRUNC) != 0;
         let o_append: bool = (flags & O_APPEND) != 0;
 
@@ -439,9 +472,9 @@ impl HostFsHandler {
             return;
         }
 
-        let file: File = if is_dir {
+        let (file, created): (File, bool) = if is_dir {
             match open_dir_handle(&host_path) {
-                Ok(f) => f,
+                Ok(file) => (file, false),
                 Err(e) => {
                     set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
                     set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
@@ -449,8 +482,8 @@ impl HostFsHandler {
                 },
             }
         } else {
-            match opts.open(&host_path) {
-                Ok(f) => f,
+            match open_regular_file(&opts, &host_path, o_creat, o_excl) {
+                Ok(result) => result,
                 Err(e) => {
                     set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
                     set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
@@ -458,6 +491,20 @@ impl HostFsHandler {
                 },
             }
         };
+
+        if created {
+            #[cfg(unix)]
+            {
+                let permissions: std::fs::Permissions = std::fs::Permissions::from_mode(req.mode);
+                if let Err(error) = file.set_permissions(permissions) {
+                    drop(file);
+                    let _ = fs::remove_file(&host_path);
+                    set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                    return;
+                }
+            }
+        }
 
         let path_string: String = host_path.to_string_lossy().into_owned();
         match self.fd_table.alloc(file, is_dir, path_string) {
@@ -1080,7 +1127,7 @@ impl HostFsHandler {
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
         let req: OpenRequest = OpenRequest::decode(payload);
-        let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
+        let path_len: usize = (req.path_len as usize).min(req.path.len());
         let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
@@ -1108,6 +1155,7 @@ impl HostFsHandler {
         let wronly: bool = (flags & O_ACCMODE) == O_WRONLY;
         let rdwr: bool = (flags & O_ACCMODE) == O_RDWR;
         let o_creat: bool = (flags & O_CREAT) != 0;
+        let o_excl: bool = (flags & O_EXCL) != 0;
         let o_trunc: bool = (flags & O_TRUNC) != 0;
         let o_append: bool = (flags & O_APPEND) != 0;
 
@@ -1157,10 +1205,10 @@ impl HostFsHandler {
             return;
         }
 
-        let file: File = if is_dir {
+        let (file, created): (File, bool) = if is_dir {
             // For directories, open as read-only. Readdir uses the stored path.
             match open_dir_handle(&host_path) {
-                Ok(f) => f,
+                Ok(file) => (file, false),
                 Err(e) => {
                     log::debug!(
                         "hostfsd: directory open failed (path={:?}, kind={:?}): {}",
@@ -1174,8 +1222,8 @@ impl HostFsHandler {
                 },
             }
         } else {
-            match opts.open(&host_path) {
-                Ok(f) => f,
+            match open_regular_file(&opts, &host_path, o_creat, o_excl) {
+                Ok(result) => result,
                 Err(e) => {
                     log::debug!(
                         "hostfsd: open failed (path={:?}, flags={:#x}, kind={:?}): {}",
@@ -1190,6 +1238,20 @@ impl HostFsHandler {
                 },
             }
         };
+
+        if created {
+            #[cfg(unix)]
+            {
+                let permissions: std::fs::Permissions = std::fs::Permissions::from_mode(req.mode);
+                if let Err(error) = file.set_permissions(permissions) {
+                    drop(file);
+                    let _ = fs::remove_file(&host_path);
+                    set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                    return;
+                }
+            }
+        }
 
         let path_string: String = host_path.to_string_lossy().into_owned();
         match self.fd_table.alloc(file, is_dir, path_string) {

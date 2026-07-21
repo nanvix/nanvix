@@ -681,9 +681,10 @@ pub(crate) fn handle_getdents_with_hostfs(
 pub(crate) fn handle_openat_with_hostfs(
     source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
-    request: OpenAtRequest,
+    mut request: OpenAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
     let resolved: alloc::string::String =
         match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
             Some(p) => p,
@@ -697,7 +698,7 @@ pub(crate) fn handle_openat_with_hostfs(
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
         let open_path: alloc::string::String = alloc::string::String::from(final_path);
-        match hostfs::send_open_request(final_path, request.flags, op_id) {
+        match hostfs::send_open_request(final_path, request.flags, request.mode, op_id) {
             Ok(()) => {
                 if pending
                     .insert(
@@ -833,9 +834,10 @@ pub(crate) fn handle_unlinkat_with_hostfs(
 pub(crate) fn handle_mkdirat_with_hostfs(
     source_pid: ProcessIdentifier,
     source: ThreadIdentifier,
-    request: MakeDirectoryAtRequest,
+    mut request: MakeDirectoryAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
     let resolved: alloc::string::String =
         match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
             Some(p) => p,

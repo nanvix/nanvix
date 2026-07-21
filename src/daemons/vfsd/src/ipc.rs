@@ -425,6 +425,10 @@ pub(crate) fn handle_ipc_message(
             let response: Message = handler::handle_fchmod(source_tid, syscall_msg);
             send_response(&response);
         },
+        SystemCallMessageHeader::FileCreationMaskRequest => {
+            let response: Message = handler::handle_umask(source_tid, syscall_msg);
+            send_response(&response);
+        },
         SystemCallMessageHeader::FileChownRequest => {
             let response: Message = handler::handle_fchown(source_tid, syscall_msg);
             send_response(&response);
