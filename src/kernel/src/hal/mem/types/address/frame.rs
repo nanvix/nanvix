@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("frame.spec.rs");
+
 use crate::hal::mem::types::address::{
     Address,
     PageAddress,
@@ -23,6 +27,7 @@ use ::sys::error::Error;
 ///
 /// A type that represents a frame address.
 ///
+#[verus_verify(external_derive)]
 #[derive(Clone, Copy)]
 pub struct FrameAddress(PageAligned<PhysicalAddress>);
 
@@ -42,15 +47,54 @@ impl FrameAddress {
     pub fn into_page_address(self) -> PageAddress {
         PageAddress::new(PageAligned::into_virtual_address(self.0))
     }
+}
 
+// Raw-value and frame-number conversions of a frame address. The frame address denotes a single
+// page-aligned physical frame; these functions expose its two equivalent identities (raw physical
+// address and frame number) and the lossless, mutually-inverse mappings between them.
+#[verus_verify]
+impl FrameAddress {
+    // Constructs a frame address from a frame number. The frame's base address is
+    // `frame_number * PAGE_SIZE`, page-aligned by construction, so the call always succeeds and the
+    // result satisfies `inv()`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            result is Ok,
+            (result->Ok_0).inv(),
+            (result->Ok_0)@ == frame_number@ * spec_page_size(),
+    )]
     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
         Ok(Self(PageAligned::from_address(PhysicalAddress::from(frame_number))?))
     }
 
+    // Recovers the frame number of a frame address (`self@ / PAGE_SIZE`). Requires only that the
+    // address is page-aligned (so the round-trip `from_number(into_frame_number(self)) == self`
+    // holds); representability is automatic because the underlying
+    // `PhysicalAddress::into_frame_number` is total. The result is the exact inverse of
+    // `from_frame_number`.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        requires
+            self.inv(),
+        ensures
+            result@ == self@ / spec_page_size(),
+            result@ * spec_page_size() == self@,
+    )]
     pub fn into_frame_number(self) -> FrameNumber {
         self.0.into_frame_number()
     }
 
+    // Succeeds only for page-aligned inputs. The contract exposes the validated raw address to
+    // verified callers.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        ensures
+            match result {
+                Ok(fa) => fa.inv() && fa@ == raw_addr as int,
+                Err(_) => true,
+            },
+    )]
     pub fn from_raw_value(raw_addr: usize) -> Result<Self, Error> {
         Ok(Self(PageAligned::from_address(PhysicalAddress::from_raw_value(raw_addr)?)?))
     }
@@ -64,6 +108,12 @@ impl FrameAddress {
     ///
     /// The raw value of the target [`FrameAddress`].
     ///
+    // Dependency contract: the raw value is the abstract frame address. Verified against the
+    // `PageAligned::into_raw_value` dependency contract.
+    #[verus_spec(result =>
+        ensures
+            result as int == self@,
+    )]
     pub fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }

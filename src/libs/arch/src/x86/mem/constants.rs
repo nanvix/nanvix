@@ -6,9 +6,7 @@
 //==================================================================================================
 
 use sys::mm::Alignment;
-
-#[allow(unused_imports)]
-use ::vstd::prelude::*;
+use vstd::prelude::*;
 
 //==================================================================================================
 // Constants
@@ -65,6 +63,7 @@ pub const PAGE_MASK: usize = !(PAGE_SIZE - 1);
 ///
 /// Log2 [`PGTAB_SIZE`].
 ///
+#[verus_verify]
 pub const PGTAB_SHIFT: usize = 22;
 
 ///
@@ -72,6 +71,7 @@ pub const PGTAB_SHIFT: usize = 22;
 ///
 /// Number of bytes in a page table.
 ///
+#[verus_verify]
 pub const PGTAB_SIZE: usize = 1 << PGTAB_SHIFT;
 
 ///
@@ -79,6 +79,7 @@ pub const PGTAB_SIZE: usize = 1 << PGTAB_SHIFT;
 ///
 /// Number of entries in a page table.
 ///
+#[verus_verify]
 pub const PAGE_TABLE_LENGTH: usize = PGTAB_SIZE / PAGE_SIZE;
 
 ///
@@ -93,6 +94,7 @@ pub const PGTAB_MASK: usize = !(PGTAB_SIZE - 1);
 ///
 /// Maximum addressable memory.
 ///
+#[verus_verify]
 pub const MAX_ADDRESS: usize = usize::MAX;
 
 ///
@@ -100,6 +102,7 @@ pub const MAX_ADDRESS: usize = usize::MAX;
 ///
 /// Alias for `PAGE_SHIT`.
 ///
+#[verus_verify]
 pub const FRAME_SHIFT: usize = PAGE_SHIFT;
 
 ///
@@ -107,6 +110,7 @@ pub const FRAME_SHIFT: usize = PAGE_SHIFT;
 ///
 /// Alias for `PAGE_SIZE`.
 ///
+#[verus_verify]
 pub const FRAME_SIZE: usize = PAGE_SIZE;
 
 ///
@@ -114,6 +118,7 @@ pub const FRAME_SIZE: usize = PAGE_SIZE;
 ///
 /// Alignment for a page.
 ///
+#[verus_verify]
 pub const PAGE_ALIGNMENT: Alignment = Alignment::Align4096;
 
 ///

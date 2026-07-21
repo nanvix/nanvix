@@ -9,6 +9,7 @@ use crate::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Structures
@@ -20,6 +21,7 @@ use crate::error::{
 /// A type that represents read access permission.
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[verus_verify]
 pub enum ReadPermission {
     /// Deny read access.
     Deny,
@@ -33,6 +35,7 @@ pub enum ReadPermission {
 /// A type that represents write access permission.
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[verus_verify]
 pub enum WritePermission {
     /// Deny write access.
     Deny,
@@ -46,6 +49,7 @@ pub enum WritePermission {
 /// A type that represents execute access permission.
 ///
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[verus_verify]
 pub enum ExecutePermission {
     /// Deny execute access.
     Deny,
@@ -59,6 +63,7 @@ pub enum ExecutePermission {
 /// A type that represents access permissions.
 ///
 #[derive(Default, Copy, Clone, PartialEq, Eq)]
+#[verus_verify]
 pub struct AccessPermission {
     /// Read permission.
     read: ReadPermission,
