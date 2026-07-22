@@ -205,6 +205,8 @@ pub struct pthread_condattr_t {
     is_initialized: c_int,
     /// Clock used for timeouts.
     clock: clock_t,
+    /// Process-sharing attribute.
+    pshared: c_int,
 }
 // No `assert_eq_size!`: the serialized size may differ from `sizeof` on 64-bit targets due to
 // alignment padding.
@@ -214,9 +216,22 @@ impl pthread_condattr_t {
     const SIZE_OF_IS_INITIALIZED: usize = size_of::<c_int>();
     // Size of the `clock` field.
     const SIZE_OF_CLOCK: usize = size_of::<clock_t>();
+    // Size of the `pshared` field.
+    const SIZE_OF_PSHARED: usize = size_of::<c_int>();
 
     /// Size of `pthread_condattr_t` structure.
-    pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_CLOCK;
+    pub const SIZE: usize =
+        Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_CLOCK + Self::SIZE_OF_PSHARED;
+
+    /// Returns whether the condition variable attributes object is initialized.
+    pub fn is_initialized(&self) -> bool {
+        self.is_initialized != 0
+    }
+
+    /// Returns the process-sharing attribute.
+    pub fn pshared(&self) -> c_int {
+        self.pshared
+    }
 }
 
 impl Default for pthread_condattr_t {
@@ -224,6 +239,7 @@ impl Default for pthread_condattr_t {
         Self {
             is_initialized: 1,
             clock: CLOCK_REALTIME as clock_t,
+            pshared: PTHREAD_PROCESS_PRIVATE,
         }
     }
 }
