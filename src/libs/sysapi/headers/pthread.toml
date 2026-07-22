@@ -119,6 +119,7 @@ functions = [
     "pthread_attr_destroy",
     "pthread_attr_getdetachstate",
     "pthread_attr_getguardsize",
+    "pthread_attr_setguardsize",
     "pthread_attr_setdetachstate",
     "pthread_attr_getschedparam",
     "pthread_attr_setschedparam",

@@ -49,6 +49,7 @@ typedef struct {
     int is_initialized;            /**< Whether the attributes are initialized. */
     void *stackaddr;               /**< Stack base address.                     */
     size_t stacksize;              /**< Stack size.                             */
+    size_t guardsize;              /**< Guard size.                             */
     int contentionscope;           /**< Contention scope.                       */
     int inheritsched;              /**< Inherit-scheduler attribute.            */
     int schedpolicy;               /**< Scheduling policy.                      */
@@ -109,6 +110,7 @@ extern int pthread_attr_init(pthread_attr_t *attr);
 extern int pthread_attr_destroy(pthread_attr_t *attr);
 extern int pthread_attr_getdetachstate(const pthread_attr_t *attr, int *detachstate);
 extern int pthread_attr_getguardsize(const pthread_attr_t *attr, size_t *guardsize);
+extern int pthread_attr_setguardsize(pthread_attr_t *attr, size_t guardsize);
 extern int pthread_attr_setdetachstate(pthread_attr_t *attr, int detachstate);
 extern int pthread_attr_getschedparam(const pthread_attr_t *attr, struct sched_param *param);
 extern int pthread_attr_setschedparam(pthread_attr_t *attr, const struct sched_param *param);
