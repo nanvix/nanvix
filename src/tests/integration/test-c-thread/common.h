@@ -54,6 +54,9 @@ extern void test_pthread_attr_setdetachstate(void);
 // Tests if the guard size attribute can be retrieved.
 extern void test_pthread_attr_getguardsize(void);
 
+// Tests if the guard size attribute can be set and retrieved.
+extern void test_pthread_attr_setguardsize(void);
+
 // Tests if scheduling parameters can be set and retrieved.
 extern void test_pthread_attr_setschedparam(void);
 

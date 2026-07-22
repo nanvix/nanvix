@@ -137,6 +137,8 @@ pub struct pthread_attr_t {
     pub stackaddr: *mut c_void,
     /// Stack size.
     pub stacksize: c_size_t,
+    /// Guard size.
+    pub guardsize: c_size_t,
     /// Contention scope.
     pub contentionscope: c_int,
     /// Inherit-scheduler attribute.
@@ -160,6 +162,8 @@ impl pthread_attr_t {
     const SIZE_OF_STACKADDR: usize = size_of::<*mut c_void>();
     /// Size of the `stacksize` field.
     const SIZE_OF_STACKSIZE: usize = size_of::<c_size_t>();
+    /// Size of the `guardsize` field.
+    const SIZE_OF_GUARDSIZE: usize = size_of::<c_size_t>();
     /// Size of the `contentionscope` field.
     const SIZE_OF_CONTENTIONSCOPE: usize = size_of::<c_int>();
     /// Size of the `inheritsched` field.
@@ -177,6 +181,7 @@ impl pthread_attr_t {
     pub const _SIZE: usize = Self::SIZE_OF_IS_INITIALIZED
         + Self::SIZE_OF_STACKADDR
         + Self::SIZE_OF_STACKSIZE
+        + Self::SIZE_OF_GUARDSIZE
         + Self::SIZE_OF_CONTENTIONSCOPE
         + Self::SIZE_OF_INHERITSCHED
         + Self::SIZE_OF_SCHEDPOLICY
@@ -192,6 +197,7 @@ impl Default for pthread_attr_t {
             is_initialized: 1,
             stackaddr: USER_STACK_TOP_RAW as *mut _,
             stacksize: USER_THREAD_STACK_SIZE as c_size_t,
+            guardsize: 0,
             contentionscope: 0,
             inheritsched: 0,
             schedpolicy: SCHED_OTHER,

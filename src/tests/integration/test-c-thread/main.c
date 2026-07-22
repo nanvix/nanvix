@@ -75,6 +75,7 @@ int main(int argc, const char *argv[])
                        sizeof(int) +                    // is_initialized
                            sizeof(void *) +             // stackaddr
                            sizeof(size_t) +             // stacksize
+                           sizeof(size_t) +             // guardsize
                            sizeof(int) +                // contentionscope
                            sizeof(int) +                // inheritsched
                            sizeof(int) +                // schedpolicy
@@ -124,6 +125,7 @@ int main(int argc, const char *argv[])
     test_pthread_attr_init_destroy();
     test_pthread_attr_setdetachstate();
     test_pthread_attr_getguardsize();
+    test_pthread_attr_setguardsize();
     test_pthread_attr_setschedparam();
     test_pthread_attr_getstack();
     test_pthread_getattr_np_destroy();

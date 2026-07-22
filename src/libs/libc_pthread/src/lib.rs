@@ -161,8 +161,8 @@ pub unsafe extern "C" fn pthread_attr_getguardsize(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // Nanvix does not currently provide guard areas for user thread stacks.
-    *guardsize = 0;
+    // Store the guard size.
+    *guardsize = (*attr).guardsize;
 
     0
 }
@@ -863,9 +863,10 @@ pub unsafe extern "C" fn pthread_attr_setguardsize(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_attr_setguardsize(): not supported, failing");
-    ErrorCode::OperationNotSupported.get()
+    // Store the guard size.
+    (*attr).guardsize = guardsize;
+
+    0
 }
 
 //==================================================================================================
