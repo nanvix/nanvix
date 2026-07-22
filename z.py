@@ -239,11 +239,8 @@ class BuildConfig:
     profiler: bool = False
     whp: bool = False
 
-    nanvix_sdk: bool = False
     verus: bool = False
-    _user_set_toolchain_dir: bool = False
 
-    toolchain_dir: str = ""
     sysroot_dir: str = ""
     host_cpu: str = ""
 
@@ -263,11 +260,6 @@ class BuildConfig:
             )
         if plat.is_windows and self.machine == "microvm":
             self.whp = True
-        if not self.toolchain_dir:
-            if plat.is_linux:
-                self.toolchain_dir = str(plat.home_dir / "toolchain")
-            else:
-                self.toolchain_dir = str(plat.repo_root / "toolchain")
 
 
 # ==================================================================================================
@@ -334,10 +326,10 @@ def _parse_make_var(config: BuildConfig, key: str, val: str) -> None:
 def parse_cli(argv: Sequence[str]) -> tuple[str, BuildConfig]:
     """Parse command-line arguments into (command, config).
 
-    Arguments after the command are either recognized options (--profile, --release,
-    --toolchain-dir) or make arguments (targets and KEY=VALUE pairs). The ``--`` separator
-    is optional: the first unrecognized non-option argument starts the make_args section.
-    This allows PowerShell callers to omit ``--`` (PowerShell strips it in interactive mode).
+    Arguments after the command are either recognized options (--profile, --release, --verus)
+    or make arguments (targets and KEY=VALUE pairs). The ``--`` separator is optional: the
+    first unrecognized non-option argument starts the make_args section. This allows PowerShell
+    callers to omit ``--`` (PowerShell strips it in interactive mode).
     """
     if not argv:
         return "help", BuildConfig()
@@ -367,16 +359,8 @@ def parse_cli(argv: Sequence[str]) -> tuple[str, BuildConfig]:
             config.profiler = True
         elif arg == "--release":
             config.release = True
-        elif arg == "--nanvix-sdk":
-            config.nanvix_sdk = True
         elif arg == "--verus":
             config.verus = True
-        elif arg == "--toolchain-dir":
-            i += 1
-            if i >= len(argv_list):
-                die("--toolchain-dir requires a path argument.")
-            config.toolchain_dir = argv_list[i]
-            config._user_set_toolchain_dir = True
         elif arg.startswith("--"):
             die(f"Unknown option: {arg}")
         else:
@@ -451,67 +435,6 @@ def validate_git_context() -> Path:
     # Resolving would expand the alias and cause Make's CURDIR to become a
     # long path, which can blow past cmd.exe's 8191-char command-line limit.
     return cwd
-
-
-def check_filesystem_support(directory: str) -> bool:
-    """Check if directory filesystem supports xattr (Linux only). Returns True if OK."""
-    if not shutil.which("findmnt"):
-        print_warning("Cannot detect file system type (findmnt not available).")
-        return False
-
-    # Walk up to find the first existing parent.
-    parent = Path(directory)
-    while not parent.exists():
-        if parent == parent.parent:
-            break
-        parent = parent.parent
-
-    try:
-        result = subprocess.run(
-            ["findmnt", "-n", "-o", "FSTYPE", "--target", str(parent)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            print_warning(
-                f"Cannot detect file system type for '{directory}' "
-                f"(findmnt exited with status {result.returncode})."
-            )
-            return False
-        fstype = result.stdout.strip()
-        if not fstype:
-            print_warning(
-                f"Cannot detect file system type for '{directory}' "
-                f"(no output from findmnt)."
-            )
-            return False
-        if fstype not in ("ext3", "ext4", "overlay"):
-            print_warning(
-                f"Unsupported file system '{fstype}' for toolchain "
-                f"directory '{directory}'.\n"
-                f"  Only ext3/ext4/overlay support extended attributes "
-                f"(needed for setcap).\n"
-                f"  Consider moving the toolchain to a supported partition."
-            )
-            return False
-    except Exception:
-        print_warning(f"Cannot detect file system type for '{directory}'.")
-        return False
-
-    return True
-
-
-def validate_toolchain_dir_location(toolchain_dir: str, repo_root: Path) -> None:
-    """Ensure toolchain directory is not inside the repository."""
-    tc = Path(toolchain_dir).resolve()
-    repo = repo_root.resolve()
-    if tc == repo or str(tc).startswith(str(repo) + os.sep):
-        die(
-            f"Toolchain directory must not be inside the repository.\n"
-            f"  Toolchain: {tc}\n"
-            f"  Repo root: {repo}\n"
-            f"  Hint: use '--toolchain-dir' to specify a different location."
-        )
 
 
 # ==================================================================================================
@@ -986,7 +909,8 @@ def cmd_bench(plat: PlatformInfo, config: BuildConfig) -> int:
 # Subcommand: help
 # ==================================================================================================
 
-HELP_TEXT = """\
+HELP_TEXT = (
+    """\
 Utility for building Nanvix.
 
 Usage:
@@ -1006,9 +930,9 @@ Commands:
 Options:
   --profile             Enable profiling (implies --release, passes PROFILER=yes).
   --release             Build in release mode.
-  --nanvix-sdk          Build the Nanvix cross-compilation toolchain (setup only, Linux).
-  --toolchain-dir DIR   Toolchain directory (setup only, Linux, default: ~/toolchain).
-
+"""
+    "  --verus               Install the Verus formal verification toolchain (setup only).\n"
+    """
 Build Parameters (after --):
   MACHINE=microvm                Target machine (default: microvm).
   RELEASE=yes|no                 Release mode.
@@ -1028,12 +952,15 @@ Examples:
   z.ps1 build -- all                      Build everything (Windows).
   z.ps1 build -- guest                    Cross-compile guest only.
   ./z test                                Run all tests.
-  ./z verify -- VERUS_EXECUTABLE_DIR=~/toolchain/verus   Verify all annotated crates.
-  z.ps1 verify -- VERUS_EXECUTABLE_DIR=C:\\verus          Verify on Windows.
+"""
+    "  ./z build -- verify                     Verify all annotated crates.\n"
+    "  z.ps1 build -- verify                   Verify all annotated crates on Windows.\n"
+    """\
   ./z clean                               Clean build artifacts.
   ./z setup                                Install core dev prerequisites.
-  ./z setup --nanvix-sdk                   Also build the cross-compilation toolchain.
 """
+    "  ./z setup --verus                        Also install Verus.\n"
+)
 
 
 def cmd_help(plat: PlatformInfo, config: BuildConfig) -> int:
@@ -1185,10 +1112,6 @@ def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
     """Set up the development environment on Linux."""
     print_info("Setting up Nanvix development environment...")
 
-    # Warn if --toolchain-dir is provided without an opt-in flag.
-    if config._user_set_toolchain_dir and not config.nanvix_sdk:
-        print_warning("--toolchain-dir has no effect without --nanvix-sdk.")
-
     # Always install core system dependencies.
     core_script = plat.repo_root / "scripts" / "setup" / "ubuntu-core.sh"
     if core_script.exists():
@@ -1199,64 +1122,12 @@ def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
     else:
         print_warning(f"Setup script not found: {core_script}")
 
-    # Install SDK-specific packages when building the cross-compilation toolchain.
-    if config.nanvix_sdk:
-        sdk_script = plat.repo_root / "scripts" / "setup" / "ubuntu-sdk.sh"
-        if sdk_script.exists():
-            print_info("Installing SDK development dependencies (requires sudo)...")
-            rc = subprocess.run(["sudo", str(sdk_script)]).returncode
-            if rc != 0:
-                die("Failed to install SDK development dependencies.")
-        else:
-            print_warning(f"Setup script not found: {sdk_script}")
-
-    # Validate and prepare toolchain directory when needed.
-    if config.nanvix_sdk:
-        print_info(f"Toolchain directory: {config.toolchain_dir}")
-        validate_toolchain_dir_location(config.toolchain_dir, plat.repo_root)
-
-        tc_dir = Path(config.toolchain_dir)
-        if not tc_dir.exists():
-            print_info(f"Creating toolchain directory: {tc_dir}")
-            tc_dir.mkdir(parents=True, exist_ok=True)
-
-        if not os.access(str(tc_dir), os.W_OK):
-            die(f"No write permissions to: {tc_dir}")
-
-        if not check_filesystem_support(str(tc_dir)):
-            die(
-                f"Toolchain directory '{tc_dir}' is not on a supported file system"
-                " (ext3/ext4/overlay)."
-            )
-
-        if any(tc_dir.iterdir()):
-            print_warning(
-                f"Toolchain directory is not empty: {tc_dir}. Existing files may be overwritten."
-            )
-
-    # Build the cross-compilation toolchain.
-    if config.nanvix_sdk:
-        toolchain_script = plat.repo_root / "scripts" / "setup" / "toolchain.sh"
-        if not toolchain_script.exists():
-            die(f"Toolchain setup script not found: {toolchain_script}")
-
-        print_info(f"Running toolchain setup: {toolchain_script}")
-        rc = subprocess.run(
-            [str(toolchain_script), str(config.toolchain_dir)]
-        ).returncode
-        if rc != 0:
-            die("Toolchain setup failed.")
-
     # Verus formal verification toolchain (optional).
     if config.verus:
         verus_script = plat.repo_root / "scripts" / "setup" / "verus.sh"
         if not verus_script.exists():
             die(f"Verus setup script not found: {verus_script}")
-        verus_dir = (
-            Path(config.toolchain_dir) / "verus"
-            if config.toolchain_dir
-            else Path.home() / "verus"
-        )
+        verus_dir = plat.home_dir / "verus"
         print_info(f"Installing Verus to {verus_dir} ...")
         rc = subprocess.run([str(verus_script), str(verus_dir)]).returncode
         if rc != 0:
@@ -1412,10 +1283,7 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
         verus_script = plat.repo_root / "scripts" / "setup" / "verus.ps1"
         if not verus_script.exists():
             die(f"Verus setup script not found: {verus_script}")
-        if config.toolchain_dir:
-            verus_dir = Path(config.toolchain_dir) / "verus"
-        else:
-            verus_dir = Path(os.environ.get("USERPROFILE", "")) / "verus"
+        verus_dir = plat.home_dir / "verus"
         print_info(f"Installing Verus to {verus_dir} ...")
         rc = subprocess.run(
             [

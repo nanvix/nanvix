@@ -94,10 +94,8 @@ export PYTHON ?= python3
 endif
 
 # Targets that do not produce reusable compilation artifacts.
-# Disable sccache unconditionally for these targets to avoid intermittent
-# sccache server crashes inside Docker BuildKit containers (see #1395).
-# The `override` directive ensures this takes effect even when SCCACHE is
-# passed on the command line (e.g., from Dockerfile.build).
+# Disable sccache unconditionally for these targets. The `override` directive ensures this takes
+# effect even when SCCACHE is passed on the command line.
 NO_SCCACHE_GOALS := \
 	check format format-check \
 	lint lint-check \
@@ -308,8 +306,12 @@ endif
 # Verus Formal Verification
 #===================================================================================================
 
-# Path to the directory containing the Verus executable (no default; skip verification when unset).
-export VERUS_EXECUTABLE_DIR ?=
+# Path to the directory containing the Verus executable.
+ifeq ($(IS_WINDOWS),yes)
+export VERUS_EXECUTABLE_DIR ?= $(or $(USERPROFILE),$(HOME),.)/verus
+else
+export VERUS_EXECUTABLE_DIR ?= $(HOME)/verus
+endif
 
 # List of crates to verify with Verus.
 VERUS_CRATES := bitmap sys nanvix-slab arch kernel
@@ -581,7 +583,7 @@ help:
 	@echo "  TARGET           Target architecture (default: $(TARGET))"
 	@echo "  TIMEOUT          Execution timeout in seconds (default: $(TIMEOUT))"
 	@echo "  MEMORY_SIZE      Memory size in megabytes (default: $(MEMORY_SIZE))"
-	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (unset: skip verification)"
+	@echo "  VERUS_EXECUTABLE_DIR  Path to directory containing the verus binary (empty: skip verification)"
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  MACHINE         microvm"
@@ -596,12 +598,12 @@ help:
 verify: $(addprefix verify-,$(VERUS_CRATES))
 
 # Ensures the correct Verus version is installed before verification.
-# When VERUS_EXECUTABLE_DIR is unset, verification is skipped.
-# When set, validates that the verus binary exists at the given path.
+# When VERUS_EXECUTABLE_DIR is explicitly empty, verification is skipped.
+# Otherwise, validates that the verus binary exists at the configured path.
 .PHONY: ensure-verus
 ensure-verus:
 ifeq ($(VERUS_EXECUTABLE_DIR),)
-	@echo "VERUS_EXECUTABLE_DIR is not set; skipping verification."
+	@echo "VERUS_EXECUTABLE_DIR is empty; skipping verification."
 else
 	@verus_dir="$(VERUS_EXECUTABLE_DIR)"; \
 	if command -v cygpath >/dev/null 2>&1; then \
@@ -620,7 +622,7 @@ else
 endif
 
 # Pattern rule for verifying individual library crates.
-# Verification is skipped when VERUS_EXECUTABLE_DIR is unset.
+# Verification is skipped when VERUS_EXECUTABLE_DIR is explicitly empty.
 $(filter-out verify-kernel,$(addprefix verify-,$(VERUS_CRATES))): verify-%: ensure-verus
 ifeq ($(VERUS_EXECUTABLE_DIR),)
 	@true

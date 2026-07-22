@@ -7,7 +7,7 @@
 # Prerequisites:
 #   - Rust toolchain (cargo) in PATH
 #   - Docker/containerd installed (see install-containerd.sh)
-#   - Nanvix built at ~/nanvix (see setup-nanvix.sh)
+#   - Nanvix built at ~/nanvix (see doc/build.md)
 #
 # Usage: ./scripts/install-shim.sh
 

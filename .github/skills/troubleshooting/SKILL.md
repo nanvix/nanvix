@@ -37,19 +37,6 @@ There is also a cleanup script for `nanvixd` resources:
 
 ## Build Failures
 
-### Toolchain Not Found
-
-**Symptom**: Cargo toolchain errors or missing tools.
-
-**Fix**: Ensure the `toolchain/` symlink points to a valid installation:
-
-```bash
-ls -la toolchain/
-# If missing, rebuild:
-./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain
-ln -s $HOME/toolchain toolchain
-```
-
 ### Full Reset (Last Resort)
 
 **Symptom**: Build or test issues persist after normal cleanup.

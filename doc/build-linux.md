@@ -119,33 +119,30 @@ Available build parameters:
 ## Formal Verification with Verus
 
 Nanvix uses [Verus](https://github.com/verus-lang/verus) for formal verification of selected
-kernel crates. The correct Verus version is pinned in `build/verus-version` and is automatically
-downloaded on the first verification run.
+kernel crates. The correct Verus version is pinned in `build/verus-version`.
 
-To run formal verification:
-
-```bash
-# Verify all annotated crates.
-./z verify -- VERUS_EXECUTABLE_DIR=~/toolchain/verus
-
-# Verify a single crate (e.g., bitmap).
-./z verify -- verify-bitmap VERUS_EXECUTABLE_DIR=~/toolchain/verus
-```
-
-> **Note:** `VERUS_EXECUTABLE_DIR` must be set; when unset, verification is a silent no-op.
-
-Verification requires `VERUS_EXECUTABLE_DIR` to point to the directory that contains the
-`verus` executable (and required companion binaries). When the variable is unset, `make verify`
-is a no-op. Use the setup command or the helper script to download the pinned release:
+Install the pinned release and run formal verification:
 
 ```bash
-# Option 1: Automated install via z (installs to ~/verus).
+# Install Verus to ~/verus.
 ./z setup --verus
 
-# Option 2: Install to a custom directory.
+# Verify all annotated crates.
+./z build -- verify
+
+# Verify a single crate (e.g., bitmap).
+./z build -- verify-bitmap
+```
+
+By default, verification uses `~/verus`, matching the setup command. Set
+`VERUS_EXECUTABLE_DIR` to use a custom installation, or set it to an empty value to skip
+verification explicitly:
+
+```bash
+# Install to a custom directory.
 ./scripts/setup/verus.sh ~/toolchain/verus
-./z verify -- VERUS_EXECUTABLE_DIR=~/toolchain/verus
+./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
 
 # Or use a source-built installation.
-./z verify -- VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
+./z build -- verify VERUS_EXECUTABLE_DIR=~/verus/target-verus/release
 ```

@@ -144,15 +144,17 @@ or documentation.
 
 ## Formal Verification
 
-Nanvix uses Verus for formal verification of selected kernel crates. The expected Verus version is pinned in `build/verus-version`. Verification requires `VERUS_EXECUTABLE_DIR` to be set; when unset, `make verify` is a no-op.
+Nanvix uses Verus for formal verification of selected kernel crates. The expected Verus version is
+pinned in `build/verus-version`. Verification uses `~/verus` by default, matching the setup
+command. Set `VERUS_EXECUTABLE_DIR` only for a custom installation.
 
 ```bash
-# Install verus and run verification.
-./scripts/setup/verus.sh ~/toolchain/verus
-./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
+# Install Verus and run verification.
+./z setup --verus
+./z build -- verify
 
 # Verify a single crate.
-./z build -- verify-bitmap VERUS_EXECUTABLE_DIR=~/toolchain/verus
+./z build -- verify-bitmap
 ```
 
 - Set `VERUS_EXECUTABLE_DIR` to the directory containing the `verus` binary.
