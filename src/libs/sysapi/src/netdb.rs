@@ -24,6 +24,72 @@ use crate::{
 use ::core::mem;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Returns socket addresses suitable for binding a passive socket.
+pub const AI_PASSIVE: c_int = 0x0001;
+/// Requests the canonical name of the host.
+pub const AI_CANONNAME: c_int = 0x0002;
+/// Interprets the node only as a numeric address string.
+pub const AI_NUMERICHOST: c_int = 0x0004;
+/// Interprets the service only as a numeric port string.
+pub const AI_NUMERICSERV: c_int = 0x0008;
+/// Returns IPv4-mapped IPv6 addresses when no IPv6 addresses are found.
+pub const AI_V4MAPPED: c_int = 0x0800;
+/// Returns both IPv4 and IPv6 addresses with [`AI_V4MAPPED`].
+pub const AI_ALL: c_int = 0x0100;
+/// Returns addresses only for configured address families.
+pub const AI_ADDRCONFIG: c_int = 0x0400;
+
+/// Requests a numeric host string from `getnameinfo()`.
+pub const NI_NUMERICHOST: c_int = 0x0001;
+/// Requests a numeric service string from `getnameinfo()`.
+pub const NI_NUMERICSERV: c_int = 0x0002;
+/// Requests only the node name portion of a fully qualified domain name.
+pub const NI_NOFQDN: c_int = 0x0004;
+/// Reports an error when the host name cannot be resolved.
+pub const NI_NAMEREQD: c_int = 0x0008;
+/// Indicates that the service is a datagram service.
+pub const NI_DGRAM: c_int = 0x0010;
+/// Maximum host-name buffer length used by `getnameinfo()`.
+pub const NI_MAXHOST: c_int = 1025;
+/// Maximum service-name buffer length used by `getnameinfo()`.
+pub const NI_MAXSERV: c_int = 32;
+
+/// Invalid flags were supplied to `getaddrinfo()`.
+pub const EAI_BADFLAGS: c_int = -1;
+/// A name does not resolve for the supplied parameters.
+pub const EAI_NONAME: c_int = -2;
+/// A temporary failure occurred in name resolution.
+pub const EAI_AGAIN: c_int = -3;
+/// A non-recoverable failure occurred in name resolution.
+pub const EAI_FAIL: c_int = -4;
+/// The requested address family is not supported.
+pub const EAI_FAMILY: c_int = -6;
+/// The requested socket type is not supported.
+pub const EAI_SOCKTYPE: c_int = -7;
+/// The requested service is not available for the socket type.
+pub const EAI_SERVICE: c_int = -8;
+/// A memory allocation failed.
+pub const EAI_MEMORY: c_int = -10;
+/// A system error occurred; details are available through `errno`.
+pub const EAI_SYSTEM: c_int = -11;
+/// An argument buffer was too small.
+pub const EAI_OVERFLOW: c_int = -12;
+
+/// The requested host was not found.
+pub const HOST_NOT_FOUND: c_int = 1;
+/// A temporary name-resolution failure occurred.
+pub const TRY_AGAIN: c_int = 2;
+/// A non-recoverable name-resolution failure occurred.
+pub const NO_RECOVERY: c_int = 3;
+/// The host exists but has no address data.
+pub const NO_DATA: c_int = 4;
+/// Alias for [`NO_DATA`].
+pub const NO_ADDRESS: c_int = NO_DATA;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -31,10 +97,15 @@ use ::core::mem;
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct hostent {
+    /// Official host name.
     pub h_name: *const c_char,
+    /// Null-terminated list of aliases.
     pub h_aliases: *const *const c_char,
+    /// Host address family.
     pub h_addrtype: c_int,
+    /// Length of each host address.
     pub h_length: c_int,
+    /// Null-terminated list of host addresses.
     pub h_addr_list: *const *const c_char,
 }
 
@@ -42,9 +113,13 @@ pub struct hostent {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct netent {
+    /// Official network name.
     pub n_name: *const c_char,
+    /// Null-terminated list of aliases.
     pub n_aliases: *const *const c_char,
+    /// Network address family.
     pub n_addrtype: c_int,
+    /// Network number.
     pub n_net: u32,
 }
 
@@ -52,9 +127,13 @@ pub struct netent {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct servent {
+    /// Official service name.
     pub s_name: *const c_char,
+    /// Null-terminated list of aliases.
     pub s_aliases: *const *const c_char,
+    /// Service port number in network byte order.
     pub s_port: c_int,
+    /// Protocol used by the service.
     pub s_proto: *const c_char,
 }
 
@@ -62,8 +141,11 @@ pub struct servent {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct protoent {
+    /// Official protocol name.
     pub p_name: *const c_char,
+    /// Null-terminated list of aliases.
     pub p_aliases: *const *const c_char,
+    /// Protocol number.
     pub p_proto: c_int,
 }
 
@@ -71,14 +153,22 @@ pub struct protoent {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct addrinfo {
+    /// Input flags controlling address resolution.
     pub ai_flags: c_int,
+    /// Address family.
     pub ai_family: c_int,
+    /// Socket type.
     pub ai_socktype: c_int,
+    /// Protocol number.
     pub ai_protocol: c_int,
+    /// Length of the socket address.
     pub ai_addrlen: socklen_t,
+    /// Canonical host name, when requested.
     pub ai_canonname: *const c_char,
+    /// Resolved socket address.
     pub ai_addr: *const sockaddr,
-    pub ai_next: *mut addrinfo,
+    /// Next result in the linked list.
+    pub ai_next: *mut Self,
 }
 
 //==================================================================================================

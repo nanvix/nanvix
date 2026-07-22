@@ -30,49 +30,56 @@
 // Modules
 //==================================================================================================
 
-pub mod killpg;
-pub mod raise;
-pub mod signal;
-pub mod sigpending;
-pub mod sigprocmask;
-pub mod sigset;
-pub mod sigsuspend;
+macro_rules! modules {
+    ($($module:ident),+ $(,)?) => {
+        $(pub mod $module;)+
+    };
+}
+
+modules!(killpg, raise, signal, sigpending, sigprocmask, sigset, sigsuspend);
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-#[cfg(not(any(feature = "std", test)))]
-use ::sysapi::errno::__errno_location;
 use ::sysapi::ffi::c_int;
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-///
-/// # Description
-///
-/// Writes `code` to `errno`.
-///
-/// # Parameters
-///
-/// - `code`: Error code to be written to `errno`.
-///
-#[cfg(not(any(feature = "std", test)))]
-#[inline(always)]
-fn set_errno(code: c_int) {
-    // SAFETY: `__errno_location()` returns a valid pointer to `errno`.
-    unsafe {
-        *__errno_location() = code;
-    }
+macro_rules! define_errno_helpers {
+    () => {
+        #[cfg(not(any(feature = "std", test)))]
+        use ::sysapi::errno::__errno_location;
+
+        ///
+        /// # Description
+        ///
+        /// Writes `code` to `errno`.
+        ///
+        /// # Parameters
+        ///
+        /// - `code`: Error code to be written to `errno`.
+        ///
+        #[cfg(not(any(feature = "std", test)))]
+        #[inline(always)]
+        fn set_errno(code: c_int) {
+            // SAFETY: `__errno_location()` returns a valid pointer to `errno`.
+            unsafe {
+                *__errno_location() = code;
+            }
+        }
+
+        /// Host-only stand-in for [`set_errno`] used by unit tests.
+        ///
+        /// The C `errno` location is not linkable into the host test binary, so this is a no-op.
+        /// The guest never compiles this variant; only the unit tests exercise it, and they assert
+        /// on return values rather than on `errno`.
+        #[cfg(any(feature = "std", test))]
+        #[inline(always)]
+        fn set_errno(_code: c_int) {}
+    };
 }
 
-/// Host-only stand-in for [`set_errno`] used by unit tests.
-///
-/// The C `errno` location is not linkable into the host test binary, so this is a no-op. The guest
-/// never compiles this variant; only the unit tests exercise it, and they assert on return values
-/// rather than on `errno`.
-#[cfg(any(feature = "std", test))]
-#[inline(always)]
-fn set_errno(_code: c_int) {}
+define_errno_helpers!();

@@ -15,10 +15,12 @@ use crate::{
     ffi::{
         c_char,
         c_int,
+        c_short,
     },
     sys_types::{
         mode_t,
         off_t,
+        pid_t,
     },
 };
 
@@ -140,18 +142,18 @@ pub mod file_control_request {
     pub const F_GETFL: c_int = 3;
     /// Set the file status flags.
     pub const F_SETFL: c_int = 4;
-    /// Get owner (process or group) of the file.
-    pub const F_GETOWN: c_int = 5;
+    /// Get record-locking information.
+    pub const F_GETLK: c_int = 5;
+    /// Set or clear a record-lock (non-blocking).
+    pub const F_SETLK: c_int = 6;
+    /// Set or clear a record-lock (blocking).
+    pub const F_SETLKW: c_int = 7;
     /// Set owner (process or group) of the file.
-    pub const F_SETOWN: c_int = 6;
+    pub const F_SETOWN: c_int = 8;
+    /// Get owner (process or group) of the file.
+    pub const F_GETOWN: c_int = 9;
     // TODO: Support F_GETOWN_EX
     // TODO: Support F_SETOWN_EX
-    /// Get record-locking information.
-    pub const F_GETLK: c_int = 7;
-    /// Set or clear a record-lock (non-blocking).
-    pub const F_SETLK: c_int = 8;
-    /// Set or clear a record-lock (blocking).
-    pub const F_SETLKW: c_int = 9;
     // TODO: Support F_OFD_GETLK
     // TODO: Support F_OFD_SETLK
     // TODO: Support F_OFD_SETLKW
@@ -159,6 +161,38 @@ pub mod file_control_request {
     pub const F_DUPFD_CLOEXEC: c_int = 14;
     /// Duplicate the file descriptor and set the close-on-fork flag.
     pub const F_DUPFD_CLOFORK: c_int = 15;
+}
+
+/// Record lock types for the `l_type` field of [`flock`].
+pub mod file_lock_type {
+    use crate::ffi::c_short;
+
+    /// Shared or read lock.
+    pub const F_RDLCK: c_short = 0;
+    /// Exclusive or write lock.
+    pub const F_WRLCK: c_short = 1;
+    /// Unlock operation.
+    pub const F_UNLCK: c_short = 2;
+}
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+/// Advisory record lock used by `fcntl()`.
+#[derive(Debug, Clone, Copy, Default)]
+#[repr(C)]
+pub struct flock {
+    /// Lock type from [`file_lock_type`].
+    pub l_type: c_short,
+    /// Origin used to interpret [`Self::l_start`].
+    pub l_whence: c_short,
+    /// Starting offset of the lock.
+    pub l_start: off_t,
+    /// Number of bytes to lock, or zero through end-of-file.
+    pub l_len: off_t,
+    /// Process holding the lock.
+    pub l_pid: pid_t,
 }
 
 unsafe extern "C" {

@@ -15,7 +15,85 @@ layout mirrors the Rust definition in the sysapi crate (sys_resource.rs)."""
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_RESOURCE_H"
 scan_crates = ["libc_sys_resource"]
-content_order = ["raw:0", "types:0", "raw:1", "raw:2", "section:0", "section:1"]
+content_order = [
+    "raw:0",
+    "rust_types",
+    "raw:1",
+    "raw:2",
+    "section:0",
+    "section:1",
+]
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_CPU"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_FSIZE"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_DATA"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_STACK"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_CORE"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_RSS"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_NPROC"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_NOFILE"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_MEMLOCK"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_AS"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIMIT_NLIMITS"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIM_INFINITY"
+c_value = "((rlim_t)-1)"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIM_SAVED_CUR"
+c_value = "RLIM_INFINITY"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::RLIM_SAVED_MAX"
+c_value = "RLIM_INFINITY"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::PRIO_PROCESS"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::PRIO_PGRP"
+emit = false
+
+[[rust_constants]]
+path = "sys_resource::PRIO_USER"
+emit = false
 
 [[raw_sections]]
 title = "Resource Limit Identifiers"
@@ -32,8 +110,9 @@ text = """
 #define RLIMIT_AS 9       /**< Maximum address space size.    */
 #define RLIMIT_NLIMITS 10 /**< Number of resource limits.     */"""
 
-[[types]]
-text = """
+[[rust_types]]
+path = "sys_resource::rlim_t"
+c_declaration = """
 /** @brief Resource limit value type. */
 typedef unsigned long rlim_t;
 
@@ -42,6 +121,11 @@ struct rlimit {
     rlim_t rlim_cur; /**< Soft limit. */
     rlim_t rlim_max; /**< Hard limit. */
 };"""
+
+[[rust_types]]
+path = "sys_resource::rlimit"
+style = "tag"
+emit = false
 
 [[raw_sections]]
 title = "Resource Limit Values"

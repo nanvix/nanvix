@@ -49,9 +49,9 @@ pub fn dladdr(addr: VirtualAddress, dlinfo: &mut DlInfo) -> Result<(), Error> {
         let library = library.lock();
         if let Some((dname, fbase, sname, saddr)) = library.query(addr) {
             dlinfo.dli_fname = dname;
-            dlinfo.dli_fbase = fbase.into_raw_value() as *const c_void;
+            dlinfo.dli_fbase = fbase.into_raw_value() as *mut c_void;
             dlinfo.dli_sname = sname;
-            dlinfo.dli_saddr = saddr.into_raw_value() as *const c_void;
+            dlinfo.dli_saddr = saddr.into_raw_value() as *mut c_void;
 
             return Ok(());
         }

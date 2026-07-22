@@ -8,9 +8,37 @@ brief = "TCP protocol definitions."
 description = '''
 '''
 guard = "_NANVIX_NETINET_TCP_H"
-content_order = [
-    "raw:0",
-]
+content_order = ["rust_constants:abi", "raw:0"]
+
+[[rust_constants]]
+path = "netinet_tcp::socket_option_values::TCP_NODELAY"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "netinet_tcp::socket_option_values::TCP_MAXSEG"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "netinet_tcp::socket_option_values::TCP_CORK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "netinet_tcp::socket_option_values::TCP_KEEPIDLE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "netinet_tcp::socket_option_values::TCP_KEEPINTVL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "netinet_tcp::socket_option_values::TCP_KEEPCNT"
+group = "abi"
+emit = false
 
 [[raw_sections]]
 title = ""

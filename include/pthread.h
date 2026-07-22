@@ -61,7 +61,7 @@ typedef struct {
 typedef struct {
     int is_initialized; /**< Whether the attributes are initialized. */
     clock_t clock;      /**< Clock used for timeouts.                */
-    int pshared;        /**< Process-sharing attribute.               */
+    int pshared;        /**< Process-sharing attribute.              */
 } pthread_condattr_t;
 
 /** @brief Mutex attributes. */
@@ -69,7 +69,7 @@ typedef struct {
     int is_initialized; /**< Whether the attributes are initialized. */
     int type;           /**< Type of mutex.                          */
     int recursive;      /**< Whether the mutex is recursive.         */
-    int pshared;        /**< Process-sharing attribute.               */
+    int pshared;        /**< Process-sharing attribute.              */
 } pthread_mutexattr_t;
 
 /** @brief Read-write lock attributes. */

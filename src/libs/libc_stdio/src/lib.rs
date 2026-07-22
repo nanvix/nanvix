@@ -94,6 +94,35 @@ pub mod vsprintf;
 pub mod vsscanf;
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// End-of-file indicator.
+pub const EOF: ::sysapi::ffi::c_int = -1;
+/// Seek relative to the beginning of a file.
+pub const SEEK_SET: ::sysapi::ffi::c_int = ::sysapi::unistd::file_seek::SEEK_SET;
+/// Seek relative to the current file position.
+pub const SEEK_CUR: ::sysapi::ffi::c_int = ::sysapi::unistd::file_seek::SEEK_CUR;
+/// Seek relative to the end of a file.
+pub const SEEK_END: ::sysapi::ffi::c_int = ::sysapi::unistd::file_seek::SEEK_END;
+/// Default stream buffer size.
+pub const BUFSIZ: ::sysapi::ffi::c_int = 8192;
+/// Maximum number of streams that can be open simultaneously.
+pub const FOPEN_MAX: ::sysapi::ffi::c_int = 256;
+/// Maximum file-name length.
+pub const FILENAME_MAX: ::sysapi::ffi::c_int = 4096;
+/// Maximum temporary-file name length.
+pub const L_TMPNAM: ::sysapi::ffi::c_int = 20;
+/// Minimum number of unique temporary-file names.
+pub const TMP_MAX: ::sysapi::ffi::c_int = 10000;
+/// Fully buffered stream mode.
+pub const _IOFBF: ::sysapi::ffi::c_int = 0;
+/// Line-buffered stream mode.
+pub const _IOLBF: ::sysapi::ffi::c_int = 1;
+/// Unbuffered stream mode.
+pub const _IONBF: ::sysapi::ffi::c_int = 2;
+
+//==================================================================================================
 // Exports
 //==================================================================================================
 

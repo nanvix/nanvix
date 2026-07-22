@@ -35,12 +35,13 @@ pub mod sched_policy {
 /// Used to set and get scheduling parameters.
 ///
 #[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct sched_param {
     /// Process or thread scheduling priority.
     pub sched_priority: c_int,
 }
 ::static_assert::assert_eq_size!(sched_param, sched_param::_SIZE);
+::static_assert::assert_eq_align!(sched_param, core::mem::align_of::<c_int>());
 
 impl sched_param {
     /// Size of the `sched_priority` field.

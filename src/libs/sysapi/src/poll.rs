@@ -39,7 +39,7 @@ pub mod poll_flags {
     /// Normal data may be written without blocking.
     pub const POLLOUT: c_short = 0x0004;
     /// Normal data may be read without blocking.
-    pub const POLLRDNORM: c_short = 0x0040;
+    pub const POLLRDNORM: c_short = POLLIN;
     /// Priority data may be read without blocking.
     pub const POLLRDBAND: c_short = 0x0080;
     /// Normal data may be written without blocking (equivalent to POLLOUT.).

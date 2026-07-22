@@ -62,7 +62,10 @@ use ::sysapi::{
     unistd::STDOUT_FILENO,
 };
 use ::syscall::unistd;
-use core::mem::size_of;
+use core::mem::{
+    align_of,
+    size_of,
+};
 
 //==================================================================================================
 // Static Assertions: Signed Primitive Types
@@ -125,12 +128,14 @@ const _: () = assert!(size_of::<uid_t>() == size_of::<c_uint>());
 //==================================================================================================
 
 const _: () = assert!(size_of::<timespec>() == size_of::<time_t>() + size_of::<c_long>());
+const _: () = assert!(align_of::<timespec>() == align_of::<time_t>());
 
 //==================================================================================================
 // Static Assertions: Scheduling Types (<sched.h>)
 //==================================================================================================
 
 const _: () = assert!(size_of::<sched_param>() == size_of::<c_int>());
+const _: () = assert!(align_of::<sched_param>() == align_of::<c_int>());
 
 //==================================================================================================
 // Link-Time Symbol Presence Check

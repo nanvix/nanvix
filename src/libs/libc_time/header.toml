@@ -10,10 +10,21 @@ Declares functions for calendar time manipulation and conversion.
 Implemented by the libc_time Rust crate.'''
 includes = ["stddef.h", "locale.h"]
 guard = "_NANVIX_TIME_H"
-content_order = ["types", "section:0", "section:1", "raw:0", "raw:1", "raw:2", "raw:3"]
+symbol_crates = ["sysapi"]
+content_order = [
+    "rust_types",
+    "section:0",
+    "section:1",
+    "raw:0",
+    "raw:1",
+    "raw:2",
+    "raw:3",
+]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "sysapi::sys_types::time_t"
+c_only_reason = "Guard markers coordinate conditional C typedef ownership across headers."
+c_declaration = '''
 #ifndef _TIME_T_DEFINED
 #define _TIME_T_DEFINED
 typedef long long time_t;
@@ -68,6 +79,44 @@ struct timespec {
     time_t tv_sec; /**< Seconds.     */
     long tv_nsec;  /**< Nanoseconds. */
 };'''
+
+[[rust_types]]
+path = "sysapi::time::timespec"
+style = "tag"
+emit = false
+
+[[rust_types]]
+path = "sysapi::sys_types::clock_t"
+emit = false
+
+[[rust_types]]
+path = "sysapi::sys_types::clockid_t"
+emit = false
+
+[[rust_types]]
+path = "tm_struct::tm"
+style = "tag"
+emit = false
+
+[[rust_constants]]
+path = "clock::CLOCKS_PER_SEC"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::time::clock_ids::CLOCK_REALTIME"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::time::clock_ids::CLOCK_PROCESS_CPUTIME_ID"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::time::clock_ids::CLOCK_THREAD_CPUTIME_ID"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::time::clock_ids::CLOCK_MONOTONIC"
+emit = false
 
 [[raw_sections]]
 title = "Time Formatting"

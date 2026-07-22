@@ -42,6 +42,33 @@ use ::sysapi::ffi::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Path to the filesystem table.
+pub const MNTTAB: &str = "/etc/fstab";
+/// Path to the mounted-filesystems table.
+pub const MOUNTED: &str = "/etc/mtab";
+/// Filesystem type indicating an ignored entry.
+pub const MNTTYPE_IGNORE: &str = "ignore";
+/// Network File System filesystem type.
+pub const MNTTYPE_NFS: &str = "nfs";
+/// Swap filesystem type.
+pub const MNTTYPE_SWAP: &str = "swap";
+/// Default mount options.
+pub const MNTOPT_DEFAULTS: &str = "defaults";
+/// Read-only mount option.
+pub const MNTOPT_RO: &str = "ro";
+/// Read-write mount option.
+pub const MNTOPT_RW: &str = "rw";
+/// Set-user-ID mount option.
+pub const MNTOPT_SUID: &str = "suid";
+/// Disable set-user-ID semantics mount option.
+pub const MNTOPT_NOSUID: &str = "nosuid";
+/// Disable automatic mounting option.
+pub const MNTOPT_NOAUTO: &str = "noauto";
+
+//==================================================================================================
 // Types
 //==================================================================================================
 

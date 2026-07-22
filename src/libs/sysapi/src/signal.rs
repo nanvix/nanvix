@@ -1,0 +1,259 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+//==================================================================================================
+// Configuration
+//==================================================================================================
+
+#![allow(non_camel_case_types)]
+
+//==================================================================================================
+// Imports
+//==================================================================================================
+
+use crate::ffi::{
+    c_int,
+    c_void,
+};
+
+//==================================================================================================
+// Types
+//==================================================================================================
+
+/// Signal handler representation.
+///
+/// Handler addresses and the `SIG_DFL`, `SIG_IGN`, and `SIG_ERR` sentinels share this
+/// pointer-sized representation. Rust function pointers cannot represent all three sentinels.
+pub type SignalHandler = usize;
+
+/// Signal set type.
+pub type sigset_t = u64;
+
+/// Type that can be accessed atomically with respect to signals.
+pub type sig_atomic_t = c_int;
+
+/// Extended signal handler representation used when [`SA_SIGINFO`] is set.
+///
+/// The second argument corresponds to `siginfo_t *` in C but remains opaque here to preserve the
+/// existing Rust API; both spellings have the same pointer ABI.
+pub type SignalAction = Option<unsafe extern "C" fn(c_int, *mut c_void, *mut c_void)>;
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+/// Value that accompanies a signal.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union sigval {
+    /// Integer signal value.
+    pub sival_int: c_int,
+    /// Pointer signal value.
+    pub sival_ptr: *mut c_void,
+}
+
+/// Information passed to an [`SA_SIGINFO`] signal handler.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct siginfo_t {
+    /// Signal number.
+    pub si_signo: c_int,
+    /// Signal code.
+    pub si_code: c_int,
+    /// Error number associated with the signal.
+    pub si_errno: c_int,
+    /// Signal value.
+    pub si_value: sigval,
+}
+
+/// Signal action structure.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct sigaction_t {
+    /// Signal handler represented as an address or a `SIG_DFL`, `SIG_IGN`, or `SIG_ERR` sentinel.
+    pub sa_handler: SignalHandler,
+    /// Signals to block while the handler runs.
+    pub sa_mask: sigset_t,
+    /// Signal action flags.
+    pub sa_flags: c_int,
+    /// Extended signal handler invoked when [`SA_SIGINFO`] is set.
+    pub sa_sigaction: SignalAction,
+}
+
+impl sigaction_t {
+    /// Creates a signal action with the default disposition and no mask or flags.
+    pub const fn new() -> Self {
+        Self {
+            sa_handler: SIG_DFL,
+            sa_mask: 0,
+            sa_flags: 0,
+            sa_sigaction: None,
+        }
+    }
+}
+
+impl Default for sigaction_t {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Default signal handling disposition.
+pub const SIG_DFL: SignalHandler = 0;
+
+/// Ignore signal disposition.
+pub const SIG_IGN: SignalHandler = 1;
+
+/// Error signal disposition.
+///
+/// This is the pointer-sized all-ones value corresponding to the C sentinel
+/// `((sighandler_t) - 1)`; it is not a callable Rust function pointer.
+pub const SIG_ERR: SignalHandler = !0usize;
+
+/// Add signals to the blocked signal mask.
+pub const SIG_BLOCK: c_int = 0;
+
+/// Remove signals from the blocked signal mask.
+pub const SIG_UNBLOCK: c_int = 1;
+
+/// Replace the blocked signal mask.
+pub const SIG_SETMASK: c_int = 2;
+
+/// Do not generate `SIGCHLD` when children stop.
+pub const SA_NOCLDSTOP: c_int = 0x0000_0001;
+
+/// Do not create zombie children.
+pub const SA_NOCLDWAIT: c_int = 0x0000_0002;
+
+/// Use the extended signal handler.
+pub const SA_SIGINFO: c_int = 0x0000_0004;
+
+/// Run the signal handler on an alternate signal stack.
+pub const SA_ONSTACK: c_int = 0x0800_0000;
+
+/// Restart interrupted, restartable functions.
+pub const SA_RESTART: c_int = 0x1000_0000;
+
+/// Do not block the delivered signal while its handler runs.
+pub const SA_NODEFER: c_int = 0x4000_0000;
+
+/// Reset the signal disposition to [`SIG_DFL`] when the handler starts.
+///
+/// The C header spells this bit as `0x80000000`. Because `sa_flags` is a signed `c_int`, Rust stores
+/// the same bit pattern as the minimum signed 32-bit value.
+pub const SA_RESETHAND: c_int = -2_147_483_648;
+
+/// Signal sent by a user operation.
+pub const SI_USER: c_int = 0;
+
+/// Signal sent by `sigqueue()`.
+pub const SI_QUEUE: c_int = -1;
+
+/// Signal generated by a timer expiration.
+pub const SI_TIMER: c_int = -2;
+
+/// Signal generated by message queue state changes.
+pub const SI_MESGQ: c_int = -3;
+
+/// Signal generated by asynchronous I/O completion.
+pub const SI_ASYNCIO: c_int = -4;
+
+/// Hangup.
+pub const SIGHUP: c_int = 1;
+
+/// Terminal interrupt.
+pub const SIGINT: c_int = 2;
+
+/// Terminal quit.
+pub const SIGQUIT: c_int = 3;
+
+/// Illegal instruction.
+pub const SIGILL: c_int = 4;
+
+/// Trace or breakpoint trap.
+pub const SIGTRAP: c_int = 5;
+
+/// Process abort.
+pub const SIGABRT: c_int = 6;
+
+/// Bus error.
+pub const SIGBUS: c_int = 7;
+
+/// Erroneous arithmetic operation.
+pub const SIGFPE: c_int = 8;
+
+/// Uncatchable process termination.
+pub const SIGKILL: c_int = 9;
+
+/// User-defined signal 1.
+pub const SIGUSR1: c_int = 10;
+
+/// Invalid memory reference.
+pub const SIGSEGV: c_int = 11;
+
+/// User-defined signal 2.
+pub const SIGUSR2: c_int = 12;
+
+/// Write on a pipe with no reader.
+pub const SIGPIPE: c_int = 13;
+
+/// Alarm clock.
+pub const SIGALRM: c_int = 14;
+
+/// Termination request.
+pub const SIGTERM: c_int = 15;
+
+/// Child process stopped or terminated.
+pub const SIGCHLD: c_int = 17;
+
+/// Continue if stopped.
+pub const SIGCONT: c_int = 18;
+
+/// Uncatchable process stop.
+pub const SIGSTOP: c_int = 19;
+
+/// Terminal stop.
+pub const SIGTSTP: c_int = 20;
+
+/// Background process attempting a read.
+pub const SIGTTIN: c_int = 21;
+
+/// Background process attempting a write.
+pub const SIGTTOU: c_int = 22;
+
+/// Urgent condition on a socket.
+pub const SIGURG: c_int = 23;
+
+/// CPU time limit exceeded.
+pub const SIGXCPU: c_int = 24;
+
+/// File size limit exceeded.
+pub const SIGXFSZ: c_int = 25;
+
+/// Virtual timer expired.
+pub const SIGVTALRM: c_int = 26;
+
+/// Profiling timer expired.
+pub const SIGPROF: c_int = 27;
+
+/// Window size changed.
+pub const SIGWINCH: c_int = 28;
+
+/// I/O is now possible.
+pub const SIGIO: c_int = 29;
+
+/// Bad system call.
+pub const SIGSYS: c_int = 31;
+
+/// Number above the highest supported signal number.
+pub const _NSIG: c_int = 65;
+
+/// Number above the highest supported signal number.
+pub const NSIG: c_int = _NSIG;
+
+/// Maximum supported signal number.
+pub const SIG_MAX: c_int = NSIG - 1;

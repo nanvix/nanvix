@@ -14,8 +14,8 @@ control interfaces implemented by the libc_stdlib Rust crate."""
 includes = ["stddef.h", "sys/wait.h", "locale.h"]
 guard = "_NANVIX_STDLIB_H"
 content_order = [
-    "macros",
-    "types",
+    "rust_constants",
+    "rust_types",
     "section:0",
     "section:1",
     "section:2",
@@ -29,60 +29,63 @@ content_order = [
     "section:10",
 ]
 
-[[macros]]
-name = "EXIT_SUCCESS"
-value = "0"
+[[rust_constants]]
+path = "EXIT_SUCCESS"
+c_value = "0"
 comment = "Successful termination for exit()."
 guard = "EXIT_SUCCESS"
 
-[[macros]]
-name = "EXIT_FAILURE"
-value = "1"
+[[rust_constants]]
+path = "EXIT_FAILURE"
+c_value = "1"
 comment = "Unsuccessful termination for exit()."
 guard = "EXIT_FAILURE"
 
-[[macros]]
-name = "RAND_MAX"
-value = "2147483647"
+[[rust_constants]]
+path = "RAND_MAX"
+c_value = "2147483647"
 comment = "Maximum value returned by rand()."
 guard = "RAND_MAX"
 
-[[macros]]
-name = "MB_CUR_MAX"
-value = "((size_t)1)"
+[[rust_constants]]
+path = "MB_CUR_MAX"
+c_value = "((size_t)1)"
 comment = "Maximum number of bytes in a character for the current locale."
 guard = "MB_CUR_MAX"
 
-[[types]]
-text = """
+[[rust_types]]
+path = "div_t"
+c_declaration = """
 /* glibc compatibility: expose alloca() via <stdlib.h> under _GNU_SOURCE. */
 #ifdef _GNU_SOURCE
 #include <alloca.h>
-#endif"""
+#endif
 
-[[types]]
-text = """
 /** @brief Structure type returned by the div() function. */
 typedef struct {
     int quot; /**< Quotient.  */
     int rem;  /**< Remainder. */
-} div_t;"""
+} div_t;
 
-[[types]]
-text = """
 /** @brief Structure type returned by the ldiv() function. */
 typedef struct {
     long quot; /**< Quotient.  */
     long rem;  /**< Remainder. */
-} ldiv_t;"""
+} ldiv_t;
 
-[[types]]
-text = """
 /** @brief Structure type returned by the lldiv() function. */
 typedef struct {
     long long quot; /**< Quotient.  */
     long long rem;  /**< Remainder. */
 } lldiv_t;"""
+
+[[rust_types]]
+path = "ldiv_t"
+emit = false
+
+[[rust_types]]
+path = "lldiv_t"
+emit = false
 
 [[sections]]
 title = "Memory Allocation"

@@ -569,7 +569,7 @@ impl OnceGuard {
             error.code.get()
         })?;
         // SAFETY: the guard is held, granting exclusive access to the state word.
-        // `write_unaligned` because `pthread_once_t` is `#[repr(C, packed)]`.
+        // Use the raw-pointer accessor without constructing an aliased Rust reference.
         unsafe { ::core::ptr::write_unaligned(self.state_ptr, ONCE_DONE) };
         once_owner_remove(self.control_key);
         // Only now disarm: `ONCE_DONE` is published and ownership released, so the `drop` that runs
@@ -596,7 +596,7 @@ impl ::core::ops::Drop for OnceGuard {
             return;
         }
         // SAFETY: the guard is held, granting exclusive access to the state word.
-        // `write_unaligned` because `pthread_once_t` is `#[repr(C, packed)]`.
+        // Use the raw-pointer accessor without constructing an aliased Rust reference.
         unsafe {
             ::core::ptr::write_unaligned(self.state_ptr, ONCE_NEVER_RUN);
         }
@@ -685,7 +685,7 @@ pub unsafe extern "C" fn pthread_once(
         }
 
         // SAFETY: the guard is held, granting exclusive access to the state word.
-        // `read_unaligned` because `pthread_once_t` is `#[repr(C, packed)]`.
+        // Read through the raw state pointer without constructing an aliased Rust reference.
         let state: c_int = unsafe { ::core::ptr::read_unaligned(state_ptr) };
 
         // Fast path: initialization already completed.  Holding the guard across this read
@@ -744,7 +744,7 @@ pub unsafe extern "C" fn pthread_once(
             ::syslog::warn!("pthread_once(): in-progress owner table full -- retry later");
             return ErrorCode::TryAgain.get();
         }
-        // SAFETY: guard held; `write_unaligned` because the struct is packed.
+        // SAFETY: the guard is held and the state pointer is valid.
         unsafe { ::core::ptr::write_unaligned(state_ptr, ONCE_IN_PROGRESS) };
         if let Err(code) = once_guard_unlock(guard_addr) {
             return code;

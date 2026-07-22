@@ -10,15 +10,15 @@ Declares the legacy `utime()` interface and its `utimbuf` structure. The
 layout mirrors the Rust definition in the sysapi crate (utime.rs).'''
 includes = ["sys/types.h"]
 guard = "_NANVIX_UTIME_H"
-content_order = [
-    "raw:0",
-    "raw:1",
-]
+content_order = ["rust_types:structures", "raw:0"]
 
-[[raw_sections]]
-title = "Structures"
-text = '''
-/**
+[[rust_types]]
+path = "utime::utimbuf"
+style = "tag"
+packed = false
+group = "structures"
+section_title = "Structures"
+c_declaration = '''/**
  * @brief File access and modification times.
  */
 struct utimbuf {

@@ -20,36 +20,31 @@ use ::sysapi::{
         NAME_MAX,
         PATH_MAX,
     },
+    unistd::pathconf_names::{
+        PC_2_SYMLINKS,
+        PC_ALLOC_SIZE_MIN,
+        PC_ASYNC_IO,
+        PC_CHOWN_RESTRICTED,
+        PC_FILESIZEBITS,
+        PC_LINK_MAX,
+        PC_MAX_CANON,
+        PC_MAX_INPUT,
+        PC_NAME_MAX,
+        PC_NO_TRUNC,
+        PC_PATH_MAX,
+        PC_PIPE_BUF,
+        PC_PRIO_IO,
+        PC_REC_INCR_XFER_SIZE,
+        PC_REC_MAX_XFER_SIZE,
+        PC_REC_MIN_XFER_SIZE,
+        PC_REC_XFER_ALIGN,
+        PC_SYMLINK_MAX,
+        PC_SYNC_IO,
+        PC_VDISABLE,
+    },
 };
 use ::syscall::errno::__errno_location;
 use ::syslog::trace_libcall;
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-// pathconf()/fpathconf() name selectors. These MUST mirror the `_PC_*` `#define`s emitted into
-// <unistd.h> by src/libs/sysapi/headers/unistd.toml.
-const _PC_LINK_MAX: c_int = 0;
-const _PC_MAX_CANON: c_int = 1;
-const _PC_MAX_INPUT: c_int = 2;
-const _PC_NAME_MAX: c_int = 3;
-const _PC_PATH_MAX: c_int = 4;
-const _PC_PIPE_BUF: c_int = 5;
-const _PC_CHOWN_RESTRICTED: c_int = 6;
-const _PC_NO_TRUNC: c_int = 7;
-const _PC_VDISABLE: c_int = 8;
-const _PC_SYNC_IO: c_int = 9;
-const _PC_ASYNC_IO: c_int = 10;
-const _PC_PRIO_IO: c_int = 11;
-const _PC_FILESIZEBITS: c_int = 12;
-const _PC_ALLOC_SIZE_MIN: c_int = 13;
-const _PC_REC_INCR_XFER_SIZE: c_int = 14;
-const _PC_REC_MAX_XFER_SIZE: c_int = 15;
-const _PC_REC_MIN_XFER_SIZE: c_int = 16;
-const _PC_REC_XFER_ALIGN: c_int = 17;
-const _PC_SYMLINK_MAX: c_int = 18;
-const _PC_2_SYMLINKS: c_int = 19;
 
 //==================================================================================================
 // Private Functions
@@ -68,24 +63,24 @@ const _PC_2_SYMLINKS: c_int = 19;
 unsafe fn pathconf_value(name: c_int) -> c_long {
     match name {
         // Selectors with determinate limits (mirroring <limits.h>).
-        _PC_PATH_MAX | _PC_SYMLINK_MAX => PATH_MAX as c_long, // 1024
-        _PC_NAME_MAX => NAME_MAX as c_long,                   // 255
-        _PC_LINK_MAX => 32767,                                // implementation-defined upper bound
-        _PC_MAX_CANON | _PC_MAX_INPUT => 255,                 // _POSIX_MAX_CANON / _POSIX_MAX_INPUT
-        _PC_PIPE_BUF => 4096,
-        _PC_FILESIZEBITS => 64,
-        _PC_CHOWN_RESTRICTED | _PC_NO_TRUNC | _PC_2_SYMLINKS => 1,
-        _PC_VDISABLE => 0,
+        PC_PATH_MAX | PC_SYMLINK_MAX => PATH_MAX as c_long, // 1024
+        PC_NAME_MAX => NAME_MAX as c_long,                  // 255
+        PC_LINK_MAX => 32767,                               // implementation-defined upper bound
+        PC_MAX_CANON | PC_MAX_INPUT => 255,                 // _POSIX_MAX_CANON / _POSIX_MAX_INPUT
+        PC_PIPE_BUF => 4096,
+        PC_FILESIZEBITS => 64,
+        PC_CHOWN_RESTRICTED | PC_NO_TRUNC | PC_2_SYMLINKS => 1,
+        PC_VDISABLE => 0,
         // Options with no determinate limit: return -1 WITHOUT touching errno so callers (e.g.
         // libc++ <filesystem>) take the "no limit -> fall back" branch.
-        _PC_SYNC_IO
-        | _PC_ASYNC_IO
-        | _PC_PRIO_IO
-        | _PC_ALLOC_SIZE_MIN
-        | _PC_REC_INCR_XFER_SIZE
-        | _PC_REC_MAX_XFER_SIZE
-        | _PC_REC_MIN_XFER_SIZE
-        | _PC_REC_XFER_ALIGN => -1,
+        PC_SYNC_IO
+        | PC_ASYNC_IO
+        | PC_PRIO_IO
+        | PC_ALLOC_SIZE_MIN
+        | PC_REC_INCR_XFER_SIZE
+        | PC_REC_MAX_XFER_SIZE
+        | PC_REC_MIN_XFER_SIZE
+        | PC_REC_XFER_ALIGN => -1,
         // Unrecognized selector: POSIX mandates EINVAL (not ENOSYS).
         _ => {
             *__errno_location() = EINVAL;

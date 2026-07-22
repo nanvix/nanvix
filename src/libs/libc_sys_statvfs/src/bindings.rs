@@ -6,10 +6,12 @@
 //==================================================================================================
 
 use ::sys::error::ErrorCode;
-use ::sysapi::ffi::{
-    c_char,
-    c_int,
-    c_void,
+use ::sysapi::{
+    ffi::{
+        c_char,
+        c_int,
+    },
+    sys_statvfs::statvfs as statvfs_t,
 };
 use ::syscall::errno::__errno_location;
 use ::syslog::trace_libcall;
@@ -50,7 +52,7 @@ use ::syslog::trace_libcall;
 ///
 #[unsafe(no_mangle)]
 #[trace_libcall]
-pub unsafe extern "C" fn statvfs(_path: *const c_char, _buf: *mut c_void) -> c_int {
+pub unsafe extern "C" fn statvfs(_path: *const c_char, _buf: *mut statvfs_t) -> c_int {
     ::syslog::debug!("statvfs(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1
@@ -85,7 +87,7 @@ pub unsafe extern "C" fn statvfs(_path: *const c_char, _buf: *mut c_void) -> c_i
 ///
 #[unsafe(no_mangle)]
 #[trace_libcall]
-pub unsafe extern "C" fn fstatvfs(_fd: c_int, _buf: *mut c_void) -> c_int {
+pub unsafe extern "C" fn fstatvfs(_fd: c_int, _buf: *mut statvfs_t) -> c_int {
     ::syslog::debug!("fstatvfs(): not implemented");
     *__errno_location() = ErrorCode::InvalidSysCall.get();
     -1

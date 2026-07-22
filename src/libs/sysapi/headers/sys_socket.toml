@@ -12,10 +12,155 @@ Rust definitions in the sysapi crate (sys_socket.rs).'''
 includes = ["sys/types.h", "sys/uio.h"]
 guard = "_NANVIX_SYS_SOCKET_H"
 scan_crates = ["syscall"]
-content_order = ["raw:0", "types", "section:0"]
+content_order = ["raw:0", "rust_types", "section:0"]
 
-[[types]]
-text = '''
+[[rust_constants]]
+path = "sys_socket::socket_address_family::AF_UNSPEC"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::AF_UNIX"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::AF_LOCAL"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::AF_INET"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::AF_INET6"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::PF_UNSPEC"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::PF_UNIX"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::PF_LOCAL"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::PF_INET"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_address_family::PF_INET6"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_types::SOCK_STREAM"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_types::SOCK_DGRAM"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_types::SOCK_RAW"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_types::SOCK_RDM"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_types::SOCK_SEQPACKET"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::SOL_SOCKET"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::sockopt_option_names::SO_REUSEADDR"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::sockopt_option_names::SO_KEEPALIVE"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::sockopt_option_names::SO_BROADCAST"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::sockopt_option_names::SO_LINGER"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::sockopt_option_names::SO_SNDBUF"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::sockopt_option_names::SO_RCVBUF"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::sockopt_option_names::SO_ERROR"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::sockopt_option_names::SO_TYPE"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_shutdown_how::SHUT_RD"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_shutdown_how::SHUT_WR"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::message_flags::MSG_OOB"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::message_flags::MSG_PEEK"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::message_flags::MSG_DONTROUTE"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::message_flags::MSG_TRUNC"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::message_flags::MSG_DONTWAIT"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::message_flags::MSG_WAITALL"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::message_flags::MSG_NOSIGNAL"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::socket_shutdown_how::SHUT_RDWR"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::SOMAXCONN"
+emit = false
+
+[[rust_constants]]
+path = "sys_socket::_SS_PADSIZE"
+emit = false
+
+[[rust_types]]
+path = "sys_socket::sa_family_t"
+c_declaration = '''
 /** @brief Socket address family type. */
 typedef unsigned char sa_family_t;
 
@@ -52,6 +197,30 @@ struct msghdr {
     socklen_t msg_controllen; /**< Ancillary data buffer length. */
     int msg_flags;            /**< Flags on the received message. */
 };'''
+
+[[rust_types]]
+path = "sys_socket::socklen_t"
+emit = false
+
+[[rust_types]]
+path = "sys_socket::sockaddr"
+style = "tag"
+emit = false
+
+[[rust_types]]
+path = "sys_socket::sockaddr_storage"
+style = "tag"
+emit = false
+
+[[rust_types]]
+path = "sys_socket::linger"
+style = "tag"
+emit = false
+
+[[rust_types]]
+path = "sys_types::msghdr"
+style = "tag"
+emit = false
 
 [[raw_sections]]
 title = "Constants"

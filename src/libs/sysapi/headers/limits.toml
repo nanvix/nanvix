@@ -12,10 +12,78 @@ Declares the numerical limits of the standard integer types (via compiler
 builtins) and the POSIX path/name/resource limits. The POSIX limits mirror the
 Rust definitions in the sysapi crate (limits.rs)."""
 guard = "_NANVIX_LIMITS_H"
-content_order = ["raw:0"]
+content_order = ["rust_constants:abi", "raw:0"]
+
+[[rust_constants]]
+path = "limits::CHAR_BIT"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "limits::MB_LEN_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "limits::HOST_NAME_MAX"
+c_value = "255"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "limits::IOV_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "limits::NAME_MAX"
+c_value = "255"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "limits::OPEN_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "limits::PATH_MAX"
+c_value = "1024"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "limits::PTHREAD_KEYS_MAX"
+c_value = "128"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "limits::SSIZE_MAX"
+c_value = "INT_MAX"
+group = "abi"
+emit = false
+
+# Alias dependencies for public implementation limits.
+[[rust_constants]]
+path = "limits::POSIX_HOST_NAME_MAX"
+emit = false
+
+[[rust_constants]]
+path = "limits::XOPEN_NAME_MAX"
+emit = false
+
+[[rust_constants]]
+path = "limits::XOPEN_PATH_MAX"
+emit = false
+
+[[rust_constants]]
+path = "limits::_POSIX_THREAD_KEYS_MAX"
+emit = false
 
 [[raw_sections]]
 title = "Constants"
+c_only_reason = "Compiler-provided integer limits and C suffix-preserving aliases."
 text = """
 /* Numerical limits of the standard integer types (compiler-defined). */
 #define CHAR_BIT 8

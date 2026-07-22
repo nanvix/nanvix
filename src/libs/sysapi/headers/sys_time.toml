@@ -11,23 +11,27 @@ interfaces. The `timeval` layout mirrors the Rust definition in the sysapi
 crate (sys_select.rs).'''
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_TIME_H"
-content_order = [
-    "raw:0",
-    "raw:1",
-    "raw:2",
-]
+content_order = ["rust_types:structures", "raw:0", "raw:1"]
 
-[[raw_sections]]
-title = "Structures"
-text = '''
+[[rust_types]]
+path = "sys_time::timeval"
+style = "tag"
+group = "structures"
+section_title = "Structures"
+c_declaration = '''
 /**
  * @brief Time interval expressed in seconds and microseconds.
  */
 struct timeval {
     time_t tv_sec;       /**< Seconds.      */
     suseconds_t tv_usec; /**< Microseconds. */
-};
+};'''
 
+[[rust_types]]
+path = "sys_time::timezone"
+style = "tag"
+group = "structures"
+c_declaration = '''
 /**
  * @brief Time-zone information (obsolete; retained for compatibility).
  */

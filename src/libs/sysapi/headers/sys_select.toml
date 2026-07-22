@@ -12,14 +12,16 @@ Declares `fd_set`, the `FD_*` manipulation macros, and `select()`. The
 includes = ["sys/time.h", "sys/types.h"]
 guard = "_NANVIX_SYS_SELECT_H"
 scan_crates = ["syscall"]
-content_order = [
-    "types",
-    "raw:0",
-    "section:0",
-]
+content_order = ["rust_types", "raw:0", "section:0"]
 
-[[types]]
-text = '''
+[[rust_constants]]
+path = "sys_select::FD_SETSIZE"
+emit = false
+
+[[rust_types]]
+path = "sys_select::fd_set"
+c_only_reason = "_NANVIX_NFDBITS is a C sizeof-based helper for function-like FD_* macros."
+c_declaration = '''
 #define FD_SETSIZE 64
 
 #define _NANVIX_NFDBITS (8 * (int)sizeof(unsigned long))

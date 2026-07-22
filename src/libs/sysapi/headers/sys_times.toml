@@ -13,18 +13,18 @@ Rust definition in the sysapi crate (sys_times.rs)."""
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_TIMES_H"
 scan_crates = ["libc_sys_times"]
-content_order = ["types:0", "section:0"]
+content_order = ["rust_types", "section:0"]
 
-[[types]]
-text = """
-/** @brief Process and waited-for-children CPU times, in clock ticks. */
+[[rust_types]]
+path = "sys_times::tms"
+style = "tag"
+c_declaration = '''/** @brief Process and waited-for-children CPU times, in clock ticks. */
 struct tms {
     clock_t tms_utime;  /**< User CPU time.                    */
     clock_t tms_stime;  /**< System CPU time.                  */
     clock_t tms_cutime; /**< User CPU time of terminated children.  */
     clock_t tms_cstime; /**< System CPU time of terminated children.*/
-};
-"""
+};'''
 
 [[sections]]
 title = "Process Times"

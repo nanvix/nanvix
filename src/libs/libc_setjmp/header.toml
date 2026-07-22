@@ -16,16 +16,18 @@ is currently empty. Implemented by the libc_setjmp Rust crate using global_asm."
 includes = []
 guard = "_NANVIX_SETJMP_H"
 
-[[types]]
-text = """
+[[rust_types]]
+path = "jmp_buf::jmp_buf"
+c_declaration = """
 /** @brief Buffer type for saving and restoring execution context. */
 typedef struct {
     int regs[6]; /**< Saved registers: EBX, ESI, EDI, EBP, ESP, EIP. */
 } jmp_buf[1];
 """
 
-[[types]]
-text = """
+[[rust_types]]
+path = "sigjmp_buf::sigjmp_buf"
+c_declaration = """
 /** @brief Buffer type for sigsetjmp()/siglongjmp() execution context. */
 typedef struct {
     int regs[6];  /**< Saved registers: EBX, ESI, EDI, EBP, ESP, EIP.    */

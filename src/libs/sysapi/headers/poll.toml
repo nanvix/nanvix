@@ -10,14 +10,11 @@ The `pollfd` layout mirrors the Rust definition in the sysapi crate
 (poll.rs).'''
 guard = "_NANVIX_POLL_H"
 scan_crates = ["syscall"]
-content_order = [
-    "types",
-    "raw:0",
-    "section:0",
-]
+content_order = ["rust_types", "raw:0", "section:0"]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "poll::nfds_t"
+c_declaration = '''
 typedef unsigned int nfds_t;
 
 /** @brief A descriptor to be polled. */
@@ -26,6 +23,43 @@ struct pollfd {
     short events;  /**< Requested events.       */
     short revents; /**< Returned events.        */
 };'''
+
+[[rust_types]]
+path = "poll::pollfd"
+style = "tag"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_flags::POLLIN"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_flags::POLLPRI"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_flags::POLLOUT"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_errors::POLLERR"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_errors::POLLHUP"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_errors::POLLNVAL"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_flags::POLLRDNORM"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_flags::POLLWRNORM"
+emit = false
 
 [[raw_sections]]
 title = "Event flags"

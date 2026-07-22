@@ -9,10 +9,32 @@ description = '''
 '''
 includes = ["sys/stat.h", "sys/types.h"]
 guard = "_NANVIX_FTW_H"
-content_order = [
-    "raw:0",
-    "raw:1",
-]
+content_order = ["rust_constants:abi", "raw:0", "raw:1"]
+
+[[rust_constants]]
+path = "ftw::FTW_F"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "ftw::FTW_D"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "ftw::FTW_DNR"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "ftw::FTW_NS"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "ftw::FTW_SL"
+group = "abi"
+emit = false
 
 [[raw_sections]]
 title = "Type-flag values passed to the callback"

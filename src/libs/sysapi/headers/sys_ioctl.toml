@@ -14,11 +14,19 @@ are served by procd; hosted deployments have no guest terminal device and
 ignore them.'''
 guard = "_NANVIX_SYS_IOCTL_H"
 scan_crates = ["libc_sys_ioctl"]
-content_order = ["raw:0", "raw:1", "raw:2", "section:0"]
+content_order = [
+    "rust_types:structures",
+    "rust_constants:requests",
+    "rust_constants:request_encoding",
+    "section:0",
+]
 
-[[raw_sections]]
-title = "Structures"
-text = '''
+[[rust_types]]
+path = "sys_ioctl::Winsize"
+c_name = "winsize"
+group = "structures"
+section_title = "Structures"
+c_declaration = '''
 /** @brief Terminal window size. */
 struct winsize {
     unsigned short ws_row;    /**< Rows, in characters.    */
@@ -27,9 +35,11 @@ struct winsize {
     unsigned short ws_ypixel; /**< Vertical size, pixels.   */
 };'''
 
-[[raw_sections]]
-title = "Requests"
-text = '''
+[[rust_constants]]
+path = "sys_ioctl::TCGETS"
+group = "requests"
+section_title = "Requests"
+c_declaration = '''
 #define TCGETS 0x5401
 #define TCSETS 0x5402
 #define TIOCGPGRP 0x540f
@@ -37,10 +47,43 @@ text = '''
 #define TIOCGWINSZ 0x5413
 #define TIOCSWINSZ 0x5414
 #define FIONREAD 0x541b'''
+no_comment = true
 
-[[raw_sections]]
-title = "Request Encoding"
-text = '''
+[[rust_constants]]
+path = "sys_ioctl::TCSETS"
+group = "requests"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::TIOCGPGRP"
+group = "requests"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::TIOCSPGRP"
+group = "requests"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::TIOCGWINSZ"
+group = "requests"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::TIOCSWINSZ"
+group = "requests"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::FIONREAD"
+group = "requests"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_NRBITS"
+group = "request_encoding"
+section_title = "Request Encoding"
+c_declaration = '''
 /*
  * Request-number encoding macros, compatible with the Linux/i386 `_IOC`
  * scheme. Nanvix device drivers use the fixed request numbers above; these
@@ -71,6 +114,57 @@ text = '''
 #define _IOR(type, nr, size)  _IOC(_IOC_READ, (type), (nr), sizeof(size))
 #define _IOW(type, nr, size)  _IOC(_IOC_WRITE, (type), (nr), sizeof(size))
 #define _IOWR(type, nr, size) _IOC(_IOC_READ | _IOC_WRITE, (type), (nr), sizeof(size))'''
+no_comment = true
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_TYPEBITS"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_SIZEBITS"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_DIRBITS"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_NRSHIFT"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_TYPESHIFT"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_SIZESHIFT"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_DIRSHIFT"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_NONE"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_WRITE"
+group = "request_encoding"
+emit = false
+
+[[rust_constants]]
+path = "sys_ioctl::_IOC_READ"
+group = "request_encoding"
+emit = false
 
 [[sections]]
 title = "Functions"

@@ -11,10 +11,12 @@ workloads); it does not perform real codeset conversion.'''
 includes = ["stddef.h"]
 guard = "_NANVIX_ICONV_H"
 scan_crates = ["nanvix_libc"]
-content_order = [
-    "raw:0",
-    "section:0",
-]
+content_order = ["rust_types:abi", "raw:0", "section:0"]
+
+[[rust_types]]
+path = "iconv::iconv_t"
+group = "abi"
+emit = false
 
 [[raw_sections]]
 title = ""

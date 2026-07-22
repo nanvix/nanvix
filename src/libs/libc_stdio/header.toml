@@ -10,15 +10,16 @@ Declares functions for formatted and unformatted I/O, stream management,
 and error reporting. Implemented by the libc_stdio Rust crate.'''
 includes = ["stdarg.h", "stddef.h", "sys/types.h"]
 guard = "_NANVIX_STDIO_H"
+symbol_crates = ["sysapi"]
 content_order = [
-    "raw:0",
-    "types",
+    "rust_constants:constants",
+    "rust_types",
     "section:0",
+    "raw:0",
     "raw:1",
-    "raw:2",
     "section:1",
     "section:2",
-    "raw:3",
+    "raw:2",
     "section:3",
     "section:4",
     "section:5",
@@ -27,8 +28,9 @@ content_order = [
     "section:8",
 ]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "FILE"
+c_declaration = '''
 /**
  * @brief Opaque file stream type.
  *
@@ -43,9 +45,12 @@ typedef struct {
     int orientation; /**< 0 unoriented, >0 wide, <0 byte.   */
 } FILE;'''
 
-[[raw_sections]]
-title = "Constants"
-text = '''
+[[rust_constants]]
+path = "EOF"
+group = "constants"
+section_title = "Constants"
+c_only_reason = "NULL is a C null-pointer macro rather than a Rust constant ABI item."
+c_declaration = '''
 #ifndef EOF
 #define EOF (-1)
 #endif
@@ -85,9 +90,80 @@ text = '''
 #ifndef TMP_MAX
 #define TMP_MAX 10000
 #endif'''
+no_comment = true
+
+[[rust_constants]]
+path = "SEEK_SET"
+group = "constants"
+emit = false
+
+[[rust_constants]]
+path = "SEEK_CUR"
+group = "constants"
+emit = false
+
+[[rust_constants]]
+path = "SEEK_END"
+group = "constants"
+emit = false
+
+# Alias dependencies for the seek constants.
+[[rust_constants]]
+path = "sysapi::unistd::file_seek::SEEK_SET"
+c_name = "__NANVIX_STDIO_SEEK_SET"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::unistd::file_seek::SEEK_CUR"
+c_name = "__NANVIX_STDIO_SEEK_CUR"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::unistd::file_seek::SEEK_END"
+c_name = "__NANVIX_STDIO_SEEK_END"
+emit = false
+
+[[rust_constants]]
+path = "BUFSIZ"
+group = "constants"
+emit = false
+
+[[rust_constants]]
+path = "FOPEN_MAX"
+group = "constants"
+emit = false
+
+[[rust_constants]]
+path = "FILENAME_MAX"
+group = "constants"
+emit = false
+
+[[rust_constants]]
+path = "L_TMPNAM"
+c_name = "L_tmpnam"
+group = "constants"
+emit = false
+
+[[rust_constants]]
+path = "TMP_MAX"
+group = "constants"
+emit = false
+
+[[rust_constants]]
+path = "_IOFBF"
+emit = false
+
+[[rust_constants]]
+path = "_IOLBF"
+emit = false
+
+[[rust_constants]]
+path = "_IONBF"
+emit = false
 
 [[raw_sections]]
 title = ""
+c_only_reason = "C lvalue-style stream macros over accessor functions."
 text = '''
 /* Convenience macros matching common usage. */
 #define stdin (stdin())

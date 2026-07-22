@@ -11,6 +11,12 @@ use crate::sys_types::c_ssize_t;
 // Constants
 //==================================================================================================
 
+/// Number of bits in a byte.
+pub const CHAR_BIT: usize = 8;
+
+/// Maximum number of bytes in a multibyte character for the supported encoding.
+pub const MB_LEN_MAX: usize = 4;
+
 /// The number of data keys per process.
 pub const _POSIX_THREAD_KEYS_MAX: usize = 128;
 
@@ -18,7 +24,7 @@ pub const _POSIX_THREAD_KEYS_MAX: usize = 128;
 /// [`crate::sys::uio::writev`] or [`crate::sys::uio::readv`].
 pub const IOV_MAX: usize = 16;
 
-// Maximum length of a host name (not including the terminating null byte).
+/// Maximum length of a host name (not including the terminating null byte).
 pub const HOST_NAME_MAX: usize = POSIX_HOST_NAME_MAX;
 
 /// Maximum number of bytes in a pathname (not including the terminating null byte).
@@ -55,7 +61,7 @@ pub const POSIX_PATH_MAX: usize = 256;
 pub const XOPEN_PATH_MAX: usize = 1024;
 
 /// Maximum value for an object of type [`crate::sys::types::ssize_t`].
-pub const SSIZE_MAX: c_ssize_t = c_ssize_t::MAX;
+pub const SSIZE_MAX: c_ssize_t = 0x7fffffff;
 
 /// Maximum number of data keys that can be created by a process.
 pub const PTHREAD_KEYS_MAX: usize = _POSIX_THREAD_KEYS_MAX;

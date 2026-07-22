@@ -10,9 +10,87 @@ Defines the `_PATH_*` string constants that name the conventional locations of
 system files and directories and the default executable search paths.'''
 guard = "_NANVIX_PATHS_H"
 extern_c = false
-content_order = [
-    "raw:0",
-]
+content_order = ["rust_constants:abi", "raw:0"]
+
+[[rust_constants]]
+path = "paths::_PATH_DEFPATH"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_STDPATH"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_BSHELL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_CSHELL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_CONSOLE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_DEVNULL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_TTY"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_DEV"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_TMP"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_MOUNTED"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_MNTTAB"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_NOLOGIN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_SHELLS"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_WTMP"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_UTMP"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "paths::_PATH_LASTLOG"
+group = "abi"
+emit = false
 
 [[raw_sections]]
 title = ""

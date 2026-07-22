@@ -12,8 +12,8 @@ includes = ["stdarg.h", "stddef.h", "stdio.h", "locale.h", "time.h"]
 guard = "_NANVIX_WCHAR_H"
 scan_crates = ["libc_wchar", "libc_stdio"]
 content_order = [
-    "types",
-    "raw:0",
+    "rust_types",
+    "rust_constants",
     "section:0",
     "section:1",
     "section:2",
@@ -27,8 +27,11 @@ content_order = [
     "section:8",
 ]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "wchar_t::wchar_t"
+c_only_reason = "Guard markers and __WCHAR_TYPE__ preserve C/C++ compiler type ownership."
+c_bindings = { wint_t = "wchar_t::wint_t", mbstate_t = "mbstate::mbstate_t" }
+c_declaration = '''
 #ifndef _WCHAR_T_DEFINED
 #define _WCHAR_T_DEFINED
 #ifndef __cplusplus
@@ -50,9 +53,19 @@ typedef struct {
 } mbstate_t;
 #endif'''
 
-[[raw_sections]]
-title = "Constants"
-text = '''
+[[rust_types]]
+path = "wchar_t::wint_t"
+emit = false
+
+[[rust_types]]
+path = "mbstate::mbstate_t"
+emit = false
+
+[[rust_constants]]
+path = "wchar_t::WEOF"
+c_only_reason = "NULL is a C null-pointer macro rather than a Rust constant ABI item."
+c_bindings = { WCHAR_MAX = "wchar_t::WCHAR_MAX", WCHAR_MIN = "wchar_t::WCHAR_MIN" }
+c_declaration = '''
 #ifndef WEOF
 #define WEOF ((wint_t)(-1))
 #endif
@@ -68,6 +81,15 @@ text = '''
 #ifndef NULL
 #define NULL ((void *)0)
 #endif'''
+no_comment = true
+
+[[rust_constants]]
+path = "wchar_t::WCHAR_MAX"
+emit = false
+
+[[rust_constants]]
+path = "wchar_t::WCHAR_MIN"
+emit = false
 
 [[sections]]
 title = "String Operations"

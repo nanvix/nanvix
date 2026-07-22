@@ -14,13 +14,13 @@ Implemented by the libc_math Rust crate."""
 includes = []
 guard = "_NANVIX_MATH_H"
 content_order = [
-    "raw:2",      # Real-floating types (float_t, double_t).
+    "rust_types:real_floating",
     "macros",
-    "raw:0",
-    "raw:4",      # Error-handling macros (MATH_ERRNO, MATH_ERREXCEPT, math_errhandling).
+    "rust_constants:classification",
+    "rust_constants:error_handling",
     "section:0",
+    "raw:0",
     "raw:1",
-    "raw:3",      # Comparison macros (isgreater, isless, ...).
     "section:1",
     "section:9",
     "section:2",
@@ -37,55 +37,32 @@ content_order = [
 name = "HUGE_VAL"
 value = "(__builtin_huge_val())"
 guard = "HUGE_VAL"
+c_only_reason = "Compiler-provided floating constant with C evaluation semantics."
 
 [[macros]]
 name = "HUGE_VALF"
 value = "(__builtin_huge_valf())"
 guard = "HUGE_VALF"
+c_only_reason = "Compiler-provided floating constant with C evaluation semantics."
 
 [[macros]]
 name = "HUGE_VALL"
 value = "(__builtin_huge_vall())"
 guard = "HUGE_VALL"
+c_only_reason = "Compiler-provided floating constant with C evaluation semantics."
 
 [[macros]]
 name = "INFINITY"
 value = "(__builtin_inff())"
 guard = "INFINITY"
+c_only_reason = "Compiler-provided floating constant with C evaluation semantics."
 
 [[macros]]
 name = "NAN"
 value = "(__builtin_nanf(\"\"))"
 guard = "NAN"
+c_only_reason = "Compiler-provided floating constant with C evaluation semantics."
 
-[[raw_sections]]
-title = "Floating-Point Classification Constants"
-text = """
-#define FP_NAN 0
-#define FP_INFINITE 1
-#define FP_ZERO 2
-#define FP_SUBNORMAL 3
-#define FP_NORMAL 4
-
-/* Values returned by ilogb() for a zero or NaN argument. */
-#define FP_ILOGB0 (-2147483647 - 1)
-#define FP_ILOGBNAN 2147483647
-"""
-
-[[sections]]
-title = "Classification Functions (internal)"
-functions = [
-    "__fpclassifyf",
-    "__fpclassifyd",
-    "__isnanf",
-    "__isnand",
-    "__isinff",
-    "__isinfd",
-    "__signbitf",
-    "__signbitd",
-]
-
-# Classification macros are inserted as a raw section.
 [[raw_sections]]
 title = "Classification Macros"
 text = """
@@ -100,6 +77,65 @@ text = """
 #define isfinite(x) __builtin_isfinite(x)
 #define isnormal(x) __builtin_isnormal(x)
 """
+
+[[rust_constants]]
+path = "fpclassify::FP_NAN"
+group = "classification"
+section_title = "Floating-Point Classification Constants"
+c_declaration = """
+#define FP_NAN 0
+#define FP_INFINITE 1
+#define FP_ZERO 2
+#define FP_SUBNORMAL 3
+#define FP_NORMAL 4
+
+/* Values returned by ilogb() for a zero or NaN argument. */
+#define FP_ILOGB0 (-2147483647 - 1)
+#define FP_ILOGBNAN 2147483647"""
+no_comment = true
+
+[[rust_constants]]
+path = "fpclassify::FP_INFINITE"
+group = "classification"
+emit = false
+
+[[rust_constants]]
+path = "fpclassify::FP_ZERO"
+group = "classification"
+emit = false
+
+[[rust_constants]]
+path = "fpclassify::FP_SUBNORMAL"
+group = "classification"
+emit = false
+
+[[rust_constants]]
+path = "fpclassify::FP_NORMAL"
+group = "classification"
+emit = false
+
+[[rust_constants]]
+path = "fpclassify::FP_ILOGB0"
+group = "classification"
+emit = false
+
+[[rust_constants]]
+path = "fpclassify::FP_ILOGBNAN"
+group = "classification"
+emit = false
+
+[[sections]]
+title = "Classification Functions (internal)"
+functions = [
+    "__fpclassifyf",
+    "__fpclassifyd",
+    "__isnanf",
+    "__isnand",
+    "__isinff",
+    "__isinfd",
+    "__signbitf",
+    "__signbitd",
+]
 
 [[sections]]
 title = "Trigonometric Functions"
@@ -195,12 +231,20 @@ functions = ["fma", "fmaf"]
 
 # POSIX <math.h> shall define the real-floating types float_t and double_t.
 # On x86-64 (FLT_EVAL_METHOD == 0) these are float and double, respectively.
-[[raw_sections]]
-title = "Real-Floating Types"
-text = """
+[[rust_types]]
+path = "fpclassify::float_t"
+group = "real_floating"
+section_title = "Real-Floating Types"
+c_declaration = """
 typedef float float_t;
 typedef double double_t;
 """
+no_comment = true
+
+[[rust_types]]
+path = "fpclassify::double_t"
+group = "real_floating"
+emit = false
 
 # POSIX <math.h> relational macros. They compare their operands without raising
 # the invalid floating-point exception when an operand is NaN.
@@ -218,10 +262,23 @@ text = """
 # POSIX <math.h> error-handling macros. The MATH_ERRNO and MATH_ERREXCEPT macros
 # must be defined, but this implementation reports neither errno-based domain and
 # range errors nor floating-point exceptions, so math_errhandling evaluates to 0.
-[[raw_sections]]
-title = "Error Handling"
-text = """
+[[rust_constants]]
+path = "fenv::MATH_ERRNO"
+group = "error_handling"
+section_title = "Error Handling"
+c_declaration = """
 #define MATH_ERRNO 1
 #define MATH_ERREXCEPT 2
-#define math_errhandling 0
-"""
+#define math_errhandling 0"""
+no_comment = true
+
+[[rust_constants]]
+path = "fenv::MATH_ERREXCEPT"
+group = "error_handling"
+emit = false
+
+[[rust_constants]]
+path = "fenv::MATH_ERRHANDLING"
+c_name = "math_errhandling"
+group = "error_handling"
+emit = false

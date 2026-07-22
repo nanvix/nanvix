@@ -66,12 +66,13 @@ impl ::core::fmt::Display for FdSetError {
 
 /// Bit mask set used by `select()` to represent file descriptors of interest.
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct fd_set {
     /// Bit fields for tracked file descriptors.
     pub fds_bits: [c_ulong; FD_SET_WORD_COUNT],
 }
 ::static_assert::assert_eq_size!(fd_set, size_of::<[c_ulong; FD_SET_WORD_COUNT]>());
+::static_assert::assert_eq_align!(fd_set, core::mem::align_of::<c_ulong>());
 
 impl fd_set {
     ///
@@ -341,12 +342,13 @@ impl Default for fd_set {
     }
 }
 
+/// Time interval expressed in seconds and microseconds.
 #[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct timeval {
     /// Seconds.
     pub tv_sec: time_t,
-    /// Nano-seconds.
+    /// Microseconds.
     pub tv_usec: suseconds_t,
 }
 

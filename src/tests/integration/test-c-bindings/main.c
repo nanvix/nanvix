@@ -127,9 +127,11 @@ int main(int argc, const char *argv[])
 
     // Assert size of types in <time.h>.
     STATIC_ASSERT_SIZE(struct timespec, sizeof(time_t) + sizeof(long));
+    STATIC_ASSERT_ALIGNMENT(struct timespec, _Alignof(time_t));
 
     // Assert types in <sched.h>.
     STATIC_ASSERT_SIZE(struct sched_param, sizeof(int));
+    STATIC_ASSERT_ALIGNMENT(struct sched_param, _Alignof(int));
 
     return (0);
 }

@@ -31,6 +31,20 @@ pub type in_port_t = u16;
 // Constants
 //==================================================================================================
 
+/// Address to accept any incoming messages.
+pub const INADDR_ANY: in_addr_t = 0x00000000;
+/// Loopback address (127.0.0.1).
+pub const INADDR_LOOPBACK: in_addr_t = 0x7f000001;
+/// Address to send to all hosts.
+pub const INADDR_BROADCAST: in_addr_t = 0xffffffff;
+/// Invalid address.
+pub const INADDR_NONE: in_addr_t = 0xffffffff;
+
+/// Maximum length of an IPv4 address string, including the null terminator.
+pub const INET_ADDRSTRLEN: usize = 16;
+/// Maximum length of an IPv6 address string, including the null terminator.
+pub const INET6_ADDRSTRLEN: usize = 46;
+
 /// Socket option levels to be used with the `setsockopt()` and `getsockopt()` functions.
 pub mod sockopt_levels {
     use crate::ffi::c_int;
@@ -144,15 +158,17 @@ pub mod message_flags {
     /// Send without using routing tables.
     pub const MSG_DONTROUTE: c_int = 0x4;
     /// Terminates a record.
-    pub const MSG_EOR: c_int = 0x8;
+    pub const MSG_EOR: c_int = 0x80;
     /// Normal data truncated.
-    pub const MSG_TRUNC: c_int = 0x10;
+    pub const MSG_TRUNC: c_int = 0x20;
+    /// Perform nonblocking I/O.
+    pub const MSG_DONTWAIT: c_int = 0x40;
     /// Control data truncated.
-    pub const MSG_CTRUNC: c_int = 0x20;
+    pub const MSG_CTRUNC: c_int = 0x8;
     /// Requests to block until the full amount of data can be returned.
-    pub const MSG_WAITALL: c_int = 0x40;
+    pub const MSG_WAITALL: c_int = 0x100;
     /// Requests not to send SIGPIPE on errors.
-    pub const MSG_NOSIGNAL: c_int = 0x20000;
+    pub const MSG_NOSIGNAL: c_int = 0x4000;
     /// Atomically set the close-on-exec flag for the file descriptor.
     pub const MSG_CMSG_CLOEXEC: c_int = 0x40000;
     /// Atomically set the close-on-fork flag for the file descriptor.
@@ -165,12 +181,13 @@ pub mod message_flags {
 
 /// An internet address for IPv4.
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct in_addr {
     /// Internet address version 4.
     pub s_addr: in_addr_t,
 }
 ::static_assert::assert_eq_size!(in_addr, in_addr::_SIZE);
+::static_assert::assert_eq_align!(in_addr, core::mem::align_of::<in_addr_t>());
 
 impl in_addr {
     // Size of this structure, used for static assertions.
@@ -178,7 +195,7 @@ impl in_addr {
 }
 
 /// An internet socket address.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct sockaddr_in {
     /// Socket address length.
@@ -194,6 +211,7 @@ pub struct sockaddr_in {
 }
 ::static_assert::assert_eq_size!(sockaddr_in, sockaddr_in::_SIZE);
 ::static_assert::assert_eq_size!(sockaddr_in, size_of::<sockaddr_storage>());
+::static_assert::assert_eq_align!(sockaddr_in, core::mem::align_of::<in_addr_t>());
 
 impl sockaddr_in {
     /// Size of this structure, used for static assertions.
@@ -205,20 +223,21 @@ impl sockaddr_in {
 }
 
 /// An internet socket address for IPv6.
-#[repr(C, packed)]
+#[repr(C, align(4))]
 #[derive(Debug, Clone, Copy)]
 pub struct in6_addr {
     /// Internet address version 6.
     pub s6_addr: [u8; 16],
 }
 ::static_assert::assert_eq_size!(in6_addr, in6_addr::_SIZE);
+::static_assert::assert_eq_align!(in6_addr, core::mem::align_of::<u32>());
 
 impl in6_addr {
     /// Size of this structure, used for static assertions.
     const _SIZE: usize = size_of::<[u8; 16]>();
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct sockaddr_in6 {
     /// Socket address length.
@@ -235,6 +254,7 @@ pub struct sockaddr_in6 {
     pub sin6_scope_id: u32,
 }
 ::static_assert::assert_eq_size!(sockaddr_in6, sockaddr_in6::_SIZE);
+::static_assert::assert_eq_align!(sockaddr_in6, core::mem::align_of::<u32>());
 
 impl sockaddr_in6 {
     /// Size of this structure, used for static assertions.

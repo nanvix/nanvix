@@ -12,7 +12,64 @@ unprefixed aliases. The active order is derived from the compiler's
 `__BYTE_ORDER__` intrinsic.'''
 guard = "_NANVIX_ENDIAN_H"
 extern_c = false
-content_order = ["raw:0"]
+content_order = ["rust_constants:abi", "raw:0"]
+
+[[rust_constants]]
+path = "endian::__LITTLE_ENDIAN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "endian::__BIG_ENDIAN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "endian::__PDP_ENDIAN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "endian::__BYTE_ORDER"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "endian::LITTLE_ENDIAN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "endian::BIG_ENDIAN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "endian::PDP_ENDIAN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "endian::BYTE_ORDER"
+group = "abi"
+emit = false
+
+# Alias dependencies for the active order and BSD-style names.
+[[rust_constants]]
+path = "endian::__LITTLE_ENDIAN"
+emit = false
+
+[[rust_constants]]
+path = "endian::__BIG_ENDIAN"
+emit = false
+
+[[rust_constants]]
+path = "endian::__PDP_ENDIAN"
+emit = false
+
+[[rust_constants]]
+path = "endian::__BYTE_ORDER"
+emit = false
 
 [[raw_sections]]
 title = ""

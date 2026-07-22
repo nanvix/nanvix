@@ -15,43 +15,45 @@ definitions in the libc_dlfcn and syscall crates (dlfcn)."""
 includes = ["stdint.h"]
 guard = "_NANVIX_DLFCN_H"
 scan_crates = ["libc_dlfcn"]
-content_order = ["macros", "types:0", "section:0"]
+content_order = ["rust_constants", "rust_types", "section:0"]
 
-[[macros]]
-name = "RTLD_LAZY"
-value = "0x1"
-comment = "Relocations are performed at an implementation-defined time."
+[[rust_constants]]
+path = "dlfcn::RTLD_LAZY"
+c_declaration = '''
+#define RTLD_LAZY 0x1 /**< Relocations are performed at an implementation-defined time. */
+#define RTLD_NOW 0x2 /**< Relocations are performed when the object is loaded. */
+#define RTLD_GLOBAL 0x4 /**< Symbols are available for relocation processing of other objects. */
+#define RTLD_LOCAL 0x0 /**< Symbols are not made available to other objects. */
+#define RTLD_DEFAULT ((void *)0) /**< Pseudo-handle: search the global (default) symbol scope. */'''
+no_comment = true
 
-[[macros]]
-name = "RTLD_NOW"
-value = "0x2"
-comment = "Relocations are performed when the object is loaded."
+[[rust_constants]]
+path = "dlfcn::RTLD_NOW"
+emit = false
 
-[[macros]]
-name = "RTLD_GLOBAL"
-value = "0x4"
-comment = "Symbols are available for relocation processing of other objects."
+[[rust_constants]]
+path = "dlfcn::RTLD_GLOBAL"
+emit = false
 
-[[macros]]
-name = "RTLD_LOCAL"
-value = "0x0"
-comment = "Symbols are not made available to other objects."
+[[rust_constants]]
+path = "dlfcn::RTLD_LOCAL"
+emit = false
 
-[[macros]]
-name = "RTLD_DEFAULT"
-value = "((void *)0)"
-comment = "Pseudo-handle: search the global (default) symbol scope."
+[[rust_constants]]
+path = "dlfcn::RTLD_DEFAULT"
+c_value = "((void *)0)"
+emit = false
 
-[[types]]
-text = """
+[[rust_types]]
+path = "dlfcn::DlInfo"
+c_declaration = '''
 /** @brief Symbol information returned by dladdr(). */
 typedef struct {
     const char *dli_fname; /**< Pathname of the mapped object.       */
     void *dli_fbase;       /**< Base address of the mapped object.   */
     const char *dli_sname; /**< Name of the nearest symbol.          */
     void *dli_saddr;       /**< Exact address of the symbol.         */
-} Dl_info_t;
-"""
+} Dl_info_t;'''
 
 [[sections]]
 title = "Dynamic Linking"

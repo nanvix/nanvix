@@ -18,10 +18,11 @@ use crate::sys_types::time_t;
 //==================================================================================================
 
 #[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct utimbuf {
     /// Access time.
     pub actime: time_t,
     /// Modification time.
     pub modtime: time_t,
 }
+::static_assert::assert_eq_align!(utimbuf, core::mem::align_of::<time_t>());

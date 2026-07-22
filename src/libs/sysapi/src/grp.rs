@@ -21,6 +21,7 @@ use ::core::mem;
 // Types
 //==================================================================================================
 
+/// Group database entry.
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct group {

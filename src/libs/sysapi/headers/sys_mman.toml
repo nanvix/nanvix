@@ -14,69 +14,73 @@ interfaces. Constants mirror the Rust definitions in the sysapi crate
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_MMAN_H"
 scan_crates = ["syscall"]
-content_order = ["macros", "raw:0", "section:0", "section:1", "section:2", "section:3"]
+content_order = [
+    "rust_constants",
+    "section:0",
+    "section:1",
+    "section:2",
+    "section:3",
+]
 
-[[macros]]
-name = "PROT_NONE"
-value = "0x0"
+[[rust_constants]]
+path = "sys_mman::prot_flags::PROT_NONE"
+c_value = "0x0"
 comment = "Page cannot be accessed."
 
-[[macros]]
-name = "PROT_READ"
-value = "0x1"
+[[rust_constants]]
+path = "sys_mman::prot_flags::PROT_READ"
+c_value = "0x1"
 comment = "Page can be read."
 
-[[macros]]
-name = "PROT_WRITE"
-value = "0x2"
+[[rust_constants]]
+path = "sys_mman::prot_flags::PROT_WRITE"
+c_value = "0x2"
 comment = "Page can be written."
 
-[[macros]]
-name = "PROT_EXEC"
-value = "0x4"
+[[rust_constants]]
+path = "sys_mman::prot_flags::PROT_EXEC"
+c_value = "0x4"
 comment = "Page can be executed."
 
-[[macros]]
-name = "MAP_SHARED"
-value = "0x01"
+[[rust_constants]]
+path = "sys_mman::flags::MAP_SHARED"
+c_value = "0x01"
 comment = "Share changes."
 
-[[macros]]
-name = "MAP_PRIVATE"
-value = "0x02"
+[[rust_constants]]
+path = "sys_mman::flags::MAP_PRIVATE"
+c_value = "0x02"
 comment = "Changes are private."
 
-[[macros]]
-name = "MAP_FIXED"
-value = "0x10"
+[[rust_constants]]
+path = "sys_mman::flags::MAP_FIXED"
+c_value = "0x10"
 comment = "Interpret the address exactly."
 
-[[macros]]
-name = "MAP_ANONYMOUS"
-value = "0x20"
+[[rust_constants]]
+path = "sys_mman::flags::MAP_ANONYMOUS"
+c_value = "0x20"
 comment = "Anonymous mapping (not backed by a file)."
 
-[[macros]]
-name = "MS_ASYNC"
-value = "0x1"
+[[rust_constants]]
+path = "sys_mman::msync_flags::MS_ASYNC"
+c_value = "0x1"
 comment = "Perform asynchronous writes."
 
-[[macros]]
-name = "MS_INVALIDATE"
-value = "0x2"
+[[rust_constants]]
+path = "sys_mman::msync_flags::MS_INVALIDATE"
+c_value = "0x2"
 comment = "Invalidate cached copies of mapped data."
 
-[[macros]]
-name = "MS_SYNC"
-value = "0x4"
+[[rust_constants]]
+path = "sys_mman::msync_flags::MS_SYNC"
+c_value = "0x4"
 comment = "Perform synchronous writes."
 
-[[raw_sections]]
-title = ""
-text = """
-/** @brief Returned by mmap() on failure. */
-#define MAP_FAILED ((void *)-1)
-"""
+[[rust_constants]]
+path = "sys_mman::MAP_FAILED"
+c_declaration = "\n/** @brief Returned by mmap() on failure. */\n#define MAP_FAILED ((void *)-1)"
+no_comment = true
 
 [[sections]]
 title = "Memory Mapping"

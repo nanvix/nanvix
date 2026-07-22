@@ -14,18 +14,15 @@
 use ::sys::error::ErrorCode;
 use ::sysapi::{
     ffi::c_int,
-    sys_resource::rlimit,
+    sys_resource::{
+        rlimit,
+        PRIO_PGRP,
+        PRIO_PROCESS,
+        PRIO_USER,
+    },
 };
 use ::syscall::errno::__errno_location;
 use ::syslog::trace_syscall;
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-const PRIO_PROCESS: c_int = 0;
-const PRIO_PGRP: c_int = 1;
-const PRIO_USER: c_int = 2;
 
 //==================================================================================================
 // Standalone Functions

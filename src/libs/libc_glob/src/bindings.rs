@@ -27,6 +27,19 @@ use ::sysapi::{
         c_int,
         c_void,
     },
+    glob::{
+        glob_t as GlobT,
+        GLOB_ABORTED,
+        GLOB_APPEND,
+        GLOB_DOOFFS,
+        GLOB_ERR,
+        GLOB_MARK,
+        GLOB_NOCHECK,
+        GLOB_NOESCAPE,
+        GLOB_NOMATCH,
+        GLOB_NOSORT,
+        GLOB_NOSPACE,
+    },
     sys_stat::{
         file_type::S_ISDIR,
         stat as stat_t,
@@ -38,34 +51,6 @@ use ::syslog::trace_libcall;
 //==================================================================================================
 // Constants
 //==================================================================================================
-
-//
-// Flag bits accepted in the `flags` argument, mirroring `<glob.h>`.
-//
-/// Stop the scan and return on read errors.
-const GLOB_ERR: c_int = 0x0001;
-/// Append a `'/'` to each matched pathname that is a directory.
-const GLOB_MARK: c_int = 0x0002;
-/// Do not sort the matched pathnames.
-const GLOB_NOSORT: c_int = 0x0004;
-/// Reserve `gl_offs` leading slots in `gl_pathv`.
-const GLOB_DOOFFS: c_int = 0x0008;
-/// Return the pattern itself when it matches no pathname.
-const GLOB_NOCHECK: c_int = 0x0010;
-/// Append the generated pathnames to those of a previous call.
-const GLOB_APPEND: c_int = 0x0020;
-/// Disable backslash escaping in the pattern.
-const GLOB_NOESCAPE: c_int = 0x0040;
-
-//
-// Return values, mirroring `<glob.h>`.
-//
-/// An attempt to allocate memory failed.
-const GLOB_NOSPACE: c_int = 1;
-/// The scan was stopped because a directory could not be read.
-const GLOB_ABORTED: c_int = 2;
-/// The pattern did not match any existing pathname.
-const GLOB_NOMATCH: c_int = 3;
 
 //
 // Flag bits passed to `fnmatch()`, mirroring `<fnmatch.h>`.
@@ -86,21 +71,6 @@ extern "C" {
     fn readdir(dirp: *mut c_void) -> *mut dirent;
     fn closedir(dirp: *mut c_void) -> c_int;
     fn stat(pathname: *const c_char, statbuf: *mut stat_t) -> c_int;
-}
-
-//==================================================================================================
-// Structures
-//==================================================================================================
-
-/// Mirror of the C `glob_t` result structure declared in `<glob.h>`.
-///
-/// The fields match the C ABI layout `{ size_t gl_pathc; char **gl_pathv; size_t gl_offs; }` and are
-/// read and written through the raw pointer supplied by the caller.
-#[repr(C)]
-struct GlobT {
-    gl_pathc: usize,
-    gl_pathv: *mut *mut c_char,
-    gl_offs: usize,
 }
 
 /// Internal control-flow signal raised when a directory scan must stop early at the caller's

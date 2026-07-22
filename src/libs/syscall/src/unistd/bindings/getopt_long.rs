@@ -16,17 +16,12 @@ use ::sysapi::ffi::{
     c_char,
     c_int,
 };
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-/// `has_arg` value: the long option takes no argument.
-pub const NO_ARGUMENT: c_int = 0;
-/// `has_arg` value: the long option requires an argument.
-pub const REQUIRED_ARGUMENT: c_int = 1;
-/// `has_arg` value: the long option takes an optional argument.
-pub const OPTIONAL_ARGUMENT: c_int = 2;
+pub use ::sysapi::getopt::{
+    option as LongOption,
+    NO_ARGUMENT,
+    OPTIONAL_ARGUMENT,
+    REQUIRED_ARGUMENT,
+};
 
 /// The `'-'` path separator that introduces an option.
 const DASH: c_char = b'-' as c_char;
@@ -73,24 +68,6 @@ struct ResolvedLongOption {
     eq: Option<usize>,
     /// Matched index inside the long option table.
     matched: usize,
-}
-
-///
-/// # Description
-///
-/// A single entry in the array of long options passed to [`getopt_long`]. Mirrors the GNU
-/// `struct option` layout.
-///
-#[repr(C)]
-pub struct LongOption {
-    /// The long option name (without the leading `"--"`).
-    pub name: *const c_char,
-    /// One of [`NO_ARGUMENT`], [`REQUIRED_ARGUMENT`], or [`OPTIONAL_ARGUMENT`].
-    pub has_arg: c_int,
-    /// If non-null, `getopt_long` stores `val` here and returns `0`.
-    pub flag: *mut c_int,
-    /// The value to return (or store through `flag`) when this option is matched.
-    pub val: c_int,
 }
 
 //==================================================================================================

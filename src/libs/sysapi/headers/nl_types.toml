@@ -8,21 +8,37 @@ brief = "Message catalog and language information types."
 description = '''
 '''
 guard = "_NANVIX_NL_TYPES_H"
-content_order = ["types", "raw:0", "raw:1"]
+content_order = ["rust_types:types", "rust_constants:constants", "raw:0"]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "nl_types::nl_item"
+group = "types"
+section_title = "Types"
+c_declaration = '''
 /** @brief Type used by nl_langinfo() to identify a locale item. */
 typedef int nl_item;
 
 /** @brief Message catalog descriptor. */
 typedef void *nl_catd;'''
 
-[[raw_sections]]
-title = "Constants"
-text = '''
+[[rust_types]]
+path = "nl_types::nl_catd"
+group = "types"
+emit = false
+
+[[rust_constants]]
+path = "nl_types::NL_SETD"
+group = "constants"
+section_title = "Constants"
+c_declaration = '''
 #define NL_SETD 1
 #define NL_CAT_LOCALE 1'''
+no_comment = true
+
+[[rust_constants]]
+path = "nl_types::NL_CAT_LOCALE"
+group = "constants"
+emit = false
 
 [[raw_sections]]
 title = "Functions"

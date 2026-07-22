@@ -15,21 +15,22 @@ includes = ["sys/types.h"]
 guard = "_NANVIX_TERMIOS_H"
 scan_crates = ["nanvix_libc"]
 content_order = [
-    "types",
+    "rust_types",
     "raw:0",
     "raw:1",
     "raw:2",
     "raw:3",
     "raw:4",
     "raw:5",
-    "raw:6",
-    "raw:7",
-    "raw:8",
+    "rust_constants:tcsetattr_actions",
+    "rust_constants:flush_queues",
+    "rust_constants:flow_actions",
     "section:0",
 ]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "termios::tcflag_t"
+c_declaration = '''
 typedef unsigned int tcflag_t;
 typedef unsigned char cc_t;
 typedef unsigned int speed_t;
@@ -46,6 +47,536 @@ struct termios {
     speed_t c_ispeed; /**< Input speed.   */
     speed_t c_ospeed; /**< Output speed.  */
 };'''
+
+[[rust_types]]
+path = "termios::cc_t"
+emit = false
+
+[[rust_types]]
+path = "termios::speed_t"
+emit = false
+
+[[rust_types]]
+path = "termios::Termios"
+c_name = "termios"
+style = "tag"
+emit = false
+
+[[rust_constants]]
+path = "termios::NCCS"
+emit = false
+
+[[rust_constants]]
+path = "termios::IGNBRK"
+emit = false
+
+[[rust_constants]]
+path = "termios::BRKINT"
+emit = false
+
+[[rust_constants]]
+path = "termios::IGNPAR"
+emit = false
+
+[[rust_constants]]
+path = "termios::PARMRK"
+emit = false
+
+[[rust_constants]]
+path = "termios::INPCK"
+emit = false
+
+[[rust_constants]]
+path = "termios::ISTRIP"
+emit = false
+
+[[rust_constants]]
+path = "termios::INLCR"
+emit = false
+
+[[rust_constants]]
+path = "termios::IGNCR"
+emit = false
+
+[[rust_constants]]
+path = "termios::ICRNL"
+emit = false
+
+[[rust_constants]]
+path = "termios::IUCLC"
+emit = false
+
+[[rust_constants]]
+path = "termios::IXON"
+emit = false
+
+[[rust_constants]]
+path = "termios::IXANY"
+emit = false
+
+[[rust_constants]]
+path = "termios::IXOFF"
+emit = false
+
+[[rust_constants]]
+path = "termios::IMAXBEL"
+emit = false
+
+[[rust_constants]]
+path = "termios::IUTF8"
+emit = false
+
+[[rust_constants]]
+path = "termios::OPOST"
+emit = false
+
+[[rust_constants]]
+path = "termios::OLCUC"
+emit = false
+
+[[rust_constants]]
+path = "termios::ONLCR"
+emit = false
+
+[[rust_constants]]
+path = "termios::OCRNL"
+emit = false
+
+[[rust_constants]]
+path = "termios::ONOCR"
+emit = false
+
+[[rust_constants]]
+path = "termios::ONLRET"
+emit = false
+
+[[rust_constants]]
+path = "termios::OFILL"
+emit = false
+
+[[rust_constants]]
+path = "termios::OFDEL"
+emit = false
+
+[[rust_constants]]
+path = "termios::NLDLY"
+emit = false
+
+[[rust_constants]]
+path = "termios::NL0"
+emit = false
+
+[[rust_constants]]
+path = "termios::NL1"
+emit = false
+
+[[rust_constants]]
+path = "termios::CRDLY"
+emit = false
+
+[[rust_constants]]
+path = "termios::CR0"
+emit = false
+
+[[rust_constants]]
+path = "termios::CR1"
+emit = false
+
+[[rust_constants]]
+path = "termios::CR2"
+emit = false
+
+[[rust_constants]]
+path = "termios::CR3"
+emit = false
+
+[[rust_constants]]
+path = "termios::TABDLY"
+emit = false
+
+[[rust_constants]]
+path = "termios::TAB0"
+emit = false
+
+[[rust_constants]]
+path = "termios::TAB1"
+emit = false
+
+[[rust_constants]]
+path = "termios::TAB2"
+emit = false
+
+[[rust_constants]]
+path = "termios::TAB3"
+emit = false
+
+[[rust_constants]]
+path = "termios::XTABS"
+emit = false
+
+[[rust_constants]]
+path = "termios::BSDLY"
+emit = false
+
+[[rust_constants]]
+path = "termios::BS0"
+emit = false
+
+[[rust_constants]]
+path = "termios::BS1"
+emit = false
+
+[[rust_constants]]
+path = "termios::VTDLY"
+emit = false
+
+[[rust_constants]]
+path = "termios::VT0"
+emit = false
+
+[[rust_constants]]
+path = "termios::VT1"
+emit = false
+
+[[rust_constants]]
+path = "termios::FFDLY"
+emit = false
+
+[[rust_constants]]
+path = "termios::FF0"
+emit = false
+
+[[rust_constants]]
+path = "termios::FF1"
+emit = false
+
+[[rust_constants]]
+path = "termios::CBAUD"
+emit = false
+
+[[rust_constants]]
+path = "termios::B0"
+emit = false
+
+[[rust_constants]]
+path = "termios::B50"
+emit = false
+
+[[rust_constants]]
+path = "termios::B75"
+emit = false
+
+[[rust_constants]]
+path = "termios::B110"
+emit = false
+
+[[rust_constants]]
+path = "termios::B134"
+emit = false
+
+[[rust_constants]]
+path = "termios::B150"
+emit = false
+
+[[rust_constants]]
+path = "termios::B200"
+emit = false
+
+[[rust_constants]]
+path = "termios::B300"
+emit = false
+
+[[rust_constants]]
+path = "termios::B600"
+emit = false
+
+[[rust_constants]]
+path = "termios::B1200"
+emit = false
+
+[[rust_constants]]
+path = "termios::B1800"
+emit = false
+
+[[rust_constants]]
+path = "termios::B2400"
+emit = false
+
+[[rust_constants]]
+path = "termios::B4800"
+emit = false
+
+[[rust_constants]]
+path = "termios::B9600"
+emit = false
+
+[[rust_constants]]
+path = "termios::B19200"
+emit = false
+
+[[rust_constants]]
+path = "termios::B38400"
+emit = false
+
+[[rust_constants]]
+path = "termios::EXTA"
+emit = false
+
+[[rust_constants]]
+path = "termios::EXTB"
+emit = false
+
+[[rust_constants]]
+path = "termios::CBAUDEX"
+emit = false
+
+[[rust_constants]]
+path = "termios::B57600"
+emit = false
+
+[[rust_constants]]
+path = "termios::B115200"
+emit = false
+
+[[rust_constants]]
+path = "termios::B230400"
+emit = false
+
+[[rust_constants]]
+path = "termios::B460800"
+emit = false
+
+[[rust_constants]]
+path = "termios::B500000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B576000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B921600"
+emit = false
+
+[[rust_constants]]
+path = "termios::B1000000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B1152000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B1500000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B2000000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B2500000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B3000000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B3500000"
+emit = false
+
+[[rust_constants]]
+path = "termios::B4000000"
+emit = false
+
+[[rust_constants]]
+path = "termios::CSIZE"
+emit = false
+
+[[rust_constants]]
+path = "termios::CS5"
+emit = false
+
+[[rust_constants]]
+path = "termios::CS6"
+emit = false
+
+[[rust_constants]]
+path = "termios::CS7"
+emit = false
+
+[[rust_constants]]
+path = "termios::CS8"
+emit = false
+
+[[rust_constants]]
+path = "termios::CSTOPB"
+emit = false
+
+[[rust_constants]]
+path = "termios::CREAD"
+emit = false
+
+[[rust_constants]]
+path = "termios::PARENB"
+emit = false
+
+[[rust_constants]]
+path = "termios::PARODD"
+emit = false
+
+[[rust_constants]]
+path = "termios::HUPCL"
+emit = false
+
+[[rust_constants]]
+path = "termios::CLOCAL"
+emit = false
+
+[[rust_constants]]
+path = "termios::CIBAUD"
+emit = false
+
+[[rust_constants]]
+path = "termios::CMSPAR"
+emit = false
+
+[[rust_constants]]
+path = "termios::CRTSCTS"
+emit = false
+
+[[rust_constants]]
+path = "termios::ISIG"
+emit = false
+
+[[rust_constants]]
+path = "termios::ICANON"
+emit = false
+
+[[rust_constants]]
+path = "termios::XCASE"
+emit = false
+
+[[rust_constants]]
+path = "termios::ECHO"
+emit = false
+
+[[rust_constants]]
+path = "termios::ECHOE"
+emit = false
+
+[[rust_constants]]
+path = "termios::ECHOK"
+emit = false
+
+[[rust_constants]]
+path = "termios::ECHONL"
+emit = false
+
+[[rust_constants]]
+path = "termios::NOFLSH"
+emit = false
+
+[[rust_constants]]
+path = "termios::TOSTOP"
+emit = false
+
+[[rust_constants]]
+path = "termios::ECHOCTL"
+emit = false
+
+[[rust_constants]]
+path = "termios::ECHOPRT"
+emit = false
+
+[[rust_constants]]
+path = "termios::ECHOKE"
+emit = false
+
+[[rust_constants]]
+path = "termios::FLUSHO"
+emit = false
+
+[[rust_constants]]
+path = "termios::PENDIN"
+emit = false
+
+[[rust_constants]]
+path = "termios::IEXTEN"
+emit = false
+
+[[rust_constants]]
+path = "termios::EXTPROC"
+emit = false
+
+[[rust_constants]]
+path = "termios::VINTR"
+emit = false
+
+[[rust_constants]]
+path = "termios::VQUIT"
+emit = false
+
+[[rust_constants]]
+path = "termios::VERASE"
+emit = false
+
+[[rust_constants]]
+path = "termios::VKILL"
+emit = false
+
+[[rust_constants]]
+path = "termios::VEOF"
+emit = false
+
+[[rust_constants]]
+path = "termios::VTIME"
+emit = false
+
+[[rust_constants]]
+path = "termios::VMIN"
+emit = false
+
+[[rust_constants]]
+path = "termios::VSWTC"
+emit = false
+
+[[rust_constants]]
+path = "termios::VSTART"
+emit = false
+
+[[rust_constants]]
+path = "termios::VSTOP"
+emit = false
+
+[[rust_constants]]
+path = "termios::VSUSP"
+emit = false
+
+[[rust_constants]]
+path = "termios::VEOL"
+emit = false
+
+[[rust_constants]]
+path = "termios::VREPRINT"
+emit = false
+
+[[rust_constants]]
+path = "termios::VDISCARD"
+emit = false
+
+[[rust_constants]]
+path = "termios::VWERASE"
+emit = false
+
+[[rust_constants]]
+path = "termios::VLNEXT"
+emit = false
+
+[[rust_constants]]
+path = "termios::VEOL2"
+emit = false
 
 [[raw_sections]]
 title = "Input flags (c_iflag)"
@@ -199,27 +730,71 @@ text = '''
 #define VLNEXT 15
 #define VEOL2 16'''
 
-[[raw_sections]]
-title = "Optional actions for tcsetattr()"
-text = '''
+[[rust_constants]]
+path = "termios::TCSANOW"
+group = "tcsetattr_actions"
+section_title = "Optional actions for tcsetattr()"
+c_declaration = '''
 #define TCSANOW 0
 #define TCSADRAIN 1
 #define TCSAFLUSH 2'''
+no_comment = true
 
-[[raw_sections]]
-title = "Queue selectors for tcflush()"
-text = '''
+[[rust_constants]]
+path = "termios::TCSADRAIN"
+group = "tcsetattr_actions"
+emit = false
+
+[[rust_constants]]
+path = "termios::TCSAFLUSH"
+group = "tcsetattr_actions"
+emit = false
+
+[[rust_constants]]
+path = "termios::TCIFLUSH"
+group = "flush_queues"
+section_title = "Queue selectors for tcflush()"
+c_declaration = '''
 #define TCIFLUSH 0
 #define TCOFLUSH 1
 #define TCIOFLUSH 2'''
+no_comment = true
 
-[[raw_sections]]
-title = "Actions for tcflow()"
-text = '''
+[[rust_constants]]
+path = "termios::TCOFLUSH"
+group = "flush_queues"
+emit = false
+
+[[rust_constants]]
+path = "termios::TCIOFLUSH"
+group = "flush_queues"
+emit = false
+
+[[rust_constants]]
+path = "termios::TCOOFF"
+group = "flow_actions"
+section_title = "Actions for tcflow()"
+c_declaration = '''
 #define TCOOFF 0
 #define TCOON 1
 #define TCIOFF 2
 #define TCION 3'''
+no_comment = true
+
+[[rust_constants]]
+path = "termios::TCOON"
+group = "flow_actions"
+emit = false
+
+[[rust_constants]]
+path = "termios::TCIOFF"
+group = "flow_actions"
+emit = false
+
+[[rust_constants]]
+path = "termios::TCION"
+group = "flow_actions"
+emit = false
 
 [[sections]]
 title = "Functions"

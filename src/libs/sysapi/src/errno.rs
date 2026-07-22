@@ -33,6 +33,8 @@ pub const EBADF: c_int = 9;
 pub const ECHILD: c_int = 10;
 /// Try again.
 pub const EAGAIN: c_int = 11;
+/// Operation would block.
+pub const EWOULDBLOCK: c_int = EAGAIN;
 /// Out of memory.
 pub const ENOMEM: c_int = 12;
 /// Permission denied.

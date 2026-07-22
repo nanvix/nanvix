@@ -35,7 +35,7 @@ pub const SUNPATHLEN: usize = 14;
 //==================================================================================================
 
 /// AUNIX domain socket address.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Debug)]
 pub struct sockaddr_un {
     /// Total length.
@@ -47,6 +47,7 @@ pub struct sockaddr_un {
 }
 ::static_assert::assert_eq_size!(sockaddr_un, sockaddr_un::_SIZE);
 ::static_assert::assert_eq_size!(sockaddr_un, size_of::<sockaddr_storage>());
+::static_assert::assert_eq_align!(sockaddr_un, core::mem::align_of::<c_uchar>());
 
 impl sockaddr_un {
     /// Size of this structure, used for static assertions.

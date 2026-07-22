@@ -12,10 +12,11 @@ simulation with submatch tracking, supporting BRE and ERE, anchors, character
 classes, quantifiers, capturing groups, and alternation.'''
 includes = ["stddef.h"]
 guard = "_NANVIX_REGEX_H"
-content_order = ["types", "raw:0", "raw:1"]
+content_order = ["rust_types", "rust_constants:flags", "raw:0"]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "types::regoff_t"
+c_declaration = '''
 /* Signed offset wide enough to hold a ptrdiff_t/ssize_t value, as POSIX requires. */
 typedef ptrdiff_t regoff_t;
 
@@ -32,9 +33,19 @@ typedef struct {
     regoff_t rm_eo; /**< Byte offset past the match end, or -1. */
 } regmatch_t;'''
 
-[[raw_sections]]
-title = "Flags and Error Codes"
-text = '''
+[[rust_types]]
+path = "types::regex_t"
+emit = false
+
+[[rust_types]]
+path = "types::regmatch_t"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_EXTENDED"
+group = "flags"
+section_title = "Flags and Error Codes"
+c_declaration = '''
 /* cflags for regcomp(). */
 #define REG_EXTENDED 0x0001
 #define REG_ICASE    0x0002
@@ -61,6 +72,87 @@ text = '''
 #define REG_ERANGE   11
 #define REG_ESPACE   12
 #define REG_BADRPT   13'''
+no_comment = true
+
+[[rust_constants]]
+path = "types::REG_ICASE"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_NEWLINE"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_NOSUB"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_MINIMAL"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_NOTBOL"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_NOTEOL"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_NOERROR"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_NOMATCH"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_BADPAT"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_ECOLLATE"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_ECTYPE"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_EESCAPE"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_ESUBREG"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_EBRACK"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_EPAREN"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_EBRACE"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_BADBR"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_ERANGE"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_ESPACE"
+emit = false
+
+[[rust_constants]]
+path = "types::REG_BADRPT"
+emit = false
 
 [[raw_sections]]
 title = "Regular Expression Functions"

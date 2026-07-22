@@ -18,6 +18,7 @@ use ::sysapi::{
         c_char,
         c_int,
     },
+    unistd::access_mode::F_OK,
 };
 
 //==================================================================================================
@@ -26,9 +27,6 @@ use ::sysapi::{
 
 /// Maximum number of distinct names to try before giving up.
 const MAX_ATTEMPTS: u32 = 128;
-
-/// `access()` mode that tests only for the existence of a path.
-const F_OK: c_int = 0;
 
 //==================================================================================================
 // Standalone Functions

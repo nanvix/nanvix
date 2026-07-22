@@ -14,8 +14,18 @@ the libc_inttypes Rust crate."""
 includes = ["stdint.h"]
 guard = "_NANVIX_INTTYPES_H"
 
-[[types]]
-text = """
+[[rust_types]]
+path = "inttypes::intmax_t"
+emit = false
+
+[[rust_types]]
+path = "inttypes::uintmax_t"
+emit = false
+
+[[rust_types]]
+path = "imaxdiv::imaxdiv_t"
+c_only_reason = "_INTMAX_T_DEFINED is a C typedef ownership guard."
+c_declaration = """
 #ifndef _INTMAX_T_DEFINED
 #define _INTMAX_T_DEFINED
 typedef int64_t intmax_t;
@@ -28,6 +38,7 @@ typedef struct {
     intmax_t rem;  /**< Remainder. */
 } imaxdiv_t;
 """
+no_comment = true
 
 [[sections]]
 title = "Functions"
@@ -35,6 +46,7 @@ functions = ["imaxabs", "imaxdiv", "strtoimax", "strtoumax"]
 
 # Format macros live outside extern "C" block — added as trailer.
 [trailer]
+c_only_reason = "C printf/scanf format fragments encode C length modifiers and promotions."
 text = """
 /*==================================================================================================
  * printf Format Macros

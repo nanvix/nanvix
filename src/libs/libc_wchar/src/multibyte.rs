@@ -41,55 +41,61 @@ const SIZE_INCOMPLETE: usize = usize::MAX - 1;
 /// state is kept thread-local to avoid data races. On the guest `no_std` build there is no
 /// thread-local support, so a process-global state is used instead, matching the conventional
 /// single-threaded C library behavior.
-#[cfg(feature = "std")]
-mod internal_state {
-    use crate::mbstate::mbstate_t;
-    use ::core::cell::Cell;
+macro_rules! define_internal_state {
+    () => {
+        #[cfg(feature = "std")]
+        mod internal_state {
+            use crate::mbstate::mbstate_t;
+            use ::core::cell::Cell;
 
-    std::thread_local! {
-        static MBRTOWC_STATE: Cell<mbstate_t> =
-            const { Cell::new(mbstate_t { count: 0, bytes: [0; 4] }) };
-        static MBRLEN_STATE: Cell<mbstate_t> =
-            const { Cell::new(mbstate_t { count: 0, bytes: [0; 4] }) };
-    }
+            std::thread_local! {
+                static MBRTOWC_STATE: Cell<mbstate_t> =
+                    const { Cell::new(mbstate_t { count: 0, bytes: [0; 4] }) };
+                static MBRLEN_STATE: Cell<mbstate_t> =
+                    const { Cell::new(mbstate_t { count: 0, bytes: [0; 4] }) };
+            }
 
-    /// Returns a pointer to the thread-local internal state used by `mbrtowc()`.
-    pub(super) fn mbrtowc_state() -> *mut mbstate_t {
-        MBRTOWC_STATE.with(Cell::as_ptr)
-    }
+            /// Returns a pointer to the thread-local internal state used by `mbrtowc()`.
+            pub(super) fn mbrtowc_state() -> *mut mbstate_t {
+                MBRTOWC_STATE.with(Cell::as_ptr)
+            }
 
-    /// Returns a pointer to the thread-local internal state used by `mbrlen()`.
-    pub(super) fn mbrlen_state() -> *mut mbstate_t {
-        MBRLEN_STATE.with(Cell::as_ptr)
-    }
+            /// Returns a pointer to the thread-local internal state used by `mbrlen()`.
+            pub(super) fn mbrlen_state() -> *mut mbstate_t {
+                MBRLEN_STATE.with(Cell::as_ptr)
+            }
+        }
+
+        #[cfg(not(feature = "std"))]
+        mod internal_state {
+            use crate::mbstate::mbstate_t;
+
+            /// Internal state used by `mbrtowc()` when the caller passes a null `mbstate_t`.
+            static mut MBRTOWC_STATE: mbstate_t = mbstate_t {
+                count: 0,
+                bytes: [0; 4],
+            };
+
+            /// Internal state used by `mbrlen()` when the caller passes a null `mbstate_t`.
+            static mut MBRLEN_STATE: mbstate_t = mbstate_t {
+                count: 0,
+                bytes: [0; 4],
+            };
+
+            /// Returns a pointer to the process-global internal state used by `mbrtowc()`.
+            pub(super) fn mbrtowc_state() -> *mut mbstate_t {
+                ::core::ptr::addr_of_mut!(MBRTOWC_STATE)
+            }
+
+            /// Returns a pointer to the process-global internal state used by `mbrlen()`.
+            pub(super) fn mbrlen_state() -> *mut mbstate_t {
+                ::core::ptr::addr_of_mut!(MBRLEN_STATE)
+            }
+        }
+    };
 }
 
-#[cfg(not(feature = "std"))]
-mod internal_state {
-    use crate::mbstate::mbstate_t;
-
-    /// Internal state used by `mbrtowc()` when the caller passes a null `mbstate_t`.
-    static mut MBRTOWC_STATE: mbstate_t = mbstate_t {
-        count: 0,
-        bytes: [0; 4],
-    };
-
-    /// Internal state used by `mbrlen()` when the caller passes a null `mbstate_t`.
-    static mut MBRLEN_STATE: mbstate_t = mbstate_t {
-        count: 0,
-        bytes: [0; 4],
-    };
-
-    /// Returns a pointer to the process-global internal state used by `mbrtowc()`.
-    pub(super) fn mbrtowc_state() -> *mut mbstate_t {
-        ::core::ptr::addr_of_mut!(MBRTOWC_STATE)
-    }
-
-    /// Returns a pointer to the process-global internal state used by `mbrlen()`.
-    pub(super) fn mbrlen_state() -> *mut mbstate_t {
-        ::core::ptr::addr_of_mut!(MBRLEN_STATE)
-    }
-}
+define_internal_state!();
 
 //==================================================================================================
 // Helpers

@@ -13,15 +13,13 @@ description files (/etc/fstab and /etc/mtab), implemented by the libc_mntent
 Rust crate as thin parsers layered on top of <stdio.h>."""
 includes = ["stdio.h"]
 guard = "_NANVIX_MNTENT_H"
-content_order = [
-    "raw:0",
-    "raw:1",
-    "section:0",
-]
+content_order = ["rust_constants:paths", "rust_types:entries", "section:0"]
 
-[[raw_sections]]
-title = "Paths and Options"
-text = '''
+[[rust_constants]]
+path = "MNTTAB"
+group = "paths"
+section_title = "Paths and Options"
+c_declaration = '''
 #define MNTTAB  "/etc/fstab"
 #define MOUNTED "/etc/mtab"
 
@@ -35,10 +33,65 @@ text = '''
 #define MNTOPT_SUID     "suid"
 #define MNTOPT_NOSUID   "nosuid"
 #define MNTOPT_NOAUTO   "noauto"'''
+no_comment = true
 
-[[raw_sections]]
-title = "Types"
-text = '''
+[[rust_constants]]
+path = "MOUNTED"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTTYPE_IGNORE"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTTYPE_NFS"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTTYPE_SWAP"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTOPT_DEFAULTS"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTOPT_RO"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTOPT_RW"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTOPT_SUID"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTOPT_NOSUID"
+group = "paths"
+emit = false
+
+[[rust_constants]]
+path = "MNTOPT_NOAUTO"
+group = "paths"
+emit = false
+
+[[rust_types]]
+path = "Mntent"
+c_name = "mntent"
+style = "tag"
+group = "entries"
+section_title = "Types"
+c_declaration = '''
 /** @brief Filesystem table entry. */
 struct mntent {
     char *mnt_fsname; /**< Device or remote filesystem.  */
@@ -51,7 +104,14 @@ struct mntent {
 
 [[sections]]
 title = "Filesystem Table Access"
-functions = ["setmntent", "getmntent", "getmntent_r", "addmntent", "endmntent", "hasmntopt"]
+functions = [
+    "setmntent",
+    "getmntent",
+    "getmntent_r",
+    "addmntent",
+    "endmntent",
+    "hasmntopt",
+]
 
 [overrides]
 setmntent = '''

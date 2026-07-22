@@ -17,12 +17,16 @@ pub mod socket_option_values {
 
     /// Don't delay send to coalesce packets.
     pub const TCP_NODELAY: c_int = 1;
+    /// Maximum TCP segment size.
+    pub const TCP_MAXSEG: c_int = 2;
+    /// Do not send partial frames.
+    pub const TCP_CORK: c_int = 3;
     /// N, time to establish connection.
     pub const TCP_KEEPINIT: c_int = 128;
     /// L,N,X start keeplives after this period.
-    pub const TCP_KEEPIDLE: c_int = 256;
+    pub const TCP_KEEPIDLE: c_int = 4;
     /// L,N interval between keepalives.
-    pub const TCP_KEEPINTVL: c_int = 512;
+    pub const TCP_KEEPINTVL: c_int = 5;
     /// L,N number of keepalives before close.
-    pub const TCP_KEEPCNT: c_int = 1024;
+    pub const TCP_KEEPCNT: c_int = 6;
 }

@@ -21,6 +21,13 @@ use ::sysapi::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Number of clock ticks per second.
+pub const CLOCKS_PER_SEC: clock_t = 1_000_000;
+
+//==================================================================================================
 // External Functions
 //==================================================================================================
 
@@ -38,7 +45,7 @@ extern "C" {
 /// `CLOCKS_PER_SEC` advertises. Returns `None` if the conversion overflows `clock_t`.
 fn ticks_from_timespec(sec: clock_t, nsec: c_long) -> Option<clock_t> {
     let nsec: clock_t = clock_t::from(nsec);
-    sec.checked_mul(1_000_000)?.checked_add(nsec / 1_000)
+    sec.checked_mul(CLOCKS_PER_SEC)?.checked_add(nsec / 1_000)
 }
 
 //==================================================================================================
