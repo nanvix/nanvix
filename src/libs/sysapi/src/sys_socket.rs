@@ -50,10 +50,23 @@ pub mod socket_address_family {
     pub const AF_UNSPEC: c_int = 0;
     /// Unix domain sockets.
     pub const AF_UNIX: c_int = 1;
+    /// Alias for Unix domain sockets.
+    pub const AF_LOCAL: c_int = AF_UNIX;
     /// Internet domain sockets for use with IPv4 addresses.
     pub const AF_INET: c_int = 2;
     /// Internet domain sockets for use with IPv6 addresses.
     pub const AF_INET6: c_int = 10;
+
+    /// Unspecified protocol family.
+    pub const PF_UNSPEC: c_int = AF_UNSPEC;
+    /// Unix domain protocol family.
+    pub const PF_UNIX: c_int = AF_UNIX;
+    /// Alias for the Unix domain protocol family.
+    pub const PF_LOCAL: c_int = AF_LOCAL;
+    /// Internet protocol family for IPv4.
+    pub const PF_INET: c_int = AF_INET;
+    /// Internet protocol family for IPv6.
+    pub const PF_INET6: c_int = AF_INET6;
 }
 
 /// Socket option names to be used with `setsockopt()` and `getsockopt()`.
@@ -132,49 +145,54 @@ pub const SOMAXCONN: c_int = 128;
 /// Options for socket level.
 pub const SOL_SOCKET: c_int = 0xffff;
 
+/// Size of the padding field in a generic socket address.
+pub const _SS_PADSIZE: usize = 14;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
 
 /// A structure large enough to hold any socket address.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct sockaddr_storage {
     /// Total length.
     pub ss_len: c_uchar,
     /// Address family.
     pub ss_family: sa_family_t,
     /// Address data.
-    pub ss_data: [u8; 14],
+    pub ss_data: [u8; _SS_PADSIZE],
 }
 ::static_assert::assert_eq_size!(sockaddr_storage, sockaddr_storage::_SIZE);
+::static_assert::assert_eq_align!(sockaddr_storage, core::mem::align_of::<c_uchar>());
 
 impl sockaddr_storage {
     /// Size of this structure, used in static assertions.
     const _SIZE: usize = size_of::<c_uchar>() + // ss_len
         size_of::<sa_family_t>() + // ss_family
-        size_of::<[u8; 14]>(); // ss_data
+        size_of::<[u8; _SS_PADSIZE]>(); // ss_data
 }
 
 /// Describes the address of a socket.
 #[derive(Copy, Clone, PartialEq, Eq)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct sockaddr {
     /// Total length.
     pub sa_len: c_uchar,
     /// Address family.
     pub sa_family: sa_family_t,
     /// Address data.
-    pub sa_data: [u8; 14],
+    pub sa_data: [u8; _SS_PADSIZE],
 }
 ::static_assert::assert_eq_size!(sockaddr, sockaddr::_SIZE);
 ::static_assert::assert_eq_size!(sockaddr, size_of::<sockaddr_storage>());
+::static_assert::assert_eq_align!(sockaddr, core::mem::align_of::<c_uchar>());
 
 impl sockaddr {
     /// Size of this structure, used in static assertions.
     const _SIZE: usize = size_of::<c_uchar>() + // sa_len
         size_of::<sa_family_t>() + // sa_family
-        size_of::<[u8; 14]>(); // sa_data
+        size_of::<[u8; _SS_PADSIZE]>(); // sa_data
 }
 
 impl fmt::Debug for sockaddr {
@@ -187,7 +205,7 @@ impl fmt::Debug for sockaddr {
     }
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct linger {
     /// Indicates whether linger option is enabled.
@@ -195,6 +213,7 @@ pub struct linger {
     ///Linger  time, in seconds.
     pub l_linger: c_int,
 }
+::static_assert::assert_eq_align!(linger, core::mem::align_of::<c_int>());
 
 //==================================================================================================
 // Function Prototypes

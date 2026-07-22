@@ -61,7 +61,7 @@ pub enum TimespecError {
 
 /// Time spec structure.
 #[derive(Default, Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct timespec {
     /// Seconds.
     pub tv_sec: time_t,
@@ -80,7 +80,7 @@ impl timespec {
     /// Offset of the nano-seconds field.
     const OFFSET_OF_TV_NSEC: usize = Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC;
 
-    /// In-memory size (matches `repr(C, packed)` layout, varies by target).
+    /// In-memory size (matches the target C ABI layout, varies by target).
     const SIZE: usize = Self::SIZE_OF_TV_SEC + Self::SIZE_OF_TV_NSEC;
 
     /// Wire format always uses i64 (8 bytes) for tv_nsec, ensuring IPC compatibility

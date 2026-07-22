@@ -4,19 +4,37 @@
 use sysapi::ffi::c_int;
 
 //==================================================================================================
+// Types
+//==================================================================================================
+
+/// Real floating-point type corresponding to `float`.
+#[allow(non_camel_case_types)]
+pub type float_t = f32;
+
+/// Real floating-point type corresponding to `double`.
+#[allow(non_camel_case_types)]
+pub type double_t = f64;
+
+//==================================================================================================
 // Constants
 //==================================================================================================
 
 /// IEEE 754 classification: Not a Number.
-const FP_NAN: c_int = 0;
+pub const FP_NAN: c_int = 0;
 /// IEEE 754 classification: Infinity.
-const FP_INFINITE: c_int = 1;
+pub const FP_INFINITE: c_int = 1;
 /// IEEE 754 classification: Zero.
-const FP_ZERO: c_int = 2;
+pub const FP_ZERO: c_int = 2;
 /// IEEE 754 classification: Subnormal.
-const FP_SUBNORMAL: c_int = 3;
+pub const FP_SUBNORMAL: c_int = 3;
 /// IEEE 754 classification: Normal.
-const FP_NORMAL: c_int = 4;
+pub const FP_NORMAL: c_int = 4;
+
+/// Value returned by `ilogb()` for a zero argument.
+pub const FP_ILOGB0: c_int = -2_147_483_647 - 1;
+
+/// Value returned by `ilogb()` for a NaN argument.
+pub const FP_ILOGBNAN: c_int = 2_147_483_647;
 
 //==================================================================================================
 // Public Functions

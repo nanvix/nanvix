@@ -10,17 +10,21 @@ description = '''
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_WAIT_H"
 scan_crates = ["syscall"]
-content_order = [
-    "raw:0",
-    "raw:1",
-    "section:0",
-]
+content_order = ["rust_constants:options", "raw:0", "section:0"]
+rust_constant_docs = false
 
-[[raw_sections]]
-title = "Options"
-text = '''
-#define WNOHANG 1
-#define WUNTRACED 2'''
+[[rust_constants]]
+path = "sys_wait::WNOHANG"
+group = "options"
+section_title = "Options"
+
+[[rust_constants]]
+path = "sys_wait::WUNTRACED"
+group = "options"
+
+[[rust_constants]]
+path = "sys_wait::WCOREFLAG"
+emit = false
 
 [[raw_sections]]
 title = "Status-decoding macros"

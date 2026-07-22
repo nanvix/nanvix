@@ -17,6 +17,12 @@
 #include <unistd.h>
 
 //==================================================================================================
+// Macros
+//==================================================================================================
+
+#define STATIC_ASSERT_ALIGNMENT(type, alignment) _Static_assert(_Alignof(type) == (alignment), #type)
+
+//==================================================================================================
 // Private Functions
 //==================================================================================================
 
@@ -366,6 +372,11 @@ int main(int argc, const char *argv[])
 {
     (void)argc;
     (void)argv;
+
+    STATIC_ASSERT_ALIGNMENT(struct in_addr, _Alignof(uint32_t));
+    STATIC_ASSERT_ALIGNMENT(struct sockaddr_in, _Alignof(uint32_t));
+    STATIC_ASSERT_ALIGNMENT(struct in6_addr, _Alignof(uint32_t));
+    STATIC_ASSERT_ALIGNMENT(struct sockaddr_in6, _Alignof(uint32_t));
 
     test_inet_ntoa();
     test_inet_ntoa_static_storage();

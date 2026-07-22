@@ -39,11 +39,71 @@ pub mod file_seek {
 }
 
 /// File number of standard input.
-pub const STDIN_FILENO: i32 = 0;
+pub const STDIN_FILENO: c_int = 0;
 /// File number of standard output.
-pub const STDOUT_FILENO: i32 = 1;
+pub const STDOUT_FILENO: c_int = 1;
 /// File number of standard error.
-pub const STDERR_FILENO: i32 = 2;
+pub const STDERR_FILENO: c_int = 2;
+
+/// Access mode bits for `access()` and `faccessat()`.
+pub mod access_mode {
+    use crate::ffi::c_int;
+
+    /// Test whether a path exists.
+    pub const F_OK: c_int = 0;
+    /// Test execute or search permission.
+    pub const X_OK: c_int = 1;
+    /// Test write permission.
+    pub const W_OK: c_int = 2;
+    /// Test read permission.
+    pub const R_OK: c_int = 4;
+}
+
+/// Path configuration names for `pathconf()` and `fpathconf()`.
+pub mod pathconf_names {
+    use crate::ffi::c_int;
+
+    /// Maximum number of links to a file.
+    pub const PC_LINK_MAX: c_int = 0;
+    /// Maximum bytes in a terminal canonical input line.
+    pub const PC_MAX_CANON: c_int = 1;
+    /// Maximum bytes in a terminal input queue.
+    pub const PC_MAX_INPUT: c_int = 2;
+    /// Maximum length of a filename component.
+    pub const PC_NAME_MAX: c_int = 3;
+    /// Maximum length of a relative pathname.
+    pub const PC_PATH_MAX: c_int = 4;
+    /// Maximum atomic write size to a pipe.
+    pub const PC_PIPE_BUF: c_int = 5;
+    /// Whether `chown()` is restricted.
+    pub const PC_CHOWN_RESTRICTED: c_int = 6;
+    /// Whether over-long pathname components produce an error.
+    pub const PC_NO_TRUNC: c_int = 7;
+    /// Terminal special-character disable value.
+    pub const PC_VDISABLE: c_int = 8;
+    /// Whether synchronized I/O is supported.
+    pub const PC_SYNC_IO: c_int = 9;
+    /// Whether asynchronous I/O is supported.
+    pub const PC_ASYNC_IO: c_int = 10;
+    /// Whether prioritized I/O is supported.
+    pub const PC_PRIO_IO: c_int = 11;
+    /// Number of bits used to represent a file's size.
+    pub const PC_FILESIZEBITS: c_int = 12;
+    /// Minimum allocation unit of a file.
+    pub const PC_ALLOC_SIZE_MIN: c_int = 13;
+    /// Recommended transfer size increment.
+    pub const PC_REC_INCR_XFER_SIZE: c_int = 14;
+    /// Maximum recommended transfer size.
+    pub const PC_REC_MAX_XFER_SIZE: c_int = 15;
+    /// Minimum recommended transfer size.
+    pub const PC_REC_MIN_XFER_SIZE: c_int = 16;
+    /// Recommended transfer buffer alignment.
+    pub const PC_REC_XFER_ALIGN: c_int = 17;
+    /// Maximum length of a symbolic-link target.
+    pub const PC_SYMLINK_MAX: c_int = 18;
+    /// Whether the file system supports symbolic links.
+    pub const PC_2_SYMLINKS: c_int = 19;
+}
 
 /// System configuration names for `sysconf()`.
 pub mod sysconf_names {

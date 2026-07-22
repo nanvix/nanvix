@@ -23,7 +23,23 @@ use ::sysapi::{
         c_int,
         c_void,
     },
-    netdb::addrinfo,
+    netdb::{
+        addrinfo,
+        AI_ADDRCONFIG,
+        AI_ALL,
+        AI_CANONNAME,
+        AI_NUMERICHOST,
+        AI_NUMERICSERV,
+        AI_PASSIVE,
+        AI_V4MAPPED,
+        EAI_BADFLAGS,
+        EAI_FAIL,
+        EAI_FAMILY,
+        EAI_MEMORY,
+        EAI_NONAME,
+        EAI_SERVICE,
+        EAI_SOCKTYPE,
+    },
     netinet_in::{
         in_addr,
         sockaddr_in,
@@ -67,22 +83,6 @@ extern "C" {
 // Constants
 //==================================================================================================
 
-// Address-information flags for `getaddrinfo()`. These mirror the values in `include/netdb.h`.
-
-/// Returns socket addresses suitable for binding a passive (listening) socket.
-const AI_PASSIVE: c_int = 0x0001;
-/// Requests the canonical name of the host.
-const AI_CANONNAME: c_int = 0x0002;
-/// Interprets `node` only as a numeric address string (never a host name).
-const AI_NUMERICHOST: c_int = 0x0004;
-/// Interprets `service` only as a numeric port string (never a service name).
-const AI_NUMERICSERV: c_int = 0x0008;
-/// Returns IPv4-mapped IPv6 addresses when no IPv6 addresses are found.
-const AI_V4MAPPED: c_int = 0x0800;
-/// Returns both IPv4 and IPv6 addresses (used together with `AI_V4MAPPED`).
-const AI_ALL: c_int = 0x0100;
-/// Returns addresses only for configured address families.
-const AI_ADDRCONFIG: c_int = 0x0400;
 /// Set of all recognized `getaddrinfo()` flags.
 const AI_MASK: c_int = AI_PASSIVE
     | AI_CANONNAME
@@ -91,23 +91,6 @@ const AI_MASK: c_int = AI_PASSIVE
     | AI_V4MAPPED
     | AI_ALL
     | AI_ADDRCONFIG;
-
-// Error codes returned by `getaddrinfo()`. These mirror the values in `include/netdb.h`.
-
-/// The `flags` field of the `hints` structure had an invalid value.
-const EAI_BADFLAGS: c_int = -1;
-/// The name does not resolve for the supplied parameters.
-const EAI_NONAME: c_int = -2;
-/// A non-recoverable error occurred.
-const EAI_FAIL: c_int = -4;
-/// The requested address family is not supported.
-const EAI_FAMILY: c_int = -6;
-/// The requested socket type is not supported.
-const EAI_SOCKTYPE: c_int = -7;
-/// The requested service is not available for the requested socket type.
-const EAI_SERVICE: c_int = -8;
-/// A memory-allocation failure occurred.
-const EAI_MEMORY: c_int = -10;
 
 //==================================================================================================
 // Global State

@@ -13,6 +13,7 @@
 //==================================================================================================
 
 use crate::{
+    ffi::c_long,
     sys_types::{
         blkcnt_t,
         blksize_t,
@@ -32,6 +33,12 @@ use ::core::mem::size_of;
 // Constants
 //==================================================================================================
 
+/// Use the current time for the corresponding timestamp.
+pub const UTIME_NOW: c_long = (1 << 30) - 1;
+
+/// Leave the corresponding timestamp unchanged.
+pub const UTIME_OMIT: c_long = (1 << 30) - 2;
+
 /// File mode.
 pub mod file_mode {
     use crate::sys_types::mode_t;
@@ -48,6 +55,12 @@ pub mod file_mode {
     pub const S_IROTH: mode_t = 0o004;
     pub const S_IWOTH: mode_t = 0o002;
     pub const S_IXOTH: mode_t = 0o001;
+    /// Set-user-ID on execution.
+    pub const S_ISUID: mode_t = 0o4000;
+    /// Set-group-ID on execution.
+    pub const S_ISGID: mode_t = 0o2000;
+    /// Sticky bit.
+    pub const S_ISVTX: mode_t = 0o1000;
 }
 
 pub mod file_type {

@@ -16,16 +16,18 @@ use ::sysapi::ffi::{
 //==================================================================================================
 
 /// Return value of [`fnmatch`] when `string` does not match `pattern`.
-const FNM_NOMATCH: c_int = 1;
+pub const FNM_NOMATCH: c_int = 1;
 
 /// Flag: a wildcard (`*`, `?`, or `[...]`) never matches a `'/'`.
-const FNM_PATHNAME: c_int = 1 << 0;
+pub const FNM_PATHNAME: c_int = 1 << 0;
 /// Flag: a backslash does not quote the following character.
-const FNM_NOESCAPE: c_int = 1 << 1;
+pub const FNM_NOESCAPE: c_int = 1 << 1;
 /// Flag: a leading `'.'` in `string` is matched only by an explicit `'.'` in `pattern`.
-const FNM_PERIOD: c_int = 1 << 2;
+pub const FNM_PERIOD: c_int = 1 << 2;
 /// Flag: ASCII letters in `string` and `pattern` are compared without regard to case.
-const FNM_CASEFOLD: c_int = 1 << 4;
+pub const FNM_CASEFOLD: c_int = 1 << 4;
+/// Alias for [`FNM_CASEFOLD`].
+pub const FNM_IGNORECASE: c_int = FNM_CASEFOLD;
 
 //==================================================================================================
 // Helpers

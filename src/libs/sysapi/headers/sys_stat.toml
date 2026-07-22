@@ -12,48 +12,11 @@ status. The layout mirrors the Rust definition in the sysapi crate
 includes = ["sys/types.h", "time.h"]
 guard = "_NANVIX_SYS_STAT_H"
 scan_crates = ["libc_sys_stat", "syscall"]
-content_order = ["raw:0", "types", "section:0"]
+content_order = ["rust_constants", "rust_types", "raw:0", "section:0"]
 
-[[types]]
-text = '''
-/** @brief File status. */
-struct stat {
-    dev_t st_dev;             /**< Device ID.                      */
-    ino_t st_ino;             /**< File serial number.             */
-    mode_t st_mode;           /**< File mode.                      */
-    nlink_t st_nlink;         /**< Link count.                     */
-    uid_t st_uid;             /**< User ID of file.                */
-    gid_t st_gid;             /**< Group ID of file.               */
-    dev_t st_rdev;            /**< Device ID (if special file).    */
-    off_t st_size;            /**< File size in bytes.             */
-    struct timespec st_atim;  /**< Last data access timestamp.     */
-    struct timespec st_mtim;  /**< Last data modification timestamp.*/
-    struct timespec st_ctim;  /**< Last status change timestamp.   */
-    blksize_t st_blksize;     /**< Preferred I/O block size.       */
-    blkcnt_t st_blocks;       /**< Number of blocks allocated.     */
-};
-
-/* POSIX timestamp field shorthands. */
-#define st_atime st_atim.tv_sec
-#define st_mtime st_mtim.tv_sec
-#define st_ctime st_ctim.tv_sec
-
-/* Special tv_nsec values for utimensat()/futimens(). */
-#define UTIME_NOW ((1L << 30) - 1L)
-#define UTIME_OMIT ((1L << 30) - 2L)
-
-/* File-type test macros. */
-#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
-#define S_ISCHR(m)  (((m) & S_IFMT) == S_IFCHR)
-#define S_ISDIR(m)  (((m) & S_IFMT) == S_IFDIR)
-#define S_ISBLK(m)  (((m) & S_IFMT) == S_IFBLK)
-#define S_ISREG(m)  (((m) & S_IFMT) == S_IFREG)
-#define S_ISLNK(m)  (((m) & S_IFMT) == S_IFLNK)
-#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)'''
-
-[[raw_sections]]
-title = "Constants"
-text = '''
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IRWXU"
+c_declaration = '''
 #define S_IRWXU 0700 /**< Read, write, execute by owner. */
 #define S_IRUSR 0400 /**< Read by owner. */
 #define S_IWUSR 0200 /**< Write by owner. */
@@ -77,6 +40,146 @@ text = '''
 #define S_ISUID 04000 /**< Set-user-ID on execution. */
 #define S_ISGID 02000 /**< Set-group-ID on execution. */
 #define S_ISVTX 01000 /**< Sticky bit. */'''
+no_comment = true
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IRUSR"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IWUSR"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IXUSR"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IRWXG"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IRGRP"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IWGRP"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IXGRP"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IRWXO"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IROTH"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IWOTH"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_IXOTH"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_type::S_IFMT"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_type::S_IFIFO"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_type::S_IFCHR"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_type::S_IFDIR"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_type::S_IFBLK"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_type::S_IFREG"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_type::S_IFLNK"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_type::S_IFSOCK"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_ISUID"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_ISGID"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::file_mode::S_ISVTX"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::UTIME_NOW"
+emit = false
+
+[[rust_constants]]
+path = "sys_stat::UTIME_OMIT"
+emit = false
+
+[[rust_types]]
+path = "sys_stat::stat"
+style = "tag"
+c_declaration = '''
+/** @brief File status. */
+struct stat {
+    dev_t st_dev;             /**< Device ID.                      */
+    ino_t st_ino;             /**< File serial number.             */
+    mode_t st_mode;           /**< File mode.                      */
+    nlink_t st_nlink;         /**< Link count.                     */
+    uid_t st_uid;             /**< User ID of file.                */
+    gid_t st_gid;             /**< Group ID of file.               */
+    dev_t st_rdev;            /**< Device ID (if special file).    */
+    off_t st_size;            /**< File size in bytes.             */
+    struct timespec st_atim;  /**< Last data access timestamp.     */
+    struct timespec st_mtim;  /**< Last data modification timestamp.*/
+    struct timespec st_ctim;  /**< Last status change timestamp.   */
+    blksize_t st_blksize;     /**< Preferred I/O block size.       */
+    blkcnt_t st_blocks;       /**< Number of blocks allocated.     */
+};'''
+
+[[raw_sections]]
+title = ""
+c_only_reason = "C member aliases for POSIX timestamp shorthand fields."
+text = '''
+/* POSIX timestamp field shorthands. */
+#define st_atime st_atim.tv_sec
+#define st_mtime st_mtim.tv_sec
+#define st_ctime st_ctim.tv_sec
+
+/* Special tv_nsec values for utimensat()/futimens(). */
+#define UTIME_NOW ((1L << 30) - 1L)
+#define UTIME_OMIT ((1L << 30) - 2L)
+
+/* File-type test macros. */
+#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
+#define S_ISCHR(m)  (((m) & S_IFMT) == S_IFCHR)
+#define S_ISDIR(m)  (((m) & S_IFMT) == S_IFDIR)
+#define S_ISBLK(m)  (((m) & S_IFMT) == S_IFBLK)
+#define S_ISREG(m)  (((m) & S_IFMT) == S_IFREG)
+#define S_ISLNK(m)  (((m) & S_IFMT) == S_IFLNK)
+#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)'''
 
 [[sections]]
 title = "File Status"

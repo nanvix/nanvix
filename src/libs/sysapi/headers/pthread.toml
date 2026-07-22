@@ -13,8 +13,9 @@ includes = ["sched.h", "sys/types.h", "time.h"]
 guard = "_NANVIX_PTHREAD_H"
 scan_crates = ["libc_pthread", "syscall"]
 content_order = [
+    "rust_constants",
+    "rust_types",
     "raw:0",
-    "types",
     "section:0",
     "section:1",
     "section:2",
@@ -23,68 +24,81 @@ content_order = [
     "section:5",
 ]
 
-[[types]]
+[[rust_constants]]
+path = "pthread::pthread_mutex_type::PTHREAD_MUTEX_NORMAL"
+comment = "Mutex that does not detect deadlock."
+
+[[rust_constants]]
+path = "pthread::pthread_mutex_type::PTHREAD_MUTEX_RECURSIVE"
+comment = "Mutex that allows recursive locking."
+
+[[rust_constants]]
+path = "pthread::pthread_mutex_type::PTHREAD_MUTEX_ERRORCHECK"
+comment = "Mutex that provides error checking."
+
+[[rust_constants]]
+path = "pthread::pthread_mutex_type::PTHREAD_MUTEX_DEFAULT"
+comment = "Default mutex type."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_MUTEX_INITIALIZER"
+comment = "Static mutex initializer."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_COND_INITIALIZER"
+comment = "Static condition variable initializer."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_RWLOCK_INITIALIZER"
+comment = "Static read-write lock initializer."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_NULL"
+comment = "Null thread identifier."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_CREATE_JOINABLE"
+comment = "Thread is created joinable."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_CREATE_DETACHED"
+comment = "Thread is created detached."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_PROCESS_PRIVATE"
+comment = "Synchronization object is private to a process."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_PROCESS_SHARED"
+comment = "Synchronization object is shared between processes."
+
+[[rust_types]]
+path = "sys_types::pthread_attr_t"
+
+[[rust_types]]
+path = "sys_types::pthread_condattr_t"
+
+[[rust_types]]
+path = "sys_types::pthread_mutexattr_t"
+field_renames = { type_ = "type" }
+packed = false
+
+[[rust_types]]
+path = "sys_types::pthread_rwlockattr_t"
+packed = false
+
+[[rust_types]]
+path = "sys_types::pthread_once_t"
+packed = false
+
+[[raw_sections]]
+c_only_reason = "C aggregate initializer for static pthread_once_t storage."
 text = '''
-/** @brief Thread attributes. */
-typedef struct {
-    int is_initialized;            /**< Whether the attributes are initialized. */
-    void *stackaddr;               /**< Stack base address.                     */
-    size_t stacksize;              /**< Stack size.                             */
-    int contentionscope;           /**< Contention scope.                       */
-    int inheritsched;              /**< Inherit-scheduler attribute.            */
-    int schedpolicy;               /**< Scheduling policy.                      */
-    struct sched_param schedparam; /**< Scheduling parameters.                  */
-    int cputime_clock_allowed;     /**< Whether a CPU-time clock is allowed.    */
-    int detachstate;               /**< Detach state.                           */
-} pthread_attr_t;
-
-/** @brief Condition variable attributes. */
-typedef struct {
-    int is_initialized; /**< Whether the attributes are initialized. */
-    clock_t clock;      /**< Clock used for timeouts.                */
-    int pshared;        /**< Process-sharing attribute.               */
-} pthread_condattr_t;
-
-/** @brief Mutex attributes. */
-typedef struct {
-    int is_initialized; /**< Whether the attributes are initialized. */
-    int type;           /**< Type of mutex.                          */
-    int recursive;      /**< Whether the mutex is recursive.         */
-    int pshared;        /**< Process-sharing attribute.               */
-} pthread_mutexattr_t;
-
-/** @brief Read-write lock attributes. */
-typedef struct {
-    int is_initialized; /**< Whether the attributes are initialized. */
-} pthread_rwlockattr_t;
-
-/** @brief One-time initialization control. */
-typedef struct {
-    int is_initialized; /**< Whether the control is initialized. */
-    int init_executed;  /**< Whether the initializer has run.    */
-} pthread_once_t;
-
 /** @brief Static initializer for a pthread_once_t control variable. */
 #define PTHREAD_ONCE_INIT                                                                          \
     {                                                                                              \
         1, 0                                                                                       \
     }'''
-
-[[raw_sections]]
-title = "Constants"
-text = '''
-#define PTHREAD_MUTEX_NORMAL 0 /**< Mutex that does not detect deadlock. */
-#define PTHREAD_MUTEX_RECURSIVE 1 /**< Mutex that allows recursive locking. */
-#define PTHREAD_MUTEX_ERRORCHECK 2 /**< Mutex that provides error checking. */
-#define PTHREAD_MUTEX_DEFAULT 3 /**< Default mutex type. */
-#define PTHREAD_MUTEX_INITIALIZER 0xffffffff /**< Static mutex initializer. */
-#define PTHREAD_COND_INITIALIZER 0xffffffff /**< Static condition variable initializer. */
-#define PTHREAD_RWLOCK_INITIALIZER 0xffffffff /**< Static read-write lock initializer. */
-#define PTHREAD_NULL 0 /**< Null thread identifier. */
-#define PTHREAD_CREATE_JOINABLE 0 /**< Thread is created joinable. */
-#define PTHREAD_CREATE_DETACHED 1 /**< Thread is created detached. */
-#define PTHREAD_PROCESS_PRIVATE 0 /**< Synchronization object is private to a process. */
-#define PTHREAD_PROCESS_SHARED 1 /**< Synchronization object is shared between processes. */'''
 
 [[sections]]
 title = "Threads"

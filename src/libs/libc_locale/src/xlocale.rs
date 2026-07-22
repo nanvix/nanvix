@@ -16,6 +16,21 @@ use ::sysapi::ffi::{
 };
 
 //==================================================================================================
+// Types
+//==================================================================================================
+
+/// Opaque locale handle.
+#[allow(non_camel_case_types)]
+pub type locale_t = *mut c_void;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Handle selecting the process-global locale.
+pub const LC_GLOBAL_LOCALE: locale_t = !0usize as locale_t;
+
+//==================================================================================================
 // Global Variables
 //==================================================================================================
 
@@ -44,13 +59,13 @@ static C_LOCALE_OBJECT: u8 = 0;
 //==================================================================================================
 
 /// Returns the canonical, non-null handle for the C/POSIX locale.
-fn c_locale_handle() -> *mut c_void {
+fn c_locale_handle() -> locale_t {
     (&raw const C_LOCALE_OBJECT).cast::<c_void>().cast_mut()
 }
 
 /// Returns POSIX `LC_GLOBAL_LOCALE`, i.e. `(locale_t) -1`.
-fn lc_global_locale() -> *mut c_void {
-    ::core::ptr::without_provenance_mut(usize::MAX)
+fn lc_global_locale() -> locale_t {
+    LC_GLOBAL_LOCALE
 }
 
 //==================================================================================================
@@ -75,8 +90,8 @@ fn lc_global_locale() -> *mut c_void {
 pub extern "C" fn newlocale(
     _category_mask: c_int,
     _locale: *const c_char,
-    _base: *mut c_void,
-) -> *mut c_void {
+    _base: locale_t,
+) -> locale_t {
     c_locale_handle()
 }
 
@@ -88,7 +103,7 @@ pub extern "C" fn newlocale(
 ///
 /// - `locobj`: The locale object to release (ignored; never freed).
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn freelocale(_locobj: *mut c_void) {}
+pub extern "C" fn freelocale(_locobj: locale_t) {}
 
 /// # Description
 ///
@@ -105,7 +120,7 @@ pub extern "C" fn freelocale(_locobj: *mut c_void) {}
 /// The locale that was installed before the call, or `LC_GLOBAL_LOCALE` if the global locale was
 /// active.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn uselocale(newloc: *mut c_void) -> *mut c_void {
+pub extern "C" fn uselocale(newloc: locale_t) -> locale_t {
     // A null argument is a pure query of the current locale.
     if newloc.is_null() {
         let current: *mut c_void = CURRENT_LOCALE.load(Ordering::Relaxed);
@@ -143,7 +158,7 @@ pub extern "C" fn uselocale(newloc: *mut c_void) -> *mut c_void {
 ///
 /// The canonical, non-null C/POSIX locale handle.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub extern "C" fn duplocale(_locobj: *mut c_void) -> *mut c_void {
+pub extern "C" fn duplocale(_locobj: locale_t) -> locale_t {
     c_locale_handle()
 }
 

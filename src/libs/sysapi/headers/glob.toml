@@ -12,11 +12,13 @@ reports GLOB_NOMATCH; the declarations exist so that portable software (notably
 the hush shell) compiles and links.'''
 includes = ["stddef.h"]
 guard = "_NANVIX_GLOB_H"
-content_order = ["raw:0"]
+content_order = ["rust_constants:abi", "rust_types:path_matching"]
 
-[[raw_sections]]
-title = "Pathname Pattern Matching"
-text = '''
+[[rust_types]]
+path = "glob::glob_t"
+group = "path_matching"
+section_title = "Pathname Pattern Matching"
+c_declaration = '''
 /** @brief Result of a glob() call. */
 typedef struct {
     size_t gl_pathc;  /**< Count of paths matched by pattern. */
@@ -42,3 +44,58 @@ typedef struct {
 extern int glob(const char *pattern, int flags,
                 int (*errfunc)(const char *epath, int eerrno), glob_t *pglob);
 extern void globfree(glob_t *pglob);'''
+
+[[rust_constants]]
+path = "glob::GLOB_ERR"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_MARK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_NOSORT"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_DOOFFS"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_NOCHECK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_APPEND"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_NOESCAPE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_NOSPACE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_ABORTED"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_NOMATCH"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "glob::GLOB_NOSYS"
+group = "abi"
+emit = false

@@ -12,10 +12,19 @@ Declares functions for testing and mapping wide characters. Implemented by
 the libc_wctype Rust crate."""
 includes = ["locale.h"]
 guard = "_NANVIX_WCTYPE_H"
-content_order = ["types", "macros", "section:0", "section:1", "section:2"]
+content_order = [
+    "rust_types",
+    "rust_constants",
+    "section:0",
+    "section:1",
+    "section:2",
+]
 
-[[types]]
-text = """
+[[rust_types]]
+path = "wint_t::wint_t"
+c_only_reason = "Guard markers coordinate conditional C typedef ownership across headers."
+c_bindings = { wctrans_t = "wctrans_t::wctrans_t", wctype_t = "wctype_t::wctype_t" }
+c_declaration = """
 #ifndef _WINT_T_DEFINED
 #define _WINT_T_DEFINED
 typedef int wint_t;
@@ -32,10 +41,19 @@ typedef int wctype_t;
 #endif
 """
 
-[[macros]]
-name = "WEOF"
-value = "((wint_t)(-1))"
+[[rust_types]]
+path = "wctrans_t::wctrans_t"
+emit = false
+
+[[rust_types]]
+path = "wctype_t::wctype_t"
+emit = false
+
+[[rust_constants]]
+path = "wint_t::WEOF"
+c_value = "((wint_t)(-1))"
 guard = "WEOF"
+no_comment = true
 
 [[sections]]
 title = "Classification"

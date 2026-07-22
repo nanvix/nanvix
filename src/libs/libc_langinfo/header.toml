@@ -13,215 +13,269 @@ data. Only the C/POSIX locale is supported. Implemented by the libc_langinfo
 Rust crate."""
 includes = []
 guard = "_NANVIX_LANGINFO_H"
+symbol_crates = ["sysapi"]
 
-[[types]]
-text = """
+[[rust_constants]]
+path = "nl_langinfo::CODESET"
+c_declaration = '''
+#define CODESET 0
+#define D_T_FMT 1
+#define D_FMT 2
+#define T_FMT 3
+#define T_FMT_AMPM 4
+#define AM_STR 5
+#define PM_STR 6
+#define DAY_1 7
+#define DAY_2 8
+#define DAY_3 9
+#define DAY_4 10
+#define DAY_5 11
+#define DAY_6 12
+#define DAY_7 13
+#define ABDAY_1 14
+#define ABDAY_2 15
+#define ABDAY_3 16
+#define ABDAY_4 17
+#define ABDAY_5 18
+#define ABDAY_6 19
+#define ABDAY_7 20
+#define MON_1 21
+#define MON_2 22
+#define MON_3 23
+#define MON_4 24
+#define MON_5 25
+#define MON_6 26
+#define MON_7 27
+#define MON_8 28
+#define MON_9 29
+#define MON_10 30
+#define MON_11 31
+#define MON_12 32
+#define ABMON_1 33
+#define ABMON_2 34
+#define ABMON_3 35
+#define ABMON_4 36
+#define ABMON_5 37
+#define ABMON_6 38
+#define ABMON_7 39
+#define ABMON_8 40
+#define ABMON_9 41
+#define ABMON_10 42
+#define ABMON_11 43
+#define ABMON_12 44
+#define RADIXCHAR 45
+#define THOUSEP 46
+#define YESEXPR 47
+#define NOEXPR 48
+#define CRNCYSTR 49'''
+no_comment = true
+
+[[rust_constants]]
+path = "nl_langinfo::D_T_FMT"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::D_FMT"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::T_FMT"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::T_FMT_AMPM"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::AM_STR"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::PM_STR"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::DAY_1"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::DAY_2"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::DAY_3"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::DAY_4"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::DAY_5"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::DAY_6"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::DAY_7"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABDAY_1"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABDAY_2"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABDAY_3"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABDAY_4"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABDAY_5"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABDAY_6"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABDAY_7"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_1"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_2"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_3"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_4"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_5"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_6"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_7"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_8"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_9"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_10"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_11"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::MON_12"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_1"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_2"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_3"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_4"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_5"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_6"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_7"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_8"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_9"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_10"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_11"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::ABMON_12"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::RADIXCHAR"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::THOUSEP"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::YESEXPR"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::NOEXPR"
+emit = false
+
+[[rust_constants]]
+path = "nl_langinfo::CRNCYSTR"
+emit = false
+
+[[rust_types]]
+path = "sysapi::nl_types::nl_item"
+c_only_reason = "_NL_ITEM_DEFINED is a C typedef ownership guard."
+c_declaration = """
 #ifndef _NL_ITEM_DEFINED
 #define _NL_ITEM_DEFINED
 /** @brief Identifier for an item of locale-specific data. */
 typedef int nl_item;
 #endif
 """
-
-[[macros]]
-name = "CODESET"
-value = "0"
-
-[[macros]]
-name = "D_T_FMT"
-value = "1"
-
-[[macros]]
-name = "D_FMT"
-value = "2"
-
-[[macros]]
-name = "T_FMT"
-value = "3"
-
-[[macros]]
-name = "T_FMT_AMPM"
-value = "4"
-
-[[macros]]
-name = "AM_STR"
-value = "5"
-
-[[macros]]
-name = "PM_STR"
-value = "6"
-
-[[macros]]
-name = "DAY_1"
-value = "7"
-
-[[macros]]
-name = "DAY_2"
-value = "8"
-
-[[macros]]
-name = "DAY_3"
-value = "9"
-
-[[macros]]
-name = "DAY_4"
-value = "10"
-
-[[macros]]
-name = "DAY_5"
-value = "11"
-
-[[macros]]
-name = "DAY_6"
-value = "12"
-
-[[macros]]
-name = "DAY_7"
-value = "13"
-
-[[macros]]
-name = "ABDAY_1"
-value = "14"
-
-[[macros]]
-name = "ABDAY_2"
-value = "15"
-
-[[macros]]
-name = "ABDAY_3"
-value = "16"
-
-[[macros]]
-name = "ABDAY_4"
-value = "17"
-
-[[macros]]
-name = "ABDAY_5"
-value = "18"
-
-[[macros]]
-name = "ABDAY_6"
-value = "19"
-
-[[macros]]
-name = "ABDAY_7"
-value = "20"
-
-[[macros]]
-name = "MON_1"
-value = "21"
-
-[[macros]]
-name = "MON_2"
-value = "22"
-
-[[macros]]
-name = "MON_3"
-value = "23"
-
-[[macros]]
-name = "MON_4"
-value = "24"
-
-[[macros]]
-name = "MON_5"
-value = "25"
-
-[[macros]]
-name = "MON_6"
-value = "26"
-
-[[macros]]
-name = "MON_7"
-value = "27"
-
-[[macros]]
-name = "MON_8"
-value = "28"
-
-[[macros]]
-name = "MON_9"
-value = "29"
-
-[[macros]]
-name = "MON_10"
-value = "30"
-
-[[macros]]
-name = "MON_11"
-value = "31"
-
-[[macros]]
-name = "MON_12"
-value = "32"
-
-[[macros]]
-name = "ABMON_1"
-value = "33"
-
-[[macros]]
-name = "ABMON_2"
-value = "34"
-
-[[macros]]
-name = "ABMON_3"
-value = "35"
-
-[[macros]]
-name = "ABMON_4"
-value = "36"
-
-[[macros]]
-name = "ABMON_5"
-value = "37"
-
-[[macros]]
-name = "ABMON_6"
-value = "38"
-
-[[macros]]
-name = "ABMON_7"
-value = "39"
-
-[[macros]]
-name = "ABMON_8"
-value = "40"
-
-[[macros]]
-name = "ABMON_9"
-value = "41"
-
-[[macros]]
-name = "ABMON_10"
-value = "42"
-
-[[macros]]
-name = "ABMON_11"
-value = "43"
-
-[[macros]]
-name = "ABMON_12"
-value = "44"
-
-[[macros]]
-name = "RADIXCHAR"
-value = "45"
-
-[[macros]]
-name = "THOUSEP"
-value = "46"
-
-[[macros]]
-name = "YESEXPR"
-value = "47"
-
-[[macros]]
-name = "NOEXPR"
-value = "48"
-
-[[macros]]
-name = "CRNCYSTR"
-value = "49"
 
 [[sections]]
 title = "Functions"

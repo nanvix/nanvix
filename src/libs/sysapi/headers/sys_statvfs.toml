@@ -12,11 +12,14 @@ implementations are stubs that fail with ENOSYS; the declarations exist so that
 portable software which queries file-system geometry compiles and links.'''
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_STATVFS_H"
-content_order = ["raw:0"]
+content_order = ["rust_constants:abi", "rust_types:file_system_information"]
 
-[[raw_sections]]
-title = "File-System Information"
-text = '''
+[[rust_types]]
+path = "sys_statvfs::statvfs"
+style = "tag"
+group = "file_system_information"
+section_title = "File-System Information"
+c_declaration = '''
 /** @brief File-system information. */
 struct statvfs {
     unsigned long f_bsize;   /**< File-system block size.                 */
@@ -38,3 +41,13 @@ struct statvfs {
 
 extern int statvfs(const char *path, struct statvfs *buf);
 extern int fstatvfs(int fd, struct statvfs *buf);'''
+
+[[rust_constants]]
+path = "sys_statvfs::ST_RDONLY"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "sys_statvfs::ST_NOSUID"
+group = "abi"
+emit = false

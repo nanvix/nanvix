@@ -14,11 +14,18 @@ interface and the optarg/optind/opterr/optopt globals are declared in
 includes = ["unistd.h"]
 guard = "_NANVIX_GETOPT_H"
 scan_crates = ["syscall"]
-content_order = ["raw:0", "raw:1", "section:0"]
+content_order = [
+    "rust_types:long_option",
+    "rust_constants:has_arg",
+    "section:0",
+]
 
-[[raw_sections]]
-title = "Long Option Type"
-text = '''
+[[rust_types]]
+path = "getopt::option"
+style = "tag"
+group = "long_option"
+section_title = "Long Option Type"
+c_declaration = '''
 /** @brief Describes one long option for getopt_long(). */
 struct option {
     const char *name; /**< Long option name, without the leading "--". */
@@ -27,19 +34,32 @@ struct option {
     int val;          /**< Value to return (or store through flag) when matched. */
 };'''
 
-[[raw_sections]]
-title = "Long Option has_arg Values"
-text = '''
+[[rust_constants]]
+path = "getopt::NO_ARGUMENT"
+c_name = "no_argument"
+group = "has_arg"
+section_title = "Long Option has_arg Values"
+c_declaration = '''
 #define no_argument       0
 #define required_argument 1
 #define optional_argument 2'''
+no_comment = true
+
+[[rust_constants]]
+path = "getopt::REQUIRED_ARGUMENT"
+c_name = "required_argument"
+group = "has_arg"
+emit = false
+
+[[rust_constants]]
+path = "getopt::OPTIONAL_ARGUMENT"
+c_name = "optional_argument"
+group = "has_arg"
+emit = false
 
 [[sections]]
 title = "Long Option Functions"
-functions = [
-    "getopt_long",
-    "getopt_long_only",
-]
+functions = ["getopt_long", "getopt_long_only"]
 
 [overrides]
 getopt_long = '''

@@ -13,9 +13,9 @@ includes = ["sys/types.h"]
 guard = "_NANVIX_SEMAPHORE_H"
 scan_crates = ["syscall"]
 
-[[types]]
-text = '''
-/** @brief Unnamed semaphore. */
+[[rust_types]]
+path = "sys_types::sem_t"
+c_declaration = '''/** @brief Unnamed semaphore. */
 typedef struct {
     int __count;            /**< Current value of the semaphore.          */
     pthread_mutex_t __lock; /**< Mutex that guards the semaphore state.    */

@@ -40,17 +40,6 @@ use ::syscall::dlfcn::{
 use ::syslog::trace_libcall;
 
 //==================================================================================================
-// Constants
-//==================================================================================================
-
-/// Bitmask for lazy binding mode (relocations are deferred until symbols are first used).
-const DLOPEN_MODE_LAZY_BIT: i32 = 0x1;
-/// Bitmask for eager binding mode (relocations are performed immediately when the object is loaded).
-const DLOPEN_MODE_NOW_BIT: i32 = 0x2;
-/// Bitmask for global symbol visibility (symbols are made available for relocation processing by subsequently loaded objects).
-const DLOPEN_MODE_GLOBAL_BIT: i32 = 0x4;
-
-//==================================================================================================
 // DlError
 //==================================================================================================
 
@@ -112,14 +101,15 @@ pub struct DlOpenMode(i32);
 
 impl DlOpenMode {
     /// Relocations are deferred until symbols are first used (lazy binding).
-    pub const LAZY: Self = DlOpenMode(DLOPEN_MODE_LAZY_BIT);
+    pub const LAZY: Self = DlOpenMode(::sysapi::dlfcn::RTLD_LAZY);
     /// Relocations are performed immediately when the object is loaded (eager binding).
-    pub const NOW: Self = DlOpenMode(DLOPEN_MODE_NOW_BIT);
+    pub const NOW: Self = DlOpenMode(::sysapi::dlfcn::RTLD_NOW);
     /// Symbols are made available for relocation processing by subsequently loaded objects.
-    pub const GLOBAL: Self = DlOpenMode(DLOPEN_MODE_GLOBAL_BIT);
+    pub const GLOBAL: Self = DlOpenMode(::sysapi::dlfcn::RTLD_GLOBAL);
 
     /// All valid flag bits.
-    const VALID_MASK: i32 = DLOPEN_MODE_LAZY_BIT | DLOPEN_MODE_NOW_BIT | DLOPEN_MODE_GLOBAL_BIT;
+    const VALID_MASK: i32 =
+        ::sysapi::dlfcn::RTLD_LAZY | ::sysapi::dlfcn::RTLD_NOW | ::sysapi::dlfcn::RTLD_GLOBAL;
 
     /// Creates a `DlOpenMode` from a raw integer, returning `None` if any
     /// invalid bits are set or if no recognized flag is specified.

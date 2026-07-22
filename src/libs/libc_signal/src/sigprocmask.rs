@@ -19,25 +19,32 @@ use ::sysapi::ffi::c_int;
 use ::sysapi::{
     errno::EINVAL,
     ffi::c_int,
+    signal::{
+        SIGKILL,
+        SIGSTOP,
+    },
+};
+
+//==================================================================================================
+// Re-exports
+//==================================================================================================
+
+pub use ::sysapi::signal::{
+    SIG_BLOCK,
+    SIG_SETMASK,
+    SIG_UNBLOCK,
 };
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
-/// `how` argument to [`sigprocmask`]: add the signals in `set` to the mask.
-pub const SIG_BLOCK: c_int = 0;
-/// `how` argument to [`sigprocmask`]: remove the signals in `set` from the mask.
-pub const SIG_UNBLOCK: c_int = 1;
-/// `how` argument to [`sigprocmask`]: replace the mask with `set`.
-pub const SIG_SETMASK: c_int = 2;
-
 /// Signals that can never be blocked: `SIGKILL` (9) and `SIGSTOP` (19).
 ///
 /// POSIX requires that any attempt to block these signals be silently ignored rather than
 /// reported as an error, so they are masked out of every computed blocked-signal set.
 #[cfg(any(feature = "std", test))]
-const UNBLOCKABLE: sigset_t = (1u64 << (9 - 1)) | (1u64 << (19 - 1));
+const UNBLOCKABLE: sigset_t = (1u64 << (SIGKILL - 1)) | (1u64 << (SIGSTOP - 1));
 
 //==================================================================================================
 // Static Data

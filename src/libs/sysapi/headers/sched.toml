@@ -13,30 +13,26 @@ crate (sched.rs)."""
 guard = "_NANVIX_SCHED_H"
 scan_crates = ["syscall"]
 includes = ["sys/types.h", "stddef.h"]
-content_order = ["macros", "types:0", "section:0"]
+content_order = ["rust_constants", "rust_types", "section:0"]
 
-[[macros]]
-name = "SCHED_OTHER"
-value = "0"
+[[rust_constants]]
+path = "sched::sched_policy::SCHED_OTHER"
 comment = "Another scheduling policy."
 
-[[macros]]
-name = "SCHED_FIFO"
-value = "1"
+[[rust_constants]]
+path = "sched::sched_policy::SCHED_FIFO"
 comment = "First in-first out scheduling policy."
 
-[[macros]]
-name = "SCHED_RR"
-value = "2"
+[[rust_constants]]
+path = "sched::sched_policy::SCHED_RR"
 comment = "Round-robin scheduling policy."
 
-[[types]]
-text = """
-/** @brief Scheduling parameters. */
-struct sched_param {
-    int sched_priority; /**< Process or thread execution scheduling priority. */
-};
-"""
+[[rust_types]]
+path = "sched::sched_param"
+style = "tag"
+packed = false
+comment = "Scheduling parameters."
+field_comments = { sched_priority = "Process or thread execution scheduling priority." }
 
 [[sections]]
 title = "Scheduling"

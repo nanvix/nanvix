@@ -160,9 +160,9 @@ fn test_dladdr() -> Result<(), Error> {
 
     let mut info = DlInfo {
         dli_fname: ptr::null(),
-        dli_fbase: ptr::null(),
+        dli_fbase: ptr::null_mut(),
         dli_sname: ptr::null(),
-        dli_saddr: ptr::null(),
+        dli_saddr: ptr::null_mut(),
     };
     dladdr(addr, &mut info)?;
 
@@ -179,7 +179,7 @@ fn test_dladdr() -> Result<(), Error> {
 
     // Verify symbol address matches what dlsym returned.
     assert!(
-        info.dli_saddr == add_raw_ptr.cast::<c_void>(),
+        info.dli_saddr == add_raw_ptr.cast_mut().cast::<c_void>(),
         "dli_saddr should match the address returned by dlsym"
     );
 

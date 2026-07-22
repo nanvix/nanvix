@@ -11,7 +11,224 @@ constants mirror the Rust definitions in the sysapi crate (fcntl.rs).'''
 includes = ["sys/types.h", "sys/stat.h"]
 guard = "_NANVIX_FCNTL_H"
 scan_crates = ["syscall"]
-content_order = ["raw:0", "raw:1", "section:0"]
+content_order = [
+    "rust_constants:abi",
+    "rust_types:abi",
+    "raw:0",
+    "raw:1",
+    "section:0",
+]
+
+[[rust_constants]]
+path = "fcntl::file_access_mode::O_ACCMODE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_access_mode::O_RDONLY"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_access_mode::O_WRONLY"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_access_mode::O_RDWR"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_status_flags::O_APPEND"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_creation_flags::O_CREAT"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_creation_flags::O_TRUNC"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_creation_flags::O_EXCL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_status_flags::O_SYNC"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_status_flags::O_NONBLOCK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_status_flags::O_NDELAY"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_creation_flags::O_NOCTTY"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_creation_flags::O_CLOEXEC"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_creation_flags::O_CLOFORK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_creation_flags::O_NOFOLLOW"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_creation_flags::O_DIRECTORY"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::atflags::AT_FDCWD"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::atflags::AT_EACCESS"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::atflags::AT_SYMLINK_NOFOLLOW"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::atflags::AT_REMOVEDIR"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::atflags::AT_SYMLINK_FOLLOW"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_advice::POSIX_FADV_NORMAL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_advice::POSIX_FADV_SEQUENTIAL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_advice::POSIX_FADV_RANDOM"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_advice::POSIX_FADV_WILLNEED"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_advice::POSIX_FADV_DONTNEED"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_advice::POSIX_FADV_NOREUSE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_control_request::F_DUPFD"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_control_request::F_GETFD"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_control_request::F_SETFD"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_control_request::F_GETFL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_control_request::F_SETFL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_control_request::F_GETLK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_control_request::F_SETLK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_control_request::F_SETLKW"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_descriptor_flags::FD_CLOEXEC"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_descriptor_flags::FD_CLOFORK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_lock_type::F_RDLCK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_lock_type::F_WRLCK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fcntl::file_lock_type::F_UNLCK"
+group = "abi"
+emit = false
+
+# Alias dependency for O_NDELAY.
+[[rust_constants]]
+path = "fcntl::file_status_flags::O_NONBLOCK"
+emit = false
+
+[[rust_types]]
+path = "fcntl::flock"
+style = "tag"
+group = "abi"
+emit = false
 
 [[raw_sections]]
 title = "Constants"

@@ -11,19 +11,16 @@ Declares the UNIX-domain socket address structure. The layout mirrors the Rust
 definition in the sysapi crate (sys_un.rs)."""
 includes = ["sys/socket.h"]
 guard = "_NANVIX_SYS_UN_H"
-content_order = ["macros", "types:0"]
+content_order = ["rust_constants", "rust_types"]
 
-[[macros]]
-name = "SUNPATHLEN"
-value = "14"
+[[rust_constants]]
+path = "sys_un::SUNPATHLEN"
 comment = "Size of the sun_path field."
 
-[[types]]
-text = """
-/** @brief UNIX domain socket address. */
-struct sockaddr_un {
-    unsigned char sun_len;     /**< Total length.   */
-    sa_family_t sun_family;    /**< Address family. */
-    char sun_path[SUNPATHLEN]; /**< Socket path.    */
-};
-"""
+[[rust_types]]
+path = "sys_un::sockaddr_un"
+style = "tag"
+packed = false
+comment = "UNIX domain socket address."
+field_c_declarations = { sun_len = "unsigned char sun_len" }
+field_comments = { sun_len = "Total length.", sun_family = "Address family.", sun_path = "Socket path." }

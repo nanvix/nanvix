@@ -11,39 +11,113 @@
 // Imports
 //==================================================================================================
 
-use ::sysapi::ffi::{
-    c_char,
-    c_int,
-};
+use ::sysapi::ffi::c_char;
+pub use ::sysapi::nl_types::nl_item;
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
-/// `nl_langinfo()` item identifier.
-pub type nl_item = c_int;
-
-// Item identifiers (kept in sync with <langinfo.h>).
-const CODESET: nl_item = 0;
-const D_T_FMT: nl_item = 1;
-const D_FMT: nl_item = 2;
-const T_FMT: nl_item = 3;
-const T_FMT_AMPM: nl_item = 4;
-const AM_STR: nl_item = 5;
-const PM_STR: nl_item = 6;
-const DAY_1: nl_item = 7;
-const DAY_7: nl_item = 13;
-const ABDAY_1: nl_item = 14;
-const ABDAY_7: nl_item = 20;
-const MON_1: nl_item = 21;
-const MON_12: nl_item = 32;
-const ABMON_1: nl_item = 33;
-const ABMON_12: nl_item = 44;
-const RADIXCHAR: nl_item = 45;
-const THOUSEP: nl_item = 46;
-const YESEXPR: nl_item = 47;
-const NOEXPR: nl_item = 48;
-const CRNCYSTR: nl_item = 49;
+/// Codeset name.
+pub const CODESET: nl_item = 0;
+/// Preferred date and time format.
+pub const D_T_FMT: nl_item = 1;
+/// Preferred date format.
+pub const D_FMT: nl_item = 2;
+/// Preferred time format.
+pub const T_FMT: nl_item = 3;
+/// Preferred 12-hour time format.
+pub const T_FMT_AMPM: nl_item = 4;
+/// Ante meridiem string.
+pub const AM_STR: nl_item = 5;
+/// Post meridiem string.
+pub const PM_STR: nl_item = 6;
+/// Full name of Sunday.
+pub const DAY_1: nl_item = 7;
+/// Full name of Monday.
+pub const DAY_2: nl_item = 8;
+/// Full name of Tuesday.
+pub const DAY_3: nl_item = 9;
+/// Full name of Wednesday.
+pub const DAY_4: nl_item = 10;
+/// Full name of Thursday.
+pub const DAY_5: nl_item = 11;
+/// Full name of Friday.
+pub const DAY_6: nl_item = 12;
+/// Full name of Saturday.
+pub const DAY_7: nl_item = 13;
+/// Abbreviated name of Sunday.
+pub const ABDAY_1: nl_item = 14;
+/// Abbreviated name of Monday.
+pub const ABDAY_2: nl_item = 15;
+/// Abbreviated name of Tuesday.
+pub const ABDAY_3: nl_item = 16;
+/// Abbreviated name of Wednesday.
+pub const ABDAY_4: nl_item = 17;
+/// Abbreviated name of Thursday.
+pub const ABDAY_5: nl_item = 18;
+/// Abbreviated name of Friday.
+pub const ABDAY_6: nl_item = 19;
+/// Abbreviated name of Saturday.
+pub const ABDAY_7: nl_item = 20;
+/// Full name of January.
+pub const MON_1: nl_item = 21;
+/// Full name of February.
+pub const MON_2: nl_item = 22;
+/// Full name of March.
+pub const MON_3: nl_item = 23;
+/// Full name of April.
+pub const MON_4: nl_item = 24;
+/// Full name of May.
+pub const MON_5: nl_item = 25;
+/// Full name of June.
+pub const MON_6: nl_item = 26;
+/// Full name of July.
+pub const MON_7: nl_item = 27;
+/// Full name of August.
+pub const MON_8: nl_item = 28;
+/// Full name of September.
+pub const MON_9: nl_item = 29;
+/// Full name of October.
+pub const MON_10: nl_item = 30;
+/// Full name of November.
+pub const MON_11: nl_item = 31;
+/// Full name of December.
+pub const MON_12: nl_item = 32;
+/// Abbreviated name of January.
+pub const ABMON_1: nl_item = 33;
+/// Abbreviated name of February.
+pub const ABMON_2: nl_item = 34;
+/// Abbreviated name of March.
+pub const ABMON_3: nl_item = 35;
+/// Abbreviated name of April.
+pub const ABMON_4: nl_item = 36;
+/// Abbreviated name of May.
+pub const ABMON_5: nl_item = 37;
+/// Abbreviated name of June.
+pub const ABMON_6: nl_item = 38;
+/// Abbreviated name of July.
+pub const ABMON_7: nl_item = 39;
+/// Abbreviated name of August.
+pub const ABMON_8: nl_item = 40;
+/// Abbreviated name of September.
+pub const ABMON_9: nl_item = 41;
+/// Abbreviated name of October.
+pub const ABMON_10: nl_item = 42;
+/// Abbreviated name of November.
+pub const ABMON_11: nl_item = 43;
+/// Abbreviated name of December.
+pub const ABMON_12: nl_item = 44;
+/// Radix character.
+pub const RADIXCHAR: nl_item = 45;
+/// Thousands separator.
+pub const THOUSEP: nl_item = 46;
+/// Expression matching an affirmative response.
+pub const YESEXPR: nl_item = 47;
+/// Expression matching a negative response.
+pub const NOEXPR: nl_item = 48;
+/// Currency symbol string.
+pub const CRNCYSTR: nl_item = 49;
 
 //==================================================================================================
 // Locale Data (C/POSIX locale, UTF-8 codeset)

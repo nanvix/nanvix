@@ -14,84 +14,26 @@
 use crate::set_errno;
 use ::sysapi::{
     errno::EINVAL,
-    ffi::{
-        c_int,
-        c_void,
-    },
+    ffi::c_int,
 };
 
 //==================================================================================================
-// Types
+// Re-exports
 //==================================================================================================
 
-/// Signal handler representation.
-///
-/// Modeled as a pointer-sized integer (equivalent to C `intptr_t`) rather than a Rust function
-/// pointer. `<signal.h>` uses non-function-pointer sentinels (`SIG_DFL` = 0, `SIG_IGN` = 1,
-/// `SIG_ERR` = -1); forming those as `fn` pointers would be undefined behavior across the C ABI.
-/// Real handler addresses cross this boundary as opaque pointer-sized values and are only ever
-/// reinterpreted as callable functions by the kernel, never by this layer.
-pub type SignalHandler = usize;
-
-/// Signal set type (bitmask supporting up to 64 signals).
-pub type sigset_t = u64;
-
-/// Extended signal handler function pointer type, used when `SA_SIGINFO` is set in `sa_flags`.
-///
-/// The pointee types of the second and third arguments (`siginfo_t *` and `void *` in C) are
-/// represented as opaque pointers here; only their pointer ABI is relevant to this layer.
-pub type SignalAction = Option<unsafe extern "C" fn(c_int, *mut c_void, *mut c_void)>;
-
-/// Signal action structure for use with the `sigaction` system call.
-///
-/// The field layout mirrors `struct sigaction` as declared in the generated `signal.h` and in the
-/// `sigaction` binding this crate links against, so the structure is safe to pass across the C ABI.
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct sigaction_t {
-    /// Signal handler.
-    pub sa_handler: SignalHandler,
-    /// Signal mask to apply during handler execution.
-    pub sa_mask: sigset_t,
-    /// Signal action flags.
-    pub sa_flags: c_int,
-    /// Extended signal handler invoked when `SA_SIGINFO` is set in `sa_flags`.
-    pub sa_sigaction: SignalAction,
-}
-
-impl sigaction_t {
-    /// Creates a zeroed signal action structure.
-    pub const fn new() -> Self {
-        Self {
-            sa_handler: SIG_DFL,
-            sa_mask: 0,
-            sa_flags: 0,
-            sa_sigaction: None,
-        }
-    }
-}
-
-impl Default for sigaction_t {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-/// Default signal handling disposition.
-pub const SIG_DFL: SignalHandler = 0;
-
-/// Ignore signal disposition.
-pub const SIG_IGN: SignalHandler = 1;
-
-/// Error return value from [`signal`], mirroring the C `SIG_ERR` sentinel `((void (*)(int)) -1)`.
-pub const SIG_ERR: SignalHandler = usize::MAX;
-
-/// Maximum signal number supported.
-pub const SIG_MAX: c_int = 64;
+pub use ::sysapi::signal::{
+    sig_atomic_t,
+    sigaction_t,
+    siginfo_t,
+    sigset_t,
+    sigval,
+    SignalAction,
+    SignalHandler,
+    SIG_DFL,
+    SIG_ERR,
+    SIG_IGN,
+    SIG_MAX,
+};
 
 //==================================================================================================
 // Helper Functions

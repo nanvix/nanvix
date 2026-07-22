@@ -10,10 +10,12 @@ The `group` layout mirrors the Rust definition in the sysapi crate (grp.rs).'''
 includes = ["sys/types.h"]
 guard = "_NANVIX_GRP_H"
 scan_crates = ["nanvix_libc"]
-content_order = [
-    "raw:0",
-    "section:0",
-]
+content_order = ["rust_types:abi", "raw:0", "section:0"]
+
+[[rust_types]]
+path = "grp::group"
+group = "abi"
+emit = false
 
 [[raw_sections]]
 title = ""
@@ -28,7 +30,15 @@ struct group {
 
 [[sections]]
 title = ""
-functions = ["getgrgid", "getgrnam", "getgrouplist", "getgrent", "setgrent", "endgrent", "initgroups"]
+functions = [
+    "getgrgid",
+    "getgrnam",
+    "getgrouplist",
+    "getgrent",
+    "setgrent",
+    "endgrent",
+    "initgroups",
+]
 
 [overrides]
 getgrgid = '''

@@ -14,70 +14,89 @@ includes = ["stddef.h"]
 guard = "_NANVIX_LOCALE_H"
 # Emit the type block (which defines `locale_t`) before the constants so that the
 # `LC_GLOBAL_LOCALE` macro, whose value casts to `locale_t`, follows the typedef.
-content_order = ["types", "macros", "section:0", "section:1"]
+content_order = ["rust_types", "rust_constants", "section:0", "section:1"]
 
-[[macros]]
-name = "LC_CTYPE"
-value = "0"
+[[rust_constants]]
+path = "setlocale::LC_CTYPE"
+c_declaration = '''
+#define LC_CTYPE 0
+#define LC_NUMERIC 1
+#define LC_TIME 2
+#define LC_COLLATE 3
+#define LC_MONETARY 4
+#define LC_MESSAGES 5
+#define LC_ALL 6
+#define LC_CTYPE_MASK (1 << LC_CTYPE)
+#define LC_NUMERIC_MASK (1 << LC_NUMERIC)
+#define LC_TIME_MASK (1 << LC_TIME)
+#define LC_COLLATE_MASK (1 << LC_COLLATE)
+#define LC_MONETARY_MASK (1 << LC_MONETARY)
+#define LC_MESSAGES_MASK (1 << LC_MESSAGES)
+#define LC_ALL_MASK (LC_CTYPE_MASK | LC_NUMERIC_MASK | LC_TIME_MASK | LC_COLLATE_MASK | LC_MONETARY_MASK | LC_MESSAGES_MASK)
+#define LC_GLOBAL_LOCALE ((locale_t) -1)'''
+no_comment = true
 
-[[macros]]
-name = "LC_NUMERIC"
-value = "1"
+[[rust_constants]]
+path = "setlocale::LC_NUMERIC"
+emit = false
 
-[[macros]]
-name = "LC_TIME"
-value = "2"
+[[rust_constants]]
+path = "setlocale::LC_TIME"
+emit = false
 
-[[macros]]
-name = "LC_COLLATE"
-value = "3"
+[[rust_constants]]
+path = "setlocale::LC_COLLATE"
+emit = false
 
-[[macros]]
-name = "LC_MONETARY"
-value = "4"
+[[rust_constants]]
+path = "setlocale::LC_MONETARY"
+emit = false
 
-[[macros]]
-name = "LC_MESSAGES"
-value = "5"
+[[rust_constants]]
+path = "setlocale::LC_MESSAGES"
+emit = false
 
-[[macros]]
-name = "LC_ALL"
-value = "6"
+[[rust_constants]]
+path = "setlocale::LC_ALL"
+emit = false
 
-[[macros]]
-name = "LC_CTYPE_MASK"
-value = "(1 << LC_CTYPE)"
+[[rust_constants]]
+path = "setlocale::LC_CTYPE_MASK"
+emit = false
 
-[[macros]]
-name = "LC_NUMERIC_MASK"
-value = "(1 << LC_NUMERIC)"
+[[rust_constants]]
+path = "setlocale::LC_NUMERIC_MASK"
+emit = false
 
-[[macros]]
-name = "LC_TIME_MASK"
-value = "(1 << LC_TIME)"
+[[rust_constants]]
+path = "setlocale::LC_TIME_MASK"
+emit = false
 
-[[macros]]
-name = "LC_COLLATE_MASK"
-value = "(1 << LC_COLLATE)"
+[[rust_constants]]
+path = "setlocale::LC_COLLATE_MASK"
+emit = false
 
-[[macros]]
-name = "LC_MONETARY_MASK"
-value = "(1 << LC_MONETARY)"
+[[rust_constants]]
+path = "setlocale::LC_MONETARY_MASK"
+emit = false
 
-[[macros]]
-name = "LC_MESSAGES_MASK"
-value = "(1 << LC_MESSAGES)"
+[[rust_constants]]
+path = "setlocale::LC_MESSAGES_MASK"
+emit = false
 
-[[macros]]
-name = "LC_ALL_MASK"
-value = "(LC_CTYPE_MASK | LC_NUMERIC_MASK | LC_TIME_MASK | LC_COLLATE_MASK | LC_MONETARY_MASK | LC_MESSAGES_MASK)"
+[[rust_constants]]
+path = "setlocale::LC_ALL_MASK"
+emit = false
 
-[[macros]]
-name = "LC_GLOBAL_LOCALE"
-value = "((locale_t) -1)"
+[[rust_constants]]
+path = "xlocale::LC_GLOBAL_LOCALE"
+emit = false
 
-[[types]]
-text = """
+[[rust_types]]
+path = "xlocale::locale_t"
+c_only_reason = "_LOCALE_T_DEFINED is a C typedef ownership guard."
+c_bindings = { lconv = "localeconv::lconv" }
+c_declaration = """
 #ifndef _LOCALE_T_DEFINED
 #define _LOCALE_T_DEFINED
 typedef void *locale_t;
@@ -111,6 +130,11 @@ struct lconv {
     char int_n_sign_posn;    /**< Int. negative sign position.        */
 };
 """
+
+[[rust_types]]
+path = "localeconv::lconv"
+style = "tag"
+emit = false
 
 [[sections]]
 title = "Functions"

@@ -131,14 +131,23 @@ pub type uid_t = c_uint;
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct pthread_attr_t {
+    /// Whether the attributes are initialized.
     pub is_initialized: c_int,
+    /// Stack base address.
     pub stackaddr: *mut c_void,
+    /// Stack size.
     pub stacksize: c_size_t,
+    /// Contention scope.
     pub contentionscope: c_int,
+    /// Inherit-scheduler attribute.
     pub inheritsched: c_int,
+    /// Scheduling policy.
     pub schedpolicy: c_int,
+    /// Scheduling parameters.
     pub schedparam: sched_param,
+    /// Whether a CPU-time clock is allowed.
     pub cputime_clock_allowed: c_int,
+    /// Detach state.
     pub detachstate: c_int,
 }
 // No `assert_eq_size!`: the serialized size may differ from `sizeof` on 64-bit targets due to
@@ -201,7 +210,7 @@ impl Default for pthread_attr_t {
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct pthread_condattr_t {
-    /// Whether the condition variable attributes are initialized.
+    /// Whether the attributes are initialized.
     is_initialized: c_int,
     /// Clock used for timeouts.
     clock: clock_t,
@@ -250,9 +259,9 @@ impl Default for pthread_condattr_t {
 /// Mutex attributes.
 ///
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct pthread_mutexattr_t {
-    /// Whether the mutex attributes are initialized.
+    /// Whether the attributes are initialized.
     is_initialized: c_int,
     /// Type of mutex.
     type_: c_int,
@@ -262,6 +271,7 @@ pub struct pthread_mutexattr_t {
     pshared: c_int,
 }
 ::static_assert::assert_eq_size!(pthread_mutexattr_t, pthread_mutexattr_t::SIZE);
+::static_assert::assert_eq_align!(pthread_mutexattr_t, core::mem::align_of::<c_int>());
 
 impl pthread_mutexattr_t {
     /// Size of the `is_initialized` field.
@@ -324,12 +334,13 @@ impl Default for pthread_mutexattr_t {
 /// Read-write lock attributes.
 ///
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct pthread_rwlockattr_t {
-    /// Whether the read-write lock attributes are initialized.
+    /// Whether the attributes are initialized.
     is_initialized: c_int,
 }
 ::static_assert::assert_eq_size!(pthread_rwlockattr_t, pthread_rwlockattr_t::SIZE);
+::static_assert::assert_eq_align!(pthread_rwlockattr_t, core::mem::align_of::<c_int>());
 
 impl pthread_rwlockattr_t {
     /// Size of the `is_initialized` field.
@@ -345,15 +356,17 @@ impl Default for pthread_rwlockattr_t {
     }
 }
 
+/// One-time initialization control.
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 pub struct pthread_once_t {
-    /// Whether the `pthread_once` is initialized.
+    /// Whether the control is initialized.
     is_initialized: c_int,
-    /// Whether the `pthread_once` has been executed.
+    /// Whether the initializer has run.
     init_executed: c_int,
 }
 ::static_assert::assert_eq_size!(pthread_once_t, pthread_once_t::SIZE);
+::static_assert::assert_eq_align!(pthread_once_t, core::mem::align_of::<c_int>());
 
 impl pthread_once_t {
     /// Size of the `is_initialized` field.
@@ -405,9 +418,8 @@ impl pthread_once_t {
     /// `once` must be non-null and point to a valid `pthread_once_t`.
     ///
     pub unsafe fn is_initialized_raw(once: *const pthread_once_t) -> c_int {
-        // SAFETY: caller guarantees `once` is valid.  `read_unaligned` is used because
-        // `pthread_once_t` is `#[repr(C, packed)]`, so `addr_of!` produces an alignment-1 pointer
-        // from Rust's perspective.
+        // SAFETY: caller guarantees `once` is valid. `read_unaligned` keeps this raw-pointer
+        // accessor valid even when the enclosing C object is supplied through unaligned storage.
         unsafe { ::core::ptr::addr_of!((*once).is_initialized).read_unaligned() }
     }
 
@@ -418,13 +430,10 @@ impl pthread_once_t {
     /// reference to `pthread_once_t`.
     ///
     /// `pthread_once()` uses this pointer with `ptr::read_unaligned` / `ptr::write_unaligned` to
-    /// implement the state-machine transitions without the compiler optimising the loads or stores
-    /// away.  Unaligned accessors are used because `pthread_once_t` is `#[repr(C, packed)]`, so
-    /// this pointer has alignment 1 from Rust's perspective even though the underlying address is
-    /// usually naturally aligned; `volatile` reads/writes would be UB on a (potentially) unaligned
-    /// pointer.  Concurrent transitions are serialized by the process-global kernel mutex that
-    /// `pthread_once()` holds while it reads and writes this word, so plain unaligned loads and
-    /// stores -- rather than atomics -- are sufficient here.
+    /// implement the state-machine transitions without constructing Rust references. Concurrent
+    /// transitions are serialized by the process-global kernel mutex that `pthread_once()` holds
+    /// while it reads and writes this word, so plain loads and stores -- rather than atomics -- are
+    /// sufficient here.
     ///
     /// See `is_initialized_raw()` for why this is a raw-pointer function rather than a method on
     /// `&mut self`.
@@ -484,7 +493,7 @@ impl sem_t {
 }
 
 #[derive(Debug, Clone, Copy)]
-#[repr(C, packed)]
+#[repr(C)]
 #[cfg(target_pointer_width = "32")]
 pub struct msghdr {
     /// Optional address.
@@ -504,6 +513,8 @@ pub struct msghdr {
 }
 #[cfg(target_pointer_width = "32")]
 ::static_assert::assert_eq_size!(msghdr, msghdr::SIZE);
+#[cfg(target_pointer_width = "32")]
+::static_assert::assert_eq_align!(msghdr, core::mem::align_of::<*mut c_void>());
 
 #[cfg(target_pointer_width = "32")]
 impl msghdr {

@@ -10,12 +10,12 @@ Declares the primitive system data types. The layouts mirror the Rust
 definitions in the sysapi crate (sys_types.rs).'''
 includes = ["stddef.h", "stdint.h"]
 guard = "_NANVIX_SYS_TYPES_H"
-content_order = [
-    "types",
-]
+content_order = ["rust_types"]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "sys_types::time_t"
+c_only_reason = "Guard markers coordinate conditional C typedef ownership across headers."
+c_declaration = '''
 /* Time types — guarded to coexist with <time.h>. */
 #ifndef _TIME_T_DEFINED
 #define _TIME_T_DEFINED
@@ -60,6 +60,95 @@ typedef unsigned int pthread_cond_t;   /**< Condition variable.           */
 typedef unsigned int pthread_key_t;    /**< Thread-specific data key.     */
 typedef unsigned int pthread_mutex_t;  /**< Mutex.                        */
 typedef unsigned int pthread_rwlock_t; /**< Read-write lock.              */'''
+
+[[rust_types]]
+path = "sys_types::clock_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::clockid_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::c_ssize_t"
+c_name = "ssize_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::blkcnt_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::blksize_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::fsblkcnt_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::fsfilcnt_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::dev_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::gid_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::ino_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::mode_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::nlink_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::off_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::pid_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::reclen_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::uid_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::suseconds_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::pthread_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::pthread_cond_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::pthread_key_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::pthread_mutex_t"
+emit = false
+
+[[rust_types]]
+path = "sys_types::pthread_rwlock_t"
+emit = false
 
 [trailer]
 text = '''

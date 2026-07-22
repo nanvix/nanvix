@@ -18,6 +18,41 @@ use ::sysapi::ffi::{
 // Constants
 //==================================================================================================
 
+/// Character classification locale category.
+pub const LC_CTYPE: c_int = 0;
+/// Numeric formatting locale category.
+pub const LC_NUMERIC: c_int = 1;
+/// Date and time formatting locale category.
+pub const LC_TIME: c_int = 2;
+/// String collation locale category.
+pub const LC_COLLATE: c_int = 3;
+/// Monetary formatting locale category.
+pub const LC_MONETARY: c_int = 4;
+/// Message translation locale category.
+pub const LC_MESSAGES: c_int = 5;
+/// All locale categories.
+pub const LC_ALL: c_int = 6;
+
+/// Mask for the character classification locale category.
+pub const LC_CTYPE_MASK: c_int = 1 << LC_CTYPE;
+/// Mask for the numeric formatting locale category.
+pub const LC_NUMERIC_MASK: c_int = 1 << LC_NUMERIC;
+/// Mask for the date and time formatting locale category.
+pub const LC_TIME_MASK: c_int = 1 << LC_TIME;
+/// Mask for the string collation locale category.
+pub const LC_COLLATE_MASK: c_int = 1 << LC_COLLATE;
+/// Mask for the monetary formatting locale category.
+pub const LC_MONETARY_MASK: c_int = 1 << LC_MONETARY;
+/// Mask for the message translation locale category.
+pub const LC_MESSAGES_MASK: c_int = 1 << LC_MESSAGES;
+/// Mask for all locale categories.
+pub const LC_ALL_MASK: c_int = LC_CTYPE_MASK
+    | LC_NUMERIC_MASK
+    | LC_TIME_MASK
+    | LC_COLLATE_MASK
+    | LC_MONETARY_MASK
+    | LC_MESSAGES_MASK;
+
 /// Static string for the "C" locale name.
 static C_LOCALE: [u8; 2] = [b'C', 0];
 

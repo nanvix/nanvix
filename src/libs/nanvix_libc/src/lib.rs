@@ -143,6 +143,7 @@ use ::sysapi::{
         c_long,
         c_void,
     },
+    iconv::iconv_t,
     sys_types::c_size_t,
 };
 
@@ -538,10 +539,7 @@ pub extern "C" fn __atomic_is_lock_free(size: c_size_t, _ptr: *const c_void) -> 
 ///
 /// `tocode` and `frocode` may be null or valid C strings; they are not dereferenced.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn iconv_open(
-    _tocode: *const c_char,
-    _fromcode: *const c_char,
-) -> *mut c_void {
+pub unsafe extern "C" fn iconv_open(_tocode: *const c_char, _fromcode: *const c_char) -> iconv_t {
     // A non-null, never-dereferenced sentinel handle. `iconv_open` reports
     // failure as `(iconv_t)-1`, so any non-`-1`, non-null value signals success;
     // `dangling_mut` yields such a pointer (address == align_of::<c_void>() == 1).
@@ -555,7 +553,7 @@ pub unsafe extern "C" fn iconv_open(
 /// The buffer pointers and counters must be valid for the indicated lengths.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn iconv(
-    _cd: *mut c_void,
+    _cd: iconv_t,
     inbuf: *mut *mut c_char,
     inbytesleft: *mut c_size_t,
     outbuf: *mut *mut c_char,
@@ -602,6 +600,6 @@ pub unsafe extern "C" fn iconv(
 ///
 /// `cd` is the handle returned by [`iconv_open`]; it is not dereferenced.
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
-pub unsafe extern "C" fn iconv_close(_cd: *mut c_void) -> c_int {
+pub unsafe extern "C" fn iconv_close(_cd: iconv_t) -> c_int {
     0
 }

@@ -9,13 +9,16 @@ description = '''
 '''
 includes = ["limits.h", "sys/types.h"]
 guard = "_NANVIX_SYS_PARAM_H"
-content_order = [
-    "raw:0",
-    "raw:1",
-]
+content_order = ["rust_constants:abi", "raw:0", "raw:1"]
+
+[[rust_constants]]
+path = "sys_param::NBBY"
+group = "abi"
+emit = false
 
 [[raw_sections]]
 title = "Limits"
+c_only_reason = "Conditional compatibility aliases selected by included C header state."
 text = '''
 #ifndef MAXPATHLEN
 #ifdef PATH_MAX

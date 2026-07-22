@@ -11,9 +11,26 @@ name including the terminating null byte, and `struct if_nameindex`, which
 pairs an interface index with its name.'''
 guard = "_NANVIX_NET_IF_H"
 extern_c = false
-content_order = [
-    "raw:0",
-]
+content_order = ["rust_constants:abi", "rust_types:abi", "raw:0"]
+
+[[rust_constants]]
+path = "net_if::IF_NAMESIZE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "net_if::IFNAMSIZ"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "net_if::IF_NAMESIZE"
+emit = false
+
+[[rust_types]]
+path = "net_if::if_nameindex"
+group = "abi"
+emit = false
 
 [[raw_sections]]
 title = ""

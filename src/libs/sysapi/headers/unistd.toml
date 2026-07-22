@@ -12,10 +12,269 @@ interfaces. Constants mirror the Rust definitions in the sysapi crate
 includes = ["stddef.h", "sys/types.h"]
 guard = "_NANVIX_UNISTD_H"
 scan_crates = ["syscall"]
-content_order = ["raw:0", "raw:1", "section:0", "raw:2", "raw:3", "section:1", "section:2"]
+content_order = [
+    "rust_constants:abi",
+    "raw:0",
+    "raw:1",
+    "section:0",
+    "raw:2",
+    "raw:3",
+    "section:1",
+    "section:2",
+]
+
+[[rust_constants]]
+path = "unistd::STDIN_FILENO"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::STDOUT_FILENO"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::STDERR_FILENO"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::file_seek::SEEK_SET"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::file_seek::SEEK_CUR"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::file_seek::SEEK_END"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_ARG_MAX"
+c_name = "_SC_ARG_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_CHILD_MAX"
+c_name = "_SC_CHILD_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_CLK_TCK"
+c_name = "_SC_CLK_TCK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_NGROUPS_MAX"
+c_name = "_SC_NGROUPS_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_OPEN_MAX"
+c_name = "_SC_OPEN_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_VERSION"
+c_name = "_SC_VERSION"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_PAGESIZE"
+c_name = "_SC_PAGESIZE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_PAGE_SIZE"
+c_name = "_SC_PAGE_SIZE"
+c_value = "8"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_NPROCESSORS_CONF"
+c_name = "_SC_NPROCESSORS_CONF"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_NPROCESSORS_ONLN"
+c_name = "_SC_NPROCESSORS_ONLN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_PHYS_PAGES"
+c_name = "_SC_PHYS_PAGES"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_AVPHYS_PAGES"
+c_name = "_SC_AVPHYS_PAGES"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_LINK_MAX"
+c_name = "_PC_LINK_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_MAX_CANON"
+c_name = "_PC_MAX_CANON"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_MAX_INPUT"
+c_name = "_PC_MAX_INPUT"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_NAME_MAX"
+c_name = "_PC_NAME_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_PATH_MAX"
+c_name = "_PC_PATH_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_PIPE_BUF"
+c_name = "_PC_PIPE_BUF"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_CHOWN_RESTRICTED"
+c_name = "_PC_CHOWN_RESTRICTED"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_NO_TRUNC"
+c_name = "_PC_NO_TRUNC"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_VDISABLE"
+c_name = "_PC_VDISABLE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_SYNC_IO"
+c_name = "_PC_SYNC_IO"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_ASYNC_IO"
+c_name = "_PC_ASYNC_IO"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_PRIO_IO"
+c_name = "_PC_PRIO_IO"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_FILESIZEBITS"
+c_name = "_PC_FILESIZEBITS"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_ALLOC_SIZE_MIN"
+c_name = "_PC_ALLOC_SIZE_MIN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_REC_INCR_XFER_SIZE"
+c_name = "_PC_REC_INCR_XFER_SIZE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_REC_MAX_XFER_SIZE"
+c_name = "_PC_REC_MAX_XFER_SIZE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_REC_MIN_XFER_SIZE"
+c_name = "_PC_REC_MIN_XFER_SIZE"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_REC_XFER_ALIGN"
+c_name = "_PC_REC_XFER_ALIGN"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_SYMLINK_MAX"
+c_name = "_PC_SYMLINK_MAX"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::pathconf_names::PC_2_SYMLINKS"
+c_name = "_PC_2_SYMLINKS"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::access_mode::F_OK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::access_mode::X_OK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::access_mode::W_OK"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "unistd::access_mode::R_OK"
+group = "abi"
+emit = false
+
+# Alias dependency for _SC_PAGE_SIZE.
+[[rust_constants]]
+path = "unistd::sysconf_names::SC_PAGESIZE"
+c_name = "_SC_PAGESIZE"
+emit = false
 
 [[raw_sections]]
 title = "Constants"
+c_only_reason = "POSIX feature-test macros require conditional C preprocessor guards."
 text = '''
 /* POSIX feature-test macros. */
 #ifndef _POSIX_VERSION
@@ -178,7 +437,26 @@ functions = ["getopt"]
 
 [[sections]]
 title = "Process, Session, and System Operations"
-functions = ["setsid", "getsid", "setpgid", "setpgrp", "getpgid", "getpgrp", "tcsetpgrp", "tcgetpgrp", "nice", "sethostname", "vfork", "sync", "syncfs", "getgroups", "gethostid", "getlogin_r", "ttyname_r", "getpagesize"]
+functions = [
+    "setsid",
+    "getsid",
+    "setpgid",
+    "setpgrp",
+    "getpgid",
+    "getpgrp",
+    "tcsetpgrp",
+    "tcgetpgrp",
+    "nice",
+    "sethostname",
+    "vfork",
+    "sync",
+    "syncfs",
+    "getgroups",
+    "gethostid",
+    "getlogin_r",
+    "ttyname_r",
+    "getpagesize",
+]
 
 [overrides]
 getopt = '''

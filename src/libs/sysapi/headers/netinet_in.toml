@@ -11,13 +11,73 @@ The types and layouts mirror the Rust definitions in the sysapi crate
 (netinet_in.rs).'''
 includes = ["sys/socket.h", "stdint.h"]
 guard = "_NANVIX_NETINET_IN_H"
-content_order = [
-    "raw:0",
-    "types",
-]
+content_order = ["rust_constants", "rust_types", "raw:0"]
 
-[[types]]
-text = '''
+[[rust_constants]]
+path = "netinet_in::sockopt_levels::IPPROTO_IP"
+c_declaration = '''
+#define IPPROTO_IP 0 /**< Internet protocol. */
+#define IPPROTO_ICMP 1 /**< Control message protocol. */
+#define IPPROTO_TCP 6 /**< Transmission control protocol. */
+#define IPPROTO_UDP 17 /**< User datagram protocol. */
+#define IPPROTO_IPV6 41 /**< Internet protocol version 6. */
+#define IPPROTO_RAW 255 /**< Raw IP packets protocol. */
+#define INADDR_ANY ((in_addr_t)0x00000000) /**< Address to accept any incoming messages. */
+#define INADDR_LOOPBACK ((in_addr_t)0x7f000001) /**< Loopback address (127.0.0.1). */
+#define INADDR_BROADCAST ((in_addr_t)0xffffffff) /**< Address to send to all hosts. */
+#define INADDR_NONE ((in_addr_t)0xffffffff) /**< Invalid address. */
+
+#define INET_ADDRSTRLEN 16 /**< Max length of an IPv4 address string. */
+#define INET6_ADDRSTRLEN 46 /**< Max length of an IPv6 address string. */'''
+no_comment = true
+
+[[rust_constants]]
+path = "netinet_in::sockopt_levels::IPPROTO_ICMP"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::sockopt_levels::IPPROTO_TCP"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::sockopt_levels::IPPROTO_UDP"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::sockopt_levels::IPPROTO_IPV6"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::sockopt_levels::IPPROTO_RAW"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::INADDR_ANY"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::INADDR_LOOPBACK"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::INADDR_BROADCAST"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::INADDR_NONE"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::INET_ADDRSTRLEN"
+emit = false
+
+[[rust_constants]]
+path = "netinet_in::INET6_ADDRSTRLEN"
+emit = false
+
+[[rust_types]]
+path = "netinet_in::in_addr_t"
+c_declaration = '''
 /** @brief Internet address (IPv4). */
 typedef uint32_t in_addr_t;
 
@@ -36,8 +96,12 @@ struct sockaddr_in {
     in_port_t sin_port;      /**< Port number.    */
     struct in_addr sin_addr; /**< IPv4 address.   */
     unsigned char sin_zero[8]; /**< Padding.      */
-};
+};'''
 
+[[raw_sections]]
+title = ""
+c_only_reason = "C aggregate initializers and member aliases for the public IPv6 union view."
+text = '''
 /** @brief IPv6 address. */
 struct in6_addr {
     union {
@@ -77,19 +141,26 @@ struct sockaddr_in6 {
         }                                                                                          \
     }'''
 
-[[raw_sections]]
-title = "Constants"
-text = '''
-#define IPPROTO_IP 0 /**< Internet protocol. */
-#define IPPROTO_ICMP 1 /**< Control message protocol. */
-#define IPPROTO_TCP 6 /**< Transmission control protocol. */
-#define IPPROTO_UDP 17 /**< User datagram protocol. */
-#define IPPROTO_IPV6 41 /**< Internet protocol version 6. */
-#define IPPROTO_RAW 255 /**< Raw IP packets protocol. */
-#define INADDR_ANY ((in_addr_t)0x00000000) /**< Address to accept any incoming messages. */
-#define INADDR_LOOPBACK ((in_addr_t)0x7f000001) /**< Loopback address (127.0.0.1). */
-#define INADDR_BROADCAST ((in_addr_t)0xffffffff) /**< Address to send to all hosts. */
-#define INADDR_NONE ((in_addr_t)0xffffffff) /**< Invalid address. */
+[[rust_types]]
+path = "netinet_in::in_port_t"
+emit = false
 
-#define INET_ADDRSTRLEN 16 /**< Max length of an IPv4 address string. */
-#define INET6_ADDRSTRLEN 46 /**< Max length of an IPv6 address string. */'''
+[[rust_types]]
+path = "netinet_in::in_addr"
+style = "tag"
+emit = false
+
+[[rust_types]]
+path = "netinet_in::sockaddr_in"
+style = "tag"
+emit = false
+
+[[rust_types]]
+path = "netinet_in::in6_addr"
+style = "tag"
+emit = false
+
+[[rust_types]]
+path = "netinet_in::sockaddr_in6"
+style = "tag"
+emit = false

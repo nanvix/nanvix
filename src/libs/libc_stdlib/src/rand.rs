@@ -77,8 +77,7 @@ mod tests {
         rand,
         srand,
     };
-
-    const RAND_MAX: i32 = 2_147_483_647;
+    use crate::RAND_MAX;
 
     /// Collects `N` consecutive values from `rand()`.
     fn sequence<const N: usize>() -> [i32; N] {

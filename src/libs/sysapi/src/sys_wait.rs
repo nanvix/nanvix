@@ -20,6 +20,9 @@ pub const WUNTRACED: c_int = 2;
 /// Report children that have continued (job control).
 pub const WCONTINUED: c_int = 8;
 
+/// Status bit indicating that the child produced a core dump.
+pub const WCOREFLAG: c_int = 0x80;
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================

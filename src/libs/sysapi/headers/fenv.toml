@@ -11,11 +11,109 @@ rounding-mode constants follow the x86 control-word layout.'''
 guard = "_NANVIX_FENV_H"
 scan_crates = ["libc_math"]
 content_order = [
+    "rust_types:abi",
+    "rust_constants:abi",
     "types",
     "raw:0",
     "raw:1",
     "section:0",
 ]
+
+[[rust_types]]
+path = "fenv::fenv_t"
+group = "abi"
+emit = false
+
+[[rust_types]]
+path = "fenv::fexcept_t"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_TONEAREST"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_DOWNWARD"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_UPWARD"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_TOWARDZERO"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_INVALID"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_DENORMAL"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_DIVBYZERO"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_OVERFLOW"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_UNDERFLOW"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_INEXACT"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_ALL_EXCEPT"
+group = "abi"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_DFL_ENV"
+c_value = "((const fenv_t *)-1)"
+group = "abi"
+emit = false
+
+# Alias dependencies for FE_ALL_EXCEPT.
+[[rust_constants]]
+path = "fenv::FE_INVALID"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_DENORMAL"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_DIVBYZERO"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_OVERFLOW"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_UNDERFLOW"
+emit = false
+
+[[rust_constants]]
+path = "fenv::FE_INEXACT"
+emit = false
 
 [[types]]
 text = '''
@@ -50,7 +148,17 @@ text = '''
 
 [[sections]]
 title = "Functions"
-functions = ["fegetround", "fesetround", "feclearexcept", "feraiseexcept", "fetestexcept", "fegetenv", "fesetenv", "feholdexcept", "feupdateenv"]
+functions = [
+    "fegetround",
+    "fesetround",
+    "feclearexcept",
+    "feraiseexcept",
+    "fetestexcept",
+    "fegetenv",
+    "fesetenv",
+    "feholdexcept",
+    "feupdateenv",
+]
 
 [overrides]
 fegetenv = '''

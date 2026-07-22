@@ -13,16 +13,16 @@ mirrors the Rust definition in the sysapi crate (sys_uio.rs)."""
 includes = ["sys/types.h"]
 guard = "_NANVIX_SYS_UIO_H"
 scan_crates = ["libc_sys_uio"]
-content_order = ["types:0", "section:0"]
+content_order = ["rust_types", "section:0"]
 
-[[types]]
-text = """
-/** @brief An I/O vector. */
+[[rust_types]]
+path = "sys_uio::iovec"
+style = "tag"
+c_declaration = '''/** @brief An I/O vector. */
 struct iovec {
     void *iov_base; /**< Base address of the buffer.  */
     size_t iov_len; /**< Length of the buffer.        */
-};
-"""
+};'''
 
 [[sections]]
 title = "Vectored I/O"

@@ -10,10 +10,21 @@ Declares functions and types for signal delivery and management.
 Implemented by the libc_signal Rust crate.'''
 includes = ["stdint.h", "sys/types.h"]
 guard = "_NANVIX_SIGNAL_H"
-content_order = ["types", "raw:0", "raw:1", "section:0", "section:1"]
+symbol_crates = ["sysapi"]
+content_order = [
+    "rust_types:types",
+    "rust_constants:constants",
+    "rust_constants:signal_numbers",
+    "section:0",
+    "section:1",
+]
 
-[[types]]
-text = '''
+[[rust_types]]
+path = "sysapi::signal::sigset_t"
+group = "types"
+section_title = "Types"
+c_only_reason = "sighandler_t is a C function-pointer view that must also represent sentinel macros."
+c_declaration = '''
 /** @brief Signal handler function pointer. */
 typedef void (*sighandler_t)(int);
 
@@ -51,9 +62,34 @@ struct sigaction {
     void (*sa_sigaction)(int, siginfo_t *, void *); /**< Handler used with SA_SIGINFO. */
 };'''
 
-[[raw_sections]]
-title = "Constants"
-text = '''
+[[rust_types]]
+path = "sysapi::signal::sig_atomic_t"
+group = "types"
+emit = false
+
+[[rust_types]]
+path = "sysapi::signal::sigval"
+style = "tag"
+group = "types"
+emit = false
+
+[[rust_types]]
+path = "sysapi::signal::siginfo_t"
+group = "types"
+emit = false
+
+[[rust_types]]
+path = "sysapi::signal::sigaction_t"
+c_name = "sigaction"
+style = "tag"
+group = "types"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIG_BLOCK"
+group = "constants"
+section_title = "Constants"
+c_declaration = '''
 #define SIG_DFL ((sighandler_t)0)
 #define SIG_IGN ((sighandler_t)1)
 #define SIG_ERR ((sighandler_t) - 1)
@@ -78,10 +114,115 @@ text = '''
 #define SI_TIMER (-2)
 #define SI_MESGQ (-3)
 #define SI_ASYNCIO (-4)'''
+no_comment = true
 
-[[raw_sections]]
-title = "Signal Numbers"
-text = '''
+[[rust_constants]]
+path = "sysapi::signal::SIG_DFL"
+group = "constants"
+c_value = "((sighandler_t)0)"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIG_IGN"
+group = "constants"
+c_value = "((sighandler_t)1)"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIG_ERR"
+group = "constants"
+c_value = "((sighandler_t) - 1)"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIG_UNBLOCK"
+group = "constants"
+c_value = "1"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIG_SETMASK"
+group = "constants"
+c_value = "2"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SA_NOCLDSTOP"
+group = "constants"
+c_value = "0x00000001"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SA_NOCLDWAIT"
+group = "constants"
+c_value = "0x00000002"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SA_SIGINFO"
+group = "constants"
+c_value = "0x00000004"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SA_ONSTACK"
+group = "constants"
+c_value = "0x08000000"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SA_RESTART"
+group = "constants"
+c_value = "0x10000000"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SA_NODEFER"
+group = "constants"
+c_value = "0x40000000"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SA_RESETHAND"
+group = "constants"
+c_value = "0x80000000"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SI_USER"
+group = "constants"
+c_value = "0"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SI_QUEUE"
+group = "constants"
+c_value = "(-1)"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SI_TIMER"
+group = "constants"
+c_value = "(-2)"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SI_MESGQ"
+group = "constants"
+c_value = "(-3)"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SI_ASYNCIO"
+group = "constants"
+c_value = "(-4)"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGHUP"
+group = "signal_numbers"
+section_title = "Signal Numbers"
+c_declaration = '''
 /* Standard signal numbers. */
 #ifndef SIGHUP
 #define SIGHUP 1
@@ -116,6 +257,186 @@ text = '''
 #define _NSIG 65
 #define NSIG _NSIG
 #endif'''
+no_comment = true
+
+[[rust_constants]]
+path = "sysapi::signal::SIGINT"
+group = "signal_numbers"
+c_value = "2"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGQUIT"
+group = "signal_numbers"
+c_value = "3"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGILL"
+group = "signal_numbers"
+c_value = "4"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGTRAP"
+group = "signal_numbers"
+c_value = "5"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGABRT"
+group = "signal_numbers"
+c_value = "6"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGBUS"
+group = "signal_numbers"
+c_value = "7"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGFPE"
+group = "signal_numbers"
+c_value = "8"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGKILL"
+group = "signal_numbers"
+c_value = "9"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGUSR1"
+group = "signal_numbers"
+c_value = "10"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGSEGV"
+group = "signal_numbers"
+c_value = "11"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGUSR2"
+group = "signal_numbers"
+c_value = "12"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGPIPE"
+group = "signal_numbers"
+c_value = "13"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGALRM"
+group = "signal_numbers"
+c_value = "14"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGTERM"
+group = "signal_numbers"
+c_value = "15"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGCHLD"
+group = "signal_numbers"
+c_value = "17"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGCONT"
+group = "signal_numbers"
+c_value = "18"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGSTOP"
+group = "signal_numbers"
+c_value = "19"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGTSTP"
+group = "signal_numbers"
+c_value = "20"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGTTIN"
+group = "signal_numbers"
+c_value = "21"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGTTOU"
+group = "signal_numbers"
+c_value = "22"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGURG"
+group = "signal_numbers"
+c_value = "23"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGXCPU"
+group = "signal_numbers"
+c_value = "24"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGXFSZ"
+group = "signal_numbers"
+c_value = "25"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGVTALRM"
+group = "signal_numbers"
+c_value = "26"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGPROF"
+group = "signal_numbers"
+c_value = "27"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGWINCH"
+group = "signal_numbers"
+c_value = "28"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGIO"
+group = "signal_numbers"
+c_value = "29"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::SIGSYS"
+group = "signal_numbers"
+c_value = "31"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::_NSIG"
+c_value = "65"
+emit = false
+
+[[rust_constants]]
+path = "sysapi::signal::NSIG"
+group = "signal_numbers"
+c_value = "_NSIG"
+emit = false
 
 [[sections]]
 title = "Signal Functions"

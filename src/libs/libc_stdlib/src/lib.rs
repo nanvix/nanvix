@@ -129,7 +129,21 @@ extern crate alloc;
 use ::sysapi::{
     errno::__errno_location,
     ffi::c_int,
+    sys_types::c_size_t,
 };
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Successful process termination status.
+pub const EXIT_SUCCESS: c_int = 0;
+/// Unsuccessful process termination status.
+pub const EXIT_FAILURE: c_int = 1;
+/// Maximum value returned by [`rand`].
+pub const RAND_MAX: c_int = 2_147_483_647;
+/// Maximum number of bytes in a character for the current locale.
+pub const MB_CUR_MAX: c_size_t = 1;
 
 //==================================================================================================
 // Exports

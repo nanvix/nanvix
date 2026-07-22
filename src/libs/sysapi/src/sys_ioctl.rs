@@ -33,6 +33,35 @@ pub const TIOCSWINSZ: i32 = 0x5414;
 pub const FIONREAD: i32 = 0x541b;
 
 //==================================================================================================
+// Request Encoding
+//==================================================================================================
+
+/// Number of bits used for an ioctl request number.
+pub const _IOC_NRBITS: u32 = 8;
+/// Number of bits used for an ioctl request type.
+pub const _IOC_TYPEBITS: u32 = 8;
+/// Number of bits used for an ioctl request payload size.
+pub const _IOC_SIZEBITS: u32 = 14;
+/// Number of bits used for an ioctl transfer direction.
+pub const _IOC_DIRBITS: u32 = 2;
+
+/// Bit offset of the ioctl request number.
+pub const _IOC_NRSHIFT: u32 = 0;
+/// Bit offset of the ioctl request type.
+pub const _IOC_TYPESHIFT: u32 = 8;
+/// Bit offset of the ioctl request payload size.
+pub const _IOC_SIZESHIFT: u32 = 16;
+/// Bit offset of the ioctl transfer direction.
+pub const _IOC_DIRSHIFT: u32 = 30;
+
+/// Indicates an ioctl request with no data transfer.
+pub const _IOC_NONE: u32 = 0;
+/// Indicates an ioctl request that writes data to the device.
+pub const _IOC_WRITE: u32 = 1;
+/// Indicates an ioctl request that reads data from the device.
+pub const _IOC_READ: u32 = 2;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 

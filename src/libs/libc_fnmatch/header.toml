@@ -12,11 +12,13 @@ Declares the filename-matching routine fnmatch() and its flags, implemented by
 the libc_fnmatch Rust crate."""
 includes = []
 guard = "_NANVIX_FNMATCH_H"
-content_order = ["raw:0", "section:0"]
+content_order = ["rust_constants:flags", "section:0"]
 
-[[raw_sections]]
-title = "Flags"
-text = '''
+[[rust_constants]]
+path = "fnmatch::FNM_NOMATCH"
+group = "flags"
+section_title = "Flags"
+c_declaration = '''
 #define FNM_NOMATCH 1  /* Value returned on no match. */
 
 #define FNM_PATHNAME (1 << 0) /* No wildcard can ever match '/'. */
@@ -26,6 +28,32 @@ text = '''
 
 /* Equivalent to FNM_CASEFOLD. */
 #define FNM_IGNORECASE FNM_CASEFOLD'''
+no_comment = true
+
+[[rust_constants]]
+path = "fnmatch::FNM_PATHNAME"
+group = "flags"
+emit = false
+
+[[rust_constants]]
+path = "fnmatch::FNM_PERIOD"
+group = "flags"
+emit = false
+
+[[rust_constants]]
+path = "fnmatch::FNM_NOESCAPE"
+group = "flags"
+emit = false
+
+[[rust_constants]]
+path = "fnmatch::FNM_CASEFOLD"
+emit = false
+
+[[rust_constants]]
+path = "fnmatch::FNM_IGNORECASE"
+group = "flags"
+c_value = "FNM_CASEFOLD"
+emit = false
 
 [[sections]]
 title = "Filename Matching"

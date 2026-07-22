@@ -24,6 +24,7 @@ use ::core::mem;
 // Types
 //==================================================================================================
 
+/// Password database entry.
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct passwd {

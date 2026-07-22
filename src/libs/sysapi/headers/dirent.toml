@@ -14,50 +14,45 @@ sysapi crate (dirent.rs)."""
 includes = ["sys/types.h", "limits.h"]
 guard = "_NANVIX_DIRENT_H"
 scan_crates = ["syscall"]
-content_order = ["macros", "types:0", "section:0"]
+content_order = ["rust_constants", "rust_types", "section:0"]
 
-[[macros]]
-name = "DT_UNKNOWN"
-value = "0"
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_UNKNOWN"
 comment = "Unknown file type."
 
-[[macros]]
-name = "DT_FIFO"
-value = "1"
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_FIFO"
 comment = "FIFO."
 
-[[macros]]
-name = "DT_CHR"
-value = "2"
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_CHR"
 comment = "Character device."
 
-[[macros]]
-name = "DT_DIR"
-value = "4"
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_DIR"
 comment = "Directory."
 
-[[macros]]
-name = "DT_BLK"
-value = "6"
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_BLK"
 comment = "Block device."
 
-[[macros]]
-name = "DT_REG"
-value = "8"
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_REG"
 comment = "Regular file."
 
-[[macros]]
-name = "DT_LNK"
-value = "10"
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_LNK"
 comment = "Symbolic link."
 
-[[macros]]
-name = "DT_SOCK"
-value = "12"
+[[rust_constants]]
+path = "dirent::dirent_file_type::DT_SOCK"
 comment = "Socket."
 
-[[types]]
-text = """
+[[rust_types]]
+path = "dirent::dirent"
+style = "tag"
+c_only_reason = "DIR is an opaque C tag whose Rust implementation layout is intentionally private."
+c_declaration = """
 /** @brief Directory stream type. */
 typedef struct __dirstream DIR;
 
@@ -65,8 +60,12 @@ typedef struct __dirstream DIR;
 struct dirent {
     ino_t d_ino;                /**< File serial number.                  */
     char d_name[NAME_MAX + 1];  /**< Null-terminated file name.           */
-};
+};"""
 
+[[rust_types]]
+path = "dirent::posix_dent"
+style = "tag"
+c_declaration = """
 /** @brief Extended (Nanvix) directory entry. */
 struct posix_dent {
     ino_t d_ino;                /**< File serial number.                  */
@@ -74,8 +73,7 @@ struct posix_dent {
     unsigned char d_type;       /**< File type.                           */
     char d_name[NAME_MAX + 1];  /**< Null-terminated file name.           */
     char d_pad[1];              /**< Padding.                             */
-};
-"""
+};"""
 
 [[sections]]
 title = "Directory Operations"
