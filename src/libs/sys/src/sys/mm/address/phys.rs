@@ -91,7 +91,6 @@ impl PhysicalAddress {
     ///
     /// Behavior is undefined if the provided memory-mapped I/O address is invalid.
     ///
-    #[verus_verify(external)]
     pub unsafe fn from_mmio_address(addr: VirtualAddress) -> Self {
         Self(addr)
     }
@@ -105,7 +104,6 @@ impl PhysicalAddress {
     ///
     /// The virtual address.
     ///
-    #[verus_verify(external)]
     pub fn into_virtual_address(self) -> VirtualAddress {
         self.0
     }
