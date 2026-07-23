@@ -170,7 +170,7 @@ proof fn lemma_size_div_pos(size: int)
     }
 }
 
-/// A non-page-aligned address can never be a tracked (allocated) frame.
+// A non-page-aligned address can never be a tracked (allocated) frame.
 //==================================================================================================
 // Refcount-slot accessors
 //==================================================================================================
