@@ -11,7 +11,11 @@
 #![allow(static_mut_refs)] // https://github.com/nanvix/kernel/issues/454
 #![allow(internal_features)]
 #![feature(allocator_api)] // kheap uses this.
-#![feature(proc_macro_hygiene)] // statement-level verus_spec loop invariants need this.
+#![feature(proc_macro_hygiene)]
+// statement-level verus_spec loop invariants need this.
+// `verus_spec` loop invariants are attributes on `for`/`while` statements, which require
+// `stmt_expr_attributes` in normal builds. Under Verus the feature is already enabled by the
+// tool, so gate it to non-verification builds to avoid a `duplicate_features` error.
 #![cfg_attr(not(verus_keep_ghost), feature(stmt_expr_attributes))]
 #![feature(linked_list_cursors)] // vmem uses this.
 #![feature(linked_list_remove)] // vmem uses this.
