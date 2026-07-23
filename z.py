@@ -1108,6 +1108,19 @@ def _pkg_install_best_effort(
     return True
 
 
+def _install_verus(plat: PlatformInfo) -> None:
+    """Install Verus with the cross-platform setup script."""
+    verus_script = plat.repo_root / "scripts" / "setup" / "verus.py"
+    if not verus_script.exists():
+        die(f"Verus setup script not found: {verus_script}")
+
+    verus_dir = plat.home_dir / "verus"
+    print_info(f"Installing Verus to {verus_dir} ...")
+    rc = subprocess.run([sys.executable, str(verus_script), str(verus_dir)]).returncode
+    if rc != 0:
+        die("Verus setup failed.")
+
+
 def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
     """Set up the development environment on Linux."""
     print_info("Setting up Nanvix development environment...")
@@ -1124,14 +1137,7 @@ def cmd_setup_linux(plat: PlatformInfo, config: BuildConfig) -> int:
 
     # Verus formal verification toolchain (optional).
     if config.verus:
-        verus_script = plat.repo_root / "scripts" / "setup" / "verus.sh"
-        if not verus_script.exists():
-            die(f"Verus setup script not found: {verus_script}")
-        verus_dir = plat.home_dir / "verus"
-        print_info(f"Installing Verus to {verus_dir} ...")
-        rc = subprocess.run([str(verus_script), str(verus_dir)]).returncode
-        if rc != 0:
-            die("Verus setup failed.")
+        _install_verus(plat)
 
     _install_git_hooks(plat.repo_root)
     print_success("Setup complete.")
@@ -1280,23 +1286,7 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
 
     # Verus (optional).
     if config.verus:
-        verus_script = plat.repo_root / "scripts" / "setup" / "verus.ps1"
-        if not verus_script.exists():
-            die(f"Verus setup script not found: {verus_script}")
-        verus_dir = plat.home_dir / "verus"
-        print_info(f"Installing Verus to {verus_dir} ...")
-        rc = subprocess.run(
-            [
-                "powershell",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(verus_script),
-                str(verus_dir),
-            ]
-        ).returncode
-        if rc != 0:
-            die("Verus setup failed.")
+        _install_verus(plat)
         print_success("Verus: OK")
 
     _install_git_hooks(plat.repo_root)

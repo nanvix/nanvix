@@ -158,7 +158,8 @@ command. Set `VERUS_EXECUTABLE_DIR` only for a custom installation.
 ```
 
 - Set `VERUS_EXECUTABLE_DIR` to the directory containing the `verus` binary.
-- Use `scripts/setup/verus.sh <dir>` to download the pinned release.
+- Use `python3 scripts/setup/verus.py <dir>` to download the pinned release on Linux, or
+  `python scripts/setup/verus.py <dir>` on Windows.
 - The `vstd` crate version in `Cargo.toml` is exact-pinned (`=`) to match the Verus binary.
 
 ## Cleaning

@@ -124,14 +124,14 @@ Available build parameters:
 Nanvix uses [Verus](https://github.com/verus-lang/verus) for formal verification of selected
 kernel crates. The correct Verus version is pinned in `build/verus-version`.
 
-To install Verus on Windows, use the setup command or the PowerShell setup script:
+To install Verus on Windows, use the setup command or the cross-platform setup script:
 
 ```powershell
 # Option 1: Automated install via z.ps1 (installs to %USERPROFILE%\verus).
 .\z.ps1 setup --verus
 
 # Option 2: Manual install to a custom directory.
-.\scripts\setup\verus.ps1 C:\verus
+python .\scripts\setup\verus.py C:\verus
 ```
 
 To run formal verification:
