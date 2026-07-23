@@ -89,7 +89,6 @@ impl FrameAddress {
 
     // Succeeds only for page-aligned inputs. The contract exposes the validated raw address to
     // verified callers.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             match result {
