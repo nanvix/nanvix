@@ -22,43 +22,17 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ---------------------------------------------------------------------------
-# System packages — mirrors scripts/setup/ubuntu-core.sh
+# System packages — reuses scripts/setup/ubuntu-core.sh to avoid duplication.
+#
+# The extra packages installed here (python3-pip, sudo) are CI-container
+# specific and therefore not part of the shared setup script.
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        bc                    \
-        bridge-utils          \
-        build-essential       \
-        bzip2                 \
-        clang                 \
-        cmake                 \
-        codespell             \
-        cpio                  \
-        curl                  \
-        dosfstools            \
-        doxygen               \
-        gawk                  \
-        gdb-multiarch         \
-        git                   \
-        graphviz              \
-        grub2                 \
-        iproute2              \
-        jq                    \
-        kpartx                \
-        libvirt-clients       \
-        libvirt-daemon-system \
-        mmdebstrap            \
-        mtools                \
-        netcat-openbsd        \
-        ninja-build           \
-        pkg-config            \
-        python3-pip           \
-        python3-venv          \
-        shellcheck            \
-        sudo                  \
-        unzip                 \
-        wget                  \
-        xorriso               \
-    && rm -rf /var/lib/apt/lists/*
+COPY scripts/setup/ubuntu-core.sh /tmp/ubuntu-core.sh
+RUN bash /tmp/ubuntu-core.sh \
+    && apt-get install -y --no-install-recommends \
+        python3-pip \
+        sudo \
+    && rm -rf /var/lib/apt/lists/* /tmp/ubuntu-core.sh
 
 # ---------------------------------------------------------------------------
 # Rust toolchain — derived from rust-toolchain at build time.
