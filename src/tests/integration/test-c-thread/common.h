@@ -24,6 +24,9 @@ extern void test_pthread_mutex_dynamic_init(void);
 // Tests if condition variable attributes can be initialized.
 extern void test_pthread_condattr_init(void);
 
+// Tests if condition variable attributes can be destroyed.
+extern void test_pthread_condattr_destroy(void);
+
 // Tests if the process-sharing attribute can be retrieved.
 extern void test_pthread_condattr_getpshared(void);
 
@@ -77,6 +80,9 @@ extern void test_pthread_attr_getstack(void);
 
 // Tests if pthread_attr_setstack() validates and stores stack attributes.
 extern void test_pthread_attr_setstack(void);
+
+// Tests if pthread_attr_setstacksize() validates, stores, and applies the stack size attribute.
+extern void test_pthread_attr_setstacksize(void);
 
 // Tests if statically initialized read-write locks can synchronize multiple readers.
 extern void test_pthread_rwlock_static_init(void);

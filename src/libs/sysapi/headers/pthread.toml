@@ -157,6 +157,7 @@ functions = [
     "pthread_cond_broadcast",
     "pthread_cond_wait",
     "pthread_cond_timedwait",
+    "pthread_condattr_destroy",
     "pthread_condattr_init",
     "pthread_condattr_getpshared",
     "pthread_condattr_setclock",
