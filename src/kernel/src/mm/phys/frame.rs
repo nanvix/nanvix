@@ -702,9 +702,7 @@ impl Inner {
             let ghost pre_rc = self.refcount@;
         }
         proof! {
-            lemma_view_of(self);
-            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
-            lemma_free_contains(self, phys_addr@);
+            lemma_book_pre(self, phys_addr@);
         }
         match self.bitmap.set(frame_number) {
             Ok(()) => {
@@ -720,9 +718,7 @@ impl Inner {
                 // `set()` failed: the bit was already set or out of range, so the frame is not
                 // free in `old(self)`.
                 proof! {
-                    lemma_view_of(self);
-                    assert(self@ == g_old);
-                    assert(!g_old.is_free(phys_addr@));
+                    lemma_book_set_failed(self, phys_addr@, g_old);
                 }
                 error!("{error:?} (phys_addr={phys_addr:?})");
                 Err(error)

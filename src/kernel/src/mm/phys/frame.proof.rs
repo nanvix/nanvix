@@ -330,6 +330,47 @@ proof fn lemma_view_of(inner: &Inner)
     assert(inner@ =~= v);
 }
 
+//==================================================================================================
+// `Inner::book` support lemmas
+//==================================================================================================
+
+/// Setup facts for `Inner::book`: the abstract view is the field-level reconstruction, and freeness
+/// of `addr` is decided by its bit. Extracted from the entry `proof!` block of `book`.
+proof fn lemma_book_pre(inner: &Inner, addr: int)
+    requires
+        inner.internal_inv(),
+        addr % spec_page_size() == 0,
+    ensures
+        inner@ == view_of(inner.bitmap@.set_bits, inner.bitmap@.num_bits, spec_refcount_seq(inner)),
+        inner@.is_free(addr) <==> {
+            let i = addr / spec_page_size();
+            0 <= i < inner.bitmap@.num_bits && !inner.bitmap@.set_bits.contains(i)
+        },
+{
+    lemma_view_of(inner);
+    lemma_free_contains(inner, addr);
+}
+
+/// Err-path facts for `Inner::book`: when `bitmap.set` fails the state is unchanged (so the view
+/// still equals `g_old`) and `addr` was not free to begin with. Extracted from the `Err` branch's
+/// `proof!` block of `book`; the failed-`set` condition is threaded in as a precondition.
+proof fn lemma_book_set_failed(inner: &Inner, addr: int, g_old: FrameAllocView)
+    requires
+        inner.internal_inv(),
+        addr % spec_page_size() == 0,
+        g_old == view_of(inner.bitmap@.set_bits, inner.bitmap@.num_bits, spec_refcount_seq(inner)),
+        ({
+            let i = addr / spec_page_size();
+            i >= inner.bitmap@.num_bits || inner.bitmap@.set_bits.contains(i)
+        }),
+    ensures
+        inner@ == g_old,
+        !g_old.is_free(addr),
+{
+    lemma_view_of(inner);
+    lemma_free_contains(inner, addr);
+}
+
 /// The set of frame addresses of a contiguous index range `[start, start + count)`.
 closed spec fn spec_range_frames(start: int, count: int) -> Set<int> {
     BitmapView::range_set(start, start + count).map_by(|i: int| frame_addr_of(i), |addr: int| addr_to_frame(addr))
