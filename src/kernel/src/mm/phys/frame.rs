@@ -749,12 +749,11 @@ impl Inner {
     )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
-        let nbits: usize = self.bitmap.number_of_bits();
         proof! {
             vstd::arithmetic::div_mod::lemma_div_pos_is_pos(phys_addr@, spec_page_size());
             lemma_covered_iff(self, phys_addr@);
         }
-        frame_number < nbits
+        frame_number < self.bitmap.number_of_bits()
     }
 
     ///
