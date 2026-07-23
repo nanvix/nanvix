@@ -219,6 +219,7 @@ unsafe extern "C" {
     static pthread_cond_timedwait: u8;
     static pthread_cond_wait: u8;
     static pthread_condattr_destroy: u8;
+    static pthread_condattr_getclock: u8;
     static pthread_condattr_init: u8;
     static pthread_condattr_setclock: u8;
     static pthread_create: u8;
@@ -290,7 +291,7 @@ unsafe impl Sync for SymAddr {}
 
 /// Force the linker to retain all syscall symbols by referencing their addresses.
 #[used]
-static SYSCALL_SYMBOLS: [SymAddr; 131] = [
+static SYSCALL_SYMBOLS: [SymAddr; 132] = [
     SymAddr(&raw const __nanvix_sys_cached_pid),
     SymAddr(&raw const __errno_location),
     SymAddr(&raw const _exit),
@@ -362,6 +363,7 @@ static SYSCALL_SYMBOLS: [SymAddr; 131] = [
     SymAddr(&raw const pthread_cond_timedwait),
     SymAddr(&raw const pthread_cond_wait),
     SymAddr(&raw const pthread_condattr_destroy),
+    SymAddr(&raw const pthread_condattr_getclock),
     SymAddr(&raw const pthread_condattr_init),
     SymAddr(&raw const pthread_condattr_setclock),
     SymAddr(&raw const pthread_create),
