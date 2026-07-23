@@ -939,6 +939,14 @@ pub unsafe extern "C" fn pthread_attr_setschedparam(
 ///
 /// If successful, zero is returned. Otherwise, an error code is returned instead.
 ///
+/// # Errors
+///
+/// - [`ErrorCode::InvalidArgument`] if `attr` is null or misaligned.
+/// - [`ErrorCode::InvalidArgument`] if `attr` is not initialized.
+/// - [`ErrorCode::InvalidArgument`] if `stackaddr` is null or improperly aligned.
+/// - [`ErrorCode::InvalidArgument`] if `stacksize` is too small, the stack region overflows, or the
+///   stack region is improperly aligned.
+///
 /// # Safety
 ///
 /// This function is unsafe because it may dereference raw pointers.
@@ -960,9 +968,55 @@ pub unsafe extern "C" fn pthread_attr_setstack(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // TODO: implement this function.
-    ::syslog::warn!("pthread_attr_setstack(): not supported, failing");
-    ErrorCode::OperationNotSupported.get()
+    // Check if `attr` is misaligned.
+    if !(attr as usize).is_multiple_of(core::mem::align_of::<pthread_attr_t>()) {
+        ::syslog::warn!("pthread_attr_setstack(): misaligned attribute pointer");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `attr` was initialized.
+    if (*attr).is_initialized == 0 {
+        ::syslog::warn!("pthread_attr_setstack(): attribute object was not initialized");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if `stackaddr` is not valid.
+    if stackaddr.is_null() {
+        ::syslog::warn!("pthread_attr_setstack(): invalid stack address");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    let stack_size: usize = stacksize as usize;
+
+    // Check if `stacksize` is not valid.
+    if stack_size < ::config::memory_layout::USER_STACK_MIN_SIZE {
+        ::syslog::warn!("pthread_attr_setstack(): invalid stack size");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    let stack_alignment: usize = ::sys::mm::Alignment::Align16 as usize;
+    let stack_base: usize = stackaddr as usize;
+
+    // Check if `stackaddr` is misaligned.
+    if !stack_base.is_multiple_of(stack_alignment) {
+        ::syslog::warn!("pthread_attr_setstack(): misaligned stack address");
+        return ErrorCode::InvalidArgument.get();
+    }
+
+    // Check if the stack region overflows or ends at a misaligned address.
+    match stack_base.checked_add(stack_size) {
+        Some(stack_end) if stack_end.is_multiple_of(stack_alignment) => {},
+        _ => {
+            ::syslog::warn!("pthread_attr_setstack(): invalid stack end address");
+            return ErrorCode::InvalidArgument.get();
+        },
+    }
+
+    // Store the stack attributes.
+    (*attr).stackaddr = stackaddr;
+    (*attr).stacksize = stacksize;
+
+    0
 }
 
 //==================================================================================================
