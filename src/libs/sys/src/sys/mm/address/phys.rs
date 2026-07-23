@@ -358,5 +358,5 @@ pub uninterp spec fn spec_physical_memory_size() -> int;
         result as int == spec_physical_memory_size(),
 )]
 fn physical_memory_size() -> usize {
-    config::kernel::MEMORY_SIZE
+    ::config::kernel::MEMORY_SIZE
 }
