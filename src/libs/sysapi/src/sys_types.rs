@@ -243,6 +243,11 @@ impl pthread_condattr_t {
         self.is_initialized != 0
     }
 
+    /// Marks the condition variable attributes object as uninitialized.
+    pub fn uninitialize(&mut self) {
+        self.is_initialized = 0;
+    }
+
     /// Returns the process-sharing attribute.
     pub fn pshared(&self) -> c_int {
         self.pshared
