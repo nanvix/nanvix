@@ -35,6 +35,12 @@ use ::syslog::trace_libcall;
 ///
 /// If successful, zero is returned. Otherwise, an error code is returned instead.
 ///
+/// # Errors
+///
+/// - [`ErrorCode::InvalidArgument`] if `thread` is null.
+/// - [`ErrorCode::InvalidArgument`] if `attr` is non-null and misaligned or points to an
+///   uninitialized thread attributes object.
+///
 /// # Safety
 ///
 /// This function is unsafe because it dereferences raw pointers.
@@ -59,17 +65,25 @@ pub unsafe extern "C" fn pthread_create(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // Cast `thread` to a mutable reference.
-    let thread: &mut pthread_t = &mut *thread;
-
-    // Check if we should use default attributes.
-    if attr.is_null() {
-        // TODO: use default attributes.
+    let stack_size: usize = if attr.is_null() {
+        ::config::memory_layout::USER_THREAD_STACK_SIZE
     } else {
-        ::syslog::warn!("pthread_create(): attributes are not supported, ignoring");
-    }
+        // Check if `attr` is misaligned.
+        if !(attr as usize).is_multiple_of(core::mem::align_of::<pthread_attr_t>()) {
+            ::syslog::warn!("pthread_create(): misaligned attribute pointer");
+            return ErrorCode::InvalidArgument.get();
+        }
 
-    match crate::pthread::pthread_create(start_routine, arg) {
+        // Check if `attr` was initialized.
+        if (*attr).is_initialized == 0 {
+            ::syslog::warn!("pthread_create(): attribute object was not initialized");
+            return ErrorCode::InvalidArgument.get();
+        }
+
+        (*attr).stacksize as usize
+    };
+
+    match crate::pthread::pthread_create(start_routine, arg, stack_size) {
         Ok(tid) => {
             *thread = tid;
             0

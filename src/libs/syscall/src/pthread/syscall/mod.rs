@@ -29,6 +29,9 @@ mod pthread_attr_init;
 /// Implementation of `pthread_attr_getstack()` system call.
 mod pthread_attr_getstack;
 
+/// Implementation of `pthread_attr_setstacksize()` system call.
+mod pthread_attr_setstacksize;
+
 /// Implementation of `pthread_getattr_np()` system call.
 mod pthread_getattr_np;
 
@@ -38,7 +41,6 @@ mod pthread_getattr_np;
 
 use crate::safe::mem::stack::Stack;
 use ::alloc::collections::btree_map::BTreeMap;
-use ::config::memory_layout::USER_THREAD_STACK_SIZE;
 use ::spin::{
     Lazy,
     Mutex,
@@ -75,6 +77,7 @@ pub use mutex::*;
 pub use pthread_attr_destroy::*;
 pub use pthread_attr_getstack::*;
 pub use pthread_attr_init::*;
+pub use pthread_attr_setstacksize::*;
 pub use pthread_getattr_np::*;
 pub use rwlock::*;
 pub use sem::*;
@@ -100,19 +103,27 @@ static STACKS: Lazy<Mutex<BTreeMap<pthread_t, Stack>>> = Lazy::new(|| Mutex::new
 ///
 /// - `start_routine`: Function to be executed by the thread.
 /// - `arg`: Argument passed to the thread function.
+/// - `stack_size`: Size of the stack for the new thread.
 ///
 /// # Return Value
 ///
 /// On successful completion, this function returns an identifier for the newly created thread. On
 /// failure, this function returns an error that contains the reason for the failure.
 ///
-pub fn pthread_create(func: extern "C" fn(usize) -> usize, arg: usize) -> Result<pthread_t, Error> {
-    ::syslog::trace!("pthread_create(): func={:?}, arg={arg:?}", ::core::ptr::addr_of!(func));
+pub fn pthread_create(
+    func: extern "C" fn(usize) -> usize,
+    arg: usize,
+    stack_size: usize,
+) -> Result<pthread_t, Error> {
+    ::syslog::trace!(
+        "pthread_create(): func={:?}, arg={arg:?}, stack_size={stack_size}",
+        ::core::ptr::addr_of!(func)
+    );
 
     // Create a new stack.
     // NOTE: The stack is automatically deallocated if this object is dropped.
     // TODO: Allocate thread stack on-demand via kernel mmap support (https://github.com/nanvix/nanvix/issues/1699).
-    let stack: Stack = Stack::new(USER_THREAD_STACK_SIZE)?;
+    let stack: Stack = Stack::new(stack_size)?;
 
     let user_tda: Option<VirtualAddress> =
         ::sysalloc::tda::alloc()?.map(|tda_ptr| VirtualAddress::new(tda_ptr as usize));
