@@ -248,6 +248,11 @@ impl pthread_condattr_t {
         self.is_initialized = 0;
     }
 
+    /// Returns the clock attribute.
+    pub fn clock(&self) -> clockid_t {
+        self.clock as clockid_t
+    }
+
     /// Returns the process-sharing attribute.
     pub fn pshared(&self) -> c_int {
         self.pshared
