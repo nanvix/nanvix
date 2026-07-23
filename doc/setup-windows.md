@@ -116,11 +116,17 @@ setup script directly to choose a custom install directory:
 ```
 
 The script downloads the prebuilt Windows binary from the Verus GitHub releases page,
-validates the archive, and installs it to the given directory. Use `VERUS_EXECUTABLE_DIR`
-to point the build system at the installation:
+validates the archive, and installs it to the given directory. The default setup location is
+used automatically:
 
 ```powershell
-.\z.ps1 verify -- VERUS_EXECUTABLE_DIR=C:\verus
+.\z.ps1 build -- verify
+```
+
+Set `VERUS_EXECUTABLE_DIR` when using a custom installation directory:
+
+```powershell
+.\z.ps1 build -- verify VERUS_EXECUTABLE_DIR=C:\verus
 ```
 
 > **Note:** The expected version is pinned in `build/verus-version`. Re-run `setup --verus`

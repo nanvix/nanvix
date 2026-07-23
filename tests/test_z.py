@@ -138,27 +138,6 @@ class TestParseCli(unittest.TestCase):
         self.assertTrue(cfg.release)
         self.assertTrue(cfg.profiler)
 
-    # --- --toolchain-dir option ---
-
-    def test_toolchain_dir_option(self) -> None:
-        """--toolchain-dir stores the given path and marks it as user-set."""
-        cmd, cfg = zmod.parse_cli(["setup", "--toolchain-dir", "/opt/tc"])
-        self.assertEqual(cmd, "setup")
-        self.assertEqual(cfg.toolchain_dir, "/opt/tc")
-        self.assertTrue(cfg._user_set_toolchain_dir)
-
-    def test_toolchain_dir_missing_path_dies(self) -> None:
-        """--toolchain-dir without a following path argument exits with an error."""
-        with patch("z.print_error"), self.assertRaises(SystemExit):
-            zmod.parse_cli(["setup", "--toolchain-dir"])
-
-    # --- --nanvix-sdk ---
-
-    def test_nanvix_sdk_flag(self) -> None:
-        """The --nanvix-sdk flag enables the nanvix_sdk config field."""
-        _, cfg = zmod.parse_cli(["setup", "--nanvix-sdk"])
-        self.assertTrue(cfg.nanvix_sdk)
-
     def test_verus_flag(self) -> None:
         """The --verus flag enables the verus config field."""
         _, cfg = zmod.parse_cli(["setup", "--verus"])
@@ -354,13 +333,6 @@ class TestBuildConfig(unittest.TestCase):
         cfg.apply_platform_defaults(_linux_plat())
         self.assertEqual(cfg.log_level, zmod.DEFAULT_LOG_LEVEL_RELEASE)
 
-    def test_linux_default_toolchain_dir(self) -> None:
-        """On Linux, the default toolchain directory is ~/toolchain."""
-        plat = _linux_plat()
-        cfg = zmod.BuildConfig()
-        cfg.apply_platform_defaults(plat)
-        self.assertEqual(cfg.toolchain_dir, str(plat.home_dir / "toolchain"))
-
     def test_linux_no_whp_injection(self) -> None:
         """On Linux, WHP is never auto-enabled even for microvm."""
         cfg = zmod.BuildConfig(machine="microvm")
@@ -368,13 +340,6 @@ class TestBuildConfig(unittest.TestCase):
         self.assertFalse(cfg.whp)
 
     # --- apply_platform_defaults on Windows ---
-
-    def test_windows_default_toolchain_dir(self) -> None:
-        """On Windows, the default toolchain directory is <repo>/toolchain."""
-        plat = _windows_plat()
-        cfg = zmod.BuildConfig()
-        cfg.apply_platform_defaults(plat)
-        self.assertEqual(cfg.toolchain_dir, str(plat.repo_root / "toolchain"))
 
     def test_windows_whp_auto_injection_for_microvm(self) -> None:
         """On Windows with machine=microvm, WHP is auto-enabled."""
@@ -398,12 +363,6 @@ class TestBuildConfig(unittest.TestCase):
         cfg = zmod.BuildConfig(log_level="error")
         cfg.apply_platform_defaults(_linux_plat())
         self.assertEqual(cfg.log_level, "error")
-
-    def test_user_toolchain_dir_preserved(self) -> None:
-        """A user-set toolchain_dir is not overwritten by platform defaults."""
-        cfg = zmod.BuildConfig(toolchain_dir="/custom/tc")
-        cfg.apply_platform_defaults(_linux_plat())
-        self.assertEqual(cfg.toolchain_dir, "/custom/tc")
 
     # --- Log level based on release mode ---
 
@@ -570,38 +529,6 @@ class TestValidateGitContext(unittest.TestCase):
 
         root = zmod.validate_git_context()
         self.assertEqual(root, _REPO_ROOT)
-
-
-# ===========================================================================
-# validate_toolchain_dir_location
-# ===========================================================================
-
-
-@patch("z.print_error")
-class TestValidateToolchainDirLocation(unittest.TestCase):
-    """Tests for validate_toolchain_dir_location."""
-
-    def test_toolchain_inside_repo_dies(self, _: MagicMock) -> None:
-        """A toolchain directory nested inside the repo causes a fatal exit."""
-        with tempfile.TemporaryDirectory() as repo:
-            repo_path = Path(repo)
-            tc = repo_path / "toolchain"
-            tc.mkdir()
-            with self.assertRaises(SystemExit):
-                zmod.validate_toolchain_dir_location(str(tc), repo_path)
-
-    def test_toolchain_equal_to_repo_dies(self, _: MagicMock) -> None:
-        """A toolchain directory equal to the repo root causes a fatal exit."""
-        with tempfile.TemporaryDirectory() as repo:
-            repo_path = Path(repo)
-            with self.assertRaises(SystemExit):
-                zmod.validate_toolchain_dir_location(str(repo_path), repo_path)
-
-    def test_toolchain_outside_repo_ok(self, _: MagicMock) -> None:
-        """A toolchain directory outside the repo is accepted without error."""
-        with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as tc:
-            # Should not raise.
-            zmod.validate_toolchain_dir_location(tc, Path(repo))
 
 
 # ===========================================================================

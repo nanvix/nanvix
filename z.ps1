@@ -15,7 +15,7 @@
     .\z.ps1 build -- uservm
     .\z.ps1 build -- guest
     .\z.ps1 build -- lint-check
-    .\z.ps1 verify -- VERUS_EXECUTABLE_DIR=C:\verus
+    .\z.ps1 build -- verify
     .\z.ps1 clean
     .\z.ps1 distclean
     .\z.ps1 run

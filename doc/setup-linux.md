@@ -123,24 +123,6 @@ exec $SHELL
 ./z setup
 ```
 
-> [!NOTE]
-> **Expert Mode** — The command above downloads a pre-built toolchain, which is
-> sufficient for most development workflows. If you need to build the
-> cross-compilation toolchain from source, use the
-> optional flags below:
->
-> ```bash
-> # Build the cross-compiler toolchain from source and place it in $HOME/toolchain.
-> ./z setup --nanvix-sdk --toolchain-dir $HOME/toolchain
-> ln -T -s $HOME/toolchain toolchain  # Create a convenience symlink in the repo root.
-> ```
->
-> - `--nanvix-sdk` — Build the cross-compilation toolchain from source (most
->   users can rely on the pre-built toolchain instead).
-> - `--toolchain-dir <path>` — Directory for the toolchain (must be outside the
->   repository root).
->
-
 ## 8. Updating Your Development Tools
 
 When a new major release of Nanvix is available, you must update your development tools to ensure
@@ -161,16 +143,16 @@ The easiest way to install Verus is via the setup command:
 
 ```bash
 ./z setup --verus
+./z build -- verify
 ```
 
-This installs the pinned Verus release to `~/verus` (or `<toolchain-dir>/verus` when
-`--toolchain-dir` is provided). You can also invoke the setup script directly to choose a
-custom install directory:
+This installs the pinned Verus release to `~/verus`. You can also invoke the setup script
+directly to choose a custom install directory:
 
 ```bash
 # Download the pinned release and run verification.
 ./scripts/setup/verus.sh ~/toolchain/verus
-./z verify -- VERUS_EXECUTABLE_DIR=~/toolchain/verus
+./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
 ```
 
 ### Using a Custom Verus Installation
@@ -186,7 +168,7 @@ cd ~/verus-src/source
 
 # 2. From the Nanvix repo root, run verification pointing at the verus binary directory.
 cd /path/to/nanvix
-./z verify -- VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
+./z build -- verify VERUS_EXECUTABLE_DIR=~/verus-src/source/target-verus/release
 ```
 
 > **Note:** The build validates that a `verus` binary exists at the given path (the directory

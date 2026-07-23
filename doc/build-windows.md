@@ -138,13 +138,18 @@ To run formal verification:
 
 ```powershell
 # Verify all annotated crates.
-.\z.ps1 verify -- VERUS_EXECUTABLE_DIR=C:\verus
+.\z.ps1 build -- verify
 
 # Verify a single crate (e.g., bitmap).
-.\z.ps1 verify -- verify-bitmap VERUS_EXECUTABLE_DIR=C:\verus
+.\z.ps1 build -- verify-bitmap
 ```
 
-> **Note:** `VERUS_EXECUTABLE_DIR` must be set; when unset, verification is skipped.
+Verification uses `%USERPROFILE%\verus` by default. For a custom installation, set
+`VERUS_EXECUTABLE_DIR` on the command line:
+
+```powershell
+.\z.ps1 build -- verify VERUS_EXECUTABLE_DIR=C:\verus
+```
 
 ## Cleaning
 

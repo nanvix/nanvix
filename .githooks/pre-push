@@ -27,9 +27,6 @@ url="$2"
 
 z40=0000000000000000000000000000000000000000
 
-# Toolchain directory.
-toolchain_dir=$(pwd)/toolchain
-
 IFS=' '
 while read local_ref local_sha remote_ref remote_sha
 do
@@ -55,13 +52,6 @@ then
 
     # Check if the target branch name is "dev"
     if [ "$last_remote_ref" = "refs/heads/dev" ]; then
-
-      # Check if toolchain directory exists.
-      if [ ! -d "$toolchain_dir" ]; then
-        echo "toolchain directory not found"
-        exit 1
-      fi
-
       # Check if there are any untracked files as this may impact the pipeline.
       if [ -n "$(git status --porcelain)" ]; then
         echo "Untracked files found, please commit or remove them before pushing."
@@ -69,7 +59,7 @@ then
       fi
 
       echo "Running pipeline for target branch '$remote'..."
-      ./scripts/pipeline.sh $toolchain_dir
+      ./scripts/pipeline.sh
     else
       echo "Target branch is not 'dev', skipping pipeline."
     fi

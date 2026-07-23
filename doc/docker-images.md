@@ -30,18 +30,6 @@ ls $NANVIX_DIR/bin/*.elf
 # vfs-test.elf          — VFS test (requires ramfs)
 ```
 
-### Cross-compiling your own application
-
-Use the Nanvix cross-compiler toolchain:
-
-```bash
-# Rust (no_std)
-cargo +nanvix-x86 build --target i686-unknown-nanvix --release
-cp target/i686-unknown-nanvix/release/myapp myapp.elf
-```
-
-See the [Nanvix documentation](https://github.com/nanvix/nanvix) for toolchain details.
-
 ### Preparing the build context
 
 Place your `.elf` binary alongside a `Dockerfile` in a build directory:
@@ -83,25 +71,6 @@ LABEL com.nanvix.arch="x86"
 LABEL com.nanvix.initrd.path="/initrd/myapp.elf"
 LABEL com.nanvix.ramfs.root="/ramfs"
 ENTRYPOINT ["/initrd/myapp.elf"]
-```
-
-### Multi-Stage Build (Compile + Package)
-
-Cross-compile inside a build container, then package for Nanvix:
-
-```dockerfile
-FROM nanvix-sdk:latest AS builder
-COPY src/ /build/src/
-RUN nanvix-cc -o /build/app.elf /build/src/main.c
-
-FROM scratch
-COPY --from=builder /build/app.elf /initrd/app.elf
-COPY config/ /ramfs/etc/
-LABEL com.nanvix.os="nanvix"
-LABEL com.nanvix.arch="x86"
-LABEL com.nanvix.initrd.path="/initrd/app.elf"
-LABEL com.nanvix.ramfs.root="/ramfs"
-ENTRYPOINT ["/initrd/app.elf"]
 ```
 
 ### Base Image With Shared Libraries
