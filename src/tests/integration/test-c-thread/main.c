@@ -75,6 +75,7 @@ int main(int argc, const char *argv[])
                        sizeof(int) +                    // is_initialized
                            sizeof(void *) +             // stackaddr
                            sizeof(size_t) +             // stacksize
+                           sizeof(size_t) +             // guardsize
                            sizeof(int) +                // contentionscope
                            sizeof(int) +                // inheritsched
                            sizeof(int) +                // schedpolicy
@@ -104,12 +105,14 @@ int main(int argc, const char *argv[])
                            sizeof(int) + // recursive
                            sizeof(int)   // pshared
     );
+    STATIC_ASSERT_ALIGNMENT(pthread_mutexattr_t, _Alignof(int));
 
     // Sanity check size of `pthread_rwlock_t` type.
     STATIC_ASSERT_SIZE(pthread_rwlock_t, sizeof(uint32_t));
 
     // Sanity check size of `pthread_rwlockattr_t` type.
     STATIC_ASSERT_SIZE(pthread_rwlockattr_t, sizeof(int));
+    STATIC_ASSERT_ALIGNMENT(pthread_rwlockattr_t, _Alignof(int));
 
     // Sanity check size of `sem_t` type.
     STATIC_ASSERT_SIZE(sem_t,
@@ -122,8 +125,11 @@ int main(int argc, const char *argv[])
     test_pthread_attr_init_destroy();
     test_pthread_attr_setdetachstate();
     test_pthread_attr_getguardsize();
+    test_pthread_attr_setguardsize();
     test_pthread_attr_setschedparam();
     test_pthread_attr_getstack();
+    test_pthread_attr_setstack();
+    test_pthread_attr_setstacksize();
     test_pthread_getattr_np_destroy();
     test_pthread_create_join();
     test_pthread_mutex_static_init();
@@ -134,6 +140,7 @@ int main(int argc, const char *argv[])
     test_pthread_mutex_trylock();
     test_pthread_mutex_timedlock();
     test_pthread_condattr_init();
+    test_pthread_condattr_destroy();
     test_pthread_condattr_getpshared();
     test_pthread_rwlock_static_init();
     test_pthread_rwlock_dynamic_init();
