@@ -414,15 +414,13 @@ impl Inner {
             let ghost pre_rc = self.refcount@;
         }
         proof! {
-            lemma_view_of(self);
-            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
-            lemma_alloc_contains(self, frame@);
+            lemma_free_pre(self, frame@);
         }
 
         if frame_number >= self.refcount.len() {
             proof! {
                 // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
-                assert(!self.bitmap@.set_bits.contains(frame_number as int));
+                lemma_refcount_err_bit_clear(self, frame_number as int);
             }
             let reason: &str = "frame number out of bounds";
             error!("{reason} (frame={frame:?})");
@@ -433,7 +431,7 @@ impl Inner {
         if self.refcount[frame_number] == 0 {
             proof! {
                 // refcount[fnx] == 0, so the bit is clear (internal_inv), hence not allocated.
-                assert(!self.bitmap@.set_bits.contains(frame_number as int));
+                lemma_refcount_err_bit_clear(self, frame_number as int);
             }
             let reason: &str = "frame is already free";
             error!("{reason} (frame={frame:?})");
@@ -443,23 +441,16 @@ impl Inner {
         // The frame is currently allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit is set.
         proof! {
             lemma_frame_allocated(self, frame@, frame_number as int);
-            assert(g_old.refcounts[frame@] == pre_rc[frame_number as int] as int);
         }
 
         self.refcount[frame_number] -= 1;
 
         // Only release the bit in the bitmap when the last owner releases the frame.
         if self.refcount[frame_number] == 0 {
-            proof! {
-                // The bit is still set and in range, so `clear` cannot fail.
-                assert(self.bitmap@.set_bits.contains(frame_number as int));
-                assert((frame_number as int) < self.bitmap@.num_bits);
-            }
             match self.bitmap.clear(frame_number) {
                 Ok(()) => {
                     proof! {
                         lemma_post_release_one(self, frame@, frame_number as int, g_old, pre_sb, pre_nb, pre_rc);
-                        assert(g_old.refcounts[frame@] == 1);
                     }
                     Ok(())
                 },
@@ -478,7 +469,6 @@ impl Inner {
             proof! {
                 let nv = self.refcount@[frame_number as int];
                 lemma_post_update_slot(self, frame@, frame_number as int, nv, g_old, pre_sb, pre_nb, pre_rc);
-                assert(nv as int == g_old.refcounts[frame@] - 1);
             }
             Ok(())
         }
