@@ -1024,6 +1024,32 @@ class TestCmdClean(unittest.TestCase):
 class TestCmdSetup(unittest.TestCase):
     """Tests for cmd_setup."""
 
+    @patch("z.print_info")
+    @patch("z.subprocess.run")
+    def test_install_verus_uses_python_script(
+        self, mock_run: MagicMock, _info: MagicMock
+    ) -> None:
+        """Linux and Windows use the current Python interpreter for Verus setup."""
+        mock_run.return_value.returncode = 0
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            verus_script = repo_root / "scripts" / "setup" / "verus.py"
+            verus_script.parent.mkdir(parents=True)
+            verus_script.touch()
+
+            for plat in (_linux_plat(repo_root), _windows_plat(repo_root)):
+                with self.subTest(is_windows=plat.is_windows):
+                    mock_run.reset_mock()
+                    zmod._install_verus(plat)
+                    mock_run.assert_called_once_with(
+                        [
+                            sys.executable,
+                            str(verus_script),
+                            str(plat.home_dir / "verus"),
+                        ]
+                    )
+
     @patch("z.cmd_setup_linux", return_value=0)
     def test_setup_dispatches_to_linux(self, mock_linux: MagicMock) -> None:
         """On Linux, cmd_setup delegates to cmd_setup_linux."""

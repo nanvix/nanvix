@@ -112,7 +112,7 @@ This installs the pinned Verus release to `%USERPROFILE%\verus`. You can also in
 setup script directly to choose a custom install directory:
 
 ```powershell
-.\scripts\setup\verus.ps1 C:\verus
+python .\scripts\setup\verus.py C:\verus
 ```
 
 The script downloads the prebuilt Windows binary from the Verus GitHub releases page,

@@ -151,7 +151,7 @@ directly to choose a custom install directory:
 
 ```bash
 # Download the pinned release and run verification.
-./scripts/setup/verus.sh ~/toolchain/verus
+python3 scripts/setup/verus.py ~/toolchain/verus
 ./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
 ```
 

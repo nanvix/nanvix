@@ -35,24 +35,24 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: ./scripts/setup/verus.sh --download-only
+      run: python3 scripts/setup/verus.py --download-only
 
     - name: "Pre-download Verus Archive (Windows)"
       if: runner.os == 'Windows' && steps.verus-cache.outputs.cache-hit != 'true'
       shell: pwsh
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: .\scripts\setup\verus.ps1 -DownloadOnly
+      run: python .\scripts\setup\verus.py --download-only
 
     - name: "Install Verus (Linux)"
       if: runner.os == 'Linux'
       shell: bash
-      run: ./scripts/setup/verus.sh "${HOME}/toolchain/verus"
+      run: python3 scripts/setup/verus.py "${HOME}/toolchain/verus"
 
     - name: "Install Verus (Windows)"
       if: runner.os == 'Windows'
       shell: pwsh
-      run: .\scripts\setup\verus.ps1 "$env:USERPROFILE\verus"
+      run: python .\scripts\setup\verus.py "$env:USERPROFILE\verus"
 
     - name: "Verify (Linux)"
       if: runner.os == 'Linux'

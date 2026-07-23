@@ -140,7 +140,7 @@ verification explicitly:
 
 ```bash
 # Install to a custom directory.
-./scripts/setup/verus.sh ~/toolchain/verus
+python3 scripts/setup/verus.py ~/toolchain/verus
 ./z build -- verify VERUS_EXECUTABLE_DIR=~/toolchain/verus
 
 # Or use a source-built installation.
