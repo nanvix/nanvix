@@ -10,7 +10,6 @@
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
-#include <sched.h>
 #include <stdio.h>
 
 //==================================================================================================
@@ -23,8 +22,14 @@
 // Global Variables
 //==================================================================================================
 
+// Mutex guarding `worker_may_run`.
+static pthread_mutex_t worker_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Condition variable used to signal that the worker may inspect its attributes.
+static pthread_cond_t worker_ready = PTHREAD_COND_INITIALIZER;
+
 // Signals that the worker may inspect its attributes after pthread_create() records its stack.
-static volatile int worker_may_run = 0;
+static int worker_may_run = 0;
 
 //==================================================================================================
 // Standalone Functions
@@ -33,16 +38,21 @@ static volatile int worker_may_run = 0;
 // Checks that the worker thread was created with the requested stack size.
 static void *worker_thread(void *arg)
 {
+    // Wait until the main thread signals that pthread_create() has recorded our stack.
+    int ret = pthread_mutex_lock(&worker_lock);
+    assert(ret == 0);
     while (!worker_may_run) {
-        int ret = sched_yield();
+        ret = pthread_cond_wait(&worker_ready, &worker_lock);
         assert(ret == 0);
     }
+    ret = pthread_mutex_unlock(&worker_lock);
+    assert(ret == 0);
 
     size_t expected_stacksize = *(const size_t *)arg;
     pthread_attr_t attr = {
         0,
     };
-    int ret = pthread_getattr_np(pthread_self(), &attr);
+    ret = pthread_getattr_np(pthread_self(), &attr);
     assert(ret == 0);
 
     size_t actual_stacksize = 0;
@@ -101,7 +111,15 @@ void test_pthread_attr_setstacksize(void)
     assert(ret == 0);
     assert(worker_tid != PTHREAD_NULL);
 
+    // Signal the worker that pthread_create() has recorded its stack.
+    ret = pthread_mutex_lock(&worker_lock);
+    assert(ret == 0);
     worker_may_run = 1;
+    ret = pthread_cond_signal(&worker_ready);
+    assert(ret == 0);
+    ret = pthread_mutex_unlock(&worker_lock);
+    assert(ret == 0);
+
     ret = pthread_join(worker_tid, NULL);
     assert(ret == 0);
 

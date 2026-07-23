@@ -120,6 +120,15 @@ pub fn pthread_create(
         ::core::ptr::addr_of!(func)
     );
 
+    // Reject undersized stacks, consistent with pthread_attr_setstacksize(). Otherwise
+    // `Stack::new()` could succeed with a zero-sized (or too small) stack and the kernel
+    // thread-create path would receive an invalid `user_stack_size`.
+    if stack_size < ::config::memory_layout::USER_STACK_MIN_SIZE {
+        let reason: &'static str = "stack size is smaller than the minimum thread stack size";
+        ::syslog::warn!("pthread_create(): {reason} (stack_size={stack_size})");
+        return Err(Error::new(::sys::error::ErrorCode::InvalidArgument, reason));
+    }
+
     // Create a new stack.
     // NOTE: The stack is automatically deallocated if this object is dropped.
     // TODO: Allocate thread stack on-demand via kernel mmap support (https://github.com/nanvix/nanvix/issues/1699).
