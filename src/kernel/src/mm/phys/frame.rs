@@ -259,7 +259,6 @@ impl Inner {
                     #![trigger self.bitmap@.has_free_range_at(start, count as int)]
                     !self.bitmap@.has_free_range_at(start, count as int) by {}
                 lemma_no_bitmap_range_implies_no_free_run(self, count as int);
-                assert(self@ == g_old);
             }
             let reason: &str = "requested range exceeds bitmap size";
             error!("{reason} (count={count}, bitmap_bits={})", self.bitmap.number_of_bits());
@@ -269,9 +268,6 @@ impl Inner {
             Ok(index) => index,
             Err(error) => {
                 proof! {
-                    lemma_view_of(self);
-                    assert(spec_refcount_seq(self) == pre_rc);
-                    assert(self@ == g_old);
                     // `alloc_range` failed: no run of `count` clear bits exists in the bitmap.
                     lemma_no_bitmap_range_implies_no_free_run(self, count as int);
                 }
@@ -316,18 +312,14 @@ impl Inner {
             // Re-establish `internal_inv` after range booking: the bitmap has the whole range set,
             // and the refcount loop set exactly the range's slots to 1.
             lemma_reestablish_inv_range(self, pre_sb, pre_nb, pre_rc, start, start + count as int);
-        }
-        proof! {
             // Representability: `start < pre_nb`, so `old(self)`'s internal_inv bounds `start`.
-            assert(frame_addr_of(start) <= usize::MAX as int);
-            assert(start <= FrameNumber::spec_max() as int);
+            lemma_alloc_index_repr(start, pre_nb);
         }
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
                 proof! {
                     // `None` requires `start > spec_max`, contradicting representability. Unreachable.
-                    assert(start <= FrameNumber::spec_max() as int);
                     assert(false);
                 }
                 let reason: &str = "frame number is out of bounds";
@@ -335,15 +327,11 @@ impl Inner {
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
-        proof! {
-            assert(frame_number@ == start);
-        }
 
         match FrameAddress::from_frame_number(frame_number) {
             Ok(frame_address) => {
                 proof! {
                     let base = frame_address@;
-                    assert(base == frame_addr_of(start));
                     lemma_alloc_contiguous_post(self, base, start, count as int, g_old, pre_sb, pre_nb, pre_rc);
                 }
                 Ok(frame_address)
