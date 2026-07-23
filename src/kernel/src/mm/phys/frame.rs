@@ -636,7 +636,7 @@ impl Inner {
         if frame_number >= self.refcount.len() {
             proof! {
                 // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
-                assert(!self.bitmap@.set_bits.contains(frame_number as int));
+                lemma_refcount_err_bit_clear(self, frame_number as int);
             }
             let reason: &str = "frame number out of bounds";
             error!("{reason} (frame={frame:?})");
@@ -646,7 +646,7 @@ impl Inner {
         if self.refcount[frame_number] == 0 {
             proof! {
                 // refcount[i] == 0, so the bit is clear (internal_inv), hence not allocated.
-                assert(!self.bitmap@.set_bits.contains(frame_number as int));
+                lemma_refcount_err_bit_clear(self, frame_number as int);
             }
             let reason: &str = "frame is not allocated";
             error!("{reason} (frame={frame:?})");

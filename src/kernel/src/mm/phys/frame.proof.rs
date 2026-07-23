@@ -280,6 +280,29 @@ proof fn lemma_free_contains(inner: &Inner, addr: int)
 }
 
 //==================================================================================================
+// Refcount-query error-path lemma
+//==================================================================================================
+
+/// A frame index that is past the refcount slice, or that names a zero refcount slot, cannot be a
+/// set bit. Extracted from the two error paths of `Inner::refcount` so their reasoning lives here
+/// instead of inline in the exec body.
+proof fn lemma_refcount_err_bit_clear(inner: &Inner, i: int)
+    requires
+        inner.internal_inv(),
+        i >= 0,
+        i >= spec_refcount_seq(inner).len() || spec_refcount_slot(inner, i) == 0,
+    ensures
+        !inner.bitmap@.set_bits.contains(i),
+{
+    // In-range indices (`i < num_bits <= refcount.len()`) have `i < len`, so the slice slot is the
+    // relevant zero and `internal_inv` ties a zero slot to a clear bit. Out-of-range indices are
+    // excluded by bitmap well-formedness (`wf`: `set_bits` only holds indices `< num_bits`).
+    if i < inner.bitmap@.num_bits {
+        assert(spec_refcount_slot(inner, i) == 0);
+    }
+}
+
+//==================================================================================================
 // Pure view reconstruction and state-transition lemmas
 //==================================================================================================
 
