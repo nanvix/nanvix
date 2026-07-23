@@ -526,15 +526,13 @@ impl Inner {
             let ghost pre_rc = self.refcount@;
         }
         proof! {
-            lemma_view_of(self);
-            assert(g_old == view_of(pre_sb, pre_nb, pre_rc));
-            lemma_alloc_contains(self, frame@);
+            lemma_free_pre(self, frame@);
         }
 
         if frame_number >= self.refcount.len() {
             proof! {
                 // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
-                assert(!self.bitmap@.set_bits.contains(frame_number as int));
+                lemma_refcount_err_bit_clear(self, frame_number as int);
             }
             let reason: &str = "frame number out of bounds";
             error!("{reason} (frame={frame:?})");
@@ -546,7 +544,7 @@ impl Inner {
         if self.refcount[frame_number] == 0 {
             proof! {
                 // refcount[fnx] == 0, so the bit is clear (internal_inv), hence not allocated.
-                assert(!self.bitmap@.set_bits.contains(frame_number as int));
+                lemma_refcount_err_bit_clear(self, frame_number as int);
             }
             let reason: &str = "cannot share an unallocated frame";
             error!("{reason} (frame={frame:?})");
@@ -556,7 +554,6 @@ impl Inner {
         proof! {
             // The frame is allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit is set.
             lemma_frame_allocated(self, frame@, frame_number as int);
-            assert(g_old.refcounts[frame@] == pre_rc[frame_number as int] as int);
         }
 
         self.refcount[frame_number] = match self.refcount[frame_number].checked_add(1) {
@@ -565,9 +562,7 @@ impl Inner {
                 // Overflow: the old refcount was at its u8 maximum (255). The state is
                 // unchanged, satisfying the Err arm's refcount-saturated disjunct.
                 proof! {
-                    lemma_view_of(self);
-                    assert(self@ == g_old);
-                    assert(g_old.refcounts[frame@] == 255);
+                    lemma_share_overflow(self, frame@, frame_number as int, g_old);
                 }
                 let reason: &str = "frame reference count overflow";
                 error!("{reason} (frame={frame:?})");
@@ -580,7 +575,6 @@ impl Inner {
         proof! {
             let nv = self.refcount@[frame_number as int];
             lemma_post_update_slot(self, frame@, frame_number as int, nv, g_old, pre_sb, pre_nb, pre_rc);
-            assert(nv as int == g_old.refcounts[frame@] + 1);
         }
 
         Ok(())

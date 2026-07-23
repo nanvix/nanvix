@@ -388,6 +388,25 @@ proof fn lemma_free_pre(inner: &Inner, addr: int)
     lemma_alloc_contains(inner, addr);
 }
 
+/// Overflow-path facts for `Inner::share`: when `checked_add` rejects the increment the refcount
+/// slot was already at the `u8` ceiling, so the state is unchanged and the abstract count is 255.
+/// Extracted from the `None` branch's `proof!` block of `share`.
+proof fn lemma_share_overflow(inner: &Inner, addr: int, fnx: int, g_old: FrameAllocView)
+    requires
+        inner.internal_inv(),
+        addr % spec_page_size() == 0,
+        fnx == addr / spec_page_size(),
+        0 <= fnx < spec_refcount_seq(inner).len(),
+        spec_refcount_slot(inner, fnx) == 255,
+        g_old == view_of(inner.bitmap@.set_bits, inner.bitmap@.num_bits, spec_refcount_seq(inner)),
+    ensures
+        inner@ == g_old,
+        g_old.refcounts[addr] == 255,
+{
+    lemma_view_of(inner);
+    lemma_frame_allocated(inner, addr, fnx);
+}
+
 /// The set of frame addresses of a contiguous index range `[start, start + count)`.
 closed spec fn spec_range_frames(start: int, count: int) -> Set<int> {
     BitmapView::range_set(start, start + count).map_by(|i: int| frame_addr_of(i), |addr: int| addr_to_frame(addr))
