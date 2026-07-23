@@ -9,6 +9,9 @@ use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("number.spec.rs");
 
+#[cfg(verus_keep_ghost)]
+include!("number.proof.rs");
+
 use crate::mem;
 use ::sys::mm::{
     Address,
@@ -121,10 +124,18 @@ impl From<FrameNumber> for PhysicalAddress {
     }
 }
 
+#[verus_verify]
 impl From<PhysicalAddress> for FrameNumber {
+    #[verus_spec(result =>
+        ensures
+            result@ == phys_addr@ / (mem::FRAME_SIZE as int),
+    )]
     fn from(phys_addr: PhysicalAddress) -> Self {
         let raw_addr: usize = phys_addr.into_raw_value();
         let frame_number: usize = raw_addr >> mem::FRAME_SHIFT;
+        proof! {
+            FrameNumber::lemma_raw_shr_frame_shift(raw_addr);
+        }
         // The unwrap below never panics: `FrameNumber::MAX` is the number of the frame that
         // contains `MAX_ADDRESS`, so `raw_addr >> FRAME_SHIFT <= FrameNumber::MAX` holds for
         // every address in the space.
