@@ -78,6 +78,9 @@ extern void test_pthread_attr_getstack(void);
 // Tests if pthread_attr_setstack() validates and stores stack attributes.
 extern void test_pthread_attr_setstack(void);
 
+// Tests if pthread_attr_setstacksize() validates, stores, and applies the stack size attribute.
+extern void test_pthread_attr_setstacksize(void);
+
 // Tests if statically initialized read-write locks can synchronize multiple readers.
 extern void test_pthread_rwlock_static_init(void);
 
