@@ -751,6 +751,25 @@ proof fn lemma_capture_inv_facts(
     } by {}
 }
 
+/// Representability of a single in-range frame index, instantiated from the captured pre-state
+/// representability quantifier (ensured by `lemma_capture_inv_facts`). Extracted from `alloc`, where
+/// `internal_inv` is transiently broken between the bitmap update and the refcount write, so the
+/// fact must be read off the captured snapshot rather than the live state.
+proof fn lemma_alloc_index_repr(idx: int, pre_nb: int)
+    requires
+        0 <= idx < pre_nb,
+        forall|i: int| 0 <= i < pre_nb ==> {
+            &&& #[trigger] frame_addr_of(i) >= 0
+            &&& frame_addr_of(i) <= usize::MAX as int
+            &&& i <= FrameNumber::spec_max() as int
+        },
+    ensures
+        frame_addr_of(idx) <= usize::MAX as int,
+        idx <= FrameNumber::spec_max() as int,
+{
+    assert(frame_addr_of(idx) >= 0);
+}
+
 /// A frame whose refcount slot is non-zero and in range is allocated: its bit is set, its index is
 /// below `num_bits`, and the abstract refcount equals the concrete slot value.
 proof fn lemma_frame_allocated(inner: &Inner, addr: int, fnx: int)

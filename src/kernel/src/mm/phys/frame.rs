@@ -158,22 +158,17 @@ impl Inner {
         proof_decl! { let ghost idx = frame_number as int; }
         proof! {
             // Representability of the new in-range index (from the captured invariant).
-            assert(frame_addr_of(idx) <= usize::MAX as int);
-            assert(idx <= FrameNumber::spec_max() as int);
+            lemma_alloc_index_repr(idx, pre_nb);
         }
         // Newly allocated frames have a single owner.
         #[cfg(not(verus_keep_ghost))]
         debug_assert_eq!(self.refcount[frame_number], 0);
         self.refcount[frame_number] = 1;
-        proof! {
-            assert(spec_refcount_seq(self) == pre_rc.update(idx, 1u8));
-        }
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
                 proof! {
                     // `None` requires `idx > spec_max`, contradicting representability. Unreachable.
-                    assert(idx <= FrameNumber::spec_max() as int);
                     assert(false);
                 }
                 let reason: &str = "frame number is out of bounds";
@@ -181,15 +176,11 @@ impl Inner {
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
-        proof! {
-            assert(frame_number@ == idx);
-        }
 
         // Attempt to convert the frame number to a frame address.
         match FrameAddress::from_frame_number(frame_number) {
             Ok(frame_address) => {
                 proof! {
-                    assert(frame_address@ == frame_addr_of(idx));
                     lemma_post_reserve_one_by_index(self, idx, g_old, pre_sb, pre_nb, pre_rc);
                 }
                 Ok(frame_address)
