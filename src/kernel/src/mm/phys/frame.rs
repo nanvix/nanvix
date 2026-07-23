@@ -857,10 +857,13 @@ impl Inner {
                     // This frame is in the requested range but not covered, so it cannot be free.
                     lemma_range_uncovered_not_all_free(self, index as int, rstart, rsize, ps, start_fn, nfr, g_old);
                 }
-                #[cfg(not(verus_keep_ghost))]
-                let uncovered_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
                 let reason: &str = "frame index not covered by the bitmap";
-                error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
+                error!(
+                    "{} (frame={:#010x}, region={:?})",
+                    reason,
+                    index.saturating_mul(mem::FRAME_SIZE),
+                    region
+                );
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
             match self.bitmap.test(index) {
@@ -876,14 +879,15 @@ impl Inner {
                         // This frame is in the requested range but already allocated, not free.
                         lemma_range_allocated_not_all_free(self, index as int, rstart, rsize, ps, start_fn, nfr, g_old);
                     }
-                    #[cfg(not(verus_keep_ghost))]
-                    let conflicting_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
                     let region_start: usize = region.start().into_raw_value();
                     let region_end: usize = region_start.saturating_add(region.size());
                     let reason: &str = "frame is already allocated";
                     error!(
                         "{} (frame={:#010x}, region_start={:#010x}, region_end={:#010x})",
-                        reason, conflicting_addr, region_start, region_end
+                        reason,
+                        index.saturating_mul(mem::FRAME_SIZE),
+                        region_start,
+                        region_end
                     );
                     return Err(Error::new(ErrorCode::OutOfMemory, reason));
                 },
