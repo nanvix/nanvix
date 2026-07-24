@@ -6,6 +6,8 @@
 //==================================================================================================
 
 use vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+include!("phys.spec.rs");
 
 use crate::{
     error::{
@@ -318,7 +320,7 @@ impl From<PhysicalAddress> for usize {
         result == (addr@ < spec_physical_memory_size()),
 )]
 pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
-    addr.into_raw_value() < physical_memory_size()
+    addr.into_raw_value() < config::kernel::MEMORY_SIZE
 }
 
 //==================================================================================================
@@ -336,25 +338,4 @@ impl View for PhysicalAddress {
     }
 }
 
-// Abstract size of the physical address space. Its concrete value is the build-time constant
-// `config::kernel::MEMORY_SIZE`, which Verus cannot read because `config` is intentionally outside
-// the verified crate set. `spec_physical_memory_size` names that value abstractly; the trusted
-// `physical_memory_size` accessor below is the single point where it enters the verified world.
-pub uninterp spec fn spec_physical_memory_size() -> int;
-
 } // end verus!
-
-// Trusted bridge that imports the physical memory size from the (unverified) `config` crate.
-//
-// `external_body` is justified here because `config::kernel::MEMORY_SIZE` is generated at build
-// time and lives outside the verified crate set, so Verus cannot evaluate it. This is the *only*
-// trusted boundary for the physical memory bound: its postcondition ties the concrete constant to
-// the abstract `spec_physical_memory_size`, and every specification refers to the abstract value.
-#[verus_verify(external_body)]
-#[verus_spec(result =>
-    ensures
-        result as int == spec_physical_memory_size(),
-)]
-fn physical_memory_size() -> usize {
-    ::config::kernel::MEMORY_SIZE
-}
