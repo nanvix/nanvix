@@ -135,6 +135,7 @@ extern int pthread_mutex_timedlock(pthread_mutex_t *mutex, const struct timespec
 extern int pthread_mutexattr_init(pthread_mutexattr_t *attr);
 extern int pthread_mutexattr_destroy(pthread_mutexattr_t *attr);
 extern int pthread_mutexattr_getpshared(const pthread_mutexattr_t *attr, int *pshared);
+extern int pthread_mutexattr_setpshared(pthread_mutexattr_t *attr, int pshared);
 extern int pthread_mutexattr_settype(pthread_mutexattr_t *attr, int type_);
 extern int pthread_mutexattr_gettype(const pthread_mutexattr_t *attr, int *type_);
 
