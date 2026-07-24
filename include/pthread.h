@@ -153,6 +153,7 @@ extern int pthread_condattr_init(pthread_condattr_t *attr);
 extern int pthread_condattr_getclock(const pthread_condattr_t *attr, clockid_t *clock_id);
 extern int pthread_condattr_getpshared(const pthread_condattr_t *attr, int *pshared);
 extern int pthread_condattr_setclock(pthread_condattr_t *attr, clockid_t clock_id);
+extern int pthread_condattr_setpshared(pthread_condattr_t *attr, int pshared);
 
 /*==================================================================================================
  * Read-Write Locks

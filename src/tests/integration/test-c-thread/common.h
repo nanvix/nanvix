@@ -33,6 +33,9 @@ extern void test_pthread_condattr_getclock(void);
 // Tests if the process-sharing attribute can be retrieved.
 extern void test_pthread_condattr_getpshared(void);
 
+// Tests if the process-sharing attribute can be set and retrieved.
+extern void test_pthread_condattr_setpshared(void);
+
 // Tests if calling exit() causes the program to exit even if there are other threads running.
 extern void test_pthread_nowait(void);
 

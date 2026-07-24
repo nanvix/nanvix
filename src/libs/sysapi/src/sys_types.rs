@@ -257,6 +257,11 @@ impl pthread_condattr_t {
     pub fn pshared(&self) -> c_int {
         self.pshared
     }
+
+    /// Sets the process-sharing attribute.
+    pub fn set_pshared(&mut self, pshared: c_int) {
+        self.pshared = pshared;
+    }
 }
 
 impl Default for pthread_condattr_t {
