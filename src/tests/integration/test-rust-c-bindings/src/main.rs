@@ -234,6 +234,7 @@ unsafe extern "C" {
     static pthread_mutex_init: u8;
     static pthread_mutex_lock: u8;
     static pthread_mutex_unlock: u8;
+    static pthread_mutexattr_setpshared: u8;
     static pthread_rwlock_destroy: u8;
     static pthread_rwlock_init: u8;
     static pthread_rwlock_rdlock: u8;
@@ -292,7 +293,7 @@ unsafe impl Sync for SymAddr {}
 
 /// Force the linker to retain all syscall symbols by referencing their addresses.
 #[used]
-static SYSCALL_SYMBOLS: [SymAddr; 133] = [
+static SYSCALL_SYMBOLS: [SymAddr; 134] = [
     SymAddr(&raw const __nanvix_sys_cached_pid),
     SymAddr(&raw const __errno_location),
     SymAddr(&raw const _exit),
@@ -379,6 +380,7 @@ static SYSCALL_SYMBOLS: [SymAddr; 133] = [
     SymAddr(&raw const pthread_mutex_init),
     SymAddr(&raw const pthread_mutex_lock),
     SymAddr(&raw const pthread_mutex_unlock),
+    SymAddr(&raw const pthread_mutexattr_setpshared),
     SymAddr(&raw const pthread_rwlock_destroy),
     SymAddr(&raw const pthread_rwlock_init),
     SymAddr(&raw const pthread_rwlock_rdlock),

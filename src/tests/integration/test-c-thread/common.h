@@ -75,6 +75,9 @@ extern void test_pthread_mutexattr_settype(void);
 // Tests if the process-sharing attribute can be retrieved.
 extern void test_pthread_mutexattr_getpshared(void);
 
+// Tests if the process-sharing attribute can be set and retrieved.
+extern void test_pthread_mutexattr_setpshared(void);
+
 // Tests if mutex attributes can be destroyed.
 extern void test_pthread_mutexattr_destroy(void);
 
