@@ -43,6 +43,7 @@ pub mod pthread_self;
 pub mod pthread_setcancelstate;
 pub mod pthread_setspecific;
 pub mod pthread_sigmask;
+pub mod pthread_testcancel;
 pub mod sem_destroy;
 pub mod sem_init;
 pub mod sem_post;

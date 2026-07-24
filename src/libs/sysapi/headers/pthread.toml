@@ -110,6 +110,7 @@ functions = [
     "pthread_exit",
     "pthread_self",
     "pthread_equal",
+    "pthread_testcancel",
 ]
 
 [[sections]]
