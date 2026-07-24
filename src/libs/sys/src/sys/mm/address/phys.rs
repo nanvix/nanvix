@@ -307,7 +307,7 @@ impl From<PhysicalAddress> for usize {
 ///
 #[inline(always)]
 pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
-    addr < VirtualAddress::from_raw_value(config::kernel::MEMORY_SIZE)
+    addr.into_raw_value() < physical_memory_size()
 }
 
 //==================================================================================================
@@ -332,3 +332,12 @@ impl View for PhysicalAddress {
 pub uninterp spec fn spec_physical_memory_size() -> int;
 
 } // end verus!
+
+// Returns the size of the physical address space, in bytes.
+//
+// The concrete value is imported from the build-time `config::kernel::MEMORY_SIZE` constant. It is
+// centralized behind this accessor so that all physical-memory bound checks go through a single
+// point.
+fn physical_memory_size() -> usize {
+    ::config::kernel::MEMORY_SIZE
+}
