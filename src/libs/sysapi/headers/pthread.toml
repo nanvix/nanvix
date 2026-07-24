@@ -159,6 +159,7 @@ functions = [
     "pthread_cond_timedwait",
     "pthread_condattr_destroy",
     "pthread_condattr_init",
+    "pthread_condattr_getclock",
     "pthread_condattr_getpshared",
     "pthread_condattr_setclock",
 ]

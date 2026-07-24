@@ -17,6 +17,7 @@ pub mod pthread_cond_signal;
 pub mod pthread_cond_timedwait;
 pub mod pthread_cond_wait;
 pub mod pthread_condattr_destroy;
+pub mod pthread_condattr_getclock;
 pub mod pthread_condattr_getpshared;
 pub mod pthread_condattr_init;
 pub mod pthread_condattr_setclock;

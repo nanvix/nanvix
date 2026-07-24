@@ -27,6 +27,9 @@ extern void test_pthread_condattr_init(void);
 // Tests if condition variable attributes can be destroyed.
 extern void test_pthread_condattr_destroy(void);
 
+// Tests if the clock attribute can be retrieved.
+extern void test_pthread_condattr_getclock(void);
+
 // Tests if the process-sharing attribute can be retrieved.
 extern void test_pthread_condattr_getpshared(void);
 
