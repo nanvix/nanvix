@@ -162,6 +162,7 @@ functions = [
     "pthread_condattr_getclock",
     "pthread_condattr_getpshared",
     "pthread_condattr_setclock",
+    "pthread_condattr_setpshared",
 ]
 
 [[sections]]

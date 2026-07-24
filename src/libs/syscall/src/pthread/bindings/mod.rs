@@ -21,6 +21,7 @@ pub mod pthread_condattr_getclock;
 pub mod pthread_condattr_getpshared;
 pub mod pthread_condattr_init;
 pub mod pthread_condattr_setclock;
+pub mod pthread_condattr_setpshared;
 pub mod pthread_create;
 pub mod pthread_getattr_np;
 pub mod pthread_getschedparam;
