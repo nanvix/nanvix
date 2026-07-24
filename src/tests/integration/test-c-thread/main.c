@@ -143,6 +143,7 @@ int main(int argc, const char *argv[])
     test_pthread_condattr_destroy();
     test_pthread_condattr_getclock();
     test_pthread_condattr_getpshared();
+    test_pthread_condattr_setpshared();
     test_pthread_rwlock_static_init();
     test_pthread_rwlock_dynamic_init();
     test_pthread_cond_static_init();
