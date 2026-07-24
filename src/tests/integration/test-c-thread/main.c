@@ -136,6 +136,7 @@ int main(int argc, const char *argv[])
     test_pthread_mutex_dynamic_init();
     test_pthread_mutexattr_settype();
     test_pthread_mutexattr_getpshared();
+    test_pthread_mutexattr_setpshared();
     test_pthread_mutexattr_destroy();
     test_pthread_mutex_trylock();
     test_pthread_mutex_timedlock();
