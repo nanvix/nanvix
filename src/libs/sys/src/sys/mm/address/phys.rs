@@ -307,7 +307,7 @@ impl From<PhysicalAddress> for usize {
 ///
 #[inline(always)]
 pub fn is_valid_physical_address(addr: VirtualAddress) -> bool {
-    addr.into_raw_value() < config::kernel::MEMORY_SIZE
+    addr.into_raw_value() < ::config::kernel::MEMORY_SIZE
 }
 
 //==================================================================================================
