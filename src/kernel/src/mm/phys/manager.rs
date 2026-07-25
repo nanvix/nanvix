@@ -214,16 +214,14 @@ impl PhysMemoryManager {
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
     fn check_user_watermark(count: usize) -> Result<(), Error> {
-        // Read the free count before checking the threshold so both success and overflow paths use
-        // the same observed allocator state.
-        let available: usize = frame::free_count();
-        let watermark_threshold: usize =
-            kernel_watermark().checked_add(count).ok_or_else(|| {
+        let watermark_threshold: usize = config::kernel::KERNEL_WATERMARK
+            .checked_add(count)
+            .ok_or_else(|| {
                 let reason: &str = "watermark + count overflow";
                 error!("{reason}");
                 Error::new(ErrorCode::InvalidArgument, reason)
             })?;
-        if available < watermark_threshold {
+        if frame::free_count() < watermark_threshold {
             let reason: &str = "would breach kernel watermark";
             error!("{reason}");
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
@@ -388,14 +386,4 @@ impl PhysMemoryManager {
         }
         result
     }
-}
-
-//==================================================================================================
-// Build-time constant accessors
-//==================================================================================================
-
-/// Ties the generated runtime constant to its abstract specification.
-#[inline]
-fn kernel_watermark() -> usize {
-    config::kernel::KERNEL_WATERMARK
 }
