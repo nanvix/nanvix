@@ -40,7 +40,10 @@ mod pthread_getattr_np;
 //==================================================================================================
 
 use crate::safe::mem::stack::Stack;
-use ::alloc::collections::btree_map::BTreeMap;
+use ::alloc::{
+    boxed::Box,
+    collections::btree_map::BTreeMap,
+};
 use ::spin::{
     Lazy,
     Mutex,
@@ -52,6 +55,7 @@ use ::sys::{
         pm::{
             __kcall_create_thread,
             __kcall_exit_thread,
+            __kcall_get_thread_data_area,
             __kcall_gettid,
             __kcall_join_thread,
         },
@@ -90,9 +94,25 @@ pub use tda::*;
 /// Map of stacks for threads.
 static STACKS: Lazy<Mutex<BTreeMap<pthread_t, Stack>>> = Lazy::new(|| Mutex::new(BTreeMap::new()));
 
+struct ThreadStartArgs {
+    func: extern "C" fn(usize) -> usize,
+    arg: usize,
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+extern "C" fn pthread_start(arg: usize) -> usize {
+    let start_args: Box<ThreadStartArgs> = unsafe { Box::from_raw(arg as *mut ThreadStartArgs) };
+    let retval: usize = (start_args.func)(start_args.arg);
+
+    if let Err(error) = ::sysalloc::tda::cleanup() {
+        ::syslog::warn!("pthread_start(): failed to cleanup thread data area ({error:?})");
+    }
+
+    retval
+}
 
 ///
 /// # Description
@@ -134,20 +154,46 @@ pub fn pthread_create(
     // TODO: Allocate thread stack on-demand via kernel mmap support (https://github.com/nanvix/nanvix/issues/1699).
     let stack: Stack = Stack::new(stack_size)?;
 
+    let user_tda_ptr: Option<*mut u8> = ::sysalloc::tda::alloc()?;
     let user_tda: Option<VirtualAddress> =
-        ::sysalloc::tda::alloc()?.map(|tda_ptr| VirtualAddress::new(tda_ptr as usize));
+        user_tda_ptr.map(|tda_ptr| VirtualAddress::new(tda_ptr as usize));
 
+    let start_args: *mut ThreadStartArgs = Box::into_raw(Box::new(ThreadStartArgs { func, arg }));
     let mut args: ThreadCreateArgs = ThreadCreateArgs {
         // Placeholder for user wrapper function, it will be overridden by the kernel call interface.
         user_fn: ThreadCreateArgs::NULL_USER_FN,
-        user_fn_arg0: func as usize,
-        user_fn_arg1: arg,
+        user_fn_arg0: pthread_start as *const () as usize,
+        user_fn_arg1: start_args as usize,
         user_stack_base: stack.base(),
         user_stack_size: stack.size(),
         user_tda,
     };
 
-    let thread: pthread_t = __kcall_create_thread(&mut args)?.try_into()?;
+    let tid: ThreadIdentifier = match __kcall_create_thread(&mut args) {
+        Ok(tid) => tid,
+        Err(error) => {
+            unsafe {
+                drop(Box::from_raw(start_args));
+            }
+            if let Some(tda_ptr) = user_tda_ptr {
+                if let Err(cleanup_error) = unsafe { ::sysalloc::tda::dealloc(tda_ptr) } {
+                    ::syslog::warn!(
+                        "pthread_create(): failed to cleanup thread data area ({cleanup_error:?})"
+                    );
+                }
+            }
+            return Err(error);
+        },
+    };
+    let thread: pthread_t = match tid.try_into() {
+        Ok(thread) => thread,
+        Err(error) => {
+            // The kernel call only returns non-negative thread identifiers, so conversion to
+            // `pthread_t` cannot fail. Retain the live thread's stack if this invariant is broken.
+            ::core::mem::forget(stack);
+            unreachable!("pthread_create(): invalid thread identifier ({error:?})");
+        },
+    };
 
     // Store the stack in the global map.
     // NOTE: The stack will be dropped either when the thread is joined or the process exits.
@@ -238,11 +284,11 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
 pub fn pthread_self() -> pthread_t {
     // Fast path: read the cached thread ID from the TDA via segment register.
     //
-    // Safety: `is_initialized()` is process-wide but sound here because:
-    // - It is set only after `set_thread_data_area()` succeeds (main thread init).
-    // - Child threads always have a valid TDA configured by the kernel before first execution.
-    // - `cleanup()` resets the flag before clearing the segment base and then diverges.
-    if ::sysalloc::tda::is_initialized() {
+    // Safety: `is_initialized()` indicates that TDA support was initialized for the process, and
+    // `__kcall_get_thread_data_area()` verifies that the calling thread has a valid segment base.
+    let has_tda: bool = ::sysalloc::tda::is_initialized()
+        && __kcall_get_thread_data_area().is_ok_and(|tda_ptr| !tda_ptr.is_null());
+    if has_tda {
         let tid: u32 = unsafe { arch::read_tda_u32(TDA_TID_OFFSET as u32) };
 
         // Check if the TDA slot contains a valid thread ID.
