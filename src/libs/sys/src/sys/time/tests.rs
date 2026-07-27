@@ -85,3 +85,11 @@ fn test_checked_sub_time_no_underflow() {
     assert_eq!(result.as_secs(), 5);
     assert_eq!(result.subsec_nanos(), 300_000_000);
 }
+
+#[test]
+fn test_checked_sub_time_same_second_returns_negative_duration() {
+    let earlier = SystemTime::new(10, 100_000_000).unwrap();
+    let later = SystemTime::new(10, 900_000_000).unwrap();
+    let result = earlier.checked_sub(&later);
+    assert_eq!(result, Err(Duration::from_millis(800)));
+}
