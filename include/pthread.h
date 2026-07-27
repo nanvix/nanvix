@@ -37,6 +37,8 @@ extern "C" {
 #define PTHREAD_NULL 0 /**< Null thread identifier. */
 #define PTHREAD_CREATE_JOINABLE 0 /**< Thread is created joinable. */
 #define PTHREAD_CREATE_DETACHED 1 /**< Thread is created detached. */
+#define PTHREAD_CANCEL_ENABLE 0 /**< Thread cancellation is enabled. */
+#define PTHREAD_CANCEL_DISABLE 1 /**< Thread cancellation is disabled. */
 #define PTHREAD_PROCESS_PRIVATE 0 /**< Synchronization object is private to a process. */
 #define PTHREAD_PROCESS_SHARED 1 /**< Synchronization object is shared between processes. */
 
@@ -101,6 +103,7 @@ extern int pthread_kill(pthread_t thread, int sig);
 extern void pthread_exit(void *retval);
 extern pthread_t pthread_self(void);
 extern int pthread_equal(pthread_t thread1, pthread_t thread2);
+extern int pthread_setcancelstate(int state, int *oldstate);
 extern void pthread_testcancel(void);
 
 /*==================================================================================================

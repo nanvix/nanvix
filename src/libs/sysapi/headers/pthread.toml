@@ -65,6 +65,14 @@ path = "pthread::PTHREAD_CREATE_DETACHED"
 comment = "Thread is created detached."
 
 [[rust_constants]]
+path = "pthread::PTHREAD_CANCEL_ENABLE"
+comment = "Thread cancellation is enabled."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_CANCEL_DISABLE"
+comment = "Thread cancellation is disabled."
+
+[[rust_constants]]
 path = "pthread::PTHREAD_PROCESS_PRIVATE"
 comment = "Synchronization object is private to a process."
 
@@ -110,6 +118,7 @@ functions = [
     "pthread_exit",
     "pthread_self",
     "pthread_equal",
+    "pthread_setcancelstate",
     "pthread_testcancel",
 ]
 

@@ -35,6 +35,12 @@ pub const PTHREAD_CREATE_JOINABLE: c_int = 0;
 /// Indicates that a thread is created detached.
 pub const PTHREAD_CREATE_DETACHED: c_int = 1;
 
+/// Indicates that thread cancellation is enabled.
+pub const PTHREAD_CANCEL_ENABLE: c_int = 0;
+
+/// Indicates that thread cancellation is disabled.
+pub const PTHREAD_CANCEL_DISABLE: c_int = 1;
+
 /// Indicates that a synchronization object is shared only within a process.
 pub const PTHREAD_PROCESS_PRIVATE: c_int = 0;
 

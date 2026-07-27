@@ -32,8 +32,19 @@ pub const TDA_TID_OFFSET: usize = core::mem::size_of::<*mut u8>();
 /// Size of the cached thread ID field in the TDA header, in bytes.
 pub const TDA_TID_SIZE: usize = core::mem::size_of::<u32>();
 
-/// Total size of the TDA header (self-pointer + cached thread ID), in bytes.
-const TDA_HEADER_SIZE: usize = TDA_TID_OFFSET + TDA_TID_SIZE;
+/// Offset of the cancellation state within the TDA header, in bytes.
+pub const TDA_CANCEL_STATE_OFFSET: usize = TDA_TID_OFFSET + TDA_TID_SIZE;
+
+/// Size of the cancellation state field in the TDA header, in bytes.
+pub const TDA_CANCEL_STATE_SIZE: usize = core::mem::size_of::<u32>();
+
+/// Default cancellation state for a newly allocated thread data area.
+///
+/// This value must match `sysapi::pthread::PTHREAD_CANCEL_ENABLE`.
+const TDA_CANCEL_STATE_DEFAULT: u32 = 0;
+
+/// Total size of the TDA header, in bytes.
+const TDA_HEADER_SIZE: usize = TDA_CANCEL_STATE_OFFSET + TDA_CANCEL_STATE_SIZE;
 
 /// Sentinel value indicating the cached thread ID has not been populated yet.
 pub const TDA_TID_UNSET: u32 = 0;
@@ -47,16 +58,11 @@ pub const TDA_TID_UNSET: u32 = 0;
 /// # Safety Invariant
 ///
 /// This flag is set to `true` by [`mark_initialized`] after `set_thread_data_area()` succeeds
-/// during runtime init, and reset to `false` by [`mark_uninitialized`] in [`cleanup`] before the
-/// segment base is cleared. Code that reads the TDA via a segment register (e.g., the
-/// `pthread_self()` fast path) must check this flag first.
+/// during runtime init. Code that reads the TDA via a segment register must check this flag and
+/// verify that the calling thread has a non-null TDA first.
 ///
-/// The flag is process-wide, which is sound because:
-/// - The main thread sets it once during `init()`, before any child thread is created.
-/// - Child threads inherit a valid TDA from the kernel (configured via `FS_BASE`/GDT on context
-///   switch) and never run user code without one.
-/// - `cleanup()` resets the flag and then diverges via `exit_thread()`, so no subsequent
-///   `pthread_self()` call can observe a stale `true`.
+/// This flag is process-wide and only indicates that TDA support was initialized. Raw kernel
+/// threads may still have no TDA.
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Marks the TDA subsystem as initialized.
@@ -66,14 +72,7 @@ pub fn mark_initialized() {
     INITIALIZED.store(true, Ordering::Release);
 }
 
-/// Marks the TDA subsystem as uninitialized.
-///
-/// Must be called before clearing the segment base in [`cleanup`].
-pub fn mark_uninitialized() {
-    INITIALIZED.store(false, Ordering::Release);
-}
-
-/// Returns `true` if [`mark_initialized`] has been called and [`mark_uninitialized`] has not.
+/// Returns `true` if [`mark_initialized`] has been called.
 pub fn is_initialized() -> bool {
     INITIALIZED.load(Ordering::Acquire)
 }
@@ -99,7 +98,6 @@ extern "C" {
 ///
 /// On successful completion, this function returns a pointer to the newly allocated thread data
 /// area. It is the caller's responsibility to deallocate this memory using the [`dealloc`] function.
-/// If the main executable has no thread-local storage segment, this function returns `Ok(None)`.
 /// On failure, this function returns an error that contains the reason for the failure.
 ///
 /// # Notes
@@ -113,6 +111,10 @@ extern "C" {
 /// High Address
 ///     ↑
 /// +---------------------+ <- tda_ptr + tda_header_size (end of allocation)
+/// |                     |
+/// | Cancellation State  | c_int slot for pthread cancellation state
+/// |                     | Initialized to PTHREAD_CANCEL_ENABLE
+/// +---------------------+ <- tda_ptr + TDA_CANCEL_STATE_OFFSET
 /// |                     |
 /// | Cached Thread ID    | u32 slot for fast pthread_self()
 /// |                     | Zero-initialized; lazily populated by pthread_self()
@@ -140,7 +142,7 @@ extern "C" {
 /// Low Address
 ///
 /// Where:
-/// - TDA_HEADER_SIZE = TDA_TID_OFFSET + TDA_TID_SIZE
+/// - TDA_HEADER_SIZE = TDA_CANCEL_STATE_OFFSET + TDA_CANCEL_STATE_SIZE
 /// - allocation_size = allocation_padding_size + TDA_HEADER_SIZE
 /// - allocation_padding_size = align_up(tls_size, max(PAGE_ALIGNMENT, align_of::<*mut u8>()))
 /// - tda_ptr = allocation + allocation_padding_size
@@ -169,13 +171,8 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
          allocation_padding_size={allocation_padding_size}, allocation_size={allocation_size}",
     );
 
-    // Check if thread-local storage is empty.
-    if tls_size == 0 {
-        return Ok(None);
-    }
-
     // Check if thread-local storage has an invalid alignment.
-    if !tls_start_addr.is_multiple_of(tls_alignment) {
+    if tls_size != 0 && !tls_start_addr.is_multiple_of(tls_alignment) {
         let reason: &'static str = "tls start address is not page-aligned";
         ::syslog::warn!(
             "alloc(): {reason} (tls_start_addr={tls_start_addr:x?}, tls_alignment={tls_alignment})",
@@ -222,6 +219,13 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
         *tid_ptr = TDA_TID_UNSET;
     }
 
+    // Initialize the calling thread's cancellation state.
+    let cancellation_state_ptr: *mut u32 =
+        unsafe { tda_ptr.add(TDA_CANCEL_STATE_OFFSET).cast::<u32>() };
+    unsafe {
+        *cancellation_state_ptr = TDA_CANCEL_STATE_DEFAULT;
+    }
+
     // Compute pointer to thread-local storage.
     // SAFETY: `tda_ptr` is non-null and pointer arithmetic is within bounds.
     let tls_aligned_size: usize = align_up(tls_size, PAGE_ALIGNMENT).ok_or_else(|| {
@@ -264,16 +268,10 @@ pub fn cleanup() -> Result<(), sys::error::Error> {
         return Ok(());
     }
 
-    // Deallocate thread-local storage.
-    dealloc(tcb_ptr)?;
-
-    // Mark TDA as uninitialized before clearing the segment base so that no subsequent
-    // segment-relative access (e.g., pthread_self() fast path) can observe a stale flag.
-    mark_uninitialized();
-
-    // Clear the thread-local storage pointer first to avoid dangling pointers.
+    // Clear the thread-local storage pointer before deallocating it to avoid a dangling segment
+    // base.
     match sys::kcall::pm::__kcall_set_thread_data_area(core::ptr::null_mut()) {
-        Ok(()) => Ok(()),
+        Ok(()) => unsafe { dealloc(tcb_ptr) },
         Err(error) => {
             ::syslog::warn!("cleanup_tda(): failed to clear tda pointer (error={error:?})");
             Err(error)
@@ -295,7 +293,11 @@ pub fn cleanup() -> Result<(), sys::error::Error> {
 /// On success, this function returns empty. Otherwise, it returns an error object that contains the
 /// reason for the failure.
 ///
-fn dealloc(tda_ptr: *mut u8) -> Result<(), Error> {
+/// # Safety
+///
+/// `tda_ptr` must have been returned by [`alloc`] and must not have been deallocated previously.
+///
+pub unsafe fn dealloc(tda_ptr: *mut u8) -> Result<(), Error> {
     extern "C" {
         static __TLS_START: u8;
         static __TLS_END: u8;
