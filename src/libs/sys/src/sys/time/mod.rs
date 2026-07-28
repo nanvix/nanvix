@@ -124,7 +124,7 @@ impl SystemTime {
     ///
     pub fn checked_sub(&self, earlier: &SystemTime) -> Result<Duration, Duration> {
         // Check if `self` happened after `earlier`.
-        if self.seconds >= earlier.seconds {
+        if self >= earlier {
             // Compute the difference in seconds using checked subtraction.
             let seconds: u64 = self.seconds - earlier.seconds;
 

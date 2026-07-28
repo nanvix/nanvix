@@ -333,6 +333,15 @@ pub enum SystemCallMessageHeader {
     ReceiveFromSocketResponse,
     FileCreationMaskRequest,
     FileCreationMaskResponse,
+    PollSocketRequest,
+    PollSocketResponse,
+    PollInputRequest,
+    ConsoleInputAvailable,
+    ConsoleInputSubscribe,
+    ConsoleReadCancelRequest,
+    ConsoleReadCancelResponse,
+    PollInputResponse,
+    ConsoleReadRetry,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -510,6 +519,15 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == ReceiveFromSocketResponse as u16 => Ok(ReceiveFromSocketResponse),
             x if x == FileCreationMaskRequest as u16 => Ok(FileCreationMaskRequest),
             x if x == FileCreationMaskResponse as u16 => Ok(FileCreationMaskResponse),
+            x if x == PollSocketRequest as u16 => Ok(PollSocketRequest),
+            x if x == PollSocketResponse as u16 => Ok(PollSocketResponse),
+            x if x == PollInputRequest as u16 => Ok(PollInputRequest),
+            x if x == ConsoleInputAvailable as u16 => Ok(ConsoleInputAvailable),
+            x if x == ConsoleInputSubscribe as u16 => Ok(ConsoleInputSubscribe),
+            x if x == ConsoleReadCancelRequest as u16 => Ok(ConsoleReadCancelRequest),
+            x if x == ConsoleReadCancelResponse as u16 => Ok(ConsoleReadCancelResponse),
+            x if x == PollInputResponse as u16 => Ok(PollInputResponse),
+            x if x == ConsoleReadRetry as u16 => Ok(ConsoleReadRetry),
             _ => Err(()),
         }
     }

@@ -139,6 +139,7 @@ int main(int argc, const char *argv[])
     struct in_addr sin_addr = {.s_addr = htonl(0x7f000001)};
 
     test_inet_sockets(sin_port, sin_addr);
+    test_poll_services(sin_addr);
 
     // The network service supports only AF_INET sockets.
 #ifndef __NANVIX_STANDALONE__

@@ -191,11 +191,11 @@ impl MessageDeserializer for PollRequest {
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid timeout"))?,
         );
 
-        // Check if the buffer is too short to hold all fds and events.
+        // Check if the buffer has exactly enough bytes to hold all fds and events.
         let fds_size: usize = nfds as usize * mem::size_of::<i32>();
         let events_size: usize = nfds as usize * mem::size_of::<i16>();
-        if bytes.len() < Self::OFFSET_OF_FDS + fds_size + events_size {
-            return Err(Error::new(ErrorCode::InvalidMessage, "buffer is too short"));
+        if bytes.len() != Self::OFFSET_OF_FDS + fds_size + events_size {
+            return Err(Error::new(ErrorCode::InvalidMessage, "invalid message size"));
         }
 
         // Deserialize `fds` array.
@@ -258,23 +258,20 @@ impl MessagePartitioner for PollRequest {
 
 #[derive(Debug)]
 pub struct PollResponse {
-    /// Number of file descriptors with ready events.
-    pub nready: u8,
-    /// File descriptors that are ready.
-    pub fds: Vec<i32>,
-    /// Events that occurred on each ready file descriptor.
+    /// Number of entries in `revents`.
+    pub nfds: u8,
+    /// Events that occurred on each requested file descriptor, in request order.
     pub revents: Vec<i16>,
 }
 
 impl PollResponse {
-    /// Offset of `nready`.
-    pub const OFFSET_OF_NREADY: usize = 0;
-    /// Offset of first array (fds) after nready.
-    pub const OFFSET_OF_FDS: usize = Self::OFFSET_OF_NREADY + mem::size_of::<u8>();
+    /// Offset of `nfds`.
+    pub const OFFSET_OF_NFDS: usize = 0;
+    /// Offset of the `revents` array.
+    pub const OFFSET_OF_REVENTS: usize = Self::OFFSET_OF_NFDS + mem::size_of::<u8>();
 
     /// Maximum size of the message.
-    pub const MAX_SIZE: usize = Self::OFFSET_OF_FDS
-        + OPEN_MAX * (core::mem::size_of::<i32>() + core::mem::size_of::<i16>());
+    pub const MAX_SIZE: usize = Self::OFFSET_OF_REVENTS + OPEN_MAX * mem::size_of::<i16>();
 
     ///
     /// # Description
@@ -283,23 +280,14 @@ impl PollResponse {
     ///
     /// # Parameters
     ///
-    /// - `fds`: File descriptors that are ready.
-    /// - `revents`: Events that occurred on each ready file descriptor.
+    /// - `revents`: Events that occurred on each requested file descriptor, in request order.
     ///
     /// # Return Value
     ///
     /// On success, this function returns the newly created response message for the `poll()` system
     /// call. Otherwise, it returns an error object that describes the failure.
     ///
-    pub fn new(fds: &[i32], revents: &[i16]) -> Result<Self, Error> {
-        // Check if array of file descriptors is too large.
-        if fds.len() > OPEN_MAX {
-            return Err(Error::new(
-                ErrorCode::InvalidArgument,
-                "number of file descriptors exceeds maximum supported",
-            ));
-        }
-
+    pub fn new(revents: &[i16]) -> Result<Self, Error> {
         // Check if array of events is too large.
         if revents.len() > OPEN_MAX {
             return Err(Error::new(
@@ -308,28 +296,19 @@ impl PollResponse {
             ));
         }
 
-        // Check if the number of events does not match the number of file descriptors.
-        if fds.len() != revents.len() {
-            return Err(Error::new(
-                ErrorCode::InvalidArgument,
-                "fds and revents must have the same length",
-            ));
-        }
-
-        // Attempt to convert `fds.len()` as a `u8`.
-        let nready: u8 = match fds.len().try_into() {
-            Ok(nready) => nready,
+        // Attempt to convert `revents.len()` as a `u8`.
+        let nfds: u8 = match revents.len().try_into() {
+            Ok(nfds) => nfds,
             Err(_error) => {
                 return Err(Error::new(
                     ErrorCode::ValueOutOfRange,
-                    "cannot encode number of ready file descriptors",
+                    "cannot encode number of file descriptors",
                 ));
             },
         };
 
         Ok(Self {
-            nready,
-            fds: fds.to_vec(),
+            nfds,
             revents: revents.to_vec(),
         })
     }
@@ -339,10 +318,7 @@ impl MessageSerializer for PollResponse {
     /// Serializes a response message for the `poll()` system call.
     fn to_bytes(&self) -> Vec<u8> {
         let mut buffer: Vec<u8> = Vec::new();
-        buffer.push(self.nready);
-        for fd in &self.fds {
-            buffer.extend_from_slice(&fd.to_le_bytes());
-        }
+        buffer.push(self.nfds);
         for ev in &self.revents {
             buffer.extend_from_slice(&ev.to_le_bytes());
         }
@@ -354,8 +330,7 @@ impl MessageDeserializer for PollResponse {
     /// Deserializes a response message for the `poll()` system call.
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         // Check if the buffer is too short.
-        if bytes.len() < Self::OFFSET_OF_FDS {
-            // need at least nready
+        if bytes.len() < Self::OFFSET_OF_REVENTS {
             return Err(Error::new(ErrorCode::InvalidMessage, "buffer is too short"));
         }
 
@@ -364,37 +339,20 @@ impl MessageDeserializer for PollResponse {
             return Err(Error::new(ErrorCode::InvalidMessage, "message is too long"));
         }
 
-        // Deserialize `nready` field.
-        let nready: u8 = bytes[Self::OFFSET_OF_NREADY];
-        if nready as usize > OPEN_MAX {
-            return Err(Error::new(ErrorCode::InvalidMessage, "invalid nready"));
+        // Deserialize `nfds` field.
+        let nfds: u8 = bytes[Self::OFFSET_OF_NFDS];
+        if nfds as usize > OPEN_MAX {
+            return Err(Error::new(ErrorCode::InvalidMessage, "invalid nfds"));
         }
 
-        // Check if the buffer is too short to hold all fds and events.
-        let fds_size: usize = nready as usize * mem::size_of::<i32>();
-        let events_size: usize = nready as usize * mem::size_of::<i16>();
-        if bytes.len() < Self::OFFSET_OF_FDS + fds_size + events_size {
-            return Err(Error::new(ErrorCode::InvalidMessage, "buffer is too short"));
+        let expected_size: usize = Self::OFFSET_OF_REVENTS + nfds as usize * mem::size_of::<i16>();
+        if bytes.len() != expected_size {
+            return Err(Error::new(ErrorCode::InvalidMessage, "invalid message size"));
         }
 
-        // Deserialize `fds` array.
-        let mut fds: Vec<i32> = Vec::with_capacity(nready as usize);
-        let mut revents: Vec<i16> = Vec::with_capacity(nready as usize);
-        let fds_offset: usize = Self::OFFSET_OF_FDS;
-        for i in 0..nready as usize {
-            let base: usize = fds_offset + i * mem::size_of::<i32>();
-            let fd: i32 = i32::from_le_bytes(
-                bytes[base..base + mem::size_of::<i32>()]
-                    .try_into()
-                    .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid fd"))?,
-            );
-            fds.push(fd);
-        }
-
-        // Deserialize `revents` array.
-        let events_offset: usize = fds_offset + fds_size;
-        for i in 0..nready as usize {
-            let base: usize = events_offset + i * mem::size_of::<i16>();
+        let mut revents: Vec<i16> = Vec::with_capacity(nfds as usize);
+        for i in 0..nfds as usize {
+            let base: usize = Self::OFFSET_OF_REVENTS + i * mem::size_of::<i16>();
             let ev: i16 = i16::from_le_bytes(
                 bytes[base..base + mem::size_of::<i16>()]
                     .try_into()
@@ -403,7 +361,7 @@ impl MessageDeserializer for PollResponse {
             revents.push(ev);
         }
 
-        PollResponse::new(&fds, &revents)
+        PollResponse::new(&revents)
     }
 }
 

@@ -7,6 +7,7 @@
 
 use super::util::page_chunk_size;
 use crate::{
+    poll::input_message::ConsoleReadCancel,
     safe::RawFileDescriptor,
     unistd::message::{
         ReadRequest,
@@ -38,6 +39,16 @@ use ::sysapi::{
 // Standalone Functions
 //==================================================================================================
 
+/// Backend routing and interruption policy for one read operation.
+#[derive(Clone, Copy)]
+struct ReadBackend {
+    destination: ProcessIdentifier,
+    message_type: MessageType,
+    pull_pid: ProcessIdentifier,
+    pull_tid: ThreadIdentifier,
+    cancel_console_on_interrupt: bool,
+}
+
 ///
 /// # Description
 ///
@@ -59,24 +70,49 @@ fn read_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
     chunk: &mut [u8],
-    destination: ProcessIdentifier,
-    message_type: MessageType,
-    pull_pid: ProcessIdentifier,
-    pull_tid: ThreadIdentifier,
+    backend: ReadBackend,
 ) -> Result<c_size_t, Error> {
     // Send metadata-only ReadRequest via IPC message.
-    let request: Message =
-        ReadRequest::build(tid, fd, chunk.len() as c_size_t, destination, message_type);
+    let request: Message = ReadRequest::build(
+        tid,
+        fd,
+        chunk.len() as c_size_t,
+        backend.destination,
+        backend.message_type,
+    );
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Pull data via data chunk transfer.
-    let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull(pull_pid, pull_tid, chunk)?;
+    let bytes_pulled: usize =
+        match ::sys::kcall::ipc::__kcall_pull(backend.pull_pid, backend.pull_tid, chunk) {
+            Ok(bytes_pulled) => bytes_pulled,
+            Err(error)
+                if error.code == ErrorCode::Interrupted && backend.cancel_console_on_interrupt =>
+            {
+                cancel_console_read(tid)?;
+                return Err(error);
+            },
+            Err(error) => return Err(error),
+        };
 
-    // Receive response metadata (count, status). The bulk data is already in the buffer.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    // Receive response metadata (count, status). Once the bulk transfer completed, always drain the
+    // matching response so a caught signal cannot leave stale metadata in this thread's mailbox.
+    let mut interrupted: Option<Error> = None;
+    let response: Message = loop {
+        match ::sys::kcall::ipc::__kcall_recv() {
+            Ok(response) => break response,
+            Err(error) if error.code == ErrorCode::Interrupted => {
+                interrupted.get_or_insert(error);
+            },
+            Err(error) => return Err(error),
+        }
+    };
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
+        if let Some(error) = interrupted {
+            return Err(error);
+        }
         ::syslog::warn!(
             "read_chunk(): failed (fd={:?}, chunk.len={:?}, error_code={:?})",
             fd,
@@ -132,6 +168,12 @@ fn read_chunk(
                 ));
             }
 
+            if count == 0 {
+                if let Some(error) = interrupted {
+                    return Err(error);
+                }
+            }
+
             Ok(count as c_size_t)
         },
         header => {
@@ -143,6 +185,42 @@ fn read_chunk(
             );
             Err(Error::new(ErrorCode::InvalidMessage, "read() failed"))
         },
+    }
+}
+
+/// Cancels this thread's parked VFSD console read and drains the acknowledgement.
+fn cancel_console_read(tid: ThreadIdentifier) -> Result<(), Error> {
+    let request: Message = ConsoleReadCancel::build_request(tid);
+    ::sys::kcall::ipc::__kcall_send(&request)?;
+
+    loop {
+        let response: Message = match ::sys::kcall::ipc::__kcall_recv() {
+            Ok(response) => response,
+            Err(error) if error.code == ErrorCode::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        let source: ::sys::ipc::MessageSender = response.source;
+        if source.pid != ProcessIdentifier::VFSD {
+            return Err(Error::new(
+                ErrorCode::InvalidMessage,
+                "console read cancellation returned an invalid sender",
+            ));
+        }
+        if response.status != 0 {
+            return Err(Error::new(
+                ErrorCode::try_from(response.status)?,
+                "console read cancellation failed",
+            ));
+        }
+        let response: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
+        let header: SystemCallMessageHeader = response.header;
+        if header != SystemCallMessageHeader::ConsoleReadCancelResponse {
+            return Err(Error::new(
+                ErrorCode::InvalidMessage,
+                "unexpected console read cancellation response",
+            ));
+        }
+        return Ok(());
     }
 }
 
@@ -170,12 +248,12 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
     // Route by the descriptor's resolved backend so flat descriptors are dispatched through vfsd's
     // authoritative table.
     use crate::fdtable::{
-        resolve,
         resolve_console,
+        resolve_result,
         ConsoleLookup,
         Route,
     };
-    match resolve_console(fd) {
+    match resolve_console(fd)? {
         // When vfsd owns the console slot, use the flat descriptor so vfsd can apply the shared
         // terminal line discipline. In direct-ELF runs without vfsd, keep the historical direct
         // kernel-console path.
@@ -187,19 +265,25 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
                 read_ipc(
                     fd,
                     buffer,
-                    crate::VFS_DESTINATION,
-                    crate::VFS_MESSAGE_TYPE,
-                    crate::VFS_PUSH_PULL_PID,
-                    crate::VFS_PUSH_PULL_TID,
+                    ReadBackend {
+                        destination: crate::VFS_DESTINATION,
+                        message_type: crate::VFS_MESSAGE_TYPE,
+                        pull_pid: crate::VFS_PUSH_PULL_PID,
+                        pull_tid: crate::VFS_PUSH_PULL_TID,
+                        cancel_console_on_interrupt: true,
+                    },
                 )
             } else {
                 read_ipc(
                     STDIN_FILENO,
                     buffer,
-                    crate::HOST_IO,
-                    MessageType::Ikc,
-                    ProcessIdentifier::KERNEL,
-                    ThreadIdentifier::KERNEL,
+                    ReadBackend {
+                        destination: crate::HOST_IO,
+                        message_type: MessageType::Ikc,
+                        pull_pid: ProcessIdentifier::KERNEL,
+                        pull_tid: ThreadIdentifier::KERNEL,
+                        cancel_console_on_interrupt: false,
+                    },
                 )
             }
         },
@@ -207,15 +291,18 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
             ::syslog::warn!("read(): bad file descriptor fd={fd}");
             Err(Error::new(ErrorCode::BadFile, "read: bad file descriptor"))
         },
-        ConsoleLookup::Other => match resolve(fd) {
+        ConsoleLookup::Other => match resolve_result(fd)? {
             // VFS-backed descriptors go to vfsd.
             Some(res) if res.route == Route::Vfs => read_ipc(
                 res.backend_fd,
                 buffer,
-                crate::VFS_DESTINATION,
-                crate::VFS_MESSAGE_TYPE,
-                crate::VFS_PUSH_PULL_PID,
-                crate::VFS_PUSH_PULL_TID,
+                ReadBackend {
+                    destination: crate::VFS_DESTINATION,
+                    message_type: crate::VFS_MESSAGE_TYPE,
+                    pull_pid: crate::VFS_PUSH_PULL_PID,
+                    pull_tid: crate::VFS_PUSH_PULL_TID,
+                    cancel_console_on_interrupt: false,
+                },
             ),
             // stdout/stderr, sockets, and unroutable descriptors are not readable here.
             _ => {
@@ -230,10 +317,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
 fn read_ipc(
     fd: RawFileDescriptor,
     buffer: &mut [u8],
-    destination: ProcessIdentifier,
-    message_type: MessageType,
-    pull_pid: ProcessIdentifier,
-    pull_tid: ThreadIdentifier,
+    backend: ReadBackend,
 ) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
@@ -245,8 +329,7 @@ fn read_ipc(
             page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &mut [u8] = &mut buffer[offset..offset + chunk_size];
 
-        let count: c_size_t =
-            read_chunk(tid, fd, chunk, destination, message_type, pull_pid, pull_tid)?;
+        let count: c_size_t = read_chunk(tid, fd, chunk, backend)?;
 
         // EOF or zero-length read.
         if count == 0 {

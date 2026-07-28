@@ -12,6 +12,7 @@ use crate::{
         i32_to_raw,
         is_interrupted,
         last_socket_error,
+        raw_poll,
         raw_set_nonblocking,
         raw_shutdown,
         raw_socketpair,
@@ -19,6 +20,16 @@ use crate::{
         sa_data_to_u8,
         socket_failed,
         SocklenT,
+        PLATFORM_POLLERR,
+        PLATFORM_POLLHUP,
+        PLATFORM_POLLIN,
+        PLATFORM_POLLNVAL,
+        PLATFORM_POLLOUT,
+        PLATFORM_POLLPRI,
+        PLATFORM_POLLRDBAND,
+        PLATFORM_POLLRDNORM,
+        PLATFORM_POLLWRBAND,
+        PLATFORM_POLLWRNORM,
         SOCKETPAIR_SUPPORTED,
     },
     types::{
@@ -40,9 +51,28 @@ use ::sys::error::{
     errno_to_error_code,
     ErrorCode,
 };
-use ::sysapi::sys_socket::{
-    sockaddr,
-    socklen_t,
+use ::sysapi::{
+    ffi::c_short,
+    poll::{
+        poll_errors::{
+            POLLERR,
+            POLLHUP,
+            POLLNVAL,
+        },
+        poll_flags::{
+            POLLIN,
+            POLLOUT,
+            POLLPRI,
+            POLLRDBAND,
+            POLLRDNORM,
+            POLLWRBAND,
+            POLLWRNORM,
+        },
+    },
+    sys_socket::{
+        sockaddr,
+        socklen_t,
+    },
 };
 use ::syscall::{
     netinet::in_::Protocol,
@@ -58,6 +88,78 @@ use ::syscall::{
 //==================================================================================================
 
 impl NetBackend {
+    /// Returns the events that can complete immediately on `sockfd`.
+    pub fn poll_socket(&self, sockfd: i32, events: c_short) -> Result<c_short, NetError> {
+        let mut platform_events: c_short = 0;
+        if events & POLLIN != 0 {
+            platform_events |= PLATFORM_POLLIN;
+        }
+        if events & POLLRDNORM != 0 {
+            platform_events |= PLATFORM_POLLRDNORM;
+        }
+        if events & POLLRDBAND != 0 {
+            platform_events |= PLATFORM_POLLRDBAND;
+        }
+        if events & POLLPRI != 0 {
+            platform_events |= PLATFORM_POLLPRI;
+        }
+        if events & POLLOUT != 0 {
+            platform_events |= PLATFORM_POLLOUT;
+        }
+        if events & POLLWRNORM != 0 {
+            platform_events |= PLATFORM_POLLWRNORM;
+        }
+        if let Some(platform_pollwrband) = PLATFORM_POLLWRBAND {
+            if events & POLLWRBAND != 0 {
+                platform_events |= platform_pollwrband;
+            }
+        }
+
+        let mut platform_revents: c_short = 0;
+        let result: libc::c_int = loop {
+            let result: libc::c_int =
+                unsafe { raw_poll(i32_to_raw(sockfd), platform_events, &mut platform_revents) };
+            if result < 0 && is_interrupted(last_socket_error()) {
+                continue;
+            }
+            break result;
+        };
+        if result < 0 {
+            let errno: i32 = last_socket_error();
+            return Err(NetError::Errno(errno_to_error_code(errno)));
+        }
+
+        let mut revents: c_short = 0;
+        if platform_revents & (PLATFORM_POLLIN | PLATFORM_POLLRDNORM) != 0 {
+            revents |= events & (POLLIN | POLLRDNORM);
+        }
+        if platform_revents & PLATFORM_POLLRDBAND != 0 {
+            revents |= events & POLLRDBAND;
+        }
+        if platform_revents & PLATFORM_POLLPRI != 0 {
+            revents |= events & POLLPRI;
+        }
+        if platform_revents & (PLATFORM_POLLOUT | PLATFORM_POLLWRNORM) != 0 {
+            revents |= events & (POLLOUT | POLLWRNORM);
+        }
+        if let Some(platform_pollwrband) = PLATFORM_POLLWRBAND {
+            if platform_revents & platform_pollwrband != 0 {
+                revents |= events & POLLWRBAND;
+            }
+        }
+        if platform_revents & PLATFORM_POLLERR != 0 {
+            revents |= POLLERR;
+        }
+        if platform_revents & PLATFORM_POLLHUP != 0 {
+            revents |= POLLHUP;
+            revents &= !(POLLOUT | POLLWRNORM);
+        }
+        if platform_revents & PLATFORM_POLLNVAL != 0 {
+            revents |= POLLNVAL;
+        }
+        Ok(revents)
+    }
+
     /// Creates a new socket.
     pub fn socket(
         &self,
@@ -340,6 +442,64 @@ impl NetBackend {
 mod test {
     use super::*;
     use crate::error::NetError;
+
+    /// Tests non-blocking socket readiness before and after data arrives.
+    #[cfg(unix)]
+    #[test]
+    fn poll_socket_tracks_read_and_write_readiness() {
+        let backend: NetBackend =
+            NetBackend::new().expect("platform initialization should succeed");
+        let (left, right): (i32, i32) = backend
+            .socketpair(AddressFamily::Unix, SocketType::Stream, Protocol::Ip)
+            .expect("socketpair should succeed");
+
+        assert_eq!(
+            backend
+                .poll_socket(left, POLLIN)
+                .expect("poll read interest"),
+            0,
+            "an empty stream socket should not be readable"
+        );
+        assert_eq!(
+            backend
+                .poll_socket(left, POLLOUT)
+                .expect("poll write interest"),
+            POLLOUT,
+            "a connected stream socket should be writable"
+        );
+
+        assert_eq!(backend.send(right, &[1], 1, 0).expect("send one byte"), 1);
+        assert_eq!(
+            backend
+                .poll_socket(left, POLLIN)
+                .expect("poll readable socket"),
+            POLLIN,
+            "queued data should make the socket readable"
+        );
+
+        backend.close(left).expect("close left socket");
+        backend.close(right).expect("close right socket");
+    }
+
+    /// Tests that a stream hangup suppresses write readiness as required by POSIX.
+    #[cfg(unix)]
+    #[test]
+    fn poll_socket_hangup_is_not_writable() {
+        let backend: NetBackend =
+            NetBackend::new().expect("platform initialization should succeed");
+        let (left, right): (i32, i32) = backend
+            .socketpair(AddressFamily::Unix, SocketType::Stream, Protocol::Ip)
+            .expect("socketpair should succeed");
+        backend.close(right).expect("close peer socket");
+
+        let revents: c_short = backend
+            .poll_socket(left, POLLIN | POLLOUT)
+            .expect("poll hung-up socket");
+        assert_ne!(revents & POLLHUP, 0, "peer closure should report hangup");
+        assert_eq!(revents & POLLOUT, 0, "hangup and write readiness are mutually exclusive");
+
+        backend.close(left).expect("close local socket");
+    }
 
     /// Tests that `connect()` rejects a socklen larger than `size_of::<sockaddr>()`.
     #[test]

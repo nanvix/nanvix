@@ -12,15 +12,43 @@
 #include <assert.h>
 #include <errno.h>
 #include <netinet/in.h>
+#include <poll.h>
+#include <pthread.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+#include <time.h>
 #include <unistd.h>
 
 //==================================================================================================
 // Private Functions
 //==================================================================================================
+
+struct delayed_datagram {
+    int fd;
+    struct sockaddr_in destination;
+};
+
+// Sends one datagram after poll() has begun waiting.
+static void *send_delayed_datagram(void *arg)
+{
+    struct delayed_datagram *request = (struct delayed_datagram *)arg;
+    const struct timespec delay = {
+        .tv_sec = 0,
+        .tv_nsec = 25 * 1000000,
+    };
+    assert(nanosleep(&delay, NULL) == 0);
+
+    const char byte = 'x';
+    assert(sendto(request->fd,
+                  &byte,
+                  1,
+                  0,
+                  (const struct sockaddr *)&request->destination,
+                  sizeof(request->destination)) == 1);
+    return NULL;
+}
 
 // Creates a datagram socket bound to an ephemeral port on the supplied address and reports the
 // address that the system assigned to it.
@@ -46,6 +74,40 @@ static int new_bound_dgram_socket(struct in_addr addr, struct sockaddr_in *assig
     assert(assigned->sin_family == AF_INET);
 
     return sockfd;
+}
+
+// Tests socket read/write readiness around a loopback datagram.
+static void test_inet_dgram_poll(struct in_addr sin_addr)
+{
+    struct sockaddr_in self;
+    int sockfd = new_bound_dgram_socket(sin_addr, &self);
+    struct pollfd pfd = {
+        .fd = sockfd,
+        .events = POLLIN | POLLOUT,
+        .revents = 0,
+    };
+
+    assert(poll(&pfd, 1, 0) == 1);
+    assert((pfd.revents & POLLOUT) != 0);
+    assert((pfd.revents & POLLIN) == 0);
+
+    struct delayed_datagram request = {
+        .fd = sockfd,
+        .destination = self,
+    };
+    pthread_t sender;
+    assert(pthread_create(&sender, NULL, send_delayed_datagram, &request) == 0);
+
+    pfd.events = POLLIN;
+    pfd.revents = 0;
+    assert(poll(&pfd, 1, 1000) == 1);
+    assert(pfd.revents == POLLIN);
+    assert(pthread_join(sender, NULL) == 0);
+
+    char received;
+    assert(recvfrom(sockfd, &received, 1, 0, NULL, NULL) == 1);
+    assert(received == 'x');
+    assert(close(sockfd) == 0);
 }
 
 // Tests datagram `sendto()`/`recvfrom()` with an explicit destination address. A datagram is sent
@@ -353,6 +415,8 @@ void test_inet_sockets(in_port_t sin_port, struct in_addr sin_addr)
     test_listen_socket(
         domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
     test_get_sockname(domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
+
+    test_inet_dgram_poll(sin_addr);
 
     // Exercise datagram sendto()/recvfrom() over loopback.
     test_inet_dgram_sendto_recvfrom(sin_addr);

@@ -33,6 +33,21 @@ pub(crate) const IPPROTO_UDP: libc::c_int = libc::IPPROTO_UDP;
 pub(crate) const INVALID_SOCKET: RawSocket = -1;
 
 //==================================================================================================
+// Poll Constants
+//==================================================================================================
+
+pub(crate) const PLATFORM_POLLIN: libc::c_short = libc::POLLIN;
+pub(crate) const PLATFORM_POLLPRI: libc::c_short = libc::POLLPRI;
+pub(crate) const PLATFORM_POLLOUT: libc::c_short = libc::POLLOUT;
+pub(crate) const PLATFORM_POLLERR: libc::c_short = libc::POLLERR;
+pub(crate) const PLATFORM_POLLHUP: libc::c_short = libc::POLLHUP;
+pub(crate) const PLATFORM_POLLNVAL: libc::c_short = libc::POLLNVAL;
+pub(crate) const PLATFORM_POLLRDNORM: libc::c_short = libc::POLLRDNORM;
+pub(crate) const PLATFORM_POLLRDBAND: libc::c_short = libc::POLLRDBAND;
+pub(crate) const PLATFORM_POLLWRNORM: libc::c_short = libc::POLLWRNORM;
+pub(crate) const PLATFORM_POLLWRBAND: Option<libc::c_short> = Some(libc::POLLWRBAND);
+
+//==================================================================================================
 // Shutdown Constants
 //==================================================================================================
 
@@ -93,6 +108,22 @@ pub(crate) fn socket_failed(result: RawSocket) -> bool {
 #[inline]
 pub(crate) unsafe fn close_socket(fd: RawSocket) -> libc::c_int {
     libc::close(fd)
+}
+
+/// Performs a non-blocking readiness query for one socket.
+pub(crate) unsafe fn raw_poll(
+    fd: RawSocket,
+    events: libc::c_short,
+    revents: &mut libc::c_short,
+) -> libc::c_int {
+    let mut pollfd: libc::pollfd = libc::pollfd {
+        fd,
+        events,
+        revents: 0,
+    };
+    let result: libc::c_int = libc::poll(&mut pollfd, 1, 0);
+    *revents = pollfd.revents;
+    result
 }
 
 //==================================================================================================

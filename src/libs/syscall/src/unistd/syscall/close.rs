@@ -38,9 +38,9 @@ pub fn close(fd: i32) -> Result<(), Error> {
             close_target,
             CloseTarget,
         },
-        fdtable::resolve,
+        fdtable::resolve_result,
     };
-    let result: Result<(), Error> = match resolve(fd) {
+    let result: Result<(), Error> = match resolve_result(fd)? {
         Some(res) => {
             let target: CloseTarget = close_target(fd, res);
             close_ipc(

@@ -42,7 +42,7 @@ void test_umask(void)
     assert(umask(mask | ~permissions) == mask);
     assert(umask(mask) == mask);
 
-    if (getenv("NANVIX_TEST_HOSTFS_PERMISSIONS") != NULL) {
+    if (getenv("NANVIX_TEST_HOSTFS") != NULL) {
         const mode_t expected_mode = permissions & ~mask;
         const char *filename = "/mnt/umask-file";
         const char *dirname = "/mnt/umask-dir";

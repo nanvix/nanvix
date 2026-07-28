@@ -23,6 +23,7 @@
 extern crate alloc;
 
 use crate::{
+    console_wait::ConsoleWaitTable,
     error::{
         build_error,
         fat32_to_error_code,
@@ -450,19 +451,21 @@ pub(crate) fn handle_read_with_hostfs(
     source_tid: ThreadIdentifier,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
+    console_wait: &mut ConsoleWaitTable,
     pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
     let req: ReadRequest = ReadRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
     if let Ok(stream) = ::vfs::fd::vfs_console_stream(fd) {
-        return Some(super::readwrite::handle_console_read(
+        return super::readwrite::handle_console_read(
             source_pid,
             source_tid,
             fd,
             stream,
             req.count as usize,
-        ));
+            console_wait,
+        );
     }
 
     // Pipe read end: served by the pipe handler (which may park the caller).

@@ -129,6 +129,8 @@ pub struct LineDiscipline {
     /// and drained by [`LineDiscipline::take_signals`] so the daemon can forward them to the
     /// foreground process group. The discipline itself never delivers signals.
     signals: Vec<TerminalSignal>,
+    /// Whether the underlying host input stream has closed permanently.
+    input_closed: bool,
 }
 
 impl Default for LineDiscipline {
@@ -140,6 +142,7 @@ impl Default for LineDiscipline {
             ready: VecDeque::new(),
             raw_run_open: false,
             signals: Vec::new(),
+            input_closed: false,
         }
     }
 }
@@ -170,6 +173,11 @@ impl LineDiscipline {
         self.termios.c_lflag & termios::ISIG != 0
     }
 
+    /// Returns `true` when terminal-generated signals should preserve queued input.
+    fn no_flush(&self) -> bool {
+        self.termios.c_lflag & termios::NOFLSH != 0
+    }
+
     /// Returns `true` when carriage returns are mapped to newlines on input (`ICRNL`).
     fn map_cr_to_nl(&self) -> bool {
         self.termios.c_iflag & termios::ICRNL != 0
@@ -196,6 +204,7 @@ impl LineDiscipline {
         let canonical: bool = self.canonical();
         let echo_on: bool = self.echo_enabled();
         let signals_on: bool = self.signals_enabled();
+        let no_flush: bool = self.no_flush();
         let map_cr_to_nl: bool = self.map_cr_to_nl();
         let erase: Option<u8> = self.control_char(termios::VERASE);
         let kill: Option<u8> = self.control_char(termios::VKILL);
@@ -230,7 +239,9 @@ impl LineDiscipline {
                     if echo_on {
                         echo.extend_from_slice(&Self::caret(byte));
                     }
-                    self.flush_input();
+                    if !no_flush {
+                        self.flush_input();
+                    }
                     self.signals.push(signal);
                     continue;
                 }
@@ -289,7 +300,7 @@ impl LineDiscipline {
         if !self.pending.is_empty() {
             self.commit_pending_line();
         }
-        self.ready.push_back(Segment::Eof);
+        self.input_closed = true;
         self.raw_run_open = false;
     }
 
@@ -322,6 +333,41 @@ impl LineDiscipline {
         [b'^', byte ^ 0x40]
     }
 
+    /// Returns whether a read can complete without waiting for more input.
+    pub fn is_readable(&self) -> bool {
+        !self.ready.is_empty()
+            || self.input_closed
+            || (!self.canonical()
+                && self.termios.c_cc[termios::VMIN] == 0
+                && self.termios.c_cc[termios::VTIME] == 0)
+    }
+
+    /// Copies the bytes an immediate read would return without consuming terminal state.
+    pub fn peek(&self, buf: &mut [u8]) -> ConsoleReadOutcome {
+        if buf.is_empty() {
+            return ConsoleReadOutcome::Read(0);
+        }
+
+        match self.ready.front() {
+            Some(Segment::Eof) => ConsoleReadOutcome::Eof,
+            Some(Segment::Data(data)) => {
+                let n: usize = buf.len().min(data.len());
+                for (dst, src) in buf.iter_mut().zip(data.iter().take(n)) {
+                    *dst = *src;
+                }
+                ConsoleReadOutcome::Read(n)
+            },
+            None if self.input_closed => ConsoleReadOutcome::Eof,
+            None if !self.canonical()
+                && self.termios.c_cc[termios::VMIN] == 0
+                && self.termios.c_cc[termios::VTIME] == 0 =>
+            {
+                ConsoleReadOutcome::Read(0)
+            },
+            None => ConsoleReadOutcome::WouldBlock,
+        }
+    }
+
     /// Reads cooked bytes into `buf`, returning the outcome of the attempt.
     ///
     /// In canonical mode a read returns at most one line and never crosses a line boundary; a line
@@ -333,10 +379,18 @@ impl LineDiscipline {
         if buf.is_empty() {
             return ConsoleReadOutcome::Read(0);
         }
+        if self.ready.is_empty()
+            && !self.canonical()
+            && self.termios.c_cc[termios::VMIN] == 0
+            && self.termios.c_cc[termios::VTIME] == 0
+        {
+            return ConsoleReadOutcome::Read(0);
+        }
 
         loop {
             match self.ready.front_mut() {
                 // No cooked input is available.
+                None if self.input_closed => return ConsoleReadOutcome::Eof,
                 None => return ConsoleReadOutcome::WouldBlock,
                 // An end-of-file marker: consume it and report EOF.
                 Some(Segment::Eof) => {
@@ -441,6 +495,30 @@ mod tests {
         assert_eq!(read_bytes(&mut ld, 16), b"hello\n");
         // After the line is consumed there is nothing left to read.
         assert_eq!(ld.read(&mut [0u8; 16]), ConsoleReadOutcome::WouldBlock);
+    }
+
+    /// Tests that readiness follows queued input without consuming it.
+    #[test]
+    fn readability_tracks_queued_input() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+        assert!(!ld.is_readable(), "an empty terminal is not readable");
+
+        clear_lflag(&mut ld, ICANON | ECHO);
+        ld.push_input(b"x");
+        assert!(ld.is_readable(), "raw input is immediately readable");
+        assert!(ld.is_readable(), "checking readiness does not consume input");
+
+        let mut peeked: [u8; 1] = [0];
+        assert_eq!(ld.peek(&mut peeked), ConsoleReadOutcome::Read(1));
+        assert_eq!(peeked, *b"x");
+
+        assert_eq!(read_bytes(&mut ld, 1), b"x");
+        assert!(!ld.is_readable(), "draining input clears readiness");
+
+        ld.push_eof();
+        assert!(ld.is_readable(), "queued EOF makes a read complete immediately");
+        assert_eq!(ld.read(&mut [0u8; 1]), ConsoleReadOutcome::Eof);
+        assert_eq!(ld.read(&mut [0u8; 1]), ConsoleReadOutcome::Eof);
     }
 
     /// Tests that echo is suppressed when the `ECHO` flag is cleared.
@@ -602,7 +680,7 @@ mod tests {
 
         assert_eq!(read_bytes(&mut ld, 16), b"abc");
         assert_eq!(ld.read(&mut [0u8; 16]), ConsoleReadOutcome::Eof);
-        assert_eq!(ld.read(&mut [0u8; 16]), ConsoleReadOutcome::WouldBlock);
+        assert_eq!(ld.read(&mut [0u8; 16]), ConsoleReadOutcome::Eof);
     }
 
     /// Tests that raw bytes do not merge into an unread, already-committed canonical line.
@@ -659,6 +737,32 @@ mod tests {
 
         // The pending line was flushed: nothing is readable.
         assert_eq!(ld.read(&mut [0u8; 16]), ConsoleReadOutcome::WouldBlock);
+    }
+
+    /// Tests that `NOFLSH` preserves queued input when a terminal signal is recognized.
+    #[test]
+    fn noflsh_preserves_input_on_signal() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+        ld.termios.c_lflag |= termios::NOFLSH;
+        ld.push_input(b"ready\npartial");
+        ld.push_input(&[ld.termios.c_cc[termios::VINTR]]);
+
+        assert_eq!(ld.take_signals(), alloc::vec![TerminalSignal::Interrupt]);
+        assert_eq!(read_bytes(&mut ld, 16), b"ready\n");
+        ld.push_input(b"\n");
+        assert_eq!(read_bytes(&mut ld, 16), b"partial\n");
+    }
+
+    /// Tests that noncanonical `VMIN=0,VTIME=0` reads complete immediately when empty.
+    #[test]
+    fn raw_zero_min_zero_time_is_immediately_readable() {
+        let mut ld: LineDiscipline = LineDiscipline::default();
+        clear_lflag(&mut ld, ICANON | ECHO);
+        ld.termios.c_cc[termios::VMIN] = 0;
+        ld.termios.c_cc[termios::VTIME] = 0;
+
+        assert!(ld.is_readable());
+        assert_eq!(ld.read(&mut [0u8; 1]), ConsoleReadOutcome::Read(0));
     }
 
     /// Tests that `^\` and `^Z` map to the quit and suspend signals respectively.

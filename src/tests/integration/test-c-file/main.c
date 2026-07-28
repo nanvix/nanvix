@@ -97,11 +97,11 @@ int main(int argc, const char *argv[])
     test_open_close();
     test_create_unlink(); // tests open() and unlink().
     test_write_read();    // tests open(), close() and unlink.
+    test_poll();          // tests open(), close(), write(), read(), poll() and unlink().
 #ifndef __NANVIX_STANDALONE__
-    // poll() and select() have no VFS implementation.
-    test_poll();            // tests open(), close(), write(), read(), poll() and unlink().
-    test_select();          // tests open(), close(), write(), read(), select() and unlink().
-#endif                      // __NANVIX_STANDALONE__
+    // select() has no VFS implementation.
+    test_select(); // tests open(), close(), write(), read(), select() and unlink().
+#endif             // __NANVIX_STANDALONE__
     test_posix_fadvise();   // requires open(), close() and unlink().
     test_lseek();           // requires open(), close(), read(), write() and unlink().
     test_posix_fallocate(); // requires open(), close(), lseek and unlink().
@@ -131,6 +131,7 @@ int main(int argc, const char *argv[])
     test_mknod();      // mknod() is unsupported; verifies it fails with ENOTSUP.
     test_umask_ramfs(); // tests umask(), open(), close(), stat(), and unlink() on RAMFS.
     test_umask();      // tests umask(), open(), stat(), mkdir(), and unlinkat().
+    test_poll_hostfs(); // requires test_umask() to mount hostfs.
     test_dirent();
     test_getcwd();
     test_chdir(); // requires getcwd().

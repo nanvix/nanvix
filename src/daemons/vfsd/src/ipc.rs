@@ -10,6 +10,7 @@ use crate::{
         assemble_and_dispatch,
         AssemblerEntry,
     },
+    console_wait::ConsoleWaitTable,
     error::{
         build_error,
         send_response,
@@ -49,6 +50,7 @@ use ::sys::{
 };
 use ::syscall::{
     message::SystemCallMessagePart,
+    poll::input_message::ConsoleReadCancel,
     SystemCallMessage,
     SystemCallMessageHeader,
 };
@@ -95,7 +97,11 @@ fn caller_pid(message: &Message) -> ProcessIdentifier {
 // SystemMessage Handler (procd shutdown)
 //==================================================================================================
 
-fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Result<bool, Error> {
+fn handle_system_message(
+    message: Message,
+    console_wait: &mut ConsoleWaitTable,
+    pipe_wait: &mut PipeWaitTable,
+) -> Result<bool, Error> {
     // State-mutating process-management messages are privileged: only procd may direct them. The
     // caller (handle_ipc_message) routes here only when the kernel-attested `message.source.pid` is
     // PROCD, so a sender cannot reach this path by forging `message.source`. The debug assert below
@@ -184,6 +190,7 @@ fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Res
                     let reclaim: ::vfs::fd::ProcessExitReclaim = ::vfs::fd::vfs_process_exit(pid);
                     // First discard any requests this process had parked: there is no longer a
                     // client to answer, so they must not be revived by the wakeups below.
+                    console_wait.purge_pid(pid);
                     pipe_wait.purge_pid(pid);
                     for closure in reclaim.pipe_closures {
                         if closure.was_write {
@@ -231,6 +238,9 @@ fn handle_system_message(message: Message, pipe_wait: &mut PipeWaitTable) -> Res
                 ProcessManagementMessageHeader::Exec => {
                     let exec: ExecMessage = ExecMessage::from_bytes(pm_msg.payload);
                     let pid: ProcessIdentifier = exec.pid;
+                    // Exec destroys every thread except the caller, so no console read issued by
+                    // the old image may survive into the replacement image.
+                    console_wait.purge_pid(pid);
                     // Bind the VFS to the exec'ing process and seed the root console if this is the
                     // root's first VFS-visible event, mirroring the fork-clone and syscall paths so
                     // close-on-exec is applied against a consistent table. The seed helper is
@@ -325,6 +335,7 @@ pub(crate) fn handle_ipc_message(
     message: Message,
     assemblers: &mut BTreeMap<(i32, u16), AssemblerEntry>,
     pending: &mut PendingQueue,
+    console_wait: &mut ConsoleWaitTable,
     pipe_wait: &mut PipeWaitTable,
 ) -> Result<bool, Error> {
     let source_tid: ThreadIdentifier = caller_tid(&message);
@@ -332,7 +343,7 @@ pub(crate) fn handle_ipc_message(
 
     // Route messages from the process manager daemon (PROCD).
     if source_pid == ProcessIdentifier::PROCD {
-        return handle_system_message(message, pipe_wait);
+        return handle_system_message(message, console_wait, pipe_wait);
     }
 
     // Bind the VFS to the requesting process so that descriptor and working-directory operations
@@ -375,6 +386,18 @@ pub(crate) fn handle_ipc_message(
         SystemCallMessageHeader::ResolveFdRequest => {
             let response: Message = handler::handle_resolve_fd(source_tid, syscall_msg);
             send_response(&response);
+        },
+        SystemCallMessageHeader::ConsoleReadCancelRequest => {
+            console_wait.cancel(source_pid, source_tid);
+            let _ = handler::service_pending_console_input(console_wait);
+            send_response(&ConsoleReadCancel::build_response(source_tid));
+        },
+        SystemCallMessageHeader::ConsoleReadRetry => {
+            if source_pid == ProcessIdentifier::VFSD {
+                handler::retry_console_readers(console_wait);
+            } else {
+                send_response(&build_error(source_tid, ErrorCode::PermissionDenied));
+            }
         },
         SystemCallMessageHeader::RegisterSocketRequest => {
             let response: Message = handler::handle_register_socket(source_tid, syscall_msg);
@@ -459,6 +482,7 @@ pub(crate) fn handle_ipc_message(
                 source_tid,
                 syscall_msg,
                 pending,
+                console_wait,
                 pipe_wait,
             ) {
                 send_response(&response);
@@ -481,7 +505,7 @@ pub(crate) fn handle_ipc_message(
         //==========================================================================================
         SystemCallMessageHeader::TtyControlRequest => {
             let response: Message =
-                handler::handle_tty_control(source_pid, source_tid, syscall_msg);
+                handler::handle_tty_control(source_pid, source_tid, syscall_msg, console_wait);
             send_response(&response);
         },
 
@@ -542,7 +566,8 @@ pub(crate) fn handle_ipc_message(
         | SystemCallMessageHeader::FileChownAtRequestPart
         | SystemCallMessageHeader::FileChmodAtRequestPart
         | SystemCallMessageHeader::HostMountRequestPart
-        | SystemCallMessageHeader::HostUmountRequestPart => {
+        | SystemCallMessageHeader::HostUmountRequestPart
+        | SystemCallMessageHeader::PollRequestPart => {
             let part: SystemCallMessagePart =
                 SystemCallMessagePart::from_bytes(syscall_msg.payload);
             if let Some(responses) = assemble_and_dispatch(
@@ -552,6 +577,7 @@ pub(crate) fn handle_ipc_message(
                 part,
                 assemblers,
                 pending,
+                console_wait,
             ) {
                 for response in responses {
                     send_response(&response);

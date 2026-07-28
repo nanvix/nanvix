@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use crate::{
+    console_wait::ConsoleWaitTable,
     error::build_error,
     handler,
     pending::PendingQueue,
@@ -29,6 +30,7 @@ use ::syscall::{
         SystemCallLongMessage,
         SystemCallMessagePart,
     },
+    poll::message::PollRequest,
     sys::{
         mount::message::{
             MountRequest,
@@ -78,6 +80,7 @@ pub(crate) fn assemble_and_dispatch(
     part: SystemCallMessagePart,
     assemblers: &mut BTreeMap<(i32, u16), AssemblerEntry>,
     pending: &mut PendingQueue,
+    console_wait: &mut ConsoleWaitTable,
 ) -> Option<Vec<Message>> {
     let key: (i32, u16) = (i32::from(source), header as u16);
 
@@ -108,7 +111,14 @@ pub(crate) fn assemble_and_dispatch(
     let parts: Vec<SystemCallMessagePart> = completed.assembler.take_parts();
 
     // Dispatch based on the header type.
-    Some(dispatch_assembled_request(source_pid, source, completed.header, &parts, pending))
+    Some(dispatch_assembled_request(
+        source_pid,
+        source,
+        completed.header,
+        &parts,
+        pending,
+        console_wait,
+    ))
 }
 
 fn max_capacity_for_header(header: SystemCallMessageHeader) -> usize {
@@ -158,6 +168,9 @@ fn max_capacity_for_header(header: SystemCallMessageHeader) -> usize {
         SystemCallMessageHeader::HostUmountRequestPart => {
             UmountRequest::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
         },
+        SystemCallMessageHeader::PollRequestPart => {
+            PollRequest::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
+        },
         // Fallback: generous capacity.
         _ => 64,
     }
@@ -169,6 +182,7 @@ fn dispatch_assembled_request(
     header: SystemCallMessageHeader,
     parts: &[SystemCallMessagePart],
     pending: &mut PendingQueue,
+    console_wait: &mut ConsoleWaitTable,
 ) -> Vec<Message> {
     match header {
         SystemCallMessageHeader::OpenAtRequestPart => match OpenAtRequest::from_parts(parts) {
@@ -313,6 +327,13 @@ fn dispatch_assembled_request(
             Ok(req) => handler::handle_umount(source, req),
             Err(e) => {
                 ::syslog::error!("dispatch: umount from_parts failed (error={:?})", e);
+                vec![build_error(source, ErrorCode::InvalidMessage)]
+            },
+        },
+        SystemCallMessageHeader::PollRequestPart => match PollRequest::from_parts(parts) {
+            Ok(request) => handler::handle_poll(source_pid, source, request, console_wait),
+            Err(error) => {
+                ::syslog::error!("dispatch: poll from_parts failed (error={:?})", error);
                 vec![build_error(source, ErrorCode::InvalidMessage)]
             },
         },
