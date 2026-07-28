@@ -105,13 +105,13 @@ $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_STRESS_SRCDIR)/%.c
 # A suite may restrict the compiled set via POSIX_TEST_FILES_<suite> (a list of
 # file names under the suite directory) — used by file-c, whose link-only and
 # guarded sub-tests need features absent from the standalone VFS (FAT32 has no
-# links/permissions; poll/select have no standalone backend).
+# links/permissions; select has no standalone backend).
 
 # file-c: only the sub-tests that main.c runs under __NANVIX_STANDALONE__. The
 # remaining files exercise links, permissions/ownership, timestamps, and
-# poll/select, which the standalone FAT32 VFS does not support.
+# select(), which the standalone FAT32 VFS does not support.
 POSIX_TEST_FILES_test-c-file := \
-	main.c open_close.c create_unlink.c write_read.c posix_fadvise.c lseek.c \
+	main.c open_close.c create_unlink.c write_read.c poll.c posix_fadvise.c lseek.c \
 	posix_fallocate.c readv.c preadv.c writev.c pwritev.c pread.c pwrite.c \
 	fdatasync.c stat.c ftruncate.c truncate.c renameat.c unlinkat.c mkdirat.c mkdir.c \
 	mkfifo.c mknod.c umask_ramfs.c umask.c dirent.c getcwd.c chdir.c fchdir.c
@@ -294,7 +294,8 @@ $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_RULE,$(suite))))
 # Per-suite environment variables (space-separated KEY=VALUE entries). Empty unless set.
 POSIX_TEST_ENV_test-c-misc := NANVIX_TEST=1
 ifneq ($(IS_WINDOWS),yes)
-POSIX_TEST_ENV_test-c-file := NANVIX_TEST_HOSTFS_PERMISSIONS=1
+POSIX_TEST_ENV_test-c-file := NANVIX_TEST_HOSTFS=1
+POSIX_TEST_ENV_test-c-network := NANVIX_TEST_HOSTFS=1
 endif
 
 # $(1) = suite name.

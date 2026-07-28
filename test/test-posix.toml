@@ -340,7 +340,7 @@ build_modes = ["debug", "release"]
 executor = "terminal"
 name = "posix/test-c-network"
 program = "./bin/test-c-network.initrd"
-extra_nanvixd_args = "-allow-host-networking"
+extra_nanvixd_args = "-allow-host-networking -mount ./bin/posix-tests-ramfs-seed"
 expected_exit_code = 0
 
 [[tests]]

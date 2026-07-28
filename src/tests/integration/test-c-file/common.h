@@ -150,6 +150,9 @@ extern void test_writev(void);
 // Tests whether we can poll a file descriptor for read/write readiness.
 extern void test_poll(void);
 
+// Tests whether we can poll a hostfsd-backed file descriptor for read/write readiness.
+extern void test_poll_hostfs(void);
+
 // Tests whether we can use select() to check read/write readiness on a file descriptor.
 extern void test_select(void);
 
