@@ -112,7 +112,6 @@ impl Inner {
     /// Upon success, the address of the allocated frame is returned. Upon failure, an error is
     /// returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -133,19 +132,45 @@ impl Inner {
             },
     )]
     fn alloc(&mut self) -> Result<FrameAddress, Error> {
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            // Snapshot the pre-state view and expose the bitmap/refcount invariant link so later
+            // proof obligations can read it off the captured component snapshots.
+            lemma_capture_inv_facts(self, g_old, pre_sb, pre_nb, pre_rc);
+        }
         let frame_number: usize = match self.bitmap.alloc() {
             Ok(index) => index,
             Err(error) => {
+                proof! {
+                    // The bitmap is full (every bit set), so every covered frame has refcount > 0
+                    // and no covered frame is free.
+                    lemma_alloc_full_no_free(self, g_old, pre_sb, pre_nb, pre_rc);
+                }
                 error!("{error:?}");
                 return Err(error);
             },
         };
+        proof_decl! { let ghost idx = frame_number as int; }
+        proof! {
+            // Representability of the new in-range index (from the captured invariant).
+            lemma_alloc_index_repr(idx, pre_nb);
+        }
         // Newly allocated frames have a single owner.
+        #[cfg(not(verus_keep_ghost))]
         debug_assert_eq!(self.refcount[frame_number], 0);
         self.refcount[frame_number] = 1;
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
+                proof! {
+                    // `None` requires `idx > spec_max`, contradicting representability. Unreachable.
+                    assert(false);
+                }
                 let reason: &str = "frame number is out of bounds";
                 error!("{reason:?}");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
@@ -154,8 +179,17 @@ impl Inner {
 
         // Attempt to convert the frame number to a frame address.
         match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
+            Ok(frame_address) => {
+                proof! {
+                    lemma_post_reserve_one_by_index(self, idx, g_old, pre_sb, pre_nb, pre_rc);
+                }
+                Ok(frame_address)
+            },
             Err(error) => {
+                proof! {
+                    // `from_frame_number` is total (always `Ok`); this arm is unreachable.
+                    assert(false);
+                }
                 error!("{error:?}");
                 Err(error)
             },
@@ -176,7 +210,6 @@ impl Inner {
     /// Upon success, the base `FrameAddress` of the contiguous range is returned. Upon failure,
     /// an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -207,8 +240,26 @@ impl Inner {
             },
     )]
     fn alloc_contiguous(&mut self, count: usize) -> Result<FrameAddress, Error> {
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            // Snapshot the pre-state view and expose the bitmap/refcount invariant link so later
+            // proof obligations can read it off the captured component snapshots.
+            lemma_capture_inv_facts(self, g_old, pre_sb, pre_nb, pre_rc);
+        }
         // Reject impossible requests before delegating to the bitmap range allocator.
         if count > self.bitmap.number_of_bits() {
+            proof! {
+                // With fewer than `count` bits, no run of `count` clear bits can exist.
+                assert forall|start: int|
+                    #![trigger self.bitmap@.has_free_range_at(start, count as int)]
+                    !self.bitmap@.has_free_range_at(start, count as int) by {}
+                lemma_no_bitmap_range_implies_no_free_run(self, count as int);
+            }
             let reason: &str = "requested range exceeds bitmap size";
             error!("{reason} (count={count}, bitmap_bits={})", self.bitmap.number_of_bits());
             return Err(Error::new(ErrorCode::InvalidArgument, reason));
@@ -216,18 +267,61 @@ impl Inner {
         let frame_number: usize = match self.bitmap.alloc_range(count) {
             Ok(index) => index,
             Err(error) => {
+                proof! {
+                    // `alloc_range` failed: no run of `count` clear bits exists in the bitmap.
+                    lemma_no_bitmap_range_implies_no_free_run(self, count as int);
+                }
                 error!("{error:?} (count={count})");
                 return Err(error);
             },
         };
+        proof_decl! { let ghost start = frame_number as int; }
+        // `alloc_range` Ok guarantees the booked range was entirely clear beforehand.
+        proof! {
+            assert forall|j: int| start <= j < start + count as int implies !pre_sb.contains(j) by {
+                assert(!old(self).bitmap@.is_bit_set(j));
+            }
+        }
         // Newly allocated frames have a single owner.
+        #[verus_spec(
+            invariant
+                start == frame_number as int,
+                0 <= start,
+                start + count as int <= pre_nb,
+                pre_nb <= pre_rc.len(),
+                self.bitmap@.num_bits == pre_nb,
+                self.bitmap.inv(),
+                self.bitmap@.set_bits
+                    == pre_sb.union(BitmapView::range_set(start, start + count as int)),
+                self.refcount@.len() == pre_rc.len(),
+                forall|j: int| start <= j < start + count as int ==> !pre_sb.contains(j),
+                forall|k: int| 0 <= k < pre_rc.len() ==>
+                    #[trigger] self.refcount@[k] == (if start <= k < i as int {
+                        1u8
+                    } else {
+                        pre_rc[k]
+                    }),
+            decreases frame_number + count - i,
+        )]
         for i in frame_number..frame_number + count {
+            #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[i], 0);
             self.refcount[i] = 1;
+        }
+        proof! {
+            // Re-establish `internal_inv` after range booking: the bitmap has the whole range set,
+            // and the refcount loop set exactly the range's slots to 1.
+            lemma_reestablish_inv_range(self, pre_sb, pre_nb, pre_rc, start, start + count as int);
+            // Representability: `start < pre_nb`, so `old(self)`'s internal_inv bounds `start`.
+            lemma_alloc_index_repr(start, pre_nb);
         }
         let frame_number: FrameNumber = match FrameNumber::from_raw_value(frame_number) {
             Some(frame_number) => frame_number,
             None => {
+                proof! {
+                    // `None` requires `start > spec_max`, contradicting representability. Unreachable.
+                    assert(false);
+                }
                 let reason: &str = "frame number is out of bounds";
                 error!("{reason:?}");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
@@ -235,8 +329,18 @@ impl Inner {
         };
 
         match FrameAddress::from_frame_number(frame_number) {
-            Ok(frame_address) => Ok(frame_address),
+            Ok(frame_address) => {
+                proof! {
+                    let base = frame_address@;
+                    lemma_alloc_contiguous_post(self, base, start, count as int, g_old, pre_sb, pre_nb, pre_rc);
+                }
+                Ok(frame_address)
+            },
             Err(error) => {
+                proof! {
+                    // `from_frame_number` is total (always `Ok`); this arm is unreachable.
+                    assert(false);
+                }
                 error!("{error:?}");
                 Err(error)
             },
@@ -256,7 +360,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -283,8 +386,21 @@ impl Inner {
     )]
     fn free(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            lemma_free_pre(self, frame@);
+        }
 
         if frame_number >= self.refcount.len() {
+            proof! {
+                // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
+                lemma_refcount_err_bit_clear(self, frame_number as int);
+            }
             let reason: &str = "frame number out of bounds";
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
@@ -292,9 +408,18 @@ impl Inner {
 
         // Reject double-frees: the frame must currently have at least one owner.
         if self.refcount[frame_number] == 0 {
+            proof! {
+                // refcount[fnx] == 0, so the bit is clear (internal_inv), hence not allocated.
+                lemma_refcount_err_bit_clear(self, frame_number as int);
+            }
             let reason: &str = "frame is already free";
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
+        }
+
+        // The frame is currently allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit is set.
+        proof! {
+            lemma_frame_allocated(self, frame@, frame_number as int);
         }
 
         self.refcount[frame_number] -= 1;
@@ -302,13 +427,28 @@ impl Inner {
         // Only release the bit in the bitmap when the last owner releases the frame.
         if self.refcount[frame_number] == 0 {
             match self.bitmap.clear(frame_number) {
-                Ok(()) => Ok(()),
+                Ok(()) => {
+                    proof! {
+                        lemma_post_release_one(self, frame@, frame_number as int, g_old, pre_sb, pre_nb, pre_rc);
+                    }
+                    Ok(())
+                },
                 Err(error) => {
+                    proof! {
+                        // Unreachable: the bit is set and in range, so `clear` returns `Ok`.
+                        assert(false);
+                    }
                     error!("{error:?} (frame={frame:?})");
                     Err(error)
                 },
             }
         } else {
+            // Still shared: only the refcount slot changed (decremented by one); the
+            // allocated/free partition is unchanged.
+            proof! {
+                let nv = self.refcount@[frame_number as int];
+                lemma_post_update_slot(self, frame@, frame_number as int, nv, g_old, pre_sb, pre_nb, pre_rc);
+            }
             Ok(())
         }
     }
@@ -330,7 +470,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -359,8 +498,21 @@ impl Inner {
     )]
     fn share(&mut self, frame: FrameAddress) -> Result<(), Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            lemma_free_pre(self, frame@);
+        }
 
         if frame_number >= self.refcount.len() {
+            proof! {
+                // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
+                lemma_refcount_err_bit_clear(self, frame_number as int);
+            }
             let reason: &str = "frame number out of bounds";
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
@@ -369,19 +521,40 @@ impl Inner {
         // The frame must currently have at least one owner. Sharing an unallocated
         // frame is a logic error.
         if self.refcount[frame_number] == 0 {
+            proof! {
+                // refcount[fnx] == 0, so the bit is clear (internal_inv), hence not allocated.
+                lemma_refcount_err_bit_clear(self, frame_number as int);
+            }
             let reason: &str = "cannot share an unallocated frame";
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
+        proof! {
+            // The frame is allocated: refcount[fnx] > 0 and fnx < num_bits, so the bit is set.
+            lemma_frame_allocated(self, frame@, frame_number as int);
+        }
+
         self.refcount[frame_number] = match self.refcount[frame_number].checked_add(1) {
             Some(n) => n,
             None => {
+                // Overflow: the old refcount was at its u8 maximum (255). The state is
+                // unchanged, satisfying the Err arm's refcount-saturated disjunct.
+                proof! {
+                    lemma_share_overflow(self, frame@, frame_number as int, g_old);
+                }
                 let reason: &str = "frame reference count overflow";
                 error!("{reason} (frame={frame:?})");
                 return Err(Error::new(ErrorCode::OutOfMemory, reason));
             },
         };
+
+        // Only the refcount slot changed (incremented by one); the allocated/free partition
+        // is unchanged.
+        proof! {
+            let nv = self.refcount@[frame_number as int];
+            lemma_post_update_slot(self, frame@, frame_number as int, nv, g_old, pre_sb, pre_nb, pre_rc);
+        }
 
         Ok(())
     }
@@ -400,7 +573,6 @@ impl Inner {
     /// Upon success, the current reference count is returned. Upon failure, an error is
     /// returned instead (out-of-bounds address, or the frame is not currently allocated).
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),
@@ -419,19 +591,36 @@ impl Inner {
     )]
     fn refcount(&self, frame: FrameAddress) -> Result<u8, Error> {
         let frame_number: usize = frame.into_frame_number().into_raw_value();
+        proof! {
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(frame@, spec_page_size());
+            lemma_alloc_contains(self, frame@);
+        }
 
         if frame_number >= self.refcount.len() {
+            proof! {
+                // frame_number >= refcount.len() >= num_bits, so the bit is clear: not allocated.
+                lemma_refcount_err_bit_clear(self, frame_number as int);
+            }
             let reason: &str = "frame number out of bounds";
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
         if self.refcount[frame_number] == 0 {
+            proof! {
+                // refcount[i] == 0, so the bit is clear (internal_inv), hence not allocated.
+                lemma_refcount_err_bit_clear(self, frame_number as int);
+            }
             let reason: &str = "frame is not allocated";
             error!("{reason} (frame={frame:?})");
             return Err(Error::new(ErrorCode::BadAddress, reason));
         }
 
+        proof! {
+            // refcount[i] != 0 and i < refcount.len(); tail-zero forces i < num_bits, so the
+            // bit is set, the frame is allocated, and its refcount-map value is the slot value.
+            lemma_frame_allocated(self, frame@, frame_number as int);
+        }
         Ok(self.refcount[frame_number])
     }
 
@@ -448,7 +637,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -470,13 +658,31 @@ impl Inner {
     )]
     fn book(&mut self, phys_addr: PageAligned<PhysicalAddress>) -> Result<(), Error> {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+        }
+        proof! {
+            lemma_book_pre(self, phys_addr@);
+        }
         match self.bitmap.set(frame_number) {
             Ok(()) => {
+                #[cfg(not(verus_keep_ghost))]
                 debug_assert_eq!(self.refcount[frame_number], 0);
                 self.refcount[frame_number] = 1;
+                proof! {
+                    lemma_post_reserve_one(self, phys_addr@, frame_number as int, g_old, pre_sb, pre_nb, pre_rc);
+                }
                 Ok(())
             },
             Err(error) => {
+                // `set()` failed: the bit was already set or out of range, so the frame is not
+                // free in `old(self)`.
+                proof! {
+                    lemma_book_set_failed(self, phys_addr@, g_old);
+                }
                 error!("{error:?} (phys_addr={phys_addr:?})");
                 Err(error)
             },
@@ -492,7 +698,6 @@ impl Inner {
     ///
     /// `true` if the frame allocator tracks the frame at `phys_addr`, `false` otherwise.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(ret =>
         requires
             self.inv(),
@@ -503,6 +708,10 @@ impl Inner {
     )]
     fn is_covered(&self, phys_addr: PageAligned<PhysicalAddress>) -> bool {
         let frame_number: usize = phys_addr.into_frame_number().into_raw_value();
+        proof! {
+            vstd::arithmetic::div_mod::lemma_div_pos_is_pos(phys_addr@, spec_page_size());
+            lemma_covered_iff(self, phys_addr@);
+        }
         frame_number < self.bitmap.number_of_bits()
     }
 
@@ -519,7 +728,6 @@ impl Inner {
     ///
     /// Upon success, `Ok(())` is returned. Upon failure, an error is returned instead.
     ///
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             old(self).inv(),
@@ -549,7 +757,27 @@ impl Inner {
         region: &TruncatedMemoryRegion<PhysicalAddress>,
     ) -> Result<(), Error> {
         let start_frame_number: usize = region.start().into_frame_number().into_raw_value();
-        let end_exclusive: usize = start_frame_number + region.size() / mem::FRAME_SIZE;
+        let nframes: usize = region.size() / mem::FRAME_SIZE;
+        proof_decl! {
+            let ghost g_old = self@;
+            let ghost pre_sb = self.bitmap@.set_bits;
+            let ghost pre_nb = self.bitmap@.num_bits;
+            let ghost pre_rc = self.refcount@;
+            let ghost ps = spec_page_size();
+            let ghost rstart = region@.start;
+            let ghost rsize = region@.size;
+            let ghost start_fn = start_frame_number as int;
+            let ghost nfr = nframes as int;
+        }
+        proof! {
+            lemma_capture_inv_facts(self, g_old, pre_sb, pre_nb, pre_rc);
+            assert(ps == 4096);
+            lemma_alloc_range_geometry(rstart, rsize, ps, start_fn, nfr);
+        }
+        let end_exclusive: usize = start_frame_number + nframes;
+        proof! {
+            assert(end_exclusive as int == start_fn + nfr);
+        }
 
         // Check that all frames in the range are covered by the bitmap and free,
         // then book them. Uncovered frames indicate a memory layout bug.
@@ -557,41 +785,127 @@ impl Inner {
         // The coverage check runs unconditionally — including optimized builds —
         // because out-of-bounds indices must be rejected before attempting to set them.
         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
+        #[verus_spec(
+            invariant
+                start_fn == start_frame_number as int,
+                end_exclusive as int == start_fn + nfr,
+                nfr >= 1,
+                ps == spec_page_size(),
+                rstart == region@.start,
+                rsize == region@.size,
+                rstart / ps == start_fn,
+                (rstart + rsize) / ps == start_fn + nfr,
+                self@ == g_old,
+                self@ == old(self)@,
+                self.bitmap@.set_bits == pre_sb,
+                self.bitmap@.num_bits == pre_nb,
+                self.refcount@ == pre_rc,
+                self.bitmap.inv(),
+                self.internal_inv(),
+                forall|k: int| start_fn <= k < index as int ==>
+                    #[trigger] pre_sb.contains(k) == false && k < pre_nb,
+            decreases end_exclusive - index,
+        )]
         for index in start_frame_number..end_exclusive {
             if index >= self.bitmap.number_of_bits() {
                 // `index` is out of range here, so `index * FRAME_SIZE` can overflow `usize`
                 // (e.g. on 32-bit targets), panicking in debug builds on the very error path
                 // meant to report the problem. Saturate: the value only feeds a diagnostic.
-                let uncovered_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
+                proof! {
+                    // This frame is in the requested range but not covered, so it cannot be free.
+                    lemma_range_uncovered_not_all_free(self, index as int, rstart, rsize, ps, start_fn, nfr, g_old);
+                }
                 let reason: &str = "frame index not covered by the bitmap";
-                error!("{} (frame={:#010x}, region={:?})", reason, uncovered_addr, region);
+                error!(
+                    "{} (frame={:#010x}, region={:?})",
+                    reason,
+                    index.saturating_mul(mem::FRAME_SIZE),
+                    region
+                );
                 return Err(Error::new(ErrorCode::InvalidArgument, reason));
             }
             match self.bitmap.test(index) {
-                Ok(false) => {},
+                Ok(false) => {
+                    proof! {
+                        // Record coverage of `index` so the loop invariant extends to `index + 1`.
+                        assert(!pre_sb.contains(index as int));
+                        assert((index as int) < pre_nb);
+                    }
+                },
                 Ok(true) => {
-                    let conflicting_addr: usize = index.saturating_mul(mem::FRAME_SIZE);
+                    proof! {
+                        // This frame is in the requested range but already allocated, not free.
+                        lemma_range_allocated_not_all_free(self, index as int, rstart, rsize, ps, start_fn, nfr, g_old);
+                    }
                     let region_start: usize = region.start().into_raw_value();
                     let region_end: usize = region_start.saturating_add(region.size());
                     let reason: &str = "frame is already allocated";
                     error!(
                         "{} (frame={:#010x}, region_start={:#010x}, region_end={:#010x})",
-                        reason, conflicting_addr, region_start, region_end
+                        reason,
+                        index.saturating_mul(mem::FRAME_SIZE),
+                        region_start,
+                        region_end
                     );
                     return Err(Error::new(ErrorCode::OutOfMemory, reason));
                 },
-                Err(err) => return Err(err),
+                Err(err) => {
+                    proof! {
+                        // `index < num_bits` was checked above, so `test` cannot fail. Unreachable.
+                        assert(index < self.bitmap@.num_bits);
+                        assert(false);
+                    }
+                    return Err(err);
+                },
             }
+        }
+        // The for-loop's exit invariant covers every index in `[start_fn, start_fn + nfr)`:
+        // each frame is free in the pre-state bitmap and lies within bounds.
+        proof! {
+            assert(pre_sb.contains(start_fn + nfr - 1) == false);
+            assert(start_fn + nfr <= pre_nb);
+            assert forall|j: int| start_fn <= j < start_fn + nfr implies !pre_sb.contains(j) by {}
         }
 
         // Book all frames in the range.
+        #[verus_spec(
+            invariant
+                start_fn == start_frame_number as int,
+                end_exclusive as int == start_fn + nfr,
+                start_fn + nfr <= pre_nb,
+                pre_nb <= pre_rc.len(),
+                self.bitmap.inv(),
+                self.bitmap@.num_bits == pre_nb,
+                self.bitmap@.set_bits == pre_sb.union(BitmapView::range_set(start_fn, index as int)),
+                self.refcount@.len() == pre_rc.len(),
+                forall|j: int| start_fn <= j < start_fn + nfr ==> !pre_sb.contains(j),
+                forall|k: int| 0 <= k < pre_rc.len() ==>
+                    #[trigger] self.refcount@[k] == (if start_fn <= k < index as int {
+                        1u8
+                    } else {
+                        pre_rc[k]
+                    }),
+            decreases end_exclusive - index,
+        )]
         for index in start_frame_number..end_exclusive {
             if let Err(error) = self.bitmap.set(index) {
+                // The bit at `index` is still clear and in range, so `set` cannot fail.
+                proof! {
+                    assert(!BitmapView::range_set(start_fn, index as int).contains(index as int));
+                    assert(!pre_sb.contains(index as int));
+                    assert(false);
+                }
                 error!("{error:?} (region={region:?})");
                 return Err(error);
             }
+            #[cfg(not(verus_keep_ghost))]
             debug_assert_eq!(self.refcount[index], 0);
             self.refcount[index] = 1;
+        }
+        proof! {
+            // Re-establish `internal_inv` after booking, prove the requested range was free, and
+            // reconstruct the post-state view as the pre-state map merged with the booked run.
+            lemma_alloc_range_post(self, rstart, rsize, ps, start_fn, nfr, g_old, pre_sb, pre_nb, pre_rc);
         }
 
         Ok(())

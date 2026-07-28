@@ -8,6 +8,8 @@
 use vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 include!("frame.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("frame.proof.rs");
 
 use crate::hal::mem::types::address::{
     Address,
@@ -57,7 +59,6 @@ impl FrameAddress {
     // Constructs a frame address from a frame number. The frame's base address is
     // `frame_number * PAGE_SIZE`, page-aligned by construction, so the call always succeeds and the
     // result satisfies `inv()`.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             result is Ok,
@@ -65,6 +66,7 @@ impl FrameAddress {
             (result->Ok_0)@ == frame_number@ * spec_page_size(),
     )]
     pub fn from_frame_number(frame_number: FrameNumber) -> Result<Self, Error> {
+        proof! { lemma_frame_base_aligned(frame_number); }
         Ok(Self(PageAligned::from_address(PhysicalAddress::from(frame_number))?))
     }
 
@@ -73,7 +75,6 @@ impl FrameAddress {
     // holds); representability is automatic because the underlying
     // `PhysicalAddress::into_frame_number` is total. The result is the exact inverse of
     // `from_frame_number`.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         requires
             self.inv(),
@@ -82,12 +83,12 @@ impl FrameAddress {
             result@ * spec_page_size() == self@,
     )]
     pub fn into_frame_number(self) -> FrameNumber {
+        proof! { lemma_aligned_div_mul(self@); }
         self.0.into_frame_number()
     }
 
     // Succeeds only for page-aligned inputs. The contract exposes the validated raw address to
     // verified callers.
-    #[verus_verify(external_body)]
     #[verus_spec(result =>
         ensures
             match result {
