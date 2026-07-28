@@ -1,3 +1,5 @@
+use vstd::std_specs::convert::FromSpecImpl;
+
 verus! {
 
 //==================================================================================================
@@ -43,6 +45,20 @@ impl FrameNumber {
     #[verifier::type_invariant]
     pub open spec fn inv(&self) -> bool {
         0 <= self@ <= Self::spec_max()
+    }
+}
+
+// The forward `From<PhysicalAddress>` conversion is proven directly against the `#[verus_spec]`
+// contract on `from`, so it does not obey the generic `from_spec` model. Declaring `obeys_from_spec`
+// as `false` makes the inherited `From`-trait postcondition vacuous without introducing any trusted
+// leaf (this is a spec-only fact, not an `external_body`/`assume_specification`).
+impl FromSpecImpl<PhysicalAddress> for FrameNumber {
+    open spec fn obeys_from_spec() -> bool {
+        false
+    }
+
+    open spec fn from_spec(v: PhysicalAddress) -> FrameNumber {
+        vstd::prelude::arbitrary()
     }
 }
 

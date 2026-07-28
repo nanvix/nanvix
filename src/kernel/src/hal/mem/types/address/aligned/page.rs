@@ -219,7 +219,7 @@ impl PageAligned<PhysicalAddress> {
     }
 
     /// Converts a page-aligned physical address into its frame number.
-    #[verus_verify(external_body)]
+    #[verus_verify]
     #[verus_spec(result =>
         ensures
             result@ == self@ / (::arch::mem::PAGE_SIZE as int),
