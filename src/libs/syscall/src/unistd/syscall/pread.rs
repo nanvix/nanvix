@@ -54,10 +54,10 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
     // POSIX requires pread on a non-seekable fd (pipe/stdio) to return ESPIPE.
     let backend_fd: RawFileDescriptor = {
         use crate::fdtable::{
-            resolve,
+            resolve_result,
             Route,
         };
-        match resolve(fd) {
+        match resolve_result(fd)? {
             // VFS-backed descriptors fall through to the vfsd read path below.
             Some(res) if res.route == Route::Vfs => res.backend_fd,
             // The console (stdin/stdout/stderr) is not seekable.

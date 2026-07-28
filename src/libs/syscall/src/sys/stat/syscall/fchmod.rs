@@ -45,10 +45,10 @@ pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
     // Only VFS-backed descriptors are routable here.
     let backend_fd: RawFileDescriptor = {
         use crate::fdtable::{
-            resolve,
+            resolve_result,
             Route,
         };
-        match resolve(fd) {
+        match resolve_result(fd)? {
             Some(res) if res.route == Route::Vfs => res.backend_fd,
             _ => {
                 ::syslog::warn!("fchmod(): bad file descriptor fd={fd}");

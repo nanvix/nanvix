@@ -9,6 +9,7 @@ mod hostfs_handlers;
 mod long;
 mod mount_handler;
 pub(crate) mod pipe;
+mod poll;
 mod readwrite;
 mod short;
 
@@ -19,5 +20,6 @@ mod short;
 pub(crate) use hostfs_handlers::*;
 pub(crate) use long::*;
 pub(crate) use mount_handler::*;
+pub(crate) use poll::*;
 pub(crate) use readwrite::*;
 pub(crate) use short::*;

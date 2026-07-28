@@ -58,7 +58,15 @@ path = "poll::poll_flags::POLLRDNORM"
 emit = false
 
 [[rust_constants]]
+path = "poll::poll_flags::POLLRDBAND"
+emit = false
+
+[[rust_constants]]
 path = "poll::poll_flags::POLLWRNORM"
+emit = false
+
+[[rust_constants]]
+path = "poll::poll_flags::POLLWRBAND"
 emit = false
 
 [[raw_sections]]
@@ -71,7 +79,9 @@ text = '''
 #define POLLHUP 0x0010
 #define POLLNVAL 0x0020
 #define POLLRDNORM POLLIN
-#define POLLWRNORM POLLOUT'''
+#define POLLRDBAND 0x0080
+#define POLLWRNORM POLLOUT
+#define POLLWRBAND 0x0100'''
 
 [[sections]]
 title = "Functions"

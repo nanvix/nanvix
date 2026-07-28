@@ -37,10 +37,10 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
     // POSIX requires lseek on a pipe/FIFO/socket/stdio fd to return ESPIPE.
     let backend_fd: RawFileDescriptor = {
         use crate::fdtable::{
-            resolve,
+            resolve_result,
             Route,
         };
-        match resolve(fd) {
+        match resolve_result(fd)? {
             // VFS-backed descriptors fall through to the vfsd seek path below.
             Some(res) if res.route == Route::Vfs => res.backend_fd,
             // Seeking the console (stdin/stdout/stderr) is an illegal seek.

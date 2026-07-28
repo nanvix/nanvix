@@ -28,6 +28,10 @@ use ::sys::{
     },
 };
 use ::syscall::{
+    poll::socket_message::{
+        PollSocketRequest,
+        PollSocketResponse,
+    },
     sys::socket::{
         message::{
             AcceptSocketRequest,
@@ -94,6 +98,7 @@ pub fn is_networking_header(header: &SystemCallMessageHeader) -> bool {
             | SystemCallMessageHeader::SendSocketRequest
             | SystemCallMessageHeader::SendToSocketRequest
             | SystemCallMessageHeader::ShutdownSocketRequest
+            | SystemCallMessageHeader::PollSocketRequest
     )
 }
 
@@ -169,6 +174,10 @@ pub fn dispatch_message(
             let request: ShutdownSocketRequest =
                 ShutdownSocketRequest::from_bytes(syscall_msg.payload);
             Some(do_shutdown(backend, tid, request))
+        },
+        SystemCallMessageHeader::PollSocketRequest => {
+            let request: PollSocketRequest = PollSocketRequest::from_bytes(syscall_msg.payload);
+            Some(do_poll(backend, tid, request))
         },
         _ => None,
     }
@@ -313,6 +322,14 @@ fn do_socket(backend: &NetBackend, tid: ThreadIdentifier, request: CreateSocketR
     trace!("networkd::socket(): tid={tid:?}, request={request:?}");
     match backend.socket(request.domain, request.typ, request.protocol) {
         Ok(sockfd) => CreateSocketResponse::build(tid, to_guest_fd(sockfd)),
+        Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),
+        Err(NetError::Errno(code)) => build_error(tid, code),
+    }
+}
+
+fn do_poll(backend: &NetBackend, tid: ThreadIdentifier, request: PollSocketRequest) -> Message {
+    match backend.poll_socket(to_host_fd(request.sockfd()), request.events()) {
+        Ok(revents) => PollSocketResponse::build(tid, revents),
         Err(NetError::Interrupted) => build_error(tid, ErrorCode::Interrupted),
         Err(NetError::Errno(code)) => build_error(tid, code),
     }

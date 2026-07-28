@@ -42,7 +42,9 @@ struct pollfd {
 #define POLLHUP 0x0010
 #define POLLNVAL 0x0020
 #define POLLRDNORM POLLIN
+#define POLLRDBAND 0x0080
 #define POLLWRNORM POLLOUT
+#define POLLWRBAND 0x0100
 
 /*==================================================================================================
  * Functions

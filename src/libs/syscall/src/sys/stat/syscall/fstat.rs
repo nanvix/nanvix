@@ -43,10 +43,10 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
     // character device with a stable, dup-shared identity synthesized by vfsd.
     let backend_fd: i32 = {
         use crate::fdtable::{
-            resolve,
+            resolve_result,
             Route,
         };
-        match resolve(fd) {
+        match resolve_result(fd)? {
             // A vfsd-served object or a console descriptor: vfsd answers `fstat` from the slot
             // it owns, addressed by the caller-facing flat descriptor. For a console this is the
             // slot number, not the stream number used to route I/O — the slot is the operand,

@@ -33,6 +33,24 @@ pub(crate) const IPPROTO_UDP: libc::c_int = 17;
 pub(crate) const INVALID_SOCKET: RawSocket = !0usize;
 
 //==================================================================================================
+// Poll Constants
+//==================================================================================================
+
+// Guest POLLIN means normal data, whereas Winsock's aggregate POLLIN also includes POLLRDBAND.
+pub(crate) const PLATFORM_POLLIN: libc::c_short = 0x0100;
+// The Microsoft Winsock provider rejects POLLPRI but reports urgent data as POLLRDBAND.
+pub(crate) const PLATFORM_POLLPRI: libc::c_short = 0x0200;
+pub(crate) const PLATFORM_POLLOUT: libc::c_short = 0x0010;
+pub(crate) const PLATFORM_POLLERR: libc::c_short = 0x0001;
+pub(crate) const PLATFORM_POLLHUP: libc::c_short = 0x0002;
+pub(crate) const PLATFORM_POLLNVAL: libc::c_short = 0x0004;
+pub(crate) const PLATFORM_POLLRDNORM: libc::c_short = 0x0100;
+pub(crate) const PLATFORM_POLLRDBAND: libc::c_short = 0x0200;
+pub(crate) const PLATFORM_POLLWRNORM: libc::c_short = 0x0010;
+// The Microsoft Winsock provider rejects this request bit with WSAEINVAL.
+pub(crate) const PLATFORM_POLLWRBAND: Option<libc::c_short> = None;
+
+//==================================================================================================
 // Shutdown Constants
 //==================================================================================================
 
@@ -100,6 +118,22 @@ pub(crate) fn socket_failed(result: RawSocket) -> bool {
 #[inline]
 pub(crate) unsafe fn close_socket(fd: RawSocket) -> libc::c_int {
     winsock::closesocket(fd)
+}
+
+/// Performs a non-blocking readiness query for one socket.
+pub(crate) unsafe fn raw_poll(
+    fd: RawSocket,
+    events: libc::c_short,
+    revents: &mut libc::c_short,
+) -> libc::c_int {
+    let mut pollfd: winsock::WSAPOLLFD = winsock::WSAPOLLFD {
+        fd,
+        events,
+        revents: 0,
+    };
+    let result: libc::c_int = winsock::WSAPoll(&mut pollfd, 1, 0);
+    *revents = pollfd.revents;
+    result
 }
 
 //==================================================================================================
@@ -327,6 +361,15 @@ pub(crate) mod winsock {
     // ioctlsocket command to enable/disable non-blocking mode (FIONBIO).
     pub const FIONBIO: c_long = 0x8004667Eu32 as c_long;
 
+    /// Socket descriptor used by `WSAPoll()`.
+    #[repr(C)]
+    #[allow(clippy::upper_case_acronyms)]
+    pub struct WSAPOLLFD {
+        pub fd: SOCKET,
+        pub events: libc::c_short,
+        pub revents: libc::c_short,
+    }
+
     /// WSADATA structure for WSAStartup.
     #[repr(C)]
     #[allow(clippy::upper_case_acronyms)]
@@ -363,6 +406,7 @@ pub(crate) mod winsock {
         pub fn WSAGetLastError() -> c_int;
         pub fn closesocket(s: SOCKET) -> c_int;
         pub fn ioctlsocket(s: SOCKET, cmd: c_long, argp: *mut c_ulong) -> c_int;
+        pub fn WSAPoll(fdArray: *mut WSAPOLLFD, fds: c_ulong, timeout: c_int) -> c_int;
         pub fn shutdown(s: SOCKET, how: c_int) -> c_int;
         pub fn send(s: SOCKET, buf: *const c_char, len: c_int, flags: c_int) -> c_int;
         pub fn recv(s: SOCKET, buf: *mut c_char, len: c_int, flags: c_int) -> c_int;

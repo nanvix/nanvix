@@ -13,6 +13,7 @@
 //==================================================================================================
 
 mod assembler;
+mod console_wait;
 mod error;
 mod handler;
 mod hostfs;
@@ -116,6 +117,13 @@ pub fn main() {
         }
     }
 
+    let tid: ::sys::pm::ThreadIdentifier =
+        ::sys::kcall::pm::__kcall_gettid().expect("failed to get vfsd thread id");
+    let subscription: Message =
+        ::syscall::poll::input_message::PollInputRequest::build_subscription(tid);
+    ::sys::kcall::ipc::__kcall_send(&subscription)
+        .expect("failed to subscribe to console input notifications");
+
     // Multi-part request assembler map keyed by (tid_value, header_discriminant).
     // TODO: add eviction/timeout for incomplete entries to prevent memory leaks from crashed clients.
     let mut assemblers: BTreeMap<(i32, u16), assembler::AssemblerEntry> = BTreeMap::new();
@@ -125,6 +133,9 @@ pub fn main() {
 
     // Suspended pipe readers/writers awaiting their complementary operation.
     let mut pipe_wait: pipe_wait::PipeWaitTable = pipe_wait::PipeWaitTable::new();
+
+    // Suspended console readers awaiting cooked input or end-of-file.
+    let mut console_wait: console_wait::ConsoleWaitTable = console_wait::ConsoleWaitTable::new();
 
     // In-flight multi-part hostfs *response* assembler, paired with the op_id
     // extracted eagerly from part 0 so a discarded stream can be cancelled (the
@@ -157,7 +168,13 @@ pub fn main() {
 
     // Process any messages that were buffered during the signup phase.
     while let Some(message) = buffered_messages.pop_front() {
-        match ipc::handle_ipc_message(message, &mut assemblers, &mut pending, &mut pipe_wait) {
+        match ipc::handle_ipc_message(
+            message,
+            &mut assemblers,
+            &mut pending,
+            &mut console_wait,
+            &mut pipe_wait,
+        ) {
             Ok(true) => {
                 let e = ::sys::kcall::pm::__kcall_exit(0);
                 ::syslog::error!("failed to shutdown vfsd (error={:?})", e);
@@ -180,6 +197,7 @@ pub fn main() {
                         message,
                         &mut assemblers,
                         &mut pending,
+                        &mut console_wait,
                         &mut pipe_wait,
                     ) {
                         Ok(true) => break,
@@ -195,21 +213,28 @@ pub fn main() {
                         ::syscall::SystemCallMessage::try_from_bytes(message.payload)
                     {
                         let header: SystemCallMessageHeader = syscall_msg.header;
+                        if header == SystemCallMessageHeader::ConsoleInputAvailable {
+                            let source: ::sys::ipc::MessageSender = message.source;
+                            if source != ::sys::ipc::MessageSender::KERNEL {
+                                ::syslog::warn!(
+                                    "ignored console input notification from {:?}",
+                                    source
+                                );
+                                continue;
+                            }
+                            handler::handle_console_input_available(&mut console_wait);
+                            continue;
+                        }
                         // networkd acknowledges a forwarded socket-endpoint close with an IKC
                         // `CloseResponse`. That close is fire-and-forget — vfsd does not wait on it
                         // — so the acknowledgement is expected and silently discarded.
                         if header == SystemCallMessageHeader::CloseResponse {
                             continue;
                         }
-                        // The console line-discipline backend fetches raw input and echoes output
-                        // through synchronous kernel-console exchanges (see vfsd's
-                        // `handle_console_read`). It deliberately does not consume the kernel's
-                        // `ReadResponse`/`WriteResponse` acknowledgement inline — a nested
-                        // `__kcall_recv()` there could dequeue an unrelated guest request from the
-                        // shared mailbox — so those acknowledgements surface here and are discarded.
-                        if header == SystemCallMessageHeader::ReadResponse
-                            || header == SystemCallMessageHeader::WriteResponse
-                        {
+                        // Console echo writes deliberately leave their `WriteResponse`
+                        // acknowledgement for this event loop; consuming it in the helper with a
+                        // nested receive could dequeue an unrelated guest request.
+                        if header == SystemCallMessageHeader::WriteResponse {
                             continue;
                         }
                         // Multi-part response stream: assemble parts before dispatch.

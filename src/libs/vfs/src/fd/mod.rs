@@ -67,7 +67,16 @@ use ::sysapi::{
         file_creation_flags,
         file_status_flags,
     },
-    ffi::c_int,
+    ffi::{
+        c_int,
+        c_short,
+    },
+    poll::poll_flags::{
+        POLLIN,
+        POLLOUT,
+        POLLRDNORM,
+        POLLWRNORM,
+    },
     sys_ioctl::Winsize,
     sys_stat::{
         file_mode,
@@ -105,6 +114,22 @@ const DEFAULT_FILE_CREATION_MASK: mode_t = 0;
 
 /// File permission bits affected by the file mode creation mask.
 const FILE_PERMISSION_BITS: mode_t = file_mode::S_IRWXU | file_mode::S_IRWXG | file_mode::S_IRWXO;
+
+//==================================================================================================
+// Global State
+//==================================================================================================
+
+/// Shared console device retained independently of process descriptor tables.
+static CONSOLE_TERMINAL: Mutex<Option<Arc<Mutex<LineDiscipline>>>> = Mutex::new(None);
+
+/// Returns the process-global console terminal, creating it on first use.
+fn console_device() -> Arc<Mutex<LineDiscipline>> {
+    let mut terminal: spin::MutexGuard<'_, Option<Arc<Mutex<LineDiscipline>>>> =
+        CONSOLE_TERMINAL.lock();
+    terminal
+        .get_or_insert_with(|| Arc::new(Mutex::new(LineDiscipline::default())))
+        .clone()
+}
 
 //==================================================================================================
 // Public Re-Exports
@@ -330,7 +355,7 @@ pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
     // The three standard streams share one terminal device, so they reference a single shared
     // terminal-state object. A `tcsetattr` through any of them is therefore visible through the
     // others, and the shared object flows down every `fork`/`dup` with the descriptor slots.
-    let terminal: Arc<Mutex<LineDiscipline>> = Arc::new(Mutex::new(LineDiscipline::default()));
+    let terminal: Arc<Mutex<LineDiscipline>> = console_device();
     for (fd, stream) in [
         (STDIN_FILENO, ConsoleStream::Stdin),
         (STDOUT_FILENO, ConsoleStream::Stdout),
@@ -879,6 +904,36 @@ pub fn vfs_resolve(fd: c_int) -> Option<(VfsRoute, c_int)> {
         | VfsFileHandle::Pipe(_) => (VfsRoute::Vfs, fd),
     };
     Some(resolution)
+}
+
+/// Returns the events that can complete immediately on `fd` without performing I/O.
+pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
+    const READ_EVENTS: c_short = POLLIN | POLLRDNORM;
+    const WRITE_EVENTS: c_short = POLLOUT | POLLWRNORM;
+
+    let file: OpenFile = entry_arc(fd)?;
+    let (stream, terminal): (ConsoleStream, Arc<Mutex<LineDiscipline>>) = {
+        let guard = file.lock();
+        match &guard.handle {
+            VfsFileHandle::Console(handle) => (handle.stream(), handle.terminal().clone()),
+            VfsFileHandle::Fat32(_) | VfsFileHandle::DirectRead(_) | VfsFileHandle::HostFs(_) => {
+                return Ok(events & (READ_EVENTS | WRITE_EVENTS))
+            },
+            VfsFileHandle::Directory(_) => return Ok(events & READ_EVENTS),
+            VfsFileHandle::Pipe(end) => return Ok(end.poll(events)),
+            VfsFileHandle::Socket(_) => return Err(Fat32Error::NotSupported),
+        }
+    };
+
+    let mut revents: c_short = 0;
+    if stream == ConsoleStream::Stdin && events & READ_EVENTS != 0 && terminal.lock().is_readable()
+    {
+        revents |= events & READ_EVENTS;
+    }
+    if matches!(stream, ConsoleStream::Stdout | ConsoleStream::Stderr) {
+        revents |= events & WRITE_EVENTS;
+    }
+    Ok(revents)
 }
 
 /// Resolves a `dirfd` + `path` pair into an absolute VFS path.
@@ -1647,6 +1702,11 @@ pub fn vfs_console_push_input(fd: c_int, input: &[u8]) -> Result<Vec<u8>, TtyErr
     Ok(echo)
 }
 
+/// Feeds raw bytes directly into the shared console device.
+pub fn vfs_console_device_push_input(input: &[u8]) -> Vec<u8> {
+    console_device().lock().push_input(input)
+}
+
 /// Drains the terminal-generated signals (`^C`/`^\`/`^Z`) recognized by the console line discipline
 /// since the last drain.
 ///
@@ -1659,6 +1719,11 @@ pub fn vfs_console_take_signals(fd: c_int) -> Result<Vec<TerminalSignal>, TtyErr
     Ok(signals)
 }
 
+/// Drains terminal-generated signals directly from the shared console device.
+pub fn vfs_console_device_take_signals() -> Vec<TerminalSignal> {
+    console_device().lock().take_signals()
+}
+
 /// Signals end-of-input on the raw console stream.
 pub fn vfs_console_push_eof(fd: c_int) -> Result<(), TtyError> {
     let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
@@ -1666,10 +1731,22 @@ pub fn vfs_console_push_eof(fd: c_int) -> Result<(), TtyError> {
     Ok(())
 }
 
+/// Signals hard end-of-input directly on the shared console device.
+pub fn vfs_console_device_push_eof() {
+    console_device().lock().push_eof();
+}
+
 /// Attempts a non-blocking read from the console line discipline.
 pub fn vfs_console_read(fd: c_int, buf: &mut [u8]) -> Result<ConsoleReadOutcome, TtyError> {
     let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
     let outcome: ConsoleReadOutcome = terminal.lock().read(buf);
+    Ok(outcome)
+}
+
+/// Peeks at an immediate console read without consuming line-discipline state.
+pub fn vfs_console_peek(fd: c_int, buf: &mut [u8]) -> Result<ConsoleReadOutcome, TtyError> {
+    let terminal: Arc<Mutex<LineDiscipline>> = console_terminal(fd)?;
+    let outcome: ConsoleReadOutcome = terminal.lock().peek(buf);
     Ok(outcome)
 }
 
@@ -2403,6 +2480,7 @@ mod tests {
         CURRENT_PID.store(0, Ordering::Relaxed);
         // Clear the one-shot root-seeding latch so a later test starts from a pristine state.
         ROOT_CONSOLE_SEEDED.store(false, Ordering::Relaxed);
+        *CONSOLE_TERMINAL.lock() = None;
     }
 
     /// Tests file creation mask normalization, fork inheritance, and exec preservation.
@@ -3031,6 +3109,27 @@ mod tests {
         assert_eq!(&buf[..3], b"ab\n");
 
         forget_processes(&[root]);
+    }
+
+    /// Tests that the console device remains usable after init closes its stdin descriptor.
+    #[test]
+    fn console_device_outlives_init_stdin() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let root: ProcessIdentifier = root_process_identifier();
+        let child: ProcessIdentifier = ProcessIdentifier::from(ProcessIdentifier::VFSD_RAW + 2);
+        vfs_seed_root_console(root);
+        vfs_fork_clone(root, child).expect("fork clone should succeed");
+
+        set_current_process(root);
+        vfs_close(STDIN_FILENO).expect("init stdin close should succeed");
+        assert_eq!(vfs_console_device_push_input(b"child\n"), b"child\r\n");
+
+        set_current_process(child);
+        let mut buf: [u8; 8] = [0; 8];
+        assert_eq!(vfs_console_read(STDIN_FILENO, &mut buf), Ok(ConsoleReadOutcome::Read(6)));
+        assert_eq!(&buf[..6], b"child\n");
+
+        forget_processes(&[root, child]);
     }
 
     /// Tests that a forked child observes the parent's terminal attributes, because the shared

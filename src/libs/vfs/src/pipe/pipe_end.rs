@@ -39,6 +39,21 @@ use ::core::sync::atomic::{
     Ordering,
 };
 use ::spin::Mutex;
+use ::sysapi::{
+    ffi::c_short,
+    poll::{
+        poll_errors::{
+            POLLERR,
+            POLLHUP,
+        },
+        poll_flags::{
+            POLLIN,
+            POLLOUT,
+            POLLRDNORM,
+            POLLWRNORM,
+        },
+    },
+};
 
 //==================================================================================================
 // Constants
@@ -204,6 +219,33 @@ impl PipeEnd {
     /// Returns `true` if this is the write end, `false` if it is the read end.
     pub fn is_write(&self) -> bool {
         self.is_write
+    }
+
+    /// Returns the events that can complete immediately on this pipe end.
+    pub fn poll(&self, events: c_short) -> c_short {
+        const READ_EVENTS: c_short = POLLIN | POLLRDNORM;
+        const WRITE_EVENTS: c_short = POLLOUT | POLLWRNORM;
+
+        let inner: spin::MutexGuard<'_, PipeInner> = self.inner.lock();
+        if self.is_write {
+            let mut revents: c_short = 0;
+            if inner.readers == 0 {
+                revents |= POLLERR;
+            }
+            if inner.readers == 0 || inner.buf.len() < PIPE_CAPACITY {
+                revents |= events & WRITE_EVENTS;
+            }
+            revents
+        } else {
+            let mut revents: c_short = 0;
+            if !inner.buf.is_empty() || inner.writers == 0 {
+                revents |= events & READ_EVENTS;
+            }
+            if inner.writers == 0 {
+                revents |= POLLHUP;
+            }
+            revents
+        }
     }
 
     /// Attempts a non-blocking read from the pipe.
@@ -426,5 +468,50 @@ mod tests {
             matches!(r.read(&mut []).expect("read end"), PipeReadOutcome::Read(0)),
             "a zero-length read on an empty pipe with no writers must return Read(0)"
         );
+    }
+
+    /// Tests read-end readiness for empty, populated, and hung-up pipes.
+    #[test]
+    fn poll_read_end_tracks_data_and_writer_close() {
+        let (r, w): (PipeEnd, PipeEnd) = PipeEnd::new_pair();
+        assert_eq!(r.poll(POLLIN), 0, "an empty pipe with a writer is not readable");
+
+        w.write(&[1]).expect("write end");
+        assert_eq!(r.poll(POLLIN), POLLIN, "buffered data makes the read end readable");
+
+        drop(w);
+        assert_eq!(
+            r.poll(POLLIN),
+            POLLIN | POLLHUP,
+            "buffered data remains readable and writer closure reports hangup"
+        );
+        assert_eq!(read_all(&r, 1), alloc::vec![1]);
+        assert_eq!(
+            r.poll(POLLIN),
+            POLLIN | POLLHUP,
+            "EOF is readable and the hangup state persists"
+        );
+    }
+
+    /// Tests write-end readiness for available capacity, a full buffer, and reader closure.
+    #[test]
+    fn poll_write_end_tracks_capacity_and_reader_close() {
+        let (r, w): (PipeEnd, PipeEnd) = PipeEnd::new_pair();
+        assert_eq!(w.poll(POLLOUT), POLLOUT, "an empty pipe is writable");
+
+        let data: alloc::vec::Vec<u8> = alloc::vec![0; PIPE_CAPACITY];
+        assert!(
+            matches!(w.write(&data).expect("write end"), PipeWriteOutcome::Wrote(PIPE_CAPACITY)),
+            "the write should fill the pipe"
+        );
+        assert_eq!(w.poll(POLLOUT), 0, "a full pipe is not writable");
+
+        drop(r);
+        assert_eq!(
+            w.poll(POLLOUT),
+            POLLOUT | POLLERR,
+            "a closed read end reports the write error without suppressing writability"
+        );
+        assert_eq!(w.poll(0), POLLERR, "pipe errors are reported without being requested");
     }
 }

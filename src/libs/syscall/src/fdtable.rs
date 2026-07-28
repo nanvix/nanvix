@@ -159,46 +159,60 @@ fn is_coherent(entry_epoch: u64) -> bool {
 /// ([`resolve_via_vfsd`]).
 /// A cache hit on a coherent entry holds the lock only across a single map probe and never
 /// round-trips, so tight `read`/`write` loops stay local.
-pub(crate) fn resolve(fd: i32) -> Option<Resolution> {
+pub(crate) fn resolve_result(fd: i32) -> Result<Option<Resolution>, Error> {
+    Ok(resolve_for_poll(fd)?.map(|(resolution, _via_vfsd)| resolution))
+}
+
+/// Resolves a descriptor in unit tests, whose modeled authority cannot fail.
+#[cfg(test)]
+fn resolve(fd: i32) -> Option<Resolution> {
+    resolve_result(fd).expect("mock descriptor resolution should succeed")
+}
+
+/// Resolves a descriptor for `poll()`, preserving errors and direct-console fallback routing.
+pub(crate) fn resolve_for_poll(fd: i32) -> Result<Option<(Resolution, bool)>, Error> {
     {
         let cache: ::spin::MutexGuard<'_, BTreeMap<i32, CacheEntry>> = CACHE.lock();
         if let Some(entry) = cache.get(&fd) {
             if is_coherent(entry.epoch) {
-                return Some(Resolution {
-                    route: entry.route,
-                    backend_fd: entry.backend_fd,
-                });
+                return Ok(Some((
+                    Resolution {
+                        route: entry.route,
+                        backend_fd: entry.backend_fd,
+                    },
+                    true,
+                )));
             }
         }
     }
     // The cache missed or went stale; the authority decides, falling back to the console by number
     // only when no guest `vfsd` is available to answer.
-    match resolve_via_vfsd(fd) {
-        VfsdResolution::Hit(resolution) => Some(resolution),
-        VfsdResolution::BadFile => None,
-        VfsdResolution::Unavailable => derive_console(fd),
+    match resolve_via_vfsd(fd)? {
+        VfsdResolution::Hit(resolution) => Ok(Some((resolution, true))),
+        VfsdResolution::BadFile => Ok(None),
+        VfsdResolution::Unavailable => Ok(derive_console(fd).map(|resolution| (resolution, false))),
     }
 }
 
 /// Resolves `fd` for console I/O and reports whether vfsd owns the descriptor slot.
-pub(crate) fn resolve_console(fd: i32) -> ConsoleLookup {
+pub(crate) fn resolve_console(fd: i32) -> Result<ConsoleLookup, Error> {
     {
         let cache: ::spin::MutexGuard<'_, BTreeMap<i32, CacheEntry>> = CACHE.lock();
         if let Some(entry) = cache.get(&fd) {
             if is_coherent(entry.epoch) {
-                return if entry.route == Route::Console {
+                return Ok(if entry.route == Route::Console {
                     ConsoleLookup::Console {
                         backend_fd: entry.backend_fd,
                         via_vfsd: true,
                     }
                 } else {
                     ConsoleLookup::Other
-                };
+                });
             }
         }
     }
 
-    match resolve_via_vfsd(fd) {
+    Ok(match resolve_via_vfsd(fd)? {
         VfsdResolution::Hit(resolution) if resolution.route == Route::Console => {
             ConsoleLookup::Console {
                 backend_fd: resolution.backend_fd,
@@ -214,7 +228,7 @@ pub(crate) fn resolve_console(fd: i32) -> ConsoleLookup {
             },
             None => ConsoleLookup::BadFile,
         },
-    }
+    })
 }
 
 /// Resolves `fd` and returns the descriptor expected by `vfsd`.
@@ -224,7 +238,7 @@ pub(crate) fn resolve_console(fd: i32) -> ConsoleLookup {
 pub(crate) fn resolve_vfs(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
-    match resolve(fd) {
+    match resolve_result(fd)? {
         Some(resolution) if resolution.route == Route::Vfs => Ok(resolution.backend_fd),
         _ => {
             ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
@@ -242,7 +256,7 @@ pub(crate) fn resolve_vfs(fd: i32, syscall_name: &str) -> Result<i32, Error> {
 pub(crate) fn resolve_socket(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
-    match resolve(fd) {
+    match resolve_result(fd)? {
         Some(resolution) if resolution.route == Route::Socket => Ok(resolution.backend_fd),
         _ => {
             ::syslog::warn!("{syscall_name}(): not a socket fd={fd}");
@@ -264,7 +278,7 @@ pub(crate) fn resolve_socket(fd: i32, syscall_name: &str) -> Result<i32, Error> 
 pub(crate) fn resolve_table_op(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
-    match resolve(fd) {
+    match resolve_result(fd)? {
         Some(resolution) if matches!(resolution.route, Route::Vfs | Route::Console) => Ok(fd),
         _ => {
             ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
@@ -284,7 +298,7 @@ pub(crate) fn resolve_table_op(fd: i32, syscall_name: &str) -> Result<i32, Error
 pub(crate) fn resolve_tty(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
-    match resolve(fd) {
+    match resolve_result(fd)? {
         Some(resolution) if resolution.route == Route::Console => Ok(fd),
         Some(_) => {
             ::syslog::warn!("{syscall_name}(): fd is not a terminal fd={fd}");
@@ -323,7 +337,7 @@ pub(crate) fn record(fd: i32, route: Route, backend_fd: i32, epoch: u64) {
 /// so subsequent uses hit the cache. Returns `None` if `vfsd` reports no slot for `fd` (an invalid
 /// descriptor).
 #[cfg(not(test))]
-fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
+fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
     use crate::{
         unistd::message::{
             ResolveFdRequest,
@@ -339,37 +353,46 @@ fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
 
     let tid: ThreadIdentifier = match ::sys::kcall::pm::__kcall_gettid() {
         Ok(tid) => tid,
-        Err(_) => return VfsdResolution::Unavailable,
+        Err(_) => return Ok(VfsdResolution::Unavailable),
     };
     let pid: ::sys::pm::ProcessIdentifier = match ::sys::kcall::pm::getpid() {
         Ok(pid) => pid,
-        Err(_) => return VfsdResolution::Unavailable,
+        Err(_) => return Ok(VfsdResolution::Unavailable),
     };
     // A no-vfs image may assign the reserved vfsd pid to its workload. In that case a resolution
     // request would loop back to the caller instead of reaching a descriptor authority.
     if pid == crate::VFS_DESTINATION {
-        return VfsdResolution::Unavailable;
+        return Ok(VfsdResolution::Unavailable);
     }
 
     // Send the resolution query to vfsd and await its authoritative answer.
     let request: Message =
         ResolveFdRequest::build(tid, pid, fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
     if ::sys::kcall::ipc::__kcall_send(&request).is_err() {
-        return VfsdResolution::Unavailable;
+        return Ok(VfsdResolution::Unavailable);
     }
-    let response: Message = match ::sys::kcall::ipc::__kcall_recv() {
-        Ok(response) => response,
-        Err(_) => return VfsdResolution::Unavailable,
+    let mut interrupted: Option<Error> = None;
+    let response: Message = loop {
+        match ::sys::kcall::ipc::__kcall_recv() {
+            Ok(response) => break response,
+            Err(error) if error.code == ::sys::error::ErrorCode::Interrupted => {
+                interrupted.get_or_insert(error);
+            },
+            Err(_) => return Ok(VfsdResolution::Unavailable),
+        }
     };
+    if let Some(error) = interrupted {
+        return Err(error);
+    }
 
     // A non-zero status means vfsd holds no slot for this descriptor: it is unroutable.
     if response.status != 0 {
-        return VfsdResolution::BadFile;
+        return Ok(VfsdResolution::BadFile);
     }
 
     let message: SystemCallMessage = match SystemCallMessage::try_from_bytes(response.payload) {
         Ok(message) => message,
-        Err(_) => return VfsdResolution::BadFile,
+        Err(_) => return Ok(VfsdResolution::BadFile),
     };
     let resolved: ResolveFdResponse = match message.header {
         SystemCallMessageHeader::ResolveFdResponse => {
@@ -377,7 +400,7 @@ fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
         },
         _ => {
             ::syslog::warn!("resolve_via_vfsd(): unexpected response header (fd={fd})");
-            return VfsdResolution::BadFile;
+            return Ok(VfsdResolution::BadFile);
         },
     };
     // `ResolveFdResponse` is `#[repr(C, packed)]`, so read each field through a raw pointer to avoid
@@ -391,11 +414,11 @@ fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
         ResolveFdResponse::ROUTE_SOCKET => Route::Socket,
         other => {
             ::syslog::warn!("resolve_via_vfsd(): unknown route tag {other} (fd={fd})");
-            return VfsdResolution::BadFile;
+            return Ok(VfsdResolution::BadFile);
         },
     };
     record(fd, route, backend_fd, epoch);
-    VfsdResolution::Hit(Resolution { route, backend_fd })
+    Ok(VfsdResolution::Hit(Resolution { route, backend_fd }))
 }
 
 /// Test stand-in for the `vfsd` resolution query.
@@ -404,15 +427,21 @@ fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
 /// from [`MOCK_VFSD`], which a test populates to model `vfsd`'s table, and records it exactly as
 /// the production path would.
 #[cfg(test)]
-fn resolve_via_vfsd(fd: i32) -> VfsdResolution {
+fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
+    if MOCK_VFSD_INTERRUPTED.load(Ordering::Relaxed) {
+        return Err(Error::new(
+            ::sys::error::ErrorCode::Interrupted,
+            "mock descriptor resolution interrupted",
+        ));
+    }
     if MOCK_VFSD_UNAVAILABLE.load(Ordering::Relaxed) {
-        return VfsdResolution::Unavailable;
+        return Ok(VfsdResolution::Unavailable);
     }
     let Some((route, backend_fd, epoch)) = MOCK_VFSD.lock().get(&fd).copied() else {
-        return VfsdResolution::BadFile;
+        return Ok(VfsdResolution::BadFile);
     };
     record(fd, route, backend_fd, epoch);
-    VfsdResolution::Hit(Resolution { route, backend_fd })
+    Ok(VfsdResolution::Hit(Resolution { route, backend_fd }))
 }
 
 /// Test model of `vfsd`'s authoritative slot table, consulted by the test [`resolve_via_vfsd`].
@@ -422,6 +451,10 @@ static MOCK_VFSD: Mutex<BTreeMap<i32, (Route, i32, u64)>> = Mutex::new(BTreeMap:
 /// Test switch that models an unavailable guest `vfsd`.
 #[cfg(test)]
 static MOCK_VFSD_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+
+/// Test switch that makes the modeled `vfsd` lookup return `EINTR`.
+#[cfg(test)]
+static MOCK_VFSD_INTERRUPTED: AtomicBool = AtomicBool::new(false);
 
 /// Drops any cached resolution for `fd`.
 ///
@@ -441,6 +474,7 @@ fn clear() {
     EXPECTED_EPOCH.store(0, Ordering::Relaxed);
     MOCK_VFSD.lock().clear();
     MOCK_VFSD_UNAVAILABLE.store(false, Ordering::Relaxed);
+    MOCK_VFSD_INTERRUPTED.store(false, Ordering::Relaxed);
 }
 
 //==================================================================================================
@@ -708,6 +742,25 @@ mod tests {
             Some(Route::Vfs),
             "a coherent entry must be served from the cache without a vfsd round-trip"
         );
+
+        clear();
+    }
+
+    /// Tests that an interrupted authoritative lookup is not converted into a descriptor error.
+    #[test]
+    fn interrupted_lookup_is_preserved() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        MOCK_VFSD_INTERRUPTED.store(true, Ordering::Relaxed);
+        let error: Error = resolve_result(4).expect_err("resolution should report interruption");
+        assert_eq!(error.code, ::sys::error::ErrorCode::Interrupted);
+
+        let error: Error = match resolve_console(STDIN_FILENO) {
+            Err(error) => error,
+            Ok(_) => panic!("console resolution should report interruption"),
+        };
+        assert_eq!(error.code, ::sys::error::ErrorCode::Interrupted);
 
         clear();
     }

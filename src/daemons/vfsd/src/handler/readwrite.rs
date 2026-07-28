@@ -5,12 +5,23 @@
 // Imports
 //==================================================================================================
 
-use crate::error::{
-    build_error,
-    fat32_to_error_code,
+use crate::{
+    console_wait::{
+        BlockedConsoleReader,
+        ConsoleWaitTable,
+    },
+    error::{
+        build_error,
+        fat32_to_error_code,
+        send_response,
+    },
 };
-use ::alloc::vec::Vec;
+use ::alloc::{
+    boxed::Box,
+    vec::Vec,
+};
 use ::arch::mem::PAGE_SIZE;
+use ::core::time::Duration;
 use ::sys::{
     error::{
         Error,
@@ -39,12 +50,13 @@ use ::sysapi::{
     },
     sys_types::c_size_t,
     termios::Termios,
-    unistd::{
-        STDIN_FILENO,
-        STDOUT_FILENO,
-    },
+    unistd::STDOUT_FILENO,
 };
 use ::syscall::{
+    poll::input_message::{
+        ConsoleReadRetry,
+        PollInputRequest,
+    },
     sys::ioctl::message::{
         TtyControlRequest,
         TtyControlResponse,
@@ -93,6 +105,13 @@ static mut BULK_BUFFER: [u8; MAX_BULK_TRANSFER_SIZE] = [0u8; MAX_BULK_TRANSFER_S
 /// keystroke as it is typed. Over-reading is safe: surplus bytes are buffered by the line
 /// discipline and served to later reads.
 const CONSOLE_RAW_READ_SIZE: usize = 256;
+
+/// Immediate host-console input snapshot.
+enum ConsoleInputSnapshot {
+    Empty,
+    Eof,
+    Data(Box<[u8]>),
+}
 
 //==================================================================================================
 // Read/Write Handlers (with push/pull bulk data transfer)
@@ -148,28 +167,28 @@ pub(crate) fn handle_read(
 
 /// Handles a `read()` on a console descriptor.
 ///
-/// Cooked input already buffered in the line discipline is served without blocking. When none is
-/// available and the descriptor is blocking, this fetches raw input from the host console and feeds
-/// it through the line discipline until a readable unit (a canonical line, a raw byte, or EOF)
-/// becomes available.
-///
-/// The host console protocol is synchronous and demand-driven — the host blocks until input arrives
-/// and delivers it only in response to an explicit request — and vfsd is single-threaded, so this
-/// fetch necessarily blocks the event loop while waiting for the user. Requests from other clients
-/// that arrive meanwhile are queued (never lost) and are serviced as soon as the read completes.
-/// Crucially, the raw fetch does not consume the kernel's acknowledgement with a nested
-/// `__kcall_recv()` (which could dequeue an unrelated request from the shared mailbox); those
-/// acknowledgements are drained by the main event loop instead.
+/// Cooked input already buffered in the line discipline is served without blocking. A blocking read
+/// with no cooked input is parked in `console_wait` and revived by an input-availability
+/// notification; VFSD therefore never blocks its event loop waiting for a host keystroke.
 pub(crate) fn handle_console_read(
     source_pid: ProcessIdentifier,
     source_tid: ThreadIdentifier,
     fd: i32,
     stream: ConsoleStream,
     count: usize,
-) -> Message {
+    console_wait: &mut ConsoleWaitTable,
+) -> Option<Message> {
     if stream != ConsoleStream::Stdin {
-        let _ = push_to_reader(source_pid, source_tid, &[], "console read");
-        return build_error(source_tid, ErrorCode::BadFile);
+        console_wait.park(BlockedConsoleReader {
+            source_pid,
+            source_tid,
+            fd,
+            count,
+            error: Some(ErrorCode::BadFile),
+        });
+        wake_console_readers(console_wait);
+        service_pending_console_input(console_wait);
+        return None;
     }
 
     if count > 0 {
@@ -180,51 +199,17 @@ pub(crate) fn handle_console_read(
         notify_terminal_access(source_pid, false);
     }
 
-    let buf_size: usize = count.min(MAX_BULK_TRANSFER_SIZE);
-    // Safety: vfsd is single-threaded; no concurrent access to BULK_BUFFER.
-    let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
-
-    loop {
-        match ::vfs::fd::vfs_console_read(fd, buf) {
-            Ok(ConsoleReadOutcome::Read(n)) => {
-                if let Err(code) = push_to_reader(source_pid, source_tid, &buf[..n], "console read")
-                {
-                    return build_error(source_tid, code);
-                }
-                return ReadResponse::build(
-                    source_tid,
-                    n as i32,
-                    [0u8; ReadResponse::BUFFER_SIZE],
-                    ProcessIdentifier::VFSD,
-                    MessageType::Ipc,
-                );
-            },
-            Ok(ConsoleReadOutcome::Eof) => {
-                let _ = push_to_reader(source_pid, source_tid, &[], "console read");
-                return ReadResponse::build(
-                    source_tid,
-                    0,
-                    [0u8; ReadResponse::BUFFER_SIZE],
-                    ProcessIdentifier::VFSD,
-                    MessageType::Ipc,
-                );
-            },
-            Ok(ConsoleReadOutcome::WouldBlock) => {
-                if is_nonblocking(fd) {
-                    let _ = push_to_reader(source_pid, source_tid, &[], "console read");
-                    return build_error(source_tid, ErrorCode::TryAgain);
-                }
-                if let Err(code) = feed_console_input(fd) {
-                    let _ = push_to_reader(source_pid, source_tid, &[], "console read");
-                    return build_error(source_tid, code);
-                }
-            },
-            Err(error) => {
-                let _ = push_to_reader(source_pid, source_tid, &[], "console read");
-                return build_error(source_tid, tty_error_code(error));
-            },
-        }
+    console_wait.park(BlockedConsoleReader {
+        source_pid,
+        source_tid,
+        fd,
+        count,
+        error: None,
+    });
+    if !service_pending_console_input(console_wait) {
+        wake_console_readers(console_wait);
     }
+    None
 }
 
 pub(crate) fn handle_write(
@@ -272,33 +257,254 @@ fn is_nonblocking(fd: i32) -> bool {
     ::vfs::fd::vfs_get_status_flags(fd) & file_status_flags::O_NONBLOCK != 0
 }
 
-/// Pushes data to a reader blocked in `__kcall_pull`.
-fn push_to_reader(
-    pid: ProcessIdentifier,
-    tid: ThreadIdentifier,
-    data: &[u8],
-    context: &'static str,
-) -> Result<(), ErrorCode> {
-    if let Err(error) = ::sys::kcall::ipc::__kcall_push(pid, tid, data) {
-        ::syslog::error!("{context}: push failed (error={:?})", error);
-        return Err(ErrorCode::IoErr);
+/// Tries to feed currently buffered host-console input without waiting for a keystroke.
+pub(crate) fn try_feed_console_input(fd: i32) -> Result<bool, ErrorCode> {
+    match console_input_snapshot()? {
+        ConsoleInputSnapshot::Empty => Ok(false),
+        ConsoleInputSnapshot::Eof => {
+            ::vfs::fd::vfs_console_push_eof(fd).map_err(tty_error_code)?;
+            Ok(false)
+        },
+        ConsoleInputSnapshot::Data(raw) => {
+            process_console_input(fd, &raw)?;
+            Ok(true)
+        },
     }
-    Ok(())
 }
 
-/// Feeds a chunk of raw host-console input through the line discipline.
-///
-/// Fetches up to [`CONSOLE_RAW_READ_SIZE`] raw bytes from the kernel console, cooks them through the
-/// line discipline, and writes back any bytes the discipline wants echoed. A zero-length fetch means
-/// end-of-file, which is signalled to the discipline. Echo failures are non-fatal and only logged.
-fn feed_console_input(fd: i32) -> Result<(), ErrorCode> {
-    let mut raw: [u8; CONSOLE_RAW_READ_SIZE] = [0u8; CONSOLE_RAW_READ_SIZE];
-    let n: usize = kernel_read_stdin(&mut raw).map_err(|error| error.code)?;
+/// Fetches one immediate host-console input snapshot.
+fn console_input_snapshot() -> Result<ConsoleInputSnapshot, ErrorCode> {
+    let mut response: [u8; CONSOLE_RAW_READ_SIZE + 1] = [0u8; CONSOLE_RAW_READ_SIZE + 1];
+    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid().map_err(|error| error.code)?;
+    let request: Message = PollInputRequest::build(tid, CONSOLE_RAW_READ_SIZE as u32);
+    ::sys::kcall::ipc::__kcall_send(&request).map_err(|error| error.code)?;
+    let n: usize = ::sys::kcall::ipc::__kcall_pull(
+        ProcessIdentifier::KERNEL,
+        ThreadIdentifier::KERNEL,
+        &mut response,
+    )
+    .map_err(|error| error.code)?;
     if n == 0 {
-        return ::vfs::fd::vfs_console_push_eof(fd).map_err(tty_error_code);
+        return Err(ErrorCode::InvalidMessage);
     }
 
-    let echo: Vec<u8> = ::vfs::fd::vfs_console_push_input(fd, &raw[..n]).map_err(tty_error_code)?;
+    match response[0] {
+        PollInputRequest::STATUS_EMPTY => Ok(ConsoleInputSnapshot::Empty),
+        PollInputRequest::STATUS_EOF => Ok(ConsoleInputSnapshot::Eof),
+        PollInputRequest::STATUS_DATA if n > 1 => {
+            let raw: Box<[u8]> = Box::from(&response[1..n]);
+            Ok(ConsoleInputSnapshot::Data(raw))
+        },
+        _ => Err(ErrorCode::InvalidMessage),
+    }
+}
+
+/// Retains one host-input availability token and services it when a reader needs input.
+pub(crate) fn handle_console_input_available(console_wait: &mut ConsoleWaitTable) {
+    console_wait.mark_input_available();
+    service_pending_console_input(console_wait);
+}
+
+/// Fetches one retained host-input snapshot for the front reader.
+pub(crate) fn service_pending_console_input(console_wait: &mut ConsoleWaitTable) -> bool {
+    if !console_wait.front_needs_input() || !console_wait.take_input_available() {
+        return false;
+    }
+
+    match console_input_snapshot() {
+        Ok(ConsoleInputSnapshot::Data(raw)) => process_console_device_input(&raw),
+        Ok(ConsoleInputSnapshot::Eof) => {
+            ::vfs::fd::vfs_console_device_push_eof();
+        },
+        Ok(ConsoleInputSnapshot::Empty) => {},
+        Err(error) => {
+            ::syslog::warn!("console input notification failed (error={:?})", error);
+        },
+    }
+    wake_console_readers(console_wait);
+    true
+}
+
+/// Revives queued console readers in FIFO order while cooked data or EOF is available.
+fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
+    while let Some((source_pid, source_tid, fd, count, queued_error)) = console_wait.front() {
+        if let Some(error) = queued_error {
+            match ::sys::kcall::ipc::__kcall_push_timed(
+                source_pid,
+                source_tid,
+                &[],
+                Some(Duration::ZERO),
+            ) {
+                Ok(()) => {
+                    console_wait.pop();
+                    send_response(&build_error(source_tid, error));
+                    continue;
+                },
+                Err(push_error) if push_error.code == ErrorCode::OperationTimedOut => {
+                    schedule_console_read_retry(console_wait);
+                    break;
+                },
+                Err(_) => {
+                    console_wait.pop();
+                    continue;
+                },
+            }
+        }
+
+        ::vfs::fd::set_current_process(source_pid);
+        let buf_size: usize = count.min(MAX_BULK_TRANSFER_SIZE);
+        // Safety: VFSD is single-threaded and releases this borrow before processing another IPC.
+        let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
+        match ::vfs::fd::vfs_console_peek(fd, buf) {
+            Ok(ConsoleReadOutcome::Read(n)) => {
+                match ::sys::kcall::ipc::__kcall_push_timed(
+                    source_pid,
+                    source_tid,
+                    &buf[..n],
+                    Some(Duration::ZERO),
+                ) {
+                    Ok(()) => {},
+                    Err(error) if error.code == ErrorCode::OperationTimedOut => {
+                        schedule_console_read_retry(console_wait);
+                        break;
+                    },
+                    Err(_) => {
+                        console_wait.pop();
+                        continue;
+                    },
+                }
+
+                let consumed: Result<ConsoleReadOutcome, TtyError> =
+                    ::vfs::fd::vfs_console_read(fd, buf);
+                console_wait.pop();
+                match consumed {
+                    Ok(ConsoleReadOutcome::Read(consumed)) if consumed == n => {
+                        send_response(&ReadResponse::build(
+                            source_tid,
+                            n as i32,
+                            [0u8; ReadResponse::BUFFER_SIZE],
+                            ProcessIdentifier::VFSD,
+                            MessageType::Ipc,
+                        ));
+                    },
+                    _ => send_response(&build_error(source_tid, ErrorCode::InvalidMessage)),
+                }
+            },
+            Ok(ConsoleReadOutcome::Eof) => {
+                match ::sys::kcall::ipc::__kcall_push_timed(
+                    source_pid,
+                    source_tid,
+                    &[],
+                    Some(Duration::ZERO),
+                ) {
+                    Ok(()) => {},
+                    Err(error) if error.code == ErrorCode::OperationTimedOut => {
+                        schedule_console_read_retry(console_wait);
+                        break;
+                    },
+                    Err(_) => {
+                        console_wait.pop();
+                        continue;
+                    },
+                }
+
+                let consumed: Result<ConsoleReadOutcome, TtyError> =
+                    ::vfs::fd::vfs_console_read(fd, buf);
+                console_wait.pop();
+                match consumed {
+                    Ok(ConsoleReadOutcome::Eof) => send_response(&ReadResponse::build(
+                        source_tid,
+                        0,
+                        [0u8; ReadResponse::BUFFER_SIZE],
+                        ProcessIdentifier::VFSD,
+                        MessageType::Ipc,
+                    )),
+                    _ => send_response(&build_error(source_tid, ErrorCode::InvalidMessage)),
+                }
+            },
+            Ok(ConsoleReadOutcome::WouldBlock) if is_nonblocking(fd) => {
+                match ::sys::kcall::ipc::__kcall_push_timed(
+                    source_pid,
+                    source_tid,
+                    &[],
+                    Some(Duration::ZERO),
+                ) {
+                    Ok(()) => {
+                        console_wait.pop();
+                        send_response(&build_error(source_tid, ErrorCode::TryAgain));
+                    },
+                    Err(error) if error.code == ErrorCode::OperationTimedOut => {
+                        schedule_console_read_retry(console_wait);
+                        break;
+                    },
+                    Err(_) => {
+                        console_wait.pop();
+                    },
+                }
+            },
+            Ok(ConsoleReadOutcome::WouldBlock) => break,
+            Err(error) => {
+                match ::sys::kcall::ipc::__kcall_push_timed(
+                    source_pid,
+                    source_tid,
+                    &[],
+                    Some(Duration::ZERO),
+                ) {
+                    Ok(()) => {
+                        console_wait.pop();
+                        send_response(&build_error(source_tid, tty_error_code(error)));
+                    },
+                    Err(push_error) if push_error.code == ErrorCode::OperationTimedOut => {
+                        schedule_console_read_retry(console_wait);
+                        break;
+                    },
+                    Err(_) => {
+                        console_wait.pop();
+                    },
+                }
+            },
+        }
+    }
+}
+
+/// Attempts delivery to parked console readers without consuming a queued retry marker.
+pub(crate) fn service_console_readers(console_wait: &mut ConsoleWaitTable) {
+    wake_console_readers(console_wait);
+}
+
+/// Yields to let the reader register its pull, then retries through VFSD's event loop.
+fn schedule_console_read_retry(console_wait: &mut ConsoleWaitTable) {
+    if !console_wait.schedule_read_retry() {
+        return;
+    }
+    if let Err(error) = ::sys::kcall::sched::__kcall_sched_yield() {
+        ::syslog::warn!("console read: failed to yield before retry (error={:?})", error);
+    }
+    let tid: ThreadIdentifier = match ::sys::kcall::pm::__kcall_gettid() {
+        Ok(tid) => tid,
+        Err(error) => {
+            console_wait.consume_read_retry();
+            ::syslog::error!("console read: failed to get VFSD tid (error={:?})", error);
+            return;
+        },
+    };
+    let retry: Message = ConsoleReadRetry::build(tid);
+    if let Err(error) = ::sys::kcall::ipc::__kcall_send(&retry) {
+        console_wait.consume_read_retry();
+        ::syslog::error!("console read: failed to schedule retry (error={:?})", error);
+    }
+}
+
+/// Retries delivery to parked console readers after they had time to register their pulls.
+pub(crate) fn retry_console_readers(console_wait: &mut ConsoleWaitTable) {
+    console_wait.consume_read_retry();
+    service_console_readers(console_wait);
+    service_pending_console_input(console_wait);
+}
+
+/// Cooks raw console bytes and handles echo and terminal-generated signals.
+fn process_console_input(fd: i32, raw: &[u8]) -> Result<(), ErrorCode> {
+    let echo: Vec<u8> = ::vfs::fd::vfs_console_push_input(fd, raw).map_err(tty_error_code)?;
     if !echo.is_empty() {
         if let Err(error) = kernel_write_console(STDOUT_FILENO, &echo) {
             ::syslog::warn!("console read: failed to echo input (error={:?})", error);
@@ -310,6 +516,17 @@ fn feed_console_input(fd: i32) -> Result<(), ErrorCode> {
     forward_console_signals(fd);
 
     Ok(())
+}
+
+/// Cooks raw bytes through the persistent console device and forwards echo and signals.
+fn process_console_device_input(raw: &[u8]) {
+    let echo: Vec<u8> = ::vfs::fd::vfs_console_device_push_input(raw);
+    if !echo.is_empty() {
+        if let Err(error) = kernel_write_console(STDOUT_FILENO, &echo) {
+            ::syslog::warn!("console input: failed to echo input (error={:?})", error);
+        }
+    }
+    forward_console_device_signals();
 }
 
 /// Notifies the process manager daemon that `pid` accessed the console, so it can raise `SIGTTIN`
@@ -380,33 +597,39 @@ fn forward_console_signals(fd: i32) {
     }
 }
 
-/// Reads raw input from the kernel console stdin stream.
-///
-/// Sends a `ReadRequest` to the kernel console and pulls the delivered bytes. The pulled byte count
-/// is authoritative: the host always completes the pull (with `0` bytes on end-of-file). The
-/// kernel's matching `ReadResponse` acknowledgement is intentionally left in vfsd's mailbox for the
-/// main event loop to discard, rather than consumed here with a nested `__kcall_recv()` that could
-/// instead dequeue an unrelated guest request (the mailbox is shared by the whole process).
-fn kernel_read_stdin(buf: &mut [u8]) -> Result<usize, Error> {
-    let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
-    let request: Message = ReadRequest::build(
-        tid,
-        STDIN_FILENO,
-        buf.len() as c_size_t,
-        ProcessIdentifier::KERNEL,
-        MessageType::Ikc,
-    );
-    ::sys::kcall::ipc::__kcall_send(&request)?;
-    let bytes_pulled: usize =
-        ::sys::kcall::ipc::__kcall_pull(ProcessIdentifier::KERNEL, ThreadIdentifier::KERNEL, buf)?;
-    Ok(bytes_pulled)
+/// Forwards terminal-generated signals drained directly from the shared console device.
+fn forward_console_device_signals() {
+    for signal in ::vfs::fd::vfs_console_device_take_signals() {
+        let signum: i32 = match signal {
+            TerminalSignal::Interrupt => SIGINT as i32,
+            TerminalSignal::Quit => SIGQUIT as i32,
+            TerminalSignal::Suspend => SIGTSTP as i32,
+        };
+        match ::proc::terminal_signal_request(ProcessIdentifier::VFSD, signum) {
+            Ok(message) => {
+                if let Err(error) = ::sys::kcall::ipc::__kcall_send(&message) {
+                    ::syslog::warn!(
+                        "console input: failed to forward terminal signal (signum={}, error={:?})",
+                        signum,
+                        error
+                    );
+                }
+            },
+            Err(error) => {
+                ::syslog::warn!(
+                    "console input: failed to build terminal-signal notification (error={:?})",
+                    error
+                );
+            },
+        }
+    }
 }
 
 /// Writes bytes to the kernel console output stream (used to echo cooked input).
 ///
-/// Like [`kernel_read_stdin`], the kernel's `WriteResponse` acknowledgement is left in vfsd's
-/// mailbox for the main event loop to discard rather than consumed with a nested `__kcall_recv()`,
-/// which could otherwise dequeue an unrelated guest request from the shared mailbox.
+/// The kernel's `WriteResponse` acknowledgement is left in VFSD's mailbox for the main event loop
+/// to discard rather than consumed with a nested `__kcall_recv()`, which could otherwise dequeue an
+/// unrelated guest request from the shared mailbox.
 fn kernel_write_console(fd: i32, buf: &[u8]) -> Result<(), Error> {
     if buf.is_empty() {
         return Ok(());
@@ -504,6 +727,7 @@ pub(crate) fn handle_tty_control(
     source_pid: ProcessIdentifier,
     source_tid: ThreadIdentifier,
     msg: SystemCallMessage,
+    console_wait: &mut ConsoleWaitTable,
 ) -> Message {
     let req: TtyControlRequest = TtyControlRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
@@ -526,12 +750,17 @@ pub(crate) fn handle_tty_control(
                         ::vfs::fd::vfs_tty_set_winsize(fd, winsize).map_err(tty_error_code)
                     };
                     match outcome {
-                        Ok(()) => TtyControlResponse::build(
-                            source_tid,
-                            0,
-                            ProcessIdentifier::VFSD,
-                            MessageType::Ipc,
-                        ),
+                        Ok(()) => {
+                            if request == TCSETS {
+                                wake_console_readers(console_wait);
+                            }
+                            TtyControlResponse::build(
+                                source_tid,
+                                0,
+                                ProcessIdentifier::VFSD,
+                                MessageType::Ipc,
+                            )
+                        },
                         Err(code) => build_error(source_tid, code),
                     }
                 },

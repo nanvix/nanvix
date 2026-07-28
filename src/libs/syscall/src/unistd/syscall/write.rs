@@ -168,10 +168,10 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
     // Route by the descriptor's resolved backend so flat descriptors are dispatched through vfsd's
     // authoritative table.
     use crate::fdtable::{
-        resolve,
+        resolve_result,
         Route,
     };
-    match resolve(fd) {
+    match resolve_result(fd)? {
         // stdout/stderr writes flow directly to the kernel over IKC.
         Some(res)
             if res.route == Route::Console

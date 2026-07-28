@@ -37,10 +37,10 @@ pub fn isatty(fd: RawFileDescriptor) -> Result<bool, Error> {
     // answers correctly rather than being judged by its number. An unresolvable descriptor is
     // rejected with `EBADF`.
     use crate::fdtable::{
-        resolve,
+        resolve_result,
         Route,
     };
-    match resolve(fd) {
+    match resolve_result(fd)? {
         Some(resolution) if resolution.route == Route::Console => Ok(true),
         Some(_) => {
             ::syslog::trace!("isatty(): file descriptor is not a terminal (fd={})", fd);

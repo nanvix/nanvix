@@ -61,6 +61,10 @@ use ::syscall::{
     SystemCallMessage,
     SystemCallMessageHeader,
     message::SystemCallMessagePart,
+    poll::input_message::{
+        PollInputRequest,
+        PollInputResponse,
+    },
     unistd::message::{
         ReadRequest,
         ReadResponse,
@@ -91,6 +95,31 @@ use crate::perf::PerfTimings;
 /// Payload sent to the hostfsd worker thread: the IKC message, a channel for the
 /// response, and the shared message counters.
 type HostFsRequest = (Message, mpsc::Sender<IkcFrame>, MessageCounters);
+
+/// Request handled by the asynchronous host-console input broker.
+enum ConsoleInputRequest {
+    /// Stops the broker and releases its VM input sender.
+    Shutdown,
+    /// Enables unsolicited input-availability notifications to VFSD.
+    Subscribe,
+    /// A blocking console read, completed when input or EOF becomes available.
+    Read {
+        tid: ThreadIdentifier,
+        pull_header: DataChunkHeader,
+        max_bytes: usize,
+    },
+    /// An immediate console readiness snapshot.
+    Poll {
+        source_pid: ProcessIdentifier,
+        pull_header: DataChunkHeader,
+        max_bytes: usize,
+    },
+    /// An immediate readiness snapshot returned inline without a bulk transfer.
+    PollStatus {
+        source_pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+    },
+}
 
 //==================================================================================================
 // Constants
@@ -419,14 +448,14 @@ async fn standalone_io_handler(
     mut vm_stdout_rx: mpsc::Receiver<IkcFrame>,
     vm_stdin_tx: mpsc::Sender<IkcFrame>,
     output_tx: mpsc::Sender<Vec<u8>>,
-    mut input_rx: mpsc::Receiver<Vec<u8>>,
+    input_rx: mpsc::Receiver<Vec<u8>>,
     counters: MessageCounters,
     networking_mode: NetworkingMode,
     host_filter: HostFilter,
     mount_directory: Option<String>,
 ) {
-    let mut input_buffer: VecDeque<u8> = VecDeque::new();
-    let mut input_closed: bool = false;
+    let console_input_tx: mpsc::Sender<ConsoleInputRequest> =
+        spawn_console_input_broker(input_rx, vm_stdin_tx.downgrade(), counters.clone());
 
     // Tracks the logical op_id of the long-request multi-part stream currently
     // being forwarded to the hostfsd worker. Captured on part 0 and cleared once
@@ -606,14 +635,43 @@ async fn standalone_io_handler(
                         handle_read_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
-                            &mut input_rx,
-                            &mut input_buffer,
-                            &mut input_closed,
+                            &console_input_tx,
                             tid,
                             &req,
                             &counters,
                         )
                         .await;
+                    },
+                    SystemCallMessageHeader::PollInputRequest => {
+                        let source: MessageSender = msg.source;
+                        let tid: ThreadIdentifier = extract_tid(source);
+                        let request: PollInputRequest =
+                            PollInputRequest::from_bytes(syscall_msg.payload);
+                        handle_poll_input_request(
+                            &mut vm_stdout_rx,
+                            &console_input_tx,
+                            source.pid,
+                            tid,
+                            &request,
+                        )
+                        .await;
+                    },
+                    SystemCallMessageHeader::ConsoleInputSubscribe => {
+                        let source: MessageSender = msg.source;
+                        if source.pid != ProcessIdentifier::VFSD {
+                            warn!(
+                                "standalone io_handler: rejecting console subscription from {:?}",
+                                source.pid
+                            );
+                            continue;
+                        }
+                        if console_input_tx
+                            .send(ConsoleInputRequest::Subscribe)
+                            .await
+                            .is_err()
+                        {
+                            error!("standalone io_handler: console input broker is unavailable");
+                        }
                     },
                     SystemCallMessageHeader::SendSocketRequest => {
                         handle_send_request(
@@ -790,6 +848,7 @@ async fn standalone_io_handler(
         }
     }
 
+    let _ = console_input_tx.send(ConsoleInputRequest::Shutdown).await;
     debug!("standalone: I/O handler exiting (VM stdout channel closed)");
 }
 
@@ -1111,9 +1170,7 @@ async fn handle_write_request(
 async fn handle_read_request(
     vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
-    input_rx: &mut mpsc::Receiver<Vec<u8>>,
-    input_buffer: &mut VecDeque<u8>,
-    input_closed: &mut bool,
+    console_input_tx: &mpsc::Sender<ConsoleInputRequest>,
     tid: ThreadIdentifier,
     request: &ReadRequest,
     counters: &MessageCounters,
@@ -1172,45 +1229,284 @@ async fn handle_read_request(
     }
 
     let max_bytes: usize = core::cmp::min(request.count as usize, pull_header.data_len() as usize);
+    if console_input_tx
+        .send(ConsoleInputRequest::Read {
+            tid,
+            pull_header,
+            max_bytes,
+        })
+        .await
+        .is_err()
+    {
+        error!("standalone io_handler: console input broker is unavailable");
+        send_empty_pull_response(vm_stdin_tx, &pull_header, counters).await;
+    }
+}
 
-    // If the internal buffer is empty and the input channel is still open, wait for data.
-    if input_buffer.is_empty() && !*input_closed {
-        match input_rx.recv().await {
-            Some(data) => input_buffer.extend(data),
-            None => {
-                *input_closed = true;
-            },
+/// Handles an immediate, non-blocking host-console input snapshot.
+async fn handle_poll_input_request(
+    vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
+    console_input_tx: &mpsc::Sender<ConsoleInputRequest>,
+    source_pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    request: &PollInputRequest,
+) {
+    if request.count() == 0 {
+        if console_input_tx
+            .send(ConsoleInputRequest::PollStatus { source_pid, tid })
+            .await
+            .is_err()
+        {
+            error!("standalone io_handler: console input broker is unavailable");
         }
+        return;
     }
 
-    // Take up to max_bytes from the buffer.
-    let available: usize = core::cmp::min(input_buffer.len(), max_bytes);
-    let data: Vec<u8> = input_buffer.drain(..available).collect();
-    let actual_len: u32 = match u32::try_from(data.len()) {
-        Ok(n) => n,
-        Err(_) => {
-            error!("standalone io_handler: read size overflows u32 (len={})", data.len());
-            let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-            let response: Message = ReadResponse::build(
-                tid,
-                -1,
-                empty_buf,
-                ProcessIdentifier::KERNEL,
-                MessageType::Ikc,
+    let pull_header: DataChunkHeader = match vm_stdout_rx.recv().await {
+        Some(IkcFrame::Bulk(bulk)) => *bulk.header(),
+        other => {
+            error!(
+                "standalone io_handler: expected bulk frame after PollInputRequest, got {:?}",
+                other.as_ref().map(|frame| frame.frame_type_byte())
             );
-            counters.increment_io_handler_messages_sent();
-            if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
-                error!(
-                    "standalone io_handler: failed to send ReadResponse (VM input channel closed)"
-                );
-            }
             return;
         },
     };
 
-    // Construct bulk response with the read data and send it to the guest. The input_fn will
-    // write this data to guest memory at the pull_header's data_addr and construct a
-    // PullResponse notification to wake the sleeping pull thread.
+    let max_response: usize = pull_header.data_len() as usize;
+    let max_data: usize = core::cmp::min(request.count() as usize, max_response.saturating_sub(1));
+    if console_input_tx
+        .send(ConsoleInputRequest::Poll {
+            source_pid,
+            pull_header,
+            max_bytes: max_data,
+        })
+        .await
+        .is_err()
+    {
+        error!("standalone io_handler: console input broker is unavailable");
+    }
+}
+
+/// Starts the task that owns host-console input and completes reads without blocking the I/O loop.
+fn spawn_console_input_broker(
+    mut input_rx: mpsc::Receiver<Vec<u8>>,
+    vm_stdin_tx: mpsc::WeakSender<IkcFrame>,
+    counters: MessageCounters,
+) -> mpsc::Sender<ConsoleInputRequest> {
+    let (request_tx, mut request_rx): (
+        mpsc::Sender<ConsoleInputRequest>,
+        mpsc::Receiver<ConsoleInputRequest>,
+    ) = mpsc::channel(CHANNEL_CAPACITY);
+
+    tokio::spawn(async move {
+        let mut input_buffer: VecDeque<u8> = VecDeque::new();
+        let mut input_closed: bool = false;
+        let mut notifications_enabled: bool = false;
+        let mut notification_pending: bool = false;
+        let mut pending_reads: VecDeque<(ThreadIdentifier, DataChunkHeader, usize)> =
+            VecDeque::new();
+
+        loop {
+            while !pending_reads.is_empty()
+                && (!input_buffer.is_empty()
+                    || input_closed
+                    || pending_reads
+                        .front()
+                        .map(|read| read.2 == 0)
+                        .unwrap_or(false))
+            {
+                let Some((tid, pull_header, max_bytes)) = pending_reads.pop_front() else {
+                    break;
+                };
+                let available: usize = core::cmp::min(input_buffer.len(), max_bytes);
+                let data: Vec<u8> = input_buffer.drain(..available).collect();
+                let Some(sender) = vm_stdin_tx.upgrade() else {
+                    return;
+                };
+                send_console_read_response(&sender, tid, pull_header, data, &counters).await;
+            }
+
+            tokio::select! {
+                data = input_rx.recv(), if !input_closed
+                    && (!pending_reads.is_empty()
+                        || (notifications_enabled && input_buffer.is_empty())) => {
+                    match data {
+                        Some(data) => {
+                            input_buffer.extend(data);
+                            if notifications_enabled && !notification_pending {
+                                let Some(sender) = vm_stdin_tx.upgrade() else {
+                                    break;
+                                };
+                                if !notify_console_input_available(&sender, &counters).await {
+                                    break;
+                                }
+                                notification_pending = true;
+                            }
+                        },
+                        None => {
+                            input_closed = true;
+                            if notifications_enabled && !notification_pending {
+                                let Some(sender) = vm_stdin_tx.upgrade() else {
+                                    break;
+                                };
+                                if !notify_console_input_available(&sender, &counters).await {
+                                    break;
+                                }
+                                notification_pending = true;
+                            }
+                        },
+                    }
+                },
+                request = request_rx.recv() => {
+                    let Some(request) = request else {
+                        break;
+                    };
+
+                    let direct_input_request: bool = !notifications_enabled
+                        && matches!(
+                            &request,
+                            ConsoleInputRequest::Read { .. }
+                                | ConsoleInputRequest::Poll { .. }
+                                | ConsoleInputRequest::PollStatus { .. }
+                        );
+                    if direct_input_request
+                        && input_buffer.is_empty()
+                        && let Ok(data) = input_rx.try_recv()
+                    {
+                        input_buffer.extend(data);
+                    }
+                    if direct_input_request && input_rx.is_closed() && input_rx.is_empty() {
+                        input_closed = true;
+                    }
+
+                    match request {
+                        ConsoleInputRequest::Shutdown => break,
+                        ConsoleInputRequest::Subscribe => {
+                            notifications_enabled = true;
+                            if (!input_buffer.is_empty() || input_closed)
+                                && !notification_pending {
+                                let Some(sender) = vm_stdin_tx.upgrade() else {
+                                    break;
+                                };
+                                if !notify_console_input_available(&sender, &counters).await {
+                                    break;
+                                }
+                                notification_pending = true;
+                            }
+                        },
+                        ConsoleInputRequest::Read { tid, pull_header, max_bytes } => {
+                            pending_reads.push_back((tid, pull_header, max_bytes));
+                        },
+                        ConsoleInputRequest::Poll {
+                            source_pid,
+                            pull_header,
+                            max_bytes,
+                        } => {
+                            let from_vfsd: bool = source_pid == ProcessIdentifier::VFSD;
+                            let authorized: bool = !notifications_enabled || from_vfsd;
+                            let acknowledge_notification: bool = from_vfsd && notification_pending;
+                            if acknowledge_notification {
+                                notification_pending = false;
+                            }
+                            let mut data: Vec<u8> = Vec::with_capacity(max_bytes + 1);
+                            if !authorized {
+                                data.push(PollInputRequest::STATUS_EMPTY);
+                            } else if input_buffer.is_empty() {
+                                data.push(if input_closed {
+                                    PollInputRequest::STATUS_EOF
+                                } else {
+                                    PollInputRequest::STATUS_EMPTY
+                                });
+                            } else {
+                                data.push(PollInputRequest::STATUS_DATA);
+                                let available: usize =
+                                    core::cmp::min(input_buffer.len(), max_bytes);
+                                data.extend(input_buffer.drain(..available));
+                            }
+                            let Some(sender) = vm_stdin_tx.upgrade() else {
+                                break;
+                            };
+                            send_console_poll_response(
+                                &sender,
+                                pull_header,
+                                data,
+                                &counters,
+                            )
+                            .await;
+                            if acknowledge_notification
+                                && notifications_enabled
+                                && !input_buffer.is_empty()
+                                && !notification_pending
+                            {
+                                if !notify_console_input_available(&sender, &counters).await {
+                                    break;
+                                }
+                                notification_pending = true;
+                            }
+                        },
+                        ConsoleInputRequest::PollStatus { source_pid, tid } => {
+                            let authorized: bool = !notifications_enabled
+                                || source_pid == ProcessIdentifier::VFSD;
+                            let status: u8 = if !authorized {
+                                PollInputRequest::STATUS_EMPTY
+                            } else if input_buffer.is_empty() {
+                                if input_closed {
+                                    PollInputRequest::STATUS_EOF
+                                } else {
+                                    PollInputRequest::STATUS_EMPTY
+                                }
+                            } else {
+                                PollInputRequest::STATUS_DATA
+                            };
+                            let Some(sender) = vm_stdin_tx.upgrade() else {
+                                break;
+                            };
+                            send_console_poll_status(&sender, tid, status, &counters).await;
+                        },
+                    }
+                },
+            }
+        }
+    });
+
+    request_tx
+}
+
+/// Notifies VFSD that an immediate console-input snapshot can make progress.
+async fn notify_console_input_available(
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    counters: &MessageCounters,
+) -> bool {
+    counters.increment_io_handler_messages_sent();
+    let notification: Message = PollInputRequest::build_available_notification();
+    if vm_stdin_tx
+        .send(IkcFrame::Message(notification))
+        .await
+        .is_err()
+    {
+        error!("standalone io_handler: failed to notify VFSD of console input");
+        false
+    } else {
+        true
+    }
+}
+
+/// Sends the bulk payload and acknowledgement for a completed console read.
+async fn send_console_read_response(
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    tid: ThreadIdentifier,
+    pull_header: DataChunkHeader,
+    data: Vec<u8>,
+    counters: &MessageCounters,
+) {
+    let actual_len: u32 = match u32::try_from(data.len()) {
+        Ok(actual_len) => actual_len,
+        Err(_) => {
+            error!("standalone io_handler: console read length overflows u32");
+            return;
+        },
+    };
     let response_header: DataChunkHeader = DataChunkHeader::new(
         pull_header.source_pid(),
         pull_header.source_tid(),
@@ -1219,32 +1515,72 @@ async fn handle_read_request(
         pull_header.data_addr(),
         actual_len,
     );
-    let response_bulk: DataChunk = DataChunk::new(response_header, data);
-
-    // Increment once for the bulk frame and once for the message response that follow.
     counters.increment_io_handler_messages_sent();
     counters.increment_io_handler_messages_sent();
     if vm_stdin_tx
-        .send(IkcFrame::Bulk(response_bulk))
+        .send(IkcFrame::Bulk(DataChunk::new(response_header, data)))
         .await
         .is_err()
     {
-        error!("standalone io_handler: failed to send bulk response (VM input channel closed)");
+        error!("standalone io_handler: failed to send console read bulk response");
         return;
     }
 
-    // Send ReadResponse to guest. The empty buffer is expected — actual data was already
-    // transferred via the bulk frame above.
-    let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
     let response: Message = ReadResponse::build(
         tid,
         actual_len.cast_signed(),
-        empty_buf,
+        [0u8; ReadResponse::BUFFER_SIZE],
         ProcessIdentifier::KERNEL,
         MessageType::Ikc,
     );
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
-        error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
+        error!("standalone io_handler: failed to send console read response");
+    }
+}
+
+/// Sends an immediate console input snapshot through the pending pull.
+async fn send_console_poll_response(
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    pull_header: DataChunkHeader,
+    data: Vec<u8>,
+    counters: &MessageCounters,
+) {
+    let data_len: u32 = match u32::try_from(data.len()) {
+        Ok(data_len) => data_len,
+        Err(_) => {
+            error!("standalone io_handler: poll-input response length overflows u32");
+            return;
+        },
+    };
+    let response_header: DataChunkHeader = DataChunkHeader::new(
+        pull_header.source_pid(),
+        pull_header.source_tid(),
+        pull_header.destination_pid(),
+        pull_header.destination_tid(),
+        pull_header.data_addr(),
+        data_len,
+    );
+    counters.increment_io_handler_messages_sent();
+    if vm_stdin_tx
+        .send(IkcFrame::Bulk(DataChunk::new(response_header, data)))
+        .await
+        .is_err()
+    {
+        error!("standalone io_handler: failed to send poll-input bulk response");
+    }
+}
+
+/// Sends an immediate console readiness status without a bulk transfer.
+async fn send_console_poll_status(
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
+    tid: ThreadIdentifier,
+    status: u8,
+    counters: &MessageCounters,
+) {
+    counters.increment_io_handler_messages_sent();
+    let response: Message = PollInputResponse::build(tid, status);
+    if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+        error!("standalone io_handler: failed to send poll-input status response");
     }
 }
 

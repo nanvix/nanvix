@@ -5,7 +5,9 @@
 // Modules
 //==================================================================================================
 
+pub mod input_message;
 pub mod message;
+pub mod socket_message;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {

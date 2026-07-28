@@ -49,10 +49,10 @@ pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), E
     // Only VFS-backed descriptors are routable here.
     let backend_fd: RawFileDescriptor = {
         use crate::fdtable::{
-            resolve,
+            resolve_result,
             Route,
         };
-        match resolve(fd) {
+        match resolve_result(fd)? {
             Some(res) if res.route == Route::Vfs => res.backend_fd,
             _ => {
                 ::syslog::warn!("fchown(): bad file descriptor fd={fd}");

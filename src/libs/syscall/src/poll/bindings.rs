@@ -15,8 +15,10 @@ use crate::{
     },
 };
 use ::alloc::vec::Vec;
+use ::sys::error::ErrorCode;
 use ::sysapi::{
     ffi::c_int,
+    limits::OPEN_MAX,
     poll::{
         nfds_t,
         pollfd,
@@ -55,11 +57,21 @@ use ::syslog::trace_syscall;
 #[unsafe(no_mangle)]
 #[trace_syscall]
 pub unsafe extern "C" fn poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) -> c_int {
+    if nfds as usize > OPEN_MAX {
+        unsafe {
+            *__errno_location() = ErrorCode::InvalidArgument.get();
+        }
+        return -1;
+    }
+
     let fds: &mut [pollfd] = if nfds == 0 {
         &mut []
     } else {
         core::slice::from_raw_parts_mut(fds, nfds as usize)
     };
+    for fd in fds.iter_mut() {
+        fd.revents = 0;
+    }
     let poll_fds: Vec<PollFd> = fds
         .iter()
         .map(|fd| {
@@ -71,13 +83,14 @@ pub unsafe extern "C" fn poll(fds: *mut pollfd, nfds: nfds_t, timeout: c_int) ->
 
     match syscall::poll(&poll_fds, timeout) {
         Ok(ready) => {
-            for (fd, revent) in &ready {
-                if let Some(i) = fds.iter().position(|poll_fd| poll_fd.fd == *fd) {
-                    fds[i].revents = revent.into();
+            let mut nready: c_int = 0;
+            for (fd, revent) in fds.iter_mut().zip(&ready) {
+                fd.revents = revent.into();
+                if fd.revents != 0 {
+                    nready += 1;
                 }
             }
-
-            ready.len() as c_int
+            nready
         },
         Err(error) => unsafe {
             ::syslog::warn!("poll(): failed (error={:?})", error);
