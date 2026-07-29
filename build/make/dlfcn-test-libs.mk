@@ -54,7 +54,8 @@ clean-dlfcn-test-libs:
 	$(FORCE_RM_CMD) $(OBJECTS_DIR)/dlfcn-test-libs
 	$(RM_CMD) $(LIBRARIES_DIR)/libmul.so $(LIBRARIES_DIR)/libmul-pie.so
 
-# The Rust dlfcn binary and the RAMFS images consume the staged fixtures.
-all-guest-binaries: all-dlfcn-test-libs
+# Direct Rust dlfcn builds and the test RAMFS images consume the staged fixtures.
+# Keep this dependency off all-guest-binaries: production and benchmark builds do
+# not package the fixtures and should not require a guest C compiler.
 all-guest-binaries-test-rust-dlfcn: all-dlfcn-test-libs
 clean: clean-dlfcn-test-libs
