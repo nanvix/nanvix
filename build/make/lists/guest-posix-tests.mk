@@ -5,10 +5,10 @@
 # build/make/posix-tests.mk and booted by `run-posix-tests`. Suites live under
 # src/tests/integration/<suite>/, except memory-c which lives under
 # src/tests/stress/<suite>/ (see POSIX_TEST_STRESS_* in posix-tests.mk).
-# `common/` holds shared crt0 scaffolding and is not a suite of its own. The
-# guest C toolchain (build/make/guest-c-apps.mk) is pinned to the i686 ABI
-# (-m32 / -melf_i386), so the suites are i686-only; the `run-posix-tests` runner
-# is gated on TARGET=x86 accordingly.
+# `common/` holds shared crt0 scaffolding and is not a suite of its own.
+#
+# The guest C toolchain (build/make/guest-c-apps.mk) follows the active TARGET:
+# i686 for x86 and x86-64 for x86_64.
 #
 # One entry per line (with `\` continuations) so that adding a suite touches a
 # single line, minimizing merge conflicts between branches that each add a suite.

@@ -937,6 +937,26 @@ STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDAL
 STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
 STANDALONE_NO_VFS_INITRDS   := $(STANDALONE_NO_VFS_BINARIES:%=$(BINARIES_DIR)/%.initrd)
 
+# Cross-target build guard.
+#
+# $(BINARIES_DIR) is shared across TARGETs, but the guest test ELFs, RAMFS images, and multibinary
+# boot images (`*.initrd`) are architecture-specific. On an incremental build that switches TARGET
+# without a `clean`, cached prerequisite mtimes can leave a stale wrong-architecture output in
+# place. This guard records the last-built TARGET and removes those shared-path outputs when it
+# changes. It is wired as an order-only prerequisite of the relevant image and POSIX-test rules, so
+# it runs once before any output is considered for reuse. Clean builds and CI (a fresh workspace per
+# target) are unaffected.
+TARGET_SENTINEL := $(BINARIES_DIR)/.last-build-target
+
+.PHONY: target-guard
+target-guard:
+	@mkdir -p $(BINARIES_DIR)
+	@if [ "$$(cat '$(TARGET_SENTINEL)' 2>/dev/null)" != "$(TARGET)" ]; then \
+		echo "[target-guard] TARGET='$(TARGET)' differs from last build; removing stale guest test images from $(BINARIES_DIR)"; \
+		$(RM_CMD) $(BINARIES_DIR)/*.initrd $(BINARIES_DIR)/test-c-*.elf $(BINARIES_DIR)/posix-tests-ramfs*.img; \
+		echo '$(TARGET)' > '$(TARGET_SENTINEL)'; \
+	fi
+
 # Bridge from the side-effect-producing build targets to the actual ELF/mkimage files they
 # leave in $(BINARIES_DIR). These rules have an empty recipe (the trailing `;`) and a normal
 # prerequisite on the underlying build target.
@@ -969,7 +989,8 @@ $(STANDALONE_WITH_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/vfsd.$(EXEC_FORMAT) \
-		$(MKIMAGE)
+		$(MKIMAGE) \
+		| target-guard
 	$(MKIMAGE) -o $@ \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
@@ -980,7 +1001,8 @@ $(STANDALONE_NO_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
 		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT) \
-		$(MKIMAGE)
+		$(MKIMAGE) \
+		| target-guard
 	$(MKIMAGE) -o $@ \
 		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
@@ -1027,15 +1049,11 @@ run-unit-tests: test-host-rlibs
 endif
 endif
 
-# Determine the standalone test configuration file based on host and architecture.
+# Determine the standalone test configuration file based on the host.
 ifeq ($(IS_WINDOWS),yes)
 NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
 else
-ifeq ($(TARGET),x86_64)
-NANVIX_TEST_CONFIG := test/test-standalone-x86_64.toml
-else
 NANVIX_TEST_CONFIG := test/test-standalone.toml
-endif
 endif
 
 NANVIX_TEST_BIN := $(BINARIES_DIR)/nanvix-test.$(HOST_BIN_EXT)
@@ -1096,9 +1114,10 @@ include build/make/nanvix-libc-artifacts.mk
 #===================================================================================================
 
 # guest-c-apps.mk must come after nanvix-libc-artifacts.mk (it references
-# NANVIX_LIBC_BUNDLE_AR) and posix-tests.mk after guest-c-apps.mk (it reuses the
-# GUEST_C_APP_* toolchain definitions and ALL_POSIX_TESTS).
+# NANVIX_LIBC_BUNDLE_AR). The dlfcn test libraries and POSIX tests then reuse the
+# GUEST_C_APP_* toolchain definitions.
 include build/make/guest-c-apps.mk
+include build/make/dlfcn-test-libs.mk
 include build/make/posix-tests.mk
 
 #===================================================================================================

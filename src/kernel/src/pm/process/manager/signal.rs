@@ -116,6 +116,14 @@ pub enum SyncSignalOutcome {
         entry: usize,
         /// Stack pointer the handler is entered with (top of the signal frame).
         frame_top: usize,
+        /// User address of the embedded `siginfo` image for an `SA_SIGINFO` handler (the handler's
+        /// second argument), or `0` when the handler is not `SA_SIGINFO`. Consumed by the caller to
+        /// populate the handler's argument register on register-argument ABIs (x86-64); ignored on
+        /// stack-argument ABIs (x86), where it is already written to the frame.
+        info_ptr: usize,
+        /// User address of the embedded context image for an `SA_SIGINFO` handler (the handler's
+        /// third argument), or `0` when the handler is not `SA_SIGINFO`. Consumed as for `info_ptr`.
+        ctx_ptr: usize,
     },
     /// No catchable handler ran; the caller must take the signal's default action and terminate the
     /// process.
@@ -284,10 +292,10 @@ impl ProcessManager {
         }
 
         // Build the signal frame on the interrupted thread's user stack.
-        let frame_top: usize = match self
+        let (frame_top, info_ptr, ctx_ptr): (usize, usize, usize) = match self
             .build_signal_frame(pid, tid, owner_tid, cpu, blocked, signum, sa_flags, restorer)
         {
-            Some(frame_top) => frame_top,
+            Some(frame) => frame,
             None => return SignalDeliveryOutcome::Escalate,
         };
 
@@ -309,8 +317,11 @@ impl ProcessManager {
             }
         }
 
-        // Redirect the interrupted thread into its handler.
-        unsafe { redirect_to_handler(esp0, entry, frame_top) };
+        // Redirect the interrupted thread into its handler. The signal number is placed in the
+        // handler's first argument register and, for `SA_SIGINFO` handlers, `info_ptr`/`ctx_ptr` in
+        // the second and third (register-argument ABIs); on stack-argument ABIs they were already
+        // written to the frame and these values are ignored.
+        unsafe { redirect_to_handler(esp0, entry, frame_top, signum, info_ptr, ctx_ptr) };
 
         SignalDeliveryOutcome::Delivered
     }
@@ -395,10 +406,10 @@ impl ProcessManager {
 
         // Build the signal frame on the faulting thread's user stack. An unbuildable frame (for
         // example, a smashed user stack) escalates to the default action.
-        let frame_top: usize = match self
+        let (frame_top, info_ptr, ctx_ptr): (usize, usize, usize) = match self
             .build_signal_frame(pid, tid, owner_tid, cpu, blocked, signum, sa_flags, restorer)
         {
-            Some(frame_top) => frame_top,
+            Some(frame) => frame,
             None => return SyncSignalOutcome::Terminate,
         };
 
@@ -432,7 +443,12 @@ impl ProcessManager {
             }
         }
 
-        SyncSignalOutcome::Delivered { entry, frame_top }
+        SyncSignalOutcome::Delivered {
+            entry,
+            frame_top,
+            info_ptr,
+            ctx_ptr,
+        }
     }
 
     ///
@@ -459,8 +475,12 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// The stack pointer the handler is entered with (the top of the frame), or [`None`] if the
-    /// frame could not be placed or written safely.
+    /// A tuple `(frame_top, info_ptr, ctx_ptr)`, or [`None`] if the frame could not be placed or
+    /// written safely. `frame_top` is the stack pointer the handler is entered with (the top of the
+    /// frame). `info_ptr` and `ctx_ptr` are the user addresses of the embedded `siginfo` and context
+    /// images for an `SA_SIGINFO` handler (both `0` when the handler is not `SA_SIGINFO`); on
+    /// register-argument ABIs (x86-64) the caller loads them into the handler's second and third
+    /// argument registers, while on stack-argument ABIs (x86) they are already written to the frame.
     ///
     #[allow(clippy::too_many_arguments)]
     fn build_signal_frame(
@@ -473,7 +493,7 @@ impl ProcessManager {
         signum: usize,
         sa_flags: i32,
         restorer: usize,
-    ) -> Option<usize> {
+    ) -> Option<(usize, usize, usize)> {
         let user_sp: usize = cpu.sp as usize;
         let layout: FrameLayout = frame_layout(user_sp)?;
         let frame_size: usize =
@@ -507,7 +527,12 @@ impl ProcessManager {
             return None;
         }
 
-        // Copy the return address and the on-stack handler arguments below the save area.
+        // Copy the return address and the on-stack handler arguments below the save area. Only the
+        // bytes the ABI actually passes on the stack are written: the return address plus, on
+        // architectures that pass handler arguments on the stack, the argument words. On x86-64 the
+        // System V ABI passes the arguments in registers, so only the return address is written here
+        // (the signal number is placed in a register by `redirect_to_signal_handler`), and writing
+        // the full argument array would overrun into the save area that was just copied.
         let (info_ptr, ctx_ptr): (usize, usize) = if has_siginfo {
             (
                 layout.save_area_base + sigframe::siginfo_offset(),
@@ -517,19 +542,20 @@ impl ProcessManager {
             (0, 0)
         };
         let args: [usize; 4] = [restorer, signum, info_ptr, ctx_ptr];
+        let args_bytes: usize = RETADDR_SIZE + save_area_offset_from_sigreturn_sp();
         if self
             .vmcopy_to_user(
                 pid,
                 VirtualAddress::new(layout.frame_top),
                 VirtualAddress::new(args.as_ptr() as usize),
-                core::mem::size_of::<[usize; 4]>(),
+                args_bytes,
             )
             .is_err()
         {
             return None;
         }
 
-        Some(layout.frame_top)
+        Some((layout.frame_top, info_ptr, ctx_ptr))
     }
 
     ///
@@ -548,7 +574,7 @@ impl ProcessManager {
         // never have been built; treat `sigreturn()` there as an unsupported kernel call instead of
         // running the placeholder restore path and terminating the process as if the frame were
         // forged.
-        if !cfg!(target_arch = "x86") {
+        if !cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
             return Err(SigReturnFailure::Unsupported);
         }
 

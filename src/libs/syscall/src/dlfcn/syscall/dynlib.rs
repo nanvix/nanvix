@@ -629,7 +629,14 @@ impl DynamicLibrary {
         section_headers: &BTreeMap<String, SectionHeader>,
         load_address: VirtualAddress,
     ) -> Option<RelocationTable> {
-        if let Some(pltrel_header) = section_headers.get(".rel.dyn") {
+        // i386 objects carry REL relocations (`.rel.dyn`); x86-64 objects carry RELA relocations
+        // (`.rela.dyn`) with explicit addends. The entry stride follows `RelocationEntry`, which is
+        // the ABI-selected record, so only the section name differs.
+        #[cfg(not(target_arch = "x86_64"))]
+        let section_name: &str = ".rel.dyn";
+        #[cfg(target_arch = "x86_64")]
+        let section_name: &str = ".rela.dyn";
+        if let Some(pltrel_header) = section_headers.get(section_name) {
             let dynrel_size: usize =
                 pltrel_header.sh_size as usize / mem::size_of::<RelocationEntry>();
             let dynrel_table_ptr: *mut RelocationEntry = (load_address.into_raw_value()
@@ -648,7 +655,13 @@ impl DynamicLibrary {
         section_headers: &BTreeMap<String, SectionHeader>,
         load_address: VirtualAddress,
     ) -> Option<RelocationTable> {
-        if let Some(pltrel_header) = section_headers.get(".rel.plt") {
+        // i386 objects carry REL relocations (`.rel.plt`); x86-64 objects carry RELA relocations
+        // (`.rela.plt`) with explicit addends.
+        #[cfg(not(target_arch = "x86_64"))]
+        let section_name: &str = ".rel.plt";
+        #[cfg(target_arch = "x86_64")]
+        let section_name: &str = ".rela.plt";
+        if let Some(pltrel_header) = section_headers.get(section_name) {
             let len: usize = pltrel_header.sh_size as usize / mem::size_of::<RelocationEntry>();
             let ptr: *mut RelocationEntry = (load_address.into_raw_value()
                 + pltrel_header.sh_addr as usize)
@@ -1077,6 +1090,7 @@ impl DynamicLibrary {
         Ok(())
     }
 
+    #[cfg(not(target_arch = "x86_64"))]
     fn resolve(&self, rel: &RelocationEntry) -> Result<(), Error> {
         let storage_unit: UnalignedPointer<u32> = UnalignedPointer::new(
             (self.load_address.into_raw_value() as u32 + rel.offset()) as *mut u32,
@@ -1164,6 +1178,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_RELATIVE relocation entry.
     ///
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe fn resolve_r_386_relative(mut storage_unit: UnalignedPointer<u32>, base_address: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
         let relocation_value: u32 = base_address.strict_add_signed(symbol_addend);
@@ -1187,6 +1202,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_32 relocation entry.
     ///
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe fn resolve_r_386_32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
         // ELF arithmetic (System V ABI): `S + A` is performed with wrapping
@@ -1215,6 +1231,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_JMP_SLOT relocation entry.
     ///
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe fn resolve_r_386_jmp_slot(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         storage_unit.write_unaligned(symbol_value);
     }
@@ -1236,6 +1253,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_GLOB_DAT relocation entry.
     ///
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe fn resolve_r_386_glob_dat(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         storage_unit.write_unaligned(symbol_value);
     }
@@ -1257,6 +1275,7 @@ impl DynamicLibrary {
     /// This function is safe to use if and only if all the following conditions are met:
     /// - The `storage_unit` points to the storage unit of a valid R_386_PC32 relocation entry.
     ///
+    #[cfg(not(target_arch = "x86_64"))]
     unsafe fn resolve_r_386_pc32(mut storage_unit: UnalignedPointer<u32>, symbol_value: u32) {
         let symbol_addend: i32 = storage_unit.read_unaligned() as i32;
         let relocation_offset: u32 = storage_unit.as_ptr() as u32;
@@ -1274,6 +1293,160 @@ impl DynamicLibrary {
         };
 
         storage_unit.write_unaligned(final_value as u32);
+    }
+
+    /// Resolves the relocations of an x86-64 (RELA) dynamic object. Mirrors the i386 REL path but
+    /// reads the explicit `r_addend` from each entry instead of an in-place addend, and writes
+    /// 64-bit-wide GOT / relative slots.
+    #[cfg(target_arch = "x86_64")]
+    fn resolve(&self, rel: &RelocationEntry) -> Result<(), Error> {
+        let target: usize = self.load_address.into_raw_value() + rel.offset() as usize;
+        let addend: i64 = rel.addend();
+
+        match rel.typ()? {
+            RelocationType::R_X86_64_RELATIVE => {
+                // R_X86_64_RELATIVE relocation must have a zero symbol index.
+                if rel.symbol_index() != 0 {
+                    let reason: &str = "invalid R_X86_64_RELATIVE relocation";
+                    ::syslog::warn!("resolve(): {} (rel={:?})", reason, rel);
+                    return Err(Error::new(ErrorCode::BadFile, reason));
+                }
+
+                let storage_unit: UnalignedPointer<u64> = UnalignedPointer::new(target as *mut u64);
+                unsafe {
+                    Self::resolve_r_x86_64_relative(
+                        storage_unit,
+                        self.load_address.into_raw_value() as u64,
+                        addend,
+                    );
+                }
+            },
+            RelocationType::R_X86_64_64 => {
+                let sym: &Symbol = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                let storage_unit: UnalignedPointer<u64> = UnalignedPointer::new(target as *mut u64);
+                unsafe {
+                    Self::resolve_r_x86_64_64(storage_unit, symbol_value as u64, addend);
+                }
+            },
+            RelocationType::R_X86_64_GLOB_DAT => {
+                let sym: &Symbol = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                let storage_unit: UnalignedPointer<u64> = UnalignedPointer::new(target as *mut u64);
+                unsafe {
+                    Self::resolve_r_x86_64_glob_dat(storage_unit, symbol_value as u64);
+                }
+            },
+            RelocationType::R_X86_64_JUMP_SLOT => {
+                let sym: &Symbol = self.get_symbol(rel)?;
+                let symbol_value: usize = self.get_symbol_value(sym)?;
+                let storage_unit: UnalignedPointer<u64> = UnalignedPointer::new(target as *mut u64);
+                unsafe {
+                    Self::resolve_r_x86_64_jump_slot(storage_unit, symbol_value as u64);
+                }
+            },
+
+            relocation_entry_type => {
+                let reason: &str = "unsupported relocation type";
+                ::syslog::warn!(
+                    "resolve(): {} (relocation_type={:?}, rel={:?})",
+                    reason,
+                    relocation_entry_type,
+                    rel
+                );
+                return Err(Error::new(ErrorCode::BadFile, reason));
+            },
+        }
+
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves an R_X86_64_RELATIVE relocation (`B + A`, written as a 64-bit value). `A` is the
+    /// explicit RELA addend.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences a raw pointer.
+    ///
+    /// This function is safe to use if and only if the `storage_unit` points to the 8-byte storage
+    /// unit of a valid R_X86_64_RELATIVE relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_relative(
+        mut storage_unit: UnalignedPointer<u64>,
+        base_address: u64,
+        addend: i64,
+    ) {
+        let relocation_value: u64 = base_address.wrapping_add_signed(addend);
+        storage_unit.write_unaligned(relocation_value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves an R_X86_64_64 relocation (`S + A`, written as a 64-bit value). `A` is the explicit
+    /// RELA addend.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences a raw pointer.
+    ///
+    /// This function is safe to use if and only if the `storage_unit` points to the 8-byte storage
+    /// unit of a valid R_X86_64_64 relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_64(
+        mut storage_unit: UnalignedPointer<u64>,
+        symbol_value: u64,
+        addend: i64,
+    ) {
+        // ELF arithmetic (System V ABI): `S + A` with wrapping 64-bit semantics so that resolving a
+        // weak undefined symbol (`S == 0`) against a negative addend does not panic.
+        let final_value: u64 = symbol_value.wrapping_add_signed(addend);
+        storage_unit.write_unaligned(final_value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves an R_X86_64_GLOB_DAT relocation (`S`, written into a 64-bit GOT slot).
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences a raw pointer.
+    ///
+    /// This function is safe to use if and only if the `storage_unit` points to the 8-byte storage
+    /// unit of a valid R_X86_64_GLOB_DAT relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_glob_dat(
+        mut storage_unit: UnalignedPointer<u64>,
+        symbol_value: u64,
+    ) {
+        storage_unit.write_unaligned(symbol_value);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves an R_X86_64_JUMP_SLOT relocation (`S`, written into a 64-bit PLT/GOT slot).
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it dereferences a raw pointer.
+    ///
+    /// This function is safe to use if and only if the `storage_unit` points to the 8-byte storage
+    /// unit of a valid R_X86_64_JUMP_SLOT relocation entry.
+    ///
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn resolve_r_x86_64_jump_slot(
+        mut storage_unit: UnalignedPointer<u64>,
+        symbol_value: u64,
+    ) {
+        storage_unit.write_unaligned(symbol_value);
     }
 
     /// Returns a clone of this library's dependency list, in `DT_NEEDED` order.

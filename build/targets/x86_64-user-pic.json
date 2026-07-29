@@ -1,0 +1,35 @@
+{
+    "cpu": "x86-64",
+    "data-layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128",
+    "llvm-target": "x86_64-unknown-none",
+    "target-endian": "little",
+    "target-pointer-width": 64,
+    "target-c-int-width": 32,
+    "max-atomic-width": 64,
+    "os": "nanvix",
+    "target-family": [
+        "unix"
+    ],
+    "arch": "x86_64",
+    "linker-flavor": "gnu-lld",
+    "linker": "rust-lld",
+    "pre-link-args": {
+        "gnu-lld": [
+            "-nostdlib",
+            "--entry=_do_start",
+            "-melf_x86_64",
+            "-z",
+            "norelro"
+        ]
+    },
+    "executables": true,
+    "code-model": "small",
+    "exe-suffix": ".elf",
+    "panic-strategy": "abort",
+    "disable-redzone": true,
+    "stack-probes": {
+        "kind": "inline"
+    },
+    "relocation-model": "pic",
+    "has-thread-local": false
+}

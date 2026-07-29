@@ -527,6 +527,8 @@ impl From<i16> for SysConfigValue {
 
 impl From<i32> for SysConfigValue {
     fn from(value: i32) -> Self {
+        #[cfg(target_pointer_width = "64")]
+        let value: c_long = value.into();
         Self { value }
     }
 }
@@ -562,6 +564,10 @@ impl From<u16> for SysConfigValue {
 impl TryFrom<u32> for SysConfigValue {
     type Error = Error;
 
+    #[cfg_attr(
+        target_pointer_width = "64",
+        allow(clippy::unnecessary_fallible_conversions)
+    )]
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         Ok(Self {
             value: value

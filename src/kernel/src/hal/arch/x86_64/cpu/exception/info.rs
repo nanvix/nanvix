@@ -56,8 +56,9 @@ impl ExceptionInformation {
         self.num as u32
     }
 
-    pub fn code(&self) -> u64 {
-        self.code
+    #[allow(clippy::as_conversions)]
+    pub fn code(&self) -> u32 {
+        self.code as u32
     }
 
     pub fn addr(&self) -> u64 {

@@ -580,13 +580,26 @@ pub struct msghdr {
     // Scatter/gather array of message blocks.
     pub msg_iov: *mut iovec,
     /// Number of member in `msg_iov`.
-    pub msg_iovlen: size_t,
+    pub msg_iovlen: c_int,
     /// Ancillary data.
     pub msg_control: *mut c_void,
     /// Ancillary data buffer length.
-    pub msg_controllen: size_t,
+    pub msg_controllen: socklen_t,
     /// Flags.
     pub msg_flags: c_int,
+}
+#[cfg(target_pointer_width = "64")]
+::static_assert::assert_eq_size!(msghdr, msghdr::SIZE);
+#[cfg(target_pointer_width = "64")]
+::static_assert::assert_eq_align!(msghdr, core::mem::align_of::<*mut c_void>());
+
+#[cfg(target_pointer_width = "64")]
+impl msghdr {
+    /// Size of `msghdr`, including the padding that aligns its pointer fields.
+    pub const SIZE: usize = 3 * size_of::<*mut c_void>()
+        + 2 * size_of::<socklen_t>()
+        + 2 * size_of::<c_int>()
+        + 2 * (size_of::<*mut c_void>() - size_of::<socklen_t>());
 }
 
 /// Header for ancililary data data objects in msg_control buffer in `msghdr`.

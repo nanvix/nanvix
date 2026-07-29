@@ -18,6 +18,10 @@ inputs:
   shard-total:
     description: "Total number of shards the tests are partitioned into (e.g. 4)"
     required: true
+  target:
+    description: "Target architecture (e.g. x86, x86_64)"
+    required: false
+    default: "x86"
 
 runs:
   using: "composite"
@@ -63,5 +67,5 @@ runs:
 
         ./z build ${RELEASE_FLAG} -- run-posix-tests \
             "MACHINE=${{ inputs.machine-type }}" \
-            TARGET=x86 \
+            TARGET=${{ inputs.target }} \
             "SHARD=${{ inputs.shard-index }}/${{ inputs.shard-total }}"

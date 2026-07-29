@@ -10,7 +10,9 @@ use vstd::prelude::*;
 include!("mod.spec.rs");
 
 pub mod pvclock;
+#[cfg(target_arch = "x86")]
 mod start;
+#[cfg(target_arch = "x86")]
 mod start16;
 
 //==================================================================================================
@@ -449,6 +451,7 @@ pub fn signal_startup_complete() {
 ///
 /// A pointer to the top of the boot kernel stack.
 ///
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
 pub fn get_kstack_top() -> *const u8 {
     unsafe extern "C" {
         static kstack: u8;
@@ -860,6 +863,7 @@ unsafe fn read_control_register(offset: usize) -> u32 {
 /// the register.
 ///
 #[cfg(feature = "whp")]
+#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
 pub fn tsc_base_frequency_mhz() -> u32 {
     // SAFETY: The control register is memory-mapped at a fixed address
     // inside the kernel's identity-mapped region and is guaranteed to be

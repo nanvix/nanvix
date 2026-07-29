@@ -542,6 +542,7 @@ pub fn __kcall_sig_restorer(restorer: usize) -> Result<(), Error> {
 // Create Thread
 //==================================================================================================
 
+#[cfg(target_arch = "x86")]
 ::core::arch::global_asm!(
     r#"
     .global _do_start_thread
@@ -605,6 +606,38 @@ pub fn __kcall_sig_restorer(restorer: usize) -> Result<(), Error> {
 
     # Safety net: _do_exit_thread() calls exit_thread() and never returns.
     # If it somehow does, spin forever rather than falling through.
+    1: jmp 1b
+    "#
+);
+
+#[cfg(target_arch = "x86_64")]
+::core::arch::global_asm!(
+    r#"
+    .global _do_start_thread
+    .extern _do_exit_thread
+    .type _do_start_thread, @function
+
+    _do_start_thread:
+        #
+        # Entry point for newly created threads.
+        #
+        # The kernel enters user mode with the forged argument registers already set up, mirroring
+        # the SysV delivery used for the main process entry: RDI = arg0 (the user thread function)
+        # and RSI = arg1 (its argument). No arguments are placed on the user stack. This stub calls
+        # func(arg) and then _do_exit_thread(status) directly, enforcing 16-byte stack alignment
+        # before each CALL instruction.
+        #
+        mov rax, rdi        # RAX = func (arg0)
+        mov rdi, rsi        # RDI = arg (arg1) -> first SysV argument to func
+        and rsp, -16
+        call rax
+
+        # func() returned status in EAX -> first argument (EDI) of _do_exit_thread.
+        and rsp, -16
+        mov edi, eax
+        call _do_exit_thread
+
+    # Safety net: _do_exit_thread() never returns. Spin if it ever does.
     1: jmp 1b
     "#
 );

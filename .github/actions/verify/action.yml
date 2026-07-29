@@ -9,6 +9,10 @@ inputs:
     description: "Machine type"
     required: true
     default: "microvm"
+  target:
+    description: "Target architecture (e.g. x86, x86_64)"
+    required: false
+    default: "x86"
   github-token:
     description: "GitHub token for authenticated Verus downloads"
     required: false
@@ -61,7 +65,7 @@ runs:
         ./z build -- verify \
           "VERUS_EXECUTABLE_DIR=${HOME}/toolchain/verus" \
           "MACHINE=${{ inputs.machine-type }}" \
-          TARGET=x86 \
+          TARGET=${{ inputs.target }} \
           LOG_LEVEL=trace \
           VERBOSE=yes \
           BUILD_OPT=no
@@ -73,7 +77,7 @@ runs:
         .\z.ps1 verify -- `
           "VERUS_EXECUTABLE_DIR=$env:USERPROFILE\verus" `
           "MACHINE=${{ inputs.machine-type }}" `
-          TARGET=x86 `
+          TARGET=${{ inputs.target }} `
           LOG_LEVEL=trace `
           VERBOSE=yes `
           BUILD_OPT=no

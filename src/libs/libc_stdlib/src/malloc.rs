@@ -98,6 +98,7 @@ mod tests {
         let size: c_size_t = 128;
         let p = unsafe { malloc(size) };
         assert!(!p.is_null());
+        assert_eq!(p as usize % 16, 0);
         unsafe {
             crate::free(p);
         }

@@ -93,7 +93,7 @@ ikc_poll_batch_size = 8
 # - Must be a power of two.
 # - Must match the largest slab tier in `src/kernel/src/mm/kheap.rs` (currently 512). The
 #   compile-time assertion in that module fails the build if the two ever diverge.
-max_slab_size = 512
+max_slab_size = 2048
 
 #==================================================================================================
 # Thread Limits

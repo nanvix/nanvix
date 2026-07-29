@@ -56,6 +56,7 @@ pub use cpu::{
     InterruptHandler,
     InterruptNumber,
     SignalCpuContext,
+    XapicTimer,
 };
 
 //==================================================================================================
@@ -74,6 +75,8 @@ pub struct Arch {
     pub _tss: Option<TssRef>,
     /// Interrupt controller.
     pub controller: Option<InterruptController>,
+    /// LAPIC periodic timer (kept alive so it keeps firing). `None` when no LAPIC timer is in use.
+    pub _xapic_timer: Option<XapicTimer>,
 }
 
 //==================================================================================================
@@ -126,12 +129,13 @@ pub fn init(
     info!("initializing architecture-specific components...");
 
     // Initialize interrupt controller.
-    let (gdtr, tss, controller) = cpu::init(ioports, ioaddresses, madt)?;
+    let (gdtr, tss, controller, xapic_timer) = cpu::init(ioports, ioaddresses, madt)?;
 
     Ok(Arch {
         _gdtr: Some(gdtr),
         _tss: Some(tss),
         controller,
+        _xapic_timer: xapic_timer,
     })
 }
 
@@ -143,5 +147,6 @@ pub fn initialize_application_core(kstack: *const u8) -> Result<Arch, Error> {
         _gdtr: Some(gdtr),
         _tss: Some(tss),
         controller: None,
+        _xapic_timer: None,
     })
 }

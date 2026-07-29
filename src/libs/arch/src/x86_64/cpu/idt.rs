@@ -17,7 +17,11 @@ pub use crate::x86::cpu::idt_common::{
 //==================================================================================================
 
 /// Interrupt descriptor table entry (IDTE) for 64-bit x86_64.
-#[repr(C, packed)]
+///
+/// The field layout is naturally packed (16 bytes with no padding), so `align(8)` only raises the
+/// alignment to the 8-byte boundary expected by `IDTE_ALIGNMENT` without perturbing the on-wire
+/// layout that the hardware requires.
+#[repr(C, align(8))]
 pub struct Idte {
     pub handler_low: u16,  // Handler bits [0:15].
     pub selector: u16,     // GDT selector.
@@ -30,6 +34,11 @@ pub struct Idte {
 
 // `Idte` must be 16 bytes long. This must match the hardware specification.
 ::static_assert::assert_eq_size!(Idte, 16);
+// `Idte` must be 8-byte aligned to satisfy `IDTE_ALIGNMENT`.
+::static_assert::assert_eq_align!(Idte, 8);
+
+/// Required alignment of an [`Idte`] backing-storage pointer.
+pub const IDTE_ALIGNMENT: ::sys::mm::Alignment = ::sys::mm::Alignment::Align8;
 
 /// Bit position of the middle 16 bits of a 64-bit handler address.
 const HANDLER_MID_SHIFT: u32 = 16;

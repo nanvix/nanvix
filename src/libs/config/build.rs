@@ -169,6 +169,15 @@ fn generate_kernel_config(kernel_config_toml_path: &Path, kernel_config_output_p
         required_key(&kernel_config_toml, "max_slab_size"),
         "max_slab_size",
     );
+    // The kernel heap exposes larger slab tiers on x86_64 (whose wider per-process
+    // structures need them); 32-bit x86 keeps the historical 512-byte ceiling so its
+    // slab-tier set and Verus proofs stay unchanged. `max_slab_size` in
+    // kernel_config.toml is the x86_64 budget.
+    let val: usize = if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64") {
+        val
+    } else {
+        val.min(512)
+    };
     constants.push_str(&format!("pub const MAX_SLAB_SIZE: usize = {val};\n"));
 
     let val: usize = parse_hex_or_decimal_usize(

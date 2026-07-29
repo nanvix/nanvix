@@ -26,10 +26,16 @@ use crate::{
         SyncSignalOutcome,
     },
 };
-use ::alloc::collections::{
-    LinkedList,
-    VecDeque,
+use ::alloc::{
+    boxed::Box,
+    collections::{
+        LinkedList,
+        VecDeque,
+    },
 };
+
+/// Payload stored per pending exception: sequence number, descriptor, info, and condvar.
+type PendingException = (u64, EventDescriptor, ExceptionEventInformation, Condvar);
 use ::arch::cpu::excp;
 use ::core::{
     cell::{
@@ -226,11 +232,10 @@ struct EventManagerInner {
     nevents: u64,
     wait: Option<Condvar>,
     waiting_threads: VecDeque<(ProcessIdentifier, ThreadIdentifier)>,
-    interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
-    pending_interrupts: [LinkedList<(u64, EventDescriptor)>; usize::BITS as usize],
-    exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize],
-    pending_exceptions: [LinkedList<(u64, EventDescriptor, ExceptionEventInformation, Condvar)>;
-        usize::BITS as usize],
+    interrupt_ownership: Box<[Option<ProcessIdentifier>]>,
+    pending_interrupts: Box<[LinkedList<(u64, EventDescriptor)>]>,
+    exception_ownership: Box<[Option<ProcessIdentifier>]>,
+    pending_exceptions: Box<[LinkedList<PendingException>]>,
     scheduling_owner: Option<ProcessIdentifier>,
     /// Pending scheduling-event notifications delivered in FIFO order by event sequence number. The
     /// kernel main loop publishes a process's creation before its termination, so FIFO delivery lets
@@ -1358,10 +1363,18 @@ fn do_exception_handler(
             let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
             let cpu: SignalCpuContext = ctx.to_signal_context();
             match pm.try_deliver_synchronous_signal(signum, cpu) {
-                SyncSignalOutcome::Delivered { entry, frame_top } => {
+                SyncSignalOutcome::Delivered {
+                    entry,
+                    frame_top,
+                    info_ptr,
+                    ctx_ptr,
+                } => {
                     // Redirect the faulting context into the handler; on return to user mode the
-                    // thread enters the handler on its freshly built signal frame.
-                    ctx.redirect_to_signal_handler(entry, frame_top);
+                    // thread enters the handler on its freshly built signal frame. The signal number
+                    // and, for SA_SIGINFO handlers, the siginfo/context pointers are placed in the
+                    // handler's argument registers (register-argument ABIs) or were already written
+                    // to the frame (stack-argument ABIs).
+                    ctx.redirect_to_signal_handler(entry, frame_top, signum, info_ptr, ctx_ptr);
                     return Ok(());
                 },
                 SyncSignalOutcome::Terminate => {
@@ -1423,33 +1436,19 @@ fn exception_handler(info: &ExceptionInformation, ctx: &mut ContextInformation) 
 }
 
 pub fn init() -> Result<(), Error> {
-    let mut pending_interrupts: [LinkedList<(u64, EventDescriptor)>; usize::BITS as usize] =
-        unsafe { mem::zeroed() };
-    for list in pending_interrupts.iter_mut() {
-        *list = LinkedList::default();
-    }
+    // Allocate per-bit tables on the heap to keep this frame small; on 64-bit `usize::BITS`
+    // doubles these tables, which would otherwise overflow the kernel boot stack-frame budget.
+    let pending_interrupts: Box<[LinkedList<(u64, EventDescriptor)>]> =
+        (0..usize::BITS).map(|_| LinkedList::default()).collect();
 
-    let mut interrupt_ownership: [Option<ProcessIdentifier>; usize::BITS as usize] =
-        unsafe { mem::zeroed() };
-    for entry in interrupt_ownership.iter_mut() {
-        *entry = None;
-    }
+    let interrupt_ownership: Box<[Option<ProcessIdentifier>]> =
+        (0..usize::BITS).map(|_| None).collect();
 
-    let mut pending_exceptions: [LinkedList<(
-        u64,
-        EventDescriptor,
-        ExceptionEventInformation,
-        Condvar,
-    )>; usize::BITS as usize] = unsafe { mem::zeroed() };
-    for list in pending_exceptions.iter_mut() {
-        *list = LinkedList::default();
-    }
+    let pending_exceptions: Box<[LinkedList<PendingException>]> =
+        (0..usize::BITS).map(|_| LinkedList::default()).collect();
 
-    let mut exception_ownership: [Option<ProcessIdentifier>; usize::BITS as usize] =
-        unsafe { mem::zeroed() };
-    for entry in exception_ownership.iter_mut() {
-        *entry = None;
-    }
+    let exception_ownership: Box<[Option<ProcessIdentifier>]> =
+        (0..usize::BITS).map(|_| None).collect();
 
     let pending_scheduling: LinkedList<(u64, EventDescriptor, SchedulingNotification)> =
         LinkedList::default();

@@ -18,14 +18,33 @@ MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_F
 # Returns package-specific cargo features, falling back to generic features.
 GUEST_BINARY_PKG_FEATURES = $(if $(filter test-rust-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(filter test-rust-misc,$(1)),$(MISC_RUST_CARGO_FEATURES),$(GUEST_BINARY_CARGO_FEATURES)))
 
+# test-rust-dlfcn must be a real PIE so its exported symbols populate the
+# loader's global scope. On x86_64, build it with the dedicated PIC target;
+# other guest binaries retain the regular static relocation model.
+GUEST_BINARY_USES_PIC = $(and $(filter x86_64,$(TARGET)),$(filter test-rust-dlfcn,$(1)))
+GUEST_BINARY_CARGO_BUILD = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(NANVIX_LIBC_PIC_CARGO_BUILD),$(GUEST_CARGO_BUILD_CMD))
+GUEST_BINARY_CARGO_CHECK = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(GUEST_PIC_CARGO_CHECK_CMD),$(GUEST_CARGO_CHECK_CMD))
+GUEST_BINARY_CARGO_CLEAN = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(GUEST_PIC_CARGO_CLEAN_CMD),$(GUEST_CARGO_CLEAN_CMD))
+GUEST_BINARY_CARGO_CLIPPY = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(GUEST_PIC_CARGO_CLIPPY_CMD),$(GUEST_CARGO_CLIPPY_CMD))
+GUEST_BINARY_OBJDIR = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(NANVIX_LIBC_PIC_OBJDIR),$(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE))
+
+ifeq ($(TARGET),x86_64)
+GUEST_PIC_CARGO_CHECK_CMD := RUSTFLAGS=$(NANVIX_LIBC_PIC_RUSTFLAGS) $(CARGO) check --locked \
+	$(GUEST_CARGO_FLAGS) --target $(NANVIX_LIBC_PIC_TARGET) --message-format=json
+GUEST_PIC_CARGO_CLEAN_CMD := RUSTFLAGS=$(NANVIX_LIBC_PIC_RUSTFLAGS) $(CARGO) clean \
+	$(GUEST_CARGO_FLAGS) --target $(NANVIX_LIBC_PIC_TARGET)
+GUEST_PIC_CARGO_CLIPPY_CMD := RUSTFLAGS=$(NANVIX_LIBC_PIC_RUSTFLAGS) $(CARGO) clippy --locked \
+	$(GUEST_CARGO_FLAGS) --target $(NANVIX_LIBC_PIC_TARGET)
+endif
+
 # Per-package rules retained for direct invocation (e.g., make all-guest-binaries-<pkg>).
 define GUEST_BINARY_RULES
 all-guest-binaries-$(1): init all-guest-staticlibs
-	$(GUEST_CARGO_BUILD_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
-	$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$(1).elf $(BINARIES_DIR)/$(1).elf
+	$(call GUEST_BINARY_CARGO_BUILD,$(1)) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
+	$(CP_CMD) $(call GUEST_BINARY_OBJDIR,$(1))/$(1).elf $(BINARIES_DIR)/$(1).elf
 
 check-guest-binaries-$(1):
-	@$(GUEST_CARGO_CHECK_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
+	@$(call GUEST_BINARY_CARGO_CHECK,$(1)) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1))
 
 format-guest-binaries-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1)
@@ -34,25 +53,27 @@ format-check-guest-binaries-$(1):
 	$(GUEST_CARGO_FMT_CMD) -p $(1) --check
 
 clean-guest-binaries-$(1): clean-guest-staticlibs
-	$(GUEST_CARGO_CLEAN_CMD) -p $(1)
+	$(call GUEST_BINARY_CARGO_CLEAN,$(1)) -p $(1)
 	$(RM_CMD) $(BINARIES_DIR)/$(1).elf
 
 rust-lint-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) --fix --allow-dirty --allow-no-vcs
+	$(call GUEST_BINARY_CARGO_CLIPPY,$(1)) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) --fix --allow-dirty --allow-no-vcs
 
 rust-lint-check-guest-binaries-$(1):
-	$(GUEST_CARGO_CLIPPY_CMD) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) -- -D warnings
+	$(call GUEST_BINARY_CARGO_CLIPPY,$(1)) -p $(1) $(call GUEST_BINARY_PKG_FEATURES,$(1)) -- -D warnings
 endef
 
 $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target))))
 
 # Batched build/check/lint grouping.
-# - Common: all except test-kernel and c-bindings-rust.
+# - Common: all except test-kernel, c-bindings-rust, and PIC dlfcn-rust.
 # - test-kernel: always separate (unique features).
 # - c-bindings-rust: built separately to avoid Cargo feature unification masking
 #   missing symbols (it validates that all expected C symbols link without
 #   features contributed by sibling crates like network-rust).
-_GUEST_BINS_COMMON := $(filter-out test-rust-kernel test-rust-c-bindings,$(ALL_GUEST_BINARIES))
+_GUEST_BINS_PIC := $(if $(filter x86_64,$(TARGET)),$(filter test-rust-dlfcn,$(ALL_GUEST_BINARIES)))
+_GUEST_BINS_STATIC := $(filter-out $(_GUEST_BINS_PIC),$(ALL_GUEST_BINARIES))
+_GUEST_BINS_COMMON := $(filter-out test-rust-kernel test-rust-c-bindings,$(_GUEST_BINS_STATIC))
 _GUEST_BINS_COMMON_PKGS := $(foreach pkg,$(_GUEST_BINS_COMMON),-p $(pkg))
 
 # Batched build: group guest binaries by feature set, then copy all artifacts.
@@ -66,9 +87,15 @@ endif
 ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_BUILD_CMD) -p test-rust-c-bindings $(GUEST_BINARY_CARGO_FEATURES)
 endif
-	@for pkg in $(ALL_GUEST_BINARIES); do \
+ifneq ($(_GUEST_BINS_PIC),)
+	$(NANVIX_LIBC_PIC_CARGO_BUILD) -p test-rust-dlfcn $(GUEST_BINARY_CARGO_FEATURES)
+endif
+	@for pkg in $(_GUEST_BINS_STATIC); do \
 		$(CP_CMD) $(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE)/$$pkg.elf $(BINARIES_DIR)/$$pkg.elf; \
 	done
+ifneq ($(_GUEST_BINS_PIC),)
+	$(CP_CMD) $(NANVIX_LIBC_PIC_OBJDIR)/test-rust-dlfcn.elf $(BINARIES_DIR)/test-rust-dlfcn.elf
+endif
 # Copy side-artifact images produced by guest build scripts (e.g., vfs-test.img).
 # The build script may be cached, so the copy it performs at build time is
 # unreliable after a bin/ clean. Re-copy from the build output directory.
@@ -99,6 +126,9 @@ endif
 ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
 	@$(GUEST_CARGO_CHECK_CMD) -p test-rust-c-bindings $(GUEST_BINARY_CARGO_FEATURES)
 endif
+ifneq ($(_GUEST_BINS_PIC),)
+	@$(GUEST_PIC_CARGO_CHECK_CMD) -p test-rust-dlfcn $(GUEST_BINARY_CARGO_FEATURES)
+endif
 
 # Batched format: single cargo invocation for all guest binaries.
 _GUEST_BINS_FMT_PKGS := $(foreach pkg,$(ALL_GUEST_BINARIES),-p $(pkg))
@@ -121,6 +151,9 @@ endif
 ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_CLIPPY_CMD) -p test-rust-c-bindings $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
 endif
+ifneq ($(_GUEST_BINS_PIC),)
+	$(GUEST_PIC_CARGO_CLIPPY_CMD) -p test-rust-dlfcn $(GUEST_BINARY_CARGO_FEATURES) --fix --allow-dirty --allow-no-vcs
+endif
 
 rust-lint-check-guest-binaries:
 ifneq ($(_GUEST_BINS_COMMON_PKGS),)
@@ -131,4 +164,7 @@ ifneq ($(filter test-rust-kernel,$(ALL_GUEST_BINARIES)),)
 endif
 ifneq ($(filter test-rust-c-bindings,$(ALL_GUEST_BINARIES)),)
 	$(GUEST_CARGO_CLIPPY_CMD) -p test-rust-c-bindings $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
+endif
+ifneq ($(_GUEST_BINS_PIC),)
+	$(GUEST_PIC_CARGO_CLIPPY_CMD) -p test-rust-dlfcn $(GUEST_BINARY_CARGO_FEATURES) -- -D warnings
 endif

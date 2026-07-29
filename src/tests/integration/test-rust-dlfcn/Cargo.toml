@@ -23,10 +23,6 @@ sysapi = { workspace = true }
 syscall = { workspace = true, features = ["syscall", "dlfcn"] }
 syslog = { workspace = true, default-features = true }
 
-[build-dependencies]
-cc = { workspace = true }
-cfg-if = { workspace = true }
-
 [features]
 default = ["panic"]
 trace = ["nvx/trace", "syscall/trace", "syslog/trace", "nvx-crt0/trace"]

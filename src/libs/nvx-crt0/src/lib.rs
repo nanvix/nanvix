@@ -197,6 +197,7 @@ pub static ARGV: AtomicPtr<*const u8> = AtomicPtr::new(::core::ptr::null_mut());
 // installs makes IRET "return" to `_do_start` with `argp` in EDX and `envp`
 // in ECX. The stub aligns the stack to the i386 SysV ABI requirement
 // (ESP = 0 mod 16 before the CALL instruction) and dispatches to `_start`.
+#[cfg(target_arch = "x86")]
 core::arch::global_asm!(
     r#"
     .extern _start
@@ -236,6 +237,28 @@ core::arch::global_asm!(
     # Safety net: _start() calls __nanvix_libc_start_main() which calls
     # exit() and never returns.  If control somehow falls through, spin
     # forever rather than running into whatever follows in memory.
+    1:  jmp 1b
+    "#
+);
+
+// x86_64 variant: the kernel enters user mode (`__leave_kernel_to_user_mode` + `iretq`) with the
+// SysV argument registers already set up — RDI = argp, RSI = envp — and the user RSP pointing at
+// the top of the freshly forged user stack (no arguments are placed on the stack itself). The stub
+// therefore must NOT read argp/envp from the stack; it only realigns RSP to the SysV 16-byte
+// boundary and dispatches to `_start(argp, envp)`.
+#[cfg(target_arch = "x86_64")]
+core::arch::global_asm!(
+    r#"
+    .extern _start
+
+    .globl _do_start
+
+    .section .crt0, "ax"
+
+    _do_start:
+        and rsp, -16
+        mov rbp, rsp
+        call _start
     1:  jmp 1b
     "#
 );

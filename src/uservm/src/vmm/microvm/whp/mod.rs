@@ -633,8 +633,6 @@ impl Vmm {
             #[cfg(feature = "profile-time")]
             let vcpu_reset_start: Instant = Instant::now();
 
-            guest.reset(&mut vmem, &mut vcpu)?;
-
             // Populate the pvclock page so the kernel uses TSC-based time instead
             // of PIT tick counting. The page at DEFAULT_PVCLOCK_PAGE resides in the
             // kernel ELF's `.zero` section, which `load_kernel()` zero-fills by default,
@@ -683,6 +681,13 @@ impl Vmm {
 
             #[cfg(feature = "profile-time")]
             perf_timings.set_ept_populate(ept_populate_start.elapsed().as_micros() as u64);
+
+            // Reset the vCPU to its boot state. For 64-bit guests this programs the long-mode
+            // control/segment registers and the GDTR; the hypervisor consults guest memory (boot
+            // page tables and the GDT) while applying that state, so this must run *after* the EPT
+            // has been populated. The 32-bit reset only touches CS and the general-purpose
+            // registers, so the ordering is immaterial there.
+            guest.reset(&mut vmem, &mut vcpu)?;
 
             Arc::new(Mutex::new(guest))
         };

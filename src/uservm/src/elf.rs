@@ -13,11 +13,18 @@
 
 use ::anyhow::Result;
 use ::core::ptr;
-use ::elf::elf32::{
-    EM_386,
-    ET_EXEC,
-    Elf32Fhdr,
-    Elf32Phdr,
+use ::elf::{
+    elf32::{
+        EM_386,
+        ET_EXEC,
+        Elf32Fhdr,
+        Elf32Phdr,
+    },
+    elf64::{
+        EM_X86_64,
+        Elf64Fhdr,
+        Elf64Phdr,
+    },
 };
 use ::log::{
     debug,
@@ -25,6 +32,16 @@ use ::log::{
     trace,
 };
 use ::std::mem;
+
+/// ELF identification index of the file class byte (`EI_CLASS`).
+const EI_CLASS: usize = 4;
+/// 64-bit object file class (`ELFCLASS64`).
+const ELFCLASS64: u8 = 2;
+
+/// Returns `true` if the ELF identification bytes select the 64-bit class.
+fn is_elf64(source: &[u8]) -> bool {
+    source.len() > EI_CLASS && source[EI_CLASS] == ELFCLASS64
+}
 
 ///
 /// # Description
@@ -89,6 +106,11 @@ impl MemoryFootprint {
 ///
 pub fn memory_footprint(source: &[u8]) -> Result<MemoryFootprint> {
     trace!("memory_footprint(): source_len={}", source.len());
+
+    // Dispatch to the 64-bit parser for ELFCLASS64 images.
+    if is_elf64(source) {
+        return memory_footprint64(source);
+    }
 
     let source_len: usize = source.len();
     let fh_size: usize = mem::size_of::<Elf32Fhdr>();
@@ -259,6 +281,11 @@ pub unsafe fn load(
     let mut first_address: usize = usize::MAX;
     let mut last_address: usize = 0;
 
+    // Dispatch to the 64-bit loader for ELFCLASS64 images.
+    if *source.add(EI_CLASS) == ELFCLASS64 {
+        return load64(destination, source, max_offset);
+    }
+
     // Get entry point (read header possibly unaligned).
     let ehdr: Elf32Fhdr = unsafe { ptr::read_unaligned(source.cast::<Elf32Fhdr>()) };
 
@@ -363,6 +390,211 @@ pub unsafe fn load(
 
     let size: usize = last_address - first_address;
 
+    Ok((entry, first_address, size))
+}
+
+///
+/// # Description
+///
+/// Computes the memory footprint of a 64-bit (ELFCLASS64) ELF file.
+///
+fn memory_footprint64(source: &[u8]) -> Result<MemoryFootprint> {
+    let source_len: usize = source.len();
+    let fh_size: usize = mem::size_of::<Elf64Fhdr>();
+
+    if source_len < fh_size {
+        let reason: &str = "buffer too small for ELF header";
+        error!("memory_footprint64(): {reason} (len={source_len})");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    // Safety: the buffer size check above guarantees enough bytes for the header.
+    let ehdr: Elf64Fhdr = unsafe { ptr::read_unaligned(source.as_ptr().cast::<Elf64Fhdr>()) };
+
+    if let Err(reason) = ehdr.validate() {
+        error!("memory_footprint64(): {reason}");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let phoff: usize = usize::try_from(ehdr.e_phoff)
+        .map_err(|_| anyhow::anyhow!("program header offset does not fit in usize"))?;
+    let phentsize: usize = ehdr.e_phentsize as usize;
+    let phnum: usize = ehdr.e_phnum as usize;
+
+    let ph_table_size: usize = phentsize.checked_mul(phnum).ok_or_else(|| {
+        let reason: &str = "program header table size overflow";
+        anyhow::anyhow!(reason)
+    })?;
+    let ph_table_end: usize = phoff.checked_add(ph_table_size).ok_or_else(|| {
+        let reason: &str = "program header table offset overflow";
+        anyhow::anyhow!(reason)
+    })?;
+    if ph_table_end > source_len {
+        let reason: &str = "program header table exceeds buffer";
+        error!("memory_footprint64(): {reason}");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let mut end_address: usize = 0;
+    let mut start_address: usize = usize::MAX;
+    let mut found_loadable: bool = false;
+
+    for i in 0..phnum {
+        let entry_offset: usize = phoff + (i * phentsize);
+        let entry_end: usize = entry_offset + phentsize;
+        if entry_end > source_len {
+            let reason: &str = "program header entry exceeds buffer";
+            error!("memory_footprint64(): {reason}");
+            return Err(anyhow::anyhow!(reason));
+        }
+
+        // Safety: the bounds check above keeps the read within the buffer.
+        let phdr_ptr: *const Elf64Phdr =
+            unsafe { source.as_ptr().add(entry_offset) }.cast::<Elf64Phdr>();
+        let phdr: Elf64Phdr = unsafe { ptr::read_unaligned(phdr_ptr) };
+
+        if phdr.is_loadable() {
+            if let Err(reason) = phdr.validate() {
+                error!("memory_footprint64(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            let vaddr: usize = usize::try_from(phdr.p_vaddr)
+                .map_err(|_| anyhow::anyhow!("segment vaddr does not fit in usize"))?;
+            let memsz: usize = usize::try_from(phdr.p_memsz)
+                .map_err(|_| anyhow::anyhow!("segment memsz does not fit in usize"))?;
+            let segment_end: usize = vaddr
+                .checked_add(memsz)
+                .ok_or_else(|| anyhow::anyhow!("segment end address overflow"))?;
+
+            if vaddr < start_address {
+                start_address = vaddr;
+            }
+            if segment_end > end_address {
+                end_address = segment_end;
+            }
+            found_loadable = true;
+        }
+    }
+
+    if !found_loadable {
+        let reason: &str = "no loadable segments found";
+        error!("memory_footprint64(): {reason}");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    debug!("memory_footprint64(): start={start_address:#010x}, end={end_address:#010x}");
+
+    Ok(MemoryFootprint {
+        start: start_address,
+        end: end_address,
+    })
+}
+
+///
+/// # Description
+///
+/// Loads a 64-bit (ELFCLASS64) ELF file into memory. Mirrors [`load`] for `Elf64` headers.
+///
+/// # Safety
+///
+/// Same contract as [`load`].
+///
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn load64(
+    destination: *mut std::ffi::c_void,
+    source: *const u8,
+    max_offset: usize,
+) -> Result<(usize, usize, usize)> {
+    let mut first_address: usize = usize::MAX;
+    let mut last_address: usize = 0;
+
+    let ehdr: Elf64Fhdr = ptr::read_unaligned(source.cast::<Elf64Fhdr>());
+
+    let entry: usize = usize::try_from(ehdr.e_entry)
+        .map_err(|_| anyhow::anyhow!("entry point does not fit in usize"))?;
+    trace!("entry point: {entry:#010x}");
+
+    if let Err(reason) = ehdr.validate() {
+        error!("load64(): {reason}");
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if ehdr.e_type != ET_EXEC {
+        let reason: &str = "invalid elf type";
+        error!("load64(): {reason} (e_type={})", ehdr.e_type);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    if ehdr.e_machine != EM_X86_64 {
+        let reason: &str = "invalid machine architecture";
+        error!("load64(): {reason} (e_machine={})", ehdr.e_machine);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let phoff: usize = usize::try_from(ehdr.e_phoff)
+        .map_err(|_| anyhow::anyhow!("program header offset does not fit in usize"))?;
+    let phdr_base: *const Elf64Phdr = (source as usize + phoff) as *const Elf64Phdr;
+
+    let mut loaded_segment: bool = false;
+    for i in 0..ehdr.e_phnum {
+        let phdr: Elf64Phdr = ptr::read_unaligned(phdr_base.add(i as usize));
+
+        if phdr.is_loadable() {
+            if let Err(reason) = phdr.validate() {
+                error!("load64(): {reason}");
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            let offset: usize = usize::try_from(phdr.p_offset)
+                .map_err(|_| anyhow::anyhow!("segment offset does not fit in usize"))?;
+            let vaddr: usize = usize::try_from(phdr.p_vaddr)
+                .map_err(|_| anyhow::anyhow!("segment vaddr does not fit in usize"))?;
+            let filesz: usize = usize::try_from(phdr.p_filesz)
+                .map_err(|_| anyhow::anyhow!("segment filesz does not fit in usize"))?;
+            let memsz: usize = usize::try_from(phdr.p_memsz)
+                .map_err(|_| anyhow::anyhow!("segment memsz does not fit in usize"))?;
+
+            if vaddr + memsz > max_offset {
+                let reason: String = "segment does not fit in memory".to_string();
+                error!(
+                    "load64(): {reason} (vaddr={vaddr:#010x}, memsz={memsz:#010x}, \
+                     max_offset={max_offset:#010x})",
+                );
+                return Err(anyhow::anyhow!(reason));
+            }
+
+            debug!(
+                "load64(): loading segment: offset={offset:#010x} vaddr={vaddr:#010x} \
+                 filesz={filesz:#010x} memsz={memsz:#010x}",
+            );
+
+            let src: *const u8 = source.add(offset);
+            let dst: *mut u8 = destination.cast::<u8>().add(vaddr);
+            std::ptr::copy_nonoverlapping(src, dst, filesz);
+
+            #[cfg(not(feature = "nightly-performance-optimizations"))]
+            if memsz > filesz {
+                std::ptr::write_bytes(dst.add(filesz), 0, memsz - filesz);
+            }
+
+            if !loaded_segment || vaddr < first_address {
+                first_address = vaddr;
+            }
+            if vaddr + memsz > last_address {
+                last_address = vaddr + memsz;
+            }
+            loaded_segment = true;
+        }
+    }
+
+    if !loaded_segment {
+        let reason: String = "no loadable segments found".to_string();
+        error!("load64(): {reason} (e_phnum={})", ehdr.e_phnum);
+        return Err(anyhow::anyhow!(reason));
+    }
+
+    let size: usize = last_address - first_address;
     Ok((entry, first_address, size))
 }
 

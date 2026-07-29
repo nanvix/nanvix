@@ -201,3 +201,51 @@ impl Elf64Phdr {
         Ok(())
     }
 }
+
+//==================================================================================================
+// ELF64 Dynamic Section
+//==================================================================================================
+
+/// Marks end of dynamic section.
+pub const DT_NULL: i64 = 0;
+/// Offset in the string table of a needed shared-library name.
+pub const DT_NEEDED: i64 = 1;
+/// Size in bytes of the PLT relocation table.
+pub const DT_PLTRELSZ: i64 = 2;
+/// Address of the dynamic symbol table.
+pub const DT_SYMTAB: i64 = 6;
+/// Address of an RELA relocation table (relocations with explicit addends).
+pub const DT_RELA: i64 = 7;
+/// Size in bytes of the RELA relocation table.
+pub const DT_RELASZ: i64 = 8;
+/// Type of relocation entry referenced by `DT_JMPREL` (`DT_REL` or `DT_RELA`).
+pub const DT_PLTREL: i64 = 20;
+/// Address of the PLT relocation table.
+pub const DT_JMPREL: i64 = 23;
+
+/// ELF64 dynamic section entry.
+#[repr(C)]
+pub struct Elf64Dyn {
+    /// Entry type tag.
+    pub d_tag: i64,
+    /// Integer / address value.
+    pub d_val: u64,
+}
+
+//==================================================================================================
+// ELF64 Relocation Entry
+//==================================================================================================
+
+/// Adjust by program base (`R_X86_64_RELATIVE`).
+pub const R_X86_64_RELATIVE: u32 = 8;
+
+/// ELF64 relocation entry with explicit addend (the x86-64 ABI uses RELA, not REL).
+#[repr(C)]
+pub struct Elf64Rela {
+    /// Offset at which to apply the relocation.
+    pub r_offset: u64,
+    /// Relocation type (low 32 bits) and symbol index (high 32 bits).
+    pub r_info: u64,
+    /// Constant addend used to compute the relocated value.
+    pub r_addend: i64,
+}

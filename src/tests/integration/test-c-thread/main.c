@@ -71,6 +71,11 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(pthread_key_t, sizeof(uint32_t));
 
     // Sanity check size of `pthread_attr_t` type.
+    //
+    // i386-ABI layout lock: on x86_64 the `void *`/`size_t` members carry 8-byte
+    // alignment, so the struct gains padding the member sum below does not model.
+    // Gate the lock to i386; the functional tests run on every target.
+#if defined(__i386__)
     STATIC_ASSERT_SIZE(pthread_attr_t,
                        sizeof(int) +                    // is_initialized
                            sizeof(void *) +             // stackaddr
@@ -84,16 +89,22 @@ int main(int argc, const char *argv[])
                            sizeof(int)                  // detachstate
 
     );
+#endif /* __i386__ */
 
     // Sanity check size of `pthread_cond_t` type.
     STATIC_ASSERT_SIZE(pthread_cond_t, sizeof(uint32_t));
 
     // Sanity check size of `pthread_condattr_t` type.
+    //
+    // i386-ABI layout lock: `clock_t` (long long) aligns to 4 on i386 but to 8 on
+    // x86_64, so the struct gains padding after `is_initialized` on x86_64.
+#if defined(__i386__)
     STATIC_ASSERT_SIZE(pthread_condattr_t,
                        sizeof(int) +        // is_initialized
                            sizeof(clock_t) + // clock
                            sizeof(int)       // pshared
     );
+#endif /* __i386__ */
 
     // Sanity check size of `pthread_mutex_t` type.
     STATIC_ASSERT_SIZE(pthread_mutex_t, sizeof(uint32_t));

@@ -26,6 +26,8 @@ use ::core::{
 /// least `align_of::<LlistNode>()` (8 on 32-bit) so that talc can safely write
 /// its free-list nodes into freed chunks without misaligned access.
 const UNDERLYING_ALIGNMENT: usize = 8;
+/// Default alignment guaranteed by `malloc()`, suitable for every scalar type in the guest ABI.
+const DEFAULT_ALIGNMENT: usize = 16;
 /// Alignment of the BlockHeader struct itself.
 const BLOCK_HEADER_ALIGNMENT: usize = core::mem::align_of::<BlockHeader>();
 /// Block header size.
@@ -70,7 +72,7 @@ impl BlockHeader {
     /// Allocates a block of memory.
     ///
     /// This function allocates a block of memory of `size` bytes with the specified `alignment`. If
-    /// `alignment` is `None`, a byte-aligned block is allocated.
+    /// `alignment` is `None`, storage suitably aligned for any scalar type is allocated.
     ///
     /// # Parameters
     ///
@@ -94,8 +96,8 @@ impl BlockHeader {
             debug_assert!(align > 0, "alloc(): zero-size alignment");
         }
 
-        // Get alignment for user memory area, or default to minimum alignment.
-        let alignment: usize = alignment.unwrap_or(1);
+        // Plain malloc() must return storage suitably aligned for any scalar type.
+        let alignment: usize = alignment.unwrap_or(DEFAULT_ALIGNMENT);
 
         // Validate alignment invariants so that free() can trust the header.
         if !Self::supports_alignment(alignment) {

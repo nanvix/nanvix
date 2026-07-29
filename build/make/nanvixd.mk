@@ -7,8 +7,7 @@ NANVIXD_FEATURES += $(if $(filter yes,$(PROFILER)),profile-time,)
 NANVIXD_FEATURES := $(strip $(NANVIXD_FEATURES))
 NANVIXD_CARGO_FEATURES := $(if $(NANVIXD_FEATURES),--features "$(NANVIXD_FEATURES)")
 
-# Nanvixd needs mkramfs to produce the rootfs image and guest binaries, which build shared
-# libraries such as libmul.so that are bundled into the standalone rootfs.
+# Nanvixd needs mkramfs to produce the rootfs image and guest binaries.
 all-nanvixd: all-host-binaries-mkramfs all-guest-binaries
 
 # PDB filename for Windows symbol resolution (xperf, WPA, debuggers).
@@ -27,12 +26,8 @@ endif
 	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/lib
 	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/src
 	@cp -f $(ROOT_DIR)/README.md $(BINARIES_DIR)/standalone-rootfs-seed/
-	@if [ -f $(LIBRARIES_DIR)/libmul.so ]; then \
-		cp -f $(LIBRARIES_DIR)/libmul.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/; \
-	fi
-	@if [ -f $(LIBRARIES_DIR)/libmul-pie.so ]; then \
-		cp -f $(LIBRARIES_DIR)/libmul-pie.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/; \
-	fi
+	$(RM_CMD) $(BINARIES_DIR)/standalone-rootfs-seed/lib/libmul.so \
+		$(BINARIES_DIR)/standalone-rootfs-seed/lib/libmul-pie.so
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/standalone-rootfs.img $(BINARIES_DIR)/standalone-rootfs-seed/
 	# Build the ramfs image for the execv() test. It contains the execv target program (built as a
 	# guest binary, stripped at link time) at the filesystem root as "target", which test-rust-execv-test
@@ -46,6 +41,8 @@ endif
 	@mkdir -p $(BINARIES_DIR)/test-rust-execv-big-test-seed
 	@cp -f $(BINARIES_DIR)/test-rust-execv-big-target.$(EXEC_FORMAT) $(BINARIES_DIR)/test-rust-execv-big-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/test-rust-execv-big-test.img $(BINARIES_DIR)/test-rust-execv-big-test-seed/
+# The fork()+execv() ramfs images are now built on x86_64 as well, alongside their guest targets in
+# ALL_GUEST_TESTS.
 	# Build the ramfs image for the fork()+execv()+vfsd test. It contains the target program at the
 	# filesystem root as "target"; test-rust-fork-exec-vfsd-test forks and the child execs it, after which the
 	# target performs a vfsd read (the operation that hangs after fork()+execv()).
@@ -91,6 +88,22 @@ endif
 	@mkdir -p $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed
 	@cp -f $(BINARIES_DIR)/test-rust-fork-exec-argv-space-target.$(EXEC_FORMAT) $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed/target
 	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test.img $(BINARIES_DIR)/test-rust-fork-exec-argv-space-test-seed/
+
+# The dlfcn fixtures are test-only. Stage them after the normal nanvixd build and
+# regenerate the rootfs so unrelated full builds (notably benchmarks) do not need
+# clang merely to package an unused shared object.
+.PHONY: stage-dlfcn-test-rootfs
+stage-dlfcn-test-rootfs: all-nanvixd all-dlfcn-test-libs
+	@mkdir -p $(BINARIES_DIR)/standalone-rootfs-seed/lib
+	$(CP_CMD) $(LIBRARIES_DIR)/libmul.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/
+	$(CP_CMD) $(LIBRARIES_DIR)/libmul-pie.so $(BINARIES_DIR)/standalone-rootfs-seed/lib/
+	$(BINARIES_DIR)/mkramfs.$(HOST_BIN_EXT) -o $(BINARIES_DIR)/standalone-rootfs.img $(BINARIES_DIR)/standalone-rootfs-seed/
+
+# The standalone runner needs the fixture rootfs. The Windows CI build produces
+# its standalone and POSIX artifacts in one job, so the aggregate POSIX image
+# target stages the same rootfs before artifacts are uploaded.
+run-nanvix-tests: stage-dlfcn-test-rootfs
+all-posix-test-images: stage-dlfcn-test-rootfs
 
 check-nanvixd:
 	@$(HOST_CARGO_CHECK_CMD) $(NANVIXD_CARGO_FEATURES) -p nanvixd

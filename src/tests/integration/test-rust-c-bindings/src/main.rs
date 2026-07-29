@@ -74,7 +74,7 @@ use core::mem::{
 const _: () = assert!(size_of::<c_char>() == 1);
 const _: () = assert!(size_of::<c_short>() == 2);
 const _: () = assert!(size_of::<c_int>() == 4);
-const _: () = assert!(size_of::<c_long>() == 4);
+const _: () = assert!(size_of::<c_long>() == size_of::<usize>());
 const _: () = assert!(size_of::<c_longlong>() == 8);
 const _: () = assert!(size_of::<f32>() == 4);
 const _: () = assert!(size_of::<f64>() == 8);
@@ -86,7 +86,7 @@ const _: () = assert!(size_of::<f64>() == 8);
 const _: () = assert!(size_of::<c_uchar>() == 1);
 const _: () = assert!(size_of::<c_ushort>() == 2);
 const _: () = assert!(size_of::<c_uint>() == 4);
-const _: () = assert!(size_of::<c_ulong>() == 4);
+const _: () = assert!(size_of::<c_ulong>() == size_of::<usize>());
 const _: () = assert!(size_of::<c_ulonglong>() == 8);
 
 //==================================================================================================

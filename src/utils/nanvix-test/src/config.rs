@@ -509,6 +509,12 @@ pub struct TestCaseConfig {
     pub expected_exit_code: Option<i32>,
     /// Optional list of machine types on which this test should run.
     pub runs_on: Option<Vec<String>>,
+    /// Optional list of guest target architectures (e.g. `x86`, `x86_64`) on which this test
+    /// should run. Absent means the test runs on every target. Gates suites that only build or
+    /// run on a specific guest ABI — for example the dlfcn dynamic-linker and setjmp suites are
+    /// i686-only — so the harness skips them (instead of failing on a missing image) when the
+    /// active `TARGET` is not listed.
+    pub targets: Option<Vec<String>>,
     /// Required, non-empty list of build modes (`debug`, `release`) in which this test should run.
     /// The test is skipped in any build mode not listed. This gates heavy tests to builds where
     /// they are tractable: a test that loads a large image many times is prohibitively slow under a
@@ -557,6 +563,7 @@ impl TestCaseConfig {
         let extra_nanvixd_args_field: String = format!("{entry_prefix}.extra_nanvixd_args");
         let expected_exit_code_field: String = format!("{entry_prefix}.expected_exit_code");
         let runs_on_field: String = format!("{entry_prefix}.runs_on");
+        let targets_field: String = format!("{entry_prefix}.targets");
         let build_modes_field: String = format!("{entry_prefix}.build_modes");
         let program_env_field: String = format!("{entry_prefix}.program_env");
         let program_args_padding_len_field: String =
@@ -596,6 +603,7 @@ impl TestCaseConfig {
                 expected_exit_code_field.as_str(),
             )?,
             runs_on: read_optional_string_array(table, "runs_on", runs_on_field.as_str())?,
+            targets: read_optional_string_array(table, "targets", targets_field.as_str())?,
             build_modes: read_optional_string_array(
                 table,
                 "build_modes",
@@ -759,6 +767,29 @@ impl TestCaseConfig {
             None => true,
             // Filter specified - check if machine is in the list.
             Some(allowed_machines) => allowed_machines.iter().any(|m| m == machine),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Checks whether this test case should run on the specified guest target architecture.
+    ///
+    /// # Parameters
+    ///
+    /// - `target`: Target architecture to check against (e.g. `x86` or `x86_64`).
+    ///
+    /// # Return Value
+    ///
+    /// Returns `true` when the test has no `targets` filter or lists the given target; returns
+    /// `false` when the test is restricted to other targets.
+    ///
+    pub fn should_run_on_target(&self, target: &str) -> bool {
+        match &self.targets {
+            // No filter specified in test config - run on all targets.
+            None => true,
+            // Filter specified - check if the target is in the list.
+            Some(allowed_targets) => allowed_targets.iter().any(|t| t == target),
         }
     }
 
@@ -1755,6 +1786,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: Some(0),
             runs_on: None,
+            targets: None,
             build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: None,
@@ -1777,6 +1809,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: None,
             runs_on: None,
+            targets: None,
             build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: None,
@@ -1873,6 +1906,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: None,
             runs_on: None,
+            targets: None,
             build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: Some(100),
@@ -1899,6 +1933,7 @@ mod tests {
             extra_nanvixd_args: None,
             expected_exit_code: None,
             runs_on: None,
+            targets: None,
             build_modes,
             program_env: None,
             program_args_padding_len: None,

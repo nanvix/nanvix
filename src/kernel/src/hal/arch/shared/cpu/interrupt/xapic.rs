@@ -382,7 +382,7 @@ impl Xapic {
 /// into an [`XapicTimer`] via PIT-based calibration, following the same Uninit pattern used
 /// by [`UninitPic`] and [`UninitXapic`].
 ///
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[allow(dead_code)]
 pub struct UninitXapicTimer {
     /// LAPIC MMIO region handle.
@@ -391,7 +391,7 @@ pub struct UninitXapicTimer {
     ptr: xapic::Xapic,
 }
 
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[allow(dead_code)]
 impl UninitXapicTimer {
     ///
@@ -615,14 +615,14 @@ impl UninitXapicTimer {
 /// The interrupt controller handles EOI via a separate [`Xapic`] handle obtained from
 /// [`Self::create_eoi_handle()`].
 ///
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[allow(dead_code)]
 pub struct XapicTimer {
     /// LAPIC MMIO region handle (kept alive to prevent reallocation).
     region: IoMemoryRegion,
 }
 
-#[cfg(target_arch = "x86")]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 #[allow(dead_code)]
 impl XapicTimer {
     ///

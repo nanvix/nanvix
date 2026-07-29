@@ -285,32 +285,48 @@ pub(crate) fn sync_kernel_pdes(target_pd_paddr: PageDirectoryAddress) -> Result<
         return Ok(());
     }
 
-    // SAFETY: the kernel PD is identity-mapped (BSS-backed). The target PD is backed by a
-    // kernel page whose physical address is identity-mapped in the kernel address space.
-    let kernel_pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(kernel_pd_paddr) };
-    let target_pd: Table<PageDirectoryEntry> =
-        unsafe { Table::from_address(target_pd_paddr.into_raw_value()) };
+    // On x86_64 the active hardware page tables are a 4-level hierarchy managed by the HAL
+    // (`hal::arch::x86_64::mem::mmu`); the shared `PageDirectory` referenced by `KERNEL_PD_PADDR`
+    // is bookkeeping and is not a raw-walkable PML4. Mapping the kernel into each per-process
+    // address space additionally requires resolving the kernel/user virtual-range overlap (the
+    // LAPIC MMIO window and the user stack both fall in the 3-4 GiB region), which is a
+    // memory-layout concern. This is left to the x86_64 user-mode bring-up; the 2-level PDE copy
+    // below is x86-only.
+    #[cfg(target_arch = "x86_64")]
+    {
+        let _ = kernel_pd_paddr;
+        let _ = target_pd_paddr;
+    }
 
-    // Number of PDEs to sync — bounded by MEMORY_SIZE.
-    let kernel_pde_count: usize = MEMORY_SIZE / mem::PGTAB_SIZE;
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        // SAFETY: the kernel PD is identity-mapped (BSS-backed). The target PD is backed by a
+        // kernel page whose physical address is identity-mapped in the kernel address space.
+        let kernel_pd: Table<PageDirectoryEntry> = unsafe { Table::from_address(kernel_pd_paddr) };
+        let target_pd: Table<PageDirectoryEntry> =
+            unsafe { Table::from_address(target_pd_paddr.into_raw_value()) };
 
-    for i in 0..kernel_pde_count {
-        // SAFETY: `i` is always < PAGE_TABLE_LENGTH because MEMORY_SIZE < 4 GiB.
-        let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
+        // Number of PDEs to sync — bounded by MEMORY_SIZE.
+        let kernel_pde_count: usize = MEMORY_SIZE / mem::PGTAB_SIZE;
 
-        let kernel_pde: PageDirectoryEntry = unsafe { kernel_pd.read(pde_idx) }
-            .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+        for i in 0..kernel_pde_count {
+            // SAFETY: `i` is always < PAGE_TABLE_LENGTH because MEMORY_SIZE < 4 GiB.
+            let pde_idx: TableIndex = paging::pd_index(i * mem::PGTAB_SIZE);
 
-        if !kernel_pde.is_present() {
-            continue;
-        }
+            let kernel_pde: PageDirectoryEntry = unsafe { kernel_pd.read(pde_idx) }
+                .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
 
-        // Only install the kernel PDE if the target PD does not already have one.
-        let target_pde: PageDirectoryEntry = unsafe { target_pd.read(pde_idx) }
-            .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+            if !kernel_pde.is_present() {
+                continue;
+            }
 
-        if !target_pde.is_present() {
-            unsafe { target_pd.write(pde_idx, kernel_pde) };
+            // Only install the kernel PDE if the target PD does not already have one.
+            let target_pde: PageDirectoryEntry = unsafe { target_pd.read(pde_idx) }
+                .ok_or_else(|| Error::new(ErrorCode::InvalidArgument, "invalid PDE index"))?;
+
+            if !target_pde.is_present() {
+                unsafe { target_pd.write(pde_idx, kernel_pde) };
+            }
         }
     }
 
@@ -318,8 +334,10 @@ pub(crate) fn sync_kernel_pdes(target_pd_paddr: PageDirectoryAddress) -> Result<
 }
 
 /// RAII guard that restores the original CR3 value when dropped.
+#[cfg(not(target_arch = "x86_64"))]
 struct Cr3Guard(Cr3Register);
 
+#[cfg(not(target_arch = "x86_64"))]
 impl Drop for Cr3Guard {
     ///
     /// # Description
@@ -361,31 +379,45 @@ fn with_kernel_address_space<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
-    let kernel_cr3_raw: u32 = KERNEL_CR3.load(Ordering::Acquire);
-    // Check if the kernel CR3 has been initialized.
-    if kernel_cr3_raw == 0 {
-        return f();
+    // On x86_64 the kernel runs in a 4-level address space that identity-maps all physical memory
+    // and is never switched away from at the kernel level (the shared `PageDirectory`/`Vmem` is
+    // bookkeeping only — see `hal::arch::x86_64::mem::mmu`). The `Cr3Register` switching dance below
+    // is an x86 (2-level) construct: loading the bookkeeping page-directory physical address into
+    // CR3 would have the CPU misinterpret it as a PML4. Physical memory is already reachable here,
+    // so simply run the closure.
+    #[cfg(target_arch = "x86_64")]
+    {
+        f()
     }
 
-    // SAFETY: caller runs at privilege level 0.
-    let old_cr3: Cr3Register = unsafe { Cr3Register::read() };
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        let kernel_cr3_raw: u32 = KERNEL_CR3.load(Ordering::Acquire);
+        // Check if the kernel CR3 has been initialized.
+        if kernel_cr3_raw == 0 {
+            return f();
+        }
 
-    // If we are already in the kernel address space, no switch needed.
-    // SAFETY: `kernel_cr3_raw` was produced by `Cr3Register::into_u32()` during `init()`,
-    // so it is guaranteed to have no reserved bits set.
-    let kernel_cr3: Cr3Register = unsafe { Cr3Register::from_u32_unchecked(kernel_cr3_raw) };
-    if old_cr3 == kernel_cr3 {
-        return f();
+        // SAFETY: caller runs at privilege level 0.
+        let old_cr3: Cr3Register = unsafe { Cr3Register::read() };
+
+        // If we are already in the kernel address space, no switch needed.
+        // SAFETY: `kernel_cr3_raw` was produced by `Cr3Register::into_u32()` during `init()`,
+        // so it is guaranteed to have no reserved bits set.
+        let kernel_cr3: Cr3Register = unsafe { Cr3Register::from_u32_unchecked(kernel_cr3_raw) };
+        if old_cr3 == kernel_cr3 {
+            return f();
+        }
+
+        // Switch to kernel address space. The Cr3Guard restores `old_cr3` on drop.
+        let _guard = Cr3Guard(old_cr3);
+        // SAFETY: caller runs at privilege level 0; kernel_cr3 holds a valid PD address.
+        unsafe {
+            kernel_cr3.write();
+        }
+
+        f()
     }
-
-    // Switch to kernel address space. The Cr3Guard restores `old_cr3` on drop.
-    let _guard = Cr3Guard(old_cr3);
-    // SAFETY: caller runs at privilege level 0; kernel_cr3 holds a valid PD address.
-    unsafe {
-        kernel_cr3.write();
-    }
-
-    f()
 }
 
 ///
@@ -667,10 +699,12 @@ pub(crate) fn identity_map_page(phys_addr: PageAligned<PhysicalAddress>) -> Resu
 
 #[cfg(feature = "test")]
 pub(super) mod test {
-    use super::{
-        sync_kernel_pdes,
-        KERNEL_PD_PADDR,
-    };
+    use super::KERNEL_PD_PADDR;
+    // `sync_kernel_pdes` performs the 2-level PDE copy and exists on x86 only; the
+    // companion test below is gated to match.
+    #[cfg(not(target_arch = "x86_64"))]
+    use super::sync_kernel_pdes;
+    #[cfg(not(target_arch = "x86_64"))]
     use crate::{
         hal::mem::PageDirectoryAddress,
         mm::VirtMemoryManager,
@@ -730,6 +764,10 @@ pub(super) mod test {
     /// [`sync_kernel_pdes`], and verifies that every present kernel PDE in
     /// `[0, MEMORY_SIZE)` was copied into the target PD with the same frame address.
     ///
+    /// x86-only: on x86_64 the active page tables are a 4-level hierarchy managed by
+    /// the HAL and `sync_kernel_pdes` is a no-op, so this 2-level PDE-copy check does
+    /// not apply.
+    #[cfg(not(target_arch = "x86_64"))]
     fn test_sync_kernel_pdes_copies_to_target() -> bool {
         let kernel_pd_paddr: usize = KERNEL_PD_PADDR.load(Ordering::Acquire);
         if kernel_pd_paddr == 0 {
@@ -825,7 +863,10 @@ pub(super) mod test {
         let mut passed: bool = true;
 
         passed &= run_test!(test_init_preallocates_identity_map_pdes);
-        passed &= run_test!(test_sync_kernel_pdes_copies_to_target);
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            passed &= run_test!(test_sync_kernel_pdes_copies_to_target);
+        }
 
         passed
     }
