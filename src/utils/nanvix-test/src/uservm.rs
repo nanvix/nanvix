@@ -515,6 +515,48 @@ impl Drop for UserVm {
 // Gateway Stream
 //==================================================================================================
 
+/// Number of bytes in the little-endian length prefix for a Windows gateway input frame.
+#[cfg(windows)]
+const GATEWAY_INPUT_FRAME_HEADER_LEN: usize = ::std::mem::size_of::<u32>();
+
+/// Encoded header and borrowed payload segments for a Windows gateway input frame.
+#[cfg(windows)]
+type GatewayInputFrame<'a> = ([u8; GATEWAY_INPUT_FRAME_HEADER_LEN], &'a [u8]);
+
+/// Encodes a Windows gateway input frame without copying its payload.
+///
+/// Empty payloads are suppressed because a zero-length frame is reserved for EOF.
+#[cfg(windows)]
+fn encode_gateway_input_frame(payload: &[u8]) -> ::std::io::Result<Option<GatewayInputFrame<'_>>> {
+    let header: Option<[u8; GATEWAY_INPUT_FRAME_HEADER_LEN]> =
+        encode_gateway_input_frame_header(payload.len())?;
+    Ok(header.map(|header| (header, payload)))
+}
+
+/// Encodes the length prefix for a Windows gateway input frame.
+#[cfg(windows)]
+fn encode_gateway_input_frame_header(
+    payload_len: usize,
+) -> ::std::io::Result<Option<[u8; GATEWAY_INPUT_FRAME_HEADER_LEN]>> {
+    if payload_len == 0 {
+        return Ok(None);
+    }
+
+    let payload_len: u32 = u32::try_from(payload_len).map_err(|_| {
+        ::std::io::Error::new(
+            ::std::io::ErrorKind::InvalidInput,
+            "gateway input record exceeds u32 length",
+        )
+    })?;
+    Ok(Some(payload_len.to_le_bytes()))
+}
+
+/// Encodes the in-band EOF marker for a Windows gateway input stream.
+#[cfg(windows)]
+fn encode_gateway_input_eof_frame() -> [u8; GATEWAY_INPUT_FRAME_HEADER_LEN] {
+    0u32.to_le_bytes()
+}
+
 ///
 /// # Description
 ///
@@ -598,18 +640,14 @@ impl GatewayStream {
                 // The Windows gateway emulates the Unix half-close with a framed input
                 // direction: each record is a little-endian `u32` length followed by that many
                 // payload bytes (see `shutdown_write` for the matching zero-length EOF record).
-                // Skip empty writes so a zero-length payload is never mistaken for the EOF record.
-                if buf.is_empty() {
-                    return Ok(());
+                let frame: Option<GatewayInputFrame<'_>> = encode_gateway_input_frame(buf)?;
+                match frame {
+                    Some((header, payload)) => {
+                        pipe.write_all(&header).await?;
+                        pipe.write_all(payload).await
+                    },
+                    None => Ok(()),
                 }
-                let payload_len: u32 = u32::try_from(buf.len()).map_err(|_| {
-                    ::std::io::Error::new(
-                        ::std::io::ErrorKind::InvalidInput,
-                        "gateway input record exceeds u32 length",
-                    )
-                })?;
-                pipe.write_all(&payload_len.to_le_bytes()).await?;
-                pipe.write_all(buf).await
             },
         }
     }
@@ -633,7 +671,9 @@ impl GatewayStream {
                 use ::tokio::io::AsyncWriteExt;
                 // Zero-length record = in-band EOF marker. Flush so the bridge observes it
                 // promptly; the pipe stays open so guest output can still be read.
-                pipe.write_all(&0u32.to_le_bytes()).await?;
+                let eof_frame: [u8; GATEWAY_INPUT_FRAME_HEADER_LEN] =
+                    encode_gateway_input_eof_frame();
+                pipe.write_all(&eof_frame).await?;
                 pipe.flush().await
             },
         }
@@ -774,6 +814,86 @@ impl UserVmArgs {
 mod tests {
     use super::*;
     use crate::executor::combine_args_env;
+
+    #[cfg(windows)]
+    mod gateway_input_framing {
+        use super::*;
+
+        fn collect_frame(payload: &[u8]) -> Vec<u8> {
+            let frame: Option<GatewayInputFrame<'_>> =
+                encode_gateway_input_frame(payload).expect("gateway input frame encoding failed");
+            let Some((header, payload)) = frame else {
+                return Vec::new();
+            };
+
+            let mut bytes: Vec<u8> = Vec::with_capacity(header.len() + payload.len());
+            bytes.extend_from_slice(&header);
+            bytes.extend_from_slice(payload);
+            bytes
+        }
+
+        #[test]
+        fn payload_frame_contains_little_endian_length_and_payload() {
+            let encoded: Vec<u8> = collect_frame(b"abc");
+            assert_eq!(
+                encoded,
+                vec![3, 0, 0, 0, b'a', b'b', b'c'],
+                "payload frame wire format changed"
+            );
+        }
+
+        #[test]
+        fn empty_payload_is_suppressed() {
+            let encoded: Option<GatewayInputFrame<'_>> =
+                encode_gateway_input_frame(&[]).expect("empty payload encoding failed");
+            assert!(encoded.is_none(), "empty payload must not encode as EOF");
+        }
+
+        #[test]
+        fn eof_frame_is_zero_length_record() {
+            let encoded: [u8; GATEWAY_INPUT_FRAME_HEADER_LEN] = encode_gateway_input_eof_frame();
+            assert_eq!(encoded, [0, 0, 0, 0], "EOF frame wire format changed");
+        }
+
+        #[cfg(target_pointer_width = "64")]
+        #[test]
+        fn payload_larger_than_u32_is_rejected() {
+            let maximum_len: usize = usize::try_from(u32::MAX).expect("usize should be 64-bit");
+            let maximum_header: Option<[u8; GATEWAY_INPUT_FRAME_HEADER_LEN]> =
+                encode_gateway_input_frame_header(maximum_len)
+                    .expect("maximum payload length should be accepted");
+            assert_eq!(
+                maximum_header,
+                Some([u8::MAX; GATEWAY_INPUT_FRAME_HEADER_LEN]),
+                "u32::MAX payload length should remain encodable"
+            );
+
+            let oversized_len: usize =
+                usize::try_from(u64::from(u32::MAX) + 1).expect("usize should be 64-bit");
+            let error: ::std::io::Error = encode_gateway_input_frame_header(oversized_len)
+                .expect_err("oversized payload length should be rejected");
+            assert_eq!(
+                error.kind(),
+                ::std::io::ErrorKind::InvalidInput,
+                "oversized payload should return InvalidInput"
+            );
+        }
+
+        #[test]
+        fn sequential_payload_frames_preserve_record_order() {
+            let payloads: [&[u8]; 2] = [b"a", b"bc"];
+            let mut encoded: Vec<u8> = Vec::new();
+            for payload in payloads {
+                encoded.extend_from_slice(&collect_frame(payload));
+            }
+
+            assert_eq!(
+                encoded,
+                vec![1, 0, 0, 0, b'a', 2, 0, 0, 0, b'b', b'c'],
+                "sequential payload frames changed order or boundaries"
+            );
+        }
+    }
 
     /// Helper that builds a `UserVmArgs` with the given program_args and program_env, then
     /// calls `combined_program_args()`.

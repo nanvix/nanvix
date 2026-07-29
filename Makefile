@@ -1041,9 +1041,9 @@ endif
 ifneq ($(strip $(filter $(MACHINE),microvm)),)
 run-unit-tests: test-nanvix-bench
 
-# On Windows, only test uservm (other host rlibs have Unix-only test dependencies).
+# On Windows, test selected host components (other host rlibs have Unix-only test dependencies).
 ifeq ($(IS_WINDOWS),yes)
-run-unit-tests: test-uservm
+run-unit-tests: test-uservm test-nanvix-test
 else
 run-unit-tests: test-host-rlibs
 endif
