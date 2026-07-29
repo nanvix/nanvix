@@ -467,7 +467,8 @@ jobs:
           LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
           RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
           BUILD_TARGETS: ${{ matrix.build-type == 'release' && 'all run-unit-tests
-            release' || 'all run-unit-tests' }}
+            stage-dlfcn-test-rootfs release' || 'all run-unit-tests
+            stage-dlfcn-test-rootfs' }}
         run: |
           ./z build -- ${BUILD_TARGETS} \
             "MACHINE=${MACHINE_TYPE}" \
