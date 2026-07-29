@@ -939,22 +939,21 @@ STANDALONE_NO_VFS_INITRDS   := $(STANDALONE_NO_VFS_BINARIES:%=$(BINARIES_DIR)/%.
 
 # Cross-target build guard.
 #
-# $(BINARIES_DIR) is shared across TARGETs, but the multibinary boot images (`*.initrd`) bundle
-# architecture-specific guest binaries. On an incremental build that switches TARGET without a
-# `clean`, the guest binaries are re-copied with their (cached) cargo mtimes and therefore never
-# look newer than a `*.initrd` built for the other target, which would leave a stale wrong-arch
-# boot image in $(BINARIES_DIR). This guard records the last-built TARGET and, when it changes,
-# removes the boot images so they are rebuilt from the current target's binaries. It is wired as an
-# order-only prerequisite of the per-image rules below, so it runs once before any image is
-# (re)built. Clean builds and CI (a fresh workspace per target) are unaffected.
+# $(BINARIES_DIR) is shared across TARGETs, but the guest test ELFs, RAMFS images, and multibinary
+# boot images (`*.initrd`) are architecture-specific. On an incremental build that switches TARGET
+# without a `clean`, cached prerequisite mtimes can leave a stale wrong-architecture output in
+# place. This guard records the last-built TARGET and removes those shared-path outputs when it
+# changes. It is wired as an order-only prerequisite of the relevant image and POSIX-test rules, so
+# it runs once before any output is considered for reuse. Clean builds and CI (a fresh workspace per
+# target) are unaffected.
 TARGET_SENTINEL := $(BINARIES_DIR)/.last-build-target
 
 .PHONY: target-guard
 target-guard:
 	@mkdir -p $(BINARIES_DIR)
 	@if [ "$$(cat '$(TARGET_SENTINEL)' 2>/dev/null)" != "$(TARGET)" ]; then \
-		echo "[target-guard] TARGET='$(TARGET)' differs from last build; removing stale multibinary boot images from $(BINARIES_DIR)"; \
-		$(RM_CMD) $(BINARIES_DIR)/*.initrd; \
+		echo "[target-guard] TARGET='$(TARGET)' differs from last build; removing stale guest test images from $(BINARIES_DIR)"; \
+		$(RM_CMD) $(BINARIES_DIR)/*.initrd $(BINARIES_DIR)/test-c-*.elf $(BINARIES_DIR)/posix-tests-ramfs*.img; \
 		echo '$(TARGET)' > '$(TARGET_SENTINEL)'; \
 	fi
 
@@ -1050,15 +1049,10 @@ run-unit-tests: test-host-rlibs
 endif
 endif
 
-# Determine the standalone test configuration file based on host and architecture.
+# Determine the standalone test configuration file based on the host.
 ifeq ($(IS_WINDOWS),yes)
-ifeq ($(TARGET),x86_64)
-NANVIX_TEST_CONFIG := test/test-standalone-windows-x86_64.toml
-else
 NANVIX_TEST_CONFIG := test/test-standalone-windows.toml
-endif
 else
-# x86_64 runs the same standalone integration suite as x86 on Linux.
 NANVIX_TEST_CONFIG := test/test-standalone.toml
 endif
 
@@ -1120,9 +1114,10 @@ include build/make/nanvix-libc-artifacts.mk
 #===================================================================================================
 
 # guest-c-apps.mk must come after nanvix-libc-artifacts.mk (it references
-# NANVIX_LIBC_BUNDLE_AR) and posix-tests.mk after guest-c-apps.mk (it reuses the
-# GUEST_C_APP_* toolchain definitions and ALL_POSIX_TESTS).
+# NANVIX_LIBC_BUNDLE_AR). The dlfcn test libraries and POSIX tests then reuse the
+# GUEST_C_APP_* toolchain definitions.
 include build/make/guest-c-apps.mk
+include build/make/dlfcn-test-libs.mk
 include build/make/posix-tests.mk
 
 #===================================================================================================

@@ -17,7 +17,12 @@ use ::elf::{
         DT_REL,
         DT_RELSZ,
         EI_CLASS,
+        ELFCLASS32,
         ELFCLASS64,
+        ELFMAG0,
+        ELFMAG1,
+        ELFMAG2,
+        ELFMAG3,
         ET_DYN,
         PT_DYNAMIC,
         PT_LOAD,
@@ -66,21 +71,26 @@ use ::elf::{
 ///
 /// # Parameters
 ///
-/// - `base_address`: The address at which the PIE binary was loaded. The ELF header must be
-///   accessible at this address.
+/// - `base_address`: The address at which the PIE binary was loaded. If the ELF header is not
+///   mapped there, this function returns without modification.
 ///
 /// # Safety
 ///
-/// The caller must ensure `base_address` points to a valid, fully-loaded ELF binary whose program
-/// headers and dynamic section are accessible in memory.
+/// The caller must ensure that at least the first five bytes at `base_address` are readable. If
+/// those bytes identify an ELF image, its program headers and dynamic section must also be
+/// accessible in memory.
 ///
 pub unsafe fn relocate_pie_binary(base_address: usize) {
+    let ident: &[u8] = core::slice::from_raw_parts(base_address as *const u8, EI_CLASS + 1);
+    if ident[..4] != [ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3] {
+        return;
+    }
+
     // The EI_CLASS byte is at the same offset in both ELF32 and ELF64 identification arrays.
-    let class: u8 = *((base_address + EI_CLASS) as *const u8);
-    if class == ELFCLASS64 {
-        relocate_pie_binary_64(base_address);
-    } else {
-        relocate_pie_binary_32(base_address);
+    match ident[EI_CLASS] {
+        ELFCLASS32 => relocate_pie_binary_32(base_address),
+        ELFCLASS64 => relocate_pie_binary_64(base_address),
+        _ => {},
     }
 }
 

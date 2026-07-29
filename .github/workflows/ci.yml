@@ -707,9 +707,9 @@ jobs:
         run: |
           .\z.ps1 build -- format-check
 
-  # Lint check varies by machine-type (different Cargo features).
+  # Lint check varies by target architecture and machine type.
   windows-lint-check:
-    name: "Windows Lint Check (${{ matrix.machine-type }})"
+    name: "Windows Lint Check (${{ matrix.target-arch }}, ${{ matrix.machine-type }})"
     needs: [ precheck ]
     timeout-minutes: 30
     runs-on: windows-latest
@@ -718,6 +718,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
@@ -750,7 +751,7 @@ jobs:
       - name: "Lint"
         shell: pwsh
         run: |
-          .\z.ps1 build -- lint-check MACHINE=${{ matrix.machine-type }}
+          .\z.ps1 build -- lint-check MACHINE=${{ matrix.machine-type }} TARGET=${{ matrix.target-arch }}
 
   # Verus formal verification on Windows. Only standalone deployment is supported
   # on Windows, so the matrix covers machine-type only.
@@ -801,8 +802,8 @@ jobs:
   # Build all components (guest + host) natively on Windows using the local
   # cross-compilation toolchain (GNU Make + rust-lld) and run unit tests.
   windows-ci-build:
-    name: "Windows Build (${{ matrix.machine-type }}, ${{ matrix.build-type }}, ${{
-      matrix.memory-size }}mb)"
+    name: "Windows Build (${{ matrix.build-type }}, ${{ matrix.target-arch }}, ${{
+      matrix.machine-type }}, ${{ matrix.memory-size }}mb)"
     needs: [ windows-format-check, windows-lint-check, windows-verify ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # !failure() ensures the build does not start when checks/lint/verify fail.
@@ -818,6 +819,7 @@ jobs:
         build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
         memory-size: [ 256 ]
     runs-on: windows-latest
@@ -828,6 +830,7 @@ jobs:
       actions: write
     env:
       MACHINE_TYPE: ${{ matrix.machine-type }}
+      TARGET_ARCH: ${{ matrix.target-arch }}
       # Opt into sccache's GitHub Actions cache backend (see ci-build). The
       # sccache-action does not set this flag, so without it Windows builds use
       # a local cache discarded with the ephemeral runner, staying cold.
@@ -889,21 +892,21 @@ jobs:
           LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
           RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
         run: |
-          .\z.ps1 build -- all run-unit-tests all-posix-test-images $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE LOG_LEVEL=$env:LOG_LEVEL MEMORY_SIZE=${{ matrix.memory-size }}
+          .\z.ps1 build -- all run-unit-tests all-posix-test-images $env:RELEASE_FLAG MACHINE=$env:MACHINE_TYPE TARGET=$env:TARGET_ARCH LOG_LEVEL=$env:LOG_LEVEL MEMORY_SIZE=${{ matrix.memory-size }}
 
       - name: "Upload Build Artifacts"
         uses: actions/upload-artifact@v7
         with:
-          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{
-            matrix.memory-size }}mb
+          name: windows-build-${{ matrix.target-arch }}-${{ matrix.machine-type }}-${{
+            matrix.build-type }}-${{ matrix.memory-size }}mb
           retention-days: 1
           path: bin/
 
   # Run the full standalone test suite on Windows Hypervisor Platform using nanvix-test.exe,
   # mirroring the Linux CI integration-test stage.
   windows-integration-test:
-    name: "Windows Integration Test (${{ matrix.machine-type }}, ${{
-      matrix.build-type }}, shard ${{ matrix.shard }}/4)"
+    name: "Windows Integration Test (${{ matrix.build-type }}, ${{
+      matrix.target-arch }}, ${{ matrix.machine-type }}, shard ${{ matrix.shard }}/4)"
     needs: [ windows-ci-build ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     if: ${{ !cancelled() && needs.windows-ci-build.result == 'success' }}
@@ -917,6 +920,7 @@ jobs:
         build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
           github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
           '["release"]') }}
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
         memory-size: [ 256 ]
         # Integration tests are partitioned into disjoint shards via the harness
@@ -934,7 +938,7 @@ jobs:
       - name: "Download Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: windows-build-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{ matrix.memory-size }}mb
+          name: windows-build-${{ matrix.target-arch }}-${{ matrix.machine-type }}-${{ matrix.build-type }}-${{ matrix.memory-size }}mb
           path: bin
 
       - name: "Exclude bin/ from Windows Defender"
@@ -1009,7 +1013,7 @@ jobs:
         env:
           RUST_LOG: debug
         run: |
-          .\z.ps1 build -- run-kernel-tests "MACHINE=${{ matrix.machine-type }}" TARGET=x86 LOG_LEVEL=trace
+          .\z.ps1 build -- run-kernel-tests "MACHINE=${{ matrix.machine-type }}" TARGET=${{ matrix.target-arch }} LOG_LEVEL=trace
           Write-Host "In-kernel tests passed."
 
       - name: "Run Integration Tests (shard ${{ matrix.shard }}/4)"
@@ -1044,7 +1048,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nanvix-windows-integration-logs-${{ github.event.pull_request.number ||
-            github.run_number }}-${{ matrix.machine-type }}-${{
+            github.run_number }}-${{ matrix.target-arch }}-${{ matrix.machine-type }}-${{
             matrix.build-type }}-shard${{ matrix.shard }}
           overwrite: "true"
           path: |

@@ -207,7 +207,7 @@ $(NANVIX_LIBM_BUNDLE_AR): all-guest-staticlibs
 $(NANVIX_CRT0_ARCHIVE): all-guest-staticlibs ;
 
 #---------------------------------------------------------------------------------------------------
-# x86_64: PIC compilation of nanvix_libc / nanvix_libm (shared objects only).
+# x86_64: PIC compilation of nvx-crt0 / nanvix_libc / nanvix_libm.
 #---------------------------------------------------------------------------------------------------
 #
 # The static libc.a/libm.a that executables link are built with
@@ -238,6 +238,7 @@ ifeq ($(TARGET),x86_64)
 NANVIX_LIBC_PIC_TRIPLE      := x86_64-user-pic
 NANVIX_LIBC_PIC_TARGET      := $(TARGETS_DIR)/$(NANVIX_LIBC_PIC_TRIPLE).json
 NANVIX_LIBC_PIC_OBJDIR      := $(OBJECTS_DIR)/$(NANVIX_LIBC_PIC_TRIPLE)/$(BUILD_MODE)
+NANVIX_CRT0_PIC_AR          := $(NANVIX_LIBC_PIC_OBJDIR)/libnvx_crt0.a
 NANVIX_LIBC_PIC_AR          := $(NANVIX_LIBC_PIC_OBJDIR)/libnanvix_libc.a
 NANVIX_LIBM_PIC_AR          := $(NANVIX_LIBC_PIC_OBJDIR)/libnanvix_libm.a
 # prefer-dynamic=no mirrors GUEST_RUST_FLAGS; relocation-model=pic overrides both
@@ -245,14 +246,18 @@ NANVIX_LIBM_PIC_AR          := $(NANVIX_LIBC_PIC_OBJDIR)/libnanvix_libm.a
 NANVIX_LIBC_PIC_RUSTFLAGS   := "-C relocation-model=pic -C prefer-dynamic=no"
 NANVIX_LIBC_PIC_CARGO_BUILD := RUSTFLAGS=$(NANVIX_LIBC_PIC_RUSTFLAGS) $(CARGO) build --locked \
 	$(GUEST_CARGO_FLAGS) --target $(NANVIX_LIBC_PIC_TARGET) $(CARGO_PROFILE)
+NANVIX_LIBC_PIC_CARGO_RUSTC := RUSTFLAGS=$(NANVIX_LIBC_PIC_RUSTFLAGS) $(CARGO) rustc --locked \
+	$(GUEST_CARGO_FLAGS) --target $(NANVIX_LIBC_PIC_TARGET) $(CARGO_PROFILE)
 
-# Build both crates PIC with the SAME feature sets as the static build
-# (nanvix_libc: default $(GUEST_STATICLIB_CARGO_FEATURES); nanvix_libm: its
-# override), then demote libm's Rust allocator shims to LOCAL exactly as the
-# static libm.a receives, so libc.so remains the single allocator owner.
+# Build all three crates PIC with the SAME feature sets as the static build,
+# then demote libm's Rust allocator shims to LOCAL exactly as the static libm.a
+# receives, so libc.so remains the single allocator owner. The PIC crt0/libc/libm
+# archives also let x86_64 dlfcn test executables link as real PIEs.
 .PHONY: nanvix-libc-pic-staticlibs
 nanvix-libc-pic-staticlibs: init
-	@echo "[nanvix-libc] building PIC nanvix_libc / nanvix_libm ($(NANVIX_LIBC_PIC_TRIPLE))"
+	@echo "[nanvix-libc] building PIC nvx-crt0 / nanvix_libc / nanvix_libm ($(NANVIX_LIBC_PIC_TRIPLE))"
+	$(NANVIX_LIBC_PIC_CARGO_RUSTC) -p nvx-crt0 --lib --crate-type staticlib \
+		--features "$(GUEST_STATICLIB_FEATURES_nvx-crt0)"
 	$(NANVIX_LIBC_PIC_CARGO_BUILD) -p nanvix_libc $(GUEST_STATICLIB_CARGO_FEATURES)
 	$(NANVIX_LIBC_PIC_CARGO_BUILD) -p nanvix_libm --features "$(GUEST_STATICLIB_FEATURES_nanvix_libm)"
 	@echo "[nanvix-libc] demoting PIC libm.a allocator shims to local (single-owner)"
@@ -260,9 +265,10 @@ nanvix-libc-pic-staticlibs: init
 		-L '*__rust_alloc*' -L '*__rust_dealloc*' -L '*__rust_realloc*' \
 		$(NANVIX_LIBM_PIC_AR)
 
-# Bridge rules: let the .so targets key off the PIC archives' mtimes (cargo only
-# rewrites them when the inputs change), mirroring the static all-guest-staticlibs
-# bridge above.
+# Bridge rules: let consumers key off the PIC archives' mtimes (cargo only
+# rewrites them when the inputs change), mirroring the static
+# all-guest-staticlibs bridge above.
+$(NANVIX_CRT0_PIC_AR): nanvix-libc-pic-staticlibs ;
 $(NANVIX_LIBC_PIC_AR): nanvix-libc-pic-staticlibs ;
 $(NANVIX_LIBM_PIC_AR): nanvix-libc-pic-staticlibs ;
 

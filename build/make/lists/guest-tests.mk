@@ -49,9 +49,5 @@ ALL_GUEST_TESTS := \
 	test-rust-fork-exec-pipe-loop-test \
 	test-rust-fork-exec-pipe-loop-target \
 	test-rust-fork-exec-argv-space-test \
-	test-rust-fork-exec-argv-space-target
-# dlfcn-rust requires PIE linking for dlopen/dlsym; the x86_64 static
-# relocation model produces R_X86_64_32 relocations incompatible with PIE.
-ifneq ($(TARGET),x86_64)
-ALL_GUEST_TESTS += test-rust-dlfcn
-endif
+	test-rust-fork-exec-argv-space-target \
+	test-rust-dlfcn

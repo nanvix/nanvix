@@ -3342,8 +3342,6 @@ dependencies = [
 name = "test-rust-dlfcn"
 version = "0.21.54"
 dependencies = [
- "cc",
- "cfg-if",
  "libc_string",
  "nvx",
  "nvx-crt0",

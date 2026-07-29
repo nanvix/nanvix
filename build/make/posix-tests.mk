@@ -128,20 +128,28 @@ POSIX_TEST_FILES_test-c-file := \
 # kernel maps pages per-segment), SysV hashing, and no PT_INTERP (Nanvix has no
 # system dynamic linker; nvx-crt0 self-relocates the PIE at startup).
 #
-# On x86-64 a PIE link is impossible here: the static libc.a is built with
-# relocation-model=static and carries R_X86_64_32S relocations that `ld -pie`
-# rejects ("can not be used when making a PIE object"). Instead these suites link
-# as a non-PIE ET_EXEC at the fixed guest base (< 2 GiB, so the 32-bit absolute
-# relocations resolve at link time). --export-dynamic still emits
-# .dynsym/.dynamic so the executable's own symbols populate the loader's global
-# scope, and linking against a fixture .so still records DT_NEEDED plus the
-# .rela.plt/.rela.dyn entries the startup self-linker binds. nvx-crt0's PIE
-# self-relocation is a no-op for a non-PIE image.
+# On x86-64 these suites link against the dedicated PIC nvx-crt0/libc/libm
+# archives. The regular static archives carry R_X86_64_32S relocations that
+# cannot be linked into a PIE.
 ifeq ($(TARGET),x86_64)
-POSIX_TEST_PIE_LDFLAGS := --export-dynamic --no-dynamic-linker -z notext -z norelro --hash-style=sysv
-else
-POSIX_TEST_PIE_LDFLAGS := -pie --export-dynamic --no-dynamic-linker -z notext -z norelro --hash-style=sysv
+POSIX_TEST_PIE_CRT0 := $(NANVIX_CRT0_PIC_AR)
+POSIX_TEST_PIE_LIBC := $(NANVIX_LIBC_PIC_AR)
+POSIX_TEST_PIE_LIBM := $(NANVIX_LIBM_PIC_AR)
+ifeq ($(IS_WINDOWS),yes)
+POSIX_TEST_PIE_RELOC_LDFLAGS := --apply-dynamic-relocs
 endif
+else
+POSIX_TEST_PIE_CRT0 := $(LIBNVX_CRT0)
+POSIX_TEST_PIE_LIBC := $(GUEST_C_APP_LIBC)
+POSIX_TEST_PIE_LIBM := $(GUEST_C_APP_LIBM)
+endif
+# Nanvix loads these executable PIEs at their fixed link address. ELF32 REL
+# relocations already carry their addends in the output image, while ELF64 RELA
+# slots linked by lld are zero unless `--apply-dynamic-relocs` is used (GNU ld
+# applies their link-time values by default). Dynamic relocations remain present
+# for the startup self-linker to overwrite as needed.
+POSIX_TEST_PIE_LDFLAGS := -pie --export-dynamic --no-dynamic-linker -z notext -z norelro \
+	--hash-style=sysv $(POSIX_TEST_PIE_RELOC_LDFLAGS)
 
 # Suites linked as position-independent executables (PIE).
 POSIX_TEST_PIE_test-c-dlfcn-pie := yes
@@ -275,22 +283,23 @@ define POSIX_TEST_RULE
 POSIX_TEST_SRCROOT_$(1) := $$(if $$(POSIX_TEST_STRESS_$(1)),$$(POSIX_TESTS_STRESS_SRCDIR),$$(POSIX_TESTS_SRCDIR))
 POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TEST_SRCROOT_$(1))/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TEST_SRCROOT_$(1))/$(1)/*.c))
 POSIX_TEST_OBJS_$(1) := $$(patsubst $$(POSIX_TEST_SRCROOT_$(1))/%.c,$$(POSIX_TESTS_OBJDIR)/%.o,$$(POSIX_TEST_SRCS_$(1)))
-# PIE suites compile their objects with -fPIE and link with the PIE flags. On
-# x86-64 the final link is non-PIE (see POSIX_TEST_PIE_LDFLAGS), but the objects
-# are still compiled -fPIE so that references to a shared library's symbols go
-# through the GOT/PLT (R_X86_64_GLOB_DAT / R_X86_64_JUMP_SLOT, which the startup
-# self-linker binds) rather than becoming R_X86_64_COPY relocations, which a
-# non-PIC executable would otherwise emit for shared data.
+# PIE suites compile their objects with -fPIE and use the architecture's PIC
+# crt0/libc/libm archives.
 ifeq ($$(POSIX_TEST_PIE_$(1)),yes)
 $$(POSIX_TEST_OBJS_$(1)): POSIX_TEST_EXTRA_CFLAGS := -fPIE
 endif
+POSIX_TEST_LINK_CRT0_$(1) := $$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))),$$(POSIX_TEST_PIE_CRT0),$$(LIBNVX_CRT0))
+POSIX_TEST_LINK_LIBC_$(1) := $$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))),$$(POSIX_TEST_PIE_LIBC),$$(GUEST_C_APP_LIBC))
+POSIX_TEST_LINK_LIBM_$(1) := $$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))),$$(POSIX_TEST_PIE_LIBM),$$(GUEST_C_APP_LIBM))
 $$(BINARIES_DIR)/$(1).$$(EXEC_FORMAT): $$(POSIX_TEST_OBJS_$(1)) $$(POSIX_TEST_CRT_OBJ) \
-		$$(GUEST_C_APP_LIBC) $$(GUEST_C_APP_LIBM) $$(LIBNVX_CRT0) $$(GUEST_C_APP_LD_SCRIPT) \
-		$$(POSIX_TEST_EXTRA_LD_DEPS_$(1))
+		$$(POSIX_TEST_LINK_LIBC_$(1)) $$(POSIX_TEST_LINK_LIBM_$(1)) \
+		$$(POSIX_TEST_LINK_CRT0_$(1)) $$(GUEST_C_APP_LD_SCRIPT) \
+		$$(POSIX_TEST_EXTRA_LD_DEPS_$(1)) | target-guard
 	@echo "[posix-test] linking $(1) against libc.a$$(if $$(POSIX_TEST_NO_STATIC_LIBM_$(1)),, + libm.a)$$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))), (PIE))"
 	$$(GUEST_C_APP_LD) $$(GUEST_C_APP_LDFLAGS) $$(if $$(filter yes,$$(POSIX_TEST_PIE_$(1))),$$(POSIX_TEST_PIE_LDFLAGS)) \
 		$$(POSIX_TEST_OBJS_$(1)) $$(POSIX_TEST_CRT_OBJ) \
-		--start-group $$(LIBNVX_CRT0) $$(GUEST_C_APP_LIBC) $$(if $$(POSIX_TEST_NO_STATIC_LIBM_$(1)),,$$(GUEST_C_APP_LIBM)) --end-group \
+		--start-group $$(POSIX_TEST_LINK_CRT0_$(1)) $$(POSIX_TEST_LINK_LIBC_$(1)) \
+		$$(if $$(POSIX_TEST_NO_STATIC_LIBM_$(1)),,$$(POSIX_TEST_LINK_LIBM_$(1))) --end-group \
 		$$(POSIX_TEST_EXTRA_LDLIBS_$(1)) -o $$@
 	@echo "[posix-test] built $$@"
 endef
@@ -327,7 +336,7 @@ $$(BINARIES_DIR)/$(1).initrd: $$(BINARIES_DIR)/$(1).$$(EXEC_FORMAT) \
 		$$(BINARIES_DIR)/procd.$$(EXEC_FORMAT) \
 		$$(BINARIES_DIR)/memd.$$(EXEC_FORMAT) \
 		$$(BINARIES_DIR)/vfsd.$$(EXEC_FORMAT) \
-		$$(MKIMAGE)
+		$$(MKIMAGE) | target-guard
 	$$(MKIMAGE) -o $$@ \
 		$$(BINARIES_DIR)/procd.$$(EXEC_FORMAT)\;procd \
 		$$(BINARIES_DIR)/memd.$$(EXEC_FORMAT)\;memd \
@@ -441,17 +450,11 @@ POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite
 # or load a shared library at runtime (dlfcn-c). Built from a tiny seed directory
 # with mkramfs and handed to the UserVM via `-ramfs`; without it the standalone
 # guest has no writable file system and open(O_CREAT) fails. The seed also
-# carries lib/libmul.so (the prebuilt dlopen fixture that dlfcn-rust installs
-# into lib/) so dlfcn-c can dlopen("lib/libmul.so"). Suites that need the image
+# carries lib/libmul.so (the target-specific fixture built by
+# dlfcn-test-libs.mk) so dlfcn-c can dlopen("lib/libmul.so"). Suites that need the image
 # are listed in POSIX_TEST_RAMFS_SUITES. Suites with their own fixtures (the
 # dlfcn global/needed variants, below) override the image with a per-suite one.
-# The shared-image dlfcn entries are i686-only; on x86_64 only the file-system
-# suites need the shared writable RAMFS.
-ifeq ($(TARGET),x86_64)
-POSIX_TEST_RAMFS_SUITES := test-c-file test-c-stdio
-else
 POSIX_TEST_RAMFS_SUITES := test-c-file test-c-stdio test-c-dlfcn test-c-dlfcn-refcount test-c-dlfcn-pie test-c-dlfcn-global test-c-dlfcn-needed test-c-dlfcn-diamond
-endif
 POSIX_TEST_RAMFS_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-seed
 POSIX_TEST_RAMFS_IMG    := $(BINARIES_DIR)/posix-tests-ramfs.img
 
@@ -459,21 +462,14 @@ $(POSIX_TEST_RAMFS_SEED)/marker.txt:
 	@$(MKDIR_CMD) $(POSIX_TEST_RAMFS_SEED)
 	@echo "posix-tests ramfs marker" > $@
 
-# The shared writable RAMFS. On x86 it also carries the dlfcn dlopen fixtures
-# (lib/libmul.so + lib/libmul-pie.so, staged by test-rust-dlfcn's build script),
-# so it depends on that ELF. On x86_64 the dlfcn suites are not built, so the
-# image only provides the writable file system the file-system suites need.
-ifeq ($(TARGET),x86_64)
-$(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt all-host-binaries-mkramfs
-	$(MKRAMFS) -o $(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_RAMFS_SEED)
-else
+# The shared writable RAMFS carries the active-ABI dlfcn fixtures in addition
+# to the writable file system used by the file-system suites.
 $(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt \
-		$(BINARIES_DIR)/test-rust-dlfcn.$(EXEC_FORMAT) all-host-binaries-mkramfs
+		all-dlfcn-test-libs all-host-binaries-mkramfs
 	@$(MKDIR_CMD) $(POSIX_TEST_RAMFS_SEED)/lib
 	$(CP_CMD) $(LIBRARIES_DIR)/libmul.so $(POSIX_TEST_RAMFS_SEED)/lib/
 	$(CP_CMD) $(LIBRARIES_DIR)/libmul-pie.so $(POSIX_TEST_RAMFS_SEED)/lib/
 	$(MKRAMFS) -o $(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_RAMFS_SEED)
-endif
 
 #---------------------------------------------------------------------------------------------------
 # Suites that build their own shared-library fixtures (a `libs/` subdirectory).
@@ -1506,14 +1502,16 @@ $(POSIX_TEST_EXECVP_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXECVP_SUITE).$(EXEC_FORM
 # `run-posix-tests` is skipped — notably Windows, where suites are booted
 # manually under WHP (see the repo notes). `run-posix-tests` depends on the same
 # set, so this also pre-stages everything the Linux runner consumes.
-# The dlfcn shared-library fixtures build for every guest ABI: the per-suite
-# fixture `.so` follow the active TARGET (`POSIX_TEST_SOLIB_*`), and the
+# The dlfcn shared-library fixtures build for every guest ABI: libmul and the
+# per-suite fixture `.so` follow the active TARGET, and the
 # startup/hello/searchpath suites stage the real libc.so/libm.so, which are now
 # produced as x86-64 PIC shared objects (see build/make/nanvix-libc-artifacts.mk)
-# as well as i686. Basic test-c-dlfcn, test-c-dlfcn-pie, and
-# test-c-dlfcn-refcount stay i686-only (they dlopen the prebuilt i386 libmul
-# fixtures) and ship no fixture image here.
+# as well as i686.
 POSIX_TEST_DLFCN_FIXTURE_IMGS := $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) $(POSIX_TEST_WEAK_IMG)
+
+# These images also use shared bin/ paths and must be invalidated before an
+# incremental cross-target build can consider their cached mtimes.
+$(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG): | target-guard
 
 .PHONY: all-posix-test-images
 all-posix-test-images: $(POSIX_TEST_INITRDS) \
@@ -1528,11 +1526,9 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 # each <suite>.initrd under nanvixd in standalone mode (the `terminal` executor)
 # and asserts a guest exit code of 0. The harness is cross-platform: on Linux it
 # launches nanvixd directly; on Windows it launches nanvixd.exe under WHP. The
-# suites build for every guest ABI (TARGET=x86 and x86_64); the i686-only suites
-# listed in POSIX_TESTS_X86_ONLY are gated
-# to x86 through their per-test `targets` field. The suites are
-# standalone-only (they bundle the guest daemons). On unsupported targets the
-# portable suites can still be built with `all-posix-tests`.
+# suites build for both guest ABIs (TARGET=x86 and x86_64) and are standalone-only
+# (they bundle the guest daemons). On unsupported targets the portable suites can
+# still be built with `all-posix-tests`.
 
 # Harness configuration: Windows uses the .exe nanvixd and a `.`-rooted temp dir.
 ifeq ($(IS_WINDOWS),yes)

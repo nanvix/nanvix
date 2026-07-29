@@ -99,7 +99,8 @@ fn test_dlopen_null() -> Result<(), Error> {
     Ok(())
 }
 
-/// Tests if dlsym() works on a shared library loaded from a PIE executable.
+/// Tests if dlsym() works on a shared library loaded from an executable that
+/// exports its dynamic symbol table.
 fn test_dlsym() -> Result<(), Error> {
     let handle = open_library(LIB_PATH)?;
 
@@ -138,11 +139,8 @@ fn test_dlsym() -> Result<(), Error> {
 
 /// Runs every PIE dynamic linking test.
 ///
-/// NOTE: The C `dlfcn-pie-c` test is built as a Position-Independent Executable
-/// with `-pie -rdynamic -Wl,--no-dynamic-linker`. In this Rust binary, PIE is
-/// the default compilation mode and `--export-dynamic` is set in `build.rs` to
-/// export symbols. If a fully separate PIE binary with different linker flags is
-/// required, a dedicated Cargo binary target would be needed.
+/// The test binary is a PIE on both supported guest architectures and uses
+/// `--export-dynamic` so its symbols participate in the loader's global scope.
 pub fn run() -> Result<(), Error> {
     test_dlopen_null()?;
     test_dlsym()?;

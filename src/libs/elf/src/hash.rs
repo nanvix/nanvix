@@ -21,15 +21,19 @@
 //!
 //! # ELF class
 //!
-//! Nanvix guests are 32-bit (ELFCLASS32), so every table word - including the
-//! `DT_GNU_HASH` Bloom-filter words - is a 32-bit little-endian `u32`.
+//! SysV hash-table words and GNU hash bucket/chain words are always `u32`.
+//! GNU Bloom-filter words follow the ELF class: `u32` for ELFCLASS32 and `u64`
+//! for ELFCLASS64.
 //!
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
-use ::core::ptr;
+use ::core::{
+    mem,
+    ptr,
+};
 
 //==================================================================================================
 // Constants
@@ -40,9 +44,17 @@ use ::core::ptr;
 /// bucket holding it denotes an empty bucket.
 const STN_UNDEF: u32 = 0;
 
-/// Number of bits in an ELFCLASS32 word. Used to index the `DT_GNU_HASH` Bloom
-/// filter, whose words are 32-bit on 32-bit targets.
-const ELFCLASS_BITS: u32 = 32;
+/// GNU hash Bloom-filter word for the active guest ELF class.
+#[cfg(not(target_arch = "x86_64"))]
+type ElfBloomWord = u32;
+/// GNU hash Bloom-filter word for the active guest ELF class.
+#[cfg(target_arch = "x86_64")]
+type ElfBloomWord = u64;
+
+/// Number of bits in a GNU hash Bloom-filter word for the active ELF class.
+const ELFCLASS_BITS: u32 = (mem::size_of::<ElfBloomWord>() * 8) as u32;
+/// Number of bytes in a GNU hash Bloom-filter word for the active ELF class.
+const ELFCLASS_BYTES: usize = mem::size_of::<ElfBloomWord>();
 
 //==================================================================================================
 // Hash functions
@@ -130,6 +142,28 @@ pub fn gnu_hash(name: &[u8]) -> u32 {
 #[inline]
 unsafe fn read_u32(base: *const u8, off: usize) -> u32 {
     u32::from_le(ptr::read_unaligned(base.add(off) as *const u32))
+}
+
+///
+/// # Description
+///
+/// Reads an ELF-class-sized GNU hash Bloom-filter word located `off` bytes past `base`.
+///
+/// # Safety
+///
+/// The range `[base + off, base + off + ELFCLASS_BYTES)` must lie within a readable allocation
+/// that outlives the call.
+///
+#[inline]
+unsafe fn read_bloom_word(base: *const u8, off: usize) -> ElfBloomWord {
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        u32::from_le(ptr::read_unaligned(base.add(off) as *const u32))
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        u64::from_le(ptr::read_unaligned(base.add(off) as *const u64))
+    }
 }
 
 //==================================================================================================
@@ -388,7 +422,7 @@ impl GnuHashTable {
         // of the symbol table.
         if nbuckets == 0
             || bloom_size == 0
-            || bloom_shift >= ELFCLASS_BITS
+            || bloom_shift >= u32::BITS
             || symoffset as usize > symtab_len
         {
             return None;
@@ -397,7 +431,7 @@ impl GnuHashTable {
         // Validate that the region holds header + bloom[] + bucket[] + chain[].
         let chain_words: u64 = (symtab_len as u64).checked_sub(symoffset as u64)?;
         let total: u64 = 16u64
-            .checked_add((bloom_size as u64).checked_mul(4)?)?
+            .checked_add((bloom_size as u64).checked_mul(ELFCLASS_BYTES as u64)?)?
             .checked_add((nbuckets as u64).checked_mul(4)?)?
             .checked_add(chain_words.checked_mul(4)?)?;
         if (byte_len as u64) < total {
@@ -415,15 +449,15 @@ impl GnuHashTable {
 
     /// Reads Bloom-filter word `i`. The caller must ensure `i < bloom_size`.
     #[inline]
-    fn bloom(&self, i: u32) -> u32 {
+    fn bloom(&self, i: u32) -> ElfBloomWord {
         // SAFETY: validated by `from_raw_parts`; `i < bloom_size` by contract.
-        unsafe { read_u32(self.base, 16 + i as usize * 4) }
+        unsafe { read_bloom_word(self.base, 16 + i as usize * ELFCLASS_BYTES) }
     }
 
     /// Reads `bucket[i]`. The caller must ensure `i < nbuckets`.
     #[inline]
     fn bucket(&self, i: u32) -> u32 {
-        let off: usize = 16 + self.bloom_size as usize * 4 + i as usize * 4;
+        let off: usize = 16 + self.bloom_size as usize * ELFCLASS_BYTES + i as usize * 4;
         // SAFETY: validated by `from_raw_parts`; `i < nbuckets` by contract.
         unsafe { read_u32(self.base, off) }
     }
@@ -433,7 +467,7 @@ impl GnuHashTable {
     #[inline]
     fn chain(&self, sym_idx: u32) -> u32 {
         let off: usize = 16
-            + self.bloom_size as usize * 4
+            + self.bloom_size as usize * ELFCLASS_BYTES
             + self.nbuckets as usize * 4
             + (sym_idx - self.symoffset) as usize * 4;
         // SAFETY: validated by `from_raw_parts`; the index is in range by the
@@ -471,9 +505,9 @@ impl GnuHashTable {
         // Bloom-filter probe: if either bit is clear the symbol is definitely
         // absent from this object.
         let word: u32 = (hash / ELFCLASS_BITS) % self.bloom_size;
-        let bloom_word: u32 = self.bloom(word);
-        let mask: u32 = (1u32 << (hash % ELFCLASS_BITS))
-            | (1u32 << ((hash >> self.bloom_shift) % ELFCLASS_BITS));
+        let bloom_word: ElfBloomWord = self.bloom(word);
+        let mask: ElfBloomWord = ((1 as ElfBloomWord) << (hash % ELFCLASS_BITS))
+            | ((1 as ElfBloomWord) << ((hash >> self.bloom_shift) % ELFCLASS_BITS));
         if bloom_word & mask != mask {
             return Lookup::NotFound;
         }
@@ -639,7 +673,7 @@ mod tests {
         ordered.sort_by_key(|n| gnu_hash(n.as_bytes()) % nbuckets);
 
         let count: usize = ordered.len();
-        let mut bloom: Vec<u32> = vec![0; bloom_size as usize];
+        let mut bloom: Vec<ElfBloomWord> = vec![0; bloom_size as usize];
         let mut buckets: Vec<u32> = vec![STN_UNDEF; nbuckets as usize];
         let mut chain: Vec<u32> = vec![0; count];
 
@@ -650,8 +684,8 @@ mod tests {
 
             // Bloom filter bits.
             let word: usize = ((h / ELFCLASS_BITS) % bloom_size) as usize;
-            bloom[word] |=
-                (1u32 << (h % ELFCLASS_BITS)) | (1u32 << ((h >> bloom_shift) % ELFCLASS_BITS));
+            bloom[word] |= ((1 as ElfBloomWord) << (h % ELFCLASS_BITS))
+                | ((1 as ElfBloomWord) << ((h >> bloom_shift) % ELFCLASS_BITS));
 
             // First symbol of a bucket records its start index.
             if buckets[b as usize] == STN_UNDEF {
@@ -674,7 +708,10 @@ mod tests {
         out.extend_from_slice(&symoffset.to_le_bytes());
         out.extend_from_slice(&bloom_size.to_le_bytes());
         out.extend_from_slice(&bloom_shift.to_le_bytes());
-        for w in bloom.iter().chain(buckets.iter()).chain(chain.iter()) {
+        for w in bloom {
+            out.extend_from_slice(&w.to_le_bytes());
+        }
+        for w in buckets.iter().chain(chain.iter()) {
             out.extend_from_slice(&w.to_le_bytes());
         }
         (out, ordered, symoffset)
@@ -702,6 +739,17 @@ mod tests {
         assert_eq!(table.lookup(b"nonexistent_symbol", symtab_len, |_| false), Lookup::NotFound);
         // Present hash but rejected predicate must still fail.
         assert_eq!(table.lookup(b"printf", symtab_len, |_| false), Lookup::NotFound);
+    }
+
+    #[test]
+    fn rejects_invalid_gnu_bloom_shift() {
+        let (mut bytes, ordered, symoffset) = build_gnu(&["symbol"], 1, 1);
+        bytes[12..16].copy_from_slice(&u32::BITS.to_le_bytes());
+        let symtab_len: usize = symoffset as usize + ordered.len();
+
+        // SAFETY: `bytes` outlives the parser and contains a complete GNU hash table.
+        assert!(unsafe { GnuHashTable::from_raw_parts(bytes.as_ptr(), bytes.len(), symtab_len) }
+            .is_none());
     }
 
     #[test]

@@ -102,7 +102,6 @@ expected_output = "ok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-targets = ["x86"]
 program = "./bin/test-rust-dlfcn.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
@@ -236,7 +235,6 @@ expected_output = "ok"
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-targets = ["x86"]
 program = "./bin/test-rust-dlfcn.initrd"
 extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
