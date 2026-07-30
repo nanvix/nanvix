@@ -1672,8 +1672,7 @@ jobs:
       - name: "Download Windows Build Artifacts"
         uses: actions/download-artifact@v8
         with:
-          name: windows-build-${{ matrix.machine-type }}-release-${{ matrix.memory-size
-            }}mb
+          name: windows-build-${{ matrix.target-arch }}-${{matrix.machine-type }}-release-${{ matrix.memory-size }}mb
           path: windows-bin
 
       - name: "Package Windows Release Archive"
