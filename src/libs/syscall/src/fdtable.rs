@@ -373,7 +373,7 @@ fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
     }
     let mut interrupted: Option<Error> = None;
     let response: Message = loop {
-        match ::sys::kcall::ipc::__kcall_recv() {
+        match ::sys::kcall::ipc::__kcall_recv_response() {
             Ok(response) => break response,
             Err(error) if error.code == ::sys::error::ErrorCode::Interrupted => {
                 interrupted.get_or_insert(error);

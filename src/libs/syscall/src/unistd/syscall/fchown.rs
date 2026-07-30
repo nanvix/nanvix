@@ -75,7 +75,7 @@ pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), E
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

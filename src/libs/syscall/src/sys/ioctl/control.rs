@@ -172,7 +172,7 @@ fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, 
     ::sys::kcall::ipc::__kcall_send(&req)?;
     let bytes_pulled: usize =
         ::sys::kcall::ipc::__kcall_pull(crate::VFS_PUSH_PULL_PID, crate::VFS_PUSH_PULL_TID, out)?;
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
     check_status(&response)?;
 
     // On success vfsd pushes the full payload; a short pull would leave `out` only partially
@@ -207,7 +207,7 @@ fn tty_push(fd: i32, request: c_int, data: &[u8]) -> Result<c_int, Error> {
     );
     ::sys::kcall::ipc::__kcall_send(&req)?;
     ::sys::kcall::ipc::__kcall_push(crate::VFS_PUSH_PULL_PID, crate::VFS_PUSH_PULL_TID, data)?;
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
     check_status(&response)?;
     Ok(0)
 }

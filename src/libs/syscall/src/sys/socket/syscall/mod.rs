@@ -84,7 +84,7 @@ pub(crate) fn register_socket_slot(
         close_networkd_endpoint(remote_fd);
         return Err(e);
     }
-    let response = match ::sys::kcall::ipc::__kcall_recv() {
+    let response = match ::sys::kcall::ipc::__kcall_recv_response() {
         Ok(response) => response,
         Err(e) => {
             close_networkd_endpoint(remote_fd);
@@ -135,6 +135,6 @@ fn close_networkd_endpoint(remote_fd: ::sysapi::ffi::c_int) {
     };
     let request = CloseRequest::build(tid, remote_fd, crate::NETWORK_DESTINATION, MessageType::Ikc);
     if ::sys::kcall::ipc::__kcall_send(&request).is_ok() {
-        let _ = ::sys::kcall::ipc::__kcall_recv();
+        let _ = ::sys::kcall::ipc::__kcall_recv_response();
     }
 }

@@ -95,7 +95,7 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
 
     loop {
         // Wait for response message.
-        let response: Message = ::sys::kcall::ipc::__kcall_recv().map_err(|error| {
+        let response: Message = ::sys::kcall::ipc::__kcall_recv_response().map_err(|error| {
             let reason: &str = "failed to receive message";
             warn!("posix_getdents(): {reason} (error={:?})", error);
             Error::new(error.code, reason)

@@ -79,7 +79,7 @@ pub fn linkat(
     }
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

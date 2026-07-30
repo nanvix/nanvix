@@ -58,6 +58,21 @@ pub fn __kcall_recv() -> Result<Message, Error> {
     }
 }
 
+/// Receives the response to an RPC request that has already been submitted.
+///
+/// Once the request is visible to the remote side, it may already have committed or may still
+/// complete after a signal interrupts the underlying receive. Abandoning the logical RPC on
+/// `EINTR` would leave its eventual response in the caller's mailbox, so resume waiting after the
+/// signal handler returns.
+pub fn __kcall_recv_response() -> Result<Message, Error> {
+    loop {
+        match __kcall_recv() {
+            Err(error) if error.code == ErrorCode::Interrupted => {},
+            result => return result,
+        }
+    }
+}
+
 //==================================================================================================
 // Rendezvous Push
 //==================================================================================================

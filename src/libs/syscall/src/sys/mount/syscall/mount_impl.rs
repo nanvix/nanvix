@@ -63,7 +63,7 @@ pub fn mount(source: &str, target: &str, fstype: &str, flags: u64) -> Result<(),
     }
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

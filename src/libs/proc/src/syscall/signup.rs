@@ -49,7 +49,7 @@ pub fn signup(pid: &ProcessIdentifier, name: &str) -> Result<(), Error> {
     ::sys::kcall::ipc::__kcall_send(&message)?;
 
     // Wait unblock message from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let message: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     // Parse message.
     match message.message_type {

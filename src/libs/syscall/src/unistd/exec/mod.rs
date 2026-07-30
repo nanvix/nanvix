@@ -659,15 +659,16 @@ pub fn exec_startup_barrier() {
     // has applied close-on-exec, or with a failure status if the relay could not be dispatched — so
     // exactly one acknowledgement is expected, and it is the only message in flight before `main`.
     //
-    // The wait is therefore a single receive: validate the reply and proceed. The image has already
-    // been replaced and the exec cannot be undone, so a malformed, misdelivered, or failing reply
-    // is logged and tolerated rather than retried. A retry loop would be unsafe here, not just
-    // unhelpful: crt0 has no non-blocking or timed receive primitive, so a second receive after an
-    // unexpected first message would block with nothing left to deliver. The self-addressed case
-    // (this image is `PROCD`) is already excluded above, so a separate procd is guaranteed to be
-    // the sender; a genuinely silent procd is a daemon-crash scenario beyond what the barrier can
-    // recover, exactly as for the fork barrier this mirrors.
-    let message: Message = match ::sys::kcall::ipc::__kcall_recv() {
+    // The wait is therefore for one logical response: an interrupted receive resumes after the
+    // signal handler, but the first delivered reply is validated and consumed exactly once. The
+    // image has already been replaced and the exec cannot be undone, so a malformed, misdelivered,
+    // or failing reply is logged and tolerated rather than followed by another receive. Waiting for
+    // a second delivered message would be unsafe here, not just unhelpful: crt0 has no non-blocking
+    // or timed receive primitive, so it would block with nothing left to deliver. The self-addressed
+    // case (this image is `PROCD`) is already excluded above, so a separate procd is guaranteed to
+    // be the sender; a genuinely silent procd is a daemon-crash scenario beyond what the barrier
+    // can recover, exactly as for the fork barrier this mirrors.
+    let message: Message = match ::sys::kcall::ipc::__kcall_recv_response() {
         Ok(message) => message,
         Err(error) => {
             ::syslog::warn!("exec_startup_barrier(): failed to receive exec ack: {error:?}");

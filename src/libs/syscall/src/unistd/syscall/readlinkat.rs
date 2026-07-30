@@ -73,7 +73,7 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, E
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
