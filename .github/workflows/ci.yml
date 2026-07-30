@@ -434,7 +434,7 @@ jobs:
         uses: ./.github/actions/native-setup
 
       - name: "Setup sccache"
-        uses: Mozilla-Actions/sccache-action@v0.0.10
+        uses: Mozilla-Actions/sccache-action@v0.0.11
         with:
           version: "v0.10.0"
 
@@ -856,7 +856,7 @@ jobs:
       # RUSTC_WRAPPER auto-detection), and exports the GHA cache-service URL and
       # token; the SCCACHE_GHA_ENABLED flag itself is set at the job level above.
       - name: "Setup sccache"
-        uses: Mozilla-Actions/sccache-action@v0.0.10
+        uses: Mozilla-Actions/sccache-action@v0.0.11
         with:
           version: "v0.10.0"
 
