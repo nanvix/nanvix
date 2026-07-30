@@ -39,6 +39,13 @@ jobs:
           # pairs appear on stdout and are forwarded to GITHUB_OUTPUT.
           bash scripts/update-verus.sh | tee -a "$GITHUB_OUTPUT"
 
+      - name: "Verify Verus and vstd"
+        if: steps.update.outputs.UPDATED == 'true'
+        uses: ./.github/actions/verify
+        with:
+          machine-type: microvm
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: "Create Pull Request"
         if: steps.update.outputs.UPDATED == 'true'
         uses: peter-evans/create-pull-request@v8
