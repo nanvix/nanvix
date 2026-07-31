@@ -269,19 +269,14 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
 ///
 /// # Description
 ///
-/// Returns the identifier of the calling thread.
+/// Resolves the identifier of the calling thread, preferring the TDA cache over a kernel call.
 ///
 /// # Return Value
 ///
-/// The identifier of the calling thread.
+/// On successful completion, the identifier of the calling thread is returned. On failure, an error
+/// that contains the reason for the failure is returned instead.
 ///
-/// # Safety Notes
-///
-/// This function panics if:
-/// - The thread is unable to retrieve its own identifier.
-/// - The thread identifier returned by the kernel is not valid.
-///
-pub fn pthread_self() -> pthread_t {
+fn try_pthread_self() -> Result<pthread_t, Error> {
     // Fast path: read the cached thread ID from the TDA via segment register.
     //
     // Safety: `is_initialized()` indicates that TDA support was initialized for the process, and
@@ -293,27 +288,39 @@ pub fn pthread_self() -> pthread_t {
 
         // Check if the TDA slot contains a valid thread ID.
         if tid != TDA_TID_UNSET {
-            return tid as pthread_t;
+            return Ok(tid as pthread_t);
         }
 
         // Cache miss: the TDA slot still holds the TDA_TID_UNSET sentinel because tda::alloc()
         // cannot know the child's TID at allocation time. Resolve via kcall and cache for future
         // calls.
-        let real_tid: pthread_t = __kcall_gettid()
-            .expect("pthread_self(): gettid kcall failed (TDA cache-miss path)")
-            .try_into()
-            .expect("pthread_self(): invalid thread identifier from kernel (TDA cache-miss path)");
+        let real_tid: pthread_t = __kcall_gettid()?.try_into()?;
 
         unsafe {
             arch::write_tda_u32(TDA_TID_OFFSET as u32, real_tid);
         }
 
-        return real_tid;
+        return Ok(real_tid);
     }
 
     // Fallback: TDA not yet initialized (early startup).
-    __kcall_gettid()
-        .expect("pthread_self(): gettid kcall failed (early-startup path)")
-        .try_into()
-        .expect("pthread_self(): invalid thread identifier from kernel (early-startup path)")
+    __kcall_gettid()?.try_into()
+}
+
+///
+/// # Description
+///
+/// Returns the identifier of the calling thread.
+///
+/// # Return Value
+///
+/// The identifier of the calling thread.
+///
+/// # Safety Notes
+///
+/// This function panics if the calling thread is unable to resolve its own identifier. POSIX
+/// reserves no return value to report such a failure.
+///
+pub fn pthread_self() -> pthread_t {
+    try_pthread_self().expect("pthread_self(): failed to resolve thread identifier")
 }
