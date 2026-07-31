@@ -329,6 +329,90 @@ pub enum VmBusMessageKind {
     KlogBlock = 3,
 }
 
+///
+/// # Description
+///
+/// Describes a port-I/O operation submitted through the AArch64 MMIO doorbell.
+///
+/// AArch64 has no port-I/O instructions. The guest therefore writes the address of this structure
+/// to the MicroVM doorbell page; the UserVM performs the same emulation used by x86 `in`/`out`
+/// exits and writes a read result back into [`Self::value`].
+///
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct VmIoRequest {
+    /// Port number.
+    port: u16,
+    /// Transfer width in bytes (1, 2, or 4).
+    width: u8,
+    /// Non-zero for a write, zero for a read.
+    write: u8,
+    /// Write value or read result.
+    value: u32,
+}
+
+::static_assert::assert_eq_size!(VmIoRequest, 8);
+::static_assert::assert_eq_align!(VmIoRequest, 4);
+
+impl VmIoRequest {
+    /// Wire size of a request.
+    pub const SIZE: usize = mem::size_of::<Self>();
+
+    /// Creates a new port-I/O request.
+    pub const fn new(port: u16, width: u8, write: bool, value: u32) -> Self {
+        Self {
+            port,
+            width,
+            write: write as u8,
+            value,
+        }
+    }
+
+    /// Returns the port number.
+    pub const fn port(&self) -> u16 {
+        self.port
+    }
+
+    /// Returns the transfer width in bytes.
+    pub const fn width(&self) -> u8 {
+        self.width
+    }
+
+    /// Returns whether this is a write operation.
+    pub const fn is_write(&self) -> bool {
+        self.write != 0
+    }
+
+    /// Returns the operation value.
+    pub const fn value(&self) -> u32 {
+        self.value
+    }
+
+    /// Stores a read result.
+    pub fn set_value(&mut self, value: u32) {
+        self.value = value;
+    }
+
+    /// Decodes a request from its little-endian wire representation.
+    pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
+        Self {
+            port: u16::from_le_bytes([bytes[0], bytes[1]]),
+            width: bytes[2],
+            write: bytes[3],
+            value: u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+        }
+    }
+
+    /// Encodes a request into its little-endian wire representation.
+    pub const fn to_bytes(self) -> [u8; Self::SIZE] {
+        let port: [u8; 2] = self.port.to_le_bytes();
+        let value: [u8; 4] = self.value.to_le_bytes();
+        [
+            port[0], port[1], self.width, self.write, value[0], value[1], value[2], value[3],
+        ]
+    }
+}
+
 impl TryFrom<u64> for VmBusMessageKind {
     type Error = Error;
 

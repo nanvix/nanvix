@@ -30,7 +30,7 @@ pub use self::syscall::getopt;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
         pub mod fork;
         pub mod exec;
         pub use self::exec::{

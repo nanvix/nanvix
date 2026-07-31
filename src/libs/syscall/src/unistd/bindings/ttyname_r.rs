@@ -72,7 +72,7 @@ pub unsafe extern "C" fn ttyname_r(fd: c_int, buf: *mut c_char, buflen: c_size_t
     // SAFETY: `buf` is non-null and `buflen >= TTY_NAME.len()`, so the copy stays within bounds.
     // The source and destination do not overlap.
     unsafe {
-        ::core::ptr::copy_nonoverlapping(TTY_NAME.as_ptr(), buf as *mut u8, TTY_NAME.len());
+        ::core::ptr::copy_nonoverlapping(TTY_NAME.as_ptr(), buf.cast::<u8>(), TTY_NAME.len());
     }
 
     0

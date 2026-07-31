@@ -17,7 +17,7 @@ use super::{
     PageTableStorage,
 };
 use crate::hal::{
-    arch::x86::mem::mmu::page_table::PageTable,
+    arch::native::mem::mmu::page_table::PageTable,
     mem::{
         AccessPermission,
         Address,

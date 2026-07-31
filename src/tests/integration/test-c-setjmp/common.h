@@ -28,4 +28,10 @@ extern void test_longjmp_retry_loop(void);
 // Tests sigsetjmp()/siglongjmp() non-local control flow.
 extern void test_sigsetjmp_siglongjmp(void);
 
+// Tests that siglongjmp() restores the mask saved by sigsetjmp(env, 1).
+extern void test_sigsetjmp_restores_signal_mask(void);
+
+// Tests that sigsetjmp(env, 0) leaves the current signal mask unchanged on siglongjmp().
+extern void test_sigsetjmp_without_savemask(void);
+
 #endif /* _COMMON_H_ */

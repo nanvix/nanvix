@@ -80,7 +80,7 @@ pub unsafe extern "C" fn gethostname(name: *mut c_char, namelen: c_size_t) -> c_
             );
             return -1;
         }
-        slice::from_raw_parts_mut(name as *mut u8, namelen as usize)
+        slice::from_raw_parts_mut(name.cast::<u8>(), namelen as usize)
     };
 
     // Get the host name.

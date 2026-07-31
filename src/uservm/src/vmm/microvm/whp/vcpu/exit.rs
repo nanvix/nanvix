@@ -28,15 +28,68 @@ pub enum PmioAccess {
     PmioOut(u16, u32, PmioWidth),
 }
 
+/// Memory-mapped I/O access details.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MmioAccess {
+    /// Guest physical address that was accessed.
+    gpa: u64,
+    /// Guest program counter at the trapped instruction.
+    pc: u64,
+    /// Architecture-specific fault syndrome.
+    syndrome: u64,
+}
+
+impl MmioAccess {
+    /// Creates an MMIO access without architecture-specific exit metadata.
+    pub const fn new(gpa: u64) -> Self {
+        Self {
+            gpa,
+            pc: 0,
+            syndrome: 0,
+        }
+    }
+
+    /// Creates an AArch64 MMIO access.
+    pub const fn new_aarch64(gpa: u64, pc: u64, syndrome: u64) -> Self {
+        Self { gpa, pc, syndrome }
+    }
+
+    /// Returns the accessed guest physical address.
+    pub const fn gpa(self) -> u64 {
+        self.gpa
+    }
+
+    /// Returns the guest program counter at the trapped instruction.
+    pub const fn pc(self) -> u64 {
+        self.pc
+    }
+
+    /// Returns the architecture-specific fault syndrome.
+    pub const fn syndrome(self) -> u64 {
+        self.syndrome
+    }
+}
+
+/// Guest reset request reported by the hypervisor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResetKind {
+    /// Power off the virtual machine.
+    PowerOff,
+    /// Reboot the virtual machine.
+    Reboot,
+}
+
 /// Virtual processor exit reasons.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VirtualProcessorExitReason {
     /// Port-mapped I/O access.
     PmioAccess(PmioAccess),
-    /// Memory-mapped I/O access at the given guest physical address.
-    MmioAccess(u64),
+    /// Memory-mapped I/O access.
+    MmioAccess(MmioAccess),
     /// Halt virtual processor.
     Halt,
+    /// Guest reset request.
+    Reset(ResetKind),
     /// Interrupted.
     Interrupted,
     /// Interrupt window opened (IF transitioned to 1).
@@ -49,10 +102,12 @@ pub enum VirtualProcessorExitReason {
 pub enum VirtualProcessorExitContext {
     /// Port-mapped I/O.
     Pmio(PmioAccess),
-    /// Memory-mapped I/O at the given guest physical address.
-    Mmio(u64),
+    /// Memory-mapped I/O.
+    Mmio(MmioAccess),
     /// Halt virtual processor.
     Halt,
+    /// Guest reset request.
+    Reset(ResetKind),
     /// Interrupt virtual processor.
     Interrupted,
     /// Interrupt window opened (IF transitioned to 1).
@@ -66,10 +121,12 @@ pub enum VirtualProcessorExitContext {
 pub enum VirtualProcessorExitReasonRef<'a> {
     /// Port-mapped I/O access.
     PmioAccess(&'a PmioAccess),
-    /// Memory-mapped I/O access at the given guest physical address.
-    MmioAccess(u64),
+    /// Memory-mapped I/O access.
+    MmioAccess(MmioAccess),
     /// Halt virtual processor.
     Halt,
+    /// Guest reset request.
+    Reset(ResetKind),
     /// Interrupted.
     Interrupted,
     /// Interrupt window opened (IF transitioned to 1).
@@ -123,10 +180,11 @@ impl VirtualProcessorExitContext {
             VirtualProcessorExitContext::Pmio(access) => {
                 VirtualProcessorExitReasonRef::PmioAccess(access)
             },
-            VirtualProcessorExitContext::Mmio(gpa) => {
-                VirtualProcessorExitReasonRef::MmioAccess(*gpa)
+            VirtualProcessorExitContext::Mmio(access) => {
+                VirtualProcessorExitReasonRef::MmioAccess(*access)
             },
             VirtualProcessorExitContext::Halt => VirtualProcessorExitReasonRef::Halt,
+            VirtualProcessorExitContext::Reset(kind) => VirtualProcessorExitReasonRef::Reset(*kind),
             VirtualProcessorExitContext::Interrupted => VirtualProcessorExitReasonRef::Interrupted,
             VirtualProcessorExitContext::InterruptWindow => {
                 VirtualProcessorExitReasonRef::InterruptWindow
@@ -142,10 +200,11 @@ impl<'a> From<VirtualProcessorExitReasonRef<'a>> for VirtualProcessorExitReason 
             VirtualProcessorExitReasonRef::PmioAccess(access) => {
                 VirtualProcessorExitReason::PmioAccess(access.clone())
             },
-            VirtualProcessorExitReasonRef::MmioAccess(gpa) => {
-                VirtualProcessorExitReason::MmioAccess(gpa)
+            VirtualProcessorExitReasonRef::MmioAccess(access) => {
+                VirtualProcessorExitReason::MmioAccess(access)
             },
             VirtualProcessorExitReasonRef::Halt => VirtualProcessorExitReason::Halt,
+            VirtualProcessorExitReasonRef::Reset(kind) => VirtualProcessorExitReason::Reset(kind),
             VirtualProcessorExitReasonRef::Interrupted => VirtualProcessorExitReason::Interrupted,
             VirtualProcessorExitReasonRef::InterruptWindow => {
                 VirtualProcessorExitReason::InterruptWindow

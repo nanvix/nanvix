@@ -8,11 +8,22 @@ are built natively with the WHP (Windows Hypervisor Platform) backend. Standalon
 mode (stdio attached to the console) is the primary workflow; HTTP mode is also supported with
 some limitations (see [HTTP Mode](#http-mode)).
 
+Windows X64 runs X64 host binaries and x86/x86_64 guests. Windows ARM64 runs native ARM64 host
+binaries and AArch64 guests. WHP does not provide cross-instruction-set emulation, so use
+`TARGET=aarch64` on ARM64; `z.ps1` selects it automatically when no target is specified.
+
 ## Quick Start
 
 Run a guest application via `nanvixd` in standalone interactive mode:
 
 ```powershell
+.\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
+```
+
+To make the architecture explicit on ARM64:
+
+```powershell
+.\z.ps1 build -- all TARGET=aarch64
 .\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
 ```
 

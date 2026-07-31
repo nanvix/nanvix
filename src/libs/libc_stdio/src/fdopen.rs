@@ -58,7 +58,7 @@ pub unsafe extern "C" fn fdopen(fd: c_int, mode: *const c_char) -> *mut FILE {
     }
 
     // Validate the access mode's first character.
-    match *mode as u8 {
+    match crate::c_char_to_u8(*mode) {
         b'r' | b'w' | b'a' => {},
         _ => return core::ptr::null_mut(),
     }

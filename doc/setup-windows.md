@@ -1,6 +1,7 @@
 # Setting Up Your Development Environment (Windows)
 
 This guide will help you set up your development environment to build and run Nanvix on Windows.
+Native Windows hosts are supported on both X64 and ARM64.
 
 ## Table of Contents
 
@@ -19,6 +20,18 @@ This guide will help you set up your development environment to build and run Na
 
 - Ensure you are running Windows 11
 - Ensure you have administrator privileges
+
+On ARM64, use native ARM64 installations of Python and Rust. Verify the detected host before
+building:
+
+```powershell
+python -c "import platform; print(platform.machine())"
+rustc -vV
+```
+
+The expected values are `ARM64` and `host: aarch64-pc-windows-msvc`. X64 tools running under
+emulation may build some guest components, but they do not validate the native ARM64 UserVM/WHP
+backend.
 
 ## 2. Enable Developer Mode
 
@@ -87,6 +100,9 @@ This command validates prerequisites and configures the development environment:
 9. Installs the Rust toolchain via winget (if not already installed).
 10. Configures the repository Git hooks from `.githooks`.
 
+On a native Windows ARM64 host, `z.ps1` automatically selects `TARGET=aarch64` unless a target is
+provided explicitly. On X64, the default target remains `x86`.
+
 > **Note:** If winget is not available, install the prerequisites manually before running setup:
 >
 > - Git: `winget install Git.Git` (see [git-scm.com](https://git-scm.com))
@@ -94,6 +110,9 @@ This command validates prerequisites and configures the development environment:
 > - GNU Make: `winget install ezwinports.make`
 > - LLVM/Clang: `winget install LLVM.LLVM`
 > - Rust: `winget install Rustlang.Rustup` (see [rustup.rs](https://rustup.rs))
+>
+> On ARM64, Visual Studio Build Tools must include the Windows 11 SDK and the MSVC ARM64/ARM64EC
+> build tools so Rust can link native host executables.
 
 ---
 

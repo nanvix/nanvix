@@ -28,6 +28,8 @@ mod sigprocmask;
 mod sigreturn;
 mod sigsuspend;
 mod sleep;
+#[cfg(target_arch = "aarch64")]
+mod sync_instruction_cache;
 mod terminate;
 mod unlock_mutex;
 mod wait_cond;
@@ -59,6 +61,8 @@ pub use sigprocmask::sigprocmask;
 pub use sigreturn::sigreturn;
 pub use sigsuspend::sigsuspend;
 pub use sleep::sleep;
+#[cfg(target_arch = "aarch64")]
+pub use sync_instruction_cache::sync_instruction_cache;
 pub use terminate::terminate;
 pub use unlock_mutex::unlock_mutex;
 pub use wait_cond::wait_cond;

@@ -57,6 +57,32 @@ core::arch::global_asm!(
     options(att_syntax),
 );
 
+// Guest (no_std) build: restore the AAPCS64 callee-saved integer and FP registers, then return
+// through the saved X30 with the requested nonzero setjmp result in W0.
+#[cfg(all(target_arch = "aarch64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global longjmp",
+    ".type longjmp, @function",
+    "longjmp:",
+    "    mov w2, #1",
+    "    cmp w1, #0",
+    "    csel w2, w1, w2, ne",
+    "    ldp d8, d9, [x0, #104]",
+    "    ldp d10, d11, [x0, #120]",
+    "    ldp d12, d13, [x0, #136]",
+    "    ldp d14, d15, [x0, #152]",
+    "    ldr x3, [x0, #96]",
+    "    ldp x19, x20, [x0, #0]",
+    "    ldp x21, x22, [x0, #16]",
+    "    ldp x23, x24, [x0, #32]",
+    "    ldp x25, x26, [x0, #48]",
+    "    ldp x27, x28, [x0, #64]",
+    "    ldp x29, x30, [x0, #80]",
+    "    mov sp, x3",
+    "    mov w0, w2",
+    "    ret",
+);
+
 // Guest (no_std) build: the real implementation is x86-64 assembly. Per the System V AMD64 ABI the
 // jmp_buf pointer arrives in RDI and the return value in ESI; it restores the callee-saved registers
 // (RBX, RBP, R12-R15, RSP) and jumps to the saved RIP. The assembler's `.global longjmp` directive

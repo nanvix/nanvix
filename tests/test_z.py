@@ -438,13 +438,41 @@ class TestAssembleBuildMakeArgs(unittest.TestCase):
     def test_windows_injects_whp_yes_for_microvm(self) -> None:
         """On Windows with machine=microvm, WHP=yes is auto-injected."""
         cfg = zmod.BuildConfig(machine="microvm", make_args=["all"])
-        injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
+        with patch("z.platform.machine", return_value="AMD64"):
+            injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
         self.assertIn("WHP=yes", injected)
+
+    def test_windows_arm64_injects_aarch64_target(self) -> None:
+        """Native Windows ARM64 builds default to the AArch64 guest target."""
+        cfg = zmod.BuildConfig(machine="microvm", make_args=["all"])
+        with patch.dict(zmod.os.environ, {}, clear=True), patch(
+            "z.platform.machine", return_value="ARM64"
+        ):
+            injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
+        self.assertIn("TARGET=aarch64", injected)
+
+    def test_windows_arm64_preserves_explicit_target(self) -> None:
+        """An explicit Windows ARM64 target is not overridden."""
+        cfg = zmod.BuildConfig(machine="microvm", make_args=["TARGET=x86_64"])
+        with patch("z.platform.machine", return_value="ARM64"):
+            injected, user = zmod._assemble_build_make_args(_windows_plat(), cfg)
+        self.assertNotIn("TARGET=aarch64", injected)
+        self.assertIn("TARGET=x86_64", user)
+
+    def test_windows_arm64_preserves_environment_target(self) -> None:
+        """A TARGET supplied through the environment is not overridden."""
+        cfg = zmod.BuildConfig(machine="microvm", make_args=["all"])
+        with patch.dict(zmod.os.environ, {"TARGET": "x86_64"}, clear=True), patch(
+            "z.platform.machine", return_value="ARM64"
+        ):
+            injected, _ = zmod._assemble_build_make_args(_windows_plat(), cfg)
+        self.assertNotIn("TARGET=aarch64", injected)
 
     def test_windows_no_duplicate_whp(self) -> None:
         """User-supplied WHP= should not be overridden."""
         cfg = zmod.BuildConfig(machine="microvm", make_args=["WHP=no"])
-        injected, user = zmod._assemble_build_make_args(_windows_plat(), cfg)
+        with patch("z.platform.machine", return_value="AMD64"):
+            injected, user = zmod._assemble_build_make_args(_windows_plat(), cfg)
         self.assertNotIn("WHP=yes", injected)
         self.assertIn("WHP=no", user)
 
@@ -549,14 +577,14 @@ class TestPathHelpers(unittest.TestCase):
 
     def test_prepend_path_adds_to_front(self) -> None:
         """_prepend_path inserts the directory at the beginning of PATH."""
-        os.environ["PATH"] = "/usr/bin:/usr/local/bin"
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/usr/local/bin"])
         zmod._prepend_path("/my/dir")
         entries = os.environ["PATH"].split(os.pathsep)
         self.assertEqual(entries[0], "/my/dir")
 
     def test_prepend_path_idempotent(self) -> None:
         """_prepend_path does not duplicate an already-present directory."""
-        os.environ["PATH"] = "/my/dir:/usr/bin"
+        os.environ["PATH"] = os.pathsep.join(["/my/dir", "/usr/bin"])
         zmod._prepend_path("/my/dir")
         count = os.environ["PATH"].split(os.pathsep).count("/my/dir")
         self.assertEqual(count, 1)
@@ -565,7 +593,7 @@ class TestPathHelpers(unittest.TestCase):
         """_prepend_path treats paths as case-insensitive when deduplicating."""
         # Intentional cross-platform design: z.py uses case-insensitive
         # comparison so PATH dedup works on both Windows and Linux.
-        os.environ["PATH"] = "/My/Dir:/usr/bin"
+        os.environ["PATH"] = os.pathsep.join(["/My/Dir", "/usr/bin"])
         zmod._prepend_path("/my/dir")
         # Should not add because case-fold matches.
         entries = os.environ["PATH"].split(os.pathsep)
@@ -575,14 +603,14 @@ class TestPathHelpers(unittest.TestCase):
 
     def test_append_path_adds_to_end(self) -> None:
         """_append_path appends the directory at the end of PATH."""
-        os.environ["PATH"] = "/usr/bin:/usr/local/bin"
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/usr/local/bin"])
         zmod._append_path("/my/dir")
         entries = os.environ["PATH"].split(os.pathsep)
         self.assertEqual(entries[-1], "/my/dir")
 
     def test_append_path_idempotent(self) -> None:
         """_append_path does not duplicate an already-present directory."""
-        os.environ["PATH"] = "/usr/bin:/my/dir"
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/my/dir"])
         zmod._append_path("/my/dir")
         count = os.environ["PATH"].split(os.pathsep).count("/my/dir")
         self.assertEqual(count, 1)
@@ -591,7 +619,7 @@ class TestPathHelpers(unittest.TestCase):
         """_append_path treats paths as case-insensitive when deduplicating."""
         # Intentional cross-platform design: z.py uses case-insensitive
         # comparison so PATH dedup works on both Windows and Linux.
-        os.environ["PATH"] = "/usr/bin:/My/Dir"
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/My/Dir"])
         zmod._append_path("/my/dir")
         entries = os.environ["PATH"].split(os.pathsep)
         self.assertNotIn("/my/dir", entries)
@@ -712,8 +740,8 @@ class TestRestoreGitSymlinks(unittest.TestCase):
             # Should still be empty.
             self.assertEqual(stub.read_text(encoding="utf-8"), "")
 
-    def test_directory_symlink_warns(self) -> None:
-        """Directory targets should produce a warning, not a copy."""
+    def test_directory_symlink_restore_failure_warns(self) -> None:
+        """Failed directory symlink and junction creation should restore the stub and warn."""
         with tempfile.TemporaryDirectory() as repo:
             repo_path = Path(repo)
 
@@ -724,15 +752,43 @@ class TestRestoreGitSymlinks(unittest.TestCase):
             stub.write_text("subdir", encoding="utf-8")
 
             ls_output = "120000 abc123 0\tlink_to_dir.txt\n"
-            mock_result = MagicMock()
-            mock_result.stdout = ls_output
+            git_result = MagicMock()
+            git_result.stdout = ls_output
+            junction_result = MagicMock()
+            junction_result.returncode = 1
 
-            with patch("z.subprocess.run", return_value=mock_result):
-                with patch("z.print_warning") as mock_warn:
-                    zmod.restore_git_symlinks(repo_path)
+            with patch("z.Path.symlink_to", side_effect=OSError):
+                with patch(
+                    "z.subprocess.run", side_effect=[git_result, junction_result]
+                ):
+                    with patch("z.print_warning") as mock_warn:
+                        expanded = zmod.restore_git_symlinks(repo_path)
 
+            self.assertEqual(expanded, [])
+            self.assertEqual(stub.read_text(encoding="utf-8"), "subdir")
             mock_warn.assert_called_once()
             self.assertIn("link_to_dir.txt", mock_warn.call_args[0][0])
+
+    @unittest.skipIf(os.name == "nt", "requires POSIX symlink support")
+    def test_directory_symlink_is_restored_when_supported(self) -> None:
+        """Directory targets should become real symlinks when the host permits it."""
+        with tempfile.TemporaryDirectory() as repo:
+            repo_path = Path(repo)
+            target_dir = repo_path / "subdir"
+            target_dir.mkdir()
+            stub = repo_path / "link_to_dir.txt"
+            stub.write_text("subdir", encoding="utf-8")
+
+            git_result = MagicMock()
+            git_result.stdout = "120000 abc123 0\tlink_to_dir.txt\n"
+
+            with patch("z.subprocess.run", return_value=git_result):
+                with patch("z.print_warning") as mock_warn:
+                    expanded = zmod.restore_git_symlinks(repo_path)
+
+            self.assertTrue(stub.is_symlink())
+            self.assertEqual(len(expanded), 1)
+            mock_warn.assert_not_called()
 
 
 # ===========================================================================

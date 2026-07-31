@@ -17,6 +17,8 @@ DLFCN_TEST_LIB_PIE_SO := $(DLFCN_TEST_LIB_OBJDIR)/libmul-pie.so
 
 ifeq ($(TARGET),x86_64)
 DLFCN_TEST_LIB_CFLAGS := -m64 -march=x86-64 -mno-red-zone
+else ifeq ($(TARGET),aarch64)
+DLFCN_TEST_LIB_CFLAGS := -march=armv8-a
 else
 DLFCN_TEST_LIB_CFLAGS := -m32 -march=pentiumpro
 endif

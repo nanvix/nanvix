@@ -9,6 +9,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <float.h>
 #include <locale.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -138,6 +139,31 @@ static void test_wcstold(void)
 
     // A null end pointer is accepted.
     assert(wcstold(L"10", NULL) == 10.0L);
+
+#if defined(__aarch64__) && __LDBL_MANT_DIG__ == 113
+    /*
+     * AAPCS64 long double is binary128. These inputs are distinguishable from 1.0L only at
+     * binary128 precision, so they detect an accidental strtod/f64 conversion followed by widening.
+     */
+    {
+        const wchar_t *s = L"0x1.0000000000000000000000000001p0tail";
+        long double v = wcstold(s, &end);
+        assert(v == 0x1.0000000000000000000000000001p0L);
+        assert(end == s + 34);
+        assert(*end == L't');
+    }
+
+    {
+        const wchar_t *s = L"1e-4932";
+        long double v;
+
+        errno = 0;
+        v = wcstold(s, &end);
+        assert(v > 0.0L && v < LDBL_MIN);
+        assert(end == s + 7);
+        assert(errno == ERANGE);
+    }
+#endif
 }
 
 // Tests wcscoll_l() and wcsxfrm_l(), the locale-aware wide comparison functions. Nanvix supports

@@ -61,10 +61,34 @@ pub const NUM_HIERARCHY_PAGES: usize = 1;
 /// Must be called from kernel mode (ring 0).
 ///
 #[inline]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub unsafe fn invlpg(vaddr: usize) {
     core::arch::asm!(
         "invlpg ({0})",
         in(reg) vaddr,
         options(nostack, preserves_flags, att_syntax)
+    );
+}
+
+///
+/// # Description
+///
+/// Flushes the stage-1 EL1 TLB entry for the page containing `vaddr`.
+///
+/// # Safety
+///
+/// Must be called from EL1 with a valid translation regime configured.
+///
+#[inline]
+#[cfg(target_arch = "aarch64")]
+pub unsafe fn invlpg(vaddr: usize) {
+    let operand: usize = vaddr >> crate::mem::PAGE_SHIFT;
+    core::arch::asm!(
+        "dsb ishst",
+        "tlbi vaae1is, {operand}",
+        "dsb ish",
+        "isb",
+        operand = in(reg) operand,
+        options(nostack)
     );
 }

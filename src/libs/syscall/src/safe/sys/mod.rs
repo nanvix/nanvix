@@ -53,7 +53,7 @@ impl System {
             .sysname
             .iter()
             .take_while(|&&c| c != 0)
-            .map(|&c| c as u8)
+            .map(|&c| c.to_ne_bytes()[0])
             .collect();
 
         let system_name = match String::from_utf8(cstr_bytes) {

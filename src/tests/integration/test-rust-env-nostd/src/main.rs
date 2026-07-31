@@ -21,7 +21,10 @@ extern crate libc_string;
 extern crate nvx;
 extern crate nvx_crt0;
 
-use ::core::ffi::CStr;
+use ::core::ffi::{
+    CStr,
+    c_char,
+};
 use ::sys::error::Error;
 use ::sysapi::unistd::STDOUT_FILENO;
 use ::syscall::unistd;
@@ -33,7 +36,7 @@ use ::syscall::unistd;
 // The `environ` pointer is set by the nvx runtime (_start) and contains a null-terminated array of
 // pointers to "KEY=VALUE\0" C strings.
 unsafe extern "C" {
-    static mut environ: *mut *mut i8;
+    static mut environ: *mut *mut c_char;
 }
 
 //==================================================================================================
@@ -54,7 +57,7 @@ unsafe extern "C" {
 ///
 #[unsafe(no_mangle)]
 pub fn main() -> Result<(), Error> {
-    let env_ptr: *mut *mut i8 = unsafe { environ };
+    let env_ptr: *mut *mut c_char = unsafe { environ };
 
     if env_ptr.is_null() {
         syslog::error!("main(): environ pointer is null");
@@ -64,7 +67,7 @@ pub fn main() -> Result<(), Error> {
 
     let mut index: usize = 0;
     loop {
-        let entry: *mut i8 = unsafe { *env_ptr.add(index) };
+        let entry: *mut c_char = unsafe { *env_ptr.add(index) };
         if entry.is_null() {
             break;
         }

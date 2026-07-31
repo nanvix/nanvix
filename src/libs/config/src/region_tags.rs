@@ -36,6 +36,18 @@ mod microvm {
 
     /// Tag used to identify the pvclock MMIO region.
     pub const PVCLOCK_MMIO_TAG: MmioTag = MmioTag::new(*b"PVCLOCK ");
+
+    /// Tag used to identify the AArch64 GIC distributor MMIO region.
+    pub const GICD_MMIO_TAG: MmioTag = MmioTag::new(*b"GICD    ");
+
+    /// Tag used to identify the AArch64 GIC redistributor MMIO region.
+    pub const GICR_MMIO_TAG: MmioTag = MmioTag::new(*b"GICR    ");
+
+    /// Tag used to identify the AArch64 GIC ITS MMIO region.
+    pub const GITS_MMIO_TAG: MmioTag = MmioTag::new(*b"GITS    ");
+
+    /// Tag used to identify the AArch64 host-service doorbell MMIO region.
+    pub const DOORBELL_MMIO_TAG: MmioTag = MmioTag::new(*b"DOORBELL");
 }
 
 #[cfg(feature = "microvm")]

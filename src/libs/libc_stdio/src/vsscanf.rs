@@ -504,7 +504,7 @@ mod test {
     fn cstr_bytes(buf: &[c_char]) -> Vec<u8> {
         buf.iter()
             .take_while(|&&c| c != 0)
-            .map(|&c| c as u8)
+            .map(|&c| crate::c_char_to_u8(c))
             .collect()
     }
 

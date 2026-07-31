@@ -106,6 +106,9 @@ the time from process spawn to the first echo round trip.
 
 ```powershell
 .\z.ps1 build -- all RELEASE=yes LOG_LEVEL=panic
+
+# Explicit native ARM64 equivalent.
+.\z.ps1 build -- all TARGET=aarch64 RELEASE=yes LOG_LEVEL=panic
 ```
 
 ### Available Benchmarks
@@ -132,3 +135,6 @@ the time from process spawn to the first echo round trip.
 ```
 
 Use `-help` to list all benchmark options supported by the current build.
+
+`scripts/benchmark.py run` detects the native Windows architecture. It writes X64 and ARM64
+results to distinct `_X64.csv` and `_ARM64.csv` histories.

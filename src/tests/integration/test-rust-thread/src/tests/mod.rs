@@ -11,6 +11,8 @@ mod alarm_starvation;
 mod attributes;
 mod cond_timedwait;
 mod condvars;
+#[cfg(target_arch = "aarch64")]
+mod fp_state;
 mod identity;
 mod mutex_timedlock;
 mod mutexes;
@@ -42,6 +44,8 @@ pub fn run_all() -> Result<(), Error> {
     timers::run()?;
     tda::run()?;
     scheduler::run()?;
+    #[cfg(target_arch = "aarch64")]
+    fp_state::run()?;
     alarm_starvation::run()?;
     Ok(())
 }

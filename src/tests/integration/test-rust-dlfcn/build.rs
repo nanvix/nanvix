@@ -54,14 +54,14 @@ fn main() {
     println!("cargo::rustc-link-arg=-Tbuild/user/linker/{target_arch}/user.ld");
 
     // Build as a position-independent executable so --export-dynamic emits the
-    // dynamic symbol tables used by DlHandle::GLOBAL. The x86_64 build uses the
-    // repository's dedicated PIC target.
+    // dynamic symbol tables used by DlHandle::GLOBAL. The 64-bit builds use the
+    // repository's dedicated PIC targets.
     println!("cargo::rustc-link-arg=-pie");
 
     // Nanvix loads executable PIEs at their fixed link address. ELF64 RELA
     // targets otherwise remain zero until a system dynamic linker applies
     // them, which Nanvix intentionally does not provide.
-    if target_arch == "x86_64" {
+    if target_arch == "x86_64" || target_arch == "aarch64" {
         println!("cargo::rustc-link-arg=--apply-dynamic-relocs");
     }
 

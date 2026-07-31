@@ -13,9 +13,12 @@ use crate::{
     strtoul::strtoul,
     strtoull::strtoull,
 };
-// `strtold` backs only the non-x86_64-guest `strtold_l`; on the x86_64 guest `strtold_l` is an
-// assembly tail-call to the `strtold` symbol and needs no Rust import.
-#[cfg(not(all(target_arch = "x86_64", not(any(feature = "std", test)))))]
+// Guest ABIs where `long double` differs from Rust's `f64` export `strtold_l` as an assembly
+// tail-call and need no Rust import here.
+#[cfg(not(all(
+    any(target_arch = "x86_64", target_arch = "aarch64"),
+    not(any(feature = "std", test))
+)))]
 use crate::strtold::strtold;
 use ::sysapi::ffi::{
     c_char,
@@ -64,14 +67,17 @@ pub unsafe extern "C" fn strtof_l(
 
 /// Converts the initial portion of a string to a `long double` using the C/POSIX locale.
 ///
-/// Delegates to [`strtold`]. On the x86_64 guest the `long double` return value must come back in
-/// the x87 `st0` (see `strtold`), so this is exported there as an assembly tail-call to `strtold`
-/// rather than a Rust wrapper, whose `-> f64` return would use `xmm0`.
+/// Delegates to [`strtold`]. On guest ABIs where `long double` differs from Rust's `f64`, this is
+/// exported as an assembly tail-call so the architecture-specific return value propagates
+/// unchanged.
 ///
 /// # Safety
 ///
 /// This function dereferences the raw pointers `nptr` and `endptr`, which must be valid.
-#[cfg(not(all(target_arch = "x86_64", not(any(feature = "std", test)))))]
+#[cfg(not(all(
+    any(target_arch = "x86_64", target_arch = "aarch64"),
+    not(any(feature = "std", test))
+)))]
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn strtold_l(
     nptr: *const c_char,
@@ -90,6 +96,15 @@ core::arch::global_asm!(
     "strtold_l:",
     "    jmp strtold",
     options(att_syntax),
+);
+
+// AArch64 guest: X0/X1 already carry nptr/endptr; X2 is the ignored locale argument.
+#[cfg(all(target_arch = "aarch64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global strtold_l",
+    ".type strtold_l, @function",
+    "strtold_l:",
+    "    b strtold",
 );
 
 /// Converts the initial portion of a string to a `long` using the C/POSIX locale.

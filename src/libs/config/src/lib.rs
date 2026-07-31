@@ -264,6 +264,15 @@ pub mod memory_layout {
 // Hardware Abstraction Layer
 //==================================================================================================
 
+#[cfg(target_arch = "aarch64")]
+pub mod aarch64 {
+    /// Base address of the AArch64 MMIO doorbell page.
+    pub const DEFAULT_MMIO_DOORBELL_BASE: usize = 0x3f10_0000;
+
+    /// Doorbell used to submit an emulated port-I/O request.
+    pub const DEFAULT_MMIO_PMIO_DOORBELL: usize = DEFAULT_MMIO_DOORBELL_BASE;
+}
+
 #[cfg(feature = "microvm")]
 pub mod microvm {
     /// Magic value that identifies the virtual machine monitor.
@@ -357,4 +366,39 @@ pub mod microvm {
     /// Base address of the local APIC MMIO register page.
     #[cfg(feature = "whp")]
     pub const DEFAULT_LAPIC_BASE: usize = 0xFEE0_0000;
+
+    /// Base address of the AArch64 MMIO doorbell page.
+    ///
+    /// This page is intentionally outside guest RAM but inside the kernel virtual-address region.
+    /// The UserVM leaves it unmapped so accesses exit to the device emulator.
+    #[cfg(target_arch = "aarch64")]
+    pub use crate::aarch64::DEFAULT_MMIO_DOORBELL_BASE;
+
+    /// AArch64 doorbell used to submit an emulated port-I/O request.
+    #[cfg(target_arch = "aarch64")]
+    pub use crate::aarch64::DEFAULT_MMIO_PMIO_DOORBELL;
+
+    /// AArch64 GICv3 distributor base.
+    #[cfg(target_arch = "aarch64")]
+    pub const DEFAULT_GICD_BASE: usize = 0x3f00_0000;
+
+    /// AArch64 GICv3 redistributor base.
+    #[cfg(target_arch = "aarch64")]
+    pub const DEFAULT_GICR_BASE: usize = 0x3f02_0000;
+
+    /// AArch64 GICv3 ITS base.
+    #[cfg(target_arch = "aarch64")]
+    pub const DEFAULT_GITS_BASE: usize = 0x3f04_0000;
+
+    // Guest RAM must not overlap the GIC or doorbell MMIO windows.
+    #[cfg(target_arch = "aarch64")]
+    ::static_assert::assert_eq!(crate::kernel::MEMORY_SIZE <= DEFAULT_GICD_BASE);
+
+    /// GIC interrupt identifier of the ARM virtual timer.
+    #[cfg(target_arch = "aarch64")]
+    pub const DEFAULT_ARM_TIMER_INTERRUPT: u32 = 27;
+
+    /// GIC interrupt identifier used for host-to-guest IKC notifications.
+    #[cfg(target_arch = "aarch64")]
+    pub const DEFAULT_ARM_IKC_INTERRUPT: u32 = 32;
 }

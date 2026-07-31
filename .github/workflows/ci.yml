@@ -73,7 +73,8 @@ jobs:
       contents: read
     outputs:
       benchmark-linux: ${{ steps.check-linux.outputs.available }}
-      benchmark-windows: ${{ steps.check-windows.outputs.available }}
+      benchmark-windows-x64: ${{ steps.check-windows-x64.outputs.available }}
+      benchmark-windows-arm64: ${{ steps.check-windows-arm64.outputs.available }}
     steps:
       - uses: actions/checkout@v7
 
@@ -86,13 +87,23 @@ jobs:
           runner-name-prefix: "prometheus"
           runner-group: "Benchmark"
 
-      - name: "Check Windows Runners"
-        id: check-windows
+      - name: "Check Windows X64 Runners"
+        id: check-windows-x64
         uses: ./.github/actions/check-runners
         with:
           github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           os: "Windows"
+          architecture: "X64"
           runner-name-prefix: "WIN"
+          runner-group: "Benchmark"
+
+      - name: "Check Windows ARM64 Runners"
+        id: check-windows-arm64
+        uses: ./.github/actions/check-runners
+        with:
+          github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
+          os: "Windows"
+          architecture: "ARM64"
           runner-group: "Benchmark"
 
   # ==========================================================================================
@@ -161,29 +172,28 @@ jobs:
       contents: read
     outputs:
       should-run: ${{ steps.gate.outputs.should-run }}
+      should-run-x64: ${{ steps.gate.outputs.should-run-x64 }}
+      should-run-arm64: ${{ steps.gate.outputs.should-run-arm64 }}
+      benchmark-matrix: ${{ steps.gate.outputs.benchmark-matrix }}
     steps:
       - id: gate
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
-          RUNNERS_AVAILABLE: ${{ needs.check-runners.outputs.benchmark-windows }}
+          X64_RUNNERS_AVAILABLE: ${{ needs.check-runners.outputs.benchmark-windows-x64 }}
+          ARM64_RUNNERS_AVAILABLE: ${{ needs.check-runners.outputs.benchmark-windows-arm64 }}
           UP_TO_DATE: ${{ needs.precheck.outputs.up_to_date }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
           HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
-          should_run=false
+          eligible=false
           if [[ "${REPO}" != "nanvix/nanvix" ]]; then
             echo "Skip: repository is not nanvix/nanvix"
-          elif [[ "${RUNNERS_AVAILABLE}" != "true" ]]; then
-            # Fail closed: treat empty / unknown values (e.g. check-runners
-            # was skipped or failed) as unavailable to prevent benchmark jobs
-            # from queuing indefinitely.
-            echo "Skip: Windows self-hosted benchmark runners unavailable (status='${RUNNERS_AVAILABLE}')"
           elif [[ "${EVENT_NAME}" == "merge_group" || "${EVENT_NAME}" == "schedule" ]]; then
-            should_run=true
+            eligible=true
           elif [[ "${UP_TO_DATE}" == "true" ]]; then
             if [[ "${EVENT_NAME}" == "push" && "${HEAD_COMMIT_MSG}" == "Merge "* ]]; then
               echo "Skip: push event on a merge commit"
@@ -193,6 +203,90 @@ jobs:
               elif [[ "${PR_HEAD_REPO}" != "${REPO}" ]]; then
                 # Fork PRs are excluded from Windows benchmarks to prevent
                 # untrusted code from running on self-hosted runners.
+                echo "Skip: pull request from a fork"
+              else
+                eligible=true
+              fi
+            else
+              eligible=true
+            fi
+          else
+            echo "Skip: branch is not up to date with dev"
+          fi
+
+          should_run_x64=false
+          should_run_arm64=false
+          if [[ "${eligible}" == "true" ]]; then
+            if [[ "${X64_RUNNERS_AVAILABLE}" == "true" ]]; then
+              should_run_x64=true
+            else
+              echo "Skip X64: Windows/X64 benchmark runner unavailable (status='${X64_RUNNERS_AVAILABLE}')"
+            fi
+            if [[ "${ARM64_RUNNERS_AVAILABLE}" == "true" ]]; then
+              should_run_arm64=true
+            else
+              echo "Skip ARM64: Windows/ARM64 benchmark runner unavailable (status='${ARM64_RUNNERS_AVAILABLE}')"
+            fi
+          fi
+
+          should_run=false
+          if [[ "${should_run_x64}" == "true" || "${should_run_arm64}" == "true" ]]; then
+            should_run=true
+          fi
+
+          echo "Decision: should-run=${should_run}, x64=${should_run_x64}, arm64=${should_run_arm64}"
+          echo "should-run=${should_run}" >> "${GITHUB_OUTPUT}"
+          echo "should-run-x64=${should_run_x64}" >> "${GITHUB_OUTPUT}"
+          echo "should-run-arm64=${should_run_arm64}" >> "${GITHUB_OUTPUT}"
+
+          benchmark_matrix='{"include":['
+          separator=''
+          if [[ "${should_run_x64}" == "true" ]]; then
+            benchmark_matrix+="${separator}{\"host-arch\":\"X64\",\"machine-type\":\"microvm\",\"standard-benchmarks\":\"boot-time cold-start cold-start-uvm snapshot-restore vfs-bench warm-start-gateway warm-start-vmm warm-start-socket\",\"standard-iterations\":\"100\",\"payload-size\":\"\",\"profiler\":\"PROFILER=yes\"}"
+            separator=','
+          fi
+          if [[ "${should_run_arm64}" == "true" ]]; then
+            benchmark_matrix+="${separator}{\"host-arch\":\"ARM64\",\"machine-type\":\"microvm\",\"standard-benchmarks\":\"boot-time cold-start cold-start-uvm snapshot-restore vfs-bench warm-start-gateway warm-start-vmm warm-start-socket\",\"standard-iterations\":\"100\",\"payload-size\":\"\",\"profiler\":\"PROFILER=yes\"}"
+          fi
+          benchmark_matrix+=']}'
+          echo "benchmark-matrix=${benchmark_matrix}" >> "${GITHUB_OUTPUT}"
+
+  windows-arm64-ci-gate:
+    name: "Windows ARM64 CI Gate"
+    needs: [ precheck, check-runners ]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      should-run: ${{ steps.gate.outputs.should-run }}
+    steps:
+      - id: gate
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          RUNNER_AVAILABLE: ${{ needs.check-runners.outputs.benchmark-windows-arm64 }}
+          UP_TO_DATE: ${{ needs.precheck.outputs.up_to_date }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+          should_run=false
+          if [[ "${REPO}" != "nanvix/nanvix" ]]; then
+            echo "Skip: repository is not nanvix/nanvix"
+          elif [[ "${RUNNER_AVAILABLE}" != "true" ]]; then
+            echo "Skip: Windows/ARM64 self-hosted runner unavailable (status='${RUNNER_AVAILABLE}')"
+          elif [[ "${EVENT_NAME}" == "merge_group" || "${EVENT_NAME}" == "schedule" ]]; then
+            should_run=true
+          elif [[ "${UP_TO_DATE}" == "true" ]]; then
+            if [[ "${EVENT_NAME}" == "push" && "${HEAD_COMMIT_MSG}" == "Merge "* ]]; then
+              echo "Skip: push event on a merge commit"
+            elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              if [[ "${IS_DRAFT}" == "true" ]]; then
+                echo "Skip: draft pull request"
+              elif [[ "${PR_HEAD_REPO}" != "${REPO}" ]]; then
                 echo "Skip: pull request from a fork"
               else
                 should_run=true
@@ -1058,6 +1152,341 @@ jobs:
             **/*.out
             **/*.err
 
+  # Validate the native Windows ARM64 host and the build-driver defaults before starting the
+  # longer lint/build/test jobs.
+  windows-arm64-build-driver-test:
+    name: "Windows ARM64 Build Driver Test"
+    needs: [ windows-arm64-ci-gate ]
+    if: ${{ !cancelled() &&
+      needs.windows-arm64-ci-gate.outputs.should-run == 'true' }}
+    timeout-minutes: 15
+    runs-on:
+      group: Benchmark
+      labels: [ self-hosted, Windows, ARM64 ]
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: "Verify Native ARM64 Environment"
+        shell: pwsh
+        run: |
+          $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+          $env:PATH = "$machinePath;$userPath"
+          echo "PATH=$env:PATH" >> $env:GITHUB_ENV
+
+          $osArchitecture =
+            [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+          if ($osArchitecture -ne "Arm64") {
+            throw "Expected a native Windows ARM64 runner, found '$osArchitecture'."
+          }
+
+          $python = (Get-Command python -ErrorAction Stop).Source
+          $pythonArchitecture = (& $python -c "import platform; print(platform.machine())").Trim()
+          if ($pythonArchitecture.ToLowerInvariant() -notin @("arm64", "aarch64")) {
+            throw "Expected native ARM64 Python, found '$pythonArchitecture' at '$python'."
+          }
+
+          echo "NANVIX_CI_PYTHON=$python" >> $env:GITHUB_ENV
+          Write-Host "Native Windows ARM64 runner and Python verified."
+
+      - name: "Run Build Driver Tests"
+        shell: pwsh
+        run: |
+          & $env:NANVIX_CI_PYTHON -m unittest tests.test_z
+
+      - name: "Verify Automatic AArch64 Target Selection"
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          import z
+
+          platform_info = z.PlatformInfo.detect(Path.cwd())
+          config = z.BuildConfig(machine="microvm", make_args=["all"])
+          injected, _ = z._assemble_build_make_args(platform_info, config)
+          if "TARGET=aarch64" not in injected:
+              raise SystemExit(f"native Windows ARM64 did not select AArch64: {injected}")
+          print("Native Windows ARM64 selects TARGET=aarch64.")
+          '@ | & $env:NANVIX_CI_PYTHON -
+
+  # Compile and lint the native ARM64 Windows host path on a trusted self-hosted runner.
+  windows-arm64-lint-check:
+    name: "Windows ARM64 Lint Check"
+    needs:
+      [
+        windows-format-check,
+        windows-verify,
+        windows-arm64-ci-gate,
+        windows-arm64-build-driver-test,
+      ]
+    if: ${{ !cancelled() &&
+      needs.windows-arm64-ci-gate.outputs.should-run == 'true' &&
+      needs.windows-arm64-build-driver-test.result == 'success' &&
+      needs.windows-format-check.result == 'success' &&
+      needs.windows-verify.result == 'success' }}
+    timeout-minutes: 60
+    runs-on:
+      group: Benchmark
+      labels: [ self-hosted, Windows, ARM64 ]
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: "Restore Directory Symlinks as Junctions"
+        shell: pwsh
+        run: |
+          git ls-files -s | ForEach-Object {
+            if ($_ -match '^120000\s+\S+\s+\S+\t(.+)$') {
+              $relPath = $Matches[1]
+              $fullPath = Join-Path $PWD $relPath
+              if ((Test-Path $fullPath) -and -not (Test-Path $fullPath -PathType Container)) {
+                $target = (Get-Content $fullPath -Raw).Trim()
+                $parentDir = Split-Path $fullPath
+                $resolved = [System.IO.Path]::GetFullPath((Join-Path $parentDir $target))
+                if (Test-Path $resolved -PathType Container) {
+                  Remove-Item $fullPath -Force
+                  cmd /c mklink /J "$fullPath" "$resolved" | Out-Null
+                }
+              }
+            }
+          }
+
+      - name: "Prepare Native ARM64 Toolchain"
+        shell: pwsh
+        run: |
+          $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+          $env:PATH = "$machinePath;$userPath"
+          echo "PATH=$env:PATH" >> $env:GITHUB_ENV
+
+          $toolchain = (Get-Content rust-toolchain | Select-String '^channel\s*=').ToString() -replace '.*=\s*"([^"]+)".*','$1'
+          rustup toolchain install $toolchain
+          rustup component add --toolchain $toolchain clippy
+
+          $cargoBin = Split-Path -Parent (Get-Command cargo).Source
+          $cargoHome = Split-Path -Parent $cargoBin
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          .\z.ps1 setup
+
+      - name: "Lint Native ARM64"
+        shell: pwsh
+        run: |
+          .\z.ps1 build -- lint-check MACHINE=microvm TARGET=aarch64
+
+  # Build both Windows build modes natively on ARM64 and produce the same integration/POSIX
+  # artifacts as the hosted X64 Windows lane.
+  windows-arm64-ci-build:
+    name: "Windows ARM64 Build (${{ matrix.build-type }}, ${{ matrix.memory-size }}mb)"
+    needs: [ windows-arm64-lint-check, windows-arm64-ci-gate ]
+    if: ${{ !cancelled() &&
+      needs.windows-arm64-ci-gate.outputs.should-run == 'true' &&
+      needs.windows-arm64-lint-check.result == 'success' }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        memory-size: [ 256 ]
+    runs-on:
+      group: Benchmark
+      labels: [ self-hosted, Windows, ARM64 ]
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: "Restore Directory Symlinks as Junctions"
+        shell: pwsh
+        run: |
+          git ls-files -s | ForEach-Object {
+            if ($_ -match '^120000\s+\S+\s+\S+\t(.+)$') {
+              $relPath = $Matches[1]
+              $fullPath = Join-Path $PWD $relPath
+              if ((Test-Path $fullPath) -and -not (Test-Path $fullPath -PathType Container)) {
+                $target = (Get-Content $fullPath -Raw).Trim()
+                $parentDir = Split-Path $fullPath
+                $resolved = [System.IO.Path]::GetFullPath((Join-Path $parentDir $target))
+                if (Test-Path $resolved -PathType Container) {
+                  Remove-Item $fullPath -Force
+                  cmd /c mklink /J "$fullPath" "$resolved" | Out-Null
+                }
+              }
+            }
+          }
+
+      - name: "Prepare Native ARM64 Toolchain"
+        shell: pwsh
+        run: |
+          $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+          $env:PATH = "$machinePath;$userPath"
+          echo "PATH=$env:PATH" >> $env:GITHUB_ENV
+
+          $toolchain = (Get-Content rust-toolchain | Select-String '^channel\s*=').ToString() -replace '.*=\s*"([^"]+)".*','$1'
+          rustup toolchain install $toolchain
+          rustup show
+
+          $cargoBin = Split-Path -Parent (Get-Command cargo).Source
+          $cargoHome = Split-Path -Parent $cargoBin
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          .\z.ps1 setup
+
+      - name: "Build & Unit Test"
+        shell: pwsh
+        env:
+          LOG_LEVEL: ${{ matrix.build-type == 'release' && 'error' || 'trace' }}
+          RELEASE_FLAG: ${{ matrix.build-type == 'release' && 'RELEASE=yes' || '' }}
+        run: |
+          .\z.ps1 build -- all run-unit-tests all-posix-test-images $env:RELEASE_FLAG MACHINE=microvm TARGET=aarch64 LOG_LEVEL=$env:LOG_LEVEL MEMORY_SIZE=${{ matrix.memory-size }}
+
+      - name: "Upload Build Artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-build-aarch64-microvm-${{ matrix.build-type }}-${{
+            matrix.memory-size }}mb
+          retention-days: 1
+          path: bin/
+
+  # Execute the Windows/WHP integration and POSIX matrices natively on ARM64.
+  windows-arm64-integration-test:
+    name: "Windows ARM64 Integration Test (${{ matrix.build-type }}, shard ${{
+      matrix.shard }}/4)"
+    needs: [ windows-arm64-ci-build, windows-arm64-ci-gate ]
+    if: ${{ !cancelled() &&
+      needs.windows-arm64-ci-gate.outputs.should-run == 'true' &&
+      needs.windows-arm64-ci-build.result == 'success' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        build-type: ${{ fromJSON(github.event_name == 'pull_request' && '["debug","release"]' ||
+          github.event_name == 'workflow_dispatch' && '["debug","release"]' ||
+          '["release"]') }}
+        memory-size: [ 256 ]
+        shard: [ 1, 2, 3, 4 ]
+    runs-on:
+      group: Benchmark
+      labels: [ self-hosted, Windows, ARM64 ]
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: "Download Build Artifacts"
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-build-aarch64-microvm-${{ matrix.build-type }}-${{
+            matrix.memory-size }}mb
+          path: bin
+
+      - name: "Exclude bin/ from Windows Defender"
+        shell: pwsh
+        run: |
+          $binDir = Join-Path $env:GITHUB_WORKSPACE "bin"
+          try {
+            Add-MpPreference -ExclusionPath $binDir
+          } catch {
+            Write-Host "::warning::Could not add Defender exclusion: $($_.Exception.Message)"
+          }
+
+      - name: "Check Windows Hypervisor Platform"
+        id: whp-check
+        shell: pwsh
+        run: |
+          $feature = Get-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform
+          if ($feature.State -ne 'Enabled') {
+            Write-Host "::error::Windows Hypervisor Platform is not enabled."
+            echo "whp_available=false" >> $env:GITHUB_OUTPUT
+            exit 1
+          }
+
+          $proc = Start-Process -FilePath ".\bin\nanvixd.exe" `
+            -ArgumentList "-- .\bin\hello-rust-nostd.elf" `
+            -PassThru -NoNewWindow -RedirectStandardOutput "whp-probe-stdout.txt" `
+            -RedirectStandardError "whp-probe-stderr.txt"
+          $proc | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+          if (-not $proc.HasExited) {
+            $proc | Stop-Process -Force
+            Write-Host "::error::WHP probe timed out."
+            echo "whp_available=false" >> $env:GITHUB_OUTPUT
+            exit 1
+          }
+          if ($proc.ExitCode -ne 0) {
+            Get-Content "whp-probe-stderr.txt" -ErrorAction SilentlyContinue | Write-Host
+            Write-Host "::error::WHP probe failed with exit code $($proc.ExitCode)."
+            echo "whp_available=false" >> $env:GITHUB_OUTPUT
+            exit 1
+          }
+          echo "whp_available=true" >> $env:GITHUB_OUTPUT
+
+      - name: "Prepare Native ARM64 Toolchain"
+        if: steps.whp-check.outputs.whp_available == 'true' && matrix.build-type ==
+          'debug' && matrix.shard == 1
+        shell: pwsh
+        run: |
+          $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+          $env:PATH = "$machinePath;$userPath"
+          echo "PATH=$env:PATH" >> $env:GITHUB_ENV
+
+          $toolchain = (Get-Content rust-toolchain | Select-String '^channel\s*=').ToString() -replace '.*=\s*"([^"]+)".*','$1'
+          rustup toolchain install $toolchain
+          $cargoBin = Split-Path -Parent (Get-Command cargo).Source
+          $cargoHome = Split-Path -Parent $cargoBin
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          .\z.ps1 setup
+
+      - name: "In-Kernel Tests"
+        if: steps.whp-check.outputs.whp_available == 'true' && matrix.build-type ==
+          'debug' && matrix.shard == 1
+        shell: pwsh
+        env:
+          RUST_LOG: debug
+        run: |
+          .\z.ps1 build -- run-kernel-tests MACHINE=microvm TARGET=aarch64 LOG_LEVEL=trace
+
+      - name: "Run Integration Tests (shard ${{ matrix.shard }}/4)"
+        if: steps.whp-check.outputs.whp_available == 'true'
+        shell: pwsh
+        env:
+          RUST_LOG: trace
+          BUILD_MODE: ${{ matrix.build-type }}
+        run: |
+          & .\bin\nanvix-test.exe -shard "${{ matrix.shard }}/4" .\test\test-standalone-windows.toml
+
+      - name: "POSIX C Suites (shard ${{ matrix.shard }}/4)"
+        if: steps.whp-check.outputs.whp_available == 'true'
+        shell: pwsh
+        env:
+          RUST_LOG: info
+          BUILD_MODE: ${{ matrix.build-type }}
+        run: |
+          & .\bin\nanvix-test.exe -shard "${{ matrix.shard }}/4" .\test\test-posix-windows.toml
+
+      - name: "Upload logs in case of failures"
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nanvix-windows-arm64-integration-logs-${{
+            github.event.pull_request.number || github.run_number }}-${{
+            matrix.build-type }}-shard${{ matrix.shard }}
+          overwrite: "true"
+          path: |
+            logs/
+            **/*.log
+            **/*.out
+            **/*.err
+
   # ==========================================================================================
   # Stage 3: Benchmark (Self-Hosted Runners)
   # ==========================================================================================
@@ -1194,27 +1623,15 @@ jobs:
   # self-hosted runner is a dedicated machine with a known-functional WHP hypervisor, so the WHP
   # probe and Defender exclusion steps are omitted.
   windows-benchmark:
-    name: "Windows Benchmark (${{ matrix.machine-type }})"
+    name: "Windows Benchmark (${{ matrix.host-arch }}, ${{ matrix.machine-type }})"
     needs: [ benchmark-gate-windows ]
     timeout-minutes: 240
     strategy:
       fail-fast: false
-      matrix:
-        # An explicit top-level axis is required so the matrix expands into a
-        # concrete job. With `include:` alone GitHub Actions occasionally
-        # collapses the matrix to zero combinations and reports the job as
-        # skipped even when its `if:` guard would have passed.
-        machine-type: [ microvm ]
-        include:
-          - machine-type: microvm
-            standard-benchmarks: "boot-time cold-start cold-start-uvm snapshot-restore vfs-bench
-              warm-start-gateway warm-start-vmm warm-start-socket"
-            standard-iterations: "100"
-            payload-size: ""
-            profiler: "PROFILER=yes"
+      matrix: ${{ fromJSON(needs.benchmark-gate-windows.outputs.benchmark-matrix) }}
     runs-on:
       group: Benchmark
-      labels: [ self-hosted, Windows ]
+      labels: [ self-hosted, Windows, "${{ matrix.host-arch }}" ]
     permissions:
       contents: read
 
@@ -1223,12 +1640,10 @@ jobs:
     # the gate reports the benchmark pipeline should not run (e.g. no Windows
     # self-hosted runners are online).
     #
-    # NOTE: !cancelled() is required so the matrix expands when an ancestor
-    # in the needs graph is skipped (e.g. precheck on schedule events).
-    # Without it, GitHub Actions applies the implicit success() guard and
-    # collapses the matrix pre-expansion, marking this job as skipped even
-    # when the gate reports should-run=true.
-    if: ${{ !cancelled() && needs.benchmark-gate-windows.outputs.should-run == 'true' }}
+    # Runner availability is encoded in the gate's generated matrix before job expansion, so no
+    # matrix context is needed in this job-level condition.
+    if: ${{ !cancelled() &&
+      needs.benchmark-gate-windows.outputs.should-run == 'true' }}
 
     steps:
       - uses: actions/checkout@v7
@@ -1321,9 +1736,10 @@ jobs:
         shell: pwsh
         env:
           MACHINE_TYPE: ${{ matrix.machine-type }}
+          TARGET_ARCH: ${{ matrix.host-arch == 'ARM64' && 'aarch64' || 'x86' }}
           PROFILER_FLAG: ${{ matrix.profiler }}
         run: |
-          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE RELEASE=yes LOG_LEVEL=panic $env:PROFILER_FLAG
+          .\z.ps1 build -- all MACHINE=$env:MACHINE_TYPE TARGET=$env:TARGET_ARCH RELEASE=yes LOG_LEVEL=panic $env:PROFILER_FLAG
 
       - name: "Run Micro-Benchmarks"
         shell: pwsh
@@ -1360,7 +1776,8 @@ jobs:
         if: always() && !cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark-windows-baremetal-results-${{ matrix.machine-type }}
+          name: benchmark-windows-baremetal-results-${{ matrix.host-arch }}-${{
+            matrix.machine-type }}
           overwrite: true
           retention-days: 1
           path: nanvix_bench_*.csv
@@ -1371,7 +1788,7 @@ jobs:
         with:
           name: nanvix-benchmark-windows-baremetal-logs-${{
             github.event.pull_request.number || github.run_number }}-${{
-            matrix.machine-type }}
+            matrix.host-arch }}-${{ matrix.machine-type }}
           overwrite: "true"
           path: |
             logs/
@@ -1513,7 +1930,7 @@ jobs:
           benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
             warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
-          archs: "X64"
+          archs: "X64,ARM64"
           dev-dir: "data/windows-baremetal"
           runner-label: "windows-baremetal"
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -1533,7 +1950,7 @@ jobs:
             --target-dir "$(pwd)" \
             --benchmarks "${benchmarks}" \
             --machine-types "microvm" \
-            --archs "X64" \
+            --archs "X64,ARM64" \
             --regression-threshold 40 \
             --baseline-window 20
 
@@ -1544,7 +1961,7 @@ jobs:
           benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
             warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
-          archs: "X64"
+          archs: "X64,ARM64"
           target-dir: "data/windows-baremetal"
 
       - name: "Upload logs in case of finalize failures"
@@ -1639,6 +2056,8 @@ jobs:
       - benchmark-gate-windows
       - benchmark-finalize
       - windows-benchmark-finalize
+      - windows-arm64-ci-gate
+      - windows-arm64-integration-test
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # Benchmark finalize may be skipped when self-hosted runners are offline;
     # release proceeds if the corresponding gate reported the benchmark
@@ -1654,6 +2073,8 @@ jobs:
         needs.benchmark-gate-linux.outputs.should-run != 'true') &&
       (needs.windows-benchmark-finalize.result == 'success' ||
         needs.benchmark-gate-windows.outputs.should-run != 'true') &&
+      (needs.windows-arm64-integration-test.result == 'success' ||
+        needs.windows-arm64-ci-gate.outputs.should-run != 'true') &&
       needs.windows-integration-test.result == 'success'
     timeout-minutes: 60
     strategy:
@@ -1749,6 +2170,11 @@ jobs:
         windows-verify,
         windows-ci-build,
         windows-integration-test,
+        windows-arm64-ci-gate,
+        windows-arm64-build-driver-test,
+        windows-arm64-lint-check,
+        windows-arm64-ci-build,
+        windows-arm64-integration-test,
       ]
     if: |
       always() &&

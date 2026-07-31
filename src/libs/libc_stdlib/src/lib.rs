@@ -64,6 +64,13 @@ macro_rules! warn {
     ($($arg:tt)*) => {{ let _ = ::core::format_args!($($arg)*); }};
 }
 
+/// Converts a C `char` into its byte representation without assuming whether plain `char` is
+/// signed on the target.
+#[inline]
+pub(crate) fn c_char_to_u8(value: ::sysapi::ffi::c_char) -> u8 {
+    value.to_ne_bytes()[0]
+}
+
 //==================================================================================================
 // Modules
 //==================================================================================================
@@ -76,6 +83,7 @@ mod atof;
 mod atoi;
 mod atol;
 mod atoll;
+pub mod binary128;
 mod block_header;
 mod bsearch;
 mod calloc;
@@ -83,6 +91,7 @@ mod clearenv;
 mod div_fn;
 pub mod env_table;
 mod exit;
+mod float_lex;
 mod free;
 mod getenv;
 mod labs;
@@ -221,9 +230,12 @@ pub use setenv::setenv;
 pub use strtod::strtod;
 pub use strtof::strtof;
 pub use strtol::strtol;
-// On the x86_64 guest `strtold` is an assembly symbol (see strtold.rs), not a Rust item, so the
-// Rust-level re-export exists only where the Rust function is compiled.
-#[cfg(not(all(target_arch = "x86_64", not(any(feature = "std", test)))))]
+// On 64-bit guest ABIs where `long double` differs from Rust's `f64`, `strtold` is an assembly
+// symbol (see strtold.rs), not a Rust item.
+#[cfg(not(all(
+    any(target_arch = "x86_64", target_arch = "aarch64"),
+    not(any(feature = "std", test))
+)))]
 pub use strtold::strtold;
 pub use strtoll::strtoll;
 pub use strtoul::strtoul;

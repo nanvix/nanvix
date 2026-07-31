@@ -6,7 +6,7 @@
 //==================================================================================================
 
 use ::alloc::vec::Vec;
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
 use ::elf::elf32::{
     Elf32Dyn,
     DT_JMPREL,
@@ -17,7 +17,7 @@ use ::elf::elf32::{
     DT_RELSZ,
     DT_SYMTAB,
 };
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 use ::elf::elf64::{
     Elf64Dyn,
     DT_JMPREL,
@@ -40,6 +40,8 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+#[cfg(target_arch = "aarch64")]
+use ::sys::mm::VirtualAddress;
 
 //==================================================================================================
 // Public Functions
@@ -90,18 +92,8 @@ use ::sys::error::{
 /// the loaded image are mapped in memory (they always are once the image is
 /// running).
 ///
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
 pub unsafe fn dllink_executable() -> Result<(), Error> {
-    // The relocation logic below is hard-wired to ELF32/i386 (`Elf32Dyn`,
-    // `R_386_*`, 32-bit in-place addends). The x86-64 (ELF64/RELA) self-linker is
-    // a separate `#[cfg(target_arch = "x86_64")]` implementation below. On any
-    // other target the `.dynamic` array has a different layout, so parsing it as
-    // `Elf32Dyn` would mis-read memory and corrupt GOT/PLT slots; this is a safe
-    // no-op there.
-    if !cfg!(target_arch = "x86") {
-        return Ok(());
-    }
-
     // Locate the dynamic array via the `__dynamic_start`/`__dynamic_end`
     // linker-script symbols. A statically linked image (no dynamic section) has
     // an empty range and there is nothing to bind.
@@ -257,7 +249,7 @@ pub unsafe fn dlfini_executable() {
 /// The `__dynamic_*` boundary symbols must delimit a valid, in-memory
 /// `.dynamic` section of the loaded executable image.
 ///
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
 unsafe fn dynamic_section() -> Option<&'static [Elf32Dyn]> {
     extern "C" {
         static __dynamic_start: u8;
@@ -338,7 +330,7 @@ unsafe fn exe_dynsym_dynstr() -> Option<(usize, SymbolTable, StringTable)> {
 /// bytes whose targets are writable, and `dynsym` / `dynstr` must describe the
 /// executable's dynamic symbol/string tables.
 ///
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
 unsafe fn resolve_table(
     rel_vaddr: u32,
     rel_size: u32,
@@ -395,7 +387,7 @@ unsafe fn resolve_table(
 /// `rel` must reference a valid symbol index into `dynsym`, and its target
 /// (`rel.offset() + delta`) must be writable.
 ///
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
 unsafe fn apply_symbol_relocation(
     rel: &RelocationEntry,
     typ: &RelocationType,
@@ -487,7 +479,7 @@ unsafe fn apply_symbol_relocation(
 /// Same contract as [`dllink_executable`]: must run once, on the main thread, after the heap is up
 /// and before any application code executes.
 ///
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub unsafe fn dllink_executable() -> Result<(), Error> {
     // Locate the dynamic array via the `__dynamic_start`/`__dynamic_end` linker-script symbols. A
     // statically linked image (no dynamic section) has an empty range and there is nothing to bind.
@@ -581,7 +573,7 @@ pub unsafe fn dllink_executable() -> Result<(), Error> {
 /// # Safety
 ///
 /// The `__dynamic_*` boundary symbols must delimit a valid, in-memory `.dynamic` section.
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 unsafe fn dynamic_section() -> Option<&'static [Elf64Dyn]> {
     extern "C" {
         static __dynamic_start: u8;
@@ -610,14 +602,14 @@ unsafe fn dynamic_section() -> Option<&'static [Elf64Dyn]> {
     Some(core::slice::from_raw_parts(base, len))
 }
 
-/// x86-64 counterpart of [`resolve_table`]: resolves all symbol-based relocations in a single RELA
+/// ELF64 counterpart of [`resolve_table`]: resolves all symbol-based relocations in a single RELA
 /// relocation table, returning the number that could not be resolved.
 ///
 /// # Safety
 ///
 /// `rel_vaddr + delta` must point to a valid RELA relocation table of `rel_size` bytes whose
 /// targets are writable, and `dynsym` / `dynstr` must describe the executable's dynamic tables.
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 unsafe fn resolve_table(
     rel_vaddr: u64,
     rel_size: u64,
@@ -641,8 +633,12 @@ unsafe fn resolve_table(
         match typ {
             // Already applied by `nvx::pie::relocate_pie_binary` (a no-op when the load delta is
             // zero); nothing to bind here.
+            #[cfg(target_arch = "x86_64")]
             RelocationType::R_X86_64_RELATIVE | RelocationType::R_X86_64_NONE => {},
+            #[cfg(target_arch = "aarch64")]
+            RelocationType::R_AARCH64_RELATIVE | RelocationType::R_AARCH64_NONE => {},
 
+            #[cfg(target_arch = "x86_64")]
             RelocationType::R_X86_64_GLOB_DAT
             | RelocationType::R_X86_64_JUMP_SLOT
             | RelocationType::R_X86_64_64
@@ -651,7 +647,17 @@ unsafe fn resolve_table(
                     unresolved += 1;
                 }
             },
+            #[cfg(target_arch = "aarch64")]
+            RelocationType::R_AARCH64_GLOB_DAT
+            | RelocationType::R_AARCH64_JUMP_SLOT
+            | RelocationType::R_AARCH64_ABS64
+            | RelocationType::R_AARCH64_PREL64 => {
+                if !apply_symbol_relocation(rel, &typ, delta, dynsym, dynstr) {
+                    unresolved += 1;
+                }
+            },
 
+            #[cfg(target_arch = "x86_64")]
             other => {
                 ::syslog::warn!("dllink_executable(): unsupported relocation type {:?}", other);
             },
@@ -661,8 +667,8 @@ unsafe fn resolve_table(
     unresolved
 }
 
-/// x86-64 counterpart of [`apply_symbol_relocation`]: resolves a single symbol-based RELA
-/// relocation, writing the resolved value (using the entry's explicit addend) into the target.
+/// ELF64 counterpart of [`apply_symbol_relocation`]: resolves a single symbol-based RELA relocation,
+/// writing the resolved value (using the entry's explicit addend) into the target.
 /// Returns `false` if the referenced symbol could not be resolved and is not a weak undefined
 /// symbol.
 ///
@@ -670,7 +676,7 @@ unsafe fn resolve_table(
 ///
 /// `rel` must reference a valid symbol index into `dynsym`, and its target (`rel.offset() + delta`)
 /// must be writable.
-#[cfg(target_arch = "x86_64")]
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 unsafe fn apply_symbol_relocation(
     rel: &RelocationEntry,
     typ: &RelocationType,
@@ -719,6 +725,7 @@ unsafe fn apply_symbol_relocation(
     match typ {
         // GOT/PLT slots take the symbol value (`S + A`, with the addend zero for these types),
         // written as a 64-bit word.
+        #[cfg(target_arch = "x86_64")]
         RelocationType::R_X86_64_JUMP_SLOT
         | RelocationType::R_X86_64_GLOB_DAT
         | RelocationType::R_X86_64_64 => {
@@ -726,13 +733,38 @@ unsafe fn apply_symbol_relocation(
             target.write_unaligned(value.wrapping_add_signed(addend));
         },
         // S + A - P, with wrapping 64-bit ELF arithmetic truncated to the low 32 bits.
+        #[cfg(target_arch = "x86_64")]
         RelocationType::R_X86_64_PC32 => {
             let target: *mut u32 = place as *mut u32;
             let result: u64 = value.wrapping_add_signed(addend).wrapping_sub(place);
             target.write_unaligned(result as u32);
         },
-        // Unreachable: callers only dispatch the four types handled above.
+        #[cfg(target_arch = "aarch64")]
+        RelocationType::R_AARCH64_JUMP_SLOT
+        | RelocationType::R_AARCH64_GLOB_DAT
+        | RelocationType::R_AARCH64_ABS64 => {
+            let target: *mut u64 = place as *mut u64;
+            target.write_unaligned(value.wrapping_add_signed(addend));
+        },
+        #[cfg(target_arch = "aarch64")]
+        RelocationType::R_AARCH64_PREL64 => {
+            let target: *mut u64 = place as *mut u64;
+            let result: u64 = value.wrapping_add_signed(addend).wrapping_sub(place);
+            target.write_unaligned(result);
+        },
         _ => return false,
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    if let Err(error) = ::sys::kcall::mm::__kcall_sync_instruction_cache(
+        VirtualAddress::new(place as usize),
+        core::mem::size_of::<u64>(),
+    ) {
+        ::syslog::warn!(
+            "dllink_executable(): failed to synchronize instruction cache (place={place:#x}, \
+             error={error:?})"
+        );
+        return false;
     }
 
     true

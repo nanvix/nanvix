@@ -17,7 +17,7 @@ mod bits {
     // Equivalent to C's signed char type.
     pub type c_schar = i8;
     // Equivalent to C's char type.
-    pub type c_char = i8;
+    pub type c_char = core::ffi::c_char;
     // Equivalent to C's short type.
     pub type c_short = i16;
     // Equivalent to C's signed int type.
@@ -46,7 +46,7 @@ mod bits {
     // Equivalent to C's signed char type.
     pub type c_schar = i8;
     // Equivalent to C's char type.
-    pub type c_char = i8;
+    pub type c_char = core::ffi::c_char;
     // Equivalent to C's short type.
     pub type c_short = i16;
     // Equivalent to C's signed int type.

@@ -251,6 +251,8 @@ impl ContextInformation {
     ///
     /// - `entry`: Address of the user-space signal handler.
     /// - `frame_top`: Stack pointer the handler is entered with (top of the signal frame).
+    /// - `_restorer`: Address of the signal restorer. Unused on x86_64, where the return address is
+    ///   stored in the signal frame.
     /// - `signum`: The signal number delivered to the handler.
     /// - `info_ptr`: User address of the embedded `siginfo` image (`SA_SIGINFO`), or `0`.
     /// - `ctx_ptr`: User address of the embedded context image (`SA_SIGINFO`), or `0`.
@@ -259,6 +261,7 @@ impl ContextInformation {
         &mut self,
         entry: usize,
         frame_top: usize,
+        _restorer: usize,
         signum: usize,
         info_ptr: usize,
         ctx_ptr: usize,

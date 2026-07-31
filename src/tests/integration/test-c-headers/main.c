@@ -8,6 +8,8 @@
 //==================================================================================================
 
 #include <assert.h>
+#include <errno.h>
+#include <float.h>
 #include <regex.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -38,6 +40,46 @@ static void test_restrict_conversions(void)
     end = NULL;
     assert(strtold("0.5!", &end) == (long double)0.5);
     assert(*end == '!');
+
+#if defined(__aarch64__) && __LDBL_MANT_DIG__ == 113
+    /*
+     * Exact 0.5 has a zero low word and a nonzero high word, while its next representable
+     * binary128 neighbor has a nonzero word in each Q0 lane. Together they catch an AAPCS64
+     * return shim that writes the high word into D1/Q1 rather than Q0's upper lane. The remaining
+     * checks fail if strtold first rounds to f64; the hexadecimal pair also verifies
+     * round-to-nearest-even at the binary128 midpoint.
+     */
+    assert(strtold("0.5", NULL) == 0x1p-1L);
+    assert(
+        strtold("0x1.0000000000000000000000000001p-1", NULL)
+        == 0x1.0000000000000000000000000001p-1L
+    );
+
+    end = NULL;
+    assert(
+        strtold("1.0000000000000000000000000000000002tail", &end)
+        == 0x1.0000000000000000000000000001p0L
+    );
+    assert(*end == 't');
+
+    assert(strtold("0x1.00000000000000000000000000008p0", NULL) == 1.0L);
+    assert(
+        strtold("0x1.000000000000000000000000000081p0", NULL)
+        == 0x1.0000000000000000000000000001p0L
+    );
+
+    errno = 0;
+    assert(strtold("1e4932", NULL) < LDBL_MAX);
+    assert(errno == 0);
+
+    errno = 0;
+    assert(strtold("1e4933", NULL) == __builtin_huge_vall());
+    assert(errno == ERANGE);
+
+    errno = 0;
+    assert(strtold("1e-4932", NULL) > 0.0L);
+    assert(errno == ERANGE);
+#endif
 
     end = NULL;
     assert(strtol("  -42stop", &end, 10) == -42L);

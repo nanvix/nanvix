@@ -5,19 +5,22 @@
 // Imports
 //==================================================================================================
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::hal::arch::x86::mem::gdt::Gdt;
 use crate::{
-    hal::arch::x86::mem::gdt::Gdt,
     kcall::KcallResult,
     mm::Vmem,
     pm::ProcessManager,
 };
-use ::sys::pm::{
-    ProcessIdentifier,
-    ThreadIdentifier,
-};
-use sys::{
+#[cfg(target_arch = "aarch64")]
+use ::sys::mm::Address;
+use ::sys::{
     error::ErrorCode,
     mm::VirtualAddress,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -86,14 +89,29 @@ pub fn set_thread_data_area(
             //
             // SAFETY: We are in the kcall dispatcher, running in privileged
             // mode with interrupts disabled. Modifying the GDT is safe here.
-            if let Some(tda_addr) = user_tda {
-                unsafe {
-                    Gdt::set_thread_data_area(tda_addr.into());
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            {
+                if let Some(tda_addr) = user_tda {
+                    unsafe {
+                        Gdt::set_thread_data_area(tda_addr.into());
+                    }
+                } else {
+                    // Clear %gs/%fs so they do not reference a stale TDA.
+                    unsafe {
+                        Gdt::clear_thread_data_area_segments();
+                    }
                 }
-            } else {
-                // Clear %gs/%fs so they do not reference a stale TDA.
+            }
+
+            #[cfg(target_arch = "aarch64")]
+            {
+                let tpidr_el0: usize = user_tda.map_or(0, |address| address.into_raw_value());
                 unsafe {
-                    Gdt::clear_thread_data_area_segments();
+                    core::arch::asm!(
+                        "msr tpidr_el0, {value}",
+                        value = in(reg) tpidr_el0,
+                        options(nostack, preserves_flags),
+                    );
                 }
             }
 

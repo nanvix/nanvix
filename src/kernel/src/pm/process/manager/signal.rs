@@ -57,7 +57,6 @@ use crate::{
                 SigFrame,
                 SignalCpuContext,
                 FPU_AREA_SIZE,
-                RETADDR_SIZE,
             },
             signal::{
                 SignalDisposition,
@@ -116,6 +115,8 @@ pub enum SyncSignalOutcome {
         entry: usize,
         /// Stack pointer the handler is entered with (top of the signal frame).
         frame_top: usize,
+        /// Address of the registered user-space signal-return trampoline.
+        restorer: usize,
         /// User address of the embedded `siginfo` image for an `SA_SIGINFO` handler (the handler's
         /// second argument), or `0` when the handler is not `SA_SIGINFO`. Consumed by the caller to
         /// populate the handler's argument register on register-argument ABIs (x86-64); ignored on
@@ -321,7 +322,7 @@ impl ProcessManager {
         // handler's first argument register and, for `SA_SIGINFO` handlers, `info_ptr`/`ctx_ptr` in
         // the second and third (register-argument ABIs); on stack-argument ABIs they were already
         // written to the frame and these values are ignored.
-        unsafe { redirect_to_handler(esp0, entry, frame_top, signum, info_ptr, ctx_ptr) };
+        unsafe { redirect_to_handler(esp0, entry, frame_top, restorer, signum, info_ptr, ctx_ptr) };
 
         SignalDeliveryOutcome::Delivered
     }
@@ -446,6 +447,7 @@ impl ProcessManager {
         SyncSignalOutcome::Delivered {
             entry,
             frame_top,
+            restorer,
             info_ptr,
             ctx_ptr,
         }
@@ -496,8 +498,8 @@ impl ProcessManager {
     ) -> Option<(usize, usize, usize)> {
         let user_sp: usize = cpu.sp as usize;
         let layout: FrameLayout = frame_layout(user_sp)?;
-        let frame_size: usize =
-            RETADDR_SIZE + save_area_offset_from_sigreturn_sp() + core::mem::size_of::<SigFrame>();
+        let frame_prefix_size: usize = layout.save_area_base - layout.frame_top;
+        let frame_size: usize = frame_prefix_size + core::mem::size_of::<SigFrame>();
         // The target stack address derives from user-controlled state, so confirm the whole frame
         // region is mapped and writable before writing it. An unmapped or read-only page escalates
         // to the signal's default action instead of faulting the kernel's physical-alias write path
@@ -542,7 +544,7 @@ impl ProcessManager {
             (0, 0)
         };
         let args: [usize; 4] = [restorer, signum, info_ptr, ctx_ptr];
-        let args_bytes: usize = RETADDR_SIZE + save_area_offset_from_sigreturn_sp();
+        let args_bytes: usize = frame_prefix_size;
         if self
             .vmcopy_to_user(
                 pid,
@@ -574,7 +576,7 @@ impl ProcessManager {
         // never have been built; treat `sigreturn()` there as an unsupported kernel call instead of
         // running the placeholder restore path and terminating the process as if the frame were
         // forged.
-        if !cfg!(any(target_arch = "x86", target_arch = "x86_64")) {
+        if !cfg!(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")) {
             return Err(SigReturnFailure::Unsupported);
         }
 

@@ -73,9 +73,10 @@ pub unsafe extern "C" fn fopen(pathname: *const c_char, mode: *const c_char) -> 
     }
 
     // Parse the mode string.
-    let first: u8 = *mode as u8;
-    let second: u8 = *mode.add(1) as u8;
-    let has_plus: bool = second == b'+' || (second != 0 && *mode.add(2) as u8 == b'+');
+    let first: u8 = crate::c_char_to_u8(*mode);
+    let second: u8 = crate::c_char_to_u8(*mode.add(1));
+    let has_plus: bool =
+        second == b'+' || (second != 0 && crate::c_char_to_u8(*mode.add(2)) == b'+');
 
     let flags: c_int = match (first, has_plus) {
         (b'r', false) => O_RDONLY,

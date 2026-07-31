@@ -54,8 +54,8 @@ pub unsafe extern "C" fn strcasecmp(s1: *const c_char, s2: *const c_char) -> c_i
     let mut a: *const c_char = s1;
     let mut b: *const c_char = s2;
     loop {
-        let ca: u8 = to_lower(*a as u8);
-        let cb: u8 = to_lower(*b as u8);
+        let ca: u8 = to_lower((*a).to_ne_bytes()[0]);
+        let cb: u8 = to_lower((*b).to_ne_bytes()[0]);
         if ca != cb {
             return c_int::from(ca) - c_int::from(cb);
         }

@@ -41,6 +41,7 @@ rustc-dep-of-std = [
 
 # Machine Types
 microvm = [
+    "config/microvm",
     "putb",
     "stdio",
     "acpi",

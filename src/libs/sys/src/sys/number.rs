@@ -127,6 +127,8 @@ pub enum KcallNumber {
     Sigsuspend = KcallNumber::NR_SIGSUSPEND_SYSCALL,
     /// Registers the calling process's user-space signal-return trampoline (restorer).
     SigRestorer = KcallNumber::NR_SIG_RESTORER_SYSCALL,
+    /// Makes modified memory visible to subsequent instruction fetches.
+    SyncInstructionCache = KcallNumber::NR_SYNC_INSTRUCTION_CACHE_SYSCALL,
     /// Invalid kernel call.
     Invalid = KcallNumber::NR_INVALID_SYSCALL,
 }
@@ -180,6 +182,7 @@ impl KcallNumber {
     const NR_SIGRETURN_SYSCALL: u32 = 44;
     const NR_SIGPENDING_SYSCALL: u32 = 45;
     const NR_SIGSUSPEND_SYSCALL: u32 = 46;
+    const NR_SYNC_INSTRUCTION_CACHE_SYSCALL: u32 = 47;
     const NR_INVALID_SYSCALL: u32 = u32::MAX;
 }
 
@@ -234,6 +237,7 @@ impl From<u32> for KcallNumber {
             Self::NR_SIGRETURN_SYSCALL => KcallNumber::Sigreturn,
             Self::NR_SIGPENDING_SYSCALL => KcallNumber::Sigpending,
             Self::NR_SIGSUSPEND_SYSCALL => KcallNumber::Sigsuspend,
+            Self::NR_SYNC_INSTRUCTION_CACHE_SYSCALL => KcallNumber::SyncInstructionCache,
             _ => KcallNumber::Invalid,
         }
     }
@@ -290,6 +294,7 @@ impl From<KcallNumber> for u32 {
             KcallNumber::Sigreturn => KcallNumber::NR_SIGRETURN_SYSCALL,
             KcallNumber::Sigpending => KcallNumber::NR_SIGPENDING_SYSCALL,
             KcallNumber::Sigsuspend => KcallNumber::NR_SIGSUSPEND_SYSCALL,
+            KcallNumber::SyncInstructionCache => KcallNumber::NR_SYNC_INSTRUCTION_CACHE_SYSCALL,
             KcallNumber::Invalid => KcallNumber::NR_INVALID_SYSCALL,
         }
     }
@@ -326,5 +331,11 @@ mod tests {
             assert_eq!(u32::from(kcall), number);
             assert_eq!(KcallNumber::from(number), kcall);
         }
+    }
+
+    #[test]
+    fn test_instruction_cache_kcall_number_round_trip() {
+        assert_eq!(u32::from(KcallNumber::SyncInstructionCache), 47);
+        assert_eq!(KcallNumber::from(47), KcallNumber::SyncInstructionCache);
     }
 }

@@ -24,13 +24,13 @@ use ::sysapi::{
 
 /// Returns `true` if the given character is an ASCII whitespace character.
 fn is_whitespace(c: c_char) -> bool {
-    let b = c as u8;
+    let b: u8 = crate::c_char_to_u8(c);
     b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == 0x0b || b == 0x0c
 }
 
 /// Returns the numeric value of a digit character for the given base, or `None` if invalid.
 fn digit_value(c: c_char, base: c_int) -> Option<u8> {
-    let b = c as u8;
+    let b: u8 = crate::c_char_to_u8(c);
     let val = match b {
         b'0'..=b'9' => b - b'0',
         b'a'..=b'z' => b - b'a' + 10,
@@ -104,8 +104,8 @@ pub unsafe extern "C" fn strtol(
     }
 
     // Handle optional sign.
-    let negative = *p as u8 == b'-';
-    if *p as u8 == b'+' || *p as u8 == b'-' {
+    let negative: bool = crate::c_char_to_u8(*p) == b'-';
+    if crate::c_char_to_u8(*p) == b'+' || crate::c_char_to_u8(*p) == b'-' {
         p = p.add(1);
     }
 
@@ -177,9 +177,9 @@ pub unsafe extern "C" fn strtol(
 unsafe fn detect_base(p: &mut *const c_char, base: c_int) -> c_int {
     let mut actual_base = base;
 
-    if **p as u8 == b'0' {
-        let next = *p.add(1);
-        if (next as u8 == b'x' || next as u8 == b'X') && (actual_base == 0 || actual_base == 16) {
+    if crate::c_char_to_u8(**p) == b'0' {
+        let next: u8 = crate::c_char_to_u8(*p.add(1));
+        if (next == b'x' || next == b'X') && (actual_base == 0 || actual_base == 16) {
             // Only consume the "0x" prefix if a valid hex digit follows.
             if digit_value(*p.add(2), 16).is_some() {
                 actual_base = 16;
@@ -290,7 +290,7 @@ mod tests {
         let result = unsafe { strtol(s.as_ptr().cast::<c_char>(), &mut end, 10) };
         assert_eq!(result, 123);
         assert!(!end.is_null());
-        assert_eq!(unsafe { *end } as u8, b'a');
+        assert_eq!(crate::c_char_to_u8(unsafe { *end }), b'a');
     }
 
     #[test]

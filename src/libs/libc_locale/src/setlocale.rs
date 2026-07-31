@@ -79,7 +79,7 @@ unsafe fn c_str_eq(s: *const c_char, expected: &[u8]) -> bool {
     for (i, &byte) in expected.iter().enumerate() {
         let current: c_char = *s.add(i);
         // A NUL here means the C string is shorter than `expected`, so stop before reading past it.
-        if current == 0 || current != byte.cast_signed() {
+        if current == 0 || current.to_ne_bytes()[0] != byte {
             return false;
         }
     }

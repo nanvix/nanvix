@@ -5,6 +5,41 @@
 // Standalone Functions
 //==================================================================================================
 
+// Guest helper called by the architecture trampolines before saving the register context. Calling
+// through sigprocmask keeps signal-mask policy in the existing libc implementation.
+#[cfg(not(any(feature = "std", test)))]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __nanvix_sigsetjmp_save_mask(
+    env: *mut crate::sigjmp_buf::sigjmp_buf,
+    savemask: ::sysapi::ffi::c_int,
+) {
+    use ::sysapi::{
+        ffi::c_int,
+        signal::{
+            sigset_t,
+            SIG_SETMASK,
+        },
+    };
+
+    extern "C" {
+        fn sigprocmask(how: c_int, set: *const sigset_t, oldset: *mut sigset_t) -> c_int;
+    }
+
+    unsafe {
+        (*env).savemask = 0;
+    }
+
+    if savemask != 0 {
+        let result: c_int =
+            unsafe { sigprocmask(SIG_SETMASK, ::core::ptr::null(), &raw mut (*env).sigmask) };
+        if result == 0 {
+            unsafe {
+                (*env).savemask = savemask;
+            }
+        }
+    }
+}
+
 ///
 /// # Description
 ///
@@ -40,38 +75,52 @@ pub unsafe extern "C" fn sigsetjmp(
     0
 }
 
-// Guest (no_std) build: the real implementation is x86-32 assembly. POSIX defines sigsetjmp to be
-// equivalent to setjmp (except for the signal mask), so it records the savemask flag and then
-// tail-calls setjmp to capture the register context. Reusing setjmp guarantees the two cannot
-// diverge. The guest does not yet maintain a signal mask (pthread_sigmask is a no-op), so there is
-// nothing to save when savemask is nonzero; the flag is recorded so the behavior becomes correct
-// automatically once a signal mask is implemented.
+// Guest (no_std) build: save the requested signal mask through the libc API, restore the original
+// stack shape, and tail-call setjmp. The helper follows cdecl and preserves the caller's
+// callee-saved registers, so setjmp still captures the original execution context.
 #[cfg(all(target_arch = "x86", not(any(feature = "std", test))))]
 core::arch::global_asm!(
     ".global sigsetjmp",
     ".type sigsetjmp, @function",
     "sigsetjmp:",
-    "    mov 4(%esp), %eax",  // eax = pointer to sigjmp_buf
-    "    mov 8(%esp), %ecx",  // ecx = savemask
-    "    mov %ecx, 24(%eax)", // save savemask flag
-    "    jmp setjmp",         // tail-call setjmp: saves the register context and returns 0
+    "    mov 4(%esp), %eax",
+    "    mov 8(%esp), %ecx",
+    "    sub $4, %esp",
+    "    push %ecx",
+    "    push %eax",
+    "    call __nanvix_sigsetjmp_save_mask",
+    "    add $12, %esp",
+    "    jmp setjmp",
     options(att_syntax),
 );
 
-// Guest (no_std) build: the real implementation is x86-64 assembly. Per the System V AMD64 ABI the
-// sigjmp_buf pointer arrives in RDI and the savemask flag in ESI; the flag is stored just past the
-// eight register slots (offset 64) and execution tail-calls setjmp to capture the register context.
-// Reusing setjmp guarantees the two cannot diverge. The guest does not yet maintain a signal mask
-// (pthread_sigmask is a no-op), so there is nothing to save when savemask is nonzero; the flag is
-// recorded so the behavior becomes correct automatically once a signal mask is implemented.
+// Guest (no_std) build: save RDI across the helper call, then restore the entry stack pointer and
+// tail-call setjmp so it captures the caller's context rather than this trampoline's context.
 #[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
 core::arch::global_asm!(
     ".global sigsetjmp",
     ".type sigsetjmp, @function",
     "sigsetjmp:",
-    "    mov %esi, 64(%rdi)", // save savemask flag (just past the eight 64-bit register slots)
-    "    jmp setjmp",         // tail-call setjmp: saves the register context and returns 0
+    "    sub $8, %rsp",
+    "    mov %rdi, (%rsp)",
+    "    call __nanvix_sigsetjmp_save_mask",
+    "    mov (%rsp), %rdi",
+    "    add $8, %rsp",
+    "    jmp setjmp",
     options(att_syntax),
+);
+
+// Guest (no_std) build: preserve the caller's link register and environment pointer across the
+// helper call, then tail-call setjmp with the original stack and link register.
+#[cfg(all(target_arch = "aarch64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global sigsetjmp",
+    ".type sigsetjmp, @function",
+    "sigsetjmp:",
+    "    stp x0, x30, [sp, #-16]!",
+    "    bl __nanvix_sigsetjmp_save_mask",
+    "    ldp x0, x30, [sp], #16",
+    "    b setjmp",
 );
 
 //==================================================================================================
@@ -92,6 +141,7 @@ mod test {
         let mut buf: sigjmp_buf = sigjmp_buf {
             regs: [0; crate::jmp_buf::JMP_BUF_REGS],
             savemask: 0,
+            sigmask: 0,
         };
         let result: c_int = unsafe { sigsetjmp(&mut buf, 1) };
         assert_eq!(result, 0);

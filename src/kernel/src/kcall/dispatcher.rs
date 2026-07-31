@@ -125,6 +125,13 @@ pub extern "C" fn do_kcall(number: u32, arg0: u32, arg1: u32, arg2: u32, arg3: u
         KcallNumber::MemoryCtrl => pm::mctrl(pid, arg0, arg1, arg2),
         // Handle `mcopy()` locally.
         KcallNumber::MemoryCopy => pm::mcopy(pid, arg0, arg1, arg2, arg3),
+        // Handle instruction-cache synchronization locally on architectures that require it.
+        #[cfg(target_arch = "aarch64")]
+        KcallNumber::SyncInstructionCache => pm::sync_instruction_cache(pid, arg0, arg1),
+        #[cfg(not(target_arch = "aarch64"))]
+        KcallNumber::SyncInstructionCache => {
+            KcallResult::Error(ErrorCode::OperationNotSupported.into())
+        },
         // Handle `create_thread()` locally.
         KcallNumber::CreateThread => pm::create_thread(pid, arg0),
         // Handle `detach_thread()` locally.

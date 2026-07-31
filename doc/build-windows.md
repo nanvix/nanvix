@@ -8,6 +8,9 @@ This document guides you through building Nanvix on Windows. On Windows, the `z.
 script provides the same interface as the Linux `z` utility. Host-side components are built natively,
 while guest components are cross-compiled using a local toolchain.
 
+On Windows ARM64, `z.ps1` selects the AArch64 guest target automatically. WHP does not translate
+guest instruction sets, so runnable guest binaries must match the native host architecture.
+
 ## Table of Contents
 
 - [Building Nanvix with `z.ps1`](#building-nanvix-with-zps1)
@@ -42,6 +45,12 @@ To build Nanvix using with default build parameters, run:
 .\z.ps1 build -- all
 ```
 
+On ARM64 this is equivalent to:
+
+```powershell
+.\z.ps1 build -- all TARGET=aarch64
+```
+
 ## Building Individual Components
 
 ```powershell
@@ -74,6 +83,9 @@ Pass build parameters after `--`:
 
 # Combine multiple parameters.
 .\z.ps1 build -- all RELEASE=yes LOG_LEVEL=error
+
+# Build native Windows ARM64 host binaries and AArch64 guests explicitly.
+.\z.ps1 build -- all TARGET=aarch64
 ```
 
 Available build parameters:
@@ -84,8 +96,12 @@ Available build parameters:
 | `MACHINE`        | `microvm` | `microvm`                                          |
 | `MESSAGE_FORMAT` | (none)    | `json`, `json-diagnostic-rendered-ansi`            |
 | `RELEASE`        | `no`      | `yes`, `no`                                        |
-| `TARGET`         | `x86`     | `x86`                                              |
+| `TARGET`         | Host-specific | `aarch64`, `x86`, `x86_64`                     |
 | `TIMEOUT`        | `600`     | Execution timeout in seconds                       |
+
+`TARGET` defaults to `aarch64` on native Windows ARM64 and `x86` on Windows X64. Cross-building
+another guest target is supported, but a WHP guest can only run when its architecture matches the
+host.
 
 ## Code Quality Checks
 
@@ -117,6 +133,9 @@ Available build parameters:
 
 # Run the ported POSIX C test suites on Windows (requires LLVM/Clang; see setup-windows.md).
 .\z.ps1 build -- run-posix-tests
+
+# Run the complete native ARM64 build and test targets explicitly.
+.\z.ps1 build -- all run-unit-tests run-nanvix-tests run-posix-tests TARGET=aarch64
 ```
 
 ## Formal Verification with Verus

@@ -587,7 +587,7 @@ help:
 	@echo ""
 	@echo "Parameter Values"
 	@echo "  MACHINE         microvm"
-	@echo "  TARGET          x86, x86_64"
+	@echo "  TARGET          aarch64, x86, x86_64"
 	@echo "  RELEASE         yes, no"
 	@echo "  LOG_LEVEL       trace, debug, info, warn, error, panic"
 	@echo "  PROFILER        yes, no"

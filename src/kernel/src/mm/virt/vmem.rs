@@ -9,7 +9,7 @@
 //==================================================================================================
 use crate::{
     hal::{
-        arch::x86::mem::mmu::{
+        arch::native::mem::mmu::{
             self,
             page_directory::PageDirectory,
             page_table::PageTable,
@@ -96,13 +96,13 @@ pub struct Vmem {
     kernel_pages: LinkedList<Rc<RefCell<KernelPage>>>,
     /// List of user page tables.
     user_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
-    /// Physical address of the per-process hardware 4-level page table (PML4) on x86_64.
+    /// Physical address of the hardware translation-table root on 64-bit targets.
     ///
     /// x86_64 hardware uses 4-level paging, but the `pgdir` above is a 2-level (32-bit-style)
     /// structure used for the kernel's logical bookkeeping. On x86_64 the value actually loaded
     /// into `CR3` is this hardware PML4, into which user mappings are mirrored. A value of `0`
     /// denotes the kernel address space (which runs on the VMM-provided boot PML4).
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     hw_pml4: u64,
 }
 
@@ -142,29 +142,36 @@ impl Vmem {
         // Register the kernel page directory for lazy identity mapping and set CR3.
         {
             use crate::hal::mem::PageDirectoryAddress;
-            use ::arch::cpu::cr3::{
-                Cr3Register,
-                PageDirectoryBaseAddress as Cr3PageDirectoryBaseAddress,
-                PageLevelCacheDisableFlag,
-                PageLevelWriteThroughFlag,
-            };
             let pd_paddr_raw: usize = pgdir.physical_address()?.into_raw_value();
             let pd_paddr: PageDirectoryAddress =
                 PageDirectoryAddress::from_raw_value(pd_paddr_raw)?;
-            let kernel_cr3: Cr3Register = Cr3Register {
-                page_level_write_through: PageLevelWriteThroughFlag::Disabled,
-                page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
-                paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(
-                    pd_paddr_raw as u32,
-                )
-                .ok_or_else(|| {
-                    Error::new(
-                        ErrorCode::BadAddress,
-                        "kernel page directory address is not 4 KB aligned",
+
+            #[cfg(target_arch = "x86")]
+            {
+                use ::arch::cpu::cr3::{
+                    Cr3Register,
+                    PageDirectoryBaseAddress as Cr3PageDirectoryBaseAddress,
+                    PageLevelCacheDisableFlag,
+                    PageLevelWriteThroughFlag,
+                };
+                let kernel_cr3: Cr3Register = Cr3Register {
+                    page_level_write_through: PageLevelWriteThroughFlag::Disabled,
+                    page_level_cache_disable: PageLevelCacheDisableFlag::Enabled,
+                    paging_structure_base_address: Cr3PageDirectoryBaseAddress::new(
+                        pd_paddr_raw as u32,
                     )
-                })?,
-            };
-            super::identity_map_init(pd_paddr, kernel_cr3)?;
+                    .ok_or_else(|| {
+                        Error::new(
+                            ErrorCode::BadAddress,
+                            "kernel page directory address is not 4 KB aligned",
+                        )
+                    })?,
+                };
+                super::identity_map_init(pd_paddr, kernel_cr3)?;
+            }
+
+            #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+            super::identity_map_init(pd_paddr, 0)?;
         }
 
         // Store root pages.
@@ -178,9 +185,10 @@ impl Vmem {
             kernel_page_tables: kpage_tables,
             kernel_pages: kpages,
             user_page_tables: LinkedList::new(),
-            // The kernel address space runs on the VMM-provided boot PML4 (see `hw_pml4`).
             #[cfg(target_arch = "x86_64")]
             hw_pml4: 0,
+            #[cfg(target_arch = "aarch64")]
+            hw_pml4: unsafe { crate::hal::arch::native::mem::mmu::hwpt::kernel_root() },
         })
     }
 
@@ -219,22 +227,29 @@ impl Vmem {
         // On x86_64, allocate a fresh per-process hardware PML4. It shares the kernel's low-memory
         // mapping (and maps the LAPIC) and starts with an empty user space; user mappings are
         // mirrored into it as they are added (see `hw_map_user`/`hw_unmap_user`).
-        #[cfg(target_arch = "x86_64")]
-        let hw_pml4: u64 = unsafe { crate::hal::arch::x86::mem::mmu::hwpt::create_user_pml4() };
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        let hw_pml4: u64 = unsafe { crate::hal::arch::native::mem::mmu::hwpt::create_user_pml4() };
 
         Ok(Self {
             pgdir,
             kernel_page_tables,
             kernel_pages,
             user_page_tables: LinkedList::new(),
-            #[cfg(target_arch = "x86_64")]
+            #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
             hw_pml4,
         })
     }
 
     pub fn load(&self) -> Result<(), Error> {
-        let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
-        unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+        #[cfg(target_arch = "aarch64")]
+        unsafe {
+            mmu::load_page_directory(self.hw_pml4 as usize);
+        }
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
+            unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+        }
         Ok(())
     }
 
@@ -252,11 +267,11 @@ impl Vmem {
     /// architectures it is the 2-level page directory, which the hardware uses directly.
     ///
     pub fn cr3_value(&self) -> Result<usize, Error> {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         {
             Ok(self.hw_pml4 as usize)
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86")]
         {
             Ok(self.pgdir.physical_address()?.into_raw_value())
         }
@@ -266,10 +281,10 @@ impl Vmem {
     /// other architectures and for the kernel address space (`hw_pml4 == 0`).
     #[inline]
     fn hw_map_user(&self, vaddr: usize, paddr: usize, writable: bool) {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         if self.hw_pml4 != 0 {
             unsafe {
-                crate::hal::arch::x86::mem::mmu::hwpt::map_user(
+                crate::hal::arch::native::mem::mmu::hwpt::map_user(
                     self.hw_pml4,
                     vaddr,
                     paddr,
@@ -277,7 +292,7 @@ impl Vmem {
                 );
             }
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86")]
         {
             let _ = (vaddr, paddr, writable);
         }
@@ -287,13 +302,13 @@ impl Vmem {
     /// other architectures and for the kernel address space.
     #[inline]
     fn hw_unmap_user(&self, vaddr: usize) {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         if self.hw_pml4 != 0 {
             unsafe {
-                crate::hal::arch::x86::mem::mmu::hwpt::unmap_user(self.hw_pml4, vaddr);
+                crate::hal::arch::native::mem::mmu::hwpt::unmap_user(self.hw_pml4, vaddr);
             }
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86")]
         {
             let _ = vaddr;
         }
@@ -303,13 +318,17 @@ impl Vmem {
     /// table (x86_64). No-op on other architectures and for the kernel address space.
     #[inline]
     fn hw_protect_user(&self, vaddr: usize, writable: bool) {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         if self.hw_pml4 != 0 {
             unsafe {
-                crate::hal::arch::x86::mem::mmu::hwpt::protect_user(self.hw_pml4, vaddr, writable);
+                crate::hal::arch::native::mem::mmu::hwpt::protect_user(
+                    self.hw_pml4,
+                    vaddr,
+                    writable,
+                );
             }
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86")]
         {
             let _ = (vaddr, writable);
         }
@@ -321,11 +340,11 @@ impl Vmem {
     /// the shared kernel page tables used on 32-bit targets. No-op on other architectures.
     #[inline]
     fn hw_map_kernel_mmio(&self, vaddr: usize, paddr: usize, writable: bool) {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         unsafe {
-            crate::hal::arch::x86::mem::mmu::hwpt::map_kernel_mmio(vaddr, paddr, writable);
+            crate::hal::arch::native::mem::mmu::hwpt::map_kernel_mmio(vaddr, paddr, writable);
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "x86")]
         {
             let _ = (vaddr, paddr, writable);
         }
@@ -1304,7 +1323,6 @@ impl Vmem {
     /// Upon success, the guest physical address corresponding to `vaddr` is returned. Upon
     /// failure, an error is returned instead.
     ///
-    #[cfg(feature = "stdio")]
     pub fn user_vaddr_to_paddr(&self, vaddr: VirtualAddress) -> Result<usize, Error> {
         let page_aligned: PageAligned<VirtualAddress> =
             PageAligned::from_address(vaddr.align_down(PAGE_ALIGNMENT))?;
@@ -2048,10 +2066,10 @@ impl Drop for Vmem {
         // Reclaim the per-process hardware page table (x86_64). This returns every process-private
         // page-table page (PDPT, user PDs/PTs, and the LAPIC tables) to the hardware page-table
         // free list; the shared kernel PD0 is never freed.
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         if self.hw_pml4 != 0 {
             unsafe {
-                crate::hal::arch::x86::mem::mmu::hwpt::destroy_user_pml4(self.hw_pml4);
+                crate::hal::arch::native::mem::mmu::hwpt::destroy_user_pml4(self.hw_pml4);
             }
             self.hw_pml4 = 0;
         }

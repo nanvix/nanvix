@@ -68,6 +68,13 @@ This exclusion is recursive and covers all files and subdirectories under `bin/`
 
 This builds all components including `nanvix-bench.exe` with the WHP backend.
 
+On native Windows ARM64, `z.ps1` automatically builds the AArch64 guest and ARM64 host binaries.
+The explicit equivalent is:
+
+```powershell
+.\z.ps1 build -- all TARGET=aarch64 RELEASE=yes LOG_LEVEL=panic
+```
+
 ### Available Benchmarks on Windows
 
 | Benchmark            | Description                                            |
@@ -75,6 +82,7 @@ This builds all components including `nanvix-bench.exe` with the WHP backend.
 | `boot-time`          | Start a user VM (no nanvixd)                           |
 | `cold-start`         | Spawn nanvixd + VM + echo round-trip                   |
 | `cold-start-uvm`     | Start a user VM + first gateway echo                   |
+| `snapshot-restore`   | Compare snapshot restore latency with cold boot         |
 | `vfs-bench`          | VFS operation latencies (FAT32 image via RAMFS region) |
 | `warm-start-gateway` | Round-trip latency through the standalone gateway      |
 | `warm-start-socket`  | TCP echo latency through guest networking              |
@@ -93,3 +101,21 @@ This builds all components including `nanvix-bench.exe` with the WHP backend.
 ```
 
 Use `-help` to list all benchmark options supported by the current build.
+
+### Architecture-Aware Benchmark Results
+
+The automation script detects the native host architecture and keeps histories separate:
+
+- X64 results use filenames ending in `_X64.csv`.
+- ARM64 results use filenames ending in `_ARM64.csv`.
+
+```powershell
+python .\scripts\benchmark.py run `
+  --benchmark boot-time `
+  --machine-type microvm `
+  --iterations 100 `
+  --output-dir .
+```
+
+This prevents ARM64 measurements from being appended to Windows X64 baselines while preserving the
+same benchmark names and result schema.

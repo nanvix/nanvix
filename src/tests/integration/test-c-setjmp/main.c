@@ -34,6 +34,8 @@ int main(int argc, const char *argv[])
     test_longjmp_across_calls();
     test_longjmp_retry_loop();
     test_sigsetjmp_siglongjmp();
+    test_sigsetjmp_restores_signal_mask();
+    test_sigsetjmp_without_savemask();
 
     // Write magic string to signal that the test passed.
     {

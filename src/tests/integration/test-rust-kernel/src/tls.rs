@@ -84,22 +84,30 @@ type TdaBuffer = Box<[u32; TDA_SLOTS]>;
 // `write_volatile` and `set_thread_data_area` calls.
 #[inline(never)]
 unsafe fn read_gs_offset_0() -> u32 {
-    let value: u32;
-    // The thread data area is referenced through %gs on x86 (GDT-based) and
-    // through %fs (FS_BASE MSR) on x86_64.
-    #[cfg(target_arch = "x86")]
-    core::arch::asm!(
-        "movl %gs:0x0, {out:e}",
-        out = out(reg) value,
-        options(nostack, preserves_flags, att_syntax),
-    );
-    #[cfg(target_arch = "x86_64")]
-    core::arch::asm!(
-        "movl %fs:0x0, {out:e}",
-        out = out(reg) value,
-        options(nostack, preserves_flags, att_syntax),
-    );
-    value
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        ::sys::kcall::arch::read_tda_u32(0)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        let value: u32;
+        // The thread data area is referenced through %gs on x86 (GDT-based) and
+        // through %fs (FS_BASE MSR) on x86_64.
+        #[cfg(target_arch = "x86")]
+        core::arch::asm!(
+            "movl %gs:0x0, {out:e}",
+            out = out(reg) value,
+            options(nostack, preserves_flags, att_syntax),
+        );
+        #[cfg(target_arch = "x86_64")]
+        core::arch::asm!(
+            "movl %fs:0x0, {out:e}",
+            out = out(reg) value,
+            options(nostack, preserves_flags, att_syntax),
+        );
+        value
+    }
 }
 
 /// # Description
@@ -115,24 +123,32 @@ unsafe fn read_gs_offset_0() -> u32 {
 #[inline(never)]
 #[cfg_attr(target_arch = "x86_64", allow(asm_sub_register))]
 unsafe fn read_gs_at(offset: u32) -> u32 {
-    let value: u32;
-    // The thread data area is referenced through %gs on x86 (GDT-based) and
-    // through %fs (FS_BASE MSR) on x86_64.
-    #[cfg(target_arch = "x86")]
-    core::arch::asm!(
-        "movl %gs:({off}), {out:e}",
-        off = in(reg) offset,
-        out = out(reg) value,
-        options(nostack, preserves_flags, att_syntax),
-    );
-    #[cfg(target_arch = "x86_64")]
-    core::arch::asm!(
-        "movl %fs:({off}), {out:e}",
-        off = in(reg) offset,
-        out = out(reg) value,
-        options(nostack, preserves_flags, att_syntax),
-    );
-    value
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        ::sys::kcall::arch::read_tda_u32(offset)
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        let value: u32;
+        // The thread data area is referenced through %gs on x86 (GDT-based) and
+        // through %fs (FS_BASE MSR) on x86_64.
+        #[cfg(target_arch = "x86")]
+        core::arch::asm!(
+            "movl %gs:({off}), {out:e}",
+            off = in(reg) offset,
+            out = out(reg) value,
+            options(nostack, preserves_flags, att_syntax),
+        );
+        #[cfg(target_arch = "x86_64")]
+        core::arch::asm!(
+            "movl %fs:({off}), {out:e}",
+            off = in(reg) offset,
+            out = out(reg) value,
+            options(nostack, preserves_flags, att_syntax),
+        );
+        value
+    }
 }
 
 /// # Description

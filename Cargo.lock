@@ -1822,6 +1822,7 @@ name = "libc_wchar"
 version = "0.23.4"
 dependencies = [
  "libc_stdio",
+ "libc_stdlib",
  "sysapi",
 ]
 

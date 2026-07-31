@@ -1557,6 +1557,25 @@ impl ProcessManager {
         let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
             self.try_next_tid_reaping(mm)?;
 
+        // Capture the calling thread's FP state before constructing the child. If this thread owns
+        // the live FP/SIMD registers, refresh its kernel-side image first; otherwise the saved image
+        // is already current. The child starts as a distinct, non-owning thread with an identical
+        // copy, as required by fork().
+        use crate::pm::{
+            process::manager::r#unsafe::FPU_OWNER_TID,
+            ORDER,
+        };
+        let parent_tid: ThreadIdentifier = self.get_tid();
+        let fpu_owner: ThreadIdentifier = ThreadIdentifier::from(FPU_OWNER_TID.load(ORDER));
+        let inherited_fpu = {
+            let parent_fpu = self
+                .get_running_mut()
+                .running_mut()
+                .thread_state_mut()
+                .fpu_state_mut();
+            unsafe { hal::arch::capture_fpu(parent_fpu, fpu_owner == parent_tid) }
+        };
+
         // Clone caller's address space.
         let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
 
@@ -1615,6 +1634,13 @@ impl ProcessManager {
             let mut thread: ReadyThread =
                 self.tm
                     .create_thread(child_tid, Some(kernel_stack), None, args.user_tda, context);
+            unsafe {
+                hal::arch::install_fpu(
+                    thread.thread_state_mut().fpu_state_mut(),
+                    false,
+                    &inherited_fpu,
+                );
+            }
             // The child's main thread inherits the calling thread's blocked-signal mask.
             thread.thread_state_mut().set_blocked(inherited_blocked);
 
@@ -2384,7 +2410,7 @@ impl ProcessManager {
     ///
     pub fn handle_fpu_exception(&mut self) -> Result<(), Error> {
         use crate::{
-            hal::arch::x86::cpu::FpuState,
+            hal::arch::FpuState,
             pm::{
                 process::manager::r#unsafe::{
                     CURRENT_TID,
@@ -3161,7 +3187,6 @@ impl ProcessManager {
     ///
     /// Upon success, the guest physical address is returned. Upon failure, an error is returned.
     ///
-    #[cfg(feature = "stdio")]
     pub fn user_vaddr_to_paddr(
         &self,
         pid: ProcessIdentifier,

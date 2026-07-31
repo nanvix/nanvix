@@ -63,10 +63,10 @@ fn main() {
     // No reserved space is needed for microvm.
     let target_arch: String =
         env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "x86".to_string());
-    let linker_subdir: &str = if target_arch == "x86_64" {
-        "x86_64"
-    } else {
-        "x86"
+    let linker_subdir: &str = match target_arch.as_str() {
+        "aarch64" => "aarch64",
+        "x86_64" => "x86_64",
+        _ => "x86",
     };
     let linker_template_path: PathBuf =
         workspace_dir.join(format!("build/kernel/linker/{}/kernel.ld.in", linker_subdir));

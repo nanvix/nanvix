@@ -81,7 +81,7 @@ static DECIMAL_POINT: [u8; 2] = [b'.', 0];
 static EMPTY: [u8; 1] = [0];
 
 /// `CHAR_MAX` sentinel indicating "not available" for numeric locale fields.
-const CHAR_MAX: c_char = i8::MAX;
+const CHAR_MAX: c_char = c_char::MAX;
 
 /// Wrapper that makes the immutable `lconv` static shareable across threads.
 ///
@@ -179,6 +179,6 @@ mod test {
     #[test]
     fn test_localeconv_frac_digits() {
         let lc: &lconv = unsafe { &*localeconv() };
-        assert_eq!(lc.frac_digits, i8::MAX);
+        assert_eq!(lc.frac_digits, c_char::MAX);
     }
 }

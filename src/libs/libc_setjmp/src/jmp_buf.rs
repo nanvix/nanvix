@@ -17,21 +17,22 @@ use ::sysapi::ffi::c_long;
 // Constants
 //==================================================================================================
 
-/// Width of a saved-register slot: 32-bit (`c_int`) on x86-32, 64-bit (`c_long`, LP64) on x86-64.
+/// Width of a saved-register slot: 32-bit (`c_int`) on x86-32, 64-bit (`c_long`, LP64) otherwise.
 #[cfg(target_arch = "x86")]
 pub type jmp_buf_reg = c_int;
-/// Width of a saved-register slot: 32-bit (`c_int`) on x86-32, 64-bit (`c_long`, LP64) on x86-64.
+/// Width of a saved-register slot: 32-bit (`c_int`) on x86-32, 64-bit (`c_long`, LP64) otherwise.
 #[cfg(not(target_arch = "x86"))]
 pub type jmp_buf_reg = c_long;
 
-/// Number of saved-register slots: six on x86-32 (EBX, ESI, EDI, EBP, ESP, EIP), eight on x86-64
-/// (RBX, RBP, R12, R13, R14, R15, RSP, RIP).
+/// Number of saved-register slots on x86-32.
 #[cfg(target_arch = "x86")]
 pub const JMP_BUF_REGS: usize = 6;
-/// Number of saved-register slots: six on x86-32 (EBX, ESI, EDI, EBP, ESP, EIP), eight on x86-64
-/// (RBX, RBP, R12, R13, R14, R15, RSP, RIP).
-#[cfg(not(target_arch = "x86"))]
+/// Number of saved-register slots on x86-64.
+#[cfg(target_arch = "x86_64")]
 pub const JMP_BUF_REGS: usize = 8;
+/// Number of saved-register slots on AArch64: X19-X30, SP, and D8-D15.
+#[cfg(target_arch = "aarch64")]
+pub const JMP_BUF_REGS: usize = 21;
 
 //==================================================================================================
 // Structures
@@ -44,12 +45,11 @@ pub const JMP_BUF_REGS: usize = 8;
 ///
 /// On x86-32, the following registers are saved: EBX, ESI, EDI, EBP, ESP, and the return address
 /// (EIP). On x86-64, the saved registers are: RBX, RBP, R12, R13, R14, R15, RSP, and the return
-/// address (RIP).
+/// address (RIP). On AArch64, X19-X30, SP, and D8-D15 are saved.
 ///
 #[repr(C)]
 pub struct jmp_buf {
-    /// Saved registers. x86-32: EBX, ESI, EDI, EBP, ESP, EIP. x86-64: RBX, RBP, R12, R13, R14,
-    /// R15, RSP, RIP.
+    /// Saved registers for the active architecture.
     pub regs: [jmp_buf_reg; JMP_BUF_REGS],
 }
 

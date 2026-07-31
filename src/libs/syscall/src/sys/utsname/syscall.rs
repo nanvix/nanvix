@@ -58,10 +58,10 @@ fn encode_str<const N: usize>(string: &str) -> Result<[c_char; N], Error> {
         return Err(Error::new(ErrorCode::ValueOutOfRange, reason));
     }
 
-    let mut arr: [i8; N] = [0; N];
+    let mut arr: [c_char; N] = [0; N];
     let bytes = c_string.as_bytes_with_nul();
     for (i, &b) in bytes.iter().enumerate() {
-        arr[i] = b as i8;
+        arr[i] = b as c_char;
     }
 
     Ok(arr)

@@ -37,7 +37,10 @@ use ::sys::error::{
     ErrorCode,
 };
 use ::sysapi::{
-    ffi::c_uchar,
+    ffi::{
+        c_char,
+        c_uchar,
+    },
     netinet_in::{
         in_addr,
         sockaddr_in,
@@ -275,7 +278,7 @@ impl TryFrom<&SocketAddrUnix> for sockaddr_un {
             sun_family: socket_address_family::AF_UNIX.try_into().map_err(|_| {
                 Error::new(ErrorCode::ValueOutOfRange, "failed to convert socket address family")
             })?,
-            sun_path: sun_path.map(|b| b as i8),
+            sun_path: sun_path.map(|b| b as c_char),
         })
     }
 }
@@ -304,12 +307,13 @@ impl TryFrom<&sockaddr_un> for SocketAddrUnix {
     type Error = Error;
 
     fn try_from(addr: &sockaddr_un) -> Result<Self, Self::Error> {
-        let path: String = String::from_utf8(addr.sun_path.iter().map(|&b| b as u8).collect())
-            .map_err(|_| {
-                Error::new(ErrorCode::InvalidArgument, "failed to convert socket address path")
-            })?
-            .trim_end_matches('\0')
-            .to_string();
+        let path: String =
+            String::from_utf8(addr.sun_path.iter().map(|&b| b.to_ne_bytes()[0]).collect())
+                .map_err(|_| {
+                    Error::new(ErrorCode::InvalidArgument, "failed to convert socket address path")
+                })?
+                .trim_end_matches('\0')
+                .to_string();
         Ok(SocketAddrUnix::new(&path))
     }
 }
@@ -478,7 +482,7 @@ mod test {
                 let mut path: [u8; SUNPATHLEN] = [0; SUNPATHLEN];
                 let bytes = "/tmp/socket".as_bytes();
                 path[..bytes.len()].copy_from_slice(bytes);
-                path.map(|b| b as i8)
+                path.map(|b| b as c_char)
             },
         };
         let expected_addr: SocketAddrUnix = SocketAddrUnix::new("/tmp/socket");

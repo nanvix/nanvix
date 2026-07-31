@@ -56,8 +56,8 @@ pub unsafe extern "C" fn strncasecmp(s1: *const c_char, s2: *const c_char, n: c_
 
     let mut i: c_size_t = 0;
     while i < n {
-        let ca: u8 = to_lower(*s1.add(i as usize) as u8);
-        let cb: u8 = to_lower(*s2.add(i as usize) as u8);
+        let ca: u8 = to_lower((*s1.add(i as usize)).to_ne_bytes()[0]);
+        let cb: u8 = to_lower((*s2.add(i as usize)).to_ne_bytes()[0]);
         if ca != cb {
             return c_int::from(ca) - c_int::from(cb);
         }

@@ -8,7 +8,7 @@
 # `common/` holds shared crt0 scaffolding and is not a suite of its own.
 #
 # The guest C toolchain (build/make/guest-c-apps.mk) follows the active TARGET:
-# i686 for x86 and x86-64 for x86_64.
+# i686 for x86, x86-64 for x86_64, and AArch64 for aarch64.
 #
 # One entry per line (with `\` continuations) so that adding a suite touches a
 # single line, minimizing merge conflicts between branches that each add a suite.

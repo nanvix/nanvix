@@ -299,7 +299,7 @@ unsafe fn write_fd(fd: c_int, buf: *const u8, len: usize) -> isize {
 /// The caller must ensure that `fmt.add(pos)` points to a valid, readable byte.
 unsafe fn read_byte(fmt: *const c_char, pos: usize) -> u8 {
     // SAFETY: caller guarantees pointer validity.
-    unsafe { *fmt.add(pos) as u8 }
+    crate::c_char_to_u8(unsafe { *fmt.add(pos) })
 }
 
 /// Parses format flags from the format string starting at `pos`.

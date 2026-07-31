@@ -50,6 +50,14 @@ System integration tests are also available on Windows on `microvm` machines:
 .\z.ps1 build -- run-nanvix-tests
 ```
 
+On native Windows ARM64, `z.ps1` selects `TARGET=aarch64` automatically. The explicit integration
+and POSIX commands are:
+
+```powershell
+.\z.ps1 build -- run-nanvix-tests TARGET=aarch64
+.\z.ps1 build -- run-posix-tests TARGET=aarch64
+```
+
 ## Troubleshooting Test Failures
 
 - Ensure the project builds successfully before running tests (see the `build` skill).
