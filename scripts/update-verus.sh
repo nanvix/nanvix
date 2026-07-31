@@ -31,7 +31,7 @@ set -euo pipefail
 # Imports
 #==================================================================================================
 
-IMPORT_DIR="$(cd "$(dirname "$0")" && pwd)/common"
+IMPORT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common"
 
 source "${IMPORT_DIR}/logging.sh"
 source "${IMPORT_DIR}/utils.sh"
@@ -42,6 +42,8 @@ source "${IMPORT_DIR}/utils.sh"
 
 readonly VERUS_REPO="verus-lang/verus"
 readonly GITHUB_API="https://api.github.com"
+readonly CRATES_IO_API="https://crates.io/api/v1"
+readonly CRATES_IO_USER_AGENT="nanvix-verus-updater (https://github.com/nanvix/nanvix)"
 
 #===================================================================================================
 # Global Variables
@@ -134,8 +136,30 @@ github_api_get() {
 #
 # Description
 #
-#   Resolves the latest non-rolling Verus release tag and its commit SHA.
-#   Sets LATEST_VERSION and LATEST_COMMIT global variables.
+#   Performs a GET request to the crates.io API and returns the JSON response.
+#
+# Arguments
+#
+#   $1 - API path (e.g., "crates/vstd/versions").
+#
+# Returns
+#
+#   The JSON response body on stdout.
+#   Exits with non-zero on failure.
+#
+crates_io_api_get() {
+    local api_path="$1"
+    local url="${CRATES_IO_API}/${api_path}"
+
+    curl -sL --fail --connect-timeout 30 --max-time 120 \
+        --user-agent "${CRATES_IO_USER_AGENT}" "${url}"
+}
+
+#
+# Description
+#
+#   Resolves the latest non-rolling Verus release tag, commit SHA, and publication time.
+#   Sets LATEST_VERSION, LATEST_COMMIT, and LATEST_RELEASED_AT global variables.
 #
 resolve_latest_release() {
     print_info "Fetching Verus release tags..." >&2
@@ -160,6 +184,19 @@ resolve_latest_release() {
 
     # Extract version string (e.g., "0.2026.02.06.4a2b93e").
     LATEST_VERSION="${latest_tag#release/}"
+
+    # Read the release publication time. Verus publishes crates before tagging a release, then
+    # updates the source manifests after the tag, so the tagged manifest may contain stale versions.
+    local encoded_tag="${latest_tag//\//%2F}"
+    local release_json
+    release_json=$(github_api_get "repos/${VERUS_REPO}/releases/tags/${encoded_tag}")
+
+    LATEST_RELEASED_AT=$(echo "${release_json}" | jq -r '.published_at')
+
+    if [[ -z "${LATEST_RELEASED_AT}" || "${LATEST_RELEASED_AT}" == "null" ]]; then
+        print_error "Could not determine the publication time for tag ${latest_tag}."
+        exit 1
+    fi
 
     # Resolve the full commit SHA for that tag.
     local commit_json
@@ -200,23 +237,24 @@ read_current_version() {
 #
 # Description
 #
-#   Resolves the vstd crate version that matches the target Verus commit.
+#   Resolves the newest vstd crate version published by the target Verus release.
 #   Sets NEW_VSTD global variable.
 #
 resolve_vstd_version() {
     print_info "Resolving vstd version for Verus ${LATEST_VERSION}..." >&2
 
-    local contents_json
-    contents_json=$(github_api_get \
-        "repos/${VERUS_REPO}/contents/source/vstd/Cargo.toml?ref=${LATEST_COMMIT}")
+    local versions_json
+    versions_json=$(crates_io_api_get "crates/vstd/versions")
 
     local vstd_version
-    vstd_version=$(echo "${contents_json}" \
-        | jq -r '.content' \
-        | base64 -d \
-        | { grep '^version' || true; } \
-        | head -1 \
-        | sed 's/version *= *"\([^"]*\)"/\1/')
+    vstd_version=$(echo "${versions_json}" \
+        | jq -r --arg released_at "${LATEST_RELEASED_AT}" '
+            [.versions[]
+                | select(.yanked == false)
+                | select(.created_at <= $released_at)]
+            | sort_by(.created_at)
+            | last
+            | .num // empty')
 
     if [[ -z "${vstd_version}" ]]; then
         print_error "Could not determine vstd version for Verus ${LATEST_VERSION}."
@@ -344,4 +382,6 @@ main() {
     echo "NEW_VSTD=${NEW_VSTD}"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

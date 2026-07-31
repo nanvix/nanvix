@@ -785,8 +785,11 @@ impl Inner {
         // The coverage check runs unconditionally — including optimized builds —
         // because out-of-bounds indices must be rejected before attempting to set them.
         // This loop runs only at boot when booking memory regions, so the overhead is negligible.
+        let mut index: usize = start_frame_number;
         #[verus_spec(
             invariant
+                start_frame_number <= index,
+                index <= end_exclusive,
                 start_fn == start_frame_number as int,
                 end_exclusive as int == start_fn + nfr,
                 nfr >= 1,
@@ -806,7 +809,7 @@ impl Inner {
                     #[trigger] pre_sb.contains(k) == false && k < pre_nb,
             decreases end_exclusive - index,
         )]
-        for index in start_frame_number..end_exclusive {
+        while index < end_exclusive {
             if index >= self.bitmap.number_of_bits() {
                 // `index` is out of range here, so `index * FRAME_SIZE` can overflow `usize`
                 // (e.g. on 32-bit targets), panicking in debug builds on the very error path
@@ -858,8 +861,9 @@ impl Inner {
                     return Err(err);
                 },
             }
+            index += 1;
         }
-        // The for-loop's exit invariant covers every index in `[start_fn, start_fn + nfr)`:
+        // The loop's exit invariant covers every index in `[start_fn, start_fn + nfr)`:
         // each frame is free in the pre-state bitmap and lies within bounds.
         proof! {
             assert(pre_sb.contains(start_fn + nfr - 1) == false);
