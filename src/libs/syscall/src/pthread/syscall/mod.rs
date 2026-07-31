@@ -5,6 +5,9 @@
 // Modules
 //==================================================================================================
 
+/// Cancellation cleanup handlers.
+mod cleanup;
+
 /// Condition variables.
 mod cond;
 
@@ -76,6 +79,10 @@ use ::sysapi::sys_types::pthread_t;
 // Exports
 //==================================================================================================
 
+pub use cleanup::{
+    pthread_cleanup_pop,
+    pthread_cleanup_push,
+};
 pub use cond::*;
 pub use mutex::*;
 pub use pthread_attr_destroy::*;
@@ -106,6 +113,10 @@ struct ThreadStartArgs {
 extern "C" fn pthread_start(arg: usize) -> usize {
     let start_args: Box<ThreadStartArgs> = unsafe { Box::from_raw(arg as *mut ThreadStartArgs) };
     let retval: usize = (start_args.func)(start_args.arg);
+
+    // Handlers left pending on a normal return are discarded rather than run, because their
+    // arguments commonly point into the start routine's stack frame, which is already gone.
+    cleanup::discard();
 
     if let Err(error) = ::sysalloc::tda::cleanup() {
         ::syslog::warn!("pthread_start(): failed to cleanup thread data area ({error:?})");
@@ -257,6 +268,8 @@ pub fn pthread_join(thread: pthread_t) -> Result<usize, Error> {
 pub fn pthread_exit(retval: usize) -> Result<!, Error> {
     ::syslog::trace!("pthread_exit(): retval={:?}", retval);
 
+    cleanup::run();
+
     // Attempt to clean up thread data area and check for errors.
     if let Err(error) = ::sysalloc::tda::cleanup() {
         // Log warning and continue exiting, as we are about to terminate the thread anyway.
@@ -264,6 +277,47 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
     }
 
     __kcall_exit_thread(retval)
+}
+
+///
+/// # Description
+///
+/// Resolves the identifier of the calling thread, preferring the TDA cache over a kernel call.
+///
+/// # Return Value
+///
+/// On successful completion, the identifier of the calling thread is returned. On failure, an error
+/// that contains the reason for the failure is returned instead.
+///
+fn try_pthread_self() -> Result<pthread_t, Error> {
+    // Fast path: read the cached thread ID from the TDA via segment register.
+    //
+    // Safety: `is_initialized()` indicates that TDA support was initialized for the process, and
+    // `__kcall_get_thread_data_area()` verifies that the calling thread has a valid segment base.
+    let has_tda: bool = ::sysalloc::tda::is_initialized()
+        && __kcall_get_thread_data_area().is_ok_and(|tda_ptr| !tda_ptr.is_null());
+    if has_tda {
+        let tid: u32 = unsafe { arch::read_tda_u32(TDA_TID_OFFSET as u32) };
+
+        // Check if the TDA slot contains a valid thread ID.
+        if tid != TDA_TID_UNSET {
+            return Ok(tid as pthread_t);
+        }
+
+        // Cache miss: the TDA slot still holds the TDA_TID_UNSET sentinel because tda::alloc()
+        // cannot know the child's TID at allocation time. Resolve via kcall and cache for future
+        // calls.
+        let real_tid: pthread_t = __kcall_gettid()?.try_into()?;
+
+        unsafe {
+            arch::write_tda_u32(TDA_TID_OFFSET as u32, real_tid);
+        }
+
+        return Ok(real_tid);
+    }
+
+    // Fallback: TDA not yet initialized (early startup).
+    __kcall_gettid()?.try_into()
 }
 
 ///
@@ -277,43 +331,9 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
 ///
 /// # Safety Notes
 ///
-/// This function panics if:
-/// - The thread is unable to retrieve its own identifier.
-/// - The thread identifier returned by the kernel is not valid.
+/// This function panics if the calling thread is unable to resolve its own identifier. POSIX
+/// reserves no return value to report such a failure.
 ///
 pub fn pthread_self() -> pthread_t {
-    // Fast path: read the cached thread ID from the TDA via segment register.
-    //
-    // Safety: `is_initialized()` indicates that TDA support was initialized for the process, and
-    // `__kcall_get_thread_data_area()` verifies that the calling thread has a valid segment base.
-    let has_tda: bool = ::sysalloc::tda::is_initialized()
-        && __kcall_get_thread_data_area().is_ok_and(|tda_ptr| !tda_ptr.is_null());
-    if has_tda {
-        let tid: u32 = unsafe { arch::read_tda_u32(TDA_TID_OFFSET as u32) };
-
-        // Check if the TDA slot contains a valid thread ID.
-        if tid != TDA_TID_UNSET {
-            return tid as pthread_t;
-        }
-
-        // Cache miss: the TDA slot still holds the TDA_TID_UNSET sentinel because tda::alloc()
-        // cannot know the child's TID at allocation time. Resolve via kcall and cache for future
-        // calls.
-        let real_tid: pthread_t = __kcall_gettid()
-            .expect("pthread_self(): gettid kcall failed (TDA cache-miss path)")
-            .try_into()
-            .expect("pthread_self(): invalid thread identifier from kernel (TDA cache-miss path)");
-
-        unsafe {
-            arch::write_tda_u32(TDA_TID_OFFSET as u32, real_tid);
-        }
-
-        return real_tid;
-    }
-
-    // Fallback: TDA not yet initialized (early startup).
-    __kcall_gettid()
-        .expect("pthread_self(): gettid kcall failed (early-startup path)")
-        .try_into()
-        .expect("pthread_self(): invalid thread identifier from kernel (early-startup path)")
+    try_pthread_self().expect("pthread_self(): failed to resolve thread identifier")
 }

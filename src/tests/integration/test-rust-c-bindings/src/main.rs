@@ -151,6 +151,8 @@ unsafe extern "C" {
     static __nanvix_sys_cached_pid: u8;
     static __errno_location: u8;
     static _exit: u8;
+    static _pthread_cleanup_pop: u8;
+    static _pthread_cleanup_push: u8;
     static accept: u8;
     static access: u8;
     static bind: u8;
@@ -294,10 +296,12 @@ unsafe impl Sync for SymAddr {}
 
 /// Force the linker to retain all syscall symbols by referencing their addresses.
 #[used]
-static SYSCALL_SYMBOLS: [SymAddr; 135] = [
+static SYSCALL_SYMBOLS: [SymAddr; 137] = [
     SymAddr(&raw const __nanvix_sys_cached_pid),
     SymAddr(&raw const __errno_location),
     SymAddr(&raw const _exit),
+    SymAddr(&raw const _pthread_cleanup_pop),
+    SymAddr(&raw const _pthread_cleanup_push),
     SymAddr(&raw const accept),
     SymAddr(&raw const access),
     SymAddr(&raw const bind),

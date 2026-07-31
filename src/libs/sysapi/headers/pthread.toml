@@ -111,6 +111,8 @@ text = '''
 [[sections]]
 title = "Threads"
 functions = [
+    "_pthread_cleanup_pop",
+    "_pthread_cleanup_push",
     "pthread_create",
     "pthread_join",
     "pthread_detach",

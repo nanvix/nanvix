@@ -15,6 +15,9 @@ extern void test_pthread_testcancel(void);
 // Tests if the cancellation state of the calling thread can be changed.
 extern void test_pthread_setcancelstate(void);
 
+// Tests if cancellation cleanup handlers can be pushed and popped.
+extern void test_pthread_cleanup(void);
+
 // Tests if `pthread_mutex_cond_timedwait()` can be used for synchronization.
 extern void test_pthread_cond_timedwait(void);
 
