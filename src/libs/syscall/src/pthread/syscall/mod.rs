@@ -5,6 +5,9 @@
 // Modules
 //==================================================================================================
 
+/// Cancellation cleanup handlers.
+mod cleanup;
+
 /// Condition variables.
 mod cond;
 
@@ -76,6 +79,10 @@ use ::sysapi::sys_types::pthread_t;
 // Exports
 //==================================================================================================
 
+pub use cleanup::{
+    pthread_cleanup_pop,
+    pthread_cleanup_push,
+};
 pub use cond::*;
 pub use mutex::*;
 pub use pthread_attr_destroy::*;
@@ -106,6 +113,10 @@ struct ThreadStartArgs {
 extern "C" fn pthread_start(arg: usize) -> usize {
     let start_args: Box<ThreadStartArgs> = unsafe { Box::from_raw(arg as *mut ThreadStartArgs) };
     let retval: usize = (start_args.func)(start_args.arg);
+
+    // Handlers left pending on a normal return are discarded rather than run, because their
+    // arguments commonly point into the start routine's stack frame, which is already gone.
+    cleanup::discard();
 
     if let Err(error) = ::sysalloc::tda::cleanup() {
         ::syslog::warn!("pthread_start(): failed to cleanup thread data area ({error:?})");
@@ -256,6 +267,8 @@ pub fn pthread_join(thread: pthread_t) -> Result<usize, Error> {
 ///
 pub fn pthread_exit(retval: usize) -> Result<!, Error> {
     ::syslog::trace!("pthread_exit(): retval={:?}", retval);
+
+    cleanup::run();
 
     // Attempt to clean up thread data area and check for errors.
     if let Err(error) = ::sysalloc::tda::cleanup() {

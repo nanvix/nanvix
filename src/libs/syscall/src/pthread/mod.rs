@@ -11,6 +11,8 @@ cfg_if::cfg_if! {
         pub use syscall::Pointer;
         pub use syscall::pthread_attr_destroy;
         pub use syscall::pthread_attr_init;
+        pub use syscall::pthread_cleanup_pop;
+        pub use syscall::pthread_cleanup_push;
         pub use syscall::pthread_create;
         pub use syscall::pthread_exit;
         pub use syscall::pthread_getattr_np;
