@@ -18,6 +18,14 @@ use ::core::sync::atomic::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Number of nanoseconds elapsed per LAPIC timer tick (1 kHz timer, thus 1 ms per tick).
+#[cfg(any(feature = "whp", feature = "test"))]
+const NS_PER_TICK: u64 = 1_000_000;
+
+//==================================================================================================
 // Structures
 //==================================================================================================
 
@@ -87,6 +95,38 @@ fn mul_u64_u32_shr32(a: u64, b: u32) -> u64 {
 ///
 /// # Description
 ///
+/// Reconciles a new host pvclock sample with the time already interpolated by the guest.
+///
+/// # Parameters
+///
+/// - `host_time_ns`: New host-provided time in nanoseconds.
+/// - `previous_base_ns`: Previous guest snapshot time in nanoseconds.
+/// - `previous_base_ticks`: Guest tick count at the previous snapshot.
+/// - `snapshot_ticks`: Guest tick count for the new snapshot.
+///
+/// # Returns
+///
+/// A snapshot time that does not precede the guest's previously interpolated timeline.
+///
+#[cfg(any(feature = "whp", feature = "test"))]
+fn reconcile_snapshot_time(
+    host_time_ns: u64,
+    previous_base_ns: u64,
+    previous_base_ticks: u32,
+    snapshot_ticks: u32,
+) -> u64 {
+    let elapsed_ticks: u32 = snapshot_ticks.wrapping_sub(previous_base_ticks);
+    let interpolated_ns: u64 =
+        previous_base_ns.wrapping_add(u64::from(elapsed_ticks) * NS_PER_TICK);
+
+    // Monotonicity outranks accuracy here: a guest tick rate that runs slightly fast makes the
+    // clock drift ahead of the host, but it never exposes a backwards jump to user space.
+    host_time_ns.max(interpolated_ns)
+}
+
+///
+/// # Description
+///
 /// Reads the monotonic time in nanoseconds from the KVM pvclock page.
 ///
 /// Uses the seqlock protocol: reads the version, reads the calibration data,
@@ -125,8 +165,10 @@ pub fn monotonic_time_ns() -> Option<u64> {
             return None;
         }
 
+        let snapshot_version: u32 = SNAP_VERSION.load(Ordering::Relaxed);
+
         // If the host timer updated pvclock (version changed), take a new snapshot.
-        if version != SNAP_VERSION.load(Ordering::Relaxed) && version & 1 == 0 {
+        if version != snapshot_version && version & 1 == 0 {
             fence(Ordering::Acquire);
             // SAFETY: Page is mapped and version was even (stable snapshot).
             let info: KvmPvclockVcpuTimeInfo = unsafe { core::ptr::read_volatile(page) };
@@ -134,11 +176,25 @@ pub fn monotonic_time_ns() -> Option<u64> {
             // SAFETY: Re-check version for consistency.
             let version2: u32 = unsafe { core::ptr::read_volatile(&(*page).version) };
             if version == version2 {
-                SNAP_SYSTEM_TIME_LO.store(info.system_time as u32, Ordering::Relaxed);
-                SNAP_SYSTEM_TIME_HI.store((info.system_time >> 32) as u32, Ordering::Relaxed);
-                SNAP_TICKS.store(crate::pm::clock::ticks() as u32, Ordering::Relaxed);
+                let snapshot_ticks: u32 = crate::pm::clock::ticks() as u32;
+                // Reconcile even the first stable host sample because an earlier odd-version read
+                // may have already exposed interpolation from the zero-initialized snapshot.
+                let previous_base_ns: u64 = (SNAP_SYSTEM_TIME_HI.load(Ordering::Relaxed) as u64)
+                    << 32
+                    | SNAP_SYSTEM_TIME_LO.load(Ordering::Relaxed) as u64;
+                let previous_base_ticks: u32 = SNAP_TICKS.load(Ordering::Relaxed);
+                let snapshot_system_time: u64 = reconcile_snapshot_time(
+                    info.system_time,
+                    previous_base_ns,
+                    previous_base_ticks,
+                    snapshot_ticks,
+                );
+
+                SNAP_SYSTEM_TIME_LO.store(snapshot_system_time as u32, Ordering::Relaxed);
+                SNAP_SYSTEM_TIME_HI.store((snapshot_system_time >> 32) as u32, Ordering::Relaxed);
+                SNAP_TICKS.store(snapshot_ticks, Ordering::Relaxed);
                 SNAP_VERSION.store(version, Ordering::Relaxed);
-                return Some(info.system_time);
+                return Some(snapshot_system_time);
             }
             // Version changed mid-read — fall through to interpolation.
         }
@@ -148,7 +204,6 @@ pub fn monotonic_time_ns() -> Option<u64> {
             | SNAP_SYSTEM_TIME_LO.load(Ordering::Relaxed) as u64;
         let base_ticks: u32 = SNAP_TICKS.load(Ordering::Relaxed);
         let delta_ticks: u32 = (crate::pm::clock::ticks() as u32).wrapping_sub(base_ticks);
-        const NS_PER_TICK: u64 = 1_000_000;
         Some(base_ns.wrapping_add(delta_ticks as u64 * NS_PER_TICK))
     }
 
@@ -236,4 +291,84 @@ pub fn boot_time_ns() -> u64 {
         ::config::microvm::DEFAULT_PVCLOCK_PAGE + ::config::microvm::PVCLOCK_BOOT_TIME_NS_OFFSET;
     // SAFETY: This address is identity-mapped in guest memory and written by the VMM.
     unsafe { core::ptr::read_volatile(offset as *const u64) }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(feature = "test")]
+mod test {
+    use super::reconcile_snapshot_time;
+
+    /// Verifies that a lagging host sample cannot move the guest timeline backwards.
+    fn test_reconcile_snapshot_time_clamps_lagging_host_sample() -> bool {
+        let host_time_ns: u64 = 110_300_000;
+        let previous_base_ns: u64 = 100_800_000;
+        let previous_base_ticks: u32 = 100;
+        let snapshot_ticks: u32 = 110;
+        let expected_time_ns: u64 = 110_800_000;
+
+        let actual_time_ns: u64 = reconcile_snapshot_time(
+            host_time_ns,
+            previous_base_ns,
+            previous_base_ticks,
+            snapshot_ticks,
+        );
+        if actual_time_ns != expected_time_ns {
+            error!(
+                "lagging host sample was not clamped (expected={expected_time_ns}, \
+                 actual={actual_time_ns})"
+            );
+            return false;
+        }
+
+        true
+    }
+
+    /// Verifies that a host sample ahead of guest interpolation is adopted.
+    fn test_reconcile_snapshot_time_adopts_leading_host_sample() -> bool {
+        let host_time_ns: u64 = 111_200_000;
+        let previous_base_ns: u64 = 100_800_000;
+        let previous_base_ticks: u32 = 100;
+        let snapshot_ticks: u32 = 110;
+
+        let actual_time_ns: u64 = reconcile_snapshot_time(
+            host_time_ns,
+            previous_base_ns,
+            previous_base_ticks,
+            snapshot_ticks,
+        );
+        if actual_time_ns != host_time_ns {
+            error!(
+                "leading host sample was not adopted (expected={host_time_ns}, \
+                 actual={actual_time_ns})"
+            );
+            return false;
+        }
+
+        true
+    }
+
+    /// Runs all pvclock in-kernel tests.
+    pub(super) fn test() -> bool {
+        let mut passed: bool = true;
+        passed &= run_test!(test_reconcile_snapshot_time_clamps_lagging_host_sample);
+        passed &= run_test!(test_reconcile_snapshot_time_adopts_leading_host_sample);
+        passed
+    }
+}
+
+///
+/// # Description
+///
+/// Runs the pvclock in-kernel tests.
+///
+/// # Returns
+///
+/// `true` if every test passed, `false` otherwise.
+///
+#[cfg(feature = "test")]
+pub fn test() -> bool {
+    test::test()
 }
