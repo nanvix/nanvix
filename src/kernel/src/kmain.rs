@@ -222,6 +222,10 @@ fn test() {
     if !crate::hal::mem::test() {
         panic!("memory tests failed");
     }
+    #[cfg(feature = "microvm")]
+    if !crate::hal::platform::pvclock::test() {
+        panic!("pvclock tests failed");
+    }
     if !crate::event::test() {
         panic!("event manager tests failed");
     }

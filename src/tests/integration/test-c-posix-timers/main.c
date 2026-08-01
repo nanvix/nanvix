@@ -37,6 +37,21 @@
 #include <time.h>
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+// Number of nanoseconds in a second.
+#define NANOSECONDS_PER_SECOND 1000000000L
+
+// Monotonic-clock span that the backwards-jump check must cover. The host refreshes the
+// paravirtualized clock far less often than the guest interpolates between refreshes, so the check
+// only exercises the reconciliation path if it spans several host refreshes.
+#define MONOTONIC_CLOCK_SPAN_NS 50000000L
+
+// Upper bound on clock reads, so that a stalled clock fails the test instead of hanging it.
+#define MONOTONIC_CLOCK_READ_LIMIT 1000000
+
+//==================================================================================================
 // Private Functions
 //==================================================================================================
 
@@ -53,22 +68,39 @@ static void test_macros_advertised(void)
 static void test_monotonic_clock_works(void)
 {
     struct timespec res = {0};
-    struct timespec first = {0};
-    struct timespec second = {0};
+    struct timespec previous = {0};
 
     assert(clock_getres(CLOCK_MONOTONIC, &res) == 0);
     assert(res.tv_sec >= 0);
     assert(res.tv_nsec >= 0);
 
-    assert(clock_gettime(CLOCK_MONOTONIC, &first) == 0);
-    assert(first.tv_sec >= 0);
-    assert(first.tv_nsec >= 0);
+    assert(clock_gettime(CLOCK_MONOTONIC, &previous) == 0);
+    assert(previous.tv_sec >= 0);
+    assert(previous.tv_nsec >= 0);
 
-    assert(clock_gettime(CLOCK_MONOTONIC, &second) == 0);
+    const long span_nsec = previous.tv_nsec + MONOTONIC_CLOCK_SPAN_NS;
+    const struct timespec deadline = {
+        .tv_sec = previous.tv_sec + (span_nsec / NANOSECONDS_PER_SECOND),
+        .tv_nsec = span_nsec % NANOSECONDS_PER_SECOND,
+    };
 
-    // The monotonic clock must never run backwards.
-    assert(second.tv_sec > first.tv_sec ||
-           (second.tv_sec == first.tv_sec && second.tv_nsec >= first.tv_nsec));
+    for (size_t i = 0; i < MONOTONIC_CLOCK_READ_LIMIT; i++) {
+        struct timespec current = {0};
+        assert(clock_gettime(CLOCK_MONOTONIC, &current) == 0);
+
+        // The monotonic clock must never run backwards.
+        assert(current.tv_sec > previous.tv_sec ||
+               (current.tv_sec == previous.tv_sec && current.tv_nsec >= previous.tv_nsec));
+        previous = current;
+
+        if (current.tv_sec > deadline.tv_sec ||
+            (current.tv_sec == deadline.tv_sec && current.tv_nsec >= deadline.tv_nsec)) {
+            break;
+        }
+    }
+
+    assert(previous.tv_sec > deadline.tv_sec ||
+           (previous.tv_sec == deadline.tv_sec && previous.tv_nsec >= deadline.tv_nsec));
 }
 
 // Confirms nanosleep(), part of the advertised POSIX timers subset, suspends and returns success.
