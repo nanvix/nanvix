@@ -28,3 +28,6 @@ rust-lint-nanvix-test:
 
 rust-lint-check-nanvix-test:
 	$(HOST_CARGO_CLIPPY_CMD) --tests $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test -- -D warnings
+
+test-nanvix-test:
+	$(HOST_CARGO_TEST_CMD) $(NANVIX_TEST_CARGO_FEATURES) -p nanvix-test
