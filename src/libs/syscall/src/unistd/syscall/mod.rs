@@ -20,6 +20,7 @@ mod util;
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod _exit;
+        mod cancel;
         mod chdir;
         mod close;
         mod dup;

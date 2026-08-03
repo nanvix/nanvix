@@ -5,9 +5,15 @@
 // Imports
 //==================================================================================================
 
-use super::util::page_chunk_size;
+use super::{
+    cancel::cancel_pipe_operation,
+    util::page_chunk_size,
+};
 use crate::{
-    poll::input_message::ConsoleReadCancel,
+    poll::input_message::{
+        ConsoleReadCancel,
+        PipeOperation,
+    },
     safe::RawFileDescriptor,
     unistd::message::{
         ReadRequest,
@@ -46,7 +52,15 @@ struct ReadBackend {
     message_type: MessageType,
     pull_pid: ProcessIdentifier,
     pull_tid: ThreadIdentifier,
-    cancel_console_on_interrupt: bool,
+    cancellation: ReadCancellation,
+}
+
+/// Cancellation protocol to run when a read's bulk pull is interrupted.
+#[derive(Clone, Copy)]
+enum ReadCancellation {
+    None,
+    Console,
+    Pipe,
 }
 
 ///
@@ -86,10 +100,15 @@ fn read_chunk(
     let bytes_pulled: usize =
         match ::sys::kcall::ipc::__kcall_pull(backend.pull_pid, backend.pull_tid, chunk) {
             Ok(bytes_pulled) => bytes_pulled,
-            Err(error)
-                if error.code == ErrorCode::Interrupted && backend.cancel_console_on_interrupt =>
-            {
-                cancel_console_read(tid)?;
+            Err(error) if error.code == ErrorCode::Interrupted => {
+                match backend.cancellation {
+                    ReadCancellation::None => {},
+                    ReadCancellation::Console => cancel_console_read(tid)?,
+                    ReadCancellation::Pipe => {
+                        let _transferred: u32 =
+                            cancel_pipe_operation(tid, fd, PipeOperation::Read)?;
+                    },
+                }
                 return Err(error);
             },
             Err(error) => return Err(error),
@@ -270,7 +289,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
                         message_type: crate::VFS_MESSAGE_TYPE,
                         pull_pid: crate::VFS_PUSH_PULL_PID,
                         pull_tid: crate::VFS_PUSH_PULL_TID,
-                        cancel_console_on_interrupt: true,
+                        cancellation: ReadCancellation::Console,
                     },
                 )
             } else {
@@ -282,7 +301,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
                         message_type: MessageType::Ikc,
                         pull_pid: ProcessIdentifier::KERNEL,
                         pull_tid: ThreadIdentifier::KERNEL,
-                        cancel_console_on_interrupt: false,
+                        cancellation: ReadCancellation::None,
                     },
                 )
             }
@@ -301,7 +320,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
                     message_type: crate::VFS_MESSAGE_TYPE,
                     pull_pid: crate::VFS_PUSH_PULL_PID,
                     pull_tid: crate::VFS_PUSH_PULL_TID,
-                    cancel_console_on_interrupt: false,
+                    cancellation: ReadCancellation::Pipe,
                 },
             ),
             // stdout/stderr, sockets, and unroutable descriptors are not readable here.

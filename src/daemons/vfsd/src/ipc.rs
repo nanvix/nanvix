@@ -50,7 +50,12 @@ use ::sys::{
 };
 use ::syscall::{
     message::SystemCallMessagePart,
-    poll::input_message::ConsoleReadCancel,
+    poll::input_message::{
+        ConsoleReadCancel,
+        PipeOpCancelRequest,
+        PipeOpCancelResponse,
+        PipeReadRetry,
+    },
     SystemCallMessage,
     SystemCallMessageHeader,
 };
@@ -392,9 +397,34 @@ pub(crate) fn handle_ipc_message(
             let _ = handler::service_pending_console_input(console_wait);
             send_response(&ConsoleReadCancel::build_response(source_tid));
         },
+        SystemCallMessageHeader::PipeOpCancelRequest => {
+            let request: PipeOpCancelRequest = PipeOpCancelRequest::from_bytes(syscall_msg.payload);
+            // The parked request is keyed by the caller's identity, so `fd` and the operation kind
+            // are diagnostic only. Always acknowledge: the client blocks until it drains this
+            // response, so an error reply would wedge it instead.
+            let transferred: usize = pipe_wait.cancel(source_pid, source_tid).unwrap_or(0);
+            ::syslog::trace!(
+                "cancelled pipe operation (pid={:?}, tid={:?}, fd={}, operation={:?}, \
+                 transferred={})",
+                source_pid,
+                source_tid,
+                request.fd(),
+                request.operation(),
+                transferred
+            );
+            send_response(&PipeOpCancelResponse::build(source_tid, transferred as u32));
+        },
         SystemCallMessageHeader::ConsoleReadRetry => {
             if source_pid == ProcessIdentifier::VFSD {
                 handler::retry_console_readers(console_wait);
+            } else {
+                send_response(&build_error(source_tid, ErrorCode::PermissionDenied));
+            }
+        },
+        SystemCallMessageHeader::PipeReadRetry => {
+            if source_pid == ProcessIdentifier::VFSD {
+                let retry: PipeReadRetry = PipeReadRetry::from_bytes(syscall_msg.payload);
+                handler::pipe::retry_readers(retry.pipe_id(), pipe_wait);
             } else {
                 send_response(&build_error(source_tid, ErrorCode::PermissionDenied));
             }

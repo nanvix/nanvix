@@ -18,6 +18,7 @@ extern crate alloc;
 use ::alloc::{
     collections::{
         BTreeMap,
+        BTreeSet,
         VecDeque,
     },
     vec::Vec,
@@ -67,6 +68,7 @@ pub(crate) struct BlockedWriter {
 pub(crate) struct PipeWaitTable {
     readers: BTreeMap<u64, VecDeque<BlockedReader>>,
     writers: BTreeMap<u64, VecDeque<BlockedWriter>>,
+    read_retries: BTreeSet<u64>,
 }
 
 impl PipeWaitTable {
@@ -75,6 +77,7 @@ impl PipeWaitTable {
         Self {
             readers: BTreeMap::new(),
             writers: BTreeMap::new(),
+            read_retries: BTreeSet::new(),
         }
     }
 
@@ -139,14 +142,54 @@ impl PipeWaitTable {
         writer
     }
 
-    /// Removes and returns all readers suspended on `pipe_id` (used for EOF wakeups).
-    pub fn drain_readers(&mut self, pipe_id: u64) -> VecDeque<BlockedReader> {
-        self.readers.remove(&pipe_id).unwrap_or_default()
-    }
-
     /// Removes and returns all writers suspended on `pipe_id` (used for `EPIPE` wakeups).
     pub fn drain_writers(&mut self, pipe_id: u64) -> VecDeque<BlockedWriter> {
         self.writers.remove(&pipe_id).unwrap_or_default()
+    }
+
+    /// Marks a pipe-read retry as pending.
+    ///
+    /// Returns `true` when the caller should enqueue a retry event, or `false` if one is already
+    /// pending for `pipe_id`.
+    pub fn schedule_read_retry(&mut self, pipe_id: u64) -> bool {
+        self.read_retries.insert(pipe_id)
+    }
+
+    /// Consumes the pending pipe-read retry marker for `pipe_id`.
+    pub fn consume_read_retry(&mut self, pipe_id: u64) {
+        self.read_retries.remove(&pipe_id);
+    }
+
+    /// Cancels every suspended request issued by one thread.
+    ///
+    /// Returns the number of bytes already accepted for a cancelled writer, or zero for a
+    /// cancelled reader. If the thread has no suspended pipe request, returns `None`.
+    pub fn cancel(&mut self, pid: ProcessIdentifier, tid: ThreadIdentifier) -> Option<usize> {
+        let mut transferred: Option<usize> = None;
+
+        self.readers.retain(|_, queue| {
+            queue.retain(|reader| {
+                let matches: bool = reader.source_pid == pid && reader.source_tid == tid;
+                if matches {
+                    transferred = Some(0);
+                }
+                !matches
+            });
+            !queue.is_empty()
+        });
+
+        self.writers.retain(|_, queue| {
+            queue.retain(|writer| {
+                let matches: bool = writer.source_pid == pid && writer.source_tid == tid;
+                if matches {
+                    transferred = Some(writer.written);
+                }
+                !matches
+            });
+            !queue.is_empty()
+        });
+
+        transferred
     }
 
     /// Drops every suspended request issued by `pid`.

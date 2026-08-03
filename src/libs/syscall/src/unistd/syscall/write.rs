@@ -5,8 +5,12 @@
 // Imports
 //==================================================================================================
 
-use super::util::sg_chunk_size;
+use super::{
+    cancel::cancel_pipe_operation,
+    util::sg_chunk_size,
+};
 use crate::{
+    poll::input_message::PipeOperation,
     safe::RawFileDescriptor,
     unistd::message::{
         WriteRequest,
@@ -41,6 +45,16 @@ use ::sysapi::{
 // Standalone Functions
 //==================================================================================================
 
+/// Backend routing and interruption policy for one write operation.
+#[derive(Clone, Copy)]
+struct WriteBackend {
+    destination: ProcessIdentifier,
+    message_type: MessageType,
+    push_pid: ProcessIdentifier,
+    push_tid: ThreadIdentifier,
+    cancel_pipe_on_interrupt: bool,
+}
+
 ///
 /// # Description
 ///
@@ -62,22 +76,32 @@ fn write_chunk(
     tid: ThreadIdentifier,
     fd: RawFileDescriptor,
     chunk: &[u8],
-    destination: ProcessIdentifier,
-    message_type: MessageType,
-    push_pid: ProcessIdentifier,
-    push_tid: ThreadIdentifier,
+    backend: WriteBackend,
 ) -> Result<c_size_t, Error> {
     // Build metadata-only request and send it via IPC message.
     let empty_buf: [u8; WriteRequest::BUFFER_SIZE] = [0u8; WriteRequest::BUFFER_SIZE];
-    let request: Message =
-        WriteRequest::build(tid, fd, chunk.len() as c_size_t, empty_buf, destination, message_type);
+    let request: Message = WriteRequest::build(
+        tid,
+        fd,
+        chunk.len() as c_size_t,
+        empty_buf,
+        backend.destination,
+        backend.message_type,
+    );
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Push actual data via data chunk transfer.
-    ::sys::kcall::ipc::__kcall_push(push_pid, push_tid, chunk)?;
+    ::sys::kcall::ipc::__kcall_push(backend.push_pid, backend.push_tid, chunk)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = match ::sys::kcall::ipc::__kcall_recv() {
+        Ok(response) => response,
+        Err(error) if error.code == ErrorCode::Interrupted && backend.cancel_pipe_on_interrupt => {
+            let _transferred: u32 = cancel_pipe_operation(tid, fd, PipeOperation::Write)?;
+            return Err(error);
+        },
+        Err(error) => return Err(error),
+    };
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -183,20 +207,26 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
             write_ipc(
                 res.backend_fd,
                 buffer,
-                crate::HOST_IO,
-                MessageType::Ikc,
-                ProcessIdentifier::KERNEL,
-                ThreadIdentifier::KERNEL,
+                WriteBackend {
+                    destination: crate::HOST_IO,
+                    message_type: MessageType::Ikc,
+                    push_pid: ProcessIdentifier::KERNEL,
+                    push_tid: ThreadIdentifier::KERNEL,
+                    cancel_pipe_on_interrupt: false,
+                },
             )
         },
         // VFS-backed descriptors go to vfsd.
         Some(res) if res.route == Route::Vfs => write_ipc(
             res.backend_fd,
             buffer,
-            crate::VFS_DESTINATION,
-            crate::VFS_MESSAGE_TYPE,
-            crate::VFS_PUSH_PULL_PID,
-            crate::VFS_PUSH_PULL_TID,
+            WriteBackend {
+                destination: crate::VFS_DESTINATION,
+                message_type: crate::VFS_MESSAGE_TYPE,
+                push_pid: crate::VFS_PUSH_PULL_PID,
+                push_tid: crate::VFS_PUSH_PULL_TID,
+                cancel_pipe_on_interrupt: true,
+            },
         ),
         // stdin, sockets, and unroutable descriptors are not writable here.
         _ => {
@@ -252,10 +282,7 @@ fn notify_terminal_write() {
 fn write_ipc(
     fd: RawFileDescriptor,
     buffer: &[u8],
-    destination: ProcessIdentifier,
-    message_type: MessageType,
-    push_pid: ProcessIdentifier,
-    push_tid: ThreadIdentifier,
+    backend: WriteBackend,
 ) -> Result<c_size_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
@@ -267,8 +294,7 @@ fn write_ipc(
             sg_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &[u8] = &buffer[offset..offset + chunk_size];
 
-        let written: c_size_t =
-            write_chunk(tid, fd, chunk, destination, message_type, push_pid, push_tid)?;
+        let written: c_size_t = write_chunk(tid, fd, chunk, backend)?;
         total_written += written;
         offset += written as usize;
 
