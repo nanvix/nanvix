@@ -101,7 +101,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
         ::sys::kcall::ipc::__kcall_send(&request)?;
 
         // Receive response.
-        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {

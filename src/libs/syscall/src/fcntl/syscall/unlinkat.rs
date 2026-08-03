@@ -58,7 +58,7 @@ pub fn unlinkat(dirfd: RawFileDescriptor, pathname: &str, flags: c_int) -> Resul
     }
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

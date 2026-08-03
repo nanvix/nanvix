@@ -44,7 +44,7 @@ fn pipe_vfsd() -> Result<[i32; 2], Error> {
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
     parse_pipe_response(response)
 }
 

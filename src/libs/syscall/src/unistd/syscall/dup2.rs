@@ -54,7 +54,7 @@ fn dup2_via_vfsd(oldfd: c_int, newfd: c_int) -> Result<c_int, Error> {
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     // Check whether the system call succeeded or not.
     if response.status != 0 {

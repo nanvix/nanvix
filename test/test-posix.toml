@@ -375,6 +375,13 @@ expected_exit_code = 0
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+name = "posix/test-c-signal-rpc"
+program = "./bin/test-c-signal-rpc.initrd"
+expected_exit_code = 0
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 name = "posix/test-c-sigmask"
 program = "./bin/test-c-sigmask.initrd"
 expected_exit_code = 0

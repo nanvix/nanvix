@@ -77,7 +77,7 @@ pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<usize, Error> 
     )?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

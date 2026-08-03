@@ -46,7 +46,7 @@ pub fn umask(mask: mode_t) -> Result<mode_t, Error> {
         FileCreationMaskRequest::build(tid, mask, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
     ::sys::kcall::ipc::__kcall_send(&request)?;
 
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
     if response.status != 0 {
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
         return Err(Error::new(error_code, "umask() failed"));

@@ -113,7 +113,7 @@ fn sync_child_after_fork() -> Result<(), Error> {
     // message a process inside this window — a child is not yet known to any peer, and the parent
     // is blocked here rather than servicing requests. A stray message would be reported as an error
     // (below) and fail `fork()`, rather than being silently mistaken for the acknowledgement.
-    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let message: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     match message.message_type {
         MessageType::Ipc => {

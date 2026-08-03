@@ -68,7 +68,7 @@ fn getcwd_response() -> Result<String, Error> {
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+        let response: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {

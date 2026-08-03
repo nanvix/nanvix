@@ -67,7 +67,7 @@ fn job_control(
     ::sys::kcall::ipc::__kcall_send(&message)?;
 
     // Wait for the response from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let message: Message = ::sys::kcall::ipc::__kcall_recv_response()?;
 
     // Parse response.
     match message.message_type {
