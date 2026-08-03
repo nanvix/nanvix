@@ -24,8 +24,12 @@ use crate::{
     },
 };
 use ::arch::mem::PAGE_SIZE;
+use ::core::time::Duration;
 use ::sys::{
-    error::ErrorCode,
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::{
         Message,
         MessageType,
@@ -35,19 +39,27 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
-use ::syscall::unistd::message::{
-    PipeResponse,
-    ReadResponse,
-    WriteResponse,
+use ::syscall::{
+    poll::input_message::PipeReadRetry,
+    unistd::message::{
+        PipeResponse,
+        ReadResponse,
+        WriteResponse,
+    },
 };
-use ::vfs::fd::{
-    set_current_process,
-    vfs_get_status_flags,
-    vfs_pipe,
-    vfs_pipe_read,
-    vfs_pipe_write,
-    PipeReadOutcome,
-    PipeWriteOutcome,
+use ::vfs::{
+    fd::{
+        set_current_process,
+        vfs_get_status_flags,
+        vfs_pipe,
+        vfs_pipe_consume,
+        vfs_pipe_peek,
+        vfs_pipe_read,
+        vfs_pipe_write,
+        PipeReadOutcome,
+        PipeWriteOutcome,
+    },
+    Fat32Error,
 };
 
 //==================================================================================================
@@ -59,6 +71,9 @@ use ::vfs::fd::{
 /// Matches the page-aligned chunk size the syscall layer uses, so a single request never exceeds
 /// this. It must stay within `PIPE_BUF` so that each request is performed atomically.
 const PIPE_BULK_SIZE: usize = PAGE_SIZE;
+
+/// Revive pushes are non-blocking probes; callers without a registered pull stay queued for retry.
+const PIPE_REVIVE_PUSH_TIMEOUT: Duration = Duration::ZERO;
 
 /// Compile-time guarantee that a single pipe request is always atomic.
 ///
@@ -84,10 +99,35 @@ fn is_nonblocking(fd: i32) -> bool {
     vfs_get_status_flags(fd) & ::sysapi::fcntl::file_status_flags::O_NONBLOCK != 0
 }
 
+/// Outcome of pushing data to a parked reader.
+enum PushOutcome {
+    /// The caller received the data.
+    Delivered,
+    /// The caller has not registered its pull yet and must remain queued.
+    Retry,
+    /// The caller cannot be reached and should be dropped.
+    Failed,
+}
+
 /// Pushes an empty buffer to `(pid, tid)` to release a caller blocked in `__kcall_pull`.
-fn push_empty(pid: ProcessIdentifier, tid: ThreadIdentifier) {
-    if let Err(e) = ::sys::kcall::ipc::__kcall_push(pid, tid, &[]) {
-        ::syslog::error!("pipe: unblock push failed (error={:?})", e);
+fn push_empty(pid: ProcessIdentifier, tid: ThreadIdentifier, reviving: bool) -> PushOutcome {
+    let result: Result<(), Error> = if reviving {
+        ::sys::kcall::ipc::__kcall_push_timed(pid, tid, &[], Some(PIPE_REVIVE_PUSH_TIMEOUT))
+    } else {
+        ::sys::kcall::ipc::__kcall_push(pid, tid, &[])
+    };
+    match result {
+        Ok(()) => PushOutcome::Delivered,
+        Err(error) if reviving && error.code == ErrorCode::OperationTimedOut => PushOutcome::Retry,
+        Err(error) => {
+            ::syslog::error!(
+                "pipe: unblock push failed (pid={:?}, tid={:?}, error={:?})",
+                pid,
+                tid,
+                error
+            );
+            PushOutcome::Failed
+        },
     }
 }
 
@@ -111,7 +151,8 @@ fn write_response(tid: ThreadIdentifier, n: usize) -> Message {
 ///
 /// The data push to the caller (for [`Served`](ServeOutcome::Served), [`Eof`](ServeOutcome::Eof),
 /// and [`Error`](ServeOutcome::Error)) is performed inside [`try_serve_reader`]; only
-/// [`WouldBlock`](ServeOutcome::WouldBlock) leaves the caller blocked in `__kcall_pull`.
+/// [`WouldBlock`](ServeOutcome::WouldBlock) and [`Retry`](ServeOutcome::Retry) leave the caller
+/// blocked in `__kcall_pull`.
 enum ServeOutcome {
     /// Pushed `N` bytes to the caller (`N > 0`).
     Served(usize),
@@ -121,6 +162,10 @@ enum ServeOutcome {
     WouldBlock,
     /// The descriptor was not a readable pipe end; pushed an empty buffer.
     Error,
+    /// The parked caller has not registered its pull yet and must remain queued.
+    Retry,
+    /// The parked caller cannot be reached and was dropped.
+    Abandoned,
 }
 
 /// Attempts a non-blocking read of `fd` into the shared buffer and, on success, pushes the bytes to
@@ -130,27 +175,82 @@ fn try_serve_reader(
     tid: ThreadIdentifier,
     fd: i32,
     count: usize,
+    reviving: bool,
 ) -> ServeOutcome {
     let cap: usize = count.min(PIPE_BULK_SIZE);
     // SAFETY: single-threaded; the borrow is released when this function returns, and the only
     // callee touched while it is held (`__kcall_push`) does not access the buffer itself.
     let buf: &mut [u8] = unsafe { &mut PIPE_BULK_BUFFER[..cap] };
-    match vfs_pipe_read(fd, buf) {
+    // A revive must not consume the bytes before they are known to have reached the caller: the
+    // push may time out on a caller that a signal pulled out of its `__kcall_pull`.
+    let read: Result<PipeReadOutcome, Fat32Error> = if reviving {
+        vfs_pipe_peek(fd, buf)
+    } else {
+        vfs_pipe_read(fd, buf)
+    };
+    match read {
         Ok(PipeReadOutcome::Read(n)) => {
-            if let Err(e) = ::sys::kcall::ipc::__kcall_push(pid, tid, &buf[..n]) {
-                ::syslog::error!("pipe read: push failed (error={:?})", e);
-                return ServeOutcome::Error;
+            let push: Result<(), Error> = if reviving {
+                ::sys::kcall::ipc::__kcall_push_timed(
+                    pid,
+                    tid,
+                    &buf[..n],
+                    Some(PIPE_REVIVE_PUSH_TIMEOUT),
+                )
+            } else {
+                ::sys::kcall::ipc::__kcall_push(pid, tid, &buf[..n])
+            };
+            match push {
+                Ok(()) => {},
+                Err(error) if reviving && error.code == ErrorCode::OperationTimedOut => {
+                    return ServeOutcome::Retry;
+                },
+                Err(error) => {
+                    ::syslog::error!(
+                        "pipe read: push failed (pid={:?}, tid={:?}, fd={}, error={:?})",
+                        pid,
+                        tid,
+                        fd,
+                        error
+                    );
+                    return if reviving {
+                        ServeOutcome::Abandoned
+                    } else {
+                        ServeOutcome::Error
+                    };
+                },
+            }
+            if reviving {
+                match vfs_pipe_consume(fd, n) {
+                    Ok(consumed) if consumed == n => {},
+                    Ok(consumed) => ::syslog::error!(
+                        "pipe read: consume count mismatch (fd={}, expected={}, consumed={})",
+                        fd,
+                        n,
+                        consumed
+                    ),
+                    Err(error) => ::syslog::error!(
+                        "pipe read: consume failed (fd={}, count={}, error={:?})",
+                        fd,
+                        n,
+                        error
+                    ),
+                }
             }
             ServeOutcome::Served(n)
         },
-        Ok(PipeReadOutcome::Eof) => {
-            push_empty(pid, tid);
-            ServeOutcome::Eof
+        Ok(PipeReadOutcome::Eof) => match push_empty(pid, tid, reviving) {
+            PushOutcome::Delivered => ServeOutcome::Eof,
+            PushOutcome::Retry => ServeOutcome::Retry,
+            PushOutcome::Failed if reviving => ServeOutcome::Abandoned,
+            PushOutcome::Failed => ServeOutcome::Eof,
         },
         Ok(PipeReadOutcome::WouldBlock) => ServeOutcome::WouldBlock,
-        Err(_) => {
-            push_empty(pid, tid);
-            ServeOutcome::Error
+        Err(_) => match push_empty(pid, tid, reviving) {
+            PushOutcome::Delivered => ServeOutcome::Error,
+            PushOutcome::Retry => ServeOutcome::Retry,
+            PushOutcome::Failed if reviving => ServeOutcome::Abandoned,
+            PushOutcome::Failed => ServeOutcome::Error,
         },
     }
 }
@@ -204,17 +304,17 @@ pub(crate) fn handle_pipe_read(
     // Reading the write end is rejected with `EBADF`, regardless of `count`. The caller is blocked
     // in `__kcall_pull`, so release it before sending the error response.
     if is_write {
-        push_empty(source_pid, source_tid);
+        push_empty(source_pid, source_tid, false);
         return Some(build_error(source_tid, ErrorCode::BadFile));
     }
 
     // A zero-length read returns immediately without blocking.
     if count == 0 {
-        push_empty(source_pid, source_tid);
+        push_empty(source_pid, source_tid, false);
         return Some(read_response(source_tid, 0));
     }
 
-    match try_serve_reader(source_pid, source_tid, fd, count) {
+    match try_serve_reader(source_pid, source_tid, fd, count, false) {
         ServeOutcome::Served(n) => {
             // Freed buffer space: a suspended writer may now make progress.
             rebalance(pipe_id, pipe_wait);
@@ -224,7 +324,7 @@ pub(crate) fn handle_pipe_read(
         ServeOutcome::WouldBlock => {
             if is_nonblocking(fd) {
                 // The caller is blocked in `__kcall_pull`; release it before the error response.
-                push_empty(source_pid, source_tid);
+                push_empty(source_pid, source_tid, false);
                 Some(build_error(source_tid, ErrorCode::TryAgain))
             } else {
                 pipe_wait.park_reader(
@@ -240,6 +340,8 @@ pub(crate) fn handle_pipe_read(
             }
         },
         ServeOutcome::Error => Some(build_error(source_tid, ErrorCode::BadFile)),
+        // Unreachable: only a revive push can be retried or abandoned, and this path never revives.
+        ServeOutcome::Retry | ServeOutcome::Abandoned => None,
     }
 }
 
@@ -360,7 +462,7 @@ fn wake_readers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) -> bool {
     let mut progress: bool = false;
     while let Some((pid, tid, fd, count)) = pipe_wait.front_reader(pipe_id) {
         set_current_process(pid);
-        match try_serve_reader(pid, tid, fd, count) {
+        match try_serve_reader(pid, tid, fd, count, true) {
             ServeOutcome::Served(n) => {
                 pipe_wait.pop_reader(pipe_id);
                 send_response(&read_response(tid, n));
@@ -377,9 +479,46 @@ fn wake_readers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) -> bool {
                 send_response(&build_error(tid, ErrorCode::BadFile));
                 progress = true;
             },
+            ServeOutcome::Retry => {
+                schedule_pipe_read_retry(pipe_id, pipe_wait);
+                break;
+            },
+            ServeOutcome::Abandoned => {
+                pipe_wait.pop_reader(pipe_id);
+                progress = true;
+            },
         }
     }
     progress
+}
+
+/// Yields to let a parked reader register its pull, then retries through VFSD's event loop.
+fn schedule_pipe_read_retry(pipe_id: u64, pipe_wait: &mut PipeWaitTable) {
+    if !pipe_wait.schedule_read_retry(pipe_id) {
+        return;
+    }
+    if let Err(error) = ::sys::kcall::sched::__kcall_sched_yield() {
+        ::syslog::warn!("pipe read: failed to yield before retry (error={:?})", error);
+    }
+    let tid: ThreadIdentifier = match ::sys::kcall::pm::__kcall_gettid() {
+        Ok(tid) => tid,
+        Err(error) => {
+            pipe_wait.consume_read_retry(pipe_id);
+            ::syslog::error!("pipe read: failed to get VFSD tid (error={:?})", error);
+            return;
+        },
+    };
+    let retry: Message = PipeReadRetry::build(tid, pipe_id);
+    if let Err(error) = ::sys::kcall::ipc::__kcall_send(&retry) {
+        pipe_wait.consume_read_retry(pipe_id);
+        ::syslog::error!("pipe read: failed to schedule retry (error={:?})", error);
+    }
+}
+
+/// Retries delivery to parked pipe readers after they had time to register their pulls.
+pub(crate) fn retry_readers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) {
+    pipe_wait.consume_read_retry(pipe_id);
+    rebalance(pipe_id, pipe_wait);
 }
 
 /// Advances as many suspended writers as the buffer allows, completing or re-parking each.
@@ -458,15 +597,11 @@ fn rebalance(pipe_id: u64, pipe_wait: &mut PipeWaitTable) {
     }
 }
 
-/// Wakes all readers suspended on `pipe_id` with end-of-file.
+/// Wakes all readers suspended on `pipe_id` after the last writer closes.
 ///
-/// Invoked when the last write end closes (or its owner exits): every parked reader is answered
-/// with a zero-length read.
+/// Buffered data is delivered first; remaining readers are answered with a zero-length read.
 pub(crate) fn wake_all_readers_eof(pipe_id: u64, pipe_wait: &mut PipeWaitTable) {
-    for reader in pipe_wait.drain_readers(pipe_id) {
-        push_empty(reader.source_pid, reader.source_tid);
-        send_response(&read_response(reader.source_tid, 0));
-    }
+    let _ = wake_readers(pipe_id, pipe_wait);
 }
 
 /// Fails all writers suspended on `pipe_id` with `EPIPE`.

@@ -31,7 +31,10 @@ use super::{
     PipeWriteOutcome,
 };
 use ::alloc::{
-    collections::VecDeque,
+    collections::{
+        vec_deque::Drain,
+        VecDeque,
+    },
     sync::Arc,
 };
 use ::core::sync::atomic::{
@@ -108,14 +111,8 @@ struct PipeInner {
 }
 
 impl PipeInner {
-    /// Non-blocking read from the buffer.
-    ///
-    /// Copies as many bytes as are available into `buf` (up to `buf.len()`). Returns
-    /// [`PipeReadOutcome::WouldBlock`] when the buffer is empty but at least one writer is still
-    /// open, and [`PipeReadOutcome::Eof`] when the buffer is empty and no writers remain. A
-    /// zero-length read transfers no data and never blocks — POSIX `read(2)` with `count == 0`
-    /// returns `0` immediately.
-    fn read(&mut self, buf: &mut [u8]) -> PipeReadOutcome {
+    /// Non-destructively copies bytes from the front of the buffer.
+    fn peek(&self, buf: &mut [u8]) -> PipeReadOutcome {
         // A zero-length read must succeed immediately and never block, even on an empty pipe.
         if buf.is_empty() {
             return PipeReadOutcome::Read(0);
@@ -128,11 +125,33 @@ impl PipeInner {
             return PipeReadOutcome::WouldBlock;
         }
         let n: usize = available.min(buf.len());
-        // `n <= self.buf.len()`, so the drain yields exactly `n` bytes in front-to-back order.
-        for (dst, src) in buf.iter_mut().zip(self.buf.drain(..n)) {
-            *dst = src;
+        for (dst, src) in buf.iter_mut().zip(self.buf.iter().take(n)) {
+            *dst = *src;
         }
         PipeReadOutcome::Read(n)
+    }
+
+    /// Removes up to `count` bytes from the front of the buffer.
+    fn consume(&mut self, count: usize) -> usize {
+        let consumed: usize = count.min(self.buf.len());
+        let _dropped: Drain<'_, u8> = self.buf.drain(..consumed);
+        consumed
+    }
+
+    /// Non-blocking read from the buffer.
+    ///
+    /// Copies as many bytes as are available into `buf` (up to `buf.len()`). Returns
+    /// [`PipeReadOutcome::WouldBlock`] when the buffer is empty but at least one writer is still
+    /// open, and [`PipeReadOutcome::Eof`] when the buffer is empty and no writers remain. A
+    /// zero-length read transfers no data and never blocks — POSIX `read(2)` with `count == 0`
+    /// returns `0` immediately.
+    fn read(&mut self, buf: &mut [u8]) -> PipeReadOutcome {
+        let outcome: PipeReadOutcome = self.peek(buf);
+        if let PipeReadOutcome::Read(n) = outcome {
+            let consumed: usize = self.consume(n);
+            debug_assert_eq!(consumed, n);
+        }
+        outcome
     }
 
     /// Non-blocking write into the buffer, honoring [`PIPE_BUF`] atomicity.
@@ -258,6 +277,26 @@ impl PipeEnd {
         Ok(self.inner.lock().read(buf))
     }
 
+    /// Non-destructively copies bytes from the pipe into `buf`.
+    ///
+    /// Returns [`PipeEndError::WrongDirection`] when invoked on the write end.
+    pub fn peek(&self, buf: &mut [u8]) -> Result<PipeReadOutcome, PipeEndError> {
+        if self.is_write {
+            return Err(PipeEndError::WrongDirection);
+        }
+        Ok(self.inner.lock().peek(buf))
+    }
+
+    /// Removes up to `count` bytes from the front of the pipe buffer.
+    ///
+    /// Returns [`PipeEndError::WrongDirection`] when invoked on the write end.
+    pub fn consume(&self, count: usize) -> Result<usize, PipeEndError> {
+        if self.is_write {
+            return Err(PipeEndError::WrongDirection);
+        }
+        Ok(self.inner.lock().consume(count))
+    }
+
     /// Attempts a non-blocking write to the pipe.
     ///
     /// Returns [`PipeEndError::WrongDirection`] when invoked on the read end.
@@ -315,6 +354,22 @@ mod tests {
             _ => panic!("write should succeed"),
         }
         assert_eq!(read_all(&r, 16), data, "read bytes should match written bytes");
+    }
+
+    /// Tests that peeking preserves bytes until the caller explicitly consumes them.
+    #[test]
+    fn peek_then_consume_commits_prefix() {
+        let (r, w): (PipeEnd, PipeEnd) = PipeEnd::new_pair();
+        w.write(&[1, 2, 3, 4]).expect("write end");
+        let mut buf: [u8; 3] = [0; 3];
+
+        assert!(
+            matches!(r.peek(&mut buf).expect("read end"), PipeReadOutcome::Read(3)),
+            "peek should copy the requested prefix"
+        );
+        assert_eq!(buf, [1, 2, 3], "peeked bytes should preserve order");
+        assert_eq!(r.consume(2).expect("read end"), 2, "consume should remove two bytes");
+        assert_eq!(read_all(&r, 4), [3, 4], "only the committed prefix should be removed");
     }
 
     /// Tests that the two ends report the same, unique pipe identity.

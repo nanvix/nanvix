@@ -184,6 +184,50 @@ impl ConsoleReadRetry {
     }
 }
 
+/// VFSD's private pipe-read retry event.
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct PipeReadRetry {
+    pipe_id: u64,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::static_assert::assert_eq_size!(PipeReadRetry, SystemCallMessage::PAYLOAD_SIZE);
+
+impl PipeReadRetry {
+    const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<u64>();
+
+    /// Deserializes a pipe-read retry event.
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    /// Returns the stable identity of the pipe whose readers should be retried.
+    pub fn pipe_id(&self) -> u64 {
+        self.pipe_id
+    }
+
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    /// Builds a retry event addressed to VFSD's process mailbox.
+    pub fn build(tid: ThreadIdentifier, pipe_id: u64) -> Message {
+        let retry: Self = Self {
+            pipe_id,
+            _padding: [0; Self::PADDING_SIZE],
+        };
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageHeader::PipeReadRetry, retry.into_bytes());
+        Message::new(
+            MessageSender::new(ProcessIdentifier::VFSD, tid),
+            MessageReceiver::VFSD,
+            MessageType::Ipc,
+            None,
+            message.into_bytes(),
+        )
+    }
+}
+
 /// Builds console-read cancellation protocol messages.
 pub struct ConsoleReadCancel;
 
@@ -219,6 +263,138 @@ impl ConsoleReadCancel {
     }
 }
 
+/// Kind of pipe operation to cancel.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum PipeOperation {
+    /// A pipe read.
+    Read,
+    /// A pipe write.
+    Write,
+}
+
+impl TryFrom<u8> for PipeOperation {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            value if value == Self::Read as u8 => Ok(Self::Read),
+            value if value == Self::Write as u8 => Ok(Self::Write),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Request to cancel a parked pipe operation.
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct PipeOpCancelRequest {
+    fd: i32,
+    operation: u8,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::static_assert::assert_eq_size!(PipeOpCancelRequest, SystemCallMessage::PAYLOAD_SIZE);
+
+impl PipeOpCancelRequest {
+    const PADDING_SIZE: usize =
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u8>();
+
+    /// Creates a pipe-operation cancellation request.
+    pub fn new(fd: i32, operation: PipeOperation) -> Self {
+        Self {
+            fd,
+            operation: operation as u8,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    /// Deserializes a pipe-operation cancellation request.
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    /// Returns the file descriptor for the cancelled operation.
+    pub fn fd(&self) -> i32 {
+        self.fd
+    }
+
+    /// Returns the kind of operation to cancel, or `None` if the encoded value is invalid.
+    pub fn operation(&self) -> Option<PipeOperation> {
+        PipeOperation::try_from(self.operation).ok()
+    }
+
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    /// Builds a pipe-operation cancellation request.
+    pub fn build(tid: ThreadIdentifier, fd: i32, operation: PipeOperation) -> Message {
+        let request: Self = Self::new(fd, operation);
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::PipeOpCancelRequest,
+            request.into_bytes(),
+        );
+        Message::new(
+            MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
+            MessageReceiver::new(crate::VFS_DESTINATION, ThreadIdentifier::NONE),
+            crate::VFS_MESSAGE_TYPE,
+            None,
+            message.into_bytes(),
+        )
+    }
+}
+
+/// Response to a pipe-operation cancellation request.
+#[derive(Debug)]
+#[repr(C, packed)]
+pub struct PipeOpCancelResponse {
+    transferred: u32,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::static_assert::assert_eq_size!(PipeOpCancelResponse, SystemCallMessage::PAYLOAD_SIZE);
+
+impl PipeOpCancelResponse {
+    const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<u32>();
+
+    /// Creates a pipe-operation cancellation response.
+    pub fn new(transferred: u32) -> Self {
+        Self {
+            transferred,
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    /// Deserializes a pipe-operation cancellation response.
+    pub fn from_bytes(bytes: [u8; SystemCallMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    /// Returns the number of bytes transferred before cancellation.
+    pub fn transferred(&self) -> u32 {
+        self.transferred
+    }
+
+    fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    /// Builds a pipe-operation cancellation response.
+    pub fn build(tid: ThreadIdentifier, transferred: u32) -> Message {
+        let response: Self = Self::new(transferred);
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::PipeOpCancelResponse,
+            response.into_bytes(),
+        );
+        Message::new(
+            MessageSender::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE),
+            MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
+            MessageType::Ipc,
+            None,
+            message.into_bytes(),
+        )
+    }
+}
+
 //==================================================================================================
 // Tests
 //==================================================================================================
@@ -241,5 +417,22 @@ mod tests {
         let response: PollInputResponse = PollInputResponse::new(PollInputRequest::STATUS_DATA);
         let decoded: PollInputResponse = PollInputResponse::from_bytes(response.into_bytes());
         assert_eq!(decoded.status(), PollInputRequest::STATUS_DATA);
+    }
+
+    /// Tests pipe cancellation request field preservation through serialization.
+    #[test]
+    fn pipe_cancel_request_round_trip() {
+        let request: PipeOpCancelRequest = PipeOpCancelRequest::new(7, PipeOperation::Write);
+        let decoded: PipeOpCancelRequest = PipeOpCancelRequest::from_bytes(request.into_bytes());
+        assert_eq!(decoded.fd(), 7);
+        assert_eq!(decoded.operation(), Some(PipeOperation::Write));
+    }
+
+    /// Tests pipe cancellation response field preservation through serialization.
+    #[test]
+    fn pipe_cancel_response_round_trip() {
+        let response: PipeOpCancelResponse = PipeOpCancelResponse::new(123);
+        let decoded: PipeOpCancelResponse = PipeOpCancelResponse::from_bytes(response.into_bytes());
+        assert_eq!(decoded.transferred(), 123);
     }
 }

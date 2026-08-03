@@ -342,6 +342,9 @@ pub enum SystemCallMessageHeader {
     ConsoleReadCancelResponse,
     PollInputResponse,
     ConsoleReadRetry,
+    PipeOpCancelRequest,
+    PipeOpCancelResponse,
+    PipeReadRetry,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageHeader
 impl TryFrom<u16> for SystemCallMessageHeader {
@@ -528,6 +531,9 @@ impl TryFrom<u16> for SystemCallMessageHeader {
             x if x == ConsoleReadCancelResponse as u16 => Ok(ConsoleReadCancelResponse),
             x if x == PollInputResponse as u16 => Ok(PollInputResponse),
             x if x == ConsoleReadRetry as u16 => Ok(ConsoleReadRetry),
+            x if x == PipeOpCancelRequest as u16 => Ok(PipeOpCancelRequest),
+            x if x == PipeOpCancelResponse as u16 => Ok(PipeOpCancelResponse),
+            x if x == PipeReadRetry as u16 => Ok(PipeReadRetry),
             _ => Err(()),
         }
     }

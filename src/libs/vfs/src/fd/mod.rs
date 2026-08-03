@@ -780,6 +780,30 @@ pub fn vfs_pipe_read(fd: c_int, buf: &mut [u8]) -> Result<PipeReadOutcome, Fat32
     end.read(buf).map_err(|_| Fat32Error::InvalidFd)
 }
 
+/// Non-destructively copies bytes from a pipe read end into `buf`.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidFd`] if `fd` is not a pipe or if it is the write end.
+pub fn vfs_pipe_peek(fd: c_int, buf: &mut [u8]) -> Result<PipeReadOutcome, Fat32Error> {
+    let file: OpenFile = entry_arc(fd)?;
+    let guard = file.lock();
+    let end: &crate::pipe::PipeEnd = guard.handle.pipe_end().ok_or(Fat32Error::InvalidFd)?;
+    end.peek(buf).map_err(|_| Fat32Error::InvalidFd)
+}
+
+/// Removes up to `count` bytes from the front of a pipe read end.
+///
+/// # Errors
+///
+/// Returns [`Fat32Error::InvalidFd`] if `fd` is not a pipe or if it is the write end.
+pub fn vfs_pipe_consume(fd: c_int, count: usize) -> Result<usize, Fat32Error> {
+    let file: OpenFile = entry_arc(fd)?;
+    let guard = file.lock();
+    let end: &crate::pipe::PipeEnd = guard.handle.pipe_end().ok_or(Fat32Error::InvalidFd)?;
+    end.consume(count).map_err(|_| Fat32Error::InvalidFd)
+}
+
 /// Attempts a non-blocking write to a pipe write end, honoring `PIPE_BUF` atomicity.
 ///
 /// On [`PipeWriteOutcome::Wrote(n)`](PipeWriteOutcome::Wrote), `n` bytes became available, so vfsd
