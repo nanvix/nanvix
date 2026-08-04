@@ -1659,7 +1659,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target-arch: [ x86 ]
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
         memory-size: [ 256 ]
     runs-on: ubuntu-24.04
