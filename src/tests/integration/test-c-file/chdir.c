@@ -15,6 +15,7 @@
 //==================================================================================================
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
@@ -56,6 +57,19 @@ void test_chdir(void)
     // Verify the current working directory is restored.
     assert(getcwd(new_cwd, sizeof(new_cwd)) != NULL);
     assert(strcmp(new_cwd, original_cwd) == 0);
+
+    // Regression: chdir() onto a regular file must fail with ENOTDIR and leave
+    // the cwd unchanged.
+    const char *filename = "testfile_chdir";
+    int fd = open(filename, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    assert(fd >= 0);
+    assert(close(fd) == 0);
+    errno = 0;
+    assert(chdir(filename) != 0);
+    assert(errno == ENOTDIR);
+    assert(getcwd(new_cwd, sizeof(new_cwd)) != NULL);
+    assert(strcmp(new_cwd, original_cwd) == 0);
+    assert(unlink(filename) == 0);
 
     // Clean up.
     assert(unlinkat(AT_FDCWD, dirname, AT_REMOVEDIR) == 0);
