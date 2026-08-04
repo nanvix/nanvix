@@ -286,14 +286,12 @@ pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fa
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::InvalidPath`] if the path is malformed.
 /// - [`Fat32Error::NotFound`] if no mount handles this path.
+/// - [`Fat32Error::NotADirectory`] if the path is not a directory.
 pub(crate) fn change_directory(cwd: &str, path: &str) -> Result<String, Fat32Error> {
-    let normalized: String = state::with_vfs_mut(|vfs| {
-        let normalized: String = vfs.normalize_path(path, cwd)?;
-        if !normalized.is_empty() && normalized != "/" {
-            let _ = vfs.resolve(&normalized, cwd)?;
-        }
-        Ok(normalized)
-    })?;
+    let normalized: String = normalize(cwd, path)?;
+    if !normalized.is_empty() && normalized != "/" && !stat(cwd, path)?.is_dir() {
+        return Err(Fat32Error::NotADirectory);
+    }
     Ok(normalized)
 }
 
