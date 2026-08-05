@@ -2113,7 +2113,7 @@ impl ProcessManager {
         // Check the running thread's kernel stack guard watermark before switching away.
         self.check_running_stack_guard();
 
-        let running_process: RunningProcess = self.take_running();
+        let mut running_process: RunningProcess = self.take_running();
         trace!(
             "pid={:?}, tid={:?}, status={status:?}",
             running_process.state().pid(),
@@ -2124,6 +2124,9 @@ impl ProcessManager {
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
             panic!("kernel process cannot exit");
         }
+
+        let purged_messages: usize = running_process.state_mut().purge_messages();
+        self.note_messages_purged(purged_messages);
 
         // Clean up any pending rendezvous entries for this process and wake up counterpart
         // threads that would otherwise block forever.
@@ -2201,7 +2204,8 @@ impl ProcessManager {
         // Check the running thread's kernel stack guard watermark before switching away.
         self.check_running_stack_guard();
 
-        let running_process: RunningProcess = self.take_running();
+        let mut running_process: RunningProcess = self.take_running();
+        let exiting_tid: ThreadIdentifier = running_process.get_tid();
 
         trace!(
             "pid={:?}, tid={:?}, status={:?}",
@@ -2214,6 +2218,11 @@ impl ProcessManager {
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
             panic!("kernel process cannot exit (status={status:?})");
         }
+
+        let purged_messages: usize = running_process
+            .state_mut()
+            .purge_thread_messages(exiting_tid);
+        self.note_messages_purged(purged_messages);
 
         // Terminate the calling thread and schedule another thread to run.
         let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
@@ -2237,11 +2246,13 @@ impl ProcessManager {
                     (join_cond, previous_context)
                 },
                 // The calling process has only zombie threads left, put it in the list of zombies processes.
-                (Err(Err((join_cond, zombie_process, previous_context))), deferred_zombie) => {
+                (Err(Err((join_cond, mut zombie_process, previous_context))), deferred_zombie) => {
                     debug_assert!(
                         deferred_zombie.is_none(),
                         "deferred zombie must be None when no other threads remain"
                     );
+                    let purged_messages: usize = zombie_process.state_mut().purge_messages();
+                    self.note_messages_purged(purged_messages);
                     self.zombies.push_back(zombie_process);
                     (join_cond, previous_context)
                 },
@@ -3010,6 +3021,21 @@ impl ProcessManager {
                     ErrorCode::InvalidArgument,
                     "number of buffered messages underflowed",
                 ))
+            },
+        }
+    }
+
+    /// Removes purged messages from the global buffered-message count.
+    fn note_messages_purged(&mut self, purged_messages: usize) {
+        match self.number_buffered_messages.checked_sub(purged_messages) {
+            Some(n) => self.number_buffered_messages = n,
+            None => {
+                error!(
+                    "number of buffered messages underflowed while purging (buffered={}, \
+                     purged={})",
+                    self.number_buffered_messages, purged_messages
+                );
+                self.number_buffered_messages = 0;
             },
         }
     }
@@ -3790,6 +3816,18 @@ impl ProcessManager {
             } else {
                 self.find_process_by_tid(receiver.tid)?
             };
+            if matches!(&process, ProcessRefMut::Zombie(_)) {
+                let reason: &str = "cannot post a message to a zombie process";
+                warn!("{reason} (receiver={receiver:?})");
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            }
+            if !receiver.tid.is_none()
+                && matches!(process.find_thread_mut(receiver.tid), Some(ThreadRefMut::Zombie(_)))
+            {
+                let reason: &str = "cannot post a message to a zombie thread";
+                warn!("{reason} (receiver={receiver:?})");
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            }
             process.state_mut().post_message(message);
         }
         self.note_message_posted()?;

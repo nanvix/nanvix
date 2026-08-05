@@ -96,4 +96,46 @@ impl Mailbox {
 
         None
     }
+
+    ///
+    /// # Description
+    ///
+    /// Removes every buffered message addressed exactly to a thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the thread whose messages should be removed.
+    ///
+    /// # Returns
+    ///
+    /// The number of messages removed from the mailbox.
+    ///
+    pub fn purge_thread(&mut self, tid: ThreadIdentifier) -> usize {
+        let mut retained: LinkedList<Message> = LinkedList::new();
+        let mut removed: usize = 0;
+        while let Some(message) = self.buffer.pop_front() {
+            if { message.destination }.tid == tid {
+                removed += 1;
+            } else {
+                retained.push_back(message);
+            }
+        }
+        self.buffer = retained;
+        removed
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Removes every buffered message.
+    ///
+    /// # Returns
+    ///
+    /// The number of messages removed from the mailbox.
+    ///
+    pub fn purge_all(&mut self) -> usize {
+        let removed: usize = self.buffer.len();
+        self.buffer.clear();
+        removed
+    }
 }
