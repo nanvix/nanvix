@@ -43,7 +43,7 @@ use ::sysapi::{
 use ::syscall::{
     message::SystemCallMessagePart,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use std::{
     fs::{
@@ -165,7 +165,7 @@ impl HostFsHandler {
                 // hostfs response and safely drops/logs it, instead of ignoring a
                 // frame whose zeroed header decodes as `OpenAtRequestPart` and
                 // potentially leaving a pending op stuck.
-                set_header(&mut response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                set_kind(&mut response, SystemCallMessageKind::HostFsOpenResponse as u16);
                 set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 return Some(response);
             },
@@ -173,10 +173,8 @@ impl HostFsHandler {
 
         // Helper: run a single-message handler, echo op_id, and wrap the result.
         //
-        // The op_id stamp at bytes [2..6] is skipped when the handler produced a
-        // multi-part response, because those bytes belong to the
-        // `SystemCallMessagePart` framing (`total_parts` + `part_number`) and the
-        // op_id is embedded in the assembled response body instead.
+        // Multi-part response builders stamp the op_id on every outer frame and also retain it in
+        // the assembled response body. Single-message handlers are stamped here.
         let run =
             |this: &mut Self,
              f: fn(&mut Self, &[u8; Message::PAYLOAD_SIZE], &mut [u8; Message::PAYLOAD_SIZE])|
@@ -184,7 +182,7 @@ impl HostFsHandler {
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
                 f(this, payload, &mut response);
                 let resp_header_raw: u16 = u16::from_ne_bytes([response[0], response[1]]);
-                let is_multipart: bool = SystemCallMessageHeader::try_from(resp_header_raw)
+                let is_multipart: bool = SystemCallMessageKind::try_from(resp_header_raw)
                     .map(|h| h.is_hostfs_multipart_response())
                     .unwrap_or(false);
                 if !is_multipart {
@@ -193,19 +191,21 @@ impl HostFsHandler {
                 Some(response)
             };
 
-        match syscall_msg.header {
+        match syscall_msg.kind() {
             // Multi-part request messages: accumulate parts.
-            SystemCallMessageHeader::HostFsOpenRequestPart
-            | SystemCallMessageHeader::HostFsRenameRequestPart
-            | SystemCallMessageHeader::HostFsUnlinkRequestPart
-            | SystemCallMessageHeader::HostFsMkdirRequestPart
-            | SystemCallMessageHeader::HostFsRmdirRequestPart
-            | SystemCallMessageHeader::HostFsSymlinkRequestPart
-            | SystemCallMessageHeader::HostFsReadlinkRequestPart
-            | SystemCallMessageHeader::HostFsLstatRequestPart
-            | SystemCallMessageHeader::HostFsPathStatRequestPart => {
-                self.handle_long_part(syscall_msg.header, &syscall_msg.payload)
-            },
+            SystemCallMessageKind::HostFsOpenRequestPart
+            | SystemCallMessageKind::HostFsRenameRequestPart
+            | SystemCallMessageKind::HostFsUnlinkRequestPart
+            | SystemCallMessageKind::HostFsMkdirRequestPart
+            | SystemCallMessageKind::HostFsRmdirRequestPart
+            | SystemCallMessageKind::HostFsSymlinkRequestPart
+            | SystemCallMessageKind::HostFsReadlinkRequestPart
+            | SystemCallMessageKind::HostFsLstatRequestPart
+            | SystemCallMessageKind::HostFsPathStatRequestPart => self.handle_long_part(
+                syscall_msg.kind(),
+                OperationId::from_le_bytes(syscall_msg.request_id().raw().to_le_bytes()),
+                &syscall_msg.payload,
+            ),
             // Single-message requests: dispatch inline.
             //
             // NOTE: `HostFsOpenRequest`, `HostFsMkdirRequest`, `HostFsRmdirRequest`,
@@ -214,28 +214,28 @@ impl HostFsHandler {
             // sends these as multi-part `*RequestPart` messages (above) to lift the
             // 36-byte inline path limit. The single-message arms are retained because
             // `handler_test` still exercises them directly via in-process payloads.
-            SystemCallMessageHeader::HostFsOpenRequest => run(self, Self::handle_open),
-            SystemCallMessageHeader::HostFsCloseRequest => run(self, Self::handle_close),
-            SystemCallMessageHeader::HostFsReadRequest => run(self, Self::handle_read),
-            SystemCallMessageHeader::HostFsWriteRequest => run(self, Self::handle_write),
-            SystemCallMessageHeader::HostFsStatRequest => run(self, Self::handle_stat),
-            SystemCallMessageHeader::HostFsReadDirRequest => run(self, Self::handle_readdir),
-            SystemCallMessageHeader::HostFsMkdirRequest => run(self, Self::handle_mkdir),
-            SystemCallMessageHeader::HostFsRmdirRequest => run(self, Self::handle_rmdir),
-            SystemCallMessageHeader::HostFsUnlinkRequest => run(self, Self::handle_unlink),
-            SystemCallMessageHeader::HostFsRenameRequest => run(self, Self::handle_rename),
-            SystemCallMessageHeader::HostFsLseekRequest => run(self, Self::handle_lseek),
-            SystemCallMessageHeader::HostFsTruncateRequest => run(self, Self::handle_truncate),
-            SystemCallMessageHeader::HostFsFlushRequest => run(self, Self::handle_flush),
-            SystemCallMessageHeader::HostFsReadlinkRequest => run(self, Self::handle_readlink),
-            SystemCallMessageHeader::HostFsLstatRequest => run(self, Self::handle_lstat),
-            SystemCallMessageHeader::HostFsPathStatRequest => run(self, Self::handle_pathstat),
+            SystemCallMessageKind::HostFsOpenRequest => run(self, Self::handle_open),
+            SystemCallMessageKind::HostFsCloseRequest => run(self, Self::handle_close),
+            SystemCallMessageKind::HostFsReadRequest => run(self, Self::handle_read),
+            SystemCallMessageKind::HostFsWriteRequest => run(self, Self::handle_write),
+            SystemCallMessageKind::HostFsStatRequest => run(self, Self::handle_stat),
+            SystemCallMessageKind::HostFsReadDirRequest => run(self, Self::handle_readdir),
+            SystemCallMessageKind::HostFsMkdirRequest => run(self, Self::handle_mkdir),
+            SystemCallMessageKind::HostFsRmdirRequest => run(self, Self::handle_rmdir),
+            SystemCallMessageKind::HostFsUnlinkRequest => run(self, Self::handle_unlink),
+            SystemCallMessageKind::HostFsRenameRequest => run(self, Self::handle_rename),
+            SystemCallMessageKind::HostFsLseekRequest => run(self, Self::handle_lseek),
+            SystemCallMessageKind::HostFsTruncateRequest => run(self, Self::handle_truncate),
+            SystemCallMessageKind::HostFsFlushRequest => run(self, Self::handle_flush),
+            SystemCallMessageKind::HostFsReadlinkRequest => run(self, Self::handle_readlink),
+            SystemCallMessageKind::HostFsLstatRequest => run(self, Self::handle_lstat),
+            SystemCallMessageKind::HostFsPathStatRequest => run(self, Self::handle_pathstat),
             other => {
                 log::error!("hostfsd: unexpected message header: {:?}", other);
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
                 set_op_id(&mut response, get_op_id(payload));
-                if let Some(resp_header) = other.hostfs_response_header() {
-                    set_header(&mut response, resp_header as u16);
+                if let Some(resp_header) = other.hostfs_response_kind() {
+                    set_kind(&mut response, resp_header as u16);
                 }
                 set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 Some(response)
@@ -251,39 +251,53 @@ impl HostFsHandler {
     /// or when a fatal assembly error is detected.
     fn handle_long_part(
         &mut self,
-        header: SystemCallMessageHeader,
+        header: SystemCallMessageKind,
+        request_id: OperationId,
         syscall_payload: &[u8; SystemCallMessage::PAYLOAD_SIZE],
     ) -> Option<[u8; Message::PAYLOAD_SIZE]> {
         let part: SystemCallMessagePart = SystemCallMessagePart::from_bytes(*syscall_payload);
 
-        match self.assembler.add_part(header, part) {
+        let assembly_status: AssemblyStatus = self.assembler.add_part(header, request_id, part);
+        match assembly_status {
             AssemblyStatus::NeedMore => return None,
-            AssemblyStatus::Error => {
+            AssemblyStatus::Interrupted | AssemblyStatus::Error => {
                 // Fatal assembly error — return an error response so vfsd can drain
                 // its pending queue. The assembler preserves any buffered bytes and
                 // the recorded header from the in-flight stream so that we can echo
                 // the original op_id (read from the first 4 bytes of part 0, when
                 // available) and the matching response header. This keeps vfsd's
                 // pending-op tracking consistent in the face of malformed streams.
-                let recorded_header: SystemCallMessageHeader = self.assembler.recorded_header();
-                let buffered: Vec<u8> = self.assembler.take_assembled();
-                let op_id: OperationId = if buffered.len() >= 4 {
-                    OperationId::from_le_bytes([buffered[0], buffered[1], buffered[2], buffered[3]])
+                let recorded_header: SystemCallMessageKind = self.assembler.recorded_header();
+                let recorded_request_id: OperationId = self.assembler.recorded_request_id();
+                let op_id: OperationId = if recorded_request_id == OperationId::INVALID {
+                    request_id
                 } else {
-                    OperationId::INVALID
+                    recorded_request_id
                 };
+                let _buffered: Vec<u8> = self.assembler.take_assembled();
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
                 set_op_id(&mut response, op_id);
                 // Prefer the response header for the recorded (first-part) request
                 // type; fall back to the current part's header if no part has been
                 // accepted yet (e.g., total_parts==0 on the very first part).
                 let resp_header = recorded_header
-                    .hostfs_response_header()
-                    .or_else(|| header.hostfs_response_header());
+                    .hostfs_response_kind()
+                    .or_else(|| header.hostfs_response_kind());
                 if let Some(resp_header) = resp_header {
-                    set_header(&mut response, resp_header as u16);
+                    set_kind(&mut response, resp_header as u16);
                 }
                 set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                if assembly_status == AssemblyStatus::Interrupted {
+                    // The current part starts a new request. Replay it against the reset
+                    // assembler and queue any immediate response after this in-flight error.
+                    // `push_front()` keeps a multipart response head ahead of any tail parts that
+                    // the recursive dispatch queued in `extra_responses`.
+                    if let Some(next_response) =
+                        self.handle_long_part(header, request_id, syscall_payload)
+                    {
+                        self.extra_responses.push_front(next_response);
+                    }
+                }
                 return Some(response);
             },
             AssemblyStatus::Complete => { /* fall through to dispatch */ },
@@ -292,7 +306,8 @@ impl HostFsHandler {
         // All parts received — assemble and dispatch.
         // Use the header recorded on the first part for dispatch (not the current part's header)
         // to prevent a malformed stream from causing a wrong-format deserialization.
-        let dispatch_header: SystemCallMessageHeader = self.assembler.recorded_header();
+        let dispatch_header: SystemCallMessageKind = self.assembler.recorded_header();
+        let request_id: OperationId = self.assembler.recorded_request_id();
         let assembled: Vec<u8> = self.assembler.take_assembled();
         let mut response = [0u8; Message::PAYLOAD_SIZE];
 
@@ -303,103 +318,107 @@ impl HostFsHandler {
         } else {
             OperationId::INVALID
         };
+        if op_id != request_id {
+            log::error!(
+                "hostfsd: assembled request identifier mismatch (outer={}, body={})",
+                request_id,
+                op_id
+            );
+            set_op_id(&mut response, request_id);
+            if let Some(resp_header) = dispatch_header.hostfs_response_kind() {
+                set_kind(&mut response, resp_header as u16);
+            }
+            set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+            return Some(response);
+        }
         set_op_id(&mut response, op_id);
 
         match dispatch_header {
-            SystemCallMessageHeader::HostFsOpenRequestPart => {
+            SystemCallMessageKind::HostFsOpenRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_open(&assembled) {
                     self.handle_long_open(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long open request");
-                    set_header(&mut response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_kind(&mut response, SystemCallMessageKind::HostFsOpenResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
-            SystemCallMessageHeader::HostFsRenameRequestPart => {
+            SystemCallMessageKind::HostFsRenameRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_rename(&assembled) {
                     self.handle_long_rename(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long rename request");
-                    set_header(&mut response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                    set_kind(&mut response, SystemCallMessageKind::HostFsRenameResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
-            SystemCallMessageHeader::HostFsUnlinkRequestPart => {
+            SystemCallMessageKind::HostFsUnlinkRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_unlink(&assembled) {
                     self.handle_long_unlink(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long unlink request");
-                    set_header(&mut response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
+                    set_kind(&mut response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
-            SystemCallMessageHeader::HostFsMkdirRequestPart => {
+            SystemCallMessageKind::HostFsMkdirRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_mkdir(&assembled) {
                     self.handle_long_mkdir(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long mkdir request");
-                    set_header(&mut response, SystemCallMessageHeader::HostFsMkdirResponse as u16);
+                    set_kind(&mut response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
-            SystemCallMessageHeader::HostFsRmdirRequestPart => {
+            SystemCallMessageKind::HostFsRmdirRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_rmdir(&assembled) {
                     self.handle_long_rmdir(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long rmdir request");
-                    set_header(&mut response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                    set_kind(&mut response, SystemCallMessageKind::HostFsRmdirResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
-            SystemCallMessageHeader::HostFsSymlinkRequestPart => {
+            SystemCallMessageKind::HostFsSymlinkRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_symlink(&assembled) {
                     self.handle_long_symlink(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long symlink request");
-                    set_header(
-                        &mut response,
-                        SystemCallMessageHeader::HostFsSymlinkResponse as u16,
-                    );
+                    set_kind(&mut response, SystemCallMessageKind::HostFsSymlinkResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
-            SystemCallMessageHeader::HostFsReadlinkRequestPart => {
+            SystemCallMessageKind::HostFsReadlinkRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_readlink(&assembled) {
                     self.handle_long_readlink(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long readlink request");
-                    set_header(
-                        &mut response,
-                        SystemCallMessageHeader::HostFsReadlinkResponse as u16,
-                    );
+                    set_kind(&mut response, SystemCallMessageKind::HostFsReadlinkResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
-            SystemCallMessageHeader::HostFsLstatRequestPart => {
+            SystemCallMessageKind::HostFsLstatRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_lstat(&assembled) {
                     self.handle_long_lstat(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long lstat request");
-                    set_header(&mut response, SystemCallMessageHeader::HostFsLstatResponse as u16);
+                    set_kind(&mut response, SystemCallMessageKind::HostFsLstatResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
-            SystemCallMessageHeader::HostFsPathStatRequestPart => {
+            SystemCallMessageKind::HostFsPathStatRequestPart => {
                 if let Some(req) = long_msg::deserialize_long_lstat(&assembled) {
                     self.handle_long_pathstat(req, &mut response);
                 } else {
                     log::error!("hostfsd: failed to deserialize long pathstat request");
-                    set_header(
-                        &mut response,
-                        SystemCallMessageHeader::HostFsPathStatResponse as u16,
-                    );
+                    set_kind(&mut response, SystemCallMessageKind::HostFsPathStatResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
             _ => {
                 log::error!("hostfsd: unexpected assembled header: {:?}", dispatch_header);
-                if let Some(resp_header) = dispatch_header.hostfs_response_header() {
-                    set_header(&mut response, resp_header as u16);
+                if let Some(resp_header) = dispatch_header.hostfs_response_kind() {
+                    set_kind(&mut response, resp_header as u16);
                 }
                 set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
             },
@@ -418,7 +437,7 @@ impl HostFsHandler {
             Some(p) => p,
             None => {
                 log::warn!("hostfsd: path traversal rejected: {:?}", req.path);
-                set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -459,7 +478,7 @@ impl HostFsHandler {
             } else {
                 HOSTFS_ERR_NOT_FOUND
             };
-            set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
             set_payload_data(response, &code.to_le_bytes());
             return;
         }
@@ -467,7 +486,7 @@ impl HostFsHandler {
         let is_dir: bool = o_directory || host_path.is_dir();
 
         if is_dir && !o_directory && (wronly || rdwr) {
-            set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
             set_payload_data(response, &HOSTFS_ERR_IS_DIR.to_le_bytes());
             return;
         }
@@ -476,7 +495,7 @@ impl HostFsHandler {
             match open_dir_handle(&host_path) {
                 Ok(file) => (file, false),
                 Err(e) => {
-                    set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                     set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
                     return;
                 },
@@ -485,7 +504,7 @@ impl HostFsHandler {
             match open_regular_file(&opts, &host_path, o_creat, o_excl) {
                 Ok(result) => result,
                 Err(e) => {
-                    set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                     set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
                     return;
                 },
@@ -499,7 +518,7 @@ impl HostFsHandler {
                 if let Err(error) = file.set_permissions(permissions) {
                     drop(file);
                     let _ = fs::remove_file(&host_path);
-                    set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                     set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                     return;
                 }
@@ -514,10 +533,10 @@ impl HostFsHandler {
                     is_dir: if is_dir { 1 } else { 0 },
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
             },
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_IO.to_le_bytes());
             },
         }
@@ -532,7 +551,7 @@ impl HostFsHandler {
         let old_path: PathBuf = match self.sandbox.resolve(&req.old_path) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -540,7 +559,7 @@ impl HostFsHandler {
         let new_path: PathBuf = match self.sandbox.resolve(&req.new_path) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -549,7 +568,7 @@ impl HostFsHandler {
         match fs::rename(&old_path, &new_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
@@ -559,7 +578,7 @@ impl HostFsHandler {
                     new_path,
                     e
                 );
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -574,7 +593,7 @@ impl HostFsHandler {
         let host_path: PathBuf = match self.sandbox.resolve_nofollow(&req.path) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -583,11 +602,11 @@ impl HostFsHandler {
         match fs::remove_file(&host_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
-                set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
-                set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -602,7 +621,7 @@ impl HostFsHandler {
         let host_path: PathBuf = match self.sandbox.resolve(&req.path) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsMkdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -616,11 +635,11 @@ impl HostFsHandler {
                     let _ = fs::set_permissions(&host_path, perms);
                 }
                 self.fd_table.invalidate_dir_caches();
-                set_header(response, SystemCallMessageHeader::HostFsMkdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
-                set_header(response, SystemCallMessageHeader::HostFsMkdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -635,7 +654,7 @@ impl HostFsHandler {
         let host_path: PathBuf = match self.sandbox.resolve(&req.path) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -644,11 +663,11 @@ impl HostFsHandler {
         match fs::remove_dir(&host_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
-                set_header(response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
-                set_header(response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -670,7 +689,7 @@ impl HostFsHandler {
         req: long_msg::LongSymlinkRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        set_header(response, SystemCallMessageHeader::HostFsSymlinkResponse as u16);
+        set_kind(response, SystemCallMessageKind::HostFsSymlinkResponse as u16);
 
         // Reject empty target and embedded NUL bytes — these are invalid as POSIX
         // pathnames and would silently corrupt the link.
@@ -739,7 +758,7 @@ impl HostFsHandler {
         let req: ReadlinkRequest = match ReadlinkRequest::decode(payload) {
             Some(r) => r,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsReadlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsReadlinkResponse as u16);
                 let err = ReadlinkResponse {
                     status: HOSTFS_ERR_INVALID,
                     target_len: 0,
@@ -753,7 +772,7 @@ impl HostFsHandler {
         let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsReadlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsReadlinkResponse as u16);
                 let err = ReadlinkResponse {
                     status: HOSTFS_ERR_INVALID,
                     target_len: 0,
@@ -775,7 +794,7 @@ impl HostFsHandler {
         let req: LstatRequest = match LstatRequest::decode(payload) {
             Some(r) => r,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsLstatResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsLstatResponse as u16);
                 let err = LstatResponse {
                     status: HOSTFS_ERR_INVALID,
                     size: 0,
@@ -790,7 +809,7 @@ impl HostFsHandler {
         let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsLstatResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsLstatResponse as u16);
                 let err = LstatResponse {
                     status: HOSTFS_ERR_INVALID,
                     size: 0,
@@ -817,7 +836,7 @@ impl HostFsHandler {
         let req: LstatRequest = match LstatRequest::decode(payload) {
             Some(r) => r,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsPathStatResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsPathStatResponse as u16);
                 let err = LstatResponse {
                     status: HOSTFS_ERR_INVALID,
                     size: 0,
@@ -832,7 +851,7 @@ impl HostFsHandler {
         let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsPathStatResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsPathStatResponse as u16);
                 let err = LstatResponse {
                     status: HOSTFS_ERR_INVALID,
                     size: 0,
@@ -859,7 +878,7 @@ impl HostFsHandler {
         path_str: &str,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        set_header(response, SystemCallMessageHeader::HostFsReadlinkResponse as u16);
+        set_kind(response, SystemCallMessageKind::HostFsReadlinkResponse as u16);
 
         let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
             Some(p) => p,
@@ -970,10 +989,8 @@ impl HostFsHandler {
     /// and the remaining chunks are queued in `extra_responses` for the caller to
     /// drain via [`Self::take_next_response_part`].
     ///
-    /// Note: `op_id` is recorded *only* in the first 4 bytes of the assembled body.
-    /// The outer-frame bytes `[2..6]` belong to the `SystemCallMessagePart` framing
-    /// (`total_parts` + `part_number`), so `set_op_id` is intentionally not applied
-    /// to multi-part responses (see `is_hostfs_multipart_response` in `handle_request`).
+    /// The `op_id` is recorded in each outer frame's request-ID field and in the first four bytes
+    /// of the assembled body, where vfsd's hostfs response assembler reads it.
     fn emit_long_readlink_response(
         &mut self,
         first_response: &mut [u8; Message::PAYLOAD_SIZE],
@@ -999,7 +1016,8 @@ impl HostFsHandler {
         // debug assert and drop the response in release builds rather than emit a
         // wrapped/malformed stream.
         let parts_vec: Vec<[u8; Message::PAYLOAD_SIZE]> = match long_msg::chunk_long_response(
-            SystemCallMessageHeader::HostFsReadlinkResponsePart as u16,
+            SystemCallMessageKind::HostFsReadlinkResponsePart as u16,
+            op_id,
             &body,
         ) {
             Some(v) => v,
@@ -1027,7 +1045,7 @@ impl HostFsHandler {
     /// Shared `lstat` implementation used by both the inline and multi-part
     /// request handlers.
     fn do_lstat(&mut self, path_str: &str, response: &mut [u8; Message::PAYLOAD_SIZE]) {
-        set_header(response, SystemCallMessageHeader::HostFsLstatResponse as u16);
+        set_kind(response, SystemCallMessageKind::HostFsLstatResponse as u16);
 
         let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
             Some(p) => p,
@@ -1076,12 +1094,12 @@ impl HostFsHandler {
     /// implementation of a following `fstatat`/`stat(2)` over hostfs.
     ///
     /// The response reuses [`LstatResponse`] (identical wire shape: status, size, mode,
-    /// kind) but is tagged with the [`SystemCallMessageHeader::HostFsPathStatResponse`]
+    /// kind) but is tagged with the [`SystemCallMessageKind::HostFsPathStatResponse`]
     /// header. Because the final component is followed, [`metadata_kind`] never reports
     /// [`file_kind::SYMLINK`]: a dangling final link surfaces as the host `ENOENT`, and a
     /// resolved link reports the target's kind.
     fn do_pathstat(&mut self, path_str: &str, response: &mut [u8; Message::PAYLOAD_SIZE]) {
-        set_header(response, SystemCallMessageHeader::HostFsPathStatResponse as u16);
+        set_kind(response, SystemCallMessageKind::HostFsPathStatResponse as u16);
 
         let host_path: PathBuf = match self.sandbox.resolve(path_str) {
             Some(p) => p,
@@ -1131,7 +1149,7 @@ impl HostFsHandler {
         let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 return;
             },
@@ -1141,7 +1159,7 @@ impl HostFsHandler {
             Some(p) => p,
             None => {
                 log::warn!("hostfsd: path traversal rejected: {:?}", path_str);
-                set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -1189,7 +1207,7 @@ impl HostFsHandler {
             } else {
                 HOSTFS_ERR_NOT_FOUND
             };
-            set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
             set_payload_data(response, &code.to_le_bytes());
             return;
         }
@@ -1200,7 +1218,7 @@ impl HostFsHandler {
         // check, opening a directory with O_RDWR silently succeeds as read-only,
         // which violates POSIX semantics.
         if is_dir && !o_directory && (wronly || rdwr) {
-            set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
             set_payload_data(response, &HOSTFS_ERR_IS_DIR.to_le_bytes());
             return;
         }
@@ -1216,7 +1234,7 @@ impl HostFsHandler {
                         e.kind(),
                         e
                     );
-                    set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                     set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
                     return;
                 },
@@ -1232,7 +1250,7 @@ impl HostFsHandler {
                         e.kind(),
                         e
                     );
-                    set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                     set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
                     return;
                 },
@@ -1246,7 +1264,7 @@ impl HostFsHandler {
                 if let Err(error) = file.set_permissions(permissions) {
                     drop(file);
                     let _ = fs::remove_file(&host_path);
-                    set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                    set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                     set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                     return;
                 }
@@ -1261,10 +1279,10 @@ impl HostFsHandler {
                     is_dir: if is_dir { 1 } else { 0 },
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
             },
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsOpenResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_IO.to_le_bytes());
             },
         }
@@ -1278,7 +1296,7 @@ impl HostFsHandler {
         let req: CloseRequest = CloseRequest::decode(payload);
         let success: bool = self.fd_table.close(req.fd);
         let status: i32 = if success { 0 } else { HOSTFS_ERR_IO };
-        set_header(response, SystemCallMessageHeader::HostFsCloseResponse as u16);
+        set_kind(response, SystemCallMessageKind::HostFsCloseResponse as u16);
         set_payload_data(response, &status.to_le_bytes());
     }
 
@@ -1296,7 +1314,7 @@ impl HostFsHandler {
                     data: [0u8; MAX_INLINE_READ_DATA],
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsReadResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsReadResponse as u16);
                 return;
             },
         };
@@ -1308,7 +1326,7 @@ impl HostFsHandler {
                 data: [0u8; MAX_INLINE_READ_DATA],
             };
             resp.encode(response);
-            set_header(response, SystemCallMessageHeader::HostFsReadResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsReadResponse as u16);
             return;
         }
 
@@ -1322,7 +1340,7 @@ impl HostFsHandler {
                     data: [0u8; MAX_INLINE_READ_DATA],
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsReadResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsReadResponse as u16);
                 return;
             }
             pos
@@ -1347,7 +1365,7 @@ impl HostFsHandler {
                     data,
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsReadResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsReadResponse as u16);
             },
             Err(e) => {
                 log::debug!("hostfsd: read failed (fd={}, kind={:?}): {}", req.fd, e.kind(), e);
@@ -1356,7 +1374,7 @@ impl HostFsHandler {
                     data: [0u8; MAX_INLINE_READ_DATA],
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsReadResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsReadResponse as u16);
             },
         }
     }
@@ -1372,7 +1390,7 @@ impl HostFsHandler {
             None => {
                 let resp: WriteResponse = WriteResponse { bytes_written: -1 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsWriteResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
                 return;
             },
         };
@@ -1381,7 +1399,7 @@ impl HostFsHandler {
         if entry.is_dir {
             let resp: WriteResponse = WriteResponse { bytes_written: -1 };
             resp.encode(response);
-            set_header(response, SystemCallMessageHeader::HostFsWriteResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
             return;
         }
 
@@ -1392,7 +1410,7 @@ impl HostFsHandler {
             if entry.file.seek(SeekFrom::Start(req.offset as u64)).is_err() {
                 let resp: WriteResponse = WriteResponse { bytes_written: -1 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsWriteResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
                 return;
             }
             pos
@@ -1414,13 +1432,13 @@ impl HostFsHandler {
                     bytes_written: n as i32,
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsWriteResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
             },
             Err(e) => {
                 log::debug!("hostfsd: write failed (fd={}, kind={:?}): {}", req.fd, e.kind(), e);
                 let resp: WriteResponse = WriteResponse { bytes_written: -1 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsWriteResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
             },
         }
     }
@@ -1441,7 +1459,7 @@ impl HostFsHandler {
                     is_dir: 0,
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsStatResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsStatResponse as u16);
                 return;
             },
         };
@@ -1464,7 +1482,7 @@ impl HostFsHandler {
                     is_dir: if meta.is_dir() { 1 } else { 0 },
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsStatResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsStatResponse as u16);
             },
             Err(e) => {
                 log::debug!("hostfsd: stat failed (path={:?}, kind={:?}): {}", path, e.kind(), e);
@@ -1475,7 +1493,7 @@ impl HostFsHandler {
                     is_dir: 0,
                 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsStatResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsStatResponse as u16);
             },
         }
     }
@@ -1503,7 +1521,7 @@ impl HostFsHandler {
             Some(t) => t,
             None => {
                 // Missing FD or past end of directory: name_len=0 signals end.
-                set_header(response, SystemCallMessageHeader::HostFsReadDirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsReadDirResponse as u16);
                 set_payload_data(response, &[0u8; 2]);
                 return;
             },
@@ -1522,7 +1540,7 @@ impl HostFsHandler {
                 name: entry_name,
             };
             resp.encode(response);
-            set_header(response, SystemCallMessageHeader::HostFsReadDirResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsReadDirResponse as u16);
         } else {
             // Multi-part response: the name exceeds the inline capacity, so emit a
             // `HostFsReadDirResponsePart` stream carrying the full name.
@@ -1540,10 +1558,8 @@ impl HostFsHandler {
     /// `first_response`, and the remaining chunks are queued in `extra_responses` for
     /// the caller to drain via [`Self::take_next_response_part`].
     ///
-    /// As with the readlink multi-part response, `op_id` is recorded *only* in the
-    /// first 4 bytes of the assembled body; the outer-frame bytes `[2..6]` carry the
-    /// `SystemCallMessagePart` framing, so `set_op_id` is intentionally not applied to
-    /// multi-part responses (see `run` in `handle_request`).
+    /// As with the readlink multi-part response, the `op_id` is carried by both each outer frame's
+    /// request-ID field and the first four bytes of the assembled response body.
     fn emit_long_readdir_response(
         &mut self,
         first_response: &mut [u8; Message::PAYLOAD_SIZE],
@@ -1573,17 +1589,15 @@ impl HostFsHandler {
                          ending directory listing early",
                         name_bytes.len()
                     );
-                    set_header(
-                        first_response,
-                        SystemCallMessageHeader::HostFsReadDirResponse as u16,
-                    );
+                    set_kind(first_response, SystemCallMessageKind::HostFsReadDirResponse as u16);
                     set_payload_data(first_response, &[0u8; 2]);
                     return;
                 },
             };
 
         let parts_vec: Vec<[u8; Message::PAYLOAD_SIZE]> = match long_msg::chunk_long_response(
-            SystemCallMessageHeader::HostFsReadDirResponsePart as u16,
+            SystemCallMessageKind::HostFsReadDirResponsePart as u16,
+            op_id,
             &body,
         ) {
             Some(v) => v,
@@ -1600,7 +1614,7 @@ impl HostFsHandler {
                 );
                 // Fall back to a well-formed single-message end-of-directory marker so the
                 // caller's getdents sweep terminates cleanly.
-                set_header(first_response, SystemCallMessageHeader::HostFsReadDirResponse as u16);
+                set_kind(first_response, SystemCallMessageKind::HostFsReadDirResponse as u16);
                 set_payload_data(first_response, &[0u8; 2]);
                 return;
             },
@@ -1622,7 +1636,7 @@ impl HostFsHandler {
         let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsMkdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 return;
             },
@@ -1632,7 +1646,7 @@ impl HostFsHandler {
             Some(p) => p,
             None => {
                 log::warn!("hostfsd: mkdir path traversal rejected: {:?}", path_str);
-                set_header(response, SystemCallMessageHeader::HostFsMkdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -1641,11 +1655,11 @@ impl HostFsHandler {
         match fs::create_dir(&host_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
-                set_header(response, SystemCallMessageHeader::HostFsMkdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
-                set_header(response, SystemCallMessageHeader::HostFsMkdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -1661,7 +1675,7 @@ impl HostFsHandler {
         let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 return;
             },
@@ -1670,7 +1684,7 @@ impl HostFsHandler {
         let host_path: PathBuf = match self.sandbox.resolve(path_str) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -1679,11 +1693,11 @@ impl HostFsHandler {
         match fs::remove_dir(&host_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
-                set_header(response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
-                set_header(response, SystemCallMessageHeader::HostFsRmdirResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -1699,7 +1713,7 @@ impl HostFsHandler {
         let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 return;
             },
@@ -1708,7 +1722,7 @@ impl HostFsHandler {
         let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -1717,11 +1731,11 @@ impl HostFsHandler {
         match fs::remove_file(&host_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
-                set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
-                set_header(response, SystemCallMessageHeader::HostFsUnlinkResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -1739,7 +1753,7 @@ impl HostFsHandler {
         // Reject if paths exceed the inline buffer capacity.
         if old_len > MAX_INLINE_PATH_LEN || old_len + new_len > MAX_INLINE_PATH_LEN {
             log::warn!("hostfsd: rename paths too long (old={old_len}, new={new_len})");
-            set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
             set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
             return;
         }
@@ -1747,7 +1761,7 @@ impl HostFsHandler {
         let old_str: &str = match core::str::from_utf8(&req.paths[..old_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 return;
             },
@@ -1755,7 +1769,7 @@ impl HostFsHandler {
         let new_str: &str = match core::str::from_utf8(&req.paths[old_len..old_len + new_len]) {
             Ok(s) => s,
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 return;
             },
@@ -1764,7 +1778,7 @@ impl HostFsHandler {
         let old_path: PathBuf = match self.sandbox.resolve(old_str) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -1772,7 +1786,7 @@ impl HostFsHandler {
         let new_path: PathBuf = match self.sandbox.resolve(new_str) {
             Some(p) => p,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -1781,7 +1795,7 @@ impl HostFsHandler {
         match fs::rename(&old_path, &new_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
@@ -1792,7 +1806,7 @@ impl HostFsHandler {
                     e.kind(),
                     e
                 );
-                set_header(response, SystemCallMessageHeader::HostFsRenameResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -1808,7 +1822,7 @@ impl HostFsHandler {
             Some(e) => e,
             None => {
                 // Invalid FD → return EBADF-equivalent via structured error code in data.
-                set_header(response, SystemCallMessageHeader::HostFsLseekResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsLseekResponse as u16);
                 set_payload_data(response, &(HOSTFS_ERR_IO as i64).to_le_bytes());
                 return;
             },
@@ -1818,7 +1832,7 @@ impl HostFsHandler {
             SEEK_SET => {
                 if req.offset < 0 {
                     // POSIX: SEEK_SET with negative offset → EINVAL.
-                    set_header(response, SystemCallMessageHeader::HostFsLseekResponse as u16);
+                    set_kind(response, SystemCallMessageKind::HostFsLseekResponse as u16);
                     set_payload_data(response, &(HOSTFS_ERR_INVALID as i64).to_le_bytes());
                     return;
                 }
@@ -1828,7 +1842,7 @@ impl HostFsHandler {
             SEEK_END => SeekFrom::End(req.offset),
             _ => {
                 // Unknown whence → EINVAL.
-                set_header(response, SystemCallMessageHeader::HostFsLseekResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsLseekResponse as u16);
                 set_payload_data(response, &(HOSTFS_ERR_INVALID as i64).to_le_bytes());
                 return;
             },
@@ -1838,10 +1852,10 @@ impl HostFsHandler {
             Ok(pos) => {
                 let resp: LseekResponse = LseekResponse { offset: pos as i64 };
                 resp.encode(response);
-                set_header(response, SystemCallMessageHeader::HostFsLseekResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsLseekResponse as u16);
             },
             Err(_) => {
-                set_header(response, SystemCallMessageHeader::HostFsLseekResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsLseekResponse as u16);
                 set_payload_data(response, &(HOSTFS_ERR_IO as i64).to_le_bytes());
             },
         }
@@ -1856,7 +1870,7 @@ impl HostFsHandler {
 
         // Reject negative lengths (POSIX: ftruncate with negative length → EINVAL).
         if req.length < 0 {
-            set_header(response, SystemCallMessageHeader::HostFsTruncateResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsTruncateResponse as u16);
             set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
             return;
         }
@@ -1864,7 +1878,7 @@ impl HostFsHandler {
         let entry: &mut FdEntry = match self.fd_table.get_mut(req.fd) {
             Some(e) => e,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsTruncateResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsTruncateResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_IO.to_le_bytes());
                 return;
             },
@@ -1872,18 +1886,18 @@ impl HostFsHandler {
 
         // Reject truncate on directory file descriptors.
         if entry.is_dir {
-            set_header(response, SystemCallMessageHeader::HostFsTruncateResponse as u16);
+            set_kind(response, SystemCallMessageKind::HostFsTruncateResponse as u16);
             set_payload_data(response, &HOSTFS_ERR_IS_DIR.to_le_bytes());
             return;
         }
 
         match entry.file.set_len(req.length as u64) {
             Ok(()) => {
-                set_header(response, SystemCallMessageHeader::HostFsTruncateResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsTruncateResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
-                set_header(response, SystemCallMessageHeader::HostFsTruncateResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsTruncateResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -1898,7 +1912,7 @@ impl HostFsHandler {
         let entry: &mut FdEntry = match self.fd_table.get_mut(req.fd) {
             Some(e) => e,
             None => {
-                set_header(response, SystemCallMessageHeader::HostFsFlushResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsFlushResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_IO.to_le_bytes());
                 return;
             },
@@ -1906,11 +1920,11 @@ impl HostFsHandler {
 
         match entry.file.flush() {
             Ok(()) => {
-                set_header(response, SystemCallMessageHeader::HostFsFlushResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsFlushResponse as u16);
                 set_payload_data(response, &0i32.to_le_bytes());
             },
             Err(e) => {
-                set_header(response, SystemCallMessageHeader::HostFsFlushResponse as u16);
+                set_kind(response, SystemCallMessageKind::HostFsFlushResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
             },
         }
@@ -2139,6 +2153,8 @@ enum AssemblyStatus {
     NeedMore,
     /// All parts received — the request is ready for dispatch.
     Complete,
+    /// A new request started before the current request was complete.
+    Interrupted,
     /// A fatal assembly error occurred (e.g., out-of-order parts, buffer overflow).
     ///
     /// On error, the assembler state (recorded header and buffered bytes) is
@@ -2157,7 +2173,9 @@ enum AssemblyStatus {
 /// to track a single in-flight multi-part request at a time.
 struct HostFsAssembler {
     /// Header of the request currently being assembled (recorded from the first part).
-    header: Option<SystemCallMessageHeader>,
+    header: Option<SystemCallMessageKind>,
+    /// Request identifier recorded from the first part.
+    request_id: Option<OperationId>,
     /// Total number of parts expected.
     total_parts: u16,
     /// Number of parts received so far.
@@ -2172,6 +2190,7 @@ impl HostFsAssembler {
     fn new() -> Self {
         Self {
             header: None,
+            request_id: None,
             total_parts: 0,
             parts_received: 0,
             next_part_number: 0,
@@ -2183,9 +2202,14 @@ impl HostFsAssembler {
     ///
     /// This is used for dispatch after assembly is complete so that a malformed
     /// stream with inconsistent headers does not cause a wrong-format deserialization.
-    fn recorded_header(&self) -> SystemCallMessageHeader {
+    fn recorded_header(&self) -> SystemCallMessageKind {
         self.header
-            .unwrap_or(SystemCallMessageHeader::HostFsOpenRequestPart)
+            .unwrap_or(SystemCallMessageKind::HostFsOpenRequestPart)
+    }
+
+    /// Returns the request identifier recorded from the first part.
+    fn recorded_request_id(&self) -> OperationId {
+        self.request_id.unwrap_or(OperationId::INVALID)
     }
 
     /// Adds a part to the assembler.
@@ -2207,7 +2231,8 @@ impl HostFsAssembler {
     /// - `total_parts` is consistent across all parts in a stream.
     fn add_part(
         &mut self,
-        header: SystemCallMessageHeader,
+        header: SystemCallMessageKind,
+        request_id: OperationId,
         part: SystemCallMessagePart,
     ) -> AssemblyStatus {
         let total: u16 = part.total_parts;
@@ -2237,10 +2262,9 @@ impl HostFsAssembler {
         // started before the in-flight one completed. vfsd's single-threaded,
         // sequential send loop makes this unexpected, but if it ever happens we
         // must not silently discard the in-flight bytes: doing so would orphan the
-        // previous op_id on vfsd's pending-op table. Instead, surface an error so
-        // the caller can recover the in-flight op_id from the buffered bytes and
-        // emit a well-formed error response. The new part is dropped; the caller
-        // is expected to drain the assembler via `take_assembled()` afterwards.
+        // previous op_id on vfsd's pending-op table. Instead, surface an interruption so
+        // the caller can recover the in-flight op_id from the buffered bytes, emit a
+        // well-formed error response, and replay the new part after resetting the assembler.
         if self.header.is_some() && number == 0 && self.parts_received < self.total_parts {
             log::error!(
                 "hostfsd: assembler received new part_number=0 ({:?}) while {}/{} parts of {:?} \
@@ -2250,12 +2274,13 @@ impl HostFsAssembler {
                 self.total_parts,
                 self.header,
             );
-            return AssemblyStatus::Error;
+            return AssemblyStatus::Interrupted;
         }
 
         // Check if this is the first part of a new request.
         if self.header.is_none() {
             self.header = Some(header);
+            self.request_id = Some(request_id);
             self.total_parts = total;
             self.parts_received = 0;
             self.next_part_number = 0;
@@ -2270,6 +2295,15 @@ impl HostFsAssembler {
                 "hostfsd: assembler header mismatch (expected {:?}, got {:?})",
                 self.header,
                 header
+            );
+            return AssemblyStatus::Error;
+        }
+
+        if self.request_id != Some(request_id) {
+            log::error!(
+                "hostfsd: assembler request identifier mismatch (expected {:?}, got {:?})",
+                self.request_id,
+                request_id
             );
             return AssemblyStatus::Error;
         }
@@ -2331,6 +2365,7 @@ impl HostFsAssembler {
     /// Resets the assembler state.
     fn reset(&mut self) {
         self.header = None;
+        self.request_id = None;
         self.total_parts = 0;
         self.parts_received = 0;
         self.next_part_number = 0;

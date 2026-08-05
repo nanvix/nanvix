@@ -8,7 +8,7 @@
 use crate::{
     sys::socket::sockaddr,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -60,10 +60,8 @@ impl GetPeerNameRequest {
 
     pub fn build(tid: ThreadIdentifier, sockfd: c_int) -> Message {
         let message: Self = Self::new(sockfd);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::GetPeerNameRequest,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::GetPeerNameRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(crate::NETWORK_DESTINATION, ThreadIdentifier::NONE),
@@ -107,7 +105,7 @@ impl GetPeerNameResponse {
     pub fn build(tid: ThreadIdentifier, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockaddr);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::GetPeerNameResponse,
+            SystemCallMessageKind::GetPeerNameResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

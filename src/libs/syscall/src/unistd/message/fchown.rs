@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -82,7 +82,7 @@ impl FileChownRequest {
     ) -> Message {
         let message: FileChownRequest = FileChownRequest::new(fd, owner, group);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::FileChownRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::FileChownRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -126,10 +126,8 @@ impl FileChownResponse {
         message_type: MessageType,
     ) -> Message {
         let message: FileChownResponse = FileChownResponse::new();
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileChownResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::FileChownResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

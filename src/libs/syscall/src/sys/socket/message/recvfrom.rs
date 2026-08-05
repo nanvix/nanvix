@@ -8,7 +8,7 @@
 use crate::{
     sys::socket::sockaddr,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -72,7 +72,7 @@ impl ReceiveFromSocketRequest {
     pub fn build(tid: ThreadIdentifier, sockfd: i32, count: u32, flags: i32) -> Message {
         let message: ReceiveFromSocketRequest = ReceiveFromSocketRequest::new(sockfd, count, flags);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ReceiveFromSocketRequest,
+            SystemCallMessageKind::ReceiveFromSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -136,7 +136,7 @@ impl ReceiveFromSocketResponse {
         let message: ReceiveFromSocketResponse =
             ReceiveFromSocketResponse::new(count, addrlen, sockaddr);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ReceiveFromSocketResponse,
+            SystemCallMessageKind::ReceiveFromSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

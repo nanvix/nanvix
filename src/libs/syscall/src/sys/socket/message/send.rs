@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -72,10 +72,8 @@ impl SendSocketRequest {
 
     pub fn build(tid: ThreadIdentifier, sockfd: i32, count: c_size_t, flags: i32) -> Message {
         let message: SendSocketRequest = SendSocketRequest::new(sockfd, count, flags);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::SendSocketRequest,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::SendSocketRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(crate::NETWORK_DESTINATION, ThreadIdentifier::NONE),
@@ -120,10 +118,8 @@ impl SendSocketResponse {
 
     pub fn build(tid: ThreadIdentifier, count: c_ssize_t) -> Message {
         let message: SendSocketResponse = SendSocketResponse::new(count);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::SendSocketResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::SendSocketResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(crate::NETWORK_SOURCE, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

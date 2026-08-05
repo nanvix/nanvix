@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -65,7 +65,7 @@ impl ReceiveSocketRequest {
     pub fn build(tid: ThreadIdentifier, sockfd: i32, count: u32, flags: i32) -> Message {
         let message: ReceiveSocketRequest = ReceiveSocketRequest::new(sockfd, count, flags);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ReceiveSocketRequest,
+            SystemCallMessageKind::ReceiveSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -117,7 +117,7 @@ impl ReceiveSocketResponse {
     pub fn build(tid: ThreadIdentifier, count: c_size_t) -> Message {
         let message: ReceiveSocketResponse = ReceiveSocketResponse::new(count);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ReceiveSocketResponse,
+            SystemCallMessageKind::ReceiveSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

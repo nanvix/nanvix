@@ -9,7 +9,7 @@ use crate::{
     message::MessagePartitioner,
     sys::mount::message::UmountRequest,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::ToString,
@@ -20,7 +20,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 
@@ -44,16 +47,14 @@ pub fn umount(target: &str) -> Result<(), Error> {
 
     let request: UmountRequest = UmountRequest::new(target.to_string())?;
 
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     // Send request parts.
-    for request in &requests {
-        ::sys::kcall::ipc::__kcall_send(request)?;
-    }
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -69,8 +70,8 @@ pub fn umount(target: &str) -> Result<(), Error> {
         }
     } else {
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-        let header: SystemCallMessageHeader = message.header;
-        if header != SystemCallMessageHeader::HostUmountResponse {
+        let header: SystemCallMessageKind = message.kind();
+        if header != SystemCallMessageKind::HostUmountResponse {
             return Err(Error::new(ErrorCode::InvalidMessage, "unexpected response header"));
         }
         Ok(())

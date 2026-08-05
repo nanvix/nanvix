@@ -63,11 +63,11 @@ fn job_control(
     let caller: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build the job-control request and send it.
-    let message: Message = message::job_control_request(caller, op, pid, pgid)?;
-    ::sys::kcall::ipc::__kcall_send(&message)?;
+    let mut message: Message = message::job_control_request(caller, op, pid, pgid)?;
+    let token = super::rpc::send_request(&mut message)?;
 
     // Wait for the response from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let message: Message = super::rpc::recv_response(&token)?;
 
     // Parse response.
     match message.message_type {

@@ -9,19 +9,19 @@
 //!
 //! # Protocol Overview
 //!
-//! All messages use the [`SystemCallMessage`] wire format: a 2-byte
-//! [`SystemCallMessageHeader`] discriminant, a 4-byte operation identifier (`op_id`), and the
-//! remaining (`Message::PAYLOAD_SIZE` - `HOSTFS_DATA_START`) bytes of operation-specific data. The
-//! `op_id` is assigned by vfsd when sending a request and echoed back by hostfsd in the
+//! All messages use the [`SystemCallMessage`] wire format. Its six-byte
+//! [`SystemCallMessageKind`] contains a two-byte [`SystemCallMessageKind`] discriminant and a
+//! four-byte operation identifier (`op_id`); the remaining bytes carry operation-specific data.
+//! The `op_id` is assigned by vfsd when sending a request and echoed back by hostfsd in the
 //! corresponding response, allowing vfsd to match responses to pending operations without relying
 //! on FIFO ordering.
 //!
-//! Each host filesystem operation maps to a pair of header variants (request + response)
+//! Each host filesystem operation maps to a pair of message kinds (request and response)
 //! defined in the `syscall` crate.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-// The wire format uses native-endian encoding for the header and op_id fields
+// The wire format uses native-endian encoding for the kind and op_id fields
 // (matching the `SystemCallMessage` packed struct layout) and explicit little-endian
 // for operation-specific data. This is only correct on little-endian hosts.
 #[cfg(not(target_endian = "little"))]
@@ -291,20 +291,20 @@ pub use self::error::{
 // Serialization
 //==================================================================================================
 
-/// Sets the [`SystemCallMessageHeader`] discriminant in the first two bytes of a message payload.
+/// Sets the [`SystemCallMessageKind`] discriminant in the first two bytes of a message payload.
 ///
-/// This writes the raw `u16` value of the given header variant into `payload[0..2]` using
+/// This writes the raw `u16` value of the given message kind into `payload[0..2]` using
 /// native-endian byte order, matching the `#[repr(C, packed)]` layout of `SystemCallMessage`.
 ///
-/// NOTE: header and op_id fields use native-endian encoding (matching the `SystemCallMessage`
+/// NOTE: kind and op_id fields use native-endian encoding (matching the `SystemCallMessage`
 /// struct layout), while operation-specific data fields use explicit little-endian encoding.
 /// This is safe because all supported targets are little-endian (enforced by the compile-time
 /// assertion below).
-pub fn set_header(payload: &mut [u8; Message::PAYLOAD_SIZE], header_value: u16) {
-    payload[0..2].copy_from_slice(&header_value.to_ne_bytes());
+pub fn set_kind(payload: &mut [u8; Message::PAYLOAD_SIZE], kind_value: u16) {
+    payload[0..2].copy_from_slice(&kind_value.to_ne_bytes());
 }
 
-/// Writes operation-specific data into the payload starting after the header and op_id.
+/// Writes operation-specific data into the payload after the composite message header.
 ///
 /// This is a convenience helper for building simple responses where the data
 /// portion is a small byte slice (e.g., a status code).

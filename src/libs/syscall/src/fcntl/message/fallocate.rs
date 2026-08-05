@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -75,7 +75,7 @@ impl FileSpaceControlRequest {
     ) -> Result<Message, Error> {
         let message: FileSpaceControlRequest = FileSpaceControlRequest::new(fd, offset, len);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileSpaceControlRequest,
+            SystemCallMessageKind::FileSpaceControlRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -127,7 +127,7 @@ impl FileSpaceControlResponse {
     ) -> Message {
         let message: FileSpaceControlResponse = FileSpaceControlResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileSpaceControlResponse,
+            SystemCallMessageKind::FileSpaceControlResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

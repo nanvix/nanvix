@@ -39,7 +39,7 @@ use sysapi::{
         SEEK_SET,
     },
 };
-use syscall::SystemCallMessageHeader;
+use syscall::SystemCallMessageKind;
 use tempfile::TempDir;
 
 //==================================================================================================
@@ -59,7 +59,7 @@ fn make_open_request(path: &str, flags: i32, mode: u32) -> [u8; Message::PAYLOAD
     let req: OpenRequest = OpenRequest::from_path(flags, mode, path.as_bytes())
         .expect("test path fits in MAX_INLINE_PATH_LEN");
     req.serialize(
-        SystemCallMessageHeader::HostFsOpenRequest as u16,
+        SystemCallMessageKind::HostFsOpenRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -68,7 +68,7 @@ fn make_open_request(path: &str, flags: i32, mode: u32) -> [u8; Message::PAYLOAD
 fn make_close_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
     let req: CloseRequest = CloseRequest { fd };
     req.serialize(
-        SystemCallMessageHeader::HostFsCloseRequest as u16,
+        SystemCallMessageKind::HostFsCloseRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -77,7 +77,7 @@ fn make_close_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
 fn make_read_request(fd: i32, count: u32, offset: i64) -> [u8; Message::PAYLOAD_SIZE] {
     let req: ReadRequest = ReadRequest { fd, count, offset };
     req.serialize(
-        SystemCallMessageHeader::HostFsReadRequest as u16,
+        SystemCallMessageKind::HostFsReadRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -96,7 +96,7 @@ fn make_write_request(fd: i32, data: &[u8], offset: i64) -> [u8; Message::PAYLOA
         data: data_arr,
     };
     req.serialize(
-        SystemCallMessageHeader::HostFsWriteRequest as u16,
+        SystemCallMessageKind::HostFsWriteRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -105,7 +105,7 @@ fn make_write_request(fd: i32, data: &[u8], offset: i64) -> [u8; Message::PAYLOA
 fn make_stat_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
     let req: StatRequest = StatRequest { fd };
     req.serialize(
-        SystemCallMessageHeader::HostFsStatRequest as u16,
+        SystemCallMessageKind::HostFsStatRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -115,7 +115,7 @@ fn make_mkdir_request(path: &str, mode: u32) -> [u8; Message::PAYLOAD_SIZE] {
     let req: MkdirRequest = MkdirRequest::from_path(mode, path.as_bytes())
         .expect("test path fits in MAX_INLINE_PATH_LEN");
     req.serialize(
-        SystemCallMessageHeader::HostFsMkdirRequest as u16,
+        SystemCallMessageKind::HostFsMkdirRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -125,7 +125,7 @@ fn make_unlink_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     let req: UnlinkRequest =
         UnlinkRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
     req.serialize(
-        SystemCallMessageHeader::HostFsUnlinkRequest as u16,
+        SystemCallMessageKind::HostFsUnlinkRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -135,7 +135,7 @@ fn make_rmdir_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     let req: RmdirRequest =
         RmdirRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
     req.serialize(
-        SystemCallMessageHeader::HostFsRmdirRequest as u16,
+        SystemCallMessageKind::HostFsRmdirRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -145,7 +145,7 @@ fn make_rename_request(old_path: &str, new_path: &str) -> [u8; Message::PAYLOAD_
     let req: RenameRequest = RenameRequest::from_paths(old_path.as_bytes(), new_path.as_bytes())
         .expect("test paths fit in MAX_INLINE_PATH_LEN");
     req.serialize(
-        SystemCallMessageHeader::HostFsRenameRequest as u16,
+        SystemCallMessageKind::HostFsRenameRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -154,7 +154,7 @@ fn make_rename_request(old_path: &str, new_path: &str) -> [u8; Message::PAYLOAD_
 fn make_lseek_request(fd: i32, offset: i64, whence: i32) -> [u8; Message::PAYLOAD_SIZE] {
     let req: LseekRequest = LseekRequest { fd, offset, whence };
     req.serialize(
-        SystemCallMessageHeader::HostFsLseekRequest as u16,
+        SystemCallMessageKind::HostFsLseekRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -163,7 +163,7 @@ fn make_lseek_request(fd: i32, offset: i64, whence: i32) -> [u8; Message::PAYLOA
 fn make_truncate_request(fd: i32, length: i64) -> [u8; Message::PAYLOAD_SIZE] {
     let req: TruncateRequest = TruncateRequest { fd, length };
     req.serialize(
-        SystemCallMessageHeader::HostFsTruncateRequest as u16,
+        SystemCallMessageKind::HostFsTruncateRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -172,7 +172,7 @@ fn make_truncate_request(fd: i32, length: i64) -> [u8; Message::PAYLOAD_SIZE] {
 fn make_flush_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
     let req: FlushRequest = FlushRequest { fd };
     req.serialize(
-        SystemCallMessageHeader::HostFsFlushRequest as u16,
+        SystemCallMessageKind::HostFsFlushRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -190,7 +190,7 @@ fn make_readdir_request_at(fd: i32, offset: u32) -> [u8; Message::PAYLOAD_SIZE] 
         offset,
     };
     req.serialize(
-        SystemCallMessageHeader::HostFsReadDirRequest as u16,
+        SystemCallMessageKind::HostFsReadDirRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -806,14 +806,14 @@ fn test_readdir_long_name_multipart_response() {
     let header_raw: u16 = u16::from_ne_bytes([first[0], first[1]]);
     assert_eq!(
         header_raw,
-        SystemCallMessageHeader::HostFsReadDirResponsePart as u16,
+        SystemCallMessageKind::HostFsReadDirResponsePart as u16,
         "long-name readdir must use the multi-part response header"
     );
 
     let body: Vec<u8> = drain_multipart_response(
         &mut handler,
         first,
-        SystemCallMessageHeader::HostFsReadDirResponsePart,
+        SystemCallMessageKind::HostFsReadDirResponsePart,
     );
     let resp = hostfs_api::long_msg::deserialize_long_readdir_response(&body)
         .expect("readdir long response must deserialize");
@@ -987,7 +987,7 @@ use syscall::message::SystemCallMessagePart;
 
 /// Builds a raw IKC payload representing a `SystemCallMessagePart` with the given header.
 fn make_part_payload(
-    header: SystemCallMessageHeader,
+    header: SystemCallMessageKind,
     total_parts: u16,
     part_number: u16,
     payload_size: u8,
@@ -998,17 +998,21 @@ fn make_part_payload(
     let h: u16 = header as u16;
     buf[0] = h as u8;
     buf[1] = (h >> 8) as u8;
-    // Bytes [2..4]: total_parts.
-    buf[2] = total_parts as u8;
-    buf[3] = (total_parts >> 8) as u8;
-    // Bytes [4..6]: part_number.
-    buf[4] = part_number as u8;
-    buf[5] = (part_number >> 8) as u8;
-    // Byte [6]: payload_size.
-    buf[6] = payload_size;
-    // Bytes [7..]: payload.
+    // Bytes [2..6]: request identifier (unused by these hostfs request fixtures).
+    if part_number == 0 && part_payload.len() >= OperationId::SERIALIZED_SIZE {
+        buf[2..6].copy_from_slice(&part_payload[..OperationId::SERIALIZED_SIZE]);
+    }
+    // Bytes [6..8]: total_parts.
+    buf[6] = total_parts as u8;
+    buf[7] = (total_parts >> 8) as u8;
+    // Bytes [8..10]: part_number.
+    buf[8] = part_number as u8;
+    buf[9] = (part_number >> 8) as u8;
+    // Byte [10]: payload_size.
+    buf[10] = payload_size;
+    // Bytes [11..]: payload.
     let copy_len: usize = part_payload.len().min(SystemCallMessagePart::PAYLOAD_SIZE);
-    buf[7..7 + copy_len].copy_from_slice(&part_payload[..copy_len]);
+    buf[11..11 + copy_len].copy_from_slice(&part_payload[..copy_len]);
     buf
 }
 
@@ -1032,11 +1036,14 @@ fn make_long_open_parts(
 
     let chunk_size: usize = SystemCallMessagePart::PAYLOAD_SIZE;
     let num_parts: u16 = data.len().div_ceil(chunk_size) as u16;
-    let header: SystemCallMessageHeader = SystemCallMessageHeader::HostFsOpenRequestPart;
+    let header: SystemCallMessageKind = SystemCallMessageKind::HostFsOpenRequestPart;
 
     let mut parts: Vec<[u8; Message::PAYLOAD_SIZE]> = Vec::new();
     for (i, chunk) in data.chunks(chunk_size).enumerate() {
-        parts.push(make_part_payload(header, num_parts, i as u16, chunk.len() as u8, chunk));
+        let mut part: [u8; Message::PAYLOAD_SIZE] =
+            make_part_payload(header, num_parts, i as u16, chunk.len() as u8, chunk);
+        set_op_id(&mut part, op_id);
+        parts.push(part);
     }
     parts
 }
@@ -1121,7 +1128,7 @@ fn test_assembler_rejects_zero_total_parts() {
     let (mut handler, _tmp) = setup();
 
     let payload = make_part_payload(
-        SystemCallMessageHeader::HostFsOpenRequestPart,
+        SystemCallMessageKind::HostFsOpenRequestPart,
         0, // total_parts = 0
         0,
         10,
@@ -1131,7 +1138,7 @@ fn test_assembler_rejects_zero_total_parts() {
     // Should return an error response (not None).
     assert!(response.is_some(), "zero total_parts should produce error response");
     let response = response.unwrap();
-    assert_eq!(get_op_id(&response), OperationId::INVALID);
+    assert_eq!(get_op_id(&response), OperationId::from_raw(0));
     let ds: usize = HOSTFS_DATA_START;
     let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
     assert_eq!(status, HOSTFS_ERR_INVALID);
@@ -1148,13 +1155,13 @@ fn test_assembler_rejects_out_of_order_parts() {
     let mut part0_payload: [u8; 10] = [0u8; 10];
     part0_payload[..4].copy_from_slice(&op_id_bytes);
     let payload0 =
-        make_part_payload(SystemCallMessageHeader::HostFsOpenRequestPart, 3, 0, 10, &part0_payload);
+        make_part_payload(SystemCallMessageKind::HostFsOpenRequestPart, 3, 0, 10, &part0_payload);
     let result = handler.handle_request(&payload0);
     assert!(result.is_none(), "first part should return None");
 
     // Send part 2 (skipping part 1) — out-of-order should produce error.
     let payload2 =
-        make_part_payload(SystemCallMessageHeader::HostFsOpenRequestPart, 3, 2, 10, &[0u8; 10]);
+        make_part_payload(SystemCallMessageKind::HostFsOpenRequestPart, 3, 2, 10, &[0u8; 10]);
     let response = handler.handle_request(&payload2);
     assert!(response.is_some(), "out-of-order part should produce error response");
     let response = response.unwrap();
@@ -1173,13 +1180,13 @@ fn test_assembler_rejects_header_mismatch() {
     let mut part0_payload: [u8; 10] = [0u8; 10];
     part0_payload[..4].copy_from_slice(&op_id_bytes);
     let payload0 =
-        make_part_payload(SystemCallMessageHeader::HostFsOpenRequestPart, 2, 0, 10, &part0_payload);
+        make_part_payload(SystemCallMessageKind::HostFsOpenRequestPart, 2, 0, 10, &part0_payload);
     let result = handler.handle_request(&payload0);
     assert!(result.is_none(), "first part should return None");
 
     // Send part 1 with a DIFFERENT header (MkdirRequestPart) — should produce error.
     let payload1 =
-        make_part_payload(SystemCallMessageHeader::HostFsMkdirRequestPart, 2, 1, 10, &[0u8; 10]);
+        make_part_payload(SystemCallMessageKind::HostFsMkdirRequestPart, 2, 1, 10, &[0u8; 10]);
     let response = handler.handle_request(&payload1);
     assert!(response.is_some(), "header mismatch should produce error response");
     let response = response.unwrap();
@@ -1192,8 +1199,7 @@ fn test_assembler_rejects_header_mismatch() {
 fn test_assembler_rejects_stray_part_zero_mid_stream() {
     // A new part_number == 0 arriving while a multi-part stream is still in flight
     // must surface an error so the in-flight op_id can be reported back to vfsd,
-    // rather than silently discarding the buffered bytes and orphaning the
-    // pending op.
+    // then be retained as the start of the replacement request.
     let (mut handler, _tmp) = setup();
 
     // Begin a 3-part stream with a recoverable op_id in part 0.
@@ -1201,19 +1207,28 @@ fn test_assembler_rejects_stray_part_zero_mid_stream() {
     let mut part0_payload: [u8; 10] = [0u8; 10];
     part0_payload[..4].copy_from_slice(&op_id_bytes);
     let payload0 =
-        make_part_payload(SystemCallMessageHeader::HostFsOpenRequestPart, 3, 0, 10, &part0_payload);
+        make_part_payload(SystemCallMessageKind::HostFsOpenRequestPart, 3, 0, 10, &part0_payload);
     let result = handler.handle_request(&payload0);
     assert!(result.is_none(), "first part should return None");
 
-    // Send a stray part 0 (start of a "new" stream) — should error.
-    let stray_payload =
-        make_part_payload(SystemCallMessageHeader::HostFsOpenRequestPart, 2, 0, 10, &[0u8; 10]);
-    let response = handler.handle_request(&stray_payload);
+    // Send a complete replacement request. The old stream should fail first, and the
+    // replacement response should be queued rather than dropped.
+    let replacement_op_id: OperationId = OperationId::from_raw(100);
+    let replacement_parts: Vec<[u8; Message::PAYLOAD_SIZE]> =
+        make_long_open_parts("replacement.txt", O_RDONLY, 0, replacement_op_id);
+    assert_eq!(replacement_parts.len(), 1, "replacement request should fit in one part");
+    let response = handler.handle_request(&replacement_parts[0]);
     assert!(response.is_some(), "stray part 0 should produce error response");
     let response = response.unwrap();
     // The error response must echo the original in-flight op_id, not the
     // stray new stream's bytes.
     assert_eq!(get_op_id(&response), OperationId::from_raw(99));
+
+    let replacement_response: [u8; Message::PAYLOAD_SIZE] = handler
+        .take_next_response_part()
+        .expect("replacement request should produce a queued response");
+    assert_eq!(get_op_id(&replacement_response), replacement_op_id);
+    assert!(handler.take_next_response_part().is_none());
 }
 
 //==================================================================================================
@@ -1222,14 +1237,22 @@ fn test_assembler_rejects_stray_part_zero_mid_stream() {
 
 /// Splits a serialized long-message wire-format buffer into IKC parts using the given header.
 fn split_into_parts(
-    header: SystemCallMessageHeader,
+    header: SystemCallMessageKind,
     data: &[u8],
 ) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
     let chunk_size: usize = SystemCallMessagePart::PAYLOAD_SIZE;
     let num_parts: u16 = data.len().div_ceil(chunk_size).max(1) as u16;
+    let op_id: OperationId = OperationId::from_le_bytes(
+        data[..OperationId::SERIALIZED_SIZE]
+            .try_into()
+            .expect("long request should begin with an op_id"),
+    );
     let mut parts: Vec<[u8; Message::PAYLOAD_SIZE]> = Vec::new();
     for (i, chunk) in data.chunks(chunk_size).enumerate() {
-        parts.push(make_part_payload(header, num_parts, i as u16, chunk.len() as u8, chunk));
+        let mut part: [u8; Message::PAYLOAD_SIZE] =
+            make_part_payload(header, num_parts, i as u16, chunk.len() as u8, chunk);
+        set_op_id(&mut part, op_id);
+        parts.push(part);
     }
     parts
 }
@@ -1242,7 +1265,7 @@ fn make_long_unlink_parts(path: &str, op_id: OperationId) -> Vec<[u8; Message::P
     data.extend_from_slice(&op_id.to_le_bytes());
     data.extend_from_slice(&path_len.to_le_bytes());
     data.extend_from_slice(path_bytes);
-    split_into_parts(SystemCallMessageHeader::HostFsUnlinkRequestPart, &data)
+    split_into_parts(SystemCallMessageKind::HostFsUnlinkRequestPart, &data)
 }
 
 /// Serializes a long RMDIR request: `[op_id:4][path_len:2][path:N]`.
@@ -1253,7 +1276,7 @@ fn make_long_rmdir_parts(path: &str, op_id: OperationId) -> Vec<[u8; Message::PA
     data.extend_from_slice(&op_id.to_le_bytes());
     data.extend_from_slice(&path_len.to_le_bytes());
     data.extend_from_slice(path_bytes);
-    split_into_parts(SystemCallMessageHeader::HostFsRmdirRequestPart, &data)
+    split_into_parts(SystemCallMessageKind::HostFsRmdirRequestPart, &data)
 }
 
 /// Serializes a long MKDIR request: `[op_id:4][mode:4][path_len:2][path:N]`.
@@ -1269,7 +1292,7 @@ fn make_long_mkdir_parts(
     data.extend_from_slice(&mode.to_le_bytes());
     data.extend_from_slice(&path_len.to_le_bytes());
     data.extend_from_slice(path_bytes);
-    split_into_parts(SystemCallMessageHeader::HostFsMkdirRequestPart, &data)
+    split_into_parts(SystemCallMessageKind::HostFsMkdirRequestPart, &data)
 }
 
 /// Serializes a long RENAME request: `[op_id:4][old_path_len:2][new_path_len:2][old_path][new_path]`.
@@ -1288,7 +1311,7 @@ fn make_long_rename_parts(
     data.extend_from_slice(&new_len.to_le_bytes());
     data.extend_from_slice(old_bytes);
     data.extend_from_slice(new_bytes);
-    split_into_parts(SystemCallMessageHeader::HostFsRenameRequestPart, &data)
+    split_into_parts(SystemCallMessageKind::HostFsRenameRequestPart, &data)
 }
 
 /// Feeds all parts of a multi-part request through the handler and returns the final response.
@@ -1429,7 +1452,7 @@ fn make_lstat_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     let req: LstatRequest =
         LstatRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
     req.serialize(
-        SystemCallMessageHeader::HostFsLstatRequest as u16,
+        SystemCallMessageKind::HostFsLstatRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -1439,7 +1462,7 @@ fn make_pathstat_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     let req: LstatRequest =
         LstatRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
     req.serialize(
-        SystemCallMessageHeader::HostFsPathStatRequest as u16,
+        SystemCallMessageKind::HostFsPathStatRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -1455,7 +1478,7 @@ fn make_long_pathstat_parts(path: &str, op_id: OperationId) -> Vec<[u8; Message:
     data.extend_from_slice(&op_id.to_le_bytes());
     data.extend_from_slice(&path_len.to_le_bytes());
     data.extend_from_slice(path_bytes);
-    split_into_parts(SystemCallMessageHeader::HostFsPathStatRequestPart, &data)
+    split_into_parts(SystemCallMessageKind::HostFsPathStatRequestPart, &data)
 }
 
 /// Builds an inline Readlink request payload.
@@ -1463,7 +1486,7 @@ fn make_readlink_request(path: &str) -> [u8; Message::PAYLOAD_SIZE] {
     let req: ReadlinkRequest =
         ReadlinkRequest::from_path(path.as_bytes()).expect("test path fits in MAX_INLINE_PATH_LEN");
     req.serialize(
-        SystemCallMessageHeader::HostFsReadlinkRequest as u16,
+        SystemCallMessageKind::HostFsReadlinkRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -1483,7 +1506,7 @@ fn make_long_symlink_parts(
     data.extend_from_slice(&(l.len() as u16).to_le_bytes());
     data.extend_from_slice(t);
     data.extend_from_slice(l);
-    split_into_parts(SystemCallMessageHeader::HostFsSymlinkRequestPart, &data)
+    split_into_parts(SystemCallMessageKind::HostFsSymlinkRequestPart, &data)
 }
 
 /// Creates a symbolic link on the host. Returns `Ok(())` on success or an error.
@@ -1833,28 +1856,34 @@ fn test_symlink_linkpath_escapes_sandbox() {
 /// Reassembles a sequence of multi-part response messages into the raw body.
 ///
 /// Each part has the wire layout:
-/// `[header:2][total_parts:2 LE][part_number:2 LE][payload_size:1][payload:N]`
+/// `[header:2][request_id:4][total_parts:2 LE][part_number:2 LE][payload_size:1][payload:N]`
 /// (see `build_long_readlink_response_part` in handler.rs).
 fn drain_multipart_response(
     handler: &mut HostFsHandler,
     first: [u8; Message::PAYLOAD_SIZE],
-    expected_header: SystemCallMessageHeader,
+    expected_header: SystemCallMessageKind,
 ) -> Vec<u8> {
     fn read_part(
         payload: &[u8; Message::PAYLOAD_SIZE],
-        expected_header: SystemCallMessageHeader,
+        expected_header: SystemCallMessageKind,
     ) -> (u16, u16, Vec<u8>) {
         let header_raw: u16 = u16::from_ne_bytes([payload[0], payload[1]]);
         assert_eq!(header_raw, expected_header as u16, "unexpected response header");
-        let total_parts: u16 = u16::from_le_bytes([payload[2], payload[3]]);
-        let part_number: u16 = u16::from_le_bytes([payload[4], payload[5]]);
-        let payload_size: usize = payload[6] as usize;
-        let chunk: Vec<u8> = payload[7..7 + payload_size].to_vec();
+        let total_parts: u16 = u16::from_le_bytes([payload[6], payload[7]]);
+        let part_number: u16 = u16::from_le_bytes([payload[8], payload[9]]);
+        let payload_size: usize = payload[10] as usize;
+        let chunk: Vec<u8> = payload[11..11 + payload_size].to_vec();
         (total_parts, part_number, chunk)
     }
 
     let (total_parts, part_number, chunk0) = read_part(&first, expected_header);
     assert_eq!(part_number, 0, "first response part must have part_number == 0");
+    let expected_op_id: OperationId = OperationId::from_le_bytes(
+        chunk0[..4]
+            .try_into()
+            .expect("multipart body should begin with an op_id"),
+    );
+    assert_eq!(get_op_id(&first), expected_op_id, "first response part should echo op_id");
 
     let mut body: Vec<u8> = chunk0;
     for expected_pn in 1..total_parts {
@@ -1864,6 +1893,7 @@ fn drain_multipart_response(
         let (tp, pn, chunk) = read_part(&next, expected_header);
         assert_eq!(tp, total_parts, "total_parts mismatch across parts");
         assert_eq!(pn, expected_pn, "out-of-order response part");
+        assert_eq!(get_op_id(&next), expected_op_id, "response part should echo op_id");
         body.extend_from_slice(&chunk);
     }
     assert!(handler.take_next_response_part().is_none(), "unexpected extra response parts queued");
@@ -1895,7 +1925,7 @@ fn test_readlink_long_target_multipart_response() {
     let body = drain_multipart_response(
         &mut handler,
         first,
-        SystemCallMessageHeader::HostFsReadlinkResponsePart,
+        SystemCallMessageKind::HostFsReadlinkResponsePart,
     );
     assert!(body.len() >= hostfs_api::long_msg::READLINK_RESPONSE_HEADER_SIZE, "body too short");
     let resp = hostfs_api::long_msg::deserialize_long_readlink_response(&body)

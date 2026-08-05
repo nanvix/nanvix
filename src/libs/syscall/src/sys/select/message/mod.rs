@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::vec::Vec;
 use ::core::mem;
@@ -257,7 +257,7 @@ impl MessagePartitioner for SelectRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::SelectRequestPart,
+            SystemCallMessageKind::SelectRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -370,7 +370,7 @@ impl SelectResponse {
     ) -> Message {
         let message: SelectResponse = SelectResponse::new(ready_fds, readfds, writefds, errorfds);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::SelectResponse, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::SelectResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
@@ -404,10 +404,10 @@ mod tests {
                 let daemon_msg: SystemCallMessage = SystemCallMessage::try_from_bytes(msg.payload)
                     .expect("valid SystemCallMessage");
                 // Copy the header out of the packed message before comparing it.
-                let header: SystemCallMessageHeader = daemon_msg.header;
+                let header: SystemCallMessageKind = daemon_msg.kind();
                 assert_eq!(
                     header,
-                    SystemCallMessageHeader::SelectRequestPart,
+                    SystemCallMessageKind::SelectRequestPart,
                     "unexpected part header"
                 );
                 SystemCallMessagePart::from_bytes(daemon_msg.payload)

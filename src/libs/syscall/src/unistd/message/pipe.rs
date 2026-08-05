@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -57,7 +57,7 @@ impl PipeRequest {
     ) -> Message {
         let message: PipeRequest = PipeRequest::new();
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::PipeRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::PipeRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -118,7 +118,7 @@ impl PipeResponse {
     ) -> Message {
         let message: PipeResponse = PipeResponse::new(read_fd, write_fd, epoch);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::PipeResponse, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::PipeResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

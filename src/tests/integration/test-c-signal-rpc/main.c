@@ -22,6 +22,7 @@
 #define PIPE_FILL_BYTE 0x31
 #define CANCELLED_WRITE_BYTE 0xa7
 #define COMMITTED_WRITE_BYTE 0xb8
+#define SIGNAL_RPC_BYTE 0xd4
 
 #define CHECK(step, condition) \
     do {                       \
@@ -31,11 +32,21 @@
     } while (0)
 
 static volatile sig_atomic_t sigchld_count;
+static volatile sig_atomic_t signal_rpc_status;
+static int signal_rpc_fd = -1;
 
 static void handle_sigchld(int signum)
 {
+    int saved_errno = errno;
+    const unsigned char value = SIGNAL_RPC_BYTE;
+
     (void)signum;
+    // The interrupted outer RPC keeps a request active, so this nested RPC allocates the response
+    // stash before issuing the write.
+    signal_rpc_status =
+        (write(signal_rpc_fd, &value, sizeof(value)) == sizeof(value)) ? 1 : -1;
     sigchld_count++;
+    errno = saved_errno;
 }
 
 static int delay_ms(long milliseconds)
@@ -259,9 +270,12 @@ int main(int argc, char *argv[])
     CHECK(1, sigemptyset(&action.sa_mask) == 0);
     CHECK(2, sigaction(SIGCHLD, &action, NULL) == 0);
 
+    int signal_pipe[2];
     int data_pipe[2];
     int control_pipe[2];
     int ready_pipe[2];
+    CHECK(30, pipe(signal_pipe) == 0);
+    signal_rpc_fd = signal_pipe[1];
     CHECK(3, pipe(data_pipe) == 0);
     CHECK(4, pipe(control_pipe) == 0);
     CHECK(5, pipe(ready_pipe) == 0);
@@ -326,6 +340,11 @@ int main(int argc, char *argv[])
     CHECK(12, sigchld_count > 0);
     CHECK(13, count == sizeof(first_data));
     CHECK(14, first_data == 0x5a);
+    CHECK(31, signal_rpc_status == 1);
+
+    unsigned char signal_data = 0;
+    CHECK(32, read(signal_pipe[0], &signal_data, sizeof(signal_data)) == sizeof(signal_data));
+    CHECK(33, signal_data == SIGNAL_RPC_BYTE);
 
     const unsigned char ready = 0xa5;
     CHECK(15, write(ready_pipe[1], &ready, sizeof(ready)) == sizeof(ready));
@@ -379,5 +398,8 @@ int main(int argc, char *argv[])
     }
 
     CHECK(29, wait_success(probe));
+    signal_rpc_fd = -1;
+    CHECK(34, close(signal_pipe[0]) == 0);
+    CHECK(35, close(signal_pipe[1]) == 0);
     return (0);
 }

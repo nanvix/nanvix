@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::String,
@@ -279,7 +279,7 @@ impl MessagePartitioner for LinkAtRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::LinkAtRequestPart,
+            SystemCallMessageKind::LinkAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -327,7 +327,7 @@ impl LinkAtResponse {
     ) -> Message {
         let message: LinkAtResponse = LinkAtResponse::new(ret);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::LinkAtResponse, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::LinkAtResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

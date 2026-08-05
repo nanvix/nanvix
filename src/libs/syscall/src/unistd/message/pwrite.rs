@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -76,7 +76,7 @@ impl PartialWriteRequest {
     ) -> Message {
         let message: PartialWriteRequest = PartialWriteRequest::new(fd, count, offset, buffer);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PartialWriteRequest,
+            SystemCallMessageKind::PartialWriteRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -128,7 +128,7 @@ impl PartialWriteResponse {
     ) -> Message {
         let message: PartialWriteResponse = PartialWriteResponse::new(count);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PartialWriteResponse,
+            SystemCallMessageKind::PartialWriteResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

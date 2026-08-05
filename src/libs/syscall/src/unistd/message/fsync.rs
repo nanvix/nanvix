@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -61,7 +61,7 @@ impl FileSyncRequest {
     ) -> Message {
         let message: FileSyncRequest = FileSyncRequest::new(fd);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::FileSyncRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::FileSyncRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -116,7 +116,7 @@ impl FileSyncResponse {
     ) -> Message {
         let message: FileSyncResponse = FileSyncResponse::new(ret);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::FileSyncResponse, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::FileSyncResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

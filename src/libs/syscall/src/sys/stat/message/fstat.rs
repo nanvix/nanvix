@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -71,7 +71,7 @@ impl FileStatRequest {
     ) -> Message {
         let message: FileStatRequest = FileStatRequest::new(fd);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::FileStatRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::FileStatRequest, message.into_bytes());
         Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),

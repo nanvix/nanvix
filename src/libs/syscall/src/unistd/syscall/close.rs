@@ -11,7 +11,7 @@ use crate::{
         CloseResponse,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::sys::{
     error::{
@@ -21,6 +21,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageType,
+        RequestToken,
     },
     pm::{
         ProcessIdentifier,
@@ -89,17 +90,20 @@ fn close_ipc(
     };
 
     // Build request and send it.
-    let request: Message = CloseRequest::build(tid, fd, destination, message_type);
-    if let Err(error) = ::sys::kcall::ipc::__kcall_send(&request) {
-        return if tolerate_missing_backend {
-            Ok(())
-        } else {
-            Err(error)
-        };
-    }
+    let mut request: Message = CloseRequest::build(tid, fd, destination, message_type);
+    let token: RequestToken = match crate::rpc::send_request(&mut request) {
+        Ok(token) => token,
+        Err(error) => {
+            return if tolerate_missing_backend {
+                Ok(())
+            } else {
+                Err(error)
+            };
+        },
+    };
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -108,8 +112,8 @@ fn close_ipc(
         Err(Error::new(error_code, "close() failed"))
     } else {
         match SystemCallMessage::try_from_bytes(response.payload) {
-            Ok(message) => match message.header {
-                SystemCallMessageHeader::CloseResponse => {
+            Ok(message) => match message.kind() {
+                SystemCallMessageKind::CloseResponse => {
                     let _: CloseResponse = CloseResponse::from_bytes(message.payload);
                     Ok(())
                 },

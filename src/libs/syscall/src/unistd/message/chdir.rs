@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::{
@@ -187,7 +187,7 @@ impl MessagePartitioner for ChangeDirectoryRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::ChangeDirectoryRequestPart,
+            SystemCallMessageKind::ChangeDirectoryRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -229,7 +229,7 @@ impl ChangeDirectoryResponse {
     ) -> Message {
         let message: ChangeDirectoryResponse = ChangeDirectoryResponse::new();
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ChangeDirectoryResponse,
+            SystemCallMessageKind::ChangeDirectoryResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

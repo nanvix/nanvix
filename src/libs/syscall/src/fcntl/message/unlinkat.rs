@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::{
@@ -221,7 +221,7 @@ impl MessagePartitioner for UnlinkAtRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::UnlinkAtRequestPart,
+            SystemCallMessageKind::UnlinkAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -269,7 +269,7 @@ impl UnlinkAtResponse {
     ) -> Message {
         let message: UnlinkAtResponse = UnlinkAtResponse::new(ret);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::UnlinkAtResponse, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::UnlinkAtResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -62,7 +62,7 @@ impl ListenSocketRequest {
     pub fn build(tid: ThreadIdentifier, sockfd: i32, backlog: i32) -> Message {
         let message: Self = Self::new(sockfd, backlog);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ListenSocketRequest,
+            SystemCallMessageKind::ListenSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -108,7 +108,7 @@ impl ListenSocketResponse {
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ListenSocketResponse,
+            SystemCallMessageKind::ListenSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

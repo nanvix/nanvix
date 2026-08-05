@@ -9,6 +9,7 @@ use crate::message::{
     self,
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
+    WaitCancelResponseMessage,
     WaitResponseMessage,
     WaitTarget,
 };
@@ -25,6 +26,31 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
+
+/// Cancels a blocked wait and reports whether cancellation beat completion.
+fn cancel_wait(
+    caller: ProcessIdentifier,
+    request_id: ::sys::ipc::RequestIdentifier,
+) -> Result<bool, Error> {
+    let mut request: Message = message::wait_cancel_request(caller, request_id)?;
+    let token = super::rpc::send_request(&mut request)?;
+    let response: Message = super::rpc::recv_response(&token)?;
+    if response.message_type != MessageType::Ipc {
+        return Err(Error::new(ErrorCode::InvalidMessage, "invalid wait cancellation type"));
+    }
+    let system: SystemMessage = SystemMessage::from_bytes(response.payload)?;
+    if !matches!(system.header, SystemMessageHeader::ProcessManagement) {
+        return Err(Error::new(
+            ErrorCode::InvalidMessage,
+            "invalid wait cancellation system message",
+        ));
+    }
+    let process: ProcessManagementMessage = ProcessManagementMessage::from_bytes(system.payload)?;
+    if !matches!(process.header, ProcessManagementMessageHeader::WaitCancelResponse) {
+        return Err(Error::new(ErrorCode::InvalidMessage, "unexpected wait cancellation response"));
+    }
+    Ok(WaitCancelResponseMessage::from_bytes(process.payload).cancelled())
+}
 
 //==================================================================================================
 // Structures
@@ -72,11 +98,20 @@ pub fn wait(target: WaitTarget, options: i32) -> Result<WaitOutcome, Error> {
     let caller: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build wait message and send it.
-    let message: Message = message::wait_request(caller, target, options)?;
-    ::sys::kcall::ipc::__kcall_send(&message)?;
+    let mut message: Message = message::wait_request(caller, target, options)?;
+    let token = super::rpc::send_request(&mut message)?;
 
-    // Wait response from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    // Arbitrate signal interruption against completion without abandoning procd's waiter.
+    let message: Message = match super::rpc::recv_response_interruptible(&token) {
+        Ok(message) => message,
+        Err(error) if error.code == ErrorCode::Interrupted => {
+            if cancel_wait(caller, token.identifier())? {
+                return Err(error);
+            }
+            super::rpc::recv_response(&token)?
+        },
+        Err(error) => return Err(error),
+    };
 
     // Parse response.
     match message.message_type {

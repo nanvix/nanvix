@@ -370,8 +370,6 @@ impl ForkContext {
     r#"
     .global fork_save_context
     .global fork_trampoline
-    .type fork_save_context, @function
-    .type fork_trampoline, @function
 
     fork_save_context:
         #
@@ -424,6 +422,9 @@ impl ForkContext {
     OFFSET_EIP = const ForkContext::OFFSET_EIP,
     CHILD_RESUME = const FORK_CHILD_SENTINEL,
 );
+
+#[cfg(target_os = "none")]
+::core::arch::global_asm!(".type fork_save_context, @function", ".type fork_trampoline, @function",);
 
 unsafe extern "C" {
     /// Captures the calling thread's resumable context. See the assembly routine above.

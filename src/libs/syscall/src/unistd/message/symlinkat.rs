@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::String,
@@ -233,7 +233,7 @@ impl MessagePartitioner for SymbolicLinkAtRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::SymbolicLinkAtRequestPart,
+            SystemCallMessageKind::SymbolicLinkAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -281,7 +281,7 @@ impl SymbolicLinkAtResponse {
     ) -> Message {
         let message: SymbolicLinkAtResponse = SymbolicLinkAtResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::SymbolicLinkAtResponse,
+            SystemCallMessageKind::SymbolicLinkAtResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

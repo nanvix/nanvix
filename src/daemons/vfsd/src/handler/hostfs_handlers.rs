@@ -27,6 +27,7 @@ use crate::{
     error::{
         build_error,
         fat32_to_error_code,
+        ResponseContext,
     },
     hostfs,
     pending::{
@@ -68,12 +69,13 @@ use ::syscall::{
 //==================================================================================================
 
 pub(crate) fn handle_close_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
     pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let req: CloseRequest = CloseRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
@@ -109,6 +111,7 @@ pub(crate) fn handle_close_with_hostfs(
             .insert(
                 op_id,
                 PendingOp {
+                    response_context,
                     source_tid: source,
                     source_pid,
                     kind: PendingOpKind::Close,
@@ -240,11 +243,12 @@ pub(crate) fn handle_dup2(
 }
 
 pub(crate) fn handle_seek_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let req: SeekRequest = SeekRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
@@ -265,6 +269,7 @@ pub(crate) fn handle_seek_with_hostfs(
             .insert(
                 op_id,
                 PendingOp {
+                    response_context,
                     source_tid: source,
                     source_pid,
                     kind: PendingOpKind::Seek,
@@ -281,11 +286,12 @@ pub(crate) fn handle_seek_with_hostfs(
 }
 
 pub(crate) fn handle_fsync_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let req: FileSyncRequest = FileSyncRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
@@ -301,6 +307,7 @@ pub(crate) fn handle_fsync_with_hostfs(
             .insert(
                 op_id,
                 PendingOp {
+                    response_context,
                     source_tid: source,
                     source_pid,
                     kind: PendingOpKind::Flush,
@@ -317,11 +324,12 @@ pub(crate) fn handle_fsync_with_hostfs(
 }
 
 pub(crate) fn handle_ftruncate_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let req: FileTruncateRequest = FileTruncateRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
@@ -340,6 +348,7 @@ pub(crate) fn handle_ftruncate_with_hostfs(
             .insert(
                 op_id,
                 PendingOp {
+                    response_context,
                     source_tid: source,
                     source_pid,
                     kind: PendingOpKind::Truncate,
@@ -360,11 +369,12 @@ pub(crate) fn handle_ftruncate_with_hostfs(
 //==================================================================================================
 
 pub(crate) fn handle_fstat_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let req: FileStatRequest = FileStatRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
@@ -380,6 +390,7 @@ pub(crate) fn handle_fstat_with_hostfs(
             .insert(
                 op_id,
                 PendingOp {
+                    response_context,
                     source_tid: source,
                     source_pid,
                     kind: PendingOpKind::Stat,
@@ -396,11 +407,12 @@ pub(crate) fn handle_fstat_with_hostfs(
 }
 
 pub(crate) fn handle_fstatat_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     request: FileStatAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let resolved: alloc::string::String =
         match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path) {
             Some(p) => p,
@@ -430,6 +442,7 @@ pub(crate) fn handle_fstatat_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid: source,
                             source_pid,
                             kind,
@@ -455,11 +468,12 @@ pub(crate) fn handle_fstatat_with_hostfs(
 /// target is a directory and returns `ENOTDIR` otherwise. Non-hostfs targets fall
 /// through to the local VFS handler, which validates against the FAT mount table.
 pub(crate) fn handle_chdir_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     request: ChangeDirectoryRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let resolved = match vfs_resolve_path(AT_FDCWD, &request.path) {
         Some(p) => p,
         None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
@@ -476,6 +490,7 @@ pub(crate) fn handle_chdir_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid: source,
                             source_pid,
                             kind: PendingOpKind::Chdir { path: resolved },
@@ -495,20 +510,20 @@ pub(crate) fn handle_chdir_with_hostfs(
 }
 
 pub(crate) fn handle_read_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
     console_wait: &mut ConsoleWaitTable,
     pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let req: ReadRequest = ReadRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
     if let Ok(stream) = ::vfs::fd::vfs_console_stream(fd) {
         return super::readwrite::handle_console_read(
-            source_pid,
-            source_tid,
+            response_context,
             fd,
             stream,
             req.count as usize,
@@ -519,8 +534,7 @@ pub(crate) fn handle_read_with_hostfs(
     // Pipe read end: served by the pipe handler (which may park the caller).
     if let Some((pipe_id, is_write)) = ::vfs::fd::vfs_pipe_id(fd) {
         return super::pipe::handle_pipe_read(
-            source_pid,
-            source_tid,
+            response_context,
             fd,
             req.count as usize,
             is_write,
@@ -545,6 +559,7 @@ pub(crate) fn handle_read_with_hostfs(
             .insert(
                 op_id,
                 PendingOp {
+                    response_context,
                     source_tid,
                     source_pid,
                     kind: PendingOpKind::Read { count: buf_size },
@@ -562,20 +577,20 @@ pub(crate) fn handle_read_with_hostfs(
 }
 
 pub(crate) fn handle_write_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
     pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let req: WriteRequest = WriteRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
     // Pipe write end: served by the pipe handler (which may park the caller).
     if let Some((pipe_id, is_write)) = ::vfs::fd::vfs_pipe_id(fd) {
         return super::pipe::handle_pipe_write(
-            source_pid,
-            source_tid,
+            response_context,
             fd,
             req.count as usize,
             is_write,
@@ -605,6 +620,7 @@ pub(crate) fn handle_write_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid,
                             source_pid,
                             kind: PendingOpKind::Write,
@@ -673,11 +689,12 @@ use super::long::handle_chdir;
 /// Returns `None` when the request was forwarded to hostfsd (the response is sent later
 /// from the event loop). Non-hostfs FDs fall through to the synchronous VFS handler.
 pub(crate) fn handle_getdents_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let req: GetDirectoryEntriesRequest = GetDirectoryEntriesRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
@@ -711,6 +728,7 @@ pub(crate) fn handle_getdents_with_hostfs(
             .insert(
                 op_id,
                 PendingOp {
+                    response_context,
                     source_tid: source,
                     source_pid,
                     kind: PendingOpKind::Getdents {
@@ -733,11 +751,12 @@ pub(crate) fn handle_getdents_with_hostfs(
 }
 
 pub(crate) fn handle_openat_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     mut request: OpenAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
     let resolved: alloc::string::String =
         match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
@@ -758,6 +777,7 @@ pub(crate) fn handle_openat_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid: source,
                             source_pid,
                             kind: PendingOpKind::Open { path: open_path },
@@ -777,11 +797,12 @@ pub(crate) fn handle_openat_with_hostfs(
 }
 
 pub(crate) fn handle_renameat_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     request: RenameAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let old_resolved: alloc::string::String =
         match ::vfs::fd::vfs_resolve_path(request.olddirfd, &request.oldpath) {
             Some(p) => p,
@@ -814,6 +835,7 @@ pub(crate) fn handle_renameat_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid: source,
                             source_pid,
                             kind: PendingOpKind::Rename,
@@ -833,11 +855,12 @@ pub(crate) fn handle_renameat_with_hostfs(
 }
 
 pub(crate) fn handle_unlinkat_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     request: UnlinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let resolved: alloc::string::String =
         match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
             Some(p) => p,
@@ -867,6 +890,7 @@ pub(crate) fn handle_unlinkat_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid: source,
                             source_pid,
                             kind,
@@ -886,11 +910,12 @@ pub(crate) fn handle_unlinkat_with_hostfs(
 }
 
 pub(crate) fn handle_mkdirat_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     mut request: MakeDirectoryAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
     let resolved: alloc::string::String =
         match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
@@ -910,6 +935,7 @@ pub(crate) fn handle_mkdirat_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid: source,
                             source_pid,
                             kind: PendingOpKind::Mkdir,
@@ -929,11 +955,12 @@ pub(crate) fn handle_mkdirat_with_hostfs(
 }
 
 pub(crate) fn handle_symlinkat_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     request: SymbolicLinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     // Routing key is `linkpath` (where the symlink will live). `target` is an opaque
     // string stored verbatim by the host and intentionally not consulted here.
     let resolved: alloc::string::String =
@@ -954,6 +981,7 @@ pub(crate) fn handle_symlinkat_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid: source,
                             source_pid,
                             kind: PendingOpKind::Symlink,
@@ -973,11 +1001,12 @@ pub(crate) fn handle_symlinkat_with_hostfs(
 }
 
 pub(crate) fn handle_readlinkat_with_hostfs(
-    source_pid: ProcessIdentifier,
-    source: ThreadIdentifier,
+    response_context: ResponseContext,
     request: ReadLinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
     let resolved: alloc::string::String =
         match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path) {
             Some(p) => p,
@@ -997,6 +1026,7 @@ pub(crate) fn handle_readlinkat_with_hostfs(
                     .insert(
                         op_id,
                         PendingOp {
+                            response_context,
                             source_tid: source,
                             source_pid,
                             kind: PendingOpKind::Readlink { bufsiz },

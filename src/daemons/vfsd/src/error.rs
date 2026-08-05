@@ -12,12 +12,66 @@ use ::sys::{
         MessageReceiver,
         MessageSender,
         MessageType,
+        RequestIdentifier,
     },
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
     },
 };
+
+//==================================================================================================
+// Response Context
+//==================================================================================================
+
+/// Routing metadata retained from a request until its response is sent.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct ResponseContext {
+    /// Exact process and thread that issued the request.
+    receiver: MessageReceiver,
+    /// Identifier that correlates the response with the request.
+    request_id: RequestIdentifier,
+}
+
+impl ResponseContext {
+    /// Creates response routing metadata from a request sender and identifier.
+    pub(crate) fn new(sender: MessageSender, request_id: RequestIdentifier) -> Self {
+        Self {
+            receiver: MessageReceiver::new(sender.pid, sender.tid),
+            request_id,
+        }
+    }
+
+    /// Returns the process that issued the request.
+    pub(crate) fn source_pid(self) -> ProcessIdentifier {
+        self.receiver.pid
+    }
+
+    /// Returns the thread that issued the request.
+    pub(crate) fn source_tid(self) -> ThreadIdentifier {
+        self.receiver.tid
+    }
+
+    /// Returns the request identifier to echo in responses.
+    pub(crate) fn request_id(self) -> RequestIdentifier {
+        self.request_id
+    }
+
+    /// Applies this context to a response message.
+    pub(crate) fn prepare_response(self, response: &mut Message) {
+        response.destination = self.receiver;
+        self.request_id.write_to(response);
+    }
+
+    /// Sends a response to the exact requesting thread with the matching request identifier.
+    pub(crate) fn send(self, response: &Message) {
+        let mut response: Message = response.clone();
+        self.prepare_response(&mut response);
+        if let Err(e) = ::sys::kcall::ipc::__kcall_send(&response) {
+            ::syslog::warn!("send_response(): failed to send response (error={:?})", e);
+        }
+    }
+}
 
 //==================================================================================================
 // Helper: Fat32Error → ErrorCode
@@ -61,9 +115,34 @@ pub(crate) fn build_error(source: ThreadIdentifier, code: ErrorCode) -> Message 
     )
 }
 
-/// Sends a response message, logging a warning on failure.
-pub(crate) fn send_response(response: &Message) {
-    if let Err(e) = ::sys::kcall::ipc::__kcall_send(response) {
-        ::syslog::warn!("send_response(): failed to send response (error={:?})", e);
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn response_context_stamps_request_id_and_exact_thread() {
+        let process: ProcessIdentifier = ProcessIdentifier::from(10);
+        let thread: ThreadIdentifier = ThreadIdentifier::from(20);
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(0x12345678);
+        let response_context: ResponseContext =
+            ResponseContext::new(MessageSender::new(process, thread), request_id);
+        let mut response: Message = build_error(thread, ErrorCode::InvalidMessage);
+
+        response_context.prepare_response(&mut response);
+
+        assert_eq!(
+            { response.destination },
+            MessageReceiver::new(process, thread),
+            "response should target the requesting thread"
+        );
+        assert_eq!(
+            RequestIdentifier::read_from(&response),
+            request_id,
+            "response should echo the request identifier"
+        );
     }
 }

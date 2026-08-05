@@ -11,14 +11,17 @@ use crate::{
         Shutdown,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -34,11 +37,11 @@ pub fn shutdown(sockfd: c_int, how: Shutdown) -> Result<(), Error> {
     let sockfd = crate::fdtable::resolve_socket(sockfd, "shutdown")?;
 
     // Build request and send it.
-    let request: Message = ShutdownSocketRequest::build(tid, sockfd, how);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = ShutdownSocketRequest::build(tid, sockfd, how);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -51,9 +54,9 @@ pub fn shutdown(sockfd: c_int, how: Shutdown) -> Result<(), Error> {
         // System call succeeded, parse response.
         match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
+            Ok(message) => match message.kind() {
                 // Response was successfully parsed.
-                SystemCallMessageHeader::ShutdownSocketResponse => Ok(()),
+                SystemCallMessageKind::ShutdownSocketResponse => Ok(()),
                 // Response was not successfully parsed.
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),
             },

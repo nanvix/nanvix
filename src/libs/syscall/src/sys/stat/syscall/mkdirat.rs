@@ -10,7 +10,7 @@ use crate::{
     safe::RawFileDescriptor,
     sys::stat::message::MakeDirectoryAtRequest,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::ToString,
@@ -21,7 +21,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::mode_t;
@@ -55,16 +58,14 @@ pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result
     let request: MakeDirectoryAtRequest =
         MakeDirectoryAtRequest::new(dirfd, pathname.to_string(), mode)?;
 
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     // Send request.
-    for request in &requests {
-        ::sys::kcall::ipc::__kcall_send(request)?;
-    }
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -99,8 +100,8 @@ pub fn mkdirat(dirfd: RawFileDescriptor, pathname: &str, mode: mode_t) -> Result
         // System call succeeded, parse response.
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
-        match message.header {
-            SystemCallMessageHeader::MakeDirectoryAtResponse => Ok(()),
+        match message.kind() {
+            SystemCallMessageKind::MakeDirectoryAtResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
                 ::syslog::warn!(

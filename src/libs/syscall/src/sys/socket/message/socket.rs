@@ -12,7 +12,7 @@ use crate::{
         SocketType,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -76,7 +76,7 @@ impl CreateSocketRequest {
     ) -> Message {
         let message: Self = Self::new(domain, typ, protocol);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::CreateSocketRequest,
+            SystemCallMessageKind::CreateSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -124,7 +124,7 @@ impl CreateSocketResponse {
     pub fn build(tid: ThreadIdentifier, sockfd: i32) -> Message {
         let message: Self = Self::new(sockfd);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::CreateSocketResponse,
+            SystemCallMessageKind::CreateSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

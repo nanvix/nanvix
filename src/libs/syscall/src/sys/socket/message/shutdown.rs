@@ -8,7 +8,7 @@
 use crate::{
     sys::socket::Shutdown,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -63,7 +63,7 @@ impl ShutdownSocketRequest {
     pub fn build(tid: ThreadIdentifier, sockfd: i32, how: Shutdown) -> Message {
         let message: Self = Self::new(sockfd, how);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ShutdownSocketRequest,
+            SystemCallMessageKind::ShutdownSocketRequest,
             message.into_bytes(),
         );
 
@@ -110,7 +110,7 @@ impl ShutdownSocketResponse {
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ShutdownSocketResponse,
+            SystemCallMessageKind::ShutdownSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

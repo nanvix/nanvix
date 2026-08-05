@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -66,7 +66,7 @@ impl FileTruncateRequest {
     ) -> Message {
         let message: FileTruncateRequest = FileTruncateRequest::new(fd, length);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileTruncateRequest,
+            SystemCallMessageKind::FileTruncateRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -118,7 +118,7 @@ impl FileTruncateResponse {
     ) -> Message {
         let message: FileTruncateResponse = FileTruncateResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileTruncateResponse,
+            SystemCallMessageKind::FileTruncateResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

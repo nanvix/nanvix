@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt,
@@ -63,7 +63,7 @@ impl FileDataSyncRequest {
     ) -> Message {
         let message: FileDataSyncRequest = FileDataSyncRequest::new(fd);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileDataSyncRequest,
+            SystemCallMessageKind::FileDataSyncRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -121,7 +121,7 @@ impl FileDataSyncResponse {
     ) -> Message {
         let message: FileDataSyncResponse = FileDataSyncResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileDataSyncResponse,
+            SystemCallMessageKind::FileDataSyncResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

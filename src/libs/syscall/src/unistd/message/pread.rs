@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -74,10 +74,8 @@ impl PartialReadRequest {
         message_type: MessageType,
     ) -> Message {
         let message: PartialReadRequest = PartialReadRequest::new(fd, count, offset);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PartialReadRequest,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::PartialReadRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -125,7 +123,7 @@ impl PartialReadResponse {
     ) -> Message {
         let message: PartialReadResponse = PartialReadResponse::new(count, buffer);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PartialReadResponse,
+            SystemCallMessageKind::PartialReadResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(
