@@ -110,6 +110,21 @@ struct ThreadStartArgs {
 // Standalone Functions
 //==================================================================================================
 
+fn notify_thread_exit() {
+    match ::sys::kcall::pm::getpid() {
+        Ok(pid) if i32::from(pid) > ::sys::pm::ProcessIdentifier::VFSD_RAW => {
+            let notification: ::sys::ipc::Message = ::proc::thread_exit_notification();
+            if let Err(error) = ::sys::kcall::ipc::__kcall_send(&notification) {
+                ::syslog::warn!("failed to notify process daemon of thread exit (error={error:?})");
+            }
+        },
+        Ok(_) => {},
+        Err(error) => {
+            ::syslog::warn!("failed to query process id during thread exit (error={error:?})");
+        },
+    }
+}
+
 extern "C" fn pthread_start(arg: usize) -> usize {
     let start_args: Box<ThreadStartArgs> = unsafe { Box::from_raw(arg as *mut ThreadStartArgs) };
     let retval: usize = (start_args.func)(start_args.arg);
@@ -121,6 +136,8 @@ extern "C" fn pthread_start(arg: usize) -> usize {
     if let Err(error) = ::sysalloc::tda::cleanup() {
         ::syslog::warn!("pthread_start(): failed to cleanup thread data area ({error:?})");
     }
+
+    notify_thread_exit();
 
     retval
 }
@@ -275,6 +292,8 @@ pub fn pthread_exit(retval: usize) -> Result<!, Error> {
         // Log warning and continue exiting, as we are about to terminate the thread anyway.
         ::syslog::warn!("pthread_exit(): failed to cleanup thread data area ({error:?})");
     }
+
+    notify_thread_exit();
 
     __kcall_exit_thread(retval)
 }
