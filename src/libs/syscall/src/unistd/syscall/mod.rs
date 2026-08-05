@@ -70,6 +70,7 @@ pub use self::getopt::{
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
+        pub(crate) use self::cancel::cancel_pipe_operation;
         pub use self::{
             _exit::_exit,
             chdir::chdir,

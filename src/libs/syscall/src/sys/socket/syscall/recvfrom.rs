@@ -77,10 +77,11 @@ pub fn recvfrom(
     let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Pull the datagram payload via data chunk transfer.
-    let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull(
+    let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull_tagged(
         ProcessIdentifier::KERNEL,
         ThreadIdentifier::KERNEL,
         &mut buffer[..recv_len],
+        token.identifier(),
     )?;
 
     // Receive response.

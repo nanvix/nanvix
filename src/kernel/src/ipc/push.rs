@@ -12,17 +12,16 @@ use crate::pm::{
     SleepError,
 };
 #[cfg(feature = "stdio")]
-use ::sys::error::{
-    Error,
-    ErrorCode,
-};
-#[cfg(feature = "stdio")]
 use ::sys::ipc::{
     GuestSgBulkKind,
     GuestSgSegment,
     SG_BULK_MAX_BYTES,
 };
 use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     ipc::PushArgs,
     pm::{
         ProcessIdentifier,
@@ -71,6 +70,13 @@ pub fn push(
     let destination_tid: ThreadIdentifier = args.dst_tid;
     let buffer_raw: usize = args.buffer as usize;
     let transfer_len: usize = args.len as usize;
+    let tag: u32 = args.tag;
+    let deferred: bool = args.is_deferred().map_err(SleepError::Generic)?;
+    let cancel_deferred: bool = args.cancels_deferred().map_err(SleepError::Generic)?;
+    let signal_mask_restore: Option<::sys::pm::SigSet> = args
+        .signal_mask_restore
+        .mask()
+        .map_err(SleepError::Generic)?;
 
     // Validate the destination identifiers copied from user space. The by-pointer ABI lets a caller
     // place an arbitrary raw value in the descriptor, so reject the negative/sentinel identifiers
@@ -96,6 +102,35 @@ pub fn push(
 
     let timeout: super::rendezvous::RendezvousTimeout =
         super::rendezvous::RendezvousTimeout::resolve(args.timeout).map_err(SleepError::Generic)?;
+    if (deferred || cancel_deferred)
+        && (transfer_len != 0
+            || signal_mask_restore.is_some()
+            || !matches!(timeout, super::rendezvous::RendezvousTimeout::Infinite))
+    {
+        let reason: &str = "deferred pushes must be zero-length and unbounded";
+        return Err(SleepError::Generic(Error::new(ErrorCode::InvalidArgument, reason)));
+    }
+    if (deferred || cancel_deferred) && caller_pid != ProcessIdentifier::VFSD {
+        let reason: &str = "deferred push actions are reserved for vfsd";
+        return Err(SleepError::Generic(Error::new(ErrorCode::PermissionDenied, reason)));
+    }
+    if cancel_deferred {
+        return super::rendezvous::cancel_deferred_push(
+            caller_pid,
+            caller_tid,
+            destination_tid,
+            tag,
+        )
+        .map_err(SleepError::Generic);
+    }
+    if deferred {
+        // SAFETY: IPC runs after the process manager is initialized. Kernel calls execute with
+        // interrupts disabled on one core, so the destination cannot exit between this check and
+        // registration in the rendezvous list.
+        unsafe { ProcessManager::get_mut() }
+            .ensure_live_thread(destination_tid)
+            .map_err(SleepError::Generic)?;
+    }
 
     trace!(
         "tid={:?}, pid={:?}, dst_tid={:?}, dst_pid={:?}, buffer={:#x}, len={}",
@@ -139,13 +174,12 @@ pub fn push(
         .map_err(SleepError::Generic)?;
 
         return crate::stdio::write_bulk(
-            caller_pid,
-            caller_tid,
-            destination_pid,
-            destination_tid,
+            (caller_pid, caller_tid),
+            (destination_pid, destination_tid),
             GuestSgBulkKind::Push,
             &segments,
             args.len,
+            tag,
         )
         .map_err(SleepError::Generic);
     }
@@ -157,6 +191,6 @@ pub fn push(
         destination_tid,
         buffer_raw,
         transfer_len,
-        timeout,
+        super::rendezvous::RendezvousOptions::new(tag, timeout, signal_mask_restore, deferred),
     )
 }

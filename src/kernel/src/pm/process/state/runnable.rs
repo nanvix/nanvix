@@ -226,6 +226,35 @@ impl RunnableProcess {
         }
     }
 
+    /// Interrupts one sleeping thread and moves it to the ready set with `reason`.
+    pub fn interrupt_thread(
+        mut self,
+        tid: ThreadIdentifier,
+        reason: InterruptReason,
+    ) -> Result<Self, Self> {
+        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+            match sleeping_threads.remove_if(|thread| thread.id() == tid) {
+                Ok((sleeping_threads, sleeping_thread)) => {
+                    let ready_thread: ReadyThread = sleeping_thread.interrupt(reason).resume();
+                    self.ready_threads.push_back(ready_thread);
+                    Ok(Self::from_state(
+                        self.state,
+                        self.ready_threads,
+                        self.interrupted_threads.take(),
+                        NonEmptyVecDeque::from(sleeping_threads),
+                        self.zombie_threads.take(),
+                    ))
+                },
+                Err(sleeping_threads) => {
+                    self.sleeping_threads = Some(sleeping_threads);
+                    Err(self)
+                },
+            }
+        } else {
+            Err(self)
+        }
+    }
+
     pub fn earliest_admission_time(&self) -> SystemTime {
         self.ready_threads
             .iter()

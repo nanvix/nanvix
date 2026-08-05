@@ -32,6 +32,8 @@ pub struct WriteRequest {
 pub struct WriteResponse {
     /// Number of bytes written (negative on error).
     pub bytes_written: i32,
+    /// Host file position immediately after the write, or negative when unavailable.
+    pub offset: i64,
 }
 
 impl WriteRequest {
@@ -102,6 +104,7 @@ impl WriteResponse {
     pub fn encode(&self, payload: &mut [u8; Message::PAYLOAD_SIZE]) {
         let data_start: usize = HOSTFS_DATA_START;
         payload[data_start..data_start + 4].copy_from_slice(&self.bytes_written.to_le_bytes());
+        payload[data_start + 4..data_start + 12].copy_from_slice(&self.offset.to_le_bytes());
     }
 
     /// Decodes a WriteResponse from the message payload.
@@ -109,6 +112,11 @@ impl WriteResponse {
         let data_start: usize = HOSTFS_DATA_START;
         let bytes_written: i32 =
             i32::from_le_bytes(payload[data_start..data_start + 4].try_into().unwrap());
-        Self { bytes_written }
+        let offset: i64 =
+            i64::from_le_bytes(payload[data_start + 4..data_start + 12].try_into().unwrap());
+        Self {
+            bytes_written,
+            offset,
+        }
     }
 }
