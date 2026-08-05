@@ -20,13 +20,9 @@ extern crate alloc;
 
 use crate::error::{
     build_error,
-    fat32_to_error_code,
     send_response,
 };
-use ::alloc::{
-    collections::BTreeMap,
-    string::String,
-};
+use ::alloc::collections::BTreeMap;
 use ::hostfs_api::{
     file_kind,
     LstatResponse,
@@ -45,7 +41,10 @@ use ::sys::{
     },
 };
 use ::syscall::unistd::message::ChangeDirectoryResponse;
-use ::vfs::fd::vfs_set_cwd;
+use ::vfs::fd::{
+    vfs_set_cwd,
+    ResolvedPath,
+};
 
 //==================================================================================================
 // Pending Operation Descriptor
@@ -109,7 +108,7 @@ pub(crate) enum PendingOpKind {
     /// when the target is a directory (else `ENOTDIR`). Reuses the `PathStat` wire form.
     Chdir {
         /// Absolute hostfs path to become the cwd once confirmed to be a directory.
-        path: String,
+        path: ResolvedPath,
     },
     /// getdents — directory listing over hostfs.
     ///
@@ -1186,8 +1185,7 @@ fn complete_lstat(source_tid: ThreadIdentifier, response_payload: &[u8; Message:
 fn complete_chdir(
     source_tid: ThreadIdentifier,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
-<<<<<<< HEAD
-    path: String,
+    path: ResolvedPath,
 ) {
     let resp: LstatResponse = match LstatResponse::decode(response_payload) {
         Some(r) => r,
@@ -1208,35 +1206,7 @@ fn complete_chdir(
         return;
     }
 
-    if let Err(e) = vfs_set_cwd(&path) {
-||||||| parent of e3de1c841 ([vfsd] E: hostfs-aware chdir)
-=======
-    path: &str,
-) {
-    let resp: LstatResponse = match LstatResponse::decode(response_payload) {
-        Some(r) => r,
-        None => {
-            ::syslog::error!("complete_chdir: failed to decode response");
-            send_response(&build_error(source_tid, ErrorCode::IoErr));
-            return;
-        },
-    };
-
-    if resp.status < 0 {
-        send_response(&build_error(source_tid, hostfs_error_to_code(resp.status)));
-        return;
-    }
-
-    if resp.kind != file_kind::DIRECTORY {
-        send_response(&build_error(source_tid, ErrorCode::InvalidDirectory));
-        return;
-    }
-
-    if let Err(e) = vfs_set_cwd(path) {
->>>>>>> e3de1c841 ([vfsd] E: hostfs-aware chdir)
-        send_response(&build_error(source_tid, fat32_to_error_code(&e)));
-        return;
-    }
+    vfs_set_cwd(path);
     send_response(&ChangeDirectoryResponse::build(
         source_tid,
         ProcessIdentifier::VFSD,

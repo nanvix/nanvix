@@ -460,29 +460,29 @@ pub(crate) fn handle_chdir_with_hostfs(
     request: ChangeDirectoryRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let resolved = match vfs_resolve_path(AT_FDCWD, &request.path) {
-        Some(p) => p,
-        None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+    let Some(resolved) = vfs_resolve_path(AT_FDCWD, &request.path)
+        .as_deref()
+        .and_then(ResolvedPath::new)
+    else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
 
-    if hostfs::is_hostfs_path(&resolved) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id = pending.alloc_op_id();
-        match hostfs::send_pathstat_request(&resolved, op_id) {
+        match hostfs::send_pathstat_request(resolved.as_str(), op_id) {
             Ok(()) => {
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            source_tid: source,
-                            source_pid,
-                            kind: PendingOpKind::Chdir { path: resolved },
-                        },
-                    )
-                    .is_err()
-                {
+                let res = pending.insert(
+                    op_id,
+                    PendingOp {
+                        source_tid: source,
+                        source_pid,
+                        kind: PendingOpKind::Chdir { path: resolved },
+                    },
+                );
+                if res.is_err() {
                     return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
                 }
                 return None;
@@ -647,7 +647,10 @@ use ::syscall::{
         SymbolicLinkAtRequest,
     },
 };
-use ::vfs::fd::vfs_resolve_path;
+use ::vfs::fd::{
+    vfs_resolve_path,
+    ResolvedPath,
+};
 use alloc::{
     vec,
     vec::Vec,

@@ -1495,22 +1495,42 @@ pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
     Ok(())
 }
 
-/// Commits the current working directory to a hostfs path, bypassing local
-/// mount-table validation but still enforcing an absolute, normalized cwd.
+/// An absolute, lexically-normalized VFS path.
 ///
-/// Unlike [`vfs_chdir`], this performs NO existence/type check: vfsd uses it to
-/// finalize a chdir onto a hostfs path after hostfsd has confirmed the target is
-/// a directory (hostfs paths live outside the local FAT mount table, so
-/// [`vfs_chdir`] would reject them). `path` is normalized here so the stored cwd
-/// keeps the same absolute, canonical form as every other code path; a relative
-/// or malformed `path` is rejected with [`Fat32Error::InvalidPath`].
-pub fn vfs_set_cwd(path: &str) -> Result<(), Fat32Error> {
-    if !path.starts_with('/') {
-        return Err(Fat32Error::InvalidPath);
+/// Constructible via [`ResolvedPath::new`] for already-absolute paths or
+/// [`ResolvedPath::new_relative`] for paths relative to a known directory.
+/// Both constructors normalize `.`/`..` components.
+#[derive(Clone, Debug)]
+pub struct ResolvedPath(String);
+
+impl ResolvedPath {
+    /// Normalizes `path` and wraps it, anchoring relative paths at root.
+    ///
+    /// Returns `None` if normalization fails (e.g. too many `..` components).
+    pub fn new(path: &str) -> Option<Self> {
+        filesystem::normalize("/", path).ok().map(Self)
     }
-    let normalized: String = filesystem::normalize(&current_cwd(), path)?;
-    set_current_cwd(normalized);
-    Ok(())
+
+    /// Normalizes `path` relative to `cwd` and wraps it.
+    ///
+    /// Returns `None` if normalization fails.
+    pub fn new_relative(path: &str, cwd: &str) -> Option<Self> {
+        filesystem::normalize(cwd, path).ok().map(Self)
+    }
+
+    /// Returns the normalized path string.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Commits the current working directory to a hostfs path.
+///
+/// vfsd uses this to finalize a chdir onto a hostfs path after hostfsd has
+/// confirmed the target is a directory (hostfs paths live outside the local FAT
+/// mount table, so [`vfs_chdir`] would reject them).
+pub fn vfs_set_cwd(path: ResolvedPath) {
+    set_current_cwd(path.0);
 }
 
 /// Changes the current working directory to the directory referenced by a VFS FD.
