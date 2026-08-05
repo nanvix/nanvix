@@ -686,6 +686,7 @@ fn test_readdir_lists_entry() {
     let payload: [u8; Message::PAYLOAD_SIZE] = make_readdir_request(fd);
     let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
     let entry: ReadDirEntry = ReadDirEntry::decode(&response);
+    assert_eq!(entry.status, 0);
     assert!(entry.name_len > 0, "expected at least one directory entry");
 
     let name: &str =
@@ -744,7 +745,19 @@ fn test_readdir_past_end_returns_empty() {
     let payload: [u8; Message::PAYLOAD_SIZE] = make_readdir_request_at(fd, 1);
     let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
     let entry: ReadDirEntry = ReadDirEntry::decode(&response);
+    assert_eq!(entry.status, 0);
     assert_eq!(entry.name_len, 0, "expected end-of-directory signal");
+}
+
+#[test]
+fn test_readdir_invalid_fd_reports_error() {
+    let (mut handler, _tmp) = setup();
+
+    let payload: [u8; Message::PAYLOAD_SIZE] = make_readdir_request(999);
+    let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
+    let entry: ReadDirEntry = ReadDirEntry::decode(&response);
+    assert_eq!(entry.status, HOSTFS_ERR_IO);
+    assert_eq!(entry.name_len, 0);
 }
 
 #[test]
