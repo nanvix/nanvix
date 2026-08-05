@@ -20,10 +20,16 @@ extern crate alloc;
 
 use crate::error::{
     build_error,
+    fat32_to_error_code,
     send_response,
 };
-use ::alloc::collections::BTreeMap;
+use ::alloc::{
+    collections::BTreeMap,
+    string::String,
+};
 use ::hostfs_api::{
+    file_kind,
+    LstatResponse,
     OperationId,
     OperationIdAllocator,
 };
@@ -38,6 +44,8 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
+use ::syscall::unistd::message::ChangeDirectoryResponse;
+use ::vfs::fd::vfs_set_cwd;
 
 //==================================================================================================
 // Pending Operation Descriptor
@@ -97,6 +105,12 @@ pub(crate) enum PendingOpKind {
     /// Path-based stat that follows the final symbolic link (default `stat(2)` semantics).
     /// Shares the `lstat` response wire format and completion path.
     PathStat,
+    /// chdir onto a hostfs path — a path-based stat whose completion commits the cwd
+    /// when the target is a directory (else `ENOTDIR`). Reuses the `PathStat` wire form.
+    Chdir {
+        /// Absolute hostfs path to become the cwd once confirmed to be a directory.
+        path: String,
+    },
     /// getdents — directory listing over hostfs.
     ///
     /// hostfsd returns one entry per IKC round-trip, so a single guest `getdents`
@@ -346,6 +360,7 @@ pub(crate) fn complete_pending_op(
         },
         PendingOpKind::Lstat => complete_lstat(pending.source_tid, response_payload),
         PendingOpKind::PathStat => complete_lstat(pending.source_tid, response_payload),
+        PendingOpKind::Chdir { path } => complete_chdir(pending.source_tid, response_payload, path),
         PendingOpKind::Getdents { .. } => {
             // Getdents sweeps are driven entirely by the main event loop, which keeps
             // the op buffered across round-trips and finalizes it via `finish_getdents`.
@@ -678,6 +693,7 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::Readlink { .. }, SystemCallMessageHeader::HostFsReadlinkResponse)
             | (PendingOpKind::Lstat, SystemCallMessageHeader::HostFsLstatResponse)
             | (PendingOpKind::PathStat, SystemCallMessageHeader::HostFsPathStatResponse)
+            | (PendingOpKind::Chdir { .. }, SystemCallMessageHeader::HostFsPathStatResponse)
             | (PendingOpKind::Getdents { .. }, SystemCallMessageHeader::HostFsReadDirResponse)
     )
 }
@@ -1163,4 +1179,41 @@ fn complete_lstat(source_tid: ThreadIdentifier, response_payload: &[u8; Message:
             send_response(&build_error(source_tid, ErrorCode::IoErr));
         },
     }
+}
+
+/// Completes a deferred hostfs `chdir`: the pending path-stat has returned, so
+/// commit the cwd when the target is a directory, else surface `ENOTDIR`.
+fn complete_chdir(
+    source_tid: ThreadIdentifier,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+    path: String,
+) {
+    let resp: LstatResponse = match LstatResponse::decode(response_payload) {
+        Some(r) => r,
+        None => {
+            ::syslog::error!("complete_chdir: failed to decode response");
+            send_response(&build_error(source_tid, ErrorCode::IoErr));
+            return;
+        },
+    };
+
+    if resp.status < 0 {
+        send_response(&build_error(source_tid, hostfs_error_to_code(resp.status)));
+        return;
+    }
+
+    if resp.kind != file_kind::DIRECTORY {
+        send_response(&build_error(source_tid, ErrorCode::InvalidDirectory));
+        return;
+    }
+
+    if let Err(e) = vfs_set_cwd(&path) {
+        send_response(&build_error(source_tid, fat32_to_error_code(&e)));
+        return;
+    }
+    send_response(&ChangeDirectoryResponse::build(
+        source_tid,
+        ProcessIdentifier::VFSD,
+        MessageType::Ipc,
+    ));
 }

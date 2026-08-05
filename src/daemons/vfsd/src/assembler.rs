@@ -243,7 +243,9 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageHeader::ChangeDirectoryRequestPart => {
             match ChangeDirectoryRequest::from_parts(parts) {
-                Ok(req) => handler::handle_chdir(source, req),
+                // Returns `None` when forwarded to hostfsd (response deferred to IKC completion).
+                Ok(req) => handler::handle_chdir_with_hostfs(source_pid, source, req, pending)
+                    .unwrap_or_default(),
                 Err(e) => {
                     ::syslog::error!("dispatch: chdir from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]

@@ -1495,6 +1495,24 @@ pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
     Ok(())
 }
 
+/// Commits the current working directory to a hostfs path, bypassing local
+/// mount-table validation but still enforcing an absolute, normalized cwd.
+///
+/// Unlike [`vfs_chdir`], this performs NO existence/type check: vfsd uses it to
+/// finalize a chdir onto a hostfs path after hostfsd has confirmed the target is
+/// a directory (hostfs paths live outside the local FAT mount table, so
+/// [`vfs_chdir`] would reject them). `path` is normalized here so the stored cwd
+/// keeps the same absolute, canonical form as every other code path; a relative
+/// or malformed `path` is rejected with [`Fat32Error::InvalidPath`].
+pub fn vfs_set_cwd(path: &str) -> Result<(), Fat32Error> {
+    if !path.starts_with('/') {
+        return Err(Fat32Error::InvalidPath);
+    }
+    let normalized: String = filesystem::normalize(&current_cwd(), path)?;
+    set_current_cwd(normalized);
+    Ok(())
+}
+
 /// Changes the current working directory to the directory referenced by a VFS FD.
 ///
 /// Only works on directory handles. Returns an error for file handles.

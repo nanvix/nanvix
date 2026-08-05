@@ -47,8 +47,10 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
+use ::sysapi::fcntl::atflags::AT_FDCWD;
 use ::syscall::{
     unistd::message::{
+        ChangeDirectoryRequest,
         CloseRequest,
         Dup2Request,
         Dup2Response,
@@ -446,6 +448,52 @@ pub(crate) fn handle_fstatat_with_hostfs(
     Some(super::long::handle_fstatat(source, request))
 }
 
+/// hostfs-aware `chdir`.
+///
+/// For a target under the hostfs mount, forwards a path-based stat to hostfsd and
+/// defers (returns `None`); the completion (`complete_chdir`) sets the cwd when the
+/// target is a directory and returns `ENOTDIR` otherwise. Non-hostfs targets fall
+/// through to the local VFS handler, which validates against the FAT mount table.
+pub(crate) fn handle_chdir_with_hostfs(
+    source_pid: ProcessIdentifier,
+    source: ThreadIdentifier,
+    request: ChangeDirectoryRequest,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    let resolved = match vfs_resolve_path(AT_FDCWD, &request.path) {
+        Some(p) => p,
+        None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+    };
+
+    if hostfs::is_hostfs_path(&resolved) {
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id = pending.alloc_op_id();
+        match hostfs::send_pathstat_request(&resolved, op_id) {
+            Ok(()) => {
+                if pending
+                    .insert(
+                        op_id,
+                        PendingOp {
+                            source_tid: source,
+                            source_pid,
+                            kind: PendingOpKind::Chdir { path: resolved },
+                        },
+                    )
+                    .is_err()
+                {
+                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+                }
+                return None;
+            },
+            Err(e) => return Some(vec![build_error(source, e)]),
+        }
+    }
+
+    Some(handle_chdir(source, request))
+}
+
 pub(crate) fn handle_read_with_hostfs(
     source_pid: ProcessIdentifier,
     source_tid: ThreadIdentifier,
@@ -599,10 +647,13 @@ use ::syscall::{
         SymbolicLinkAtRequest,
     },
 };
+use ::vfs::fd::vfs_resolve_path;
 use alloc::{
     vec,
     vec::Vec,
 };
+
+use super::long::handle_chdir;
 
 /// Handles getdents with hostfs awareness.
 ///
