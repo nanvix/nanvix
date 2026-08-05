@@ -38,7 +38,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
 };
 use ::sysapi::sys_stat;
 
@@ -73,13 +76,13 @@ pub use utimensat::utimensat;
 /// Upon successful completion, the file information is returned. Upon failure, an error is returned
 /// instead.
 ///
-fn fstatat_response() -> Result<sys_stat::stat, Error> {
+fn fstatat_response(token: &RequestToken) -> Result<sys_stat::stat, Error> {
     let capacity: usize = sys_stat::stat::SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
 
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+        let response: Message = crate::rpc::recv_response(token)?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {

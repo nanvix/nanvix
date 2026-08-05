@@ -99,6 +99,10 @@ pub(crate) mod fdtable;
 #[cfg(feature = "syscall")]
 pub(crate) mod close_route;
 
+/// Correlated IPC request helpers.
+#[cfg(feature = "syscall")]
+pub(crate) mod rpc;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;
@@ -223,6 +227,8 @@ pub enum SystemCallMessageHeader {
     ReceiveSocketResponse,
     SendSocketRequest,
     SendSocketResponse,
+    // Reserved legacy slots. The old 40-byte times response no longer fits in the correlated
+    // syscall payload; keep these discriminants so every following wire value remains stable.
     TimesRequest,
     TimesResponse,
     FileChownAtRequestPart,
@@ -634,14 +640,11 @@ impl SystemCallMessageHeader {
 
     /// Returns `true` if this header is a hostfs response variant.
     ///
-    /// Note: `HostFsReadlinkResponsePart` and `HostFsReadDirResponsePart` are
-    /// intentionally excluded because of their framing, not because vfsd lacks a
-    /// multi-part assembler (it now has one). For these parts, bytes `[2..6]` carry
-    /// `total_parts`/`part_number`, while the logical op_id lives in the first 4 bytes
-    /// of the assembled body. Treating them as regular hostfs responses would make
-    /// `get_op_id` read the framing bytes and remove the wrong entry from the pending
-    /// queue. They are dispatched through `is_hostfs_multipart_response` and the
-    /// dedicated assemblers in vfsd.
+    /// `HostFsReadlinkResponsePart` and `HostFsReadDirResponsePart` are intentionally excluded
+    /// because vfsd must assemble their bodies before dispatch. Their request-ID field echoes the
+    /// hostfs operation identifier, which also lives in the first four bytes of the assembled body.
+    /// They are dispatched through `is_hostfs_multipart_response` and the dedicated assemblers in
+    /// vfsd.
     pub fn is_hostfs_response(&self) -> bool {
         matches!(
             self,
@@ -675,6 +678,8 @@ impl SystemCallMessageHeader {
 pub struct SystemCallMessage {
     /// Message header.
     pub header: SystemCallMessageHeader,
+    /// Request identifier.
+    pub request_id: u32,
     /// Message payload.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
@@ -737,10 +742,14 @@ pub const VFS_PUSH_PULL_TID: ::sys::pm::ThreadIdentifier = ::sys::pm::ThreadIden
 
 impl SystemCallMessage {
     pub const PAYLOAD_SIZE: usize =
-        Message::PAYLOAD_SIZE - mem::size_of::<SystemCallMessageHeader>();
+        Message::PAYLOAD_SIZE - mem::size_of::<SystemCallMessageHeader>() - mem::size_of::<u32>();
 
     pub fn new(header: SystemCallMessageHeader, payload: [u8; Self::PAYLOAD_SIZE]) -> Self {
-        Self { header, payload }
+        Self {
+            header,
+            request_id: 0,
+            payload,
+        }
     }
 
     pub fn try_from_bytes(bytes: [u8; Message::PAYLOAD_SIZE]) -> Result<Self, Error> {
@@ -756,5 +765,54 @@ impl SystemCallMessage {
 
     pub fn into_bytes(self) -> [u8; Message::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
+    }
+}
+
+// A nested request may have to set aside complete multipart responses for every other active
+// request. `getdents()` has the largest legal response in the syscall protocol, so this assertion
+// keeps the shared stash bound synchronized with protocol growth.
+::static_assert::assert_eq!(
+    ::sys::ipc::RESPONSE_STASH_CAPACITY
+        >= (::sys::ipc::MAX_ACTIVE_REQUESTS - 1)
+            * crate::dirent::message::GetDirectoryEntriesResponse::MAX_SIZE
+                .div_ceil(crate::message::SystemCallMessagePart::PAYLOAD_SIZE)
+);
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn system_call_message_request_id_round_trip() {
+        let request_id: u32 = 0x1234_5678;
+        let mut message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageHeader::CloseRequest,
+            [0; SystemCallMessage::PAYLOAD_SIZE],
+        );
+        message.request_id = request_id;
+        let bytes: [u8; Message::PAYLOAD_SIZE] = message.into_bytes();
+        assert_eq!(&bytes[2..6], &request_id.to_ne_bytes());
+
+        let mut outer: Message = Message::new(
+            ::sys::ipc::MessageSender::KERNEL,
+            ::sys::ipc::MessageReceiver::KERNEL,
+            ::sys::ipc::MessageType::Ipc,
+            None,
+            bytes,
+        );
+        assert_eq!(::sys::ipc::RequestIdentifier::read_from(&outer).raw(), request_id);
+
+        let replacement: ::sys::ipc::RequestIdentifier =
+            ::sys::ipc::RequestIdentifier::from_raw(0x8765_4321);
+        replacement.write_to(&mut outer);
+
+        let decoded: SystemCallMessage =
+            SystemCallMessage::try_from_bytes(outer.payload).expect("message should decode");
+        let decoded_request_id: u32 = decoded.request_id;
+        assert_eq!(decoded_request_id, replacement.raw());
     }
 }

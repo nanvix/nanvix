@@ -16,7 +16,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -59,7 +62,7 @@ pub fn posix_fadvise(
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = FileAdvisoryInformationRequest::build(
+    let mut request: Message = FileAdvisoryInformationRequest::build(
         tid,
         backend_fd,
         offset,
@@ -68,10 +71,10 @@ pub fn posix_fadvise(
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,
     );
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

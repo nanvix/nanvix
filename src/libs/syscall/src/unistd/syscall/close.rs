@@ -21,6 +21,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageType,
+        RequestToken,
     },
     pm::{
         ProcessIdentifier,
@@ -89,17 +90,20 @@ fn close_ipc(
     };
 
     // Build request and send it.
-    let request: Message = CloseRequest::build(tid, fd, destination, message_type);
-    if let Err(error) = ::sys::kcall::ipc::__kcall_send(&request) {
-        return if tolerate_missing_backend {
-            Ok(())
-        } else {
-            Err(error)
-        };
-    }
+    let mut request: Message = CloseRequest::build(tid, fd, destination, message_type);
+    let token: RequestToken = match crate::rpc::send_request(&mut request) {
+        Ok(token) => token,
+        Err(error) => {
+            return if tolerate_missing_backend {
+                Ok(())
+            } else {
+                Err(error)
+            };
+        },
+    };
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

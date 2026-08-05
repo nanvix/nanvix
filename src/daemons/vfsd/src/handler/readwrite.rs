@@ -13,7 +13,7 @@ use crate::{
     error::{
         build_error,
         fat32_to_error_code,
-        send_response,
+        ResponseContext,
     },
 };
 use ::alloc::{
@@ -171,15 +171,17 @@ pub(crate) fn handle_read(
 /// with no cooked input is parked in `console_wait` and revived by an input-availability
 /// notification; VFSD therefore never blocks its event loop waiting for a host keystroke.
 pub(crate) fn handle_console_read(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     fd: i32,
     stream: ConsoleStream,
     count: usize,
     console_wait: &mut ConsoleWaitTable,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     if stream != ConsoleStream::Stdin {
         console_wait.park(BlockedConsoleReader {
+            response_context,
             source_pid,
             source_tid,
             fd,
@@ -200,6 +202,7 @@ pub(crate) fn handle_console_read(
     }
 
     console_wait.park(BlockedConsoleReader {
+        response_context,
         source_pid,
         source_tid,
         fd,
@@ -327,17 +330,19 @@ pub(crate) fn service_pending_console_input(console_wait: &mut ConsoleWaitTable)
 
 /// Revives queued console readers in FIFO order while cooked data or EOF is available.
 fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
-    while let Some((source_pid, source_tid, fd, count, queued_error)) = console_wait.front() {
-        if let Some(error) = queued_error {
+    while let Some(reader) = console_wait.front() {
+        if let Some(error) = reader.error {
             match ::sys::kcall::ipc::__kcall_push_timed(
-                source_pid,
-                source_tid,
+                reader.source_pid,
+                reader.source_tid,
                 &[],
                 Some(Duration::ZERO),
             ) {
                 Ok(()) => {
                     console_wait.pop();
-                    send_response(&build_error(source_tid, error));
+                    reader
+                        .response_context
+                        .send(&build_error(reader.source_tid, error));
                     continue;
                 },
                 Err(push_error) if push_error.code == ErrorCode::OperationTimedOut => {
@@ -351,15 +356,15 @@ fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
             }
         }
 
-        ::vfs::fd::set_current_process(source_pid);
-        let buf_size: usize = count.min(MAX_BULK_TRANSFER_SIZE);
+        ::vfs::fd::set_current_process(reader.source_pid);
+        let buf_size: usize = reader.count.min(MAX_BULK_TRANSFER_SIZE);
         // Safety: VFSD is single-threaded and releases this borrow before processing another IPC.
         let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
-        match ::vfs::fd::vfs_console_peek(fd, buf) {
+        match ::vfs::fd::vfs_console_peek(reader.fd, buf) {
             Ok(ConsoleReadOutcome::Read(n)) => {
                 match ::sys::kcall::ipc::__kcall_push_timed(
-                    source_pid,
-                    source_tid,
+                    reader.source_pid,
+                    reader.source_tid,
                     &buf[..n],
                     Some(Duration::ZERO),
                 ) {
@@ -375,25 +380,27 @@ fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
                 }
 
                 let consumed: Result<ConsoleReadOutcome, TtyError> =
-                    ::vfs::fd::vfs_console_read(fd, buf);
+                    ::vfs::fd::vfs_console_read(reader.fd, buf);
                 console_wait.pop();
                 match consumed {
                     Ok(ConsoleReadOutcome::Read(consumed)) if consumed == n => {
-                        send_response(&ReadResponse::build(
-                            source_tid,
+                        reader.response_context.send(&ReadResponse::build(
+                            reader.source_tid,
                             n as i32,
                             [0u8; ReadResponse::BUFFER_SIZE],
                             ProcessIdentifier::VFSD,
                             MessageType::Ipc,
                         ));
                     },
-                    _ => send_response(&build_error(source_tid, ErrorCode::InvalidMessage)),
+                    _ => reader
+                        .response_context
+                        .send(&build_error(reader.source_tid, ErrorCode::InvalidMessage)),
                 }
             },
             Ok(ConsoleReadOutcome::Eof) => {
                 match ::sys::kcall::ipc::__kcall_push_timed(
-                    source_pid,
-                    source_tid,
+                    reader.source_pid,
+                    reader.source_tid,
                     &[],
                     Some(Duration::ZERO),
                 ) {
@@ -409,29 +416,35 @@ fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
                 }
 
                 let consumed: Result<ConsoleReadOutcome, TtyError> =
-                    ::vfs::fd::vfs_console_read(fd, buf);
+                    ::vfs::fd::vfs_console_read(reader.fd, buf);
                 console_wait.pop();
                 match consumed {
-                    Ok(ConsoleReadOutcome::Eof) => send_response(&ReadResponse::build(
-                        source_tid,
-                        0,
-                        [0u8; ReadResponse::BUFFER_SIZE],
-                        ProcessIdentifier::VFSD,
-                        MessageType::Ipc,
-                    )),
-                    _ => send_response(&build_error(source_tid, ErrorCode::InvalidMessage)),
+                    Ok(ConsoleReadOutcome::Eof) => {
+                        reader.response_context.send(&ReadResponse::build(
+                            reader.source_tid,
+                            0,
+                            [0u8; ReadResponse::BUFFER_SIZE],
+                            ProcessIdentifier::VFSD,
+                            MessageType::Ipc,
+                        ))
+                    },
+                    _ => reader
+                        .response_context
+                        .send(&build_error(reader.source_tid, ErrorCode::InvalidMessage)),
                 }
             },
-            Ok(ConsoleReadOutcome::WouldBlock) if is_nonblocking(fd) => {
+            Ok(ConsoleReadOutcome::WouldBlock) if is_nonblocking(reader.fd) => {
                 match ::sys::kcall::ipc::__kcall_push_timed(
-                    source_pid,
-                    source_tid,
+                    reader.source_pid,
+                    reader.source_tid,
                     &[],
                     Some(Duration::ZERO),
                 ) {
                     Ok(()) => {
                         console_wait.pop();
-                        send_response(&build_error(source_tid, ErrorCode::TryAgain));
+                        reader
+                            .response_context
+                            .send(&build_error(reader.source_tid, ErrorCode::TryAgain));
                     },
                     Err(error) if error.code == ErrorCode::OperationTimedOut => {
                         schedule_console_read_retry(console_wait);
@@ -445,14 +458,16 @@ fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
             Ok(ConsoleReadOutcome::WouldBlock) => break,
             Err(error) => {
                 match ::sys::kcall::ipc::__kcall_push_timed(
-                    source_pid,
-                    source_tid,
+                    reader.source_pid,
+                    reader.source_tid,
                     &[],
                     Some(Duration::ZERO),
                 ) {
                     Ok(()) => {
                         console_wait.pop();
-                        send_response(&build_error(source_tid, tty_error_code(error)));
+                        reader
+                            .response_context
+                            .send(&build_error(reader.source_tid, tty_error_code(error)));
                     },
                     Err(push_error) if push_error.code == ErrorCode::OperationTimedOut => {
                         schedule_console_read_retry(console_wait);

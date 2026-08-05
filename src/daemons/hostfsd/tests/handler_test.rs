@@ -998,17 +998,21 @@ fn make_part_payload(
     let h: u16 = header as u16;
     buf[0] = h as u8;
     buf[1] = (h >> 8) as u8;
-    // Bytes [2..4]: total_parts.
-    buf[2] = total_parts as u8;
-    buf[3] = (total_parts >> 8) as u8;
-    // Bytes [4..6]: part_number.
-    buf[4] = part_number as u8;
-    buf[5] = (part_number >> 8) as u8;
-    // Byte [6]: payload_size.
-    buf[6] = payload_size;
-    // Bytes [7..]: payload.
+    // Bytes [2..6]: request identifier (unused by these hostfs request fixtures).
+    if part_number == 0 && part_payload.len() >= OperationId::SERIALIZED_SIZE {
+        buf[2..6].copy_from_slice(&part_payload[..OperationId::SERIALIZED_SIZE]);
+    }
+    // Bytes [6..8]: total_parts.
+    buf[6] = total_parts as u8;
+    buf[7] = (total_parts >> 8) as u8;
+    // Bytes [8..10]: part_number.
+    buf[8] = part_number as u8;
+    buf[9] = (part_number >> 8) as u8;
+    // Byte [10]: payload_size.
+    buf[10] = payload_size;
+    // Bytes [11..]: payload.
     let copy_len: usize = part_payload.len().min(SystemCallMessagePart::PAYLOAD_SIZE);
-    buf[7..7 + copy_len].copy_from_slice(&part_payload[..copy_len]);
+    buf[11..11 + copy_len].copy_from_slice(&part_payload[..copy_len]);
     buf
 }
 
@@ -1036,7 +1040,10 @@ fn make_long_open_parts(
 
     let mut parts: Vec<[u8; Message::PAYLOAD_SIZE]> = Vec::new();
     for (i, chunk) in data.chunks(chunk_size).enumerate() {
-        parts.push(make_part_payload(header, num_parts, i as u16, chunk.len() as u8, chunk));
+        let mut part: [u8; Message::PAYLOAD_SIZE] =
+            make_part_payload(header, num_parts, i as u16, chunk.len() as u8, chunk);
+        set_op_id(&mut part, op_id);
+        parts.push(part);
     }
     parts
 }
@@ -1131,7 +1138,7 @@ fn test_assembler_rejects_zero_total_parts() {
     // Should return an error response (not None).
     assert!(response.is_some(), "zero total_parts should produce error response");
     let response = response.unwrap();
-    assert_eq!(get_op_id(&response), OperationId::INVALID);
+    assert_eq!(get_op_id(&response), OperationId::from_raw(0));
     let ds: usize = HOSTFS_DATA_START;
     let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
     assert_eq!(status, HOSTFS_ERR_INVALID);
@@ -1192,8 +1199,7 @@ fn test_assembler_rejects_header_mismatch() {
 fn test_assembler_rejects_stray_part_zero_mid_stream() {
     // A new part_number == 0 arriving while a multi-part stream is still in flight
     // must surface an error so the in-flight op_id can be reported back to vfsd,
-    // rather than silently discarding the buffered bytes and orphaning the
-    // pending op.
+    // then be retained as the start of the replacement request.
     let (mut handler, _tmp) = setup();
 
     // Begin a 3-part stream with a recoverable op_id in part 0.
@@ -1205,15 +1211,24 @@ fn test_assembler_rejects_stray_part_zero_mid_stream() {
     let result = handler.handle_request(&payload0);
     assert!(result.is_none(), "first part should return None");
 
-    // Send a stray part 0 (start of a "new" stream) — should error.
-    let stray_payload =
-        make_part_payload(SystemCallMessageHeader::HostFsOpenRequestPart, 2, 0, 10, &[0u8; 10]);
-    let response = handler.handle_request(&stray_payload);
+    // Send a complete replacement request. The old stream should fail first, and the
+    // replacement response should be queued rather than dropped.
+    let replacement_op_id: OperationId = OperationId::from_raw(100);
+    let replacement_parts: Vec<[u8; Message::PAYLOAD_SIZE]> =
+        make_long_open_parts("replacement.txt", O_RDONLY, 0, replacement_op_id);
+    assert_eq!(replacement_parts.len(), 1, "replacement request should fit in one part");
+    let response = handler.handle_request(&replacement_parts[0]);
     assert!(response.is_some(), "stray part 0 should produce error response");
     let response = response.unwrap();
     // The error response must echo the original in-flight op_id, not the
     // stray new stream's bytes.
     assert_eq!(get_op_id(&response), OperationId::from_raw(99));
+
+    let replacement_response: [u8; Message::PAYLOAD_SIZE] = handler
+        .take_next_response_part()
+        .expect("replacement request should produce a queued response");
+    assert_eq!(get_op_id(&replacement_response), replacement_op_id);
+    assert!(handler.take_next_response_part().is_none());
 }
 
 //==================================================================================================
@@ -1227,9 +1242,17 @@ fn split_into_parts(
 ) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
     let chunk_size: usize = SystemCallMessagePart::PAYLOAD_SIZE;
     let num_parts: u16 = data.len().div_ceil(chunk_size).max(1) as u16;
+    let op_id: OperationId = OperationId::from_le_bytes(
+        data[..OperationId::SERIALIZED_SIZE]
+            .try_into()
+            .expect("long request should begin with an op_id"),
+    );
     let mut parts: Vec<[u8; Message::PAYLOAD_SIZE]> = Vec::new();
     for (i, chunk) in data.chunks(chunk_size).enumerate() {
-        parts.push(make_part_payload(header, num_parts, i as u16, chunk.len() as u8, chunk));
+        let mut part: [u8; Message::PAYLOAD_SIZE] =
+            make_part_payload(header, num_parts, i as u16, chunk.len() as u8, chunk);
+        set_op_id(&mut part, op_id);
+        parts.push(part);
     }
     parts
 }
@@ -1833,7 +1856,7 @@ fn test_symlink_linkpath_escapes_sandbox() {
 /// Reassembles a sequence of multi-part response messages into the raw body.
 ///
 /// Each part has the wire layout:
-/// `[header:2][total_parts:2 LE][part_number:2 LE][payload_size:1][payload:N]`
+/// `[header:2][request_id:4][total_parts:2 LE][part_number:2 LE][payload_size:1][payload:N]`
 /// (see `build_long_readlink_response_part` in handler.rs).
 fn drain_multipart_response(
     handler: &mut HostFsHandler,
@@ -1846,15 +1869,21 @@ fn drain_multipart_response(
     ) -> (u16, u16, Vec<u8>) {
         let header_raw: u16 = u16::from_ne_bytes([payload[0], payload[1]]);
         assert_eq!(header_raw, expected_header as u16, "unexpected response header");
-        let total_parts: u16 = u16::from_le_bytes([payload[2], payload[3]]);
-        let part_number: u16 = u16::from_le_bytes([payload[4], payload[5]]);
-        let payload_size: usize = payload[6] as usize;
-        let chunk: Vec<u8> = payload[7..7 + payload_size].to_vec();
+        let total_parts: u16 = u16::from_le_bytes([payload[6], payload[7]]);
+        let part_number: u16 = u16::from_le_bytes([payload[8], payload[9]]);
+        let payload_size: usize = payload[10] as usize;
+        let chunk: Vec<u8> = payload[11..11 + payload_size].to_vec();
         (total_parts, part_number, chunk)
     }
 
     let (total_parts, part_number, chunk0) = read_part(&first, expected_header);
     assert_eq!(part_number, 0, "first response part must have part_number == 0");
+    let expected_op_id: OperationId = OperationId::from_le_bytes(
+        chunk0[..4]
+            .try_into()
+            .expect("multipart body should begin with an op_id"),
+    );
+    assert_eq!(get_op_id(&first), expected_op_id, "first response part should echo op_id");
 
     let mut body: Vec<u8> = chunk0;
     for expected_pn in 1..total_parts {
@@ -1864,6 +1893,7 @@ fn drain_multipart_response(
         let (tp, pn, chunk) = read_part(&next, expected_header);
         assert_eq!(tp, total_parts, "total_parts mismatch across parts");
         assert_eq!(pn, expected_pn, "out-of-order response part");
+        assert_eq!(get_op_id(&next), expected_op_id, "response part should echo op_id");
         body.extend_from_slice(&chunk);
     }
     assert!(handler.take_next_response_part().is_none(), "unexpected extra response parts queued");

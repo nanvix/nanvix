@@ -15,6 +15,7 @@
 
 extern crate alloc;
 
+use crate::error::ResponseContext;
 use ::alloc::{
     collections::{
         BTreeMap,
@@ -33,8 +34,11 @@ use ::sys::pm::{
 //==================================================================================================
 
 /// A `read` request suspended on an empty pipe.
+#[derive(Clone, Copy)]
 pub(crate) struct BlockedReader {
-    /// Thread that issued the read (used to route the eventual `ReadResponse`).
+    /// Exact response routing and correlation metadata for the original request.
+    pub response_context: ResponseContext,
+    /// Thread that issued the read, used by the push rendezvous and response builder.
     pub source_tid: ThreadIdentifier,
     /// Process that issued the read (needed to `__kcall_push` the data back to the caller).
     pub source_pid: ProcessIdentifier,
@@ -46,7 +50,9 @@ pub(crate) struct BlockedReader {
 
 /// A `write` request suspended on a full pipe.
 pub(crate) struct BlockedWriter {
-    /// Thread that issued the write (used to route the eventual `WriteResponse`).
+    /// Exact response routing and correlation metadata for the original request.
+    pub response_context: ResponseContext,
+    /// Thread that issued the write, used by the response builder.
     pub source_tid: ThreadIdentifier,
     /// Process that issued the write (needed to resolve the write-end FD on revive).
     pub source_pid: ProcessIdentifier,
@@ -91,16 +97,9 @@ impl PipeWaitTable {
         self.writers.entry(pipe_id).or_default().push_back(writer);
     }
 
-    /// Returns the identity of the reader at the front of `pipe_id`'s queue, if any.
-    ///
-    /// The fields are copied out so the caller can drop the borrow before touching the VFS or the
-    /// table again (e.g. to `pop_reader` after serving it).
-    pub fn front_reader(
-        &self,
-        pipe_id: u64,
-    ) -> Option<(ProcessIdentifier, ThreadIdentifier, i32, usize)> {
-        let r: &BlockedReader = self.readers.get(&pipe_id)?.front()?;
-        Some((r.source_pid, r.source_tid, r.fd, r.count))
+    /// Returns a snapshot of the reader at the front of `pipe_id`'s queue, if any.
+    pub fn front_reader(&self, pipe_id: u64) -> Option<BlockedReader> {
+        self.readers.get(&pipe_id)?.front().copied()
     }
 
     /// Removes the reader at the front of `pipe_id`'s queue.
@@ -160,16 +159,23 @@ impl PipeWaitTable {
         self.read_retries.remove(&pipe_id);
     }
 
-    /// Cancels every suspended request issued by one thread.
+    /// Cancels one suspended request identified by its exact response context.
     ///
     /// Returns the number of bytes already accepted for a cancelled writer, or zero for a
     /// cancelled reader. If the thread has no suspended pipe request, returns `None`.
-    pub fn cancel(&mut self, pid: ProcessIdentifier, tid: ThreadIdentifier) -> Option<usize> {
+    pub fn cancel(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        request_id: ::sys::ipc::RequestIdentifier,
+    ) -> Option<usize> {
         let mut transferred: Option<usize> = None;
 
         self.readers.retain(|_, queue| {
             queue.retain(|reader| {
-                let matches: bool = reader.source_pid == pid && reader.source_tid == tid;
+                let matches: bool = reader.source_pid == pid
+                    && reader.source_tid == tid
+                    && reader.response_context.request_id() == request_id;
                 if matches {
                     transferred = Some(0);
                 }
@@ -180,7 +186,9 @@ impl PipeWaitTable {
 
         self.writers.retain(|_, queue| {
             queue.retain(|writer| {
-                let matches: bool = writer.source_pid == pid && writer.source_tid == tid;
+                let matches: bool = writer.source_pid == pid
+                    && writer.source_tid == tid
+                    && writer.response_context.request_id() == request_id;
                 if matches {
                     transferred = Some(writer.written);
                 }

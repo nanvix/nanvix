@@ -62,9 +62,12 @@ pub(crate) fn register_socket_slot(
         SystemCallMessage,
         SystemCallMessageHeader,
     };
-    use ::sys::error::{
-        Error,
-        ErrorCode,
+    use ::sys::{
+        error::{
+            Error,
+            ErrorCode,
+        },
+        ipc::RequestToken,
     };
 
     let tid = match ::sys::kcall::pm::__kcall_gettid() {
@@ -74,17 +77,20 @@ pub(crate) fn register_socket_slot(
             return Err(e);
         },
     };
-    let request = RegisterSocketRequest::build(
+    let mut request = RegisterSocketRequest::build(
         tid,
         remote_fd,
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,
     );
-    if let Err(e) = ::sys::kcall::ipc::__kcall_send(&request) {
-        close_networkd_endpoint(remote_fd);
-        return Err(e);
-    }
-    let response = match ::sys::kcall::ipc::__kcall_recv() {
+    let token: RequestToken = match crate::rpc::send_request(&mut request) {
+        Ok(token) => token,
+        Err(e) => {
+            close_networkd_endpoint(remote_fd);
+            return Err(e);
+        },
+    };
+    let response = match crate::rpc::recv_response(&token) {
         Ok(response) => response,
         Err(e) => {
             close_networkd_endpoint(remote_fd);
@@ -128,13 +134,18 @@ pub(crate) fn register_socket_slot(
 /// ignored: the creation has already failed and there is nothing to retry.
 fn close_networkd_endpoint(remote_fd: ::sysapi::ffi::c_int) {
     use crate::unistd::message::CloseRequest;
-    use ::sys::ipc::MessageType;
+    use ::sys::ipc::{
+        MessageType,
+        RequestToken,
+    };
 
     let Ok(tid) = ::sys::kcall::pm::__kcall_gettid() else {
         return;
     };
-    let request = CloseRequest::build(tid, remote_fd, crate::NETWORK_DESTINATION, MessageType::Ikc);
-    if ::sys::kcall::ipc::__kcall_send(&request).is_ok() {
-        let _ = ::sys::kcall::ipc::__kcall_recv();
+    let mut request =
+        CloseRequest::build(tid, remote_fd, crate::NETWORK_DESTINATION, MessageType::Ikc);
+    if let Ok(token) = crate::rpc::send_request(&mut request) {
+        let token: RequestToken = token;
+        let _ = crate::rpc::recv_response(&token);
     }
 }

@@ -19,7 +19,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -37,11 +40,11 @@ pub fn bind(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
     let sockfd = crate::fdtable::resolve_socket(sockfd, "bind")?;
 
     // Build request and send it.
-    let request: Message = BindSocketRequest::build(tid, sockfd, &sockaddr);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = BindSocketRequest::build(tid, sockfd, &sockaddr);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

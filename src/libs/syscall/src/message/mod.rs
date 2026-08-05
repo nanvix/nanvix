@@ -180,8 +180,29 @@ where
         let mut bytes: Vec<u8> =
             Vec::with_capacity(parts.len() * SystemCallMessagePart::PAYLOAD_SIZE);
 
-        for part in parts {
-            bytes.extend_from_slice(&part.payload[..part.payload_size as usize]);
+        let expected_total: u16 = parts
+            .first()
+            .map(|part| part.total_parts)
+            .ok_or_else(|| Error::new(::sys::error::ErrorCode::InvalidMessage, "no parts"))?;
+        if expected_total as usize != parts.len() {
+            return Err(Error::new(
+                ::sys::error::ErrorCode::InvalidMessage,
+                "incomplete multipart message",
+            ));
+        }
+
+        for (expected_number, part) in parts.iter().enumerate() {
+            let payload_size: usize = part.payload_size as usize;
+            if part.total_parts != expected_total
+                || part.part_number as usize != expected_number
+                || payload_size > SystemCallMessagePart::PAYLOAD_SIZE
+            {
+                return Err(Error::new(
+                    ::sys::error::ErrorCode::InvalidMessage,
+                    "invalid multipart message",
+                ));
+            }
+            bytes.extend_from_slice(&part.payload[..payload_size]);
         }
 
         Self::try_from_bytes(&bytes)

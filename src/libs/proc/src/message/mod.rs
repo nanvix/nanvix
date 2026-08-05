@@ -114,6 +114,10 @@ pub enum ProcessManagementMessageHeader {
     /// Terminal-access notification (the filesystem daemon reports that a process accessed the
     /// console, so the process manager daemon can raise `SIGTTIN`/`SIGTTOU` for a background group).
     TerminalAccess = 20,
+    /// Cancels one blocked wait request by its request identifier.
+    WaitCancel = 21,
+    /// Reports whether a blocked wait request was cancelled before completion.
+    WaitCancelResponse = 22,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -141,6 +145,8 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             18 => Ok(ProcessManagementMessageHeader::JobControlResponse),
             19 => Ok(ProcessManagementMessageHeader::TerminalSignal),
             20 => Ok(ProcessManagementMessageHeader::TerminalAccess),
+            21 => Ok(ProcessManagementMessageHeader::WaitCancel),
+            22 => Ok(ProcessManagementMessageHeader::WaitCancelResponse),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -169,6 +175,8 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::JobControlResponse => 18,
             ProcessManagementMessageHeader::TerminalSignal => 19,
             ProcessManagementMessageHeader::TerminalAccess => 20,
+            ProcessManagementMessageHeader::WaitCancel => 21,
+            ProcessManagementMessageHeader::WaitCancelResponse => 22,
         }
     }
 }
@@ -186,6 +194,8 @@ impl From<&ProcessManagementMessageHeader> for u8 {
 pub struct ProcessManagementMessage {
     /// Message header.
     pub header: ProcessManagementMessageHeader,
+    /// Request identifier.
+    pub request_id: u32,
     /// Message payload.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
@@ -195,8 +205,9 @@ pub struct ProcessManagementMessage {
 
 impl ProcessManagementMessage {
     /// Size of payload.
-    pub const PAYLOAD_SIZE: usize =
-        SystemMessage::PAYLOAD_SIZE - mem::size_of::<ProcessManagementMessageHeader>();
+    pub const PAYLOAD_SIZE: usize = SystemMessage::PAYLOAD_SIZE
+        - mem::size_of::<ProcessManagementMessageHeader>()
+        - mem::size_of::<u32>();
 
     ///
     /// # Description
@@ -213,7 +224,11 @@ impl ProcessManagementMessage {
     /// A process management message.
     ///
     pub fn new(header: ProcessManagementMessageHeader, payload: [u8; Self::PAYLOAD_SIZE]) -> Self {
-        Self { header, payload }
+        Self {
+            header,
+            request_id: 0,
+            payload,
+        }
     }
 
     ///
@@ -250,5 +265,56 @@ impl ProcessManagementMessage {
     ///
     pub fn into_bytes(self) -> [u8; SystemMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::sys::ipc::{
+        Message,
+        MessageReceiver,
+        MessageSender,
+        MessageType,
+        RequestIdentifier,
+        SystemMessageHeader,
+    };
+
+    #[test]
+    fn process_management_request_id_uses_shared_raw_offset() {
+        let request_id: u32 = 0x8765_4321;
+        let mut process: ProcessManagementMessage = ProcessManagementMessage::new(
+            ProcessManagementMessageHeader::Wait,
+            [0; ProcessManagementMessage::PAYLOAD_SIZE],
+        );
+        process.request_id = request_id;
+        let system: SystemMessage =
+            SystemMessage::new(SystemMessageHeader::ProcessManagement, process.into_bytes());
+        let bytes: [u8; Message::PAYLOAD_SIZE] = system.into_bytes();
+        assert_eq!(&bytes[2..6], &request_id.to_ne_bytes());
+
+        let mut outer: Message = Message::new(
+            MessageSender::KERNEL,
+            MessageReceiver::KERNEL,
+            MessageType::Ipc,
+            None,
+            bytes,
+        );
+        assert_eq!(RequestIdentifier::read_from(&outer).raw(), request_id);
+
+        let replacement: RequestIdentifier = RequestIdentifier::from_raw(0x1234_5678);
+        replacement.write_to(&mut outer);
+
+        let system: SystemMessage =
+            SystemMessage::from_bytes(outer.payload).expect("system message should decode");
+        let decoded: ProcessManagementMessage =
+            ProcessManagementMessage::from_bytes(system.payload)
+                .expect("process message should decode");
+        let decoded_request_id: u32 = decoded.request_id;
+        assert_eq!(decoded_request_id, replacement.raw());
     }
 }

@@ -15,7 +15,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -31,11 +34,11 @@ pub fn listen(sockfd: c_int, backlog: c_int) -> Result<(), Error> {
     let sockfd = crate::fdtable::resolve_socket(sockfd, "listen")?;
 
     // Build request and send it.
-    let request: Message = ListenSocketRequest::build(tid, sockfd, backlog);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = ListenSocketRequest::build(tid, sockfd, backlog);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

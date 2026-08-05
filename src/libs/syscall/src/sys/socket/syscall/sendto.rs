@@ -23,7 +23,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -81,15 +84,15 @@ pub fn sendto(
     }
 
     // Build metadata-only request and send it via IPC message.
-    let request: Message =
+    let mut request: Message =
         SendToSocketRequest::build(tid, sockfd, buffer.len() as c_size_t, flags, &sockaddr);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Push the datagram payload via data chunk transfer.
     ::sys::kcall::ipc::__kcall_push(ProcessIdentifier::KERNEL, ThreadIdentifier::KERNEL, buffer)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

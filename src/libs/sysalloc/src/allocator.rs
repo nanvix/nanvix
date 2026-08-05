@@ -33,6 +33,10 @@ use ::sys::{
         Address,
         VirtualAddress,
     },
+    pm::{
+        SigSet,
+        SIG_SETMASK,
+    },
 };
 use ::talc::*;
 
@@ -48,6 +52,63 @@ static HEAP: Mutex<Option<Talc<NanvixOomHandler>>> = Mutex::new(None);
 #[cfg_attr(not(feature = "rustc-dep-of-std"), global_allocator)]
 #[cfg(not(feature = "rustc-dep-of-std"))]
 static mut ALLOCATOR: Allocator = Allocator;
+
+/// Holds the heap mutex across a process duplication.
+pub struct HeapForkGuard {
+    _private: (),
+}
+
+impl HeapForkGuard {
+    /// Locks the heap before duplicating the calling process.
+    ///
+    /// # Safety
+    ///
+    /// Signal delivery must be blocked, and the caller must not allocate or deallocate until this
+    /// guard is dropped in both the parent and child.
+    pub unsafe fn acquire() -> Self {
+        let guard = HEAP.lock();
+        core::mem::forget(guard);
+        Self { _private: () }
+    }
+}
+
+impl Drop for HeapForkGuard {
+    fn drop(&mut self) {
+        // SAFETY: `acquire()` forgot the unique guard that locked this process's copy. After fork,
+        // the parent and child each unlock their own private copy exactly once.
+        unsafe {
+            HEAP.force_unlock();
+        }
+    }
+}
+
+/// Keeps signal handlers from re-entering the heap while its spin mutex is held.
+struct SignalMaskGuard {
+    previous: SigSet,
+}
+
+impl SignalMaskGuard {
+    fn acquire() -> Result<Self, Error> {
+        let blocked: SigSet = !0;
+        let mut previous: SigSet = 0;
+        unsafe {
+            ::sys::kcall::pm::__kcall_sigprocmask(SIG_SETMASK, &blocked, &mut previous)?;
+        }
+        Ok(Self { previous })
+    }
+}
+
+impl Drop for SignalMaskGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _result: Result<(), Error> = ::sys::kcall::pm::__kcall_sigprocmask(
+                SIG_SETMASK,
+                &self.previous,
+                core::ptr::null_mut(),
+            );
+        }
+    }
+}
 
 //==================================================================================================
 // Out-of-Memory Handler
@@ -210,6 +271,7 @@ impl OomHandler for NanvixOomHandler {
 pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
     let size: usize = PAGE_SIZE;
 
+    let _signal_mask: SignalMaskGuard = SignalMaskGuard::acquire()?;
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     // Check if the heap was already initialized.
     if locked_heap.is_some() {
@@ -223,6 +285,9 @@ pub fn init(base: VirtualAddress, capacity: usize) -> Result<(), Error> {
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe fn alloc(layout: Layout) -> *mut u8 {
+    let Ok(_signal_mask): Result<SignalMaskGuard, Error> = SignalMaskGuard::acquire() else {
+        return core::ptr::null_mut();
+    };
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     if let Some(heap) = locked_heap.as_mut() {
         match heap.malloc(layout) {
@@ -242,6 +307,9 @@ pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
         None => return,
     };
 
+    let Ok(_signal_mask): Result<SignalMaskGuard, Error> = SignalMaskGuard::acquire() else {
+        return;
+    };
     let mut locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     if let Some(heap) = locked_heap.as_mut() {
         heap.free(nn_ptr, layout);
@@ -358,6 +426,9 @@ pub fn cleanup() -> Result<(), Error> {
 /// This is the number of bytes currently backed by physical pages. It increases when the OOM
 /// handler grows the heap via `mmap` and decreases when `try_reclaim` shrinks it via `munmap`.
 pub fn heap_committed_size() -> usize {
+    let Ok(_signal_mask): Result<SignalMaskGuard, Error> = SignalMaskGuard::acquire() else {
+        return 0;
+    };
     let locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     match locked_heap.as_ref() {
         Some(heap) => heap.oom_handler.heap.size(),
@@ -367,6 +438,9 @@ pub fn heap_committed_size() -> usize {
 
 /// Returns the maximum capacity of the heap in bytes.
 pub fn heap_capacity() -> usize {
+    let Ok(_signal_mask): Result<SignalMaskGuard, Error> = SignalMaskGuard::acquire() else {
+        return 0;
+    };
     let locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     match locked_heap.as_ref() {
         Some(heap) => heap.oom_handler.heap.capacity(),

@@ -8,12 +8,14 @@
 use crate::{
     assembler::{
         assemble_and_dispatch,
+        purge_process,
         AssemblerEntry,
+        AssemblerKey,
     },
     console_wait::ConsoleWaitTable,
     error::{
         build_error,
-        send_response,
+        ResponseContext,
     },
     handler,
     hostfs,
@@ -40,6 +42,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageSender,
+        RequestIdentifier,
         SystemMessage,
         SystemMessageHeader,
     },
@@ -68,18 +71,6 @@ use alloc::{
 // Helpers: Extract caller identity from message source
 //==================================================================================================
 
-/// Extracts the caller's thread identifier from an IPC message.
-///
-/// The kernel stamps the originating thread into `message.source.tid` on `send` (see
-/// `src/kernel/src/ipc/send.rs`), so vfsd reads it directly to route the reply back to the exact
-/// calling thread.
-fn caller_tid(message: &Message) -> ThreadIdentifier {
-    // `source` is a `Copy` field of a `repr(packed)` `Message`; copy it out before projecting into
-    // it so that no reference to an unaligned field is formed.
-    let source: MessageSender = message.source;
-    source.tid
-}
-
 /// Extracts the caller's process identifier from an IPC message.
 ///
 /// This returns `message.source.pid`, the kernel-attested caller identity that the `send` kernel
@@ -104,6 +95,8 @@ fn caller_pid(message: &Message) -> ProcessIdentifier {
 
 fn handle_system_message(
     message: Message,
+    assemblers: &mut BTreeMap<AssemblerKey, AssemblerEntry>,
+    pending: &mut PendingQueue,
     console_wait: &mut ConsoleWaitTable,
     pipe_wait: &mut PipeWaitTable,
 ) -> Result<bool, Error> {
@@ -116,6 +109,8 @@ fn handle_system_message(
         ProcessIdentifier::PROCD,
         "handle_system_message invoked with non-procd client"
     );
+    let response_context: ResponseContext =
+        ResponseContext::new(message.source, RequestIdentifier::read_from(&message));
     let sys_msg: SystemMessage = SystemMessage::from_bytes(message.payload)?;
     match sys_msg.header {
         SystemMessageHeader::ProcessManagement => {
@@ -173,7 +168,7 @@ fn handle_system_message(
                         child,
                         status,
                     ) {
-                        Ok(ack) => send_response(&ack),
+                        Ok(ack) => response_context.send(&ack),
                         Err(e) => ::syslog::error!(
                             "failed to build fork-clone acknowledgement (child={:?}, error={:?})",
                             child,
@@ -195,6 +190,8 @@ fn handle_system_message(
                     let reclaim: ::vfs::fd::ProcessExitReclaim = ::vfs::fd::vfs_process_exit(pid);
                     // First discard any requests this process had parked: there is no longer a
                     // client to answer, so they must not be revived by the wakeups below.
+                    purge_process(assemblers, pid);
+                    pending.purge_pid(pid);
                     console_wait.purge_pid(pid);
                     pipe_wait.purge_pid(pid);
                     for closure in reclaim.pipe_closures {
@@ -245,6 +242,8 @@ fn handle_system_message(
                     let pid: ProcessIdentifier = exec.pid;
                     // Exec destroys every thread except the caller, so no console read issued by
                     // the old image may survive into the replacement image.
+                    purge_process(assemblers, pid);
+                    pending.purge_pid(pid);
                     console_wait.purge_pid(pid);
                     // Bind the VFS to the exec'ing process and seed the root console if this is the
                     // root's first VFS-visible event, mirroring the fork-clone and syscall paths so
@@ -305,7 +304,7 @@ fn handle_system_message(
                         pid,
                         ::proc::ExecAckMessage::STATUS_SUCCESS,
                     ) {
-                        Ok(ack) => send_response(&ack),
+                        Ok(ack) => response_context.send(&ack),
                         Err(e) => ::syslog::error!(
                             "failed to build exec acknowledgement (pid={:?}, error={:?})",
                             pid,
@@ -338,18 +337,26 @@ fn handle_system_message(
 
 pub(crate) fn handle_ipc_message(
     message: Message,
-    assemblers: &mut BTreeMap<(i32, u16), AssemblerEntry>,
+    assemblers: &mut BTreeMap<AssemblerKey, AssemblerEntry>,
     pending: &mut PendingQueue,
     console_wait: &mut ConsoleWaitTable,
     pipe_wait: &mut PipeWaitTable,
 ) -> Result<bool, Error> {
-    let source_tid: ThreadIdentifier = caller_tid(&message);
-    let source_pid: ProcessIdentifier = caller_pid(&message);
+    // The kernel stamps the authoritative originating process and thread into `message.source`.
+    // Retain both before parsing shadows the raw message.
+    let sender: MessageSender = message.source;
+    let source_tid: ThreadIdentifier = sender.tid;
+    let source_pid: ProcessIdentifier = sender.pid;
 
     // Route messages from the process manager daemon (PROCD).
     if source_pid == ProcessIdentifier::PROCD {
-        return handle_system_message(message, console_wait, pipe_wait);
+        return handle_system_message(message, assemblers, pending, console_wait, pipe_wait);
     }
+
+    // The request identifier lives at a fixed raw offset, so it remains available even when the
+    // syscall message itself is malformed.
+    let request_id: RequestIdentifier = RequestIdentifier::read_from(&message);
+    let response_context: ResponseContext = ResponseContext::new(sender, request_id);
 
     // Bind the VFS to the requesting process so that descriptor and working-directory operations
     // resolve against its per-process state. `source_pid` is the kernel-attested caller identity
@@ -368,7 +375,7 @@ pub(crate) fn handle_ipc_message(
         Ok(msg) => msg,
         Err(e) => {
             ::syslog::error!("failed to parse syscall message (error={:?})", e);
-            send_response(&build_error(source_tid, ErrorCode::InvalidMessage));
+            response_context.send(&build_error(source_tid, ErrorCode::InvalidMessage));
             return Ok(false);
         },
     };
@@ -378,31 +385,34 @@ pub(crate) fn handle_ipc_message(
         // Short requests: single message request, single message response.
         //==========================================================================================
         SystemCallMessageHeader::CloseRequest => {
-            if let Some(response) = handler::handle_close_with_hostfs(
-                source_pid,
-                source_tid,
-                syscall_msg,
-                pending,
-                pipe_wait,
-            ) {
-                send_response(&response);
+            if let Some(response) =
+                handler::handle_close_with_hostfs(response_context, syscall_msg, pending, pipe_wait)
+            {
+                response_context.send(&response);
             }
         },
         SystemCallMessageHeader::ResolveFdRequest => {
             let response: Message = handler::handle_resolve_fd(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::ConsoleReadCancelRequest => {
-            console_wait.cancel(source_pid, source_tid);
+            let request_id: RequestIdentifier = ConsoleReadCancel::target(&syscall_msg.payload);
+            let cancelled: bool = console_wait.cancel(source_pid, source_tid, request_id);
             let _ = handler::service_pending_console_input(console_wait);
-            send_response(&ConsoleReadCancel::build_response(source_tid));
+            response_context.send(&ConsoleReadCancel::build_response(source_tid, cancelled));
         },
         SystemCallMessageHeader::PipeOpCancelRequest => {
             let request: PipeOpCancelRequest = PipeOpCancelRequest::from_bytes(syscall_msg.payload);
-            // The parked request is keyed by the caller's identity, so `fd` and the operation kind
-            // are diagnostic only. Always acknowledge: the client blocks until it drains this
-            // response, so an error reply would wedge it instead.
-            let transferred: usize = pipe_wait.cancel(source_pid, source_tid).unwrap_or(0);
+            // The parked request is keyed by exact caller and request identity. `fd` and operation
+            // remain diagnostic. Always acknowledge so the cancelling client cannot be wedged.
+            let cancellation: Option<usize> = pipe_wait
+                .cancel(source_pid, source_tid, request.request_id())
+                .or_else(|| {
+                    pending
+                        .cancel_read_request(source_pid, source_tid, request.request_id())
+                        .then_some(0)
+                });
+            let transferred: usize = cancellation.unwrap_or(0);
             ::syslog::trace!(
                 "cancelled pipe operation (pid={:?}, tid={:?}, fd={}, operation={:?}, \
                  transferred={})",
@@ -412,13 +422,17 @@ pub(crate) fn handle_ipc_message(
                 request.operation(),
                 transferred
             );
-            send_response(&PipeOpCancelResponse::build(source_tid, transferred as u32));
+            response_context.send(&PipeOpCancelResponse::build(
+                source_tid,
+                transferred as u32,
+                cancellation.is_some(),
+            ));
         },
         SystemCallMessageHeader::ConsoleReadRetry => {
             if source_pid == ProcessIdentifier::VFSD {
                 handler::retry_console_readers(console_wait);
             } else {
-                send_response(&build_error(source_tid, ErrorCode::PermissionDenied));
+                response_context.send(&build_error(source_tid, ErrorCode::PermissionDenied));
             }
         },
         SystemCallMessageHeader::PipeReadRetry => {
@@ -426,73 +440,73 @@ pub(crate) fn handle_ipc_message(
                 let retry: PipeReadRetry = PipeReadRetry::from_bytes(syscall_msg.payload);
                 handler::pipe::retry_readers(retry.pipe_id(), pipe_wait);
             } else {
-                send_response(&build_error(source_tid, ErrorCode::PermissionDenied));
+                response_context.send(&build_error(source_tid, ErrorCode::PermissionDenied));
             }
         },
         SystemCallMessageHeader::RegisterSocketRequest => {
             let response: Message = handler::handle_register_socket(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::Dup2Request => {
             let response: Message = handler::handle_dup2(source_tid, syscall_msg, pipe_wait);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::SeekRequest => {
             if let Some(response) =
-                handler::handle_seek_with_hostfs(source_pid, source_tid, syscall_msg, pending)
+                handler::handle_seek_with_hostfs(response_context, syscall_msg, pending)
             {
-                send_response(&response);
+                response_context.send(&response);
             }
         },
         SystemCallMessageHeader::FileSyncRequest => {
             if let Some(response) =
-                handler::handle_fsync_with_hostfs(source_pid, source_tid, syscall_msg, pending)
+                handler::handle_fsync_with_hostfs(response_context, syscall_msg, pending)
             {
-                send_response(&response);
+                response_context.send(&response);
             }
         },
         SystemCallMessageHeader::FileDataSyncRequest => {
             let response: Message = handler::handle_fdatasync(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::FileTruncateRequest => {
             if let Some(response) =
-                handler::handle_ftruncate_with_hostfs(source_pid, source_tid, syscall_msg, pending)
+                handler::handle_ftruncate_with_hostfs(response_context, syscall_msg, pending)
             {
-                send_response(&response);
+                response_context.send(&response);
             }
         },
         SystemCallMessageHeader::FileSpaceControlRequest => {
             let response: Message = handler::handle_fallocate(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::FileAdvisoryInformationRequest => {
             let response: Message = handler::handle_fadvise(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::FileControlRequest => {
             let response: Message = handler::handle_fcntl(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::FileChmodRequest => {
             let response: Message = handler::handle_fchmod(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::FileCreationMaskRequest => {
             let response: Message = handler::handle_umask(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::FileChownRequest => {
             let response: Message = handler::handle_fchown(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::FileChdirRequest => {
             let response: Message = handler::handle_fchdir(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::UpdateFileAccessTimeRequest => {
             let response: Message = handler::handle_futimens(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
 
         //==========================================================================================
@@ -500,7 +514,7 @@ pub(crate) fn handle_ipc_message(
         //==========================================================================================
         SystemCallMessageHeader::PipeRequest => {
             let response: Message = handler::pipe::handle_pipe_create(source_tid);
-            send_response(&response);
+            response_context.send(&response);
         },
 
         //==========================================================================================
@@ -508,25 +522,20 @@ pub(crate) fn handle_ipc_message(
         //==========================================================================================
         SystemCallMessageHeader::ReadRequest => {
             if let Some(response) = handler::handle_read_with_hostfs(
-                source_pid,
-                source_tid,
+                response_context,
                 syscall_msg,
                 pending,
                 console_wait,
                 pipe_wait,
             ) {
-                send_response(&response);
+                response_context.send(&response);
             }
         },
         SystemCallMessageHeader::WriteRequest => {
-            if let Some(response) = handler::handle_write_with_hostfs(
-                source_pid,
-                source_tid,
-                syscall_msg,
-                pending,
-                pipe_wait,
-            ) {
-                send_response(&response);
+            if let Some(response) =
+                handler::handle_write_with_hostfs(response_context, syscall_msg, pending, pipe_wait)
+            {
+                response_context.send(&response);
             }
         },
 
@@ -536,7 +545,7 @@ pub(crate) fn handle_ipc_message(
         SystemCallMessageHeader::TtyControlRequest => {
             let response: Message =
                 handler::handle_tty_control(source_pid, source_tid, syscall_msg, console_wait);
-            send_response(&response);
+            response_context.send(&response);
         },
 
         //==========================================================================================
@@ -544,11 +553,11 @@ pub(crate) fn handle_ipc_message(
         //==========================================================================================
         SystemCallMessageHeader::PartialReadRequest => {
             let response: Message = handler::handle_pread(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
         SystemCallMessageHeader::PartialWriteRequest => {
             let response: Message = handler::handle_pwrite(source_tid, syscall_msg);
-            send_response(&response);
+            response_context.send(&response);
         },
 
         //==========================================================================================
@@ -556,25 +565,25 @@ pub(crate) fn handle_ipc_message(
         //==========================================================================================
         SystemCallMessageHeader::FileStatRequest => {
             if let Some(responses) =
-                handler::handle_fstat_with_hostfs(source_pid, source_tid, syscall_msg, pending)
+                handler::handle_fstat_with_hostfs(response_context, syscall_msg, pending)
             {
                 for response in responses {
-                    send_response(&response);
+                    response_context.send(&response);
                 }
             }
         },
         SystemCallMessageHeader::GetCurrentWorkingDirectoryRequest => {
             let responses: Vec<Message> = handler::handle_getcwd(source_tid);
             for response in responses {
-                send_response(&response);
+                response_context.send(&response);
             }
         },
         SystemCallMessageHeader::GetDirectoryEntriesRequest => {
             if let Some(responses) =
-                handler::handle_getdents_with_hostfs(source_pid, source_tid, syscall_msg, pending)
+                handler::handle_getdents_with_hostfs(response_context, syscall_msg, pending)
             {
                 for response in responses {
-                    send_response(&response);
+                    response_context.send(&response);
                 }
             }
         },
@@ -600,9 +609,8 @@ pub(crate) fn handle_ipc_message(
         | SystemCallMessageHeader::PollRequestPart => {
             let part: SystemCallMessagePart =
                 SystemCallMessagePart::from_bytes(syscall_msg.payload);
-            if let Some(responses) = assemble_and_dispatch(
-                source_pid,
-                source_tid,
+            if let Some((response_context, responses)) = assemble_and_dispatch(
+                response_context,
                 syscall_msg.header,
                 part,
                 assemblers,
@@ -610,7 +618,7 @@ pub(crate) fn handle_ipc_message(
                 console_wait,
             ) {
                 for response in responses {
-                    send_response(&response);
+                    response_context.send(&response);
                 }
             }
         },
@@ -621,7 +629,7 @@ pub(crate) fn handle_ipc_message(
         _ => {
             let hdr = syscall_msg.header;
             ::syslog::warn!("received unsupported syscall header: {:?}", hdr);
-            send_response(&build_error(source_tid, ErrorCode::InvalidMessage));
+            response_context.send(&build_error(source_tid, ErrorCode::InvalidMessage));
         },
     }
 

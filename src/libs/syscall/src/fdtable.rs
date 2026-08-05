@@ -347,7 +347,10 @@ fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
         SystemCallMessageHeader,
     };
     use ::sys::{
-        ipc::Message,
+        ipc::{
+            Message,
+            RequestToken,
+        },
         pm::ThreadIdentifier,
     };
 
@@ -366,14 +369,15 @@ fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
     }
 
     // Send the resolution query to vfsd and await its authoritative answer.
-    let request: Message =
+    let mut request: Message =
         ResolveFdRequest::build(tid, pid, fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
-    if ::sys::kcall::ipc::__kcall_send(&request).is_err() {
-        return Ok(VfsdResolution::Unavailable);
-    }
+    let token: RequestToken = match crate::rpc::send_request(&mut request) {
+        Ok(token) => token,
+        Err(_) => return Ok(VfsdResolution::Unavailable),
+    };
     let mut interrupted: Option<Error> = None;
     let response: Message = loop {
-        match ::sys::kcall::ipc::__kcall_recv() {
+        match crate::rpc::recv_response_interruptible(&token) {
             Ok(response) => break response,
             Err(error) if error.code == ::sys::error::ErrorCode::Interrupted => {
                 interrupted.get_or_insert(error);

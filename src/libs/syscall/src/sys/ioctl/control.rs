@@ -153,7 +153,10 @@ fn ioctl_pgrp(fd: c_int, request: c_int, arg: *mut c_void) -> Result<c_int, Erro
 /// status response — mirroring the `read` bulk-transfer protocol.
 fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, Error> {
     use crate::sys::ioctl::message::TtyControlRequest;
-    use ::sys::ipc::Message;
+    use ::sys::ipc::{
+        Message,
+        RequestToken,
+    };
 
     let tid: ::sys::pm::ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
@@ -161,7 +164,7 @@ fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, 
     // owns; vfsd pushes exactly `len` bytes into it.
     let out: &mut [u8] = unsafe { ::core::slice::from_raw_parts_mut(out, len) };
 
-    let req: Message = TtyControlRequest::build(
+    let mut req: Message = TtyControlRequest::build(
         tid,
         fd,
         request,
@@ -169,10 +172,10 @@ fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, 
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,
     );
-    ::sys::kcall::ipc::__kcall_send(&req)?;
+    let token: RequestToken = crate::rpc::send_request(&mut req)?;
     let bytes_pulled: usize =
         ::sys::kcall::ipc::__kcall_pull(crate::VFS_PUSH_PULL_PID, crate::VFS_PUSH_PULL_TID, out)?;
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
     check_status(&response)?;
 
     // On success vfsd pushes the full payload; a short pull would leave `out` only partially
@@ -193,11 +196,14 @@ fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, 
 /// response — mirroring the `write` bulk-transfer protocol.
 fn tty_push(fd: i32, request: c_int, data: &[u8]) -> Result<c_int, Error> {
     use crate::sys::ioctl::message::TtyControlRequest;
-    use ::sys::ipc::Message;
+    use ::sys::ipc::{
+        Message,
+        RequestToken,
+    };
 
     let tid: ::sys::pm::ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
-    let req: Message = TtyControlRequest::build(
+    let mut req: Message = TtyControlRequest::build(
         tid,
         fd,
         request,
@@ -205,9 +211,9 @@ fn tty_push(fd: i32, request: c_int, data: &[u8]) -> Result<c_int, Error> {
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,
     );
-    ::sys::kcall::ipc::__kcall_send(&req)?;
+    let token: RequestToken = crate::rpc::send_request(&mut req)?;
     ::sys::kcall::ipc::__kcall_push(crate::VFS_PUSH_PULL_PID, crate::VFS_PUSH_PULL_TID, data)?;
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
     check_status(&response)?;
     Ok(0)
 }

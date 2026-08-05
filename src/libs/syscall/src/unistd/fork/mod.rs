@@ -77,18 +77,26 @@ fn map_duplicate_error(code: ErrorCode) -> ErrorCode {
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-fn sync_parent_after_fork(child: ProcessIdentifier) -> Result<(), Error> {
+fn sync_parent_after_fork(
+    child: ProcessIdentifier,
+    token: &::sys::ipc::RequestToken,
+    previous_signal_mask: &::sys::pm::SigSet,
+) -> Result<(), Error> {
     // The request must carry the parent's own identity as its source so that the daemon knows which
-    // process to release alongside the child.
-    let parent: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
-    let request: Message = fork_sync_request(parent, child)?;
-    if let Err(error) = ::sys::kcall::ipc::__kcall_send(&request) {
+    // process to release alongside the child. Every failure before the mask is restored must still
+    // restore it, otherwise the parent resumes with every signal blocked forever.
+    let send_result: Result<(), Error> = ::sys::kcall::pm::getpid()
+        .and_then(|parent: ProcessIdentifier| fork_sync_request(parent, child))
+        .and_then(|mut request: Message| crate::rpc::send_request_with_token(token, &mut request));
+    let restore_result: Result<(), Error> = restore_signal_mask(previous_signal_mask);
+    if let Err(error) = send_result {
         ::syslog::error!("sync_parent_after_fork(): failed to send fork-sync request: {error:?}");
         return Err(error);
     }
+    restore_result?;
 
     // Block until the daemon releases us.
-    sync_child_after_fork()
+    sync_after_fork(token)
 }
 
 ///
@@ -106,14 +114,11 @@ fn sync_parent_after_fork(child: ProcessIdentifier) -> Result<(), Error> {
 ///
 /// Upon successful completion, empty is returned. Upon failure, an error is returned instead.
 ///
-fn sync_child_after_fork() -> Result<(), Error> {
-    // Block waiting for the acknowledgement. In the fork-synchronization window both the parent and
-    // the child are blocked on the daemon, so the daemon is the only process messaging them: the
-    // next message is the acknowledgement. This invariant holds only because no other party may
-    // message a process inside this window — a child is not yet known to any peer, and the parent
-    // is blocked here rather than servicing requests. A stray message would be reported as an error
-    // (below) and fail `fork()`, rather than being silently mistaken for the acknowledgement.
-    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
+fn sync_after_fork(token: &::sys::ipc::RequestToken) -> Result<(), Error> {
+    // Parent and child wait on copies of the token allocated before duplication. The process daemon
+    // echoes that identifier in both acknowledgements, so unrelated mailbox traffic is filtered
+    // rather than mistaken for the fork result.
+    let message: Message = crate::rpc::recv_response(token)?;
 
     match message.message_type {
         MessageType::Ipc => {
@@ -175,6 +180,36 @@ fn sync_child_after_fork() -> Result<(), Error> {
     }
 }
 
+/// Rebinds the inherited request token to the child thread and waits for its acknowledgement.
+fn sync_child_after_fork(token: ::sys::ipc::RequestToken) -> Result<(), Error> {
+    let tid: ::sys::pm::ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+    // SAFETY: `do_fork()` blocks signal delivery before duplication and calls this function only
+    // in the freshly forked, single-threaded child. The original mask is restored after rebinding.
+    let token: ::sys::ipc::RequestToken = unsafe { token.rebind_after_fork(tid)? };
+    sync_after_fork(&token)
+}
+
+/// Blocks every catchable signal and returns the calling thread's previous signal mask.
+fn block_signals_for_fork() -> Result<::sys::pm::SigSet, Error> {
+    let blocked: ::sys::pm::SigSet = !0;
+    let mut previous: ::sys::pm::SigSet = 0;
+    unsafe {
+        ::sys::kcall::pm::__kcall_sigprocmask(::sys::pm::SIG_SETMASK, &blocked, &mut previous)?;
+    }
+    Ok(previous)
+}
+
+/// Restores the signal mask saved by [`block_signals_for_fork`].
+fn restore_signal_mask(previous: &::sys::pm::SigSet) -> Result<(), Error> {
+    unsafe {
+        ::sys::kcall::pm::__kcall_sigprocmask(
+            ::sys::pm::SIG_SETMASK,
+            previous,
+            core::ptr::null_mut(),
+        )
+    }
+}
+
 //==================================================================================================
 // Public Standalone Functions
 //==================================================================================================
@@ -207,15 +242,59 @@ fn sync_child_after_fork() -> Result<(), Error> {
 // duplicated child, which both resume at the kernel-call return site within this frame.
 #[inline(never)]
 pub fn do_fork() -> Result<pid_t, ErrorCode> {
-    let child: ProcessIdentifier = match __kcall_fork() {
+    // Prevent a signal handler from entering the request matcher between duplication and the
+    // child's request-state rebind. The original mask is restored in both processes immediately
+    // after their request state is ready.
+    let previous_signal_mask: ::sys::pm::SigSet =
+        block_signals_for_fork().map_err(|error| error.code)?;
+    let tid: ::sys::pm::ThreadIdentifier = match ::sys::kcall::pm::__kcall_gettid() {
+        Ok(tid) => tid,
+        Err(error) => {
+            let _result: Result<(), Error> = restore_signal_mask(&previous_signal_mask);
+            return Err(error.code);
+        },
+    };
+    // A signal handler may call fork while the interrupted thread is awaiting an RPC response.
+    // The child cannot inherit that request: its reply is addressed to the parent's pid/tid, and
+    // child rebinding intentionally discards all inherited state except the fork barrier token.
+    if ::sys::ipc::has_active_requests(tid) {
+        let _result: Result<(), Error> = restore_signal_mask(&previous_signal_mask);
+        return Err(ErrorCode::TryAgain);
+    }
+    // Reserve the synchronization identifier before duplication so the child inherits the same
+    // identifier that the parent later sends to the process daemon.
+    let token: ::sys::ipc::RequestToken = match crate::rpc::begin_request(ProcessIdentifier::PROCD)
+    {
+        Ok(token) => token,
+        Err(_) => {
+            let _result: Result<(), Error> = restore_signal_mask(&previous_signal_mask);
+            return Err(ErrorCode::TryAgain);
+        },
+    };
+    // Quiesce request and heap metadata while the kernel copies the address space. The guards are
+    // copied with it and unlock each process's private mutex before either side resumes work.
+    let request_state_guard: ::sys::ipc::RequestStateForkGuard =
+        unsafe { ::sys::ipc::RequestStateForkGuard::acquire() };
+    let heap_guard: ::sysalloc::HeapForkGuard = unsafe { ::sysalloc::HeapForkGuard::acquire() };
+    let fork_result: Result<ProcessIdentifier, Error> = __kcall_fork();
+    drop(heap_guard);
+    drop(request_state_guard);
+    let child: ProcessIdentifier = match fork_result {
         Ok(child) => child,
-        Err(e) => return Err(map_duplicate_error(e.code)),
+        Err(e) => {
+            let _result: Result<(), Error> = restore_signal_mask(&previous_signal_mask);
+            return Err(map_duplicate_error(e.code));
+        },
     };
 
     if child == ProcessIdentifier::from(0) {
         // Child: block until the daemon confirms that the inherited descriptors have been
         // duplicated into the filesystem daemon.
-        if let Err(error) = sync_child_after_fork() {
+        let synchronization: Result<(), Error> = sync_child_after_fork(token).and_then(|()| {
+            restore_signal_mask(&previous_signal_mask)?;
+            Ok(())
+        });
+        if let Err(error) = synchronization {
             // The fork synchronization failed: either the fork-clone snapshot failed (and the
             // process manager daemon released the child with a failure acknowledgement), or an
             // unexpected message was observed in the synchronization window.
@@ -250,8 +329,9 @@ pub fn do_fork() -> Result<pid_t, ErrorCode> {
         Ok(0)
     } else {
         // Parent: ask the daemon to duplicate our descriptors onto the child, and block until it
-        // confirms before resuming.
-        if let Err(error) = sync_parent_after_fork(child) {
+        // confirms before resuming. The request is sent while signals remain blocked, then the
+        // original mask is restored before waiting for the acknowledgement.
+        if let Err(error) = sync_parent_after_fork(child, &token, &previous_signal_mask) {
             // The child was already created by `__kcall_fork()`. If the daemon released the
             // synchronization with a failure acknowledgement, the child received the same failure
             // and is self-terminating; if instead the synchronization failed before the daemon was

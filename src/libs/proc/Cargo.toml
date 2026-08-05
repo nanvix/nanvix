@@ -26,7 +26,7 @@ cfg-if = { workspace = true }
 [features]
 default = ["syslog"]
 std = []
-syscall = []
+syscall = ["syslog"]
 daemon = ["syslog"]
 
 [lints]

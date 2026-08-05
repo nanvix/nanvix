@@ -96,4 +96,26 @@ impl Mailbox {
 
         None
     }
+
+    /// Removes every buffered message addressed exactly to `tid`.
+    pub fn purge_thread(&mut self, tid: ThreadIdentifier) -> usize {
+        let mut retained: LinkedList<Message> = LinkedList::new();
+        let mut removed: usize = 0;
+        while let Some(message) = self.buffer.pop_front() {
+            if { message.destination }.tid == tid {
+                removed += 1;
+            } else {
+                retained.push_back(message);
+            }
+        }
+        self.buffer = retained;
+        removed
+    }
+
+    /// Removes every buffered message.
+    pub fn purge_all(&mut self) -> usize {
+        let removed: usize = self.buffer.len();
+        self.buffer.clear();
+        removed
+    }
 }

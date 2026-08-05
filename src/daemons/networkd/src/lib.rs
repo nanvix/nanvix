@@ -24,7 +24,9 @@ use ::net_backend::{
 };
 use ::sys::ipc::{
     Message,
+    MessageReceiver,
     MessageSender,
+    RequestIdentifier,
 };
 use ::syscall::{
     SystemCallMessage,
@@ -55,6 +57,15 @@ pub struct NetworkDaemon {
 //==================================================================================================
 
 impl NetworkDaemon {
+    fn prepare_response(
+        source: MessageSender,
+        request_id: RequestIdentifier,
+        response: &mut Message,
+    ) {
+        response.destination = MessageReceiver::new(source.pid, source.tid);
+        request_id.write_to(response);
+    }
+
     ///
     /// # Description
     ///
@@ -90,12 +101,19 @@ impl NetworkDaemon {
     /// missing thread identifier).
     ///
     pub fn handle_message(&self, msg: Message) -> Option<Message> {
+        let source: MessageSender = msg.source;
         let syscall_msg: SystemCallMessage = match SystemCallMessage::try_from_bytes(msg.payload) {
             Ok(m) => m,
             Err(_) => return None,
         };
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(syscall_msg.request_id);
 
-        dispatch::dispatch_message(&self.backend, &self.filter, msg.source, syscall_msg)
+        dispatch::dispatch_message(&self.backend, &self.filter, source, syscall_msg).map(
+            |mut response| {
+                Self::prepare_response(source, request_id, &mut response);
+                response
+            },
+        )
     }
 
     ///
@@ -120,7 +138,11 @@ impl NetworkDaemon {
         syscall_msg: SystemCallMessage,
         data: &[u8],
     ) -> Message {
-        dispatch::dispatch_send(&self.backend, source, syscall_msg, data)
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(syscall_msg.request_id);
+        let mut response: Message =
+            dispatch::dispatch_send(&self.backend, source, syscall_msg, data);
+        Self::prepare_response(source, request_id, &mut response);
+        response
     }
 
     ///
@@ -145,7 +167,11 @@ impl NetworkDaemon {
         syscall_msg: SystemCallMessage,
         data: &[u8],
     ) -> Message {
-        dispatch::dispatch_sendto(&self.backend, &self.filter, source, syscall_msg, data)
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(syscall_msg.request_id);
+        let mut response: Message =
+            dispatch::dispatch_sendto(&self.backend, &self.filter, source, syscall_msg, data);
+        Self::prepare_response(source, request_id, &mut response);
+        response
     }
 
     ///
@@ -168,7 +194,11 @@ impl NetworkDaemon {
         source: MessageSender,
         syscall_msg: SystemCallMessage,
     ) -> (Message, Vec<u8>) {
-        dispatch::dispatch_recvfrom(&self.backend, source, syscall_msg)
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(syscall_msg.request_id);
+        let (mut response, data): (Message, Vec<u8>) =
+            dispatch::dispatch_recvfrom(&self.backend, source, syscall_msg);
+        Self::prepare_response(source, request_id, &mut response);
+        (response, data)
     }
 
     ///
@@ -191,7 +221,11 @@ impl NetworkDaemon {
         source: MessageSender,
         syscall_msg: SystemCallMessage,
     ) -> (Message, Vec<u8>) {
-        dispatch::dispatch_recv(&self.backend, source, syscall_msg)
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(syscall_msg.request_id);
+        let (mut response, data): (Message, Vec<u8>) =
+            dispatch::dispatch_recv(&self.backend, source, syscall_msg);
+        Self::prepare_response(source, request_id, &mut response);
+        (response, data)
     }
 
     ///

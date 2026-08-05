@@ -12,6 +12,7 @@ mod getuid;
 mod job_control;
 mod kill;
 mod lookup;
+mod rpc;
 mod signup;
 mod wait;
 

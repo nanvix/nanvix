@@ -27,6 +27,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageType,
+        RequestToken,
     },
     pm::{
         ProcessIdentifier,
@@ -80,7 +81,7 @@ fn write_chunk(
 ) -> Result<c_size_t, Error> {
     // Build metadata-only request and send it via IPC message.
     let empty_buf: [u8; WriteRequest::BUFFER_SIZE] = [0u8; WriteRequest::BUFFER_SIZE];
-    let request: Message = WriteRequest::build(
+    let mut request: Message = WriteRequest::build(
         tid,
         fd,
         chunk.len() as c_size_t,
@@ -88,17 +89,19 @@ fn write_chunk(
         backend.destination,
         backend.message_type,
     );
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Push actual data via data chunk transfer.
     ::sys::kcall::ipc::__kcall_push(backend.push_pid, backend.push_tid, chunk)?;
 
     // Receive response.
-    let response: Message = match ::sys::kcall::ipc::__kcall_recv() {
+    let response: Message = match crate::rpc::recv_response_interruptible(&token) {
         Ok(response) => response,
         Err(error) if error.code == ErrorCode::Interrupted && backend.cancel_pipe_on_interrupt => {
-            let _transferred: u32 = cancel_pipe_operation(tid, fd, PipeOperation::Write)?;
-            return Err(error);
+            match cancel_pipe_operation(tid, fd, PipeOperation::Write, token.identifier())? {
+                Some(_transferred) => return Err(error),
+                None => crate::rpc::recv_response(&token)?,
+            }
         },
         Err(error) => return Err(error),
     };

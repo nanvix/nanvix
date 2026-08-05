@@ -19,7 +19,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -66,8 +69,8 @@ pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<usize, Error> 
     let send_len: usize = cmp::min(SendSocketRequest::MAX_DATA_SIZE, buffer.len());
 
     // Build metadata-only request and send it via IPC message.
-    let request: Message = SendSocketRequest::build(tid, sockfd, send_len as c_size_t, flags);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = SendSocketRequest::build(tid, sockfd, send_len as c_size_t, flags);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Push the payload via data chunk transfer.
     ::sys::kcall::ipc::__kcall_push(
@@ -77,7 +80,7 @@ pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<usize, Error> 
     )?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {

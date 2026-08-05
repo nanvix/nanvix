@@ -18,7 +18,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 
@@ -40,11 +43,12 @@ fn pipe_vfsd() -> Result<[i32; 2], Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it to vfsd over local IPC.
-    let request: Message = PipeRequest::build(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message =
+        PipeRequest::build(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
     parse_pipe_response(response)
 }
 

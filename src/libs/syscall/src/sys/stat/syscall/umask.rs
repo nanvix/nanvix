@@ -18,7 +18,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::mode_t;
@@ -42,11 +45,11 @@ use ::sysapi::sys_types::mode_t;
 ///
 pub fn umask(mask: mode_t) -> Result<mode_t, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
-    let request: Message =
+    let mut request: Message =
         FileCreationMaskRequest::build(tid, mask, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
     if response.status != 0 {
         let error_code: ErrorCode = ErrorCode::try_from(response.status)?;
         return Err(Error::new(error_code, "umask() failed"));

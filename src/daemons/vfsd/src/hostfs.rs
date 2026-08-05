@@ -24,6 +24,7 @@ use ::sys::{
         MessageReceiver,
         MessageSender,
         MessageType,
+        RequestIdentifier,
     },
     pm::{
         ProcessIdentifier,
@@ -139,6 +140,7 @@ pub fn send_request(payload: &[u8; Message::PAYLOAD_SIZE]) -> bool {
 fn send_long_request(
     data: &[u8],
     header: SystemCallMessageHeader,
+    op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
     let num_parts: u16 = data
         .len()
@@ -150,7 +152,7 @@ fn send_long_request(
         let mut payload = [0u8; SystemCallMessagePart::PAYLOAD_SIZE];
         payload[..chunk.len()].copy_from_slice(chunk);
 
-        let message: Message = SystemCallMessagePart::build_request(
+        let mut message: Message = SystemCallMessagePart::build_request(
             ThreadIdentifier::VFSD,
             header,
             num_parts,
@@ -161,6 +163,7 @@ fn send_long_request(
             MessageType::Ikc,
         )
         .map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+        RequestIdentifier::from_raw(u32::from_le_bytes(op_id.to_le_bytes())).write_to(&mut message);
 
         if let Err(e) = ::sys::kcall::ipc::__kcall_send(&message) {
             ::syslog::error!(
@@ -192,7 +195,7 @@ pub fn send_open_request(
         long_msg::serialize_long_open_request(op_id, flags, mode, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsOpenRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsOpenRequestPart, op_id)
 }
 
 /// Sends a CLOSE request to hostfsd.
@@ -314,7 +317,7 @@ pub fn send_mkdir_request(
         long_msg::serialize_long_mkdir_request(op_id, mode, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsMkdirRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsMkdirRequestPart, op_id)
 }
 
 /// Sends an RMDIR request to hostfsd as a multi-part IKC message.
@@ -324,7 +327,7 @@ pub fn send_rmdir_request(path: &str, op_id: OperationId) -> Result<(), ::sys::e
         long_msg::serialize_long_rmdir_request(op_id, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsRmdirRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsRmdirRequestPart, op_id)
 }
 
 /// Sends an UNLINK request to hostfsd as a multi-part IKC message.
@@ -334,7 +337,7 @@ pub fn send_unlink_request(path: &str, op_id: OperationId) -> Result<(), ::sys::
         long_msg::serialize_long_unlink_request(op_id, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsUnlinkRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsUnlinkRequestPart, op_id)
 }
 
 /// Sends a STAT request to hostfsd (by remote FD).
@@ -392,7 +395,7 @@ pub fn send_rename_request(
     )
     .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsRenameRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsRenameRequestPart, op_id)
 }
 
 /// Sends a SYMLINK request to hostfsd as a multi-part IKC message.
@@ -419,7 +422,7 @@ pub fn send_symlink_request(
     )
     .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsSymlinkRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsSymlinkRequestPart, op_id)
 }
 
 /// Sends a READLINK request to hostfsd.
@@ -448,7 +451,7 @@ pub fn send_readlink_request(
     let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_readlink_request(op_id, path_bytes)
         .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsReadlinkRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsReadlinkRequestPart, op_id)
 }
 
 /// Sends an LSTAT request to hostfsd.
@@ -476,7 +479,7 @@ pub fn send_lstat_request(path: &str, op_id: OperationId) -> Result<(), ::sys::e
     let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_lstat_request(op_id, path_bytes)
         .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsLstatRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsLstatRequestPart, op_id)
 }
 
 /// Sends a path-based *following* STAT request to hostfsd.
@@ -509,5 +512,5 @@ pub fn send_pathstat_request(
     let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_lstat_request(op_id, path_bytes)
         .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
-    send_long_request(&buf, SystemCallMessageHeader::HostFsPathStatRequestPart)
+    send_long_request(&buf, SystemCallMessageHeader::HostFsPathStatRequestPart, op_id)
 }

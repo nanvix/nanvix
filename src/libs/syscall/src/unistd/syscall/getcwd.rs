@@ -27,7 +27,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 
@@ -39,28 +42,28 @@ use ::sys::{
 pub fn getcwd() -> Result<String, Error> {
     ::syslog::trace!("getcwd()");
     // Send request.
-    getcwd_request()?;
+    let token: RequestToken = getcwd_request()?;
 
     // Wait for response.
-    getcwd_response()
+    getcwd_response(&token)
 }
 
 /// Handles the request of the `getcwd()` system call.
-fn getcwd_request() -> Result<(), Error> {
+fn getcwd_request() -> Result<RequestToken, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
-    let request: Message = GetCurrentWorkingDirectoryRequest::build(
+    let mut request: Message = GetCurrentWorkingDirectoryRequest::build(
         tid,
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,
     );
 
     // Send request.
-    ::sys::kcall::ipc::__kcall_send(&request)
+    crate::rpc::send_request(&mut request)
 }
 
 /// Handles the response of the `getcwd()` system call.
-fn getcwd_response() -> Result<String, Error> {
+fn getcwd_response(token: &RequestToken) -> Result<String, Error> {
     // Compute the maximum number of parts in the response.
     let capacity: usize =
         GetCurrentWorkingDirectoryResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
@@ -68,7 +71,7 @@ fn getcwd_response() -> Result<String, Error> {
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+        let response: Message = crate::rpc::recv_response(token)?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {

@@ -15,7 +15,10 @@ use ::alloc::{
 };
 use ::sys::{
     error::Error,
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::sys_stat;
@@ -46,14 +49,11 @@ pub fn fstatat(dirfd: i32, path: &str, buf: &mut sys_stat::stat, flag: i32) -> R
 
     let request: FileStatAtRequest = FileStatAtRequest::new(dirfd, path.to_string(), flag)?;
 
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
-    for request in &requests {
-        ::sys::kcall::ipc::__kcall_send(request)?;
-    }
-
-    *buf = crate::sys::stat::syscall::fstatat_response()?;
+    *buf = crate::sys::stat::syscall::fstatat_response(&token)?;
 
     Ok(())
 }

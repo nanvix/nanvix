@@ -493,6 +493,16 @@ impl ProcessState {
         self.mailbox.receive(tid)
     }
 
+    /// Removes every buffered message addressed exactly to `tid`.
+    pub fn purge_thread_messages(&mut self, tid: ThreadIdentifier) -> usize {
+        self.mailbox.purge_thread(tid)
+    }
+
+    /// Removes every buffered message.
+    pub fn purge_messages(&mut self) -> usize {
+        self.mailbox.purge_all()
+    }
+
     /// # Description
     ///
     /// Adds an MMIO region to the process state.

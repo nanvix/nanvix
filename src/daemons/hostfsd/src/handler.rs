@@ -173,10 +173,8 @@ impl HostFsHandler {
 
         // Helper: run a single-message handler, echo op_id, and wrap the result.
         //
-        // The op_id stamp at bytes [2..6] is skipped when the handler produced a
-        // multi-part response, because those bytes belong to the
-        // `SystemCallMessagePart` framing (`total_parts` + `part_number`) and the
-        // op_id is embedded in the assembled response body instead.
+        // Multi-part response builders stamp the op_id on every outer frame and also retain it in
+        // the assembled response body. Single-message handlers are stamped here.
         let run =
             |this: &mut Self,
              f: fn(&mut Self, &[u8; Message::PAYLOAD_SIZE], &mut [u8; Message::PAYLOAD_SIZE])|
@@ -203,9 +201,11 @@ impl HostFsHandler {
             | SystemCallMessageHeader::HostFsSymlinkRequestPart
             | SystemCallMessageHeader::HostFsReadlinkRequestPart
             | SystemCallMessageHeader::HostFsLstatRequestPart
-            | SystemCallMessageHeader::HostFsPathStatRequestPart => {
-                self.handle_long_part(syscall_msg.header, &syscall_msg.payload)
-            },
+            | SystemCallMessageHeader::HostFsPathStatRequestPart => self.handle_long_part(
+                syscall_msg.header,
+                OperationId::from_le_bytes(syscall_msg.request_id.to_le_bytes()),
+                &syscall_msg.payload,
+            ),
             // Single-message requests: dispatch inline.
             //
             // NOTE: `HostFsOpenRequest`, `HostFsMkdirRequest`, `HostFsRmdirRequest`,
@@ -252,13 +252,15 @@ impl HostFsHandler {
     fn handle_long_part(
         &mut self,
         header: SystemCallMessageHeader,
+        request_id: OperationId,
         syscall_payload: &[u8; SystemCallMessage::PAYLOAD_SIZE],
     ) -> Option<[u8; Message::PAYLOAD_SIZE]> {
         let part: SystemCallMessagePart = SystemCallMessagePart::from_bytes(*syscall_payload);
 
-        match self.assembler.add_part(header, part) {
+        let assembly_status: AssemblyStatus = self.assembler.add_part(header, request_id, part);
+        match assembly_status {
             AssemblyStatus::NeedMore => return None,
-            AssemblyStatus::Error => {
+            AssemblyStatus::Interrupted | AssemblyStatus::Error => {
                 // Fatal assembly error — return an error response so vfsd can drain
                 // its pending queue. The assembler preserves any buffered bytes and
                 // the recorded header from the in-flight stream so that we can echo
@@ -266,12 +268,13 @@ impl HostFsHandler {
                 // available) and the matching response header. This keeps vfsd's
                 // pending-op tracking consistent in the face of malformed streams.
                 let recorded_header: SystemCallMessageHeader = self.assembler.recorded_header();
-                let buffered: Vec<u8> = self.assembler.take_assembled();
-                let op_id: OperationId = if buffered.len() >= 4 {
-                    OperationId::from_le_bytes([buffered[0], buffered[1], buffered[2], buffered[3]])
+                let recorded_request_id: OperationId = self.assembler.recorded_request_id();
+                let op_id: OperationId = if recorded_request_id == OperationId::INVALID {
+                    request_id
                 } else {
-                    OperationId::INVALID
+                    recorded_request_id
                 };
+                let _buffered: Vec<u8> = self.assembler.take_assembled();
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
                 set_op_id(&mut response, op_id);
                 // Prefer the response header for the recorded (first-part) request
@@ -284,6 +287,17 @@ impl HostFsHandler {
                     set_header(&mut response, resp_header as u16);
                 }
                 set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                if assembly_status == AssemblyStatus::Interrupted {
+                    // The current part starts a new request. Replay it against the reset
+                    // assembler and queue any immediate response after this in-flight error.
+                    // `push_front()` keeps a multipart response head ahead of any tail parts that
+                    // the recursive dispatch queued in `extra_responses`.
+                    if let Some(next_response) =
+                        self.handle_long_part(header, request_id, syscall_payload)
+                    {
+                        self.extra_responses.push_front(next_response);
+                    }
+                }
                 return Some(response);
             },
             AssemblyStatus::Complete => { /* fall through to dispatch */ },
@@ -293,6 +307,7 @@ impl HostFsHandler {
         // Use the header recorded on the first part for dispatch (not the current part's header)
         // to prevent a malformed stream from causing a wrong-format deserialization.
         let dispatch_header: SystemCallMessageHeader = self.assembler.recorded_header();
+        let request_id: OperationId = self.assembler.recorded_request_id();
         let assembled: Vec<u8> = self.assembler.take_assembled();
         let mut response = [0u8; Message::PAYLOAD_SIZE];
 
@@ -303,6 +318,19 @@ impl HostFsHandler {
         } else {
             OperationId::INVALID
         };
+        if op_id != request_id {
+            log::error!(
+                "hostfsd: assembled request identifier mismatch (outer={}, body={})",
+                request_id,
+                op_id
+            );
+            set_op_id(&mut response, request_id);
+            if let Some(resp_header) = dispatch_header.hostfs_response_header() {
+                set_header(&mut response, resp_header as u16);
+            }
+            set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+            return Some(response);
+        }
         set_op_id(&mut response, op_id);
 
         match dispatch_header {
@@ -970,10 +998,8 @@ impl HostFsHandler {
     /// and the remaining chunks are queued in `extra_responses` for the caller to
     /// drain via [`Self::take_next_response_part`].
     ///
-    /// Note: `op_id` is recorded *only* in the first 4 bytes of the assembled body.
-    /// The outer-frame bytes `[2..6]` belong to the `SystemCallMessagePart` framing
-    /// (`total_parts` + `part_number`), so `set_op_id` is intentionally not applied
-    /// to multi-part responses (see `is_hostfs_multipart_response` in `handle_request`).
+    /// The `op_id` is recorded in each outer frame's request-ID field and in the first four bytes
+    /// of the assembled body, where vfsd's hostfs response assembler reads it.
     fn emit_long_readlink_response(
         &mut self,
         first_response: &mut [u8; Message::PAYLOAD_SIZE],
@@ -1000,6 +1026,7 @@ impl HostFsHandler {
         // wrapped/malformed stream.
         let parts_vec: Vec<[u8; Message::PAYLOAD_SIZE]> = match long_msg::chunk_long_response(
             SystemCallMessageHeader::HostFsReadlinkResponsePart as u16,
+            op_id,
             &body,
         ) {
             Some(v) => v,
@@ -1540,10 +1567,8 @@ impl HostFsHandler {
     /// `first_response`, and the remaining chunks are queued in `extra_responses` for
     /// the caller to drain via [`Self::take_next_response_part`].
     ///
-    /// As with the readlink multi-part response, `op_id` is recorded *only* in the
-    /// first 4 bytes of the assembled body; the outer-frame bytes `[2..6]` carry the
-    /// `SystemCallMessagePart` framing, so `set_op_id` is intentionally not applied to
-    /// multi-part responses (see `run` in `handle_request`).
+    /// As with the readlink multi-part response, the `op_id` is carried by both each outer frame's
+    /// request-ID field and the first four bytes of the assembled response body.
     fn emit_long_readdir_response(
         &mut self,
         first_response: &mut [u8; Message::PAYLOAD_SIZE],
@@ -1584,6 +1609,7 @@ impl HostFsHandler {
 
         let parts_vec: Vec<[u8; Message::PAYLOAD_SIZE]> = match long_msg::chunk_long_response(
             SystemCallMessageHeader::HostFsReadDirResponsePart as u16,
+            op_id,
             &body,
         ) {
             Some(v) => v,
@@ -2139,6 +2165,8 @@ enum AssemblyStatus {
     NeedMore,
     /// All parts received — the request is ready for dispatch.
     Complete,
+    /// A new request started before the current request was complete.
+    Interrupted,
     /// A fatal assembly error occurred (e.g., out-of-order parts, buffer overflow).
     ///
     /// On error, the assembler state (recorded header and buffered bytes) is
@@ -2158,6 +2186,8 @@ enum AssemblyStatus {
 struct HostFsAssembler {
     /// Header of the request currently being assembled (recorded from the first part).
     header: Option<SystemCallMessageHeader>,
+    /// Request identifier recorded from the first part.
+    request_id: Option<OperationId>,
     /// Total number of parts expected.
     total_parts: u16,
     /// Number of parts received so far.
@@ -2172,6 +2202,7 @@ impl HostFsAssembler {
     fn new() -> Self {
         Self {
             header: None,
+            request_id: None,
             total_parts: 0,
             parts_received: 0,
             next_part_number: 0,
@@ -2186,6 +2217,11 @@ impl HostFsAssembler {
     fn recorded_header(&self) -> SystemCallMessageHeader {
         self.header
             .unwrap_or(SystemCallMessageHeader::HostFsOpenRequestPart)
+    }
+
+    /// Returns the request identifier recorded from the first part.
+    fn recorded_request_id(&self) -> OperationId {
+        self.request_id.unwrap_or(OperationId::INVALID)
     }
 
     /// Adds a part to the assembler.
@@ -2208,6 +2244,7 @@ impl HostFsAssembler {
     fn add_part(
         &mut self,
         header: SystemCallMessageHeader,
+        request_id: OperationId,
         part: SystemCallMessagePart,
     ) -> AssemblyStatus {
         let total: u16 = part.total_parts;
@@ -2237,10 +2274,9 @@ impl HostFsAssembler {
         // started before the in-flight one completed. vfsd's single-threaded,
         // sequential send loop makes this unexpected, but if it ever happens we
         // must not silently discard the in-flight bytes: doing so would orphan the
-        // previous op_id on vfsd's pending-op table. Instead, surface an error so
-        // the caller can recover the in-flight op_id from the buffered bytes and
-        // emit a well-formed error response. The new part is dropped; the caller
-        // is expected to drain the assembler via `take_assembled()` afterwards.
+        // previous op_id on vfsd's pending-op table. Instead, surface an interruption so
+        // the caller can recover the in-flight op_id from the buffered bytes, emit a
+        // well-formed error response, and replay the new part after resetting the assembler.
         if self.header.is_some() && number == 0 && self.parts_received < self.total_parts {
             log::error!(
                 "hostfsd: assembler received new part_number=0 ({:?}) while {}/{} parts of {:?} \
@@ -2250,12 +2286,13 @@ impl HostFsAssembler {
                 self.total_parts,
                 self.header,
             );
-            return AssemblyStatus::Error;
+            return AssemblyStatus::Interrupted;
         }
 
         // Check if this is the first part of a new request.
         if self.header.is_none() {
             self.header = Some(header);
+            self.request_id = Some(request_id);
             self.total_parts = total;
             self.parts_received = 0;
             self.next_part_number = 0;
@@ -2270,6 +2307,15 @@ impl HostFsAssembler {
                 "hostfsd: assembler header mismatch (expected {:?}, got {:?})",
                 self.header,
                 header
+            );
+            return AssemblyStatus::Error;
+        }
+
+        if self.request_id != Some(request_id) {
+            log::error!(
+                "hostfsd: assembler request identifier mismatch (expected {:?}, got {:?})",
+                self.request_id,
+                request_id
             );
             return AssemblyStatus::Error;
         }
@@ -2331,6 +2377,7 @@ impl HostFsAssembler {
     /// Resets the assembler state.
     fn reset(&mut self) {
         self.header = None;
+        self.request_id = None;
         self.total_parts = 0;
         self.parts_received = 0;
         self.next_part_number = 0;

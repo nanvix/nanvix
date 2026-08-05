@@ -27,7 +27,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -65,7 +68,7 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
     let backend_fd: c_int = crate::fdtable::resolve_vfs(fd, "posix_getdents")?;
 
     // Build request message.
-    let request: Message = GetDirectoryEntriesRequest::build(
+    let mut request: Message = GetDirectoryEntriesRequest::build(
         tid,
         backend_fd,
         count,
@@ -79,7 +82,7 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
     })?;
 
     // Send request message.
-    ::sys::kcall::ipc::__kcall_send(&request).map_err(|error| {
+    let token: RequestToken = crate::rpc::send_request(&mut request).map_err(|error| {
         let reason: &str = "failed to send message";
         warn!("posix_getdents(): {reason} (error={:?})", error);
         Error::new(error.code, reason)
@@ -95,7 +98,7 @@ pub fn posix_getdents(fd: c_int, count: usize) -> Result<Vec<posix_dent>, Error>
 
     loop {
         // Wait for response message.
-        let response: Message = ::sys::kcall::ipc::__kcall_recv().map_err(|error| {
+        let response: Message = crate::rpc::recv_response(&token).map_err(|error| {
             let reason: &str = "failed to receive message";
             warn!("posix_getdents(): {reason} (error={:?})", error);
             Error::new(error.code, reason)

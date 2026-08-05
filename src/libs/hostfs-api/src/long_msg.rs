@@ -91,11 +91,11 @@ pub const READDIR_RESPONSE_HEADER_SIZE: usize = 15;
 /// long-response message.
 ///
 /// Derived from the wire layout enforced by [`build_long_response_part`]: the
-/// outer `SystemCallMessage` header (2 bytes), the inner `SystemCallMessagePart`
-/// framing (`total_parts:2 + part_number:2 + payload_size:1` = 5 bytes), and then
-/// the body chunk. Total framing overhead is 7 bytes, so the per-part chunk cap is
-/// `Message::PAYLOAD_SIZE - 7`.
-pub const LONG_RESPONSE_CHUNK_SIZE: usize = Message::PAYLOAD_SIZE - 7;
+/// outer `SystemCallMessage` header (2 bytes), request identifier (4 bytes), the inner
+/// `SystemCallMessagePart` framing (`total_parts:2 + part_number:2 + payload_size:1` = 5 bytes),
+/// and then the body chunk. Total framing overhead is 11 bytes, so the per-part chunk cap is
+/// `Message::PAYLOAD_SIZE - 11`.
+pub const LONG_RESPONSE_CHUNK_SIZE: usize = Message::PAYLOAD_SIZE - 11;
 
 //==================================================================================================
 // Long-response Deserialization (no_std-friendly)
@@ -146,10 +146,11 @@ pub fn deserialize_long_readlink_response(bytes: &[u8]) -> Option<LongReadlinkRe
 ///
 /// ```text
 /// bytes  0..2   : outer SystemCallMessageHeader discriminant (u16, native-endian)
-/// bytes  2..4   : total_parts (u16 LE)
-/// bytes  4..6   : part_number (u16 LE)
-/// byte    6     : payload_size (u8)
-/// bytes  7..    : payload chunk (`chunk.len()` bytes)
+/// bytes  2..6   : request identifier / hostfs op_id (u32, native-endian)
+/// bytes  6..8   : total_parts (u16 LE)
+/// bytes  8..10  : part_number (u16 LE)
+/// byte   10     : payload_size (u8)
+/// bytes 11..    : payload chunk (`chunk.len()` bytes)
 /// ```
 ///
 /// This mirrors the existing multi-part *request* wire format: the inner
@@ -163,37 +164,39 @@ pub fn deserialize_long_readlink_response(bytes: &[u8]) -> Option<LongReadlinkRe
 /// `SystemCallMessageHeader::HostFsReadlinkResponsePart as u16`). It is taken as a
 /// raw value so this crate does not need to depend on the `syscall` crate.
 ///
-/// Note: the request op_id is *not* written into bytes `2..6` here. Those bytes
-/// belong to the `SystemCallMessagePart` framing (`total_parts` + `part_number`);
-/// the op_id lives in the first four bytes of the assembled body instead, where the
-/// response assembler reads it.
+/// The request `op_id` is echoed as the outer request identifier and remains in the first four
+/// bytes of the assembled body for compatibility with the hostfs response assembler.
 ///
-/// `chunk` must fit in the inner `SystemCallMessagePart` payload (≤ 41 bytes on
-/// current builds; the byte at offset 6 encodes the chunk length, so it must also
-/// fit in a `u8`).
+/// `chunk` must not exceed [`LONG_RESPONSE_CHUNK_SIZE`]. The byte at offset 10 encodes the chunk
+/// length, so it must also fit in a `u8`.
+///
+/// Returns `None` if `chunk` does not fit in the message payload.
 pub fn build_long_response_part(
     header_value: u16,
+    op_id: OperationId,
     total_parts: u16,
     part_number: u16,
     chunk: &[u8],
-) -> [u8; Message::PAYLOAD_SIZE] {
-    // The chunk length is written into a single byte at offset 6 and must also fit
-    // within the outer Message payload after the 7-byte framing header.
-    debug_assert!(chunk.len() <= u8::MAX as usize);
-    debug_assert!(7 + chunk.len() <= Message::PAYLOAD_SIZE);
+) -> Option<[u8; Message::PAYLOAD_SIZE]> {
+    // The chunk length is written into a single byte at offset 10 and must also fit
+    // within the outer Message payload after the 11-byte framing header.
+    if chunk.len() > LONG_RESPONSE_CHUNK_SIZE || chunk.len() > u8::MAX as usize {
+        return None;
+    }
 
     let mut out: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
     // Outer SystemCallMessage header.
     out[0..2].copy_from_slice(&header_value.to_ne_bytes());
+    // Outer request identifier, using the existing hostfs operation identifier.
+    out[2..6].copy_from_slice(&op_id.raw().to_ne_bytes());
     // Inner SystemCallMessagePart fields, encoded little-endian to match
     // `SystemCallMessagePart::from_bytes` on the receiving side. Offsets are
-    // relative to the outer Message::PAYLOAD because SystemCallMessage::PAYLOAD
-    // starts at byte 2.
-    out[2..4].copy_from_slice(&total_parts.to_le_bytes());
-    out[4..6].copy_from_slice(&part_number.to_le_bytes());
-    out[6] = chunk.len() as u8;
-    out[7..7 + chunk.len()].copy_from_slice(chunk);
-    out
+    // relative to the outer Message::PAYLOAD because SystemCallMessage::PAYLOAD starts at byte 6.
+    out[6..8].copy_from_slice(&total_parts.to_le_bytes());
+    out[8..10].copy_from_slice(&part_number.to_le_bytes());
+    out[10] = chunk.len() as u8;
+    out[11..11 + chunk.len()].copy_from_slice(chunk);
+    Some(out)
 }
 
 /// Maximum number of chunks a single long response stream may contain.
@@ -219,6 +222,7 @@ pub const MAX_LONG_RESPONSE_PARTS: usize = u16::MAX as usize;
 /// writing the first into a response slot and pushing the rest onto a tail queue).
 pub fn chunk_long_response(
     header_value: u16,
+    op_id: OperationId,
     body: &[u8],
 ) -> Option<Vec<[u8; Message::PAYLOAD_SIZE]>> {
     let chunk_size: usize = LONG_RESPONSE_CHUNK_SIZE;
@@ -229,7 +233,13 @@ pub fn chunk_long_response(
     let total_parts: u16 = total_parts_usize as u16;
     let mut parts: Vec<[u8; Message::PAYLOAD_SIZE]> = Vec::with_capacity(total_parts_usize);
     for (part_number, chunk) in body.chunks(chunk_size).enumerate() {
-        parts.push(build_long_response_part(header_value, total_parts, part_number as u16, chunk));
+        parts.push(build_long_response_part(
+            header_value,
+            op_id,
+            total_parts,
+            part_number as u16,
+            chunk,
+        )?);
     }
     Some(parts)
 }
@@ -687,4 +697,26 @@ pub fn serialize_long_lstat_request(op_id: OperationId, path: &[u8]) -> Option<V
     buf.extend_from_slice(&path_len.to_le_bytes());
     buf.extend_from_slice(path);
     Some(buf)
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_response_part_enforces_chunk_limit() {
+        let chunk: [u8; LONG_RESPONSE_CHUNK_SIZE] = [0x5a; LONG_RESPONSE_CHUNK_SIZE];
+        let part: [u8; Message::PAYLOAD_SIZE] =
+            build_long_response_part(7, OperationId::new(11), 1, 0, &chunk)
+                .expect("maximum-sized chunk should fit");
+        assert_eq!(part[10] as usize, LONG_RESPONSE_CHUNK_SIZE);
+        assert_eq!(&part[11..], &chunk);
+
+        let oversized: [u8; LONG_RESPONSE_CHUNK_SIZE + 1] = [0; LONG_RESPONSE_CHUNK_SIZE + 1];
+        assert!(build_long_response_part(7, OperationId::new(11), 1, 0, &oversized).is_none());
+    }
 }

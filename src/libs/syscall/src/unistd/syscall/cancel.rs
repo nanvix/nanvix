@@ -18,6 +18,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageSender,
+        RequestToken,
     },
     pm::{
         ProcessIdentifier,
@@ -30,12 +31,13 @@ pub(super) fn cancel_pipe_operation(
     tid: ThreadIdentifier,
     fd: i32,
     operation: PipeOperation,
-) -> Result<u32, Error> {
-    let request: Message = PipeOpCancelRequest::build(tid, fd, operation);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    request_id: ::sys::ipc::RequestIdentifier,
+) -> Result<Option<u32>, Error> {
+    let mut request: Message = PipeOpCancelRequest::build(tid, fd, operation, request_id);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     loop {
-        let response: Message = match ::sys::kcall::ipc::__kcall_recv() {
+        let response: Message = match crate::rpc::recv_response_interruptible(&token) {
             Ok(response) => response,
             Err(error) if error.code == ErrorCode::Interrupted => continue,
             Err(error) => return Err(error),
@@ -47,27 +49,25 @@ pub(super) fn cancel_pipe_operation(
                 "pipe operation cancellation returned an invalid sender",
             ));
         }
-
-        // A response for the interrupted operation may have won the race with the cancellation.
-        // Drain it and continue until the cancellation acknowledgement arrives.
         if response.status != 0 {
-            continue;
+            return Err(Error::new(
+                ErrorCode::try_from(response.status)?,
+                "pipe operation cancellation failed",
+            ));
         }
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-        match message.header {
-            SystemCallMessageHeader::PipeOpCancelResponse => {
-                let response: PipeOpCancelResponse =
-                    PipeOpCancelResponse::from_bytes(message.payload);
-                return Ok(response.transferred());
-            },
-            SystemCallMessageHeader::ReadResponse if operation == PipeOperation::Read => continue,
-            SystemCallMessageHeader::WriteResponse if operation == PipeOperation::Write => continue,
-            _ => {
-                return Err(Error::new(
-                    ErrorCode::InvalidMessage,
-                    "unexpected pipe operation cancellation response",
-                ));
-            },
+        let header: SystemCallMessageHeader = message.header;
+        if header != SystemCallMessageHeader::PipeOpCancelResponse {
+            return Err(Error::new(
+                ErrorCode::InvalidMessage,
+                "unexpected pipe operation cancellation response",
+            ));
         }
+        let response: PipeOpCancelResponse = PipeOpCancelResponse::from_bytes(message.payload);
+        return if response.cancelled() {
+            Ok(Some(response.transferred()))
+        } else {
+            Ok(None)
+        };
     }
 }
