@@ -1186,6 +1186,7 @@ fn complete_lstat(source_tid: ThreadIdentifier, response_payload: &[u8; Message:
 fn complete_chdir(
     source_tid: ThreadIdentifier,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
+<<<<<<< HEAD
     path: String,
 ) {
     let resp: LstatResponse = match LstatResponse::decode(response_payload) {
@@ -1208,6 +1209,31 @@ fn complete_chdir(
     }
 
     if let Err(e) = vfs_set_cwd(&path) {
+||||||| parent of e3de1c841 ([vfsd] E: hostfs-aware chdir)
+=======
+    path: &str,
+) {
+    let resp: LstatResponse = match LstatResponse::decode(response_payload) {
+        Some(r) => r,
+        None => {
+            ::syslog::error!("complete_chdir: failed to decode response");
+            send_response(&build_error(source_tid, ErrorCode::IoErr));
+            return;
+        },
+    };
+
+    if resp.status < 0 {
+        send_response(&build_error(source_tid, hostfs_error_to_code(resp.status)));
+        return;
+    }
+
+    if resp.kind != file_kind::DIRECTORY {
+        send_response(&build_error(source_tid, ErrorCode::InvalidDirectory));
+        return;
+    }
+
+    if let Err(e) = vfs_set_cwd(path) {
+>>>>>>> e3de1c841 ([vfsd] E: hostfs-aware chdir)
         send_response(&build_error(source_tid, fat32_to_error_code(&e)));
         return;
     }
