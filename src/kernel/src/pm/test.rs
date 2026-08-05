@@ -32,6 +32,10 @@ use ::sys::{
         MessageType,
     },
     mm::Address,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -61,6 +65,42 @@ fn test_mailbox_is_empty_tracks_buffered_messages() -> bool {
     mailbox.send(message);
     if mailbox.is_empty() {
         error!("mailbox reported as empty after sending a message");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that mailbox purge operations report how many messages they remove.
+///
+fn test_mailbox_purge_counts_removed_messages() -> bool {
+    let mut mailbox: Mailbox = Mailbox::default();
+    let tid: ThreadIdentifier = ThreadIdentifier::from(42);
+    let thread_receiver: MessageReceiver = MessageReceiver::new(ProcessIdentifier::KERNEL, tid);
+    let process_receiver: MessageReceiver =
+        MessageReceiver::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
+    for receiver in [thread_receiver, process_receiver] {
+        mailbox.send(Message::new(
+            MessageSender::KERNEL,
+            receiver,
+            MessageType::Ipc,
+            Option::<ErrorCode>::None,
+            [0u8; Message::PAYLOAD_SIZE],
+        ));
+    }
+
+    if mailbox.purge_thread(tid) != 1 {
+        error!("thread-message purge removed an unexpected number of messages");
+        return false;
+    }
+    if mailbox.purge_all() != 1 {
+        error!("whole-mailbox purge removed an unexpected number of messages");
+        return false;
+    }
+    if !mailbox.is_empty() {
+        error!("mailbox remained non-empty after purging every message");
         return false;
     }
     true
@@ -861,6 +901,7 @@ fn test_link_user_pages_rolls_back_on_partial_failure() -> bool {
 pub fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_mailbox_is_empty_tracks_buffered_messages);
+    passed &= run_test!(test_mailbox_purge_counts_removed_messages);
     passed &= run_test!(test_kernel_process_has_no_special_resources);
     passed &= run_test!(test_cow_resolution_creates_private_frame);
     passed &= run_test!(test_cow_resolution_fast_path_when_sole_owner);
