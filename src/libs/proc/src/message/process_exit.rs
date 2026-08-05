@@ -142,3 +142,20 @@ pub fn process_exit_request(pid: ProcessIdentifier) -> Result<Message, Error> {
 
     Ok(ipc_message)
 }
+
+/// Builds a fire-and-forget notification that the calling thread is exiting.
+pub fn thread_exit_notification() -> Message {
+    let process_message: ProcessManagementMessage = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::ThreadExit,
+        [0u8; ProcessManagementMessage::PAYLOAD_SIZE],
+    );
+    let system_message: SystemMessage =
+        SystemMessage::new(SystemMessageHeader::ProcessManagement, process_message.into_bytes());
+    Message::new(
+        MessageSender::KERNEL,
+        MessageReceiver::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+        MessageType::Ipc,
+        None,
+        system_message.into_bytes(),
+    )
+}

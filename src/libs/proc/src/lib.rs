@@ -51,6 +51,7 @@ pub use message::{
     signup_response,
     terminal_access_request,
     terminal_signal_request,
+    thread_exit_notification,
     wait_cancel_request,
     wait_cancel_response,
     wait_request,
