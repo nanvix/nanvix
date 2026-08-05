@@ -27,7 +27,7 @@ use ::sys::{
 };
 
 /// Cancels this thread's parked pipe operation and drains the acknowledgement.
-pub(super) fn cancel_pipe_operation(
+pub(crate) fn cancel_pipe_operation(
     tid: ThreadIdentifier,
     fd: i32,
     operation: PipeOperation,

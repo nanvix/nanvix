@@ -266,9 +266,11 @@ pub const MAX_INLINE_WRITE_DATA: usize =
 
 /// Maximum filename length in a directory entry response.
 ///
-/// The directory-entry data section is `[name_len: u16][is_dir: u8][size: u64][name...]`, so 11
-/// bytes precede the name. Names longer than this are truncated to the inline capacity.
-pub const MAX_DIR_ENTRY_NAME_LEN: usize = Message::PAYLOAD_SIZE - HOSTFS_DATA_START - (2 + 1 + 8);
+/// The directory-entry data section is
+/// `[status: i32][name_len: u16][is_dir: u8][size: u64][name...]`, so 15 bytes precede the name.
+/// Names longer than this use the multipart response format.
+pub const MAX_DIR_ENTRY_NAME_LEN: usize =
+    Message::PAYLOAD_SIZE - HOSTFS_DATA_START - (4 + 2 + 1 + 8);
 
 //==================================================================================================
 // Error Codes

@@ -22,10 +22,14 @@ use crate::error::{
     build_error,
     ResponseContext,
 };
-use ::alloc::collections::{
-    BTreeMap,
-    BTreeSet,
+use ::alloc::{
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
+    vec::Vec,
 };
+use ::core::time::Duration;
 use ::hostfs_api::{
     OperationId,
     OperationIdAllocator,
@@ -39,6 +43,17 @@ use ::sys::{
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
+    },
+    time::SystemTime,
+};
+use ::sysapi::{
+    pthread::{
+        PTHREAD_COND_INITIALIZER,
+        PTHREAD_MUTEX_INITIALIZER,
+    },
+    sys_types::{
+        pthread_cond_t,
+        pthread_mutex_t,
     },
 };
 
@@ -71,11 +86,37 @@ pub(crate) enum PendingOpKind {
     Read {
         /// Number of bytes the caller requested.
         count: usize,
+        /// Guest descriptor whose shared offset advances after delivery.
+        fd: i32,
+        /// Remote descriptor used to reject guest descriptor reuse.
+        remote_fd: i32,
+        /// Virtual offset used for the positional host read.
+        offset: i64,
+        /// Completed host response retained until the caller's pull is ready.
+        response: Option<::hostfs_api::ReadResponse>,
+        /// Error metadata waiting for its empty transfer to be registered.
+        delivery_error: Option<ErrorCode>,
+        /// Number of timed delivery retries already attempted.
+        delivery_retries: u8,
     },
     /// write() — response contains bytes_written count.
-    Write,
+    Write {
+        /// Guest descriptor whose shared offset advances after completion.
+        fd: i32,
+        /// Remote descriptor used to reject guest descriptor reuse.
+        remote_fd: i32,
+        /// Virtual offset used for the positional host write.
+        offset: i64,
+    },
     /// lseek() — response contains the new offset.
-    Seek,
+    Seek {
+        /// Guest descriptor whose virtual offset is updated.
+        fd: i32,
+        /// Remote descriptor used to reject guest descriptor reuse.
+        remote_fd: i32,
+        /// Virtual offset observed when the request was issued.
+        previous_offset: i64,
+    },
     /// fsync/flush — response is a status code.
     Flush,
     /// ftruncate — response is a status code.
@@ -122,6 +163,15 @@ pub(crate) enum PendingOpKind {
     },
 }
 
+fn pending_io_remote_fd(kind: &PendingOpKind) -> Option<i32> {
+    match kind {
+        PendingOpKind::Read { remote_fd, .. }
+        | PendingOpKind::Write { remote_fd, .. }
+        | PendingOpKind::Seek { remote_fd, .. } => Some(*remote_fd),
+        _ => None,
+    }
+}
+
 //==================================================================================================
 // Pending Operation Queue
 //==================================================================================================
@@ -130,6 +180,22 @@ pub(crate) enum PendingOpKind {
 ///
 /// This prevents unbounded growth if hostfsd is unavailable or unresponsive.
 const MAX_PENDING_OPS: usize = 64;
+
+/// Maximum number of timed attempts to deliver a completed HostFS read.
+const MAX_READ_DELIVERY_RETRIES: u8 = 6;
+
+/// Timeout for the first completed-read delivery retry.
+const READ_DELIVERY_RETRY_BASE_DELAY: Duration = Duration::from_millis(5);
+
+/// Completed HostFS reads waiting for their next delivery attempt.
+static READ_RETRY_SCHEDULE: ::spin::Mutex<BTreeMap<OperationId, SystemTime>> =
+    ::spin::Mutex::new(BTreeMap::new());
+
+/// Wakes the retry scheduler when a new deadline is inserted.
+static READ_RETRY_CONDITION: pthread_cond_t = PTHREAD_COND_INITIALIZER;
+
+/// Coordinates deadline insertion with the scheduler's condition wait.
+static mut READ_RETRY_MUTEX: pthread_mutex_t = PTHREAD_MUTEX_INITIALIZER;
 
 //==================================================================================================
 // Synthetic stat(2) Constants
@@ -189,6 +255,8 @@ pub(crate) struct PendingQueue {
     ops: BTreeMap<OperationId, PendingOp>,
     abandoned_ops: BTreeSet<OperationId>,
     abandoned_opens: BTreeSet<OperationId>,
+    abandoned_io: BTreeMap<OperationId, i32>,
+    read_retries: BTreeSet<OperationId>,
     id_alloc: OperationIdAllocator,
 }
 
@@ -199,8 +267,21 @@ impl PendingQueue {
             ops: BTreeMap::new(),
             abandoned_ops: BTreeSet::new(),
             abandoned_opens: BTreeSet::new(),
+            abandoned_io: BTreeMap::new(),
+            read_retries: BTreeSet::new(),
             id_alloc: OperationIdAllocator::new(),
         }
+    }
+
+    /// Returns whether an offset-sensitive operation is active for `remote_fd`.
+    pub fn has_active_io(&self, remote_fd: i32) -> bool {
+        self.ops
+            .values()
+            .any(|op| pending_io_remote_fd(&op.kind) == Some(remote_fd))
+            || self
+                .abandoned_io
+                .values()
+                .any(|active| *active == remote_fd)
     }
 
     /// Allocates the next unique operation identifier.
@@ -235,6 +316,8 @@ impl PendingQueue {
 
     /// Removes and returns the pending operation associated with the given `op_id`.
     pub fn remove(&mut self, op_id: OperationId) -> Option<PendingOp> {
+        self.read_retries.remove(&op_id);
+        cancel_scheduled_read_retry(op_id);
         self.ops.remove(&op_id)
     }
 
@@ -244,6 +327,84 @@ impl PendingQueue {
     /// in place across IKC responses without removing the op until the sweep completes.
     pub fn get_mut(&mut self, op_id: OperationId) -> Option<&mut PendingOp> {
         self.ops.get_mut(&op_id)
+    }
+
+    /// Retains a completed read and schedules another nonblocking delivery attempt.
+    pub fn defer_read_delivery(&mut self, op_id: OperationId, op: PendingOp) {
+        let delay: Duration = match &op.kind {
+            PendingOpKind::Read {
+                delivery_retries, ..
+            } => {
+                READ_DELIVERY_RETRY_BASE_DELAY.saturating_mul(1u32 << u32::from(*delivery_retries))
+            },
+            _ => {
+                ::syslog::error!(
+                    "cannot defer delivery for a non-read HostFS operation (op_id={})",
+                    op_id
+                );
+                cancel_pending_op(op, ErrorCode::IoErr);
+                return;
+            },
+        };
+        self.ops.insert(op_id, op);
+        if !self.read_retries.insert(op_id) {
+            return;
+        }
+        if let Err(error) = schedule_read_retry(op_id, delay) {
+            self.read_retries.remove(&op_id);
+            if let Some(op) = self.ops.remove(&op_id) {
+                ::syslog::error!(
+                    "failed to schedule HostFS read retry (op_id={}, error={:?})",
+                    op_id,
+                    error
+                );
+                cancel_pending_op(op, ErrorCode::IoErr);
+            }
+        }
+    }
+
+    /// Retries one retained HostFS read delivery.
+    pub fn retry_read_delivery(&mut self, op_id: OperationId) {
+        self.read_retries.remove(&op_id);
+        let Some(mut op): Option<PendingOp> = self.ops.remove(&op_id) else {
+            return;
+        };
+        ::vfs::fd::set_current_process(op.source_pid);
+        let retries_exhausted: bool = match &mut op.kind {
+            PendingOpKind::Read {
+                delivery_retries, ..
+            } if *delivery_retries < MAX_READ_DELIVERY_RETRIES => {
+                *delivery_retries += 1;
+                *delivery_retries == MAX_READ_DELIVERY_RETRIES
+            },
+            PendingOpKind::Read { .. } => true,
+            _ => {
+                ::syslog::error!(
+                    "HostFS read retry references a non-read operation (op_id={})",
+                    op_id
+                );
+                cancel_pending_op(op, ErrorCode::IoErr);
+                return;
+            },
+        };
+        if complete_read(&op) {
+            return;
+        }
+        if retries_exhausted {
+            ::syslog::warn!(
+                "HostFS read delivery retries exhausted (op_id={}, pid={:?}, tid={:?})",
+                op_id,
+                op.source_pid,
+                op.source_tid
+            );
+            if let PendingOpKind::Read { delivery_error, .. } = &mut op.kind {
+                *delivery_error = Some(ErrorCode::OperationTimedOut);
+            }
+            if complete_read(&op) {
+                return;
+            }
+        }
+        self.defer_read_delivery(op_id, op);
     }
 
     /// Cancels one exact pending hostfs read and retains its ID until the late response drains.
@@ -261,11 +422,34 @@ impl PendingQueue {
             .then_some(*op_id)
         });
         if let Some(op_id) = op_id {
-            self.ops.remove(&op_id);
-            self.abandoned_ops.insert(op_id);
+            self.read_retries.remove(&op_id);
+            cancel_scheduled_read_retry(op_id);
+            if let Some(op) = self.ops.remove(&op_id) {
+                let response_pending: bool =
+                    matches!(&op.kind, PendingOpKind::Read { response: None, .. });
+                if response_pending {
+                    if let Some(remote_fd) = pending_io_remote_fd(&op.kind) {
+                        self.abandoned_io.insert(op_id, remote_fd);
+                    }
+                    self.abandoned_ops.insert(op_id);
+                }
+            }
             true
         } else {
-            false
+            match ::sys::kcall::ipc::__kcall_cancel_tagged_deferred_push(pid, tid, request_id) {
+                Ok(()) => true,
+                Err(error) if error.code == ErrorCode::NoSuchEntry => false,
+                Err(error) => {
+                    ::syslog::warn!(
+                        "failed to cancel deferred HostFS read error (pid={:?}, tid={:?}, \
+                         error={:?})",
+                        pid,
+                        tid,
+                        error
+                    );
+                    false
+                },
+            }
         }
     }
 
@@ -277,10 +461,24 @@ impl PendingQueue {
             .filter_map(|(op_id, op)| (op.source_pid == pid).then_some(*op_id))
             .collect();
         for op_id in op_ids {
+            self.read_retries.remove(&op_id);
+            cancel_scheduled_read_retry(op_id);
             if let Some(op) = self.ops.remove(&op_id) {
-                self.abandoned_ops.insert(op_id);
-                if matches!(op.kind, PendingOpKind::Open { .. }) {
-                    self.abandoned_opens.insert(op_id);
+                let response_pending: bool = !matches!(
+                    &op.kind,
+                    PendingOpKind::Read {
+                        response: Some(_),
+                        ..
+                    }
+                );
+                if response_pending {
+                    self.abandoned_ops.insert(op_id);
+                    if matches!(&op.kind, PendingOpKind::Open { .. }) {
+                        self.abandoned_opens.insert(op_id);
+                    }
+                    if let Some(remote_fd) = pending_io_remote_fd(&op.kind) {
+                        self.abandoned_io.insert(op_id, remote_fd);
+                    }
                 }
             }
         }
@@ -297,6 +495,7 @@ impl PendingQueue {
         if !self.abandoned_ops.remove(&op_id) {
             return false;
         }
+        self.abandoned_io.remove(&op_id);
         if !self.abandoned_opens.remove(&op_id) {
             return true;
         }
@@ -337,6 +536,7 @@ impl PendingQueue {
             return false;
         }
         self.abandoned_opens.remove(&op_id);
+        self.abandoned_io.remove(&op_id);
         true
     }
 
@@ -352,13 +552,14 @@ impl PendingQueue {
     /// callers must be unblocked with an error.
     #[allow(dead_code)]
     pub fn drain_with_error(&mut self) {
+        self.read_retries.clear();
+        READ_RETRY_SCHEDULE.lock().clear();
         for (_, op) in core::mem::take(&mut self.ops) {
             ::syslog::error!(
                 "hostfs pending queue drain: failing pending op for tid={:?}",
                 op.source_tid
             );
-            op.response_context
-                .send(&build_error(op.source_tid, ErrorCode::IoErr));
+            cancel_pending_op(op, ErrorCode::IoErr);
         }
     }
 }
@@ -367,7 +568,61 @@ impl PendingQueue {
 /// payload. Intended for recovery paths (e.g., a long-response stream is discarded
 /// due to assembler desync) where the op must be cancelled rather than completed.
 pub(crate) fn cancel_pending_op(op: PendingOp, code: ErrorCode) {
+    if matches!(op.kind, PendingOpKind::Read { .. }) {
+        if let Err(error) = fail_pending_read(&op, code) {
+            if !matches!(error.code, ErrorCode::NoSuchEntry | ErrorCode::NoSuchProcess) {
+                ::syslog::warn!(
+                    "failed to deliver HostFS read cancellation (pid={:?}, tid={:?}, error={:?})",
+                    op.source_pid,
+                    op.source_tid,
+                    error
+                );
+            }
+        }
+        return;
+    }
     op.response_context.send(&build_error(op.source_tid, code));
+}
+
+/// Builds immediate read-error metadata only after guaranteeing its empty bulk transfer.
+pub(crate) fn prepare_read_error(
+    response_context: ResponseContext,
+    code: ErrorCode,
+) -> Option<Message> {
+    match register_deferred_empty(response_context) {
+        Ok(()) => Some(build_error(response_context.source_tid(), code)),
+        Err(error) if matches!(error.code, ErrorCode::NoSuchEntry | ErrorCode::NoSuchProcess) => {
+            None
+        },
+        Err(error) => {
+            ::syslog::error!(
+                "failed to prepare deferred read error (pid={:?}, tid={:?}, error={:?})",
+                response_context.source_pid(),
+                response_context.source_tid(),
+                error
+            );
+            None
+        },
+    }
+}
+
+fn register_deferred_empty(response_context: ResponseContext) -> Result<(), ::sys::error::Error> {
+    match ::sys::kcall::ipc::__kcall_push_tagged_deferred(
+        response_context.source_pid(),
+        response_context.source_tid(),
+        response_context.request_id(),
+    ) {
+        Ok(()) => Ok(()),
+        Err(error) if error.code == ErrorCode::OperationAlreadyInProgress => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+/// Registers an empty transfer for a current or future pull, then sends its error metadata.
+fn fail_pending_read(op: &PendingOp, code: ErrorCode) -> Result<(), ::sys::error::Error> {
+    register_deferred_empty(op.response_context)?;
+    op.response_context.send(&build_error(op.source_tid, code));
+    Ok(())
 }
 
 //==================================================================================================
@@ -380,9 +635,9 @@ pub(crate) fn cancel_pending_op(op: PendingOp, code: ErrorCode) {
 /// Validates that the response header matches the expected operation to detect
 /// protocol violations. On mismatch, fails only the affected operation.
 pub(crate) fn complete_pending_op(
-    pending: PendingOp,
+    mut pending: PendingOp,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
-) {
+) -> Option<PendingOp> {
     let response_context: ResponseContext = pending.response_context;
     // Bind the VFS to the requesting process so that descriptor allocation (e.g. for a completed
     // open) and directory-cursor updates land in its per-process state. `source_pid` was copied
@@ -401,28 +656,44 @@ pub(crate) fn complete_pending_op(
     // Validate that the response header matches the expected operation kind.
     if !validate_response_header(&pending.kind, response_payload) {
         ::syslog::error!("hostfs pending op: response header does not match expected operation");
-        // For Read operations, the caller is blocked waiting for a push before consuming
-        // the IPC response. Send an empty push so the caller can proceed and see the error.
-        if let PendingOpKind::Read { .. } = &pending.kind {
-            if let Err(e) =
-                ::sys::kcall::ipc::__kcall_push(pending.source_pid, pending.source_tid, &[])
-            {
-                ::syslog::error!(
-                    "hostfs pending op: failed to push empty response for desync case (error={:?})",
-                    e
-                );
-            }
+        if let PendingOpKind::Read { delivery_error, .. } = &mut pending.kind {
+            *delivery_error = Some(ErrorCode::IoErr);
+            return if complete_read(&pending) {
+                None
+            } else {
+                Some(pending)
+            };
         }
         response_context.send(&build_error(pending.source_tid, ErrorCode::IoErr));
-        return;
+        return None;
+    }
+
+    if let PendingOpKind::Read { response, .. } = &mut pending.kind {
+        *response = Some(::hostfs_api::ReadResponse::decode(response_payload));
+        return if complete_read(&pending) {
+            None
+        } else {
+            Some(pending)
+        };
     }
 
     match pending.kind {
         PendingOpKind::Open { path } => complete_open(response_context, response_payload, path),
         PendingOpKind::Close => complete_close(response_context, response_payload),
-        PendingOpKind::Read { count } => complete_read(response_context, count, response_payload),
-        PendingOpKind::Write => complete_write(response_context, response_payload),
-        PendingOpKind::Seek => complete_seek(response_context, response_payload),
+        PendingOpKind::Read { .. } => {
+            ::syslog::error!("HostFS read reached non-read completion path");
+            response_context.send(&build_error(pending.source_tid, ErrorCode::IoErr));
+        },
+        PendingOpKind::Write {
+            fd,
+            remote_fd,
+            offset,
+        } => complete_write(response_context, fd, remote_fd, offset, response_payload),
+        PendingOpKind::Seek {
+            fd,
+            remote_fd,
+            previous_offset,
+        } => complete_seek(response_context, fd, remote_fd, previous_offset, response_payload),
         PendingOpKind::Flush => complete_status(response_context, response_payload, OpGroup::Flush),
         PendingOpKind::Truncate => {
             complete_status(response_context, response_payload, OpGroup::Truncate)
@@ -453,6 +724,7 @@ pub(crate) fn complete_pending_op(
             response_context.send(&build_error(pending.source_tid, ErrorCode::IoErr));
         },
     }
+    None
 }
 
 /// Outcome of advancing a getdents sweep with one hostfs readdir response.
@@ -466,6 +738,8 @@ pub(crate) enum GetdentsStep {
     },
     /// The sweep is complete; call [`finish_getdents`] to send the response.
     Done,
+    /// The host operation failed; cancel the sweep with this error.
+    Failed(ErrorCode),
 }
 
 /// Appends one directory entry to a getdents sweep and reports whether the sweep is done.
@@ -551,6 +825,10 @@ pub(crate) fn step_getdents(
 ) -> GetdentsStep {
     let entry: ::hostfs_api::ReadDirEntry = ::hostfs_api::ReadDirEntry::decode(response_payload);
 
+    if entry.status < 0 {
+        return GetdentsStep::Failed(hostfs_error_to_code(entry.status));
+    }
+
     // A zero-length name marks the end of the directory.
     if entry.name_len == 0 {
         return GetdentsStep::Done;
@@ -583,6 +861,8 @@ pub(crate) fn finish_getdents(op: PendingOp) {
     else {
         unreachable!("finish_getdents invoked with non-Getdents pending op");
     };
+
+    ::vfs::fd::set_current_process(op.source_pid);
 
     // Persist the iteration cursor so the next getdents call resumes where this left off.
     // Guard against FD reuse: if the guest FD was closed and re-bound to a different host
@@ -633,6 +913,11 @@ pub(crate) fn drive_getdents(queue: &mut PendingQueue, op_id: OperationId, step:
                 finish_getdents(op);
             }
         },
+        GetdentsStep::Failed(code) => {
+            if let Some(op) = queue.remove(op_id) {
+                cancel_pending_op(op, code);
+            }
+        },
     }
 }
 
@@ -665,6 +950,14 @@ impl LongResponseStream {
             },
         };
         body_size.div_ceil(::syscall::message::SystemCallMessagePart::PAYLOAD_SIZE)
+    }
+}
+
+fn fail_response(queue: &mut PendingQueue, op_id: OperationId) {
+    if let Some(op) = queue.remove(op_id) {
+        cancel_pending_op(op, ErrorCode::IoErr);
+    } else {
+        queue.discard_abandoned_operation(op_id);
     }
 }
 
@@ -701,9 +994,7 @@ pub(crate) fn accumulate_response_part(
             total_parts,
             max_parts
         );
-        if let Some(op) = queue.remove(outer_op_id) {
-            cancel_pending_op(op, ErrorCode::IoErr);
-        }
+        fail_response(queue, outer_op_id);
         return None;
     }
 
@@ -716,9 +1007,7 @@ pub(crate) fn accumulate_response_part(
                 label,
                 part.payload_size
             );
-            if let Some(op) = queue.remove(outer_op_id) {
-                cancel_pending_op(op, ErrorCode::IoErr);
-            }
+            fail_response(queue, outer_op_id);
             return None;
         }
         let op_id: OperationId = OperationId::from_le_bytes([
@@ -734,9 +1023,7 @@ pub(crate) fn accumulate_response_part(
                 outer_op_id,
                 op_id
             );
-            if let Some(op) = queue.remove(outer_op_id) {
-                cancel_pending_op(op, ErrorCode::IoErr);
-            }
+            fail_response(queue, outer_op_id);
             return None;
         }
         if let Some((_, stale_op_id)) = slot.take() {
@@ -746,9 +1033,7 @@ pub(crate) fn accumulate_response_part(
                 label,
                 stale_op_id
             );
-            if let Some(op) = queue.remove(stale_op_id) {
-                cancel_pending_op(op, ErrorCode::IoErr);
-            }
+            fail_response(queue, stale_op_id);
         }
         let capacity: usize = total_parts;
         match ::syscall::message::SystemCallLongMessage::new(capacity) {
@@ -766,9 +1051,7 @@ pub(crate) fn accumulate_response_part(
                     e
                 );
                 *slot = None;
-                if let Some(op) = queue.remove(op_id) {
-                    cancel_pending_op(op, ErrorCode::IoErr);
-                }
+                fail_response(queue, op_id);
                 return None;
             },
         }
@@ -785,12 +1068,8 @@ pub(crate) fn accumulate_response_part(
             active_op_id,
             outer_op_id
         );
-        if let Some(op) = queue.remove(active_op_id) {
-            cancel_pending_op(op, ErrorCode::IoErr);
-        }
-        if let Some(op) = queue.remove(outer_op_id) {
-            cancel_pending_op(op, ErrorCode::IoErr);
-        }
+        fail_response(queue, active_op_id);
+        fail_response(queue, outer_op_id);
         return None;
     }
 
@@ -804,9 +1083,7 @@ pub(crate) fn accumulate_response_part(
                 e
             );
             *slot = None;
-            if let Some(op) = queue.remove(op_id_copy) {
-                cancel_pending_op(op, ErrorCode::IoErr);
-            }
+            fail_response(queue, op_id_copy);
             return None;
         }
         if asm.is_complete() {
@@ -828,9 +1105,7 @@ pub(crate) fn accumulate_response_part(
             label,
             pn
         );
-        if let Some(op) = queue.remove(outer_op_id) {
-            cancel_pending_op(op, ErrorCode::IoErr);
-        }
+        fail_response(queue, outer_op_id);
         None
     }
 }
@@ -852,8 +1127,8 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
         (PendingOpKind::Open { .. }, SystemCallMessageHeader::HostFsOpenResponse)
             | (PendingOpKind::Close, SystemCallMessageHeader::HostFsCloseResponse)
             | (PendingOpKind::Read { .. }, SystemCallMessageHeader::HostFsReadResponse)
-            | (PendingOpKind::Write, SystemCallMessageHeader::HostFsWriteResponse)
-            | (PendingOpKind::Seek, SystemCallMessageHeader::HostFsLseekResponse)
+            | (PendingOpKind::Write { .. }, SystemCallMessageHeader::HostFsWriteResponse)
+            | (PendingOpKind::Seek { .. }, SystemCallMessageHeader::HostFsLseekResponse)
             | (PendingOpKind::Flush, SystemCallMessageHeader::HostFsFlushResponse)
             | (PendingOpKind::Truncate, SystemCallMessageHeader::HostFsTruncateResponse)
             | (PendingOpKind::Mkdir, SystemCallMessageHeader::HostFsMkdirResponse)
@@ -933,27 +1208,81 @@ fn complete_close(
     response_context.send(&msg);
 }
 
-fn complete_read(
-    response_context: ResponseContext,
-    count: usize,
-    response_payload: &[u8; Message::PAYLOAD_SIZE],
-) {
+fn complete_read(pending: &PendingOp) -> bool {
     use ::syscall::unistd::message::ReadResponse as SyscallReadResponse;
 
+    let PendingOpKind::Read {
+        count,
+        fd,
+        remote_fd,
+        offset,
+        response,
+        delivery_error,
+        ..
+    } = &pending.kind
+    else {
+        ::syslog::error!("HostFS read delivery is missing its response");
+        return true;
+    };
+    let response_context: ResponseContext = pending.response_context;
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source_tid: ThreadIdentifier = response_context.source_tid();
-    let resp: ::hostfs_api::ReadResponse = ::hostfs_api::ReadResponse::decode(response_payload);
-    if resp.bytes_read < 0 {
-        let _ = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[]);
-        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.bytes_read)));
-        return;
+    if let Some(code) = *delivery_error {
+        return match fail_pending_read(pending, code) {
+            Ok(()) => true,
+            Err(error)
+                if matches!(error.code, ErrorCode::NoSuchEntry | ErrorCode::NoSuchProcess) =>
+            {
+                true
+            },
+            Err(error) => {
+                ::syslog::warn!(
+                    "HostFS read error delivery is not ready (pid={:?}, tid={:?}, error={:?})",
+                    source_pid,
+                    source_tid,
+                    error
+                );
+                false
+            },
+        };
     }
-    let n: usize = (resp.bytes_read as usize).min(count);
-    if let Err(e) = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &resp.data[..n]) {
+    let Some(resp) = response else {
+        ::syslog::error!("HostFS read delivery is missing its response");
+        return true;
+    };
+    if resp.bytes_read < 0 {
+        match ::sys::kcall::ipc::__kcall_push_tagged_timed(
+            source_pid,
+            source_tid,
+            &[],
+            response_context.request_id(),
+            Some(Duration::ZERO),
+        ) {
+            Ok(()) => {},
+            Err(error) if error.code == ErrorCode::OperationTimedOut => return false,
+            Err(error) => {
+                ::syslog::warn!("HostFS read error delivery failed (error={:?})", error);
+            },
+        }
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.bytes_read)));
+        return true;
+    }
+    let n: usize = (resp.bytes_read as usize).min(*count);
+    if let Err(e) = ::sys::kcall::ipc::__kcall_push_tagged_timed(
+        source_pid,
+        source_tid,
+        &resp.data[..n],
+        response_context.request_id(),
+        Some(Duration::ZERO),
+    ) {
+        if e.code == ErrorCode::OperationTimedOut {
+            return false;
+        }
         ::syslog::error!("hostfs read complete: push failed (error={:?})", e);
         response_context.send(&build_error(source_tid, ErrorCode::IoErr));
-        return;
+        return true;
     }
+    update_hostfs_offset(*fd, *remote_fd, *offset, offset.saturating_add(n as i64));
     let msg: Message = SyscallReadResponse::build(
         source_tid,
         n as i32,
@@ -962,10 +1291,167 @@ fn complete_read(
         MessageType::Ipc,
     );
     response_context.send(&msg);
+    true
+}
+
+fn schedule_read_retry(op_id: OperationId, delay: Duration) -> Result<(), ::sys::error::Error> {
+    let mut now: SystemTime = SystemTime::default();
+    ::sys::kcall::pm::__kcall_gettime(&mut now)?;
+    let deadline: SystemTime = now.checked_add_duration(&delay).ok_or_else(|| {
+        ::sys::error::Error::new(ErrorCode::ValueOutOfRange, "HostFS retry deadline overflow")
+    })?;
+
+    lock_read_retry_schedule()?;
+    READ_RETRY_SCHEDULE.lock().insert(op_id, deadline);
+    let signal_result: Result<(), ::sys::error::Error> =
+        ::syscall::pthread::pthread_cond_signal(&READ_RETRY_CONDITION);
+    if signal_result.is_err() {
+        READ_RETRY_SCHEDULE.lock().remove(&op_id);
+    }
+    let unlock_result: Result<(), ::sys::error::Error> = unlock_read_retry_schedule();
+    signal_result?;
+    unlock_result
+}
+
+fn cancel_scheduled_read_retry(op_id: OperationId) {
+    READ_RETRY_SCHEDULE.lock().remove(&op_id);
+}
+
+fn lock_read_retry_schedule() -> Result<(), ::sys::error::Error> {
+    // SAFETY: every reference to this static mutex is confined to the pthread synchronization
+    // API; no caller accesses its storage directly.
+    unsafe {
+        ::syscall::pthread::pthread_mutex_lock(&mut *core::ptr::addr_of_mut!(READ_RETRY_MUTEX))
+    }
+}
+
+fn unlock_read_retry_schedule() -> Result<(), ::sys::error::Error> {
+    // SAFETY: this is paired with `lock_read_retry_schedule()` on the calling thread.
+    unsafe {
+        ::syscall::pthread::pthread_mutex_unlock(&mut *core::ptr::addr_of_mut!(READ_RETRY_MUTEX))
+    }
+}
+
+/// Runs the timer thread that converts due HostFS read deadlines into main-loop messages.
+pub(crate) extern "C" fn read_retry_scheduler(main_tid_raw: usize) -> usize {
+    let main_tid: ThreadIdentifier = match ThreadIdentifier::try_from(main_tid_raw) {
+        Ok(tid) => tid,
+        Err(error) => {
+            ::syslog::error!(
+                "HostFS read retry scheduler has invalid main TID (error={:?})",
+                error
+            );
+            return 1;
+        },
+    };
+
+    loop {
+        if let Err(error) = lock_read_retry_schedule() {
+            ::syslog::error!("HostFS read retry scheduler lock failed (error={:?})", error);
+            return 1;
+        }
+
+        let deadline: Option<SystemTime> = READ_RETRY_SCHEDULE.lock().values().min().copied();
+        // SAFETY: the scheduler holds `READ_RETRY_MUTEX`; the condition wait atomically releases
+        // it while blocked and reacquires it before returning.
+        let wait_result: Result<(), ::sys::error::Error> = unsafe {
+            ::syscall::pthread::pthread_cond_timedwait(
+                &READ_RETRY_CONDITION,
+                &*core::ptr::addr_of!(READ_RETRY_MUTEX),
+                deadline,
+            )
+        };
+        if let Err(error) = wait_result {
+            if error.code != ErrorCode::OperationTimedOut {
+                ::syslog::warn!("HostFS read retry scheduler wait failed (error={:?})", error);
+            }
+        }
+
+        if READ_RETRY_SCHEDULE.lock().is_empty() {
+            if let Err(error) = unlock_read_retry_schedule() {
+                ::syslog::error!("HostFS read retry scheduler unlock failed (error={:?})", error);
+                return 1;
+            }
+            continue;
+        }
+
+        let mut now: SystemTime = SystemTime::default();
+        if let Err(error) = ::sys::kcall::pm::__kcall_gettime(&mut now) {
+            ::syslog::error!("HostFS read retry scheduler clock failed (error={:?})", error);
+            if let Err(unlock_error) = unlock_read_retry_schedule() {
+                ::syslog::error!(
+                    "HostFS read retry scheduler unlock failed (error={:?})",
+                    unlock_error
+                );
+                return 1;
+            }
+            continue;
+        }
+
+        let due: Vec<OperationId> = {
+            let mut schedule = READ_RETRY_SCHEDULE.lock();
+            let due: Vec<OperationId> = schedule
+                .iter()
+                .filter_map(|(op_id, deadline)| (now >= *deadline).then_some(*op_id))
+                .collect();
+            for op_id in &due {
+                schedule.remove(op_id);
+            }
+            due
+        };
+
+        if let Err(error) = unlock_read_retry_schedule() {
+            ::syslog::error!("HostFS read retry scheduler unlock failed (error={:?})", error);
+            return 1;
+        }
+
+        for op_id in due {
+            if let Err(error) = send_read_retry(op_id, main_tid) {
+                ::syslog::error!(
+                    "HostFS read retry scheduler send failed (op_id={}, error={:?})",
+                    op_id,
+                    error
+                );
+                if let Err(schedule_error) =
+                    schedule_read_retry(op_id, READ_DELIVERY_RETRY_BASE_DELAY)
+                {
+                    ::syslog::error!(
+                        "HostFS read retry scheduler requeue failed (op_id={}, error={:?})",
+                        op_id,
+                        schedule_error
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn send_read_retry(
+    op_id: OperationId,
+    main_tid: ThreadIdentifier,
+) -> Result<(), ::sys::error::Error> {
+    let mut payload: [u8; ::syscall::SystemCallMessage::PAYLOAD_SIZE] =
+        [0u8; ::syscall::SystemCallMessage::PAYLOAD_SIZE];
+    payload[..OperationId::SERIALIZED_SIZE].copy_from_slice(&op_id.to_le_bytes());
+    let request: ::syscall::SystemCallMessage = ::syscall::SystemCallMessage::new(
+        ::syscall::SystemCallMessageHeader::HostFsReadRetry,
+        payload,
+    );
+    let message: Message = Message::new(
+        ::sys::ipc::MessageSender::VFSD,
+        ::sys::ipc::MessageReceiver::new(ProcessIdentifier::VFSD, main_tid),
+        MessageType::Ipc,
+        None,
+        request.into_bytes(),
+    );
+    ::sys::kcall::ipc::__kcall_send(&message)
 }
 
 fn complete_write(
     response_context: ResponseContext,
+    fd: i32,
+    remote_fd: i32,
+    offset: i64,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
 ) {
     use ::syscall::unistd::message::WriteResponse as SyscallWriteResponse;
@@ -976,6 +1462,12 @@ fn complete_write(
         response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.bytes_written)));
         return;
     }
+    let next_offset: i64 = if resp.offset >= 0 {
+        resp.offset
+    } else {
+        offset.saturating_add(resp.bytes_written as i64)
+    };
+    update_hostfs_offset(fd, remote_fd, offset, next_offset);
     let msg: Message = SyscallWriteResponse::build(
         source_tid,
         resp.bytes_written,
@@ -987,6 +1479,9 @@ fn complete_write(
 
 fn complete_seek(
     response_context: ResponseContext,
+    fd: i32,
+    remote_fd: i32,
+    previous_offset: i64,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
 ) {
     use ::syscall::unistd::message::SeekResponse;
@@ -997,9 +1492,26 @@ fn complete_seek(
         response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.offset as i32)));
         return;
     }
+    update_hostfs_offset(fd, remote_fd, previous_offset, resp.offset);
     let msg: Message =
         SeekResponse::build(source_tid, resp.offset, ProcessIdentifier::VFSD, MessageType::Ipc);
     response_context.send(&msg);
+}
+
+fn update_hostfs_offset(fd: i32, remote_fd: i32, expected: i64, next: i64) {
+    use ::sysapi::unistd::file_seek::{
+        SEEK_CUR,
+        SEEK_SET,
+    };
+
+    if ::vfs::fd::vfs_hostfs_remote_fd(fd) != Some(remote_fd)
+        || ::vfs::fd::vfs_lseek(fd, 0, SEEK_CUR) != Ok(expected)
+    {
+        return;
+    }
+    if let Err(error) = ::vfs::fd::vfs_lseek(fd, next, SEEK_SET) {
+        ::syslog::warn!("failed to update hostfs virtual offset (fd={}, error={:?})", fd, error);
+    }
 }
 
 /// Groups of operations that share the same "decode status code, send success/error" pattern.
@@ -1176,11 +1688,10 @@ pub(crate) fn complete_readlink_long(pending: PendingOp, body: &[u8]) {
     let response_context: ResponseContext = pending.response_context;
     let source_tid: ThreadIdentifier = pending.source_tid;
 
-    // Caller is responsible for routing only `Readlink` ops here; main.rs dispatches
-    // long readlink responses via the dedicated assembler, and no other pending kind
-    // produces a multi-part response in the current protocol.
     let PendingOpKind::Readlink { bufsiz } = pending.kind else {
-        unreachable!("complete_readlink_long invoked with non-Readlink pending op");
+        ::syslog::error!("complete_readlink_long: pending operation is not readlink");
+        response_context.send(&build_error(source_tid, ErrorCode::IoErr));
+        return;
     };
 
     let resp: ::hostfs_api::long_msg::LongReadlinkResponse<'_> =

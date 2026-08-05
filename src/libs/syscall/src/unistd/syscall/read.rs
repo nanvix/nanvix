@@ -87,6 +87,13 @@ fn read_chunk(
     chunk: &mut [u8],
     backend: ReadBackend,
 ) -> Result<c_size_t, Error> {
+    let signal_mask: Option<crate::rpc::SignalMaskGuard> =
+        if backend.pull_pid == ProcessIdentifier::KERNEL {
+            None
+        } else {
+            Some(crate::rpc::SignalMaskGuard::block_all()?)
+        };
+
     // Send metadata-only ReadRequest via IPC message.
     let mut request: Message = ReadRequest::build(
         tid,
@@ -99,26 +106,41 @@ fn read_chunk(
 
     // Pull data via data chunk transfer.
     let mut interrupted: Option<Error> = None;
-    let bytes_pulled: Option<usize> =
-        match ::sys::kcall::ipc::__kcall_pull(backend.pull_pid, backend.pull_tid, chunk) {
-            Ok(bytes_pulled) => Some(bytes_pulled),
-            Err(error) if error.code == ErrorCode::Interrupted => {
-                let cancelled: bool = match backend.cancellation {
-                    ReadCancellation::None => return Err(error),
-                    ReadCancellation::Console => cancel_console_read(tid, token.identifier())?,
-                    ReadCancellation::Pipe => {
-                        cancel_pipe_operation(tid, fd, PipeOperation::Read, token.identifier())?
-                            .is_some()
-                    },
-                };
-                if cancelled {
-                    return Err(error);
-                }
-                interrupted = Some(error);
-                None
-            },
-            Err(error) => return Err(error),
-        };
+    let pull_result: Result<usize, Error> = match signal_mask.as_ref() {
+        Some(signal_mask) => ::sys::kcall::ipc::__kcall_pull_tagged_restoring_signals(
+            backend.pull_pid,
+            backend.pull_tid,
+            chunk,
+            token.identifier(),
+            signal_mask.previous(),
+        ),
+        None => ::sys::kcall::ipc::__kcall_pull_tagged(
+            backend.pull_pid,
+            backend.pull_tid,
+            chunk,
+            token.identifier(),
+        ),
+    };
+    drop(signal_mask);
+    let bytes_pulled: Option<usize> = match pull_result {
+        Ok(bytes_pulled) => Some(bytes_pulled),
+        Err(error) if error.code == ErrorCode::Interrupted => {
+            let cancelled: bool = match backend.cancellation {
+                ReadCancellation::None => return Err(error),
+                ReadCancellation::Console => cancel_console_read(tid, token.identifier())?,
+                ReadCancellation::Pipe => {
+                    cancel_pipe_operation(tid, fd, PipeOperation::Read, token.identifier())?
+                        .is_some()
+                },
+            };
+            if cancelled {
+                return Err(error);
+            }
+            interrupted = Some(error);
+            None
+        },
+        Err(error) => return Err(error),
+    };
 
     // Receive response metadata (count, status). Once the bulk transfer completed, always drain the
     // matching response so a caught signal cannot leave stale metadata in this thread's mailbox.
@@ -371,7 +393,14 @@ fn read_ipc(
             page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &mut [u8] = &mut buffer[offset..offset + chunk_size];
 
-        let count: c_size_t = read_chunk(tid, fd, chunk, backend)?;
+        let count: c_size_t = loop {
+            match read_chunk(tid, fd, chunk, backend) {
+                Err(error) if error.code == ErrorCode::OperationAlreadyInProgress => {
+                    ::sys::kcall::sched::__kcall_sched_yield()?;
+                },
+                result => break result?,
+            }
+        };
 
         // EOF or zero-length read.
         if count == 0 {

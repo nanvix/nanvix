@@ -2459,6 +2459,10 @@ fn test_interleaved_pending_order() -> Result<(), Error> {
 /// Payload used by the timeout tests.
 const TIMEOUT_PAYLOAD: [u8; 8] = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
 
+/// Correlation tags used to verify that endpoint-equal rendezvous operations remain distinct.
+const MATCHING_TAG: ::sys::ipc::RequestIdentifier = ::sys::ipc::RequestIdentifier::from_raw(7);
+const WRONG_TAG: ::sys::ipc::RequestIdentifier = ::sys::ipc::RequestIdentifier::from_raw(8);
+
 /// Finite timeout used by the "timeout fires" tests. Long enough to prove the caller actually
 /// blocked and was woken by the timer, yet short enough to keep the test fast.
 const TIMEOUT_FIRES_DELAY: Duration = Duration::from_millis(50);
@@ -2503,6 +2507,19 @@ extern "C" fn pusher_child_timeout(_arg: usize) -> usize {
     };
 
     match ipc::__kcall_push(pid, main_tid, &TIMEOUT_PAYLOAD) {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+
+/// Pushes the timeout payload with [`MATCHING_TAG`] until the main thread pulls it.
+extern "C" fn pusher_child_tagged(_arg: usize) -> usize {
+    let (pid, main_tid): (ProcessIdentifier, ThreadIdentifier) = match load_parent_ids() {
+        Ok(ids) => ids,
+        Err(()) => return 1,
+    };
+
+    match ipc::__kcall_push_tagged(pid, main_tid, &TIMEOUT_PAYLOAD, MATCHING_TAG) {
         Ok(()) => 0,
         Err(_) => 1,
     }
@@ -2744,6 +2761,57 @@ fn test_push_nonblocking_ready() -> Result<(), Error> {
     result?;
 
     ::syslog::info!("test_push_nonblocking_ready: passed");
+    Ok(())
+}
+
+//==================================================================================================
+// Tagged Rendezvous Discrimination
+//==================================================================================================
+
+/// Verifies that a wrong-tag pull cannot consume an endpoint-matching pending push.
+fn test_rendezvous_tag_discriminates_requests() -> Result<(), Error> {
+    ::syslog::info!("test_rendezvous_tag_discriminates_requests: starting");
+
+    let (pid, _main_tid): (ProcessIdentifier, ThreadIdentifier) = store_caller_ids()?;
+    let (stack_ptr, layout, stack_base): (*mut u8, Layout, VirtualAddress) = alloc_thread_stack()?;
+    let child_tid: ThreadIdentifier = spawn_child_thread(pusher_child_tagged, stack_base)?;
+
+    for _ in 0..PENDING_REGISTER_YIELDS {
+        sched::__kcall_sched_yield()?;
+    }
+
+    let mut wrong_buffer: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    let wrong: Result<usize, Error> = ipc::__kcall_pull_tagged_timed(
+        pid,
+        child_tid,
+        &mut wrong_buffer,
+        WRONG_TAG,
+        Some(Duration::ZERO),
+    );
+
+    let mut matching_buffer: [u8; TIMEOUT_PAYLOAD.len()] = [0u8; TIMEOUT_PAYLOAD.len()];
+    let matching: Result<usize, Error> = ipc::__kcall_pull_tagged_timed(
+        pid,
+        child_tid,
+        &mut matching_buffer,
+        MATCHING_TAG,
+        Some(TIMEOUT_GENEROUS_DELAY),
+    );
+
+    join_child_thread(child_tid)?;
+    // SAFETY: stack is no longer in use after join.
+    unsafe { free_thread_stack(stack_ptr, layout) };
+
+    expect_timed_out("test_rendezvous_tag_discriminates_requests", wrong.map(|_| ()))?;
+    let transferred: usize = matching?;
+    if transferred != TIMEOUT_PAYLOAD.len() || matching_buffer != TIMEOUT_PAYLOAD {
+        return Err(Error::new(
+            ErrorCode::InvalidMessage,
+            "tagged rendezvous transferred the wrong payload",
+        ));
+    }
+
+    ::syslog::info!("test_rendezvous_tag_discriminates_requests: passed");
     Ok(())
 }
 
@@ -3055,6 +3123,7 @@ pub fn run() -> Result<(), Error> {
     test_push_nonblocking_times_out()?;
     test_pull_nonblocking_ready()?;
     test_push_nonblocking_ready()?;
+    test_rendezvous_tag_discriminates_requests()?;
     test_pull_timeout_fires()?;
     test_push_timeout_fires()?;
     test_pull_timeout_not_reached()?;

@@ -245,6 +245,7 @@ fn handle_system_message(
                     purge_process(assemblers, pid);
                     pending.purge_pid(pid);
                     console_wait.purge_pid(pid);
+                    pipe_wait.purge_pid(pid);
                     // Bind the VFS to the exec'ing process and seed the root console if this is the
                     // root's first VFS-visible event, mirroring the fork-clone and syscall paths so
                     // close-on-exec is applied against a consistent table. The seed helper is
@@ -255,8 +256,8 @@ fn handle_system_message(
                     // Each last-reference drop must fire the same side effects as `close`: a
                     // host-backed handle for which this process held the final reference is closed
                     // on hostfsd, and a pipe end whose count reaches zero wakes its suspended
-                    // counterpart (readers see EOF, writers see `EPIPE`). The process stays alive,
-                    // so its parked pipe requests are NOT purged.
+                    // counterpart (readers see EOF, writers see `EPIPE`). Parked pipe requests
+                    // were issued by old-image threads and were purged above before these wakeups.
                     let reclaim: ::vfs::fd::ProcessExitReclaim = ::vfs::fd::vfs_exec_cloexec(pid);
                     for closure in reclaim.pipe_closures {
                         if closure.was_write {
@@ -443,6 +444,20 @@ pub(crate) fn handle_ipc_message(
                 response_context.send(&build_error(source_tid, ErrorCode::PermissionDenied));
             }
         },
+        SystemCallMessageHeader::HostFsReadRetry => {
+            if source_pid == ProcessIdentifier::VFSD {
+                let op_id: ::hostfs_api::OperationId = ::hostfs_api::OperationId::from_le_bytes(
+                    syscall_msg.payload[..::hostfs_api::OperationId::SERIALIZED_SIZE]
+                        .try_into()
+                        .map_err(|_| {
+                            Error::new(ErrorCode::InvalidMessage, "invalid HostFS retry identifier")
+                        })?,
+                );
+                pending.retry_read_delivery(op_id);
+            } else {
+                response_context.send(&build_error(source_tid, ErrorCode::PermissionDenied));
+            }
+        },
         SystemCallMessageHeader::RegisterSocketRequest => {
             let response: Message = handler::handle_register_socket(source_tid, syscall_msg);
             response_context.send(&response);
@@ -543,9 +558,11 @@ pub(crate) fn handle_ipc_message(
         // Terminal control: single message request + termios/winsize via push/pull.
         //==========================================================================================
         SystemCallMessageHeader::TtyControlRequest => {
-            let response: Message =
-                handler::handle_tty_control(source_pid, source_tid, syscall_msg, console_wait);
-            response_context.send(&response);
+            if let Some(response) =
+                handler::handle_tty_control(response_context, syscall_msg, console_wait)
+            {
+                response_context.send(&response);
+            }
         },
 
         //==========================================================================================

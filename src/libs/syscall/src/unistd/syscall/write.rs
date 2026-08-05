@@ -19,6 +19,7 @@ use crate::{
     SystemCallMessage,
     SystemCallMessageHeader,
 };
+use ::core::time::Duration;
 use ::sys::{
     error::{
         Error,
@@ -45,6 +46,9 @@ use ::sysapi::{
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+/// Maximum time a VFS write waits for its server-side bulk pull.
+const BULK_PUSH_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Backend routing and interruption policy for one write operation.
 #[derive(Clone, Copy)]
@@ -79,6 +83,13 @@ fn write_chunk(
     chunk: &[u8],
     backend: WriteBackend,
 ) -> Result<c_size_t, Error> {
+    let signal_mask: Option<crate::rpc::SignalMaskGuard> =
+        if backend.push_pid == ProcessIdentifier::KERNEL {
+            None
+        } else {
+            Some(crate::rpc::SignalMaskGuard::block_all()?)
+        };
+
     // Build metadata-only request and send it via IPC message.
     let empty_buf: [u8; WriteRequest::BUFFER_SIZE] = [0u8; WriteRequest::BUFFER_SIZE];
     let mut request: Message = WriteRequest::build(
@@ -92,7 +103,32 @@ fn write_chunk(
     let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Push actual data via data chunk transfer.
-    ::sys::kcall::ipc::__kcall_push(backend.push_pid, backend.push_tid, chunk)?;
+    let push_result: Result<(), Error> = match signal_mask.as_ref() {
+        Some(signal_mask) => ::sys::kcall::ipc::__kcall_push_tagged_restoring_signals_timed(
+            backend.push_pid,
+            backend.push_tid,
+            chunk,
+            token.identifier(),
+            signal_mask.previous(),
+            BULK_PUSH_TIMEOUT,
+        ),
+        None => ::sys::kcall::ipc::__kcall_push_tagged(
+            backend.push_pid,
+            backend.push_tid,
+            chunk,
+            token.identifier(),
+        ),
+    };
+    drop(signal_mask);
+    match push_result {
+        Ok(()) => {},
+        Err(error) if error.code == ErrorCode::Interrupted && backend.cancel_pipe_on_interrupt => {
+            let _ = cancel_pipe_operation(tid, fd, PipeOperation::Write, token.identifier())?;
+            return Err(error);
+        },
+        Err(error) if error.code == ErrorCode::OperationTimedOut => return Err(error),
+        Err(error) => return Err(error),
+    }
 
     // Receive response.
     let response: Message = match crate::rpc::recv_response_interruptible(&token) {
@@ -297,7 +333,14 @@ fn write_ipc(
             sg_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &[u8] = &buffer[offset..offset + chunk_size];
 
-        let written: c_size_t = write_chunk(tid, fd, chunk, backend)?;
+        let written: c_size_t = loop {
+            match write_chunk(tid, fd, chunk, backend) {
+                Err(error) if error.code == ErrorCode::OperationAlreadyInProgress => {
+                    ::sys::kcall::sched::__kcall_sched_yield()?;
+                },
+                result => break result?,
+            }
+        };
         total_written += written;
         offset += written as usize;
 

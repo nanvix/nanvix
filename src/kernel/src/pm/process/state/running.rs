@@ -19,6 +19,7 @@ use crate::{
         },
         sync::condvar::Condvar,
         thread::{
+            InterruptReason,
             InterruptedThread,
             ReadyThread,
             RunningThread,
@@ -518,6 +519,42 @@ impl RunningProcess {
                         None => NonEmptyVecDeque::new(ready_thread),
                     };
 
+                    Ok(Self::new(
+                        self.state,
+                        self.running,
+                        Some(ready_threads),
+                        self.interrupted_threads.take(),
+                        NonEmptyVecDeque::from(sleeping_threads),
+                        self.zombie.take(),
+                    ))
+                },
+                Err(sleeping_threads) => {
+                    self.sleeping_threads = Some(sleeping_threads);
+                    Err(self)
+                },
+            }
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Interrupts one sleeping thread and moves it to the ready set with `reason`.
+    pub fn interrupt_thread(
+        mut self,
+        tid: ThreadIdentifier,
+        reason: InterruptReason,
+    ) -> Result<RunningProcess, RunningProcess> {
+        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+            match sleeping_threads.remove_if(|thread| thread.id() == tid) {
+                Ok((sleeping_threads, sleeping_thread)) => {
+                    let ready_thread: ReadyThread = sleeping_thread.interrupt(reason).resume();
+                    let ready_threads: NonEmptyVecDeque<ReadyThread> = match self.ready.take() {
+                        Some(mut ready_threads) => {
+                            ready_threads.push_back(ready_thread);
+                            ready_threads
+                        },
+                        None => NonEmptyVecDeque::new(ready_thread),
+                    };
                     Ok(Self::new(
                         self.state,
                         self.running,

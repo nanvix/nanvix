@@ -18,6 +18,7 @@ use crate::{
     },
     pm::{
         ProcessIdentifier,
+        SigSet,
         ThreadIdentifier,
     },
     time::NANOSECONDS_PER_SECOND,
@@ -531,8 +532,10 @@ pub struct HostBulkTransferHeader {
     data_addr: u32,
     /// Number of bytes in the bulk payload.
     data_len: u32,
+    /// Request correlation tag.
+    tag: u32,
 }
-::static_assert::assert_eq_size!(HostBulkTransferHeader, 6 * mem::size_of::<u32>());
+::static_assert::assert_eq_size!(HostBulkTransferHeader, 7 * mem::size_of::<u32>());
 
 //==================================================================================================
 // Implementations
@@ -568,6 +571,27 @@ impl HostBulkTransferHeader {
         data_addr: u32,
         data_len: u32,
     ) -> Self {
+        Self::new_tagged(
+            source_pid,
+            source_tid,
+            destination_pid,
+            destination_tid,
+            data_addr,
+            data_len,
+            0,
+        )
+    }
+
+    /// Creates a new data chunk transfer header with a request correlation tag.
+    pub fn new_tagged(
+        source_pid: ProcessIdentifier,
+        source_tid: ThreadIdentifier,
+        destination_pid: ProcessIdentifier,
+        destination_tid: ThreadIdentifier,
+        data_addr: u32,
+        data_len: u32,
+        tag: u32,
+    ) -> Self {
         let source_pid_raw: i32 = source_pid.into();
         let source_tid_raw: i32 = source_tid.into();
         let destination_pid_raw: i32 = destination_pid.into();
@@ -579,6 +603,7 @@ impl HostBulkTransferHeader {
             destination_tid: destination_tid_raw,
             data_addr,
             data_len,
+            tag,
         }
     }
 
@@ -634,6 +659,16 @@ impl HostBulkTransferHeader {
     ///
     pub fn data_len(&self) -> u32 {
         self.data_len
+    }
+
+    /// Returns the request correlation tag.
+    pub fn tag(&self) -> u32 {
+        self.tag
+    }
+
+    /// Copies this header while replacing the bulk payload length.
+    pub fn with_data_len(self, data_len: u32) -> Self {
+        Self { data_len, ..self }
     }
 
     ///
@@ -903,10 +938,12 @@ pub struct GuestSgBulkHeader {
     segment_count: u16,
     /// Total number of bytes in the transfer.
     total_len: u32,
+    /// Request correlation tag.
+    tag: u32,
     /// First segment descriptor.
     first: GuestSgSegment,
 }
-::static_assert::assert_eq_size!(GuestSgBulkHeader, 9 * mem::size_of::<u32>());
+::static_assert::assert_eq_size!(GuestSgBulkHeader, 10 * mem::size_of::<u32>());
 
 impl GuestSgBulkHeader {
     /// Size of the scatter/gather bulk header in bytes.
@@ -936,6 +973,7 @@ impl GuestSgBulkHeader {
         kind: GuestSgBulkKind,
         segment_count: SegmentCount,
         total_len: u32,
+        tag: u32,
         first: GuestSgSegment,
     ) -> Self {
         let (source_pid, source_tid) = source;
@@ -948,6 +986,7 @@ impl GuestSgBulkHeader {
             kind: kind as u16,
             segment_count: segment_count.get(),
             total_len,
+            tag,
             first,
         }
     }
@@ -999,6 +1038,11 @@ impl GuestSgBulkHeader {
     /// Returns the total number of bytes in the transfer.
     pub fn total_len(&self) -> u32 {
         self.total_len
+    }
+
+    /// Returns the request correlation tag.
+    pub fn tag(&self) -> u32 {
+        self.tag
     }
 
     /// Returns the first segment descriptor.
@@ -1177,6 +1221,50 @@ impl Timeout {
     }
 }
 
+/// Optional signal mask that the kernel restores after registering a blocking rendezvous.
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct SignalMaskRestore {
+    /// Whether restoration is enabled.
+    enabled: u32,
+    /// Low 32 bits of the signal mask.
+    low: u32,
+    /// High 32 bits of the signal mask.
+    high: u32,
+}
+::static_assert::assert_eq_size!(SignalMaskRestore, 3 * mem::size_of::<u32>());
+
+impl SignalMaskRestore {
+    /// Creates a descriptor that does not restore a signal mask.
+    pub const fn none() -> Self {
+        Self {
+            enabled: 0,
+            low: 0,
+            high: 0,
+        }
+    }
+
+    /// Creates a descriptor that restores `mask` after rendezvous registration.
+    pub const fn new(mask: SigSet) -> Self {
+        Self {
+            enabled: 1,
+            low: mask as u32,
+            high: (mask >> 32) as u32,
+        }
+    }
+
+    /// Decodes the optional signal mask.
+    pub fn mask(self) -> Result<Option<SigSet>, Error> {
+        match self.enabled {
+            0 => Ok(None),
+            1 => Ok(Some((self.low as SigSet) | ((self.high as SigSet) << 32))),
+            _ => {
+                Err(Error::new(ErrorCode::InvalidArgument, "invalid signal-mask restoration flag"))
+            },
+        }
+    }
+}
+
 ///
 /// # Description
 ///
@@ -1199,12 +1287,24 @@ pub struct PushArgs {
     pub buffer: u32,
     /// Number of bytes to transfer.
     pub len: u32,
+    /// Optional correlation tag. Zero preserves endpoint-only matching.
+    pub tag: u32,
+    /// Signal mask to restore after registering a blocking rendezvous.
+    pub signal_mask_restore: SignalMaskRestore,
     /// Optional timeout that bounds the blocking wait.
     pub timeout: Timeout,
+    /// Push behavior flags.
+    pub flags: u32,
 }
-::static_assert::assert_eq_size!(PushArgs, 7 * mem::size_of::<u32>());
+::static_assert::assert_eq_size!(PushArgs, 12 * mem::size_of::<u32>());
 
 impl PushArgs {
+    /// Registers a zero-length push without waiting for the destination to pull.
+    pub const FLAG_DEFERRED: u32 = 1;
+
+    /// Cancels a previously registered deferred push.
+    pub const FLAG_CANCEL_DEFERRED: u32 = 2;
+
     /// Size of the descriptor in bytes.
     pub const SIZE: usize = mem::size_of::<Self>();
 
@@ -1225,7 +1325,29 @@ impl PushArgs {
             dst_tid: ThreadIdentifier::KERNEL,
             buffer: 0,
             len: 0,
+            tag: 0,
+            signal_mask_restore: SignalMaskRestore::none(),
             timeout: Timeout::infinite(),
+            flags: 0,
+        }
+    }
+
+    /// Returns whether this descriptor requests a deferred zero-length push.
+    pub fn is_deferred(&self) -> Result<bool, Error> {
+        match self.flags {
+            0 => Ok(false),
+            Self::FLAG_DEFERRED => Ok(true),
+            Self::FLAG_CANCEL_DEFERRED => Ok(false),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid push flags")),
+        }
+    }
+
+    /// Returns whether this descriptor cancels a deferred push.
+    pub fn cancels_deferred(&self) -> Result<bool, Error> {
+        match self.flags {
+            0 | Self::FLAG_DEFERRED => Ok(false),
+            Self::FLAG_CANCEL_DEFERRED => Ok(true),
+            _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid push flags")),
         }
     }
 }
@@ -1250,10 +1372,14 @@ pub struct PullArgs {
     pub buffer: u32,
     /// Maximum number of bytes to receive.
     pub len: u32,
+    /// Optional correlation tag. Zero preserves endpoint-only matching.
+    pub tag: u32,
+    /// Signal mask to restore after registering a blocking rendezvous.
+    pub signal_mask_restore: SignalMaskRestore,
     /// Optional timeout that bounds the blocking wait.
     pub timeout: Timeout,
 }
-::static_assert::assert_eq_size!(PullArgs, 7 * mem::size_of::<u32>());
+::static_assert::assert_eq_size!(PullArgs, 11 * mem::size_of::<u32>());
 
 impl PullArgs {
     /// Size of the descriptor in bytes.
@@ -1276,7 +1402,39 @@ impl PullArgs {
             src_tid: ThreadIdentifier::KERNEL,
             buffer: 0,
             len: 0,
+            tag: 0,
+            signal_mask_restore: SignalMaskRestore::none(),
             timeout: Timeout::infinite(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PushArgs;
+
+    #[test]
+    fn push_args_decode_deferred_flag() {
+        let mut args: PushArgs = PushArgs::zeroed();
+        assert!(!args.is_deferred().expect("zero flags should be valid"));
+
+        args.flags = PushArgs::FLAG_DEFERRED;
+        assert!(args.is_deferred().expect("deferred flag should be valid"));
+        assert!(!args
+            .cancels_deferred()
+            .expect("deferred flag should be valid"));
+
+        args.flags = PushArgs::FLAG_CANCEL_DEFERRED;
+        assert!(!args.is_deferred().expect("cancel flag should be valid"));
+        assert!(args
+            .cancels_deferred()
+            .expect("cancel flag should be valid"));
+    }
+
+    #[test]
+    fn push_args_reject_unknown_flags() {
+        let mut args: PushArgs = PushArgs::zeroed();
+        args.flags = PushArgs::FLAG_CANCEL_DEFERRED << 1;
+        assert!(args.is_deferred().is_err());
     }
 }

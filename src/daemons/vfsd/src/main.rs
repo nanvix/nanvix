@@ -42,6 +42,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageType,
+        RequestIdentifier,
         SystemMessage,
         SystemMessageHeader,
     },
@@ -52,6 +53,37 @@ use alloc::collections::{
     BTreeMap,
     VecDeque,
 };
+
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+fn signup_response_status(
+    message: &Message,
+    expected_request_id: RequestIdentifier,
+) -> Option<i32> {
+    let source_pid: ProcessIdentifier = { message.source }.pid;
+    let message_type: MessageType = message.message_type;
+    if source_pid != ProcessIdentifier::PROCD
+        || message_type != MessageType::Ipc
+        || RequestIdentifier::read_from(message) != expected_request_id
+    {
+        return None;
+    }
+
+    let system_message: SystemMessage = SystemMessage::from_bytes(message.payload).ok()?;
+    if !matches!(system_message.header, SystemMessageHeader::ProcessManagement) {
+        return None;
+    }
+
+    let process_message: ProcessManagementMessage =
+        ProcessManagementMessage::from_bytes(system_message.payload).ok()?;
+    if !matches!(process_message.header, ProcessManagementMessageHeader::SignupResponse) {
+        return None;
+    }
+
+    Some(SignupResponseMessage::from_bytes(process_message.payload).status)
+}
 
 //==================================================================================================
 // Main Function
@@ -90,28 +122,9 @@ pub fn main() {
         loop {
             let message: Message =
                 ::sys::kcall::ipc::__kcall_recv().expect("failed to receive signup response");
-            let source: ::sys::ipc::MessageSender = message.source;
-            let request_id: ::sys::ipc::RequestIdentifier =
-                ::sys::ipc::RequestIdentifier::read_from(&message);
-            if source.pid == ProcessIdentifier::PROCD && request_id == token.identifier() {
-                assert_eq!(message.message_type, MessageType::Ipc, "invalid signup response type");
-                let sys_msg: SystemMessage =
-                    SystemMessage::from_bytes(message.payload).expect("invalid signup response");
-                assert!(
-                    matches!(sys_msg.header, SystemMessageHeader::ProcessManagement),
-                    "invalid signup system message"
-                );
-                let pm_msg: ProcessManagementMessage =
-                    ProcessManagementMessage::from_bytes(sys_msg.payload)
-                        .expect("invalid signup process-management message");
-                assert!(
-                    matches!(pm_msg.header, ProcessManagementMessageHeader::SignupResponse),
-                    "unexpected signup response"
-                );
-                let resp: SignupResponseMessage = SignupResponseMessage::from_bytes(pm_msg.payload);
-                let status: i32 = resp.status;
+            if let Some(status) = signup_response_status(&message, token.identifier()) {
                 if status != 0 {
-                    panic!("signup failed (status={})", status);
+                    panic!("signup failed (status={status})");
                 }
                 ::syslog::info!("signed up with procd");
                 break;
@@ -135,6 +148,19 @@ pub fn main() {
         ::syscall::poll::input_message::PollInputRequest::build_subscription(tid);
     ::sys::kcall::ipc::__kcall_send(&subscription)
         .expect("failed to subscribe to console input notifications");
+
+    // A dedicated timer thread delays HostFS read-delivery retries without sleeping this
+    // single-threaded event loop. It never receives IPC, so process-addressed VFSD requests remain
+    // owned by the main thread. Process teardown reclaims the joinable scheduler and its stack.
+    let main_tid_raw: usize = tid
+        .try_into()
+        .expect("failed to encode vfsd thread identifier");
+    let _read_retry_scheduler: ::sysapi::sys_types::pthread_t = ::syscall::pthread::pthread_create(
+        pending::read_retry_scheduler,
+        main_tid_raw,
+        ::config::memory_layout::USER_THREAD_STACK_SIZE,
+    )
+    .expect("failed to create HostFS read retry scheduler");
 
     // Bounded multi-part request assembler map keyed by exact caller, header, and request ID.
     let mut assemblers: BTreeMap<assembler::AssemblerKey, assembler::AssemblerEntry> =
@@ -271,7 +297,15 @@ pub fn main() {
                                 // op_id is known from part 0; the body still carries it
                                 // in bytes [0..4] for `complete_readlink_long`.
                                 if let Some(op) = pending.remove(op_id) {
-                                    pending::complete_readlink_long(op, &body);
+                                    if matches!(op.kind, pending::PendingOpKind::Readlink { .. }) {
+                                        pending::complete_readlink_long(op, &body);
+                                    } else {
+                                        ::syslog::error!(
+                                            "long readlink response for non-readlink op (op_id={})",
+                                            op_id
+                                        );
+                                        pending::cancel_pending_op(op, ErrorCode::IoErr);
+                                    }
                                 } else if pending.discard_abandoned_operation(op_id) {
                                     // The originating process exited or exec'd while the multipart
                                     // response was in flight.
@@ -391,7 +425,10 @@ pub fn main() {
                                 }
                             }
                             if let Some(op) = pending.remove(op_id) {
-                                pending::complete_pending_op(op, &message.payload);
+                                if let Some(op) = pending::complete_pending_op(op, &message.payload)
+                                {
+                                    pending.defer_read_delivery(op_id, op);
+                                }
                             } else if pending.complete_abandoned_operation(op_id, &message.payload)
                             {
                                 // The originating process exited or exec'd before hostfsd replied.

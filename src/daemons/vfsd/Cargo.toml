@@ -28,6 +28,7 @@ syscall = { workspace = true }
 sysapi = { workspace = true }
 libc_string = { workspace = true }
 syslog = { workspace = true, default-features = true }
+spin = { workspace = true, features = ["spin_mutex"] }
 
 [build-dependencies]
 cc = { workspace = true }

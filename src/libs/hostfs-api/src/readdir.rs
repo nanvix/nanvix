@@ -29,6 +29,8 @@ pub struct ReadDirRequest {
 /// ReadDir response: contains a single directory entry.
 #[derive(Debug, Clone)]
 pub struct ReadDirEntry {
+    /// Status code: 0 on success, negative `HOSTFS_ERR_*` on failure.
+    pub status: i32,
     /// Entry name length.
     pub name_len: u16,
     /// Whether this entry is a directory.
@@ -76,26 +78,30 @@ impl ReadDirEntry {
     /// Encodes this entry into the message payload.
     pub fn encode(&self, payload: &mut [u8; Message::PAYLOAD_SIZE]) {
         let data_start: usize = HOSTFS_DATA_START;
-        payload[data_start..data_start + 2].copy_from_slice(&self.name_len.to_le_bytes());
-        payload[data_start + 2] = self.is_dir;
-        payload[data_start + 3..data_start + 11].copy_from_slice(&self.size.to_le_bytes());
+        payload[data_start..data_start + 4].copy_from_slice(&self.status.to_le_bytes());
+        payload[data_start + 4..data_start + 6].copy_from_slice(&self.name_len.to_le_bytes());
+        payload[data_start + 6] = self.is_dir;
+        payload[data_start + 7..data_start + 15].copy_from_slice(&self.size.to_le_bytes());
         let copy_len: usize = (self.name_len as usize).min(MAX_DIR_ENTRY_NAME_LEN);
-        payload[data_start + 11..data_start + 11 + copy_len]
+        payload[data_start + 15..data_start + 15 + copy_len]
             .copy_from_slice(&self.name[..copy_len]);
     }
 
     /// Decodes a ReadDirEntry from the message payload.
     pub fn decode(payload: &[u8; Message::PAYLOAD_SIZE]) -> Self {
         let data_start: usize = HOSTFS_DATA_START;
+        let status: i32 =
+            i32::from_le_bytes(payload[data_start..data_start + 4].try_into().unwrap());
         let name_len: u16 =
-            u16::from_le_bytes(payload[data_start..data_start + 2].try_into().unwrap());
-        let is_dir: u8 = payload[data_start + 2];
+            u16::from_le_bytes(payload[data_start + 4..data_start + 6].try_into().unwrap());
+        let is_dir: u8 = payload[data_start + 6];
         let size: u64 =
-            u64::from_le_bytes(payload[data_start + 3..data_start + 11].try_into().unwrap());
+            u64::from_le_bytes(payload[data_start + 7..data_start + 15].try_into().unwrap());
         let mut name: [u8; MAX_DIR_ENTRY_NAME_LEN] = [0u8; MAX_DIR_ENTRY_NAME_LEN];
         let copy_len: usize = (name_len as usize).min(MAX_DIR_ENTRY_NAME_LEN);
-        name[..copy_len].copy_from_slice(&payload[data_start + 11..data_start + 11 + copy_len]);
+        name[..copy_len].copy_from_slice(&payload[data_start + 15..data_start + 15 + copy_len]);
         Self {
+            status,
             name_len,
             is_dir,
             size,

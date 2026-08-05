@@ -748,6 +748,37 @@ impl ProcessManager {
         Ok(false)
     }
 
+    /// Restores a rendezvous caller's signal mask and reports a newly deliverable caught signal.
+    pub fn restore_rendezvous_signal_mask(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        mask: SigSet,
+    ) -> Result<bool, Error> {
+        self.find_process(pid)?;
+
+        let installed: SigSet = mask & !UNBLOCKABLE;
+        let thread_pending: SigSet = {
+            let mut thread: ThreadRefMut = self.find_thread_mut(tid)?;
+            let state = thread.thread_state_mut();
+            state.set_blocked(installed);
+            state.pending()
+        };
+
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+        let signals: &mut SignalControl = process.state_mut().signals_mut();
+        let mut deliverable: SigSet = (signals.pending() | thread_pending) & !installed;
+        while deliverable != 0 {
+            let signum: usize = (deliverable.trailing_zeros() as usize) + 1;
+            if let Some(SignalDisposition::Handler(_)) = signals.disposition(signum) {
+                return Ok(true);
+            }
+            deliverable &= deliverable - 1;
+        }
+
+        Ok(false)
+    }
+
     ///
     /// # Description
     ///
@@ -2204,8 +2235,20 @@ impl ProcessManager {
         // Check the running thread's kernel stack guard watermark before switching away.
         self.check_running_stack_guard();
 
+        let exiting_tid: ThreadIdentifier = self.get_running().get_tid();
+        // SAFETY: single-core system with interrupts disabled.
+        let orphaned_tids: ::alloc::vec::Vec<ThreadIdentifier> =
+            unsafe { crate::ipc::rendezvous::cleanup_thread(exiting_tid) };
+        for tid in orphaned_tids {
+            if !self.interrupt_rendezvous_thread(tid) {
+                warn!(
+                    "do_exit_thread(): failed to interrupt orphaned rendezvous thread \
+                     (tid={tid:?})"
+                );
+            }
+        }
+
         let mut running_process: RunningProcess = self.take_running();
-        let exiting_tid: ThreadIdentifier = running_process.get_tid();
 
         trace!(
             "pid={:?}, tid={:?}, status={:?}",
@@ -2311,7 +2354,9 @@ impl ProcessManager {
                     self.ready.push_back(runnable_process);
                     return Ok(());
                 },
-                Err(zombie_process) => {
+                Err(mut zombie_process) => {
+                    let purged_messages: usize = zombie_process.state_mut().purge_messages();
+                    self.note_messages_purged(purged_messages);
                     self.zombies.push_back(zombie_process);
                     return Ok(());
                 },
@@ -2779,13 +2824,78 @@ impl ProcessManager {
         let orphaned_tids: ::alloc::vec::Vec<ThreadIdentifier> =
             unsafe { crate::ipc::rendezvous::cleanup_process(pid) };
         for tid in orphaned_tids {
-            if let Err(e) = self.do_wakeup(tid) {
-                warn!(
-                    "{caller}(): failed to wake orphaned rendezvous thread (tid={tid:?}, \
-                     error={e:?})"
-                );
+            if !self.interrupt_rendezvous_thread(tid) {
+                warn!("{caller}(): failed to interrupt orphaned rendezvous thread (tid={tid:?})");
             }
         }
+    }
+
+    /// Interrupts a sleeping rendezvous thread so its kernel call returns an error.
+    fn interrupt_rendezvous_thread(&mut self, tid: ThreadIdentifier) -> bool {
+        let reason: InterruptReason = InterruptReason::TimedOut;
+
+        if self
+            .running
+            .as_ref()
+            .is_some_and(|running| running.find_thread(tid).is_some())
+        {
+            let running: RunningProcess = self.take_running();
+            return match running.interrupt_thread(tid, reason) {
+                Ok(running) => {
+                    self.running = Some(running);
+                    true
+                },
+                Err(running) => {
+                    self.running = Some(running);
+                    false
+                },
+            };
+        }
+
+        let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
+        while let Some(process) = self.suspended.pop_front() {
+            if process.find_thread(tid).is_some() {
+                let interrupted: bool = match process.interrupt_thread(tid, reason) {
+                    Ok(process) => {
+                        self.ready.push_back(process.resume());
+                        true
+                    },
+                    Err(process) => {
+                        self.suspended.push_front(process);
+                        false
+                    },
+                };
+                while let Some(process) = suspended.pop_back() {
+                    self.suspended.push_front(process);
+                }
+                return interrupted;
+            }
+            suspended.push_back(process);
+        }
+        self.suspended = suspended;
+
+        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
+        while let Some(process) = self.ready.pop_front() {
+            if process.find_thread(tid).is_some() {
+                let interrupted: bool = match process.interrupt_thread(tid, reason) {
+                    Ok(process) => {
+                        self.ready.push_front(process);
+                        true
+                    },
+                    Err(process) => {
+                        self.ready.push_front(process);
+                        false
+                    },
+                };
+                while let Some(process) = ready.pop_back() {
+                    self.ready.push_front(process);
+                }
+                return interrupted;
+            }
+            ready.push_back(process);
+        }
+        self.ready = ready;
+        false
     }
 
     fn take_running(&mut self) -> RunningProcess {
@@ -2910,6 +3020,36 @@ impl ProcessManager {
             error!("{reason} (tid={tid:?})");
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
         }
+    }
+
+    /// Ensures that `tid` names a live thread that can participate in a rendezvous.
+    pub fn ensure_live_thread(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
+        let mut process: ProcessRefMut = self.find_process_by_tid(tid)?;
+        if matches!(&process, ProcessRefMut::Zombie(_))
+            || matches!(process.find_thread_mut(tid), Some(ThreadRefMut::Zombie(_)) | None)
+        {
+            let reason: &str = "rendezvous destination thread is not live";
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        }
+        Ok(())
+    }
+
+    /// Returns whether `tid` currently names a sleeping thread.
+    pub fn is_thread_sleeping(&self, tid: ThreadIdentifier) -> bool {
+        if matches!(self.get_running().find_thread(tid), Some(ThreadRef::Sleeping(_))) {
+            return true;
+        }
+        self.ready
+            .iter()
+            .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
+            || self
+                .suspended
+                .iter()
+                .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
+            || self
+                .interrupted
+                .iter()
+                .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
     }
 
     ///

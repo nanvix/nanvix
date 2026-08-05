@@ -73,10 +73,11 @@ pub fn send(sockfd: c_int, buffer: &[u8], flags: c_int) -> Result<usize, Error> 
     let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Push the payload via data chunk transfer.
-    ::sys::kcall::ipc::__kcall_push(
+    ::sys::kcall::ipc::__kcall_push_tagged(
         ProcessIdentifier::KERNEL,
         ThreadIdentifier::KERNEL,
         &buffer[..send_len],
+        token.identifier(),
     )?;
 
     // Receive response.
