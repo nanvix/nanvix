@@ -3816,6 +3816,18 @@ impl ProcessManager {
             } else {
                 self.find_process_by_tid(receiver.tid)?
             };
+            if matches!(&process, ProcessRefMut::Zombie(_)) {
+                let reason: &str = "cannot post a message to a zombie process";
+                warn!("{reason} (receiver={receiver:?})");
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            }
+            if !receiver.tid.is_none()
+                && matches!(process.find_thread_mut(receiver.tid), Some(ThreadRefMut::Zombie(_)))
+            {
+                let reason: &str = "cannot post a message to a zombie thread";
+                warn!("{reason} (receiver={receiver:?})");
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            }
             process.state_mut().post_message(message);
         }
         self.note_message_posted()?;
