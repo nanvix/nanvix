@@ -413,11 +413,9 @@ pub(crate) fn handle_fstatat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.path) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
     let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
@@ -474,9 +472,8 @@ pub(crate) fn handle_chdir_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(AT_FDCWD, &request.path) {
-        Some(p) => p,
-        None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+    let Some(resolved) = vfs_resolve_path(AT_FDCWD, &request.path) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
 
     if hostfs::is_hostfs_path(&resolved) {
@@ -758,11 +755,9 @@ pub(crate) fn handle_openat_with_hostfs(
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
     request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
     let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
@@ -803,16 +798,12 @@ pub(crate) fn handle_renameat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let old_resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.olddirfd, &request.oldpath) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let new_resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.newdirfd, &request.newpath) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
+    let Some(old_resolved) = vfs_resolve_path(request.olddirfd, &request.oldpath) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
+    let Some(new_resolved) = vfs_resolve_path(request.newdirfd, &request.newpath) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
     let old_final: &str = &old_resolved;
     let new_final: &str = &new_resolved;
 
@@ -861,11 +852,9 @@ pub(crate) fn handle_unlinkat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
     let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
@@ -917,11 +906,9 @@ pub(crate) fn handle_mkdirat_with_hostfs(
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
     request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
     let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {
@@ -963,11 +950,9 @@ pub(crate) fn handle_symlinkat_with_hostfs(
     let source: ThreadIdentifier = response_context.source_tid();
     // Routing key is `linkpath` (where the symlink will live). `target` is an opaque
     // string stored verbatim by the host and intentionally not consulted here.
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.linkpath) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.linkpath) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
     let final_link: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_link) {
@@ -1007,11 +992,9 @@ pub(crate) fn handle_readlinkat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.path) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
     let final_path: &str = &resolved;
 
     if hostfs::is_hostfs_path(final_path) {

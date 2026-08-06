@@ -23,6 +23,7 @@ use super::{
     path_cache::PathCache,
     Mount,
 };
+use crate::fd::ResolvedPath;
 use ::alloc::{
     string::String,
     vec::Vec,
@@ -135,9 +136,8 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// Returns [`Fat32Error::InvalidPath`] if the path is empty, if a relative `path` is
-    /// anchored to a `cwd` that is not absolute, or if the path contains invalid sequences
-    /// (e.g., too many `..`).
+    /// Returns [`Fat32Error::InvalidPath`] if the path is empty or if a relative `path` is
+    /// anchored to a `cwd` that is not absolute. `..` at the root clamps to the root, per POSIX.
     pub fn normalize_path(&self, path: &str, cwd: &str) -> Result<String, Fat32Error> {
         if path.is_empty() {
             return Err(Fat32Error::InvalidPath);
@@ -155,32 +155,7 @@ impl Vfs {
             alloc::format!("{}/{}", cwd, path)
         };
 
-        let mut components: Vec<&str> = Vec::new();
-
-        for component in abs_path.split('/') {
-            match component {
-                "" | "." => {},
-                ".." => {
-                    if components.pop().is_none() {
-                        return Err(Fat32Error::InvalidPath);
-                    }
-                },
-                other => {
-                    components.push(other);
-                },
-            }
-        }
-
-        if components.is_empty() {
-            Ok(String::from("/"))
-        } else {
-            let mut result: String = String::new();
-            for component in components {
-                result.push('/');
-                result.push_str(component);
-            }
-            Ok(result)
-        }
+        Ok(normalize_components(&abs_path))
     }
 
     /// Resolves a path to a mount and relative path within that mount.
@@ -260,6 +235,46 @@ impl Vfs {
     }
 }
 
+/// Lexically normalizes a resolved path.
+///
+/// Resolves `.` and `..`, collapses repeated separators, and drops trailing
+/// slashes. Never fails: [`ResolvedPath`] is absolute by construction, and `..`
+/// at the root clamps to the root, as POSIX defines `/..` to be `/`.
+pub(crate) fn normalize_absolute(path: &ResolvedPath) -> String {
+    normalize_components(path)
+}
+
+/// Lexically normalizes an absolute `path`.
+///
+/// Shared with [`Vfs::normalize_path`], which anchors relative paths against a
+/// `cwd` before calling in and so cannot hand over a [`ResolvedPath`].
+fn normalize_components(path: &str) -> String {
+    let mut components: Vec<&str> = Vec::new();
+
+    for component in path.split('/') {
+        match component {
+            "" | "." => {},
+            ".." => {
+                components.pop();
+            },
+            other => {
+                components.push(other);
+            },
+        }
+    }
+
+    if components.is_empty() {
+        return String::from("/");
+    }
+
+    let mut result: String = String::new();
+    for component in components {
+        result.push('/');
+        result.push_str(component);
+    }
+    result
+}
+
 //==================================================================================================
 // Trait Implementations
 //==================================================================================================
@@ -327,12 +342,14 @@ mod tests {
         assert_eq!(result, "/");
     }
 
-    /// Tests that too many ".." returns an error.
+    /// Tests that ".." past the root clamps to the root, per POSIX.
     #[test]
-    fn normalize_too_many_dotdot() {
+    fn normalize_dotdot_past_root_clamps() {
         let vfs: Vfs = Vfs::new();
-        let result = vfs.normalize_path("/data/../..", "/");
-        assert_eq!(result.unwrap_err(), Fat32Error::InvalidPath, "should fail with InvalidPath");
+        let result: String = vfs
+            .normalize_path("/data/../..", "/")
+            .expect("should succeed");
+        assert_eq!(result, "/", ".. past root should clamp to root");
     }
 
     /// Tests that empty path returns an error.

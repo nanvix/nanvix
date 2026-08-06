@@ -20,15 +20,11 @@ extern crate alloc;
 
 use crate::error::{
     build_error,
-    fat32_to_error_code,
     ResponseContext,
 };
-use ::alloc::{
-    collections::{
-        BTreeMap,
-        BTreeSet,
-    },
-    string::String,
+use ::alloc::collections::{
+    BTreeMap,
+    BTreeSet,
 };
 use ::hostfs_api::{
     file_kind,
@@ -48,7 +44,10 @@ use ::sys::{
     },
 };
 use ::syscall::unistd::message::ChangeDirectoryResponse;
-use ::vfs::fd::vfs_set_cwd;
+use ::vfs::fd::{
+    vfs_set_cwd,
+    ResolvedPath,
+};
 
 //==================================================================================================
 // Pending Operation Descriptor
@@ -114,7 +113,7 @@ pub(crate) enum PendingOpKind {
     /// when the target is a directory (else `ENOTDIR`). Reuses the `PathStat` wire form.
     Chdir {
         /// Absolute hostfs path to become the cwd once confirmed to be a directory.
-        path: String,
+        path: ResolvedPath,
     },
     /// getdents — directory listing over hostfs.
     ///
@@ -1400,7 +1399,7 @@ fn complete_lstat(
 fn complete_chdir(
     response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
-    path: String,
+    path: ResolvedPath,
 ) {
     let source_tid: ThreadIdentifier = response_context.source_tid();
     let resp: LstatResponse = match LstatResponse::decode(response_payload) {
@@ -1422,10 +1421,7 @@ fn complete_chdir(
         return;
     }
 
-    if let Err(e) = vfs_set_cwd(&path) {
-        response_context.send(&build_error(source_tid, fat32_to_error_code(&e)));
-        return;
-    }
+    vfs_set_cwd(path);
     response_context.send(&ChangeDirectoryResponse::build(
         source_tid,
         ProcessIdentifier::VFSD,

@@ -41,6 +41,7 @@ use ::sysapi::{
         posix_dent,
     },
     fcntl::{
+        atflags::AT_FDCWD,
         file_control_request,
         file_creation_flags,
         file_descriptor_flags,
@@ -50,6 +51,10 @@ use ::sysapi::{
         stat,
     },
     time::timespec,
+};
+use ::vfs::fd::{
+    vfs_resolve_path,
+    ResolvedPath,
 };
 
 //==================================================================================================
@@ -1032,27 +1037,26 @@ fn test_resolve_path() -> Result<(), Error> {
     vfs::mkdir("/rp/sub").map_err(|e| fat_err(e, "mkdir /rp/sub failed"))?;
 
     // Absolute path: dirfd should be ignored.
-    let resolved: alloc::string::String = vfs::fd::vfs_resolve_path(0, "/rp/sub/file.txt")
+    let resolved: ResolvedPath = vfs_resolve_path(0, "/rp/sub/file.txt")
         .ok_or(Error::new(ErrorCode::InvalidArgument, "absolute resolve failed"))?;
-    if resolved != "/rp/sub/file.txt" {
+    if &*resolved != "/rp/sub/file.txt" {
         return Err(Error::new(ErrorCode::InvalidArgument, "absolute path mismatch"));
     }
 
     // AT_FDCWD: resolve relative to VFS cwd.
     vfs::chdir("/rp").map_err(|e| fat_err(e, "chdir /rp failed"))?;
-    let resolved_cwd: alloc::string::String =
-        vfs::fd::vfs_resolve_path(::sysapi::fcntl::atflags::AT_FDCWD, "sub")
-            .ok_or(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD resolve failed"))?;
-    if resolved_cwd != "/rp/sub" {
+    let resolved_cwd = vfs_resolve_path(AT_FDCWD, "sub")
+        .ok_or(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD resolve failed"))?;
+    if &*resolved_cwd != "/rp/sub" {
         return Err(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD path mismatch"));
     }
 
     // VFS directory fd: resolve relative to directory path.
     let dir_fd: i32 = vfs::fd::vfs_open("/rp/sub", file_creation_flags::O_DIRECTORY)
         .map_err(|e| fat_err(e, "vfs_open /rp/sub O_DIRECTORY"))?;
-    let resolved_dir: alloc::string::String = vfs::fd::vfs_resolve_path(dir_fd, "nested.txt")
+    let resolved_dir = vfs_resolve_path(dir_fd, "nested.txt")
         .ok_or(Error::new(ErrorCode::InvalidArgument, "dirfd resolve failed"))?;
-    if resolved_dir != "/rp/sub/nested.txt" {
+    if &*resolved_dir != "/rp/sub/nested.txt" {
         return Err(Error::new(ErrorCode::InvalidArgument, "dirfd path mismatch"));
     }
 
@@ -1060,8 +1064,13 @@ fn test_resolve_path() -> Result<(), Error> {
     // the slot's handle type, not a number range: close the directory fd so it is absent, then it
     // no longer resolves.
     vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
-    if vfs::fd::vfs_resolve_path(dir_fd, "file.txt").is_some() {
+    if vfs_resolve_path(dir_fd, "file.txt").is_some() {
         return Err(Error::new(ErrorCode::InvalidArgument, "absent fd should return None"));
+    }
+
+    // An empty path names nothing, so it must not resolve to the cwd.
+    if vfs_resolve_path(AT_FDCWD, "").is_some() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "empty path should return None"));
     }
 
     // Clean up.
