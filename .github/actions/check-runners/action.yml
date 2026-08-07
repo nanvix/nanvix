@@ -2,8 +2,9 @@
 # Licensed under the MIT License.
 
 name: "Check Self-Hosted Runners"
-description: "Check whether self-hosted runners matching a given OS and name
-  prefix are online.  Call once per OS to get per-platform availability."
+description: "Check whether repository runners matching a given OS, name
+  prefix, and label are online. Call once per OS to get per-platform
+  availability."
 
 # NOTE: The /repos/{owner}/{repo}/actions/runners endpoint requires the
 # 'administration:read' permission, which is NOT available to the default
@@ -28,14 +29,9 @@ inputs:
       (e.g. 'Prometheus').  Leave empty to consider all self-hosted runners."
     required: false
     default: ""
-  runner-group:
-    description: "Only consider runners that belong to this org-level runner
-      group (e.g. 'Benchmark'). When set, the action enumerates runners via
-      the runner-groups endpoint so that runners outside the group are not
-      counted, matching the `runs-on.group` selector used by dependent jobs.
-      Leave empty to consider runners across all groups."
-    required: false
-    default: ""
+  runner-label:
+    description: "Custom repository runner label to match (e.g. 'benchmark')."
+    required: true
 
 outputs:
   available:
@@ -51,62 +47,37 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
         CHECK_OS: ${{ inputs.os }}
         RUNNER_NAME_PREFIX: ${{ inputs.runner-name-prefix }}
-        RUNNER_GROUP: ${{ inputs.runner-group }}
+        RUNNER_LABEL: ${{ inputs.runner-label }}
       shell: bash
       run: |
         set -euo pipefail
 
-        org="${GITHUB_REPOSITORY_OWNER}"
         api_err_file=$(mktemp)
 
-        # When a runner group is specified, resolve its id and enumerate only
-        # the runners that belong to that group so the availability decision
-        # matches the `runs-on.group` selector used by dependent jobs. A
-        # runner reported online by the org-wide listing may be assigned to a
-        # different group and would never pick up the dependent job.
-        if [[ -n "${RUNNER_GROUP}" ]]; then
-          if ! groups_json=$(gh api --paginate "orgs/${org}/actions/runner-groups" 2>"${api_err_file}"); then
-            api_err=$(cat "${api_err_file}")
-            echo "::warning::Could not query runner groups for '${org}' (${api_err:-unknown error}) — reporting runners as unavailable so dependent jobs are skipped."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            rm -f "${api_err_file}"
-            exit 0
-          fi
-          group_id=$(echo "${groups_json}" | jq --arg name "${RUNNER_GROUP}" \
-            '[.runner_groups[] | select(.name == $name)] | first | .id // empty')
-          if [[ -z "${group_id}" ]]; then
-            echo "::warning::Runner group '${RUNNER_GROUP}' not found in org '${org}' — reporting runners as unavailable so dependent jobs are skipped."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            rm -f "${api_err_file}"
-            exit 0
-          fi
-          if ! runners_json=$(gh api --paginate "orgs/${org}/actions/runner-groups/${group_id}/runners" 2>"${api_err_file}"); then
-            api_err=$(cat "${api_err_file}")
-            echo "::warning::Could not query runners for group '${RUNNER_GROUP}' (${api_err:-unknown error}) — reporting runners as unavailable so dependent jobs are skipped."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            rm -f "${api_err_file}"
-            exit 0
-          fi
-          echo "Queried runners in group '${RUNNER_GROUP}' (id=${group_id}) for org '${org}'."
-        # Otherwise fall back to the org-wide listing and then to repo-level.
-        elif runners_json=$(gh api --paginate "orgs/${org}/actions/runners" 2>"${api_err_file}"); then
-          echo "Queried org-level runners for '${org}'."
-        elif runners_json=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runners" 2>"${api_err_file}"); then
-          echo "Queried repo-level runners for '${GITHUB_REPOSITORY}'."
-        else
+        if ! runners_json=$(gh api --paginate \
+          "repos/${GITHUB_REPOSITORY}/actions/runners" 2>"${api_err_file}"); then
           api_err=$(cat "${api_err_file}")
-          echo "::warning::Could not query runner status (${api_err:-unknown error}) — reporting runners as unavailable so dependent jobs are skipped."
+          echo "::warning::Could not query repository runners " \
+            "(${api_err:-unknown error}) — reporting runners as unavailable so " \
+            "dependent jobs are skipped."
           echo "available=false" >> "$GITHUB_OUTPUT"
           rm -f "${api_err_file}"
           exit 0
         fi
         rm -f "${api_err_file}"
+        echo "Queried repository-level runners for '${GITHUB_REPOSITORY}'."
 
-        count=$(echo "${runners_json}" | jq --arg os "${CHECK_OS}" --arg prefix "${RUNNER_NAME_PREFIX}" \
+        count=$(echo "${runners_json}" | jq --arg os "${CHECK_OS}" \
+          --arg prefix "${RUNNER_NAME_PREFIX}" --arg label "${RUNNER_LABEL}" \
           '[ .runners[]
             | select(
                 .status == "online"
-                and (.labels | map(.name) | contains(["self-hosted", $os]))
+                and (
+                  .labels
+                  | map(.name) as $actual
+                  | ["self-hosted", $os, $label]
+                  | all(. as $required | $actual | index($required) != null)
+                )
                 and ($prefix == "" or (.name | startswith($prefix)))
               )
           ] | length')
@@ -115,5 +86,6 @@ runs:
           echo "${CHECK_OS} self-hosted runners online: ${count}"
         else
           echo "available=false" >> "$GITHUB_OUTPUT"
-          echo "::warning::No ${CHECK_OS} self-hosted runners are online — dependent jobs will be skipped."
+          echo "::warning::No ${CHECK_OS} self-hosted runners with label " \
+            "'${RUNNER_LABEL}' are online — dependent jobs will be skipped."
         fi
