@@ -416,7 +416,7 @@ pub(crate) fn handle_fstatat_with_hostfs(
     let Some(resolved) = vfs_resolve_path(request.dirfd, &request.path) else {
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
-    let final_path: &str = &resolved;
+    let final_path: &str = resolved.as_str();
 
     if hostfs::is_hostfs_path(final_path) {
         // Both stat modes are supported over hostfs. No-follow (`AT_SYMLINK_NOFOLLOW`)
@@ -476,12 +476,12 @@ pub(crate) fn handle_chdir_with_hostfs(
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
 
-    if hostfs::is_hostfs_path(&resolved) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id = pending.alloc_op_id();
-        match hostfs::send_pathstat_request(&resolved, op_id) {
+        match hostfs::send_pathstat_request(resolved.as_str(), op_id) {
             Ok(()) => {
                 if pending
                     .insert(
@@ -660,7 +660,7 @@ use ::syscall::{
         SymbolicLinkAtRequest,
     },
 };
-use ::vfs::fd::vfs_resolve_path;
+use ::vfs::path::vfs_resolve_path;
 use alloc::{
     vec,
     vec::Vec,
@@ -758,7 +758,7 @@ pub(crate) fn handle_openat_with_hostfs(
     let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
-    let final_path: &str = &resolved;
+    let final_path: &str = resolved.as_str();
 
     if hostfs::is_hostfs_path(final_path) {
         if !pending.has_capacity() {
@@ -804,8 +804,8 @@ pub(crate) fn handle_renameat_with_hostfs(
     let Some(new_resolved) = vfs_resolve_path(request.newdirfd, &request.newpath) else {
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
-    let old_final: &str = &old_resolved;
-    let new_final: &str = &new_resolved;
+    let old_final: &str = old_resolved.as_str();
+    let new_final: &str = new_resolved.as_str();
 
     let old_is_hostfs: bool = hostfs::is_hostfs_path(old_final);
     let new_is_hostfs: bool = hostfs::is_hostfs_path(new_final);
@@ -855,7 +855,7 @@ pub(crate) fn handle_unlinkat_with_hostfs(
     let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
-    let final_path: &str = &resolved;
+    let final_path: &str = resolved.as_str();
 
     if hostfs::is_hostfs_path(final_path) {
         if !pending.has_capacity() {
@@ -909,7 +909,7 @@ pub(crate) fn handle_mkdirat_with_hostfs(
     let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
-    let final_path: &str = &resolved;
+    let final_path: &str = resolved.as_str();
 
     if hostfs::is_hostfs_path(final_path) {
         if !pending.has_capacity() {
@@ -953,7 +953,7 @@ pub(crate) fn handle_symlinkat_with_hostfs(
     let Some(resolved) = vfs_resolve_path(request.dirfd, &request.linkpath) else {
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
-    let final_link: &str = &resolved;
+    let final_link: &str = resolved.as_str();
 
     if hostfs::is_hostfs_path(final_link) {
         if !pending.has_capacity() {
@@ -995,7 +995,7 @@ pub(crate) fn handle_readlinkat_with_hostfs(
     let Some(resolved) = vfs_resolve_path(request.dirfd, &request.path) else {
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
-    let final_path: &str = &resolved;
+    let final_path: &str = resolved.as_str();
 
     if hostfs::is_hostfs_path(final_path) {
         if !pending.has_capacity() {

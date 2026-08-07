@@ -23,7 +23,7 @@ use super::{
     path_cache::PathCache,
     Mount,
 };
-use crate::fd::ResolvedPath;
+use crate::path::ResolvedPath;
 use ::alloc::{
     string::String,
     vec::Vec,
@@ -241,7 +241,7 @@ impl Vfs {
 /// slashes. Never fails: [`ResolvedPath`] is absolute by construction, and `..`
 /// at the root clamps to the root, as POSIX defines `/..` to be `/`.
 pub(crate) fn normalize_absolute(path: &ResolvedPath) -> String {
-    normalize_components(path)
+    normalize_components(path.as_str())
 }
 
 /// Lexically normalizes an absolute `path`.

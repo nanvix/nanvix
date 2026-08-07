@@ -52,10 +52,7 @@ use ::sysapi::{
     },
     time::timespec,
 };
-use ::vfs::fd::{
-    vfs_resolve_path,
-    ResolvedPath,
-};
+use ::vfs::path::vfs_resolve_path;
 
 //==================================================================================================
 // Constants
@@ -1037,9 +1034,9 @@ fn test_resolve_path() -> Result<(), Error> {
     vfs::mkdir("/rp/sub").map_err(|e| fat_err(e, "mkdir /rp/sub failed"))?;
 
     // Absolute path: dirfd should be ignored.
-    let resolved: ResolvedPath = vfs_resolve_path(0, "/rp/sub/file.txt")
+    let resolved = vfs_resolve_path(0, "/rp/sub/file.txt")
         .ok_or(Error::new(ErrorCode::InvalidArgument, "absolute resolve failed"))?;
-    if &*resolved != "/rp/sub/file.txt" {
+    if resolved.as_str() != "/rp/sub/file.txt" {
         return Err(Error::new(ErrorCode::InvalidArgument, "absolute path mismatch"));
     }
 
@@ -1047,7 +1044,7 @@ fn test_resolve_path() -> Result<(), Error> {
     vfs::chdir("/rp").map_err(|e| fat_err(e, "chdir /rp failed"))?;
     let resolved_cwd = vfs_resolve_path(AT_FDCWD, "sub")
         .ok_or(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD resolve failed"))?;
-    if &*resolved_cwd != "/rp/sub" {
+    if resolved_cwd.as_str() != "/rp/sub" {
         return Err(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD path mismatch"));
     }
 
@@ -1056,7 +1053,7 @@ fn test_resolve_path() -> Result<(), Error> {
         .map_err(|e| fat_err(e, "vfs_open /rp/sub O_DIRECTORY"))?;
     let resolved_dir = vfs_resolve_path(dir_fd, "nested.txt")
         .ok_or(Error::new(ErrorCode::InvalidArgument, "dirfd resolve failed"))?;
-    if &*resolved_dir != "/rp/sub/nested.txt" {
+    if resolved_dir.as_str() != "/rp/sub/nested.txt" {
         return Err(Error::new(ErrorCode::InvalidArgument, "dirfd path mismatch"));
     }
 

@@ -44,9 +44,9 @@ use ::sys::{
     },
 };
 use ::syscall::unistd::message::ChangeDirectoryResponse;
-use ::vfs::fd::{
-    vfs_set_cwd,
-    ResolvedPath,
+use ::vfs::{
+    fd::vfs_set_cwd,
+    path::ResolvedPath,
 };
 
 //==================================================================================================
