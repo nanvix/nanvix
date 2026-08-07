@@ -16,14 +16,17 @@ use crate::{
         SocketType,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -66,11 +69,11 @@ pub fn socketpair(
     }
 
     // Build request and send it.
-    let request: Message = CreateSocketPairRequest::build(tid, domain, typ, protocol);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = CreateSocketPairRequest::build(tid, domain, typ, protocol);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -82,9 +85,9 @@ pub fn socketpair(
         // System call succeeded, parse response.
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
-        match message.header {
+        match message.kind() {
             // Response was successfully parsed.
-            SystemCallMessageHeader::CreateSocketPairResponse => {
+            SystemCallMessageKind::CreateSocketPairResponse => {
                 let response: CreateSocketPairResponse =
                     CreateSocketPairResponse::from_bytes(message.payload);
 

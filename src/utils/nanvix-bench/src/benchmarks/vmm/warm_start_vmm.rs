@@ -25,6 +25,7 @@ use ::nanvix::{
             IkcFrame,
             Message,
             MessageType,
+            RequestIdentifier,
         },
         pm::{
             ProcessIdentifier,
@@ -33,7 +34,7 @@ use ::nanvix::{
     },
     syscall::{
         SystemCallMessage,
-        SystemCallMessageHeader,
+        SystemCallMessageKind,
         unistd::message::{
             ReadRequest,
             ReadResponse,
@@ -62,8 +63,8 @@ use ::tokio::{
 };
 
 enum GuestRequest {
-    ReadPull(ThreadIdentifier, DataChunkHeader),
-    WritePush(ThreadIdentifier, DataChunk),
+    ReadPull(ThreadIdentifier, RequestIdentifier, DataChunkHeader),
+    WritePush(ThreadIdentifier, RequestIdentifier, DataChunk),
 }
 
 const MESSAGE_SIZES: [(&str, usize); 7] = [
@@ -173,6 +174,7 @@ fn chunk_response_header(
 async fn send_read_chunk(
     input_tx: &mpsc::Sender<IkcFrame>,
     tid: ThreadIdentifier,
+    request_id: RequestIdentifier,
     pull_header: &DataChunkHeader,
     chunk: &[u8],
     context: &str,
@@ -182,7 +184,7 @@ async fn send_read_chunk(
     input_tx.send(IkcFrame::Bulk(bulk_response)).await?;
 
     let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-    let read_response: Message = ReadResponse::build(
+    let mut read_response: Message = ReadResponse::build(
         tid,
         i32::try_from(chunk.len())
             .map_err(|e| anyhow::anyhow!("{context}: read response length exceeds i32: {e}"))?,
@@ -190,6 +192,7 @@ async fn send_read_chunk(
         ProcessIdentifier::KERNEL,
         MessageType::Ikc,
     );
+    request_id.write_to(&mut read_response);
     input_tx.send(IkcFrame::Message(read_response)).await?;
 
     Ok(())
@@ -201,10 +204,11 @@ async fn receive_guest_request(
 ) -> Result<GuestRequest> {
     let message: Message =
         receive_message(output_rx, "ReadRequest or WriteRequest", context).await?;
+    let request_id: RequestIdentifier = RequestIdentifier::read_from(&message);
     let syscall_message: SystemCallMessage = SystemCallMessage::try_from_bytes(message.payload)
         .map_err(|_| anyhow::anyhow!("{context}: error parsing SystemCall message"))?;
-    match syscall_message.header {
-        SystemCallMessageHeader::ReadRequest => {
+    match syscall_message.kind() {
+        SystemCallMessageKind::ReadRequest => {
             let tid: ThreadIdentifier = message_source_tid(&message, context)?;
             let read_request: ReadRequest = ReadRequest::from_bytes(syscall_message.payload);
             let requested_count: usize = read_request.count as usize;
@@ -219,9 +223,9 @@ async fn receive_guest_request(
                 );
             }
 
-            Ok(GuestRequest::ReadPull(tid, pull_header))
+            Ok(GuestRequest::ReadPull(tid, request_id, pull_header))
         },
-        SystemCallMessageHeader::WriteRequest => {
+        SystemCallMessageKind::WriteRequest => {
             let tid: ThreadIdentifier = message_source_tid(&message, context)?;
             let write_request: WriteRequest = WriteRequest::from_bytes(syscall_message.payload);
             let requested_count: usize = write_request.count as usize;
@@ -242,7 +246,7 @@ async fn receive_guest_request(
                 );
             }
 
-            Ok(GuestRequest::WritePush(tid, push))
+            Ok(GuestRequest::WritePush(tid, request_id, push))
         },
         header => anyhow::bail!("{context}: unexpected syscall message: {header:?}"),
     }
@@ -251,16 +255,18 @@ async fn receive_guest_request(
 async fn send_write_response(
     input_tx: &mpsc::Sender<IkcFrame>,
     tid: ThreadIdentifier,
+    request_id: RequestIdentifier,
     count: usize,
     context: &str,
 ) -> Result<()> {
-    let write_response: Message = WriteResponse::build(
+    let mut write_response: Message = WriteResponse::build(
         tid,
         i32::try_from(count)
             .map_err(|e| anyhow::anyhow!("{context}: write response length exceeds i32: {e}"))?,
         ProcessIdentifier::KERNEL,
         MessageType::Ikc,
     );
+    request_id.write_to(&mut write_response);
     input_tx.send(IkcFrame::Message(write_response)).await?;
 
     Ok(())
@@ -272,7 +278,7 @@ async fn run_echo_cycle(
     first_request: GuestRequest,
     expected: &[u8],
     context: &str,
-) -> Result<(ThreadIdentifier, usize)> {
+) -> Result<(ThreadIdentifier, RequestIdentifier, usize)> {
     let mut sent: usize = 0;
     let mut received: usize = 0;
     let mut next_request: Option<GuestRequest> = Some(first_request);
@@ -284,7 +290,7 @@ async fn run_echo_cycle(
         };
 
         match request {
-            GuestRequest::ReadPull(tid, pull_header) => {
+            GuestRequest::ReadPull(tid, request_id, pull_header) => {
                 if sent == expected.len() {
                     anyhow::bail!("{context}: guest requested more input after full payload");
                 }
@@ -298,6 +304,7 @@ async fn run_echo_cycle(
                 send_read_chunk(
                     input_tx,
                     tid,
+                    request_id,
                     &pull_header,
                     &expected[sent..sent + chunk_len],
                     context,
@@ -305,7 +312,7 @@ async fn run_echo_cycle(
                 .await?;
                 sent += chunk_len;
             },
-            GuestRequest::WritePush(tid, push) => {
+            GuestRequest::WritePush(tid, request_id, push) => {
                 let chunk: &[u8] = push.data();
                 if chunk.is_empty() && received < expected.len() {
                     anyhow::bail!("{context}: zero-length push before full payload was echoed");
@@ -328,10 +335,10 @@ async fn run_echo_cycle(
 
                 received = next_received;
                 if received == expected.len() {
-                    return Ok((tid, chunk.len()));
+                    return Ok((tid, request_id, chunk.len()));
                 }
 
-                send_write_response(input_tx, tid, chunk.len(), context).await?;
+                send_write_response(input_tx, tid, request_id, chunk.len(), context).await?;
             },
         }
     }
@@ -403,15 +410,16 @@ impl Benchmark {
                 .as_slice();
             let first_request: GuestRequest =
                 receive_guest_request(&mut vcpu_thread_stdout_rx, "warmup").await?;
-            let (tid, count): (ThreadIdentifier, usize) = run_echo_cycle(
-                &mut vcpu_thread_stdout_rx,
-                &io_handler_data_tx,
-                first_request,
-                payload,
-                "warmup",
-            )
-            .await?;
-            send_write_response(&io_handler_data_tx, tid, count, "warmup").await?;
+            let (tid, request_id, count): (ThreadIdentifier, RequestIdentifier, usize) =
+                run_echo_cycle(
+                    &mut vcpu_thread_stdout_rx,
+                    &io_handler_data_tx,
+                    first_request,
+                    payload,
+                    "warmup",
+                )
+                .await?;
+            send_write_response(&io_handler_data_tx, tid, request_id, count, "warmup").await?;
 
             sleep(std::time::Duration::from_millis(WARMUP_SLEEP_DURATION)).await;
         }
@@ -423,21 +431,28 @@ impl Benchmark {
                     receive_guest_request(&mut vcpu_thread_stdout_rx, "run_warm_start_vmm()")
                         .await?;
                 let start = Instant::now();
-                let (tid, count): (ThreadIdentifier, usize) = run_echo_cycle(
-                    &mut vcpu_thread_stdout_rx,
-                    &io_handler_data_tx,
-                    first_request,
-                    payload,
-                    "run_warm_start_vmm()",
-                )
-                .await?;
+                let (tid, request_id, count): (ThreadIdentifier, RequestIdentifier, usize) =
+                    run_echo_cycle(
+                        &mut vcpu_thread_stdout_rx,
+                        &io_handler_data_tx,
+                        first_request,
+                        payload,
+                        "run_warm_start_vmm()",
+                    )
+                    .await?;
                 latencies
                     .entry(label.clone())
                     .or_default()
                     .push(start.elapsed().as_micros());
 
-                send_write_response(&io_handler_data_tx, tid, count, "run_warm_start_vmm()")
-                    .await?;
+                send_write_response(
+                    &io_handler_data_tx,
+                    tid,
+                    request_id,
+                    count,
+                    "run_warm_start_vmm()",
+                )
+                .await?;
 
                 sleep(std::time::Duration::from_millis(CLEANUP_SLEEP_DURATION)).await;
 

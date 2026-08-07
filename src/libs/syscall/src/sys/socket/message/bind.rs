@@ -8,7 +8,7 @@
 use crate::{
     sys::socket::sockaddr,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -62,10 +62,8 @@ impl BindSocketRequest {
 
     pub fn build(tid: ThreadIdentifier, sockfd: c_int, sockaddr: &sockaddr) -> Message {
         let message: Self = Self::new(sockfd, sockaddr);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::BindSocketRequest,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::BindSocketRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(crate::NETWORK_DESTINATION, ThreadIdentifier::NONE),
@@ -119,10 +117,8 @@ impl BindSocketResponse {
 
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::new();
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::BindSocketResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::BindSocketResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(crate::NETWORK_SOURCE, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

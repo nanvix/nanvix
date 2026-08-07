@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt,
@@ -76,7 +76,7 @@ impl ResolveFdRequest {
     ) -> Message {
         let message: ResolveFdRequest = ResolveFdRequest::new(pid, fd);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::ResolveFdRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::ResolveFdRequest, message.into_bytes());
         Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -161,10 +161,8 @@ impl ResolveFdResponse {
         message_type: MessageType,
     ) -> Message {
         let message: ResolveFdResponse = ResolveFdResponse::new(route, backend_fd, epoch);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ResolveFdResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::ResolveFdResponse, message.into_bytes());
         Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

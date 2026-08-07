@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -61,7 +61,7 @@ impl GetIdsRequest {
     ) -> Message {
         let message: GetIdsRequest = GetIdsRequest::new();
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::GetIdsRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::GetIdsRequest, message.into_bytes());
         Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -120,7 +120,7 @@ impl GetIdsResponse {
     ) -> Message {
         let message: GetIdsResponse = GetIdsResponse::new(uid, gid, euid, egid);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::GetIdsResponse, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::GetIdsResponse, message.into_bytes());
         Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

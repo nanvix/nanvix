@@ -10,7 +10,7 @@ use crate::{
     message::MessagePartitioner,
     safe::RawFileDescriptor,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::vec::Vec;
 use ::sys::{
@@ -18,7 +18,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 
@@ -63,14 +66,12 @@ pub fn renameat(
 
     // Build request and send it.
     let request: RenameAtRequest = RenameAtRequest::new(olddirfd, &oldpath, newdirfd, &newpath)?;
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
-    for request in &requests {
-        ::sys::kcall::ipc::__kcall_send(request)?;
-    }
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -107,8 +108,8 @@ pub fn renameat(
     } else {
         // System call succeeded, parse response.
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-        match message.header {
-            SystemCallMessageHeader::RenameAtResponse => Ok(()),
+        match message.kind() {
+            SystemCallMessageKind::RenameAtResponse => Ok(()),
             header => {
                 let reason: &str = "unexpected message header";
                 ::syslog::warn!(

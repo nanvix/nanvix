@@ -20,7 +20,7 @@ use crate::{
         ReadResponse,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::sys::{
     error::{
@@ -30,6 +30,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageType,
+        RequestToken,
     },
     pm::{
         ProcessIdentifier,
@@ -87,38 +88,42 @@ fn read_chunk(
     backend: ReadBackend,
 ) -> Result<c_size_t, Error> {
     // Send metadata-only ReadRequest via IPC message.
-    let request: Message = ReadRequest::build(
+    let mut request: Message = ReadRequest::build(
         tid,
         fd,
         chunk.len() as c_size_t,
         backend.destination,
         backend.message_type,
     );
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Pull data via data chunk transfer.
-    let bytes_pulled: usize =
+    let mut interrupted: Option<Error> = None;
+    let bytes_pulled: Option<usize> =
         match ::sys::kcall::ipc::__kcall_pull(backend.pull_pid, backend.pull_tid, chunk) {
-            Ok(bytes_pulled) => bytes_pulled,
+            Ok(bytes_pulled) => Some(bytes_pulled),
             Err(error) if error.code == ErrorCode::Interrupted => {
-                match backend.cancellation {
-                    ReadCancellation::None => {},
-                    ReadCancellation::Console => cancel_console_read(tid)?,
+                let cancelled: bool = match backend.cancellation {
+                    ReadCancellation::None => return Err(error),
+                    ReadCancellation::Console => cancel_console_read(tid, token.identifier())?,
                     ReadCancellation::Pipe => {
-                        let _transferred: u32 =
-                            cancel_pipe_operation(tid, fd, PipeOperation::Read)?;
+                        cancel_pipe_operation(tid, fd, PipeOperation::Read, token.identifier())?
+                            .is_some()
                     },
+                };
+                if cancelled {
+                    return Err(error);
                 }
-                return Err(error);
+                interrupted = Some(error);
+                None
             },
             Err(error) => return Err(error),
         };
 
     // Receive response metadata (count, status). Once the bulk transfer completed, always drain the
     // matching response so a caught signal cannot leave stale metadata in this thread's mailbox.
-    let mut interrupted: Option<Error> = None;
     let response: Message = loop {
-        match ::sys::kcall::ipc::__kcall_recv() {
+        match crate::rpc::recv_response_interruptible(&token) {
             Ok(response) => break response,
             Err(error) if error.code == ErrorCode::Interrupted => {
                 interrupted.get_or_insert(error);
@@ -155,8 +160,8 @@ fn read_chunk(
 
     // Parse response.
     let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-    match message.header {
-        SystemCallMessageHeader::ReadResponse => {
+    match message.kind() {
+        SystemCallMessageKind::ReadResponse => {
             let resp: ReadResponse = ReadResponse::from_bytes(message.payload);
             let count: i32 = resp.count;
 
@@ -174,17 +179,32 @@ fn read_chunk(
             }
 
             // Sanity-check: the number of bytes reported by the backend should match the bytes
-            // actually pulled via the data chunk transfer.
-            if (count as usize) != bytes_pulled {
-                ::syslog::warn!(
-                    "read_chunk(): byte count mismatch (resp.count={:?}, bytes_pulled={:?})",
-                    count,
-                    bytes_pulled
-                );
-                return Err(Error::new(
-                    ErrorCode::InvalidMessage,
-                    "read response count does not match bytes pulled",
-                ));
+            // actually pulled via the data chunk transfer. When the transfer never completed, a
+            // positive count would report bytes that never reached the caller's buffer.
+            match bytes_pulled {
+                Some(bytes_pulled) if (count as usize) != bytes_pulled => {
+                    ::syslog::warn!(
+                        "read_chunk(): byte count mismatch (resp.count={:?}, bytes_pulled={:?})",
+                        count,
+                        bytes_pulled
+                    );
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "read response count does not match bytes pulled",
+                    ));
+                },
+                None if count != 0 => {
+                    ::syslog::warn!(
+                        "read_chunk(): response reports data without a completed transfer \
+                         (resp.count={:?})",
+                        count
+                    );
+                    return Err(Error::new(
+                        ErrorCode::InvalidMessage,
+                        "read response reports data that was never transferred",
+                    ));
+                },
+                _ => {},
             }
 
             if count == 0 {
@@ -208,12 +228,15 @@ fn read_chunk(
 }
 
 /// Cancels this thread's parked VFSD console read and drains the acknowledgement.
-fn cancel_console_read(tid: ThreadIdentifier) -> Result<(), Error> {
-    let request: Message = ConsoleReadCancel::build_request(tid);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+fn cancel_console_read(
+    tid: ThreadIdentifier,
+    request_id: ::sys::ipc::RequestIdentifier,
+) -> Result<bool, Error> {
+    let mut request: Message = ConsoleReadCancel::build_request(tid, request_id);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     loop {
-        let response: Message = match ::sys::kcall::ipc::__kcall_recv() {
+        let response: Message = match crate::rpc::recv_response_interruptible(&token) {
             Ok(response) => response,
             Err(error) if error.code == ErrorCode::Interrupted => continue,
             Err(error) => return Err(error),
@@ -232,14 +255,14 @@ fn cancel_console_read(tid: ThreadIdentifier) -> Result<(), Error> {
             ));
         }
         let response: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-        let header: SystemCallMessageHeader = response.header;
-        if header != SystemCallMessageHeader::ConsoleReadCancelResponse {
+        let header: SystemCallMessageKind = response.kind();
+        if header != SystemCallMessageKind::ConsoleReadCancelResponse {
             return Err(Error::new(
                 ErrorCode::InvalidMessage,
                 "unexpected console read cancellation response",
             ));
         }
-        return Ok(());
+        return Ok(ConsoleReadCancel::cancelled(&response.payload));
     }
 }
 

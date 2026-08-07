@@ -39,22 +39,25 @@ fn dup2_via_vfsd(oldfd: c_int, newfd: c_int) -> Result<c_int, Error> {
             Dup2Response,
         },
         SystemCallMessage,
-        SystemCallMessageHeader,
+        SystemCallMessageKind,
     };
     use ::sys::{
-        ipc::Message,
+        ipc::{
+            Message,
+            RequestToken,
+        },
         pm::ThreadIdentifier,
     };
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it. The descriptors are the caller-facing flat numbers vfsd owns.
-    let request: Message =
+    let mut request: Message =
         Dup2Request::build(tid, oldfd, newfd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether the system call succeeded or not.
     if response.status != 0 {
@@ -65,8 +68,8 @@ fn dup2_via_vfsd(oldfd: c_int, newfd: c_int) -> Result<c_int, Error> {
 
     // Parse response.
     let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-    match message.header {
-        SystemCallMessageHeader::Dup2Response => {
+    match message.kind() {
+        SystemCallMessageKind::Dup2Response => {
             let response: Dup2Response = Dup2Response::from_bytes(message.payload);
             let ret: c_int = response.ret;
             // `newfd` now aliases `oldfd`'s description, so its routing changed. Drop any cached

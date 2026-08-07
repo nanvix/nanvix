@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -82,7 +82,7 @@ impl SystemCallMessagePart {
     #[allow(clippy::too_many_arguments)]
     pub fn build_request(
         tid: ThreadIdentifier,
-        header: SystemCallMessageHeader,
+        header: SystemCallMessageKind,
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
@@ -124,7 +124,7 @@ impl SystemCallMessagePart {
     #[allow(clippy::too_many_arguments)]
     pub fn build_response(
         tid: ThreadIdentifier,
-        header: SystemCallMessageHeader,
+        header: SystemCallMessageKind,
         total_parts: u16,
         part_number: u16,
         payload_size: u8,
@@ -195,7 +195,7 @@ impl SystemCallMessagePart {
     #[allow(clippy::too_many_arguments)]
     fn build(
         tid: ThreadIdentifier,
-        header: SystemCallMessageHeader,
+        header: SystemCallMessageKind,
         total_parts: u16,
         part_number: u16,
         payload_size: u8,

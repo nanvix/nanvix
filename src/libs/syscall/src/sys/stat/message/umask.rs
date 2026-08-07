@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -66,7 +66,7 @@ impl FileCreationMaskRequest {
     ) -> Message {
         let request: Self = Self::new(mask);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileCreationMaskRequest,
+            SystemCallMessageKind::FileCreationMaskRequest,
             request.into_bytes(),
         );
         Message::new(
@@ -121,7 +121,7 @@ impl FileCreationMaskResponse {
     ) -> Message {
         let response: Self = Self::new(mask);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileCreationMaskResponse,
+            SystemCallMessageKind::FileCreationMaskResponse,
             response.into_bytes(),
         );
         Message::new(

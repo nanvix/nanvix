@@ -12,7 +12,7 @@ use crate::{
         MessageSerializer,
         SystemCallMessagePart,
     },
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::vec::Vec;
 use ::core::mem;
@@ -241,7 +241,7 @@ impl MessagePartitioner for PollRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::PollRequestPart,
+            SystemCallMessageKind::PollRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -378,7 +378,7 @@ impl MessagePartitioner for PollResponse {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_response(
             tid,
-            SystemCallMessageHeader::PollResponsePart,
+            SystemCallMessageKind::PollResponsePart,
             total_parts,
             part_number,
             payload_size,

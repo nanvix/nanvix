@@ -16,14 +16,17 @@ use crate::{
         SocketType,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -36,11 +39,11 @@ pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Res
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = CreateSocketRequest::build(tid, domain, typ, protocol);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = CreateSocketRequest::build(tid, domain, typ, protocol);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -53,9 +56,9 @@ pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Res
         // System call succeeded, parse response.
         match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
+            Ok(message) => match message.kind() {
                 // Response was successfully parsed.
-                SystemCallMessageHeader::CreateSocketResponse => {
+                SystemCallMessageKind::CreateSocketResponse => {
                     let response: CreateSocketResponse =
                         CreateSocketResponse::from_bytes(message.payload);
                     let remote_fd: c_int = response.sockfd;

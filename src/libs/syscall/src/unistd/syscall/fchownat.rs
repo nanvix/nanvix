@@ -9,7 +9,7 @@ use crate::{
     message::MessagePartitioner,
     unistd::message::FileChownAtRequest,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::vec::Vec;
 use ::sys::{
@@ -17,7 +17,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::{
@@ -70,14 +73,12 @@ pub fn fchownat(
 
     let request: FileChownAtRequest = FileChownAtRequest::new(dirfd, owner, group, flag, &path)?;
 
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
-    for request in &requests {
-        ::sys::kcall::ipc::__kcall_send(request)?;
-    }
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -100,8 +101,8 @@ pub fn fchownat(
         // System call succeeded, parse response.
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
 
-        match message.header {
-            SystemCallMessageHeader::FileChownAtResponse => Ok(()),
+        match message.kind() {
+            SystemCallMessageKind::FileChownAtResponse => Ok(()),
             header => {
                 ::syslog::warn!(
                     "fchownat(): failed to parse response (dirfd={:?}, path={:?}, owner={:?}, \

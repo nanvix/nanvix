@@ -14,7 +14,7 @@ use crate::{
         SocketAddr,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::cmp;
 use ::sys::{
@@ -22,7 +22,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -70,8 +73,8 @@ pub fn recvfrom(
     let recv_len: usize = cmp::min(ReceiveFromSocketResponse::MAX_DATA_SIZE, buffer.len());
 
     // Build metadata-only request and send it via IPC message.
-    let request: Message = ReceiveFromSocketRequest::build(tid, sockfd, recv_len as u32, flags);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = ReceiveFromSocketRequest::build(tid, sockfd, recv_len as u32, flags);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Pull the datagram payload via data chunk transfer.
     let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull(
@@ -81,7 +84,7 @@ pub fn recvfrom(
     )?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -91,8 +94,8 @@ pub fn recvfrom(
     } else {
         // System call succeeded, parse response.
         match SystemCallMessage::try_from_bytes(response.payload) {
-            Ok(message) => match message.header {
-                SystemCallMessageHeader::ReceiveFromSocketResponse => {
+            Ok(message) => match message.kind() {
+                SystemCallMessageKind::ReceiveFromSocketResponse => {
                     let response: ReceiveFromSocketResponse =
                         ReceiveFromSocketResponse::from_bytes(message.payload);
 

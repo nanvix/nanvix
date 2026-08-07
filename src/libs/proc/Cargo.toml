@@ -19,6 +19,10 @@ sys = { workspace = true }
 static_assert = { workspace = true }
 syslog = { workspace = true, default-features = true, optional = true }
 
+[dev-dependencies]
+log = { workspace = true }
+sys = { workspace = true, features = ["kcall"] }
+
 [build-dependencies]
 cc = { workspace = true }
 cfg-if = { workspace = true }
@@ -26,7 +30,7 @@ cfg-if = { workspace = true }
 [features]
 default = ["syslog"]
 std = []
-syscall = []
+syscall = ["syslog"]
 daemon = ["syslog"]
 
 [lints]

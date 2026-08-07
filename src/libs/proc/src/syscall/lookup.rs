@@ -48,11 +48,11 @@ pub fn lookup(name: &str) -> Result<ProcessIdentifier, Error> {
     let mypid: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build lookup message and send it.
-    let message: Message = message::lookup_request(name, mypid)?;
-    ::sys::kcall::ipc::__kcall_send(&message)?;
+    let mut message: Message = message::lookup_request(name, mypid)?;
+    let token = super::rpc::send_request(&mut message)?;
 
     // Wait response from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let message: Message = super::rpc::recv_response(&token)?;
 
     // Parse response.
     match message.message_type {

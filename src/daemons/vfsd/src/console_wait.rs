@@ -5,6 +5,7 @@
 
 extern crate alloc;
 
+use crate::error::ResponseContext;
 use ::alloc::collections::VecDeque;
 use ::sys::{
     error::ErrorCode,
@@ -15,7 +16,10 @@ use ::sys::{
 };
 
 /// A blocking console read parked by VFSD.
+#[derive(Clone, Copy)]
 pub(crate) struct BlockedConsoleReader {
+    /// Exact response routing and correlation metadata for the original request.
+    pub response_context: ResponseContext,
     /// Process that issued the read.
     pub source_pid: ProcessIdentifier,
     /// Thread that issued the read.
@@ -50,12 +54,9 @@ impl ConsoleWaitTable {
         self.readers.push_back(reader);
     }
 
-    /// Returns the routing data for the front reader.
-    pub fn front(
-        &self,
-    ) -> Option<(ProcessIdentifier, ThreadIdentifier, i32, usize, Option<ErrorCode>)> {
-        let reader: &BlockedConsoleReader = self.readers.front()?;
-        Some((reader.source_pid, reader.source_tid, reader.fd, reader.count, reader.error))
+    /// Returns a snapshot of the front reader.
+    pub fn front(&self) -> Option<BlockedConsoleReader> {
+        self.readers.front().copied()
     }
 
     /// Removes the front reader.
@@ -63,10 +64,24 @@ impl ConsoleWaitTable {
         self.readers.pop_front()
     }
 
-    /// Cancels every parked read issued by one thread.
-    pub fn cancel(&mut self, pid: ProcessIdentifier, tid: ThreadIdentifier) {
-        self.readers
-            .retain(|reader| reader.source_pid != pid || reader.source_tid != tid);
+    /// Cancels one parked read identified by its exact response context.
+    pub fn cancel(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        request_id: ::sys::ipc::RequestIdentifier,
+    ) -> bool {
+        let reader: Option<usize> = self.readers.iter().position(|reader| {
+            reader.source_pid == pid
+                && reader.source_tid == tid
+                && reader.response_context.request_id() == request_id
+        });
+        if let Some(index) = reader {
+            self.readers.remove(index);
+            true
+        } else {
+            false
+        }
     }
 
     /// Removes all requests belonging to a terminated process.

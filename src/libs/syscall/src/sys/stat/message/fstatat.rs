@@ -12,7 +12,7 @@ use crate::{
         MessageSerializer,
         SystemCallMessagePart,
     },
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::String,
@@ -216,7 +216,7 @@ impl MessagePartitioner for FileStatAtRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::FileStatAtRequestPart,
+            SystemCallMessageKind::FileStatAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -416,7 +416,7 @@ impl MessagePartitioner for FileStatAtResponse {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_response(
             tid,
-            SystemCallMessageHeader::FileStatAtResponsePart,
+            SystemCallMessageKind::FileStatAtResponsePart,
             total_parts,
             part_number,
             payload_size,

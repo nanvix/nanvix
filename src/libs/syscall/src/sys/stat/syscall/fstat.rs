@@ -11,7 +11,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use sysapi::sys_stat;
@@ -61,11 +64,11 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
     };
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
-    let message: Message =
+    let mut message: Message =
         FileStatRequest::build(tid, backend_fd, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE);
-    ::sys::kcall::ipc::__kcall_send(&message)?;
+    let token: RequestToken = crate::rpc::send_request(&mut message)?;
 
-    *buf = crate::sys::stat::syscall::fstatat_response()?;
+    *buf = crate::sys::stat::syscall::fstatat_response(&token)?;
 
     Ok(())
 }

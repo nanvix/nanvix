@@ -15,7 +15,7 @@ use crate::{
     error::{
         build_error,
         fat32_to_error_code,
-        send_response,
+        ResponseContext,
     },
     pipe_wait::{
         BlockedReader,
@@ -293,14 +293,15 @@ pub(crate) fn handle_pipe_create(source: ThreadIdentifier) -> Message {
 /// or error) and `None` when the caller is parked (it stays blocked in `__kcall_pull` until a
 /// writer or a close revives it).
 pub(crate) fn handle_pipe_read(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     fd: i32,
     count: usize,
     is_write: bool,
     pipe_id: u64,
     pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     // Reading the write end is rejected with `EBADF`, regardless of `count`. The caller is blocked
     // in `__kcall_pull`, so release it before sending the error response.
     if is_write {
@@ -330,6 +331,7 @@ pub(crate) fn handle_pipe_read(
                 pipe_wait.park_reader(
                     pipe_id,
                     BlockedReader {
+                        response_context,
                         source_tid,
                         source_pid,
                         fd,
@@ -355,14 +357,15 @@ pub(crate) fn handle_pipe_read(
 /// either answers now or parks the caller (which stays blocked in `__kcall_recv`) until a reader
 /// drains space or all readers close.
 pub(crate) fn handle_pipe_write(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     fd: i32,
     count: usize,
     is_write: bool,
     pipe_id: u64,
     pipe_wait: &mut PipeWaitTable,
 ) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let cap: usize = count.min(PIPE_BULK_SIZE);
 
     // Pull the caller's data first; this releases the client's blocking `__kcall_push`.
@@ -414,6 +417,7 @@ pub(crate) fn handle_pipe_write(
                 pipe_wait.park_writer(
                     pipe_id,
                     BlockedWriter {
+                        response_context,
                         source_tid,
                         source_pid,
                         fd,
@@ -435,6 +439,7 @@ pub(crate) fn handle_pipe_write(
                 pipe_wait.park_writer(
                     pipe_id,
                     BlockedWriter {
+                        response_context,
                         source_tid,
                         source_pid,
                         fd,
@@ -460,23 +465,30 @@ pub(crate) fn handle_pipe_write(
 /// Returns `true` if any reader was answered (used to drive [`rebalance`] to a fixpoint).
 fn wake_readers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) -> bool {
     let mut progress: bool = false;
-    while let Some((pid, tid, fd, count)) = pipe_wait.front_reader(pipe_id) {
-        set_current_process(pid);
-        match try_serve_reader(pid, tid, fd, count, true) {
+    while let Some(reader) = pipe_wait.front_reader(pipe_id) {
+        set_current_process(reader.source_pid);
+        match try_serve_reader(reader.source_pid, reader.source_tid, reader.fd, reader.count, true)
+        {
             ServeOutcome::Served(n) => {
                 pipe_wait.pop_reader(pipe_id);
-                send_response(&read_response(tid, n));
+                reader
+                    .response_context
+                    .send(&read_response(reader.source_tid, n));
                 progress = true;
             },
             ServeOutcome::Eof => {
                 pipe_wait.pop_reader(pipe_id);
-                send_response(&read_response(tid, 0));
+                reader
+                    .response_context
+                    .send(&read_response(reader.source_tid, 0));
                 progress = true;
             },
             ServeOutcome::WouldBlock => break,
             ServeOutcome::Error => {
                 pipe_wait.pop_reader(pipe_id);
-                send_response(&build_error(tid, ErrorCode::BadFile));
+                reader
+                    .response_context
+                    .send(&build_error(reader.source_tid, ErrorCode::BadFile));
                 progress = true;
             },
             ServeOutcome::Retry => {
@@ -540,18 +552,23 @@ fn wake_writers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) -> bool {
 
         match outcome {
             Ok(PipeWriteOutcome::Wrote(n)) => {
-                let (done, tid, total): (bool, ThreadIdentifier, usize) = {
+                let (done, response_context, tid, total): (
+                    bool,
+                    ResponseContext,
+                    ThreadIdentifier,
+                    usize,
+                ) = {
                     let w: &mut crate::pipe_wait::BlockedWriter =
                         match pipe_wait.front_writer_mut(pipe_id) {
                             Some(w) => w,
                             None => break,
                         };
                     w.written += n;
-                    (w.written >= w.data.len(), w.source_tid, w.total)
+                    (w.written >= w.data.len(), w.response_context, w.source_tid, w.total)
                 };
                 if done {
                     pipe_wait.pop_writer(pipe_id);
-                    send_response(&write_response(tid, total));
+                    response_context.send(&write_response(tid, total));
                     progress = true;
                 } else {
                     progress |= n > 0;
@@ -561,21 +578,23 @@ fn wake_writers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) -> bool {
             },
             Ok(PipeWriteOutcome::WouldBlock) => break,
             Ok(PipeWriteOutcome::BrokenPipe) => {
-                let tid: ThreadIdentifier = match pipe_wait.front_writer(pipe_id) {
-                    Some(w) => w.source_tid,
-                    None => break,
-                };
+                let (response_context, tid): (ResponseContext, ThreadIdentifier) =
+                    match pipe_wait.front_writer(pipe_id) {
+                        Some(w) => (w.response_context, w.source_tid),
+                        None => break,
+                    };
                 pipe_wait.pop_writer(pipe_id);
-                send_response(&build_error(tid, ErrorCode::BrokenPipe));
+                response_context.send(&build_error(tid, ErrorCode::BrokenPipe));
                 progress = true;
             },
             Err(_) => {
-                let tid: ThreadIdentifier = match pipe_wait.front_writer(pipe_id) {
-                    Some(w) => w.source_tid,
-                    None => break,
-                };
+                let (response_context, tid): (ResponseContext, ThreadIdentifier) =
+                    match pipe_wait.front_writer(pipe_id) {
+                        Some(w) => (w.response_context, w.source_tid),
+                        None => break,
+                    };
                 pipe_wait.pop_writer(pipe_id);
-                send_response(&build_error(tid, ErrorCode::BadFile));
+                response_context.send(&build_error(tid, ErrorCode::BadFile));
                 progress = true;
             },
         }
@@ -610,6 +629,8 @@ pub(crate) fn wake_all_readers_eof(pipe_id: u64, pipe_wait: &mut PipeWaitTable) 
 /// a broken-pipe error.
 pub(crate) fn fail_all_writers_epipe(pipe_id: u64, pipe_wait: &mut PipeWaitTable) {
     for writer in pipe_wait.drain_writers(pipe_id) {
-        send_response(&build_error(writer.source_tid, ErrorCode::BrokenPipe));
+        writer
+            .response_context
+            .send(&build_error(writer.source_tid, ErrorCode::BrokenPipe));
     }
 }

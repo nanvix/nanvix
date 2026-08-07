@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -73,10 +73,8 @@ impl FileControlRequest {
         message_type: MessageType,
     ) -> Message {
         let message: FileControlRequest = FileControlRequest::new(fd, cmd, arg);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileControlRequest,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::FileControlRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -127,7 +125,7 @@ impl FileControlResponse {
     ) -> Message {
         let message: FileControlResponse = FileControlResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileControlResponse,
+            SystemCallMessageKind::FileControlResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

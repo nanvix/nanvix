@@ -12,7 +12,7 @@ use crate::{
         MessageSerializer,
         SystemCallMessagePart,
     },
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::String,
@@ -227,7 +227,7 @@ impl MessagePartitioner for ReadLinkAtRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::ReadLinkAtRequestPart,
+            SystemCallMessageKind::ReadLinkAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -382,7 +382,7 @@ impl MessagePartitioner for ReadLinkAtResponse {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_response(
             tid,
-            SystemCallMessageHeader::ReadLinkAtResponsePart,
+            SystemCallMessageKind::ReadLinkAtResponsePart,
             total_parts,
             part_number,
             payload_size,

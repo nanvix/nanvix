@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -70,7 +70,7 @@ impl SeekRequest {
     ) -> Message {
         let message: SeekRequest = SeekRequest::new(fd, offset, whence);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::SeekRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::SeekRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -120,7 +120,7 @@ impl SeekResponse {
     ) -> Message {
         let message: SeekResponse = SeekResponse::new(offset);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::SeekResponse, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::SeekResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

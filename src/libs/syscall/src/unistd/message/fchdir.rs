@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -67,7 +67,7 @@ impl FileChdirRequest {
     ) -> Message {
         let message: FileChdirRequest = FileChdirRequest::new(fd);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::FileChdirRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::FileChdirRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -115,10 +115,8 @@ impl FileChdirResponse {
         message_type: MessageType,
     ) -> Message {
         let message: FileChdirResponse = FileChdirResponse::new();
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileChdirResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::FileChdirResponse, message.into_bytes());
         Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

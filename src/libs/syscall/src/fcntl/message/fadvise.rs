@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -79,7 +79,7 @@ impl FileAdvisoryInformationRequest {
         let message: FileAdvisoryInformationRequest =
             FileAdvisoryInformationRequest::new(fd, offset, len, advice);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileAdvisoryInformationRequest,
+            SystemCallMessageKind::FileAdvisoryInformationRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -132,7 +132,7 @@ impl FileAdvisoryInformationResponse {
     ) -> Message {
         let message: FileAdvisoryInformationResponse = FileAdvisoryInformationResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileAdvisoryInformationResponse,
+            SystemCallMessageKind::FileAdvisoryInformationResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

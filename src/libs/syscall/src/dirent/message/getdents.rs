@@ -14,7 +14,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::vec::Vec;
 use ::core::mem;
@@ -106,7 +106,7 @@ impl GetDirectoryEntriesRequest {
     ) -> Result<Message, Error> {
         let message: GetDirectoryEntriesRequest = GetDirectoryEntriesRequest::new(fd, count)?;
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::GetDirectoryEntriesRequest,
+            SystemCallMessageKind::GetDirectoryEntriesRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -276,7 +276,7 @@ impl MessagePartitioner for GetDirectoryEntriesResponse {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_response(
             tid,
-            SystemCallMessageHeader::GetDirectoryEntriesResponsePart,
+            SystemCallMessageKind::GetDirectoryEntriesResponsePart,
             total_parts,
             part_number,
             payload_size,

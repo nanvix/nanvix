@@ -9,7 +9,7 @@ use crate::{
     message::MessagePartitioner,
     sys::stat::message::UpdateFileAccessTimeAtRequest,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::ToString,
@@ -20,7 +20,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::time::timespec;
@@ -66,16 +69,14 @@ pub fn utimensat(
     let request: UpdateFileAccessTimeAtRequest =
         UpdateFileAccessTimeAtRequest::new(dirfd, pathname.to_string(), flags, times)?;
 
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
     // Send request.
-    for request in &requests {
-        sys::kcall::ipc::__kcall_send(request)?;
-    }
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -111,9 +112,9 @@ pub fn utimensat(
         // System call succeeded, parse response.
         let message = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
-        match message.header {
+        match message.kind() {
             // Response was successfully parsed.
-            SystemCallMessageHeader::UpdateFileAccessTimeAtResponse => Ok(()),
+            SystemCallMessageKind::UpdateFileAccessTimeAtResponse => Ok(()),
             // Response was not successfully parsed.
             _ => {
                 let reason: &str = "unexpected message header";

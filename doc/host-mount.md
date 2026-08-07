@@ -104,7 +104,7 @@ shutdown-time extraction step.
 All communication between vfsd (guest) and hostfsd (host) uses the `hostfs-api` wire format
 encoded into the fixed-size IPC message payload. Each message carries:
 
-- A 2-byte `SystemCallMessageHeader` discriminant identifying the operation (request or response).
+- A 2-byte `SystemCallMessageKind` discriminant identifying the operation (request or response).
 - A 4-byte operation identifier (`op_id`) assigned by vfsd and echoed by hostfsd to correlate
   asynchronous responses with pending operations.
 - 42 bytes of operation-specific data.

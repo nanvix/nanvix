@@ -16,14 +16,17 @@ use crate::{
         SocketAddr,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -57,11 +60,11 @@ pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
     let sockfd = crate::fdtable::resolve_socket(sockfd, "connect")?;
 
     // Build request and send it.
-    let request: Message = ConnectSocketRequest::build(tid, sockfd, &sockaddr, socklen);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = ConnectSocketRequest::build(tid, sockfd, &sockaddr, socklen);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -73,9 +76,9 @@ pub fn connect(sockfd: c_int, sockaddr: &SocketAddr) -> Result<(), Error> {
         // System call succeeded, parse response.
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
-        match message.header {
+        match message.kind() {
             // Response was successfully parsed.
-            SystemCallMessageHeader::ConnectSocketResponse => {
+            SystemCallMessageKind::ConnectSocketResponse => {
                 let _response: ConnectSocketResponse =
                     ConnectSocketResponse::from_bytes(message.payload);
                 Ok(())

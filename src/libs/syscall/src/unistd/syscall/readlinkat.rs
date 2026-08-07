@@ -16,7 +16,7 @@ use crate::{
         ReadLinkAtResponse,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::ToString,
@@ -27,7 +27,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::c_ssize_t;
@@ -60,12 +63,10 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, E
 
     let request: ReadLinkAtRequest = ReadLinkAtRequest::new(dirfd, path.to_string(), buf.len())?;
 
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
 
-    for request in &requests {
-        ::sys::kcall::ipc::__kcall_send(request)?;
-    }
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
     let capacity: usize =
         ReadLinkAtResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
@@ -73,7 +74,7 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, E
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
 
     loop {
-        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+        let response: Message = crate::rpc::recv_response(&token)?;
 
         // Check whether system call succeeded or not.
         if response.status != 0 {
@@ -102,8 +103,8 @@ pub fn readlinkat(dirfd: i32, path: &str, buf: &mut [u8]) -> Result<c_ssize_t, E
         } else {
             // System call succeeded, parse response.
             let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-            match message.header {
-                SystemCallMessageHeader::ReadLinkAtResponsePart => {
+            match message.kind() {
+                SystemCallMessageKind::ReadLinkAtResponsePart => {
                     let part: SystemCallMessagePart =
                         SystemCallMessagePart::from_bytes(message.payload);
 

@@ -68,7 +68,7 @@ use ::syscall::{
         CloseResponse,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
     SOCKET_FD_BASE,
 };
 
@@ -79,26 +79,26 @@ use ::syscall::{
 ///
 /// # Description
 ///
-/// Determines whether a given message header corresponds to a networking system call.
+/// Determines whether a given message kind corresponds to a networking system call.
 ///
-pub fn is_networking_header(header: &SystemCallMessageHeader) -> bool {
+pub fn is_networking_kind(kind: &SystemCallMessageKind) -> bool {
     matches!(
-        header,
-        SystemCallMessageHeader::AcceptSocketRequest
-            | SystemCallMessageHeader::BindSocketRequest
-            | SystemCallMessageHeader::CloseRequest
-            | SystemCallMessageHeader::ConnectSocketRequest
-            | SystemCallMessageHeader::CreateSocketPairRequest
-            | SystemCallMessageHeader::CreateSocketRequest
-            | SystemCallMessageHeader::GetPeerNameRequest
-            | SystemCallMessageHeader::GetSockNameRequest
-            | SystemCallMessageHeader::ListenSocketRequest
-            | SystemCallMessageHeader::ReceiveSocketRequest
-            | SystemCallMessageHeader::ReceiveFromSocketRequest
-            | SystemCallMessageHeader::SendSocketRequest
-            | SystemCallMessageHeader::SendToSocketRequest
-            | SystemCallMessageHeader::ShutdownSocketRequest
-            | SystemCallMessageHeader::PollSocketRequest
+        kind,
+        SystemCallMessageKind::AcceptSocketRequest
+            | SystemCallMessageKind::BindSocketRequest
+            | SystemCallMessageKind::CloseRequest
+            | SystemCallMessageKind::ConnectSocketRequest
+            | SystemCallMessageKind::CreateSocketPairRequest
+            | SystemCallMessageKind::CreateSocketRequest
+            | SystemCallMessageKind::GetPeerNameRequest
+            | SystemCallMessageKind::GetSockNameRequest
+            | SystemCallMessageKind::ListenSocketRequest
+            | SystemCallMessageKind::ReceiveSocketRequest
+            | SystemCallMessageKind::ReceiveFromSocketRequest
+            | SystemCallMessageKind::SendSocketRequest
+            | SystemCallMessageKind::SendToSocketRequest
+            | SystemCallMessageKind::ShutdownSocketRequest
+            | SystemCallMessageKind::PollSocketRequest
     )
 }
 
@@ -131,51 +131,51 @@ pub fn dispatch_message(
         return None;
     }
 
-    match syscall_msg.header {
-        SystemCallMessageHeader::AcceptSocketRequest => {
+    match syscall_msg.kind() {
+        SystemCallMessageKind::AcceptSocketRequest => {
             let request: AcceptSocketRequest = AcceptSocketRequest::from_bytes(syscall_msg.payload);
             Some(do_accept(backend, tid, request))
         },
-        SystemCallMessageHeader::BindSocketRequest => {
+        SystemCallMessageKind::BindSocketRequest => {
             let request: BindSocketRequest = BindSocketRequest::from_bytes(syscall_msg.payload);
             Some(do_bind(backend, tid, request))
         },
-        SystemCallMessageHeader::CloseRequest => {
+        SystemCallMessageKind::CloseRequest => {
             let request: CloseRequest = CloseRequest::from_bytes(syscall_msg.payload);
             Some(do_close(backend, tid, request))
         },
-        SystemCallMessageHeader::ConnectSocketRequest => {
+        SystemCallMessageKind::ConnectSocketRequest => {
             let request: ConnectSocketRequest =
                 ConnectSocketRequest::from_bytes(syscall_msg.payload);
             Some(do_connect(backend, filter, tid, request))
         },
-        SystemCallMessageHeader::CreateSocketPairRequest => {
+        SystemCallMessageKind::CreateSocketPairRequest => {
             let request: CreateSocketPairRequest =
                 CreateSocketPairRequest::from_bytes(syscall_msg.payload);
             Some(do_socketpair(backend, tid, request))
         },
-        SystemCallMessageHeader::CreateSocketRequest => {
+        SystemCallMessageKind::CreateSocketRequest => {
             let request: CreateSocketRequest = CreateSocketRequest::from_bytes(syscall_msg.payload);
             Some(do_socket(backend, tid, request))
         },
-        SystemCallMessageHeader::GetPeerNameRequest => {
+        SystemCallMessageKind::GetPeerNameRequest => {
             let request: GetPeerNameRequest = GetPeerNameRequest::from_bytes(syscall_msg.payload);
             Some(do_getpeername(backend, tid, request))
         },
-        SystemCallMessageHeader::GetSockNameRequest => {
+        SystemCallMessageKind::GetSockNameRequest => {
             let request: GetSockNameRequest = GetSockNameRequest::from_bytes(syscall_msg.payload);
             Some(do_getsockname(backend, tid, request))
         },
-        SystemCallMessageHeader::ListenSocketRequest => {
+        SystemCallMessageKind::ListenSocketRequest => {
             let request: ListenSocketRequest = ListenSocketRequest::from_bytes(syscall_msg.payload);
             Some(do_listen(backend, tid, request))
         },
-        SystemCallMessageHeader::ShutdownSocketRequest => {
+        SystemCallMessageKind::ShutdownSocketRequest => {
             let request: ShutdownSocketRequest =
                 ShutdownSocketRequest::from_bytes(syscall_msg.payload);
             Some(do_shutdown(backend, tid, request))
         },
-        SystemCallMessageHeader::PollSocketRequest => {
+        SystemCallMessageKind::PollSocketRequest => {
             let request: PollSocketRequest = PollSocketRequest::from_bytes(syscall_msg.payload);
             Some(do_poll(backend, tid, request))
         },
