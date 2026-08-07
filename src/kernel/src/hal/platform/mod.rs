@@ -10,7 +10,7 @@ mod microvm;
 pub mod region_names;
 pub mod region_tags;
 
-#[cfg(feature = "pit")]
+#[cfg(all(feature = "pit", any(target_arch = "x86", target_arch = "x86_64")))]
 pub mod pit;
 
 //==================================================================================================
@@ -23,8 +23,13 @@ pub use microvm::*;
 #[cfg(feature = "microvm")]
 use microvm::do_shutdown;
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod acpi;
 pub mod bootinfo;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+pub mod madt;
+#[cfg(target_arch = "aarch64")]
+#[path = "madt_aarch64.rs"]
 pub mod madt;
 
 //==================================================================================================

@@ -77,10 +77,26 @@ runs_on = ["microvm"]
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
+program = "./bin/test-rust-fork-kcall.initrd"
+expect_empty_output = true
+expected_exit_code = 13
+runs_on = ["microvm"]
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
 program = "./bin/test-rust-vfs-test.elf"
 extra_nanvixd_args = "-ramfs ./bin/test-rust-vfs-test.img"
 expect_empty_output = true
 runs_on = ["microvm"]
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "dlfcn"
+program = "./bin/test-rust-dlfcn.initrd"
+extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
+expected_output = "ok"
 
 [[tests]]
 build_modes = ["debug", "release"]

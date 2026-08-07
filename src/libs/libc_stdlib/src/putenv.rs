@@ -41,7 +41,7 @@ pub unsafe extern "C" fn putenv(string: *mut c_char) -> c_int {
 
     let mut p: *mut c_char = string;
     while *p != 0 {
-        if *p as u8 == b'=' {
+        if crate::c_char_to_u8(*p) == b'=' {
             return match env_table::put_raw(string) {
                 Ok(()) => 0,
                 Err(()) => {
@@ -81,11 +81,11 @@ mod tests {
             return false;
         }
         for (i, &b) in expected.iter().enumerate() {
-            if *ptr.add(i) as u8 != b {
+            if crate::c_char_to_u8(*ptr.add(i)) != b {
                 return false;
             }
         }
-        *ptr.add(expected.len()) as u8 == 0
+        crate::c_char_to_u8(*ptr.add(expected.len())) == 0
     }
 
     #[test]

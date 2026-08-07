@@ -15,8 +15,10 @@ pub mod platform;
 // Imports
 //==================================================================================================
 
+#[cfg(feature = "smp")]
+use crate::hal::arch::Arch;
 use crate::hal::{
-    arch::x86::cpu::ExceptionController,
+    arch::ExceptionController,
     cpu::InterruptManager,
     io::{
         IoMemoryAllocator,
@@ -46,14 +48,6 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-
-#[cfg(feature = "smp")]
-#[path = ""]
-mod feature_smp_imports {
-    pub use crate::hal::arch::x86::Arch;
-}
-#[cfg(feature = "smp")]
-use feature_smp_imports::*;
 
 //==================================================================================================
 // Constants
@@ -180,10 +174,10 @@ impl Hal {
             },
         };
 
-        // Initialize hardware page table manager for x86_64.
-        #[cfg(target_arch = "x86_64")]
+        // Initialize the hardware page-table manager on 64-bit targets.
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         unsafe {
-            arch::x86::mem::mmu::hwpt::init();
+            arch::native::mem::mmu::hwpt::init();
         }
 
         // Initialize exception manager.

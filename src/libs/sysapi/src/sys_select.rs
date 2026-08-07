@@ -372,7 +372,7 @@ impl timeval {
     const OFFSET_OF_TV_USEC: usize = Self::OFFSET_OF_TV_SEC + Self::SIZE_OF_TV_SEC;
 
     /// Wire format always uses i64 (8 bytes) for `tv_usec`, ensuring IPC compatibility
-    /// between x86 guests (`c_long=i32`) and x86_64 hosts (`c_long=i64`).
+    /// between 32-bit guests (`c_long=i32`) and 64-bit hosts (`c_long=i64`).
     const WIRE_SIZE_OF_TV_USEC: usize = size_of::<i64>();
     /// Wire format size for IPC serialization (always 16 bytes).
     pub const WIRE_SIZE: usize = Self::SIZE_OF_TV_SEC + Self::WIRE_SIZE_OF_TV_USEC;
@@ -386,9 +386,11 @@ impl timeval {
             .copy_from_slice(&self.tv_sec.to_ne_bytes());
 
         // Convert micro-seconds field (always as i64 for IPC compatibility).
-        // Cast is needed on x86 (c_long=i32→i64) but is a no-op on x86_64 (c_long=i64).
-        #[cfg_attr(target_arch = "x86_64", allow(clippy::unnecessary_cast))]
-        let usec_bytes = (self.tv_usec as i64).to_ne_bytes();
+        #[cfg(target_pointer_width = "32")]
+        let tv_usec: i64 = i64::from(self.tv_usec);
+        #[cfg(target_pointer_width = "64")]
+        let tv_usec: i64 = self.tv_usec;
+        let usec_bytes = tv_usec.to_ne_bytes();
         bytes[Self::OFFSET_OF_TV_USEC..Self::OFFSET_OF_TV_USEC + Self::WIRE_SIZE_OF_TV_USEC]
             .copy_from_slice(&usec_bytes);
 

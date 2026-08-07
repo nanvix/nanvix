@@ -16,13 +16,12 @@ use ::sysapi::ffi::c_char;
 ///
 /// Converts the initial portion of the string pointed to by `nptr` to a floating-point value.
 ///
-/// The C prototype returns `long double` to match POSIX. The conversion is computed at `double`
-/// precision and delegated to [`crate::strtod`]; the result is then returned in whatever register
-/// class the C ABI reads a `long double` from. On the i686 guest the cdecl convention returns
-/// `float`, `double`, and `long double` alike in the x87 `st0`, so the `f64` result is promoted to
-/// the 80-bit extended representation on return with no extra work. The x86_64 System V ABI instead
-/// returns `double` in `xmm0` but `long double` in `st0`, so on that target `strtold` is exported as
-/// a small assembly trampoline (below) that reloads the `xmm0` result onto the x87 stack.
+/// The C prototype returns `long double` to match POSIX. On the i686 guest the cdecl convention
+/// returns `float`, `double`, and `long double` alike in the x87 `st0`, so this legacy
+/// implementation delegates to [`crate::strtod`]. The x86_64 System V ABI returns `long double` in
+/// `st0`, so its legacy double-precision implementation uses the assembly trampoline below. AAPCS64
+/// instead uses IEEE binary128: its trampoline calls the direct integer-based converter and moves
+/// its binary128 result into `q0`, without narrowing finite input through `f64`.
 ///
 /// # Parameters
 ///
@@ -41,16 +40,18 @@ use ::sysapi::ffi::c_char;
 ///
 /// - https://pubs.opengroup.org/onlinepubs/9799919799/functions/strtod.html
 ///
-#[cfg(not(all(target_arch = "x86_64", not(any(feature = "std", test)))))]
+#[cfg(not(all(
+    any(target_arch = "x86_64", target_arch = "aarch64"),
+    not(any(feature = "std", test))
+)))]
 #[cfg_attr(not(feature = "std"), unsafe(no_mangle))]
 pub unsafe extern "C" fn strtold(nptr: *const c_char, endptr: *mut *mut c_char) -> f64 {
     crate::strtod(nptr, endptr)
 }
 
-// x86_64 guest: `double`-precision producer used by the assembly trampoline below. Kept as an
-// internal symbol (double-underscore, reserved for the implementation) so the public `strtold` can
-// convert its `xmm0` result into the `st0` return value the System V AMD64 ABI mandates for
-// `long double`.
+// The x86_64 guest ABI returns `long double` differently from Rust's `f64`, so it uses this
+// double-precision producer from an assembly trampoline. AArch64 has a separate direct binary128
+// producer below.
 #[cfg(all(target_arch = "x86_64", not(any(feature = "std", test))))]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn __nanvix_strtold_f64(nptr: *const c_char, endptr: *mut *mut c_char) -> f64 {
@@ -74,6 +75,32 @@ core::arch::global_asm!(
     "    add $8, %rsp",
     "    ret",
     options(att_syntax),
+);
+
+// AArch64 guest: use a C-compatible pair of 64-bit words to transport the direct binary128 bits.
+// AAPCS64 returns a 16-byte composite in X0/X1. The words must be placed in the lower and upper
+// 64-bit lanes of Q0; D1 is the lower lane of a separate Q1 register.
+#[cfg(all(target_arch = "aarch64", not(any(feature = "std", test))))]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn __nanvix_strtold_binary128(
+    nptr: *const c_char,
+    endptr: *mut *mut c_char,
+) -> crate::binary128::Binary128 {
+    unsafe { crate::binary128::strto_binary128(nptr, endptr) }
+}
+
+#[cfg(all(target_arch = "aarch64", not(any(feature = "std", test))))]
+core::arch::global_asm!(
+    ".global strtold",
+    ".type strtold, @function",
+    "strtold:",
+    "    stp x29, x30, [sp, #-16]!",
+    "    mov x29, sp",
+    "    bl __nanvix_strtold_binary128",
+    "    fmov d0, x0",
+    "    ins v0.d[1], x1",
+    "    ldp x29, x30, [sp], #16",
+    "    ret",
 );
 
 #[cfg(all(test, feature = "std"))]

@@ -27,9 +27,9 @@ use ::goblin::elf::{
     },
 };
 // The guest dynamic linker only ever processes objects built for its own ABI, so the
-// relocation-type constants, the relocation-entry record (`Rel`/REL on i386, `Rela`/RELA on
-// x86-64), and the symbol record are selected at compile time by the target architecture.
-#[cfg(not(target_arch = "x86_64"))]
+// relocation-type constants, relocation-entry record, and symbol record are selected at compile
+// time by the target architecture.
+#[cfg(target_arch = "x86")]
 use ::goblin::{
     elf::reloc::{
         R_386_16,
@@ -85,6 +85,25 @@ use ::goblin::{
         sym::Sym,
     },
 };
+#[cfg(target_arch = "aarch64")]
+use ::goblin::{
+    elf::reloc::{
+        R_AARCH64_ABS64,
+        R_AARCH64_GLOB_DAT,
+        R_AARCH64_JUMP_SLOT,
+        R_AARCH64_NONE,
+        R_AARCH64_PREL64,
+        R_AARCH64_RELATIVE,
+    },
+    elf64::{
+        reloc::{
+            r_sym,
+            r_type,
+            Rela as RawReloc,
+        },
+        sym::Sym,
+    },
+};
 #[cfg(target_arch = "x86_64")]
 use ::goblin::{
     elf::reloc::{
@@ -126,15 +145,11 @@ use ::sys::error::{
     ErrorCode,
 };
 
-/// Width of an ELF address/offset field for the active guest ABI: 32-bit on i386 (ELF32), 64-bit on
-/// x86-64 (ELF64). Used by [`Symbol`] and [`RelocationEntry`] accessors so the same high-level
-/// dynamic-linker logic works for both ABIs.
-#[cfg(not(target_arch = "x86_64"))]
+/// Width of an ELF address/offset field for the active guest ABI.
+#[cfg(target_arch = "x86")]
 pub type ElfAddr = u32;
-/// Width of an ELF address/offset field for the active guest ABI: 32-bit on i386 (ELF32), 64-bit on
-/// x86-64 (ELF64). Used by [`Symbol`] and [`RelocationEntry`] accessors so the same high-level
-/// dynamic-linker logic works for both ABIs.
-#[cfg(target_arch = "x86_64")]
+/// Width of an ELF address/offset field for the active guest ABI.
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
 pub type ElfAddr = u64;
 
 //==================================================================================================
@@ -566,7 +581,7 @@ impl Symbol {
 // Relocation Types
 //==================================================================================================
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive)]
 #[repr(u8)]
@@ -707,6 +722,26 @@ pub enum RelocationType {
     R_X86_64_SIZE32 = R_X86_64_SIZE32 as u8,
 }
 
+/// AArch64 ELF64/RELA relocation types used by the guest dynamic linker.
+#[cfg(target_arch = "aarch64")]
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, TryFromPrimitive)]
+#[repr(u32)]
+pub enum RelocationType {
+    /// No relocation.
+    R_AARCH64_NONE = R_AARCH64_NONE,
+    /// Direct 64-bit relocation.
+    R_AARCH64_ABS64 = R_AARCH64_ABS64,
+    /// PC-relative 64-bit relocation.
+    R_AARCH64_PREL64 = R_AARCH64_PREL64,
+    /// Create GOT entry.
+    R_AARCH64_GLOB_DAT = R_AARCH64_GLOB_DAT,
+    /// Create PLT entry.
+    R_AARCH64_JUMP_SLOT = R_AARCH64_JUMP_SLOT,
+    /// Adjust by program base.
+    R_AARCH64_RELATIVE = R_AARCH64_RELATIVE,
+}
+
 //==================================================================================================
 // Relocation Entry
 //==================================================================================================
@@ -735,8 +770,10 @@ impl RelocationEntry {
     ///
     ///
     pub fn typ(&self) -> Result<RelocationType, Error> {
-        // NOTE: Per the ELF spec, r_type() is guaranteed to be a u8.
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         let typ: u8 = r_type(self.0.r_info) as u8;
+        #[cfg(target_arch = "aarch64")]
+        let typ: u32 = r_type(self.0.r_info);
         typ.try_into().map_err(|_error| {
             let reason: &str = "invalid relocation type";
             Error::new(ErrorCode::ValueOutOfRange, reason)
@@ -772,14 +809,13 @@ impl RelocationEntry {
     ///
     /// # Description
     ///
-    /// Gets the explicit addend of the relocation entry. Only the x86-64 RELA format carries an
-    /// explicit addend; on i386 the addend is stored in place at the relocation target.
+    /// Gets the explicit addend of an ELF64 RELA relocation entry.
     ///
     /// # Returns
     ///
     /// The signed addend stored in the relocation entry.
     ///
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     pub fn addend(&self) -> i64 {
         self.0.r_addend
     }
@@ -793,9 +829,9 @@ impl RelocationEntry {
 mod tests {
     use super::*;
     use crate::elf32::STT_NOTYPE;
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86")]
     use ::goblin::elf32::sym::Sym;
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     use ::goblin::elf64::sym::Sym;
 
     /// Builds a Symbol with the given binding (high 4 bits) and type (low 4 bits),

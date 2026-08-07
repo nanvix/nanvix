@@ -19,6 +19,7 @@
 // Imports
 //==================================================================================================
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use crate::hal::arch::x86::mem::gdt::SegmentSelector;
 
 pub(crate) use crate::hal::cpu::align_down_residue;
@@ -55,6 +56,8 @@ type Word = u64;
 pub const RETADDR_SIZE: usize = 4;
 #[cfg(target_arch = "x86_64")]
 pub const RETADDR_SIZE: usize = 8;
+#[cfg(target_arch = "aarch64")]
+pub const RETADDR_SIZE: usize = 8;
 
 /// Number of bytes of handler arguments passed on the user stack.
 ///
@@ -64,9 +67,15 @@ pub const RETADDR_SIZE: usize = 8;
 pub const ARGS_STACK_SIZE: usize = 12;
 #[cfg(target_arch = "x86_64")]
 pub const ARGS_STACK_SIZE: usize = 0;
+#[cfg(target_arch = "aarch64")]
+pub const ARGS_STACK_SIZE: usize = 0;
 
 /// Required alignment of the user stack at the point of the simulated call into the handler.
 const STACK_ALIGN: usize = 16;
+
+/// AArch64 user-visible condition flags preserved across signal delivery.
+#[cfg(target_arch = "aarch64")]
+const SPSR_NZCV_MASK: u64 = 0xf << 28;
 
 /// Residue of `frame_top` modulo [`STACK_ALIGN`] that satisfies the platform ABI.
 ///
@@ -76,10 +85,14 @@ const STACK_ALIGN: usize = 16;
 const FRAME_ALIGN_RESIDUE: usize = 12;
 #[cfg(target_arch = "x86_64")]
 const FRAME_ALIGN_RESIDUE: usize = 8;
+#[cfg(target_arch = "aarch64")]
+const FRAME_ALIGN_RESIDUE: usize = 0;
 
 /// `EFLAGS`/`RFLAGS` interrupt-enable bit.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const FLAGS_IF: Word = 1 << 9;
 /// `EFLAGS`/`RFLAGS` always-one reserved bit (bit 1).
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const FLAGS_RESERVED1: Word = 1 << 1;
 /// Bits of `EFLAGS`/`RFLAGS` that a returning frame is allowed to set.
 ///
@@ -88,6 +101,7 @@ const FLAGS_RESERVED1: Word = 1 << 1;
 /// the trap flag (8), the interrupt flag (9, forced on separately), the I/O privilege level
 /// (12-13), and the nested-task flag (14) so a forged frame cannot single-step the kernel, raise
 /// its I/O privilege, or resume in an unexpected mode.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 const FLAGS_SAFE_MASK: Word = 0x0024_0CD5;
 
 //==================================================================================================
@@ -128,7 +142,14 @@ pub fn frame_layout(user_sp: usize) -> Option<FrameLayout> {
 /// address). The save area sits immediately after the on-stack argument words.
 ///
 pub const fn save_area_offset_from_sigreturn_sp() -> usize {
-    ARGS_STACK_SIZE
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        ARGS_STACK_SIZE
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        RETADDR_SIZE + ARGS_STACK_SIZE
+    }
 }
 
 ///
@@ -173,6 +194,7 @@ pub fn next_blocked(current: u64, sa_mask: u64, signum: usize, nodefer: bool) ->
 /// A flags value that keeps only the user-settable bits, forces interrupts enabled, and sets the
 /// reserved always-one bit.
 ///
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn sanitize_flags(flags: Word) -> Word {
     (flags & FLAGS_SAFE_MASK) | FLAGS_IF | FLAGS_RESERVED1
 }
@@ -205,9 +227,20 @@ pub fn validate_and_restore(frame: &SigFrame) -> Result<SignalCpuContext, SigFra
     // Force the segment selectors to the user selectors regardless of what the frame claims, and
     // reduce the flags to safe user-mode values, so a forged frame cannot resume in kernel mode or
     // single-step the kernel.
-    cpu.cs = SegmentSelector::UserCode as Word;
-    cpu.ss = SegmentSelector::UserData as Word;
-    cpu.flags = sanitize_flags(frame.cpu.flags);
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        cpu.cs = SegmentSelector::UserCode as Word;
+        cpu.ss = SegmentSelector::UserData as Word;
+        cpu.flags = sanitize_flags(frame.cpu.flags);
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        // EL0t is the only permitted signal-return mode. Preserve the user-visible condition flags
+        // while clearing DAIF and every privileged or execution-state control bit.
+        cpu.cs = 0;
+        cpu.ss = 0;
+        cpu.flags = frame.cpu.flags & SPSR_NZCV_MASK;
+    }
 
     Ok(cpu)
 }

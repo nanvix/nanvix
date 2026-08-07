@@ -38,7 +38,7 @@
 POSIX_TESTS_SRCDIR := $(SOURCES_DIR)/tests/integration
 POSIX_TESTS_STRESS_SRCDIR := $(SOURCES_DIR)/tests/stress
 # Namespace the object tree by TARGET. The guest C objects are ABI-specific
-# (i686 vs x86-64) but $(OBJECTS_DIR) is shared across targets, so a TARGET
+# (i686, x86-64, or AArch64) but $(OBJECTS_DIR) is shared across targets, so a TARGET
 # switch without a clean must not relink stale wrong-arch objects (e.g. the
 # shared crt0-stubs.o).
 POSIX_TESTS_OBJDIR := $(OBJECTS_DIR)/posix-tests/$(TARGET)
@@ -128,10 +128,10 @@ POSIX_TEST_FILES_test-c-file := \
 # kernel maps pages per-segment), SysV hashing, and no PT_INTERP (Nanvix has no
 # system dynamic linker; nvx-crt0 self-relocates the PIE at startup).
 #
-# On x86-64 these suites link against the dedicated PIC nvx-crt0/libc/libm
-# archives. The regular static archives carry R_X86_64_32S relocations that
-# cannot be linked into a PIE.
-ifeq ($(TARGET),x86_64)
+# On 64-bit targets these suites link against the dedicated PIC
+# nvx-crt0/libc/libm archives. The regular static archives carry relocations
+# that cannot be linked into a PIE.
+ifneq ($(filter $(TARGET),x86_64 aarch64),)
 POSIX_TEST_PIE_CRT0 := $(NANVIX_CRT0_PIC_AR)
 POSIX_TEST_PIE_LIBC := $(NANVIX_LIBC_PIC_AR)
 POSIX_TEST_PIE_LIBM := $(NANVIX_LIBM_PIC_AR)
@@ -346,7 +346,14 @@ endef
 
 $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_IMAGE_RULE,$(suite))))
 
-POSIX_HEADERS_CXX_FLAGS := -m32 -march=pentiumpro -ffreestanding -nostdinc -nostdinc++ -std=c++17
+ifeq ($(TARGET),x86_64)
+POSIX_HEADERS_CXX_FLAGS := -m64 -march=x86-64 -mno-red-zone
+else ifeq ($(TARGET),aarch64)
+POSIX_HEADERS_CXX_FLAGS := -march=armv8-a
+else
+POSIX_HEADERS_CXX_FLAGS := -m32 -march=pentiumpro
+endif
+POSIX_HEADERS_CXX_FLAGS += -ffreestanding -nostdinc -nostdinc++ -std=c++17
 POSIX_HEADERS_CXX_FLAGS += -isystem $(ROOT_DIR)/include
 POSIX_PUBLIC_HEADERS := $(filter-out $(ROOT_DIR)/include/stdatomic.h,\
 	$(wildcard $(ROOT_DIR)/include/*.h $(ROOT_DIR)/include/*/*.h))
@@ -489,12 +496,15 @@ $(POSIX_TEST_RAMFS_IMG): $(POSIX_TEST_RAMFS_SEED)/marker.txt \
 # for R_386_* against local symbols), mirroring the prebuilt libmul.so recipe.
 
 POSIX_TEST_SOLIB_SUITES := test-c-dlfcn-global test-c-dlfcn-needed
-# The fixture shared objects follow the active guest ABI: i686 PIC on x86, x86-64
-# PIC on x86_64. Both are position-independent (`-fPIC` / `-shared`); `-z notext`
-# tolerates the freestanding fixtures' text relocations against local symbols.
+# The fixture shared objects follow the active guest ABI. All are
+# position-independent (`-fPIC` / `-shared`); `-z notext` tolerates any
+# freestanding-fixture text relocations against local symbols.
 ifeq ($(TARGET),x86_64)
 POSIX_TEST_SOLIB_CFLAGS := -m64 -march=x86-64 -nostdlib -ffreestanding -fPIC -O2 -isystem $(ROOT_DIR)/include
 POSIX_TEST_SOLIB_LDFLAGS := -shared -melf_x86_64 -z notext
+else ifeq ($(TARGET),aarch64)
+POSIX_TEST_SOLIB_CFLAGS := -march=armv8-a -nostdlib -ffreestanding -fPIC -O2 -isystem $(ROOT_DIR)/include
+POSIX_TEST_SOLIB_LDFLAGS := -shared -maarch64elf -z notext
 else
 POSIX_TEST_SOLIB_CFLAGS := -m32 -march=pentiumpro -nostdlib -ffreestanding -fPIC -O2 -isystem $(ROOT_DIR)/include
 POSIX_TEST_SOLIB_LDFLAGS := -shared -melf_i386 -z notext
@@ -1505,8 +1515,8 @@ $(POSIX_TEST_EXECVP_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXECVP_SUITE).$(EXEC_FORM
 # The dlfcn shared-library fixtures build for every guest ABI: libmul and the
 # per-suite fixture `.so` follow the active TARGET, and the
 # startup/hello/searchpath suites stage the real libc.so/libm.so, which are now
-# produced as x86-64 PIC shared objects (see build/make/nanvix-libc-artifacts.mk)
-# as well as i686.
+# produced as PIC shared objects on 64-bit targets (see
+# build/make/nanvix-libc-artifacts.mk) as well as i686.
 POSIX_TEST_DLFCN_FIXTURE_IMGS := $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_IMG) $(POSIX_TEST_STAGING_IMG) $(POSIX_TEST_WEAK_IMG)
 
 # These images also use shared bin/ paths and must be invalidated before an
@@ -1526,9 +1536,9 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 # each <suite>.initrd under nanvixd in standalone mode (the `terminal` executor)
 # and asserts a guest exit code of 0. The harness is cross-platform: on Linux it
 # launches nanvixd directly; on Windows it launches nanvixd.exe under WHP. The
-# suites build for both guest ABIs (TARGET=x86 and x86_64) and are standalone-only
-# (they bundle the guest daemons). On unsupported targets the portable suites can
-# still be built with `all-posix-tests`.
+# suites build for every guest ABI (TARGET=x86, x86_64, and aarch64) and are
+# standalone-only (they bundle the guest daemons). On unsupported targets the
+# portable suites can still be built with `all-posix-tests`.
 
 # Harness configuration: Windows uses the .exe nanvixd and a `.`-rooted temp dir.
 ifeq ($(IS_WINDOWS),yes)
@@ -1544,7 +1554,7 @@ endif
 # last argument as the config file). Leave SHARD empty to run every suite.
 POSIX_TEST_SHARD_FLAG := $(if $(strip $(SHARD)),-shard $(strip $(SHARD)))
 
-ifeq ($(filter $(TARGET),x86 x86_64),)
+ifeq ($(filter $(TARGET),x86 x86_64 aarch64),)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (no guest C toolchain for TARGET=$(TARGET))."
 else

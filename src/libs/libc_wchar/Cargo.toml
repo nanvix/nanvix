@@ -16,6 +16,9 @@ crate-type = ["lib"]
 libc_stdio = { workspace = true }
 sysapi = { workspace = true }
 
+[target.'cfg(target_os = "nanvix")'.dependencies]
+libc_stdlib = { workspace = true, default-features = false, features = ["default"] }
+
 [features]
 default = []
 # Enables the use of the Rust Standard Library.

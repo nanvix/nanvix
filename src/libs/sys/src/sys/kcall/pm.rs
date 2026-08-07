@@ -642,6 +642,28 @@ pub fn __kcall_sig_restorer(restorer: usize) -> Result<(), Error> {
     "#
 );
 
+#[cfg(target_arch = "aarch64")]
+::core::arch::global_asm!(
+    r#"
+    .global _do_start_thread
+    .extern _do_exit_thread
+    .type _do_start_thread, %function
+
+_do_start_thread:
+    mov x9, x0
+    mov x0, x1
+    mov x10, sp
+    and x10, x10, #-16
+    mov sp, x10
+    blr x9
+    bl _do_exit_thread
+
+1:
+    wfe
+    b 1b
+    "#
+);
+
 ///
 /// # Description
 ///

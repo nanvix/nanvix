@@ -16,7 +16,7 @@ use ::sysapi::ffi::{
 
 /// Returns `true` if the given character is an ASCII whitespace character.
 fn is_whitespace(c: c_char) -> bool {
-    let b = c as u8;
+    let b: u8 = crate::c_char_to_u8(c);
     b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == 0x0b || b == 0x0c
 }
 
@@ -60,15 +60,15 @@ pub unsafe extern "C" fn atol(nptr: *const c_char) -> c_long {
     }
 
     // Handle optional sign.
-    let negative = *p as u8 == b'-';
-    if *p as u8 == b'+' || *p as u8 == b'-' {
+    let negative: bool = crate::c_char_to_u8(*p) == b'-';
+    if crate::c_char_to_u8(*p) == b'+' || crate::c_char_to_u8(*p) == b'-' {
         p = p.add(1);
     }
 
     // Parse digits using wrapping arithmetic (overflow is undefined behavior in C).
     let mut result: c_long = 0;
-    while (*p as u8) >= b'0' && (*p as u8) <= b'9' {
-        let digit = c_long::from((*p as u8) - b'0');
+    while crate::c_char_to_u8(*p).is_ascii_digit() {
+        let digit: c_long = c_long::from(crate::c_char_to_u8(*p) - b'0');
         result = result.wrapping_mul(10).wrapping_add(digit);
         p = p.add(1);
     }

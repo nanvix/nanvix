@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+#[cfg(target_arch = "aarch64")]
+use ::elf::elf64::R_AARCH64_RELATIVE;
+#[cfg(not(target_arch = "aarch64"))]
+use ::elf::elf64::R_X86_64_RELATIVE;
 use ::elf::{
     elf32::{
         Elf32Dyn,
@@ -39,9 +43,15 @@ use ::elf::{
         DT_PLTRELSZ as DT_PLTRELSZ_64,
         DT_RELA as DT_RELA_64,
         DT_RELASZ as DT_RELASZ_64,
-        R_X86_64_RELATIVE,
     },
 };
+#[cfg(target_arch = "aarch64")]
+use ::sys::mm::VirtualAddress;
+
+#[cfg(target_arch = "aarch64")]
+const ELF64_RELATIVE_RELOCATION: u64 = R_AARCH64_RELATIVE as u64;
+#[cfg(not(target_arch = "aarch64"))]
+const ELF64_RELATIVE_RELOCATION: u64 = R_X86_64_RELATIVE as u64;
 
 //==================================================================================================
 // Public Functions
@@ -54,8 +64,8 @@ use ::elf::{
 /// called before any global data access (i.e., before `init()`).
 ///
 /// Dispatches on the ELF identification class byte: ELFCLASS32 binaries are relocated through the
-/// 32-bit `R_386_RELATIVE` (`DT_REL`) path, and ELFCLASS64 binaries through the 64-bit
-/// `R_X86_64_RELATIVE` (`DT_RELA`) path.
+/// 32-bit `R_386_RELATIVE` (`DT_REL`) path, and ELFCLASS64 binaries through the target's 64-bit
+/// `RELATIVE` (`DT_RELA`) path.
 ///
 /// If the binary is not `ET_DYN`, has no `PT_DYNAMIC` segment, or was loaded at its link-time
 /// address (delta = 0), this function returns without modification.
@@ -203,9 +213,9 @@ unsafe fn apply_relative_relocations(rel_vaddr: u32, rel_size: u32, delta: u32) 
 ///
 /// # Description
 ///
-/// Applies `R_X86_64_RELATIVE` relocations to a 64-bit PIE (`ET_DYN`) executable. The x86-64 ABI
-/// uses RELA relocations (with an explicit addend), so the relocated value is `delta + r_addend`
-/// rather than the in-place-addend form used by the 32-bit `REL` path.
+/// Applies the active ELF64 ABI's `RELATIVE` relocations to a 64-bit PIE (`ET_DYN`) executable.
+/// ELF64 uses RELA relocations with an explicit addend, so the relocated value is
+/// `delta + r_addend` rather than the in-place-addend form used by the 32-bit `REL` path.
 ///
 /// # Safety
 ///
@@ -268,7 +278,7 @@ unsafe fn relocate_pie_binary_64(base_address: usize) {
         }
     }
 
-    // Apply R_X86_64_RELATIVE relocations from .rela.dyn.
+    // Apply relative relocations from .rela.dyn.
     if let (Some(vaddr), Some(size)) = (dt_rela, dt_relasz) {
         apply_rela_relocations_64(vaddr, size, delta);
     }
@@ -285,8 +295,8 @@ unsafe fn relocate_pie_binary_64(base_address: usize) {
 ///
 /// # Description
 ///
-/// Applies `R_X86_64_RELATIVE` fixups from a RELA relocation table. Non-`R_X86_64_RELATIVE`
-/// entries are skipped.
+/// Applies the target's ELF64 `RELATIVE` fixups from a RELA relocation table. Other entries are
+/// skipped.
 ///
 /// # Parameters
 ///
@@ -307,10 +317,17 @@ unsafe fn apply_rela_relocations_64(rela_vaddr: u64, rela_size: u64, delta: u64)
 
     for rela in relas {
         // The relocation type is the low 32 bits of r_info.
-        if (rela.r_info & 0xffff_ffff) == R_X86_64_RELATIVE as u64 {
+        if (rela.r_info & 0xffff_ffff) == ELF64_RELATIVE_RELOCATION {
             let target: *mut u64 = (rela.r_offset as usize + delta as usize) as *mut u64;
             // RELA semantics: the relocated value is `base (delta) + addend`.
             target.write_unaligned(delta.wrapping_add(rela.r_addend as u64));
+            #[cfg(target_arch = "aarch64")]
+            if let Err(error) = ::sys::kcall::mm::__kcall_sync_instruction_cache(
+                VirtualAddress::new(target as usize),
+                core::mem::size_of::<u64>(),
+            ) {
+                panic!("failed to synchronize PIE instruction cache: {error:?}");
+            }
         }
     }
 }

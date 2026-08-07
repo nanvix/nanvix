@@ -21,11 +21,13 @@
 # C compiler.
 #---------------------------------------------------------------------------------------------------
 
-# Host clang, cross-compiling to the active guest ABI: i686 for TARGET=x86 and
-# x86-64 for TARGET=x86_64. Both are freestanding `-unknown-none` targets,
-# mirroring the Rust guest target specs in build/targets/$(TARGET)-user.json.
+# Host clang, cross-compiling to the active guest ABI. All are freestanding
+# `-unknown-none` targets, mirroring the Rust guest target specs in
+# build/targets/$(TARGET)-user.json.
 ifeq ($(TARGET),x86_64)
 GUEST_C_APP_CC := clang --target=x86_64-unknown-none
+else ifeq ($(TARGET),aarch64)
+GUEST_C_APP_CC := clang --target=aarch64-unknown-none
 else
 GUEST_C_APP_CC := clang --target=i686-unknown-none
 endif
@@ -51,6 +53,8 @@ endif
 #   * x86: i686 / pentiumpro.
 ifeq ($(TARGET),x86_64)
 GUEST_C_APP_CFLAGS := -m64 -march=x86-64 -mno-red-zone -mcmodel=small -ffreestanding -nostdinc -std=c17
+else ifeq ($(TARGET),aarch64)
+GUEST_C_APP_CFLAGS := -march=armv8-a -ffreestanding -nostdinc -std=c17
 else
 GUEST_C_APP_CFLAGS := -m32 -march=pentiumpro -ffreestanding -nostdinc -std=c17
 endif
@@ -79,9 +83,11 @@ GUEST_C_APP_LIBC := $(NANVIX_LIBC_BUNDLE_AR)
 # handler, no sysalloc).
 GUEST_C_APP_LIBM := $(LIBRARIES_DIR)/libm.a
 GUEST_C_APP_LD_SCRIPT := $(BUILD_DIR)/user/linker/$(TARGET)/user.ld
-# ELF flavor follows TARGET (-melf_i386 for x86, -melf_x86_64 for x86_64).
+# ELF flavor follows TARGET.
 ifeq ($(TARGET),x86_64)
 GUEST_C_APP_LDFLAGS := -melf_x86_64 -z noexecstack -z muldefs
+else ifeq ($(TARGET),aarch64)
+GUEST_C_APP_LDFLAGS := -maarch64elf -z noexecstack -z muldefs
 else
 GUEST_C_APP_LDFLAGS := -melf_i386 -z noexecstack -z muldefs
 endif

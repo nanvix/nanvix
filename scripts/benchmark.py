@@ -34,6 +34,7 @@ WARM_START_SOCKET_SIZES = ["32B", "1KiB", "4KiB", "8KiB", "16KiB"]
 WARM_START_GATEWAY_SIZES = ["32B", "64B", "128B", "256B", "512B", "1KiB", "4KiB"]
 WARM_START_VMM_MIN_PAYLOAD_SIZE = 4
 X86_64_ARCH = "X64"
+AARCH64_ARCH = "ARM64"
 
 # ======================================================================
 # Benchmark Names
@@ -112,6 +113,16 @@ def _non_negative_float(value: str) -> float:
 def _split_csv_arg(value: str) -> list[str]:
     """Split a comma-separated string, stripping whitespace and dropping empties."""
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _host_architecture() -> str:
+    """Return the benchmark architecture label for the native host."""
+    machine = platform.machine().strip().lower()
+    if machine in ("amd64", "x86_64"):
+        return X86_64_ARCH
+    if machine in ("aarch64", "arm64"):
+        return AARCH64_ARCH
+    raise RuntimeError(f"unsupported benchmark host architecture: {platform.machine()}")
 
 
 def gen_filename_for_benchmark(benchmark: str, machine_type: str, arch: str) -> str:
@@ -847,9 +858,10 @@ def run_benchmark(args):
     """
     Run a single benchmark using nanvix-bench
     """
+    host_arch = _host_architecture()
     print(
         f"[BENCHMARK] Running '{args.benchmark}' benchmark "
-        f"(machine={args.machine_type}, arch={X86_64_ARCH})"
+        f"(machine={args.machine_type}, arch={host_arch})"
     )
     # Normalize paths so that Unix-style "./" prefixes are converted to
     # platform-native form (cmd.exe does not understand "./").
@@ -917,7 +929,7 @@ def run_benchmark(args):
         output_dir.mkdir(parents=True, exist_ok=True)
         output_file = os.path.join(
             output_dir,
-            gen_filename_for_benchmark(args.benchmark, args.machine_type, X86_64_ARCH),
+            gen_filename_for_benchmark(args.benchmark, args.machine_type, host_arch),
         )
 
         # Run benchmark and capture raw stdout/stderr.

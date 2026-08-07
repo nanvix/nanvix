@@ -20,7 +20,6 @@ use ::core::{
         c_int,
         CStr,
     },
-    mem,
     ptr,
 };
 use ::spin::Mutex;
@@ -45,7 +44,7 @@ use ::syslog::trace_libcall;
 
 struct DlError {
     /// Error message encoded in a C-compatible string.
-    msg: [i8; Self::MAX_ERROR_MSG_LEN],
+    msg: [c_char; Self::MAX_ERROR_MSG_LEN],
     /// Indicates whether an error has occurred.
     set: bool,
 }
@@ -66,8 +65,10 @@ impl DlError {
     fn set(&mut self, msg: &str) {
         let bytes: &[u8] = msg.as_bytes();
         let len: usize = bytes.len().min(Self::MAX_ERROR_MSG_LEN - 1);
-        self.msg[..len].copy_from_slice(unsafe { mem::transmute::<&[u8], &[i8]>(&bytes[..len]) });
-        self.msg[len] = b'\0' as i8;
+        for (dst, src) in self.msg[..len].iter_mut().zip(bytes) {
+            *dst = *src as c_char;
+        }
+        self.msg[len] = 0;
         self.set = true;
     }
 

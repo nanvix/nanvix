@@ -30,7 +30,7 @@ from typing import NoReturn, Sequence
 
 VALID_MACHINES: tuple[str, ...] = ("microvm",)
 VALID_LOG_LEVELS: tuple[str, ...] = ("trace", "debug", "info", "warn", "error", "panic")
-VALID_TARGETS: tuple[str, ...] = ("x86", "x86_64")
+VALID_TARGETS: tuple[str, ...] = ("aarch64", "x86", "x86_64")
 VALID_MESSAGE_FORMATS: tuple[str, ...] = ("json", "json-diagnostic-rendered-ansi")
 
 DEFAULT_MACHINE = "microvm"
@@ -442,8 +442,16 @@ def validate_git_context() -> Path:
 # ==================================================================================================
 
 
-def restore_git_symlinks(repo_root: Path) -> None:
-    """Restore git symlinks that appear as text stubs on Windows."""
+@dataclass(frozen=True)
+class GitSymlinkStub:
+    """A tracked symlink expanded from a Windows text stub for a build."""
+
+    path: Path
+    contents: str
+
+
+def restore_git_symlinks(repo_root: Path) -> list[GitSymlinkStub]:
+    """Temporarily expand tracked symlink text stubs on Windows."""
     try:
         result = subprocess.run(
             ["git", "ls-files", "-s"],
@@ -453,7 +461,9 @@ def restore_git_symlinks(repo_root: Path) -> None:
             cwd=str(repo_root),
         )
     except subprocess.CalledProcessError:
-        return
+        return []
+
+    expanded: list[GitSymlinkStub] = []
 
     for line in result.stdout.splitlines():
         # git ls-files -s format: "<mode> <hash> <stage>\t<path>".
@@ -470,18 +480,61 @@ def restore_git_symlinks(repo_root: Path) -> None:
             continue
 
         try:
-            content = symlink_path.read_text(encoding="utf-8").strip()
-            # Sanity check: real text stubs are short relative paths.
-            if not content or len(content) > 500:
-                continue
+            stub_contents = symlink_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
 
-            target_path = (symlink_path.parent / content).resolve()
-            if target_path.exists() and target_path.is_file():
+        content = stub_contents.strip()
+        # Sanity check: real text stubs are short relative paths.
+        if not content or len(content) > 500:
+            continue
+
+        target_path = (symlink_path.parent / content).resolve()
+        if not target_path.exists():
+            continue
+
+        symlink_path.unlink()
+        try:
+            symlink_path.symlink_to(content, target_is_directory=target_path.is_dir())
+        except OSError:
+            if target_path.is_file():
                 shutil.copy2(str(target_path), str(symlink_path))
-            elif target_path.exists() and target_path.is_dir():
-                print_warning(f"Cannot restore directory symlink as copy: {rel_path}")
-        except Exception:
-            pass
+            else:
+                # Directory junctions do not require Developer Mode or administrator privileges.
+                junction = subprocess.run(
+                    [
+                        os.environ.get("COMSPEC", "cmd.exe"),
+                        "/c",
+                        "mklink",
+                        "/J",
+                        str(symlink_path),
+                        str(target_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if junction.returncode != 0:
+                    symlink_path.write_text(stub_contents, encoding="utf-8")
+                    print_warning(f"Cannot restore directory symlink: {rel_path}")
+                    continue
+
+        expanded.append(GitSymlinkStub(symlink_path, stub_contents))
+
+    return expanded
+
+
+def collapse_git_symlinks(expanded: Sequence[GitSymlinkStub]) -> None:
+    """Restore temporarily expanded symlinks to their tracked text-stub form."""
+    for stub in reversed(expanded):
+        try:
+            if stub.path.is_symlink() or stub.path.is_file():
+                stub.path.unlink()
+            elif stub.path.exists():
+                stub.path.rmdir()
+            stub.path.write_text(stub.contents, encoding="utf-8")
+        except OSError as error:
+            print_warning(f"Cannot restore symlink stub '{stub.path}': {error}")
 
 
 # ==================================================================================================
@@ -694,6 +747,12 @@ def _assemble_build_make_args(
 
     # Windows platform defaults.
     if plat.is_windows:
+        host_arch = platform.machine().strip().lower()
+        target_is_explicit = "TARGET" in os.environ or any(
+            a.startswith("TARGET=") for a in user_args
+        )
+        if host_arch in ("aarch64", "arm64") and not target_is_explicit:
+            injected.append("TARGET=aarch64")
         if config.machine == "microvm" and not any(
             a.startswith("WHP=") for a in user_args
         ):
@@ -709,17 +768,19 @@ def _assemble_build_make_args(
 
 def cmd_build(plat: PlatformInfo, config: BuildConfig) -> int:
     """Execute the build subcommand."""
-    # Windows pre-build steps.
-    if plat.is_windows:
-        restore_git_symlinks(plat.repo_root)
-
-    injected, user_args = _assemble_build_make_args(plat, config)
-
-    print_info(f"Build parameters: {' '.join(injected + user_args)}")
-
-    rc = invoke_make(
-        plat, injected_vars=injected, raw_args=user_args, verbose=config.verbose
+    expanded: list[GitSymlinkStub] = (
+        restore_git_symlinks(plat.repo_root) if plat.is_windows else []
     )
+    try:
+        injected, user_args = _assemble_build_make_args(plat, config)
+
+        print_info(f"Build parameters: {' '.join(injected + user_args)}")
+
+        rc = invoke_make(
+            plat, injected_vars=injected, raw_args=user_args, verbose=config.verbose
+        )
+    finally:
+        collapse_git_symlinks(expanded)
 
     if rc == 0:
         print_success("Build complete.")
@@ -783,18 +844,21 @@ def cmd_distclean(plat: PlatformInfo, config: BuildConfig) -> int:
 
 def cmd_test(plat: PlatformInfo, config: BuildConfig) -> int:
     """Execute the test subcommand."""
-    if plat.is_windows:
-        restore_git_symlinks(plat.repo_root)
-
-    injected, user_args = _assemble_build_make_args(plat, config)
-
-    rc = invoke_make(
-        plat,
-        injected_vars=injected,
-        raw_args=user_args,
-        targets=["test"],
-        verbose=config.verbose,
+    expanded: list[GitSymlinkStub] = (
+        restore_git_symlinks(plat.repo_root) if plat.is_windows else []
     )
+    try:
+        injected, user_args = _assemble_build_make_args(plat, config)
+
+        rc = invoke_make(
+            plat,
+            injected_vars=injected,
+            raw_args=user_args,
+            targets=["test"],
+            verbose=config.verbose,
+        )
+    finally:
+        collapse_git_symlinks(expanded)
 
     if rc == 0:
         print_success("Tests passed.")
@@ -811,25 +875,28 @@ def cmd_test(plat: PlatformInfo, config: BuildConfig) -> int:
 
 def cmd_verify(plat: PlatformInfo, config: BuildConfig) -> int:
     """Execute the verify subcommand (Verus formal verification)."""
-    if plat.is_windows:
-        restore_git_symlinks(plat.repo_root)
-
-    injected, user_args = _assemble_build_make_args(plat, config)
-
-    # If the user did not supply explicit Make goals after `--`, default to the
-    # top-level `verify` target. Otherwise, rely solely on the user-specified
-    # goals and do not prepend `verify`.  Variable assignments (KEY=VALUE) are
-    # not Make goals, so they must not suppress the default target.
-    has_goals = any("=" not in a for a in user_args)
-    targets: list[str] = ["verify"] if not has_goals else []
-
-    rc = invoke_make(
-        plat,
-        injected_vars=injected,
-        raw_args=user_args,
-        targets=targets,
-        verbose=config.verbose,
+    expanded: list[GitSymlinkStub] = (
+        restore_git_symlinks(plat.repo_root) if plat.is_windows else []
     )
+    try:
+        injected, user_args = _assemble_build_make_args(plat, config)
+
+        # If the user did not supply explicit Make goals after `--`, default to the
+        # top-level `verify` target. Otherwise, rely solely on the user-specified
+        # goals and do not prepend `verify`. Variable assignments (KEY=VALUE) are
+        # not Make goals, so they must not suppress the default target.
+        has_goals = any("=" not in a for a in user_args)
+        targets: list[str] = ["verify"] if not has_goals else []
+
+        rc = invoke_make(
+            plat,
+            injected_vars=injected,
+            raw_args=user_args,
+            targets=targets,
+            verbose=config.verbose,
+        )
+    finally:
+        collapse_git_symlinks(expanded)
 
     if rc == 0:
         print_success("Verification complete.")

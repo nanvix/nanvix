@@ -5,12 +5,9 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    mem::{
-        self,
-        paging::TableEntry,
-    },
-    x86::mem::paging::{
+use crate::mem::{
+    self,
+    paging::{
         flags::{
             AccessedFlag,
             CopyOnWriteFlag,
@@ -23,6 +20,7 @@ use crate::{
         },
         frame::FrameNumber,
         PteWord,
+        TableEntry,
     },
 };
 

@@ -64,10 +64,7 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    mm::{
-        Address,
-        Alignment,
-    },
+    mm::Address,
 };
 
 //==================================================================================================
@@ -324,7 +321,7 @@ impl ElfSource<'_> {
         &self,
         offset: usize,
         dst_vmem: &mut Vmem,
-        dst: PageAligned<VirtualAddress>,
+        dst: VirtualAddress,
         size: usize,
         dry_run: bool,
     ) -> Result<(), Error> {
@@ -335,7 +332,7 @@ impl ElfSource<'_> {
                     Error::new(ErrorCode::BadFile, "elf blob segment offset overflow")
                 })?;
                 dst_vmem.copy_to_user_unaligned_unchecked(
-                    dst.into_inner(),
+                    dst,
                     VirtualAddress::from_raw_value(src),
                     size,
                     dry_run,
@@ -349,13 +346,7 @@ impl ElfSource<'_> {
                 let src: usize = base.into_raw_value().checked_add(offset).ok_or_else(|| {
                     Error::new(ErrorCode::BadFile, "elf user segment offset overflow")
                 })?;
-                Vmem::copy_user_to_user(
-                    vmem,
-                    VirtualAddress::new(src),
-                    dst_vmem,
-                    dst.into_inner(),
-                    size,
-                )
+                Vmem::copy_user_to_user(vmem, VirtualAddress::new(src), dst_vmem, dst, size)
             },
         }
     }
@@ -510,29 +501,12 @@ fn do_elf32_load(
             return Err(Error::new(ErrorCode::BadFile, reason));
         }
 
-        let align: Alignment = phdr
-            .p_align
-            .try_into()
-            .map_err(|_| Error::new(ErrorCode::BadFile, "invalid alignment value in elf file"))?;
         let adjusted_vaddr: usize = phdr.p_vaddr.checked_add(load_base).ok_or_else(|| {
             let reason: &str = "virtual address overflow in PIE segment";
             error!("{reason} (p_vaddr={:#x}, load_base={load_base:#x})", phdr.p_vaddr);
             Error::new(ErrorCode::BadFile, reason)
         })?;
-        let virt_addr_base: usize = ::sys::mm::align_down(adjusted_vaddr, align);
-
-        // The per-page copy below always writes a segment's file bytes starting at the page base
-        // (`virt_addr_base`). This is only correct when the segment's load address coincides with
-        // that base; a PT_LOAD segment that begins partway into a page would have its bytes placed
-        // `adjusted_vaddr - virt_addr_base` bytes too low. Because `execv()` loads untrusted ELF
-        // images, reject such unaligned segments instead of silently misplacing their data.
-        if adjusted_vaddr != virt_addr_base {
-            let reason: &str = "unaligned PT_LOAD segment";
-            error!(
-                "{reason} (adjusted_vaddr={adjusted_vaddr:#x}, virt_addr_base={virt_addr_base:#x})"
-            );
-            return Err(Error::new(ErrorCode::BadFile, reason));
-        }
+        let virt_addr_base: usize = ::sys::mm::align_down(adjusted_vaddr, PAGE_ALIGNMENT);
 
         // Compute access permissions.
         let access: AccessPermission = if phdr.p_flags == (PF_R | PF_X) {
@@ -545,6 +519,9 @@ fn do_elf32_load(
 
         // Allocate segment.
         let size: usize = max(phdr.p_filesz, phdr.p_memsz);
+        if size == 0 {
+            continue;
+        }
         let virt_addr_range_end: usize = adjusted_vaddr.checked_add(size).ok_or_else(|| {
             let reason: &str = "virtual address overflow in elf segment";
             error!("{reason} (adjusted_vaddr={adjusted_vaddr:#x}, size={size})");
@@ -569,6 +546,11 @@ fn do_elf32_load(
             Error::new(ErrorCode::BadFile, reason)
         })?;
         source.check_bounds(file_off_base, phdr.p_filesz)?;
+        let file_vaddr_end: usize = adjusted_vaddr.checked_add(phdr.p_filesz).ok_or_else(|| {
+            let reason: &str = "segment file virtual-address range overflow";
+            error!("{reason} (adjusted_vaddr={adjusted_vaddr:#x}, p_filesz={:#x})", phdr.p_filesz);
+            Error::new(ErrorCode::BadFile, reason)
+        })?;
 
         // Load segment by batch-allocating pages before copying data.
         debug!(
@@ -630,35 +612,15 @@ fn do_elf32_load(
                     // Only clear pages that will NOT be fully overwritten by segment data.
                     // A page is fully covered when the segment data for this page spans
                     // the entire PAGE_SIZE bytes; in that case clearing is redundant.
-
-                    // File offset of the source-backed data for this page.
-                    let page_offset_in_segment: usize = page_addr - virt_addr_base;
-                    let page_file_off: usize =
-                        match file_off_base.checked_add(page_offset_in_segment) {
-                            Some(off) => off,
-                            None => {
-                                let reason: &str = "invalid segment file offset";
-                                error!("{reason}");
-                                return Err(Error::new(ErrorCode::BadFile, reason));
-                            },
-                        };
-                    // One-past-the-end if the full page were backed by segment data.
-                    let page_file_off_end: usize = match page_file_off.checked_add(mem::PAGE_SIZE) {
-                        Some(end) => end,
-                        None => {
-                            let reason: &str = "invalid segment file offset range";
-                            error!("{reason}");
-                            return Err(Error::new(ErrorCode::BadFile, reason));
-                        },
-                    };
-
-                    // Page is entirely beyond segment data (pure BSS) — must be zeroed.
-                    let page_lies_in_bss: bool = page_file_off >= file_off_end;
-                    // Page straddles the segment-data/BSS boundary — trailing bytes must
-                    // be zeroed.
-                    let page_is_partially_covered: bool =
-                        page_file_off < file_off_end && page_file_off_end > file_off_end;
-                    let needs_clear: bool = page_lies_in_bss || page_is_partially_covered;
+                    let page_end: usize =
+                        page_addr.checked_add(mem::PAGE_SIZE).ok_or_else(|| {
+                            let reason: &str = "page virtual-address range overflow";
+                            error!("{reason} (page_addr={page_addr:#x})");
+                            Error::new(ErrorCode::BadFile, reason)
+                        })?;
+                    let page_is_fully_covered: bool =
+                        adjusted_vaddr <= page_addr && file_vaddr_end >= page_end;
+                    let needs_clear: bool = !page_is_fully_covered;
 
                     if let Some(start) = batch_start {
                         if batch_clear != needs_clear || batch_count == load_batch_size {
@@ -705,25 +667,32 @@ fn do_elf32_load(
                 last_address = vaddr.into_raw_value() + mem::PAGE_SIZE;
             }
 
-            // `file_off_base` is attacker-controlled in the `execv()` path; guard the running
-            // offset against overflow. The subtraction is safe because the loop starts at
-            // `virt_addr_base` and never produces a `vaddr` below it.
-            let file_off: usize = file_off_base
-                .checked_add(vaddr.into_raw_value() - virt_addr_base)
+            let page_end: usize = vaddr
+                .into_raw_value()
+                .checked_add(mem::PAGE_SIZE)
                 .ok_or_else(|| {
-                    let reason: &str = "segment file offset overflow";
-                    error!("{reason} (file_off_base={file_off_base:#x})");
+                    let reason: &str = "page virtual-address range overflow";
+                    error!("{reason} (vaddr={vaddr:?})");
                     Error::new(ErrorCode::BadFile, reason)
                 })?;
+            let copy_start: usize = max(vaddr.into_raw_value(), adjusted_vaddr);
+            let copy_end: usize = min(page_end, file_vaddr_end);
 
-            // Load segment only if it is within bounds.
-            if file_off < file_off_end {
-                let size: usize = min(mem::PAGE_SIZE, file_off_end - file_off);
-
-                // Load segment only if it has a non-zero size.
-                if size > 0 {
-                    source.copy_segment(file_off, vmem, vaddr, size, dry_run)?;
-                }
+            if copy_start < copy_end {
+                let file_off: usize = file_off_base
+                    .checked_add(copy_start - adjusted_vaddr)
+                    .ok_or_else(|| {
+                        let reason: &str = "segment file offset overflow";
+                        error!("{reason} (file_off_base={file_off_base:#x})");
+                        Error::new(ErrorCode::BadFile, reason)
+                    })?;
+                source.copy_segment(
+                    file_off,
+                    vmem,
+                    VirtualAddress::new(copy_start),
+                    copy_end - copy_start,
+                    dry_run,
+                )?;
             }
         }
 
@@ -735,6 +704,58 @@ fn do_elf32_load(
             loaded_count += 1;
         } else {
             warn!("too many load segments, overlap detection may be inaccurate");
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    if !dry_run {
+        let mut cleaned_executable_page: bool = false;
+
+        // Synchronize after every segment has been loaded so executable BSS and writes from
+        // overlapping non-executable segments are included. Pages are cleaned through their
+        // identity-mapped physical aliases, then the whole I-cache is invalidated once because the
+        // eventual executable virtual aliases may differ.
+        for phdr_index in 0..e_phnum {
+            let phdr: ElfPhdrInfo = source.read_phdr(phdr_index, e_phoff, header.is_64)?;
+            if !phdr.is_loadable() || (phdr.p_flags & PF_X) == 0 {
+                continue;
+            }
+
+            let adjusted_vaddr: usize = phdr.p_vaddr.checked_add(load_base).ok_or_else(|| {
+                let reason: &str = "virtual address overflow in executable segment";
+                error!("{reason} (p_vaddr={:#x}, load_base={load_base:#x})", phdr.p_vaddr);
+                Error::new(ErrorCode::BadFile, reason)
+            })?;
+            let size: usize = max(phdr.p_filesz, phdr.p_memsz);
+            if size == 0 {
+                continue;
+            }
+            let range_end: usize = adjusted_vaddr.checked_add(size).ok_or_else(|| {
+                let reason: &str = "executable segment range overflow";
+                error!("{reason} (adjusted_vaddr={adjusted_vaddr:#x}, size={size})");
+                Error::new(ErrorCode::BadFile, reason)
+            })?;
+            let page_base: usize = ::sys::mm::align_down(adjusted_vaddr, PAGE_ALIGNMENT);
+            let page_end: usize =
+                ::sys::mm::align_up(range_end, PAGE_ALIGNMENT).ok_or_else(|| {
+                    let reason: &str = "executable segment alignment overflow";
+                    error!("{reason} (range_end={range_end:#x})");
+                    Error::new(ErrorCode::BadFile, reason)
+                })?;
+
+            for page_vaddr in (page_base..page_end).step_by(mem::PAGE_SIZE) {
+                let paddr: usize = vmem.user_vaddr_to_paddr(VirtualAddress::new(page_vaddr))?;
+                unsafe {
+                    ::arch::cpu::clean_data_cache_to_pou(paddr as *const u8, mem::PAGE_SIZE);
+                }
+                cleaned_executable_page = true;
+            }
+        }
+
+        if cleaned_executable_page {
+            unsafe {
+                ::arch::cpu::invalidate_instruction_cache_all();
+            }
         }
     }
 

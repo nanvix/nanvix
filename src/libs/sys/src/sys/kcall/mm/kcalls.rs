@@ -102,6 +102,41 @@ pub fn __kcall_mprotect(
 }
 
 //==================================================================================================
+// Synchronize Instruction Cache
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Makes writes to a user-memory range visible to subsequent instruction fetches.
+///
+/// # Parameters
+///
+/// - `start`: Start of the modified range.
+/// - `len`: Length of the modified range in bytes.
+///
+/// # Returns
+///
+/// `Ok(())` on success, or an error if the range is invalid or not fully mapped.
+///
+#[unsafe(no_mangle)]
+pub fn __kcall_sync_instruction_cache(start: VirtualAddress, len: usize) -> Result<(), Error> {
+    let start: u32 = u32::try_from(start.into_raw_value()).map_err(|_| {
+        Error::new(ErrorCode::InvalidArgument, "instruction-cache range exceeds address space")
+    })?;
+    let len: u32 = u32::try_from(len).map_err(|_| {
+        Error::new(ErrorCode::InvalidArgument, "instruction-cache range exceeds address space")
+    })?;
+    let result: i64 = kcall2!(KcallNumber::SyncInstructionCache.into(), start, len);
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(Error::new(ErrorCode::try_from(result)?, "failed to synchronize instruction cache"))
+    }
+}
+
+//==================================================================================================
 // Allocate MMIO Region
 //==================================================================================================
 

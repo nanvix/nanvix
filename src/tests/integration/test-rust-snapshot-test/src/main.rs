@@ -17,6 +17,8 @@ extern crate libc_string;
 extern crate nvx;
 extern crate nvx_crt0;
 
+#[cfg(target_arch = "aarch64")]
+use ::core::arch::asm;
 use ::core::sync::atomic::Ordering;
 use ::sys::error::{
     Error,
@@ -42,6 +44,23 @@ const SNAPSHOT_FLAG: &[u8] = b"--snapshot";
 /// path rather than guest termination.
 const NO_EXIT_FLAG: &[u8] = b"--no-exit";
 
+#[cfg(target_arch = "aarch64")]
+const SNAPSHOT_FP_PATTERN: u64 = 0x0123_4567_89ab_cdef;
+#[cfg(target_arch = "aarch64")]
+const SNAPSHOT_FPSR: u64 = 0x01;
+#[cfg(target_arch = "aarch64")]
+const FPCR_RMODE_MASK: u64 = 0b11 << 22;
+#[cfg(target_arch = "aarch64")]
+const SNAPSHOT_RMODE: u64 = 0b01 << 22;
+
+#[cfg(target_arch = "aarch64")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FpState {
+    d8: u64,
+    fpcr: u64,
+    fpsr: u64,
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -54,6 +73,40 @@ fn should_snapshot() -> bool {
 /// Returns `true` if `--no-exit` was passed as a command-line argument.
 fn should_loop_after_snapshot() -> bool {
     has_flag(NO_EXIT_FLAG)
+}
+
+#[cfg(target_arch = "aarch64")]
+fn read_fp_state() -> FpState {
+    let d8: u64;
+    let fpcr: u64;
+    let fpsr: u64;
+    unsafe {
+        asm!(
+            "fmov {d8}, d8",
+            "mrs {fpcr}, fpcr",
+            "mrs {fpsr}, fpsr",
+            d8 = out(reg) d8,
+            fpcr = out(reg) fpcr,
+            fpsr = out(reg) fpsr,
+            options(nomem, nostack),
+        );
+    }
+    FpState { d8, fpcr, fpsr }
+}
+
+#[cfg(target_arch = "aarch64")]
+fn write_fp_state(state: FpState) {
+    unsafe {
+        asm!(
+            "fmov d8, {d8}",
+            "msr fpcr, {fpcr}",
+            "msr fpsr, {fpsr}",
+            d8 = in(reg) state.d8,
+            fpcr = in(reg) state.fpcr,
+            fpsr = in(reg) state.fpsr,
+            options(nomem, nostack),
+        );
+    }
 }
 
 /// Returns `true` if `flag` appears as a standalone argument (followed by a NUL terminator) in
@@ -107,7 +160,30 @@ pub fn main() -> Result<(), Error> {
         return Ok(());
     }
 
+    #[cfg(target_arch = "aarch64")]
+    let original_fp: FpState = read_fp_state();
+    #[cfg(target_arch = "aarch64")]
+    let snapshot_fp: FpState = FpState {
+        d8: SNAPSHOT_FP_PATTERN,
+        fpcr: (original_fp.fpcr & !FPCR_RMODE_MASK) | SNAPSHOT_RMODE,
+        fpsr: SNAPSHOT_FPSR,
+    };
+    #[cfg(target_arch = "aarch64")]
+    write_fp_state(snapshot_fp);
+
     ::sys::kcall::pm::snapshot()?;
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        let restored_fp: FpState = read_fp_state();
+        write_fp_state(original_fp);
+        if restored_fp != snapshot_fp {
+            return Err(Error::new(
+                ErrorCode::TryAgain,
+                "snapshot restore did not preserve FP state",
+            ));
+        }
+    }
 
     if should_loop_after_snapshot() {
         // Spin forever so guest exit cannot mask a host-side snapshot-completion hang.

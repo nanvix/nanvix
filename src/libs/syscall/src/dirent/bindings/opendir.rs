@@ -18,6 +18,7 @@ use ::core::{
     ptr,
 };
 use ::sys::error::ErrorCode;
+use ::sysapi::ffi::c_char;
 use ::syslog::trace_libcall;
 
 //==================================================================================================
@@ -51,7 +52,7 @@ use ::syslog::trace_libcall;
 ///
 #[trace_libcall]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn opendir(dirname: *const i8) -> *mut DirectoryStream {
+pub unsafe extern "C" fn opendir(dirname: *const c_char) -> *mut DirectoryStream {
     // Check if `dirname` is null.
     if dirname.is_null() {
         ::syslog::warn!("opendir(): null dirname (dirname={dirname:?})");

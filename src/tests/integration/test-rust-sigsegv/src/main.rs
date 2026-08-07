@@ -16,6 +16,8 @@ extern crate libc_string;
 extern crate nvx;
 extern crate nvx_crt0;
 
+#[cfg(target_arch = "aarch64")]
+use ::core::arch::asm;
 use ::core::{
     ptr,
     sync::atomic::{
@@ -58,6 +60,14 @@ const WILD_PTR: usize = 0xe000_0000;
 /// instruction re-executed correctly after `sigreturn()`.
 const WILD_VALUE: u8 = 0x42;
 
+/// FP/SIMD pattern installed in the interrupted context.
+#[cfg(target_arch = "aarch64")]
+const INTERRUPTED_FP_PATTERN: u64 = 0x1122_3344_5566_7788;
+
+/// FP/SIMD pattern installed by the signal handler.
+#[cfg(target_arch = "aarch64")]
+const HANDLER_FP_PATTERN: u64 = 0x8877_6655_4433_2211;
+
 //==================================================================================================
 // Global State
 //==================================================================================================
@@ -85,12 +95,44 @@ extern "C" fn sigsegv_handler(_signum: i32) {
         let _ = mm::__kcall_mmap(pid, VirtualAddress::new(WILD_PTR), 1, AccessPermission::RDWR);
     }
     HANDLER_RAN.store(true, Ordering::SeqCst);
+
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        asm!(
+            "dup v0.2d, {pattern}",
+            pattern = in(reg) HANDLER_FP_PATTERN,
+            out("v0") _,
+            options(nomem, nostack),
+        );
+    }
 }
 
 /// Returns the address of [`sigsegv_handler`] for the `sa_handler` slot. Forming a pointer-sized
 /// value from a function item is exactly what the disposition's handler slot expects.
 fn sigsegv_handler_addr() -> usize {
     sigsegv_handler as *const () as usize
+}
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn fault_with_fp_state(wild: *mut u8) -> (u64, u64) {
+    let low: u64;
+    let high: u64;
+    unsafe {
+        asm!(
+            "dup v0.2d, {pattern}",
+            "strb {value:w}, [{wild}]",
+            "umov {low}, v0.d[0]",
+            "umov {high}, v0.d[1]",
+            pattern = in(reg) INTERRUPTED_FP_PATTERN,
+            value = in(reg) u64::from(WILD_VALUE),
+            wild = in(reg) wild,
+            low = lateout(reg) low,
+            high = lateout(reg) high,
+            out("v0") _,
+            options(nostack),
+        );
+    }
+    (low, high)
 }
 
 //==================================================================================================
@@ -134,7 +176,20 @@ pub fn main() -> Result<(), Error> {
     let wild: *mut u8 = ptr::with_exposed_provenance_mut(WILD_PTR);
     // SAFETY: the write intentionally faults; the handler resolves the fault before the instruction
     // is restarted.
-    unsafe { ptr::write_volatile(wild, WILD_VALUE) };
+    #[cfg(target_arch = "aarch64")]
+    {
+        let (low, high): (u64, u64) = unsafe { fault_with_fp_state(wild) };
+        if low != INTERRUPTED_FP_PATTERN || high != INTERRUPTED_FP_PATTERN {
+            return Err(Error::new(
+                ErrorCode::TryAgain,
+                "SIGSEGV return did not restore the interrupted FP/SIMD state",
+            ));
+        }
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    unsafe {
+        ptr::write_volatile(wild, WILD_VALUE);
+    }
 
     // The handler must have run.
     if !HANDLER_RAN.load(Ordering::SeqCst) {

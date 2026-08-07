@@ -12,9 +12,9 @@
 //==================================================================================================
 
 use ::core::{
+    ffi::CStr,
     mem,
     ptr,
-    slice,
 };
 use ::sys::error::ErrorCode;
 use ::sysapi::{
@@ -237,7 +237,7 @@ pub unsafe extern "C" fn getaddrinfo(
                 b"127.0.0.1".as_slice()
             }
         } else {
-            slice::from_raw_parts(node as *const u8, c_str_len(node))
+            CStr::from_ptr(node).to_bytes()
         })
     } else {
         None
@@ -639,7 +639,7 @@ unsafe fn parse_port(service: *const c_char) -> Option<u16> {
     let mut value: u32 = 0;
     let mut digits: usize = 0;
     loop {
-        let byte: u8 = *service.add(index) as u8;
+        let byte: u8 = (*service.add(index)).to_ne_bytes()[0];
         if byte == 0 {
             break;
         }
@@ -811,29 +811,4 @@ unsafe fn alloc_node(
     ptr::write(block as *mut addrinfo, info);
 
     block as *mut addrinfo
-}
-
-///
-/// # Description
-///
-/// Computes the length of a null-terminated string, excluding the terminating NUL.
-///
-/// # Parameters
-///
-/// - `s`: Pointer to a null-terminated string.
-///
-/// # Returns
-///
-/// The number of bytes preceding the terminating NUL.
-///
-/// # Safety
-///
-/// The caller must ensure `s` points to a valid null-terminated string.
-///
-unsafe fn c_str_len(s: *const c_char) -> usize {
-    let mut len: usize = 0;
-    while *s.add(len) != 0 {
-        len += 1;
-    }
-    len
 }

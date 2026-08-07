@@ -111,7 +111,7 @@ mod tests {
         let result: f32 = unsafe { strtof(s.as_ptr().cast::<c_char>(), &mut end) };
         assert!(approx_eq(result, 1.0, 1e-5), "expected 1.0, got {result}");
         assert!(!end.is_null());
-        assert_eq!(unsafe { *end } as u8, b'x');
+        assert_eq!(crate::c_char_to_u8(unsafe { *end }), b'x');
     }
 
     #[test]

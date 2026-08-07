@@ -175,7 +175,7 @@ pub unsafe extern "C" fn __nanvix_libc_start_main(argp: *mut c_char, envp: *mut 
     let argv: &'static [*const c_char] =
         ::alloc::boxed::Box::leak(unsafe { parse_argp(argp) }.into_boxed_slice());
     let argc: i32 = argv.len() as i32 - 1;
-    let argv_ptr: *const *const u8 = argv.as_ptr() as *const *const u8;
+    let argv_ptr: *const *const u8 = argv.as_ptr().cast::<*const u8>();
 
     let env: &'static mut [*mut c_char] =
         ::alloc::boxed::Box::leak(unsafe { parse_envp(envp) }.into_boxed_slice());

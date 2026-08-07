@@ -104,7 +104,7 @@ impl InterruptManager {
     /// - `intnum`: Number of the interrupt.
     ///
     #[unsafe(no_mangle)]
-    extern "C" fn do_interrupt(intnum: arch::InterruptNumber) {
+    pub(crate) extern "C" fn do_interrupt(intnum: arch::InterruptNumber) {
         let handler: InterruptHandler = match InterruptController::try_get() {
             Ok(controller) => {
                 if let Err(e) = controller.ack(intnum) {

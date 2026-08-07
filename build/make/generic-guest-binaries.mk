@@ -19,16 +19,16 @@ MISC_RUST_CARGO_FEATURES := $(if $(MISC_RUST_FEATURES),--features "$(MISC_RUST_F
 GUEST_BINARY_PKG_FEATURES = $(if $(filter test-rust-kernel,$(1)),$(TEST_KERNEL_CARGO_FEATURES),$(if $(filter test-rust-misc,$(1)),$(MISC_RUST_CARGO_FEATURES),$(GUEST_BINARY_CARGO_FEATURES)))
 
 # test-rust-dlfcn must be a real PIE so its exported symbols populate the
-# loader's global scope. On x86_64, build it with the dedicated PIC target;
-# other guest binaries retain the regular static relocation model.
-GUEST_BINARY_USES_PIC = $(and $(filter x86_64,$(TARGET)),$(filter test-rust-dlfcn,$(1)))
+# loader's global scope. On 64-bit targets, build it with the dedicated PIC
+# target; other guest binaries retain the regular static relocation model.
+GUEST_BINARY_USES_PIC = $(and $(filter x86_64 aarch64,$(TARGET)),$(filter test-rust-dlfcn,$(1)))
 GUEST_BINARY_CARGO_BUILD = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(NANVIX_LIBC_PIC_CARGO_BUILD),$(GUEST_CARGO_BUILD_CMD))
 GUEST_BINARY_CARGO_CHECK = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(GUEST_PIC_CARGO_CHECK_CMD),$(GUEST_CARGO_CHECK_CMD))
 GUEST_BINARY_CARGO_CLEAN = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(GUEST_PIC_CARGO_CLEAN_CMD),$(GUEST_CARGO_CLEAN_CMD))
 GUEST_BINARY_CARGO_CLIPPY = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(GUEST_PIC_CARGO_CLIPPY_CMD),$(GUEST_CARGO_CLIPPY_CMD))
 GUEST_BINARY_OBJDIR = $(if $(call GUEST_BINARY_USES_PIC,$(1)),$(NANVIX_LIBC_PIC_OBJDIR),$(OBJECTS_DIR)/$(TARGET)-user/$(BUILD_MODE))
 
-ifeq ($(TARGET),x86_64)
+ifneq ($(filter $(TARGET),x86_64 aarch64),)
 GUEST_PIC_CARGO_CHECK_CMD := RUSTFLAGS=$(NANVIX_LIBC_PIC_RUSTFLAGS) $(CARGO) check --locked \
 	$(GUEST_CARGO_FLAGS) --target $(NANVIX_LIBC_PIC_TARGET) --message-format=json
 GUEST_PIC_CARGO_CLEAN_CMD := RUSTFLAGS=$(NANVIX_LIBC_PIC_RUSTFLAGS) $(CARGO) clean \
@@ -71,7 +71,7 @@ $(foreach target,$(ALL_GUEST_BINARIES),$(eval $(call GUEST_BINARY_RULES,$(target
 # - c-bindings-rust: built separately to avoid Cargo feature unification masking
 #   missing symbols (it validates that all expected C symbols link without
 #   features contributed by sibling crates like network-rust).
-_GUEST_BINS_PIC := $(if $(filter x86_64,$(TARGET)),$(filter test-rust-dlfcn,$(ALL_GUEST_BINARIES)))
+_GUEST_BINS_PIC := $(if $(filter x86_64 aarch64,$(TARGET)),$(filter test-rust-dlfcn,$(ALL_GUEST_BINARIES)))
 _GUEST_BINS_STATIC := $(filter-out $(_GUEST_BINS_PIC),$(ALL_GUEST_BINARIES))
 _GUEST_BINS_COMMON := $(filter-out test-rust-kernel test-rust-c-bindings,$(_GUEST_BINS_STATIC))
 _GUEST_BINS_COMMON_PKGS := $(foreach pkg,$(_GUEST_BINS_COMMON),-p $(pkg))

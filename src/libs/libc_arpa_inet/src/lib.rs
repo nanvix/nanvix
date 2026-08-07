@@ -272,14 +272,14 @@ pub unsafe extern "C" fn inet_pton(af: c_int, src: *const c_char, dst: *mut c_vo
 ///
 unsafe fn parse_component(cp: *const c_char, start: usize) -> (u32, usize, bool) {
     let mut i: usize = start;
-    let first: u8 = *cp.add(i) as u8;
+    let first: u8 = (*cp.add(i)).to_ne_bytes()[0];
     if !first.is_ascii_digit() {
         return (0, 0, false);
     }
 
     let mut base: u64 = 10;
     if first == b'0' {
-        let next: u8 = *cp.add(i + 1) as u8;
+        let next: u8 = (*cp.add(i + 1)).to_ne_bytes()[0];
         if next == b'x' || next == b'X' {
             base = 16;
             i += 2;
@@ -292,7 +292,7 @@ unsafe fn parse_component(cp: *const c_char, start: usize) -> (u32, usize, bool)
     let mut value: u64 = 0;
     let mut digits: usize = 0;
     loop {
-        let c: u8 = *cp.add(i) as u8;
+        let c: u8 = (*cp.add(i)).to_ne_bytes()[0];
         let digit: u64 = match c {
             b'0'..=b'9' => u64::from(c - b'0'),
             b'a'..=b'f' => u64::from(c - b'a' + 10),
@@ -365,7 +365,7 @@ pub unsafe extern "C" fn inet_aton(cp: *const c_char, inp: *mut in_addr) -> c_in
         nparts += 1;
         i += consumed;
 
-        let c: u8 = *cp.add(i) as u8;
+        let c: u8 = (*cp.add(i)).to_ne_bytes()[0];
         if c == b'.' {
             i += 1;
         } else if c == 0 {
@@ -693,7 +693,7 @@ unsafe fn parse_ipv4(src: *const c_char) -> Option<[u8; 4]> {
     let mut i: usize = 0;
 
     loop {
-        let ch: u8 = *src.add(i) as u8;
+        let ch: u8 = (*src.add(i)).to_ne_bytes()[0];
         if ch == 0 {
             break;
         }
@@ -768,16 +768,16 @@ unsafe fn parse_ipv6(src: *const c_char) -> Option<[u8; 16]> {
     let mut i: usize = 0;
 
     // Only a leading "::" may begin with a colon.
-    if *src.add(i) as u8 == b':' {
+    if (*src.add(i)).to_ne_bytes()[0] == b':' {
         i += 1;
-        if *src.add(i) as u8 != b':' {
+        if (*src.add(i)).to_ne_bytes()[0] != b':' {
             return None;
         }
     }
 
     let mut curtok: usize = i;
     loop {
-        let ch: u8 = *src.add(i) as u8;
+        let ch: u8 = (*src.add(i)).to_ne_bytes()[0];
         if ch == 0 {
             break;
         }
@@ -803,7 +803,7 @@ unsafe fn parse_ipv6(src: *const c_char) -> Option<[u8; 16]> {
                 continue;
             }
             // A colon may not terminate the address.
-            if *src.add(i) as u8 == 0 {
+            if (*src.add(i)).to_ne_bytes()[0] == 0 {
                 return None;
             }
             if tp + 2 > 16 {

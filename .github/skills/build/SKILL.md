@@ -53,7 +53,7 @@ Set these as environment variables or pass them after `--` in the `z` command:
 | Parameter        | Values                   | Default         |
 |------------------|--------------------------|-----------------|
 | `MACHINE`        | `microvm`                | `microvm`       |
-| `TARGET`         | `x86`                    | `x86`           |
+| `TARGET`         | `x86`, `x86_64`, `aarch64` | `x86`         |
 | `RELEASE`        | `yes`, `no`              | `no`            |
 | `LOG_LEVEL`      | `trace`, `debug`,        | `error`         |
 |                  | `info`, `warn`,          |                 |
@@ -99,7 +99,13 @@ microvm backend (WHP on Windows).
 
 # Release build.
 .\z.ps1 build -- all RELEASE=yes
+
+# Native Windows ARM64 build (selected automatically on ARM64 hosts).
+.\z.ps1 build -- all TARGET=aarch64
 ```
+
+On Windows ARM64, `z.ps1` injects `TARGET=aarch64` when no target is supplied. An explicit
+`TARGET=` always takes precedence.
 
 Any unrecognized target is forwarded to `make`, just like on Linux:
 

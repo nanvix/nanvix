@@ -24,6 +24,7 @@ use ::sys::error::{
 
 mod demand_paging;
 mod detach;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod direction_flag;
 mod duplicate;
 mod getppid;
@@ -66,6 +67,7 @@ pub fn main() -> Result<(), Error> {
 
     tls::run()?;
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     direction_flag::run()?;
 
     demand_paging::run()?;

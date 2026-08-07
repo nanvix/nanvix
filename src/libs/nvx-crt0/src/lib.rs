@@ -263,6 +263,25 @@ core::arch::global_asm!(
     "#
 );
 
+// AArch64 variant: the kernel enters EL0 with X0 = argp, X1 = envp, and a 16-byte-aligned user
+// stack, which already matches AAPCS64.
+#[cfg(target_arch = "aarch64")]
+core::arch::global_asm!(
+    r#"
+    .extern _start
+
+    .globl _do_start
+    .type _do_start, @function
+
+    .section .crt0, "ax"
+
+    _do_start:
+        mov x29, sp
+        bl _start
+    1:  b 1b
+    "#
+);
+
 //==================================================================================================
 // Signal-Return Trampoline
 //==================================================================================================
@@ -274,6 +293,7 @@ core::arch::global_asm!(
 //
 // The trampoline only loads the kernel-call number and traps; `sigreturn()` locates the signal
 // frame from the user stack pointer, so no register arguments are required.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 core::arch::global_asm!(
     r#"
     .globl __nvx_sigreturn_trampoline
@@ -285,6 +305,23 @@ core::arch::global_asm!(
         mov eax, {sigreturn_nr}
         int {kcall_vector}
     1:  jmp 1b
+    "#,
+    sigreturn_nr = const ::sys::number::KcallNumber::Sigreturn as u32,
+    kcall_vector = const ::sys::number::KCALL_VECTOR,
+);
+
+#[cfg(target_arch = "aarch64")]
+core::arch::global_asm!(
+    r#"
+    .globl __nvx_sigreturn_trampoline
+    .type __nvx_sigreturn_trampoline, @function
+
+    .section .text, "ax"
+
+    __nvx_sigreturn_trampoline:
+        mov w8, #{sigreturn_nr}
+        svc #{kcall_vector}
+    1:  b 1b
     "#,
     sigreturn_nr = const ::sys::number::KcallNumber::Sigreturn as u32,
     kcall_vector = const ::sys::number::KCALL_VECTOR,

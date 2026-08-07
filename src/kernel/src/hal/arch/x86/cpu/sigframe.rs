@@ -190,6 +190,7 @@ pub unsafe fn redirect_to_handler(
     esp0: usize,
     handler_ip: usize,
     frame_top: usize,
+    _restorer: usize,
     _signum: usize,
     _info_ptr: usize,
     _ctx_ptr: usize,

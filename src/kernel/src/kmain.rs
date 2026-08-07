@@ -383,6 +383,14 @@ fn reclaim_boot_modules(kmods: &LinkedList<KernelModule>) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kmain(kargs: &KernelArguments) {
+    // With stage-1 translation disabled, AArch64 treats data accesses as device memory and rejects
+    // the exclusive accesses used by Rust atomics. Install the kernel identity map before any
+    // logging, allocator, or other atomic operation.
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        crate::hal::arch::native::mem::mmu::hwpt::init();
+    }
+
     // Install klog buffer backing storage before the first logging call.
     // Under SMP there is no klog buffer.
     #[cfg(not(feature = "smp"))]

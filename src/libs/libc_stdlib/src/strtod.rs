@@ -5,67 +5,21 @@
 // Imports
 //==================================================================================================
 
-use crate::set_errno;
+use crate::{
+    float_lex::{
+        digit_val,
+        hex_digit_val,
+        is_digit,
+        is_hex_digit,
+        is_whitespace,
+        match_keyword,
+    },
+    set_errno,
+};
 use ::sysapi::{
     errno::ERANGE,
     ffi::c_char,
 };
-
-//==================================================================================================
-// Private Functions
-//==================================================================================================
-
-/// Returns `true` if the given character is an ASCII whitespace character.
-fn is_whitespace(c: c_char) -> bool {
-    let b: u8 = c as u8;
-    b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' || b == 0x0b || b == 0x0c
-}
-
-/// Returns `true` if the given character is an ASCII digit.
-fn is_digit(c: c_char) -> bool {
-    let b: u8 = c as u8;
-    b.is_ascii_digit()
-}
-
-/// Returns `true` if the given character is an ASCII hexadecimal digit.
-fn is_hex_digit(c: c_char) -> bool {
-    let b: u8 = c as u8;
-    b.is_ascii_hexdigit()
-}
-
-/// Returns the numeric value of an ASCII digit character.
-fn digit_val(c: c_char) -> u8 {
-    (c as u8) - b'0'
-}
-
-/// Returns the numeric value of an ASCII hexadecimal digit character.
-fn hex_digit_val(c: c_char) -> u8 {
-    match c as u8 {
-        b'0'..=b'9' => (c as u8) - b'0',
-        b'a'..=b'f' => (c as u8) - b'a' + 10,
-        b'A'..=b'F' => (c as u8) - b'A' + 10,
-        _ => 0,
-    }
-}
-
-/// Returns `true` if the bytes at `p` case-insensitively match the ASCII keyword `kw`.
-///
-/// # Safety
-///
-/// `p` must point into a valid, NUL-terminated string. Comparison stops at the first mismatch, and
-/// because a keyword never contains a NUL byte, at most `kw.len()` bytes are read and never past the
-/// terminator.
-unsafe fn match_keyword(p: *const c_char, kw: &[u8]) -> bool {
-    let mut i: usize = 0;
-    while i < kw.len() {
-        let c: u8 = *p.add(i) as u8;
-        if c == 0 || c.to_ascii_lowercase() != kw[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
 
 /// Parses a hexadecimal floating-point subject sequence starting at `p`.
 ///
@@ -73,10 +27,10 @@ unsafe fn match_keyword(p: *const c_char, kw: &[u8]) -> bool {
 ///
 /// `p` must point into a valid, NUL-terminated string.
 unsafe fn parse_hex_float(p: *const c_char) -> Option<(*const c_char, f64, bool)> {
-    if *p as u8 != b'0' {
+    if crate::c_char_to_u8(*p) != b'0' {
         return None;
     }
-    let marker: u8 = *p.add(1) as u8;
+    let marker: u8 = crate::c_char_to_u8(*p.add(1));
     if marker != b'x' && marker != b'X' {
         return None;
     }
@@ -94,7 +48,7 @@ unsafe fn parse_hex_float(p: *const c_char) -> Option<(*const c_char, f64, bool)
         q = q.add(1);
     }
 
-    if *q as u8 == b'.' {
+    if crate::c_char_to_u8(*q) == b'.' {
         q = q.add(1);
         let mut divisor: f64 = 16.0;
         while is_hex_digit(*q) {
@@ -111,12 +65,12 @@ unsafe fn parse_hex_float(p: *const c_char) -> Option<(*const c_char, f64, bool)
         return None;
     }
 
-    if *q as u8 == b'p' || *q as u8 == b'P' {
+    if crate::c_char_to_u8(*q) == b'p' || crate::c_char_to_u8(*q) == b'P' {
         let exponent_marker: *const c_char = q;
         q = q.add(1);
 
-        let exp_negative: bool = *q as u8 == b'-';
-        if *q as u8 == b'+' || *q as u8 == b'-' {
+        let exp_negative: bool = crate::c_char_to_u8(*q) == b'-';
+        if crate::c_char_to_u8(*q) == b'+' || crate::c_char_to_u8(*q) == b'-' {
             q = q.add(1);
         }
 
@@ -194,8 +148,8 @@ pub unsafe extern "C" fn strtod(nptr: *const c_char, endptr: *mut *mut c_char) -
     }
 
     // Handle optional sign.
-    let negative: bool = *p as u8 == b'-';
-    if *p as u8 == b'+' || *p as u8 == b'-' {
+    let negative: bool = crate::c_char_to_u8(*p) == b'-';
+    if crate::c_char_to_u8(*p) == b'+' || crate::c_char_to_u8(*p) == b'-' {
         p = p.add(1);
     }
 
@@ -216,16 +170,16 @@ pub unsafe extern "C" fn strtod(nptr: *const c_char, endptr: *mut *mut c_char) -
     if match_keyword(p, b"nan") {
         p = p.add(3);
         // Optionally consume a parenthesized n-char-sequence: '(' [0-9A-Za-z_]* ')'.
-        if *p as u8 == b'(' {
+        if crate::c_char_to_u8(*p) == b'(' {
             let mut q: *const c_char = p.add(1);
             loop {
-                let c: u8 = *q as u8;
+                let c: u8 = crate::c_char_to_u8(*q);
                 if c != b'_' && !c.is_ascii_alphanumeric() {
                     break;
                 }
                 q = q.add(1);
             }
-            if *q as u8 == b')' {
+            if crate::c_char_to_u8(*q) == b')' {
                 p = q.add(1);
             }
         }
@@ -262,7 +216,7 @@ pub unsafe extern "C" fn strtod(nptr: *const c_char, endptr: *mut *mut c_char) -
 
     // Parse fractional part.
     let mut frac_part: f64 = 0.0;
-    if *p as u8 == b'.' {
+    if crate::c_char_to_u8(*p) == b'.' {
         p = p.add(1);
         let mut divisor: f64 = 10.0;
         while is_digit(*p) {
@@ -275,9 +229,10 @@ pub unsafe extern "C" fn strtod(nptr: *const c_char, endptr: *mut *mut c_char) -
     }
 
     // If no digits were parsed at all, set endptr to nptr.
-    if p == start || (p == start.add(1) && *start as u8 == b'.') {
+    if p == start || (p == start.add(1) && crate::c_char_to_u8(*start) == b'.') {
         // Check if the only character parsed was a lone '.'.
-        let parsed_any_digits: bool = p != start && !(p == start.add(1) && *start as u8 == b'.');
+        let parsed_any_digits: bool =
+            p != start && !(p == start.add(1) && crate::c_char_to_u8(*start) == b'.');
         if !parsed_any_digits {
             if !endptr.is_null() {
                 *endptr = nptr.cast_mut();
@@ -289,12 +244,12 @@ pub unsafe extern "C" fn strtod(nptr: *const c_char, endptr: *mut *mut c_char) -
     let mut result: f64 = int_part + frac_part;
 
     // Parse exponent part.
-    if *p as u8 == b'e' || *p as u8 == b'E' {
+    if crate::c_char_to_u8(*p) == b'e' || crate::c_char_to_u8(*p) == b'E' {
         let saved: *const c_char = p;
         p = p.add(1);
 
-        let exp_negative: bool = *p as u8 == b'-';
-        if *p as u8 == b'+' || *p as u8 == b'-' {
+        let exp_negative: bool = crate::c_char_to_u8(*p) == b'-';
+        if crate::c_char_to_u8(*p) == b'+' || crate::c_char_to_u8(*p) == b'-' {
             p = p.add(1);
         }
 
@@ -437,7 +392,7 @@ mod tests {
         let mut end: *mut c_char = core::ptr::null_mut();
         let result: f64 = unsafe { strtod(s.as_ptr().cast::<c_char>(), &mut end) };
         assert!(approx_eq(result, 16.0, 1e-10), "expected 16.0, got {result}");
-        assert_eq!(unsafe { *end } as u8, b't');
+        assert_eq!(crate::c_char_to_u8(unsafe { *end }), b't');
     }
 
     #[test]
@@ -461,7 +416,7 @@ mod tests {
         let result: f64 = unsafe { strtod(s.as_ptr().cast::<c_char>(), &mut end) };
         assert!(approx_eq(result, 3.25, 1e-10), "expected 3.25, got {result}");
         assert!(!end.is_null());
-        assert_eq!(unsafe { *end } as u8, b'a');
+        assert_eq!(crate::c_char_to_u8(unsafe { *end }), b'a');
     }
 
     #[test]
@@ -494,7 +449,7 @@ mod tests {
         let result: f64 = unsafe { strtod(s.as_ptr().cast::<c_char>(), &mut end) };
         assert!(result.is_infinite() && result < 0.0, "expected -inf, got {result}");
         // The whole token is consumed.
-        assert_eq!(unsafe { *end } as u8, 0);
+        assert_eq!(crate::c_char_to_u8(unsafe { *end }), 0);
     }
 
     #[test]
@@ -511,7 +466,7 @@ mod tests {
         let result: f64 = unsafe { strtod(s.as_ptr().cast::<c_char>(), &mut end) };
         assert!(result.is_nan(), "expected NaN, got {result}");
         // The parenthesized sequence is consumed; endptr points just past it.
-        assert_eq!(unsafe { *end } as u8, b'x');
+        assert_eq!(crate::c_char_to_u8(unsafe { *end }), b'x');
     }
 
     #[test]

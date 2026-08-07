@@ -45,9 +45,13 @@ pub fn panic_implementation(info: &::core::panic::PanicInfo<'_>) -> ! {
         "PANIC file='{file}', line={line} :: {m}",
     );
 
-    // Trigger an invalid-opcode exception (#UD) so the kernel terminates
-    // this process instead of letting it spin forever.
+    // Trigger an invalid-opcode exception so the kernel terminates this process instead of letting
+    // it spin forever.
     unsafe {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         asm!("ud2", options(noreturn));
+
+        #[cfg(target_arch = "aarch64")]
+        asm!("udf #0", options(noreturn));
     }
 }

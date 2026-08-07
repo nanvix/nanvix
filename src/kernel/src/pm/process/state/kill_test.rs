@@ -11,8 +11,8 @@ use super::{
 };
 use crate::{
     hal::arch::{
-        x86::cpu::FpuState,
         ContextInformation,
+        FpuState,
     },
     mm::{
         VirtMemoryManager,

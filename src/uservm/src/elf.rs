@@ -21,7 +21,6 @@ use ::elf::{
         Elf32Phdr,
     },
     elf64::{
-        EM_X86_64,
         Elf64Fhdr,
         Elf64Phdr,
     },
@@ -37,6 +36,11 @@ use ::std::mem;
 const EI_CLASS: usize = 4;
 /// 64-bit object file class (`ELFCLASS64`).
 const ELFCLASS64: u8 = 2;
+
+#[cfg(target_arch = "aarch64")]
+const ELF64_MACHINE: u16 = ::elf::elf64::EM_AARCH64;
+#[cfg(not(target_arch = "aarch64"))]
+const ELF64_MACHINE: u16 = ::elf::elf64::EM_X86_64;
 
 /// Returns `true` if the ELF identification bytes select the 64-bit class.
 fn is_elf64(source: &[u8]) -> bool {
@@ -526,7 +530,7 @@ unsafe fn load64(
         return Err(anyhow::anyhow!(reason));
     }
 
-    if ehdr.e_machine != EM_X86_64 {
+    if ehdr.e_machine != ELF64_MACHINE {
         let reason: &str = "invalid machine architecture";
         error!("load64(): {reason} (e_machine={})", ehdr.e_machine);
         return Err(anyhow::anyhow!(reason));

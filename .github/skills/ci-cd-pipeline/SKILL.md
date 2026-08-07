@@ -72,9 +72,17 @@ Matrix coverage in GitHub Actions:
 - `checks`: format + spellcheck (single run).
 - `lint`, `verify`, `ci-build`: `microvm` in debug and release configurations.
 - `ci-test`: same matrix.
+- Windows X64 jobs run source checks, debug/release builds, unit tests, in-kernel tests,
+  integration tests, and POSIX suites on GitHub-hosted runners.
+- Native Windows ARM64 jobs run build-driver target-selection tests, lint, debug/release builds,
+  unit tests, in-kernel tests, integration tests, and POSIX suites on self-hosted runners labeled
+  `self-hosted`, `Windows`, and `ARM64` in the `Benchmark` runner group.
+- Windows benchmarks run on the matching X64 and ARM64 self-hosted runners and persist separate
+  architecture-specific histories.
 
-> **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)
-> and runs a smoke test using nanvixd in standalone interactive mode on WHP-enabled runners.
+Self-hosted jobs are gated by `.github/actions/check-runners`. Configure `RUNNER_ADMIN_TOKEN` with
+organization administration read access so CI can detect online runners without leaving jobs
+queued indefinitely.
 
 ## Release Process
 

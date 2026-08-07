@@ -64,7 +64,7 @@ pub unsafe extern "C" fn getlogin_r(buf: *mut c_char, bufsize: c_size_t) -> c_in
     // SAFETY: `buf` is non-null and `bufsize >= LOGIN_NAME.len()`, so the copy stays within bounds.
     // The source and destination do not overlap.
     unsafe {
-        ::core::ptr::copy_nonoverlapping(LOGIN_NAME.as_ptr(), buf as *mut u8, LOGIN_NAME.len());
+        ::core::ptr::copy_nonoverlapping(LOGIN_NAME.as_ptr(), buf.cast::<u8>(), LOGIN_NAME.len());
     }
 
     0

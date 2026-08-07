@@ -89,7 +89,7 @@ pub unsafe extern "C" fn readlinkat(
         }
 
         // Attempt to convert `path`.
-        slice::from_raw_parts_mut(buf as *mut u8, bufsize)
+        slice::from_raw_parts_mut(buf.cast::<u8>(), bufsize)
     };
 
     // Attempt to convert `path`.

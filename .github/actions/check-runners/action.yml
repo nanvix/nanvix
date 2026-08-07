@@ -3,7 +3,8 @@
 
 name: "Check Self-Hosted Runners"
 description: "Check whether self-hosted runners matching a given OS and name
-  prefix are online.  Call once per OS to get per-platform availability."
+  prefix are online. Call once per OS/architecture combination to get
+  per-platform availability."
 
 # NOTE: The /repos/{owner}/{repo}/actions/runners endpoint requires the
 # 'administration:read' permission, which is NOT available to the default
@@ -23,6 +24,11 @@ inputs:
   os:
     description: "Runner OS label to match (e.g. 'Linux' or 'Windows')."
     required: true
+  architecture:
+    description: "Optional runner architecture label to match (e.g. 'X64' or
+      'ARM64'). Leave empty to accept any architecture."
+    required: false
+    default: ""
   runner-name-prefix:
     description: "Only consider runners whose name starts with this prefix
       (e.g. 'Prometheus').  Leave empty to consider all self-hosted runners."
@@ -50,6 +56,7 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         CHECK_OS: ${{ inputs.os }}
+        CHECK_ARCHITECTURE: ${{ inputs.architecture }}
         RUNNER_NAME_PREFIX: ${{ inputs.runner-name-prefix }}
         RUNNER_GROUP: ${{ inputs.runner-group }}
       shell: bash
@@ -102,18 +109,20 @@ runs:
         fi
         rm -f "${api_err_file}"
 
-        count=$(echo "${runners_json}" | jq --arg os "${CHECK_OS}" --arg prefix "${RUNNER_NAME_PREFIX}" \
+        count=$(echo "${runners_json}" | jq --arg os "${CHECK_OS}" \
+          --arg arch "${CHECK_ARCHITECTURE}" --arg prefix "${RUNNER_NAME_PREFIX}" \
           '[ .runners[]
             | select(
                 .status == "online"
                 and (.labels | map(.name) | contains(["self-hosted", $os]))
+                and ($arch == "" or (.labels | map(.name) | contains([$arch])))
                 and ($prefix == "" or (.name | startswith($prefix)))
               )
           ] | length')
         if [ "${count}" -gt 0 ]; then
           echo "available=true" >> "$GITHUB_OUTPUT"
-          echo "${CHECK_OS} self-hosted runners online: ${count}"
+          echo "${CHECK_OS}/${CHECK_ARCHITECTURE:-any} self-hosted runners online: ${count}"
         else
           echo "available=false" >> "$GITHUB_OUTPUT"
-          echo "::warning::No ${CHECK_OS} self-hosted runners are online — dependent jobs will be skipped."
+          echo "::warning::No ${CHECK_OS}/${CHECK_ARCHITECTURE:-any} self-hosted runners are online — dependent jobs will be skipped."
         fi

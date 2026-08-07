@@ -15,7 +15,10 @@ use crate::hal::arch::SignalCpuContext;
 /// produced by the kernel (a corrupted stack or a forged frame).
 pub const SIGFRAME_MAGIC: u32 = 0x5347_4652;
 
-/// Size, in bytes, of the architecture FPU save area (`FXSAVE`/`FXRSTOR` region).
+/// Size, in bytes, of the architecture FPU save area.
+#[cfg(target_arch = "aarch64")]
+pub const FPU_AREA_SIZE: usize = 528;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub const FPU_AREA_SIZE: usize = 512;
 
 //==================================================================================================
@@ -28,9 +31,9 @@ pub const FPU_AREA_SIZE: usize = 512;
 /// The save area of a signal frame, written to and read back from user space verbatim.
 ///
 /// Instances are copied across the kernel-call boundary as raw bytes, so the layout is fixed
-/// (`#[repr(C)]`) and every field is a plain integer or byte array. The FPU area is a raw
-/// `FXSAVE`/`FXRSTOR` buffer; the kernel performs the FPU save and restore through a properly
-/// aligned scratch buffer, so this field needs no special alignment of its own.
+/// (`#[repr(C)]`) and every field is a plain integer or byte array. The FPU area is a raw,
+/// architecture-specific save image; the kernel performs the FPU save and restore through a
+/// properly aligned scratch buffer, so this field needs no special alignment of its own.
 ///
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -48,7 +51,7 @@ pub struct SigFrame {
     pub siginfo: [u32; 8],
     /// Saved CPU context of the interrupted thread.
     pub cpu: SignalCpuContext,
-    /// Saved FPU state (`FXSAVE` image) of the interrupted thread.
+    /// Saved FPU state of the interrupted thread.
     pub fpu: [u8; FPU_AREA_SIZE],
 }
 

@@ -45,10 +45,10 @@ use ::core::{
 const STN_UNDEF: u32 = 0;
 
 /// GNU hash Bloom-filter word for the active guest ELF class.
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_pointer_width = "32")]
 type ElfBloomWord = u32;
 /// GNU hash Bloom-filter word for the active guest ELF class.
-#[cfg(target_arch = "x86_64")]
+#[cfg(target_pointer_width = "64")]
 type ElfBloomWord = u64;
 
 /// Number of bits in a GNU hash Bloom-filter word for the active ELF class.
@@ -156,11 +156,11 @@ unsafe fn read_u32(base: *const u8, off: usize) -> u32 {
 ///
 #[inline]
 unsafe fn read_bloom_word(base: *const u8, off: usize) -> ElfBloomWord {
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(target_pointer_width = "32")]
     {
         u32::from_le(ptr::read_unaligned(base.add(off) as *const u32))
     }
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(target_pointer_width = "64")]
     {
         u64::from_le(ptr::read_unaligned(base.add(off) as *const u64))
     }

@@ -100,7 +100,8 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char
             };
 
             let cwd: Vec<u8> = cstr.into_bytes_with_nul();
-            let buf: &mut [u8] = slice::from_raw_parts_mut(buf as *mut u8, size as usize);
+            let buf_ptr: *mut c_char = buf;
+            let buf: &mut [u8] = slice::from_raw_parts_mut(buf_ptr.cast::<u8>(), size as usize);
 
             // Check if the buffer is large enough.
             if buf.len() < cwd.len() {
@@ -112,7 +113,7 @@ pub unsafe extern "C" fn getcwd(buf: *mut c_char, size: c_size_t) -> *mut c_char
             buf[..cwd.len()].copy_from_slice(&cwd);
 
             // Return the buffer.
-            buf.as_mut_ptr() as *mut c_char
+            buf_ptr
         },
         // Failure.
         Err(error) => {

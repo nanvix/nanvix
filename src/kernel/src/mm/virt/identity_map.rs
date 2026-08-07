@@ -22,7 +22,7 @@
 
 use super::page_table_allocator::PAGE_TABLE_ALLOCATOR;
 use crate::hal::{
-    arch::x86::{
+    arch::native::{
         fast_memcpy,
         fast_memset,
     },
@@ -33,36 +33,36 @@ use crate::hal::{
         PhysicalAddress,
     },
 };
-use ::arch::{
-    cpu::cr3::Cr3Register,
-    mem::{
+#[cfg(target_arch = "x86")]
+use ::arch::cpu::cr3::Cr3Register;
+use ::arch::mem::{
+    self,
+    paging::{
         self,
-        paging::{
-            self,
-            AccessedFlag,
-            DirtyFlag,
-            FrameNumber,
-            PageCacheDisableFlag,
-            PageDirectoryEntry,
-            PageDirectoryEntryFlags,
-            PageSizeFlag,
-            PageTableEntry,
-            PageTableEntryFlags,
-            PageWriteThroughFlag,
-            PresentFlag,
-            PteWord,
-            ReadWriteFlag,
-            Table,
-            TableIndex,
-            UserSupervisorFlag,
-        },
-        PAGE_ALIGNMENT,
-        PAGE_TABLE_LENGTH,
+        AccessedFlag,
+        DirtyFlag,
+        FrameNumber,
+        PageCacheDisableFlag,
+        PageDirectoryEntry,
+        PageDirectoryEntryFlags,
+        PageSizeFlag,
+        PageTableEntry,
+        PageTableEntryFlags,
+        PageWriteThroughFlag,
+        PresentFlag,
+        PteWord,
+        ReadWriteFlag,
+        Table,
+        TableIndex,
+        UserSupervisorFlag,
     },
+    PAGE_ALIGNMENT,
+    PAGE_TABLE_LENGTH,
 };
 use ::config::kernel::MEMORY_SIZE;
+#[cfg(target_arch = "x86")]
+use ::core::sync::atomic::AtomicU32;
 use ::core::sync::atomic::{
-    AtomicU32,
     AtomicUsize,
     Ordering,
 };
@@ -82,6 +82,7 @@ use ::sys::error::{
 static KERNEL_PD_PADDR: AtomicUsize = AtomicUsize::new(0);
 
 /// Raw value of the kernel CR3 register for address-space switching.
+#[cfg(target_arch = "x86")]
 static KERNEL_CR3: AtomicU32 = AtomicU32::new(0);
 
 //==================================================================================================
@@ -112,10 +113,22 @@ static KERNEL_CR3: AtomicU32 = AtomicU32::new(0);
 /// `[0, MEMORY_SIZE)` that does not already have one. This covers all physical memory, so no
 /// new PDEs are created at runtime. The kernel PD and CR3 atomics are published only after
 /// pre-allocation succeeds, so other code never observes a partially-initialized identity map.
+#[cfg(target_arch = "x86")]
 pub(crate) fn init(
     kernel_pd_paddr: PageDirectoryAddress,
     kernel_cr3: Cr3Register,
 ) -> Result<(), Error> {
+    initialize(kernel_pd_paddr)?;
+    KERNEL_CR3.store(kernel_cr3.into_u32(), Ordering::Release);
+    Ok(())
+}
+
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+pub(crate) fn init(kernel_pd_paddr: PageDirectoryAddress, _root: usize) -> Result<(), Error> {
+    initialize(kernel_pd_paddr)
+}
+
+fn initialize(kernel_pd_paddr: PageDirectoryAddress) -> Result<(), Error> {
     // Pre-allocate page tables for all PDE indices in [0, MEMORY_SIZE).
     // This covers all physical memory, so no new PDEs are created at runtime.
     let pd_paddr: usize = kernel_pd_paddr.into_raw_value();
@@ -131,7 +144,6 @@ pub(crate) fn init(
     // (e.g. `sync_kernel_pdes`, `with_kernel_address_space`) never observes a partially-
     // initialized identity map.
     KERNEL_PD_PADDR.store(kernel_pd_paddr.into_raw_value(), Ordering::Release);
-    KERNEL_CR3.store(kernel_cr3.into_u32(), Ordering::Release);
 
     Ok(())
 }
@@ -298,7 +310,7 @@ pub(crate) fn sync_kernel_pdes(target_pd_paddr: PageDirectoryAddress) -> Result<
         let _ = target_pd_paddr;
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(any(target_arch = "x86", target_arch = "aarch64"))]
     {
         // SAFETY: the kernel PD is identity-mapped (BSS-backed). The target PD is backed by a
         // kernel page whose physical address is identity-mapped in the kernel address space.
@@ -334,10 +346,10 @@ pub(crate) fn sync_kernel_pdes(target_pd_paddr: PageDirectoryAddress) -> Result<
 }
 
 /// RAII guard that restores the original CR3 value when dropped.
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
 struct Cr3Guard(Cr3Register);
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "x86")]
 impl Drop for Cr3Guard {
     ///
     /// # Description
@@ -385,12 +397,12 @@ where
     // is an x86 (2-level) construct: loading the bookkeeping page-directory physical address into
     // CR3 would have the CPU misinterpret it as a PML4. Physical memory is already reachable here,
     // so simply run the closure.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
     {
         f()
     }
 
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(target_arch = "x86")]
     {
         let kernel_cr3_raw: u32 = KERNEL_CR3.load(Ordering::Acquire);
         // Check if the kernel CR3 has been initialized.

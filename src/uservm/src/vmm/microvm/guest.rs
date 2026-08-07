@@ -771,24 +771,37 @@ impl Guest {
         let rbx: u64 =
             (initrd_base & !((1 << nzeros) - 1)) | ((initrd_size >> 12) & ((1 << nzeros) - 1));
 
-        if self.is_64bit {
-            // Bring the guest up directly in 64-bit long mode: install boot page tables in low
-            // guest memory, then program the long-mode control/segment state. The kernel installs
-            // its own GDT early in boot, so no GDT is set up here.
-            self.setup_long_mode(vmem)?;
-            vcpu.reset_64bit(self.entry as u64, rax, rbx)
-        } else {
+        #[cfg(target_arch = "x86_64")]
+        {
+            if self.is_64bit {
+                // Bring the guest up directly in 64-bit long mode: install boot page tables in low
+                // guest memory, then program the long-mode control/segment state.
+                self.setup_long_mode(vmem)?;
+                vcpu.reset_64bit(self.entry as u64, rax, rbx)
+            } else {
+                vcpu.reset(self.entry as u64, rax, rbx)
+            }
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        {
+            if !self.is_64bit {
+                anyhow::bail!("Windows ARM64 requires an ELFCLASS64 guest kernel");
+            }
             vcpu.reset(self.entry as u64, rax, rbx)
         }
     }
 
+    #[cfg(target_arch = "x86_64")]
     /// Guest-physical address of the boot PML4 (adopted by the kernel as its CR3). Placed above
     /// the microvm control page (GPA 0) and the pvclock page (GPA 0x1000), below the kernel image
     /// (GPA 0x100000).
     const BOOT_PML4_ADDR: u64 = 0x2000;
     /// Guest-physical address of the boot PDPT.
+    #[cfg(target_arch = "x86_64")]
     const BOOT_PDPT_ADDR: u64 = 0x3000;
     /// Guest-physical address of the first boot page directory.
+    #[cfg(target_arch = "x86_64")]
     const BOOT_PD0_ADDR: u64 = 0x4000;
 
     ///
@@ -803,6 +816,7 @@ impl Guest {
     /// state directly through the virtual processor registers, and the kernel installs its own GDT
     /// before performing any far transfer or segment reload.
     ///
+    #[cfg(target_arch = "x86_64")]
     fn setup_long_mode(&self, vmem: &mut VirtualMemory) -> Result<()> {
         const PRESENT_RW: u64 = 0x3; // Present | Writable.
         const PRESENT_RW_PS: u64 = 0x83; // Present | Writable | PageSize (2 MiB).

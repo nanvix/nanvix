@@ -19,15 +19,21 @@ mod start16;
 // Imports
 //==================================================================================================
 
+#[cfg(target_arch = "aarch64")]
+use crate::hal::arch::aarch64::{
+    self as native_arch,
+    Arch,
+};
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+use crate::hal::arch::x86::{
+    self as native_arch,
+    cpu::idt,
+    mem::gdt,
+    Arch,
+};
 use crate::{
     collections::RawArray,
     hal::{
-        arch::x86::{
-            self,
-            cpu::idt,
-            mem::gdt,
-            Arch,
-        },
         io::{
             IoMemoryAllocator,
             IoPortAllocator,
@@ -59,13 +65,14 @@ use ::alloc::{
     collections::LinkedList,
     vec::Vec,
 };
+use ::arch::mem;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use ::arch::{
     cpu::{
         idt::Idte,
         idtr::Idtr,
         pic,
     },
-    mem,
     mem::gdt::Gdte,
 };
 use ::bitmap::Bitmap;
@@ -75,10 +82,22 @@ use ::sys::error::{
     ErrorCode,
 };
 
-#[cfg(feature = "whp")]
+#[cfg(target_arch = "aarch64")]
+use crate::hal::platform::region_tags::{
+    DOORBELL_MMIO_TAG,
+    GICD_MMIO_TAG,
+    GICR_MMIO_TAG,
+    GITS_MMIO_TAG,
+};
+
+#[cfg(all(feature = "whp", any(target_arch = "x86", target_arch = "x86_64")))]
 use crate::hal::platform::region_tags::LAPIC_MMIO_TAG;
 
-#[cfg(all(feature = "pit", not(feature = "whp")))]
+#[cfg(all(
+    feature = "pit",
+    not(feature = "whp"),
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 use crate::hal::platform::pit::Pit;
 
 //==================================================================================================
@@ -106,7 +125,11 @@ pub const NFRAMES: usize = config::kernel::MEMORY_SIZE / mem::FRAME_SIZE;
 
 pub struct Platform {
     pub arch: Arch,
-    #[cfg(all(feature = "pit", not(feature = "whp")))]
+    #[cfg(all(
+        feature = "pit",
+        not(feature = "whp"),
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
     pub _pit: Pit,
     /// A bitmap representing the physical memory layout, owned by the platform and consumed
     /// by the memory manager during system initialization.
@@ -122,12 +145,15 @@ static mut FRAME_ALLOCATOR_STORAGE: [u8; NFRAMES / u8::BITS as usize] =
     [0; NFRAMES / u8::BITS as usize];
 
 /// GDT backing storage, allocated in BSS.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 static mut GDT_STORAGE: [Gdte; gdt::GDT_NUM_ENTRIES] = gdt::DEFAULT_ENTRIES;
 
 /// IDT backing storage, allocated in BSS.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 static mut IDT_STORAGE: [Idte; idt::IDT_LEN] = unsafe { core::mem::zeroed() };
 
 /// IDTR backing storage, allocated in BSS.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 static mut IDTR_STORAGE: Idtr = unsafe { core::mem::zeroed() };
 
 /// Heap backing storage, allocated in BSS.
@@ -451,7 +477,7 @@ pub fn signal_startup_complete() {
 ///
 /// A pointer to the top of the boot kernel stack.
 ///
-#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
+#[cfg_attr(any(target_arch = "x86_64", target_arch = "aarch64"), allow(dead_code))]
 pub fn get_kstack_top() -> *const u8 {
     unsafe extern "C" {
         static kstack: u8;
@@ -863,7 +889,7 @@ unsafe fn read_control_register(offset: usize) -> u32 {
 /// the register.
 ///
 #[cfg(feature = "whp")]
-#[cfg_attr(target_arch = "x86_64", allow(dead_code))]
+#[cfg_attr(any(target_arch = "x86_64", target_arch = "aarch64"), allow(dead_code))]
 pub fn tsc_base_frequency_mhz() -> u32 {
     // SAFETY: The control register is memory-mapped at a fixed address
     // inside the kernel's identity-mapped region and is guaranteed to be
@@ -871,6 +897,7 @@ pub fn tsc_base_frequency_mhz() -> u32 {
     unsafe { read_control_register(::config::microvm::DEFAULT_MICROVM_CTRL_TSC_FREQ_MHZ) }
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     // Register I/O ports for 8259 PIC.
     ioports.register_read_write(pic::PIC_CTRL_MASTER as u16)?;
@@ -880,7 +907,11 @@ fn register_pic_ioports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(all(feature = "pit", not(feature = "whp")))]
+#[cfg(all(
+    feature = "pit",
+    not(feature = "whp"),
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
     // Register ports for the PIT.
 
@@ -892,7 +923,11 @@ fn register_pit(ioports: &mut IoPortAllocator) -> Result<Pit, Error> {
 
 /// Registers PIT calibration ports (channel 2 + speaker gate) so the interrupt controller can
 /// allocate them during LAPIC timer calibration.
-#[cfg(all(feature = "pit", feature = "whp"))]
+#[cfg(all(
+    feature = "pit",
+    feature = "whp",
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 fn register_pit_ports(ioports: &mut IoPortAllocator) -> Result<(), Error> {
     ioports.register_read_write(::arch::cpu::pit::PIT_CTRL)?;
     ioports.register_read_write(::arch::cpu::pit::PIT_DATA_CH2)?;
@@ -928,12 +963,14 @@ pub fn init(
 ) -> Result<Platform, Error> {
     // Ensure the CPU exposes the TSC feature (CPUID.01H:EDX[4]).
     // The pvclock subsystem and RDTSC-based timekeeping depend on this.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     if !::arch::cpu::cpuid::has_tsc() {
         let reason: &str = "CPU does not support TSC (RDTSC)";
         error!("{}", reason);
         return Err(Error::new(ErrorCode::InvalidArgument, reason));
     }
 
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     register_pic_ioports(ioports)?;
 
     // NOTE: on microvm, PLATFORM_BASE_ADDR is 0x0 and the kernel loads at 0x100000. The gap
@@ -966,7 +1003,7 @@ pub fn init(
     // Register the LAPIC MMIO page only for the WHP microvm backend.
     // The guest uses this page to enable LAPIC software delivery and to
     // acknowledge interrupts through the WHP LAPIC emulator.
-    #[cfg(feature = "whp")]
+    #[cfg(all(feature = "whp", any(target_arch = "x86", target_arch = "x86_64")))]
     {
         let lapic_region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
             "lapic-registers",
@@ -979,12 +1016,43 @@ pub fn init(
         mmio_regions.push_back(lapic_region);
     }
 
+    #[cfg(target_arch = "aarch64")]
+    {
+        let regions: [(&str, usize, usize, ::mmio_tag::MmioTag); 4] = [
+            ("gic-distributor", ::config::microvm::DEFAULT_GICD_BASE, 0x1_0000, GICD_MMIO_TAG),
+            ("gic-redistributor", ::config::microvm::DEFAULT_GICR_BASE, 0x2_0000, GICR_MMIO_TAG),
+            ("gic-its", ::config::microvm::DEFAULT_GITS_BASE, 0x2_0000, GITS_MMIO_TAG),
+            (
+                "host-service-doorbell",
+                ::config::microvm::DEFAULT_MMIO_DOORBELL_BASE,
+                mem::PAGE_SIZE,
+                DOORBELL_MMIO_TAG,
+            ),
+        ];
+
+        for (name, base, size, tag) in regions {
+            let region: TruncatedMemoryRegion<VirtualAddress> = TruncatedMemoryRegion::new_mmio(
+                name,
+                PageAligned::from_raw_value(base)?,
+                size,
+                AccessPermission::RDWR,
+                MmioCachePolicy::UNCACHEABLE,
+            )?;
+            ioaddresses.register(tag, region.clone())?;
+            mmio_regions.push_back(region);
+        }
+    }
+
     log_control_registers();
     register_ramfs_mmio_region(ioaddresses, mmio_regions)?;
 
     // On WHP, register PIT calibration ports before arch init so the interrupt
     // controller can allocate them during LAPIC timer calibration.
-    #[cfg(all(feature = "pit", feature = "whp"))]
+    #[cfg(all(
+        feature = "pit",
+        feature = "whp",
+        any(target_arch = "x86", target_arch = "x86_64")
+    ))]
     register_pit_ports(ioports)?;
 
     // Install GDT backing storage. On microvm the GDT lives in a BSS-allocated static.
@@ -992,6 +1060,7 @@ pub fn init(
     // so the pointer is properly aligned and valid for GDT_NUM_ENTRIES entries.
     // The static lifetime guarantees the storage outlives all GDT usage.
     // This is the only call to set_backing_storage() in the microvm init path.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     unsafe {
         gdt::Gdt::set_backing_storage(GDT_STORAGE.as_mut_ptr())?;
     }
@@ -1002,11 +1071,12 @@ pub fn init(
     // IDTR_STORAGE is a static Idtr with repr(C, packed).
     // The static lifetime guarantees the storage outlives all IDT usage.
     // This is the only call to Idt::set_backing_storage() in the microvm init path.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     unsafe {
         idt::Idt::set_backing_storage(IDT_STORAGE.as_mut_ptr(), &raw mut IDTR_STORAGE)?;
     }
 
-    let arch = x86::init(ioports, ioaddresses, madt)?;
+    let arch = native_arch::init(ioports, ioaddresses, madt)?;
 
     // Build a bitmap representing the physical memory layout.
     let physical_memory_layout: Bitmap = {
@@ -1021,7 +1091,11 @@ pub fn init(
 
     Ok(Platform {
         arch,
-        #[cfg(all(feature = "pit", not(feature = "whp")))]
+        #[cfg(all(
+            feature = "pit",
+            not(feature = "whp"),
+            any(target_arch = "x86", target_arch = "x86_64")
+        ))]
         _pit: register_pit(ioports)?,
         physical_memory_layout: Some(physical_memory_layout),
     })

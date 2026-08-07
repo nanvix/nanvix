@@ -15,6 +15,11 @@ pub mod arch;
 #[path = "arch/x86_64.rs"]
 pub mod arch;
 
+/// Architecture-specific symbols.
+#[cfg(target_arch = "aarch64")]
+#[path = "arch/aarch64.rs"]
+pub mod arch;
+
 /// Debug facilities.
 pub mod debug;
 
@@ -22,7 +27,7 @@ pub mod debug;
 pub mod event;
 
 /// `fork()` kernel-call wrapper.
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(any(target_arch = "aarch64", target_arch = "x86", target_arch = "x86_64"))]
 pub mod fork;
 
 /// Inter-Process Communication (IPC) kernel calls.

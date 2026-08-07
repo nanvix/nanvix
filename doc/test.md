@@ -50,6 +50,25 @@ The system integration tests can be run directly using:
 The runner uses `test/test-standalone.toml` on Linux and
 `test/test-standalone-windows.toml` on Windows.
 
+On native Windows ARM64, `z.ps1` selects `TARGET=aarch64` automatically. To run the Windows/WHP
+matrix explicitly:
+
+```powershell
+# Debug integration and POSIX suites.
+.\z.ps1 build -- run-nanvix-tests run-posix-tests TARGET=aarch64
+
+# Release integration and POSIX suites.
+.\z.ps1 build -- run-nanvix-tests run-posix-tests TARGET=aarch64 RELEASE=yes
+```
+
+The Windows ARM64 configuration uses the same integration and POSIX test manifests as Windows X64,
+including dynamic linking, fork/exec, threading, signals, snapshots, and FP/SIMD state preservation.
+
+GitHub Actions exercises this matrix on native self-hosted runners in the `Benchmark` group labeled
+`self-hosted`, `Windows`, and `ARM64`. The ARM64 lane validates the native Python build driver and
+automatic `TARGET=aarch64` selection, then runs lint, debug/release builds, unit and in-kernel tests,
+four integration/POSIX shards, and the Windows benchmark suite.
+
 ### Test Modes
 
 The `nanvix-test.elf` utility supports two execution modes:

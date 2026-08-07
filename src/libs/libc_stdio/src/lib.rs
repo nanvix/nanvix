@@ -36,6 +36,13 @@
 // The following lints are allowed in tests to facilitate testing of error conditions.
 #![cfg_attr(not(test), forbid(clippy::expect_used))]
 
+/// Converts a C `char` into its byte representation without assuming whether plain `char` is
+/// signed on the target.
+#[inline]
+pub(crate) fn c_char_to_u8(value: ::sysapi::ffi::c_char) -> u8 {
+    value.to_ne_bytes()[0]
+}
+
 //==================================================================================================
 // Modules
 //==================================================================================================

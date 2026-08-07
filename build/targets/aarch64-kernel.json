@@ -1,0 +1,38 @@
+{
+    "abi": "softfloat",
+    "cpu": "generic",
+    "data-layout": "e-m:e-p270:32:32-p271:32:32-p272:64:64-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32",
+    "llvm-target": "aarch64-unknown-none",
+    "target-endian": "little",
+    "target-pointer-width": 64,
+    "target-c-int-width": 32,
+    "max-atomic-width": 128,
+    "features": "+v8a,+strict-align,-neon",
+    "rustc-abi": "softfloat",
+    "os": "nanvix",
+    "target-family": [
+        "unix"
+    ],
+    "arch": "aarch64",
+    "linker-flavor": "gnu-lld",
+    "linker": "rust-lld",
+    "pre-link-args": {
+        "gnu-lld": [
+            "-nostdlib",
+            "--entry=_do_start",
+            "-maarch64elf",
+            "-z",
+            "norelro"
+        ]
+    },
+    "executables": true,
+    "code-model": "small",
+    "exe-suffix": ".elf",
+    "panic-strategy": "abort",
+    "disable-redzone": true,
+    "stack-probes": {
+        "kind": "inline"
+    },
+    "relocation-model": "static",
+    "has-thread-local": false
+}

@@ -79,7 +79,8 @@ pub unsafe extern "C" fn strcasestr(haystack: *const c_char, needle: *const c_ch
         let mut hi: usize = h;
         let mut ni: usize = 0;
         while *needle.add(ni) != 0
-            && to_lower(*haystack.add(hi) as u8) == to_lower(*needle.add(ni) as u8)
+            && to_lower((*haystack.add(hi)).to_ne_bytes()[0])
+                == to_lower((*needle.add(ni)).to_ne_bytes()[0])
         {
             hi += 1;
             ni += 1;

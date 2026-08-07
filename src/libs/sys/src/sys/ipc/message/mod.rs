@@ -29,6 +29,7 @@ pub use kernel::{
     Timeout,
     VmBusMessage,
     VmBusMessageKind,
+    VmIoRequest,
     SG_BULK_MAX_BYTES,
     SG_BULK_MAX_SEGMENTS,
 };

@@ -16,6 +16,8 @@
 // Modules
 //==================================================================================================
 
+#[cfg(target_arch = "aarch64")]
+mod arm64;
 pub mod console;
 pub mod lapic;
 pub mod partition;
@@ -44,6 +46,7 @@ use crate::{
             ramfs,
             ramfs::RamFs,
             whp::vcpu::{
+                ResetKind,
                 VirtualProcessor,
                 VirtualProcessorExitContext,
                 VirtualProcessorExitReasonRef,
@@ -110,7 +113,12 @@ pub use vmem::VirtualMemory;
 //==================================================================================================
 
 /// IDT vector for IRQ 9 (IKC): PIC2 base (0x28) + (IRQ 9 - 8) = 0x29.
+#[cfg(target_arch = "x86_64")]
 const IKC_VECTOR: u32 = 0x29;
+
+/// GIC SPI used for IKC notifications.
+#[cfg(target_arch = "aarch64")]
+const IKC_VECTOR: u32 = ::config::microvm::DEFAULT_ARM_IKC_INTERRUPT;
 
 /// Pvclock host timer period in microseconds (10 ms = 100 Hz). This timer
 /// forces periodic VM exits via `WHvCancelRunVirtualProcessor` so the VMM loop
@@ -226,9 +234,7 @@ impl PitCh2State {
 
 /// Notifier that signals the VMM loop to inject an IKC interrupt after the host writes credits.
 ///
-/// Delivers the IKC vector via `WHvRequestInterrupt` through the WHP
-/// LAPIC emulator. This wakes the vCPU from HLT and delivers the
-/// interrupt when IF=1.
+/// Delivers the IKC vector through the WHP interrupt controller.
 #[derive(Clone)]
 pub struct IkcNotifier {
     pending: Arc<AtomicBool>,
@@ -252,10 +258,49 @@ impl IkcNotifier {
         }
     }
 
+    #[cfg(target_arch = "x86_64")]
+    fn request_interrupt(&self) -> windows::core::Result<()> {
+        let interrupt = windows::Win32::System::Hypervisor::WHV_INTERRUPT_CONTROL {
+            _bitfield: 0,
+            Destination: 0,
+            Vector: IKC_VECTOR,
+        };
+
+        unsafe {
+            windows::Win32::System::Hypervisor::WHvRequestInterrupt(
+                self.partition,
+                &interrupt,
+                ::std::mem::size_of_val(&interrupt) as u32,
+            )
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn set_interrupt_line(&self, asserted: bool) -> windows::core::Result<()> {
+        let interrupt: arm64::Arm64InterruptControl = if asserted {
+            arm64::Arm64InterruptControl::asserted(IKC_VECTOR)
+        } else {
+            arm64::Arm64InterruptControl::deasserted(IKC_VECTOR)
+        };
+
+        unsafe {
+            windows::Win32::System::Hypervisor::WHvRequestInterrupt(
+                self.partition,
+                (&interrupt as *const arm64::Arm64InterruptControl).cast(),
+                ::std::mem::size_of_val(&interrupt) as u32,
+            )
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn request_interrupt(&self) -> windows::core::Result<()> {
+        self.set_interrupt_line(true)?;
+        self.set_interrupt_line(false)
+    }
+
     /// Signals that an IKC message is available.
     ///
-    /// Delivers the IKC vector (0x29) via `WHvRequestInterrupt` through
-    /// the LAPIC emulator. This wakes the vCPU from HLT.
+    /// Delivers the architecture-specific IKC vector via `WHvRequestInterrupt`.
     pub fn notify(&self) -> Result<()> {
         if self.shutdown.load(Ordering::Acquire) {
             return Ok(());
@@ -265,21 +310,7 @@ impl IkcNotifier {
             return Ok(());
         }
 
-        let interrupt = windows::Win32::System::Hypervisor::WHV_INTERRUPT_CONTROL {
-            _bitfield: 0, // Fixed, Physical, Edge.
-            Destination: 0,
-            Vector: IKC_VECTOR,
-        };
-        // SAFETY: partition handle outlives the notifier.
-        let hr = unsafe {
-            windows::Win32::System::Hypervisor::WHvRequestInterrupt(
-                self.partition,
-                &interrupt,
-                ::std::mem::size_of::<windows::Win32::System::Hypervisor::WHV_INTERRUPT_CONTROL>()
-                    as u32,
-            )
-        };
-        if let Err(e) = hr {
+        if let Err(e) = self.request_interrupt() {
             // Interrupt was not delivered; clear pending so callers can retry.
             self.pending.store(false, Ordering::Release);
             log::error!("WHvRequestInterrupt failed for IKC: {e:?}");
@@ -619,7 +650,10 @@ impl Vmm {
 
             // Write host TSC base frequency so the guest can use RDTSC-based LAPIC
             // timer calibration without requiring CPUID leaf 0x16.
+            #[cfg(target_arch = "x86_64")]
             let tsc_freq_mhz: u32 = ::arch::cpu::cpuid::get_base_frequency_mhz();
+            #[cfg(target_arch = "aarch64")]
+            let tsc_freq_mhz: u32 = 0;
             vmem.write_bytes(
                 ::config::microvm::DEFAULT_MICROVM_CTRL_TSC_FREQ_MHZ as u64,
                 &tsc_freq_mhz.to_le_bytes(),
@@ -746,6 +780,93 @@ impl Vmm {
         })
     }
 
+    fn handle_emulator_status(
+        &mut self,
+        exit_status: u16,
+        timer_started: &mut bool,
+        loop_start: &Instant,
+    ) -> Result<Option<u16>> {
+        if exit_status == ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD {
+            if !*timer_started {
+                let mut locked_timer = self.timer.lock().map_err(|error| {
+                    anyhow::anyhow!("failed to acquire timer lock to start pvclock: {error:?}")
+                })?;
+                locked_timer.start(PVCLOCK_TIMER_PERIOD_US);
+                trace!("pvclock timer started");
+                *timer_started = true;
+            }
+            return Ok(None);
+        }
+
+        if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
+            let took_snapshot: bool = Handle::current().block_on(self.handle_snapshot())?;
+            if took_snapshot {
+                let exit_status: u16 = 0;
+                Handle::current().block_on(self.handle_shutdown(exit_status));
+                return Ok(Some(exit_status));
+            }
+            return Ok(None);
+        }
+
+        if exit_status == ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
+            Handle::current().block_on(self.handle_pause())?;
+            trace!("VMM resumed");
+            return Ok(None);
+        }
+
+        warn!(
+            "VMM exit: guest shutdown (exit_status={exit_status}, elapsed={:?})",
+            loop_start.elapsed()
+        );
+        Handle::current().block_on(self.handle_shutdown(exit_status));
+        Ok(Some(exit_status))
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    fn handle_arm64_doorbell(&mut self, access: vcpu::MmioAccess) -> Result<Option<u16>> {
+        use ::sys::ipc::VmIoRequest;
+
+        let request_addr: u64 = self.vcpu.blocking_lock().read_mmio_write_value(access)?;
+        if !request_addr.is_multiple_of(
+            u64::try_from(::std::mem::align_of::<VmIoRequest>())
+                .map_err(|_| anyhow::anyhow!("VmIoRequest alignment does not fit in u64"))?,
+        ) {
+            anyhow::bail!("unaligned ARM64 I/O request address ({request_addr:#018x})");
+        }
+
+        let mut request_bytes: [u8; VmIoRequest::SIZE] = [0; VmIoRequest::SIZE];
+        self.vmem
+            .blocking_lock()
+            .read_bytes(request_addr, &mut request_bytes)?;
+        let mut request: VmIoRequest = VmIoRequest::from_bytes(request_bytes);
+        let width: PmioWidth =
+            PmioWidth::try_from(usize::from(request.width())).map_err(|invalid| {
+                anyhow::anyhow!("invalid ARM64 I/O request width ({invalid} bytes)")
+            })?;
+
+        let pmio_access: PmioAccess = if request.is_write() {
+            PmioAccess::PmioOut(request.port(), request.value(), width)
+        } else {
+            PmioAccess::PmioIn(request.port(), vec![0; usize::from(width)])
+        };
+
+        let exit_status: Option<u16> = self
+            .inner
+            .blocking_lock()
+            .emulator
+            .handle_pmio_access(&pmio_access)?;
+
+        if !request.is_write() {
+            request.set_value(0);
+            self.vmem
+                .blocking_lock()
+                .write_bytes(request_addr, &request.to_bytes())?;
+        }
+
+        self.vcpu.blocking_lock().advance_mmio(access)?;
+        Ok(exit_status)
+    }
+
     ///
     /// # Description
     ///
@@ -809,8 +930,12 @@ impl Vmm {
         let mut profiler_timer_started: bool = false;
         /// Number of VM exits to skip before starting the profiler timer,
         /// avoiding interference with the initial vCPU entry sequence.
+        #[cfg(target_arch = "aarch64")]
+        const PROFILER_START_DELAY_EXITS: u64 = 1;
+        #[cfg(not(target_arch = "aarch64"))]
         const PROFILER_START_DELAY_EXITS: u64 = 5;
         let mut exit_count: u64 = 0;
+        let mut first_profile_sample: bool = true;
 
         // Per-exit-type counters for profiling.
         #[cfg(feature = "profile-time")]
@@ -958,6 +1083,10 @@ impl Vmm {
             if let (Some(profiler_samples), Some((eip, ebp, cr3))) =
                 (&self.guest_profiler, profile_regs)
             {
+                if first_profile_sample {
+                    trace!("guest profiler: first sample pc={eip:#010x}");
+                    first_profile_sample = false;
+                }
                 let vmem_guard = self.vmem.blocking_lock();
                 crate::guest_profiler::GuestProfiler::capture_sample(
                     profiler_samples,
@@ -1086,59 +1215,14 @@ impl Vmm {
                         },
                     };
                     if let Some(exit_status) = exit_status {
-                        if exit_status == ::config::microvm::DEFAULT_VMM_BOOT_COMPLETE_CMD {
-                            // The kernel signals that boot is complete and user-space is about to
-                            // start. Start the pvclock host timer now.
-                            if !timer_started {
-                                match self.timer.lock() {
-                                    Ok(mut locked_timer) => {
-                                        locked_timer.start(PVCLOCK_TIMER_PERIOD_US);
-                                        trace!("pvclock timer started");
-                                        timer_started = true;
-                                    },
-                                    Err(e) => {
-                                        error!(
-                                            "Failed to acquire timer lock to start pvclock: {e:?}"
-                                        );
-                                        break Err(anyhow::anyhow!(
-                                            "Failed to acquire timer lock to start pvclock: {e:?}"
-                                        ));
-                                    },
-                                }
-                            }
-                        } else if exit_status == ::config::microvm::DEFAULT_VMM_SNAPSHOT_CMD {
-                            // One-shot "save and exit" flow: once the snapshot files are
-                            // durable on disk, shut the VM down with exit code 0 so the
-                            // standalone daemon returns to its caller instead of running the
-                            // guest on. `handle_snapshot()` returns `false` for the OUT that is
-                            // absorbed via `skip_next_snapshot` after a restore; in that case
-                            // keep running the restored guest.
-                            let took_snapshot: bool =
-                                match Handle::current().block_on(self.handle_snapshot()) {
-                                    Ok(took) => took,
-                                    Err(e) => {
-                                        error!("VMM exit: snapshot error (error={e:?})");
-                                        break Err(e);
-                                    },
-                                };
-                            if took_snapshot {
-                                let exit_status: u16 = 0;
-                                Handle::current().block_on(self.handle_shutdown(exit_status));
-                                break Ok(exit_status);
-                            }
-                        } else if exit_status != ::config::microvm::DEFAULT_VMM_PAUSE_CMD {
-                            warn!(
-                                "VMM exit: PMIO shutdown (exit_status={exit_status}, elapsed={:?})",
-                                loop_start.elapsed()
-                            );
-                            Handle::current().block_on(self.handle_shutdown(exit_status));
-                            break Ok(exit_status);
-                        } else {
-                            if let Err(e) = Handle::current().block_on(self.handle_pause()) {
-                                error!("VMM exit: pause error (error={e:?})");
-                                break Err(e);
-                            }
-                            trace!("VMM resumed");
+                        match self.handle_emulator_status(
+                            exit_status,
+                            &mut timer_started,
+                            &loop_start,
+                        ) {
+                            Ok(Some(exit_status)) => break Ok(exit_status),
+                            Ok(None) => {},
+                            Err(error) => break Err(error),
                         }
                     }
                 },
@@ -1152,6 +1236,18 @@ impl Vmm {
                     }
                     warn!("VMM exit: HLT");
                     continue;
+                },
+
+                VirtualProcessorExitReasonRef::Reset(kind) => {
+                    let exit_status: u16 = match kind {
+                        ResetKind::PowerOff => 0,
+                        ResetKind::Reboot => {
+                            error!("VMM exit: guest reboot is not supported by the WHP backend");
+                            ErrorCode::OperationNotSupported.into()
+                        },
+                    };
+                    Handle::current().block_on(self.handle_shutdown(exit_status));
+                    break Ok(exit_status);
                 },
 
                 // The vCPU was canceled (WHvCancelRunVP from the host
@@ -1182,11 +1278,12 @@ impl Vmm {
                 },
 
                 // Guest accessed a memory-mapped address.
-                VirtualProcessorExitReasonRef::MmioAccess(gpa) => {
+                VirtualProcessorExitReasonRef::MmioAccess(access) => {
                     #[cfg(feature = "profile-time")]
                     {
                         exit_mmio += 1;
                     }
+                    let gpa: u64 = access.gpa();
 
                     // Lazy guest-RAM mapping: anonymous RAM beyond the loaded image is committed
                     // host-side but not registered with the partition at creation time (see
@@ -1211,6 +1308,29 @@ impl Vmm {
                             Handle::current().block_on(self.handle_shutdown(exit_status));
                             break Ok(exit_status);
                         },
+                    }
+
+                    #[cfg(target_arch = "aarch64")]
+                    if gpa == ::config::microvm::DEFAULT_MMIO_PMIO_DOORBELL as u64 {
+                        let exit_status: Option<u16> = match self.handle_arm64_doorbell(access) {
+                            Ok(status) => status,
+                            Err(error) => {
+                                error!("VMM ARM64 doorbell error (error={error:?})");
+                                break Err(error);
+                            },
+                        };
+                        if let Some(exit_status) = exit_status {
+                            match self.handle_emulator_status(
+                                exit_status,
+                                &mut timer_started,
+                                &loop_start,
+                            ) {
+                                Ok(Some(exit_status)) => break Ok(exit_status),
+                                Ok(None) => {},
+                                Err(error) => break Err(error),
+                            }
+                        }
+                        continue;
                     }
 
                     // Check if access falls within the LAPIC page.
@@ -1291,8 +1411,16 @@ impl Vmm {
         let profiler = crate::guest_profiler::GuestProfiler::new(
             crate::guest_profiler::DEFAULT_SAMPLE_CAPACITY,
         );
-        self.guest_profiler = Some(profiler.handle());
-        profiler
+        #[cfg(target_arch = "aarch64")]
+        {
+            warn!("guest stack profiling is unavailable for AArch64 guests");
+            profiler
+        }
+        #[cfg(target_arch = "x86_64")]
+        {
+            self.guest_profiler = Some(profiler.handle());
+            profiler
+        }
     }
 
     /// Returns a clone of the IKC notifier for use by the memory thread.

@@ -5,22 +5,20 @@
 // Imports
 //==================================================================================================
 
-use crate::{
-    mem::paging::TableEntry,
-    x86::mem::paging::{
-        flags::{
-            AccessedFlag,
-            DirtyFlag,
-            PageCacheDisableFlag,
-            PageSizeFlag,
-            PageWriteThroughFlag,
-            PresentFlag,
-            ReadWriteFlag,
-            UserSupervisorFlag,
-        },
-        frame::FrameNumber,
-        PteWord,
+use crate::mem::paging::{
+    flags::{
+        AccessedFlag,
+        DirtyFlag,
+        PageCacheDisableFlag,
+        PageSizeFlag,
+        PageWriteThroughFlag,
+        PresentFlag,
+        ReadWriteFlag,
+        UserSupervisorFlag,
     },
+    frame::FrameNumber,
+    PteWord,
+    TableEntry,
 };
 
 //==================================================================================================

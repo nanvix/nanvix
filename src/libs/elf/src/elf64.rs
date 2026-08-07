@@ -33,6 +33,9 @@ use super::elf32::{
 /// AMD x86-64 machine type.
 pub const EM_X86_64: u16 = 62;
 
+/// AArch64 machine type.
+pub const EM_AARCH64: u16 = 183;
+
 //==================================================================================================
 // ELF64 File Header
 //==================================================================================================
@@ -239,7 +242,10 @@ pub struct Elf64Dyn {
 /// Adjust by program base (`R_X86_64_RELATIVE`).
 pub const R_X86_64_RELATIVE: u32 = 8;
 
-/// ELF64 relocation entry with explicit addend (the x86-64 ABI uses RELA, not REL).
+/// Adjust by program base (`R_AARCH64_RELATIVE`).
+pub const R_AARCH64_RELATIVE: u32 = 1027;
+
+/// ELF64 relocation entry with explicit addend.
 #[repr(C)]
 pub struct Elf64Rela {
     /// Offset at which to apply the relocation.

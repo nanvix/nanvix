@@ -6,8 +6,8 @@
 //==================================================================================================
 use crate::{
     hal::arch::{
-        x86::cpu::FpuState,
         ContextInformation,
+        FpuState,
     },
     mm::{
         kstack::KernelStack,

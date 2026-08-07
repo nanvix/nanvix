@@ -79,12 +79,16 @@ pub unsafe extern "C" fn freopen(
 
     // Parse the mode string, matching fopen(). Guard against an empty mode string so that the second
     // and third bytes are only read when they lie within the null-terminated string.
-    let first: u8 = *mode as u8;
+    let first: u8 = crate::c_char_to_u8(*mode);
     if first == 0 {
         return core::ptr::null_mut();
     }
-    let second: u8 = *mode.add(1) as u8;
-    let third: u8 = if second != 0 { *mode.add(2) as u8 } else { 0 };
+    let second: u8 = crate::c_char_to_u8(*mode.add(1));
+    let third: u8 = if second != 0 {
+        crate::c_char_to_u8(*mode.add(2))
+    } else {
+        0
+    };
     let has_plus: bool = second == b'+' || third == b'+';
 
     let flags: c_int = match (first, has_plus) {

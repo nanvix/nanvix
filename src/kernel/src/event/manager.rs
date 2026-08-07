@@ -1366,6 +1366,7 @@ fn do_exception_handler(
                 SyncSignalOutcome::Delivered {
                     entry,
                     frame_top,
+                    restorer,
                     info_ptr,
                     ctx_ptr,
                 } => {
@@ -1374,7 +1375,9 @@ fn do_exception_handler(
                     // and, for SA_SIGINFO handlers, the siginfo/context pointers are placed in the
                     // handler's argument registers (register-argument ABIs) or were already written
                     // to the frame (stack-argument ABIs).
-                    ctx.redirect_to_signal_handler(entry, frame_top, signum, info_ptr, ctx_ptr);
+                    ctx.redirect_to_signal_handler(
+                        entry, frame_top, restorer, signum, info_ptr, ctx_ptr,
+                    );
                     return Ok(());
                 },
                 SyncSignalOutcome::Terminate => {
