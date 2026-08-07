@@ -84,7 +84,7 @@ jobs:
           github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           os: "Linux"
           runner-name-prefix: "prometheus"
-          runner-group: "Benchmark"
+          runner-label: "benchmark"
 
       - name: "Check Windows Runners"
         id: check-windows
@@ -93,7 +93,7 @@ jobs:
           github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           os: "Windows"
           runner-name-prefix: "WIN"
-          runner-group: "Benchmark"
+          runner-label: "benchmark"
 
   # ==========================================================================================
   # Benchmark Eligibility Gates
@@ -126,6 +126,7 @@ jobs:
           UP_TO_DATE: ${{ needs.precheck.outputs.up_to_date }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
           HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
           should_run=false
@@ -141,8 +142,16 @@ jobs:
           elif [[ "${UP_TO_DATE}" == "true" ]]; then
             if [[ "${EVENT_NAME}" == "push" && "${HEAD_COMMIT_MSG}" == "Merge "* ]]; then
               echo "Skip: push event on a merge commit"
-            elif [[ "${EVENT_NAME}" == "pull_request" && "${IS_DRAFT}" == "true" ]]; then
-              echo "Skip: draft pull request"
+            elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              if [[ "${IS_DRAFT}" == "true" ]]; then
+                echo "Skip: draft pull request"
+              elif [[ "${PR_HEAD_REPO}" != "${REPO}" ]]; then
+                # Fork PRs are excluded from Linux benchmarks to prevent
+                # untrusted code from running on self-hosted runners.
+                echo "Skip: pull request from a fork"
+              else
+                should_run=true
+              fi
             else
               should_run=true
             fi
@@ -1086,13 +1095,11 @@ jobs:
             vfs-iterations: "100"
             standalone-socket-benchmarks: "warm-start-socket"
             standalone-socket-iterations: "100"
-    runs-on:
-      group: Benchmark
-      labels: [ self-hosted, Linux ]
+    runs-on: [ self-hosted, Linux, benchmark ]
     permissions:
       contents: read
 
-    # Eligibility (repo, event, precheck, draft, runner availability) is
+    # Eligibility (repo, event, precheck, draft, fork PR, runner availability) is
     # consolidated in the benchmark-gate-linux job. Skip gracefully when the
     # gate reports the benchmark pipeline should not run (e.g. no Linux
     # self-hosted runners are online).
@@ -1212,9 +1219,7 @@ jobs:
             standard-iterations: "100"
             payload-size: ""
             profiler: "PROFILER=yes"
-    runs-on:
-      group: Benchmark
-      labels: [ self-hosted, Windows ]
+    runs-on: [ self-hosted, Windows, benchmark ]
     permissions:
       contents: read
 
