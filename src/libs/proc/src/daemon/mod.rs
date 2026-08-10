@@ -85,6 +85,15 @@ const MAX_BLOCKED_WAITERS: usize = ::config::kernel::MAX_THREADS * 4;
 /// Maximum number of fork synchronizations that may await process creation or clone completion.
 const MAX_PENDING_FORK_SYNCS: usize = ::config::kernel::MAX_PROCESSES;
 
+/// A decoded process-lifecycle message from the kernel.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LifecycleMessage {
+    /// A process was created.
+    ProcessCreation(ProcessCreationInfo),
+    /// A process terminated.
+    ProcessTermination(ProcessTerminationInfo),
+}
+
 ///
 /// # Description
 ///
@@ -250,6 +259,72 @@ struct BlockedWaiter {
 // Standalone Functions
 //==================================================================================================
 
+/// Parses and authenticates a process-lifecycle message published by the kernel. Returns `None`
+/// when the message carries no lifecycle event, so that callers fall through to their own handling.
+fn parse_lifecycle_message(message: &Message) -> Result<Option<LifecycleMessage>, Error> {
+    match message.message_type {
+        MessageType::ProcessCreationEvent => {
+            authenticate_lifecycle_message(message)?;
+            let raw_info: [u8; ::core::mem::size_of::<ProcessCreationInfo>()] =
+                lifecycle_payload(message, "invalid process creation event payload")?;
+            Ok(Some(LifecycleMessage::ProcessCreation(ProcessCreationInfo::from_ne_bytes(
+                raw_info,
+            ))))
+        },
+        MessageType::ProcessTerminationEvent => {
+            authenticate_lifecycle_message(message)?;
+            let raw_info: [u8; ::core::mem::size_of::<ProcessTerminationInfo>()] =
+                lifecycle_payload(message, "invalid process termination event payload")?;
+            Ok(Some(LifecycleMessage::ProcessTermination(ProcessTerminationInfo::from_ne_bytes(
+                raw_info,
+            ))))
+        },
+        _ => Ok(None),
+    }
+}
+
+/// Rejects a lifecycle message that the kernel did not stamp as its own. Local IPC stamps the real
+/// sender, so a user process that selects a lifecycle message type cannot impersonate the kernel.
+fn authenticate_lifecycle_message(message: &Message) -> Result<(), Error> {
+    let source: MessageSender = message.source;
+    if source != MessageSender::KERNEL {
+        let reason: &str = "process lifecycle message did not originate from kernel";
+        ::syslog::warn!("authenticate_lifecycle_message(): {reason} (source={source:?})");
+        return Err(Error::new(ErrorCode::PermissionDenied, reason));
+    }
+
+    Ok(())
+}
+
+/// Extracts a fixed-size lifecycle information structure from the head of a message payload.
+fn lifecycle_payload<const N: usize>(
+    message: &Message,
+    reason: &'static str,
+) -> Result<[u8; N], Error> {
+    match message
+        .payload
+        .get(..N)
+        .and_then(|payload| payload.try_into().ok())
+    {
+        Some(raw_info) => Ok(raw_info),
+        None => Err(Error::new(ErrorCode::InvalidArgument, reason)),
+    }
+}
+
+/// Sends a process-exit notification through the guest kernel-call boundary.
+fn send_process_exit_notification(request: &Message) -> Result<(), Error> {
+    #[cfg(not(test))]
+    {
+        ::sys::kcall::ipc::__kcall_send(request)
+    }
+
+    #[cfg(test)]
+    {
+        let _request: &Message = request;
+        Ok(())
+    }
+}
+
 pub struct ProcessDaemon {
     // FIXME: auto-signup process on process creation.
     processes: BTreeMap<ProcessIdentifier, ProcessRecord>,
@@ -347,41 +422,8 @@ impl ProcessDaemon {
         loop {
             match ::sys::kcall::ipc::__kcall_recv() {
                 Ok(message) => {
-                    ::syslog::info!("received message from={:?}", { message.source });
-                    match message.message_type {
-                        MessageType::Exception => unreachable!("should not receive exceptions"),
-                        MessageType::Ipc => {
-                            if let Err(e) = self.handle_ipc_message(message) {
-                                ::syslog::error!("failed to handle IPC message (error={:?})", e);
-                            }
-                        },
-                        MessageType::Interrupt => unreachable!("should not receive interrupts"),
-                        MessageType::Ikc => unreachable!("should not receive IKC messages"),
-                        MessageType::ProcessTerminationEvent => {
-                            match self.handle_process_termination_event(message) {
-                                Ok(Some(status)) => return status,
-                                Ok(None) => continue,
-                                Err(e) => {
-                                    ::syslog::error!(
-                                        "failed to handle scheduling event (error={:?})",
-                                        e
-                                    )
-                                },
-                            }
-                        },
-                        MessageType::PullResponse => {
-                            ::syslog::error!("received unexpected pull response, ignoring");
-                            continue;
-                        },
-                        MessageType::ProcessCreationEvent => {
-                            if let Err(e) = self.handle_process_creation_event(message) {
-                                ::syslog::error!(
-                                    "failed to handle process creation event (error={:?})",
-                                    e
-                                );
-                            }
-                            continue;
-                        },
+                    if let Some(status) = self.handle_message(message) {
+                        return status;
                     }
                 },
                 Err(e) => ::syslog::error!("failed to receive exception message (error={:?})", e),
@@ -389,18 +431,70 @@ impl ProcessDaemon {
         }
     }
 
+    /// Handles a message received in normal operation. Returns the exit status that shuts the
+    /// system down, or `None` to keep serving requests.
+    fn handle_message(&mut self, message: Message) -> Option<i32> {
+        ::syslog::info!("received message from={:?}", { message.source });
+
+        match parse_lifecycle_message(&message) {
+            Ok(Some(lifecycle)) => {
+                return match self.handle_lifecycle_message(lifecycle) {
+                    Ok(status) => status,
+                    Err(e) => {
+                        ::syslog::error!("failed to handle lifecycle message (error={:?})", e);
+                        None
+                    },
+                };
+            },
+            Ok(None) => {},
+            Err(e) => {
+                ::syslog::error!("failed to parse lifecycle message (error={:?})", e);
+                return None;
+            },
+        }
+
+        match message.message_type {
+            MessageType::Exception => unreachable!("should not receive exceptions"),
+            MessageType::Ipc => {
+                if let Err(e) = self.handle_ipc_message(message) {
+                    ::syslog::error!("failed to handle IPC message (error={:?})", e);
+                }
+            },
+            MessageType::Interrupt => unreachable!("should not receive interrupts"),
+            MessageType::Ikc => unreachable!("should not receive IKC messages"),
+            MessageType::PullResponse => {
+                ::syslog::error!("received unexpected pull response, ignoring");
+            },
+            // Consumed by the lifecycle parser above. Ignored rather than asserted, so that a
+            // regression in the parser cannot take the process manager down.
+            MessageType::ProcessTerminationEvent | MessageType::ProcessCreationEvent => {
+                ::syslog::error!("lifecycle message escaped the lifecycle parser, ignoring");
+            },
+        }
+
+        None
+    }
+
+    /// Handles an authenticated process-lifecycle message in normal operation.
+    fn handle_lifecycle_message(
+        &mut self,
+        lifecycle: LifecycleMessage,
+    ) -> Result<Option<i32>, Error> {
+        match lifecycle {
+            LifecycleMessage::ProcessCreation(info) => {
+                self.handle_process_creation_event(info)?;
+                Ok(None)
+            },
+            LifecycleMessage::ProcessTermination(info) => {
+                self.handle_process_termination_event(info)
+            },
+        }
+    }
+
     /// Handles a process-creation scheduling event published by the kernel. The kernel emits this
     /// event whenever a process forks a child, allowing the daemon to record the parent/child
     /// relationship without the parent having to register the child explicitly.
-    fn handle_process_creation_event(&mut self, message: Message) -> Result<(), Error> {
-        // Deserialize the process-creation information.
-        let raw_info: [u8; ::core::mem::size_of::<ProcessCreationInfo>()] = message.payload
-            [0..::core::mem::size_of::<ProcessCreationInfo>()]
-            .try_into()
-            .map_err(|_| {
-                Error::new(ErrorCode::InvalidArgument, "invalid process creation event payload")
-            })?;
-        let info: ProcessCreationInfo = ProcessCreationInfo::from_ne_bytes(raw_info);
+    fn handle_process_creation_event(&mut self, info: ProcessCreationInfo) -> Result<(), Error> {
         let child: ProcessIdentifier = info.pid;
         let parent: ProcessIdentifier = info.parent;
 
@@ -524,18 +618,10 @@ impl ProcessDaemon {
     /// crash and also triggers shutdown), and a forked user process is reaped. Because the role and
     /// parent are carried in the event, procd no longer reconstructs them from prior, race-prone
     /// state.
-    fn handle_process_termination_event(&mut self, message: Message) -> Result<Option<i32>, Error> {
-        // Deserialize the authoritative termination information published by the kernel.
-        let raw_info: [u8; ::core::mem::size_of::<ProcessTerminationInfo>()] =
-            match message.payload[0..::core::mem::size_of::<ProcessTerminationInfo>()].try_into() {
-                Ok(bytes) => bytes,
-                Err(_) => {
-                    let reason: &str = "invalid process termination message payload";
-                    ::syslog::error!("handle_process_termination_event(): {reason:?}");
-                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
-                },
-            };
-        let info: ProcessTerminationInfo = ProcessTerminationInfo::from_ne_bytes(raw_info);
+    fn handle_process_termination_event(
+        &mut self,
+        info: ProcessTerminationInfo,
+    ) -> Result<Option<i32>, Error> {
         let pid: ProcessIdentifier = info.pid;
         let status: i32 = info.status.as_u32() as i32;
 
@@ -2114,7 +2200,7 @@ impl ProcessDaemon {
     fn notify_process_exit(&self, pid: ProcessIdentifier) {
         match message::process_exit_request(pid) {
             Ok(request) => {
-                if let Err(e) = ::sys::kcall::ipc::__kcall_send(&request) {
+                if let Err(e) = send_process_exit_notification(&request) {
                     ::syslog::warn!(
                         "notify_process_exit: failed to notify vfsd (pid={:?}, error={:?})",
                         pid,
@@ -2343,36 +2429,43 @@ impl ProcessDaemon {
         // Wait for memory daemon to terminate.
         while !self.processes.is_empty() {
             match ::sys::kcall::ipc::__kcall_recv() {
-                Ok(message) => {
-                    if message.message_type == MessageType::ProcessTerminationEvent {
-                        // Deserialize process identifier.
-                        let pid: ProcessIdentifier = ProcessIdentifier::from(i32::from_le_bytes(
-                            message.payload[0..4].try_into().unwrap(),
-                        ));
-
-                        // Deserialize process status.
-                        let status: i32 =
-                            i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
-
-                        // De-register process.
-                        if let Some(record) = self.processes.remove(&pid) {
-                            ::syslog::info!(
-                                "process terminated (name={:?}, pid={:?}, status={:?})",
-                                record.name,
-                                pid,
-                                status
-                            );
-                        } else {
-                            ::syslog::info!(
-                                "unknown process terminated (pid={:?}, status={:?})",
-                                pid,
-                                status
-                            );
-                        }
-                    }
-                },
+                Ok(message) => self.handle_shutdown_message(&message),
                 Err(e) => ::syslog::error!("failed to receive exception message (error={:?})", e),
             }
+        }
+    }
+
+    /// Handles a message received while shutting down. Anything that is not an authenticated
+    /// lifecycle message is ignored, so that the drain neither ends early nor mutates the registry.
+    fn handle_shutdown_message(&mut self, message: &Message) {
+        match parse_lifecycle_message(message) {
+            Ok(Some(lifecycle)) => self.handle_shutdown_lifecycle_message(lifecycle),
+            Ok(None) => {},
+            Err(e) => ::syslog::error!(
+                "failed to parse lifecycle message during shutdown (error={:?})",
+                e
+            ),
+        }
+    }
+
+    /// Handles an authenticated process-lifecycle message while shutting down.
+    fn handle_shutdown_lifecycle_message(&mut self, lifecycle: LifecycleMessage) {
+        let LifecycleMessage::ProcessTermination(info) = lifecycle else {
+            return;
+        };
+
+        let pid: ProcessIdentifier = info.pid;
+        let status: i32 = info.status.as_u32() as i32;
+
+        if let Some(record) = self.processes.remove(&pid) {
+            ::syslog::info!(
+                "process terminated (name={:?}, pid={:?}, status={:?})",
+                record.name,
+                pid,
+                status
+            );
+        } else {
+            ::syslog::info!("unknown process terminated (pid={:?}, status={:?})", pid, status);
         }
     }
 }
@@ -2405,6 +2498,7 @@ impl Drop for ProcessDaemon {
 mod tests {
     use super::*;
     use ::core::mem::ManuallyDrop;
+    use ::sys::ExitStatus;
 
     fn process_identity(uid: usize) -> ProcessIdentity {
         ProcessIdentity::new(UserIdentifier::from(uid), GroupIdentifier::ROOT)
@@ -2449,6 +2543,212 @@ mod tests {
             MessageSender::new(process, ThreadIdentifier::from(20)),
             RequestIdentifier::from_raw(99),
         )
+    }
+
+    fn lifecycle_message<const N: usize>(
+        source: MessageSender,
+        message_type: MessageType,
+        payload: [u8; N],
+    ) -> Message {
+        let mut message_payload: [u8; Message::PAYLOAD_SIZE] = [0; Message::PAYLOAD_SIZE];
+        message_payload[..N].copy_from_slice(&payload);
+        Message::new(
+            source,
+            MessageReceiver::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+            message_type,
+            None,
+            message_payload,
+        )
+    }
+
+    #[test]
+    fn normal_mode_handles_valid_process_creation_message() {
+        let child: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessCreationInfo =
+            ProcessCreationInfo::new(child, ProcessIdentifier::KERNEL, ProcessRole::Daemon);
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ProcessCreationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[]);
+
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(status, None, "process creation should not trigger shutdown");
+        assert!(daemon.processes.contains_key(&child), "child should be registered");
+    }
+
+    #[test]
+    fn normal_mode_rejects_forged_process_creation_message() {
+        let child: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessCreationInfo =
+            ProcessCreationInfo::new(child, ProcessIdentifier::KERNEL, ProcessRole::Daemon);
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ProcessCreationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[]);
+
+        let error: Error = parse_lifecycle_message(&message)
+            .expect_err("non-kernel lifecycle message should be rejected");
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+        assert_eq!(status, None, "forged creation should not trigger shutdown");
+        assert!(daemon.processes.is_empty(), "forged creation should not change registry");
+    }
+
+    #[test]
+    fn normal_mode_handles_valid_process_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let expected_status: i32 = 0x0102_0304;
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+            pid,
+            ExitStatus::from(expected_status as u32),
+            ProcessIdentifier::KERNEL,
+            ProcessRole::Init,
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ProcessTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(status, Some(expected_status), "init termination should trigger shutdown");
+        assert!(daemon.processes.is_empty(), "terminated init process should be removed");
+    }
+
+    #[test]
+    fn normal_mode_rejects_forged_process_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+            pid,
+            ExitStatus::ok(),
+            ProcessIdentifier::KERNEL,
+            ProcessRole::Init,
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ProcessTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(status, None, "forged termination should not trigger shutdown");
+        assert!(daemon.processes.contains_key(&pid), "forged termination should be ignored");
+    }
+
+    #[test]
+    fn shutdown_mode_ignores_valid_process_creation_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let child: ProcessIdentifier = ProcessIdentifier::from(11);
+        let info: ProcessCreationInfo =
+            ProcessCreationInfo::new(child, ProcessIdentifier::KERNEL, ProcessRole::Daemon);
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ProcessCreationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        daemon.handle_shutdown_message(&message);
+
+        assert_eq!(daemon.processes.len(), 1, "creation should not change registry");
+        assert!(daemon.processes.contains_key(&pid), "tracked process should remain registered");
+        assert!(!daemon.processes.contains_key(&child), "new process should not be registered");
+    }
+
+    #[test]
+    fn shutdown_mode_rejects_forged_process_creation_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let child: ProcessIdentifier = ProcessIdentifier::from(11);
+        let info: ProcessCreationInfo =
+            ProcessCreationInfo::new(child, ProcessIdentifier::KERNEL, ProcessRole::Daemon);
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ProcessCreationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        daemon.handle_shutdown_message(&message);
+
+        assert_eq!(daemon.processes.len(), 1, "forged creation should not change registry");
+        assert!(daemon.processes.contains_key(&pid), "tracked process should remain registered");
+        assert!(!daemon.processes.contains_key(&child), "forged child should not be registered");
+    }
+
+    #[test]
+    fn shutdown_mode_handles_valid_process_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+            pid,
+            ExitStatus::from(0x0102_0304_u32),
+            ProcessIdentifier::KERNEL,
+            ProcessRole::Daemon,
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ProcessTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        daemon.handle_shutdown_message(&message);
+
+        assert!(daemon.processes.is_empty(), "terminated daemon should be removed");
+    }
+
+    #[test]
+    fn shutdown_mode_rejects_forged_process_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+            pid,
+            ExitStatus::ok(),
+            ProcessIdentifier::KERNEL,
+            ProcessRole::Daemon,
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ProcessTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        let error: Error = parse_lifecycle_message(&message)
+            .expect_err("non-kernel lifecycle message should be rejected");
+        daemon.handle_shutdown_message(&message);
+
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+        assert!(daemon.processes.contains_key(&pid), "forged termination should be ignored");
+    }
+
+    #[test]
+    fn shutdown_mode_ignores_unrelated_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let message: Message = lifecycle_message(MessageSender::KERNEL, MessageType::Ipc, []);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        let parsed: Option<LifecycleMessage> = parse_lifecycle_message(&message)
+            .expect("unrelated message should not fail lifecycle parsing");
+        daemon.handle_shutdown_message(&message);
+
+        assert_eq!(parsed, None, "IPC message should not be treated as lifecycle traffic");
+        assert!(daemon.processes.contains_key(&pid), "unrelated message should be ignored");
     }
 
     #[test]
