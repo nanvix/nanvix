@@ -413,14 +413,11 @@ pub(crate) fn handle_fstatat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let final_path: &str = &resolved;
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.path) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
 
-    if hostfs::is_hostfs_path(final_path) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         // Both stat modes are supported over hostfs. No-follow (`AT_SYMLINK_NOFOLLOW`)
         // maps to a path-based lstat; following stat (the default for `stat(2)`) maps to
         // a path-based following stat. Both reuse the same response wire format
@@ -432,9 +429,9 @@ pub(crate) fn handle_fstatat_with_hostfs(
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
         let (send_result, kind) = if no_follow {
-            (hostfs::send_lstat_request(final_path, op_id), PendingOpKind::Lstat)
+            (hostfs::send_lstat_request(&resolved, op_id), PendingOpKind::Lstat)
         } else {
-            (hostfs::send_pathstat_request(final_path, op_id), PendingOpKind::PathStat)
+            (hostfs::send_pathstat_request(&resolved, op_id), PendingOpKind::PathStat)
         };
         match send_result {
             Ok(()) => {
@@ -458,7 +455,7 @@ pub(crate) fn handle_fstatat_with_hostfs(
         }
     }
 
-    Some(super::long::handle_fstatat(source, request))
+    Some(super::long::handle_fstatat(source, resolved))
 }
 
 /// hostfs-aware `chdir`.
@@ -474,12 +471,11 @@ pub(crate) fn handle_chdir_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(AT_FDCWD, &request.path) {
-        Some(p) => p,
-        None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
+    let Some(resolved) = vfs_resolve_path(AT_FDCWD, &request.path) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     };
 
-    if hostfs::is_hostfs_path(&resolved) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
@@ -663,7 +659,7 @@ use ::syscall::{
         SymbolicLinkAtRequest,
     },
 };
-use ::vfs::fd::vfs_resolve_path;
+use ::vfs::path::vfs_resolve_path;
 use alloc::{
     vec,
     vec::Vec,
@@ -758,20 +754,17 @@ pub(crate) fn handle_openat_with_hostfs(
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
     request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let final_path: &str = &resolved;
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
 
-    if hostfs::is_hostfs_path(final_path) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        let open_path: alloc::string::String = alloc::string::String::from(final_path);
-        match hostfs::send_open_request(final_path, request.flags, request.mode, op_id) {
+        let open_path: alloc::string::String = alloc::string::String::from(resolved.as_str());
+        match hostfs::send_open_request(&resolved, request.flags, request.mode, op_id) {
             Ok(()) => {
                 if pending
                     .insert(
@@ -793,7 +786,7 @@ pub(crate) fn handle_openat_with_hostfs(
         }
     }
 
-    Some(super::long::handle_openat(source, request))
+    Some(super::long::handle_openat(source, resolved, request.flags))
 }
 
 pub(crate) fn handle_renameat_with_hostfs(
@@ -803,21 +796,14 @@ pub(crate) fn handle_renameat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let old_resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.olddirfd, &request.oldpath) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let new_resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.newdirfd, &request.newpath) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let old_final: &str = &old_resolved;
-    let new_final: &str = &new_resolved;
-
-    let old_is_hostfs: bool = hostfs::is_hostfs_path(old_final);
-    let new_is_hostfs: bool = hostfs::is_hostfs_path(new_final);
+    let Some(old_resolved) = vfs_resolve_path(request.olddirfd, &request.oldpath) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
+    let Some(new_resolved) = vfs_resolve_path(request.newdirfd, &request.newpath) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
+    let old_is_hostfs: bool = hostfs::is_hostfs_path(old_resolved.as_str());
+    let new_is_hostfs: bool = hostfs::is_hostfs_path(new_resolved.as_str());
 
     // Reject cross-filesystem renames (one path on hostfs, the other on ramfs).
     if old_is_hostfs != new_is_hostfs {
@@ -829,7 +815,7 @@ pub(crate) fn handle_renameat_with_hostfs(
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        match hostfs::send_rename_request(old_final, new_final, op_id) {
+        match hostfs::send_rename_request(&old_resolved, &new_resolved, op_id) {
             Ok(()) => {
                 if pending
                     .insert(
@@ -851,7 +837,7 @@ pub(crate) fn handle_renameat_with_hostfs(
         }
     }
 
-    Some(super::long::handle_renameat(source, request))
+    Some(super::long::handle_renameat(source, old_resolved, new_resolved))
 }
 
 pub(crate) fn handle_unlinkat_with_hostfs(
@@ -861,23 +847,20 @@ pub(crate) fn handle_unlinkat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let final_path: &str = &resolved;
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
 
-    if hostfs::is_hostfs_path(final_path) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
         let is_rmdir: bool = (request.flags & ::sysapi::fcntl::atflags::AT_REMOVEDIR) != 0;
         let result = if is_rmdir {
-            hostfs::send_rmdir_request(final_path, op_id)
+            hostfs::send_rmdir_request(&resolved, op_id)
         } else {
-            hostfs::send_unlink_request(final_path, op_id)
+            hostfs::send_unlink_request(&resolved, op_id)
         };
         match result {
             Ok(()) => {
@@ -906,7 +889,7 @@ pub(crate) fn handle_unlinkat_with_hostfs(
         }
     }
 
-    Some(super::long::handle_unlinkat(source, request))
+    Some(super::long::handle_unlinkat(source, resolved, request.flags))
 }
 
 pub(crate) fn handle_mkdirat_with_hostfs(
@@ -917,19 +900,16 @@ pub(crate) fn handle_mkdirat_with_hostfs(
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
     request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.pathname) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let final_path: &str = &resolved;
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
 
-    if hostfs::is_hostfs_path(final_path) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        match hostfs::send_mkdir_request(final_path, request.mode, op_id) {
+        match hostfs::send_mkdir_request(&resolved, request.mode, op_id) {
             Ok(()) => {
                 if pending
                     .insert(
@@ -951,7 +931,7 @@ pub(crate) fn handle_mkdirat_with_hostfs(
         }
     }
 
-    Some(super::long::handle_mkdirat(source, request))
+    Some(super::long::handle_mkdirat(source, resolved))
 }
 
 pub(crate) fn handle_symlinkat_with_hostfs(
@@ -963,19 +943,16 @@ pub(crate) fn handle_symlinkat_with_hostfs(
     let source: ThreadIdentifier = response_context.source_tid();
     // Routing key is `linkpath` (where the symlink will live). `target` is an opaque
     // string stored verbatim by the host and intentionally not consulted here.
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.linkpath) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let final_link: &str = &resolved;
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.linkpath) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
 
-    if hostfs::is_hostfs_path(final_link) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        match hostfs::send_symlink_request(&request.target, final_link, op_id) {
+        match hostfs::send_symlink_request(&request.target, &resolved, op_id) {
             Ok(()) => {
                 if pending
                     .insert(
@@ -1007,20 +984,17 @@ pub(crate) fn handle_readlinkat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let resolved: alloc::string::String =
-        match ::vfs::fd::vfs_resolve_path(request.dirfd, &request.path) {
-            Some(p) => p,
-            None => return Some(vec![build_error(source, ErrorCode::InvalidArgument)]),
-        };
-    let final_path: &str = &resolved;
+    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.path) else {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    };
 
-    if hostfs::is_hostfs_path(final_path) {
+    if hostfs::is_hostfs_path(resolved.as_str()) {
         if !pending.has_capacity() {
             return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
         let bufsiz: usize = request.bufsiz;
-        match hostfs::send_readlink_request(final_path, op_id) {
+        match hostfs::send_readlink_request(&resolved, op_id) {
             Ok(()) => {
                 if pending
                     .insert(
