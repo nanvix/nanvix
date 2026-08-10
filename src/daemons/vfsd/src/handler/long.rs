@@ -27,21 +27,16 @@ use ::syscall::{
         GetDirectoryEntriesResponse,
     },
     fcntl::message::{
-        OpenAtRequest,
         OpenAtResponse,
-        RenameAtRequest,
         RenameAtResponse,
-        UnlinkAtRequest,
         UnlinkAtResponse,
     },
     message::MessagePartitioner,
     sys::stat::message::{
         FileChmodAtRequest,
         FileChmodAtResponse,
-        FileStatAtRequest,
         FileStatAtResponse,
         FileStatRequest,
-        MakeDirectoryAtRequest,
         MakeDirectoryAtResponse,
         UpdateFileAccessTimeAtRequest,
         UpdateFileAccessTimeAtResponse,
@@ -62,6 +57,7 @@ use ::syscall::{
     },
     SystemCallMessage,
 };
+use ::vfs::path::ResolvedPath;
 use alloc::{
     vec,
     vec::Vec,
@@ -136,8 +132,12 @@ pub(crate) fn handle_getdents(source: ThreadIdentifier, msg: SystemCallMessage) 
 // Long Request Handlers (multi-part request, single or multi-part response)
 //==================================================================================================
 
-pub(crate) fn handle_openat(source: ThreadIdentifier, request: OpenAtRequest) -> Vec<Message> {
-    match ::vfs::fd::vfs_openat(request.dirfd, &request.pathname, request.flags) {
+pub(crate) fn handle_openat(
+    source: ThreadIdentifier,
+    path: ResolvedPath,
+    flags: i32,
+) -> Vec<Message> {
+    match ::vfs::fd::vfs_open_resolved(path, flags) {
         Ok(fd) => {
             let epoch: u64 = ::vfs::fd::vfs_current_generation();
             vec![OpenAtResponse::build(
@@ -152,13 +152,12 @@ pub(crate) fn handle_openat(source: ThreadIdentifier, request: OpenAtRequest) ->
     }
 }
 
-pub(crate) fn handle_renameat(source: ThreadIdentifier, request: RenameAtRequest) -> Vec<Message> {
-    match ::vfs::fd::vfs_renameat(
-        request.olddirfd,
-        &request.oldpath,
-        request.newdirfd,
-        &request.newpath,
-    ) {
+pub(crate) fn handle_renameat(
+    source: ThreadIdentifier,
+    old_path: ResolvedPath,
+    new_path: ResolvedPath,
+) -> Vec<Message> {
+    match ::vfs::fd::vfs_rename_resolved(old_path, new_path) {
         Ok(()) => {
             vec![RenameAtResponse::build(
                 source,
@@ -171,8 +170,12 @@ pub(crate) fn handle_renameat(source: ThreadIdentifier, request: RenameAtRequest
     }
 }
 
-pub(crate) fn handle_unlinkat(source: ThreadIdentifier, request: UnlinkAtRequest) -> Vec<Message> {
-    match ::vfs::fd::vfs_unlinkat(request.dirfd, &request.pathname, request.flags) {
+pub(crate) fn handle_unlinkat(
+    source: ThreadIdentifier,
+    path: ResolvedPath,
+    flags: i32,
+) -> Vec<Message> {
+    match ::vfs::fd::vfs_unlink_resolved(path, flags) {
         Ok(()) => {
             vec![UnlinkAtResponse::build(
                 source,
@@ -185,11 +188,8 @@ pub(crate) fn handle_unlinkat(source: ThreadIdentifier, request: UnlinkAtRequest
     }
 }
 
-pub(crate) fn handle_mkdirat(
-    source: ThreadIdentifier,
-    request: MakeDirectoryAtRequest,
-) -> Vec<Message> {
-    match ::vfs::fd::vfs_mkdirat(request.dirfd, &request.pathname) {
+pub(crate) fn handle_mkdirat(source: ThreadIdentifier, path: ResolvedPath) -> Vec<Message> {
+    match ::vfs::fd::vfs_mkdir_resolved(path) {
         Ok(()) => {
             vec![MakeDirectoryAtResponse::build(
                 source,
@@ -202,9 +202,9 @@ pub(crate) fn handle_mkdirat(
     }
 }
 
-pub(crate) fn handle_fstatat(source: ThreadIdentifier, request: FileStatAtRequest) -> Vec<Message> {
+pub(crate) fn handle_fstatat(source: ThreadIdentifier, path: ResolvedPath) -> Vec<Message> {
     let mut st = stat::default();
-    match ::vfs::fd::vfs_fstatat(request.dirfd, &request.path, &mut st) {
+    match ::vfs::fd::vfs_stat_resolved(path, &mut st) {
         Ok(()) => {
             let response: FileStatAtResponse = FileStatAtResponse::new(st);
             match response.into_parts(source, ProcessIdentifier::VFSD, MessageType::Ipc) {

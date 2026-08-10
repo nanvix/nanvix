@@ -998,7 +998,14 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
 /// never silently ignored.
 pub fn vfs_openat(dirfd: c_int, path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
     let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
-    vfs_open(resolved.as_str(), flags)
+    vfs_open_resolved(resolved, flags)
+}
+
+/// Opens an already-resolved path and allocates a system-wide FD.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+pub fn vfs_open_resolved(path: ResolvedPath, flags: c_int) -> Result<c_int, Fat32Error> {
+    vfs_open(path.as_str(), flags)
 }
 
 /// Reads from a VFS file descriptor.
@@ -1396,7 +1403,17 @@ pub fn vfs_fstatat(
     buf: &mut ::sysapi::sys_stat::stat,
 ) -> Result<(), Fat32Error> {
     let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
-    vfs_stat(resolved.as_str(), buf)
+    vfs_stat_resolved(resolved, buf)
+}
+
+/// Gets file status for an already-resolved path.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+pub fn vfs_stat_resolved(
+    path: ResolvedPath,
+    buf: &mut ::sysapi::sys_stat::stat,
+) -> Result<(), Fat32Error> {
+    vfs_stat(path.as_str(), buf)
 }
 
 /// Renames a file or directory through the VFS.
@@ -1428,7 +1445,14 @@ pub fn vfs_mkdir(path: &str) -> Result<(), Fat32Error> {
 /// never silently ignored.
 pub fn vfs_mkdirat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
     let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
-    vfs_mkdir(resolved.as_str())
+    vfs_mkdir_resolved(resolved)
+}
+
+/// Creates a directory at an already-resolved path.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+pub fn vfs_mkdir_resolved(path: ResolvedPath) -> Result<(), Fat32Error> {
+    vfs_mkdir(path.as_str())
 }
 
 /// Removes an empty directory through the VFS.
@@ -1940,7 +1964,17 @@ pub fn vfs_renameat(
 ) -> Result<(), Fat32Error> {
     let old_resolved = vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
     let new_resolved = vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
-    filesystem::rename(&current_cwd(), old_resolved.as_str(), new_resolved.as_str())
+    vfs_rename_resolved(old_resolved, new_resolved)
+}
+
+/// Renames between two already-resolved paths.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored both paths.
+pub fn vfs_rename_resolved(
+    old_path: ResolvedPath,
+    new_path: ResolvedPath,
+) -> Result<(), Fat32Error> {
+    filesystem::rename(&current_cwd(), old_path.as_str(), new_path.as_str())
 }
 
 /// Unlinks a file or removes a directory relative to a directory file descriptor through the VFS.
@@ -1960,12 +1994,19 @@ pub fn vfs_renameat(
 /// Returns a [`Fat32Error`] if the path does not exist, the directory is not empty (when removing
 /// a directory), or the path refers to a directory but `AT_REMOVEDIR` is not set.
 pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32Error> {
-    use ::sysapi::fcntl::atflags::AT_REMOVEDIR;
     let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_unlink_resolved(resolved, flags)
+}
+
+/// Unlinks a file or removes a directory at an already-resolved path.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+pub fn vfs_unlink_resolved(path: ResolvedPath, flags: c_int) -> Result<(), Fat32Error> {
+    use ::sysapi::fcntl::atflags::AT_REMOVEDIR;
     if flags & AT_REMOVEDIR != 0 {
-        filesystem::rmdir(&current_cwd(), resolved.as_str())
+        filesystem::rmdir(&current_cwd(), path.as_str())
     } else {
-        filesystem::unlink(&current_cwd(), resolved.as_str())
+        filesystem::unlink(&current_cwd(), path.as_str())
     }
 }
 

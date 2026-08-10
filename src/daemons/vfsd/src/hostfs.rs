@@ -35,6 +35,7 @@ use ::syscall::{
     message::SystemCallMessagePart,
     SystemCallMessageKind,
 };
+use ::vfs::path::ResolvedPath;
 
 extern crate alloc;
 
@@ -185,12 +186,12 @@ fn send_long_request(
 
 /// Sends an OPEN request to hostfsd as a multi-part IKC message.
 pub fn send_open_request(
-    path: &str,
+    path: &ResolvedPath,
     flags: i32,
     mode: u32,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path);
+    let relative: &str = strip_mount_prefix(path.as_str());
     let buf: alloc::vec::Vec<u8> =
         long_msg::serialize_long_open_request(op_id, flags, mode, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
@@ -308,11 +309,11 @@ pub fn send_flush_request(
 
 /// Sends a MKDIR request to hostfsd as a multi-part IKC message.
 pub fn send_mkdir_request(
-    path: &str,
+    path: &ResolvedPath,
     mode: u32,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path);
+    let relative: &str = strip_mount_prefix(path.as_str());
     let buf: alloc::vec::Vec<u8> =
         long_msg::serialize_long_mkdir_request(op_id, mode, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
@@ -321,8 +322,11 @@ pub fn send_mkdir_request(
 }
 
 /// Sends an RMDIR request to hostfsd as a multi-part IKC message.
-pub fn send_rmdir_request(path: &str, op_id: OperationId) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path);
+pub fn send_rmdir_request(
+    path: &ResolvedPath,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path.as_str());
     let buf: alloc::vec::Vec<u8> =
         long_msg::serialize_long_rmdir_request(op_id, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
@@ -331,8 +335,11 @@ pub fn send_rmdir_request(path: &str, op_id: OperationId) -> Result<(), ::sys::e
 }
 
 /// Sends an UNLINK request to hostfsd as a multi-part IKC message.
-pub fn send_unlink_request(path: &str, op_id: OperationId) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path);
+pub fn send_unlink_request(
+    path: &ResolvedPath,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path.as_str());
     let buf: alloc::vec::Vec<u8> =
         long_msg::serialize_long_unlink_request(op_id, relative.as_bytes())
             .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
@@ -382,12 +389,12 @@ pub fn send_readdir_request(
 
 /// Sends a RENAME request to hostfsd as a multi-part IKC message.
 pub fn send_rename_request(
-    old_path: &str,
-    new_path: &str,
+    old_path: &ResolvedPath,
+    new_path: &ResolvedPath,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let old_relative: &str = strip_mount_prefix(old_path);
-    let new_relative: &str = strip_mount_prefix(new_path);
+    let old_relative: &str = strip_mount_prefix(old_path.as_str());
+    let new_relative: &str = strip_mount_prefix(new_path.as_str());
     let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_rename_request(
         op_id,
         old_relative.as_bytes(),
@@ -410,11 +417,11 @@ pub fn send_rename_request(
 /// acceptable since symlink creation is rare relative to readlink/lstat.
 pub fn send_symlink_request(
     target: &str,
-    linkpath: &str,
+    linkpath: &ResolvedPath,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
     // The target is opaque to vfsd and stored verbatim by the host; do not strip /mnt.
-    let link_relative: &str = strip_mount_prefix(linkpath);
+    let link_relative: &str = strip_mount_prefix(linkpath.as_str());
     let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_symlink_request(
         op_id,
         target.as_bytes(),
@@ -430,10 +437,10 @@ pub fn send_symlink_request(
 /// Uses the single-message inline form when the path fits within
 /// [`MAX_INLINE_PATH_LEN`], and falls back to a multi-part request otherwise.
 pub fn send_readlink_request(
-    path: &str,
+    path: &ResolvedPath,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path);
+    let relative: &str = strip_mount_prefix(path.as_str());
     let path_bytes: &[u8] = relative.as_bytes();
 
     // Inline fast path: avoids the multi-part assembler when the path fits.
@@ -460,8 +467,11 @@ pub fn send_readlink_request(
 /// stat that does not follow the final symbolic link component. Uses the
 /// single-message inline form when the path fits within [`MAX_INLINE_PATH_LEN`],
 /// and falls back to a multi-part request otherwise.
-pub fn send_lstat_request(path: &str, op_id: OperationId) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path);
+pub fn send_lstat_request(
+    path: &ResolvedPath,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path.as_str());
     let path_bytes: &[u8] = relative.as_bytes();
 
     // Inline fast path: avoids the multi-part assembler when the path fits.
@@ -491,10 +501,10 @@ pub fn send_lstat_request(path: &str, op_id: OperationId) -> Result<(), ::sys::e
 /// form when the path fits within [`MAX_INLINE_PATH_LEN`], and falls back to a
 /// multi-part request otherwise.
 pub fn send_pathstat_request(
-    path: &str,
+    path: &ResolvedPath,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path);
+    let relative: &str = strip_mount_prefix(path.as_str());
     let path_bytes: &[u8] = relative.as_bytes();
 
     // Inline fast path: avoids the multi-part assembler when the path fits.
