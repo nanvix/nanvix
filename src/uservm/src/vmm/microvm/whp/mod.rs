@@ -857,7 +857,7 @@ impl Vmm {
         // Deferred slightly to avoid interfering with the first VP entry.
         // Uses a dedicated `AtomicBool` flag so only profiler-driven cancels
         // trigger sampling (not pvclock or other `Interrupted` exits).
-        let profiler_cancel_pending = Arc::new(AtomicBool::new(false));
+        let profiler_sample_pending = Arc::new(AtomicBool::new(false));
         let profiler_stop = Arc::new(AtomicBool::new(false));
         let mut profiler_thread: Option<std::thread::JoinHandle<()>> = None;
         let mut profiler_timer_started: bool = false;
@@ -929,7 +929,7 @@ impl Vmm {
                 && exit_count > PROFILER_START_DELAY_EXITS
             {
                 let stop = profiler_stop.clone();
-                let pending = profiler_cancel_pending.clone();
+                let sample_pending = profiler_sample_pending.clone();
                 let partition = self.partition_handle;
                 let run_state: Arc<RunState> = self.run_state.clone();
                 profiler_thread = Some(std::thread::spawn(move || {
@@ -943,7 +943,7 @@ impl Vmm {
                             break;
                         }
                         run_state.cancel_if_pending(|| {
-                            pending.store(true, Ordering::Release);
+                            sample_pending.store(true, Ordering::Release);
                             unsafe {
                                 let _ = windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
                                     partition, 0, 0,
@@ -994,7 +994,7 @@ impl Vmm {
 
                 // Guest profiler: read registers only when our profiler timer fired.
                 let regs = if self.guest_profiler.is_some()
-                    && profiler_cancel_pending.swap(false, Ordering::Acquire)
+                    && profiler_sample_pending.swap(false, Ordering::Acquire)
                     && matches!(ctx.reason_ref(), VirtualProcessorExitReasonRef::Interrupted)
                 {
                     locked_vcpu.get_profile_regs().ok()
