@@ -12,6 +12,8 @@
 //! - Adding new PDPT/PD/PT entries for unmapped regions (e.g., user stack).
 //! - Providing `map` and `unmap` for individual 4 KiB pages.
 
+include!("hwpt.spec.rs");
+
 //==================================================================================================
 // Constants
 //==================================================================================================
@@ -88,7 +90,10 @@ unsafe fn alloc_pt_page() -> u64 {
         // Zero the reused page before handing it out.
         let ptr: *mut u64 = paddr as *mut u64;
         for i in 0..ENTRIES_PER_TABLE {
-            core::ptr::write_volatile(ptr.add(i), 0);
+            // core::ptr::write_volatile(ptr.add(i), 0);
+            unsafe {
+                env_interaction_zero_hardware_page_table_entry(ptr.add(i));
+            }
         }
         return paddr;
     }
@@ -123,9 +128,21 @@ unsafe fn free_pt_page(paddr: u64) {
 ///
 /// `table_paddr` must be a valid, identity-mapped physical address of a page table.
 #[inline]
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    with
+        Ghost(page): Ghost<&NanvixHwPageToken>,
+    requires
+        page.ready_for_mmu(),
+        table_paddr == page.physical_base(),
+        0 <= index < ENTRIES_PER_TABLE,
+    ensures
+        page.entry(index as nat).admits(page.level(), result),
+)]
 unsafe fn read_entry(table_paddr: u64, index: usize) -> u64 {
     let ptr: *const u64 = (table_paddr as usize + index * 8) as *const u64;
-    core::ptr::read_volatile(ptr)
+    // core::ptr::read_volatile(ptr)
+    unsafe { env_interaction_read_hardware_page_table_entry(ptr) }
 }
 
 /// Writes a 64-bit entry to a page table at `table_paddr[index]`.
@@ -134,9 +151,37 @@ unsafe fn read_entry(table_paddr: u64, index: usize) -> u64 {
 ///
 /// `table_paddr` must be a valid, identity-mapped physical address of a page table.
 #[inline]
+#[verus_verify(external_body)]
+#[verus_spec(
+    with
+        Tracked(page):
+            Tracked<&mut NanvixHwPageToken>,
+        Ghost(child):
+            Ghost<Option<&NanvixHwPageToken>>,
+    requires
+        old(page).ready_for_mmu(),
+        table_paddr == old(page).physical_base(),
+        0 <= index < ENTRIES_PER_TABLE,
+        valid_hw_entry(old(page).level(), value),
+        valid_hw_entry_target(old(page).level(), value, child),
+    ensures
+        final(page).ready_for_mmu(),
+        final(page).physical_base() == old(page).physical_base(),
+        final(page).level() == old(page).level(),
+        final(page).entry(index as nat).ptr()
+            == old(page).entry(index as nat).ptr(),
+        final(page).entry(index as nat).is_init(),
+        final(page).entry(index as nat).expected() == value,
+        forall|i: nat|
+            0 <= i < ENTRIES_PER_TABLE && i != index as nat
+                ==> final(page).entry(i) == old(page).entry(i),
+)]
 unsafe fn write_entry(table_paddr: u64, index: usize, value: u64) {
     let ptr: *mut u64 = (table_paddr as usize + index * 8) as *mut u64;
-    core::ptr::write_volatile(ptr, value);
+    // core::ptr::write_volatile(ptr, value);
+    unsafe {
+        env_interaction_write_hardware_page_table_entry(ptr, value);
+    }
 }
 
 /// Ensures an intermediate page table entry (PML4/PDPT/PD) exists and has the required flags.
@@ -194,7 +239,10 @@ unsafe fn split_2m_entry(pd_paddr: u64, pd_index: usize) -> u64 {
 /// Flushes the TLB entry for `vaddr`.
 #[inline]
 unsafe fn invlpg(vaddr: usize) {
-    core::arch::asm!("invlpg [{}]", in(reg) vaddr, options(nostack, preserves_flags));
+    // core::arch::asm!("invlpg [{}]", in(reg) vaddr, options(nostack, preserves_flags));
+    unsafe {
+        env_interaction_invalidate_tlb_page(vaddr);
+    }
 }
 
 //==================================================================================================
@@ -209,8 +257,9 @@ unsafe fn invlpg(vaddr: usize) {
 ///
 /// Must be called from kernel mode with identity mapping active.
 pub unsafe fn init() {
-    let cr3: u64;
-    core::arch::asm!("mov {}, cr3", out(reg) cr3, options(nostack, nomem));
+    // let cr3: u64;
+    // core::arch::asm!("mov {}, cr3", out(reg) cr3, options(nostack, nomem));
+    let cr3: u64 = unsafe { env_interaction_read_cr3() };
     PML4_PADDR = (cr3 & ADDR_MASK_4K) as usize;
 
     // Discover boot PD0 address: PML4[0] → PDPT, PDPT[0] → PD0.

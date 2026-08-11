@@ -25,6 +25,10 @@ use ::arch::mem::{
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
 };
+pub(crate) use virt::{
+    GetPageDirectoryStorage,
+    GetPageTableStorage,
+};
 pub use virt::{
     KernelPage,
     PageTableStorage,

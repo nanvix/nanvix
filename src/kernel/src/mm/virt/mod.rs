@@ -32,6 +32,7 @@ use ::core::ops::{
     Deref,
     DerefMut,
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Exports
@@ -46,11 +47,35 @@ pub use vmem::Vmem;
 // Structures and Enums
 //==================================================================================================
 
+#[verus_verify]
 pub enum PageTableStorage {
     /// Boot-time BSS-backed storage, allocated via `PAGE_TABLE_ALLOCATOR`.
-    Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
+    Bss {
+        /// Page-table entries.
+        entries: &'static mut [PteWord; PAGE_TABLE_LENGTH],
+        /// Virtual base address used by Nanvix to access `entries`.
+        #[cfg(verus_keep_ghost_body)]
+        entries_base_address: Ghost<usize>,
+        /// Physical base address encoded in a parent page-directory entry.
+        #[cfg(verus_keep_ghost_body)]
+        physical_base_address: Ghost<usize>,
+    },
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
+}
+
+pub trait GetPageTableStorage {
+    verus! {
+        spec fn get_storage(&self) -> &PageTableStorage;
+    }
+}
+
+impl GetPageTableStorage for PageTableStorage {
+    verus! {
+        open spec fn get_storage(&self) -> &PageTableStorage {
+            self
+        }
+    }
 }
 
 impl Deref for PageTableStorage {
@@ -58,7 +83,7 @@ impl Deref for PageTableStorage {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            Self::Bss(entries) => entries.as_slice(),
+            Self::Bss { entries, .. } => entries.as_slice(),
             Self::KernelPage(page) => {
                 let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
@@ -70,7 +95,7 @@ impl Deref for PageTableStorage {
 impl DerefMut for PageTableStorage {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
-            Self::Bss(entries) => entries.as_mut_slice(),
+            Self::Bss { entries, .. } => entries.as_mut_slice(),
             Self::KernelPage(page) => {
                 let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
@@ -79,11 +104,32 @@ impl DerefMut for PageTableStorage {
     }
 }
 
+#[verus_verify]
 pub enum PageDirectoryStorage {
     /// Boot-time BSS-backed storage, allocated via `PAGE_TABLE_ALLOCATOR`.
-    Bss(&'static mut [PteWord; PAGE_TABLE_LENGTH]),
+    Bss {
+        /// Page-directory entries.
+        entries: &'static mut [PteWord; PAGE_TABLE_LENGTH],
+        /// Base address of `entries`.
+        #[cfg(verus_keep_ghost_body)]
+        base_address: Ghost<usize>,
+    },
     /// Runtime storage backed by a kernel page from the page pool.
     KernelPage(KernelPage),
+}
+
+pub trait GetPageDirectoryStorage {
+    verus! {
+        spec fn get_storage(&self) -> &PageDirectoryStorage;
+    }
+}
+
+impl GetPageDirectoryStorage for PageDirectoryStorage {
+    verus! {
+        open spec fn get_storage(&self) -> &PageDirectoryStorage {
+            self
+        }
+    }
 }
 
 impl Deref for PageDirectoryStorage {
@@ -91,7 +137,7 @@ impl Deref for PageDirectoryStorage {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            Self::Bss(entries) => entries.as_slice(),
+            Self::Bss { entries, .. } => entries.as_slice(),
             Self::KernelPage(page) => {
                 let base: *const PteWord = page.base().into_raw_value() as *const PteWord;
                 unsafe { core::slice::from_raw_parts(base, PAGE_TABLE_LENGTH) }
@@ -103,7 +149,7 @@ impl Deref for PageDirectoryStorage {
 impl DerefMut for PageDirectoryStorage {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
-            Self::Bss(entries) => entries.as_mut_slice(),
+            Self::Bss { entries, .. } => entries.as_mut_slice(),
             Self::KernelPage(page) => {
                 let base: *mut PteWord = page.base().into_raw_value() as *mut PteWord;
                 unsafe { core::slice::from_raw_parts_mut(base, PAGE_TABLE_LENGTH) }
@@ -111,6 +157,8 @@ impl DerefMut for PageDirectoryStorage {
         }
     }
 }
+
+include!("mod.spec.rs");
 
 #[cfg(feature = "test")]
 pub fn test() {

@@ -5,13 +5,20 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::mem::{
-    AccessPermission,
-    Address,
-    FrameAddress,
-    PageAligned,
-    PageTableAddress,
-    PhysicalAddress,
+#[cfg(verus_keep_ghost_body)]
+use super::page_table::PageTable;
+#[cfg(verus_keep_ghost_body)]
+use crate::mm::PageTableStorage;
+use crate::{
+    hal::mem::{
+        AccessPermission,
+        Address,
+        FrameAddress,
+        PageAligned,
+        PageTableAddress,
+        PhysicalAddress,
+    },
+    mm::GetPageDirectoryStorage,
 };
 use ::arch::mem::paging::{
     AccessedFlag,
@@ -33,6 +40,8 @@ use ::sys::error::{
     ErrorCode,
 };
 
+include!("page_directory.spec.rs");
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -42,17 +51,55 @@ use ::sys::error::{
 ///
 /// A type that represents a page directory.
 ///
-pub struct PageDirectory<T: DerefMut<Target = [PteWord]>> {
+#[verus_verify]
+pub struct PageDirectory<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageDirectoryStorage,
+{
     /// Entries.
     entries: T,
+    /// Specification tokens for page-directory entries.
+    #[cfg(verus_keep_ghost_body)]
+    permissions: Tracked<Map<nat, NanvixPdeToken>>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
+impl<T> PageDirectory<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageDirectoryStorage,
+{
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        with
+            Tracked(permissions):
+                Tracked<Map<nat, NanvixPdeToken>>,
+        requires
+            permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH,
+            permissions.dom()
+                == Set::new(|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH),
+            forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
+                let permission = #[trigger] permissions[i];
+
+                permission.ptr().addr as int
+                    == entries.get_storage().base_address()
+                        + i * PageDirectoryEntry::SIZE
+                    && permission.is_uninit()
+            },
+        ensures
+            result.inv(),
+            forall|i: nat| 0 <= i < result.permissions.dom().len()
+                ==> {
+                    &&& result.permissions[i].is_init()
+                    &&& result.permissions[i].expected() == 0
+                },
+    )]
     pub fn new(entries: T) -> Self {
+        proof_with! {
+            permissions: Tracked(permissions)
+        };
         let mut pgdir: PageDirectory<T> = PageDirectory { entries };
         pgdir.clean();
         pgdir
@@ -173,19 +220,22 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
     }
 
     fn clean(&mut self) {
-        for pde in self.entries.iter_mut() {
-            *pde = 0;
-        }
+        // for pde in self.entries.iter_mut() {
+        //     *pde = 0;
+        // }
+        self.env_interaction_clear_page_directory();
     }
 
     pub fn read_pde(&self, vaddr: PageTableAddress) -> Option<PageDirectoryEntry> {
         let pde_idx: usize = vaddr.get_pde_index();
-        PageDirectoryEntry::from_raw_value(self.entries[pde_idx])
+        // PageDirectoryEntry::from_raw_value(self.entries[pde_idx])
+        PageDirectoryEntry::from_raw_value(self.env_interaction_read_page_directory_entry(pde_idx))
     }
 
     fn write_pde(&mut self, vaddr: PageTableAddress, pde: PageDirectoryEntry) {
         let pde_idx: usize = vaddr.get_pde_index();
-        self.entries[pde_idx] = pde.into_raw_value();
+        // self.entries[pde_idx] = pde.into_raw_value();
+        self.env_interaction_write_page_directory_entry(pde_idx, pde.into_raw_value());
     }
 
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {

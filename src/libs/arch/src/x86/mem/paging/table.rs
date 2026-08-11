@@ -10,6 +10,8 @@ use super::{
     PTE_WORD_SIZE_LOG2,
 };
 
+include!("table.spec.rs");
+
 //==================================================================================================
 // Table Entry Trait
 //==================================================================================================
@@ -140,7 +142,8 @@ impl<E: TableEntry> Table<E> {
     pub unsafe fn read(&self, index: TableIndex) -> Option<E> {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
         let ptr: *const PteWord = (self.base + offset) as *const PteWord;
-        E::from_raw(::core::ptr::read_volatile(ptr))
+        // E::from_raw(::core::ptr::read_volatile(ptr))
+        unsafe { env_interaction_read_table_entry(ptr) }
     }
 
     ///
@@ -155,6 +158,9 @@ impl<E: TableEntry> Table<E> {
     pub unsafe fn write(&self, index: TableIndex, entry: E) {
         let offset: usize = index.into_raw() << PTE_WORD_SIZE_LOG2;
         let ptr: *mut PteWord = (self.base + offset) as *mut PteWord;
-        ::core::ptr::write_volatile(ptr, entry.raw());
+        // ::core::ptr::write_volatile(ptr, entry.raw());
+        unsafe {
+            env_interaction_write_table_entry(ptr, entry);
+        }
     }
 }
