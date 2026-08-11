@@ -85,16 +85,21 @@ Source code for benchmark programs:
 
 ## Analyzing Results
 
-Benchmark results can be visualized with the plotting script:
+Benchmark results are visualized via the static site at `www/bench/`. To serve it locally:
 
 ```bash
-python3 scripts/plot-performance.py
+python3 -m http.server -d www/bench 8000
 ```
 
-Additional analysis can be done with the automation script:
+By default the static site browses the data associated with the current platform's persisted benchmarks (at www/bench/data).
+
+To generate a configurable URL:
 
 ```bash
-python3 scripts/benchmark.py
+python3 scripts/benchmark.py ci-url
+
+# Browse another platform's persisted history.
+python3 scripts/benchmark.py ci-url --target-dir www/bench/data/windows-baremetal
 ```
 
 ## Benchmarking on Windows
