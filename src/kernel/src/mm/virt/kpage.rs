@@ -9,11 +9,15 @@ use crate::{
     hal::mem::PageAddress,
     mm::phys::KernelFrame,
 };
+use ::vstd::prelude::*;
+
+include!("kpage.spec.rs");
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
+#[verus_verify]
 #[derive(Debug)]
 pub struct KernelPage {
     /// Underlying kernel frame.

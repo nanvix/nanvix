@@ -15,6 +15,8 @@ compile_error!("Unsupported architecture");
 
 use ::core::arch::asm;
 
+include!("cr3.spec.rs");
+
 //==================================================================================================
 // Page-Level Write-Through Flag
 //==================================================================================================
@@ -365,15 +367,17 @@ impl Cr3Register {
     pub unsafe fn read() -> Self {
         #[cfg(target_arch = "x86")]
         {
-            let value: u32;
-            asm!("mov {0:e}, cr3", out(reg) value);
+            // let value: u32;
+            // asm!("mov {0:e}, cr3", out(reg) value);
+            let value: u32 = unsafe { env_interaction_read_cr3() };
             Self::from_u32_unchecked(value & !Self::RESERVED_MASK)
         }
 
         #[cfg(target_arch = "x86_64")]
         {
-            let value: u64;
-            asm!("mov {0:r}, cr3", out(reg) value);
+            // let value: u64;
+            // asm!("mov {0:r}, cr3", out(reg) value);
+            let value: u64 = unsafe { env_interaction_read_cr3() };
             let value32: u32 = (value & u32::MAX as u64) as u32;
             Self::from_u32_unchecked(value32 & !Self::RESERVED_MASK)
         }
@@ -395,13 +399,19 @@ impl Cr3Register {
         #[cfg(target_arch = "x86")]
         {
             let value: u32 = self.into_u32();
-            asm!("mov cr3, {0:e}", in(reg) value);
+            // asm!("mov cr3, {0:e}", in(reg) value);
+            unsafe {
+                env_interaction_write_cr3(value);
+            }
         }
 
         #[cfg(target_arch = "x86_64")]
         {
             let value64: u64 = self.into_u32() as u64;
-            asm!("mov cr3, {0:r}", in(reg) value64);
+            // asm!("mov cr3, {0:r}", in(reg) value64);
+            unsafe {
+                env_interaction_write_cr3(value64);
+            }
         }
     }
 }

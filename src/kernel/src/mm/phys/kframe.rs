@@ -23,12 +23,16 @@ use ::core::ops::{
     DerefMut,
 };
 use ::sys::error::Error;
+use ::vstd::prelude::*;
+
+include!("kframe.spec.rs");
 
 //==================================================================================================
 // Kernel Frame
 //==================================================================================================
 
 /// A type that represents a kernel frame.
+#[verus_verify]
 #[derive(Debug)]
 pub struct KernelFrame {
     /// Frame address.

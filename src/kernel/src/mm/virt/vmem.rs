@@ -72,6 +72,7 @@ use ::sys::{
         ErrorCode,
     },
 };
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Constants
@@ -115,18 +116,25 @@ impl Vmem {
         trace!("kernel_pages.len()={}", kernel_pages.len());
 
         // Create a clean page directory.
-        let mut pgdir: PageDirectory<PageDirectoryStorage> =
-            // SAFETY: this constructor is only used during early single-threaded init;
-            // BSS is zero-initialized, so assume_init_mut() is sound for integer arrays.
-            PageDirectory::new(PageDirectoryStorage::Bss(unsafe {
-                PAGE_TABLE_ALLOCATOR
-                    .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
-                    .map_err(|e| {
-                        error!("Vmem::new(): page directory allocation failed: {}", e);
-                        Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
-                    })?
-                    .assume_init_mut()
-            }));
+        // SAFETY: this constructor is only used during early single-threaded init;
+        // BSS is zero-initialized, so assume_init_mut() is sound for integer arrays.
+        let pgdir_entries: &'static mut [PteWord; PAGE_TABLE_LENGTH] = unsafe {
+            PAGE_TABLE_ALLOCATOR
+                .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
+                .map_err(|e| {
+                    error!("Vmem::new(): page directory allocation failed: {}", e);
+                    Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
+                })?
+                .assume_init_mut()
+        };
+        let _pgdir_base_address: usize = pgdir_entries.as_mut_ptr() as usize;
+        proof_with! {
+            base_address: Ghost(_pgdir_base_address)
+        };
+        let pgdir_storage: PageDirectoryStorage = PageDirectoryStorage::Bss {
+            entries: pgdir_entries,
+        };
+        let mut pgdir: PageDirectory<PageDirectoryStorage> = PageDirectory::new(pgdir_storage);
 
         // Map and store root page tables.
         let mut kpage_tables: LinkedList<
