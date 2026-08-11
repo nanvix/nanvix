@@ -345,16 +345,16 @@ pub struct Vmm {
     /// delivery via the WHP LAPIC emulator. Not used for PIT emulation.
     partition_handle: windows::Win32::System::Hypervisor::WHV_PARTITION_HANDLE,
     /// Low-frequency host timer for pvclock updates. Calls
-    /// `WHvCancelRunVirtualProcessor` at 100Hz to force VM exits so the
-    /// VMM loop can update `system_time`. The LAPIC periodic timer
+    /// `WHvCancelRunVirtualProcessor` at 100Hz while a vCPU run is pending to force VM exits so
+    /// the VMM loop can update `system_time`. The LAPIC periodic timer
     /// handles actual 1kHz scheduling inside the WHP emulator (zero
     /// VM exits for timer delivery).
     timer: Arc<std::sync::Mutex<timer::Timer>>,
     /// Shared shutdown flag. When set to `true` from any thread, the VMM
     /// run loop will break on the next iteration.
     shutdown_flag: Arc<AtomicBool>,
-    /// Indicates that the vCPU is about to enter or is blocked in `WHvRunVirtualProcessor`.
-    run_pending: Arc<AtomicBool>,
+    /// Synchronizes cancellation with entry to and return from `WHvRunVirtualProcessor`.
+    run_state: Arc<RunState>,
     /// Wraps fields that don't require individual `Arc<Mutex<_>>`s.
     inner: Arc<Mutex<InteriorWhpHandle>>,
     /// Pvclock time base in nanoseconds. When restoring from a snapshot, this is set to
@@ -395,31 +395,84 @@ struct InteriorWhpHandle {
     snapshot_allowed: bool,
 }
 
-/// Clears the WHP run-pending flag whenever a vCPU entry attempt finishes or unwinds.
+/// Synchronizes cancellation with `WHvRunVirtualProcessor`.
+struct RunState {
+    /// Whether the vCPU is about to enter or is blocked in `WHvRunVirtualProcessor`.
+    pending: AtomicBool,
+    /// Serializes cancellation calls with transitions out of the pending state.
+    cancel_gate: std::sync::Mutex<()>,
+}
+
+impl RunState {
+    fn new() -> Self {
+        Self {
+            pending: AtomicBool::new(false),
+            cancel_gate: std::sync::Mutex::new(()),
+        }
+    }
+
+    fn lock_cancel_gate(&self) -> std::sync::MutexGuard<'_, ()> {
+        match self.cancel_gate.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn begin_run(&self) {
+        let _guard: std::sync::MutexGuard<'_, ()> = self.lock_cancel_gate();
+        self.pending.store(true, Ordering::SeqCst);
+    }
+
+    fn finish_run(&self) {
+        let _guard: std::sync::MutexGuard<'_, ()> = self.lock_cancel_gate();
+        self.pending.store(false, Ordering::SeqCst);
+    }
+
+    fn is_pending(&self) -> bool {
+        self.pending.load(Ordering::SeqCst)
+    }
+
+    /// Runs `cancel` only while a vCPU entry is pending. Holding `cancel_gate` until the call
+    /// returns ensures that once [`RunPendingGuard`] is dropped, no cancellation can overlap with
+    /// snapshot or teardown operations on the same WHP partition.
+    fn cancel_if_pending<F>(&self, cancel: F) -> bool
+    where
+        F: FnOnce(),
+    {
+        let _guard: std::sync::MutexGuard<'_, ()> = self.lock_cancel_gate();
+        if self.pending.load(Ordering::SeqCst) {
+            cancel();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Clears the WHP run-pending state whenever a vCPU entry attempt finishes or unwinds.
 struct RunPendingGuard<'a> {
-    run_pending: &'a AtomicBool,
+    run_state: &'a RunState,
 }
 
 impl<'a> RunPendingGuard<'a> {
-    fn new(run_pending: &'a AtomicBool) -> Self {
-        run_pending.store(true, Ordering::SeqCst);
-        Self { run_pending }
+    fn new(run_state: &'a RunState) -> Self {
+        run_state.begin_run();
+        Self { run_state }
     }
 }
 
 impl Drop for RunPendingGuard<'_> {
     fn drop(&mut self) {
-        self.run_pending.store(false, Ordering::SeqCst);
+        self.run_state.finish_run();
     }
 }
 
 /// Repeatedly requests cancellation until the pending or active WHP run finishes.
-fn cancel_while_run_pending<F>(run_pending: &AtomicBool, mut cancel: F)
+fn cancel_while_run_pending<F>(run_state: &RunState, mut cancel: F)
 where
     F: FnMut(),
 {
-    while run_pending.load(Ordering::SeqCst) {
-        cancel();
+    while run_state.cancel_if_pending(&mut cancel) {
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
 }
@@ -693,8 +746,9 @@ impl Vmm {
         };
 
         let partition_handle = partition.handle();
+        let run_state: Arc<RunState> = Arc::new(RunState::new());
         let timer: Arc<std::sync::Mutex<timer::Timer>> =
-            Arc::new(std::sync::Mutex::new(timer::Timer::new(partition_handle)));
+            Arc::new(std::sync::Mutex::new(timer::Timer::new(partition_handle, run_state.clone())));
         let vmem: Arc<Mutex<VirtualMemory>> = Arc::new(Mutex::new(vmem));
         let vcpu: Arc<Mutex<VirtualProcessor>> = Arc::new(Mutex::new(vcpu));
 
@@ -712,7 +766,7 @@ impl Vmm {
             partition_handle,
             timer,
             shutdown_flag,
-            run_pending: Arc::new(AtomicBool::new(false)),
+            run_state,
             inner: Arc::new(Mutex::new(InteriorWhpHandle {
                 _partition: partition,
                 emulator,
@@ -877,6 +931,7 @@ impl Vmm {
                 let stop = profiler_stop.clone();
                 let pending = profiler_cancel_pending.clone();
                 let partition = self.partition_handle;
+                let run_state: Arc<RunState> = self.run_state.clone();
                 profiler_thread = Some(std::thread::spawn(move || {
                     unsafe { timer::timeBeginPeriod(1) };
                     // Target ~1 kHz sampling. Actual rate is approximate due to
@@ -887,13 +942,14 @@ impl Vmm {
                         if stop.load(Ordering::Relaxed) {
                             break;
                         }
-                        pending.store(true, Ordering::Release);
-                        unsafe {
-                            let _ =
-                                windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
+                        run_state.cancel_if_pending(|| {
+                            pending.store(true, Ordering::Release);
+                            unsafe {
+                                let _ = windows::Win32::System::Hypervisor::WHvCancelRunVirtualProcessor(
                                     partition, 0, 0,
                                 );
-                        }
+                            }
+                        });
                     }
                     unsafe { timer::timeEndPeriod(1) };
                 }));
@@ -916,7 +972,7 @@ impl Vmm {
                 // boundary, either this check observes it or the shutdown callback observes
                 // `run_pending` and keeps canceling until the WHP call returns.
                 let run_pending_guard: RunPendingGuard<'_> =
-                    RunPendingGuard::new(self.run_pending.as_ref());
+                    RunPendingGuard::new(self.run_state.as_ref());
                 if self.shutdown_flag.load(Ordering::SeqCst) {
                     drop(run_pending_guard);
                     drop(locked_vcpu);
@@ -1471,14 +1527,14 @@ impl Vmm {
     pub fn request_shutdown(&self, _vcpu_tid: u64) {
         self.shutdown_flag.store(true, Ordering::SeqCst);
 
-        if self.run_pending.load(Ordering::SeqCst) {
+        if self.run_state.is_pending() {
             let inner: Arc<Mutex<InteriorWhpHandle>> = self.inner.clone();
             let partition_handle = self.partition_handle;
-            let run_pending: Arc<AtomicBool> = self.run_pending.clone();
+            let run_state: Arc<RunState> = self.run_state.clone();
             let vcpu: Arc<Mutex<VirtualProcessor>> = self.vcpu.clone();
             let _cancel_worker: std::thread::JoinHandle<()> = std::thread::spawn(move || {
                 let mut error_logged: bool = false;
-                cancel_while_run_pending(run_pending.as_ref(), || {
+                cancel_while_run_pending(run_state.as_ref(), || {
                     // SAFETY: `inner` and `vcpu` keep the WHP partition and virtual processor
                     // alive until this worker exits.
                     unsafe {
@@ -1614,8 +1670,8 @@ impl Vmm {
     ///
     async fn handle_shutdown(&mut self, exit_status: u16) {
         // Mark the IKC notifier as shut down so that any pending or future notify() calls from
-        // the memory thread will skip the WHvCancelRunVirtualProcessor API call. This prevents
-        // STATUS_ACCESS_VIOLATION crashes when the vCPU is no longer running.
+        // the memory thread will skip the WHvRequestInterrupt API call. This prevents
+        // STATUS_ACCESS_VIOLATION crashes after the vCPU is no longer running.
         self.ikc_notifier.mark_shutdown();
 
         // Power-off vCPU.
@@ -1715,23 +1771,35 @@ mod tests {
 
     #[test]
     fn run_pending_guard_tracks_vcpu_entry() {
-        let run_pending: AtomicBool = AtomicBool::new(false);
+        let run_state: RunState = RunState::new();
         {
-            let _guard: RunPendingGuard<'_> = RunPendingGuard::new(&run_pending);
-            assert!(run_pending.load(Ordering::SeqCst));
+            let _guard: RunPendingGuard<'_> = RunPendingGuard::new(&run_state);
+            assert!(run_state.is_pending());
         }
-        assert!(!run_pending.load(Ordering::SeqCst));
+        assert!(!run_state.is_pending());
+    }
+
+    #[test]
+    fn cancellation_is_skipped_outside_vcpu_entry() {
+        let run_state: RunState = RunState::new();
+        let mut attempts: usize = 0;
+
+        let cancelled: bool = run_state.cancel_if_pending(|| attempts += 1);
+
+        assert!(!cancelled);
+        assert_eq!(attempts, 0);
     }
 
     #[test]
     fn cancellation_retries_until_run_finishes() {
-        let run_pending: AtomicBool = AtomicBool::new(true);
+        let run_state: RunState = RunState::new();
+        run_state.begin_run();
         let mut attempts: usize = 0;
 
-        cancel_while_run_pending(&run_pending, || {
+        cancel_while_run_pending(&run_state, || {
             attempts += 1;
             if attempts == 2 {
-                run_pending.store(false, Ordering::SeqCst);
+                run_state.pending.store(false, Ordering::SeqCst);
             }
         });
 
