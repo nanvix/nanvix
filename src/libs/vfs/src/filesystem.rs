@@ -35,6 +35,7 @@ use ::alloc::{
     vec::Vec,
 };
 use ::fat32::{
+    Fat,
     Fat32Error,
     FatFile,
 };
@@ -125,8 +126,15 @@ pub(crate) fn stat(cwd: &str, path: &str) -> Result<Stat, Fat32Error> {
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::ReadOnly`] if the mount is read-only.
-/// - [`Fat32Error::AlreadyExists`] if directory already exists.
+/// - [`Fat32Error::AlreadyExists`] if path already exists (file or directory).
 /// - [`Fat32Error::NotFound`] if parent directory doesn't exist.
+/// - [`Fat32Error::NotADirectory`] if a path component is not a directory.
+/// - [`Fat32Error::InvalidPath`] if the last component is not a valid FAT filename
+///   (e.g. contains unsupported characters) and every ancestor is a directory.
+///
+/// # References
+///
+/// - [POSIX mkdir()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/mkdir.html)
 pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
@@ -139,7 +147,24 @@ pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 
     state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
-        mount.fat_mut().mkdir(&relative_path)
+        let fat = mount.fat_mut();
+
+        // If path already exists (file or dir), return AlreadyExists.
+        if fat.stat(&relative_path).is_ok() {
+            return Err(Fat32Error::AlreadyExists);
+        }
+
+        // Attempt mkdir; on InvalidPath, check if any ancestor is a non-directory.
+        match fat.mkdir(&relative_path) {
+            Ok(()) => Ok(()),
+            Err(Fat32Error::InvalidPath) => {
+                if has_non_directory_ancestor(fat, &relative_path) {
+                    return Err(Fat32Error::NotADirectory);
+                }
+                Err(Fat32Error::InvalidPath)
+            },
+            Err(e) => Err(e),
+        }
     })
 }
 
@@ -402,6 +427,29 @@ fn check_writable(mount_idx: usize) -> Result<(), Fat32Error> {
     Ok(())
 }
 
+/// Walks every proper ancestor prefix of `path` (from the immediate parent
+/// up to the mount root) looking for one that exists but is not a
+/// directory. Used to disambiguate fatfs's `InvalidPath` (which conflates
+/// "bad path" with "non-directory component in the traversal") into a
+/// proper `NotADirectory` for POSIX ENOTDIR semantics.
+///
+/// Returns `true` as soon as an existing non-directory ancestor is found.
+/// Returns `false` if every ancestor either doesn't exist or is a
+/// directory (the caller should then fall back to the original error).
+fn has_non_directory_ancestor(fat: &Fat, path: &str) -> bool {
+    let mut end: usize = path.len();
+    while let Some(slash) = path[..end].rfind('/') {
+        let prefix = &path[..slash];
+        if let Ok(st) = fat.stat(prefix) {
+            if !st.is_dir {
+                return true;
+            }
+        }
+        end = slash;
+    }
+    false
+}
+
 /// Opens a file with specific options.
 ///
 /// # Parameters
@@ -449,6 +497,11 @@ pub(crate) fn open_with_options(
     // references that the previous implementation created.
     let (fat_file, mount_path) = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
+
+        // If any ancestor component is a regular file, return ENOTDIR.
+        if has_non_directory_ancestor(mount.fat(), &relative_path) {
+            return Err(Fat32Error::NotADirectory);
+        }
         let mount_path: String = String::from(mount.path());
 
         let fat_file = if create_new {

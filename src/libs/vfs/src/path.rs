@@ -72,6 +72,10 @@ impl ResolvedPath {
 /// using this dirfd will resolve against the stale path. A future protocol
 /// extension could support `*at()` operations relative to a remote directory
 /// FD on the host side to provide stable POSIX-like dirfd semantics.
+///
+/// # References
+///
+/// - [POSIX openat()/`*at()` family — dirfd and `AT_FDCWD` semantics](https://pubs.opengroup.org/onlinepubs/9799919799/functions/openat.html)
 pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<ResolvedPath> {
     use ::sysapi::fcntl::atflags::AT_FDCWD;
 

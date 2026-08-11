@@ -136,11 +136,17 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// Returns [`Fat32Error::InvalidPath`] if the path is empty or if a relative `path` is
-    /// anchored to a `cwd` that is not absolute. `..` at the root clamps to the root, per POSIX.
+    /// Returns [`Fat32Error::NotFound`] if the path is empty. Returns
+    /// [`Fat32Error::InvalidPath`] if a relative `path` is anchored to a `cwd` that is not
+    /// absolute. `..` at the root clamps to the root, per POSIX.
+    ///
+    /// # References
+    ///
+    /// - [POSIX Base Definitions, Chapter 4 — Pathname Resolution](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap04.html)
+    /// - [POSIX open() — `ENOENT` for empty path](https://pubs.opengroup.org/onlinepubs/9799919799/functions/open.html)
     pub fn normalize_path(&self, path: &str, cwd: &str) -> Result<String, Fat32Error> {
         if path.is_empty() {
-            return Err(Fat32Error::InvalidPath);
+            return Err(Fat32Error::NotFound);
         }
 
         let abs_path: String = if path.starts_with('/') {
@@ -176,9 +182,9 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// Returns [`Fat32Error::NotFound`] if no mount matches the path. Returns
-    /// [`Fat32Error::InvalidPath`] if `path` fails to normalize (empty path, or a `cwd`
-    /// that is not absolute; see [`Vfs::normalize_path`]).
+    /// Returns [`Fat32Error::NotFound`] if no mount matches the path, or if `path` is empty
+    /// (propagated from [`Vfs::normalize_path`]). Returns [`Fat32Error::InvalidPath`] if
+    /// `path` fails to normalize (a `cwd` that is not absolute; see [`Vfs::normalize_path`]).
     pub fn resolve(&mut self, path: &str, cwd: &str) -> Result<(usize, String), Fat32Error> {
         let normalized: String = self.normalize_path(path, cwd)?;
 
@@ -359,7 +365,7 @@ mod tests {
     fn normalize_empty_path() {
         let vfs: Vfs = Vfs::new();
         let result = vfs.normalize_path("", "/");
-        assert_eq!(result.unwrap_err(), Fat32Error::InvalidPath, "empty path should fail");
+        assert_eq!(result.unwrap_err(), Fat32Error::NotFound, "empty path should fail");
     }
 
     /// Tests normalizing root path.
