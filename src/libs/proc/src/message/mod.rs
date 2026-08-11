@@ -125,6 +125,8 @@ pub enum ProcessManagementMessageHeader {
     WaitCancel = 21,
     /// Reports whether a blocked wait request was cancelled before completion.
     WaitCancelResponse = 22,
+    /// Notifies the process daemon that the calling thread is exiting.
+    ThreadExit = 23,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -154,6 +156,7 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             20 => Ok(ProcessManagementMessageHeader::TerminalAccess),
             21 => Ok(ProcessManagementMessageHeader::WaitCancel),
             22 => Ok(ProcessManagementMessageHeader::WaitCancelResponse),
+            23 => Ok(ProcessManagementMessageHeader::ThreadExit),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -184,6 +187,7 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::TerminalAccess => 20,
             ProcessManagementMessageHeader::WaitCancel => 21,
             ProcessManagementMessageHeader::WaitCancelResponse => 22,
+            ProcessManagementMessageHeader::ThreadExit => 23,
         }
     }
 }

@@ -463,6 +463,9 @@ pub fn cleanup() -> Result<(), Error> {
 /// This is the number of bytes currently backed by physical pages. It increases when the OOM
 /// handler grows the heap via `mmap` and decreases when `try_reclaim` shrinks it via `munmap`.
 pub fn heap_committed_size() -> usize {
+    let Ok(_signal_mask): Result<SignalMaskGuard, Error> = SignalMaskGuard::acquire() else {
+        return 0;
+    };
     let locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     match locked_heap.as_ref() {
         Some(heap) => heap.oom_handler.heap.size(),
@@ -472,6 +475,9 @@ pub fn heap_committed_size() -> usize {
 
 /// Returns the maximum capacity of the heap in bytes.
 pub fn heap_capacity() -> usize {
+    let Ok(_signal_mask): Result<SignalMaskGuard, Error> = SignalMaskGuard::acquire() else {
+        return 0;
+    };
     let locked_heap: MutexGuard<'_, Option<Talc<NanvixOomHandler>>> = HEAP.lock();
     match locked_heap.as_ref() {
         Some(heap) => heap.oom_handler.heap.capacity(),

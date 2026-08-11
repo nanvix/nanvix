@@ -348,16 +348,30 @@ impl ProcessDaemon {
             match ::sys::kcall::ipc::__kcall_recv() {
                 Ok(message) => {
                     ::syslog::info!("received message from={:?}", { message.source });
+                    let source_pid: ProcessIdentifier = { message.source }.pid;
                     match message.message_type {
-                        MessageType::Exception => unreachable!("should not receive exceptions"),
+                        MessageType::Exception => {
+                            ::syslog::warn!("received unexpected exception message, ignoring");
+                        },
                         MessageType::Ipc => {
                             if let Err(e) = self.handle_ipc_message(message) {
                                 ::syslog::error!("failed to handle IPC message (error={:?})", e);
                             }
                         },
-                        MessageType::Interrupt => unreachable!("should not receive interrupts"),
-                        MessageType::Ikc => unreachable!("should not receive IKC messages"),
+                        MessageType::Interrupt => {
+                            ::syslog::warn!("received unexpected interrupt message, ignoring");
+                        },
+                        MessageType::Ikc => {
+                            ::syslog::warn!("received unexpected IKC message, ignoring");
+                        },
                         MessageType::ProcessTerminationEvent => {
+                            if source_pid != ProcessIdentifier::KERNEL {
+                                ::syslog::warn!(
+                                    "dropping forged process termination event (source={:?})",
+                                    source_pid
+                                );
+                                continue;
+                            }
                             match self.handle_process_termination_event(message) {
                                 Ok(Some(status)) => return status,
                                 Ok(None) => continue,
@@ -374,6 +388,13 @@ impl ProcessDaemon {
                             continue;
                         },
                         MessageType::ProcessCreationEvent => {
+                            if source_pid != ProcessIdentifier::KERNEL {
+                                ::syslog::warn!(
+                                    "dropping forged process creation event (source={:?})",
+                                    source_pid
+                                );
+                                continue;
+                            }
                             if let Err(e) = self.handle_process_creation_event(message) {
                                 ::syslog::error!(
                                     "failed to handle process creation event (error={:?})",
@@ -870,6 +891,13 @@ impl ProcessDaemon {
         } else {
             false
         }
+    }
+
+    /// Removes every blocked wait owned by one exiting thread.
+    fn handle_thread_exit(&mut self, caller: ProcessIdentifier, tid: ThreadIdentifier) {
+        self.blocked.retain(|waiter| {
+            waiter.waiter != caller || waiter.response_context.receiver.tid != tid
+        });
     }
 
     /// Wakes a parent blocked in `waitpid()` that is waiting for `child` (a child of `parent`) and
@@ -1581,6 +1609,9 @@ impl ProcessDaemon {
                         self.handle_wait_cancel(caller, sender.tid, request.request_id());
                     let reply: Message = message::wait_cancel_response(caller, cancelled)?;
                     response_context.send(reply)?;
+                },
+                ProcessManagementMessageHeader::ThreadExit => {
+                    self.handle_thread_exit(caller, sender.tid);
                 },
                 ProcessManagementMessageHeader::Kill => {
                     let message: KillMessage = KillMessage::from_bytes(message.payload);
@@ -2345,6 +2376,15 @@ impl ProcessDaemon {
             match ::sys::kcall::ipc::__kcall_recv() {
                 Ok(message) => {
                     if message.message_type == MessageType::ProcessTerminationEvent {
+                        let source_pid: ProcessIdentifier = { message.source }.pid;
+                        if source_pid != ProcessIdentifier::KERNEL {
+                            ::syslog::warn!(
+                                "dropping forged process termination event during shutdown \
+                                 (source={:?})",
+                                source_pid
+                            );
+                            continue;
+                        }
                         // Deserialize process identifier.
                         let pid: ProcessIdentifier = ProcessIdentifier::from(i32::from_le_bytes(
                             message.payload[0..4].try_into().unwrap(),
@@ -2647,6 +2687,30 @@ mod tests {
         assert!(daemon.handle_wait_cancel(parent, first_tid, first_id));
         assert_eq!(daemon.blocked.len(), 1);
         assert_eq!(daemon.blocked[0].response_context.request_id, second_id);
+    }
+
+    #[test]
+    fn thread_exit_removes_only_exiting_threads_waiters() {
+        let parent: ProcessIdentifier = ProcessIdentifier::from(10);
+        let exiting_tid: ThreadIdentifier = ThreadIdentifier::from(20);
+        let surviving_tid: ThreadIdentifier = ThreadIdentifier::from(21);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(parent, Some(process_identity(1000)))]);
+        for (tid, request_id) in [
+            (exiting_tid, RequestIdentifier::from_raw(100)),
+            (surviving_tid, RequestIdentifier::from_raw(101)),
+        ] {
+            daemon.blocked.push(BlockedWaiter {
+                waiter: parent,
+                selector: WaitSelector::Any,
+                response_context: ResponseContext::new(MessageSender::new(parent, tid), request_id),
+            });
+        }
+
+        daemon.handle_thread_exit(parent, exiting_tid);
+
+        assert_eq!(daemon.blocked.len(), 1);
+        assert_eq!(daemon.blocked[0].response_context.receiver.tid, surviving_tid);
     }
 
     #[test]
