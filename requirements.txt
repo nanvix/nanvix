@@ -5,6 +5,3 @@
 black>=24.0.0
 codespell>=2.2.0
 flake8>=7.0.0
-
-# Runtime dependencies for scripts/plot-performance.py.
-matplotlib>=3.8.0
