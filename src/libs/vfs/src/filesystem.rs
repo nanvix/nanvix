@@ -250,9 +250,17 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Erro
 /// # Errors
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
+/// - [`Fat32Error::ReadOnly`] if the mount is read-only.
 /// - [`Fat32Error::NotFound`] if `old_path` doesn't exist.
-/// - [`Fat32Error::AlreadyExists`] if `new_path` already exists.
-/// - [`Fat32Error::InvalidPath`] if paths are on different mounts.
+/// - [`Fat32Error::NotADirectory`] if source is a directory but destination is a file.
+/// - [`Fat32Error::NotAFile`] if source is a file but destination is a directory.
+/// - [`Fat32Error::NotEmpty`] if destination is a non-empty directory (via `rmdir`).
+/// - [`Fat32Error::InvalidPath`] if paths are on different mounts, or if path resolution
+///   fails (e.g. an empty path, or a `cwd` that is not absolute).
+///
+/// # References
+///
+/// - [POSIX rename()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html)
 pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
     let (old_idx, old_rel) = resolve_path(cwd, old_path)?;
     let (new_idx, new_rel) = resolve_path(cwd, new_path)?;
@@ -271,7 +279,42 @@ pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fa
 
     state::with_vfs(|vfs| {
         let mount = vfs.get_mount(old_idx).ok_or(Fat32Error::NotFound)?;
-        mount.fat().rename(&old_rel, &new_rel)
+        let fat = mount.fat();
+
+        // Ensure source exists before applying identity-rename fast path.
+        let src_stat = fat.stat(&old_rel)?;
+
+        // POSIX: rename(path, path) is a no-op (when the path exists).
+        if old_rel == new_rel {
+            return Ok(());
+        }
+
+        // POSIX rename(2): if destination exists, replace it.
+        // rust-fatfs returns AlreadyExists instead, so we must remove the
+        // target first after validating type compatibility.
+        // NOTE: unlink + rename is not atomic — if rename fails after
+        // unlink, the destination is lost. Fixing this requires upstream
+        // rust-fatfs changes.
+        match fat.stat(&new_rel) {
+            Ok(dst_stat) => {
+                if src_stat.is_dir && !dst_stat.is_dir {
+                    return Err(Fat32Error::NotADirectory);
+                }
+                if !src_stat.is_dir && dst_stat.is_dir {
+                    return Err(Fat32Error::NotAFile);
+                }
+                if dst_stat.is_dir {
+                    // POSIX: replacing a dir requires it to be empty.
+                    fat.rmdir(&new_rel)?;
+                } else {
+                    fat.unlink(&new_rel)?;
+                }
+            },
+            Err(Fat32Error::NotFound) => {},
+            Err(e) => return Err(e),
+        }
+
+        fat.rename(&old_rel, &new_rel)
     })
 }
 
