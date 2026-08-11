@@ -19,6 +19,10 @@ inputs:
   target-dir:
     description: "Directory where history CSVs are stored"
     required: true
+  source-dir:
+    description: "Directory holding the current run's result CSVs"
+    required: false
+    default: "."
 
 runs:
   using: "composite"
@@ -30,6 +34,7 @@ runs:
         MACHINE_TYPES: ${{ inputs.machine-types }}
         ARCHS: ${{ inputs.archs }}
         TARGET_DIR: ${{ inputs.target-dir }}
+        SOURCE_DIR: ${{ inputs.source-dir }}
       run: |
         set -e
         mkdir -p "${TARGET_DIR}"
@@ -39,7 +44,7 @@ runs:
           --benchmarks "${BENCHMARKS}" \
           --machine-types "${MACHINE_TYPES}" \
           --archs "${ARCHS}" \
-          --source-dir "$(pwd)" \
+          --source-dir "${SOURCE_DIR}" \
           --target-dir "${TARGET_DIR}"
 
     - name: "Commit updated benchmark results"
@@ -77,7 +82,9 @@ runs:
         if git diff --cached --quiet; then
           echo "No benchmark result changes to commit."
         else
-          git commit --no-verify -m "data: update benchmark baseline results (${GITHUB_SHA}) [skip ci]"
+          # No [skip ci] marker here: the push must trigger deploy-bench so
+          # that the site serves the fresh history. ci.yml ignores this path.
+          git commit --no-verify -m "data: update benchmark baseline results (${GITHUB_SHA})"
           echo "Pushing benchmark results..."
           max_attempts=3
           attempt=1
