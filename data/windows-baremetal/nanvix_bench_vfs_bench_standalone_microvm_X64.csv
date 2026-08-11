@@ -1572,3 +1572,20 @@ aab22e0f204fbf749a0fca9fe37168c017b6701f,Read-only mount,seq_read,100,47,145,613
 9be2a776d7b92f71eb0821257467d72f17d2e48a,Read-only mount,readdir,100,231,312,384
 9be2a776d7b92f71eb0821257467d72f17d2e48a,Read-only mount,seq_read,100,46,147,5770
 >>>>>>> Stashed changes
+01151ef0a51c9d3cbce9da83f85f91af95060cec,VM setup,ramfs_load,10,16670,16720,16720
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,protocol,100,334,373,398
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,stat,100,206,309,355
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,open+close,100,222,339,398
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,readdir,100,238,343,404
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,create_scratch,100,41,84,1472
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,seq_read,100,48,177,6163
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,create+close+unlink,100,11,62,92
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,mkdir+rmdir,100,12,224,4480
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,create+close+rename,100,10,67,87
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Writable mount,write+flush,100,30,80,1402
+01151ef0a51c9d3cbce9da83f85f91af95060cec,VM setup,ramfs_load,5,16667,16726,16726
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Read-only mount,protocol,100,342,386,501
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Read-only mount,stat,100,220,345,387
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Read-only mount,open+close,100,217,314,957
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Read-only mount,readdir,100,220,327,400
+01151ef0a51c9d3cbce9da83f85f91af95060cec,Read-only mount,seq_read,100,40,240,6186
