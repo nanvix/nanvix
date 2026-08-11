@@ -23,7 +23,10 @@ use ::syscall::{
 };
 use ::syslog::trace_syscall;
 use sysapi::{
-    limits::IOV_MAX,
+    limits::{
+        IOV_MAX,
+        SSIZE_MAX,
+    },
     sys_types::{
         c_size_t,
         c_ssize_t,
@@ -40,7 +43,17 @@ use sysapi::{
 ///
 /// # Description
 ///
-/// Writes data to a file descriptor.
+/// Performs a positioned *gather* write: writes data from a list of `iovcnt` buffers
+/// (an `iovec` array) to the file referred to by `fd`, starting at `offset`, without
+/// changing the file offset. The buffers are written in array order.
+///
+/// # Standard
+///
+/// `pwritev()` is a BSD/Linux extension and is **not** specified by POSIX. Its semantics
+/// combine two POSIX functions: the scatter/gather behaviour of `writev()` and the
+/// positioned write of `pwrite()`.
+/// - `writev()`: <https://pubs.opengroup.org/onlinepubs/9799919799/functions/writev.html>
+/// - `pwrite()`: <https://pubs.opengroup.org/onlinepubs/9799919799/functions/write.html>
 ///
 /// # Parameters
 ///
@@ -51,8 +64,10 @@ use sysapi::{
 ///
 /// # Returns
 ///
-/// Upon successful completion, `pwritev()` returns the number of bytes written. Otherwise, it
-/// returns `-1` and sets `errno` to indicate the error.
+/// Returns a `c_ssize_t`:
+/// - On success: the number of bytes written (a non-negative `c_ssize_t`).
+/// - On failure: `-1`, with `errno` set to indicate the error. In particular, if the
+///   sum of the `iov_len` values overflows `SSIZE_MAX`, `errno` is set to `EINVAL`.
 ///
 /// # Safety
 ///
@@ -121,7 +136,7 @@ pub unsafe extern "C" fn pwritev(
             }
 
             // Copy data only if not running in dry-run mode.
-            total += if !dry_run {
+            let count: c_size_t = if !dry_run {
                 // Construct buffer from raw parts.
                 let buffer: &[u8] = slice::from_raw_parts(iov_base as *const u8, iov_len as usize);
                 // Write data and parse result.
@@ -138,6 +153,15 @@ pub unsafe extern "C" fn pwritev(
                 }
             } else {
                 iov_len as c_size_t
+            };
+
+            // Guard against ssize_t overflow (POSIX: EINVAL).
+            total = match total.checked_add(count) {
+                Some(sum) if sum <= SSIZE_MAX as c_size_t => sum,
+                _ => {
+                    ::syslog::warn!("pwritev(): iovec length overflows SSIZE_MAX");
+                    return Err(Error::new(ErrorCode::InvalidArgument, "iovec length overflow"));
+                },
             };
         }
 
@@ -405,7 +429,13 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> c_ssi
 ///
 /// # Description
 ///
-/// Writes data to a file descriptor.
+/// Performs a *gather* write: writes data from a list of `iovcnt` buffers (an `iovec`
+/// array) to the file referred to by `fd`, advancing the file offset. The buffers are
+/// written in array order, as if by a single `write()` of the concatenated data.
+///
+/// # Standard
+///
+/// `writev()`: <https://pubs.opengroup.org/onlinepubs/9799919799/functions/writev.html>
 ///
 /// # Parameters
 ///
@@ -415,8 +445,10 @@ pub unsafe extern "C" fn readv(fd: i32, iov: *const iovec, iovcnt: i32) -> c_ssi
 ///
 /// # Returns
 ///
-/// Upon successful completion, `writev()` returns the number of bytes written. Otherwise, it
-/// it returns `-1` and sets `errno` to indicate the error.
+/// Returns a `c_ssize_t`:
+/// - On success: the number of bytes written (a non-negative `c_ssize_t`).
+/// - On failure: `-1`, with `errno` set to indicate the error. In particular, if the
+///   sum of the `iov_len` values overflows `SSIZE_MAX`, `errno` is set to `EINVAL`.
 ///
 /// # Safety
 ///
@@ -479,7 +511,7 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
             }
 
             // Copy data only if not running in dry-run mode.
-            total += if !dry_run {
+            let count: c_size_t = if !dry_run {
                 // Construct buffer from raw parts.
                 let buffer: &[u8] = slice::from_raw_parts(iov_base as *const u8, iov_len as usize);
                 // Write data and parse result.
@@ -493,6 +525,15 @@ pub unsafe extern "C" fn writev(fd: c_int, iov: *const iovec, iovcnt: c_int) -> 
                 }
             } else {
                 iov_len as c_size_t
+            };
+
+            // Guard against ssize_t overflow (POSIX: EINVAL).
+            total = match total.checked_add(count) {
+                Some(sum) if sum <= SSIZE_MAX as c_size_t => sum,
+                _ => {
+                    ::syslog::warn!("writev(): iovec length overflows SSIZE_MAX");
+                    return Err(Error::new(ErrorCode::InvalidArgument, "iovec length overflow"));
+                },
             };
         }
 
