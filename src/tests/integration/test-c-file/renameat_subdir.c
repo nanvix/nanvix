@@ -214,6 +214,56 @@ static void test_rename_slash_in_name(void)
     fprintf(stderr, "passed\n");
 }
 
+// Probe 9: <NUL> terminates a pathname at the C-string boundary, so bytes
+// after it never reach the syscall. (POSIX 3.146: a filename excludes
+// <NUL>/<slash>.) Guards against ever passing a length-bearing name.
+static void test_nul_in_name(void)
+{
+    fprintf(stderr, "  nul in name ... ");
+
+    // The embedded <NUL> ends the string, so this creates "nul_a", not "nul_ab".
+    const char name[] = "nul_a\0b";
+    int fd = open(name, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    assert(fd != -1);
+    assert(close(fd) == 0);
+    assert_exists("nul_a");
+    assert_not_exists("nul_ab");
+
+    // rename likewise stops at the <NUL>.
+    const char dst[] = "nul_c\0d";
+    assert(rename("nul_a", dst) == 0);
+    assert_exists("nul_c");
+    assert_not_exists("nul_a");
+    assert(unlink("nul_c") == 0);
+
+    fprintf(stderr, "passed\n");
+}
+
+// Probe 10: FAT32 reserves bytes that POSIX permits in a filename (only
+// <NUL>/<slash> are excluded). The backend must reject them with EINVAL,
+// and must never treat backslash as a path separator.
+static void assert_rejected(const char *name)
+{
+    errno = 0;
+    int fd = open(name, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    assert(fd == -1);
+    assert(errno == EINVAL);
+}
+
+static void test_nonportable_names(void)
+{
+    fprintf(stderr, "  non-portable name bytes ... ");
+    assert_rejected("bad\\name");
+    assert_rejected("bad<name");
+    assert_rejected("bad>name");
+    assert_rejected("bad:name");
+    assert_rejected("bad\"name");
+    assert_rejected("bad|name");
+    assert_rejected("bad?name");
+    assert_rejected("bad*name");
+    fprintf(stderr, "passed\n");
+}
+
 //==================================================================================================
 // Entry Point
 //==================================================================================================
@@ -230,6 +280,8 @@ void test_renameat_subdir(void)
     test_rename_identity();
     test_rename_dot_dotdot();
     test_rename_slash_in_name();
+    test_nul_in_name();
+    test_nonportable_names();
 
     fprintf(stderr, "renameat subdir: all passed\n");
 }
