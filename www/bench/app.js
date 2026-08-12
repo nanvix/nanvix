@@ -201,16 +201,21 @@ function renderVfsTable(el, ops, srcByOp) {
   table.innerHTML =
     "<thead><tr><th>op</th><th>n</th><th>p50</th><th>p95</th><th>p99</th></tr></thead>";
   const tbody = document.createElement("tbody");
+  const cell = (v) => (v == null || Number.isNaN(v) ? "\u2014" : v.toLocaleString());
   for (const op of ops) {
     const s = srcByOp[op];
     const tr = document.createElement("tr");
-    const cell = (v) => (v == null ? "\u2014" : v.toLocaleString());
-    tr.innerHTML =
-      `<th>${op}</th>` +
-      `<td>${s ? s.samples : "\u2014"}</td>` +
+    // op is untrusted (from the ?d= payload); set it via textContent, not
+    // innerHTML, to avoid injection. Numeric cells are safe.
+    const th = document.createElement("th");
+    th.textContent = op;
+    tr.appendChild(th);
+    const numCells =
+      `<td>${s ? cell(s.samples) : "\u2014"}</td>` +
       `<td>${s ? cell(s.p50) : "\u2014"}</td>` +
       `<td>${s ? cell(s.p95) : "\u2014"}</td>` +
       `<td>${s ? cell(s.p99) : "\u2014"}</td>`;
+    th.insertAdjacentHTML("afterend", numCells);
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
