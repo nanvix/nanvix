@@ -58,6 +58,77 @@ async function fetchBaseline(bench, runner, machine, arch) {
 const SHORT_SHA = 7;
 const MAX_BASELINE_COMMITS = 50;
 
+/** Signed percentage delta of val vs base (e.g. "+8.0%"), or "n/a". */
+function formatDelta(val, base) {
+  if (base == null || val == null || base === 0 || Number.isNaN(val) || Number.isNaN(base)) return "n/a";
+  const pct = (val / base) * 100 - 100;
+  const sign = pct >= 0 ? "+" : "\u2212";
+  return `${sign}${Math.abs(pct).toFixed(1)}%`;
+}
+
+/**
+ * Tooltip callbacks for a stacked percentile chart (p50, p95−p50, p99−p95).
+ * Reports each series' *absolute* percentile plus its delta vs the previous
+ * bar (for the PR bar, the previous bar is the dev baseline tip).
+ */
+function percentileTooltip(abs) {
+  const names = ["p50", "p95", "p99"];
+  return {
+    callbacks: {
+      label(ctx) {
+        const i = ctx.dataIndex;
+        const di = ctx.datasetIndex;
+        const a = abs(i);
+        if (!a || a[di] == null) return "";
+        const prev = i > 0 ? abs(i - 1) : null;
+        const p = prev ? prev[di] : null;
+        const d = p != null ? ` (${formatDelta(a[di], p)} vs prev)` : "";
+        return `${names[di]}: ${a[di].toLocaleString()} \u03bcs${d}`;
+      },
+    },
+  };
+}
+
+/** Reconstruct absolute [p50, p95, p99] at bar index i from the stacked
+ * arrays, or null when the bar has no value. */
+function makeAbs(p50Data, p95Delta, p99Delta) {
+  return (i) => {
+    const p50 = p50Data[i];
+    if (p50 == null) return null;
+    return [p50, p50 + p95Delta[i], p50 + p95Delta[i] + p99Delta[i]];
+  };
+}
+
+/** Per-dataset [base, highlight] bar colors for the p50 / p95 / p99 stack. */
+const BAR_COLORS = [
+  ["#00adb5", "#00ffd5"],
+  ["#e2b93d", "#ffe066"],
+  ["#e94560", "#ff6b81"],
+];
+
+/** Highlight bar `idx` as the target: recolor bars and refresh the side
+ * table. Columns are always target | prior | Δ | dev | Δ, where prior is
+ * the preceding bar and dev is the dev tip (`devIdx`). Both are always shown
+ * for consistency (prior is "—" at the first bar; dev reads 0% at the tip). */
+function selectBar(chart, labels, table, abs, devIdx, idx) {
+  if (idx < 0 || idx >= labels.length) return;
+  chart.data.datasets.forEach((ds, d) => {
+    ds.backgroundColor = labels.map((_, i) =>
+      i === idx ? BAR_COLORS[d][1] : BAR_COLORS[d][0]
+    );
+  });
+  chart.update("none");
+
+  const target = abs(idx);
+  const caption = target ? `target: ${labels[idx]}` : "";
+  const priorIdx = idx - 1;
+  const baselines = [
+    { name: "prior", vals: priorIdx >= 0 ? abs(priorIdx) : null },
+    { name: "dev", vals: devIdx >= 0 ? abs(devIdx) : null },
+  ];
+  renderDeltaTable(table, caption, target, baselines);
+}
+
 let chartInstances = [];
 
 function destroyCharts() {
@@ -66,7 +137,9 @@ function destroyCharts() {
   document.getElementById("charts").innerHTML = "";
 }
 
-/** Create a chart container with optional title, append to #charts, return canvas. */
+/** Create a chart container with optional title, append to #charts.
+ * Returns { canvas, table }: `table` is the side panel. The chart occupies
+ * ~2/3 of the row width and the table the remaining ~1/3. */
 function createCanvas(title) {
   const container = document.createElement("div");
   container.className = "chart-container";
@@ -75,10 +148,101 @@ function createCanvas(title) {
     h.textContent = title;
     container.appendChild(h);
   }
+  const body = document.createElement("div");
+  body.className = "chart-body";
+
+  const chartWrap = document.createElement("div");
+  chartWrap.className = "chart-canvas";
   const canvas = document.createElement("canvas");
-  container.appendChild(canvas);
+  chartWrap.appendChild(canvas);
+
+  const table = document.createElement("div");
+  table.className = "chart-table";
+
+  body.appendChild(chartWrap);
+  body.appendChild(table);
+
+  container.appendChild(body);
   document.getElementById("charts").appendChild(container);
-  return canvas;
+  return { canvas, table };
+}
+
+/** Render a comparison table into a side panel, captioned with `caption`.
+ * `target` is [p50,p95,p99] (or null). `baselines` is an ordered list of
+ * { name, vals } rendered target-first as: target | name | Δ | name | Δ ...
+ * A null value renders as "—". */
+function renderDeltaTable(el, caption, target, baselines) {
+  el.innerHTML = "";
+  if (caption) {
+    const cap = document.createElement("div");
+    cap.className = "chart-target";
+    cap.textContent = caption;
+    el.appendChild(cap);
+  }
+  const names = ["p50", "p95", "p99"];
+  const fmt = (v) => (v == null || Number.isNaN(v) ? "\u2014" : v.toLocaleString());
+  const deltaCell = (t, b) => {
+    const d = formatDelta(t, b);
+    const neutral = d === "n/a" || d === "+0.0%" || d === "\u22120.0%";
+    const cls = neutral ? "" : d.startsWith("+") ? "delta-up" : "delta-down";
+    return `<td class="${cls}">${d}</td>`;
+  };
+
+  const table = document.createElement("table");
+  table.className = "bench-table";
+
+  // Header: target then each baseline (value + Δ).
+  let head = "<th></th><th>target</th>";
+  for (const b of baselines) head += `<th>${b.name}</th><th>\u0394</th>`;
+  const thead = document.createElement("thead");
+  const htr = document.createElement("tr");
+  htr.innerHTML = head;
+  thead.appendChild(htr);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  names.forEach((name, i) => {
+    const t = target ? target[i] : null;
+    let row = `<th>${name}</th><td>${fmt(t)}</td>`;
+    for (const b of baselines) {
+      const bv = b.vals ? b.vals[i] : null;
+      row += `<td>${fmt(bv)}</td>` + deltaCell(t, bv);
+    }
+    const tr = document.createElement("tr");
+    tr.innerHTML = row;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  el.appendChild(table);
+}
+
+/** Render a VFS operation table (operation, samples, p50, p95, p99) for the
+ * target series: PR values when present, else the latest baseline commit. */
+function renderVfsTable(el, ops, srcByOp) {
+  const table = document.createElement("table");
+  table.className = "bench-table";
+  table.innerHTML =
+    "<thead><tr><th>op</th><th>n</th><th>p50</th><th>p95</th><th>p99</th></tr></thead>";
+  const tbody = document.createElement("tbody");
+  const cell = (v) => (v == null || Number.isNaN(v) ? "\u2014" : v.toLocaleString());
+  for (const op of ops) {
+    const s = srcByOp[op];
+    const tr = document.createElement("tr");
+    // op is untrusted (from the ?d= payload); set it via textContent, not
+    // innerHTML, to avoid injection. Numeric cells are safe.
+    const th = document.createElement("th");
+    th.textContent = op;
+    tr.appendChild(th);
+    const numCells =
+      `<td>${s ? cell(s.samples) : "\u2014"}</td>` +
+      `<td>${s ? cell(s.p50) : "\u2014"}</td>` +
+      `<td>${s ? cell(s.p95) : "\u2014"}</td>` +
+      `<td>${s ? cell(s.p99) : "\u2014"}</td>`;
+    th.insertAdjacentHTML("afterend", numCells);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  el.appendChild(table);
 }
 
 /**
@@ -89,7 +253,7 @@ function createCanvas(title) {
  */
 function renderStandard(baseline, prRow, prCommit) {
   destroyCharts();
-  const canvas = createCanvas(null);
+  const { canvas, table } = createCanvas(null);
 
   const rows = baseline.rows.slice(-MAX_BASELINE_COMMITS);
   const commits = rows.map((r) => r[0].slice(0, SHORT_SHA));
@@ -106,31 +270,30 @@ function renderStandard(baseline, prRow, prCommit) {
   }
 
   const prIdx = prRow ? labels.length - 1 : -1;
-  const bgColor = (base, highlight) => labels.map((_, i) => i === prIdx ? highlight : base);
+  const abs = makeAbs(p50Data, p95Delta, p99Delta);
+  // Dev tip = last baseline bar (before the PR bar, when present).
+  const devIdx = prRow ? labels.length - 2 : labels.length - 1;
+  // Default target: the PR bar, or the latest commit for history-only.
+  const defaultSel = prIdx >= 0 ? prIdx : labels.length - 1;
 
   const chart = new Chart(canvas, {
     type: "bar",
     data: {
       labels,
       datasets: [
-        { label: "p50", data: p50Data, backgroundColor: bgColor("#00adb5", "#00ffd5"), borderWidth: 0 },
-        { label: "p95 \u2212 p50", data: p95Delta, backgroundColor: bgColor("#e2b93d", "#ffe066"), borderWidth: 0 },
-        { label: "p99 \u2212 p95", data: p99Delta, backgroundColor: bgColor("#e94560", "#ff6b81"), borderWidth: 0 },
+        { label: "p50", data: p50Data, borderWidth: 0 },
+        { label: "p95 \u2212 p50", data: p95Delta, borderWidth: 0 },
+        { label: "p99 \u2212 p95", data: p99Delta, borderWidth: 0 },
       ],
     },
     options: {
       responsive: true,
+      onClick: (_evt, els) => {
+        if (els.length) selectBar(chart, labels, table, abs, devIdx, els[0].index);
+      },
       plugins: {
         legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            afterBody(items) {
-              const idx = items[0].dataIndex;
-              const total = p50Data[idx] + p95Delta[idx] + p99Delta[idx];
-              return `p99 total: ${total.toLocaleString()} \u03bcs`;
-            },
-          },
-        },
+        tooltip: percentileTooltip(abs),
       },
       scales: {
         x: { stacked: true, ticks: { color: "#888", font: { size: 9 }, maxRotation: 60 }, grid: { color: "#0f3460" } },
@@ -138,6 +301,7 @@ function renderStandard(baseline, prRow, prCommit) {
       },
     },
   });
+  selectBar(chart, labels, table, abs, devIdx, defaultSel);
   chartInstances.push(chart);
 }
 
@@ -170,7 +334,7 @@ function renderSized(baseline, prRows, prCommit) {
   }
 
   for (const size of sizes) {
-    const canvas = createCanvas(size);
+    const { canvas, table } = createCanvas(size);
 
     // Baseline history for this size (last N commits)
     const sizeRows = (baseBySize[size] || []).slice(-MAX_BASELINE_COMMITS);
@@ -195,31 +359,28 @@ function renderSized(baseline, prRows, prCommit) {
     }
 
     const prIdx = hasPr ? labels.length - 1 : -1;
-    const bgColor = (base, highlight) => labels.map((_, i) => i === prIdx ? highlight : base);
+    const abs = makeAbs(p50Data, p95Delta, p99Delta);
+    const devIdx = hasPr ? labels.length - 2 : labels.length - 1;
+    const defaultSel = prIdx >= 0 ? prIdx : labels.length - 1;
 
     const chart = new Chart(canvas, {
       type: "bar",
       data: {
         labels,
         datasets: [
-          { label: "p50", data: p50Data, backgroundColor: bgColor("#00adb5", "#00ffd5"), borderWidth: 0 },
-          { label: "p95 \u2212 p50", data: p95Delta, backgroundColor: bgColor("#e2b93d", "#ffe066"), borderWidth: 0 },
-          { label: "p99 \u2212 p95", data: p99Delta, backgroundColor: bgColor("#e94560", "#ff6b81"), borderWidth: 0 },
+          { label: "p50", data: p50Data, borderWidth: 0 },
+          { label: "p95 \u2212 p50", data: p95Delta, borderWidth: 0 },
+          { label: "p99 \u2212 p95", data: p99Delta, borderWidth: 0 },
         ],
       },
       options: {
         responsive: true,
+        onClick: (_evt, els) => {
+          if (els.length) selectBar(chart, labels, table, abs, devIdx, els[0].index);
+        },
         plugins: {
           legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
-          tooltip: {
-            callbacks: {
-              afterBody(items) {
-                const idx = items[0].dataIndex;
-                const total = p50Data[idx] + p95Delta[idx] + p99Delta[idx];
-                return `p99 total: ${total.toLocaleString()} \u03bcs`;
-              },
-            },
-          },
+          tooltip: percentileTooltip(abs),
         },
         scales: {
           x: { stacked: true, ticks: { color: "#888", font: { size: 9 }, maxRotation: 60 }, grid: { color: "#0f3460" } },
@@ -227,6 +388,7 @@ function renderSized(baseline, prRows, prCommit) {
         },
       },
     });
+    selectBar(chart, labels, table, abs, devIdx, defaultSel);
     chartInstances.push(chart);
   }
 }
@@ -312,7 +474,7 @@ function renderVfs(baseline, prRows, prCommit) {
     : Object.keys(baseBySec);
 
   for (const sec of sections) {
-    const canvas = createCanvas(sec);
+    const { canvas, table } = createCanvas(sec);
     const prOps = prBySec[sec] || [];
     const baseOps = baseBySec[sec] || [];
 
@@ -322,13 +484,16 @@ function renderVfs(baseline, prRows, prCommit) {
     // Index baseline by operation
     const baseByOp = {};
     for (const row of baseOps) {
-      baseByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6] };
+      baseByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6], samples: +row[3] };
     }
 
     const prByOp = {};
     for (const row of prOps) {
-      prByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6] };
+      prByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6], samples: +row[3] };
     }
+
+    // Side table: target values (PR when present, else latest baseline).
+    renderVfsTable(table, ops, hasPr ? prByOp : baseByOp);
 
     // Stacked deltas
     const devP50 = ops.map((o) => baseByOp[o]?.p50 ?? null);
@@ -372,6 +537,31 @@ function renderVfs(baseline, prRows, prCommit) {
         responsive: true,
         plugins: {
           legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label(ctx) {
+                const op = ops[ctx.dataIndex];
+                const isPr = ctx.dataset.stack === "pr";
+                const src = isPr ? prByOp[op] : baseByOp[op];
+                if (!src) return "";
+                const di = ctx.datasetIndex % 3;
+                const name = ["p50", "p95", "p99"][di];
+                const a = [src.p50, src.p95, src.p99][di];
+                const who = hasPr ? (isPr ? "PR " : "dev ") : "";
+                let d = "";
+                if (isPr && baseByOp[op]) {
+                  const b = [baseByOp[op].p50, baseByOp[op].p95, baseByOp[op].p99][di];
+                  d = ` (${formatDelta(a, b)} vs dev)`;
+                }
+                return `${who}${name}: ${a.toLocaleString()} \u03bcs${d}`;
+              },
+              afterBody(items) {
+                const op = ops[items[0].dataIndex];
+                const src = prByOp[op] || baseByOp[op];
+                return src ? `samples: ${src.samples}` : "";
+              },
+            },
+          },
         },
         scales: {
           x: { stacked: true, ticks: { color: "#888" }, grid: { color: "#0f3460" } },
