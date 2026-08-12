@@ -58,6 +58,41 @@ async function fetchBaseline(bench, runner, machine, arch) {
 const SHORT_SHA = 7;
 const MAX_BASELINE_COMMITS = 50;
 
+/** Signed percentage delta of val vs base, matching the old table's Δ. */
+function formatDelta(val, base) {
+  if (base == null || val == null || base === 0 || Number.isNaN(val) || Number.isNaN(base)) return "n/a";
+  const pct = (val / base) * 100 - 100;
+  const sign = pct >= 0 ? "+" : "\u2212";
+  return `${sign}${Math.abs(pct).toFixed(1)}%`;
+}
+
+/**
+ * Tooltip callbacks for a stacked percentile chart (p50, p95−p50, p99−p95).
+ * Reports each series' *absolute* percentile plus its delta vs the previous
+ * bar (for the PR bar, the previous bar is the dev baseline tip).
+ */
+function percentileTooltip(p50Data, p95Delta, p99Delta) {
+  const names = ["p50", "p95", "p99"];
+  const abs = (i) => {
+    const p50 = p50Data[i];
+    if (p50 == null) return [null, null, null];
+    return [p50, p50 + p95Delta[i], p50 + p95Delta[i] + p99Delta[i]];
+  };
+  return {
+    callbacks: {
+      label(ctx) {
+        const i = ctx.dataIndex;
+        const di = ctx.datasetIndex;
+        const a = abs(i)[di];
+        if (a == null) return "";
+        const prev = i > 0 ? abs(i - 1)[di] : null;
+        const d = prev != null ? ` (${formatDelta(a, prev)} vs prev)` : "";
+        return `${names[di]}: ${a.toLocaleString()} \u03bcs${d}`;
+      },
+    },
+  };
+}
+
 let chartInstances = [];
 
 function destroyCharts() {
@@ -122,15 +157,7 @@ function renderStandard(baseline, prRow, prCommit) {
       responsive: true,
       plugins: {
         legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            afterBody(items) {
-              const idx = items[0].dataIndex;
-              const total = p50Data[idx] + p95Delta[idx] + p99Delta[idx];
-              return `p99 total: ${total.toLocaleString()} \u03bcs`;
-            },
-          },
-        },
+        tooltip: percentileTooltip(p50Data, p95Delta, p99Delta),
       },
       scales: {
         x: { stacked: true, ticks: { color: "#888", font: { size: 9 }, maxRotation: 60 }, grid: { color: "#0f3460" } },
@@ -211,15 +238,7 @@ function renderSized(baseline, prRows, prCommit) {
         responsive: true,
         plugins: {
           legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
-          tooltip: {
-            callbacks: {
-              afterBody(items) {
-                const idx = items[0].dataIndex;
-                const total = p50Data[idx] + p95Delta[idx] + p99Delta[idx];
-                return `p99 total: ${total.toLocaleString()} \u03bcs`;
-              },
-            },
-          },
+          tooltip: percentileTooltip(p50Data, p95Delta, p99Delta),
         },
         scales: {
           x: { stacked: true, ticks: { color: "#888", font: { size: 9 }, maxRotation: 60 }, grid: { color: "#0f3460" } },
@@ -322,12 +341,12 @@ function renderVfs(baseline, prRows, prCommit) {
     // Index baseline by operation
     const baseByOp = {};
     for (const row of baseOps) {
-      baseByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6] };
+      baseByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6], samples: +row[3] };
     }
 
     const prByOp = {};
     for (const row of prOps) {
-      prByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6] };
+      prByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6], samples: +row[3] };
     }
 
     // Stacked deltas
@@ -372,6 +391,31 @@ function renderVfs(baseline, prRows, prCommit) {
         responsive: true,
         plugins: {
           legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label(ctx) {
+                const op = ops[ctx.dataIndex];
+                const isPr = ctx.dataset.stack === "pr";
+                const src = isPr ? prByOp[op] : baseByOp[op];
+                if (!src) return "";
+                const di = ctx.datasetIndex % 3;
+                const name = ["p50", "p95", "p99"][di];
+                const a = [src.p50, src.p95, src.p99][di];
+                const who = hasPr ? (isPr ? "PR " : "dev ") : "";
+                let d = "";
+                if (isPr && baseByOp[op]) {
+                  const b = [baseByOp[op].p50, baseByOp[op].p95, baseByOp[op].p99][di];
+                  d = ` (${formatDelta(a, b)} vs dev)`;
+                }
+                return `${who}${name}: ${a.toLocaleString()} \u03bcs${d}`;
+              },
+              afterBody(items) {
+                const op = ops[items[0].dataIndex];
+                const src = prByOp[op] || baseByOp[op];
+                return src ? `samples: ${src.samples}` : "";
+              },
+            },
+          },
         },
         scales: {
           x: { stacked: true, ticks: { color: "#888" }, grid: { color: "#0f3460" } },
