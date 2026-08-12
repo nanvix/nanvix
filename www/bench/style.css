@@ -88,6 +88,15 @@ main {
 .chart-canvas { flex: 2 1 0; min-width: 0; }
 .chart-table { flex: 1 1 0; min-width: 0; overflow-x: auto; }
 
+.chart-target {
+  font-size: 0.8rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-target:empty { display: none; }
+
 @media (max-width: 700px) {
   .chart-body { flex-direction: column; }
 }

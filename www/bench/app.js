@@ -71,26 +71,53 @@ function formatDelta(val, base) {
  * Reports each series' *absolute* percentile plus its delta vs the previous
  * bar (for the PR bar, the previous bar is the dev baseline tip).
  */
-function percentileTooltip(p50Data, p95Delta, p99Delta) {
+function percentileTooltip(abs) {
   const names = ["p50", "p95", "p99"];
-  const abs = (i) => {
-    const p50 = p50Data[i];
-    if (p50 == null) return [null, null, null];
-    return [p50, p50 + p95Delta[i], p50 + p95Delta[i] + p99Delta[i]];
-  };
   return {
     callbacks: {
       label(ctx) {
         const i = ctx.dataIndex;
         const di = ctx.datasetIndex;
-        const a = abs(i)[di];
-        if (a == null) return "";
-        const prev = i > 0 ? abs(i - 1)[di] : null;
-        const d = prev != null ? ` (${formatDelta(a, prev)} vs prev)` : "";
-        return `${names[di]}: ${a.toLocaleString()} \u03bcs${d}`;
+        const a = abs(i);
+        if (!a || a[di] == null) return "";
+        const prev = i > 0 ? abs(i - 1) : null;
+        const p = prev ? prev[di] : null;
+        const d = p != null ? ` (${formatDelta(a[di], p)} vs prev)` : "";
+        return `${names[di]}: ${a[di].toLocaleString()} \u03bcs${d}`;
       },
     },
   };
+}
+
+/** Reconstruct absolute [p50, p95, p99] at bar index i from the stacked
+ * arrays, or null when the bar has no value. */
+function makeAbs(p50Data, p95Delta, p99Delta) {
+  return (i) => {
+    const p50 = p50Data[i];
+    if (p50 == null) return null;
+    return [p50, p50 + p95Delta[i], p50 + p95Delta[i] + p99Delta[i]];
+  };
+}
+
+/** Per-dataset [base, highlight] bar colors for the p50 / p95 / p99 stack. */
+const BAR_COLORS = [
+  ["#00adb5", "#00ffd5"],
+  ["#e2b93d", "#ffe066"],
+  ["#e94560", "#ff6b81"],
+];
+
+/** Highlight bar `idx` as the target: recolor bars and refresh the side
+ * table (captioned with the target commit; dev = the preceding bar). */
+function selectBar(chart, labels, table, abs, idx) {
+  if (idx < 0 || idx >= labels.length) return;
+  chart.data.datasets.forEach((ds, d) => {
+    ds.backgroundColor = labels.map((_, i) =>
+      i === idx ? BAR_COLORS[d][1] : BAR_COLORS[d][0]
+    );
+  });
+  chart.update("none");
+  const caption = abs(idx) ? `target: ${labels[idx]}` : "";
+  renderDeltaTable(table, caption, idx > 0 ? abs(idx - 1) : null, abs(idx));
 }
 
 let chartInstances = [];
@@ -102,8 +129,8 @@ function destroyCharts() {
 }
 
 /** Create a chart container with optional title, append to #charts.
- * Returns { canvas, table } where table is the side panel element. The
- * chart occupies ~2/3 of the row width and the table the remaining ~1/3. */
+ * Returns { canvas, table }: `table` is the side panel. The chart occupies
+ * ~2/3 of the row width and the table the remaining ~1/3. */
 function createCanvas(title) {
   const container = document.createElement("div");
   container.className = "chart-container";
@@ -125,14 +152,23 @@ function createCanvas(title) {
 
   body.appendChild(chartWrap);
   body.appendChild(table);
+
   container.appendChild(body);
   document.getElementById("charts").appendChild(container);
   return { canvas, table };
 }
 
-/** Render a dev/target/Δ comparison table into a side panel. `devVals` and
- * `tgtVals` are each [p50, p95, p99]; a null side renders as "—". */
-function renderDeltaTable(el, devVals, tgtVals) {
+/** Render a dev/target/Δ comparison table into a side panel, captioned with
+ * `caption`. `devVals` and `tgtVals` are each [p50, p95, p99]; a null side
+ * renders as "—". */
+function renderDeltaTable(el, caption, devVals, tgtVals) {
+  el.innerHTML = "";
+  if (caption) {
+    const cap = document.createElement("div");
+    cap.className = "chart-target";
+    cap.textContent = caption;
+    el.appendChild(cap);
+  }
   const names = ["p50", "p95", "p99"];
   const table = document.createElement("table");
   table.className = "bench-table";
@@ -206,31 +242,28 @@ function renderStandard(baseline, prRow, prCommit) {
   }
 
   const prIdx = prRow ? labels.length - 1 : -1;
-  const bgColor = (base, highlight) => labels.map((_, i) => i === prIdx ? highlight : base);
-
-  // Side table: dev (baseline tip) vs target (PR, or latest commit).
-  const toVals = (r) => (r ? [+r[1], +r[2], +r[3]] : null);
-  const lastBase = rows.length ? rows[rows.length - 1] : null;
-  const prevBase = rows.length > 1 ? rows[rows.length - 2] : null;
-  const tgtVals = prRow ? toVals(prRow) : toVals(lastBase);
-  const devVals = prRow ? toVals(lastBase) : toVals(prevBase);
-  renderDeltaTable(table, devVals, tgtVals);
+  const abs = makeAbs(p50Data, p95Delta, p99Delta);
+  // Default target: the PR bar, or the latest commit for history-only.
+  const defaultSel = prIdx >= 0 ? prIdx : labels.length - 1;
 
   const chart = new Chart(canvas, {
     type: "bar",
     data: {
       labels,
       datasets: [
-        { label: "p50", data: p50Data, backgroundColor: bgColor("#00adb5", "#00ffd5"), borderWidth: 0 },
-        { label: "p95 \u2212 p50", data: p95Delta, backgroundColor: bgColor("#e2b93d", "#ffe066"), borderWidth: 0 },
-        { label: "p99 \u2212 p95", data: p99Delta, backgroundColor: bgColor("#e94560", "#ff6b81"), borderWidth: 0 },
+        { label: "p50", data: p50Data, borderWidth: 0 },
+        { label: "p95 \u2212 p50", data: p95Delta, borderWidth: 0 },
+        { label: "p99 \u2212 p95", data: p99Delta, borderWidth: 0 },
       ],
     },
     options: {
       responsive: true,
+      onClick: (_evt, els) => {
+        if (els.length) selectBar(chart, labels, table, abs, els[0].index);
+      },
       plugins: {
         legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
-        tooltip: percentileTooltip(p50Data, p95Delta, p99Delta),
+        tooltip: percentileTooltip(abs),
       },
       scales: {
         x: { stacked: true, ticks: { color: "#888", font: { size: 9 }, maxRotation: 60 }, grid: { color: "#0f3460" } },
@@ -238,6 +271,7 @@ function renderStandard(baseline, prRow, prCommit) {
       },
     },
   });
+  selectBar(chart, labels, table, abs, defaultSel);
   chartInstances.push(chart);
 }
 
@@ -277,16 +311,6 @@ function renderSized(baseline, prRows, prCommit) {
     const commits = sizeRows.map((r) => r[0].slice(0, SHORT_SHA));
     const labels = hasPr ? [...commits, prCommit.slice(0, SHORT_SHA)] : commits;
 
-    // Side table: dev (baseline tip) vs target (PR, or latest commit).
-    const pr = prBySize[size];
-    const lastBase = sizeRows.length ? sizeRows[sizeRows.length - 1] : null;
-    const prevBase = sizeRows.length > 1 ? sizeRows[sizeRows.length - 2] : null;
-    const baseVals = (r) => (r ? [+r[2], +r[3], +r[4]] : null);
-    const prVals = pr ? [pr.p50, pr.p95, pr.p99] : null;
-    const tgtVals = hasPr ? prVals : baseVals(lastBase);
-    const devVals = hasPr ? baseVals(lastBase) : baseVals(prevBase);
-    renderDeltaTable(table, devVals, tgtVals);
-
     const p50Data = sizeRows.map((r) => +r[2]);
     const p95Delta = sizeRows.map((r) => +r[3] - +r[2]);
     const p99Delta = sizeRows.map((r) => +r[4] - +r[3]);
@@ -305,23 +329,27 @@ function renderSized(baseline, prRows, prCommit) {
     }
 
     const prIdx = hasPr ? labels.length - 1 : -1;
-    const bgColor = (base, highlight) => labels.map((_, i) => i === prIdx ? highlight : base);
+    const abs = makeAbs(p50Data, p95Delta, p99Delta);
+    const defaultSel = prIdx >= 0 ? prIdx : labels.length - 1;
 
     const chart = new Chart(canvas, {
       type: "bar",
       data: {
         labels,
         datasets: [
-          { label: "p50", data: p50Data, backgroundColor: bgColor("#00adb5", "#00ffd5"), borderWidth: 0 },
-          { label: "p95 \u2212 p50", data: p95Delta, backgroundColor: bgColor("#e2b93d", "#ffe066"), borderWidth: 0 },
-          { label: "p99 \u2212 p95", data: p99Delta, backgroundColor: bgColor("#e94560", "#ff6b81"), borderWidth: 0 },
+          { label: "p50", data: p50Data, borderWidth: 0 },
+          { label: "p95 \u2212 p50", data: p95Delta, borderWidth: 0 },
+          { label: "p99 \u2212 p95", data: p99Delta, borderWidth: 0 },
         ],
       },
       options: {
         responsive: true,
+        onClick: (_evt, els) => {
+          if (els.length) selectBar(chart, labels, table, abs, els[0].index);
+        },
         plugins: {
           legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
-          tooltip: percentileTooltip(p50Data, p95Delta, p99Delta),
+          tooltip: percentileTooltip(abs),
         },
         scales: {
           x: { stacked: true, ticks: { color: "#888", font: { size: 9 }, maxRotation: 60 }, grid: { color: "#0f3460" } },
@@ -329,6 +357,7 @@ function renderSized(baseline, prRows, prCommit) {
         },
       },
     });
+    selectBar(chart, labels, table, abs, defaultSel);
     chartInstances.push(chart);
   }
 }
