@@ -101,7 +101,9 @@ function destroyCharts() {
   document.getElementById("charts").innerHTML = "";
 }
 
-/** Create a chart container with optional title, append to #charts, return canvas. */
+/** Create a chart container with optional title, append to #charts.
+ * Returns { canvas, table } where table is the side panel element. The
+ * chart occupies ~2/3 of the row width and the table the remaining ~1/3. */
 function createCanvas(title) {
   const container = document.createElement("div");
   container.className = "chart-container";
@@ -110,10 +112,73 @@ function createCanvas(title) {
     h.textContent = title;
     container.appendChild(h);
   }
+  const body = document.createElement("div");
+  body.className = "chart-body";
+
+  const chartWrap = document.createElement("div");
+  chartWrap.className = "chart-canvas";
   const canvas = document.createElement("canvas");
-  container.appendChild(canvas);
+  chartWrap.appendChild(canvas);
+
+  const table = document.createElement("div");
+  table.className = "chart-table";
+
+  body.appendChild(chartWrap);
+  body.appendChild(table);
+  container.appendChild(body);
   document.getElementById("charts").appendChild(container);
-  return canvas;
+  return { canvas, table };
+}
+
+/** Render a dev/target/Δ comparison table into a side panel. `devVals` and
+ * `tgtVals` are each [p50, p95, p99]; a null side renders as "—". */
+function renderDeltaTable(el, devVals, tgtVals) {
+  const names = ["p50", "p95", "p99"];
+  const table = document.createElement("table");
+  table.className = "bench-table";
+  table.innerHTML =
+    "<thead><tr><th></th><th>dev</th><th>target</th><th>\u0394</th></tr></thead>";
+  const tbody = document.createElement("tbody");
+  names.forEach((name, i) => {
+    const d = devVals ? devVals[i] : null;
+    const t = tgtVals ? tgtVals[i] : null;
+    const delta = formatDelta(t, d);
+    const neutral = delta === "n/a" || delta === "+0.0%" || delta === "\u22120.0%";
+    const cls = neutral ? "" : delta.startsWith("+") ? "delta-up" : "delta-down";
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<th>${name}</th>` +
+      `<td>${d == null ? "\u2014" : d.toLocaleString()}</td>` +
+      `<td>${t == null ? "\u2014" : t.toLocaleString()}</td>` +
+      `<td class="${cls}">${delta}</td>`;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  el.appendChild(table);
+}
+
+/** Render a VFS operation table (operation, samples, p50, p95, p99) for the
+ * target series: PR values when present, else the latest baseline commit. */
+function renderVfsTable(el, ops, srcByOp) {
+  const table = document.createElement("table");
+  table.className = "bench-table";
+  table.innerHTML =
+    "<thead><tr><th>op</th><th>n</th><th>p50</th><th>p95</th><th>p99</th></tr></thead>";
+  const tbody = document.createElement("tbody");
+  for (const op of ops) {
+    const s = srcByOp[op];
+    const tr = document.createElement("tr");
+    const cell = (v) => (v == null ? "\u2014" : v.toLocaleString());
+    tr.innerHTML =
+      `<th>${op}</th>` +
+      `<td>${s ? s.samples : "\u2014"}</td>` +
+      `<td>${s ? cell(s.p50) : "\u2014"}</td>` +
+      `<td>${s ? cell(s.p95) : "\u2014"}</td>` +
+      `<td>${s ? cell(s.p99) : "\u2014"}</td>`;
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  el.appendChild(table);
 }
 
 /**
@@ -124,7 +189,7 @@ function createCanvas(title) {
  */
 function renderStandard(baseline, prRow, prCommit) {
   destroyCharts();
-  const canvas = createCanvas(null);
+  const { canvas, table } = createCanvas(null);
 
   const rows = baseline.rows.slice(-MAX_BASELINE_COMMITS);
   const commits = rows.map((r) => r[0].slice(0, SHORT_SHA));
@@ -142,6 +207,14 @@ function renderStandard(baseline, prRow, prCommit) {
 
   const prIdx = prRow ? labels.length - 1 : -1;
   const bgColor = (base, highlight) => labels.map((_, i) => i === prIdx ? highlight : base);
+
+  // Side table: dev (baseline tip) vs target (PR, or latest commit).
+  const toVals = (r) => (r ? [+r[1], +r[2], +r[3]] : null);
+  const lastBase = rows.length ? rows[rows.length - 1] : null;
+  const prevBase = rows.length > 1 ? rows[rows.length - 2] : null;
+  const tgtVals = prRow ? toVals(prRow) : toVals(lastBase);
+  const devVals = prRow ? toVals(lastBase) : toVals(prevBase);
+  renderDeltaTable(table, devVals, tgtVals);
 
   const chart = new Chart(canvas, {
     type: "bar",
@@ -197,12 +270,22 @@ function renderSized(baseline, prRows, prCommit) {
   }
 
   for (const size of sizes) {
-    const canvas = createCanvas(size);
+    const { canvas, table } = createCanvas(size);
 
     // Baseline history for this size (last N commits)
     const sizeRows = (baseBySize[size] || []).slice(-MAX_BASELINE_COMMITS);
     const commits = sizeRows.map((r) => r[0].slice(0, SHORT_SHA));
     const labels = hasPr ? [...commits, prCommit.slice(0, SHORT_SHA)] : commits;
+
+    // Side table: dev (baseline tip) vs target (PR, or latest commit).
+    const pr = prBySize[size];
+    const lastBase = sizeRows.length ? sizeRows[sizeRows.length - 1] : null;
+    const prevBase = sizeRows.length > 1 ? sizeRows[sizeRows.length - 2] : null;
+    const baseVals = (r) => (r ? [+r[2], +r[3], +r[4]] : null);
+    const prVals = pr ? [pr.p50, pr.p95, pr.p99] : null;
+    const tgtVals = hasPr ? prVals : baseVals(lastBase);
+    const devVals = hasPr ? baseVals(lastBase) : baseVals(prevBase);
+    renderDeltaTable(table, devVals, tgtVals);
 
     const p50Data = sizeRows.map((r) => +r[2]);
     const p95Delta = sizeRows.map((r) => +r[3] - +r[2]);
@@ -331,7 +414,7 @@ function renderVfs(baseline, prRows, prCommit) {
     : Object.keys(baseBySec);
 
   for (const sec of sections) {
-    const canvas = createCanvas(sec);
+    const { canvas, table } = createCanvas(sec);
     const prOps = prBySec[sec] || [];
     const baseOps = baseBySec[sec] || [];
 
@@ -348,6 +431,9 @@ function renderVfs(baseline, prRows, prCommit) {
     for (const row of prOps) {
       prByOp[row[2]] = { p50: +row[4], p95: +row[5], p99: +row[6], samples: +row[3] };
     }
+
+    // Side table: target values (PR when present, else latest baseline).
+    renderVfsTable(table, ops, hasPr ? prByOp : baseByOp);
 
     // Stacked deltas
     const devP50 = ops.map((o) => baseByOp[o]?.p50 ?? null);

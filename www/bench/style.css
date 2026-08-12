@@ -59,7 +59,7 @@ main {
 
 #charts {
   width: 100%;
-  max-width: 1000px;
+  max-width: 1200px;
   display: flex;
   flex-direction: column;
   gap: 2rem;
@@ -78,6 +78,39 @@ main {
   color: var(--muted);
   margin-bottom: 0.75rem;
 }
+
+.chart-body {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.chart-canvas { flex: 2 1 0; min-width: 0; }
+.chart-table { flex: 1 1 0; min-width: 0; overflow-x: auto; }
+
+@media (max-width: 700px) {
+  .chart-body { flex-direction: column; }
+}
+
+.bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-table th,
+.bench-table td {
+  padding: 0.25rem 0.5rem;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+
+.bench-table thead th { color: var(--muted); font-weight: 500; }
+.bench-table tbody th { text-align: left; color: var(--muted); font-weight: 500; }
+
+.delta-up { color: #ff6b81; }
+.delta-down { color: #00d5a0; }
 
 canvas { width: 100% !important; }
 
