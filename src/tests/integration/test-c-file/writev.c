@@ -8,6 +8,7 @@
 //==================================================================================================
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
@@ -76,6 +77,21 @@ void test_writev(void)
     assert(close(fd) == 0);
 
     // Remove the test file.
+    assert(unlink(filename) == 0);
+
+    // Overflow: sum of iov_len exceeds SSIZE_MAX -> EINVAL.
+    fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    assert(fd != -1);
+    char scratch[1];
+    struct iovec big[2];
+    big[0].iov_base = scratch;
+    big[0].iov_len = SSIZE_MAX;
+    big[1].iov_base = scratch;
+    big[1].iov_len = 1;
+    errno = 0;
+    assert(writev(fd, big, 2) == -1);
+    assert(errno == EINVAL);
+    assert(close(fd) == 0);
     assert(unlink(filename) == 0);
 
     fprintf(stderr, "passed\n");
