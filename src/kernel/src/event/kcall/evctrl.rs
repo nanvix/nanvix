@@ -7,8 +7,8 @@
 
 use crate::{
     event::manager::{
+        EventCtrlOutcome,
         EventManager,
-        EventOwnership,
     },
     kcall::KcallResult,
     pm::ProcessManager,
@@ -26,12 +26,29 @@ use ::sys::{
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Forwards an event-control request to the event manager.
+///
+/// # Parameters
+///
+/// - `pm`: Reference to the process manager.
+/// - `pid`: Identifier of the calling process.
+/// - `ev`: Event whose ownership is being changed.
+/// - `req`: Whether ownership is being acquired or released.
+///
+/// # Returns
+///
+/// Upon successful completion, the resulting ownership outcome is returned. Otherwise, an error is
+/// returned instead.
+///
 fn do_evctrl(
     pm: &mut ProcessManager,
     pid: ProcessIdentifier,
     ev: Event,
     req: EventCtrlRequest,
-) -> Result<Option<EventOwnership>, Error> {
+) -> Result<EventCtrlOutcome, Error> {
     EventManager::evctrl(pm, pid, ev, req)
 }
 
@@ -67,11 +84,12 @@ pub fn evctrl(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
     };
 
     match do_evctrl(pm, pid, ev, req) {
-        Ok(Some(ownership)) => match pm.add_event(ownership) {
+        Ok(EventCtrlOutcome::Acquired(ownership)) => match pm.add_event(ownership) {
             Ok(_) => KcallResult::ok(),
             Err(e) => KcallResult::Error(e.code.into()),
         },
-        Ok(None) => match pm.remove_event(&ev) {
+        Ok(EventCtrlOutcome::Unchanged) => KcallResult::ok(),
+        Ok(EventCtrlOutcome::Released) => match pm.remove_event(&ev) {
             Ok(_) => KcallResult::ok(),
             Err(e) => KcallResult::Error(e.code.into()),
         },

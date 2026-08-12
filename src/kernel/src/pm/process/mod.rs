@@ -2,12 +2,73 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Imports
+//==================================================================================================
+
+use ::sys::event::ProcessTerminationInfo;
+
+//==================================================================================================
 // Modules
 //==================================================================================================
 
 mod capability;
 mod manager;
 pub(crate) mod state;
+
+//==================================================================================================
+// Lifecycle Capacity Credits
+//==================================================================================================
+
+/// Reservation for a process-creation record and its future process-termination record.
+#[derive(Debug)]
+#[must_use]
+pub(super) struct LifecycleCreationReservation {
+    _private: (),
+}
+
+impl LifecycleCreationReservation {
+    fn new() -> Self {
+        Self { _private: () }
+    }
+}
+
+/// Capacity credit reserved for the future termination of a live process.
+#[derive(Debug)]
+#[must_use]
+pub(super) struct LifecycleTerminationCredit {
+    _private: (),
+}
+
+impl LifecycleTerminationCredit {
+    fn new() -> Self {
+        Self { _private: () }
+    }
+}
+
+/// Harvested process termination awaiting either lifecycle commit or explicit release.
+#[must_use]
+pub(crate) struct HarvestedProcess {
+    info: ProcessTerminationInfo,
+    termination_credit: LifecycleTerminationCredit,
+}
+
+impl HarvestedProcess {
+    fn new(info: ProcessTerminationInfo, termination_credit: LifecycleTerminationCredit) -> Self {
+        Self {
+            info,
+            termination_credit,
+        }
+    }
+
+    /// Returns the harvested process-termination information.
+    pub(crate) fn info(&self) -> &ProcessTerminationInfo {
+        &self.info
+    }
+
+    fn into_parts(self) -> (ProcessTerminationInfo, LifecycleTerminationCredit) {
+        (self.info, self.termination_credit)
+    }
+}
 
 //==================================================================================================
 // Exports

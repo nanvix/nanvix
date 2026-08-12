@@ -74,7 +74,12 @@ fn make_test_vmem() -> Option<Vmem> {
 ///
 fn make_process_state() -> Option<Box<ProcessState>> {
     let vmem: Vmem = make_test_vmem()?;
-    Some(Box::new(ProcessState::new(ProcessIdentifier::from(1), ProcessIdentifier::from(0), vmem)))
+    Some(Box::new(ProcessState::new(
+        ProcessIdentifier::from(1),
+        ProcessIdentifier::from(0),
+        None,
+        vmem,
+    )))
 }
 
 ///

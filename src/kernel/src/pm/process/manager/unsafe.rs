@@ -1068,6 +1068,12 @@ impl ProcessManager {
     ///
     /// Attempts to receive a message.
     ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the target thread.
+    /// - `lifecycle_eligible`: Whether the caller owns the lifecycle scheduling-event class and may
+    ///   receive lifecycle records.
+    ///
     /// # Returns
     ///
     /// Upon successful completion, the message is returned. Otherwise, an error code is returned
@@ -1081,16 +1087,73 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn try_recv(tid: ThreadIdentifier) -> Result<Option<Message>, Error> {
+    pub unsafe fn try_recv(
+        tid: ThreadIdentifier,
+        lifecycle_eligible: bool,
+    ) -> Result<Option<Message>, Error> {
         let pm: &mut ProcessManager = unsafe { Self::get_mut() };
+        let pid: ProcessIdentifier = pm.get_running().state().pid();
+        let mailbox_sequence = pm.get_running().state().peek_message_sequence(tid);
+        if pm
+            .delivery
+            .lifecycle_precedes(mailbox_sequence, lifecycle_eligible)
+        {
+            return Ok(pm.delivery.pop_lifecycle(pid));
+        }
+
         let running: &mut RunningProcess = pm.get_running_mut();
         match running.state_mut().receive_message(tid) {
-            Some(message) => {
+            Some((_sequence, message)) => {
                 pm.note_message_received()?;
                 Ok(Some(message))
             },
             None => Ok(None),
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the event-service cursor of the running process.
+    ///
+    /// # Returns
+    ///
+    /// The event-service cursor of the running process.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn delivery_cursor() -> usize {
+        Self::get().get_running().state().delivery_cursor()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the event-service cursor of the running process.
+    ///
+    /// # Parameters
+    ///
+    /// - `cursor`: New event-service cursor for the running process.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn set_delivery_cursor(cursor: usize) {
+        Self::get_mut()
+            .get_running_mut()
+            .state_mut()
+            .set_delivery_cursor(cursor);
     }
 
     ///

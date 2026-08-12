@@ -20,7 +20,10 @@ mod sg;
 //  Exports
 //==================================================================================================
 
-pub use mbx::Mailbox;
+pub use mbx::{
+    DeliverySequence,
+    Mailbox,
+};
 pub use pull::pull;
 pub use push::push;
 pub use recv::recv;

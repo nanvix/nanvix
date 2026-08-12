@@ -11,7 +11,10 @@ use crate::{
         PageAligned,
         VirtualAddress,
     },
-    ipc::Mailbox,
+    ipc::{
+        DeliverySequence,
+        Mailbox,
+    },
     mm::{
         phys::{
             PhysMemoryManager,
@@ -25,6 +28,11 @@ use crate::{
 use ::arch::mem::paging::PageTableEntry;
 use ::sys::{
     error::ErrorCode,
+    event::{
+        Event,
+        InterruptEvent,
+        SchedulingEvent,
+    },
     ipc::{
         Message,
         MessageReceiver,
@@ -62,7 +70,7 @@ fn test_mailbox_is_empty_tracks_buffered_messages() -> bool {
         Option::<ErrorCode>::None,
         [0u8; Message::PAYLOAD_SIZE],
     );
-    mailbox.send(message);
+    mailbox.send(DeliverySequence::new(0), message);
     if mailbox.is_empty() {
         error!("mailbox reported as empty after sending a message");
         return false;
@@ -81,14 +89,17 @@ fn test_mailbox_purge_counts_removed_messages() -> bool {
     let thread_receiver: MessageReceiver = MessageReceiver::new(ProcessIdentifier::KERNEL, tid);
     let process_receiver: MessageReceiver =
         MessageReceiver::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
-    for receiver in [thread_receiver, process_receiver] {
-        mailbox.send(Message::new(
-            MessageSender::KERNEL,
-            receiver,
-            MessageType::Ipc,
-            Option::<ErrorCode>::None,
-            [0u8; Message::PAYLOAD_SIZE],
-        ));
+    for (sequence, receiver) in [thread_receiver, process_receiver].into_iter().enumerate() {
+        mailbox.send(
+            DeliverySequence::new(sequence as u64),
+            Message::new(
+                MessageSender::KERNEL,
+                receiver,
+                MessageType::Ipc,
+                Option::<ErrorCode>::None,
+                [0u8; Message::PAYLOAD_SIZE],
+            ),
+        );
     }
 
     if mailbox.purge_thread(tid) != 1 {
@@ -103,6 +114,80 @@ fn test_mailbox_purge_counts_removed_messages() -> bool {
         error!("mailbox remained non-empty after purging every message");
         return false;
     }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that an older process-directed message is delivered before a newer exact-thread
+/// message when both are eligible for the receiving thread.
+///
+fn test_mailbox_selects_oldest_eligible_message() -> bool {
+    let mut mailbox: Mailbox = Mailbox::default();
+    let tid: ThreadIdentifier = ThreadIdentifier::from(42);
+    let process_receiver: MessageReceiver =
+        MessageReceiver::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
+    let thread_receiver: MessageReceiver = MessageReceiver::new(ProcessIdentifier::KERNEL, tid);
+
+    mailbox.send(
+        DeliverySequence::new(0),
+        Message::new(
+            MessageSender::KERNEL,
+            process_receiver,
+            MessageType::Ipc,
+            Option::<ErrorCode>::None,
+            [0u8; Message::PAYLOAD_SIZE],
+        ),
+    );
+    mailbox.send(
+        DeliverySequence::new(1),
+        Message::new(
+            MessageSender::KERNEL,
+            thread_receiver,
+            MessageType::Ipc,
+            Option::<ErrorCode>::None,
+            [0u8; Message::PAYLOAD_SIZE],
+        ),
+    );
+
+    let first_sequence: Option<DeliverySequence> =
+        mailbox.receive(tid).map(|(sequence, _)| sequence);
+    if first_sequence != Some(DeliverySequence::new(0)) {
+        error!("newer exact-thread message overtook older process-directed message");
+        return false;
+    }
+    let second_sequence: Option<DeliverySequence> =
+        mailbox.receive(tid).map(|(sequence, _)| sequence);
+    if second_sequence != Some(DeliverySequence::new(1)) {
+        error!("newer exact-thread message was not delivered second");
+        return false;
+    }
+
+    true
+}
+
+/// Verifies that scheduling ownership guards are removed class-wide, while other event classes
+/// retain exact-event matching.
+fn test_event_guard_matching_follows_ownership_scope() -> bool {
+    use crate::pm::process::state::event_guard_matches;
+
+    let creation: Event = Event::Scheduling(SchedulingEvent::ProcessCreation);
+    let termination: Event = Event::Scheduling(SchedulingEvent::ProcessTermination);
+    if !event_guard_matches(&creation, &termination) {
+        error!("scheduling events did not match their class-wide ownership guard");
+        return false;
+    }
+
+    let first_interrupt: Event = Event::Interrupt(InterruptEvent::VALUES[0]);
+    let second_interrupt: Event = Event::Interrupt(InterruptEvent::VALUES[1]);
+    if !event_guard_matches(&first_interrupt, &first_interrupt)
+        || event_guard_matches(&first_interrupt, &second_interrupt)
+    {
+        error!("interrupt ownership guards did not use exact-event matching");
+        return false;
+    }
+
     true
 }
 
@@ -902,6 +987,8 @@ pub fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_mailbox_is_empty_tracks_buffered_messages);
     passed &= run_test!(test_mailbox_purge_counts_removed_messages);
+    passed &= run_test!(test_mailbox_selects_oldest_eligible_message);
+    passed &= run_test!(test_event_guard_matching_follows_ownership_scope);
     passed &= run_test!(test_kernel_process_has_no_special_resources);
     passed &= run_test!(test_cow_resolution_creates_private_frame);
     passed &= run_test!(test_cow_resolution_fast_path_when_sole_owner);

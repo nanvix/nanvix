@@ -6,39 +6,60 @@
 //==================================================================================================
 
 use super::{
+    EventManager,
     EventManagerInner,
+    EventMasks,
     ExceptionEventInformation,
-    SchedulingNotification,
+    WaitingThreadGuard,
+    MANAGER,
 };
 use crate::{
     hal::arch::ExceptionInformation,
-    pm::sync::condvar::Condvar,
+    ipc::{
+        DeliverySequence,
+        Mailbox,
+    },
+    kcall::{
+        drain_lifecycle_wakeup,
+        KcallResult,
+    },
+    pm::{
+        sync::condvar::Condvar,
+        ProcessManager,
+    },
 };
 use ::alloc::collections::{
     LinkedList,
     VecDeque,
 };
+use ::core::cell::RefCell;
 use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
     event::{
         Event,
+        EventCtrlRequest,
         EventDescriptor,
         EventInformation,
         ExceptionEvent,
         InterruptEvent,
         ProcessCreationInfo,
         ProcessRole,
-        ProcessTerminationInfo,
         SchedulingEvent,
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
     },
     pm::{
+        Capability,
         ProcessIdentifier,
         ThreadIdentifier,
     },
-    ExitStatus,
 };
 
 //==================================================================================================
@@ -83,7 +104,6 @@ fn make_inner() -> EventManagerInner {
         exception_ownership: (0..usize::BITS).map(|_| None).collect(),
         pending_exceptions: (0..usize::BITS).map(|_| LinkedList::default()).collect(),
         scheduling_owner: None,
-        pending_scheduling: LinkedList::default(),
     }
 }
 
@@ -140,46 +160,227 @@ fn resume_exception(inner: &mut EventManagerInner, bit: usize) {
     inner.exception_ownership[bit] = None;
 }
 
-///
-/// # Description
-///
-/// Enqueues a pending process-creation scheduling event, stamping it with the next event sequence
-/// number.
-///
-fn push_creation(inner: &mut EventManagerInner, pid: ProcessIdentifier) {
-    inner.nevents += 1;
-    let event: Event = Event::Scheduling(SchedulingEvent::ProcessCreation);
-    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents as usize, event);
-    let info: ProcessCreationInfo =
-        ProcessCreationInfo::new(pid, ProcessIdentifier::KERNEL, ProcessRole::User);
-    inner.pending_scheduling.push_back((
-        inner.nevents,
-        descriptor,
-        SchedulingNotification::Creation(info),
-    ));
+/// Returns a synthetic IPC message addressed to the test process.
+fn ipc_message() -> Message {
+    Message {
+        source: MessageSender::KERNEL,
+        destination: MessageReceiver::new(test_pid(), ThreadIdentifier::NONE),
+        message_type: MessageType::Ipc,
+        ..Message::default()
+    }
 }
 
-///
-/// # Description
-///
-/// Enqueues a pending process-termination scheduling event, stamping it with the next event
-/// sequence number.
-///
-fn push_termination(inner: &mut EventManagerInner, pid: ProcessIdentifier) {
-    inner.nevents += 1;
-    let event: Event = Event::Scheduling(SchedulingEvent::ProcessTermination);
-    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents as usize, event);
-    let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
-        pid,
-        ExitStatus::ok(),
+/// Returns a synthetic lifecycle message addressed to the test process.
+fn lifecycle_message() -> Message {
+    Message {
+        source: MessageSender::KERNEL,
+        destination: MessageReceiver::new(test_pid(), ThreadIdentifier::NONE),
+        message_type: MessageType::ProcessCreationEvent,
+        ..Message::default()
+    }
+}
+
+/// Queues a synthetic lifecycle record through the global process manager.
+fn queue_global_lifecycle(pid: ProcessIdentifier) -> bool {
+    let info: ProcessCreationInfo =
+        ProcessCreationInfo::new(pid, ProcessIdentifier::KERNEL, ProcessRole::User);
+    // SAFETY: this late integration test runs after process-manager initialization with interrupts
+    // disabled and does not retain a process-manager reference across another global access.
+    match unsafe { ProcessManager::get_mut() }.queue_test_process_creation(info) {
+        Ok(()) => true,
+        Err(error) => {
+            error!("failed to queue test lifecycle record (error={error:?})");
+            false
+        },
+    }
+}
+
+/// Posts a process-directed IPC message through the global process manager.
+fn post_global_ipc() -> bool {
+    let message: Message = Message {
+        source: MessageSender::KERNEL,
+        destination: MessageReceiver::KERNEL,
+        message_type: MessageType::Ipc,
+        ..Message::default()
+    };
+    // SAFETY: this late integration test runs after process-manager initialization with interrupts
+    // disabled and does not retain a process-manager reference across another global access.
+    match unsafe { ProcessManager::get_mut() }.post_message(MessageReceiver::KERNEL, message) {
+        Ok(()) => true,
+        Err(error) => {
+            error!("failed to post test IPC message (error={error:?})");
+            false
+        },
+    }
+}
+
+/// Attempts production event selection against the global event and process managers.
+fn receive_global_message() -> Result<Option<Message>, Error> {
+    // SAFETY: the caller holds no reference to the process manager.
+    unsafe {
+        EventManager::get()?
+            .try_borrow_mut()?
+            .try_wait(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL)
+    }
+}
+
+/// Runs the ordered-delivery integration scenario while cleanup remains owned by the caller.
+fn run_delivery_integration(capability_set: &mut bool, registered: &mut bool) -> bool {
+    // SAFETY: this late integration test runs after process-manager initialization with interrupts
+    // disabled and does not retain a process-manager reference across another global access.
+    if let Err(error) = unsafe { ProcessManager::get_mut() }.capctl(
         ProcessIdentifier::KERNEL,
-        ProcessRole::User,
-    );
-    inner.pending_scheduling.push_back((
-        inner.nevents,
-        descriptor,
-        SchedulingNotification::Termination(info),
-    ));
+        Capability::ProcessManagement,
+        true,
+    ) {
+        error!("failed to grant process-management capability (error={error:?})");
+        return false;
+    }
+    *capability_set = true;
+
+    let waiter: WaitingThreadGuard =
+        match WaitingThreadGuard::register(ProcessIdentifier::KERNEL, ThreadIdentifier::KERNEL) {
+            Ok(waiter) => waiter,
+            Err(error) => {
+                error!("failed to register test lifecycle waiter (error={error:?})");
+                return false;
+            },
+        };
+    let wait: Condvar = match EventManager::get().and_then(|manager| {
+        manager
+            .try_borrow_mut()
+            .map(|manager| manager.get_wait().clone())
+    }) {
+        Ok(wait) => wait,
+        Err(error) => {
+            error!("failed to access test lifecycle condition variable (error={error:?})");
+            return false;
+        },
+    };
+    wait.stage_test_waiter(ThreadIdentifier::KERNEL);
+
+    // Queue lifecycle before registration and force the first wakeup attempt to fail. The kernel
+    // loop must re-arm it, and a later no-owner drain must leave the record buffered.
+    if !queue_global_lifecycle(ProcessIdentifier::from(1000)) {
+        return false;
+    }
+    if drain_lifecycle_wakeup(|| {
+        Err(Error::new(ErrorCode::TryAgain, "injected lifecycle wakeup failure"))
+    }) {
+        error!("failed lifecycle wakeup was reported as delivered");
+        return false;
+    }
+    // SAFETY: no process-manager reference is held while notifying the event manager.
+    if !drain_lifecycle_wakeup(|| unsafe { EventManager::notify_process_lifecycle() }) {
+        error!("failed lifecycle wakeup was not re-armed");
+        return false;
+    }
+    if !wait.has_test_waiter(ThreadIdentifier::KERNEL) {
+        error!("no-owner wakeup unexpectedly consumed the registered waiter");
+        return false;
+    }
+    match receive_global_message() {
+        Ok(None) => {},
+        Ok(Some(message)) => {
+            error!("lifecycle record was delivered before registration (message={message:?})");
+            return false;
+        },
+        Err(error) => {
+            error!("pre-registration receive failed (error={error:?})");
+            return false;
+        },
+    }
+
+    // Newer IPC must remain behind the buffered lifecycle record once the owner registers.
+    if !post_global_ipc() {
+        return false;
+    }
+    let scheduling: Event = Event::Scheduling(SchedulingEvent::ProcessCreation);
+    if !matches!(
+        crate::event::evctrl(
+            ProcessIdentifier::KERNEL,
+            u32::from(scheduling),
+            u32::from(EventCtrlRequest::Register),
+        ),
+        KcallResult::Success(_)
+    ) {
+        error!("failed to register lifecycle ownership through event control");
+        return false;
+    }
+    *registered = true;
+    // SAFETY: no process-manager reference is held while notifying the event manager.
+    if !drain_lifecycle_wakeup(|| unsafe { EventManager::notify_process_lifecycle() }) {
+        error!("registration did not request a lifecycle-owner wakeup");
+        return false;
+    }
+    if wait.has_test_waiter(ThreadIdentifier::KERNEL) {
+        error!("registered lifecycle owner was not notified through its waiting list");
+        return false;
+    }
+    drop(waiter);
+
+    // Start at the message-like class and verify that production selection persists its successor
+    // through the running process's cursor accessors.
+    unsafe {
+        ProcessManager::set_delivery_cursor(2);
+    }
+
+    let first: Option<Message> = match receive_global_message() {
+        Ok(message) => message,
+        Err(error) => {
+            error!("post-registration lifecycle receive failed (error={error:?})");
+            return false;
+        },
+    };
+    if unsafe { ProcessManager::delivery_cursor() } != 0 {
+        error!("production selection did not persist the process delivery cursor");
+        return false;
+    }
+    let second: Option<Message> = match receive_global_message() {
+        Ok(message) => message,
+        Err(error) => {
+            error!("post-registration IPC receive failed (error={error:?})");
+            return false;
+        },
+    };
+    if first.map(|message| message.message_type) != Some(MessageType::ProcessCreationEvent)
+        || second.map(|message| message.message_type) != Some(MessageType::Ipc)
+    {
+        error!("older pre-registration lifecycle did not precede newer IPC");
+        return false;
+    }
+
+    // Exercise the reverse production order while lifecycle ownership remains registered.
+    if !post_global_ipc() || !queue_global_lifecycle(ProcessIdentifier::from(1001)) {
+        return false;
+    }
+    // SAFETY: no process-manager reference is held while notifying the event manager.
+    if !drain_lifecycle_wakeup(|| unsafe { EventManager::notify_process_lifecycle() }) {
+        error!("queued lifecycle record did not request owner wakeup");
+        return false;
+    }
+    let first: Option<Message> = match receive_global_message() {
+        Ok(message) => message,
+        Err(error) => {
+            error!("older IPC receive failed (error={error:?})");
+            return false;
+        },
+    };
+    let second: Option<Message> = match receive_global_message() {
+        Ok(message) => message,
+        Err(error) => {
+            error!("newer lifecycle receive failed (error={error:?})");
+            return false;
+        },
+    };
+    if first.map(|message| message.message_type) != Some(MessageType::Ipc)
+        || second.map(|message| message.message_type) != Some(MessageType::ProcessCreationEvent)
+    {
+        error!("older IPC did not precede newer lifecycle");
+        return false;
+    }
+
+    true
 }
 
 ///
@@ -189,9 +390,18 @@ fn push_termination(inner: &mut EventManagerInner, pid: ProcessIdentifier) {
 /// returning the delivered message (or [`None`] when nothing was delivered).
 ///
 fn deliver_message(inner: &mut EventManagerInner) -> Option<Message> {
-    // SAFETY: `inner` is a function-local event manager that is not shared with any other context,
-    // and the caller holds no reference to the process manager.
-    match unsafe { inner.try_wait(test_tid(), test_pid(), usize::MAX, usize::MAX, usize::MAX) } {
+    let mut cursor: usize = 0;
+    match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: usize::MAX,
+            exceptions: usize::MAX,
+            scheduling: usize::MAX,
+        },
+        &mut cursor,
+        |_, _| Ok(None),
+    ) {
         Ok(Some(message)) => Some(message),
         Ok(None) => None,
         Err(e) => {
@@ -288,91 +498,42 @@ fn test_each_call_delivers_a_single_interrupt() -> bool {
 ///
 /// # Description
 ///
-/// Verifies that scheduling events are delivered in FIFO order by event sequence number: a process's
-/// creation event, enqueued before its termination event, is delivered first. This per-process
-/// creation-before-termination invariant is the cross-event ordering guarantee preserved while
-/// making delivery starvation-free.
+/// Verifies that the selection seam arbitrates events and a real local mailbox together.
 ///
-fn test_scheduling_events_delivered_fifo_creation_before_termination() -> bool {
+fn test_selection_seam_combines_events_and_mailbox() -> bool {
     let mut inner: EventManagerInner = make_inner();
-
-    // A process is always created before it terminates, so the creation event is enqueued first and
-    // must be delivered first.
-    push_creation(&mut inner, test_pid());
-    push_termination(&mut inner, test_pid());
-
-    let first: Option<MessageType> = deliver_once(&mut inner);
-    if first != Some(MessageType::ProcessCreationEvent) {
-        error!("expected the creation event to be delivered first, got {:?}", first);
-        return false;
-    }
-
-    let second: Option<MessageType> = deliver_once(&mut inner);
-    if second != Some(MessageType::ProcessTerminationEvent) {
-        error!("expected the termination event to be delivered second, got {:?}", second);
-        return false;
-    }
-
-    if !inner.pending_scheduling.is_empty() {
-        error!("scheduling-event queue was not drained");
-        return false;
-    }
-
-    true
-}
-
-///
-/// # Description
-///
-/// Verifies starvation-free cross-class delivery: with a drainable event pending in more than one
-/// class (an interrupt plus two scheduling events), repeated calls serve every class and deliver
-/// every event within a bounded number of calls. No class is permanently skipped in favor of
-/// another, and the scheduling events retain their creation-before-termination order.
-///
-fn test_cross_class_drainable_events_all_delivered() -> bool {
-    let mut inner: EventManagerInner = make_inner();
-
-    // One drainable event in the interrupt class and two in the scheduling class. Exceptions are
-    // excluded here because they are re-queued until resumed (covered by
-    // `test_all_three_event_classes_make_progress`).
+    let mut mailbox: Mailbox = Mailbox::default();
+    let mut cursor: usize = 2;
     push_interrupt(&mut inner, 1);
-    push_creation(&mut inner, test_pid());
-    push_termination(&mut inner, test_pid());
+    mailbox.send(DeliverySequence::new(0), ipc_message());
 
-    // Three queued events, one delivered per call: three calls drain them all.
-    let mut delivered: [Option<MessageType>; 3] = [None; 3];
-    for slot in delivered.iter_mut() {
-        *slot = deliver_once(&mut inner);
-    }
-
-    // Every class with a pending event is served; no class is skipped.
-    if !delivered.contains(&Some(MessageType::Interrupt)) {
-        error!("interrupt event was never delivered: {:?}", delivered);
-        return false;
-    }
-
-    let creation_index: Option<usize> = delivered
-        .iter()
-        .position(|m| *m == Some(MessageType::ProcessCreationEvent));
-    let termination_index: Option<usize> = delivered
-        .iter()
-        .position(|m| *m == Some(MessageType::ProcessTerminationEvent));
-    match (creation_index, termination_index) {
-        (Some(creation), Some(termination)) => {
-            if creation >= termination {
-                error!("creation must be delivered before termination, got {:?}", delivered);
-                return false;
-            }
+    let selected: Option<Message> = match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: usize::MAX,
+            exceptions: usize::MAX,
+            scheduling: usize::MAX,
         },
-        _ => {
-            error!("both scheduling events must be delivered, got {:?}", delivered);
+        &mut cursor,
+        |tid, _| Ok(mailbox.receive(tid).map(|(_, message)| message)),
+    ) {
+        Ok(message) => message,
+        Err(e) => {
+            error!("combined event/mailbox selection failed: {:?}", e);
             return false;
         },
+    };
+    if selected.map(|message| message.message_type) != Some(MessageType::Ipc) {
+        error!("message-like class did not select the mailbox message");
+        return false;
     }
-
-    // All queues are now drained.
-    if !inner.pending_interrupts[1].is_empty() || !inner.pending_scheduling.is_empty() {
-        error!("event queues were not drained: {:?}", delivered);
+    if inner.pending_interrupts[1].is_empty() {
+        error!("mailbox selection unexpectedly consumed the pending interrupt");
+        return false;
+    }
+    if cursor != 0 {
+        error!("message-like selection advanced cursor to {}, expected 0", cursor);
         return false;
     }
 
@@ -382,46 +543,103 @@ fn test_cross_class_drainable_events_all_delivered() -> bool {
 ///
 /// # Description
 ///
-/// Verifies that all three event classes make progress when each has a pending event, including the
-/// re-queuing exception class. Once the exception is observed it is resumed (removed) so that it
-/// does not crowd out the remaining classes, demonstrating that every class is eventually served.
+/// Verifies that a receive attempt refreshes scheduling ownership acquired while the receiver was
+/// blocked. The first attempt models the receiver before registration; the second models its retry
+/// after the registration wakeup.
 ///
-fn test_all_three_event_classes_make_progress() -> bool {
+fn test_receive_refreshes_scheduling_ownership() -> bool {
+    let mut inner: EventManagerInner = make_inner();
+    let mut cursor: usize = 2;
+    let mut lifecycle_eligible: bool = true;
+
+    let first: Option<Message> =
+        match inner.try_wait_with(test_tid(), test_pid(), &mut cursor, |_, eligible| {
+            lifecycle_eligible = eligible;
+            Ok(None)
+        }) {
+            Ok(message) => message,
+            Err(e) => {
+                error!("pre-registration selection failed: {:?}", e);
+                return false;
+            },
+        };
+    if first.is_some() || lifecycle_eligible {
+        error!("lifecycle delivery was eligible before scheduling registration");
+        return false;
+    }
+
+    inner.scheduling_owner = Some(test_pid());
+    let second: Option<Message> =
+        match inner.try_wait_with(test_tid(), test_pid(), &mut cursor, |_, eligible| {
+            lifecycle_eligible = eligible;
+            if eligible {
+                Ok(Some(lifecycle_message()))
+            } else {
+                Ok(None)
+            }
+        }) {
+            Ok(message) => message,
+            Err(e) => {
+                error!("post-registration selection failed: {:?}", e);
+                return false;
+            },
+        };
+    if second.map(|message| message.message_type) != Some(MessageType::ProcessCreationEvent)
+        || !lifecycle_eligible
+    {
+        error!("scheduling registration was not observed on the next receive attempt");
+        return false;
+    }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that continuously eligible interrupt, exception, and message-like classes are each
+/// selected within three successful deliveries.
+///
+fn test_all_service_classes_receive_bounded_service() -> bool {
     const INTERRUPT_BIT: usize = 1;
     const EXCEPTION_BIT: usize = 2;
 
     let mut inner: EventManagerInner = make_inner();
-    push_interrupt(&mut inner, INTERRUPT_BIT);
+    let mut cursor: usize = 0;
     push_exception(&mut inner, EXCEPTION_BIT, test_pid(), test_tid());
-    push_creation(&mut inner, test_pid());
 
-    // Three classes, one pending event each. Deliver three times; once the (re-queued) exception is
-    // observed, resume it so it does not crowd out the remaining classes.
-    let mut interrupt_seen: bool = false;
-    let mut exception_seen: bool = false;
-    let mut creation_seen: bool = false;
-    for _ in 0..3 {
-        match deliver_once(&mut inner) {
-            Some(MessageType::Interrupt) => interrupt_seen = true,
-            Some(MessageType::Exception) => {
-                exception_seen = true;
-                resume_exception(&mut inner, EXCEPTION_BIT);
+    let mut delivered: [Option<MessageType>; 3] = [None; 3];
+    for slot in delivered.iter_mut() {
+        push_interrupt(&mut inner, INTERRUPT_BIT);
+        *slot = match inner.select_with(
+            test_tid(),
+            test_pid(),
+            EventMasks {
+                interrupts: usize::MAX,
+                exceptions: usize::MAX,
+                scheduling: usize::MAX,
             },
-            Some(MessageType::ProcessCreationEvent) => creation_seen = true,
-            other => {
-                error!("unexpected delivery while draining all classes: {:?}", other);
+            &mut cursor,
+            |_, _| Ok(Some(ipc_message())),
+        ) {
+            Ok(message) => message.map(|message| message.message_type),
+            Err(e) => {
+                error!("service-class selection failed: {:?}", e);
                 return false;
             },
-        }
+        };
     }
 
-    if !(interrupt_seen && exception_seen && creation_seen) {
-        error!(
-            "not every class made progress (interrupt={}, exception={}, creation={})",
-            interrupt_seen, exception_seen, creation_seen
-        );
+    let expected: [Option<MessageType>; 3] = [
+        Some(MessageType::Interrupt),
+        Some(MessageType::Exception),
+        Some(MessageType::Ipc),
+    ];
+    if delivered != expected {
+        error!("service classes were not selected fairly: {:?}", delivered);
         return false;
     }
+    resume_exception(&mut inner, EXCEPTION_BIT);
 
     true
 }
@@ -429,32 +647,120 @@ fn test_all_three_event_classes_make_progress() -> bool {
 ///
 /// # Description
 ///
-/// Verifies that a long-standing scheduling event is not starved by continuous interrupt load: an
-/// interrupt is enqueued before every delivery, yet the scheduling event that was pending from the
-/// start is still delivered within a bounded number of calls.
+/// Verifies that masked event classes do not block an eligible mailbox message.
 ///
-fn test_standing_scheduling_event_not_starved_under_interrupt_load() -> bool {
+fn test_masked_event_classes_do_not_block_mailbox() -> bool {
+    const INTERRUPT_BIT: usize = 1;
+    const EXCEPTION_BIT: usize = 2;
+
     let mut inner: EventManagerInner = make_inner();
+    let mut mailbox: Mailbox = Mailbox::default();
+    let mut cursor: usize = 0;
+    push_interrupt(&mut inner, INTERRUPT_BIT);
+    push_exception(&mut inner, EXCEPTION_BIT, test_pid(), test_tid());
+    mailbox.send(DeliverySequence::new(0), ipc_message());
 
-    // A long-standing scheduling event that must eventually be delivered.
-    push_creation(&mut inner, test_pid());
+    let selected: Option<MessageType> = match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: 0,
+            exceptions: 0,
+            scheduling: 0,
+        },
+        &mut cursor,
+        |tid, _| Ok(mailbox.receive(tid).map(|(_, message)| message)),
+    ) {
+        Ok(message) => message.map(|message| message.message_type),
+        Err(e) => {
+            error!("masked-class selection failed: {:?}", e);
+            return false;
+        },
+    };
+    if selected != Some(MessageType::Ipc) {
+        error!("masked event classes blocked mailbox delivery: {:?}", selected);
+        return false;
+    }
+    if inner.pending_interrupts[INTERRUPT_BIT].is_empty()
+        || inner.pending_exceptions[EXCEPTION_BIT].is_empty()
+    {
+        error!("masked event selection consumed an ineligible event");
+        return false;
+    }
+    resume_exception(&mut inner, EXCEPTION_BIT);
 
-    // Two full rotations across the event classes is a generous, implementation-agnostic budget
-    // within which the standing event must be served.
-    let max_deliveries: usize = 2 * EventManagerInner::NUMBER_EVENTS;
+    true
+}
 
-    let mut creation_seen: bool = false;
-    for _ in 0..max_deliveries {
-        // Offer continuous interrupt load alongside the standing scheduling event.
-        push_interrupt(&mut inner, 1);
-        if deliver_once(&mut inner) == Some(MessageType::ProcessCreationEvent) {
-            creation_seen = true;
-            break;
-        }
+///
+/// # Description
+///
+/// Verifies that global event generation does not perturb a receiver's service cursor.
+///
+fn test_global_event_count_does_not_perturb_receiver_cursor() -> bool {
+    let mut inner: EventManagerInner = make_inner();
+    let mut receiver_cursor: usize = 0;
+    let mut other_receiver_cursor: usize = 2;
+    push_interrupt(&mut inner, 1);
+
+    // A receive by another process advances only that process's cursor and leaves the interrupt
+    // pending for this receiver.
+    let other_selected: Option<MessageType> = match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: usize::MAX,
+            exceptions: usize::MAX,
+            scheduling: usize::MAX,
+        },
+        &mut other_receiver_cursor,
+        |_, _| Ok(Some(ipc_message())),
+    ) {
+        Ok(message) => message.map(|message| message.message_type),
+        Err(e) => {
+            error!("other-receiver selection failed: {:?}", e);
+            return false;
+        },
+    };
+    if other_selected != Some(MessageType::Ipc)
+        || other_receiver_cursor != 0
+        || receiver_cursor != 0
+    {
+        error!(
+            "receive cursors were not independent: selected={:?}, receiver={}, other={}",
+            other_selected, receiver_cursor, other_receiver_cursor
+        );
+        return false;
     }
 
-    if !creation_seen {
-        error!("standing scheduling event was starved under interrupt load");
+    // Model unrelated event traffic changing the global event counter after this receiver last ran.
+    inner.nevents = inner.nevents.wrapping_add(97);
+    let selected: Option<MessageType> = match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: usize::MAX,
+            exceptions: usize::MAX,
+            scheduling: usize::MAX,
+        },
+        &mut receiver_cursor,
+        |_, _| Ok(Some(ipc_message())),
+    ) {
+        Ok(message) => message.map(|message| message.message_type),
+        Err(e) => {
+            error!("cursor-isolation selection failed: {:?}", e);
+            return false;
+        },
+    };
+    if selected != Some(MessageType::Interrupt) || receiver_cursor != 1 {
+        error!(
+            "receiver cursor was perturbed by global traffic: selected={:?}, cursor={}",
+            selected, receiver_cursor
+        );
+        return false;
+    }
+    if other_receiver_cursor != 0 {
+        error!("receiver selection changed another process's cursor");
         return false;
     }
 
@@ -579,7 +885,7 @@ fn test_oldest_interrupt_not_starved_by_low_bit_load() -> bool {
     push_interrupt(&mut inner, VICTIM_HIGH_BIT);
 
     // A generous, implementation-agnostic budget within which the victim must be served.
-    let max_deliveries: usize = 4 * EventManagerInner::NUMBER_EVENTS;
+    let max_deliveries: usize = 4 * EventManagerInner::NUMBER_EVENT_CLASSES;
 
     let mut victim_seen: bool = false;
     for _ in 0..max_deliveries {
@@ -645,7 +951,7 @@ fn test_oldest_exception_not_starved_by_low_bit_load() -> bool {
     let mut inner: EventManagerInner = make_inner();
     push_exception(&mut inner, VICTIM_HIGH_BIT, test_pid(), test_tid());
 
-    let max_deliveries: usize = 4 * EventManagerInner::NUMBER_EVENTS;
+    let max_deliveries: usize = 4 * EventManagerInner::NUMBER_EVENT_CLASSES;
 
     for _ in 0..max_deliveries {
         push_exception(&mut inner, LOAD_LOW_BIT, test_pid(), test_tid());
@@ -737,10 +1043,11 @@ fn test_delivery_orders_by_sequence_across_id_wrap() -> bool {
 pub fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_each_call_delivers_a_single_interrupt);
-    passed &= run_test!(test_scheduling_events_delivered_fifo_creation_before_termination);
-    passed &= run_test!(test_cross_class_drainable_events_all_delivered);
-    passed &= run_test!(test_all_three_event_classes_make_progress);
-    passed &= run_test!(test_standing_scheduling_event_not_starved_under_interrupt_load);
+    passed &= run_test!(test_selection_seam_combines_events_and_mailbox);
+    passed &= run_test!(test_receive_refreshes_scheduling_ownership);
+    passed &= run_test!(test_all_service_classes_receive_bounded_service);
+    passed &= run_test!(test_masked_event_classes_do_not_block_mailbox);
+    passed &= run_test!(test_global_event_count_does_not_perturb_receiver_cursor);
     passed &= run_test!(test_smallest_pending_front_selects_oldest_sequence);
     passed &= run_test!(test_interrupt_delivery_is_fifo_by_sequence);
     passed &= run_test!(test_oldest_interrupt_not_starved_by_low_bit_load);
@@ -748,4 +1055,60 @@ pub fn test() -> bool {
     passed &= run_test!(test_oldest_exception_not_starved_by_low_bit_load);
     passed &= run_test!(test_delivery_orders_by_sequence_across_id_wrap);
     passed
+}
+
+/// Exercises production-path ordered delivery after process-manager initialization.
+fn test_ordered_delivery_production_path() -> bool {
+    // Install a global event manager without registering hardware handlers. This test runs before
+    // user processes are spawned, and the manager is removed after all ownership guards are dropped.
+    unsafe {
+        MANAGER = Some(EventManager(RefCell::new(make_inner())));
+    }
+
+    let mut capability_set: bool = false;
+    let mut registered: bool = false;
+    let passed: bool = run_delivery_integration(&mut capability_set, &mut registered);
+    let mut cleanup_passed: bool = true;
+
+    if registered {
+        let scheduling: Event = Event::Scheduling(SchedulingEvent::ProcessCreation);
+        if !matches!(
+            crate::event::evctrl(
+                ProcessIdentifier::KERNEL,
+                u32::from(scheduling),
+                u32::from(EventCtrlRequest::Unregister),
+            ),
+            KcallResult::Success(_)
+        ) {
+            error!("failed to unregister test lifecycle ownership");
+            cleanup_passed = false;
+        } else {
+            registered = false;
+        }
+    }
+    if capability_set {
+        // SAFETY: process-manager access is synchronized during single-threaded kernel startup.
+        if let Err(error) = unsafe { ProcessManager::get_mut() }.capctl(
+            ProcessIdentifier::KERNEL,
+            Capability::ProcessManagement,
+            false,
+        ) {
+            error!("failed to revoke test process-management capability (error={error:?})");
+            cleanup_passed = false;
+        }
+    }
+
+    // Remove the test manager only after every ownership guard has been released.
+    if !registered {
+        unsafe {
+            MANAGER = None;
+        }
+    }
+
+    passed && cleanup_passed
+}
+
+/// Runs production-path ordered-delivery tests after process-manager initialization.
+pub fn test_delivery_integration() -> bool {
+    run_test!(test_ordered_delivery_production_path)
 }

@@ -45,3 +45,9 @@ pub fn init() -> Result<(), Error> {
 pub fn test() -> bool {
     manager::test::test()
 }
+
+/// Runs ordered-delivery integration tests after process-manager initialization.
+#[cfg(feature = "test")]
+pub fn test_delivery_integration() -> bool {
+    manager::test::test_delivery_integration()
+}

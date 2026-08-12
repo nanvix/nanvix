@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use super::delivery_sequence::DeliverySequence;
 use ::alloc::collections::LinkedList;
 use ::sys::{
     ipc::Message,
@@ -23,7 +24,7 @@ use ::sys::{
 #[derive(Default)]
 pub struct Mailbox {
     /// Buffered messages.
-    buffer: LinkedList<Message>,
+    buffer: LinkedList<(DeliverySequence, Message)>,
 }
 
 //==================================================================================================
@@ -34,14 +35,42 @@ impl Mailbox {
     ///
     /// # Description
     ///
+    /// Finds the oldest message eligible for the given thread, that is, a message addressed
+    /// either to the thread itself or to its process.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Target thread identifier.
+    ///
+    /// # Returns
+    ///
+    /// If an eligible message was found, its index and sequence number are returned.
+    /// Otherwise, nothing is returned instead.
+    ///
+    fn oldest_eligible(&self, tid: ThreadIdentifier) -> Option<(usize, DeliverySequence)> {
+        self.buffer
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, message))| {
+                let destination_tid: ThreadIdentifier = message.destination.tid;
+                destination_tid == tid || destination_tid.is_none()
+            })
+            .min_by_key(|(_, (sequence, _))| *sequence)
+            .map(|(index, (sequence, _))| (index, *sequence))
+    }
+
+    ///
+    /// # Description
+    ///
     /// Posts a message into the mailbox.
     ///
     /// # Parameters
     ///
+    /// - `sequence`: Sequence number assigned to the message.
     /// - `message`: Message to be sent.
     ///
-    pub fn send(&mut self, message: Message) {
-        self.buffer.push_back(message);
+    pub fn send(&mut self, sequence: DeliverySequence, message: Message) {
+        self.buffer.push_back((sequence, message));
     }
 
     ///
@@ -71,30 +100,27 @@ impl Mailbox {
     /// If a message that was addressed to the given thread or its process was found,
     /// it is returned. Otherwise, no message is returned instead.
     ///
-    pub fn receive(&mut self, tid: ThreadIdentifier) -> Option<Message> {
-        // Search for a message that is addressed to the thread.
-        let message_index = self
-            .buffer
-            .iter()
-            .position(|msg| { msg.destination }.tid == tid);
+    pub fn receive(&mut self, tid: ThreadIdentifier) -> Option<(DeliverySequence, Message)> {
+        self.oldest_eligible(tid)
+            .map(|(index, _)| self.buffer.remove(index))
+    }
 
-        // If a message was found, remove it from the buffer and return it.
-        if let Some(index) = message_index {
-            return Some(self.buffer.remove(index));
-        }
-
-        // Locate the first message that is addressed to the process.
-        let message_index = self
-            .buffer
-            .iter()
-            .position(|msg| { msg.destination }.tid.is_none());
-
-        // If a message was found, remove it from the buffer and return it.
-        if let Some(index) = message_index {
-            return Some(self.buffer.remove(index));
-        }
-
-        None
+    ///
+    /// # Description
+    ///
+    /// Peeks the sequence number of the oldest message eligible for the given thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Target thread identifier.
+    ///
+    /// # Returns
+    ///
+    /// If an eligible message was found, its sequence number is returned. Otherwise,
+    /// nothing is returned instead.
+    ///
+    pub fn peek_sequence(&self, tid: ThreadIdentifier) -> Option<DeliverySequence> {
+        self.oldest_eligible(tid).map(|(_, sequence)| sequence)
     }
 
     ///
@@ -111,13 +137,13 @@ impl Mailbox {
     /// The number of messages removed from the mailbox.
     ///
     pub fn purge_thread(&mut self, tid: ThreadIdentifier) -> usize {
-        let mut retained: LinkedList<Message> = LinkedList::new();
+        let mut retained: LinkedList<(DeliverySequence, Message)> = LinkedList::new();
         let mut removed: usize = 0;
-        while let Some(message) = self.buffer.pop_front() {
+        while let Some((sequence, message)) = self.buffer.pop_front() {
             if { message.destination }.tid == tid {
                 removed += 1;
             } else {
-                retained.push_back(message);
+                retained.push_back((sequence, message));
             }
         }
         self.buffer = retained;
