@@ -162,6 +162,58 @@ static void test_rename_identity(void)
     fprintf(stderr, "passed\n");
 }
 
+// Probe 7: renaming dot / dot-dot must fail with EINVAL (POSIX).
+static void test_rename_dot_dotdot(void)
+{
+    fprintf(stderr, "  rename dot / dot-dot ... ");
+
+    assert(mkdir("dd", S_IRWXU) == 0);
+    create_file("dd/f");
+
+    // old = "." / ".."
+    assert(rename("dd/.", "dd/x") == -1);
+    assert(errno == EINVAL);
+    assert(rename("dd/..", "dd/x") == -1);
+    assert(errno == EINVAL);
+
+    // new = "." / ".."
+    assert(rename("dd/f", "dd/.") == -1);
+    assert(errno == EINVAL);
+    assert(rename("dd/f", "dd/..") == -1);
+    assert(errno == EINVAL);
+
+    // Source survived; no stray target created.
+    assert_exists("dd/f");
+    assert_not_exists("dd/x");
+
+    assert(unlink("dd/f") == 0);
+    assert(rmdir("dd") == 0);
+
+    fprintf(stderr, "passed\n");
+}
+
+// Probe 8: a slash is always a separator, never part of a name.
+// Names with an embedded slash resolve through a missing directory and
+// fail at construction (open) and at rename (ENOENT).
+static void test_rename_slash_in_name(void)
+{
+    fprintf(stderr, "  slash in name ... ");
+
+    // Cannot create a name with an embedded slash: parent dir is missing.
+    int fd = open("nope/file", O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    assert(fd == -1);
+    assert(errno == ENOENT);
+
+    // Rename to a target under a missing dir must fail too.
+    create_file("sl_src");
+    assert(rename("sl_src", "nope/dst") == -1);
+    assert(errno == ENOENT);
+    assert_exists("sl_src");
+    assert(unlink("sl_src") == 0);
+
+    fprintf(stderr, "passed\n");
+}
+
 //==================================================================================================
 // Entry Point
 //==================================================================================================
@@ -176,6 +228,8 @@ void test_renameat_subdir(void)
     test_rename_across_subdirs();
     test_rename_replace_existing();
     test_rename_identity();
+    test_rename_dot_dotdot();
+    test_rename_slash_in_name();
 
     fprintf(stderr, "renameat subdir: all passed\n");
 }

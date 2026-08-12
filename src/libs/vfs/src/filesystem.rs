@@ -255,6 +255,7 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Erro
 /// - [`Fat32Error::NotADirectory`] if source is a directory but destination is a file.
 /// - [`Fat32Error::NotAFile`] if source is a file but destination is a directory.
 /// - [`Fat32Error::NotEmpty`] if destination is a non-empty directory (via `rmdir`).
+/// - [`Fat32Error::InvalidArgument`] if either path ends in a `.` or `..` component.
 /// - [`Fat32Error::InvalidPath`] if paths are on different mounts, or if path resolution
 ///   fails (e.g. an empty path, or a `cwd` that is not absolute).
 ///
@@ -262,6 +263,12 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Erro
 ///
 /// - [POSIX rename()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html)
 pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
+    // POSIX: a trailing "."/".." component is invalid for rename. Normalization
+    // strips these lexically, so guard on the raw path before resolving.
+    if ends_with_dot(old_path) || ends_with_dot(new_path) {
+        return Err(Fat32Error::InvalidArgument);
+    }
+
     let (old_idx, old_rel) = resolve_path(cwd, old_path)?;
     let (new_idx, new_rel) = resolve_path(cwd, new_path)?;
 
@@ -359,6 +366,15 @@ pub(crate) fn normalize(cwd: &str, path: &str) -> Result<String, Fat32Error> {
 //==================================================================================================
 // Internal Functions
 //==================================================================================================
+
+/// Returns `true` if the final component of `path` is `.` or `..`.
+///
+/// POSIX forbids these as rename operands. Trailing slashes are ignored.
+fn ends_with_dot(path: &str) -> bool {
+    let trimmed: &str = path.trim_end_matches('/');
+    let last: &str = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    last == "." || last == ".."
+}
 
 /// Resolves a path through the VFS to determine which mount handles it.
 ///
