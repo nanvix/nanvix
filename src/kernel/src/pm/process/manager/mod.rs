@@ -7,6 +7,9 @@ mod delivery;
 
 mod signal;
 
+#[cfg(feature = "test")]
+pub(crate) use delivery::new_test_delivery_sequence;
+pub(crate) use delivery::DeliverySequence;
 pub use signal::{
     SigReturnFailure,
     SignalDeliveryOutcome,
@@ -40,7 +43,6 @@ use crate::{
         },
         platform,
     },
-    ipc::DeliverySequence,
     mm::{
         elf::Elf32Fhdr,
         kstack::KernelStack,

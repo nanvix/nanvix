@@ -19,6 +19,7 @@ use ::sys::error::Error;
 //==================================================================================================
 
 pub use kcall::*;
+pub(crate) use manager::PendingDelivery;
 pub use manager::{
     EventManager,
     EventOwnership,

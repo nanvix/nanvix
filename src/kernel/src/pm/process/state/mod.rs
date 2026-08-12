@@ -43,10 +43,7 @@ use crate::{
         },
         mem::VirtualAddress,
     },
-    ipc::{
-        DeliverySequence,
-        Mailbox,
-    },
+    ipc::Mailbox,
     mm::Vmem,
     pm::{
         process::{
@@ -62,6 +59,7 @@ use crate::{
             ThreadRef,
             ThreadRefMut,
         },
+        DeliverySequence,
     },
 };
 use ::alloc::collections::{
@@ -559,7 +557,8 @@ impl ProcessState {
     ///
     /// # Description
     ///
-    /// Consumes the oldest message eligible for the given thread from this process's mailbox.
+    /// Peeks the oldest mailbox message eligible for a thread without consuming it. A message is
+    /// eligible when it is addressed either to the thread itself or to its process.
     ///
     /// # Parameters
     ///
@@ -567,30 +566,37 @@ impl ProcessState {
     ///
     /// # Returns
     ///
-    /// The eligible message and its sequence number, or [`None`] if no message is eligible.
+    /// The selected message and its delivery sequence, or [`None`] if no mailbox message is
+    /// eligible for the thread.
     ///
-    pub fn receive_message(
-        &mut self,
-        tid: ThreadIdentifier,
-    ) -> Option<(DeliverySequence, Message)> {
-        self.mailbox.receive(tid)
+    pub fn peek_message(&self, tid: ThreadIdentifier) -> Option<(DeliverySequence, Message)> {
+        self.mailbox.peek(tid)
     }
 
     ///
     /// # Description
     ///
-    /// Peeks the sequence number of the oldest message eligible for the given thread.
+    /// Commits delivery of a mailbox message previously selected by [`Self::peek_message`]. The
+    /// selected message is removed from the mailbox only when its delivery sequence still matches
+    /// the oldest message eligible for the receiving thread.
     ///
     /// # Parameters
     ///
     /// - `tid`: Identifier of the receiving thread.
+    /// - `sequence`: Delivery sequence returned by [`Self::peek_message`].
     ///
     /// # Returns
     ///
-    /// The sequence number of the eligible message, or [`None`] if no message is eligible.
+    /// `true` if the selected message was removed, or `false` if no mailbox message is eligible for
+    /// the thread.
     ///
-    pub fn peek_message_sequence(&self, tid: ThreadIdentifier) -> Option<DeliverySequence> {
-        self.mailbox.peek_sequence(tid)
+    /// # Panics
+    ///
+    /// This function panics if an eligible message exists but `sequence` does not identify it. This
+    /// indicates a stale, duplicate, or otherwise invalid delivery token.
+    ///
+    pub fn commit_message(&mut self, tid: ThreadIdentifier, sequence: DeliverySequence) -> bool {
+        self.mailbox.commit(tid, sequence)
     }
 
     ///

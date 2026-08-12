@@ -74,6 +74,9 @@ impl HarvestedProcess {
 // Exports
 //==================================================================================================
 
+#[cfg(feature = "test")]
+pub(crate) use manager::new_test_delivery_sequence;
+pub(crate) use manager::DeliverySequence;
 pub use manager::{
     ExceptionGuard,
     ProcessManager,

@@ -5,7 +5,7 @@
 // Imports
 //==================================================================================================
 
-use super::delivery_sequence::DeliverySequence;
+use crate::pm::DeliverySequence;
 use ::alloc::collections::LinkedList;
 use ::sys::{
     ipc::Message,
@@ -62,6 +62,33 @@ impl Mailbox {
     ///
     /// # Description
     ///
+    /// Reports whether a delivery sequence still identifies the oldest mailbox message eligible
+    /// for a thread. This exposes the mailbox token invariant to in-kernel tests.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the receiving thread.
+    /// - `sequence`: Delivery sequence captured by the token under test.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `sequence` identifies the current eligible message, otherwise `false`.
+    ///
+    #[cfg(feature = "test")]
+    pub(crate) fn test_token_is_current(
+        &self,
+        tid: ThreadIdentifier,
+        sequence: DeliverySequence,
+    ) -> bool {
+        matches!(
+            self.oldest_eligible(tid),
+            Some((_, selected_sequence)) if selected_sequence == sequence
+        )
+    }
+
+    ///
+    /// # Description
+    ///
     /// Posts a message into the mailbox.
     ///
     /// # Parameters
@@ -89,7 +116,7 @@ impl Mailbox {
     ///
     /// # Description
     ///
-    /// Attempts to consume a message addressed to the given thread or its process.
+    /// Peeks the oldest message eligible for the given thread without consuming it.
     ///
     /// # Parameters
     ///
@@ -97,30 +124,42 @@ impl Mailbox {
     ///
     /// # Returns
     ///
-    /// If a message that was addressed to the given thread or its process was found,
-    /// it is returned. Otherwise, no message is returned instead.
+    /// The eligible message and its sequence number, or [`None`] if no message is eligible.
     ///
-    pub fn receive(&mut self, tid: ThreadIdentifier) -> Option<(DeliverySequence, Message)> {
-        self.oldest_eligible(tid)
-            .map(|(index, _)| self.buffer.remove(index))
+    pub fn peek(&self, tid: ThreadIdentifier) -> Option<(DeliverySequence, Message)> {
+        let (index, sequence): (usize, DeliverySequence) = self.oldest_eligible(tid)?;
+        self.buffer
+            .iter()
+            .nth(index)
+            .map(|(_, message)| (sequence, message.clone()))
     }
 
     ///
     /// # Description
     ///
-    /// Peeks the sequence number of the oldest message eligible for the given thread.
+    /// Commits delivery of a previously peeked message.
     ///
     /// # Parameters
     ///
     /// - `tid`: Target thread identifier.
+    /// - `sequence`: Sequence number returned by [`Self::peek`].
     ///
     /// # Returns
     ///
-    /// If an eligible message was found, its sequence number is returned. Otherwise,
-    /// nothing is returned instead.
+    /// `true` if the selected message was removed, or `false` if no eligible message exists.
     ///
-    pub fn peek_sequence(&self, tid: ThreadIdentifier) -> Option<DeliverySequence> {
-        self.oldest_eligible(tid).map(|(_, sequence)| sequence)
+    /// # Panics
+    ///
+    /// This function panics if `sequence` does not identify the oldest eligible message for
+    /// `tid`. This indicates a stale, duplicate, or otherwise invalid delivery token.
+    ///
+    pub fn commit(&mut self, tid: ThreadIdentifier, sequence: DeliverySequence) -> bool {
+        let Some((index, selected_sequence)) = self.oldest_eligible(tid) else {
+            return false;
+        };
+        assert!(selected_sequence == sequence, "stale mailbox delivery token");
+        self.buffer.remove(index);
+        true
     }
 
     ///

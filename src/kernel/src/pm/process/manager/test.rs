@@ -5,7 +5,10 @@
 // Imports
 //==================================================================================================
 
-use super::delivery::DeliveryBroker;
+use super::delivery::{
+    DeliveryBroker,
+    DeliverySequence,
+};
 #[cfg(target_arch = "x86")]
 use crate::hal::arch::{
     join_kcall_result,
@@ -84,6 +87,25 @@ fn commit_creation(broker: &mut DeliveryBroker) -> Option<LifecycleTerminationCr
         },
     };
     Some(broker.commit_creation(reservation, creation_info()))
+}
+
+///
+/// # Description
+///
+/// Selects and commits the lifecycle record at the head of a delivery broker.
+///
+/// # Parameters
+///
+/// - `broker`: Delivery broker from which to receive a lifecycle record.
+///
+/// # Returns
+///
+/// The committed lifecycle message, or [`None`] if no lifecycle record is buffered.
+///
+fn receive_lifecycle(broker: &mut DeliveryBroker) -> Option<Message> {
+    let (sequence, message): (DeliverySequence, Message) = broker.peek_lifecycle(test_pid())?;
+    broker.commit_lifecycle(sequence);
+    Some(message)
 }
 
 //==================================================================================================
@@ -174,7 +196,15 @@ fn test_cross_process_switch_resets_quantum() -> bool {
     true
 }
 
+///
+/// # Description
+///
 /// Verifies that older IPC is selected before a newer lifecycle record.
+///
+/// # Returns
+///
+/// `true` if delivery follows production-sequence order, otherwise `false`.
+///
 fn test_ipc_precedes_newer_lifecycle() -> bool {
     let mut broker: DeliveryBroker = DeliveryBroker::default();
     let mut mailbox: Mailbox = Mailbox::default();
@@ -186,12 +216,21 @@ fn test_ipc_precedes_newer_lifecycle() -> bool {
         None => return false,
     };
 
-    if broker.lifecycle_precedes(mailbox.peek_sequence(test_tid()), true) {
+    let mailbox_sequence: Option<DeliverySequence> =
+        mailbox.peek(test_tid()).map(|(sequence, _)| sequence);
+    if broker.lifecycle_precedes(mailbox_sequence, true) {
         error!("newer lifecycle record was selected ahead of older IPC");
         return false;
     }
-    if mailbox.receive(test_tid()).is_none() {
-        error!("older IPC message was not eligible for delivery");
+    let ipc_sequence: DeliverySequence = match mailbox.peek(test_tid()) {
+        Some((sequence, _)) => sequence,
+        None => {
+            error!("older IPC message was not eligible for delivery");
+            return false;
+        },
+    };
+    if !mailbox.commit(test_tid(), ipc_sequence) {
+        error!("older IPC message could not be committed");
         return false;
     }
     if !broker.lifecycle_precedes(None, true) {
@@ -202,7 +241,15 @@ fn test_ipc_precedes_newer_lifecycle() -> bool {
     true
 }
 
+///
+/// # Description
+///
 /// Verifies that older lifecycle is selected before newer IPC even after a failed wakeup attempt.
+///
+/// # Returns
+///
+/// `true` if the failed wakeup leaves ordering and both records intact, otherwise `false`.
+///
 fn test_lifecycle_precedes_newer_ipc_after_failed_wakeup() -> bool {
     let mut broker: DeliveryBroker = DeliveryBroker::default();
     let mut mailbox: Mailbox = Mailbox::default();
@@ -220,27 +267,42 @@ fn test_lifecycle_precedes_newer_ipc_after_failed_wakeup() -> bool {
     let receiver: MessageReceiver = MessageReceiver::new(test_pid(), ThreadIdentifier::NONE);
     mailbox.send(ipc_sequence, ipc_message(receiver));
 
-    if !broker.lifecycle_precedes(mailbox.peek_sequence(test_tid()), true) {
+    let mailbox_sequence: Option<DeliverySequence> =
+        mailbox.peek(test_tid()).map(|(sequence, _)| sequence);
+    if !broker.lifecycle_precedes(mailbox_sequence, true) {
         error!("newer IPC overtook lifecycle after failed wakeup");
         return false;
     }
-    if broker
-        .pop_lifecycle(test_pid())
-        .map(|message| message.message_type)
+    if receive_lifecycle(&mut broker).map(|message| message.message_type)
         != Some(MessageType::ProcessCreationEvent)
     {
         error!("expected the older process-creation record");
         return false;
     }
-    if mailbox.receive(test_tid()).is_none() {
-        error!("newer IPC message was lost after lifecycle delivery");
+    let ipc_sequence: DeliverySequence = match mailbox.peek(test_tid()) {
+        Some((sequence, _)) => sequence,
+        None => {
+            error!("newer IPC message was lost after lifecycle delivery");
+            return false;
+        },
+    };
+    if !mailbox.commit(test_tid(), ipc_sequence) {
+        error!("newer IPC message could not be committed");
         return false;
     }
 
     true
 }
 
+///
+/// # Description
+///
 /// Verifies that IPC for another thread does not block an eligible lifecycle record.
+///
+/// # Returns
+///
+/// `true` if ineligible IPC is excluded from lifecycle arbitration, otherwise `false`.
+///
 fn test_other_thread_ipc_does_not_block_lifecycle() -> bool {
     let mut broker: DeliveryBroker = DeliveryBroker::default();
     let mut mailbox: Mailbox = Mailbox::default();
@@ -253,11 +315,13 @@ fn test_other_thread_ipc_does_not_block_lifecycle() -> bool {
         None => return false,
     };
 
-    if mailbox.peek_sequence(test_tid()).is_some() {
+    let mailbox_sequence: Option<DeliverySequence> =
+        mailbox.peek(test_tid()).map(|(sequence, _)| sequence);
+    if mailbox_sequence.is_some() {
         error!("message for another thread was considered eligible");
         return false;
     }
-    if !broker.lifecycle_precedes(mailbox.peek_sequence(test_tid()), true) {
+    if !broker.lifecycle_precedes(mailbox_sequence, true) {
         error!("ineligible older IPC blocked lifecycle delivery");
         return false;
     }
@@ -265,7 +329,15 @@ fn test_other_thread_ipc_does_not_block_lifecycle() -> bool {
     true
 }
 
+///
+/// # Description
+///
 /// Verifies lifecycle FIFO ordering and lifecycle-owner eligibility.
+///
+/// # Returns
+///
+/// `true` if only an eligible owner receives lifecycle records in FIFO order, otherwise `false`.
+///
 fn test_lifecycle_fifo_and_eligibility() -> bool {
     let mut broker: DeliveryBroker = DeliveryBroker::default();
     let termination_credit: LifecycleTerminationCredit = match commit_creation(&mut broker) {
@@ -278,18 +350,77 @@ fn test_lifecycle_fifo_and_eligibility() -> bool {
         error!("lifecycle record was selected for a process that does not own the class");
         return false;
     }
-    let first: Option<MessageType> = broker
-        .pop_lifecycle(test_pid())
-        .map(|message| message.message_type);
-    let second: Option<MessageType> = broker
-        .pop_lifecycle(test_pid())
-        .map(|message| message.message_type);
+    let first: Option<MessageType> =
+        receive_lifecycle(&mut broker).map(|message| message.message_type);
+    let second: Option<MessageType> =
+        receive_lifecycle(&mut broker).map(|message| message.message_type);
     if first != Some(MessageType::ProcessCreationEvent)
         || second != Some(MessageType::ProcessTerminationEvent)
     {
         error!("lifecycle records were not delivered in FIFO order");
         return false;
     }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that lifecycle selection is stable until commit and committed tokens become stale.
+///
+/// # Returns
+///
+/// `true` if retries preserve the selected sequence and commits invalidate it exactly once,
+/// otherwise `false`.
+///
+fn test_lifecycle_delivery_is_transactional() -> bool {
+    let mut broker: DeliveryBroker = DeliveryBroker::default();
+    let termination_credit: LifecycleTerminationCredit = match commit_creation(&mut broker) {
+        Some(credit) => credit,
+        None => return false,
+    };
+    broker.commit_termination(termination_credit, termination_info());
+
+    let (first_sequence, first_message): (DeliverySequence, Message) =
+        match broker.peek_lifecycle(test_pid()) {
+            Some(delivery) => delivery,
+            None => {
+                error!("lifecycle selection returned no record");
+                return false;
+            },
+        };
+    let retry_sequence: Option<DeliverySequence> = broker
+        .peek_lifecycle(test_pid())
+        .map(|(sequence, _)| sequence);
+    if first_message.message_type != MessageType::ProcessCreationEvent
+        || retry_sequence != Some(first_sequence)
+        || !broker.test_lifecycle_token_is_current(first_sequence)
+    {
+        error!("lifecycle retry did not preserve the selected sequence");
+        return false;
+    }
+
+    broker.commit_lifecycle(first_sequence);
+    if broker.test_lifecycle_token_is_current(first_sequence) {
+        error!("committed lifecycle token did not become stale");
+        return false;
+    }
+    let (second_sequence, second_message): (DeliverySequence, Message) =
+        match broker.peek_lifecycle(test_pid()) {
+            Some(delivery) => delivery,
+            None => {
+                error!("lifecycle commit removed the following record");
+                return false;
+            },
+        };
+    if second_sequence == first_sequence
+        || second_message.message_type != MessageType::ProcessTerminationEvent
+    {
+        error!("lifecycle commit exposed the wrong following record");
+        return false;
+    }
+    broker.commit_lifecycle(second_sequence);
 
     true
 }
@@ -350,7 +481,15 @@ fn test_signal_kcall_result_split_join_preserves_bits() -> bool {
 // Test Runner
 //==================================================================================================
 
+///
+/// # Description
+///
 /// Runs all in-kernel unit tests for the process manager module.
+///
+/// # Returns
+///
+/// `true` if every process-manager test passes, otherwise `false`.
+///
 pub(super) fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_intra_process_switch_resets_exhausted_quantum);
@@ -360,6 +499,7 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_lifecycle_precedes_newer_ipc_after_failed_wakeup);
     passed &= run_test!(test_other_thread_ipc_does_not_block_lifecycle);
     passed &= run_test!(test_lifecycle_fifo_and_eligibility);
+    passed &= run_test!(test_lifecycle_delivery_is_transactional);
     passed &= run_test!(test_lifecycle_wakeup_request_can_be_rearmed);
     passed &= super::delivery::test();
     #[cfg(target_arch = "x86")]

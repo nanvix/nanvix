@@ -11,10 +11,7 @@ use crate::{
         PageAligned,
         VirtualAddress,
     },
-    ipc::{
-        DeliverySequence,
-        Mailbox,
-    },
+    ipc::Mailbox,
     mm::{
         phys::{
             PhysMemoryManager,
@@ -23,7 +20,11 @@ use crate::{
         VirtMemoryManager,
         Vmem,
     },
-    pm::ProcessManager,
+    pm::{
+        new_test_delivery_sequence,
+        DeliverySequence,
+        ProcessManager,
+    },
 };
 use ::arch::mem::paging::PageTableEntry;
 use ::sys::{
@@ -56,10 +57,19 @@ use ::sys::{
 /// Verifies that a freshly constructed mailbox reports as empty, and that posting a single
 /// message causes it to report as non-empty.
 ///
+/// # Returns
+///
+/// `true` if empty-state tracking and empty-mailbox commit rejection are correct, otherwise
+/// `false`.
+///
 fn test_mailbox_is_empty_tracks_buffered_messages() -> bool {
     let mut mailbox: Mailbox = Mailbox::default();
     if !mailbox.is_empty() {
         error!("freshly constructed mailbox reported as non-empty");
+        return false;
+    }
+    if mailbox.commit(ThreadIdentifier::from(42), new_test_delivery_sequence(0)) {
+        error!("empty mailbox accepted a delivery commit");
         return false;
     }
 
@@ -70,7 +80,7 @@ fn test_mailbox_is_empty_tracks_buffered_messages() -> bool {
         Option::<ErrorCode>::None,
         [0u8; Message::PAYLOAD_SIZE],
     );
-    mailbox.send(DeliverySequence::new(0), message);
+    mailbox.send(new_test_delivery_sequence(0), message);
     if mailbox.is_empty() {
         error!("mailbox reported as empty after sending a message");
         return false;
@@ -83,6 +93,11 @@ fn test_mailbox_is_empty_tracks_buffered_messages() -> bool {
 ///
 /// Verifies that mailbox purge operations report how many messages they remove.
 ///
+/// # Returns
+///
+/// `true` if thread-specific and whole-mailbox purges remove the expected entries, otherwise
+/// `false`.
+///
 fn test_mailbox_purge_counts_removed_messages() -> bool {
     let mut mailbox: Mailbox = Mailbox::default();
     let tid: ThreadIdentifier = ThreadIdentifier::from(42);
@@ -91,7 +106,7 @@ fn test_mailbox_purge_counts_removed_messages() -> bool {
         MessageReceiver::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
     for (sequence, receiver) in [thread_receiver, process_receiver].into_iter().enumerate() {
         mailbox.send(
-            DeliverySequence::new(sequence as u64),
+            new_test_delivery_sequence(sequence as u64),
             Message::new(
                 MessageSender::KERNEL,
                 receiver,
@@ -123,15 +138,33 @@ fn test_mailbox_purge_counts_removed_messages() -> bool {
 /// Verifies that an older process-directed message is delivered before a newer exact-thread
 /// message when both are eligible for the receiving thread.
 ///
+/// # Returns
+///
+/// `true` if selection, retry, commit, and following-entry exposure preserve mailbox ordering,
+/// otherwise `false`.
+///
 fn test_mailbox_selects_oldest_eligible_message() -> bool {
     let mut mailbox: Mailbox = Mailbox::default();
     let tid: ThreadIdentifier = ThreadIdentifier::from(42);
+    let other_tid: ThreadIdentifier = ThreadIdentifier::from(43);
+    let other_receiver: MessageReceiver =
+        MessageReceiver::new(ProcessIdentifier::KERNEL, other_tid);
     let process_receiver: MessageReceiver =
         MessageReceiver::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
     let thread_receiver: MessageReceiver = MessageReceiver::new(ProcessIdentifier::KERNEL, tid);
 
     mailbox.send(
-        DeliverySequence::new(0),
+        new_test_delivery_sequence(0),
+        Message::new(
+            MessageSender::KERNEL,
+            other_receiver,
+            MessageType::Ipc,
+            Option::<ErrorCode>::None,
+            [0u8; Message::PAYLOAD_SIZE],
+        ),
+    );
+    mailbox.send(
+        new_test_delivery_sequence(1),
         Message::new(
             MessageSender::KERNEL,
             process_receiver,
@@ -141,7 +174,7 @@ fn test_mailbox_selects_oldest_eligible_message() -> bool {
         ),
     );
     mailbox.send(
-        DeliverySequence::new(1),
+        new_test_delivery_sequence(2),
         Message::new(
             MessageSender::KERNEL,
             thread_receiver,
@@ -151,16 +184,36 @@ fn test_mailbox_selects_oldest_eligible_message() -> bool {
         ),
     );
 
-    let first_sequence: Option<DeliverySequence> =
-        mailbox.receive(tid).map(|(sequence, _)| sequence);
-    if first_sequence != Some(DeliverySequence::new(0)) {
-        error!("newer exact-thread message overtook older process-directed message");
+    let first_sequence: DeliverySequence = match mailbox.peek(tid) {
+        Some((sequence, _)) => sequence,
+        None => {
+            error!("eligible mailbox message was not selected");
+            return false;
+        },
+    };
+    let retry_sequence: Option<DeliverySequence> = mailbox.peek(tid).map(|(sequence, _)| sequence);
+    if first_sequence != new_test_delivery_sequence(1)
+        || retry_sequence != Some(first_sequence)
+        || !mailbox.test_token_is_current(tid, first_sequence)
+    {
+        error!("mailbox retry did not preserve the selected sequence");
         return false;
     }
-    let second_sequence: Option<DeliverySequence> =
-        mailbox.receive(tid).map(|(sequence, _)| sequence);
-    if second_sequence != Some(DeliverySequence::new(1)) {
-        error!("newer exact-thread message was not delivered second");
+    if !mailbox.commit(tid, first_sequence) {
+        error!("selected mailbox message could not be committed");
+        return false;
+    }
+    if mailbox.test_token_is_current(tid, first_sequence) {
+        error!("committed mailbox token did not become stale");
+        return false;
+    }
+    if mailbox.peek(other_tid).map(|(sequence, _)| sequence) != Some(new_test_delivery_sequence(0))
+    {
+        error!("mailbox commit removed the older entry for another thread");
+        return false;
+    }
+    if mailbox.peek(tid).map(|(sequence, _)| sequence) != Some(new_test_delivery_sequence(2)) {
+        error!("mailbox commit did not expose the next eligible message");
         return false;
     }
 
