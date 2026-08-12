@@ -152,8 +152,12 @@ fn make_test_process(
     zombie: Option<NonEmptyVecDeque<ZombieThread>>,
 ) -> Option<RunningProcess> {
     let vmem: Vmem = make_test_vmem()?;
-    let state: Box<ProcessState> =
-        Box::new(ProcessState::new(ProcessIdentifier::from(1), ProcessIdentifier::from(0), vmem));
+    let state: Box<ProcessState> = Box::new(ProcessState::new(
+        ProcessIdentifier::from(1),
+        ProcessIdentifier::from(0),
+        None,
+        vmem,
+    ));
     Some(RunningProcess::new(state, running, ready, interrupted, sleeping, zombie))
 }
 

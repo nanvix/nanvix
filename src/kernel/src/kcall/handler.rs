@@ -17,7 +17,10 @@ use crate::{
     },
 };
 use ::sys::{
-    error::ErrorCode,
+    error::{
+        Error,
+        ErrorCode,
+    },
     pm::ProcessIdentifier,
     ExitStatus,
 };
@@ -62,6 +65,38 @@ macro_rules! mm {
 ///
 /// # Description
 ///
+/// Drains one deferred lifecycle-owner wakeup request. A failed notification is re-armed while the
+/// lifecycle record remains buffered, so a later kernel-loop iteration retries it.
+///
+/// # Parameters
+///
+/// - `notify`: Operation that wakes the current lifecycle owner.
+///
+/// # Returns
+///
+/// `true` if a pending request was successfully delivered, otherwise `false`.
+///
+pub(crate) fn drain_lifecycle_wakeup<F>(notify: F) -> bool
+where
+    F: FnOnce() -> Result<(), Error>,
+{
+    if !pm!().take_lifecycle_wakeup_request() {
+        return false;
+    }
+
+    match notify() {
+        Ok(()) => true,
+        Err(error) => {
+            error!("failed to wake lifecycle owner: {error:?}");
+            pm!().request_lifecycle_wakeup();
+            false
+        },
+    }
+}
+
+///
+/// # Description
+///
 /// Kernel call handler.
 ///
 pub fn kcall_handler() -> ExitStatus {
@@ -80,17 +115,16 @@ pub fn kcall_handler() -> ExitStatus {
         let mut harvested_process: bool = false;
         match pm!().harvest_zombies(mm!()) {
             Ok(None) => {},
-            Ok(Some(info)) => {
+            Ok(Some(termination)) => {
                 // Check if the process manager daemon (PROCD) terminated.
-                if info.pid == ProcessIdentifier::PROCD {
+                if termination.info().pid == ProcessIdentifier::PROCD {
                     // It was, so we should shutdown.
+                    let info = pm!().release_process_termination(termination);
                     break info.status;
                 }
-                // Record the termination so the main loop can publish a process-termination
-                // scheduling event below. Buffering it (rather than notifying inline) lets the
-                // same retry/backpressure as process creation apply, so termination events are not
-                // silently lost when the scheduling-event queue is momentarily full.
-                pm!().push_pending_termination(info);
+                // Commit the termination to the ordered delivery broker. Waking the lifecycle
+                // owner is deferred until no reference to the process manager is held.
+                pm!().commit_process_termination(termination);
                 harvested_process = true;
             },
             Err(e) => {
@@ -98,61 +132,16 @@ pub fn kcall_handler() -> ExitStatus {
             },
         }
 
-        // Publish process-creation scheduling events before process-termination events. A process
-        // is always created before it terminates, so draining creations first enqueues a child's
-        // creation ahead of its termination in the event manager's single FIFO scheduling-event
-        // queue. Because that queue is delivered in strict FIFO order, `procd` is guaranteed to
-        // observe a child's creation before its termination, so it records the child's lineage from
-        // the creation event before acting on the termination — no out-of-order reconciliation is
-        // needed. Each pending record is drained while no reference to the process manager is held,
-        // so subscribers can be woken safely.
-        let mut notified_creation: bool = false;
-        while let Some(info) = pm!().take_pending_creation() {
-            // SAFETY: the calling process does not hold a reference to the inner state of the
-            // process manager.
-            match unsafe { EventManager::notify_process_creation(info) } {
-                Ok(()) => notified_creation = true,
-                Err(e) => {
-                    error!("failed to notify process creation: {:?}", e);
-                    // Delivery failed without buffering the notification (the scheduling-event
-                    // queue is full, or waking a subscriber failed and the entry was rolled back).
-                    // Restore the record at the front of the queue so it is retried on a later
-                    // iteration instead of being lost, and stop draining to avoid spinning on the
-                    // same failure.
-                    pm!().requeue_pending_creation(info);
-                    break;
-                },
-            }
-        }
-
-        // Publish process-termination scheduling events for harvested processes after attempting to
-        // publish any pending creations. Draining terminations after creations enqueues each
-        // termination behind the matching creation in the event manager's single FIFO
-        // scheduling-event queue, so `procd` always observes a creation before the matching
-        // termination. The ordering also holds under backpressure: the shared queue fills while
-        // draining creations above, so a termination whose creation could not be enqueued simply
-        // fails to enqueue too and is requeued for a later iteration.
-        let mut notified_termination: bool = false;
-        while let Some(info) = pm!().take_pending_termination() {
-            // SAFETY: the calling process does not hold a reference to the inner state of the
-            // process manager.
-            match unsafe { EventManager::notify_process_termination(info) } {
-                Ok(()) => notified_termination = true,
-                Err(e) => {
-                    error!("failed to notify process termination: {:?}", e);
-                    // Delivery failed without buffering the notification (the scheduling-event
-                    // queue is full, or waking a subscriber failed and the entry was rolled back).
-                    // Restore the record at the front of the queue so it is retried on a later
-                    // iteration instead of being lost, and stop draining to avoid spinning on the
-                    // same failure.
-                    pm!().requeue_pending_termination(info);
-                    break;
-                },
-            }
-        }
+        // Lifecycle records are already committed to the ordered delivery broker. Only owner
+        // wakeup is deferred so the event manager does not re-enter the process manager while it is
+        // borrowed.
+        // SAFETY: the calling process does not hold a reference to the inner state of the process
+        // manager.
+        let notified_lifecycle: bool =
+            drain_lifecycle_wakeup(|| unsafe { EventManager::notify_process_lifecycle() });
 
         // No work to do, so yield the CPU.
-        if !message_received && !harvested_process && !notified_termination && !notified_creation {
+        if !message_received && !harvested_process && !notified_lifecycle {
             // Flush the kernel log buffer.
             // SAFETY: the standard output device is present, initialized, and accessed
             // exclusively from a single core with interrupts disabled.
@@ -165,7 +154,8 @@ pub fn kcall_handler() -> ExitStatus {
         }
     };
 
-    while let Ok(Some(info)) = pm!().harvest_zombies(mm!()) {
+    while let Ok(Some(termination)) = pm!().harvest_zombies(mm!()) {
+        let info = pm!().release_process_termination(termination);
         info!("harvested zombie process: pid={:?}, status={:?}", info.pid, info.status);
     }
 

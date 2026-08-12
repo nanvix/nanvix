@@ -37,12 +37,9 @@ use ::alloc::{
 /// Payload stored per pending exception: sequence number, descriptor, info, and condvar.
 type PendingException = (u64, EventDescriptor, ExceptionEventInformation, Condvar);
 use ::arch::cpu::excp;
-use ::core::{
-    cell::{
-        RefCell,
-        RefMut,
-    },
-    mem,
+use ::core::cell::{
+    RefCell,
+    RefMut,
 };
 use ::sys::{
     error::{
@@ -56,8 +53,6 @@ use ::sys::{
         EventInformation,
         ExceptionEvent,
         InterruptEvent,
-        ProcessCreationInfo,
-        ProcessTerminationInfo,
         SchedulingEvent,
     },
     ipc::{
@@ -87,39 +82,18 @@ pub(super) mod test;
 
 static mut MANAGER: Option<EventManager> = None;
 
-// A scheduling-event notification serializes its info structure into the head of the message
-// payload. The two info structures have different serialized sizes, so each is copied using its
-// own length; assert here that both fit within the payload.
-::static_assert::assert_eq!(mem::size_of::<ProcessTerminationInfo>() <= Message::PAYLOAD_SIZE);
-::static_assert::assert_eq!(mem::size_of::<ProcessCreationInfo>() <= Message::PAYLOAD_SIZE);
-
-///
-/// # Description
-///
-/// Payload carried by a pending scheduling-event notification. Each variant maps to a distinct
-/// [`SchedulingEvent`] and is serialized into the corresponding [`MessageType`] when delivered.
-///
-enum SchedulingNotification {
-    /// Process-termination notification.
-    Termination(ProcessTerminationInfo),
-    /// Process-creation notification.
-    Creation(ProcessCreationInfo),
-}
-
-impl SchedulingNotification {
-    /// Returns the [`SchedulingEvent`] that this notification corresponds to.
-    fn event(&self) -> SchedulingEvent {
-        match self {
-            Self::Termination(_) => SchedulingEvent::ProcessTermination,
-            Self::Creation(_) => SchedulingEvent::ProcessCreation,
-        }
-    }
-}
-
 struct ExceptionEventInformation {
     pid: ProcessIdentifier,
     tid: ThreadIdentifier,
     info: ExceptionInformation,
+}
+
+/// Event-class eligibility masks for one receive attempt.
+#[derive(Clone, Copy)]
+struct EventMasks {
+    interrupts: usize,
+    exceptions: usize,
+    scheduling: usize,
 }
 
 ///
@@ -174,7 +148,16 @@ impl Drop for WaitingThreadGuard {
 
 pub struct EventOwnership {
     ev: Event,
-    em: &'static mut EventManager,
+}
+
+/// Result of changing event ownership through [`EventManager::evctrl`].
+pub(crate) enum EventCtrlOutcome {
+    /// Ownership was newly acquired and the guard must be stored by the process.
+    Acquired(EventOwnership),
+    /// An idempotent registration left existing ownership unchanged.
+    Unchanged,
+    /// Ownership was released and the process's matching guard must be removed.
+    Released,
 }
 
 impl EventOwnership {
@@ -185,39 +168,16 @@ impl EventOwnership {
 
 impl Drop for EventOwnership {
     fn drop(&mut self) {
-        match self.em.try_borrow_mut() {
-            Ok(mut em) => match self.ev {
-                Event::Interrupt(ev) => {
-                    // SAFETY: This is the only thread running, thus access to the memory manager is synchronized.
-                    let pm: &ProcessManager = unsafe { ProcessManager::get() };
-                    if let Err(e) =
-                        em.do_evctrl_interrupt(pm, None, ev, EventCtrlRequest::Unregister)
-                    {
-                        error!("failed to unregister interrupt: {:?}", e);
-                    }
-                },
-                Event::Exception(ev) => {
-                    // SAFETY: This is the only thread running, thus access to the memory manager is synchronized.
-                    let pm: &ProcessManager = unsafe { ProcessManager::get() };
-                    if let Err(e) =
-                        em.do_evctrl_exception(pm, None, ev, EventCtrlRequest::Unregister)
-                    {
-                        error!("failed to unregister exception: {:?}", e);
-                    }
-                },
-                Event::Scheduling(ev) => {
-                    // SAFETY: This is the only thread running, thus access to the memory manager is synchronized.
-                    let pm: &ProcessManager = unsafe { ProcessManager::get() };
-                    if let Err(e) =
-                        em.do_evctrl_scheduling(pm, None, ev, EventCtrlRequest::Unregister)
-                    {
-                        error!("failed to unregister scheduling event: {:?}", e);
-                    }
-                },
+        let em: &EventManager = match EventManager::get() {
+            Ok(em) => em,
+            Err(error) => {
+                error!("failed to get event manager while releasing ownership: {error:?}");
+                return;
             },
-            Err(e) => {
-                error!("failed to borrow event manager: {:?}", e);
-            },
+        };
+        match em.try_borrow_mut() {
+            Ok(mut em) => em.release_ownership(self.ev),
+            Err(error) => error!("failed to borrow event manager: {error:?}"),
         }
     }
 }
@@ -237,19 +197,19 @@ struct EventManagerInner {
     exception_ownership: Box<[Option<ProcessIdentifier>]>,
     pending_exceptions: Box<[LinkedList<PendingException>]>,
     scheduling_owner: Option<ProcessIdentifier>,
-    /// Pending scheduling-event notifications delivered in FIFO order by event sequence number. The
-    /// kernel main loop publishes a process's creation before its termination, so FIFO delivery lets
-    /// the owner observe the child's lineage before handling its exit.
-    ///
-    /// Each entry pairs the full-width sequence number stamped at generation time with its
-    /// [`EventDescriptor`]. The queue is maintained in sequence order: notifications are appended
-    /// with monotonically increasing sequence numbers (`notify_scheduling()`) and removals preserve
-    /// relative order, so delivery (`try_wait()`) pops the smallest sequence number in O(1).
-    pending_scheduling: LinkedList<(u64, EventDescriptor, SchedulingNotification)>,
 }
 
 impl EventManagerInner {
-    const NUMBER_EVENTS: usize = 3;
+    const NUMBER_EVENT_CLASSES: usize = 3;
+
+    /// Releases an event ownership without performing registration-time capability checks.
+    fn release_ownership(&mut self, ev: Event) {
+        match ev {
+            Event::Interrupt(ev) => self.interrupt_ownership[usize::from(ev)] = None,
+            Event::Exception(ev) => self.exception_ownership[usize::from(ev)] = None,
+            Event::Scheduling(_) => self.scheduling_owner = None,
+        }
+    }
 
     ///
     /// # Description
@@ -475,9 +435,6 @@ impl EventManagerInner {
     ///
     /// - `tid`: Identifier of the target thread.
     /// - `pid`: Identifier of the target process.
-    /// - `interrupts`: Bit mask of interrupts.
-    /// - `exceptions`: Bit mask of exceptions.
-    /// - `scheduling`: Bit mask of scheduling events.
     ///
     /// # Returns
     ///
@@ -492,24 +449,149 @@ impl EventManagerInner {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn try_wait(
+    unsafe fn try_wait(
         &mut self,
         tid: ThreadIdentifier,
         pid: ProcessIdentifier,
-        interrupts: usize,
-        exceptions: usize,
-        scheduling: usize,
     ) -> Result<Option<Message>, Error> {
-        for i in 0..Self::NUMBER_EVENTS {
+        // SAFETY: the caller holds no reference to the process manager.
+        let mut cursor: usize = unsafe { ProcessManager::delivery_cursor() };
+        let message: Option<Message> =
+            self.try_wait_with(tid, pid, &mut cursor, |tid, lifecycle_eligible| unsafe {
+                ProcessManager::try_recv(tid, lifecycle_eligible)
+            })?;
+        if message.is_some() {
+            // SAFETY: the caller holds no reference to the process manager.
+            unsafe { ProcessManager::set_delivery_cursor(cursor) };
+        }
+        Ok(message)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns event-class eligibility masks based on the events currently owned by a process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process whose event ownership is queried.
+    ///
+    /// # Returns
+    ///
+    /// The event-class eligibility masks for the process's current event ownership.
+    ///
+    fn event_masks(&self, pid: ProcessIdentifier) -> EventMasks {
+        let mut interrupts: usize = 0;
+        for (idx, owner) in self.interrupt_ownership.iter().enumerate() {
+            if *owner == Some(pid) {
+                interrupts |= 1usize << idx;
+            }
+        }
+
+        let mut exceptions: usize = 0;
+        for (idx, owner) in self.exception_ownership.iter().enumerate() {
+            if *owner == Some(pid) {
+                exceptions |= 1usize << idx;
+            }
+        }
+
+        // Scheduling events are owned as a single class: the owner waits on every scheduling event
+        // at once.
+        let scheduling: usize = if self.scheduling_owner == Some(pid) {
+            (1usize << SchedulingEvent::NUMBER_EVENTS) - 1
+        } else {
+            0
+        };
+
+        EventMasks {
+            interrupts,
+            exceptions,
+            scheduling,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Attempts to select an event or mailbox message using the process's current event ownership
+    /// and `try_recv` for mailbox delivery.
+    ///
+    /// This is the behavior-preserving selection core used by [`Self::try_wait`]. Accepting the
+    /// mailbox receiver as a dependency lets in-kernel tests exercise event and mailbox selection
+    /// together without accessing the global process manager.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the target thread.
+    /// - `pid`: Identifier of the target process.
+    /// - `cursor`: Receiver's service cursor, advanced past the class that delivered a message.
+    /// - `try_recv`: Selector for the ordered message-like class, given the thread and whether
+    ///   lifecycle records are eligible.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the selected message is returned, or [`None`] when no class had
+    /// an eligible item. Otherwise, an error is returned instead.
+    ///
+    fn try_wait_with<F>(
+        &mut self,
+        tid: ThreadIdentifier,
+        pid: ProcessIdentifier,
+        cursor: &mut usize,
+        try_recv: F,
+    ) -> Result<Option<Message>, Error>
+    where
+        F: FnMut(ThreadIdentifier, bool) -> Result<Option<Message>, Error>,
+    {
+        let masks: EventMasks = self.event_masks(pid);
+        self.select_with(tid, pid, masks, cursor, try_recv)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Selects an event or mailbox message using explicit event-class eligibility masks and
+    /// `try_recv` for mailbox delivery.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the target thread.
+    /// - `pid`: Identifier of the target process.
+    /// - `masks`: Event-class eligibility masks for this selection attempt.
+    /// - `cursor`: Receiver's service cursor, advanced past the class that delivered a message.
+    /// - `try_recv`: Selector for the ordered message-like class, given the thread and whether
+    ///   lifecycle records are eligible.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the selected message is returned, or [`None`] when no class had
+    /// an eligible item. Otherwise, an error is returned instead.
+    ///
+    fn select_with<F>(
+        &mut self,
+        tid: ThreadIdentifier,
+        pid: ProcessIdentifier,
+        masks: EventMasks,
+        cursor: &mut usize,
+        mut try_recv: F,
+    ) -> Result<Option<Message>, Error>
+    where
+        F: FnMut(ThreadIdentifier, bool) -> Result<Option<Message>, Error>,
+    {
+        for offset in 0..Self::NUMBER_EVENT_CLASSES {
+            let class: usize = (*cursor + offset) % Self::NUMBER_EVENT_CLASSES;
+
             // Check if any interrupts were triggered.
-            if (self.nevents + i as u64).is_multiple_of(Self::NUMBER_EVENTS as u64) {
+            if class == 0 {
                 // Deliver the oldest eligible interrupt first. This prevents a continuously
                 // refilled low-numbered bit from starving an older high-numbered one.
-                let selected: Option<usize> = Self::smallest_pending_front(interrupts, |bit| {
-                    self.pending_interrupts[bit].front().map(|(seq, _)| *seq)
-                });
+                let selected: Option<usize> =
+                    Self::smallest_pending_front(masks.interrupts, |bit| {
+                        self.pending_interrupts[bit].front().map(|(seq, _)| *seq)
+                    });
                 if let Some(idx) = selected {
                     if let Some(_event) = self.pending_interrupts[idx].pop_front() {
+                        *cursor = (class + 1) % Self::NUMBER_EVENT_CLASSES;
                         let message: Message = Message {
                             source: MessageSender::KERNEL,
                             destination: MessageReceiver::new(pid, ThreadIdentifier::NONE),
@@ -522,14 +604,15 @@ impl EventManagerInner {
             }
 
             // Check if any exceptions were triggered.
-            if ((self.nevents + i as u64) % Self::NUMBER_EVENTS as u64) == 1 {
+            if class == 1 {
                 // Deliver the oldest eligible exception first, using the same FIFO-by-sequence rule
                 // as interrupts.
-                let selected: Option<usize> = Self::smallest_pending_front(exceptions, |bit| {
-                    self.pending_exceptions[bit]
-                        .front()
-                        .map(|(seq, _, _, _)| *seq)
-                });
+                let selected: Option<usize> =
+                    Self::smallest_pending_front(masks.exceptions, |bit| {
+                        self.pending_exceptions[bit]
+                            .front()
+                            .map(|(seq, _, _, _)| *seq)
+                    });
                 if let Some(idx) = selected {
                     if let Some(entry) = self.pending_exceptions[idx].pop_front() {
                         let mut info: EventInformation = EventInformation::default();
@@ -545,82 +628,23 @@ impl EventManagerInner {
                         message.message_type = MessageType::Exception;
 
                         self.pending_exceptions[idx].push_back(entry);
+                        *cursor = (class + 1) % Self::NUMBER_EVENT_CLASSES;
 
                         return Ok(Some(message));
                     }
                 }
             }
 
-            // Check if any scheduling events were triggered.
-            if ((self.nevents + i as u64) % Self::NUMBER_EVENTS as u64) == 2 {
-                // Scheduling events are already kept in FIFO-by-sequence order. The non-zero
-                // `scheduling` mask means the caller owns the scheduling-event class.
-                if scheduling != 0 {
-                    debug_assert!(
-                        self.pending_scheduling_is_ordered(),
-                        "scheduling-event queue is not ordered by sequence number"
-                    );
-
-                    if let Some((_seq, _descriptor, notification)) =
-                        self.pending_scheduling.pop_front()
-                    {
-                        // Serialize the notification into the head of the message payload. The
-                        // two notification variants have different serialized sizes, so each is
-                        // copied using its own length.
-                        let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-                        let message_type: MessageType = match notification {
-                            SchedulingNotification::Termination(info) => {
-                                let info_bytes = info.to_ne_bytes();
-                                payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
-                                MessageType::ProcessTerminationEvent
-                            },
-                            SchedulingNotification::Creation(info) => {
-                                let info_bytes = info.to_ne_bytes();
-                                payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
-                                MessageType::ProcessCreationEvent
-                            },
-                        };
-
-                        let message: Message = Message {
-                            source: MessageSender::KERNEL,
-                            destination: MessageReceiver::new(pid, ThreadIdentifier::NONE),
-                            message_type,
-                            payload,
-                            ..Message::default()
-                        };
-
-                        return Ok(Some(message));
-                    }
+            // Check if any ordered message-like item is eligible for delivery.
+            if class == 2 {
+                if let Some(message) = try_recv(tid, masks.scheduling != 0)? {
+                    *cursor = (class + 1) % Self::NUMBER_EVENT_CLASSES;
+                    return Ok(Some(message));
                 }
             }
         }
 
-        // FIXME(#2558): IPC can still starve under a sustained exception / interrupt rate. The
-        // in-class scans above are FIFO by sequence number, but IPC is only checked after event
-        // classes.
-
-        // Check if any messages were delivered.
-        match ProcessManager::try_recv(tid) {
-            Ok(Some(message)) => Ok(Some(message)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn pending_scheduling_is_ordered(&self) -> bool {
-        let mut previous: Option<u64> = None;
-
-        for (seq, _descriptor, _) in self.pending_scheduling.iter() {
-            let current: u64 = *seq;
-            if let Some(previous_seq) = previous {
-                if previous_seq > current {
-                    return false;
-                }
-            }
-            previous = Some(current);
-        }
-
-        true
+        Ok(None)
     }
 
     ///
@@ -848,12 +872,7 @@ impl EventManagerInner {
     ///
     /// # Description
     ///
-    /// Notifies the event manager that a scheduling event has occurred, queuing the notification
-    /// for delivery and waking up the threads of the owning process.
-    ///
-    /// # Parameters
-    ///
-    /// - `notification`: The scheduling-event notification to deliver.
+    /// Wakes the process that owns lifecycle scheduling events, if one is registered.
     ///
     /// # Returns
     ///
@@ -869,49 +888,17 @@ impl EventManagerInner {
     ///
     /// - The process manager is initialized.
     ///
-    unsafe fn notify_scheduling(
-        &mut self,
-        notification: SchedulingNotification,
-    ) -> Result<(), Error> {
-        let event: SchedulingEvent = notification.event();
-
-        // Buffer the notification for delivery in a single FIFO queue. The queue is bounded so that
-        // pending entries cannot accumulate without limit while no subscriber drains them; once the
-        // queue is full, further notifications are dropped. The bound is twice the maximum number of
-        // processes because each process can have at most one creation and one termination
-        // notification awaiting delivery at the same time.
-        if self.pending_scheduling.len() >= 2 * ::config::kernel::MAX_PROCESSES {
-            let reason: &str = "scheduling-event queue is full";
-            error!("reason={:?}, event={:?}", reason, event);
-            return Err(Error::new(ErrorCode::OutOfMemory, reason));
-        }
-
-        self.nevents += 1;
-        let descriptor: EventDescriptor =
-            EventDescriptor::new(self.nevents as usize, Event::from(event));
-        self.pending_scheduling
-            .push_back((self.nevents, descriptor, notification));
-
-        // Wake the owning process if the scheduling-event class is currently owned. When there is
-        // no owner yet, the notification stays buffered and is delivered once a subscriber
-        // registers.
+    unsafe fn notify_lifecycle_owner(&mut self) -> Result<(), Error> {
         match self.scheduling_owner {
             Some(pid) => {
-                trace!("pid={:?}, event={:?}", pid, event);
-                if let Err(e) = self.notify_all_process_threads(pid) {
-                    // Waking the owner failed. Remove the notification we just buffered so that no
-                    // error path of this function leaves a partially-delivered entry behind. This
-                    // lets callers safely retry without risking a duplicate buffered event.
-                    self.pending_scheduling.pop_back();
-                    return Err(e);
-                }
+                trace!("waking lifecycle owner: pid={:?}", pid);
+                self.notify_all_process_threads(pid)
             },
             None => {
-                trace!("buffered scheduling event with no owner: event={:?}", event);
+                trace!("lifecycle records buffered with no owner");
+                Ok(())
             },
         }
-
-        Ok(())
     }
 
     fn get_wait(&self) -> &Condvar {
@@ -1026,52 +1013,6 @@ impl EventManager {
         tid: ThreadIdentifier,
         pid: ProcessIdentifier,
     ) -> Result<Message, SleepError> {
-        // Get the interrupts that the process owns.
-        let mut interrupts: usize = 0;
-        for i in 0..usize::BITS {
-            let idx: usize = i as usize;
-            if let Some(p) = EventManager::get()
-                .map_err(SleepError::Generic)?
-                .try_borrow_mut()
-                .map_err(SleepError::Generic)?
-                .interrupt_ownership[idx]
-            {
-                if p == pid {
-                    interrupts |= 1 << i;
-                }
-            }
-        }
-
-        // Get the exceptions that the process owns.
-        let mut exceptions: usize = 0;
-        for i in 0..usize::BITS {
-            let idx: usize = i as usize;
-            if let Some(p) = EventManager::get()
-                .map_err(SleepError::Generic)?
-                .try_borrow_mut()
-                .map_err(SleepError::Generic)?
-                .exception_ownership[idx]
-            {
-                if p == pid {
-                    exceptions |= 1 << i;
-                }
-            }
-        }
-
-        // Get the scheduling events that the process owns. Scheduling events are owned as a single
-        // class, so the owner waits on every scheduling event at once.
-        let mut scheduling: usize = 0;
-        if let Some(p) = EventManager::get()
-            .map_err(SleepError::Generic)?
-            .try_borrow_mut()
-            .map_err(SleepError::Generic)?
-            .scheduling_owner
-        {
-            if p == pid {
-                scheduling = (1 << SchedulingEvent::NUMBER_EVENTS) - 1;
-            }
-        }
-
         let wait: Condvar = EventManager::get()
             .map_err(SleepError::Generic)?
             .try_borrow_mut()
@@ -1088,7 +1029,7 @@ impl EventManager {
                 .map_err(SleepError::Generic)?
                 .try_borrow_mut()
                 .map_err(SleepError::Generic)?
-                .try_wait(tid, pid, interrupts, exceptions, scheduling)
+                .try_wait(tid, pid)
                 .map_err(SleepError::Generic)?;
 
             if let Some(message) = message {
@@ -1100,15 +1041,32 @@ impl EventManager {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Changes ownership of an event class on behalf of a process.
+    ///
+    /// # Parameters
+    ///
+    /// - `pm`: Reference to the process manager.
+    /// - `pid`: Identifier of the requesting process.
+    /// - `ev`: Event whose ownership is being changed.
+    /// - `req`: Whether ownership is being acquired or released.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, the resulting ownership outcome is returned. Otherwise, an error
+    /// is returned instead.
+    ///
     pub fn evctrl(
         pm: &mut ProcessManager,
         pid: ProcessIdentifier,
         ev: Event,
         req: EventCtrlRequest,
-    ) -> Result<Option<EventOwnership>, Error> {
+    ) -> Result<EventCtrlOutcome, Error> {
         trace!("ev={:?}, req={:?}", ev, req);
 
-        let em: &'static mut EventManager = EventManager::get_mut()?;
+        let em: &EventManager = EventManager::get()?;
 
         let newly_acquired: bool = match ev {
             Event::Interrupt(interrupt_event) => {
@@ -1132,8 +1090,16 @@ impl EventManager {
                 true
             },
             Event::Scheduling(scheduling_event) => {
-                em.try_borrow_mut()?
-                    .do_evctrl_scheduling(pm, Some(pid), scheduling_event, req)?
+                let newly_acquired: bool = em.try_borrow_mut()?.do_evctrl_scheduling(
+                    pm,
+                    Some(pid),
+                    scheduling_event,
+                    req,
+                )?;
+                if matches!(req, EventCtrlRequest::Register) && pm.has_pending_lifecycle() {
+                    pm.request_lifecycle_wakeup();
+                }
+                newly_acquired
             },
         };
 
@@ -1142,9 +1108,11 @@ impl EventManager {
             // re-registration by the current owner must not produce a guard, otherwise dropping it
             // would release the entire class while other guards (and the registration intent)
             // remain.
-            EventCtrlRequest::Register if newly_acquired => Ok(Some(EventOwnership { ev, em })),
-            EventCtrlRequest::Register => Ok(None),
-            EventCtrlRequest::Unregister => Ok(None),
+            EventCtrlRequest::Register if newly_acquired => {
+                Ok(EventCtrlOutcome::Acquired(EventOwnership { ev }))
+            },
+            EventCtrlRequest::Register => Ok(EventCtrlOutcome::Unchanged),
+            EventCtrlRequest::Unregister => Ok(EventCtrlOutcome::Released),
         }
     }
 
@@ -1161,11 +1129,7 @@ impl EventManager {
     ///
     /// # Description
     ///
-    /// Notifies the event manager that a process has terminated.
-    ///
-    /// # Parameters
-    ///
-    /// - `info`: Information about the process termination.
+    /// Wakes the process that owns lifecycle scheduling events, if one is registered.
     ///
     /// # Returns
     ///
@@ -1182,40 +1146,8 @@ impl EventManager {
     ///
     /// - The process manager is initialized.
     ///
-    pub unsafe fn notify_process_termination(info: ProcessTerminationInfo) -> Result<(), Error> {
-        Self::get_mut()?
-            .try_borrow_mut()?
-            .notify_scheduling(SchedulingNotification::Termination(info))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Notifies the event manager that a process has been created.
-    ///
-    /// # Parameters
-    ///
-    /// - `info`: Information about the process creation.
-    ///
-    /// # Returns
-    ///
-    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
-    ///
-    ///
-    /// # Safety
-    ///
-    /// This function panics if the process manager is not initialized.
-    ///
-    /// This function is unsafe because it operates on a global variable.
-    ///
-    /// This function is safe to use if an only if the following conditions are met:
-    ///
-    /// - The process manager is initialized.
-    ///
-    pub unsafe fn notify_process_creation(info: ProcessCreationInfo) -> Result<(), Error> {
-        Self::get_mut()?
-            .try_borrow_mut()?
-            .notify_scheduling(SchedulingNotification::Creation(info))
+    pub unsafe fn notify_process_lifecycle() -> Result<(), Error> {
+        Self::get_mut()?.try_borrow_mut()?.notify_lifecycle_owner()
     }
 
     fn try_borrow_mut(&self) -> Result<RefMut<'_, EventManagerInner>, Error> {
@@ -1450,9 +1382,6 @@ pub fn init() -> Result<(), Error> {
     let exception_ownership: Box<[Option<ProcessIdentifier>]> =
         (0..usize::BITS).map(|_| None).collect();
 
-    let pending_scheduling: LinkedList<(u64, EventDescriptor, SchedulingNotification)> =
-        LinkedList::default();
-
     let scheduling_owner: Option<ProcessIdentifier> = None;
 
     let mut interrupt_capable: bool = true;
@@ -1501,7 +1430,6 @@ pub fn init() -> Result<(), Error> {
         interrupt_ownership,
         pending_exceptions,
         exception_ownership,
-        pending_scheduling,
         scheduling_owner,
         waiting_threads: VecDeque::new(),
         wait: Some(Condvar::new()),

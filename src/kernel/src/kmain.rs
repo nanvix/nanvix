@@ -582,6 +582,11 @@ pub extern "C" fn kmain(kargs: &KernelArguments) {
         panic!("failed to initialize process manager: {:?}", err);
     }
 
+    #[cfg(feature = "test")]
+    if !crate::event::test_delivery_integration() {
+        panic!("ordered delivery integration tests failed");
+    }
+
     // Start application cores.
     #[cfg(feature = "smp")]
     if let Some(madt) = &madt {
