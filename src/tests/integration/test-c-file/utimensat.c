@@ -19,10 +19,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
-#include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#include <utime.h>
 
 //==================================================================================================
 // Standalone Functions
@@ -60,6 +61,29 @@ void test_utimensat(void)
     assert(st.st_mtime == times[1].tv_sec);
 
     // Clean up.
+    assert(close(fd) == 0);
+    assert(unlink(filename) == 0);
+
+    fprintf(stderr, "passed\n");
+}
+
+// Tests whether the time-setting calls accept a NULL `times` (set to current
+// time). NULL returns success even on FAT32, where timestamps are ignored.
+void test_utimensat_now(void)
+{
+    fprintf(stderr, "testing NULL times (set to now) ... ");
+
+    const char *filename = "testfile_now.tmp";
+
+    int fd = open(filename, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    assert(fd >= 0);
+
+    // A NULL `times` means "set both timestamps to the current time".
+    assert(utimensat(AT_FDCWD, filename, NULL, 0) == 0);
+    assert(futimens(fd, NULL) == 0);
+    assert(utimes(filename, NULL) == 0);
+    assert(utime(filename, NULL) == 0);
+
     assert(close(fd) == 0);
     assert(unlink(filename) == 0);
 

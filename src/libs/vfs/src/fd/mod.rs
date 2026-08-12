@@ -2142,6 +2142,11 @@ pub fn vfs_utimensat(
         return Err(Fat32Error::InvalidArgument);
     }
     let resolved = vfs_resolve_path(dirfd, pathname)?;
+    // POSIX TODO: NULL/UTIME_NOW times need write access, owner match, or privilege.
+    // See https://pubs.opengroup.org/onlinepubs/9799919799/functions/utimensat.html
+    // Nanvix is single-user, so owner and privilege always hold — the check
+    // reduces to writability. Enforce via check_writable when timestamp
+    // persistence lands.
     // Verify that the target exists using the VFS-level stat for consistent semantics.
     filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
 }

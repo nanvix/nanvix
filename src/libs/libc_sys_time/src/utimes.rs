@@ -61,11 +61,10 @@ unsafe extern "C" {
 #[unsafe(no_mangle)]
 #[trace_syscall]
 pub unsafe extern "C" fn utimes(filename: *const c_char, times: *const timeval) -> c_int {
-    // Check if `times` is invalid.
+    // A NULL `times` means "set both timestamps to the current time" per POSIX.
+    // Forward the NULL down to utimensat(), which handles it.
     if times.is_null() {
-        ::syslog::warn!("utimes(): invalid times (filename={:?}, times={:?})", filename, times);
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
+        return utimensat(AT_FDCWD, filename, ::core::ptr::null(), 0);
     }
 
     // Attempt to convert `times`.

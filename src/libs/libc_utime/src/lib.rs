@@ -12,7 +12,6 @@
 //==================================================================================================
 
 mod bindings {
-    use ::sys::error::ErrorCode;
     use ::sysapi::{
         fcntl::atflags::AT_FDCWD,
         ffi::{
@@ -23,7 +22,6 @@ mod bindings {
         time::timespec,
         utime::utimbuf,
     };
-    use ::syscall::errno::__errno_location;
     use ::syslog::trace_syscall;
 
     unsafe extern "C" {
@@ -64,11 +62,10 @@ mod bindings {
     #[unsafe(no_mangle)]
     #[trace_syscall]
     pub unsafe extern "C" fn utime(filename: *const c_char, times: *const utimbuf) -> c_int {
-        // Check if `times` is invalid.
+        // A NULL `times` means "set both timestamps to the current time" per POSIX.
+        // Forward the NULL down to utimensat(), which handles it.
         if times.is_null() {
-            ::syslog::warn!("utime(): invalid times (filename={:?}, times={:?})", filename, times);
-            *__errno_location() = ErrorCode::InvalidArgument.get();
-            return -1;
+            return utimensat(AT_FDCWD, filename, ::core::ptr::null(), 0);
         }
 
         // Attempt to convert `times`.

@@ -152,6 +152,8 @@ int main(int argc, const char *argv[])
     test_getcwd();
     test_chdir(); // requires getcwd().
     test_fchdir();
+    // NULL times returns success even on FAT32 (timestamps are ignored).
+    test_utimensat_now();
 #ifndef __NANVIX_STANDALONE__
     // FAT32 timestamps, permissions, and ownership are no-ops that fail assertions.
     test_utimensat();
