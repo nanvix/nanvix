@@ -58,7 +58,7 @@ async function fetchBaseline(bench, runner, machine, arch) {
 const SHORT_SHA = 7;
 const MAX_BASELINE_COMMITS = 50;
 
-/** Signed percentage delta of val vs base, matching the old table's Δ. */
+/** Signed percentage delta of val vs base (e.g. "+8.0%"), or "n/a". */
 function formatDelta(val, base) {
   if (base == null || val == null || base === 0 || Number.isNaN(val) || Number.isNaN(base)) return "n/a";
   const pct = (val / base) * 100 - 100;
@@ -107,8 +107,10 @@ const BAR_COLORS = [
 ];
 
 /** Highlight bar `idx` as the target: recolor bars and refresh the side
- * table (captioned with the target commit; dev = the preceding bar). */
-function selectBar(chart, labels, table, abs, idx) {
+ * table. Columns are always target | prior | Δ | dev | Δ, where prior is
+ * the preceding bar and dev is the dev tip (`devIdx`). Both are always shown
+ * for consistency (prior is "—" at the first bar; dev reads 0% at the tip). */
+function selectBar(chart, labels, table, abs, devIdx, idx) {
   if (idx < 0 || idx >= labels.length) return;
   chart.data.datasets.forEach((ds, d) => {
     ds.backgroundColor = labels.map((_, i) =>
@@ -116,8 +118,15 @@ function selectBar(chart, labels, table, abs, idx) {
     );
   });
   chart.update("none");
-  const caption = abs(idx) ? `target: ${labels[idx]}` : "";
-  renderDeltaTable(table, caption, idx > 0 ? abs(idx - 1) : null, abs(idx));
+
+  const target = abs(idx);
+  const caption = target ? `target: ${labels[idx]}` : "";
+  const priorIdx = idx - 1;
+  const baselines = [
+    { name: "prior", vals: priorIdx >= 0 ? abs(priorIdx) : null },
+    { name: "dev", vals: devIdx >= 0 ? abs(devIdx) : null },
+  ];
+  renderDeltaTable(table, caption, target, baselines);
 }
 
 let chartInstances = [];
@@ -158,10 +167,11 @@ function createCanvas(title) {
   return { canvas, table };
 }
 
-/** Render a dev/target/Δ comparison table into a side panel, captioned with
- * `caption`. `devVals` and `tgtVals` are each [p50, p95, p99]; a null side
- * renders as "—". */
-function renderDeltaTable(el, caption, devVals, tgtVals) {
+/** Render a comparison table into a side panel, captioned with `caption`.
+ * `target` is [p50,p95,p99] (or null). `baselines` is an ordered list of
+ * { name, vals } rendered target-first as: target | name | Δ | name | Δ ...
+ * A null value renders as "—". */
+function renderDeltaTable(el, caption, target, baselines) {
   el.innerHTML = "";
   if (caption) {
     const cap = document.createElement("div");
@@ -170,23 +180,36 @@ function renderDeltaTable(el, caption, devVals, tgtVals) {
     el.appendChild(cap);
   }
   const names = ["p50", "p95", "p99"];
+  const fmt = (v) => (v == null || Number.isNaN(v) ? "\u2014" : v.toLocaleString());
+  const deltaCell = (t, b) => {
+    const d = formatDelta(t, b);
+    const neutral = d === "n/a" || d === "+0.0%" || d === "\u22120.0%";
+    const cls = neutral ? "" : d.startsWith("+") ? "delta-up" : "delta-down";
+    return `<td class="${cls}">${d}</td>`;
+  };
+
   const table = document.createElement("table");
   table.className = "bench-table";
-  table.innerHTML =
-    "<thead><tr><th></th><th>dev</th><th>target</th><th>\u0394</th></tr></thead>";
+
+  // Header: target then each baseline (value + Δ).
+  let head = "<th></th><th>target</th>";
+  for (const b of baselines) head += `<th>${b.name}</th><th>\u0394</th>`;
+  const thead = document.createElement("thead");
+  const htr = document.createElement("tr");
+  htr.innerHTML = head;
+  thead.appendChild(htr);
+  table.appendChild(thead);
+
   const tbody = document.createElement("tbody");
   names.forEach((name, i) => {
-    const d = devVals ? devVals[i] : null;
-    const t = tgtVals ? tgtVals[i] : null;
-    const delta = formatDelta(t, d);
-    const neutral = delta === "n/a" || delta === "+0.0%" || delta === "\u22120.0%";
-    const cls = neutral ? "" : delta.startsWith("+") ? "delta-up" : "delta-down";
+    const t = target ? target[i] : null;
+    let row = `<th>${name}</th><td>${fmt(t)}</td>`;
+    for (const b of baselines) {
+      const bv = b.vals ? b.vals[i] : null;
+      row += `<td>${fmt(bv)}</td>` + deltaCell(t, bv);
+    }
     const tr = document.createElement("tr");
-    tr.innerHTML =
-      `<th>${name}</th>` +
-      `<td>${d == null ? "\u2014" : d.toLocaleString()}</td>` +
-      `<td>${t == null ? "\u2014" : t.toLocaleString()}</td>` +
-      `<td class="${cls}">${delta}</td>`;
+    tr.innerHTML = row;
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -248,6 +271,8 @@ function renderStandard(baseline, prRow, prCommit) {
 
   const prIdx = prRow ? labels.length - 1 : -1;
   const abs = makeAbs(p50Data, p95Delta, p99Delta);
+  // Dev tip = last baseline bar (before the PR bar, when present).
+  const devIdx = prRow ? labels.length - 2 : labels.length - 1;
   // Default target: the PR bar, or the latest commit for history-only.
   const defaultSel = prIdx >= 0 ? prIdx : labels.length - 1;
 
@@ -264,7 +289,7 @@ function renderStandard(baseline, prRow, prCommit) {
     options: {
       responsive: true,
       onClick: (_evt, els) => {
-        if (els.length) selectBar(chart, labels, table, abs, els[0].index);
+        if (els.length) selectBar(chart, labels, table, abs, devIdx, els[0].index);
       },
       plugins: {
         legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
@@ -276,7 +301,7 @@ function renderStandard(baseline, prRow, prCommit) {
       },
     },
   });
-  selectBar(chart, labels, table, abs, defaultSel);
+  selectBar(chart, labels, table, abs, devIdx, defaultSel);
   chartInstances.push(chart);
 }
 
@@ -335,6 +360,7 @@ function renderSized(baseline, prRows, prCommit) {
 
     const prIdx = hasPr ? labels.length - 1 : -1;
     const abs = makeAbs(p50Data, p95Delta, p99Delta);
+    const devIdx = hasPr ? labels.length - 2 : labels.length - 1;
     const defaultSel = prIdx >= 0 ? prIdx : labels.length - 1;
 
     const chart = new Chart(canvas, {
@@ -350,7 +376,7 @@ function renderSized(baseline, prRows, prCommit) {
       options: {
         responsive: true,
         onClick: (_evt, els) => {
-          if (els.length) selectBar(chart, labels, table, abs, els[0].index);
+          if (els.length) selectBar(chart, labels, table, abs, devIdx, els[0].index);
         },
         plugins: {
           legend: { labels: { color: "#e0e0e0", font: { size: 11 } } },
@@ -362,7 +388,7 @@ function renderSized(baseline, prRows, prCommit) {
         },
       },
     });
-    selectBar(chart, labels, table, abs, defaultSel);
+    selectBar(chart, labels, table, abs, devIdx, defaultSel);
     chartInstances.push(chart);
   }
 }
