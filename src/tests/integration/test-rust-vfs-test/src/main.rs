@@ -1035,7 +1035,7 @@ fn test_resolve_path() -> Result<(), Error> {
 
     // Absolute path: dirfd should be ignored.
     let resolved = vfs_resolve_path(0, "/rp/sub/file.txt")
-        .ok_or(Error::new(ErrorCode::InvalidArgument, "absolute resolve failed"))?;
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "absolute resolve failed"))?;
     if resolved.as_str() != "/rp/sub/file.txt" {
         return Err(Error::new(ErrorCode::InvalidArgument, "absolute path mismatch"));
     }
@@ -1043,7 +1043,7 @@ fn test_resolve_path() -> Result<(), Error> {
     // AT_FDCWD: resolve relative to VFS cwd.
     vfs::chdir("/rp").map_err(|e| fat_err(e, "chdir /rp failed"))?;
     let resolved_cwd = vfs_resolve_path(AT_FDCWD, "sub")
-        .ok_or(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD resolve failed"))?;
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "AT_FDCWD resolve failed"))?;
     if resolved_cwd.as_str() != "/rp/sub" {
         return Err(Error::new(ErrorCode::InvalidArgument, "AT_FDCWD path mismatch"));
     }
@@ -1052,22 +1052,22 @@ fn test_resolve_path() -> Result<(), Error> {
     let dir_fd: i32 = vfs::fd::vfs_open("/rp/sub", file_creation_flags::O_DIRECTORY)
         .map_err(|e| fat_err(e, "vfs_open /rp/sub O_DIRECTORY"))?;
     let resolved_dir = vfs_resolve_path(dir_fd, "nested.txt")
-        .ok_or(Error::new(ErrorCode::InvalidArgument, "dirfd resolve failed"))?;
+        .map_err(|_| Error::new(ErrorCode::InvalidArgument, "dirfd resolve failed"))?;
     if resolved_dir.as_str() != "/rp/sub/nested.txt" {
         return Err(Error::new(ErrorCode::InvalidArgument, "dirfd path mismatch"));
     }
 
-    // A descriptor with no slot should return None. Under the flat namespace this is determined by
+    // A descriptor with no slot should not resolve. Under the flat namespace this is determined by
     // the slot's handle type, not a number range: close the directory fd so it is absent, then it
     // no longer resolves.
     vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
-    if vfs_resolve_path(dir_fd, "file.txt").is_some() {
-        return Err(Error::new(ErrorCode::InvalidArgument, "absent fd should return None"));
+    if vfs_resolve_path(dir_fd, "file.txt").is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "absent fd should not resolve"));
     }
 
-    // An empty path names nothing, so it must not resolve to the cwd.
-    if vfs_resolve_path(AT_FDCWD, "").is_some() {
-        return Err(Error::new(ErrorCode::InvalidArgument, "empty path should return None"));
+    // An empty path names nothing, so it must fail with ENOENT rather than resolve to the cwd.
+    if vfs_resolve_path(AT_FDCWD, "").is_ok() {
+        return Err(Error::new(ErrorCode::InvalidArgument, "empty path should not resolve"));
     }
 
     // Clean up.
@@ -1342,11 +1342,11 @@ fn test_openat() -> Result<(), Error> {
                 "openat with a non-directory dirfd must fail instead of resolving against the cwd",
             ));
         },
-        Err(vfs::Fat32Error::InvalidArgument) => {},
+        Err(vfs::Fat32Error::NotADirectory) => {},
         Err(e) => {
             return Err(fat_err(
                 e,
-                "openat with a non-directory dirfd must fail with EINVAL, not another error",
+                "openat with a non-directory dirfd must fail with ENOTDIR, not another error",
             ));
         },
     }
@@ -1416,11 +1416,11 @@ fn test_mkdirat() -> Result<(), Error> {
                 "mkdirat with a non-directory dirfd must fail instead of resolving against the cwd",
             ));
         },
-        Err(vfs::Fat32Error::InvalidArgument) => {},
+        Err(vfs::Fat32Error::NotADirectory) => {},
         Err(e) => {
             return Err(fat_err(
                 e,
-                "mkdirat with a non-directory dirfd must fail with EINVAL, not another error",
+                "mkdirat with a non-directory dirfd must fail with ENOTDIR, not another error",
             ));
         },
     }
@@ -1502,11 +1502,11 @@ fn test_accessat() -> Result<(), Error> {
                  cwd",
             ));
         },
-        Err(vfs::Fat32Error::InvalidArgument) => {},
+        Err(vfs::Fat32Error::NotADirectory) => {},
         Err(e) => {
             return Err(fat_err(
                 e,
-                "accessat with a non-directory dirfd must fail with EINVAL, not another error",
+                "accessat with a non-directory dirfd must fail with ENOTDIR, not another error",
             ));
         },
     }
@@ -1594,11 +1594,11 @@ fn test_fstatat() -> Result<(), Error> {
                 "fstatat with a non-directory dirfd must fail instead of resolving against the cwd",
             ));
         },
-        Err(vfs::Fat32Error::InvalidArgument) => {},
+        Err(vfs::Fat32Error::NotADirectory) => {},
         Err(e) => {
             return Err(fat_err(
                 e,
-                "fstatat with a non-directory dirfd must fail with EINVAL, not another error",
+                "fstatat with a non-directory dirfd must fail with ENOTDIR, not another error",
             ));
         },
     }
