@@ -176,7 +176,9 @@ impl Vfs {
     ///
     /// # Errors
     ///
-    /// Returns [`Fat32Error::NotFound`] if no mount matches the path.
+    /// Returns [`Fat32Error::NotFound`] if no mount matches the path. Returns
+    /// [`Fat32Error::InvalidPath`] if `path` fails to normalize (empty path, or a `cwd`
+    /// that is not absolute; see [`Vfs::normalize_path`]).
     pub fn resolve(&mut self, path: &str, cwd: &str) -> Result<(usize, String), Fat32Error> {
         let normalized: String = self.normalize_path(path, cwd)?;
 

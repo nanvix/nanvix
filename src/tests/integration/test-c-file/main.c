@@ -138,6 +138,7 @@ int main(int argc, const char *argv[])
     test_readlink();   // requires symlinkat() and unlink().
 #endif                 // __NANVIX_STANDALONE__
     test_renameat();   // requires open(), close() and unlink().
+    test_renameat_subdir(); // subdir rename + replace-existing.
     test_unlinkat();   // requires open() and close().
     test_mkdirat();    // requires stat() and unlinkat().
     test_mkdir();      // requires stat() and unlinkat().

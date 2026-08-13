@@ -117,6 +117,9 @@ extern void test_readv(void);
 // Tests whether we can rename a file.
 extern void test_renameat(void);
 
+// Tests rename within subdirectories and replace-existing.
+extern void test_renameat_subdir(void);
+
 // Tests whether we can get file status information.
 extern void test_stat(void);
 
