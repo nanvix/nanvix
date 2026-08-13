@@ -46,6 +46,7 @@ use ::sys::{
         ProcessRole,
         ProcessTerminationInfo,
         SchedulingEvent,
+        ThreadTerminationInfo,
     },
     ipc::{
         Message,
@@ -92,6 +93,8 @@ enum LifecycleMessage {
     ProcessCreation(ProcessCreationInfo),
     /// A process terminated.
     ProcessTermination(ProcessTerminationInfo),
+    /// A thread terminated.
+    ThreadTermination(ThreadTerminationInfo),
 }
 
 ///
@@ -279,6 +282,14 @@ fn parse_lifecycle_message(message: &Message) -> Result<Option<LifecycleMessage>
                 raw_info,
             ))))
         },
+        MessageType::ThreadTerminationEvent => {
+            authenticate_lifecycle_message(message)?;
+            let raw_info: [u8; ::core::mem::size_of::<ThreadTerminationInfo>()] =
+                lifecycle_payload(message, "invalid thread termination event payload")?;
+            Ok(Some(LifecycleMessage::ThreadTermination(ThreadTerminationInfo::from_ne_bytes(
+                raw_info,
+            ))))
+        },
         _ => Ok(None),
     }
 }
@@ -395,10 +406,9 @@ impl ProcessDaemon {
         ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true)?;
 
         // Subscribe to scheduling events. Scheduling events are owned as a single class: a single
-        // registration claims ownership of every scheduling event, so this one call subscribes the
-        // daemon to both process-termination and process-creation events. The kernel publishes a
-        // creation event whenever a process forks a child, which the daemon uses to record the
-        // parent/child relationship without the parent having to register the child explicitly.
+        // registration claims ownership of every scheduling event. The kernel publishes a creation
+        // event whenever a process forks a child, which the daemon uses to record the parent/child
+        // relationship without the parent having to register the child explicitly.
         ::syslog::info!("subscribing to scheduling events...");
         ::sys::kcall::event::__kcall_evctrl(
             Event::Scheduling(SchedulingEvent::ProcessTermination),
@@ -467,7 +477,9 @@ impl ProcessDaemon {
             },
             // Consumed by the lifecycle parser above. Ignored rather than asserted, so that a
             // regression in the parser cannot take the process manager down.
-            MessageType::ProcessTerminationEvent | MessageType::ProcessCreationEvent => {
+            MessageType::ProcessTerminationEvent
+            | MessageType::ProcessCreationEvent
+            | MessageType::ThreadTerminationEvent => {
                 ::syslog::error!("lifecycle message escaped the lifecycle parser, ignoring");
             },
         }
@@ -488,6 +500,9 @@ impl ProcessDaemon {
             LifecycleMessage::ProcessTermination(info) => {
                 self.handle_process_termination_event(info)
             },
+            // Thread-termination cleanup is activated once bounded lifecycle delivery and its
+            // consumer are available. Until then, authenticated events are intentionally dormant.
+            LifecycleMessage::ThreadTermination(_info) => Ok(None),
         }
     }
 
@@ -2648,6 +2663,69 @@ mod tests {
     }
 
     #[test]
+    fn normal_mode_decodes_thread_termination_without_mutating_state() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(
+            pid,
+            ThreadIdentifier::from(11),
+            ExitStatus::from(0x0102_0304_u32),
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ThreadTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+        let context: ResponseContext = response_context(pid);
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: context,
+        });
+
+        let parsed: Option<LifecycleMessage> = parse_lifecycle_message(&message)
+            .expect("kernel thread termination message should be decoded");
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(parsed, Some(LifecycleMessage::ThreadTermination(info)));
+        assert_eq!(status, None, "thread termination should not trigger shutdown");
+        assert!(daemon.processes.contains_key(&pid), "thread event should not change registry");
+        assert_eq!(daemon.blocked.len(), 1, "thread event should not release blocked waits");
+        assert_eq!(daemon.blocked[0].response_context, context);
+    }
+
+    #[test]
+    fn normal_mode_rejects_forged_thread_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ThreadTerminationInfo =
+            ThreadTerminationInfo::new(pid, ThreadIdentifier::from(11), ExitStatus::ok());
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ThreadTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+        let context: ResponseContext = response_context(pid);
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: context,
+        });
+
+        let error: Error = parse_lifecycle_message(&message)
+            .expect_err("non-kernel lifecycle message should be rejected");
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+        assert_eq!(status, None, "forged thread termination should not trigger shutdown");
+        assert!(daemon.processes.contains_key(&pid), "forged thread event should be ignored");
+        assert_eq!(daemon.blocked.len(), 1, "forged thread event should not release blocked waits");
+        assert_eq!(daemon.blocked[0].response_context, context);
+    }
+
+    #[test]
     fn shutdown_mode_ignores_valid_process_creation_message() {
         let pid: ProcessIdentifier = ProcessIdentifier::from(10);
         let child: ProcessIdentifier = ProcessIdentifier::from(11);
@@ -2734,6 +2812,29 @@ mod tests {
 
         assert_eq!(error.code, ErrorCode::PermissionDenied);
         assert!(daemon.processes.contains_key(&pid), "forged termination should be ignored");
+    }
+
+    #[test]
+    fn shutdown_mode_ignores_valid_thread_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(
+            pid,
+            ThreadIdentifier::from(11),
+            ExitStatus::from(0x0102_0304_u32),
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ThreadTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        daemon.handle_shutdown_message(&message);
+
+        // Deregistering the owning process here would end the shutdown drain before the process
+        // actually terminated.
+        assert!(daemon.processes.contains_key(&pid), "thread event should not deregister process");
     }
 
     #[test]

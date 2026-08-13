@@ -142,13 +142,25 @@ pub fn main() {
                     Ok(false) => continue,
                     Err(e) => ::syslog::error!("failed to handle ipc request (error={:?})", e),
                 },
-                MessageType::Interrupt => unreachable!("should not receive interrupts"),
-                MessageType::Ikc => unreachable!("should not receive ikc messages"),
+                MessageType::Interrupt => {
+                    ::syslog::warn!("received unexpected interrupt, ignoring");
+                    continue;
+                },
+                MessageType::Ikc => {
+                    ::syslog::warn!("received unexpected ikc message, ignoring");
+                    continue;
+                },
                 MessageType::ProcessTerminationEvent => {
-                    unreachable!("should not receive process termination events")
+                    ::syslog::warn!("received unexpected process termination event, ignoring");
+                    continue;
                 },
                 MessageType::ProcessCreationEvent => {
-                    unreachable!("should not receive process creation events")
+                    ::syslog::warn!("received unexpected process creation event, ignoring");
+                    continue;
+                },
+                MessageType::ThreadTerminationEvent => {
+                    ::syslog::warn!("received unexpected thread termination event, ignoring");
+                    continue;
                 },
                 MessageType::PullResponse => {
                     ::syslog::error!("received unexpected pull response, ignoring");

@@ -227,7 +227,10 @@ fn test_event_guard_matching_follows_ownership_scope() -> bool {
 
     let creation: Event = Event::Scheduling(SchedulingEvent::ProcessCreation);
     let termination: Event = Event::Scheduling(SchedulingEvent::ProcessTermination);
-    if !event_guard_matches(&creation, &termination) {
+    let thread_termination: Event = Event::Scheduling(SchedulingEvent::ThreadTermination);
+    if !event_guard_matches(&creation, &termination)
+        || !event_guard_matches(&creation, &thread_termination)
+    {
         error!("scheduling events did not match their class-wide ownership guard");
         return false;
     }

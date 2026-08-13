@@ -8,6 +8,7 @@
 mod creation;
 mod event;
 mod termination;
+mod thread_termination;
 
 //==================================================================================================
 // Exports
@@ -16,3 +17,4 @@ mod termination;
 pub use creation::*;
 pub use event::*;
 pub use termination::*;
+pub use thread_termination::*;
