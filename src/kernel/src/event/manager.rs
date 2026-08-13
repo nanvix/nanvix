@@ -5,6 +5,10 @@
 // Imports
 //==================================================================================================
 
+use self::{
+    delivery_epoch::DeliveryEpoch,
+    event_sequence::EventSequence,
+};
 use crate::{
     hal::{
         arch::{
@@ -24,6 +28,8 @@ use crate::{
         ProcessManager,
         SleepError,
         SyncSignalOutcome,
+        UncommittedMessage,
+        UncommittedMessageToken,
     },
 };
 use ::alloc::{
@@ -35,7 +41,7 @@ use ::alloc::{
 };
 
 /// Payload stored per pending exception: sequence number, descriptor, info, and condvar.
-type PendingException = (u64, EventDescriptor, ExceptionEventInformation, Condvar);
+type PendingException = (EventSequence, EventDescriptor, ExceptionEventInformation, Condvar);
 use ::arch::cpu::excp;
 use ::core::cell::{
     RefCell,
@@ -72,6 +78,8 @@ use ::sys::{
 // Modules
 //==================================================================================================
 
+mod delivery_epoch;
+mod event_sequence;
 /// In-kernel tests for the event manager.
 #[cfg(feature = "test")]
 pub(super) mod test;
@@ -94,6 +102,118 @@ struct EventMasks {
     interrupts: usize,
     exceptions: usize,
     scheduling: usize,
+}
+
+/// Message and private token selected for transactional delivery.
+pub(crate) struct PendingDelivery {
+    /// Message to copy to user space.
+    message: Message,
+    /// Token that commits the selected item after a successful copy.
+    token: DeliveryToken,
+}
+
+/// Private token identifying an item selected for delivery.
+enum DeliveryToken {
+    /// Selected interrupt queue head.
+    Interrupt {
+        epoch: DeliveryEpoch,
+        index: usize,
+        sequence: EventSequence,
+    },
+    /// Selected exception queue head.
+    Exception {
+        epoch: DeliveryEpoch,
+        index: usize,
+        sequence: EventSequence,
+    },
+    /// Selected mailbox or lifecycle message.
+    Message {
+        epoch: DeliveryEpoch,
+        token: UncommittedMessageToken,
+    },
+}
+
+impl PendingDelivery {
+    ///
+    /// # Description
+    ///
+    /// Creates a pending delivery that pairs a message with the private token required to commit
+    /// it.
+    ///
+    /// # Parameters
+    ///
+    /// - `message`: Message selected for delivery.
+    /// - `token`: Private token that identifies the selected item.
+    ///
+    /// # Returns
+    ///
+    /// A pending delivery containing `message` and `token`.
+    ///
+    fn new(message: Message, token: DeliveryToken) -> Self {
+        Self { message, token }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the message selected for delivery without exposing its commit token.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the selected message.
+    ///
+    pub(crate) fn message(&self) -> &Message {
+        &self.message
+    }
+}
+
+impl DeliveryToken {
+    ///
+    /// # Description
+    ///
+    /// Returns the delivery epoch captured when this token was created.
+    ///
+    /// # Returns
+    ///
+    /// The token's delivery epoch.
+    ///
+    fn epoch(&self) -> DeliveryEpoch {
+        match self {
+            Self::Interrupt { epoch, .. }
+            | Self::Exception { epoch, .. }
+            | Self::Message { epoch, .. } => *epoch,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the service class that selected this token.
+    ///
+    /// # Returns
+    ///
+    /// The index of the interrupt, exception, or message service class.
+    ///
+    fn class(&self) -> usize {
+        match self {
+            Self::Interrupt { .. } => EventManagerInner::INTERRUPT_CLASS,
+            Self::Exception { .. } => EventManagerInner::EXCEPTION_CLASS,
+            Self::Message { .. } => EventManagerInner::MESSAGE_CLASS,
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Computes the service cursor value to install after committing this token.
+    ///
+    /// # Returns
+    ///
+    /// The service class that follows the class represented by this token.
+    ///
+    fn next_cursor(&self) -> usize {
+        (self.class() + 1) % EventManagerInner::NUMBER_EVENT_CLASSES
+    }
 }
 
 ///
@@ -184,16 +304,15 @@ impl Drop for EventOwnership {
 
 struct EventManagerInner {
     interrupt_capable: bool,
-    /// Full-width monotonic counter incremented once per generated event. Its value at generation
-    /// time is the event's sequence number, stamped alongside the [`EventDescriptor`] in each
-    /// pending queue and used as the FIFO ordering key in `try_wait()`. It is `u64` so that ordering
-    /// never wraps on the kernel's 32-bit target, where the truncated [`EventDescriptor`] id would
-    /// otherwise overflow its narrow field (see issue #2674).
-    nevents: u64,
+    /// Full-width sequence assigned to the latest generated event and used as the FIFO ordering key
+    /// in `try_wait()` independently of the truncated [`EventDescriptor`] identifier.
+    event_sequence: EventSequence,
+    /// Epoch stamped into the next delivery token and advanced once per successful commit.
+    delivery_epoch: DeliveryEpoch,
     wait: Option<Condvar>,
     waiting_threads: VecDeque<(ProcessIdentifier, ThreadIdentifier)>,
     interrupt_ownership: Box<[Option<ProcessIdentifier>]>,
-    pending_interrupts: Box<[LinkedList<(u64, EventDescriptor)>]>,
+    pending_interrupts: Box<[LinkedList<(EventSequence, EventDescriptor)>]>,
     exception_ownership: Box<[Option<ProcessIdentifier>]>,
     pending_exceptions: Box<[LinkedList<PendingException>]>,
     scheduling_owner: Option<ProcessIdentifier>,
@@ -201,6 +320,36 @@ struct EventManagerInner {
 
 impl EventManagerInner {
     const NUMBER_EVENT_CLASSES: usize = 3;
+    /// Service class of pending interrupts.
+    const INTERRUPT_CLASS: usize = 0;
+    /// Service class of pending exceptions.
+    const EXCEPTION_CLASS: usize = 1;
+    /// Service class of ordered message-like items.
+    const MESSAGE_CLASS: usize = 2;
+
+    ///
+    /// # Description
+    ///
+    /// Advances the event sequence and returns the value assigned to the next generated interrupt
+    /// or exception.
+    ///
+    /// # Returns
+    ///
+    /// The next event sequence number.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the event sequence is exhausted, because continuing would silently
+    /// reorder pending events.
+    ///
+    fn next_event_sequence(&mut self) -> EventSequence {
+        let sequence: EventSequence = match self.event_sequence.checked_next() {
+            Some(sequence) => sequence,
+            None => unreachable!("event sequence exhausted"),
+        };
+        self.event_sequence = sequence;
+        sequence
+    }
 
     /// Releases an event ownership without performing registration-time capability checks.
     fn release_ownership(&mut self, ev: Event) {
@@ -438,8 +587,8 @@ impl EventManagerInner {
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the function returns the message that was delivered. Otherwise,
-    /// an error is returned instead.
+    /// The selected pending delivery, [`None`] if no item is eligible, or an error if selection
+    /// fails.
     ///
     /// # Safety
     ///
@@ -453,18 +602,12 @@ impl EventManagerInner {
         &mut self,
         tid: ThreadIdentifier,
         pid: ProcessIdentifier,
-    ) -> Result<Option<Message>, Error> {
+    ) -> Result<Option<PendingDelivery>, Error> {
         // SAFETY: the caller holds no reference to the process manager.
-        let mut cursor: usize = unsafe { ProcessManager::delivery_cursor() };
-        let message: Option<Message> =
-            self.try_wait_with(tid, pid, &mut cursor, |tid, lifecycle_eligible| unsafe {
-                ProcessManager::try_recv(tid, lifecycle_eligible)
-            })?;
-        if message.is_some() {
-            // SAFETY: the caller holds no reference to the process manager.
-            unsafe { ProcessManager::set_delivery_cursor(cursor) };
-        }
-        Ok(message)
+        let cursor: usize = unsafe { ProcessManager::delivery_cursor() };
+        self.try_wait_with(tid, pid, cursor, |tid, lifecycle_eligible| unsafe {
+            ProcessManager::peek_recv(tid, lifecycle_eligible)
+        })
     }
 
     ///
@@ -537,11 +680,11 @@ impl EventManagerInner {
         &mut self,
         tid: ThreadIdentifier,
         pid: ProcessIdentifier,
-        cursor: &mut usize,
+        cursor: usize,
         try_recv: F,
-    ) -> Result<Option<Message>, Error>
+    ) -> Result<Option<PendingDelivery>, Error>
     where
-        F: FnMut(ThreadIdentifier, bool) -> Result<Option<Message>, Error>,
+        F: FnMut(ThreadIdentifier, bool) -> Result<Option<UncommittedMessage>, Error>,
     {
         let masks: EventMasks = self.event_masks(pid);
         self.select_with(tid, pid, masks, cursor, try_recv)
@@ -572,17 +715,17 @@ impl EventManagerInner {
         tid: ThreadIdentifier,
         pid: ProcessIdentifier,
         masks: EventMasks,
-        cursor: &mut usize,
+        cursor: usize,
         mut try_recv: F,
-    ) -> Result<Option<Message>, Error>
+    ) -> Result<Option<PendingDelivery>, Error>
     where
-        F: FnMut(ThreadIdentifier, bool) -> Result<Option<Message>, Error>,
+        F: FnMut(ThreadIdentifier, bool) -> Result<Option<UncommittedMessage>, Error>,
     {
         for offset in 0..Self::NUMBER_EVENT_CLASSES {
-            let class: usize = (*cursor + offset) % Self::NUMBER_EVENT_CLASSES;
+            let class: usize = (cursor + offset) % Self::NUMBER_EVENT_CLASSES;
 
             // Check if any interrupts were triggered.
-            if class == 0 {
+            if class == Self::INTERRUPT_CLASS {
                 // Deliver the oldest eligible interrupt first. This prevents a continuously
                 // refilled low-numbered bit from starving an older high-numbered one.
                 let selected: Option<usize> =
@@ -590,21 +733,27 @@ impl EventManagerInner {
                         self.pending_interrupts[bit].front().map(|(seq, _)| *seq)
                     });
                 if let Some(idx) = selected {
-                    if let Some(_event) = self.pending_interrupts[idx].pop_front() {
-                        *cursor = (class + 1) % Self::NUMBER_EVENT_CLASSES;
+                    if let Some((sequence, _event)) = self.pending_interrupts[idx].front() {
                         let message: Message = Message {
                             source: MessageSender::KERNEL,
                             destination: MessageReceiver::new(pid, ThreadIdentifier::NONE),
                             message_type: MessageType::Interrupt,
                             ..Message::default()
                         };
-                        return Ok(Some(message));
+                        return Ok(Some(PendingDelivery::new(
+                            message,
+                            DeliveryToken::Interrupt {
+                                epoch: self.delivery_epoch,
+                                index: idx,
+                                sequence: *sequence,
+                            },
+                        )));
                     }
                 }
             }
 
             // Check if any exceptions were triggered.
-            if class == 1 {
+            if class == Self::EXCEPTION_CLASS {
                 // Deliver the oldest eligible exception first, using the same FIFO-by-sequence rule
                 // as interrupts.
                 let selected: Option<usize> =
@@ -614,7 +763,7 @@ impl EventManagerInner {
                             .map(|(seq, _, _, _)| *seq)
                     });
                 if let Some(idx) = selected {
-                    if let Some(entry) = self.pending_exceptions[idx].pop_front() {
+                    if let Some(entry) = self.pending_exceptions[idx].front() {
                         let mut info: EventInformation = EventInformation::default();
                         info.id = entry.1.clone();
                         info.pid = entry.2.pid;
@@ -627,24 +776,176 @@ impl EventManagerInner {
                         message.destination = MessageReceiver::new(pid, ThreadIdentifier::NONE);
                         message.message_type = MessageType::Exception;
 
-                        self.pending_exceptions[idx].push_back(entry);
-                        *cursor = (class + 1) % Self::NUMBER_EVENT_CLASSES;
-
-                        return Ok(Some(message));
+                        return Ok(Some(PendingDelivery::new(
+                            message,
+                            DeliveryToken::Exception {
+                                epoch: self.delivery_epoch,
+                                index: idx,
+                                sequence: entry.0,
+                            },
+                        )));
                     }
                 }
             }
 
             // Check if any ordered message-like item is eligible for delivery.
-            if class == 2 {
-                if let Some(message) = try_recv(tid, masks.scheduling != 0)? {
-                    *cursor = (class + 1) % Self::NUMBER_EVENT_CLASSES;
-                    return Ok(Some(message));
+            if class == Self::MESSAGE_CLASS {
+                if let Some(delivery) = try_recv(tid, masks.scheduling != 0)? {
+                    let (message, token): (Message, UncommittedMessageToken) =
+                        delivery.into_parts();
+                    return Ok(Some(PendingDelivery::new(
+                        message,
+                        DeliveryToken::Message {
+                            epoch: self.delivery_epoch,
+                            token,
+                        },
+                    )));
                 }
             }
         }
 
         Ok(None)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether an interrupt token still identifies the head of its selected queue.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the selected interrupt queue.
+    /// - `sequence`: Event sequence captured by the token.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `sequence` identifies the current queue head, otherwise `false`.
+    ///
+    fn interrupt_token_is_current(&self, index: usize, sequence: EventSequence) -> bool {
+        self.pending_interrupts[index]
+            .front()
+            .map(|(selected_sequence, _)| *selected_sequence)
+            == Some(sequence)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether an exception token still identifies the head of its selected queue.
+    ///
+    /// # Parameters
+    ///
+    /// - `index`: Index of the selected exception queue.
+    /// - `sequence`: Event sequence captured by the token.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `sequence` identifies the current queue head, otherwise `false`.
+    ///
+    fn exception_token_is_current(&self, index: usize, sequence: EventSequence) -> bool {
+        self.pending_exceptions[index]
+            .front()
+            .map(|(selected_sequence, _, _, _)| *selected_sequence)
+            == Some(sequence)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether a token was selected in the current delivery epoch.
+    ///
+    /// # Parameters
+    ///
+    /// - `epoch`: Delivery epoch captured by the token.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `epoch` is current, otherwise `false`.
+    ///
+    fn delivery_epoch_is_current(&self, epoch: DeliveryEpoch) -> bool {
+        self.delivery_epoch == epoch
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Commits a selected delivery token. Interrupts are removed, replayable exceptions are moved
+    /// to the back of their queue, and mailbox or lifecycle tokens are delegated to
+    /// `commit_message`.
+    ///
+    /// # Parameters
+    ///
+    /// - `token`: Token identifying the selected delivery.
+    /// - `commit_message`: Operation that commits a mailbox or lifecycle token.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the delivery epoch is stale or exhausted, or if the token no longer
+    /// identifies the selected queue entry. Any such condition indicates a kernel invariant
+    /// violation.
+    ///
+    fn commit_with<F>(&mut self, token: DeliveryToken, commit_message: F)
+    where
+        F: FnOnce(UncommittedMessageToken),
+    {
+        assert!(self.delivery_epoch_is_current(token.epoch()), "stale or duplicate delivery token");
+        let next_epoch: DeliveryEpoch = match self.delivery_epoch.checked_next() {
+            Some(epoch) => epoch,
+            None => unreachable!("delivery epoch exhausted"),
+        };
+
+        match token {
+            DeliveryToken::Interrupt {
+                index, sequence, ..
+            } => {
+                assert!(
+                    self.interrupt_token_is_current(index, sequence),
+                    "stale interrupt delivery token"
+                );
+                if self.pending_interrupts[index].pop_front().is_none() {
+                    unreachable!("interrupt delivery token identifies a missing event");
+                }
+            },
+            DeliveryToken::Exception {
+                index, sequence, ..
+            } => {
+                assert!(
+                    self.exception_token_is_current(index, sequence),
+                    "stale exception delivery token"
+                );
+                let Some(entry) = self.pending_exceptions[index].pop_front() else {
+                    unreachable!("exception delivery token identifies a missing event");
+                };
+                self.pending_exceptions[index].push_back(entry);
+            },
+            DeliveryToken::Message { token, .. } => {
+                commit_message(token);
+            },
+        }
+        self.delivery_epoch = next_epoch;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Commits a selected delivery token, delegating mailbox and lifecycle mutations to the global
+    /// process manager.
+    ///
+    /// # Parameters
+    ///
+    /// - `token`: Token identifying the selected delivery.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `token` is stale, duplicated, or no longer identifies its selected
+    /// item.
+    ///
+    fn commit(&mut self, token: DeliveryToken) {
+        self.commit_with(token, |token| {
+            // SAFETY: selection and commit execute serially without holding a process-manager
+            // reference.
+            unsafe { ProcessManager::commit_recv(token) };
+        });
     }
 
     ///
@@ -657,8 +958,9 @@ impl EventManagerInner {
     /// Delivering the smallest-sequence head first makes per-class delivery starvation-free: every
     /// queued event has a fixed position in the global sequence order and is therefore served within
     /// a bounded number of calls, regardless of which bit it occupies. The sequence number is the
-    /// full-width `nevents` value stamped at generation time, so ordering is stable even where the
-    /// truncated [`EventDescriptor`] id would wrap on the kernel's 32-bit target (see issue #2674).
+    /// full-width [`EventSequence`] stamped at generation time, so ordering is stable even where
+    /// the truncated [`EventDescriptor`] id would wrap on the kernel's 32-bit target (see issue
+    /// #2674).
     ///
     /// # Parameters
     ///
@@ -673,7 +975,7 @@ impl EventManagerInner {
     ///
     fn smallest_pending_front<F>(mask: usize, mut front_seq: F) -> Option<usize>
     where
-        F: FnMut(usize) -> Option<u64>,
+        F: FnMut(usize) -> Option<EventSequence>,
     {
         (0..usize::BITS as usize)
             .filter(|&bit| (mask & (1usize << bit)) != 0)
@@ -766,11 +1068,11 @@ impl EventManagerInner {
             return Err(Error::new(ErrorCode::OperationNotSupported, reason));
         }
 
-        self.nevents += 1;
+        let sequence: EventSequence = self.next_event_sequence();
         let idx: usize = interrupts.trailing_zeros() as usize;
         let ev = Event::from(sys::event::InterruptEvent::try_from(idx)?);
-        let descriptor: EventDescriptor = EventDescriptor::new(self.nevents as usize, ev);
-        self.pending_interrupts[idx].push_back((self.nevents, descriptor));
+        let descriptor: EventDescriptor = EventDescriptor::new(sequence.descriptor_id(), ev);
+        self.pending_interrupts[idx].push_back((sequence, descriptor));
 
         // Get interrupt owner.
         let pid: ProcessIdentifier = match self.interrupt_ownership[idx] {
@@ -820,13 +1122,13 @@ impl EventManagerInner {
         info: &ExceptionInformation,
     ) -> Result<Condvar, Error> {
         trace!("exceptions={:#x}, pid={:?}, tid={:?}, info={:?}", exceptions, pid, tid, info);
-        self.nevents += 1;
+        let sequence: EventSequence = self.next_event_sequence();
         let idx: usize = exceptions.trailing_zeros() as usize;
         let ev: Event = Event::from(ExceptionEvent::try_from(idx)?);
-        let descriptor: EventDescriptor = EventDescriptor::new(self.nevents as usize, ev);
+        let descriptor: EventDescriptor = EventDescriptor::new(sequence.descriptor_id(), ev);
         let resume: Condvar = Condvar::new();
         self.pending_exceptions[idx].push_back((
-            self.nevents,
+            sequence,
             descriptor,
             ExceptionEventInformation {
                 pid,
@@ -997,6 +1299,15 @@ impl EventManager {
     ///
     /// Waits for an event to be delivered.
     ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the waiting thread.
+    /// - `pid`: Identifier of the waiting process.
+    ///
+    /// # Returns
+    ///
+    /// The selected pending delivery, or a sleep error if registration or waiting fails.
+    ///
     /// # Safety
     ///
     /// This function panics if the kernel process tries to sleep.
@@ -1009,10 +1320,10 @@ impl EventManager {
     /// - The calling process is not the kernel process.
     /// - This function is invoked without holding any resources.
     ///
-    pub unsafe fn wait(
+    pub(crate) unsafe fn wait(
         tid: ThreadIdentifier,
         pid: ProcessIdentifier,
-    ) -> Result<Message, SleepError> {
+    ) -> Result<PendingDelivery, SleepError> {
         let wait: Condvar = EventManager::get()
             .map_err(SleepError::Generic)?
             .try_borrow_mut()
@@ -1025,20 +1336,59 @@ impl EventManager {
             WaitingThreadGuard::register(pid, tid).map_err(SleepError::Generic)?;
 
         loop {
-            let message: Option<Message> = EventManager::get()
+            let delivery: Option<PendingDelivery> = EventManager::get()
                 .map_err(SleepError::Generic)?
                 .try_borrow_mut()
                 .map_err(SleepError::Generic)?
                 .try_wait(tid, pid)
                 .map_err(SleepError::Generic)?;
 
-            if let Some(message) = message {
-                break Ok(message);
+            if let Some(delivery) = delivery {
+                break Ok(delivery);
             }
 
             // Wait for an event to be delivered.
             wait.wait(None)?;
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Commits a pending delivery after its message was copied successfully, removing the selected
+    /// item and advancing the service cursor of the receiving process.
+    ///
+    /// # Parameters
+    ///
+    /// - `delivery`: Pending delivery returned by [`EventManager::wait`].
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the token no longer identifies the selected item, which indicates a
+    /// stale or duplicate commit and thus a kernel bug.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The caller holds no reference to the event manager nor to the process manager.
+    /// - `delivery` was returned by the last [`EventManager::wait`] and was not committed yet.
+    ///
+    pub(crate) unsafe fn commit(delivery: PendingDelivery) {
+        let next_cursor: usize = delivery.token.next_cursor();
+        let Ok(manager) = EventManager::get() else {
+            unreachable!("event manager disappeared before delivery commit");
+        };
+        let Ok(mut inner) = manager.try_borrow_mut() else {
+            unreachable!("event manager was borrowed during delivery commit");
+        };
+        inner.commit(delivery.token);
+        drop(inner);
+
+        // SAFETY: commit does not retain a reference to the process manager.
+        unsafe { ProcessManager::set_delivery_cursor(next_cursor) };
     }
 
     ///
@@ -1367,10 +1717,20 @@ fn exception_handler(info: &ExceptionInformation, ctx: &mut ContextInformation) 
     }
 }
 
+///
+/// # Description
+///
+/// Initializes the global event manager, its pending queues, and the platform event handlers.
+///
+/// # Returns
+///
+/// Empty on success, or an error if a platform exception or interrupt handler cannot be
+/// registered.
+///
 pub fn init() -> Result<(), Error> {
     // Allocate per-bit tables on the heap to keep this frame small; on 64-bit `usize::BITS`
     // doubles these tables, which would otherwise overflow the kernel boot stack-frame budget.
-    let pending_interrupts: Box<[LinkedList<(u64, EventDescriptor)>]> =
+    let pending_interrupts: Box<[LinkedList<(EventSequence, EventDescriptor)>]> =
         (0..usize::BITS).map(|_| LinkedList::default()).collect();
 
     let interrupt_ownership: Box<[Option<ProcessIdentifier>]> =
@@ -1425,7 +1785,8 @@ pub fn init() -> Result<(), Error> {
 
     let em: RefCell<EventManagerInner> = RefCell::new(EventManagerInner {
         interrupt_capable,
-        nevents: 0,
+        event_sequence: EventSequence::default(),
+        delivery_epoch: DeliveryEpoch::default(),
         pending_interrupts,
         interrupt_ownership,
         pending_exceptions,

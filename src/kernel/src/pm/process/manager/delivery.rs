@@ -2,15 +2,19 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+mod delivery_sequence;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
-use crate::{
-    ipc::DeliverySequence,
-    pm::process::{
-        LifecycleCreationReservation,
-        LifecycleTerminationCredit,
-    },
+pub(crate) use self::delivery_sequence::DeliverySequence;
+use crate::pm::process::{
+    LifecycleCreationReservation,
+    LifecycleTerminationCredit,
 };
 use ::alloc::collections::VecDeque;
 use ::core::mem;
@@ -64,7 +68,7 @@ impl LifecycleNotification {
     ///
     /// The serialized lifecycle message.
     ///
-    fn into_message(self, owner: ProcessIdentifier) -> Message {
+    fn to_message(&self, owner: ProcessIdentifier) -> Message {
         let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
         let message_type: MessageType = match self {
             Self::Creation(info) => {
@@ -114,9 +118,18 @@ pub(super) struct DeliveryBroker {
 }
 
 impl Default for DeliveryBroker {
+    ///
+    /// # Description
+    ///
+    /// Creates an empty delivery broker whose first allocatable delivery sequence is zero.
+    ///
+    /// # Returns
+    ///
+    /// An empty delivery broker with no reserved lifecycle capacity or pending wakeup request.
+    ///
     fn default() -> Self {
         Self {
-            next_sequence: Some(DeliverySequence::default()),
+            next_sequence: Some(DeliverySequence::new(0)),
             lifecycle: VecDeque::new(),
             pending_creations: 0,
             termination_credits: 0,
@@ -352,8 +365,8 @@ impl DeliveryBroker {
     ///
     /// # Description
     ///
-    /// Removes the oldest buffered lifecycle record and serializes it into a message addressed to a
-    /// process.
+    /// Peeks the oldest buffered lifecycle record and serializes it into a message addressed to a
+    /// process without removing it.
     ///
     /// # Parameters
     ///
@@ -361,15 +374,77 @@ impl DeliveryBroker {
     ///
     /// # Returns
     ///
-    /// The serialized lifecycle message, or [`None`] if no lifecycle record is buffered.
+    /// The delivery sequence and serialized lifecycle message, or [`None`] if no lifecycle record
+    /// is buffered.
     ///
-    pub(super) fn pop_lifecycle(&mut self, owner: ProcessIdentifier) -> Option<Message> {
-        let (_sequence, notification): (DeliverySequence, LifecycleNotification) =
-            self.lifecycle.pop_front()?;
+    pub(super) fn peek_lifecycle(
+        &self,
+        owner: ProcessIdentifier,
+    ) -> Option<(DeliverySequence, Message)> {
+        self.lifecycle
+            .front()
+            .map(|(sequence, notification)| (*sequence, notification.to_message(owner)))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether a delivery sequence identifies the lifecycle record at the head of the
+    /// broker queue.
+    ///
+    /// # Parameters
+    ///
+    /// - `sequence`: Delivery sequence captured by a lifecycle token.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `sequence` identifies the current lifecycle record, otherwise `false`.
+    ///
+    fn lifecycle_token_is_current(&self, sequence: DeliverySequence) -> bool {
+        self.lifecycle_sequence() == Some(sequence)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Exposes the lifecycle-token invariant to in-kernel tests.
+    ///
+    /// # Parameters
+    ///
+    /// - `sequence`: Delivery sequence captured by the token under test.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `sequence` identifies the current lifecycle record, otherwise `false`.
+    ///
+    #[cfg(feature = "test")]
+    pub(super) fn test_lifecycle_token_is_current(&self, sequence: DeliverySequence) -> bool {
+        self.lifecycle_token_is_current(sequence)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Commits delivery of the lifecycle record identified by a previously selected sequence,
+    /// removing it from the broker queue.
+    ///
+    /// # Parameters
+    ///
+    /// - `sequence`: Delivery sequence returned by [`Self::peek_lifecycle`].
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `sequence` is stale or does not identify the current lifecycle
+    /// record. Such a token indicates a kernel invariant violation under serialized delivery.
+    ///
+    pub(super) fn commit_lifecycle(&mut self, sequence: DeliverySequence) {
+        assert!(self.lifecycle_token_is_current(sequence), "stale lifecycle delivery token");
+        if self.lifecycle.pop_front().is_none() {
+            unreachable!("lifecycle delivery token identifies a missing record");
+        }
         if self.lifecycle.is_empty() {
             self.lifecycle_wakeup_pending = false;
         }
-        Some(notification.into_message(owner))
     }
 
     ///
@@ -411,19 +486,37 @@ impl DeliveryBroker {
     }
 }
 
+///
+/// # Description
+///
+/// Creates a delivery sequence fixture through the production owner layer for in-kernel tests.
+///
+/// # Parameters
+///
+/// - `value`: Raw value to store in the fixture.
+///
+/// # Returns
+///
+/// A delivery sequence containing `value`.
+///
+#[cfg(feature = "test")]
+pub(crate) const fn new_test_delivery_sequence(value: u64) -> DeliverySequence {
+    DeliverySequence::new(value)
+}
+
 //==================================================================================================
 // Tests
 //==================================================================================================
 
 #[cfg(feature = "test")]
 mod test {
-    use super::DeliveryBroker;
-    use crate::{
-        ipc::DeliverySequence,
-        pm::process::{
-            LifecycleCreationReservation,
-            LifecycleTerminationCredit,
-        },
+    use super::{
+        DeliveryBroker,
+        DeliverySequence,
+    };
+    use crate::pm::process::{
+        LifecycleCreationReservation,
+        LifecycleTerminationCredit,
     };
     use ::sys::{
         event::{
@@ -435,7 +528,36 @@ mod test {
         ExitStatus,
     };
 
+    ///
+    /// # Description
+    ///
+    /// Selects and commits the lifecycle record at the head of a broker queue.
+    ///
+    /// # Parameters
+    ///
+    /// - `broker`: Delivery broker whose head record should be committed.
+    ///
+    /// # Returns
+    ///
+    /// `true` if a lifecycle record was present and committed, otherwise `false`.
+    ///
+    fn commit_lifecycle(broker: &mut DeliveryBroker) -> bool {
+        let Some((sequence, _message)) = broker.peek_lifecycle(ProcessIdentifier::KERNEL) else {
+            return false;
+        };
+        broker.commit_lifecycle(sequence);
+        true
+    }
+
+    ///
+    /// # Description
+    ///
     /// Verifies that delivery sequence exhaustion is detected instead of wrapping.
+    ///
+    /// # Returns
+    ///
+    /// `true` if terminal sequence allocation is accepted exactly once, otherwise `false`.
+    ///
     fn test_delivery_sequence_exhaustion_is_detected() -> bool {
         let mut broker: DeliveryBroker = DeliveryBroker::default();
         broker.set_next_sequence(DeliverySequence::new(u64::MAX));
@@ -451,7 +573,15 @@ mod test {
         true
     }
 
+    ///
+    /// # Description
+    ///
     /// Verifies lifecycle capacity across reservation, commit, dequeue, and reuse transitions.
+    ///
+    /// # Returns
+    ///
+    /// `true` if lifecycle capacity remains correct across all transitions, otherwise `false`.
+    ///
     fn test_lifecycle_capacity_accounting_is_stateful() -> bool {
         let mut broker: DeliveryBroker = DeliveryBroker::default();
         let lifecycle_capacity: usize = 2 * ::config::kernel::MAX_PROCESSES;
@@ -523,9 +653,7 @@ mod test {
             error!("creation commit did not preserve its termination capacity");
             return false;
         }
-        if broker.pop_lifecycle(ProcessIdentifier::KERNEL).is_none()
-            || broker.capacity_in_use() != Some(1)
-        {
+        if !commit_lifecycle(&mut broker) || broker.capacity_in_use() != Some(1) {
             error!("creation dequeue did not retain exactly one termination credit");
             return false;
         }
@@ -543,9 +671,7 @@ mod test {
             error!("termination commit changed reserved lifecycle capacity");
             return false;
         }
-        if broker.pop_lifecycle(ProcessIdentifier::KERNEL).is_none()
-            || broker.capacity_in_use() != Some(0)
-        {
+        if !commit_lifecycle(&mut broker) || broker.capacity_in_use() != Some(0) {
             error!("termination dequeue did not release lifecycle capacity");
             return false;
         }

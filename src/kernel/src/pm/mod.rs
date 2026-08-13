@@ -12,6 +12,8 @@ pub mod sync;
 #[cfg(feature = "test")]
 mod test;
 pub mod thread;
+mod uncommitted_message;
+mod uncommitted_message_token;
 
 //==================================================================================================
 // Imports
@@ -51,6 +53,9 @@ const ORDER: Ordering = Ordering::Relaxed;
 
 pub use clock::ticks;
 pub use kcall::*;
+#[cfg(feature = "test")]
+pub(crate) use process::new_test_delivery_sequence;
+pub(crate) use process::DeliverySequence;
 pub use process::{
     exception_to_signal,
     ExceptionGuard,
@@ -64,6 +69,10 @@ pub use thread::{
     InterruptReason,
     KcallRestart,
 };
+#[cfg(feature = "test")]
+pub(crate) use uncommitted_message::new_test_message;
+pub(crate) use uncommitted_message::UncommittedMessage;
+pub(crate) use uncommitted_message_token::UncommittedMessageToken;
 
 ///
 /// # Description

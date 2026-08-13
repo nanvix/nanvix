@@ -6,17 +6,20 @@
 //==================================================================================================
 
 use super::{
+    DeliveryEpoch,
     EventManager,
     EventManagerInner,
     EventMasks,
+    EventSequence,
     ExceptionEventInformation,
+    PendingDelivery,
     WaitingThreadGuard,
     MANAGER,
 };
 use crate::{
     hal::arch::ExceptionInformation,
     ipc::{
-        DeliverySequence,
+        recv_with,
         Mailbox,
     },
     kcall::{
@@ -24,8 +27,13 @@ use crate::{
         KcallResult,
     },
     pm::{
+        new_test_delivery_sequence,
+        new_test_message,
         sync::condvar::Condvar,
         ProcessManager,
+        SleepError,
+        UncommittedMessage,
+        UncommittedMessageToken,
     },
 };
 use ::alloc::collections::{
@@ -93,10 +101,15 @@ fn test_tid() -> ThreadIdentifier {
 /// Builds a fresh, empty [`EventManagerInner`] for exclusive use by a single test. The instance is
 /// independent of the global event manager, so tests neither observe nor perturb live kernel state.
 ///
+/// # Returns
+///
+/// A fresh event-manager state with empty queues and no registered owners.
+///
 fn make_inner() -> EventManagerInner {
     EventManagerInner {
         interrupt_capable: true,
-        nevents: 0,
+        event_sequence: EventSequence::default(),
+        delivery_epoch: DeliveryEpoch::default(),
         wait: Some(Condvar::new()),
         waiting_threads: VecDeque::new(),
         interrupt_ownership: (0..usize::BITS).map(|_| None).collect(),
@@ -112,11 +125,16 @@ fn make_inner() -> EventManagerInner {
 ///
 /// Enqueues a pending interrupt event on `bit`, stamping it with the next event sequence number.
 ///
+/// # Parameters
+///
+/// - `inner`: Event-manager state that receives the pending interrupt.
+/// - `bit`: Interrupt queue index to populate.
+///
 fn push_interrupt(inner: &mut EventManagerInner, bit: usize) {
-    inner.nevents += 1;
+    let sequence: EventSequence = inner.next_event_sequence();
     let event: Event = Event::Interrupt(InterruptEvent::VALUES[bit]);
-    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents as usize, event);
-    inner.pending_interrupts[bit].push_back((inner.nevents, descriptor));
+    let descriptor: EventDescriptor = EventDescriptor::new(sequence.descriptor_id(), event);
+    inner.pending_interrupts[bit].push_back((sequence, descriptor));
 }
 
 ///
@@ -127,22 +145,29 @@ fn push_interrupt(inner: &mut EventManagerInner, bit: usize) {
 /// from them, so a test that does not want continuous re-delivery must clear the slot once observed
 /// (see [`resume_exception`]).
 ///
+/// # Parameters
+///
+/// - `inner`: Event-manager state that receives the pending exception.
+/// - `bit`: Exception queue index to populate.
+/// - `pid`: Identifier of the process that owns the exception.
+/// - `tid`: Identifier of the faulting thread.
+///
 fn push_exception(
     inner: &mut EventManagerInner,
     bit: usize,
     pid: ProcessIdentifier,
     tid: ThreadIdentifier,
 ) {
-    inner.nevents += 1;
+    let sequence: EventSequence = inner.next_event_sequence();
     inner.exception_ownership[bit] = Some(pid);
     let event: Event = Event::Exception(ExceptionEvent::VALUES[bit]);
-    let descriptor: EventDescriptor = EventDescriptor::new(inner.nevents as usize, event);
+    let descriptor: EventDescriptor = EventDescriptor::new(sequence.descriptor_id(), event);
     // SAFETY: `ExceptionInformation` is plain-old-data: a register snapshot of fixed-width integer
     // fields (`u32` on 32-bit x86, `u64` on x86_64) for which the all-zero bit pattern is a valid
     // value on every supported architecture. The tests only need a placeholder to exercise delivery.
     let info: ExceptionInformation = unsafe { core::mem::zeroed() };
     inner.pending_exceptions[bit].push_back((
-        inner.nevents,
+        sequence,
         descriptor,
         ExceptionEventInformation { pid, tid, info },
         Condvar::new(),
@@ -180,6 +205,105 @@ fn lifecycle_message() -> Message {
     }
 }
 
+///
+/// # Description
+///
+/// Wraps a synthetic message in an uncommitted lifecycle delivery for selection tests.
+///
+/// # Parameters
+///
+/// - `message`: Synthetic message to wrap.
+///
+/// # Returns
+///
+/// An uncommitted message carrying a synthetic lifecycle token.
+///
+fn synthetic_message_delivery(message: Message) -> UncommittedMessage {
+    new_test_message(message, UncommittedMessageToken::Lifecycle(new_test_delivery_sequence(0)))
+}
+
+///
+/// # Description
+///
+/// Peeks a local mailbox and wraps the selected entry in its uncommitted delivery token.
+///
+/// # Parameters
+///
+/// - `mailbox`: Mailbox from which to select a message.
+/// - `tid`: Identifier of the receiving thread.
+///
+/// # Returns
+///
+/// The selected uncommitted message, or [`None`] if no message is eligible for `tid`.
+///
+fn peek_mailbox_delivery(mailbox: &Mailbox, tid: ThreadIdentifier) -> Option<UncommittedMessage> {
+    mailbox.peek(tid).map(|(sequence, message)| {
+        new_test_message(message, UncommittedMessageToken::Mailbox { tid, sequence })
+    })
+}
+
+///
+/// # Description
+///
+/// Commits a mailbox delivery token against a local test mailbox.
+///
+/// # Parameters
+///
+/// - `mailbox`: Mailbox that owns the selected entry.
+/// - `token`: Token identifying the selected mailbox entry.
+///
+/// # Panics
+///
+/// This function panics if `token` is not a mailbox token or no longer identifies the selected
+/// entry.
+///
+fn commit_mailbox_delivery(mailbox: &mut Mailbox, token: UncommittedMessageToken) {
+    match token {
+        UncommittedMessageToken::Mailbox { tid, sequence } => {
+            assert!(mailbox.commit(tid, sequence), "mailbox delivery token became invalid");
+        },
+        UncommittedMessageToken::Lifecycle(_) => {
+            unreachable!("expected a mailbox delivery token");
+        },
+    }
+}
+
+///
+/// # Description
+///
+/// Commits a local selection and advances its test cursor exactly as production does.
+///
+/// # Parameters
+///
+/// - `inner`: Event-manager state that owns the pending delivery.
+/// - `cursor`: Receiver cursor to advance after commit.
+/// - `delivery`: Pending delivery to commit.
+/// - `commit_message`: Operation that commits mailbox or lifecycle tokens.
+///
+/// # Returns
+///
+/// The message carried by `delivery`.
+///
+/// # Panics
+///
+/// This function panics if the pending delivery token is stale or invalid.
+///
+fn commit_delivery<F>(
+    inner: &mut EventManagerInner,
+    cursor: &mut usize,
+    delivery: PendingDelivery,
+    commit_message: F,
+) -> Message
+where
+    F: FnOnce(UncommittedMessageToken),
+{
+    let next_cursor: usize = delivery.token.next_cursor();
+    let message: Message = delivery.message;
+    inner.commit_with(delivery.token, commit_message);
+    *cursor = next_cursor;
+    message
+}
+
 /// Queues a synthetic lifecycle record through the global process manager.
 fn queue_global_lifecycle(pid: ProcessIdentifier) -> bool {
     let info: ProcessCreationInfo =
@@ -195,12 +319,38 @@ fn queue_global_lifecycle(pid: ProcessIdentifier) -> bool {
     }
 }
 
-/// Posts a process-directed IPC message through the global process manager.
+///
+/// # Description
+///
+/// Posts a process-directed IPC message with a zero status through the global process manager.
+///
+/// # Returns
+///
+/// `true` if the message was posted successfully, otherwise `false`.
+///
 fn post_global_ipc() -> bool {
+    post_global_ipc_with_status(0)
+}
+
+///
+/// # Description
+///
+/// Posts a process-directed IPC message carrying a status through the global process manager.
+///
+/// # Parameters
+///
+/// - `status`: Status value to store in the test message.
+///
+/// # Returns
+///
+/// `true` if the message was posted successfully, otherwise `false`.
+///
+fn post_global_ipc_with_status(status: i32) -> bool {
     let message: Message = Message {
         source: MessageSender::KERNEL,
         destination: MessageReceiver::KERNEL,
         message_type: MessageType::Ipc,
+        status,
         ..Message::default()
     };
     // SAFETY: this late integration test runs after process-manager initialization with interrupts
@@ -214,17 +364,326 @@ fn post_global_ipc() -> bool {
     }
 }
 
-/// Attempts production event selection against the global event and process managers.
+///
+/// # Description
+///
+/// Reads the global number of buffered mailbox messages from the process manager.
+///
+/// # Returns
+///
+/// The current number of globally buffered mailbox messages.
+///
+fn global_buffered_messages() -> usize {
+    // SAFETY: this late integration test runs with interrupts disabled and retains no reference.
+    unsafe { ProcessManager::get_mut() }.number_buffered_messages()
+}
+
+///
+/// # Description
+///
+/// Verifies that failing the receive copy boundary leaves every delivery class pending and does
+/// not advance accounting or the service cursor.
+///
+/// # Returns
+///
+/// `true` if IPC, lifecycle, interrupt, and exception delivery remain transactional, otherwise
+/// `false`.
+///
+fn test_receive_copy_failure_is_transactional() -> bool {
+    const FIRST_IPC_STATUS: i32 = 3050;
+    const SECOND_IPC_STATUS: i32 = 3051;
+    const INTERRUPT_BIT: usize = 1;
+    const EXCEPTION_BIT: usize = 2;
+
+    let buffered_before: usize = global_buffered_messages();
+    if !post_global_ipc_with_status(FIRST_IPC_STATUS)
+        || !post_global_ipc_with_status(SECOND_IPC_STATUS)
+    {
+        return false;
+    }
+    if global_buffered_messages() != buffered_before + 2 {
+        error!("posting transactional IPC fixtures changed accounting unexpectedly");
+        return false;
+    }
+    // SAFETY: the integration test owns the running kernel process state.
+    unsafe { ProcessManager::set_delivery_cursor(2) };
+    let mut failed_ipc_status: Option<i32> = None;
+    // SAFETY: an IPC message is pending, so the kernel test process cannot block.
+    let failed_ipc: Result<(), SleepError> = unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |message| {
+            failed_ipc_status = Some(message.status);
+            Err(Error::new(ErrorCode::TryAgain, "injected IPC copy failure"))
+        })
+    };
+    if !matches!(failed_ipc, Err(SleepError::Generic(_)))
+        || failed_ipc_status != Some(FIRST_IPC_STATUS)
+        || global_buffered_messages() != buffered_before + 2
+        || unsafe { ProcessManager::delivery_cursor() } != 2
+    {
+        error!("failed IPC copy changed delivery state");
+        return false;
+    }
+
+    let mut retried_ipc_status: Option<i32> = None;
+    // SAFETY: the IPC message retained by the failed copy is still pending.
+    if unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |message| {
+            retried_ipc_status = Some(message.status);
+            Ok(())
+        })
+    }
+    .is_err()
+        || retried_ipc_status != Some(FIRST_IPC_STATUS)
+        || global_buffered_messages() != buffered_before + 1
+        || unsafe { ProcessManager::delivery_cursor() } != 0
+    {
+        error!("IPC retry did not commit the originally selected message exactly once");
+        return false;
+    }
+    let mut second_ipc_status: Option<i32> = None;
+    // SAFETY: the second IPC fixture is pending.
+    if unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |message| {
+            second_ipc_status = Some(message.status);
+            Ok(())
+        })
+    }
+    .is_err()
+        || second_ipc_status != Some(SECOND_IPC_STATUS)
+        || global_buffered_messages() != buffered_before
+    {
+        error!("IPC commit did not preserve FIFO order or accounting");
+        return false;
+    }
+
+    if !queue_global_lifecycle(ProcessIdentifier::from(2000)) {
+        return false;
+    }
+    // SAFETY: the integration test owns the running kernel process state.
+    unsafe { ProcessManager::set_delivery_cursor(2) };
+    let mut failed_lifecycle_type: Option<MessageType> = None;
+    // SAFETY: a lifecycle record is pending and the kernel process owns scheduling events.
+    let failed_lifecycle: Result<(), SleepError> = unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |message| {
+            failed_lifecycle_type = Some(message.message_type);
+            Err(Error::new(ErrorCode::TryAgain, "injected lifecycle copy failure"))
+        })
+    };
+    if !matches!(failed_lifecycle, Err(SleepError::Generic(_)))
+        || failed_lifecycle_type != Some(MessageType::ProcessCreationEvent)
+        || unsafe { ProcessManager::delivery_cursor() } != 2
+    {
+        error!("failed lifecycle copy changed delivery state");
+        return false;
+    }
+    let mut retried_lifecycle_type: Option<MessageType> = None;
+    // SAFETY: the lifecycle record retained by the failed copy is still pending.
+    if unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |message| {
+            retried_lifecycle_type = Some(message.message_type);
+            Ok(())
+        })
+    }
+    .is_err()
+        || retried_lifecycle_type != failed_lifecycle_type
+        || unsafe { ProcessManager::delivery_cursor() } != 0
+    {
+        error!("lifecycle retry did not commit the originally selected record");
+        return false;
+    }
+
+    let interrupt_sequence: EventSequence = {
+        let manager: &EventManager = match EventManager::get() {
+            Ok(manager) => manager,
+            Err(error) => {
+                error!("failed to get event manager (error={error:?})");
+                return false;
+            },
+        };
+        let mut inner = match manager.try_borrow_mut() {
+            Ok(inner) => inner,
+            Err(error) => {
+                error!("failed to borrow event manager (error={error:?})");
+                return false;
+            },
+        };
+        inner.interrupt_ownership[INTERRUPT_BIT] = Some(ProcessIdentifier::KERNEL);
+        push_interrupt(&mut inner, INTERRUPT_BIT);
+        inner.event_sequence
+    };
+    // SAFETY: the integration test owns the running kernel process state.
+    unsafe { ProcessManager::set_delivery_cursor(0) };
+    // SAFETY: the injected interrupt is pending.
+    let failed_interrupt: Result<(), SleepError> = unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |_| {
+            Err(Error::new(ErrorCode::TryAgain, "injected interrupt copy failure"))
+        })
+    };
+    let interrupt_retained: bool =
+        match EventManager::get().and_then(|manager| manager.try_borrow_mut()) {
+            Ok(inner) => {
+                inner.pending_interrupts[INTERRUPT_BIT]
+                    .front()
+                    .map(|(sequence, _)| *sequence)
+                    == Some(interrupt_sequence)
+            },
+            Err(error) => {
+                error!("failed to inspect retained interrupt (error={error:?})");
+                return false;
+            },
+        };
+    if !matches!(failed_interrupt, Err(SleepError::Generic(_)))
+        || !interrupt_retained
+        || unsafe { ProcessManager::delivery_cursor() } != 0
+    {
+        error!("failed interrupt copy changed delivery state");
+        return false;
+    }
+    // SAFETY: the interrupt retained by the failed copy is still pending.
+    if unsafe { recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |_| Ok(())) }
+        .is_err()
+        || unsafe { ProcessManager::delivery_cursor() } != 1
+    {
+        error!("interrupt retry did not commit the selected event");
+        return false;
+    }
+    match EventManager::get().and_then(|manager| manager.try_borrow_mut()) {
+        Ok(mut inner) => {
+            if !inner.pending_interrupts[INTERRUPT_BIT].is_empty() {
+                error!("interrupt commit did not remove the selected event");
+                return false;
+            }
+            inner.interrupt_ownership[INTERRUPT_BIT] = None;
+        },
+        Err(error) => {
+            error!("failed to clean up interrupt test state (error={error:?})");
+            return false;
+        },
+    }
+
+    let exception_sequence: EventSequence = {
+        let manager: &EventManager = match EventManager::get() {
+            Ok(manager) => manager,
+            Err(error) => {
+                error!("failed to get event manager (error={error:?})");
+                return false;
+            },
+        };
+        let mut inner = match manager.try_borrow_mut() {
+            Ok(inner) => inner,
+            Err(error) => {
+                error!("failed to borrow event manager (error={error:?})");
+                return false;
+            },
+        };
+        push_exception(
+            &mut inner,
+            EXCEPTION_BIT,
+            ProcessIdentifier::KERNEL,
+            ThreadIdentifier::KERNEL,
+        );
+        inner.event_sequence
+    };
+    // SAFETY: the integration test owns the running kernel process state.
+    unsafe { ProcessManager::set_delivery_cursor(1) };
+    // SAFETY: the injected exception is pending.
+    let failed_exception: Result<(), SleepError> = unsafe {
+        recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |_| {
+            Err(Error::new(ErrorCode::TryAgain, "injected exception copy failure"))
+        })
+    };
+    let exception_retained: bool =
+        match EventManager::get().and_then(|manager| manager.try_borrow_mut()) {
+            Ok(inner) => {
+                inner.pending_exceptions[EXCEPTION_BIT]
+                    .front()
+                    .map(|(sequence, _, _, _)| *sequence)
+                    == Some(exception_sequence)
+            },
+            Err(error) => {
+                error!("failed to inspect retained exception (error={error:?})");
+                return false;
+            },
+        };
+    if !matches!(failed_exception, Err(SleepError::Generic(_)))
+        || !exception_retained
+        || unsafe { ProcessManager::delivery_cursor() } != 1
+    {
+        error!("failed exception copy changed delivery state");
+        return false;
+    }
+    // SAFETY: the exception retained by the failed copy is still pending.
+    if unsafe { recv_with(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL, |_| Ok(())) }
+        .is_err()
+        || unsafe { ProcessManager::delivery_cursor() } != 2
+    {
+        error!("exception retry did not advance the cursor after copying");
+        return false;
+    }
+    match EventManager::get().and_then(|manager| manager.try_borrow_mut()) {
+        Ok(mut inner) => {
+            if inner.pending_exceptions[EXCEPTION_BIT]
+                .front()
+                .map(|(sequence, _, _, _)| *sequence)
+                != Some(exception_sequence)
+            {
+                error!("successful exception copy removed the replayable event");
+                return false;
+            }
+            resume_exception(&mut inner, EXCEPTION_BIT);
+        },
+        Err(error) => {
+            error!("failed to clean up exception test state (error={error:?})");
+            return false;
+        },
+    }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Attempts production event selection against the global event and process managers, committing
+/// any selected delivery before returning its message.
+///
+/// # Returns
+///
+/// The committed message, [`None`] when no item is eligible, or an error if selection fails.
+///
 fn receive_global_message() -> Result<Option<Message>, Error> {
     // SAFETY: the caller holds no reference to the process manager.
-    unsafe {
+    let delivery: Option<PendingDelivery> = unsafe {
         EventManager::get()?
             .try_borrow_mut()?
             .try_wait(ThreadIdentifier::KERNEL, ProcessIdentifier::KERNEL)
+    }?;
+    match delivery {
+        Some(delivery) => {
+            let message: Message = delivery.message().clone();
+            // SAFETY: the selection borrow was released and the token is still current.
+            unsafe { EventManager::commit(delivery) };
+            Ok(Some(message))
+        },
+        None => Ok(None),
     }
 }
 
-/// Runs the ordered-delivery integration scenario while cleanup remains owned by the caller.
+///
+/// # Description
+///
+/// Runs the ordered-delivery integration scenario while leaving capability and registration
+/// cleanup to the caller.
+///
+/// # Parameters
+///
+/// - `capability_set`: Set to `true` after process-management capability is granted.
+/// - `registered`: Set to `true` after lifecycle event ownership is registered.
+///
+/// # Returns
+///
+/// `true` if the production ordered-delivery scenario passes, otherwise `false`.
+///
 fn run_delivery_integration(capability_set: &mut bool, registered: &mut bool) -> bool {
     // SAFETY: this late integration test runs after process-manager initialization with interrupts
     // disabled and does not retain a process-manager reference across another global access.
@@ -380,14 +839,31 @@ fn run_delivery_integration(capability_set: &mut bool, registered: &mut bool) ->
         return false;
     }
 
+    if !test_receive_copy_failure_is_transactional() {
+        return false;
+    }
+
     true
 }
 
 ///
 /// # Description
 ///
-/// Delivers at most one event from `inner` by invoking `try_wait` with every event class unmasked,
-/// returning the delivered message (or [`None`] when nothing was delivered).
+/// Delivers at most one event from `inner` by invoking `select_with` with every event class
+/// unmasked, returning the delivered message (or [`None`] when nothing was delivered).
+///
+/// # Parameters
+///
+/// - `inner`: Event-manager state from which to select and commit an event.
+///
+/// # Returns
+///
+/// The committed message, or [`None`] if no event is eligible or selection fails.
+///
+/// # Panics
+///
+/// This function panics if event-only selection unexpectedly returns a message token or if the
+/// selected event token is stale or invalid.
 ///
 fn deliver_message(inner: &mut EventManagerInner) -> Option<Message> {
     let mut cursor: usize = 0;
@@ -399,10 +875,12 @@ fn deliver_message(inner: &mut EventManagerInner) -> Option<Message> {
             exceptions: usize::MAX,
             scheduling: usize::MAX,
         },
-        &mut cursor,
+        cursor,
         |_, _| Ok(None),
     ) {
-        Ok(Some(message)) => Some(message),
+        Ok(Some(delivery)) => Some(commit_delivery(inner, &mut cursor, delivery, |_| {
+            unreachable!("unexpected message token")
+        })),
         Ok(None) => None,
         Err(e) => {
             error!("try_wait returned an unexpected error: {:?}", e);
@@ -500,14 +978,19 @@ fn test_each_call_delivers_a_single_interrupt() -> bool {
 ///
 /// Verifies that the selection seam arbitrates events and a real local mailbox together.
 ///
+/// # Returns
+///
+/// `true` if selection is non-consuming and commit advances the message-class cursor, otherwise
+/// `false`.
+///
 fn test_selection_seam_combines_events_and_mailbox() -> bool {
     let mut inner: EventManagerInner = make_inner();
     let mut mailbox: Mailbox = Mailbox::default();
     let mut cursor: usize = 2;
     push_interrupt(&mut inner, 1);
-    mailbox.send(DeliverySequence::new(0), ipc_message());
+    mailbox.send(new_test_delivery_sequence(0), ipc_message());
 
-    let selected: Option<Message> = match inner.select_with(
+    let selected: PendingDelivery = match inner.select_with(
         test_tid(),
         test_pid(),
         EventMasks {
@@ -515,16 +998,20 @@ fn test_selection_seam_combines_events_and_mailbox() -> bool {
             exceptions: usize::MAX,
             scheduling: usize::MAX,
         },
-        &mut cursor,
-        |tid, _| Ok(mailbox.receive(tid).map(|(_, message)| message)),
+        cursor,
+        |tid, _| Ok(peek_mailbox_delivery(&mailbox, tid)),
     ) {
-        Ok(message) => message,
+        Ok(Some(delivery)) => delivery,
+        Ok(None) => {
+            error!("combined event/mailbox selection returned no delivery");
+            return false;
+        },
         Err(e) => {
             error!("combined event/mailbox selection failed: {:?}", e);
             return false;
         },
     };
-    if selected.map(|message| message.message_type) != Some(MessageType::Ipc) {
+    if selected.message().message_type != MessageType::Ipc {
         error!("message-like class did not select the mailbox message");
         return false;
     }
@@ -532,10 +1019,211 @@ fn test_selection_seam_combines_events_and_mailbox() -> bool {
         error!("mailbox selection unexpectedly consumed the pending interrupt");
         return false;
     }
-    if cursor != 0 {
-        error!("message-like selection advanced cursor to {}, expected 0", cursor);
+    if cursor != 2 {
+        error!("message-like selection changed cursor before commit");
         return false;
     }
+    let message: Message = commit_delivery(&mut inner, &mut cursor, selected, |token| {
+        commit_mailbox_delivery(&mut mailbox, token)
+    });
+    if message.message_type != MessageType::Ipc || cursor != 0 {
+        error!("message-like commit did not advance the cursor");
+        return false;
+    }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that interrupt and exception tokens remain current until commit and become stale after
+/// commit while replayable exceptions remain queued.
+///
+/// # Returns
+///
+/// `true` if token identity and epoch transitions follow the transactional contract, otherwise
+/// `false`.
+///
+/// # Panics
+///
+/// This function panics if an event-only selection unexpectedly returns a message token or if a
+/// selected token violates the commit invariants under test.
+///
+fn test_event_tokens_are_stable_until_commit() -> bool {
+    const INTERRUPT_BIT: usize = 1;
+    const EXCEPTION_BIT: usize = 2;
+
+    let mut inner: EventManagerInner = make_inner();
+    let mut cursor: usize = 0;
+    push_interrupt(&mut inner, INTERRUPT_BIT);
+    let first_interrupt: PendingDelivery = match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: usize::MAX,
+            exceptions: 0,
+            scheduling: 0,
+        },
+        cursor,
+        |_, _| Ok(None),
+    ) {
+        Ok(Some(delivery)) => delivery,
+        Ok(None) => {
+            error!("interrupt token test selected no event");
+            return false;
+        },
+        Err(error) => {
+            error!("interrupt token selection failed (error={error:?})");
+            return false;
+        },
+    };
+    let (interrupt_epoch, interrupt_index, interrupt_sequence): (
+        DeliveryEpoch,
+        usize,
+        EventSequence,
+    ) = match first_interrupt.token {
+        super::DeliveryToken::Interrupt {
+            epoch,
+            index,
+            sequence,
+        } => (epoch, index, sequence),
+        _ => {
+            error!("interrupt selection returned the wrong token kind");
+            return false;
+        },
+    };
+    if !inner.delivery_epoch_is_current(interrupt_epoch)
+        || !inner.interrupt_token_is_current(interrupt_index, interrupt_sequence)
+    {
+        error!("new interrupt token was already stale");
+        return false;
+    }
+    let retried_interrupt: PendingDelivery = match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: usize::MAX,
+            exceptions: 0,
+            scheduling: 0,
+        },
+        cursor,
+        |_, _| Ok(None),
+    ) {
+        Ok(Some(delivery)) => delivery,
+        _ => {
+            error!("abandoned interrupt token was not selected on retry");
+            return false;
+        },
+    };
+    match retried_interrupt.token {
+        super::DeliveryToken::Interrupt {
+            epoch,
+            index,
+            sequence,
+        } if epoch == interrupt_epoch
+            && index == interrupt_index
+            && sequence == interrupt_sequence => {},
+        _ => {
+            error!("interrupt retry changed the selected token");
+            return false;
+        },
+    }
+    commit_delivery(&mut inner, &mut cursor, retried_interrupt, |_| {
+        unreachable!("unexpected message token")
+    });
+    if inner.delivery_epoch_is_current(interrupt_epoch)
+        || inner.interrupt_token_is_current(interrupt_index, interrupt_sequence)
+        || cursor != 1
+    {
+        error!("committed interrupt token did not become stale");
+        return false;
+    }
+
+    push_exception(&mut inner, EXCEPTION_BIT, test_pid(), test_tid());
+    let first_exception: PendingDelivery = match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: 0,
+            exceptions: usize::MAX,
+            scheduling: 0,
+        },
+        cursor,
+        |_, _| Ok(None),
+    ) {
+        Ok(Some(delivery)) => delivery,
+        Ok(None) => {
+            error!("exception token test selected no event");
+            return false;
+        },
+        Err(error) => {
+            error!("exception token selection failed (error={error:?})");
+            return false;
+        },
+    };
+    let (exception_epoch, exception_index, exception_sequence): (
+        DeliveryEpoch,
+        usize,
+        EventSequence,
+    ) = match first_exception.token {
+        super::DeliveryToken::Exception {
+            epoch,
+            index,
+            sequence,
+        } => (epoch, index, sequence),
+        _ => {
+            error!("exception selection returned the wrong token kind");
+            return false;
+        },
+    };
+    if !inner.delivery_epoch_is_current(exception_epoch)
+        || !inner.exception_token_is_current(exception_index, exception_sequence)
+    {
+        error!("new exception token was already stale");
+        return false;
+    }
+    let retried_exception: PendingDelivery = match inner.select_with(
+        test_tid(),
+        test_pid(),
+        EventMasks {
+            interrupts: 0,
+            exceptions: usize::MAX,
+            scheduling: 0,
+        },
+        cursor,
+        |_, _| Ok(None),
+    ) {
+        Ok(Some(delivery)) => delivery,
+        _ => {
+            error!("abandoned exception token was not selected on retry");
+            return false;
+        },
+    };
+    match retried_exception.token {
+        super::DeliveryToken::Exception {
+            epoch,
+            index,
+            sequence,
+        } if epoch == exception_epoch
+            && index == exception_index
+            && sequence == exception_sequence => {},
+        _ => {
+            error!("exception retry changed the selected token");
+            return false;
+        },
+    }
+    commit_delivery(&mut inner, &mut cursor, retried_exception, |_| {
+        unreachable!("unexpected message token")
+    });
+    if inner.delivery_epoch_is_current(exception_epoch)
+        || !inner.exception_token_is_current(exception_index, exception_sequence)
+        || cursor != 2
+    {
+        error!("committed exception token did not become stale");
+        return false;
+    }
+    resume_exception(&mut inner, EXCEPTION_BIT);
 
     true
 }
@@ -547,13 +1235,17 @@ fn test_selection_seam_combines_events_and_mailbox() -> bool {
 /// blocked. The first attempt models the receiver before registration; the second models its retry
 /// after the registration wakeup.
 ///
+/// # Returns
+///
+/// `true` if the retry observes newly acquired scheduling ownership, otherwise `false`.
+///
 fn test_receive_refreshes_scheduling_ownership() -> bool {
     let mut inner: EventManagerInner = make_inner();
-    let mut cursor: usize = 2;
+    let cursor: usize = 2;
     let mut lifecycle_eligible: bool = true;
 
-    let first: Option<Message> =
-        match inner.try_wait_with(test_tid(), test_pid(), &mut cursor, |_, eligible| {
+    let first: Option<PendingDelivery> =
+        match inner.try_wait_with(test_tid(), test_pid(), cursor, |_, eligible| {
             lifecycle_eligible = eligible;
             Ok(None)
         }) {
@@ -569,11 +1261,11 @@ fn test_receive_refreshes_scheduling_ownership() -> bool {
     }
 
     inner.scheduling_owner = Some(test_pid());
-    let second: Option<Message> =
-        match inner.try_wait_with(test_tid(), test_pid(), &mut cursor, |_, eligible| {
+    let second: Option<PendingDelivery> =
+        match inner.try_wait_with(test_tid(), test_pid(), cursor, |_, eligible| {
             lifecycle_eligible = eligible;
             if eligible {
-                Ok(Some(lifecycle_message()))
+                Ok(Some(synthetic_message_delivery(lifecycle_message())))
             } else {
                 Ok(None)
             }
@@ -584,7 +1276,10 @@ fn test_receive_refreshes_scheduling_ownership() -> bool {
                 return false;
             },
         };
-    if second.map(|message| message.message_type) != Some(MessageType::ProcessCreationEvent)
+    if second
+        .as_ref()
+        .map(|delivery| delivery.message().message_type)
+        != Some(MessageType::ProcessCreationEvent)
         || !lifecycle_eligible
     {
         error!("scheduling registration was not observed on the next receive attempt");
@@ -600,6 +1295,10 @@ fn test_receive_refreshes_scheduling_ownership() -> bool {
 /// Verifies that continuously eligible interrupt, exception, and message-like classes are each
 /// selected within three successful deliveries.
 ///
+/// # Returns
+///
+/// `true` if all service classes receive bounded service in cursor order, otherwise `false`.
+///
 fn test_all_service_classes_receive_bounded_service() -> bool {
     const INTERRUPT_BIT: usize = 1;
     const EXCEPTION_BIT: usize = 2;
@@ -611,7 +1310,7 @@ fn test_all_service_classes_receive_bounded_service() -> bool {
     let mut delivered: [Option<MessageType>; 3] = [None; 3];
     for slot in delivered.iter_mut() {
         push_interrupt(&mut inner, INTERRUPT_BIT);
-        *slot = match inner.select_with(
+        let delivery: Option<PendingDelivery> = match inner.select_with(
             test_tid(),
             test_pid(),
             EventMasks {
@@ -619,15 +1318,18 @@ fn test_all_service_classes_receive_bounded_service() -> bool {
                 exceptions: usize::MAX,
                 scheduling: usize::MAX,
             },
-            &mut cursor,
-            |_, _| Ok(Some(ipc_message())),
+            cursor,
+            |_, _| Ok(Some(synthetic_message_delivery(ipc_message()))),
         ) {
-            Ok(message) => message.map(|message| message.message_type),
+            Ok(delivery) => delivery,
             Err(e) => {
                 error!("service-class selection failed: {:?}", e);
                 return false;
             },
         };
+        *slot = delivery.map(|delivery| {
+            commit_delivery(&mut inner, &mut cursor, delivery, |_| {}).message_type
+        });
     }
 
     let expected: [Option<MessageType>; 3] = [
@@ -649,6 +1351,11 @@ fn test_all_service_classes_receive_bounded_service() -> bool {
 ///
 /// Verifies that masked event classes do not block an eligible mailbox message.
 ///
+/// # Returns
+///
+/// `true` if the mailbox message is committed while masked events remain pending, otherwise
+/// `false`.
+///
 fn test_masked_event_classes_do_not_block_mailbox() -> bool {
     const INTERRUPT_BIT: usize = 1;
     const EXCEPTION_BIT: usize = 2;
@@ -658,9 +1365,9 @@ fn test_masked_event_classes_do_not_block_mailbox() -> bool {
     let mut cursor: usize = 0;
     push_interrupt(&mut inner, INTERRUPT_BIT);
     push_exception(&mut inner, EXCEPTION_BIT, test_pid(), test_tid());
-    mailbox.send(DeliverySequence::new(0), ipc_message());
+    mailbox.send(new_test_delivery_sequence(0), ipc_message());
 
-    let selected: Option<MessageType> = match inner.select_with(
+    let delivery: Option<PendingDelivery> = match inner.select_with(
         test_tid(),
         test_pid(),
         EventMasks {
@@ -668,15 +1375,21 @@ fn test_masked_event_classes_do_not_block_mailbox() -> bool {
             exceptions: 0,
             scheduling: 0,
         },
-        &mut cursor,
-        |tid, _| Ok(mailbox.receive(tid).map(|(_, message)| message)),
+        cursor,
+        |tid, _| Ok(peek_mailbox_delivery(&mailbox, tid)),
     ) {
-        Ok(message) => message.map(|message| message.message_type),
+        Ok(delivery) => delivery,
         Err(e) => {
             error!("masked-class selection failed: {:?}", e);
             return false;
         },
     };
+    let selected: Option<MessageType> = delivery.map(|delivery| {
+        commit_delivery(&mut inner, &mut cursor, delivery, |token| {
+            commit_mailbox_delivery(&mut mailbox, token)
+        })
+        .message_type
+    });
     if selected != Some(MessageType::Ipc) {
         error!("masked event classes blocked mailbox delivery: {:?}", selected);
         return false;
@@ -697,6 +1410,11 @@ fn test_masked_event_classes_do_not_block_mailbox() -> bool {
 ///
 /// Verifies that global event generation does not perturb a receiver's service cursor.
 ///
+/// # Returns
+///
+/// `true` if receiver cursors remain independent of global event traffic and each other, otherwise
+/// `false`.
+///
 fn test_global_event_count_does_not_perturb_receiver_cursor() -> bool {
     let mut inner: EventManagerInner = make_inner();
     let mut receiver_cursor: usize = 0;
@@ -705,7 +1423,7 @@ fn test_global_event_count_does_not_perturb_receiver_cursor() -> bool {
 
     // A receive by another process advances only that process's cursor and leaves the interrupt
     // pending for this receiver.
-    let other_selected: Option<MessageType> = match inner.select_with(
+    let other_delivery: Option<PendingDelivery> = match inner.select_with(
         test_tid(),
         test_pid(),
         EventMasks {
@@ -713,15 +1431,18 @@ fn test_global_event_count_does_not_perturb_receiver_cursor() -> bool {
             exceptions: usize::MAX,
             scheduling: usize::MAX,
         },
-        &mut other_receiver_cursor,
-        |_, _| Ok(Some(ipc_message())),
+        other_receiver_cursor,
+        |_, _| Ok(Some(synthetic_message_delivery(ipc_message()))),
     ) {
-        Ok(message) => message.map(|message| message.message_type),
+        Ok(delivery) => delivery,
         Err(e) => {
             error!("other-receiver selection failed: {:?}", e);
             return false;
         },
     };
+    let other_selected: Option<MessageType> = other_delivery.map(|delivery| {
+        commit_delivery(&mut inner, &mut other_receiver_cursor, delivery, |_| {}).message_type
+    });
     if other_selected != Some(MessageType::Ipc)
         || other_receiver_cursor != 0
         || receiver_cursor != 0
@@ -734,8 +1455,8 @@ fn test_global_event_count_does_not_perturb_receiver_cursor() -> bool {
     }
 
     // Model unrelated event traffic changing the global event counter after this receiver last ran.
-    inner.nevents = inner.nevents.wrapping_add(97);
-    let selected: Option<MessageType> = match inner.select_with(
+    inner.event_sequence = inner.event_sequence.wrapping_add(97);
+    let delivery: Option<PendingDelivery> = match inner.select_with(
         test_tid(),
         test_pid(),
         EventMasks {
@@ -743,15 +1464,18 @@ fn test_global_event_count_does_not_perturb_receiver_cursor() -> bool {
             exceptions: usize::MAX,
             scheduling: usize::MAX,
         },
-        &mut receiver_cursor,
-        |_, _| Ok(Some(ipc_message())),
+        receiver_cursor,
+        |_, _| Ok(Some(synthetic_message_delivery(ipc_message()))),
     ) {
-        Ok(message) => message.map(|message| message.message_type),
+        Ok(delivery) => delivery,
         Err(e) => {
             error!("cursor-isolation selection failed: {:?}", e);
             return false;
         },
     };
+    let selected: Option<MessageType> = delivery.map(|delivery| {
+        commit_delivery(&mut inner, &mut receiver_cursor, delivery, |_| {}).message_type
+    });
     if selected != Some(MessageType::Interrupt) || receiver_cursor != 1 {
         error!(
             "receiver cursor was perturbed by global traffic: selected={:?}, cursor={}",
@@ -777,14 +1501,19 @@ fn test_global_event_count_does_not_perturb_receiver_cursor() -> bool {
 /// independently of the surrounding `try_wait` machinery (and shared verbatim by both the interrupt
 /// and exception delivery paths).
 ///
+/// # Returns
+///
+/// `true` if selection chooses the oldest eligible sequence and respects the eligibility mask,
+/// otherwise `false`.
+///
 fn test_smallest_pending_front_selects_oldest_sequence() -> bool {
     // Bit 1 (low) holds a newer event (sequence 20); bit 5 (high) holds an older one (sequence
     // 10). Selection must pick bit 5, proving a lower-numbered bit does not win merely by being
     // scanned first, the previous bit-0-first bias.
-    let front_seq = |bit: usize| -> Option<u64> {
+    let front_seq = |bit: usize| -> Option<EventSequence> {
         match bit {
-            1 => Some(20),
-            5 => Some(10),
+            1 => Some(EventSequence::new(20)),
+            5 => Some(EventSequence::new(10)),
             _ => None,
         }
     };
@@ -803,7 +1532,7 @@ fn test_smallest_pending_front_selects_oldest_sequence() -> bool {
 
     // A pending entry on a bit outside the mask is never selected.
     if EventManagerInner::smallest_pending_front(1usize << 1, |bit| match bit {
-        5 => Some(10),
+        5 => Some(EventSequence::new(10)),
         _ => None,
     })
     .is_some()
@@ -976,6 +1705,11 @@ fn test_oldest_exception_not_starved_by_low_bit_load() -> bool {
 /// an older one generated just before it. Ordering by the descriptor id would deliver the newer
 /// event first; ordering by the `u64` sequence number delivers the older one first, as it must.
 ///
+/// # Returns
+///
+/// `true` if full-width event ordering remains FIFO across descriptor identifier wrap, otherwise
+/// `false`.
+///
 fn test_delivery_orders_by_sequence_across_id_wrap() -> bool {
     const OLDER_HIGH_BIT: usize = 7;
     const NEWER_LOW_BIT: usize = 1;
@@ -990,7 +1724,7 @@ fn test_delivery_orders_by_sequence_across_id_wrap() -> bool {
 
     // Arrange for the next two generated events to straddle the id wrap: the older event lands on
     // the last id before the wrap (`wrap - 1`) and the newer event on the wrapped id (`0`).
-    inner.nevents = wrap - 2;
+    inner.event_sequence = EventSequence::new(wrap - 2);
 
     // Older event (high bit): sequence `wrap - 1`, descriptor id `wrap - 1` (the maximum).
     push_interrupt(&mut inner, OLDER_HIGH_BIT);
@@ -1040,10 +1774,15 @@ fn test_delivery_orders_by_sequence_across_id_wrap() -> bool {
 ///
 /// Runs all event-manager in-kernel tests, returning `true` only if every test passed.
 ///
+/// # Returns
+///
+/// `true` if every event-manager test passes, otherwise `false`.
+///
 pub fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_each_call_delivers_a_single_interrupt);
     passed &= run_test!(test_selection_seam_combines_events_and_mailbox);
+    passed &= run_test!(test_event_tokens_are_stable_until_commit);
     passed &= run_test!(test_receive_refreshes_scheduling_ownership);
     passed &= run_test!(test_all_service_classes_receive_bounded_service);
     passed &= run_test!(test_masked_event_classes_do_not_block_mailbox);
