@@ -78,6 +78,33 @@
 - Use a quantifier trigger on map lookup, such as
   `let permission = #[trigger] permissions[i]`, when the solver must instantiate per-entry
   properties from an indexed access.
+- Convert raw permissions into protocol-specific tokens with a trusted proof function when the
+  protocol intentionally exposes weaker knowledge than `PointsTo`. The function should take
+  `tracked PointsTo` resources by value, preserve pointer identity in its postcondition, and return
+  the replacement tokens as tracked results.
+- Mark a trusted proof conversion with `#[verifier::external_body]` inside `verus!`. Keep executable
+  trusted functions in attribute mode with `#[verus_verify(external_body)]`; the two forms serve
+  different modes.
+- A state containing linear tokens must be passed as `Tracked`, not `Ghost`. Use `Ghost` for
+  duplicable facts such as an optional child address or immutable specification value.
+- Match tracked-map ownership to executable ownership. Store private resources directly in their
+  owner; keep shared or free resources in one manager-level state and pass controlled witnesses.
+
+## Proof-Only Shared State
+
+- Do not use standard `Rc<RefCell<_>>` as a proof container merely because it resembles the desired
+  ownership pattern. It is executable machinery, and its available specifications may not support
+  linear tracked contents or zero-runtime-cost verification.
+- When genuinely shared proof-only interior mutability is required, compose vstd abstractions:
+  `LocalInvariant<K, V, Pred>` owns mutable tracked `V`, while `Shared<LocalInvariant<...>>`
+  provides duplicable tracked handles and immutable borrows of the invariant handle.
+- `Shared<T>::clone()` duplicates access to the stored proof object, not the stored linear resource.
+  Opening the `LocalInvariant` yields one temporary tracked state that must satisfy its predicate
+  again when the block closes.
+- Do not introduce shared interior mutability for uniquely owned state. A direct
+  `Tracked<State>` field and proof-only mutable borrow are simpler.
+- Single-threaded execution can justify serialized access protocols, but Verus still requires an
+  ownership mechanism for aliased handles. It does not make tracked values implicitly duplicable.
 
 ## Zero-Runtime-Cost Attribute-Mode Specifications
 
@@ -97,6 +124,8 @@
 - Keep `Tracked` and `Ghost` values out of ordinary executable signatures.
 - Let executable owners retain their proof resources instead of repeatedly passing them through
   runtime methods.
+- Proof-only inputs may include `Tracked<&mut State>` without changing the ordinary Rust signature.
+  This is preferable to adding an executable wrapper solely to carry ghost ownership.
 
 ## Pitfalls
 
@@ -117,6 +146,9 @@
   shape. Tie it directly to the data structure's fixed capacity.
 - An unconstrained permission introduced at the interaction site makes the proof vacuous and can
   conceal aliasing or lifetime bugs.
+- Returning a custom token without consuming the source `PointsTo` leaves duplicate authority.
+- Cloning a client object must not clone linear tokens for shared storage. Separate private token
+  ownership from manager-owned shared resources.
 - Checking pointer addresses without provenance can incorrectly relate different allocations.
 - Updating executable memory without transitioning the corresponding `PointsTo` state leaves the
   proof model stale.

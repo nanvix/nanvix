@@ -111,6 +111,41 @@ resource creator -> owning object -> interaction primitive
 Avoid creating permissions locally with an unconstrained assumption at every interaction. That
 would make the contract vacuous and hide aliasing or lifetime mistakes.
 
+When an abstract protocol token replaces a generic raw-memory permission, make the conversion
+explicit and linear:
+
+```text
+raw allocation permission -> trusted token conversion -> protocol owner
+```
+
+The conversion should consume the raw permission and return the custom token. Its contract must
+preserve location identity, establish the token's initial knowledge, and leave no duplicate
+`PointsTo` authority. Mark only this conversion as trusted; later interactions should operate on
+the resulting token rather than repeatedly converting or assuming permissions.
+
+If raw allocation verification is deferred, construction sites may temporarily receive the
+`PointsTo` resources as proof-only inputs. This makes the missing allocator connection explicit
+without minting authority from nothing. The obligation must remain threaded upward until it reaches
+the eventual allocator boundary.
+
+### 7. Match proof ownership to executable ownership
+
+Do not assume that every object using a resource should own the same proof state. Partition tokens
+according to actual lifetime and sharing:
+
+- object-private resources belong to the executable object;
+- allocator-owned free resources remain with the allocator;
+- globally shared resources have one manager-level owner;
+- references to shared resources are witnesses or controlled borrows, not duplicated authority.
+
+Prefer direct tracked storage when an executable object has unique ownership. Introduce shared
+interior proof machinery only for genuinely shared mutable authority. Single-threaded execution
+removes concurrency concerns but does not permit duplication of linear proof resources.
+
+For pooled objects, distinguish at least unallocated, live, detached, and free authority. Allocation
+transfers authority to the live owner; reclamation transfers it back only after detachment. A raw
+address or free-list entry is not a substitute for the corresponding token.
+
 ## Memory and Shared-State Abstractions
 
 A raw pointer identifies a location but does not describe what is stored there or who may access
@@ -134,6 +169,10 @@ reference asserts exclusive access, which may be stronger than the real system g
 Conversely, do not add a concurrent invariant prematurely. If the current goal is only a trusted
 interface contract and not an explicit model of the environment, store the system's permission and
 describe the interaction as a trusted transition of that permission.
+
+An invariant may also implement proof-only interior mutability among multiple handles, independently
+of environment concurrency. It is not required when a unique owner can pass `Tracked<&mut State>`
+explicitly. Choose it to represent actual shared access, not merely to avoid threading arguments.
 
 ## Permissions as Environment Knowledge
 
@@ -245,6 +284,10 @@ The owning structure may store a tracked permission map and allow interaction sp
 access `self.permissions` directly. This is usually clearer than passing the same permission
 explicitly through every executable method.
 
+If a shared proof handle is necessary, use a Verus abstraction with explicit clone and exclusive
+access semantics. Do not assume that executable `Rc<RefCell<_>>` automatically provides a verified,
+zero-runtime-cost container for tracked resources.
+
 ## Contract Design Rules
 
 - State architectural or protocol validity explicitly; memory safety alone does not imply that a
@@ -256,6 +299,10 @@ explicitly through every executable method.
 - Tie permission domains to the expected concrete object size, not merely to their own length.
 - Preserve the link between executable storage and ghost permissions. A permission map is
   insufficient unless its pointers are related to the object's actual backing storage.
+- Preserve linearity when converting proof representations. A trusted conversion should consume
+  `PointsTo` and produce exactly one replacement token.
+- Keep private and shared ownership separate. Per-object token maps must not duplicate tokens for a
+  shared child or global allocator pool.
 - Keep trusted wrappers small. The larger the external body, the larger the trusted computing base.
 
 ## Approaches to Avoid
@@ -289,6 +336,14 @@ explicitly through every executable method.
   runtime effects.
 - **Minting proof permissions at the interaction site.** Permissions should flow from the owner or
   allocator that established them.
+- **Retaining `PointsTo` after minting a replacement token.** This creates two authorities for one
+  location unless an explicit splitting protocol proves otherwise.
+- **Putting all related tokens in every client object.** Shared pages and allocator-owned free
+  resources must have one owner; clients receive only their private tokens or controlled witnesses.
+- **Using shared interior mutability for uniquely owned state.** It adds proof machinery and obscures
+  transfer boundaries. Store the tracked state directly in the unique owner instead.
+- **Treating single-threaded execution as permission duplication.** It justifies serialized access,
+  not multiple linear tokens for the same resource.
 - **Using only pointer addresses in a permission invariant.** Preserve provenance and the relation
   to the executable allocation where the verification model requires them.
 

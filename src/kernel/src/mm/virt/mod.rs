@@ -64,14 +64,12 @@ pub enum PageTableStorage {
     KernelPage(KernelPage),
 }
 
-pub trait GetPageTableStorage {
-    verus! {
+verus! {
+    pub trait GetPageTableStorage {
         spec fn get_storage(&self) -> &PageTableStorage;
     }
-}
 
-impl GetPageTableStorage for PageTableStorage {
-    verus! {
+    impl GetPageTableStorage for PageTableStorage {
         open spec fn get_storage(&self) -> &PageTableStorage {
             self
         }
@@ -118,14 +116,12 @@ pub enum PageDirectoryStorage {
     KernelPage(KernelPage),
 }
 
-pub trait GetPageDirectoryStorage {
-    verus! {
+verus! {
+    pub trait GetPageDirectoryStorage {
         spec fn get_storage(&self) -> &PageDirectoryStorage;
     }
-}
 
-impl GetPageDirectoryStorage for PageDirectoryStorage {
-    verus! {
+    impl GetPageDirectoryStorage for PageDirectoryStorage {
         open spec fn get_storage(&self) -> &PageDirectoryStorage {
             self
         }

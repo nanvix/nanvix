@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 use ::vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use ::vstd::raw_ptr::PointsTo;
 
 verus! {
 
@@ -24,8 +26,32 @@ pub const PAGE_TABLE_ADDRESS_MASK: PteWord = 0xffff_f000;
 /// Nanvix's authority and stable knowledge for one page-directory entry.
 #[cfg(verus_keep_ghost_body)]
 pub struct NanvixPdeToken {
-    ptr: *mut PteWord,
-    expected: Option<PteWord>,
+    pub ptr: *mut PteWord,
+    pub expected: Option<PteWord>,
+}
+
+/// Converts raw-memory permissions into uninitialized page-directory-entry tokens.
+///
+/// This trusted conversion consumes the exact memory permissions, so no competing raw-memory
+/// authority remains after the page-directory abstraction takes ownership.
+#[verifier::external_body]
+pub proof fn mint_nanvix_pde_tokens(
+    tracked raw_permissions: Map<nat, PointsTo<PteWord>>,
+) -> (tracked tokens: Map<nat, NanvixPdeToken>)
+    requires
+        forall|i: nat| raw_permissions.dom().contains(i)
+            ==> #[trigger] raw_permissions[i].is_uninit(),
+    ensures
+        tokens.dom() == raw_permissions.dom(),
+        forall|i: nat| raw_permissions.dom().contains(i) ==> {
+            let raw_permission = #[trigger] raw_permissions[i];
+            let token = #[trigger] tokens[i];
+
+            &&& token.ptr() == raw_permission.ptr()
+            &&& token.is_uninit()
+        },
+{
+    unimplemented!()
 }
 
 #[cfg(verus_keep_ghost_body)]
@@ -72,16 +98,16 @@ where
         forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
             let permission = #[trigger] self.permissions[i];
 
-            permission.ptr().addr as int
+            permission.ptr().addr() as int
                 == self.entries.get_storage().base_address()
-                    + i * PageDirectoryEntry::SIZE
+                    + i * 4
         }
     }
 
     pub open spec fn wf(&self) -> bool {
         &&& self.permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH
-        &&& self.permissions.dom()
-            == Set::new(|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH)
+        &&& forall|i: nat| self.permissions.dom().contains(i)
+            <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH
         &&& forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
             self.permissions[i].wf()
         }

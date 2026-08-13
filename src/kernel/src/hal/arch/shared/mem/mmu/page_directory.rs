@@ -60,13 +60,14 @@ where
     entries: T,
     /// Specification tokens for page-directory entries.
     #[cfg(verus_keep_ghost_body)]
-    permissions: Tracked<Map<nat, NanvixPdeToken>>,
+    pub permissions: Tracked<Map<nat, NanvixPdeToken>>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl<T> PageDirectory<T>
 where
     T: DerefMut<Target = [PteWord]> + GetPageDirectoryStorage,
@@ -74,18 +75,18 @@ where
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         with
-            Tracked(permissions):
-                Tracked<Map<nat, NanvixPdeToken>>,
+            Tracked(raw_permissions):
+                Tracked<Map<nat, PointsTo<PteWord>>>,
         requires
-            permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH,
-            permissions.dom()
-                == Set::new(|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH),
+            raw_permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH,
+            forall|i: nat| raw_permissions.dom().contains(i)
+                <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH,
             forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
-                let permission = #[trigger] permissions[i];
+                let permission = #[trigger] raw_permissions[i];
 
-                permission.ptr().addr as int
+                permission.ptr()@.addr as int
                     == entries.get_storage().base_address()
-                        + i * PageDirectoryEntry::SIZE
+                        + i * 4
                     && permission.is_uninit()
             },
         ensures
@@ -97,14 +98,29 @@ where
                 },
     )]
     pub fn new(entries: T) -> Self {
-        proof_with! {
-            permissions: Tracked(permissions)
+        let mut pgdir: PageDirectory<T> = PageDirectory {
+            entries,
+            #[cfg(verus_keep_ghost_body)]
+            permissions: Tracked::new(mint_nanvix_pde_tokens(raw_permissions)),
         };
-        let mut pgdir: PageDirectory<T> = PageDirectory { entries };
         pgdir.clean();
         pgdir
     }
+}
 
+impl<T> PageDirectory<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageDirectoryStorage,
+{
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        with
+            Ghost(page_table):
+                Ghost<&PageTable<PageTableStorage>>,
+        requires
+            page_table.ready_for_mmu(),
+            page_table.physical_base() == paddr@,
+    )]
     pub fn map(
         &mut self,
         vaddr: PageTableAddress,
@@ -153,6 +169,9 @@ where
         );
 
         // Write page directory entry
+        proof_with! {
+            Ghost(Some(page_table))
+        };
         self.write_pde(vaddr, pde);
 
         Ok(())
@@ -209,6 +228,9 @@ where
         );
 
         // Write page directory entry.
+        proof_with! {
+            Ghost(None)
+        };
         self.write_pde(pgtable_address, pde);
 
         // Invalidate the TLB entry for this page table range so the CPU does not use a
@@ -232,9 +254,18 @@ where
         PageDirectoryEntry::from_raw_value(self.env_interaction_read_page_directory_entry(pde_idx))
     }
 
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        with
+            Ghost(page_table):
+                Ghost<Option<&PageTable<PageTableStorage>>>,
+    )]
     fn write_pde(&mut self, vaddr: PageTableAddress, pde: PageDirectoryEntry) {
         let pde_idx: usize = vaddr.get_pde_index();
         // self.entries[pde_idx] = pde.into_raw_value();
+        proof_with! {
+            Ghost(page_table)
+        };
         self.env_interaction_write_page_directory_entry(pde_idx, pde.into_raw_value());
     }
 

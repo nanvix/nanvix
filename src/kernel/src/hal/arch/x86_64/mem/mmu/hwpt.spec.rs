@@ -2,6 +2,16 @@
 // Licensed under the MIT License.
 
 use ::vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use ::vstd::invariant::{
+    InvariantPredicate,
+    LocalInvariant,
+};
+use ::vstd::open_local_invariant;
+#[cfg(verus_keep_ghost)]
+use ::vstd::raw_ptr::PointsTo;
+#[cfg(verus_keep_ghost)]
+use ::vstd::shared::Shared;
 
 verus! {
 
@@ -17,9 +27,10 @@ pub const HW_DIRTY_BIT: u64 = 1 << 6;
 #[cfg(verus_keep_ghost_body)]
 pub const ADDR_MASK_1G: u64 = 0x000F_FFFF_C000_0000;
 
-/// Size of one x86_64 hardware paging entry in bytes.
-#[cfg(verus_keep_ghost_body)]
-pub const HW_ENTRY_SIZE: int = 8;
+/// Returns the size of one x86_64 hardware paging entry in bytes.
+pub open spec fn hw_entry_size() -> int {
+    8
+}
 
 /// Level of one page in the x86_64 hardware paging hierarchy.
 #[cfg(verus_keep_ghost_body)]
@@ -34,16 +45,143 @@ pub enum HwPagingLevel {
 /// Nanvix's authority and stable knowledge for one hardware paging entry.
 #[cfg(verus_keep_ghost_body)]
 pub struct NanvixHwEntryToken {
-    ptr: *mut u64,
-    expected: Option<u64>,
+    pub ptr: *mut u64,
+    pub expected: Option<u64>,
 }
 
 /// Nanvix's authority and stable knowledge for one hardware paging page.
 #[cfg(verus_keep_ghost_body)]
 pub struct NanvixHwPageToken {
+    pub physical_base: u64,
+    pub level: HwPagingLevel,
+    pub entries: Map<nat, NanvixHwEntryToken>,
+}
+
+/// Proof-only ownership held by the hardware page-table manager.
+#[cfg(verus_keep_ghost_body)]
+pub struct HwptManagerState {
+    pub boot_pages: Map<u64, NanvixHwPageToken>,
+    pub available_pages: Map<u64, NanvixHwPageToken>,
+}
+
+/// Invariant predicate for the shared hardware page-table manager state.
+#[cfg(verus_keep_ghost_body)]
+pub struct HwptManagerInvariant;
+
+/// Duplicable proof-only handle to the unique hardware page-table manager state.
+#[cfg(verus_keep_ghost_body)]
+pub type HwptManagerHandle =
+    Shared<LocalInvariant<(), HwptManagerState, HwptManagerInvariant>>;
+
+#[cfg(verus_keep_ghost_body)]
+impl InvariantPredicate<(), HwptManagerState> for HwptManagerInvariant {
+    open spec fn inv(_constant: (), state: HwptManagerState) -> bool {
+        state.inv()
+    }
+}
+
+/// Converts one initialized raw-memory permission into a hardware-entry token.
+///
+/// The baseline is the value carried by the consumed permission.
+#[verifier::external_body]
+pub proof fn mint_nanvix_hw_entry_token(
+    tracked raw_permission: PointsTo<u64>,
+    level: HwPagingLevel,
+) -> (tracked token: NanvixHwEntryToken)
+    requires
+        raw_permission.is_init(),
+        valid_hw_entry(level, raw_permission.value()),
+    ensures
+        token.ptr() == raw_permission.ptr(),
+        token.is_init(),
+        token.expected() == raw_permission.value(),
+{
+    unimplemented!()
+}
+
+/// Converts initialized raw-memory permissions into one hardware paging-page token.
+///
+/// This trusted conversion consumes every entry permission and preserves each current raw value as
+/// the corresponding Nanvix baseline.
+#[verifier::external_body]
+pub proof fn mint_nanvix_hw_page_token(
+    tracked raw_permissions: Map<nat, PointsTo<u64>>,
     physical_base: u64,
     level: HwPagingLevel,
-    entries: Map<nat, NanvixHwEntryToken>,
+) -> (tracked page: NanvixHwPageToken)
+    requires
+        physical_base % 4096u64 == 0,
+        raw_permissions.dom().len() == ENTRIES_PER_TABLE,
+        forall|i: nat| raw_permissions.dom().contains(i)
+            <==> 0 <= i < ENTRIES_PER_TABLE,
+        forall|i: nat| 0 <= i < ENTRIES_PER_TABLE ==> {
+            let raw_permission = #[trigger] raw_permissions[i];
+
+            &&& raw_permission.ptr()@.addr as int
+                == physical_base as int + i * hw_entry_size()
+            &&& raw_permission.is_init()
+            &&& valid_hw_entry(level, raw_permission.value())
+        },
+    ensures
+        page.ready_for_mmu(),
+        page.physical_base() == physical_base,
+        page.level() == level,
+        forall|i: nat| 0 <= i < ENTRIES_PER_TABLE ==> {
+            let raw_permission = #[trigger] raw_permissions[i];
+            let entry = #[trigger] page.entry(i);
+
+            &&& entry.ptr() == raw_permission.ptr()
+            &&& entry.expected() == raw_permission.value()
+        },
+{
+    unimplemented!()
+}
+
+/// Imports the boot hierarchy and static page-table pool at the one-time initialization boundary.
+///
+/// The trusted conversion consumes every raw permission. Boot-page tokens remain manager-owned,
+/// while pool-page tokens remain available until allocation transfers them to an address space.
+#[verifier::external_body]
+pub proof fn mint_hwpt_manager(
+    tracked boot_permissions: Map<u64, Map<nat, PointsTo<u64>>>,
+    boot_levels: Map<u64, HwPagingLevel>,
+    tracked pool_permissions: Map<u64, Map<nat, PointsTo<u64>>>,
+) -> (tracked manager: HwptManagerHandle)
+    requires
+        boot_permissions.dom() == boot_levels.dom(),
+        boot_permissions.dom().disjoint(pool_permissions.dom()),
+        forall|base: u64| boot_permissions.dom().contains(base) ==> {
+            let permissions = #[trigger] boot_permissions[base];
+            &&& base % 4096u64 == 0
+            &&& permissions.dom().len() == ENTRIES_PER_TABLE
+            &&& forall|i: nat| permissions.dom().contains(i)
+                <==> 0 <= i < ENTRIES_PER_TABLE
+            &&& forall|i: nat| 0 <= i < ENTRIES_PER_TABLE ==> {
+                let permission = #[trigger] permissions[i];
+                &&& permission.ptr()@.addr as int
+                    == base as int + i * hw_entry_size()
+                &&& permission.is_init()
+                &&& valid_hw_entry(boot_levels[base], permission.value())
+            }
+        },
+        forall|base: u64| pool_permissions.dom().contains(base) ==> {
+            let permissions = #[trigger] pool_permissions[base];
+            &&& base % 4096u64 == 0
+            &&& permissions.dom().len() == ENTRIES_PER_TABLE
+            &&& forall|i: nat| permissions.dom().contains(i)
+                <==> 0 <= i < ENTRIES_PER_TABLE
+            &&& forall|i: nat| 0 <= i < ENTRIES_PER_TABLE ==> {
+                let permission = #[trigger] permissions[i];
+                &&& permission.ptr()@.addr as int
+                    == base as int + i * hw_entry_size()
+                &&& permission.is_init()
+                &&& permission.value() == 0
+            }
+        },
+    ensures
+        manager@.constant() == (),
+{
+    unimplemented!()
 }
 
 #[cfg(verus_keep_ghost_body)]
@@ -104,13 +242,15 @@ impl NanvixHwPageToken {
 
     /// Returns whether the page shape and entry tokens are internally consistent.
     pub open spec fn wf(&self) -> bool {
-        &&& self.physical_base & ((::arch::mem::PAGE_SIZE as u64) - 1) == 0
-        &&& self.entries.dom() == Set::new(|i: nat| 0 <= i < ENTRIES_PER_TABLE)
+        &&& self.physical_base % 4096u64 == 0
+        &&& self.entries.dom().len() == ENTRIES_PER_TABLE
+        &&& forall|i: nat| self.entries.dom().contains(i)
+            <==> 0 <= i < ENTRIES_PER_TABLE
         &&& forall|i: nat| 0 <= i < ENTRIES_PER_TABLE ==> {
             let entry = #[trigger] self.entries[i];
 
-            &&& entry.ptr().addr as int
-                == self.physical_base as int + i * HW_ENTRY_SIZE
+            &&& entry.ptr().addr() as int
+                == self.physical_base as int + i * hw_entry_size()
             &&& entry.wf(self.level)
         }
     }
@@ -120,6 +260,83 @@ impl NanvixHwPageToken {
         self.wf()
             && forall|i: nat| 0 <= i < ENTRIES_PER_TABLE
                 ==> #[trigger] self.entries[i].is_init()
+    }
+
+    /// Returns whether every entry has the zero baseline.
+    pub open spec fn is_zeroed(&self) -> bool {
+        self.ready_for_mmu()
+            && forall|i: nat| 0 <= i < ENTRIES_PER_TABLE
+                ==> #[trigger] self.entries[i].expected() == 0
+    }
+}
+
+/// Returns whether every token matches its owner-map key and is ready for MMU access.
+pub open spec fn owned_hw_pages_wf(
+    pages: Map<u64, NanvixHwPageToken>,
+) -> bool {
+    forall|base: u64| pages.dom().contains(base) ==> {
+        let page = #[trigger] pages[base];
+        &&& page.physical_base() == base
+        &&& page.ready_for_mmu()
+    }
+}
+
+/// Returns whether an owner has complete authority for its hardware paging hierarchy.
+///
+/// The sole permitted external edge is `PDPT[0]`, which points at the manager-owned boot `PD0`
+/// shared by every process address space.
+pub open spec fn owned_hw_pages_inv(
+    pages: Map<u64, NanvixHwPageToken>,
+) -> bool {
+    &&& owned_hw_pages_wf(pages)
+    &&& forall|base: u64| pages.dom().contains(base) ==> {
+        let page = #[trigger] pages[base];
+        forall|i: nat| 0 <= i < ENTRIES_PER_TABLE
+            && hw_entry_nonleaf(page.level(), page.entry(i).expected()) ==> {
+                let child_base =
+                    hw_entry_target_address(page.entry(i).expected());
+                ||| page.level() == HwPagingLevel::Pdpt && i == 0
+                ||| {
+                    &&& child_base != base
+                    &&& pages.dom().contains(child_base)
+                    &&& pages[child_base].physical_base() == child_base
+                    &&& pages[child_base].level()
+                        == next_hw_level(page.level())
+                    &&& pages[child_base].ready_for_mmu()
+                }
+            }
+    }
+}
+
+/// Returns whether any page in `pages`, other than `base` itself, references `base`.
+pub open spec fn owned_hw_page_is_referenced(
+    pages: Map<u64, NanvixHwPageToken>,
+    base: u64,
+) -> bool {
+    exists|parent_base: u64, i: nat|
+        pages.dom().contains(parent_base)
+            && parent_base != base
+            && 0 <= i < ENTRIES_PER_TABLE
+            && hw_entry_nonleaf(
+                pages[parent_base].level(),
+                pages[parent_base].entry(i).expected(),
+            )
+            && hw_entry_target_address(
+                pages[parent_base].entry(i).expected(),
+            ) == base
+}
+
+#[cfg(verus_keep_ghost_body)]
+impl HwptManagerState {
+    /// Returns whether manager-owned token domains are disjoint and internally valid.
+    pub open spec fn inv(&self) -> bool {
+        &&& self.boot_pages.dom().disjoint(self.available_pages.dom())
+        &&& owned_hw_pages_inv(self.boot_pages)
+        &&& forall|base: u64| self.available_pages.dom().contains(base) ==> {
+            let page = #[trigger] self.available_pages[base];
+            &&& page.physical_base() == base
+            &&& page.ready_for_mmu()
+        }
     }
 }
 

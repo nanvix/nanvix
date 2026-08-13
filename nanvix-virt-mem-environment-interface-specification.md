@@ -155,8 +155,10 @@ Nanvix token exposes only:
 - `expected()`, the baseline most recently established by Nanvix; and
 - `admits(value)`, describing values that may currently be observed.
 
-The implementation may later use Verus permissions, invariants, state machines, or another
-mechanism, but the interface must not expose persistent exact memory contents.
+The selected implementation boundary converts allocator-provided raw `PointsTo` permissions into
+these tokens with trusted, linear minting functions. The conversion consumes `PointsTo`; the owning
+paging object stores only the Nanvix token. Persistent exact raw-memory knowledge is therefore not
+retained alongside a token that permits MMU-managed changes.
 
 ## Refining Permission Knowledge for MMU-Managed Bits
 
@@ -279,10 +281,12 @@ The constructor keeps its ordinary Rust signature:
 PageDirectory::new(entries)
 ```
 
-Its `#[verus_spec(with ...)]` receives the allocator-provided permission map only during
-verification. `proof_with!` injects that map into the proof-only field. The constructor requires the
-map to have the expected domain and requires each permission address to match the concrete storage
-base.
+Its `#[verus_spec(with ...)]` receives allocator-provided
+`Map<nat, PointsTo<PteWord>>` only during verification. A trusted
+`mint_nanvix_pde_tokens()` conversion consumes that map and returns
+`Map<nat, NanvixPdeToken>`. `proof_with!` injects the resulting token map into the proof-only field.
+The constructor requires the raw map to have the expected domain, contain uninitialized
+permissions, and match the concrete storage base.
 
 The BSS construction path in `Vmem::new` now:
 
@@ -291,9 +295,10 @@ The BSS construction path in `Vmem::new` now:
 3. supplies that address to the proof-only BSS field with `proof_with!`; and
 4. constructs `PageDirectoryStorage::Bss`.
 
-The permission map is not yet produced by the allocator or supplied at the `PageDirectory::new`
-call site. The runtime `KernelPage` construction path uses its address wrapper but likewise does not
-yet receive allocator-originated entry permissions.
+The allocator-to-constructor connection remains intentionally assumed at current construction
+sites: callers must provide the raw permission map proof-only, while the work that mints
+`PointsTo` at BSS or frame allocation remains deferred. This is an explicit upstream proof
+obligation, not permission creation at the constructor.
 
 ## Current Page-Directory Interaction Specifications
 
@@ -320,10 +325,6 @@ value: PteWord,
 - the selected token pointer is unchanged;
 - the selected token is initialized with `expected() == value`; and
 - every other token is unchanged.
-
-The whole-storage equality postcondition currently present on the write wrapper should be reviewed.
-As learned from the clear wrapper, equality of an owning storage object may be stronger than the
-required storage-identity frame condition and may accidentally constrain contents.
 
 ### Clear
 
@@ -364,26 +365,35 @@ bits. The predicate should be strengthened without rejecting architecturally per
 The agreed ownership flow is:
 
 ```text
-page-directory allocator -> PageDirectory::new -> PageDirectory.permissions
-                           -> environment interaction
+raw allocation PointsTo
+    -> PageDirectory::new
+    -> mint_nanvix_pde_tokens
+    -> PageDirectory.permissions
+    -> environment interaction
 ```
 
-The executable constructor remains `PageDirectory::new(entries)`. The allocator must eventually
-return a permission map alongside its executable storage. Verified construction will then supply it
-with:
+The PTE path is identical through `mint_nanvix_pte_tokens`. Both minting functions are trusted proof
+functions with contracts that:
 
-```rust
-proof_with! { Tracked(permissions) }
-PageDirectory::new(entries)
-```
+- consume the complete raw permission map;
+- preserve every permission pointer;
+- establish one uninitialized Nanvix token per entry; and
+- return exactly the original domain.
 
 There are two backing sources:
 
 1. BSS slots from `PAGE_TABLE_ALLOCATOR.alloc_as()` in `Vmem::new`;
 2. runtime `KernelPage` storage used by `Vmem::clone`.
 
-Their allocator specifications must transfer the permission map and retain no duplicate permission.
-The existing BSS ghost base address is storage identity, not a replacement for memory permissions.
+Their allocator specifications must eventually transfer the raw permission map and retain no
+duplicate permission. The existing BSS ghost base address is storage identity, not a replacement
+for memory permissions.
+
+Present PDE publication now carries a proof-only reference to the actual page table through
+`PageDirectory::map()`, `write_pde()`, and the terminal write interaction. `Vmem::new()`,
+`Vmem::clone()`, and new kernel/user page-table installation supply `Some(&page_table)`.
+`PageDirectory::unmap()` supplies `None`. These arguments are erased and do not change runtime
+signatures.
 
 ## Important Incomplete Work
 
@@ -392,9 +402,9 @@ configured Verus binary is unavailable.
 
 The next blockers are:
 
-- determine which Verus machinery can soundly implement the abstract PDE and PTE tokens;
-- thread allocator-originated tokens and physical-base facts through BSS and `KernelPage` paths;
-- supply the proof-only page-table argument at every present and non-present PDE write;
+- thread assumed raw permissions through every BSS and `KernelPage` construction path, then connect
+  those obligations to the actual allocators;
+- verify the trusted `PointsTo`-to-token minting contracts with the pinned Verus version;
 - prove continued page-table lifetime separately from immediate write-time readiness;
 - run targeted Verus verification and correct attribute-mode issues; and
 - refine `valid_standard_pde` and `valid_pte` from the architecture definition.
@@ -403,15 +413,17 @@ The next blockers are:
 
 ### Page table
 
-`PageTable<T>` now mirrors the page-directory token pattern and tracks virtual and physical base
-facts. Allocator threading remains incomplete. Its interactions specify:
+`PageTable<T>` mirrors the page-directory token pattern, converts raw permissions with
+`mint_nanvix_pte_tokens()`, and tracks virtual and physical base facts. Upstream allocator threading
+remains incomplete. Its interactions specify:
 
 - clear: every permission becomes initialized with zero;
-- read: returned value equals the selected permission value;
+- read: the returned value is admitted by the selected token, permitting monotonic accessed and
+  dirty updates;
 - write: selected permission becomes `value`, others remain unchanged;
-- scans and iteration: observations correspond to the relevant permission values;
+- scans and iteration: observations are admitted by the relevant tokens;
 - bulk fill: exactly the target range changes;
-- PTE validity: present, permission, caching, physical-target, software COW, and reserved bits.
+- PTE validity: currently accepts every raw word and still requires architectural refinement.
 
 ### Generic volatile `Table<E>`
 
@@ -421,9 +433,10 @@ contract reasons about memory contents.
 
 ### x86_64 hardware tables
 
-Store or thread permissions for PML4, PDPT, PD, and PT pages allocated from `PT_POOL`. Specify
-64-bit architectural entry validity and the ownership transfer between active, detached, and free
-list states. The direct zeroing path must use the same permission model as `write_entry`.
+Use level-aware page tokens for PML4, PDPT, PD, and PT pages. Private hierarchy pages should be
+owned directly by the corresponding `Vmem`; boot-shared pages and free/unallocated `PT_POOL`
+authority require a separate manager-level owner. Never duplicate the shared boot-PD token across
+all address spaces. The direct zeroing path must transition the same token model as `write_entry`.
 
 ### CR0 and CR3
 
@@ -451,16 +464,17 @@ translations.
 - Do not remove or rewrite imports that predated this work without necessity.
 - Keep proof state erased from ordinary Rust builds.
 - Do not pass `Tracked` or `Ghost` values as ordinary executable arguments.
+- Keep current runtime function signatures and control flow unless a runtime change is independently
+  required; proof convenience is not sufficient justification.
 - Do not introduce `MmuState` or another environment-owned state in the current trusted contracts.
 - Do not use `&mut` as the memory-content model for hardware-shared paging entries.
 - Derive permissions from allocation ownership and store them with the paging structure.
 
 ## Recommended Next Session
 
-1. Choose Verus implementations for the already-defined PDE and PTE token semantics.
-2. Thread allocator-originated tokens and physical-base facts through both storage paths.
-3. Thread `Some(page_table)` for present PDE writes and `None` for non-present writes.
-4. Add a separate ownership protocol for keeping referenced tables alive.
-5. Run targeted Verus verification.
-6. Refine the PDE and PTE architectural validity predicates.
-7. Continue through volatile hardware tables, registers, and TLB operations.
+1. Thread raw permission maps through all logical paging constructors to their eventual allocators.
+2. Add a separate ownership protocol for keeping referenced tables alive.
+3. Implement the x86_64 split between per-`Vmem` private tokens and manager-owned boot/pool tokens.
+4. Run targeted Verus verification.
+5. Refine the PDE and PTE architectural validity predicates.
+6. Continue through registers and TLB operations.
