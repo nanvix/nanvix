@@ -58,6 +58,9 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+use ::vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use ::vstd::raw_ptr::PointsTo;
 
 //==================================================================================================
 // Constants
@@ -94,6 +97,14 @@ static mut MEMORY_MANAGER: MaybeUninit<VirtMemoryManager> = MaybeUninit::uninit(
 /// Whether the memory manager has been initialized.
 static MEMORY_MANAGER_INIT: AtomicBool = AtomicBool::new(false);
 
+/// Stores the initialized virtual-memory manager in its singleton slot.
+#[verus_verify(external_body)]
+unsafe fn store_memory_manager(manager: VirtMemoryManager) {
+    unsafe {
+        MEMORY_MANAGER.write(manager);
+    }
+}
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -115,6 +126,24 @@ impl VirtMemoryManager {
     /// - `kernel_pages`: Kernel pages.
     /// - `kernel_page_tables`: Kernel page tables.
     ///
+    #[verus_verify(external_body)]
+    #[cfg_attr(
+        target_arch = "x86_64",
+        verus_spec(
+            with
+                Tracked(hwpt_boot_permissions):
+                    Tracked<Map<u64, Map<nat, PointsTo<u64>>>>,
+                Ghost(hwpt_boot_levels):
+                    Ghost<
+                        Map<
+                            u64,
+                            crate::hal::arch::x86::mem::mmu::hwpt::HwPagingLevel,
+                        >
+                    >,
+                Tracked(hwpt_pool_permissions):
+                    Tracked<Map<u64, Map<nat, PointsTo<u64>>>>
+        )
+    )]
     pub fn init(
         kernel_pages: LinkedList<KernelPage>,
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -124,11 +153,25 @@ impl VirtMemoryManager {
             panic!("memory manager was already initialized");
         }
 
+        #[cfg(target_arch = "x86_64")]
+        proof_decl! {
+            let tracked hwpt_manager:
+                crate::hal::arch::x86::mem::mmu::hwpt::HwptManagerHandle =
+                    crate::hal::arch::x86::mem::mmu::hwpt::mint_hwpt_manager(
+                        hwpt_boot_permissions,
+                        hwpt_boot_levels,
+                        hwpt_pool_permissions,
+                    );
+        }
+        #[cfg(target_arch = "x86_64")]
+        proof_with! {
+            Tracked(hwpt_manager)
+        };
         let (root, manager): (Vmem, VirtMemoryManager) =
             VirtMemoryManager::new(kernel_pages, kernel_page_tables)?;
 
         // SAFETY: This happens during kernel initialization and no other threads are running.
-        unsafe { MEMORY_MANAGER.write(manager) };
+        unsafe { store_memory_manager(manager) };
         MEMORY_MANAGER_INIT.store(true, ORDER);
 
         Ok(root)
@@ -192,10 +235,25 @@ impl VirtMemoryManager {
     /// - `kernel_pages`: Kernel pages.
     /// - `kernel_page_tables`: Kernel page tables.
     ///
+    #[verus_verify(external_body)]
+    #[cfg_attr(
+        target_arch = "x86_64",
+        verus_spec(
+            with
+                Tracked(hwpt_manager):
+                    Tracked<
+                        crate::hal::arch::x86::mem::mmu::hwpt::HwptManagerHandle
+                    >
+        )
+    )]
     fn new(
         kernel_pages: LinkedList<KernelPage>,
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     ) -> Result<(Vmem, Self), Error> {
+        #[cfg(target_arch = "x86_64")]
+        proof_with! {
+            Tracked(hwpt_manager)
+        };
         let root: Vmem = Vmem::new(kernel_pages, kernel_page_tables)?;
 
         // Load root root address space.

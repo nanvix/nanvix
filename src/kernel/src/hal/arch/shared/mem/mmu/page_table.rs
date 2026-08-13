@@ -57,13 +57,14 @@ where
     entries: T,
     /// Specification tokens for page-table entries.
     #[cfg(verus_keep_ghost_body)]
-    permissions: Tracked<Map<nat, NanvixPteToken>>,
+    pub permissions: Tracked<Map<nat, NanvixPteToken>>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
+#[verus_verify]
 impl<T> PageTable<T>
 where
     T: DerefMut<Target = [PteWord]> + GetPageTableStorage,
@@ -71,22 +72,21 @@ where
     #[verus_verify(external_body)]
     #[verus_spec(result =>
         with
-            Tracked(permissions):
-                Tracked<Map<nat, NanvixPteToken>>,
+            Tracked(raw_permissions):
+                Tracked<Map<nat, PointsTo<PteWord>>>,
         requires
             0 <= entries.get_storage().physical_base_address(),
             entries.get_storage().physical_base_address()
                 % (::arch::mem::PAGE_SIZE as int) == 0,
-            permissions.dom().finite(),
-            permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH,
-            permissions.dom()
-                == Set::new(|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH),
+            raw_permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH,
+            forall|i: nat| raw_permissions.dom().contains(i)
+                <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH,
             forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
-                let permission = #[trigger] permissions[i];
+                let permission = #[trigger] raw_permissions[i];
 
                 permission.ptr()@.addr as int
                     == entries.get_storage().entries_base_address()
-                        + i * PageTableEntry::SIZE
+                        + i * 4
                     && permission.is_uninit()
             },
         ensures
@@ -99,17 +99,21 @@ where
                 },
     )]
     pub fn new(entries: T) -> Self {
-        proof_with! {
-            permissions: Tracked(permissions)
-        };
         let mut page_table: Self = Self {
             nmapped: 0,
             entries,
+            #[cfg(verus_keep_ghost_body)]
+            permissions: Tracked::new(mint_nanvix_pte_tokens(raw_permissions)),
         };
         page_table.clean();
         page_table
     }
+}
 
+impl<T> PageTable<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageTableStorage,
+{
     ///
     /// # Description
     ///

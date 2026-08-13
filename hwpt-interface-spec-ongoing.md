@@ -42,6 +42,36 @@ A valid page token should establish:
 
 The executable representation remains a physical `u64`. These tokens are proof-only.
 
+## Minting from Raw Memory Authority
+
+Custom hardware tokens originate from Verus raw-memory permissions, not from addresses alone.
+Trusted proof functions perform one-way, linear conversion:
+
+```text
+PointsTo<u64> -> NanvixHwEntryToken
+Map<nat, PointsTo<u64>> -> NanvixHwPageToken
+```
+
+The conversion consumes the source permissions. Its preconditions require:
+
+- the complete entry domain `0..ENTRIES_PER_TABLE`;
+- initialized raw permissions for hardware pages already containing readable entries;
+- exact pointer-to-page offset correspondence;
+- a page-aligned physical base; and
+- entry values valid for the assigned hierarchy level.
+
+Its postconditions preserve the pointer and current value as the token baseline, establish the page
+level and physical base, and return a ready page token. No raw `PointsTo` permission remains
+alongside the Nanvix token.
+
+For zeroed fresh pages, the raw permissions carry zero and the minted token is immediately ready.
+For reused pages, existing token authority must be recovered from the free pool, zeroed through the
+same interaction model, and reassigned to the required level. Reuse must not mint a second token
+from newly assumed authority while the old token still exists.
+
+The current stage may assume that raw permissions are passed proof-only at construction boundaries.
+Connecting those assumptions to the BSS allocator is separate allocator-verification work.
+
 ## Entry Tokens and Compatibility
 
 Each entry token should expose only:
@@ -204,7 +234,7 @@ free or unallocated
 `alloc_pt_page()` should return:
 
 - the executable physical address;
-- the unique page token; and
+- the unique page token transferred from fresh allocation or the free pool; and
 - all entry baselines initialized to zero.
 
 The reused-page zeroing loop must update every token baseline before allocation completes.
@@ -216,6 +246,53 @@ The reused-page zeroing loop must update every token baseline before allocation 
 - reachable through a hierarchy the MMU may walk.
 
 The allocator and free list must not retain duplicate usable authority.
+
+## Ownership Partition
+
+Hardware paging pages do not all have the same owner.
+
+### Per-address-space ownership
+
+Each non-kernel `Vmem` has a distinct PML4, private PDPT, and process-private PD/PT pages. Store
+their tokens directly in that `Vmem`:
+
+```rust
+#[cfg(verus_keep_ghost_body)]
+hw_pages: Tracked<Map<u64, NanvixHwPageToken>>
+```
+
+The map key is the physical page address. Its invariant requires every token to match its key and
+belong to the hierarchy rooted at `hw_pml4`. This is unique state and does not need shared interior
+mutability.
+
+`Vmem::clone()` receives newly allocated private tokens rather than cloning the source map.
+`Vmem::drop()` must detach and return every private page token before the executable page is added
+to `PT_FREELIST`.
+
+### Shared manager ownership
+
+Two categories cannot be copied into every `Vmem`:
+
+- boot PML4/PDPT/PD pages shared by all address spaces; and
+- unallocated or free `PT_POOL` page authority.
+
+Keep these in one manager-level proof state. A process `Vmem` receives a proof-only witness for a
+shared boot child when publishing `PDPT[0]`; it does not acquire ownership and must never free that
+page. Allocation transfers a token from manager state into `Vmem::hw_pages`; reclamation transfers
+it back.
+
+The root kernel `Vmem`, whose executable `hw_pml4` is zero, uses the boot hierarchy and therefore
+does not own a private root token.
+
+### Shared-handle guidance
+
+Do not put all paging tokens in one shared container merely to simplify lookup. Prefer direct
+per-`Vmem` ownership for private pages. If manager-level boot/pool state needs duplicable proof-only
+access, use an explicitly specified Verus shared container; do not introduce executable
+`Rc<RefCell<_>>` or change hardware-paging runtime APIs.
+
+Single-threaded execution avoids concurrent kernel mutation, but it does not permit duplicate
+linear tokens. Shared boot and pool authority still require one logical owner.
 
 ## Mapping Existing Operations
 
@@ -245,14 +322,15 @@ This captures initialization-before-parent-publication.
 
 - Allocate zeroed PML4 and PDPT pages.
 - Assign their hierarchy levels.
-- Write `PDPT[0]` with the boot PD witness.
+- Write `PDPT[0]` with a borrowed boot-PD witness.
 - Write `PML4[0]` with the new PDPT witness.
-- Return the PML4 address and proof-only root token.
+- Return the executable PML4 address and transfer the private page-token map into the new `Vmem`.
 
 ### `map_in()`
 
-Carry the corresponding page token through every hierarchy step. The final PTE write has no child
-witness because it maps payload memory.
+Borrow the corresponding token from the owning `Vmem::hw_pages` map through every private hierarchy
+step. Allocation obtains a fresh or recycled token from manager state and inserts it into that map.
+The final PTE write has no child witness because it maps payload memory.
 
 ### `unmap_in()` and `protect_user()`
 
@@ -262,7 +340,8 @@ accessed and dirty updates. TLB invalidation remains a separate interaction.
 ### `destroy_user_pml4()`
 
 Require that the PML4 is not active and is no longer MMU-reachable. Recover child tokens while
-detaching the hierarchy, then consume them through `free_pt_page()`.
+detaching the hierarchy, remove them from `Vmem::hw_pages`, then transfer them to manager free-pool
+state as `free_pt_page()` updates the executable free list.
 
 ## Boot-Owned Hierarchy
 
@@ -275,7 +354,8 @@ proof-only inputs establishing:
 - the relevant pages are identity-accessible.
 
 These tokens should enter once through the boot-environment boundary rather than being invented at
-individual reads.
+individual reads. They remain manager-owned and are only borrowed as child witnesses by private
+address spaces.
 
 ## Resulting File Responsibilities
 
@@ -287,7 +367,7 @@ Retain:
 - volatile entry operations;
 - allocation, traversal, mapping, and destruction algorithms;
 - proof-only state gated from ordinary builds; and
-- proof-only arguments supplied without changing runtime APIs where possible.
+- proof-only arguments supplied without changing runtime APIs or behavior.
 
 ### `hwpt.spec.rs`
 
@@ -304,6 +384,12 @@ Contain:
 9. boot-hierarchy assumptions; and
 10. separate TLB and CR3 interaction wrappers.
 
+### `Vmem`
+
+Own the token map for its private hardware hierarchy. Pass proof-only references to that map into
+`hwpt` calls while preserving existing executable `u64` arguments. Do not store manager-owned boot
+or free-pool tokens in each `Vmem`.
+
 ## Main Difference from the 32-bit Design
 
 x86_64 requires a level-aware page abstraction. Entry interpretation changes between non-leaf
@@ -312,59 +398,68 @@ lifecycle tracking because hardware paging pages are detached, reclaimed, zeroed
 
 ## Remaining Work
 
-The current implementation establishes the level-aware token vocabulary and contracts only
-`read_entry()` and `write_entry()`. The following work remains:
+The current implementation establishes the level-aware token vocabulary, trusted raw-permission
+minting functions, and contracts only `read_entry()` and `write_entry()`. The following work
+remains:
 
-1. **Choose and verify the token implementation.**
+1. **Verify token minting.**
    - Confirm that Verus accepts the proof-only immutable and mutable page-token references used by
      the read and write contracts.
-   - Decide whether the abstract tokens are implemented with tracked ownership, an invariant, a
-     state machine, or another mechanism.
+   - Verify that minting consumes complete `PointsTo` maps and establishes pointer, level, physical
+     base, and baseline correspondence.
    - Run targeted Verus verification when the configured Verus binary is available.
 
-2. **Thread page tokens through the hierarchy.**
-   - Supply the correct page token, level, and optional child token at every `read_entry()` and
-     `write_entry()` call.
-   - Preserve unique authority while returning or retaining child tokens discovered during walks.
-   - Keep executable function signatures unchanged where proof-only arguments suffice.
+2. **Add per-`Vmem` private ownership.**
+   - Add an erased tracked map for private PML4/PDPT/PD/PT tokens.
+   - Ensure cloning allocates a distinct map rather than cloning token authority.
+   - Supply the correct private page token, level, and optional child token at every `read_entry()`
+     and `write_entry()` call.
+   - Preserve unique authority while discovering and retaining child tokens during walks.
+   - Keep all executable function signatures and control flow unchanged.
 
-3. **Specify allocation and reuse.**
+3. **Add manager boot/pool ownership.**
+   - Retain boot PML4/PDPT/PD tokens in one manager-level state.
+   - Retain unallocated and free `PT_POOL` authority in that state.
+   - Transfer tokens between manager state and per-`Vmem` maps at allocation and reclamation.
+   - Provide controlled boot-child witnesses without transferring or duplicating ownership.
+
+4. **Specify allocation and reuse.**
    - Make `alloc_pt_page()` return the unique token for the selected pool page.
    - Connect BSS addresses to physical addresses using the identity-mapping assumption.
    - Specify the reused-page zeroing loop so all 512 baselines become zero before allocation
      completes.
    - Assign a hierarchy level only after the page is initialized.
 
-4. **Specify detachment and reclamation.**
+5. **Specify detachment and reclamation.**
    - Define page lifecycle states for allocated, linked, detached, and free pages.
    - Require `free_pt_page()` to consume a detached, unreachable page token.
    - Prove that a freed page is not referenced by a present parent and is not an active CR3 root.
    - Prevent duplicate authority between active pages, the free list, and the unallocated pool.
 
-5. **Import the boot hierarchy.**
+6. **Import the boot hierarchy.**
    - Introduce trusted boot tokens for the CR3 PML4, its PDPT, and `BOOT_PD0`.
    - Validate the entries traversed by `init()` and connect their encoded targets to child tokens.
    - Keep boot-owned pages distinct from pages allocated from `PT_POOL`.
 
-6. **Strengthen architectural validity.**
+7. **Strengthen architectural validity.**
    - Add complete reserved-bit and feature-dependent rules for PML4E, PDPTE, PDE, and PTE values.
    - Account for the implemented physical-address width rather than relying only on address masks.
    - Specify NX, caching, software-available, PAT, 1 GiB page, and 2 MiB page rules.
    - Confirm the architectural conditions under which accessed and dirty may change, especially for
      non-present entries and large pages.
 
-7. **Specify hierarchy-changing operations.**
+8. **Specify hierarchy-changing operations.**
    - Specify initialization-before-publication in `ensure_table()` and `split_2m_entry()`.
    - Specify root construction in `create_user_pml4()`.
    - Specify token flow through `map_in()`, `unmap_in()`, and `protect_user()`.
    - Specify token recovery and consumption in `destroy_user_pml4()`.
 
-8. **Specify translation-control effects separately.**
+9. **Specify translation-control effects separately.**
    - Connect `invlpg` to the relied-upon invalidation guarantee.
    - Specify CR3 root reads and writes after root-token ownership and lifetime are available.
    - Do not fold TLB or active-root effects into paging-memory write contracts.
 
-9. **Review the trusted boundary.**
+10. **Review the trusted boundary.**
    - Decide whether `read_entry()` and `write_entry()` should remain the `external_body` boundary or
      whether trust should move down to the volatile wrappers after token threading is implemented.
    - Keep only one trusted contract per terminal operation and avoid duplicate guarantees.

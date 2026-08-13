@@ -60,6 +60,7 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
+#[cfg(verus_keep_ghost)]
 use ::vstd::prelude::*;
 
 //==================================================================================================
@@ -138,12 +139,12 @@ pub fn init(
                             };
                             let _pgtable_base_address: usize =
                                 pgtable_entries.as_mut_ptr() as usize;
-                            proof_with! {
-                                entries_base_address: Ghost(_pgtable_base_address),
-                                physical_base_address: Ghost(_pgtable_base_address)
-                            };
                             let pgtable_storage: PageTableStorage = PageTableStorage::Bss {
                                 entries: pgtable_entries,
+                                #[cfg(verus_keep_ghost_body)]
+                                entries_base_address: Ghost::new(_pgtable_base_address),
+                                #[cfg(verus_keep_ghost_body)]
+                                physical_base_address: Ghost::new(_pgtable_base_address),
                             };
                             let page_table: PageTable<PageTableStorage> =
                                 PageTable::<PageTableStorage>::new(pgtable_storage);
@@ -177,12 +178,12 @@ pub fn init(
                             .assume_init_mut()
                     };
                     let _pgtable_base_address: usize = pgtable_entries.as_mut_ptr() as usize;
-                    proof_with! {
-                        entries_base_address: Ghost(_pgtable_base_address),
-                        physical_base_address: Ghost(_pgtable_base_address)
-                    };
                     let pgtable_storage: PageTableStorage = PageTableStorage::Bss {
                         entries: pgtable_entries,
+                        #[cfg(verus_keep_ghost_body)]
+                        entries_base_address: Ghost::new(_pgtable_base_address),
+                        #[cfg(verus_keep_ghost_body)]
+                        physical_base_address: Ghost::new(_pgtable_base_address),
                     };
                     let page_table: PageTable<PageTableStorage> =
                         PageTable::<PageTableStorage>::new(pgtable_storage);

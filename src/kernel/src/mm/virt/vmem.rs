@@ -105,10 +105,27 @@ pub struct Vmem {
     /// denotes the kernel address space (which runs on the VMM-provided boot PML4).
     #[cfg(target_arch = "x86_64")]
     hw_pml4: u64,
+    /// Proof ownership for process-private x86_64 hardware paging pages.
+    #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+    hw_pages: Tracked<Map<u64, crate::hal::arch::x86::mem::mmu::hwpt::NanvixHwPageToken>>,
+    /// Shared proof handle for boot hierarchy and page-table pool authority.
+    #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+    hwpt_manager: Tracked<crate::hal::arch::x86::mem::mmu::hwpt::HwptManagerHandle>,
 }
 
 impl Vmem {
     /// Initializes a new virtual memory space.
+    #[verus_verify(external_body)]
+    #[cfg_attr(
+        target_arch = "x86_64",
+        verus_spec(
+            with
+                Tracked(hwpt_manager):
+                    Tracked<
+                        crate::hal::arch::x86::mem::mmu::hwpt::HwptManagerHandle
+                    >
+        )
+    )]
     pub fn new(
         mut kernel_pages: LinkedList<KernelPage>,
         mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -128,11 +145,10 @@ impl Vmem {
                 .assume_init_mut()
         };
         let _pgdir_base_address: usize = pgdir_entries.as_mut_ptr() as usize;
-        proof_with! {
-            base_address: Ghost(_pgdir_base_address)
-        };
         let pgdir_storage: PageDirectoryStorage = PageDirectoryStorage::Bss {
             entries: pgdir_entries,
+            #[cfg(verus_keep_ghost_body)]
+            base_address: Ghost::new(_pgdir_base_address),
         };
         let mut pgdir: PageDirectory<PageDirectoryStorage> = PageDirectory::new(pgdir_storage);
 
@@ -143,6 +159,9 @@ impl Vmem {
         while let Some((vaddr, page_table)) = kernel_page_tables.pop_front() {
             let page_table_address: FrameAddress = page_table.physical_address()?;
             // FIXME: do not be so open about permissions.
+            proof_with! {
+                Ghost(&page_table)
+            };
             pgdir.map(vaddr, page_table_address, false, AccessPermission::RDWR)?;
             kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
         }
@@ -181,7 +200,15 @@ impl Vmem {
             kpages.push_back(Rc::new(RefCell::new(entry)));
         }
 
-        Ok(Self {
+        #[cfg(target_arch = "x86_64")]
+        proof_decl! {
+            let tracked hw_pages:
+                Map<
+                    u64,
+                    crate::hal::arch::x86::mem::mmu::hwpt::NanvixHwPageToken,
+                > = Map::tracked_empty();
+        }
+        let vmem: Self = Self {
             pgdir,
             kernel_page_tables: kpage_tables,
             kernel_pages: kpages,
@@ -189,7 +216,12 @@ impl Vmem {
             // The kernel address space runs on the VMM-provided boot PML4 (see `hw_pml4`).
             #[cfg(target_arch = "x86_64")]
             hw_pml4: 0,
-        })
+            #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+            hw_pages: Tracked::new(hw_pages),
+            #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+            hwpt_manager: Tracked::new(hwpt_manager),
+        };
+        Ok(vmem)
     }
 
     /// Clones the target virtual memory space.
@@ -203,9 +235,13 @@ impl Vmem {
             Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>,
         > = LinkedList::new();
         for entry in from.kernel_page_tables.iter() {
-            let page_table_address: FrameAddress = entry.borrow().1.physical_address()?;
+            let page_table_entry = entry.borrow();
+            let page_table_address: FrameAddress = page_table_entry.1.physical_address()?;
             // FIXME: do not be so open about permissions.
-            pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
+            proof_with! {
+                Ghost(&page_table_entry.1)
+            };
+            pgdir.map(page_table_entry.0, page_table_address, false, AccessPermission::RDWR)?;
             kernel_page_tables.push_back(entry.clone());
         }
 
@@ -228,16 +264,38 @@ impl Vmem {
         // mapping (and maps the LAPIC) and starts with an empty user space; user mappings are
         // mirrored into it as they are added (see `hw_map_user`/`hw_unmap_user`).
         #[cfg(target_arch = "x86_64")]
-        let hw_pml4: u64 = unsafe { crate::hal::arch::x86::mem::mmu::hwpt::create_user_pml4() };
+        proof_decl! {
+            let tracked hwpt_manager:
+                crate::hal::arch::x86::mem::mmu::hwpt::HwptManagerHandle =
+                    from.hwpt_manager.clone();
+            let tracked mut hw_pages:
+                Map<
+                    u64,
+                    crate::hal::arch::x86::mem::mmu::hwpt::NanvixHwPageToken,
+                > = Map::tracked_empty();
+        }
+        #[cfg(target_arch = "x86_64")]
+        let hw_pml4: u64 = unsafe {
+            proof_with! {
+                Tracked(&hwpt_manager),
+                Tracked(&mut hw_pages)
+            };
+            crate::hal::arch::x86::mem::mmu::hwpt::create_user_pml4()
+        };
 
-        Ok(Self {
+        let vmem: Self = Self {
             pgdir,
             kernel_page_tables,
             kernel_pages,
             user_page_tables: LinkedList::new(),
             #[cfg(target_arch = "x86_64")]
             hw_pml4,
-        })
+            #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+            hw_pages: Tracked::new(hw_pages),
+            #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+            hwpt_manager: Tracked::new(hwpt_manager),
+        };
+        Ok(vmem)
     }
 
     pub fn load(&self) -> Result<(), Error> {
@@ -273,10 +331,14 @@ impl Vmem {
     /// Mirrors a user-page mapping into the per-process hardware page table (x86_64). No-op on
     /// other architectures and for the kernel address space (`hw_pml4 == 0`).
     #[inline]
-    fn hw_map_user(&self, vaddr: usize, paddr: usize, writable: bool) {
+    fn hw_map_user(&mut self, vaddr: usize, paddr: usize, writable: bool) {
         #[cfg(target_arch = "x86_64")]
         if self.hw_pml4 != 0 {
             unsafe {
+                proof_with! {
+                    Tracked(&self.hwpt_manager),
+                    Tracked(&mut self.hw_pages)
+                };
                 crate::hal::arch::x86::mem::mmu::hwpt::map_user(
                     self.hw_pml4,
                     vaddr,
@@ -294,10 +356,13 @@ impl Vmem {
     /// Mirrors a user-page unmapping into the per-process hardware page table (x86_64). No-op on
     /// other architectures and for the kernel address space.
     #[inline]
-    fn hw_unmap_user(&self, vaddr: usize) {
+    fn hw_unmap_user(&mut self, vaddr: usize) {
         #[cfg(target_arch = "x86_64")]
         if self.hw_pml4 != 0 {
             unsafe {
+                proof_with! {
+                    Tracked(&mut self.hw_pages)
+                };
                 crate::hal::arch::x86::mem::mmu::hwpt::unmap_user(self.hw_pml4, vaddr);
             }
         }
@@ -310,10 +375,13 @@ impl Vmem {
     /// Mirrors a user-page permission change (copy-on-write) into the per-process hardware page
     /// table (x86_64). No-op on other architectures and for the kernel address space.
     #[inline]
-    fn hw_protect_user(&self, vaddr: usize, writable: bool) {
+    fn hw_protect_user(&mut self, vaddr: usize, writable: bool) {
         #[cfg(target_arch = "x86_64")]
         if self.hw_pml4 != 0 {
             unsafe {
+                proof_with! {
+                    Tracked(&mut self.hw_pages)
+                };
                 crate::hal::arch::x86::mem::mmu::hwpt::protect_user(self.hw_pml4, vaddr, writable);
             }
         }
@@ -328,9 +396,12 @@ impl Vmem {
     /// PML4 shares that page directory, the mapping becomes visible in all address spaces, matching
     /// the shared kernel page tables used on 32-bit targets. No-op on other architectures.
     #[inline]
-    fn hw_map_kernel_mmio(&self, vaddr: usize, paddr: usize, writable: bool) {
+    fn hw_map_kernel_mmio(&mut self, vaddr: usize, paddr: usize, writable: bool) {
         #[cfg(target_arch = "x86_64")]
         unsafe {
+            proof_with! {
+                Tracked(&self.hwpt_manager)
+            };
             crate::hal::arch::x86::mem::mmu::hwpt::map_kernel_mmio(vaddr, paddr, writable);
         }
         #[cfg(not(target_arch = "x86_64"))]
@@ -376,6 +447,9 @@ impl Vmem {
             let page_table: PageTable<PageTableStorage> = Self::allocate_kernel_page_table()?;
 
             // FIXME: do not be so open about permissions.
+            proof_with! {
+                Ghost(&page_table)
+            };
             self.pgdir.map(
                 pt_vaddr,
                 page_table.physical_address()?,
@@ -499,6 +573,9 @@ impl Vmem {
 
                 let page_table_address: FrameAddress = page_table.physical_address()?;
                 // FIXME: do not be so open about permissions.
+                proof_with! {
+                    Ghost(&page_table)
+                };
                 self.pgdir
                     .map(pgtable_vaddr, page_table_address, false, AccessPermission::RDWR)?;
 
@@ -2059,6 +2136,10 @@ impl Drop for Vmem {
         #[cfg(target_arch = "x86_64")]
         if self.hw_pml4 != 0 {
             unsafe {
+                proof_with! {
+                    Tracked(&self.hwpt_manager),
+                    Tracked(&mut self.hw_pages)
+                };
                 crate::hal::arch::x86::mem::mmu::hwpt::destroy_user_pml4(self.hw_pml4);
             }
             self.hw_pml4 = 0;
