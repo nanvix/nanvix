@@ -7,24 +7,34 @@ use ::vstd::raw_ptr::PointsTo;
 
 verus! {
 
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[allow(dead_code)]
+pub struct ExPageTableAddress(PageTableAddress);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[allow(dead_code)]
+pub struct ExPageDirectoryEntry(PageDirectoryEntry);
+
 /// Mask for the accessed bit in a page-directory entry.
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub const ACCESSED_BIT: PteWord = 1 << 5;
 
 /// Mask for the present bit in a page-directory entry.
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub const PRESENT_BIT: PteWord = 1;
 
 /// Mask for the page-size bit in a page-directory entry.
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub const PAGE_SIZE_BIT: PteWord = 1 << 7;
 
 /// Mask for the physical page-table address in a standard page-directory entry.
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub const PAGE_TABLE_ADDRESS_MASK: PteWord = 0xffff_f000;
 
 /// Nanvix's authority and stable knowledge for one page-directory entry.
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub struct NanvixPdeToken {
     pub ptr: *mut PteWord,
     pub expected: Option<PteWord>,
@@ -54,7 +64,7 @@ pub proof fn mint_nanvix_pde_tokens(
     unimplemented!()
 }
 
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 impl NanvixPdeToken {
     /// Returns the address of the associated page-directory entry.
     pub closed spec fn ptr(&self) -> *mut PteWord {
@@ -85,7 +95,7 @@ impl NanvixPdeToken {
     }
 
     /// Returns whether this token is well formed.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.is_uninit() || valid_standard_pde(self.expected())
     }
 }
@@ -104,7 +114,7 @@ where
         }
     }
 
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         &&& self.permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH
         &&& forall|i: nat| self.permissions.dom().contains(i)
             <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH
@@ -117,8 +127,15 @@ where
         self.permissions_match_storage()
     }
 
-    pub open spec fn inv(&self) -> bool {
+    pub closed spec fn inv(&self) -> bool {
         self.wf() && self.internal_inv()
+    }
+
+    /// Returns whether every page-directory entry has an initialized baseline.
+    pub closed spec fn ready_for_mmu(&self) -> bool {
+        &&& self.inv()
+        &&& forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH
+            ==> #[trigger] self.permissions[i].is_init()
     }
 }
 

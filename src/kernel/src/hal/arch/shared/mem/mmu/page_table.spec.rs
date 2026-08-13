@@ -8,15 +8,15 @@ use ::vstd::raw_ptr::PointsTo;
 verus! {
 
 /// Mask for the accessed bit in a page-table entry.
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub const PTE_ACCESSED_BIT: PteWord = 1 << 5;
 
 /// Mask for the dirty bit in a page-table entry.
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub const PTE_DIRTY_BIT: PteWord = 1 << 6;
 
 /// Nanvix's authority and stable knowledge for one page-table entry.
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub struct NanvixPteToken {
     pub ptr: *mut PteWord,
     pub expected: Option<PteWord>,
@@ -46,7 +46,7 @@ pub proof fn mint_nanvix_pte_tokens(
     unimplemented!()
 }
 
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 impl NanvixPteToken {
     /// Returns the address of the associated page-table entry.
     pub closed spec fn ptr(&self) -> *mut PteWord {
@@ -77,7 +77,7 @@ impl NanvixPteToken {
     }
 
     /// Returns whether this token is well formed.
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         self.is_uninit() || valid_pte(self.expected())
     }
 }
@@ -96,7 +96,7 @@ where
         }
     }
 
-    pub open spec fn wf(&self) -> bool {
+    pub closed spec fn wf(&self) -> bool {
         &&& self.permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH
         &&& forall|i: nat| self.permissions.dom().contains(i)
             <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH
@@ -111,7 +111,7 @@ where
         self.permissions_match_storage()
     }
 
-    pub open spec fn inv(&self) -> bool {
+    pub closed spec fn inv(&self) -> bool {
         self.wf() && self.internal_inv()
     }
 
@@ -121,7 +121,7 @@ where
     }
 
     /// Returns whether the MMU may safely walk this page table.
-    pub open spec fn ready_for_mmu(&self) -> bool {
+    pub closed spec fn ready_for_mmu(&self) -> bool {
         &&& self.inv()
         &&& self.permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH
         &&& forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH

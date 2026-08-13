@@ -90,13 +90,7 @@ where
                     && permission.is_uninit()
             },
         ensures
-            result.inv(),
-            result.nmapped == 0,
-            forall|i: nat| 0 <= i < result.permissions.dom().len()
-                ==> {
-                    &&& result.permissions[i].is_init()
-                    &&& result.permissions[i].expected() == 0
-                },
+            result.ready_for_mmu(),
     )]
     pub fn new(entries: T) -> Self {
         let mut page_table: Self = Self {

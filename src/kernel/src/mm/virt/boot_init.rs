@@ -12,8 +12,10 @@
 // Imports
 //==================================================================================================
 
+#[cfg(verus_keep_ghost_body)]
+use super::page_table_allocator::PageTableSlotPermissions;
 use super::{
-    page_table_allocator::PAGE_TABLE_ALLOCATOR,
+    page_table_allocator::allocate_page_table_slot,
     PageTableStorage,
 };
 use crate::hal::{
@@ -60,7 +62,6 @@ use ::sys::error::{
     Error,
     ErrorCode,
 };
-#[cfg(verus_keep_ghost)]
 use ::vstd::prelude::*;
 
 //==================================================================================================
@@ -125,26 +126,36 @@ pub fn init(
                             root_pagetables.push_back(last);
                             // SAFETY: called during single-threaded kernel init; BSS is
                             // zero-initialized, so assume_init_mut() is sound.
-                            let pgtable_entries: &'static mut [PteWord; PAGE_TABLE_LENGTH] = unsafe {
-                                PAGE_TABLE_ALLOCATOR
-                                    .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
-                                    .map_err(|e| {
-                                        error!("page table allocation failed: {}", e);
-                                        Error::new(
-                                            ErrorCode::OutOfMemory,
-                                            "BSS page table allocation failed",
-                                        )
-                                    })?
-                                    .assume_init_mut()
-                            };
-                            let _pgtable_base_address: usize =
-                                pgtable_entries.as_mut_ptr() as usize;
+                            proof_decl! {
+                                let tracked slot_permissions: PageTableSlotPermissions;
+                            }
+                            let pgtable_entries: &'static mut [PteWord; PAGE_TABLE_LENGTH] =
+                                unsafe {
+                                    proof_with! {
+                                        => Tracked(slot_permissions)
+                                    };
+                                    allocate_page_table_slot()
+                                }
+                                .map_err(|e| {
+                                    error!("page table allocation failed: {}", e);
+                                    Error::new(
+                                        ErrorCode::OutOfMemory,
+                                        "BSS page table allocation failed",
+                                    )
+                                })?;
+                            proof_decl! {
+                                let ghost pgtable_base_address = slot_permissions.base;
+                                let tracked raw_permissions = slot_permissions.entries;
+                            }
                             let pgtable_storage: PageTableStorage = PageTableStorage::Bss {
                                 entries: pgtable_entries,
                                 #[cfg(verus_keep_ghost_body)]
-                                entries_base_address: Ghost::new(_pgtable_base_address),
+                                entries_base_address: Ghost::new(pgtable_base_address),
                                 #[cfg(verus_keep_ghost_body)]
-                                physical_base_address: Ghost::new(_pgtable_base_address),
+                                physical_base_address: Ghost::new(pgtable_base_address),
+                            };
+                            proof_with! {
+                                Tracked(raw_permissions)
                             };
                             let page_table: PageTable<PageTableStorage> =
                                 PageTable::<PageTableStorage>::new(pgtable_storage);
@@ -165,25 +176,32 @@ pub fn init(
                     trace!("creating new page table for {:#010x}", raw_vaddr);
                     // SAFETY: called during single-threaded kernel init; BSS is zero-initialized,
                     // so assume_init_mut() is sound.
+                    proof_decl! {
+                        let tracked slot_permissions: PageTableSlotPermissions;
+                    }
                     let pgtable_entries: &'static mut [PteWord; PAGE_TABLE_LENGTH] = unsafe {
-                        PAGE_TABLE_ALLOCATOR
-                            .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
-                            .map_err(|e| {
-                                error!("page table allocation failed: {}", e);
-                                Error::new(
-                                    ErrorCode::OutOfMemory,
-                                    "BSS page table allocation failed",
-                                )
-                            })?
-                            .assume_init_mut()
-                    };
-                    let _pgtable_base_address: usize = pgtable_entries.as_mut_ptr() as usize;
+                        proof_with! {
+                            => Tracked(slot_permissions)
+                        };
+                        allocate_page_table_slot()
+                    }
+                    .map_err(|e| {
+                        error!("page table allocation failed: {}", e);
+                        Error::new(ErrorCode::OutOfMemory, "BSS page table allocation failed")
+                    })?;
+                    proof_decl! {
+                        let ghost pgtable_base_address = slot_permissions.base;
+                        let tracked raw_permissions = slot_permissions.entries;
+                    }
                     let pgtable_storage: PageTableStorage = PageTableStorage::Bss {
                         entries: pgtable_entries,
                         #[cfg(verus_keep_ghost_body)]
-                        entries_base_address: Ghost::new(_pgtable_base_address),
+                        entries_base_address: Ghost::new(pgtable_base_address),
                         #[cfg(verus_keep_ghost_body)]
-                        physical_base_address: Ghost::new(_pgtable_base_address),
+                        physical_base_address: Ghost::new(pgtable_base_address),
+                    };
+                    proof_with! {
+                        Tracked(raw_permissions)
                     };
                     let page_table: PageTable<PageTableStorage> =
                         PageTable::<PageTableStorage>::new(pgtable_storage);

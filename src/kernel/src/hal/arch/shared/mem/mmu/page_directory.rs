@@ -5,9 +5,9 @@
 // Imports
 //==================================================================================================
 
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 use super::page_table::PageTable;
-#[cfg(verus_keep_ghost_body)]
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 use crate::mm::PageTableStorage;
 use crate::{
     hal::mem::{
@@ -90,12 +90,7 @@ where
                     && permission.is_uninit()
             },
         ensures
-            result.inv(),
-            forall|i: nat| 0 <= i < result.permissions.dom().len()
-                ==> {
-                    &&& result.permissions[i].is_init()
-                    &&& result.permissions[i].expected() == 0
-                },
+            result.ready_for_mmu(),
     )]
     pub fn new(entries: T) -> Self {
         let mut pgdir: PageDirectory<T> = PageDirectory {
