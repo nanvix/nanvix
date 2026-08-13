@@ -424,6 +424,9 @@ pub fn main() {
                 MessageType::ProcessCreationEvent => {
                     ::syslog::warn!("received unexpected process creation event, ignoring");
                 },
+                MessageType::ThreadTerminationEvent => {
+                    ::syslog::warn!("received unexpected thread termination event, ignoring");
+                },
                 MessageType::PullResponse => {
                     ::syslog::warn!("received unexpected pull response, ignoring");
                 },

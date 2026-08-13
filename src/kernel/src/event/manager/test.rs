@@ -1231,6 +1231,38 @@ fn test_event_tokens_are_stable_until_commit() -> bool {
 ///
 /// # Description
 ///
+/// Verifies that one class-wide scheduling owner is eligible for every scheduling event.
+///
+/// # Returns
+///
+/// `true` if one owner receives every scheduling-event mask bit and a non-owner receives none,
+/// otherwise `false`.
+///
+fn test_scheduling_owner_mask_includes_all_events() -> bool {
+    let mut inner: EventManagerInner = make_inner();
+    inner.scheduling_owner = Some(test_pid());
+
+    let owner_masks: EventMasks = inner.event_masks(test_pid());
+    for event in SchedulingEvent::VALUES {
+        let event_mask: usize = 1usize << usize::from(event);
+        if owner_masks.scheduling & event_mask == 0 {
+            error!("scheduling owner mask omitted event: {:?}", event);
+            return false;
+        }
+    }
+
+    let non_owner: ProcessIdentifier = ProcessIdentifier::from(1001);
+    if inner.event_masks(non_owner).scheduling != 0 {
+        error!("non-owner received scheduling event eligibility");
+        return false;
+    }
+
+    true
+}
+
+///
+/// # Description
+///
 /// Verifies that a receive attempt refreshes scheduling ownership acquired while the receiver was
 /// blocked. The first attempt models the receiver before registration; the second models its retry
 /// after the registration wakeup.
@@ -1783,6 +1815,7 @@ pub fn test() -> bool {
     passed &= run_test!(test_each_call_delivers_a_single_interrupt);
     passed &= run_test!(test_selection_seam_combines_events_and_mailbox);
     passed &= run_test!(test_event_tokens_are_stable_until_commit);
+    passed &= run_test!(test_scheduling_owner_mask_includes_all_events);
     passed &= run_test!(test_receive_refreshes_scheduling_ownership);
     passed &= run_test!(test_all_service_classes_receive_bounded_service);
     passed &= run_test!(test_masked_event_classes_do_not_block_mailbox);
