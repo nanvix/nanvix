@@ -35,10 +35,8 @@ use crate::{
         },
         virt::{
             kpage::KernelPage,
-            page_table_allocator::PAGE_TABLE_ALLOCATOR,
             PageDirectoryStorage,
             PageTableStorage,
-            VirtMemoryManager,
         },
     },
 };
@@ -73,6 +71,8 @@ use ::sys::{
     },
 };
 use ::vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use ::vstd::raw_ptr::PointsTo;
 
 //==================================================================================================
 // Constants
@@ -135,20 +135,31 @@ impl Vmem {
         // Create a clean page directory.
         // SAFETY: this constructor is only used during early single-threaded init;
         // BSS is zero-initialized, so assume_init_mut() is sound for integer arrays.
+        proof_decl! {
+            let tracked pgdir_slot_permissions:
+                super::page_table_allocator::PageTableSlotPermissions;
+        }
         let pgdir_entries: &'static mut [PteWord; PAGE_TABLE_LENGTH] = unsafe {
-            PAGE_TABLE_ALLOCATOR
-                .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
-                .map_err(|e| {
-                    error!("Vmem::new(): page directory allocation failed: {}", e);
-                    Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
-                })?
-                .assume_init_mut()
-        };
-        let _pgdir_base_address: usize = pgdir_entries.as_mut_ptr() as usize;
+            proof_with! {
+                => Tracked(pgdir_slot_permissions)
+            };
+            super::page_table_allocator::allocate_page_table_slot()
+        }
+        .map_err(|e| {
+            error!("Vmem::new(): page directory allocation failed: {}", e);
+            Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
+        })?;
+        proof_decl! {
+            let ghost pgdir_base_address = pgdir_slot_permissions.base;
+            let tracked pgdir_raw_permissions = pgdir_slot_permissions.entries;
+        }
         let pgdir_storage: PageDirectoryStorage = PageDirectoryStorage::Bss {
             entries: pgdir_entries,
             #[cfg(verus_keep_ghost_body)]
-            base_address: Ghost::new(_pgdir_base_address),
+            base_address: Ghost::new(pgdir_base_address),
+        };
+        proof_with! {
+            Tracked(pgdir_raw_permissions)
         };
         let mut pgdir: PageDirectory<PageDirectoryStorage> = PageDirectory::new(pgdir_storage);
 
@@ -225,8 +236,27 @@ impl Vmem {
     }
 
     /// Clones the target virtual memory space.
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        with
+            Tracked(pgdir_raw_permissions):
+                Tracked<Map<nat, PointsTo<PteWord>>>,
+        requires
+            pgdir_raw_permissions.dom().len() == PAGE_TABLE_LENGTH,
+            forall|i: nat| pgdir_raw_permissions.dom().contains(i)
+                <==> 0 <= i < PAGE_TABLE_LENGTH,
+            forall|i: nat| 0 <= i < PAGE_TABLE_LENGTH ==> {
+                let permission = #[trigger] pgdir_raw_permissions[i];
+                &&& permission.ptr()@.addr as int
+                    == pgdir_page.base_address() + i * 4
+                &&& permission.is_uninit()
+            },
+    )]
     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
         // Create a clean page directory backed by a kernel page from the pool.
+        proof_with! {
+            Tracked(pgdir_raw_permissions)
+        };
         let mut pgdir: PageDirectory<PageDirectoryStorage> =
             PageDirectory::new(PageDirectoryStorage::KernelPage(pgdir_page));
 
@@ -505,12 +535,20 @@ impl Vmem {
     /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
     ///
     fn allocate_kernel_page_table() -> Result<PageTable<PageTableStorage>, Error> {
-        let kpage: KernelPage = {
-            // SAFETY: the memory manager is initialized and access is synchronized.
-            let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
-            mm.alloc_kpage(true)?
+        proof_decl! {
+            let tracked raw_permissions:
+                Map<nat, PointsTo<PteWord>>;
+        }
+        proof_with! {
+            => Tracked(raw_permissions)
         };
+        let mut kframe: KernelFrame = KernelFrame::allocate_page_table()?;
+        kframe.clear()?;
+        let kpage: KernelPage = KernelPage::new(kframe);
         let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+        proof_with! {
+            Tracked(raw_permissions)
+        };
         let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
         Ok(page_table)
     }
@@ -527,11 +565,20 @@ impl Vmem {
     fn allocate_user_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
         // concurrent or re-entrant access to the physical memory manager is possible.
-        let mut kframe: KernelFrame =
-            unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+        proof_decl! {
+            let tracked raw_permissions:
+                Map<nat, PointsTo<PteWord>>;
+        }
+        proof_with! {
+            => Tracked(raw_permissions)
+        };
+        let mut kframe: KernelFrame = KernelFrame::allocate_page_table()?;
         kframe.clear()?;
         let kpage: KernelPage = KernelPage::new(kframe);
         let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+        proof_with! {
+            Tracked(raw_permissions)
+        };
         let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
         Ok(page_table)
     }

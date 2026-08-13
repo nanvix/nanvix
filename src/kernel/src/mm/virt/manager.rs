@@ -116,6 +116,29 @@ unsafe fn store_memory_manager(manager: VirtMemoryManager) {
 ///
 pub struct VirtMemoryManager;
 
+verus! {
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[allow(dead_code)]
+pub struct ExVirtMemoryManager(VirtMemoryManager);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[allow(dead_code)]
+pub struct ExVmem(Vmem);
+
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(A)]
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[allow(dead_code)]
+pub struct ExLinkedList<T, A>(LinkedList<T, A>)
+where
+    A: ::core::alloc::Allocator;
+
+}
+
 impl VirtMemoryManager {
     ///
     /// # Description
@@ -164,9 +187,13 @@ impl VirtMemoryManager {
                     );
         }
         #[cfg(target_arch = "x86_64")]
-        proof_with! {
-            Tracked(hwpt_manager)
+        let (root, manager): (Vmem, VirtMemoryManager) = {
+            proof_with! {
+                Tracked(hwpt_manager)
+            };
+            VirtMemoryManager::new(kernel_pages, kernel_page_tables)?
         };
+        #[cfg(not(target_arch = "x86_64"))]
         let (root, manager): (Vmem, VirtMemoryManager) =
             VirtMemoryManager::new(kernel_pages, kernel_page_tables)?;
 
@@ -251,9 +278,13 @@ impl VirtMemoryManager {
         kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
     ) -> Result<(Vmem, Self), Error> {
         #[cfg(target_arch = "x86_64")]
-        proof_with! {
-            Tracked(hwpt_manager)
+        let root: Vmem = {
+            proof_with! {
+                Tracked(hwpt_manager)
+            };
+            Vmem::new(kernel_pages, kernel_page_tables)?
         };
+        #[cfg(not(target_arch = "x86_64"))]
         let root: Vmem = Vmem::new(kernel_pages, kernel_page_tables)?;
 
         // Load root root address space.
@@ -276,16 +307,19 @@ impl VirtMemoryManager {
     ///
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
         // Allocate a kernel page for the new page directory.
-        let pgdir_page: KernelPage = {
-            // The page directory initialization logic (PageDirectory::new/clean)
-            // will zero the page; no need to clear the frame here.
-            // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
-            // concurrent or re-entrant access to the physical memory manager is possible.
-            let kframe: KernelFrame =
-                unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
-            KernelPage::new(kframe)
+        proof_decl! {
+            let tracked pgdir_raw_permissions:
+                Map<nat, PointsTo<::arch::mem::paging::PteWord>>;
+        }
+        proof_with! {
+            => Tracked(pgdir_raw_permissions)
         };
+        let kframe: KernelFrame = KernelFrame::allocate_page_table()?;
+        let pgdir_page: KernelPage = KernelPage::new(kframe);
 
+        proof_with! {
+            Tracked(pgdir_raw_permissions)
+        };
         let new_vmem: Vmem = Vmem::clone(vmem, pgdir_page)?;
 
         trace!(
