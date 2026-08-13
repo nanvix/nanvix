@@ -125,8 +125,15 @@ pub(crate) fn stat(cwd: &str, path: &str) -> Result<Stat, Fat32Error> {
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::ReadOnly`] if the mount is read-only.
-/// - [`Fat32Error::AlreadyExists`] if directory already exists.
+/// - [`Fat32Error::AlreadyExists`] if path already exists (file or directory).
 /// - [`Fat32Error::NotFound`] if parent directory doesn't exist.
+/// - [`Fat32Error::NotADirectory`] if a path component is not a directory.
+/// - [`Fat32Error::InvalidPath`] if the last component is not a valid FAT filename
+///   (e.g. contains unsupported characters) and every ancestor is a directory.
+///
+/// # References
+///
+/// - [POSIX mkdir()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/mkdir.html)
 pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
@@ -139,7 +146,14 @@ pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 
     state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
-        mount.fat_mut().mkdir(&relative_path)
+        let fat = mount.fat_mut();
+
+        // If path already exists (file or dir), return AlreadyExists.
+        if fat.stat(&relative_path).is_ok() {
+            return Err(Fat32Error::AlreadyExists);
+        }
+
+        fat.mkdir(&relative_path)
     })
 }
 
@@ -449,6 +463,11 @@ pub(crate) fn open_with_options(
     // references that the previous implementation created.
     let (fat_file, mount_path) = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
+
+        // If any ancestor component is a regular file, return ENOTDIR.
+        if mount.fat().has_non_directory_ancestor(&relative_path) {
+            return Err(Fat32Error::NotADirectory);
+        }
         let mount_path: String = String::from(mount.path());
 
         let fat_file = if create_new {

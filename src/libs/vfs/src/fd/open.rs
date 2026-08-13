@@ -87,6 +87,11 @@ pub fn stat(cwd: &str, path: &str) -> Result<VfsStat, Fat32Error> {
 /// # Returns
 ///
 /// A [`VfsFileHandle`] on success, or a [`Fat32Error`] on error.
+///
+/// # References
+///
+/// - [POSIX open()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/open.html)
+/// - [POSIX pathname resolution (trailing slash rule)](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap04.html)
 pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32Error> {
     // Handle O_DIRECTORY or paths that resolve to directories.
     // POSIX allows opening directories with O_RDONLY for fchdir()/getdents().
@@ -100,6 +105,19 @@ pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32E
     }
 
     // Auto-detect directories even without O_DIRECTORY flag.
+    // POSIX: trailing slash forces directory semantics. If path ends with
+    // '/' the target must be an existing directory; otherwise fail.
+    if path.ends_with('/') {
+        match stat(cwd, path) {
+            Ok(info) if info.is_dir() => {
+                let normalized: String = filesystem::normalize(cwd, path)?;
+                return Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)));
+            },
+            Ok(_) => return Err(Fat32Error::NotADirectory),
+            Err(e) => return Err(e),
+        }
+    }
+
     if let Ok(info) = stat(cwd, path) {
         if info.is_dir() {
             let normalized: String = filesystem::normalize(cwd, path)?;
