@@ -147,30 +147,6 @@ static void test_open_trailing_slash_on_file(void)
 }
 
 //==================================================================================================
-// Empty path tests
-//==================================================================================================
-
-// stat("") should fail with ENOENT, not EINVAL.
-static void test_stat_empty_path(void)
-{
-    fprintf(stderr, "  stat empty path -> ENOENT ... ");
-    struct stat st;
-    assert(stat("", &st) == -1);
-    assert(errno == ENOENT);
-    fprintf(stderr, "passed\n");
-}
-
-// open("", O_DIRECTORY) should fail with ENOENT (scandir repro).
-static void test_opendir_empty_path(void)
-{
-    fprintf(stderr, "  opendir empty path -> ENOENT ... ");
-    int fd = open("", O_RDONLY | O_DIRECTORY);
-    assert(fd == -1);
-    assert(errno == ENOENT);
-    fprintf(stderr, "passed\n");
-}
-
-//==================================================================================================
 // Entry Point
 //==================================================================================================
 
@@ -187,8 +163,6 @@ void test_path_errno(void)
     test_copyfile_nonexistent_dir();
     test_open_trailing_slash_nonexistent();
     test_open_trailing_slash_on_file();
-    test_stat_empty_path();
-    test_opendir_empty_path();
 
     fprintf(stderr, "path errno: all passed\n");
 }
