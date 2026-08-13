@@ -16,6 +16,10 @@ use crate::hal::arch::{
 };
 use crate::{
     ipc::Mailbox,
+    mm::{
+        elf::Elf32Fhdr,
+        VirtMemoryManager,
+    },
     pm::{
         process::{
             LifecycleCreationReservation,
@@ -37,8 +41,10 @@ use ::sys::{
         MessageSender,
         MessageType,
     },
+    mm::VirtualAddress,
     pm::{
         ProcessIdentifier,
+        ThreadCreateArgs,
         ThreadIdentifier,
     },
     ExitStatus,
@@ -54,6 +60,25 @@ fn test_pid() -> ProcessIdentifier {
 
 fn test_tid() -> ThreadIdentifier {
     ThreadIdentifier::from(1000)
+}
+
+///
+/// # Description
+///
+/// Creates a lifecycle broker fixture for an in-kernel test.
+///
+/// # Returns
+///
+/// The broker fixture, or [`None`] if it could not be created.
+///
+fn new_broker() -> Option<DeliveryBroker> {
+    match DeliveryBroker::new() {
+        Ok(broker) => Some(broker),
+        Err(error) => {
+            error!("failed to create lifecycle broker fixture (error={error:?})");
+            None
+        },
+    }
 }
 
 fn creation_info() -> ProcessCreationInfo {
@@ -199,6 +224,132 @@ fn test_cross_process_switch_resets_quantum() -> bool {
 ///
 /// # Description
 ///
+/// Snapshots process-creation state that must not change when lifecycle reservation preparation
+/// fails.
+///
+/// # Parameters
+///
+/// - `pm`: Process manager to snapshot.
+///
+/// # Returns
+///
+/// A tuple of the next process identifier, live count, ready-queue length, and lifecycle capacity
+/// in use.
+///
+fn process_creation_state(pm: &ProcessManager) -> (ProcessIdentifier, usize, usize, Option<usize>) {
+    (pm.next_pid, pm.live_count, pm.ready.len(), pm.delivery.capacity_in_use())
+}
+
+///
+/// # Description
+///
+/// Disarms the injected creation failure and reports whether the call under test consumed it. An
+/// unconsumed injection means the entry point returned before reserving lifecycle capacity, which
+/// would leave the injection armed and break the next real process creation.
+///
+/// # Parameters
+///
+/// - `pm`: Process manager whose injection flag is disarmed.
+///
+/// # Returns
+///
+/// `true` if the injection was consumed by the call under test, otherwise `false`.
+///
+fn injection_was_consumed(pm: &mut ProcessManager) -> bool {
+    !::core::mem::take(&mut pm.fail_next_lifecycle_creation)
+}
+
+/// Verifies `create_process()` rolls back both lifecycle reservations on an injected failure.
+fn test_create_process_reservation_failure_rolls_back() -> bool {
+    let elf: Elf32Fhdr = Elf32Fhdr {
+        e_ident: [0u8; 16],
+        e_type: 0,
+        e_machine: 0,
+        e_version: 0,
+        e_entry: 0,
+        e_phoff: 0,
+        e_shoff: 0,
+        e_flags: 0,
+        e_ehsize: 0,
+        e_phentsize: 0,
+        e_phnum: 0,
+        e_shentsize: 0,
+        e_shnum: 0,
+        e_shstrndx: 0,
+    };
+    // SAFETY: process-manager tests run on one core with interrupts disabled and hold no other
+    // reference to either global manager.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+    let before = process_creation_state(pm);
+    pm.inject_lifecycle_creation_failure();
+
+    match pm.create_process(mm, &elf, "", "") {
+        Err(error) if error.code == ::sys::error::ErrorCode::OutOfMemory => {},
+        Err(error) => {
+            error!("injected create-process failure returned wrong error (error={error:?})");
+            return false;
+        },
+        Ok(pid) => {
+            error!("create_process() ignored injected reservation failure (pid={pid:?})");
+            return false;
+        },
+    }
+    if !injection_was_consumed(pm) {
+        error!("create_process() failed before reserving lifecycle capacity");
+        return false;
+    }
+    if process_creation_state(pm) != before {
+        error!("create_process() changed state after reservation rollback");
+        return false;
+    }
+    true
+}
+
+/// Verifies `duplicate_process()` rolls back both lifecycle reservations on an injected failure.
+fn test_duplicate_process_reservation_failure_rolls_back() -> bool {
+    let args: ThreadCreateArgs = ThreadCreateArgs {
+        user_fn: VirtualAddress::from_raw_value(::config::memory_layout::USER_BASE_RAW),
+        user_fn_arg0: 0,
+        user_fn_arg1: 0,
+        user_stack_base: VirtualAddress::from_raw_value(
+            ::config::memory_layout::USER_STACK_TOP_RAW,
+        ),
+        user_stack_size: ::arch::mem::PAGE_SIZE,
+        user_tda: None,
+    };
+    // SAFETY: process-manager tests run on one core with interrupts disabled and hold no other
+    // reference to either global manager.
+    let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+    let before = process_creation_state(pm);
+    pm.inject_lifecycle_creation_failure();
+
+    match pm.duplicate_process(mm, ProcessIdentifier::KERNEL, &args) {
+        Err(error) if error.code == ::sys::error::ErrorCode::OutOfMemory => {},
+        Err(error) => {
+            error!("injected duplicate failure returned wrong error (error={error:?})");
+            return false;
+        },
+        Ok(pid) => {
+            error!("duplicate_process() ignored injected reservation failure (pid={pid:?})");
+            return false;
+        },
+    }
+    if !injection_was_consumed(pm) {
+        error!("duplicate_process() failed before reserving lifecycle capacity");
+        return false;
+    }
+    if process_creation_state(pm) != before {
+        error!("duplicate_process() changed state after reservation rollback");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
 /// Verifies that older IPC is selected before a newer lifecycle record.
 ///
 /// # Returns
@@ -206,7 +357,9 @@ fn test_cross_process_switch_resets_quantum() -> bool {
 /// `true` if delivery follows production-sequence order, otherwise `false`.
 ///
 fn test_ipc_precedes_newer_lifecycle() -> bool {
-    let mut broker: DeliveryBroker = DeliveryBroker::default();
+    let Some(mut broker) = new_broker() else {
+        return false;
+    };
     let mut mailbox: Mailbox = Mailbox::default();
     let receiver: MessageReceiver = MessageReceiver::new(test_pid(), ThreadIdentifier::NONE);
     let ipc_sequence = broker.allocate_sequence();
@@ -251,7 +404,9 @@ fn test_ipc_precedes_newer_lifecycle() -> bool {
 /// `true` if the failed wakeup leaves ordering and both records intact, otherwise `false`.
 ///
 fn test_lifecycle_precedes_newer_ipc_after_failed_wakeup() -> bool {
-    let mut broker: DeliveryBroker = DeliveryBroker::default();
+    let Some(mut broker) = new_broker() else {
+        return false;
+    };
     let mut mailbox: Mailbox = Mailbox::default();
     let _termination_credit: LifecycleTerminationCredit = match commit_creation(&mut broker) {
         Some(credit) => credit,
@@ -304,7 +459,9 @@ fn test_lifecycle_precedes_newer_ipc_after_failed_wakeup() -> bool {
 /// `true` if ineligible IPC is excluded from lifecycle arbitration, otherwise `false`.
 ///
 fn test_other_thread_ipc_does_not_block_lifecycle() -> bool {
-    let mut broker: DeliveryBroker = DeliveryBroker::default();
+    let Some(mut broker) = new_broker() else {
+        return false;
+    };
     let mut mailbox: Mailbox = Mailbox::default();
     let other_tid: ThreadIdentifier = ThreadIdentifier::from(2000);
     let other_receiver: MessageReceiver = MessageReceiver::new(test_pid(), other_tid);
@@ -339,7 +496,9 @@ fn test_other_thread_ipc_does_not_block_lifecycle() -> bool {
 /// `true` if only an eligible owner receives lifecycle records in FIFO order, otherwise `false`.
 ///
 fn test_lifecycle_fifo_and_eligibility() -> bool {
-    let mut broker: DeliveryBroker = DeliveryBroker::default();
+    let Some(mut broker) = new_broker() else {
+        return false;
+    };
     let termination_credit: LifecycleTerminationCredit = match commit_creation(&mut broker) {
         Some(credit) => credit,
         None => return false,
@@ -375,7 +534,9 @@ fn test_lifecycle_fifo_and_eligibility() -> bool {
 /// otherwise `false`.
 ///
 fn test_lifecycle_delivery_is_transactional() -> bool {
-    let mut broker: DeliveryBroker = DeliveryBroker::default();
+    let Some(mut broker) = new_broker() else {
+        return false;
+    };
     let termination_credit: LifecycleTerminationCredit = match commit_creation(&mut broker) {
         Some(credit) => credit,
         None => return false,
@@ -427,7 +588,9 @@ fn test_lifecycle_delivery_is_transactional() -> bool {
 
 /// Verifies that pre-registration buffering and failed wakeups can re-arm owner notification.
 fn test_lifecycle_wakeup_request_can_be_rearmed() -> bool {
-    let mut broker: DeliveryBroker = DeliveryBroker::default();
+    let Some(mut broker) = new_broker() else {
+        return false;
+    };
     let _termination_credit: LifecycleTerminationCredit = match commit_creation(&mut broker) {
         Some(credit) => credit,
         None => return false,
@@ -495,6 +658,8 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_intra_process_switch_resets_exhausted_quantum);
     passed &= run_test!(test_intra_process_switch_preserves_remaining_quantum);
     passed &= run_test!(test_cross_process_switch_resets_quantum);
+    passed &= run_test!(test_create_process_reservation_failure_rolls_back);
+    passed &= run_test!(test_duplicate_process_reservation_failure_rolls_back);
     passed &= run_test!(test_ipc_precedes_newer_lifecycle);
     passed &= run_test!(test_lifecycle_precedes_newer_ipc_after_failed_wakeup);
     passed &= run_test!(test_other_thread_ipc_does_not_block_lifecycle);

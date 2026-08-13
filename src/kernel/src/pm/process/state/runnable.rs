@@ -66,20 +66,51 @@ pub struct RunnableProcess {
 }
 
 impl RunnableProcess {
-    pub(in crate::pm::process) fn new(
+    ///
+    /// # Description
+    ///
+    /// Creates a process whose termination credit will be installed at lifecycle commit.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the new process.
+    /// - `parent`: Identifier of the parent process.
+    /// - `ready_thread`: Ready main thread of the process.
+    /// - `vmem`: Address space of the process.
+    ///
+    /// # Returns
+    ///
+    /// A runnable process with no termination credit installed yet.
+    ///
+    pub(in crate::pm::process) fn new_uncommitted(
         pid: ProcessIdentifier,
         parent: ProcessIdentifier,
-        termination_credit: LifecycleTerminationCredit,
         ready_thread: ReadyThread,
         vmem: Vmem,
     ) -> Self {
         Self {
-            state: Box::new(ProcessState::new(pid, parent, Some(termination_credit), vmem)),
+            state: Box::new(ProcessState::new(pid, parent, None, vmem)),
             ready_threads: NonEmptyVecDeque::new(ready_thread),
             interrupted_threads: None,
             sleeping_threads: None,
             zombie_threads: None,
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Installs the capacity credit reserved for this process's termination record.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: The capacity credit to install for the process's future termination record.
+    ///
+    pub(in crate::pm::process) fn install_termination_credit(
+        &mut self,
+        credit: LifecycleTerminationCredit,
+    ) {
+        self.state.install_termination_credit(credit);
     }
 
     pub(in crate::pm::process) fn new_kernel(

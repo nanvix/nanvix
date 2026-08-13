@@ -158,6 +158,7 @@ pub fn kcall_handler() -> ExitStatus {
         let info = pm!().release_process_termination(termination);
         info!("harvested zombie process: pid={:?}, status={:?}", info.pid, info.status);
     }
+    pm!().dispose_lifecycle();
 
     status
 }

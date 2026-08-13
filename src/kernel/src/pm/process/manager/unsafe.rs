@@ -190,21 +190,35 @@ impl ProcessManager {
     /// - `root`: Root virtual memory.
     /// - `tm`: Thread manager.
     ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if lifecycle delivery capacity cannot be preallocated.
+    ///
     /// # Panics
     ///
     /// This function panics if the process manager is already initialized.
     ///
-    pub fn init(interrupt_capable: bool, kernel: ReadyThread, root: Vmem, tm: ThreadManager) {
+    pub fn init(
+        interrupt_capable: bool,
+        kernel: ReadyThread,
+        root: Vmem,
+        tm: ThreadManager,
+    ) -> Result<(), Error> {
         // Check if the process manager is already initialized.
         if unlikely(PROCESS_MANAGER_INIT.load(ORDER)) {
             panic!("process manager was already initialized");
         }
 
-        let pm: ProcessManager = ProcessManager::new(interrupt_capable, kernel, root, tm);
+        let pm: ProcessManager = ProcessManager::new(interrupt_capable, kernel, root, tm)?;
 
         // SAFETY: This happens during kernel initialization and no other threads are running.
         unsafe { PROCESS_MANAGER.write(pm) };
         PROCESS_MANAGER_INIT.store(true, ORDER);
+        Ok(())
     }
 
     ///

@@ -19,16 +19,66 @@ pub(crate) mod state;
 // Lifecycle Capacity Credits
 //==================================================================================================
 
+/// Capacity credit owned by a queued process-creation record. Reservations are counted rather than
+/// identified, so this type carries no payload: it exists to make the credit a linear resource that
+/// only the delivery broker can mint and consume.
+#[derive(Debug)]
+#[must_use]
+pub(super) struct LifecycleCreationCredit {
+    _private: (),
+}
+
+impl LifecycleCreationCredit {
+    ///
+    /// # Description
+    ///
+    /// Creates a creation-capacity credit.
+    ///
+    /// # Returns
+    ///
+    /// A creation-capacity credit.
+    ///
+    fn new() -> Self {
+        Self { _private: () }
+    }
+}
+
 /// Reservation for a process-creation record and its future process-termination record.
 #[derive(Debug)]
 #[must_use]
 pub(super) struct LifecycleCreationReservation {
-    _private: (),
+    creation_credit: LifecycleCreationCredit,
+    termination_credit: LifecycleTerminationCredit,
 }
 
 impl LifecycleCreationReservation {
+    ///
+    /// # Description
+    ///
+    /// Creates a reservation that owns one creation credit and one termination credit.
+    ///
+    /// # Returns
+    ///
+    /// A creation reservation.
+    ///
     fn new() -> Self {
-        Self { _private: () }
+        Self {
+            creation_credit: LifecycleCreationCredit::new(),
+            termination_credit: LifecycleTerminationCredit::new(),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Splits the reservation into its creation and termination credits.
+    ///
+    /// # Returns
+    ///
+    /// A tuple holding the creation credit and the termination credit.
+    ///
+    fn into_credits(self) -> (LifecycleCreationCredit, LifecycleTerminationCredit) {
+        (self.creation_credit, self.termination_credit)
     }
 }
 
@@ -40,6 +90,15 @@ pub(super) struct LifecycleTerminationCredit {
 }
 
 impl LifecycleTerminationCredit {
+    ///
+    /// # Description
+    ///
+    /// Creates a termination-capacity credit.
+    ///
+    /// # Returns
+    ///
+    /// A termination-capacity credit.
+    ///
     fn new() -> Self {
         Self { _private: () }
     }
