@@ -161,7 +161,7 @@ pub fn init(root: Vmem) -> Result<(), Error> {
     // Initialize the thread manager.
     info!("initializing the thread manager...");
     let (kernel, tm): (ReadyThread, ThreadManager) = thread::init();
-    ProcessManager::init(interrupt_capable, kernel, root, tm);
+    ProcessManager::init(interrupt_capable, kernel, root, tm)?;
 
     #[cfg(feature = "test")]
     {

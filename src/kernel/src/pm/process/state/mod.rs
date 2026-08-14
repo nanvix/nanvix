@@ -317,6 +317,27 @@ impl ProcessState {
     ///
     /// # Description
     ///
+    /// Installs the capacity credit reserved for this process's termination record.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: The capacity credit to install for the process's future termination record.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if a termination credit is already installed.
+    ///
+    fn install_termination_credit(&mut self, credit: LifecycleTerminationCredit) {
+        assert!(
+            self.termination_credit.is_none(),
+            "process termination credit was already installed"
+        );
+        self.termination_credit = Some(credit);
+    }
+
+    ///
+    /// # Description
+    ///
     /// Sets the pending exit status for the process if one is not already set. This is used
     /// when a thread calls `exit()` to terminate the process, but there are other threads that
     /// need to be terminated first. The exit status from the first thread that called `exit()`

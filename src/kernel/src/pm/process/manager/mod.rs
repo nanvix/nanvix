@@ -23,7 +23,10 @@ mod test;
 // Imports
 //==================================================================================================
 
-use self::delivery::DeliveryBroker;
+use self::delivery::{
+    DeliveryBroker,
+    LifecycleDisposal,
+};
 use crate::{
     event::EventOwnership,
     hal::{
@@ -74,6 +77,7 @@ use crate::{
             },
             HarvestedProcess,
             LifecycleCreationReservation,
+            LifecycleTerminationCredit,
         },
         sync::{
             condvar::Condvar,
@@ -146,9 +150,6 @@ use ::sys::{
     ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
-
-#[cfg(feature = "test")]
-use crate::pm::process::LifecycleTerminationCredit;
 
 //==================================================================================================
 // Exports
@@ -236,6 +237,9 @@ pub struct ProcessManager {
     number_buffered_messages: usize,
     /// Broker for ordered delivery-domain items.
     delivery: DeliveryBroker,
+    /// Injects one process-creation preparation failure after lifecycle capacity is reserved.
+    #[cfg(feature = "test")]
+    fail_next_lifecycle_creation: bool,
     /// Detached-thread zombies whose reaping was deferred because their
     /// `ContextInformation` was still needed by an in-progress context switch.
     deferred_reap: Vec<(ProcessIdentifier, ZombieThread)>,
@@ -256,14 +260,90 @@ pub struct ProcessManager {
     daemon_pids: Vec<(&'static str, ProcessIdentifier)>,
 }
 
+/// A process built during the fallible phase of creation, held in a queue node that was allocated
+/// there so the commit phase can install the termination credit and enqueue it without allocating.
+struct PreparedProcess {
+    node: LinkedList<RunnableProcess>,
+}
+
+impl PreparedProcess {
+    ///
+    /// # Description
+    ///
+    /// Moves a newly built process into its own queue node.
+    ///
+    /// # Parameters
+    ///
+    /// - `process`: Process to hold in the prepared queue node.
+    ///
+    /// # Returns
+    ///
+    /// A prepared process wrapping `process` in a single queue node.
+    ///
+    fn new(process: RunnableProcess) -> Self {
+        let mut node: LinkedList<RunnableProcess> = LinkedList::new();
+        node.push_back(process);
+        Self { node }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Installs the capacity credit reserved for this process's termination record.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: The capacity credit to install for the process's future termination record.
+    ///
+    fn install_termination_credit(&mut self, credit: LifecycleTerminationCredit) {
+        match self.node.front_mut() {
+            Some(process) => process.install_termination_credit(credit),
+            None => unreachable!("prepared process node is empty"),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Appends this process to a queue of ready processes.
+    ///
+    /// # Parameters
+    ///
+    /// - `ready`: Queue of ready processes to append onto.
+    ///
+    fn enqueue(mut self, ready: &mut LinkedList<RunnableProcess>) {
+        ready.append(&mut self.node);
+    }
+}
+
 impl ProcessManager {
-    /// Initializes the process manager.
+    ///
+    /// # Description
+    ///
+    /// Initializes the process manager and preallocates process lifecycle delivery capacity.
+    ///
+    /// # Parameters
+    ///
+    /// - `interrupt_capable`: Indicates whether the process manager is interrupt capable.
+    /// - `kernel`: Kernel process.
+    /// - `root`: Root virtual memory.
+    /// - `tm`: Thread manager.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the initialized process manager is returned. Otherwise, an error is returned.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if lifecycle delivery capacity cannot be preallocated.
+    ///
     pub fn new(
         interrupt_capable: bool,
         kernel: ReadyThread,
         root: Vmem,
         tm: ThreadManager,
-    ) -> Self {
+    ) -> Result<Self, Error> {
+        let delivery: DeliveryBroker = DeliveryBroker::new()?;
         let kernel: RunnableProcess = RunnableProcess::new_kernel(
             ProcessIdentifier::KERNEL,
             ProcessIdentifier::KERNEL,
@@ -279,7 +359,7 @@ impl ProcessManager {
         ) = kernel.run();
         debug_assert!(reason.is_none(), "kernel process should not be interrupted");
 
-        Self {
+        Ok(Self {
             interrupt_capable,
             interrupt_reason: None,
             next_pid: ProcessIdentifier::from(1),
@@ -291,11 +371,13 @@ impl ProcessManager {
             tm,
             live_count: 1,
             number_buffered_messages: 0,
-            delivery: DeliveryBroker::default(),
+            delivery,
+            #[cfg(feature = "test")]
+            fail_next_lifecycle_creation: false,
             deferred_reap: Vec::new(),
             deferred_exec_vmem: Vec::new(),
             daemon_pids: Vec::new(),
-        }
+        })
     }
 
     /// Classifies the [`ProcessRole`] of a process from its identifier and parent, using the set of
@@ -315,6 +397,10 @@ impl ProcessManager {
     ///
     /// If preparation fails, this function releases the reservation before returning the error.
     /// Sequence allocation is deferred until the caller commits the prepared process.
+    ///
+    /// `prepare` owns the cleanup of everything it allocates. In particular, no fallible step may
+    /// be added after the new user image is built unless it also reclaims that image's user frames,
+    /// which dropping a [`Vmem`] does not do.
     ///
     /// # Parameters
     ///
@@ -340,6 +426,38 @@ impl ProcessManager {
                 Err(error)
             },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Fails once after process creation has reserved lifecycle capacity and identifiers. Compiles
+    /// to a no-op outside test builds.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an [`ErrorCode::OutOfMemory`] error when a failure has been injected.
+    ///
+    fn check_lifecycle_creation_injection(&mut self) -> Result<(), Error> {
+        #[cfg(feature = "test")]
+        if core::mem::take(&mut self.fail_next_lifecycle_creation) {
+            return Err(Error::new(ErrorCode::OutOfMemory, "injected lifecycle creation failure"));
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Injects one failure into the next process creation, after it reserves lifecycle capacity.
+    ///
+    #[cfg(feature = "test")]
+    fn inject_lifecycle_creation_failure(&mut self) {
+        self.fail_next_lifecycle_creation = true;
     }
 
     ///
@@ -1181,14 +1299,45 @@ impl ProcessManager {
             );
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
-        let (reservation, (pid, next_pid, next_tid, vmem, thread)): (
+        // Recognize a kernel-spawned system daemon by its program name (the first token of the
+        // command-line arguments) so it is classified as a daemon regardless of the process
+        // identifier it receives. This keeps daemon identification correct for deployments that
+        // omit a daemon and let the init workload take that daemon's conventional identifier. A
+        // name that is already registered is discarded, so this is set only when the commit below
+        // will actually grow the registry.
+        let program_name: &str = args.split_whitespace().next().unwrap_or("");
+        let daemon_name: Option<&'static str> = ::config::daemons::GUEST_DAEMON_NAMES
+            .iter()
+            .copied()
+            .find(|&name| name == program_name)
+            .filter(|name| {
+                !self
+                    .daemon_pids
+                    .iter()
+                    .any(|(registered, _)| registered == name)
+            });
+
+        let (reservation, (pid, next_pid, next_tid, parent_pid, mut prepared)): (
             LifecycleCreationReservation,
-            (ProcessIdentifier, ProcessIdentifier, ThreadIdentifier, Vmem, ReadyThread),
+            (
+                ProcessIdentifier,
+                ProcessIdentifier,
+                ThreadIdentifier,
+                ProcessIdentifier,
+                PreparedProcess,
+            ),
         ) = self.prepare_lifecycle_creation(|manager| {
             // Reserve the next process and thread identifiers early, before resource allocation.
             let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = manager.try_next_pid()?;
             let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
                 manager.tm.try_next_tid()?;
+            manager.check_lifecycle_creation_injection()?;
+
+            if daemon_name.is_some() && manager.daemon_pids.try_reserve(1).is_err() {
+                let reason: &str = "failed to reserve process daemon registry capacity";
+                error!("{reason}");
+                return Err(Error::new(ErrorCode::OutOfMemory, reason));
+            }
 
             // The boot command line is space-separated, but the user-space runtime parses the
             // NUL-separated wire format produced by `execv()`. Stream the conversion into the new
@@ -1205,42 +1354,26 @@ impl ProcessManager {
                 manager.interrupt_capable,
             )?;
 
-            Ok((pid, next_pid, next_tid, vmem, thread))
+            let parent_pid: ProcessIdentifier = manager.get_running().state().pid();
+            let process: RunnableProcess =
+                RunnableProcess::new_uncommitted(pid, parent_pid, thread, vmem);
+
+            Ok((pid, next_pid, next_tid, parent_pid, PreparedProcess::new(process)))
         })?;
 
-        //==============================================================
-        // NOTE: if we fail beyond this point we need to free page mappings.
-        //==============================================================
-
-        // Recognize a kernel-spawned system daemon by its program name (the first token of the
-        // command-line arguments) so it is classified as a daemon regardless of the process
-        // identifier it receives. This keeps daemon identification correct for deployments that
-        // omit a daemon and let the init workload take that daemon's conventional identifier.
-
-        let program_name: &str = args.split_whitespace().next().unwrap_or("");
-        let daemon_name: Option<&'static str> = ::config::daemons::GUEST_DAEMON_NAMES
-            .iter()
-            .copied()
-            .find(|&n| n == program_name);
-
         Ok(no_fail!(ProcessIdentifier, {
-            // Commit the next process and thread identifiers now that all fallible operations have succeeded.
+            // Commit the next process and thread identifiers now that all allocations and fallible
+            // operations have succeeded.
             self.next_pid = next_pid;
             self.tm.commit_next_tid(next_tid);
             self.live_count += 1;
-            let parent_pid: ProcessIdentifier = self.get_running().state().pid();
 
             // Remember daemon identifiers so a process's role can be classified authoritatively
-            // later (e.g. at termination), when only its identifier is available.
+            // later (e.g. at termination), when only its identifier is available. `daemon_name` is
+            // only set for an unregistered daemon whose registry slot was reserved above, so this
+            // push cannot allocate.
             if let Some(daemon_name) = daemon_name {
-                let found_match = self
-                    .daemon_pids
-                    .iter()
-                    .any(|(name, _)| *name == daemon_name);
-
-                if !found_match {
-                    self.daemon_pids.push((daemon_name, pid));
-                }
+                self.daemon_pids.push((daemon_name, pid));
             }
 
             // Commit the creation to the ordered delivery broker. Waking the lifecycle owner is
@@ -1249,11 +1382,8 @@ impl ProcessManager {
             let termination_credit = self
                 .delivery
                 .commit_creation(reservation, ProcessCreationInfo::new(pid, parent_pid, role));
-            let process: RunnableProcess =
-                RunnableProcess::new(pid, parent_pid, termination_credit, thread, vmem);
-
-            // Add process to the queue of ready processes.
-            self.ready.push_back(process);
+            prepared.install_termination_credit(termination_credit);
+            prepared.enqueue(&mut self.ready);
 
             Ok(pid)
         }))
@@ -1562,32 +1692,9 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
         #[allow(clippy::type_complexity)]
-        let (
-            reservation,
-            (
-                child_pid,
-                next_pid,
-                child_tid,
-                next_tid,
-                vmem,
-                kernel_stack,
-                context,
-                inherited_signals,
-                inherited_blocked,
-            ),
-        ): (
+        let (reservation, (child_pid, next_pid, next_tid, mut prepared)): (
             LifecycleCreationReservation,
-            (
-                ProcessIdentifier,
-                ProcessIdentifier,
-                ThreadIdentifier,
-                ThreadIdentifier,
-                Vmem,
-                KernelStack,
-                ContextInformation,
-                SignalControl,
-                SigSet,
-            ),
+            (ProcessIdentifier, ProcessIdentifier, ThreadIdentifier, PreparedProcess),
         ) = self.prepare_lifecycle_creation(|manager| {
             // Reserve identifiers early, before allocation. Reap pending zombies on demand if the
             // thread cap is held by terminated-but-unharvested processes.
@@ -1595,6 +1702,7 @@ impl ProcessManager {
                 manager.try_next_pid()?;
             let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
                 manager.try_next_tid_reaping(mm)?;
+            manager.check_lifecycle_creation_injection()?;
 
             // Clone the caller's address space.
             let mut vmem: Vmem = mm.new_vmem(manager.get_running().state().vmem())?;
@@ -1630,27 +1738,24 @@ impl ProcessManager {
                 .thread_state()
                 .blocked();
 
-            Ok((
-                child_pid,
-                next_pid,
+            let mut thread: ReadyThread = manager.tm.create_thread(
                 child_tid,
-                next_tid,
-                vmem,
-                kernel_stack,
+                Some(kernel_stack),
+                None,
+                args.user_tda,
                 context,
-                inherited_signals,
-                inherited_blocked,
-            ))
+            );
+            thread.thread_state_mut().set_blocked(inherited_blocked);
+            let mut process: RunnableProcess =
+                RunnableProcess::new_uncommitted(child_pid, pid, thread, vmem);
+            process.set_signals(inherited_signals);
+
+            Ok((child_pid, next_pid, next_tid, PreparedProcess::new(process)))
         })?;
 
         Ok(no_fail!(ProcessIdentifier, {
-            let mut thread: ReadyThread =
-                self.tm
-                    .create_thread(child_tid, Some(kernel_stack), None, args.user_tda, context);
-            // The child's main thread inherits the calling thread's blocked-signal mask.
-            thread.thread_state_mut().set_blocked(inherited_blocked);
-
-            // Commit reserved identifiers now that all fallible operations succeeded.
+            // Commit reserved identifiers now that all allocations and fallible operations
+            // succeeded.
             self.next_pid = next_pid;
             self.tm.commit_next_tid(next_tid);
             self.live_count += 1;
@@ -1661,10 +1766,8 @@ impl ProcessManager {
             let termination_credit = self
                 .delivery
                 .commit_creation(reservation, ProcessCreationInfo::new(child_pid, pid, role));
-            let mut process: RunnableProcess =
-                RunnableProcess::new(child_pid, pid, termination_credit, thread, vmem);
-            process.set_signals(inherited_signals);
-            self.ready.push_back(process);
+            prepared.install_termination_credit(termination_credit);
+            prepared.enqueue(&mut self.ready);
 
             Ok(child_pid)
         }))
@@ -3248,6 +3351,22 @@ impl ProcessManager {
         let (info, credit) = termination.into_parts();
         self.delivery.release_termination(credit);
         info
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Disposes lifecycle state that cannot be delivered after terminal kernel shutdown begins.
+    ///
+    pub(crate) fn dispose_lifecycle(&mut self) {
+        let disposal: LifecycleDisposal = self.delivery.dispose();
+        if disposal.undelivered_records != 0 || disposal.retained_reservations != 0 {
+            warn!(
+                "disposed process lifecycle state at shutdown (undelivered_records={}, \
+                 retained_reservations={})",
+                disposal.undelivered_records, disposal.retained_reservations
+            );
+        }
     }
 
     /// Queues a synthetic creation record without retaining a future termination credit.
