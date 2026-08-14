@@ -24,6 +24,7 @@ use ::alloc::{
     format,
     string::String,
 };
+use ::fat32::Fat32Error;
 use ::sysapi::ffi::c_int;
 
 //==================================================================================================
@@ -62,8 +63,10 @@ impl ResolvedPath {
 /// working directory. If `dirfd` is a directory descriptor, the path is resolved
 /// relative to that directory's path.
 ///
-/// Returns `None` if `dirfd` is neither `AT_FDCWD` nor a directory descriptor of the current
-/// process, indicating that VFS cannot handle this request, or if `path` is empty.
+/// Returns [`Fat32Error::NotFound`] if `path` is empty (POSIX `ENOENT`).
+/// Returns [`Fat32Error::InvalidFd`] if `dirfd` is not an open descriptor of the current process
+/// (POSIX `EBADF`), or [`Fat32Error::NotADirectory`] if it is an open descriptor that does not
+/// refer to a directory (POSIX `ENOTDIR`).
 ///
 /// # Limitations
 ///
@@ -76,41 +79,41 @@ impl ResolvedPath {
 /// # References
 ///
 /// - [POSIX openat()/`*at()` family — dirfd and `AT_FDCWD` semantics](https://pubs.opengroup.org/onlinepubs/9799919799/functions/openat.html)
-pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<ResolvedPath> {
+pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Result<ResolvedPath, Fat32Error> {
     use ::sysapi::fcntl::atflags::AT_FDCWD;
 
     // An empty path names nothing. Anchoring one would silently yield the base
-    // directory, so reject it here rather than resolve to the cwd.
+    // directory, so reject it here with ENOENT rather than resolve to the cwd.
     if path.is_empty() {
-        return None;
+        return Err(Fat32Error::NotFound);
     }
 
     // Absolute paths are always resolved directly (dirfd ignored per POSIX).
     if path.starts_with('/') {
-        return Some(ResolvedPath(String::from(path)));
+        return Ok(ResolvedPath(String::from(path)));
     }
 
     // Relative path with AT_FDCWD: resolve against VFS cwd.
     if dirfd == AT_FDCWD {
         if !crate::state::is_initialized() {
-            return None;
+            return Err(Fat32Error::InvalidArgument);
         }
         let cwd: String = current_cwd();
-        return Some(ResolvedPath(join(&cwd, path)));
+        return Ok(ResolvedPath(join(&cwd, path)));
     }
 
     // Relative path with a directory descriptor: resolve against that directory. Validity is the
-    // slot's handle type, not the descriptor number — a non-directory or absent descriptor yields
-    // `None` below rather than being pre-screened by a number range.
-    let file: OpenFile = entry_arc(dirfd).ok()?;
+    // slot's handle type, not the descriptor number — an absent descriptor is `EBADF` and a
+    // non-directory descriptor is `ENOTDIR`, per POSIX.
+    let file: OpenFile = entry_arc(dirfd).map_err(|_| Fat32Error::InvalidFd)?;
     let guard = file.lock();
     let dir_path: &str = match &guard.handle {
         VfsFileHandle::Directory(dh) => dh.path(),
-        VfsFileHandle::HostFs(hh) if hh.is_dir() => hh.path()?,
-        _ => return None, // fd is not a directory
+        VfsFileHandle::HostFs(hh) if hh.is_dir() => hh.path().ok_or(Fat32Error::InvalidFd)?,
+        _ => return Err(Fat32Error::NotADirectory), // fd is not a directory
     };
 
-    Some(ResolvedPath(join(dir_path, path)))
+    Ok(ResolvedPath(join(dir_path, path)))
 }
 
 //==================================================================================================

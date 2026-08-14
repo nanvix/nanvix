@@ -5,7 +5,7 @@
 //!
 //! When a relative path is paired with a `dirfd` that cannot be resolved to a VFS
 //! directory (for example, a regular-file descriptor), vfsd must reject the request
-//! with `EINVAL` (`InvalidArgument`) instead of silently dropping the `dirfd` and
+//! with `ENOTDIR` (`InvalidDirectory`) instead of silently dropping the `dirfd` and
 //! resolving the path against the current working directory.
 //!
 //! These tests cover the five operations whose hostfs handlers perform this
@@ -44,22 +44,23 @@ pub fn test() -> Result<(), Error> {
     test_invalid_dirfd_rejected()
 }
 
-/// Asserts that a result is the expected `EINVAL` rejection, panicking otherwise.
+/// Asserts that a result is the expected `ENOTDIR` rejection, panicking otherwise.
 fn expect_reject<T>(op: &str, result: Result<T, Error>) {
     match result {
         Ok(_) => {
             panic!(
-                "dirfd-reject: {op} with a non-directory dirfd must fail with EINVAL, but it \
+                "dirfd-reject: {op} with a non-directory dirfd must fail with ENOTDIR, but it \
                  succeeded"
             );
         },
-        Err(e) if e.code == ErrorCode::InvalidArgument => {
-            ::syslog::info!("mount-test: [PASS] {op} rejects a non-directory dirfd with EINVAL");
+        Err(e) if e.code == ErrorCode::InvalidDirectory => {
+            ::syslog::info!("mount-test: [PASS] {op} rejects a non-directory dirfd with ENOTDIR");
         },
         Err(e) => {
             let code: ErrorCode = e.code;
             panic!(
-                "dirfd-reject: {op} with a non-directory dirfd must fail with EINVAL, got {code:?}"
+                "dirfd-reject: {op} with a non-directory dirfd must fail with ENOTDIR, got \
+                 {code:?}"
             );
         },
     }
@@ -82,17 +83,17 @@ fn test_invalid_dirfd_rejected() -> Result<(), Error> {
         Ok(stray) => {
             let _ = ::syscall::unistd::close(stray);
             panic!(
-                "dirfd-reject: openat with a non-directory dirfd must fail with EINVAL, but it \
+                "dirfd-reject: openat with a non-directory dirfd must fail with ENOTDIR, but it \
                  succeeded"
             );
         },
-        Err(e) if e.code == ErrorCode::InvalidArgument => {
-            ::syslog::info!("mount-test: [PASS] openat rejects a non-directory dirfd with EINVAL");
+        Err(e) if e.code == ErrorCode::InvalidDirectory => {
+            ::syslog::info!("mount-test: [PASS] openat rejects a non-directory dirfd with ENOTDIR");
         },
         Err(e) => {
             let code: ErrorCode = e.code;
             panic!(
-                "dirfd-reject: openat with a non-directory dirfd must fail with EINVAL, got \
+                "dirfd-reject: openat with a non-directory dirfd must fail with ENOTDIR, got \
                  {code:?}"
             );
         },
@@ -104,7 +105,7 @@ fn test_invalid_dirfd_rejected() -> Result<(), Error> {
     expect_reject("fstatat", ::syscall::sys::stat::fstatat(file_fd, "reject-stat.txt", &mut st, 0));
 
     // symlinkat and readlinkat previously reported "not supported" for an
-    // unresolvable dirfd; they must now report EINVAL like the other operations.
+    // unresolvable dirfd; they must now report ENOTDIR like the other operations.
     expect_reject(
         "symlinkat",
         ::syscall::unistd::symlinkat("target.txt", file_fd, "reject-link.lnk"),

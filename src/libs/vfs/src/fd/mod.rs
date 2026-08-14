@@ -993,11 +993,11 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved (for
-/// example, when it is not a VFS directory file descriptor). The `dirfd` is
-/// never silently ignored.
+/// Returns [`Fat32Error::InvalidFd`] (POSIX `EBADF`) if `dirfd` is not an open
+/// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
+/// directory. An empty `path` returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 pub fn vfs_openat(dirfd: c_int, path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path)?;
     vfs_open_resolved(resolved, flags)
 }
 
@@ -1394,15 +1394,15 @@ pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved (for
-/// example, when it is not a VFS directory file descriptor). The `dirfd` is
-/// never silently ignored.
+/// Returns [`Fat32Error::InvalidFd`] (POSIX `EBADF`) if `dirfd` is not an open
+/// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
+/// directory. An empty `path` returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 pub fn vfs_fstatat(
     dirfd: c_int,
     path: &str,
     buf: &mut ::sysapi::sys_stat::stat,
 ) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path)?;
     vfs_stat_resolved(resolved, buf)
 }
 
@@ -1440,11 +1440,11 @@ pub fn vfs_mkdir(path: &str) -> Result<(), Fat32Error> {
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved (for
-/// example, when it is not a VFS directory file descriptor). The `dirfd` is
-/// never silently ignored.
+/// Returns [`Fat32Error::InvalidFd`] (POSIX `EBADF`) if `dirfd` is not an open
+/// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
+/// directory. An empty `path` returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 pub fn vfs_mkdirat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path)?;
     vfs_mkdir_resolved(resolved)
 }
 
@@ -1845,11 +1845,11 @@ pub fn vfs_access(path: &str) -> Result<(), Fat32Error> {
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved (for
-/// example, when it is not a VFS directory file descriptor). The `dirfd` is
-/// never silently ignored.
+/// Returns [`Fat32Error::InvalidFd`] (POSIX `EBADF`) if `dirfd` is not an open
+/// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
+/// directory. An empty `path` returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 pub fn vfs_accessat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path)?;
     vfs_access(resolved.as_str())
 }
 
@@ -1953,7 +1953,9 @@ pub fn vfs_getdents(
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if a dirfd cannot be resolved.
+/// Returns [`Fat32Error::InvalidFd`] (POSIX `EBADF`) if a dirfd is not an open
+/// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
+/// directory. An empty path returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 /// Returns a [`Fat32Error`] if the paths are on different mounts, the old path does not exist,
 /// or the new path already exists.
 pub fn vfs_renameat(
@@ -1962,8 +1964,8 @@ pub fn vfs_renameat(
     newdirfd: c_int,
     newpath: &str,
 ) -> Result<(), Fat32Error> {
-    let old_resolved = vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
-    let new_resolved = vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
+    let old_resolved = vfs_resolve_path(olddirfd, oldpath)?;
+    let new_resolved = vfs_resolve_path(newdirfd, newpath)?;
     vfs_rename_resolved(old_resolved, new_resolved)
 }
 
@@ -1990,11 +1992,13 @@ pub fn vfs_rename_resolved(
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if `dirfd` cannot be resolved.
+/// Returns [`Fat32Error::InvalidFd`] (POSIX `EBADF`) if `dirfd` is not an open
+/// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
+/// directory. An empty `path` returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 /// Returns a [`Fat32Error`] if the path does not exist, the directory is not empty (when removing
 /// a directory), or the path refers to a directory but `AT_REMOVEDIR` is not set.
 pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path)?;
     vfs_unlink_resolved(resolved, flags)
 }
 
@@ -2076,7 +2080,7 @@ pub fn vfs_fchmodat(
     _mode: ::sysapi::sys_types::mode_t,
     _flag: c_int,
 ) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
     filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
 }
@@ -2105,7 +2109,7 @@ pub fn vfs_fchownat(
     _group: gid_t,
     _flag: c_int,
 ) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
     filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
 }
@@ -2137,7 +2141,7 @@ pub fn vfs_utimensat(
     if flags != 0 {
         return Err(Fat32Error::InvalidArgument);
     }
-    let resolved = vfs_resolve_path(dirfd, pathname).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, pathname)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
     filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
 }

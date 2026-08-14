@@ -413,8 +413,9 @@ pub(crate) fn handle_fstatat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.path) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
 
     if hostfs::is_hostfs_path(resolved.as_str()) {
@@ -471,8 +472,9 @@ pub(crate) fn handle_chdir_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let Some(resolved) = vfs_resolve_path(AT_FDCWD, &request.path) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let resolved = match vfs_resolve_path(AT_FDCWD, &request.path) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
 
     if hostfs::is_hostfs_path(resolved.as_str()) {
@@ -754,8 +756,9 @@ pub(crate) fn handle_openat_with_hostfs(
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
     request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
-    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let resolved = match vfs_resolve_path(request.dirfd, &request.pathname) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
 
     if hostfs::is_hostfs_path(resolved.as_str()) {
@@ -796,11 +799,13 @@ pub(crate) fn handle_renameat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let Some(old_resolved) = vfs_resolve_path(request.olddirfd, &request.oldpath) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let old_resolved = match vfs_resolve_path(request.olddirfd, &request.oldpath) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
-    let Some(new_resolved) = vfs_resolve_path(request.newdirfd, &request.newpath) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let new_resolved = match vfs_resolve_path(request.newdirfd, &request.newpath) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
     let old_is_hostfs: bool = hostfs::is_hostfs_path(old_resolved.as_str());
     let new_is_hostfs: bool = hostfs::is_hostfs_path(new_resolved.as_str());
@@ -847,8 +852,9 @@ pub(crate) fn handle_unlinkat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let resolved = match vfs_resolve_path(request.dirfd, &request.pathname) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
 
     if hostfs::is_hostfs_path(resolved.as_str()) {
@@ -900,8 +906,9 @@ pub(crate) fn handle_mkdirat_with_hostfs(
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
     request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
-    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.pathname) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let resolved = match vfs_resolve_path(request.dirfd, &request.pathname) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
 
     if hostfs::is_hostfs_path(resolved.as_str()) {
@@ -943,8 +950,9 @@ pub(crate) fn handle_symlinkat_with_hostfs(
     let source: ThreadIdentifier = response_context.source_tid();
     // Routing key is `linkpath` (where the symlink will live). `target` is an opaque
     // string stored verbatim by the host and intentionally not consulted here.
-    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.linkpath) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let resolved = match vfs_resolve_path(request.dirfd, &request.linkpath) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
 
     if hostfs::is_hostfs_path(resolved.as_str()) {
@@ -984,8 +992,9 @@ pub(crate) fn handle_readlinkat_with_hostfs(
 ) -> Option<Vec<Message>> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source: ThreadIdentifier = response_context.source_tid();
-    let Some(resolved) = vfs_resolve_path(request.dirfd, &request.path) else {
-        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+        Ok(r) => r,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
     };
 
     if hostfs::is_hostfs_path(resolved.as_str()) {
