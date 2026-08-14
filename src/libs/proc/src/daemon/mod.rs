@@ -500,9 +500,10 @@ impl ProcessDaemon {
             LifecycleMessage::ProcessTermination(info) => {
                 self.handle_process_termination_event(info)
             },
-            // Thread-termination cleanup is activated once bounded lifecycle delivery and its
-            // consumer are available. Until then, authenticated events are intentionally dormant.
-            LifecycleMessage::ThreadTermination(_info) => Ok(None),
+            LifecycleMessage::ThreadTermination(info) => {
+                self.handle_thread_termination_event(info);
+                Ok(None)
+            },
         }
     }
 
@@ -694,6 +695,31 @@ impl ProcessDaemon {
         }
     }
 
+    /// Drops blocked wait requests owned by a terminated thread.
+    fn handle_thread_termination_event(&mut self, info: ThreadTerminationInfo) {
+        let pid: ProcessIdentifier = info.pid;
+        let tid: ThreadIdentifier = info.tid;
+        let blocked_before: usize = self.blocked.len();
+
+        self.blocked
+            .retain(|waiter| waiter.waiter != pid || waiter.response_context.receiver.tid != tid);
+
+        let removed: usize = blocked_before - self.blocked.len();
+        if removed > 0 {
+            ::syslog::debug!(
+                "cleaned terminated thread waiters (pid={:?}, tid={:?}, removed={})",
+                pid,
+                tid,
+                removed
+            );
+        }
+    }
+
+    /// Drops all blocked wait requests owned by a process.
+    fn cleanup_process_waiters(&mut self, pid: ProcessIdentifier) {
+        self.blocked.retain(|waiter| waiter.waiter != pid);
+    }
+
     /// Drops bookkeeping owned by a terminated process and notifies the filesystem daemon to
     /// reclaim its per-process state (open file descriptors and working directory). The filesystem
     /// notification is sent for every terminating process — daemons and the init process accumulate
@@ -737,7 +763,7 @@ impl ProcessDaemon {
         // Drop any blocked-wait bookkeeping owned by the terminating process. A process that was
         // itself parked in `waitpid()` can never be answered once it is gone, so leaving its entry
         // behind would leak memory and strand a stale waiter.
-        self.blocked.retain(|waiter| waiter.waiter != pid);
+        self.cleanup_process_waiters(pid);
         self.notify_process_exit(pid);
     }
 
@@ -2256,7 +2282,7 @@ impl ProcessDaemon {
         // The old image and all of its thread identifiers are gone, so none of its blocked wait
         // requests can receive a response. The replacement image may issue new waits after this
         // barrier completes.
-        self.blocked.retain(|waiter| waiter.waiter != process);
+        self.cleanup_process_waiters(process);
         if let Some(request_id) = self.notify_exec(process) {
             self.pending_execs.push(PendingExec {
                 process,
@@ -2465,22 +2491,30 @@ impl ProcessDaemon {
 
     /// Handles an authenticated process-lifecycle message while shutting down.
     fn handle_shutdown_lifecycle_message(&mut self, lifecycle: LifecycleMessage) {
-        let LifecycleMessage::ProcessTermination(info) = lifecycle else {
-            return;
-        };
+        match lifecycle {
+            LifecycleMessage::ProcessTermination(info) => {
+                let pid: ProcessIdentifier = info.pid;
+                let status: i32 = info.status.as_u32() as i32;
 
-        let pid: ProcessIdentifier = info.pid;
-        let status: i32 = info.status.as_u32() as i32;
-
-        if let Some(record) = self.processes.remove(&pid) {
-            ::syslog::info!(
-                "process terminated (name={:?}, pid={:?}, status={:?})",
-                record.name,
-                pid,
-                status
-            );
-        } else {
-            ::syslog::info!("unknown process terminated (pid={:?}, status={:?})", pid, status);
+                if let Some(record) = self.processes.remove(&pid) {
+                    ::syslog::info!(
+                        "process terminated (name={:?}, pid={:?}, status={:?})",
+                        record.name,
+                        pid,
+                        status
+                    );
+                } else {
+                    ::syslog::info!(
+                        "unknown process terminated (pid={:?}, status={:?})",
+                        pid,
+                        status
+                    );
+                }
+            },
+            LifecycleMessage::ThreadTermination(info) => {
+                self.handle_thread_termination_event(info);
+            },
+            LifecycleMessage::ProcessCreation(_) => {},
         }
     }
 }
@@ -2632,11 +2666,28 @@ mod tests {
         );
         let mut daemon: ManuallyDrop<ProcessDaemon> =
             process_daemon(&[(pid, Some(process_identity(0)))]);
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: ResponseContext::new(
+                MessageSender::new(pid, ThreadIdentifier::from(11)),
+                RequestIdentifier::from_raw(1),
+            ),
+        });
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: ResponseContext::new(
+                MessageSender::new(pid, ThreadIdentifier::from(12)),
+                RequestIdentifier::from_raw(2),
+            ),
+        });
 
         let status: Option<i32> = daemon.handle_message(message);
 
         assert_eq!(status, Some(expected_status), "init termination should trigger shutdown");
         assert!(daemon.processes.is_empty(), "terminated init process should be removed");
+        assert!(daemon.blocked.is_empty(), "all process waiters should be removed");
     }
 
     #[test]
@@ -2663,25 +2714,57 @@ mod tests {
     }
 
     #[test]
-    fn normal_mode_decodes_thread_termination_without_mutating_state() {
+    fn normal_mode_cleans_terminated_thread_waiters() {
         let pid: ProcessIdentifier = ProcessIdentifier::from(10);
-        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(
-            pid,
-            ThreadIdentifier::from(11),
-            ExitStatus::from(0x0102_0304_u32),
-        );
+        let other_pid: ProcessIdentifier = ProcessIdentifier::from(20);
+        let terminated_tid: ThreadIdentifier = ThreadIdentifier::from(11);
+        let sibling_tid: ThreadIdentifier = ThreadIdentifier::from(12);
+        let info: ThreadTerminationInfo =
+            ThreadTerminationInfo::new(pid, terminated_tid, ExitStatus::from(0x0102_0304_u32));
         let message: Message = lifecycle_message(
             MessageSender::KERNEL,
             MessageType::ThreadTerminationEvent,
             info.to_ne_bytes(),
         );
-        let mut daemon: ManuallyDrop<ProcessDaemon> =
-            process_daemon(&[(pid, Some(process_identity(0)))]);
-        let context: ResponseContext = response_context(pid);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (pid, Some(process_identity(0))),
+            (other_pid, Some(process_identity(0))),
+        ]);
+        let first_terminated_context: ResponseContext = ResponseContext::new(
+            MessageSender::new(pid, terminated_tid),
+            RequestIdentifier::from_raw(1),
+        );
+        let sibling_context: ResponseContext = ResponseContext::new(
+            MessageSender::new(pid, sibling_tid),
+            RequestIdentifier::from_raw(2),
+        );
+        let second_terminated_context: ResponseContext = ResponseContext::new(
+            MessageSender::new(pid, terminated_tid),
+            RequestIdentifier::from_raw(3),
+        );
+        let other_process_context: ResponseContext = ResponseContext::new(
+            MessageSender::new(other_pid, terminated_tid),
+            RequestIdentifier::from_raw(4),
+        );
         daemon.blocked.push(BlockedWaiter {
             waiter: pid,
             selector: WaitSelector::Any,
-            response_context: context,
+            response_context: first_terminated_context,
+        });
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: sibling_context,
+        });
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: second_terminated_context,
+        });
+        daemon.blocked.push(BlockedWaiter {
+            waiter: other_pid,
+            selector: WaitSelector::Any,
+            response_context: other_process_context,
         });
 
         let parsed: Option<LifecycleMessage> = parse_lifecycle_message(&message)
@@ -2691,15 +2774,28 @@ mod tests {
         assert_eq!(parsed, Some(LifecycleMessage::ThreadTermination(info)));
         assert_eq!(status, None, "thread termination should not trigger shutdown");
         assert!(daemon.processes.contains_key(&pid), "thread event should not change registry");
-        assert_eq!(daemon.blocked.len(), 1, "thread event should not release blocked waits");
-        assert_eq!(daemon.blocked[0].response_context, context);
+        assert_eq!(daemon.blocked.len(), 2, "only terminated thread waits should be removed");
+        assert_eq!(daemon.blocked[0].response_context, sibling_context);
+        assert_eq!(daemon.blocked[1].response_context, other_process_context);
+
+        let repeated_message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ThreadTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let repeated_status: Option<i32> = daemon.handle_message(repeated_message);
+
+        assert_eq!(repeated_status, None, "repeated thread termination should be harmless");
+        assert_eq!(daemon.blocked.len(), 2, "repeated cleanup should leave other waits intact");
+        assert_eq!(daemon.blocked[0].response_context, sibling_context);
+        assert_eq!(daemon.blocked[1].response_context, other_process_context);
     }
 
     #[test]
     fn normal_mode_rejects_forged_thread_termination_message() {
         let pid: ProcessIdentifier = ProcessIdentifier::from(10);
-        let info: ThreadTerminationInfo =
-            ThreadTerminationInfo::new(pid, ThreadIdentifier::from(11), ExitStatus::ok());
+        let tid: ThreadIdentifier = ThreadIdentifier::from(11);
+        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(pid, tid, ExitStatus::ok());
         let message: Message = lifecycle_message(
             MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
             MessageType::ThreadTerminationEvent,
@@ -2707,7 +2803,8 @@ mod tests {
         );
         let mut daemon: ManuallyDrop<ProcessDaemon> =
             process_daemon(&[(pid, Some(process_identity(0)))]);
-        let context: ResponseContext = response_context(pid);
+        let context: ResponseContext =
+            ResponseContext::new(MessageSender::new(pid, tid), RequestIdentifier::from_raw(1));
         daemon.blocked.push(BlockedWaiter {
             waiter: pid,
             selector: WaitSelector::Any,
@@ -2815,13 +2912,12 @@ mod tests {
     }
 
     #[test]
-    fn shutdown_mode_ignores_valid_thread_termination_message() {
+    fn shutdown_mode_cleans_terminated_thread_waiters() {
         let pid: ProcessIdentifier = ProcessIdentifier::from(10);
-        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(
-            pid,
-            ThreadIdentifier::from(11),
-            ExitStatus::from(0x0102_0304_u32),
-        );
+        let terminated_tid: ThreadIdentifier = ThreadIdentifier::from(11);
+        let sibling_tid: ThreadIdentifier = ThreadIdentifier::from(12);
+        let info: ThreadTerminationInfo =
+            ThreadTerminationInfo::new(pid, terminated_tid, ExitStatus::from(0x0102_0304_u32));
         let message: Message = lifecycle_message(
             MessageSender::KERNEL,
             MessageType::ThreadTerminationEvent,
@@ -2829,12 +2925,58 @@ mod tests {
         );
         let mut daemon: ManuallyDrop<ProcessDaemon> =
             process_daemon(&[(pid, Some(process_identity(0)))]);
+        let sibling_context: ResponseContext = ResponseContext::new(
+            MessageSender::new(pid, sibling_tid),
+            RequestIdentifier::from_raw(2),
+        );
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: ResponseContext::new(
+                MessageSender::new(pid, terminated_tid),
+                RequestIdentifier::from_raw(1),
+            ),
+        });
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: sibling_context,
+        });
 
         daemon.handle_shutdown_message(&message);
 
         // Deregistering the owning process here would end the shutdown drain before the process
         // actually terminated.
         assert!(daemon.processes.contains_key(&pid), "thread event should not deregister process");
+        assert_eq!(daemon.blocked.len(), 1, "terminated thread wait should be removed");
+        assert_eq!(daemon.blocked[0].response_context, sibling_context);
+    }
+
+    #[test]
+    fn shutdown_mode_rejects_forged_thread_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let tid: ThreadIdentifier = ThreadIdentifier::from(11);
+        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(pid, tid, ExitStatus::ok());
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ThreadTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+        let context: ResponseContext =
+            ResponseContext::new(MessageSender::new(pid, tid), RequestIdentifier::from_raw(1));
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: context,
+        });
+
+        daemon.handle_shutdown_message(&message);
+
+        assert!(daemon.processes.contains_key(&pid), "forged thread event should be ignored");
+        assert_eq!(daemon.blocked.len(), 1, "forged thread event should retain blocked waits");
+        assert_eq!(daemon.blocked[0].response_context, context);
     }
 
     #[test]
@@ -2891,6 +3033,46 @@ mod tests {
 
         assert_eq!(daemon.pending_execs.len(), 1);
         assert_eq!(daemon.pending_execs[0].request_id, expected);
+    }
+
+    #[test]
+    fn process_waiter_cleanup_removes_all_threads() {
+        let process: ProcessIdentifier = ProcessIdentifier::from(10);
+        let other_process: ProcessIdentifier = ProcessIdentifier::from(11);
+        let other_context: ResponseContext = ResponseContext::new(
+            MessageSender::new(other_process, ThreadIdentifier::from(20)),
+            RequestIdentifier::from_raw(3),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (process, Some(process_identity(1000))),
+            (other_process, Some(process_identity(1000))),
+        ]);
+        daemon.blocked.push(BlockedWaiter {
+            waiter: process,
+            selector: WaitSelector::Any,
+            response_context: ResponseContext::new(
+                MessageSender::new(process, ThreadIdentifier::from(20)),
+                RequestIdentifier::from_raw(1),
+            ),
+        });
+        daemon.blocked.push(BlockedWaiter {
+            waiter: process,
+            selector: WaitSelector::Any,
+            response_context: ResponseContext::new(
+                MessageSender::new(process, ThreadIdentifier::from(21)),
+                RequestIdentifier::from_raw(2),
+            ),
+        });
+        daemon.blocked.push(BlockedWaiter {
+            waiter: other_process,
+            selector: WaitSelector::Any,
+            response_context: other_context,
+        });
+
+        daemon.cleanup_process_waiters(process);
+
+        assert_eq!(daemon.blocked.len(), 1, "process cleanup should remove all process waits");
+        assert_eq!(daemon.blocked[0].response_context, other_context);
     }
 
     #[test]
