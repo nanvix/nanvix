@@ -14,6 +14,12 @@ pub struct Stat {
     size: u64,
     /// Whether this is a directory.
     is_dir: bool,
+    /// Last access time (Unix seconds).
+    atime: i64,
+    /// Last modification time (Unix seconds).
+    mtime: i64,
+    /// Creation time (Unix seconds).
+    ctime: i64,
 }
 
 //==================================================================================================
@@ -27,8 +33,17 @@ impl Stat {
     ///
     /// - `size`: File size in bytes (0 for directories).
     /// - `is_dir`: Whether this entry is a directory.
-    pub fn new(size: u64, is_dir: bool) -> Self {
-        Self { size, is_dir }
+    /// - `atime`: Last access time (Unix seconds).
+    /// - `mtime`: Last modification time (Unix seconds).
+    /// - `ctime`: Creation time (Unix seconds).
+    pub fn new(size: u64, is_dir: bool, atime: i64, mtime: i64, ctime: i64) -> Self {
+        Self {
+            size,
+            is_dir,
+            atime,
+            mtime,
+            ctime,
+        }
     }
 
     /// Returns the file size in bytes (0 for directories).
@@ -41,6 +56,24 @@ impl Stat {
     #[must_use]
     pub fn is_dir(&self) -> bool {
         self.is_dir
+    }
+
+    /// Returns the last access time (Unix seconds).
+    #[must_use]
+    pub fn atime(&self) -> i64 {
+        self.atime
+    }
+
+    /// Returns the last modification time (Unix seconds).
+    #[must_use]
+    pub fn mtime(&self) -> i64 {
+        self.mtime
+    }
+
+    /// Returns the creation time (Unix seconds).
+    #[must_use]
+    pub fn ctime(&self) -> i64 {
+        self.ctime
     }
 }
 
@@ -55,11 +88,11 @@ mod tests {
     /// Tests Stat equality and debug.
     #[test]
     fn stat_clone_eq_debug() {
-        let stat: Stat = Stat::new(42, false);
+        let stat: Stat = Stat::new(42, false, 0, 0, 0);
         let cloned: Stat = stat;
         assert_eq!(stat, cloned, "clone should preserve equality");
 
-        let other: Stat = Stat::new(0, true);
+        let other: Stat = Stat::new(0, true, 0, 0, 0);
         assert_ne!(stat, other, "different stats should not be equal");
 
         assert_eq!(stat.size(), 42, "size accessor should return 42");

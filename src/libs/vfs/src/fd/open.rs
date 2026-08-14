@@ -66,7 +66,13 @@ pub fn exists(cwd: &str, path: &str) -> bool {
 /// [`VfsStat`] on success, or a [`Fat32Error`] on error.
 pub fn stat(cwd: &str, path: &str) -> Result<VfsStat, Fat32Error> {
     let info: filesystem::Stat = filesystem::stat(cwd, path)?;
-    Ok(VfsStat::new(info.size(), info.is_dir()))
+    Ok(VfsStat::new(
+        info.size(),
+        info.is_dir(),
+        info.atime(),
+        info.mtime(),
+        info.ctime(),
+    ))
 }
 
 //==================================================================================================

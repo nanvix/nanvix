@@ -16,6 +16,7 @@ crate-type = ["lib"]
 [dependencies]
 error = { workspace = true }
 fatfs = { workspace = true, features = ["alloc", "lfn"] }
+sys = { workspace = true }
 
 [features]
 default = []

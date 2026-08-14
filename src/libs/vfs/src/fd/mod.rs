@@ -63,9 +63,17 @@ use ::alloc::{
     vec::Vec,
 };
 use ::core::sync::atomic::Ordering;
-use ::fat32::Fat32Error;
+use ::fat32::{
+    Fat32Error,
+    FAT_EPOCH_SECS,
+};
 use ::spin::Mutex;
 use ::sys::pm::ProcessIdentifier;
+#[cfg(not(feature = "std"))]
+use ::sys::{
+    kcall::pm::__kcall_gettime,
+    time::SystemTime,
+};
 use ::sysapi::{
     fcntl::{
         file_control_request,
@@ -86,6 +94,8 @@ use ::sysapi::{
     sys_stat::{
         file_mode,
         file_type,
+        UTIME_NOW,
+        UTIME_OMIT,
     },
     sys_types::{
         c_size_t,
@@ -1101,14 +1111,20 @@ pub fn vfs_lseek(fd: c_int, offset: off_t, whence: c_int) -> Result<off_t, Fat32
 
 /// Populates common stat fields for VFS entries.
 ///
-/// FAT32 lacks Unix metadata so we use sensible defaults:
+/// FAT32 lacks Unix ownership metadata so we use sensible defaults:
 /// - `st_nlink = 1` (single link).
-/// - Timestamps set to a fixed epoch value (FAT has no sub-second precision).
 /// - Permissions: owner read+write for files, owner rwx for directories.
-fn populate_stat_fields(buf: &mut ::sysapi::sys_stat::stat, size: u64, is_dir: bool) {
-    // Fixed epoch timestamp: 2024-01-01T00:00:00Z (1704067200).
-    const FIXED_EPOCH: i64 = 1_704_067_200;
-
+///
+/// Timestamps (`atime`/`mtime`/`ctime`, Unix seconds) come from the backing
+/// directory entry.
+fn populate_stat_fields(
+    buf: &mut ::sysapi::sys_stat::stat,
+    size: u64,
+    is_dir: bool,
+    atime: i64,
+    mtime: i64,
+    ctime: i64,
+) {
     buf.st_size = size as off_t;
     buf.st_nlink = if is_dir { 2 } else { 1 };
     buf.st_dev = 1; // Synthetic device ID for the VFS.
@@ -1121,15 +1137,15 @@ fn populate_stat_fields(buf: &mut ::sysapi::sys_stat::stat, size: u64, is_dir: b
     buf.st_blksize = STAT_BLOCK_SIZE;
     buf.st_blocks = size.div_ceil(STAT_SECTOR_SIZE) as off_t;
     buf.st_atim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: atime,
         tv_nsec: 0,
     };
     buf.st_mtim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: mtime,
         tv_nsec: 0,
     };
     buf.st_ctim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: ctime,
         tv_nsec: 0,
     };
 }
@@ -1230,7 +1246,12 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     } else if let Some(pipe_id) = pipe_id {
         populate_pipe_stat_fields(buf, pipe_id);
     } else {
-        populate_stat_fields(buf, size, is_dir);
+        // fatfs exposes time getters only on a directory entry (reached by scanning
+        // the parent), never on an open `File`, and an open handle keeps no path.
+        // We are not patching upstream fatfs (slated for replacement), so an open fd
+        // reports the FAT epoch; path-based stat (`vfs_stat`) carries the real times.
+        // Known POSIX divergence, tracked for the fatfs replacement.
+        populate_stat_fields(buf, size, is_dir, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS);
     }
 
     Ok(())
@@ -1382,7 +1403,14 @@ pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
 
-    populate_stat_fields(buf, info.size(), info.is_dir());
+    populate_stat_fields(
+        buf,
+        info.size(),
+        info.is_dir(),
+        info.atime(),
+        info.mtime(),
+        info.ctime(),
+    );
 
     Ok(())
 }
@@ -2116,15 +2144,15 @@ pub fn vfs_fchownat(
 
 /// Sets file access and modification times through the VFS.
 ///
-/// FAT32 does not support fine-grained POSIX timestamps. This function
-/// validates its arguments and returns success without modifying any
-/// timestamps.
+/// Resolves `UTIME_NOW` against the wall clock and honors `UTIME_OMIT`, then
+/// applies the result to the backing file. FAT stores access as a date only, so
+/// sub-day access precision is dropped.
 ///
 /// # Parameters
 ///
 /// - `dirfd`: Directory file descriptor for relative path resolution.
 /// - `pathname`: Path to the target file.
-/// - `_times`: Access and modification times (ignored on FAT32).
+/// - `times`: Access (`[0]`) and modification (`[1]`) times.
 /// - `flags`: Flags (must be zero; unsupported flags are rejected).
 ///
 /// # Errors
@@ -2134,7 +2162,7 @@ pub fn vfs_fchownat(
 pub fn vfs_utimensat(
     dirfd: c_int,
     pathname: &str,
-    _times: &[timespec; 2],
+    times: &[timespec; 2],
     flags: c_int,
 ) -> Result<(), Fat32Error> {
     // Reject unsupported flags since FAT32 does not handle them.
@@ -2142,13 +2170,39 @@ pub fn vfs_utimensat(
         return Err(Fat32Error::InvalidArgument);
     }
     let resolved = vfs_resolve_path(dirfd, pathname)?;
-    // POSIX TODO: NULL/UTIME_NOW times need write access, owner match, or privilege.
-    // See https://pubs.opengroup.org/onlinepubs/9799919799/functions/utimensat.html
-    // Nanvix is single-user, so owner and privilege always hold — the check
-    // reduces to writability. Enforce via check_writable when timestamp
-    // persistence lands.
-    // Verify that the target exists using the VFS-level stat for consistent semantics.
-    filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
+
+    // POSIX permission check (owner / write access / privilege) is not enforced:
+    // Nanvix is single-user so it always passes. Tracked for the multiuser model.
+
+    // Resolve a single request field to concrete seconds, or `None` to omit.
+    let resolve = |ts: &timespec, now: i64| -> Option<i64> {
+        match ts.tv_nsec {
+            n if n == UTIME_OMIT => None,
+            n if n == UTIME_NOW => Some(now),
+            _ => Some(ts.tv_sec),
+        }
+    };
+    let now: i64 = wall_clock_secs();
+    let atime: Option<i64> = resolve(&times[0], now);
+    let mtime: Option<i64> = resolve(&times[1], now);
+
+    filesystem::set_times(&current_cwd(), resolved.as_str(), atime, mtime)
+}
+
+/// Current wall-clock time in Unix seconds, falling back to the FAT epoch.
+#[cfg(not(feature = "std"))]
+fn wall_clock_secs() -> i64 {
+    let mut now: SystemTime = SystemTime::default();
+    match __kcall_gettime(&mut now) {
+        Ok(()) => now.seconds() as i64,
+        Err(_) => FAT_EPOCH_SECS,
+    }
+}
+
+/// Host test builds have no kernel clock; use the FAT epoch.
+#[cfg(feature = "std")]
+fn wall_clock_secs() -> i64 {
+    FAT_EPOCH_SECS
 }
 
 //==================================================================================================
@@ -2170,7 +2224,7 @@ mod tests {
     /// Tests VfsStat construction and accessors for a file.
     #[test]
     fn vfs_stat_file() {
-        let s: VfsStat = VfsStat::new(1024, false);
+        let s: VfsStat = VfsStat::new(1024, false, 0, 0, 0);
         assert_eq!(s.size(), 1024, "file size should be 1024");
         assert!(!s.is_dir(), "should not be a directory");
     }
@@ -2178,7 +2232,7 @@ mod tests {
     /// Tests VfsStat construction and accessors for a directory.
     #[test]
     fn vfs_stat_directory() {
-        let s: VfsStat = VfsStat::new(0, true);
+        let s: VfsStat = VfsStat::new(0, true, 0, 0, 0);
         assert_eq!(s.size(), 0, "directory size should be 0");
         assert!(s.is_dir(), "should be a directory");
     }

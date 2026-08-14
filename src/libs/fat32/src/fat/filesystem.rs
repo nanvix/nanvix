@@ -19,16 +19,19 @@ use crate::{
             RawMemoryStorage,
             ReadOnlyMemoryStorage,
         },
-        time::NanvixTimeProvider,
+        time::{
+            date_to_unix,
+            datetime_to_unix,
+            unix_to_datetime,
+            NanvixTimeProvider,
+            FAT_EPOCH_SECS,
+        },
         InternalFatFs,
         ReadOnlyInternalFatFs,
     },
 };
 use ::core::fmt;
-use ::fatfs::{
-    Seek,
-    SeekFrom,
-};
+use ::fatfs::Write;
 
 //==================================================================================================
 // Internal Enum
@@ -257,11 +260,58 @@ impl Fat {
         })
     }
 
+    /// Sets access and/or modification times on a file.
+    ///
+    /// `None` leaves that timestamp unchanged (POSIX `UTIME_OMIT`). Times are
+    /// Unix seconds. FAT stores access as a date only, so sub-day access
+    /// precision is dropped. Directory targets are a no-op (fatfs exposes no
+    /// writable directory time entry).
+    ///
+    /// TODO(#3101): `path` should be an `AnchoredPath`, not a bare `&str`.
+    ///
+    /// # Errors
+    ///
+    /// - [`Fat32Error::ReadOnly`] if the mount is read-only.
+    /// - [`Fat32Error::NotFound`] if the path does not exist.
+    pub fn set_times(
+        &self,
+        path: &str,
+        atime: Option<i64>,
+        mtime: Option<i64>,
+    ) -> Result<(), Fat32Error> {
+        if self.is_readonly() {
+            return Err(Fat32Error::ReadOnly);
+        }
+        dispatch_fs!(self, |fs| {
+            let root = fs.root_dir();
+            let mut file = match root.open_file(path) {
+                Ok(file) => file,
+                // Directories have no writable time entry in fatfs; treat as no-op.
+                Err(_) if root.open_dir(path).is_ok() => return Ok(()),
+                Err(e) => return Err(map_fatfs_error(e)),
+            };
+            // The setters are deprecated upstream but are the only write path.
+            #[allow(deprecated)]
+            {
+                if let Some(secs) = mtime {
+                    file.set_modified(unix_to_datetime(secs));
+                }
+                if let Some(secs) = atime {
+                    file.set_accessed(unix_to_datetime(secs).date);
+                }
+            }
+            // Flush the dir entry now so I/O errors surface here, not on drop.
+            Write::flush(&mut file).map_err(map_fatfs_error)?;
+            Ok(())
+        })
+    }
+
     /// Gets file/directory metadata.
     ///
     /// # Parameters
     ///
     /// - `path`: Path relative to the FAT root.
+    ///   TODO(#3101): `path` should be an `AnchoredPath`, not a bare `&str`.
     ///
     /// # Returns
     ///
@@ -274,27 +324,40 @@ impl Fat {
         dispatch_fs!(self, |fs| {
             let root = fs.root_dir();
 
+            // Mount root has no directory entry; report FAT-epoch times.
             if path.is_empty() || path == "/" || path == "." {
                 return Ok(FatStat {
                     size: 0,
                     is_dir: true,
+                    atime: FAT_EPOCH_SECS,
+                    mtime: FAT_EPOCH_SECS,
+                    ctime: FAT_EPOCH_SECS,
                 });
             }
 
-            // Try opening as file first.
-            if let Ok(mut file) = root.open_file(path) {
-                let size: u64 = file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
-                return Ok(FatStat {
-                    size,
-                    is_dir: false,
-                });
-            }
+            // Timestamps live on the directory entry, so scan the parent.
+            let (parent, name) = match path.rsplit_once('/') {
+                Some((parent, name)) => (parent, name),
+                None => ("", path),
+            };
+            let dir = if parent.is_empty() {
+                root
+            } else {
+                root.open_dir(parent).map_err(map_fatfs_error)?
+            };
 
-            // Try opening as directory.
-            if root.open_dir(path).is_ok() {
+            for entry in dir.iter() {
+                let entry = entry.map_err(map_fatfs_error)?;
+                if !entry.file_name().eq_ignore_ascii_case(name) {
+                    continue;
+                }
+                let is_dir: bool = entry.is_dir();
                 return Ok(FatStat {
-                    size: 0,
-                    is_dir: true,
+                    size: if is_dir { 0 } else { entry.len() },
+                    is_dir,
+                    atime: date_to_unix(entry.accessed()),
+                    mtime: datetime_to_unix(entry.modified()),
+                    ctime: datetime_to_unix(entry.created()),
                 });
             }
 
@@ -570,6 +633,12 @@ pub struct FatStat {
     pub size: u64,
     /// True if this is a directory.
     pub is_dir: bool,
+    /// Last access time (Unix seconds). FAT stores this date-only.
+    pub atime: i64,
+    /// Last modification time (Unix seconds).
+    pub mtime: i64,
+    /// Creation time (Unix seconds).
+    pub ctime: i64,
 }
 
 /// Directory entry from a FAT filesystem.
@@ -808,6 +877,43 @@ mod tests {
         let fat: FatHandle = FatHandle::new();
         let result: Result<FatStat, Fat32Error> = fat.stat("nope.txt");
         assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
+    }
+
+    /// Tests that set_times is reflected by a later stat.
+    #[test]
+    fn set_times_roundtrip() {
+        let fat: FatHandle = FatHandle::new();
+        fat.create_new("t.txt", true, true)
+            .expect("create should succeed");
+
+        // 2024-06-15T12:30:00Z.
+        let when: i64 = 1_718_454_600;
+        fat.set_times("t.txt", Some(when), Some(when))
+            .expect("set_times should succeed");
+
+        let info: FatStat = fat.stat("t.txt").expect("stat should succeed");
+        // FAT stores modification at 2s resolution.
+        assert!((info.mtime - when).abs() <= 2, "mtime should round-trip");
+        // FAT stores access as a date only: truncated to midnight.
+        assert_eq!(info.atime, when - when % 86_400, "atime is date-only");
+    }
+
+    /// Tests that set_times omits the field passed as `None`.
+    #[test]
+    fn set_times_omit_leaves_mtime() {
+        let fat: FatHandle = FatHandle::new();
+        fat.create_new("omit.txt", true, true)
+            .expect("create should succeed");
+
+        let base: i64 = 1_718_454_600;
+        fat.set_times("omit.txt", Some(base), Some(base))
+            .expect("set_times should succeed");
+        // Change only atime; mtime must stay put.
+        fat.set_times("omit.txt", Some(base + 86_400), None)
+            .expect("set_times should succeed");
+
+        let info: FatStat = fat.stat("omit.txt").expect("stat should succeed");
+        assert!((info.mtime - base).abs() <= 2, "mtime unchanged");
     }
 
     // -- mkdir / rmdir tests -----------------------------------------------------
