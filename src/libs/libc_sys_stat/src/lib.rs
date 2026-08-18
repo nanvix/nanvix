@@ -175,6 +175,26 @@ pub unsafe extern "C" fn fchmodat(
     }
 }
 
+/// Resolves a raw `times` pointer into an owned `[timespec; 2]`.
+///
+/// A NULL pointer maps to `UTIME_NOW` for both entries, per POSIX ("set both
+/// timestamps to the current time"). A non-NULL pointer must reference exactly
+/// two elements; otherwise [`None`] is returned.
+///
+/// # Safety
+///
+/// The caller must ensure a non-NULL `times` points to two valid `timespec`s.
+unsafe fn resolve_times(times: *const timespec) -> Option<[timespec; 2]> {
+    if times.is_null() {
+        let now: timespec = timespec {
+            tv_sec: 0,
+            tv_nsec: sys_stat::UTIME_NOW,
+        };
+        return Some([now; 2]);
+    }
+    slice::from_raw_parts(times, 2).try_into().ok()
+}
+
 ///
 /// # Description
 ///
@@ -203,25 +223,17 @@ pub unsafe extern "C" fn fchmodat(
 #[unsafe(no_mangle)]
 #[trace_libcall]
 pub unsafe extern "C" fn futimens(fd: c_int, times: *const timespec) -> c_int {
-    // Check if `times` is invalid.
-    if times.is_null() {
-        ::syslog::warn!("futimens(): fd={}, times={:p}", fd, times);
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Attempt to convert `times` to a reference to an array of two elements.
-    let times: &[timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
-        Ok(array) => array,
-        Err(_) => {
-            ::syslog::warn!("futimens(): invalid times array");
+    let times: [timespec; 2] = match resolve_times(times) {
+        Some(times) => times,
+        None => {
+            ::syslog::warn!("futimens(): invalid times array (fd={})", fd);
             *__errno_location() = ErrorCode::InvalidArgument.get();
             return -1;
         },
     };
 
     // Attempt to set the access and modification times and parse the result.
-    match stat::futimens(fd, times) {
+    match stat::futimens(fd, &times) {
         Ok(()) => 0,
         Err(error) => {
             ::syslog::warn!("futimens(): failed (fd={}, times={:?}, error={:?})", fd, times, error);
@@ -537,28 +549,13 @@ pub unsafe extern "C" fn utimensat(
         },
     };
 
-    // Check if `times` is invalid.
-    if times.is_null() {
-        ::syslog::warn!(
-            "utimensat(): invalid times (dirfd={}, pathname={:?}, times={:p}, flags={})",
-            dirfd,
-            pathname,
-            times,
-            flags
-        );
-        *__errno_location() = ErrorCode::InvalidArgument.get();
-        return -1;
-    }
-
-    // Attempt to convert `times` to a reference to an array of two elements.
-    let times: &[timespec; 2] = match slice::from_raw_parts(times, 2).try_into() {
-        Ok(array) => array,
-        Err(_) => {
+    let times: [timespec; 2] = match resolve_times(times) {
+        Some(times) => times,
+        None => {
             ::syslog::warn!(
-                "futimens(): invalid times array (dirfd={}, pathname={:?}, times={:p}, flags={})",
+                "utimensat(): invalid times array (dirfd={}, pathname={:?}, flags={})",
                 dirfd,
                 pathname,
-                times,
                 flags
             );
             *__errno_location() = ErrorCode::InvalidArgument.get();
@@ -566,7 +563,7 @@ pub unsafe extern "C" fn utimensat(
         },
     };
 
-    match stat::utimensat(dirfd, pathname, times, flags) {
+    match stat::utimensat(dirfd, pathname, &times, flags) {
         Ok(_) => 0,
         Err(error) => {
             ::syslog::warn!(

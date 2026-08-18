@@ -140,6 +140,7 @@ extern void test_umask_ramfs(void);
 
 // Tests whether we can change file access and modification times.
 extern void test_utimensat(void);
+extern void test_utimensat_now(void);
 
 // Tests whether we can update file timestamps with `utimes()`.
 extern void test_utimes(void);
