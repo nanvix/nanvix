@@ -1,13 +1,16 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-//! File metadata.
+//! Backend-neutral filesystem metadata.
 
 //==================================================================================================
 // Structures
 //==================================================================================================
 
-/// File metadata.
+/// File metadata returned by VFS operations.
+///
+/// Filesystem backends translate native metadata into this type before it is
+/// converted to an outward-facing POSIX [`sysapi::sys_stat::stat`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Stat {
     /// Size of the file in bytes (0 for directories).

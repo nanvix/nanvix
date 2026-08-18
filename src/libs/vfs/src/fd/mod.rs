@@ -69,11 +69,6 @@ use ::fat32::{
 };
 use ::spin::Mutex;
 use ::sys::pm::ProcessIdentifier;
-#[cfg(not(feature = "std"))]
-use ::sys::{
-    kcall::pm::__kcall_gettime,
-    time::SystemTime,
-};
 use ::sysapi::{
     fcntl::{
         file_control_request,
@@ -167,7 +162,6 @@ pub use crate::{
         TtyError,
         VfsFileHandle,
         VfsRoute,
-        VfsStat,
     },
     process::set_current_process,
 };
@@ -987,7 +981,7 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
     let cwd: String = current_cwd();
     // If O_DIRECTORY is set, verify the path is a directory before opening.
     if flags & file_creation_flags::O_DIRECTORY != 0 {
-        let info: VfsStat = open_adapter::stat(&cwd, path)?;
+        let info: filesystem::Stat = filesystem::stat(&cwd, path)?;
         if !info.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
@@ -1112,45 +1106,37 @@ pub fn vfs_lseek(fd: c_int, offset: off_t, whence: c_int) -> Result<off_t, Fat32
     Ok(new_pos)
 }
 
-/// Populates common stat fields for VFS entries.
-///
-/// FAT32 lacks Unix ownership metadata so we use sensible defaults:
-/// - `st_nlink = 1` (single link).
-/// - Permissions: owner read+write for files, owner rwx for directories.
-///
-/// Timestamps (`atime`/`mtime`/`ctime`, Unix seconds) come from the backing
-/// directory entry.
-fn populate_stat_fields(
-    buf: &mut ::sysapi::sys_stat::stat,
-    size: u64,
-    is_dir: bool,
-    atime: i64,
-    mtime: i64,
-    ctime: i64,
-) {
-    buf.st_size = size as off_t;
-    buf.st_nlink = if is_dir { 2 } else { 1 };
-    buf.st_dev = 1; // Synthetic device ID for the VFS.
-    buf.st_ino = 1; // Synthetic inode (FAT has no inodes).
-    buf.st_mode = if is_dir {
-        file_type::S_IFDIR | file_mode::S_IRWXU
-    } else {
-        file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IWUSR
-    };
-    buf.st_blksize = STAT_BLOCK_SIZE;
-    buf.st_blocks = size.div_ceil(STAT_SECTOR_SIZE) as off_t;
-    buf.st_atim = timespec {
-        tv_sec: atime,
-        tv_nsec: 0,
-    };
-    buf.st_mtim = timespec {
-        tv_sec: mtime,
-        tv_nsec: 0,
-    };
-    buf.st_ctim = timespec {
-        tv_sec: ctime,
-        tv_nsec: 0,
-    };
+/// Updates a POSIX stat buffer from VFS metadata.
+trait StatExt {
+    fn update_from_vfs(&mut self, info: &filesystem::Stat);
+}
+
+impl StatExt for ::sysapi::sys_stat::stat {
+    fn update_from_vfs(&mut self, info: &filesystem::Stat) {
+        self.st_size = info.size() as off_t;
+        self.st_nlink = if info.is_dir() { 2 } else { 1 };
+        self.st_dev = 1;
+        self.st_ino = 1;
+        self.st_mode = if info.is_dir() {
+            file_type::S_IFDIR | file_mode::S_IRWXU
+        } else {
+            file_type::S_IFREG | file_mode::S_IRUSR | file_mode::S_IWUSR
+        };
+        self.st_blksize = STAT_BLOCK_SIZE;
+        self.st_blocks = info.size().div_ceil(STAT_SECTOR_SIZE) as off_t;
+        self.st_atim = timespec {
+            tv_sec: info.atime(),
+            tv_nsec: 0,
+        };
+        self.st_mtim = timespec {
+            tv_sec: info.mtime(),
+            tv_nsec: 0,
+        };
+        self.st_ctim = timespec {
+            tv_sec: info.ctime(),
+            tv_nsec: 0,
+        };
+    }
 }
 
 /// Populates stat fields for a pipe (FIFO) descriptor.
@@ -1160,10 +1146,7 @@ fn populate_stat_fields(
 /// carries the pipe's unique identity, and `st_dev` a synthetic pipefs device distinct from the
 /// VFS file device, so distinct pipes report distinct `(st_dev, st_ino)` pairs that never collide
 /// with regular files — mirroring how a real pipefs assigns one inode per pipe.
-fn populate_pipe_stat_fields(buf: &mut ::sysapi::sys_stat::stat, pipe_id: u64) {
-    // Fixed epoch timestamp: 2024-01-01T00:00:00Z (1704067200).
-    const FIXED_EPOCH: i64 = 1_704_067_200;
-
+fn populate_pipe_stat_fields(buf: &mut ::sysapi::sys_stat::stat, pipe_id: u64, created: i64) {
     buf.st_size = 0;
     buf.st_nlink = 1;
     buf.st_dev = 2; // Synthetic pipefs device ID, distinct from the VFS file device (1).
@@ -1171,16 +1154,17 @@ fn populate_pipe_stat_fields(buf: &mut ::sysapi::sys_stat::stat, pipe_id: u64) {
     buf.st_mode = file_type::S_IFIFO | file_mode::S_IRUSR | file_mode::S_IWUSR;
     buf.st_blksize = STAT_BLOCK_SIZE;
     buf.st_blocks = 0;
+    // A pipe's times are all its creation instant: never modified on disk, no atime tracking.
     buf.st_atim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: created,
         tv_nsec: 0,
     };
     buf.st_mtim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: created,
         tv_nsec: 0,
     };
     buf.st_ctim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: created,
         tv_nsec: 0,
     };
 }
@@ -1193,10 +1177,11 @@ fn populate_pipe_stat_fields(buf: &mut ::sysapi::sys_stat::stat, pipe_id: u64) {
 /// inode follows the stream rather than the slot, a `dup`'d console descriptor reports the same
 /// `(st_dev, st_ino)` as its source, matching POSIX shared-identity expectations. A console carries
 /// no size or on-disk blocks, so both are zero.
-fn populate_console_stat_fields(buf: &mut ::sysapi::sys_stat::stat, stream: ConsoleStream) {
-    // Fixed epoch timestamp: 2024-01-01T00:00:00Z (1704067200).
-    const FIXED_EPOCH: i64 = 1_704_067_200;
-
+fn populate_console_stat_fields(
+    buf: &mut ::sysapi::sys_stat::stat,
+    stream: ConsoleStream,
+    created: i64,
+) {
     // Stable per-stream inode: stdin/stdout/stderr get distinct values that a duplicate inherits.
     let ino: u64 = match stream {
         ConsoleStream::Stdin => 1,
@@ -1210,16 +1195,17 @@ fn populate_console_stat_fields(buf: &mut ::sysapi::sys_stat::stat, stream: Cons
     buf.st_mode = file_type::S_IFCHR | file_mode::S_IRUSR | file_mode::S_IWUSR;
     buf.st_blksize = STAT_BLOCK_SIZE;
     buf.st_blocks = 0;
+    // The console has no on-disk metadata; report its creation instant for all three times.
     buf.st_atim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: created,
         tv_nsec: 0,
     };
     buf.st_mtim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: created,
         tv_nsec: 0,
     };
     buf.st_ctim = timespec {
-        tv_sec: FIXED_EPOCH,
+        tv_sec: created,
         tv_nsec: 0,
     };
 }
@@ -1229,32 +1215,43 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     let file: OpenFile = entry_arc(fd)?;
     let mut guard = file.lock();
     let entry: &mut VfsEntry = &mut guard;
-    let pipe_id: Option<u64> = entry.handle.pipe_end().map(|end| end.pipe_id());
-    let console_stream: Option<ConsoleStream> = match &entry.handle {
-        VfsFileHandle::Console(h) => Some(h.stream()),
-        _ => None,
-    };
-    let is_dir: bool = matches!(&entry.handle, VfsFileHandle::Directory(_));
-    let size: u64 = entry.handle.size()?;
 
     // Zero-initialize the stat buffer.
     unsafe {
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
 
-    if let Some(stream) = console_stream {
-        // A console descriptor is a character device with a stable, dup-shared identity; the kernel
-        // does not serve `fstat` on the console, so vfsd synthesizes it from the slot it owns.
-        populate_console_stat_fields(buf, stream);
-    } else if let Some(pipe_id) = pipe_id {
-        populate_pipe_stat_fields(buf, pipe_id);
-    } else {
-        // fatfs exposes time getters only on a directory entry (reached by scanning
-        // the parent), never on an open `File`, and an open handle keeps no path.
-        // We are not patching upstream fatfs (slated for replacement), so an open fd
-        // reports the FAT epoch; path-based stat (`vfs_stat`) carries the real times.
-        // Known POSIX divergence, tracked for the fatfs replacement.
-        populate_stat_fields(buf, size, is_dir, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS);
+    match &mut entry.handle {
+        handle @ (VfsFileHandle::Fat32(_)
+        | VfsFileHandle::DirectRead(_)
+        | VfsFileHandle::Directory(_)
+        | VfsFileHandle::HostFs(_)) => {
+            // upstream exposes timestamps through directory entries, not open
+            // files. Re-querying by path can identify a different file after
+            // rename or unlink, so retain the epoch
+            // fallback until the backend exposes metadata through open handles.
+            let size: u64 = handle.size()?;
+            let info: filesystem::Stat = filesystem::Stat::new(
+                size,
+                handle.is_dir(),
+                FAT_EPOCH_SECS,
+                FAT_EPOCH_SECS,
+                FAT_EPOCH_SECS,
+            );
+            buf.update_from_vfs(&info);
+        },
+        VfsFileHandle::Pipe(end) => {
+            populate_pipe_stat_fields(buf, end.pipe_id(), end.created());
+        },
+        VfsFileHandle::Console(handle) => {
+            populate_console_stat_fields(buf, handle.stream(), handle.created());
+        },
+        VfsFileHandle::Socket(_) => {
+            // TODO: Report socket metadata instead of treating the descriptor as a regular file.
+            let info: filesystem::Stat =
+                filesystem::Stat::new(0, false, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS);
+            buf.update_from_vfs(&info);
+        },
     }
 
     Ok(())
@@ -1399,21 +1396,14 @@ pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
 
 /// Gets file status for a path through the VFS.
 pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
-    let info: VfsStat = open_adapter::stat(&current_cwd(), path)?;
+    let info: filesystem::Stat = filesystem::stat(&current_cwd(), path)?;
 
     // Zero-initialize the stat buffer.
     unsafe {
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
 
-    populate_stat_fields(
-        buf,
-        info.size(),
-        info.is_dir(),
-        info.atime(),
-        info.mtime(),
-        info.ctime(),
-    );
+    buf.update_from_vfs(&info);
 
     Ok(())
 }
@@ -2196,27 +2186,11 @@ pub fn vfs_utimensat(
             _ => Err(Fat32Error::InvalidArgument),
         }
     };
-    let now: i64 = wall_clock_secs();
+    let now: i64 = crate::time::wall_clock_secs();
     let atime: Option<i64> = resolve(&times[0], now)?;
     let mtime: Option<i64> = resolve(&times[1], now)?;
 
     filesystem::set_times(&current_cwd(), resolved.as_str(), atime, mtime)
-}
-
-/// Current wall-clock time in Unix seconds, falling back to the FAT epoch.
-#[cfg(not(feature = "std"))]
-fn wall_clock_secs() -> i64 {
-    let mut now: SystemTime = SystemTime::default();
-    match __kcall_gettime(&mut now) {
-        Ok(()) => now.seconds() as i64,
-        Err(_) => FAT_EPOCH_SECS,
-    }
-}
-
-/// Host test builds have no kernel clock; use the FAT epoch.
-#[cfg(feature = "std")]
-fn wall_clock_secs() -> i64 {
-    FAT_EPOCH_SECS
 }
 
 //==================================================================================================
@@ -2232,24 +2206,6 @@ mod tests {
         FD_CLOEXEC,
         FD_CLOFORK,
     };
-
-    // -- VfsStat tests -----------------------------------------------------------
-
-    /// Tests VfsStat construction and accessors for a file.
-    #[test]
-    fn vfs_stat_file() {
-        let s: VfsStat = VfsStat::new(1024, false, 0, 0, 0);
-        assert_eq!(s.size(), 1024, "file size should be 1024");
-        assert!(!s.is_dir(), "should not be a directory");
-    }
-
-    /// Tests VfsStat construction and accessors for a directory.
-    #[test]
-    fn vfs_stat_directory() {
-        let s: VfsStat = VfsStat::new(0, true, 0, 0, 0);
-        assert_eq!(s.size(), 0, "directory size should be 0");
-        assert!(s.is_dir(), "should be a directory");
-    }
 
     // -- DirectReadHandle tests --------------------------------------------------
 

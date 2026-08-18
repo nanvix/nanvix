@@ -25,6 +25,8 @@ use ::spin::Mutex;
 pub struct ConsoleHandle {
     /// Which standard stream this descriptor represents.
     stream: ConsoleStream,
+    /// Wall-clock creation time (Unix seconds), reported for all three stat times.
+    created: i64,
     /// Shared line discipline (terminal attributes and cooked input), referenced by every console
     /// descriptor of the device.
     terminal: Arc<Mutex<LineDiscipline>>,
@@ -48,12 +50,21 @@ impl ConsoleHandle {
     /// The three standard streams are created this way from a single shared line discipline so that
     /// they observe one consistent `termios`/`winsize` and one shared input buffer.
     pub fn with_terminal(stream: ConsoleStream, terminal: Arc<Mutex<LineDiscipline>>) -> Self {
-        Self { stream, terminal }
+        Self {
+            stream,
+            created: crate::time::wall_clock_secs(),
+            terminal,
+        }
     }
 
     /// Returns the standard stream this handle represents.
     pub fn stream(&self) -> ConsoleStream {
         self.stream
+    }
+
+    /// Returns the wall-clock creation time (Unix seconds) of this console handle.
+    pub fn created(&self) -> i64 {
+        self.created
     }
 
     /// Returns a reference to the shared line discipline backing this console descriptor.
