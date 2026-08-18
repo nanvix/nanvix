@@ -42,26 +42,31 @@ impl VfsStat {
     }
 
     /// Returns the file size in bytes.
+    #[must_use]
     pub fn size(&self) -> u64 {
         self.size
     }
 
     /// Returns whether this entry is a directory.
+    #[must_use]
     pub fn is_dir(&self) -> bool {
         self.is_dir
     }
 
     /// Returns the last access time (Unix seconds).
+    #[must_use]
     pub fn atime(&self) -> i64 {
         self.atime
     }
 
     /// Returns the last modification time (Unix seconds).
+    #[must_use]
     pub fn mtime(&self) -> i64 {
         self.mtime
     }
 
     /// Returns the creation time (Unix seconds).
+    #[must_use]
     pub fn ctime(&self) -> i64 {
         self.ctime
     }

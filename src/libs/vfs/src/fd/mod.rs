@@ -124,6 +124,9 @@ const STAT_BLOCK_SIZE: i64 = 4096;
 /// Sector size used for `st_blocks` computation (POSIX convention: 512 bytes).
 const STAT_SECTOR_SIZE: u64 = 512;
 
+/// Last Unix second representable by FAT (2107-12-31T23:59:59Z).
+const MAX_FAT_TIMESTAMP: i64 = 4_354_819_199;
+
 /// Default file mode creation mask.
 const DEFAULT_FILE_CREATION_MASK: mode_t = 0;
 
@@ -2144,6 +2147,9 @@ pub fn vfs_fchownat(
 
 /// Sets file access and modification times through the VFS.
 ///
+/// POSIX timestamp rules:
+/// <https://pubs.opengroup.org/onlinepubs/9799919799/functions/utimensat.html>.
+///
 /// Resolves `UTIME_NOW` against the wall clock and honors `UTIME_OMIT`, then
 /// applies the result to the backing file. FAT stores access as a date only, so
 /// sub-day access precision is dropped.
@@ -2157,7 +2163,8 @@ pub fn vfs_fchownat(
 ///
 /// # Errors
 ///
-/// Returns [`Fat32Error::InvalidArgument`] if the path cannot be resolved.
+/// Returns [`Fat32Error::InvalidArgument`] if the path cannot be resolved or a
+/// timestamp has an invalid nanosecond value or is outside the FAT range.
 /// Returns [`Fat32Error::FileNotFound`] if the resolved path does not exist.
 pub fn vfs_utimensat(
     dirfd: c_int,
@@ -2169,22 +2176,29 @@ pub fn vfs_utimensat(
     if flags != 0 {
         return Err(Fat32Error::InvalidArgument);
     }
+    // POSIX requires no ownership or permission checks when both fields are omitted.
+    if times.iter().all(|ts| ts.tv_nsec == UTIME_OMIT) {
+        return Ok(());
+    }
     let resolved = vfs_resolve_path(dirfd, pathname)?;
 
     // POSIX permission check (owner / write access / privilege) is not enforced:
     // Nanvix is single-user so it always passes. Tracked for the multiuser model.
 
-    // Resolve a single request field to concrete seconds, or `None` to omit.
-    let resolve = |ts: &timespec, now: i64| -> Option<i64> {
+    // POSIX rejects non-special nanoseconds outside [0, 1000 million).
+    let resolve = |ts: &timespec, now: i64| -> Result<Option<i64>, Fat32Error> {
         match ts.tv_nsec {
-            n if n == UTIME_OMIT => None,
-            n if n == UTIME_NOW => Some(now),
-            _ => Some(ts.tv_sec),
+            n if n == UTIME_OMIT => Ok(None),
+            n if n == UTIME_NOW => Ok(Some(now)),
+            0..1_000_000_000 if (FAT_EPOCH_SECS..=MAX_FAT_TIMESTAMP).contains(&ts.tv_sec) => {
+                Ok(Some(ts.tv_sec))
+            },
+            _ => Err(Fat32Error::InvalidArgument),
         }
     };
     let now: i64 = wall_clock_secs();
-    let atime: Option<i64> = resolve(&times[0], now);
-    let mtime: Option<i64> = resolve(&times[1], now);
+    let atime: Option<i64> = resolve(&times[0], now)?;
+    let mtime: Option<i64> = resolve(&times[1], now)?;
 
     filesystem::set_times(&current_cwd(), resolved.as_str(), atime, mtime)
 }

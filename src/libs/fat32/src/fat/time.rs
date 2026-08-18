@@ -32,6 +32,9 @@ const MIN_FAT_YEAR: i64 = 1980;
 /// Highest year representable in a FAT timestamp.
 const MAX_FAT_YEAR: i64 = 2107;
 
+/// Last Unix second representable by FAT (2107-12-31T23:59:59Z).
+const MAX_FAT_TIMESTAMP: i64 = 4_354_819_199;
+
 const SECS_PER_DAY: i64 = 86_400;
 
 //==================================================================================================
@@ -80,6 +83,11 @@ fn now_secs() -> i64 {
 #[cfg(feature = "std")]
 fn now_secs() -> i64 {
     FAT_EPOCH_SECS
+}
+
+/// Returns whether Unix seconds can be represented by FAT.
+pub(crate) fn is_fat_timestamp(secs: i64) -> bool {
+    (FAT_EPOCH_SECS..=MAX_FAT_TIMESTAMP).contains(&secs)
 }
 
 /// Converts Unix seconds to a FAT `DateTime`, clamped to the FAT year range.

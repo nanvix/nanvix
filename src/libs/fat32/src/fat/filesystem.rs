@@ -22,6 +22,7 @@ use crate::{
         time::{
             date_to_unix,
             datetime_to_unix,
+            is_fat_timestamp,
             unix_to_datetime,
             NanvixTimeProvider,
             FAT_EPOCH_SECS,
@@ -271,6 +272,10 @@ impl Fat {
     ///
     /// # Errors
     ///
+    /// POSIX requires `EINVAL` for timestamps unsupported by the filesystem:
+    /// <https://pubs.opengroup.org/onlinepubs/9799919799/functions/utimensat.html>.
+    ///
+    /// - [`Fat32Error::InvalidArgument`] if a timestamp is outside the FAT range.
     /// - [`Fat32Error::ReadOnly`] if the mount is read-only.
     /// - [`Fat32Error::NotFound`] if the path does not exist.
     pub fn set_times(
@@ -279,6 +284,16 @@ impl Fat {
         atime: Option<i64>,
         mtime: Option<i64>,
     ) -> Result<(), Fat32Error> {
+        if atime.is_none() && mtime.is_none() {
+            return Ok(());
+        }
+        if atime
+            .into_iter()
+            .chain(mtime)
+            .any(|secs| !is_fat_timestamp(secs))
+        {
+            return Err(Fat32Error::InvalidArgument);
+        }
         if self.is_readonly() {
             return Err(Fat32Error::ReadOnly);
         }
@@ -324,8 +339,13 @@ impl Fat {
         dispatch_fs!(self, |fs| {
             let root = fs.root_dir();
 
+            // POSIX pathname resolution requires a trailing slash to name a directory.
+            // https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap04.html#tag_04_16
+            let requires_dir: bool = path.ends_with('/');
+            let path: &str = path.trim_end_matches('/');
+
             // Mount root has no directory entry; report FAT-epoch times.
-            if path.is_empty() || path == "/" || path == "." {
+            if path.is_empty() || path == "." {
                 return Ok(FatStat {
                     size: 0,
                     is_dir: true,
@@ -348,10 +368,15 @@ impl Fat {
 
             for entry in dir.iter() {
                 let entry = entry.map_err(map_fatfs_error)?;
-                if !entry.file_name().eq_ignore_ascii_case(name) {
+                if !entry.file_name().eq_ignore_ascii_case(name)
+                    && !entry.short_file_name().eq_ignore_ascii_case(name)
+                {
                     continue;
                 }
                 let is_dir: bool = entry.is_dir();
+                if requires_dir && !is_dir {
+                    return Err(Fat32Error::NotADirectory);
+                }
                 return Ok(FatStat {
                     size: if is_dir { 0 } else { entry.len() },
                     is_dir,
@@ -879,6 +904,33 @@ mod tests {
         assert_eq!(result.unwrap_err(), Fat32Error::NotFound);
     }
 
+    /// Tests stat with a trailing separator.
+    #[test]
+    fn stat_trailing_separator() {
+        let fat: FatHandle = FatHandle::new();
+        fat.mkdir("subdir").expect("mkdir should succeed");
+        fat.create_new("file.txt", true, true)
+            .expect("create should succeed");
+
+        let info: FatStat = fat.stat("subdir/").expect("stat should succeed");
+        assert!(info.is_dir, "entry should be a directory");
+        assert_eq!(fat.stat("file.txt/").unwrap_err(), Fat32Error::NotADirectory);
+    }
+
+    /// Tests lookup through a long file name's short alias.
+    #[test]
+    fn stat_short_name_alias() {
+        let fat: FatHandle = FatHandle::new();
+        fat.create_new("Long File Name.txt", true, true)
+            .expect("create should succeed");
+
+        let when: i64 = 1_718_454_600;
+        fat.set_times("LONGFI~1.TXT", Some(when), Some(when))
+            .expect("short alias should resolve");
+        fat.stat("LONGFI~1.TXT")
+            .expect("short alias should resolve");
+    }
+
     /// Tests that set_times is reflected by a later stat.
     #[test]
     fn set_times_roundtrip() {
@@ -896,6 +948,20 @@ mod tests {
         assert!((info.mtime - when).abs() <= 2, "mtime should round-trip");
         // FAT stores access as a date only: truncated to midnight.
         assert_eq!(info.atime, when - when % 86_400, "atime is date-only");
+    }
+
+    /// Tests that set_times rejects timestamps outside the FAT range.
+    #[test]
+    fn set_times_rejects_unsupported_timestamp() {
+        let fat: FatHandle = FatHandle::new();
+        fat.create_new("range.txt", true, true)
+            .expect("create should succeed");
+
+        assert_eq!(fat.set_times("range.txt", Some(0), None), Err(Fat32Error::InvalidArgument));
+        assert_eq!(
+            fat.set_times("range.txt", None, Some(4_354_819_200)),
+            Err(Fat32Error::InvalidArgument)
+        );
     }
 
     /// Tests that set_times omits the field passed as `None`.
@@ -1282,6 +1348,14 @@ mod readonly_tests {
     }
 
     // -- Read-only write guards --------------------------------------------------
+
+    /// Tests that omitting both timestamps does not resolve the path.
+    #[test]
+    fn readonly_set_times_omit_succeeds() {
+        let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+        fat.set_times("missing.txt", None, None)
+            .expect("omitting timestamps should succeed");
+    }
 
     /// Tests that open with write flag returns ReadOnly on a read-only filesystem.
     #[test]
