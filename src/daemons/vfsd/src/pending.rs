@@ -31,6 +31,7 @@ use ::hostfs_api::{
     LstatResponse,
     OperationId,
     OperationIdAllocator,
+    StatTimesResponse,
 };
 use ::sys::{
     error::ErrorCode,
@@ -95,8 +96,13 @@ pub(crate) enum PendingOpKind {
     Unlink,
     /// rename — response is a status code.
     Rename,
-    /// stat/fstat — response contains size, mode, is_dir.
+    /// stat/fstat — waiting for size, mode, and kind.
     Stat,
+    /// stat/fstat — metadata arrived; waiting for timestamps.
+    StatTimes {
+        /// First response payload.
+        metadata: [u8; Message::PAYLOAD_SIZE],
+    },
     /// symlink — response is a status code.
     Symlink,
     /// readlink — response contains the link target bytes.
@@ -106,14 +112,31 @@ pub(crate) enum PendingOpKind {
     },
     /// lstat — path-based stat that does not follow the final symbolic link.
     Lstat,
+    /// lstat metadata arrived; waiting for timestamps.
+    LstatTimes {
+        /// First response payload.
+        metadata: [u8; Message::PAYLOAD_SIZE],
+    },
     /// Path-based stat that follows the final symbolic link (default `stat(2)` semantics).
     /// Shares the `lstat` response wire format and completion path.
     PathStat,
+    /// Following stat metadata arrived; waiting for timestamps.
+    PathStatTimes {
+        /// First response payload.
+        metadata: [u8; Message::PAYLOAD_SIZE],
+    },
     /// chdir onto a hostfs path — a path-based stat whose completion commits the cwd
     /// when the target is a directory (else `ENOTDIR`). Reuses the `PathStat` wire form.
     Chdir {
         /// Absolute hostfs path to become the cwd once confirmed to be a directory.
         path: ResolvedPath,
+    },
+    /// chdir metadata arrived; waiting for the timestamp continuation.
+    ChdirTimes {
+        /// Absolute hostfs path to become the cwd once confirmed to be a directory.
+        path: ResolvedPath,
+        /// First response payload.
+        metadata: [u8; Message::PAYLOAD_SIZE],
     },
     /// getdents — directory listing over hostfs.
     ///
@@ -149,15 +172,10 @@ const MAX_PENDING_OPS: usize = 64;
 //==================================================================================================
 //
 // Hostfsd does not forward several `stat`/`lstat` fields from the host (timestamps,
-// device id, inode, link count). The constants below are the synthetic values used
-// to populate those fields so both completion paths report identical, deterministic
-// metadata.
-
-/// Fixed timestamp (2024-01-01T00:00:00Z) used for `st_atim`/`st_mtim`/`st_ctim`.
-///
-/// Keeps stat output stable across runs and hosts; tooling that only cares about
-/// ordering or equality continues to work.
-const STAT_FIXED_EPOCH: i64 = 1_704_067_200;
+// Hostfsd does not forward several `stat`/`lstat` fields from the host (device id,
+// inode, link count). The constants below are the synthetic values used to populate
+// those fields so both completion paths report identical, deterministic metadata.
+// Timestamps now carry real host `atim`/`mtim` (ctim is derived from mtim).
 
 /// Conventional Unix block size reported as `st_blksize`.
 ///
@@ -387,6 +405,83 @@ pub(crate) fn cancel_pending_op(op: PendingOp, code: ErrorCode) {
 // Response Completion
 //==================================================================================================
 
+/// Result of receiving the first half of a stat response.
+pub(crate) enum StatMetadataStep {
+    /// Metadata failed; complete the operation immediately.
+    Complete,
+    /// Metadata succeeded; wait for timestamps.
+    Wait,
+    /// The response did not match the pending operation.
+    Invalid,
+}
+
+/// Stores successful stat metadata until its timestamp continuation arrives.
+pub(crate) fn stage_stat_metadata(
+    pending: &mut PendingOp,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) -> StatMetadataStep {
+    if !validate_response_header(&pending.kind, response_payload) {
+        return StatMetadataStep::Invalid;
+    }
+    let offset: usize = ::hostfs_api::HOSTFS_DATA_START;
+    let status_bytes: [u8; 4] = match response_payload
+        .get(offset..offset + 4)
+        .and_then(|bytes| bytes.try_into().ok())
+    {
+        Some(bytes) => bytes,
+        None => return StatMetadataStep::Invalid,
+    };
+    let status: i32 = i32::from_le_bytes(status_bytes);
+    if status < 0 {
+        return StatMetadataStep::Complete;
+    }
+
+    let metadata: [u8; Message::PAYLOAD_SIZE] = *response_payload;
+    pending.kind = match &pending.kind {
+        PendingOpKind::Stat => PendingOpKind::StatTimes { metadata },
+        PendingOpKind::Lstat => PendingOpKind::LstatTimes { metadata },
+        PendingOpKind::PathStat => PendingOpKind::PathStatTimes { metadata },
+        PendingOpKind::Chdir { path } => PendingOpKind::ChdirTimes {
+            path: path.clone(),
+            metadata,
+        },
+        _ => return StatMetadataStep::Invalid,
+    };
+    StatMetadataStep::Wait
+}
+
+/// Completes a staged stat operation with its timestamp continuation.
+pub(crate) fn complete_stat_times(
+    pending: PendingOp,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) {
+    ::vfs::fd::set_current_process(pending.source_pid);
+    let Some(times) = StatTimesResponse::decode(response_payload) else {
+        ::syslog::error!("invalid stat timestamp continuation");
+        pending
+            .response_context
+            .send(&build_error(pending.source_tid, ErrorCode::IoErr));
+        return;
+    };
+    match pending.kind {
+        PendingOpKind::StatTimes { metadata } => {
+            complete_stat(pending.response_context, &metadata, Some(times));
+        },
+        PendingOpKind::LstatTimes { metadata } | PendingOpKind::PathStatTimes { metadata } => {
+            complete_lstat(pending.response_context, &metadata, Some(times));
+        },
+        PendingOpKind::ChdirTimes { path, metadata } => {
+            complete_chdir(pending.response_context, &metadata, path);
+        },
+        _ => {
+            ::syslog::error!("timestamp continuation for non-stat operation");
+            pending
+                .response_context
+                .send(&build_error(pending.source_tid, ErrorCode::IoErr));
+        },
+    }
+}
+
 /// Completes a pending hostfs operation given the IKC response payload.
 ///
 /// Builds and sends the appropriate response message to the guest caller.
@@ -448,16 +543,23 @@ pub(crate) fn complete_pending_op(
         PendingOpKind::Rename => {
             complete_status(response_context, response_payload, OpGroup::Rename)
         },
-        PendingOpKind::Stat => complete_stat(response_context, response_payload),
+        PendingOpKind::Stat => complete_stat(response_context, response_payload, None),
         PendingOpKind::Symlink => {
             complete_status(response_context, response_payload, OpGroup::Symlink)
         },
         PendingOpKind::Readlink { bufsiz } => {
             complete_readlink(response_context, response_payload, bufsiz)
         },
-        PendingOpKind::Lstat => complete_lstat(response_context, response_payload),
-        PendingOpKind::PathStat => complete_lstat(response_context, response_payload),
+        PendingOpKind::Lstat => complete_lstat(response_context, response_payload, None),
+        PendingOpKind::PathStat => complete_lstat(response_context, response_payload, None),
         PendingOpKind::Chdir { path } => complete_chdir(response_context, response_payload, path),
+        PendingOpKind::StatTimes { .. }
+        | PendingOpKind::LstatTimes { .. }
+        | PendingOpKind::PathStatTimes { .. }
+        | PendingOpKind::ChdirTimes { .. } => {
+            ::syslog::error!("staged stat operation routed to metadata completion");
+            response_context.send(&build_error(pending.source_tid, ErrorCode::IoErr));
+        },
         PendingOpKind::Getdents { .. } => {
             // Getdents sweeps are driven entirely by the main event loop, which keeps
             // the op buffered across round-trips and finalizes it via `finish_getdents`.
@@ -1090,6 +1192,7 @@ fn hostfs_error_to_code(code: i32) -> ErrorCode {
 fn complete_stat(
     response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
+    times: Option<StatTimesResponse>,
 ) {
     use ::sysapi::{
         sys_stat::{
@@ -1115,6 +1218,11 @@ fn complete_stat(
         return;
     }
 
+    let Some(times): Option<StatTimesResponse> = times else {
+        ::syslog::error!("successful stat response missing timestamps");
+        response_context.send(&build_error(source_tid, ErrorCode::IoErr));
+        return;
+    };
     let is_dir: bool = resp.is_dir != 0;
     let mode: u32 = if resp.mode != 0 {
         // Use host-provided mode, adding file type bits.
@@ -1147,16 +1255,16 @@ fn complete_stat(
         st_rdev: 0,
         st_size: resp.size as off_t,
         st_atim: timespec {
-            tv_sec: STAT_FIXED_EPOCH,
-            tv_nsec: 0,
+            tv_sec: times.atim.tv_sec,
+            tv_nsec: times.atim.tv_nsec as _,
         },
         st_mtim: timespec {
-            tv_sec: STAT_FIXED_EPOCH,
-            tv_nsec: 0,
+            tv_sec: times.mtim.tv_sec,
+            tv_nsec: times.mtim.tv_nsec as _,
         },
         st_ctim: timespec {
-            tv_sec: STAT_FIXED_EPOCH,
-            tv_nsec: 0,
+            tv_sec: times.ctim.tv_sec,
+            tv_nsec: times.ctim.tv_nsec as _,
         },
         st_blksize: STAT_BLOCK_SIZE,
         st_blocks: resp.size.div_ceil(STAT_SECTOR_SIZE) as off_t,
@@ -1295,6 +1403,7 @@ fn complete_readlink(
 fn complete_lstat(
     response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
+    times: Option<StatTimesResponse>,
 ) {
     use ::sysapi::{
         sys_stat::{
@@ -1326,6 +1435,11 @@ fn complete_lstat(
         return;
     }
 
+    let Some(times): Option<StatTimesResponse> = times else {
+        ::syslog::error!("successful lstat response missing timestamps");
+        response_context.send(&build_error(source_tid, ErrorCode::IoErr));
+        return;
+    };
     let type_bits: u32 = match resp.kind {
         ::hostfs_api::file_kind::DIRECTORY => file_type::S_IFDIR,
         ::hostfs_api::file_kind::SYMLINK => file_type::S_IFLNK,
@@ -1365,16 +1479,16 @@ fn complete_lstat(
         st_rdev: 0,
         st_size: resp.size as off_t,
         st_atim: timespec {
-            tv_sec: STAT_FIXED_EPOCH,
-            tv_nsec: 0,
+            tv_sec: times.atim.tv_sec,
+            tv_nsec: times.atim.tv_nsec as _,
         },
         st_mtim: timespec {
-            tv_sec: STAT_FIXED_EPOCH,
-            tv_nsec: 0,
+            tv_sec: times.mtim.tv_sec,
+            tv_nsec: times.mtim.tv_nsec as _,
         },
         st_ctim: timespec {
-            tv_sec: STAT_FIXED_EPOCH,
-            tv_nsec: 0,
+            tv_sec: times.ctim.tv_sec,
+            tv_nsec: times.ctim.tv_nsec as _,
         },
         st_blksize: STAT_BLOCK_SIZE,
         st_blocks: resp.size.div_ceil(STAT_SECTOR_SIZE) as off_t,
@@ -1427,4 +1541,119 @@ fn complete_chdir(
         ProcessIdentifier::VFSD,
         MessageType::Ipc,
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::hostfs_api::{
+        set_kind,
+        StatResponse,
+    };
+    use ::sys::ipc::{
+        MessageSender,
+        RequestIdentifier,
+    };
+    use ::syscall::SystemCallMessageKind;
+
+    fn pending(kind: PendingOpKind) -> PendingOp {
+        let process = ProcessIdentifier::from(10);
+        let thread = ThreadIdentifier::from(20);
+        PendingOp {
+            response_context: ResponseContext::new(
+                MessageSender::new(process, thread),
+                RequestIdentifier::from_raw(1),
+            ),
+            source_tid: thread,
+            source_pid: process,
+            kind,
+        }
+    }
+
+    fn stat_payload(status: i32) -> [u8; Message::PAYLOAD_SIZE] {
+        let mut payload = [0; Message::PAYLOAD_SIZE];
+        set_kind(&mut payload, SystemCallMessageKind::HostFsStatResponse as u16);
+        StatResponse {
+            status,
+            size: 42,
+            mode: 0o644,
+            is_dir: 0,
+        }
+        .encode(&mut payload);
+        payload
+    }
+
+    fn lstat_payload(kind: SystemCallMessageKind) -> [u8; Message::PAYLOAD_SIZE] {
+        let mut payload = [0; Message::PAYLOAD_SIZE];
+        set_kind(&mut payload, kind as u16);
+        LstatResponse {
+            status: 0,
+            size: 42,
+            mode: 0o644,
+            kind: file_kind::REGULAR,
+        }
+        .encode(&mut payload);
+        payload
+    }
+
+    #[test]
+    fn successful_stat_waits_for_timestamps() {
+        let mut op = pending(PendingOpKind::Stat);
+        let payload = stat_payload(0);
+
+        assert!(matches!(stage_stat_metadata(&mut op, &payload), StatMetadataStep::Wait));
+        assert!(matches!(op.kind, PendingOpKind::StatTimes { .. }));
+    }
+
+    #[test]
+    fn failed_stat_completes_without_timestamps() {
+        let mut op = pending(PendingOpKind::Stat);
+        let payload = stat_payload(::hostfs_api::HOSTFS_ERR_NOT_FOUND);
+
+        assert!(matches!(stage_stat_metadata(&mut op, &payload), StatMetadataStep::Complete));
+        assert!(matches!(op.kind, PendingOpKind::Stat));
+    }
+
+    #[test]
+    fn path_stat_variants_wait_for_timestamps() {
+        let mut lstat = pending(PendingOpKind::Lstat);
+        let payload = lstat_payload(SystemCallMessageKind::HostFsLstatResponse);
+        assert!(matches!(stage_stat_metadata(&mut lstat, &payload), StatMetadataStep::Wait));
+        assert!(matches!(lstat.kind, PendingOpKind::LstatTimes { .. }));
+
+        let mut pathstat = pending(PendingOpKind::PathStat);
+        let payload = lstat_payload(SystemCallMessageKind::HostFsPathStatResponse);
+        assert!(matches!(stage_stat_metadata(&mut pathstat, &payload), StatMetadataStep::Wait));
+        assert!(matches!(pathstat.kind, PendingOpKind::PathStatTimes { .. }));
+    }
+
+    #[test]
+    fn chdir_retains_path_while_waiting_for_timestamps() {
+        let path = ::vfs::path::vfs_resolve_path(0, "/host/dir").unwrap();
+        let mut op = pending(PendingOpKind::Chdir { path: path.clone() });
+        let payload = lstat_payload(SystemCallMessageKind::HostFsPathStatResponse);
+
+        assert!(matches!(stage_stat_metadata(&mut op, &payload), StatMetadataStep::Wait));
+        match op.kind {
+            PendingOpKind::ChdirTimes { path: actual, .. } => assert_eq!(actual, path),
+            _ => panic!("chdir should wait for timestamps"),
+        }
+    }
+
+    #[test]
+    fn purged_staged_stat_is_discarded_on_metadata() {
+        let mut queue = PendingQueue::new();
+        let op_id = OperationId::from_raw(7);
+        let op = pending(PendingOpKind::Stat);
+        let process = op.source_pid;
+        queue.insert(op_id, op).unwrap();
+        let payload = stat_payload(0);
+        let step = stage_stat_metadata(queue.get_mut(op_id).unwrap(), &payload);
+        assert!(matches!(step, StatMetadataStep::Wait));
+
+        queue.purge_pid(process);
+
+        assert!(queue.discard_abandoned_operation(op_id));
+        assert!(!queue.discard_abandoned_operation(op_id));
+    }
 }

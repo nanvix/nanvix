@@ -47,6 +47,7 @@ mod readlink;
 mod rename;
 mod rmdir;
 mod stat;
+mod stat_times;
 mod truncate;
 mod unlink;
 mod write;
@@ -86,6 +87,10 @@ pub use self::{
     stat::{
         StatRequest,
         StatResponse,
+    },
+    stat_times::{
+        StatTime,
+        StatTimesResponse,
     },
     truncate::TruncateRequest,
     unlink::UnlinkRequest,

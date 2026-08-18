@@ -572,10 +572,9 @@ async fn standalone_io_handler(
                             // Build the first response message and any queued
                             // multi-part follow-ups together so the entire response
                             // stream is delivered before the next request is
-                            // processed. Hostfs multi-part responses (the long-target
-                            // `readlink` and long-name `readdir` forms) leave
-                            // additional payloads in the handler's queue that must be
-                            // drained via `take_next_response_part` immediately after
+                            // processed. Long readlink/readdir responses and stat
+                            // timestamp continuations leave additional payloads in the
+                            // handler's queue that must be drained immediately after
                             // the head.
                             let mut response_payloads: std::vec::Vec<[u8; Message::PAYLOAD_SIZE]> =
                                 std::vec::Vec::new();
@@ -994,9 +993,7 @@ fn hostfs_part_info(
 ///
 /// Builds a per-operation error payload so that each vfsd completion handler detects the
 /// failure correctly. Most operations check a leading i32 field for negative values; lseek
-/// checks an i64 offset; stat uses all-zeros as its error sentinel; readdir uses name_len==0
-/// as end-of-directory. Using 0xFF indiscriminately would produce bogus metadata for stat
-/// (whose `size` field is `u64`).
+/// checks an i64 offset, and readdir uses name_len==0 as end-of-directory.
 ///
 /// The `op_id` from the original request is echoed into the response so that vfsd's
 /// `PendingQueue::remove` can match it to the correct pending operation.
@@ -1027,9 +1024,7 @@ async fn send_hostfs_error(
             err_payload[ds..ds + 8]
                 .copy_from_slice(&(::hostfs_api::HOSTFS_ERR_IO as i64).to_le_bytes());
         },
-        SystemCallMessageKind::HostFsStatResponse
-        | SystemCallMessageKind::HostFsReadDirResponse => {
-            // Stat uses all-zeros (size==0 && mode==0 && is_dir==0) as error sentinel.
+        SystemCallMessageKind::HostFsReadDirResponse => {
             // Readdir uses name_len==0 as end-of-directory signal.
             // Zeros are already in place from the initialization above.
         },

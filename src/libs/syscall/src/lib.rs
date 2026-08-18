@@ -357,6 +357,8 @@ pub enum SystemCallMessageKind {
     PipeOpCancelRequest,
     PipeOpCancelResponse,
     PipeReadRetry,
+    /// Timestamp continuation for successful hostfs stat operations.
+    HostFsStatTimesResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageKind.
 impl TryFrom<u16> for SystemCallMessageKind {
@@ -546,6 +548,7 @@ impl TryFrom<u16> for SystemCallMessageKind {
             x if x == PipeOpCancelRequest as u16 => Ok(PipeOpCancelRequest),
             x if x == PipeOpCancelResponse as u16 => Ok(PipeOpCancelResponse),
             x if x == PipeReadRetry as u16 => Ok(PipeReadRetry),
+            x if x == HostFsStatTimesResponse as u16 => Ok(HostFsStatTimesResponse),
             _ => Err(()),
         }
     }
@@ -600,6 +603,7 @@ impl SystemCallMessageKind {
                 | Self::HostFsPathStatRequest
                 | Self::HostFsPathStatRequestPart
                 | Self::HostFsPathStatResponse
+                | Self::HostFsStatTimesResponse
         )
     }
 
@@ -671,6 +675,7 @@ impl SystemCallMessageKind {
                 | Self::HostFsReadlinkResponse
                 | Self::HostFsLstatResponse
                 | Self::HostFsPathStatResponse
+                | Self::HostFsStatTimesResponse
         )
     }
 

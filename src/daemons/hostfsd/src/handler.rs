@@ -62,7 +62,15 @@ use std::{
 };
 
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{
+    MetadataExt,
+    PermissionsExt,
+};
+#[cfg(not(unix))]
+use std::time::{
+    SystemTime,
+    UNIX_EPOCH,
+};
 
 fn open_regular_file(
     options: &OpenOptions,
@@ -107,9 +115,9 @@ pub struct HostFsHandler {
     assembler: HostFsAssembler,
     /// Queue of additional response payloads that a single request may produce.
     ///
-    /// Most hostfs operations reply with a single message, but a few (currently the
-    /// long-target variant of `readlink`) emit a multi-part response. The first part
-    /// is returned directly from [`Self::handle_request`]; the remaining parts are
+    /// Most hostfs operations reply with a single message. Long readlink/readdir responses and
+    /// stat timestamp continuations queue follow-up messages. The first response is returned
+    /// directly from [`Self::handle_request`]; the remaining messages are
     /// queued here and must be drained by the caller via
     /// [`Self::take_next_response_part`] before submitting the next request.
     extra_responses: std::collections::VecDeque<[u8; Message::PAYLOAD_SIZE]>,
@@ -733,7 +741,7 @@ impl HostFsHandler {
         req: long_msg::LongLstatRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        self.do_lstat(&req.path, response);
+        self.do_lstat(req.op_id, &req.path, response);
     }
 
     /// Handles a fully assembled long path-based following STAT request.
@@ -746,7 +754,7 @@ impl HostFsHandler {
         req: long_msg::LongLstatRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        self.do_pathstat(&req.path, response);
+        self.do_pathstat(req.op_id, &req.path, response);
     }
 
     /// Handles an inline single-message READLINK request.
@@ -820,7 +828,7 @@ impl HostFsHandler {
                 return;
             },
         };
-        self.do_lstat(path_str, response);
+        self.do_lstat(get_op_id(payload), path_str, response);
     }
 
     /// Handles an inline single-message path-based following STAT request.
@@ -862,7 +870,7 @@ impl HostFsHandler {
                 return;
             },
         };
-        self.do_pathstat(path_str, response);
+        self.do_pathstat(get_op_id(payload), path_str, response);
     }
 
     /// Shared `readlink` implementation used by both the inline and multi-part
@@ -1044,7 +1052,12 @@ impl HostFsHandler {
 
     /// Shared `lstat` implementation used by both the inline and multi-part
     /// request handlers.
-    fn do_lstat(&mut self, path_str: &str, response: &mut [u8; Message::PAYLOAD_SIZE]) {
+    fn do_lstat(
+        &mut self,
+        op_id: OperationId,
+        path_str: &str,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
         set_kind(response, SystemCallMessageKind::HostFsLstatResponse as u16);
 
         let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
@@ -1072,6 +1085,7 @@ impl HostFsHandler {
                     kind,
                 };
                 resp.encode(response);
+                self.queue_stat_times(op_id, metadata_times(&meta));
             },
             Err(e) => {
                 let err = LstatResponse {
@@ -1098,7 +1112,12 @@ impl HostFsHandler {
     /// header. Because the final component is followed, [`metadata_kind`] never reports
     /// [`file_kind::SYMLINK`]: a dangling final link surfaces as the host `ENOENT`, and a
     /// resolved link reports the target's kind.
-    fn do_pathstat(&mut self, path_str: &str, response: &mut [u8; Message::PAYLOAD_SIZE]) {
+    fn do_pathstat(
+        &mut self,
+        op_id: OperationId,
+        path_str: &str,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
         set_kind(response, SystemCallMessageKind::HostFsPathStatResponse as u16);
 
         let host_path: PathBuf = match self.sandbox.resolve(path_str) {
@@ -1126,6 +1145,7 @@ impl HostFsHandler {
                     kind,
                 };
                 resp.encode(response);
+                self.queue_stat_times(op_id, metadata_times(&meta));
             },
             Err(e) => {
                 let err = LstatResponse {
@@ -1483,6 +1503,7 @@ impl HostFsHandler {
                 };
                 resp.encode(response);
                 set_kind(response, SystemCallMessageKind::HostFsStatResponse as u16);
+                self.queue_stat_times(get_op_id(payload), metadata_times(&meta));
             },
             Err(e) => {
                 log::debug!("hostfsd: stat failed (path={:?}, kind={:?}): {}", path, e.kind(), e);
@@ -1496,6 +1517,15 @@ impl HostFsHandler {
                 set_kind(response, SystemCallMessageKind::HostFsStatResponse as u16);
             },
         }
+    }
+
+    /// Queues timestamps after successful stat metadata.
+    fn queue_stat_times(&mut self, op_id: OperationId, times: StatTimesResponse) {
+        let mut response: [u8; Message::PAYLOAD_SIZE] = [0; Message::PAYLOAD_SIZE];
+        set_kind(&mut response, SystemCallMessageKind::HostFsStatTimesResponse as u16);
+        set_op_id(&mut response, op_id);
+        times.encode(&mut response);
+        self.extra_responses.push_back(response);
     }
 
     fn handle_readdir(
@@ -2084,6 +2114,66 @@ fn metadata_kind(meta: &fs::Metadata) -> u8 {
         file_kind::REGULAR
     } else {
         file_kind::OTHER
+    }
+}
+
+/// Host timestamps with full available precision.
+#[cfg(unix)]
+fn metadata_times(meta: &fs::Metadata) -> StatTimesResponse {
+    let time = |tv_sec: i64, tv_nsec: i64| {
+        let tv_nsec: u32 = match u32::try_from(tv_nsec) {
+            Ok(tv_nsec) if tv_nsec < 1_000_000_000 => tv_nsec,
+            _ => {
+                log::warn!("hostfsd: invalid metadata nanoseconds (tv_nsec={})", tv_nsec);
+                0
+            },
+        };
+        StatTime { tv_sec, tv_nsec }
+    };
+    StatTimesResponse {
+        atim: time(meta.atime(), meta.atime_nsec()),
+        mtim: time(meta.mtime(), meta.mtime_nsec()),
+        ctim: time(meta.ctime(), meta.ctime_nsec()),
+    }
+}
+
+/// Host timestamps with full available precision.
+#[cfg(not(unix))]
+fn metadata_times(meta: &fs::Metadata) -> StatTimesResponse {
+    let time = |result: io::Result<SystemTime>| {
+        let Ok(value) = result else {
+            return StatTime {
+                tv_sec: 0,
+                tv_nsec: 0,
+            };
+        };
+        match value.duration_since(UNIX_EPOCH) {
+            Ok(duration) => StatTime {
+                tv_sec: duration.as_secs() as i64,
+                tv_nsec: duration.subsec_nanos(),
+            },
+            Err(error) => {
+                let duration = error.duration();
+                let nanos: u32 = duration.subsec_nanos();
+                if nanos == 0 {
+                    StatTime {
+                        tv_sec: -(duration.as_secs() as i64),
+                        tv_nsec: 0,
+                    }
+                } else {
+                    StatTime {
+                        tv_sec: -(duration.as_secs() as i64) - 1,
+                        tv_nsec: 1_000_000_000 - nanos,
+                    }
+                }
+            },
+        }
+    };
+    let modified: StatTime = time(meta.modified());
+    StatTimesResponse {
+        atim: time(meta.accessed()),
+        mtim: modified,
+        ctim: modified,
     }
 }
 
