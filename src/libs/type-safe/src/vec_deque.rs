@@ -162,26 +162,26 @@ impl<T> NonEmptyVecDeque<T> {
     ///
     /// # Description
     ///
-    /// Maps a function over the elements of `self`.
+    /// Maps a function over the elements of a non-empty vector dequeue.
     ///
     /// # Parameters
     ///
-    /// - `f` - Mapping function.
+    /// - `vec_deque`: Non-empty vector dequeue whose elements are consumed.
+    /// - `f`: Stateful mapping function to apply to each element in order.
     ///
     /// # Returns
     ///
-    /// The function returns a new type-safe vector with the results of applying `f` to each element
-    /// of `self`.
+    /// A new non-empty vector dequeue containing the results of applying `f` to each element.
     ///
-    pub fn map<U, F>(mut vec_deque: NonEmptyVecDeque<U>, f: F) -> NonEmptyVecDeque<T>
+    pub fn map<U, F>(mut vec_deque: NonEmptyVecDeque<U>, mut f: F) -> NonEmptyVecDeque<T>
     where
-        F: Fn(U) -> T,
+        F: FnMut(U) -> T,
     {
         let new_head: T = f(vec_deque.head);
         let new_tail: Option<VecDeque<T>> = vec_deque
             .tail
             .take()
-            .map(|tail| tail.into_iter().map(&f).collect());
+            .map(|tail| tail.into_iter().map(&mut f).collect());
         NonEmptyVecDeque {
             head: new_head,
             tail: new_tail,
@@ -460,6 +460,27 @@ mod test {
             NonEmptyVecDeque::map(vec_deque, |value| value + 1);
         assert_eq!(new_vec_deque.head, 1);
         assert_eq!(new_vec_deque.tail, Some(VecDeque::from([2])));
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Verifies that [`NonEmptyVecDeque::map`] accepts a stateful closure and invokes it once for
+    /// every element in order.
+    ///
+    #[test]
+    fn test_map_with_stateful_closure() {
+        let mut vec_deque = NonEmptyVecDeque::new(0);
+        vec_deque.push_back(1);
+        vec_deque.push_back(2);
+        let mut calls: i32 = 0;
+        let new_vec_deque: NonEmptyVecDeque<i32> = NonEmptyVecDeque::map(vec_deque, |value| {
+            calls += 1;
+            value + calls
+        });
+        assert_eq!(new_vec_deque.head, 1);
+        assert_eq!(new_vec_deque.tail, Some(VecDeque::from([3, 5])));
+        assert_eq!(calls, 3);
     }
 
     #[test]

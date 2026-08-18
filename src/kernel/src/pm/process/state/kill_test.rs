@@ -19,6 +19,7 @@ use crate::{
         Vmem,
     },
     pm::{
+        process::new_test_thread_termination_credit,
         thread::{
             InterruptReason,
             InterruptedThread,
@@ -87,9 +88,18 @@ fn make_process_state() -> Option<Box<ProcessState>> {
 ///
 /// Creates a [`ReadyThread`] with the given identifier and an otherwise empty context.
 ///
+/// # Parameters
+///
+/// - `tid`: Raw thread identifier to assign to the fixture.
+///
+/// # Returns
+///
+/// A ready thread fixture with the specified identifier.
+///
 fn make_ready_thread(tid: i32) -> ReadyThread {
     ReadyThread::new(
         ThreadIdentifier::from(tid),
+        Some(new_test_thread_termination_credit()),
         None,
         None,
         None,

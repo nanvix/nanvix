@@ -906,8 +906,9 @@ image: all-nanvix
 image-clean:
 	$(RM_CMD) $(IMAGE)
 
-# Standalone tests that do NOT require daemons (run as bare .elf binaries).
-STANDALONE_NO_DAEMON_TESTS := test-rust-kernel
+# Standalone tests that need only procd. The kernel-interface test owns the RAMFS MMIO region
+# directly, so vfsd must remain absent, but its thread-lifecycle stress requires a consumer.
+STANDALONE_PROCD_ONLY_TESTS := test-rust-kernel
 
 # Guest binaries that are bundled into a ramfs image rather than launched directly, so they must
 # not have a standalone .initrd of their own. The execv targets are loaded at runtime by
@@ -924,7 +925,7 @@ STANDALONE_NO_VFS_BINARIES := vfs-bench-nostd
 # NOTE: ALL_POSIX_TESTS are intentionally NOT bundled here. The ported POSIX C
 # test suites build their own standalone images (with custom argv[0]/env) in
 # build/make/posix-tests.mk.
-STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDALONE_NO_VFS_BINARIES) $(STANDALONE_RAMFS_ONLY_BINARIES),$(ALL_GUEST_TESTS)) $(filter-out $(STANDALONE_NO_VFS_BINARIES),$(ALL_GUEST_BENCHMARKS)) $(ALL_GUEST_APPLICATIONS)
+STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_PROCD_ONLY_TESTS) $(STANDALONE_NO_VFS_BINARIES) $(STANDALONE_RAMFS_ONLY_BINARIES),$(ALL_GUEST_TESTS)) $(filter-out $(STANDALONE_NO_VFS_BINARIES),$(ALL_GUEST_BENCHMARKS)) $(ALL_GUEST_APPLICATIONS)
 
 .PHONY: standalone-images standalone-images-clean
 
@@ -936,6 +937,7 @@ STANDALONE_TEST_BINARIES := $(filter-out $(STANDALONE_NO_DAEMON_TESTS) $(STANDAL
 # mid-path and producing 'invalid entry' errors from mkimage.
 STANDALONE_WITH_VFS_INITRDS := $(STANDALONE_TEST_BINARIES:%=$(BINARIES_DIR)/%.initrd)
 STANDALONE_NO_VFS_INITRDS   := $(STANDALONE_NO_VFS_BINARIES:%=$(BINARIES_DIR)/%.initrd)
+STANDALONE_PROCD_ONLY_INITRDS := $(STANDALONE_PROCD_ONLY_TESTS:%=$(BINARIES_DIR)/%.initrd)
 
 # Cross-target build guard.
 #
@@ -1008,14 +1010,24 @@ $(STANDALONE_NO_VFS_INITRDS): $(BINARIES_DIR)/%.initrd: \
 		$(BINARIES_DIR)/memd.$(EXEC_FORMAT)\;memd \
 		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*
 
+$(STANDALONE_PROCD_ONLY_INITRDS): $(BINARIES_DIR)/%.initrd: \
+		$(BINARIES_DIR)/%.$(EXEC_FORMAT) \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT) \
+		$(MKIMAGE) \
+		| target-guard
+	$(MKIMAGE) -o $@ \
+		$(BINARIES_DIR)/procd.$(EXEC_FORMAT)\;procd \
+		$(BINARIES_DIR)/$*.$(EXEC_FORMAT)\;$*
+
 # Build standalone multibinary images for all test/benchmark/application binaries. Uses .initrd
 # extension to avoid collisions with other build artifacts (e.g., vfs-test.img).
-standalone-images: $(STANDALONE_WITH_VFS_INITRDS) $(STANDALONE_NO_VFS_INITRDS)
+standalone-images: $(STANDALONE_WITH_VFS_INITRDS) $(STANDALONE_NO_VFS_INITRDS) $(STANDALONE_PROCD_ONLY_INITRDS)
 	@echo "Standalone images built successfully."
 
 standalone-images-clean:
 	$(foreach bin,$(STANDALONE_TEST_BINARIES),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
 	$(foreach bin,$(STANDALONE_NO_VFS_BINARIES),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
+	$(foreach bin,$(STANDALONE_PROCD_ONLY_TESTS),$(RM_CMD) $(BINARIES_DIR)/$(bin).initrd ;)
 
 #===================================================================================================
 # Build Rules for Running Tests

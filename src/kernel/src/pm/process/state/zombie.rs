@@ -6,7 +6,10 @@
 //==================================================================================================
 
 use crate::pm::{
-    process::state::ProcessState,
+    process::{
+        state::ProcessState,
+        LifecycleTerminationCredit,
+    },
     thread::{
         ThreadRef,
         ThreadRefMut,
@@ -15,7 +18,10 @@ use crate::pm::{
 };
 use ::alloc::boxed::Box;
 use ::sys::{
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
     ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
@@ -37,19 +43,101 @@ pub struct ZombieProcess {
     status: ExitStatus,
 }
 
-impl ZombieProcess {
+/// Process-termination data and capacity transferred at zombie-process creation.
+#[must_use]
+pub(crate) struct PendingProcessTermination {
+    pid: ProcessIdentifier,
+    parent: ProcessIdentifier,
+    status: ExitStatus,
+    credit: LifecycleTerminationCredit,
+}
+
+impl PendingProcessTermination {
+    ///
+    /// # Description
+    ///
+    /// Splits this pending termination into its metadata and reserved capacity credit.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the process identifier, parent identifier, exit status, and termination
+    /// capacity credit.
+    ///
+    pub(crate) fn into_parts(
+        self,
+    ) -> (ProcessIdentifier, ProcessIdentifier, ExitStatus, LifecycleTerminationCredit) {
+        (self.pid, self.parent, self.status, self.credit)
+    }
+}
+
+/// Result of the authoritative transition into zombie-process state.
+#[must_use]
+pub(crate) struct ZombieProcessTransition {
+    zombie: ZombieProcess,
+    pending: PendingProcessTermination,
+}
+
+impl ZombieProcessTransition {
+    ///
+    /// # Description
+    ///
+    /// Creates a zombie process transition and transfers its termination credit.
+    ///
+    /// # Parameters
+    ///
+    /// - `process`: Process state that is transitioning to zombie state.
+    /// - `zombie_threads`: Non-empty collection of the process's zombie threads.
+    /// - `status`: Final exit status of the process.
+    ///
+    /// # Returns
+    ///
+    /// A transition containing the zombie process and its pending termination record.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the process does not own a termination credit.
+    ///
     pub(super) fn new(
-        process: Box<ProcessState>,
+        mut process: Box<ProcessState>,
         zombie_threads: NonEmptyVecDeque<ZombieThread>,
         status: ExitStatus,
     ) -> Self {
+        let pid: ProcessIdentifier = process.pid();
+        let parent: ProcessIdentifier = process.ppid();
+        let credit: LifecycleTerminationCredit = match process.take_termination_credit() {
+            Some(credit) => credit,
+            None => unreachable!("zombie user process must own a termination credit"),
+        };
         Self {
-            zombie_threads,
-            process,
-            status,
+            zombie: ZombieProcess {
+                zombie_threads,
+                process,
+                status,
+            },
+            pending: PendingProcessTermination {
+                pid,
+                parent,
+                status,
+                credit,
+            },
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Splits this transition into the zombie process and its pending termination record.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the zombie process and its pending termination record.
+    ///
+    pub(crate) fn into_parts(self) -> (ZombieProcess, PendingProcessTermination) {
+        (self.zombie, self.pending)
+    }
+}
+
+impl ZombieProcess {
     pub fn state(&self) -> &ProcessState {
         &self.process
     }
