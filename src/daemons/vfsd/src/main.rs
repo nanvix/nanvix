@@ -249,181 +249,186 @@ pub fn main() {
                         if header == SystemCallMessageKind::WriteResponse {
                             continue;
                         }
-                        // Multi-part response stream: assemble parts before dispatch.
-                        // The outer request-ID field echoes op_id, and the assembled body retains
-                        // the same value for compatibility with the hostfs response decoder.
-                        if header == SystemCallMessageKind::HostFsReadlinkResponsePart {
-                            let outer_op_id: ::hostfs_api::OperationId =
-                                ::hostfs_api::OperationId::from_le_bytes(
-                                    syscall_msg.request_id().raw().to_le_bytes(),
-                                );
-                            let part: ::syscall::message::SystemCallMessagePart =
-                                ::syscall::message::SystemCallMessagePart::from_bytes(
-                                    syscall_msg.payload,
-                                );
-                            if let Some((body, op_id)) = pending::accumulate_response_part(
-                                &mut readlink_response_asm,
-                                &mut pending,
-                                part,
-                                outer_op_id,
-                                pending::LongResponseStream::Readlink,
-                            ) {
-                                // op_id is known from part 0; the body still carries it
-                                // in bytes [0..4] for `complete_readlink_long`.
-                                if let Some(op) = pending.remove(op_id) {
-                                    pending::complete_readlink_long(op, &body);
+                        // Route hostfs responses that require assembly or staged completion.
+                        match header {
+                            SystemCallMessageKind::HostFsReadlinkResponsePart => {
+                                let outer_op_id: ::hostfs_api::OperationId =
+                                    ::hostfs_api::OperationId::from_le_bytes(
+                                        syscall_msg.request_id().raw().to_le_bytes(),
+                                    );
+                                let part: ::syscall::message::SystemCallMessagePart =
+                                    ::syscall::message::SystemCallMessagePart::from_bytes(
+                                        syscall_msg.payload,
+                                    );
+                                if let Some((body, op_id)) = pending::accumulate_response_part(
+                                    &mut readlink_response_asm,
+                                    &mut pending,
+                                    part,
+                                    outer_op_id,
+                                    pending::LongResponseStream::Readlink,
+                                ) {
+                                    // op_id is known from part 0; the body still carries it
+                                    // in bytes [0..4] for `complete_readlink_long`.
+                                    if let Some(op) = pending.remove(op_id) {
+                                        pending::complete_readlink_long(op, &body);
+                                    } else if pending.discard_abandoned_operation(op_id) {
+                                        // The originating process exited or exec'd while the multipart
+                                        // response was in flight.
+                                    } else {
+                                        ::syslog::warn!(
+                                            "long readlink response with no pending op (op_id={})",
+                                            op_id,
+                                        );
+                                    }
+                                }
+                                continue;
+                            },
+                            SystemCallMessageKind::HostFsReadDirResponsePart => {
+                                let outer_op_id: ::hostfs_api::OperationId =
+                                    ::hostfs_api::OperationId::from_le_bytes(
+                                        syscall_msg.request_id().raw().to_le_bytes(),
+                                    );
+                                let part: ::syscall::message::SystemCallMessagePart =
+                                    ::syscall::message::SystemCallMessagePart::from_bytes(
+                                        syscall_msg.payload,
+                                    );
+                                if let Some((body, op_id)) = pending::accumulate_response_part(
+                                    &mut readdir_response_asm,
+                                    &mut pending,
+                                    part,
+                                    outer_op_id,
+                                    pending::LongResponseStream::ReadDir,
+                                ) {
+                                    // Decode the long directory entry and fold it into the
+                                    // in-progress getdents sweep, then advance the sweep
+                                    // (request the next entry or send the final response).
+                                    if pending.discard_abandoned_operation(op_id) {
+                                        continue;
+                                    }
+                                    let decoded =
+                                        ::hostfs_api::long_msg::deserialize_long_readdir_response(
+                                            &body,
+                                        );
+                                    let step: Option<pending::GetdentsStep> =
+                                        match (decoded, pending.get_mut(op_id)) {
+                                            (Some(entry), Some(op))
+                                                if matches!(
+                                                    op.kind,
+                                                    pending::PendingOpKind::Getdents { .. }
+                                                ) =>
+                                            {
+                                                Some(pending::push_getdents_entry(
+                                                    op,
+                                                    entry.name,
+                                                    entry.is_dir,
+                                                ))
+                                            },
+                                            (None, _) => {
+                                                ::syslog::error!(
+                                                    "failed to deserialize long readdir response \
+                                                     (op_id={}, body_len={})",
+                                                    op_id,
+                                                    body.len(),
+                                                );
+                                                if let Some(op) = pending.remove(op_id) {
+                                                    pending::cancel_pending_op(
+                                                        op,
+                                                        ErrorCode::IoErr,
+                                                    );
+                                                }
+                                                None
+                                            },
+                                            (Some(_), Some(_)) => {
+                                                // Deserialized cleanly, but the buffered op is
+                                                // not a getdents sweep — a protocol desync. Fail
+                                                // the caller now rather than leaving it hung.
+                                                ::syslog::error!(
+                                                    "long readdir response for non-getdents op \
+                                                     (op_id={})",
+                                                    op_id,
+                                                );
+                                                if let Some(op) = pending.remove(op_id) {
+                                                    pending::cancel_pending_op(
+                                                        op,
+                                                        ErrorCode::IoErr,
+                                                    );
+                                                }
+                                                None
+                                            },
+                                            (Some(_), None) => {
+                                                ::syslog::warn!(
+                                                    "long readdir response with no matching \
+                                                     getdents op (op_id={})",
+                                                    op_id,
+                                                );
+                                                None
+                                            },
+                                        };
+                                    if let Some(step) = step {
+                                        pending::drive_getdents(&mut pending, op_id, step);
+                                    }
+                                }
+                                continue;
+                            },
+                            SystemCallMessageKind::HostFsStatResponse
+                            | SystemCallMessageKind::HostFsLstatResponse
+                            | SystemCallMessageKind::HostFsPathStatResponse => {
+                                let op_id: ::hostfs_api::OperationId =
+                                    ::hostfs_api::get_op_id(&message.payload);
+                                let step: Option<pending::StatMetadataStep> = pending
+                                    .get_mut(op_id)
+                                    .map(|op| pending::stage_stat_metadata(op, &message.payload));
+                                match step {
+                                    Some(pending::StatMetadataStep::Wait) => continue,
+                                    Some(pending::StatMetadataStep::Complete) => {
+                                        if let Some(op) = pending.remove(op_id) {
+                                            pending::complete_pending_op(op, &message.payload);
+                                        }
+                                        continue;
+                                    },
+                                    Some(pending::StatMetadataStep::Invalid) => {
+                                        if let Some(op) = pending.remove(op_id) {
+                                            pending::cancel_pending_op(op, ErrorCode::IoErr);
+                                        }
+                                        continue;
+                                    },
+                                    None => {},
+                                }
+                            },
+                            SystemCallMessageKind::HostFsStatTimesResponse => {
+                                let op_id: ::hostfs_api::OperationId =
+                                    ::hostfs_api::get_op_id(&message.payload);
+                                let is_staged_stat: bool =
+                                    pending.get_mut(op_id).is_some_and(|op| {
+                                        matches!(
+                                            op.kind,
+                                            pending::PendingOpKind::StatTimes { .. }
+                                                | pending::PendingOpKind::LstatTimes { .. }
+                                                | pending::PendingOpKind::PathStatTimes { .. }
+                                                | pending::PendingOpKind::ChdirTimes { .. }
+                                        )
+                                    });
+                                if is_staged_stat {
+                                    if let Some(op) = pending.remove(op_id) {
+                                        pending::complete_stat_times(op, &message.payload);
+                                    }
+                                } else if let Some(op) = pending.remove(op_id) {
+                                    ::syslog::error!(
+                                        "stat timestamps for non-staged operation (op_id={})",
+                                        op_id,
+                                    );
+                                    pending::cancel_pending_op(op, ErrorCode::IoErr);
                                 } else if pending.discard_abandoned_operation(op_id) {
-                                    // The originating process exited or exec'd while the multipart
-                                    // response was in flight.
+                                    // The originating process exited while stat was in flight.
                                 } else {
                                     ::syslog::warn!(
-                                        "long readlink response with no pending op (op_id={})",
+                                        "stat timestamps with no pending op (op_id={})",
                                         op_id,
                                     );
                                 }
-                            }
-                            continue;
-                        }
-                        if header == SystemCallMessageKind::HostFsReadDirResponsePart {
-                            let outer_op_id: ::hostfs_api::OperationId =
-                                ::hostfs_api::OperationId::from_le_bytes(
-                                    syscall_msg.request_id().raw().to_le_bytes(),
-                                );
-                            let part: ::syscall::message::SystemCallMessagePart =
-                                ::syscall::message::SystemCallMessagePart::from_bytes(
-                                    syscall_msg.payload,
-                                );
-                            if let Some((body, op_id)) = pending::accumulate_response_part(
-                                &mut readdir_response_asm,
-                                &mut pending,
-                                part,
-                                outer_op_id,
-                                pending::LongResponseStream::ReadDir,
-                            ) {
-                                // Decode the long directory entry and fold it into the
-                                // in-progress getdents sweep, then advance the sweep
-                                // (request the next entry or send the final response).
-                                if pending.discard_abandoned_operation(op_id) {
-                                    continue;
-                                }
-                                let decoded =
-                                    ::hostfs_api::long_msg::deserialize_long_readdir_response(
-                                        &body,
-                                    );
-                                let step: Option<pending::GetdentsStep> =
-                                    match (decoded, pending.get_mut(op_id)) {
-                                        (Some(entry), Some(op))
-                                            if matches!(
-                                                op.kind,
-                                                pending::PendingOpKind::Getdents { .. }
-                                            ) =>
-                                        {
-                                            Some(pending::push_getdents_entry(
-                                                op,
-                                                entry.name,
-                                                entry.is_dir,
-                                            ))
-                                        },
-                                        (None, _) => {
-                                            ::syslog::error!(
-                                                "failed to deserialize long readdir response \
-                                                 (op_id={}, body_len={})",
-                                                op_id,
-                                                body.len(),
-                                            );
-                                            if let Some(op) = pending.remove(op_id) {
-                                                pending::cancel_pending_op(op, ErrorCode::IoErr);
-                                            }
-                                            None
-                                        },
-                                        (Some(_), Some(_)) => {
-                                            // Deserialized cleanly, but the buffered op is
-                                            // not a getdents sweep — a protocol desync. Fail
-                                            // the caller now rather than leaving it hung.
-                                            ::syslog::error!(
-                                                "long readdir response for non-getdents op \
-                                                 (op_id={})",
-                                                op_id,
-                                            );
-                                            if let Some(op) = pending.remove(op_id) {
-                                                pending::cancel_pending_op(op, ErrorCode::IoErr);
-                                            }
-                                            None
-                                        },
-                                        (Some(_), None) => {
-                                            ::syslog::warn!(
-                                                "long readdir response with no matching getdents \
-                                                 op (op_id={})",
-                                                op_id,
-                                            );
-                                            None
-                                        },
-                                    };
-                                if let Some(step) = step {
-                                    pending::drive_getdents(&mut pending, op_id, step);
-                                }
-                            }
-                            continue;
-                        }
-                        if matches!(
-                            header,
-                            SystemCallMessageKind::HostFsStatResponse
-                                | SystemCallMessageKind::HostFsLstatResponse
-                                | SystemCallMessageKind::HostFsPathStatResponse
-                        ) {
-                            let op_id: ::hostfs_api::OperationId =
-                                ::hostfs_api::get_op_id(&message.payload);
-                            let step: Option<pending::StatMetadataStep> = pending
-                                .get_mut(op_id)
-                                .map(|op| pending::stage_stat_metadata(op, &message.payload));
-                            match step {
-                                Some(pending::StatMetadataStep::Wait) => continue,
-                                Some(pending::StatMetadataStep::Complete) => {
-                                    if let Some(op) = pending.remove(op_id) {
-                                        pending::complete_pending_op(op, &message.payload);
-                                    }
-                                    continue;
-                                },
-                                Some(pending::StatMetadataStep::Invalid) => {
-                                    if let Some(op) = pending.remove(op_id) {
-                                        pending::cancel_pending_op(op, ErrorCode::IoErr);
-                                    }
-                                    continue;
-                                },
-                                None => {},
-                            }
-                        }
-                        if header == SystemCallMessageKind::HostFsStatTimesResponse {
-                            let op_id: ::hostfs_api::OperationId =
-                                ::hostfs_api::get_op_id(&message.payload);
-                            let is_staged_stat: bool = pending.get_mut(op_id).is_some_and(|op| {
-                                matches!(
-                                    op.kind,
-                                    pending::PendingOpKind::StatTimes { .. }
-                                        | pending::PendingOpKind::LstatTimes { .. }
-                                        | pending::PendingOpKind::PathStatTimes { .. }
-                                        | pending::PendingOpKind::ChdirTimes { .. }
-                                )
-                            });
-                            if is_staged_stat {
-                                if let Some(op) = pending.remove(op_id) {
-                                    pending::complete_stat_times(op, &message.payload);
-                                }
-                            } else if let Some(op) = pending.remove(op_id) {
-                                ::syslog::error!(
-                                    "stat timestamps for non-staged operation (op_id={})",
-                                    op_id,
-                                );
-                                pending::cancel_pending_op(op, ErrorCode::IoErr);
-                            } else if pending.discard_abandoned_operation(op_id) {
-                                // The originating process exited while stat was in flight.
-                            } else {
-                                ::syslog::warn!(
-                                    "stat timestamps with no pending op (op_id={})",
-                                    op_id,
-                                );
-                            }
-                            continue;
+                                continue;
+                            },
+                            _ => {},
                         }
                         if header.is_hostfs_response() {
                             let op_id: ::hostfs_api::OperationId =
