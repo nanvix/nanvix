@@ -49,6 +49,8 @@ use ::sysapi::{
     sys_stat::{
         file_type,
         stat,
+        UTIME_NOW,
+        UTIME_OMIT,
     },
     time::timespec,
 };
@@ -61,8 +63,9 @@ use ::vfs::path::vfs_resolve_path;
 /// Encoded 8-byte "RAMFS   " tag exposed by the MicroVM RAMFS MMIO region.
 const RAMFS_MMIO_TAG: u64 = u64::from_be_bytes(*b"RAMFS   ");
 
-/// Fixed timestamp epoch (2024-01-01T00:00:00 UTC) used by the VFS stat layer.
-const VFS_FIXED_TIMESTAMP: i64 = 1704067200;
+/// FAT epoch (1980-01-01) reported by `fstat`, which cannot reach the backing
+/// directory entry from an open handle.
+const FAT_EPOCH_FALLBACK: i64 = 315_532_800;
 
 //==================================================================================================
 // Helpers
@@ -648,8 +651,8 @@ fn test_getdents() -> Result<(), Error> {
 // Test: Fstat Directory Mode and Timestamps
 //==================================================================================================
 
-/// Tests that `vfs_fstat()` returns `S_IFDIR` for directory handles and sets
-/// the fixed 2024-01-01 timestamps.
+/// Tests that `vfs_fstat()` returns `S_IFDIR` for directory handles and reports
+/// the FAT-epoch fallback (an open handle cannot reach its directory entry).
 fn test_fstat_directory_and_timestamps() -> Result<(), Error> {
     ::syslog::info!("vfs-test: test_fstat_directory_and_timestamps begin");
 
@@ -676,12 +679,12 @@ fn test_fstat_directory_and_timestamps() -> Result<(), Error> {
     if st.st_mode & file_type::S_IFMT != file_type::S_IFREG {
         return Err(Error::new(ErrorCode::InvalidArgument, "file should be S_IFREG"));
     }
-    // Verify fixed timestamp.
-    if st.st_atim.tv_sec != VFS_FIXED_TIMESTAMP
-        || st.st_mtim.tv_sec != VFS_FIXED_TIMESTAMP
-        || st.st_ctim.tv_sec != VFS_FIXED_TIMESTAMP
+    // fstat cannot reach the directory entry, so it reports the FAT epoch.
+    if st.st_atim.tv_sec != FAT_EPOCH_FALLBACK
+        || st.st_mtim.tv_sec != FAT_EPOCH_FALLBACK
+        || st.st_ctim.tv_sec != FAT_EPOCH_FALLBACK
     {
-        return Err(Error::new(ErrorCode::InvalidArgument, "file timestamps should be 2024-01-01"));
+        return Err(Error::new(ErrorCode::InvalidArgument, "file fstat should report FAT epoch"));
     }
     vfs::fd::vfs_close(file_fd).map_err(|e| fat_err(e, "close file fd"))?;
 
@@ -697,11 +700,11 @@ fn test_fstat_directory_and_timestamps() -> Result<(), Error> {
     if dst.st_size != 0 {
         return Err(Error::new(ErrorCode::InvalidArgument, "dir size should be 0"));
     }
-    if dst.st_atim.tv_sec != VFS_FIXED_TIMESTAMP
-        || dst.st_mtim.tv_sec != VFS_FIXED_TIMESTAMP
-        || dst.st_ctim.tv_sec != VFS_FIXED_TIMESTAMP
+    if dst.st_atim.tv_sec != FAT_EPOCH_FALLBACK
+        || dst.st_mtim.tv_sec != FAT_EPOCH_FALLBACK
+        || dst.st_ctim.tv_sec != FAT_EPOCH_FALLBACK
     {
-        return Err(Error::new(ErrorCode::InvalidArgument, "dir timestamps should be 2024-01-01"));
+        return Err(Error::new(ErrorCode::InvalidArgument, "dir fstat should report FAT epoch"));
     }
     vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close dir fd"))?;
 
@@ -717,7 +720,8 @@ fn test_fstat_directory_and_timestamps() -> Result<(), Error> {
 // Test: Stat Timestamps
 //==================================================================================================
 
-/// Tests that `vfs_stat()` sets the fixed 2024-01-01 timestamps.
+/// Tests that a time set via `vfs_utimensat()` is reported by a later
+/// `vfs_stat()`.
 fn test_stat_timestamps() -> Result<(), Error> {
     ::syslog::info!("vfs-test: test_stat_timestamps begin");
 
@@ -735,18 +739,147 @@ fn test_stat_timestamps() -> Result<(), Error> {
         file.flush().map_err(|e| fat_err(e, "flush ts.txt"))?;
     }
 
-    // Stat the file via path.
+    // Set a known time, then read it back via path stat.
+    // 2024-06-15T12:30:00Z.
+    let when: i64 = 1_718_454_600;
+    let times: [timespec; 2] = [
+        timespec {
+            tv_sec: when,
+            tv_nsec: 0,
+        },
+        timespec {
+            tv_sec: when,
+            tv_nsec: 0,
+        },
+    ];
+    vfs::fd::vfs_utimensat(0, "/sts/ts.txt", &times, 0)
+        .map_err(|e| fat_err(e, "utimensat ts.txt"))?;
+
     let mut st: stat = unsafe { core::mem::zeroed() };
     vfs::fd::vfs_stat("/sts/ts.txt", &mut st).map_err(|e| fat_err(e, "vfs_stat ts.txt"))?;
 
-    if st.st_atim.tv_sec != VFS_FIXED_TIMESTAMP {
-        return Err(Error::new(ErrorCode::InvalidArgument, "stat st_atim should be 2024-01-01"));
+    // FAT stores modification at 2s resolution.
+    if (st.st_mtim.tv_sec - when).abs() > 2 {
+        return Err(Error::new(ErrorCode::InvalidArgument, "stat st_mtim should round-trip"));
     }
-    if st.st_mtim.tv_sec != VFS_FIXED_TIMESTAMP {
-        return Err(Error::new(ErrorCode::InvalidArgument, "stat st_mtim should be 2024-01-01"));
+    // FAT stores access as a date only, truncated to midnight.
+    let initial_atime: i64 = when - when % 86_400;
+    if st.st_atim.tv_sec != initial_atime {
+        return Err(Error::new(ErrorCode::InvalidArgument, "stat st_atim should be date-only"));
     }
-    if st.st_ctim.tv_sec != VFS_FIXED_TIMESTAMP {
-        return Err(Error::new(ErrorCode::InvalidArgument, "stat st_ctim should be 2024-01-01"));
+
+    // Omit access time while changing modification time.
+    let later: i64 = when + 86_400;
+    let omit_access: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+        timespec {
+            tv_sec: later,
+            tv_nsec: 999_999_999,
+        },
+    ];
+    vfs::fd::vfs_utimensat(0, "/sts/ts.txt", &omit_access, 0)
+        .map_err(|e| fat_err(e, "utimensat omit access"))?;
+    vfs::fd::vfs_stat("/sts/ts.txt", &mut st).map_err(|e| fat_err(e, "stat after omit"))?;
+    if st.st_atim.tv_sec != initial_atime || (st.st_mtim.tv_sec - later).abs() > 2 {
+        return Err(Error::new(ErrorCode::InvalidArgument, "UTIME_OMIT should preserve access"));
+    }
+
+    // Omitting both fields succeeds without resolving the path.
+    let omitted: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+    ];
+    vfs::fd::vfs_utimensat(0, "/sts/ts.txt", &omitted, 0)
+        .map_err(|e| fat_err(e, "utimensat omit both"))?;
+    vfs::fd::vfs_utimensat(0, "/sts/missing.txt", &omitted, 0)
+        .map_err(|e| fat_err(e, "utimensat omit missing"))?;
+    let mut unchanged: stat = unsafe { core::mem::zeroed() };
+    vfs::fd::vfs_stat("/sts/ts.txt", &mut unchanged)
+        .map_err(|e| fat_err(e, "stat after omit both"))?;
+    if unchanged.st_atim.tv_sec != st.st_atim.tv_sec
+        || unchanged.st_mtim.tv_sec != st.st_mtim.tv_sec
+    {
+        return Err(Error::new(ErrorCode::InvalidArgument, "omitting both should change nothing"));
+    }
+
+    // A trailing slash requires a directory through each public path API.
+    if vfs::fd::vfs_stat("/sts/ts.txt/", &mut unchanged) != Err(vfs::Fat32Error::NotADirectory) {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "stat accepted file with trailing slash",
+        ));
+    }
+    let dir_fd: i32 = vfs::fd::vfs_open("/sts", file_creation_flags::O_DIRECTORY)
+        .map_err(|e| fat_err(e, "open timestamp directory"))?;
+    let fstatat_result: Result<(), vfs::Fat32Error> =
+        vfs::fd::vfs_fstatat(dir_fd, "ts.txt/", &mut unchanged);
+    vfs::fd::vfs_close(dir_fd).map_err(|e| fat_err(e, "close timestamp directory"))?;
+    if fstatat_result != Err(vfs::Fat32Error::NotADirectory) {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "fstatat accepted file with trailing slash",
+        ));
+    }
+    if vfs::fd::vfs_utimensat(0, "/sts/ts.txt/", &times, 0) != Err(vfs::Fat32Error::NotADirectory) {
+        return Err(Error::new(
+            ErrorCode::InvalidArgument,
+            "utimensat accepted file with trailing slash",
+        ));
+    }
+
+    // UTIME_NOW ignores tv_sec and uses the current clock.
+    let now: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_NOW,
+        },
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_NOW,
+        },
+    ];
+    vfs::fd::vfs_utimensat(0, "/sts/ts.txt", &now, 0).map_err(|e| fat_err(e, "utimensat now"))?;
+    vfs::fd::vfs_stat("/sts/ts.txt", &mut st).map_err(|e| fat_err(e, "stat after now"))?;
+    if st.st_atim.tv_sec < FAT_EPOCH_FALLBACK || st.st_mtim.tv_sec < FAT_EPOCH_FALLBACK {
+        return Err(Error::new(ErrorCode::InvalidArgument, "UTIME_NOW should use the clock"));
+    }
+
+    // Invalid nanoseconds and unsupported FAT seconds are rejected.
+    for invalid in [
+        timespec {
+            tv_sec: when,
+            tv_nsec: -1,
+        },
+        timespec {
+            tv_sec: when,
+            tv_nsec: 1_000_000_000,
+        },
+        timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        },
+        timespec {
+            tv_sec: 4_354_819_200,
+            tv_nsec: 0,
+        },
+    ] {
+        let invalid_times: [timespec; 2] = [invalid, omitted[1]];
+        if vfs::fd::vfs_utimensat(0, "/sts/ts.txt", &invalid_times, 0)
+            != Err(vfs::Fat32Error::InvalidArgument)
+            || vfs::fd::vfs_utimensat(0, "/sts", &invalid_times, 0)
+                != Err(vfs::Fat32Error::InvalidArgument)
+        {
+            return Err(Error::new(ErrorCode::InvalidArgument, "invalid timestamp accepted"));
+        }
     }
 
     // Clean up.
@@ -1245,16 +1378,16 @@ fn test_utimensat() -> Result<(), Error> {
 
     let times: [timespec; 2] = [
         timespec {
-            tv_sec: 1_000_000,
+            tv_sec: 1_718_454_600,
             tv_nsec: 0,
         },
         timespec {
-            tv_sec: 2_000_000,
+            tv_sec: 1_718_454_600,
             tv_nsec: 0,
         },
     ];
 
-    // utimensat with absolute path should succeed (FAT32 ignores times).
+    // utimensat with absolute path should succeed.
     vfs::fd::vfs_utimensat(0, "/uts/f.txt", &times, 0)
         .map_err(|e| fat_err(e, "utimensat absolute path"))?;
 

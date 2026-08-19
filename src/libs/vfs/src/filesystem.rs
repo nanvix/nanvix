@@ -37,6 +37,7 @@ use ::alloc::{
 use ::fat32::{
     Fat32Error,
     FatFile,
+    FAT_EPOCH_SECS,
 };
 
 //==================================================================================================
@@ -101,17 +102,66 @@ pub(crate) fn file_raw_region(cwd: &str, path: &str) -> Option<(*const u8, usize
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
 pub(crate) fn stat(cwd: &str, path: &str) -> Result<Stat, Fat32Error> {
+    let requires_dir: bool = path.ends_with('/');
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
     // Handle root of mount specially.
     if relative_path.is_empty() {
-        return Ok(Stat::new(0, true));
+        return Ok(Stat::new(0, true, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS));
     }
 
     state::with_vfs(|vfs| {
         let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
         let fat_stat = mount.fat().stat(&relative_path)?;
-        Ok(Stat::new(fat_stat.size, fat_stat.is_dir))
+        // POSIX treats a trailing slash as a directory requirement.
+        if requires_dir && !fat_stat.is_dir {
+            return Err(Fat32Error::NotADirectory);
+        }
+        Ok(Stat::new(
+            fat_stat.size,
+            fat_stat.is_dir,
+            fat_stat.atime,
+            fat_stat.mtime,
+            fat_stat.ctime,
+        ))
+    })
+}
+
+/// Sets access and/or modification times on a path.
+///
+/// `None` leaves that timestamp unchanged (POSIX `UTIME_OMIT`).
+///
+/// # Errors
+///
+/// - [`Fat32Error::NotFound`] if the path doesn't exist.
+/// - [`Fat32Error::ReadOnly`] if the mount is read-only.
+pub(crate) fn set_times(
+    cwd: &str,
+    path: &str,
+    atime: Option<i64>,
+    mtime: Option<i64>,
+) -> Result<(), Fat32Error> {
+    if atime.is_none() && mtime.is_none() {
+        return Ok(());
+    }
+
+    // Normalization drops trailing slashes, so enforce the directory requirement first.
+    if path.ends_with('/') {
+        stat(cwd, path)?;
+    }
+
+    let (mount_idx, relative_path) = resolve_path(cwd, path)?;
+
+    // Mount root has no writable time entry; nothing to do.
+    if relative_path.is_empty() {
+        return Ok(());
+    }
+
+    check_writable(mount_idx)?;
+
+    state::with_vfs(|vfs| {
+        let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
+        mount.fat().set_times(&relative_path, atime, mtime)
     })
 }
 

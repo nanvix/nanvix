@@ -17,6 +17,12 @@ pub struct VfsStat {
     size: u64,
     /// Whether this entry is a directory.
     is_dir: bool,
+    /// Last access time (Unix seconds).
+    atime: i64,
+    /// Last modification time (Unix seconds).
+    mtime: i64,
+    /// Creation time (Unix seconds).
+    ctime: i64,
 }
 
 //==================================================================================================
@@ -25,17 +31,43 @@ pub struct VfsStat {
 
 impl VfsStat {
     /// Creates a new `VfsStat`.
-    pub fn new(size: u64, is_dir: bool) -> Self {
-        Self { size, is_dir }
+    pub fn new(size: u64, is_dir: bool, atime: i64, mtime: i64, ctime: i64) -> Self {
+        Self {
+            size,
+            is_dir,
+            atime,
+            mtime,
+            ctime,
+        }
     }
 
     /// Returns the file size in bytes.
+    #[must_use]
     pub fn size(&self) -> u64 {
         self.size
     }
 
     /// Returns whether this entry is a directory.
+    #[must_use]
     pub fn is_dir(&self) -> bool {
         self.is_dir
+    }
+
+    /// Returns the last access time (Unix seconds).
+    #[must_use]
+    pub fn atime(&self) -> i64 {
+        self.atime
+    }
+
+    /// Returns the last modification time (Unix seconds).
+    #[must_use]
+    pub fn mtime(&self) -> i64 {
+        self.mtime
+    }
+
+    /// Returns the creation time (Unix seconds).
+    #[must_use]
+    pub fn ctime(&self) -> i64 {
+        self.ctime
     }
 }

@@ -6,7 +6,7 @@
 //! This module provides:
 //! - [`RawMemoryStorage`]: Low-level adapter implementing fatfs I/O traits
 //!   over raw memory.
-//! - [`NanvixTimeProvider`]: TimeProvider returning fixed 1980-01-01 timestamp.
+//! - [`NanvixTimeProvider`]: TimeProvider backed by the wall clock.
 //! - [`Fat`]: High-level FAT filesystem wrapper for guest operations.
 //! - [`FatFile`]: File handle for FAT files.
 
@@ -31,6 +31,7 @@ pub use self::{
         RawMemoryStorage,
         ReadOnlyMemoryStorage,
     },
+    time::FAT_EPOCH_SECS,
 };
 
 //==================================================================================================
