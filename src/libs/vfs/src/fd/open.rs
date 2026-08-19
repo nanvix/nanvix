@@ -16,7 +16,6 @@ use crate::{
         DirectReadHandle,
         DirectoryHandle,
         VfsFileHandle,
-        VfsStat,
     },
     filesystem,
 };
@@ -55,26 +54,6 @@ pub fn exists(cwd: &str, path: &str) -> bool {
     filesystem::stat(cwd, ".").is_ok()
 }
 
-/// Gets file metadata for the given path.
-///
-/// # Parameters
-///
-/// - `path`: Absolute path to query.
-///
-/// # Returns
-///
-/// [`VfsStat`] on success, or a [`Fat32Error`] on error.
-pub fn stat(cwd: &str, path: &str) -> Result<VfsStat, Fat32Error> {
-    let info: filesystem::Stat = filesystem::stat(cwd, path)?;
-    Ok(VfsStat::new(
-        info.size(),
-        info.is_dir(),
-        info.atime(),
-        info.mtime(),
-        info.ctime(),
-    ))
-}
-
 //==================================================================================================
 // File Operations
 //==================================================================================================
@@ -102,7 +81,7 @@ pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32E
     // Handle O_DIRECTORY or paths that resolve to directories.
     // POSIX allows opening directories with O_RDONLY for fchdir()/getdents().
     if flags & file_creation_flags::O_DIRECTORY != 0 {
-        let info: VfsStat = stat(cwd, path)?;
+        let info: filesystem::Stat = filesystem::stat(cwd, path)?;
         if !info.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
@@ -114,7 +93,7 @@ pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32E
     // POSIX: trailing slash forces directory semantics. If path ends with
     // '/' the target must be an existing directory; otherwise fail.
     if path.ends_with('/') {
-        match stat(cwd, path) {
+        match filesystem::stat(cwd, path) {
             Ok(info) if info.is_dir() => {
                 let normalized: String = filesystem::normalize(cwd, path)?;
                 return Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)));
@@ -124,7 +103,7 @@ pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32E
         }
     }
 
-    if let Ok(info) = stat(cwd, path) {
+    if let Ok(info) = filesystem::stat(cwd, path) {
         if info.is_dir() {
             let normalized: String = filesystem::normalize(cwd, path)?;
             return Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)));
@@ -170,12 +149,5 @@ mod tests {
     fn exists_no_mounts_returns_false() {
         // Without any VFS initialization, no path should exist.
         assert!(!exists("/", "/nonexistent"), "path should not exist without mounts");
-    }
-
-    /// Tests that `stat()` returns an error for a non-existent path.
-    #[test]
-    fn stat_nonexistent_returns_error() {
-        let result: Result<VfsStat, Fat32Error> = stat("/", "/nonexistent");
-        assert!(result.is_err(), "stat on non-existent path should fail");
     }
 }

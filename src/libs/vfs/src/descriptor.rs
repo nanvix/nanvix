@@ -19,7 +19,6 @@ mod socket_handle;
 mod tty_error;
 mod vfs_file_handle;
 mod vfs_route;
-mod vfs_stat;
 
 //==================================================================================================
 // Re-Exports
@@ -38,5 +37,4 @@ pub use self::{
     tty_error::TtyError,
     vfs_file_handle::VfsFileHandle,
     vfs_route::VfsRoute,
-    vfs_stat::VfsStat,
 };

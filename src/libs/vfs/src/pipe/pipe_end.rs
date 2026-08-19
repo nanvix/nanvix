@@ -204,6 +204,8 @@ pub struct PipeEnd {
     /// Copied onto each end at construction so that identity lookups (and the `Drop`/exit paths
     /// that report it) never need to take the shared [`PipeInner`] lock.
     pipe_id: u64,
+    /// Wall-clock creation time (Unix seconds), reported for all three stat times.
+    created: i64,
 }
 
 impl PipeEnd {
@@ -212,6 +214,7 @@ impl PipeEnd {
     /// The shared [`PipeInner`] starts with `readers == 1` and `writers == 1`.
     pub fn new_pair() -> (PipeEnd, PipeEnd) {
         let pipe_id: u64 = alloc_pipe_id();
+        let created: i64 = crate::time::wall_clock_secs();
         let inner: Arc<Mutex<PipeInner>> = Arc::new(Mutex::new(PipeInner {
             buf: VecDeque::new(),
             readers: 1,
@@ -221,11 +224,13 @@ impl PipeEnd {
             inner: inner.clone(),
             is_write: false,
             pipe_id,
+            created,
         };
         let write_end: PipeEnd = PipeEnd {
             inner,
             is_write: true,
             pipe_id,
+            created,
         };
         (read_end, write_end)
     }
@@ -233,6 +238,11 @@ impl PipeEnd {
     /// Returns the stable identity of the pipe this end belongs to.
     pub fn pipe_id(&self) -> u64 {
         self.pipe_id
+    }
+
+    /// Returns the wall-clock creation time (Unix seconds) of this pipe.
+    pub fn created(&self) -> i64 {
+        self.created
     }
 
     /// Returns `true` if this is the write end, `false` if it is the read end.

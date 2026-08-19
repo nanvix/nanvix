@@ -92,6 +92,9 @@ pub mod pipe;
 /// Global VFS state management.
 pub mod state;
 
+/// Wall-clock helper shared across backends.
+mod time;
+
 //==================================================================================================
 // Public Re-exports
 //==================================================================================================
