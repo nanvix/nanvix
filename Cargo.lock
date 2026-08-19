@@ -78,7 +78,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "arch"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cfg-if",
  "compiler_builtins",
@@ -155,7 +155,7 @@ checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 
 [[package]]
 name = "bitmap"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "error",
  "rand 0.10.2",
@@ -185,11 +185,11 @@ dependencies = [
 
 [[package]]
 name = "build-utils"
-version = "0.23.45"
+version = "0.23.46"
 
 [[package]]
 name = "bump-allocator"
-version = "0.23.45"
+version = "0.23.46"
 
 [[package]]
 name = "bumpalo"
@@ -211,7 +211,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "cache"
-version = "0.23.45"
+version = "0.23.46"
 
 [[package]]
 name = "cc"
@@ -302,7 +302,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cmdline"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -325,7 +325,7 @@ dependencies = [
 
 [[package]]
 name = "config"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "build-utils",
  "cfg-if",
@@ -376,7 +376,7 @@ dependencies = [
 
 [[package]]
 name = "containerd-shim-nanvix-v1"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "echo-client"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "http-body-util",
@@ -644,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "echo-rust-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -665,7 +665,7 @@ checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 
 [[package]]
 name = "elf"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "goblin",
  "num_enum",
@@ -720,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "error"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "compiler_builtins",
  "libc",
@@ -738,7 +738,7 @@ checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
 name = "fat32"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "error",
  "fatfs",
@@ -908,7 +908,7 @@ dependencies = [
 
 [[package]]
 name = "gen-headers"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "clap",
@@ -1028,7 +1028,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hello-rust-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -1050,7 +1050,7 @@ dependencies = [
 
 [[package]]
 name = "hostfs-api"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1058,7 +1058,7 @@ dependencies = [
 
 [[package]]
 name = "hostfsd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "hostfs-api",
@@ -1117,7 +1117,7 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hwloc"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "libc",
@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "kernel"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "bitmap",
@@ -1454,7 +1454,7 @@ checksum = "a4933f3f57a8e9d9da04db23fb153356ecaf00cbd14aee46279c33dc80925c37"
 
 [[package]]
 name = "koptions"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -1491,7 +1491,7 @@ checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "libc_arpa_inet"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1501,21 +1501,21 @@ dependencies = [
 
 [[package]]
 name = "libc_assert"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_ctype"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_dirent"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "libc_dlfcn"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "spin",
  "sys",
@@ -1536,21 +1536,21 @@ dependencies = [
 
 [[package]]
 name = "libc_errno"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "syscall",
 ]
 
 [[package]]
 name = "libc_fnmatch"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_ftw"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1560,7 +1560,7 @@ dependencies = [
 
 [[package]]
 name = "libc_glob"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "libc_fnmatch",
  "sysapi",
@@ -1569,7 +1569,7 @@ dependencies = [
 
 [[package]]
 name = "libc_grp"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
  "syslog",
@@ -1577,49 +1577,49 @@ dependencies = [
 
 [[package]]
 name = "libc_inttypes"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_langinfo"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_libgen"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_locale"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_math"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_mntent"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_netdb"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1628,14 +1628,14 @@ dependencies = [
 
 [[package]]
 name = "libc_poll"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_pthread"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "config",
  "sys",
@@ -1646,7 +1646,7 @@ dependencies = [
 
 [[package]]
 name = "libc_pwd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
  "syscall",
@@ -1655,35 +1655,35 @@ dependencies = [
 
 [[package]]
 name = "libc_regex"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_setjmp"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_signal"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_stdio"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_stdlib"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cfg-if",
  "compiler_builtins",
@@ -1700,14 +1700,14 @@ dependencies = [
 
 [[package]]
 name = "libc_string"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_sys_ioctl"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
  "syscall",
@@ -1716,7 +1716,7 @@ dependencies = [
 
 [[package]]
 name = "libc_sys_resource"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1726,7 +1726,7 @@ dependencies = [
 
 [[package]]
 name = "libc_sys_stat"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1736,7 +1736,7 @@ dependencies = [
 
 [[package]]
 name = "libc_sys_statvfs"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1746,7 +1746,7 @@ dependencies = [
 
 [[package]]
 name = "libc_sys_time"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1756,7 +1756,7 @@ dependencies = [
 
 [[package]]
 name = "libc_sys_times"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
  "syscall",
@@ -1765,7 +1765,7 @@ dependencies = [
 
 [[package]]
 name = "libc_sys_uio"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1775,11 +1775,11 @@ dependencies = [
 
 [[package]]
 name = "libc_sys_un"
-version = "0.23.45"
+version = "0.23.46"
 
 [[package]]
 name = "libc_sys_utsname"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1789,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "libc_termios"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1799,14 +1799,14 @@ dependencies = [
 
 [[package]]
 name = "libc_time"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
 
 [[package]]
 name = "libc_unistd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1816,7 +1816,7 @@ dependencies = [
 
 [[package]]
 name = "libc_utime"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sys",
  "sysapi",
@@ -1826,7 +1826,7 @@ dependencies = [
 
 [[package]]
 name = "libc_wchar"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "libc_stdio",
  "sysapi",
@@ -1834,7 +1834,7 @@ dependencies = [
 
 [[package]]
 name = "libc_wctype"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "sysapi",
 ]
@@ -1886,7 +1886,7 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
 name = "memd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -1931,14 +1931,14 @@ dependencies = [
 
 [[package]]
 name = "mkimage"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "multibin",
 ]
 
 [[package]]
 name = "mkramfs"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "fatfs",
@@ -1946,11 +1946,11 @@ dependencies = [
 
 [[package]]
 name = "mmio-tag"
-version = "0.23.45"
+version = "0.23.46"
 
 [[package]]
 name = "mount-bench-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "build-utils",
  "cc",
@@ -1969,14 +1969,14 @@ dependencies = [
 
 [[package]]
 name = "multibin"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "error",
 ]
 
 [[package]]
 name = "multiimage"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "config",
  "mmio-tag",
@@ -1991,7 +1991,7 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 
 [[package]]
 name = "nanvix"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "config",
@@ -2008,7 +2008,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-bench"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "build-utils",
@@ -2028,7 +2028,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-http"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "http",
@@ -2046,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-oci"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "log",
@@ -2056,14 +2056,14 @@ dependencies = [
 
 [[package]]
 name = "nanvix-sandbox-config"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "net-backend",
 ]
 
 [[package]]
 name = "nanvix-shim-core"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2078,7 +2078,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-shim-proto"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2098,7 +2098,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-shim-standalone"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2115,7 +2115,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-slab"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "bitmap",
  "error",
@@ -2126,7 +2126,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-terminal"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "libc",
@@ -2138,7 +2138,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2161,7 +2161,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix_libc"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "config",
  "libc_arpa_inet",
@@ -2214,7 +2214,7 @@ dependencies = [
 
 [[package]]
 name = "nanvix_libm"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "libc_math",
  "nvx",
@@ -2222,7 +2222,7 @@ dependencies = [
 
 [[package]]
 name = "nanvixd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2236,7 +2236,7 @@ dependencies = [
 
 [[package]]
 name = "net-backend"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "libc",
  "log",
@@ -2247,7 +2247,7 @@ dependencies = [
 
 [[package]]
 name = "networkd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "libc",
  "log",
@@ -2287,11 +2287,11 @@ dependencies = [
 
 [[package]]
 name = "no_fail"
-version = "0.23.45"
+version = "0.23.46"
 
 [[package]]
 name = "noop-rust-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2343,7 +2343,7 @@ dependencies = [
 
 [[package]]
 name = "nvx"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cfg-if",
  "compiler_builtins",
@@ -2358,7 +2358,7 @@ dependencies = [
 
 [[package]]
 name = "nvx-crt0"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cfg-if",
  "config",
@@ -2505,7 +2505,7 @@ dependencies = [
 
 [[package]]
 name = "proc"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2549,7 +2549,7 @@ dependencies = [
 
 [[package]]
 name = "procd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -2564,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "profiler"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cfg-if",
  "log",
@@ -2736,7 +2736,7 @@ checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
 name = "raw-array"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cfg-if",
  "error",
@@ -2992,7 +2992,7 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "snapshot-rust-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3006,7 +3006,7 @@ dependencies = [
 
 [[package]]
 name = "socket-echo-rust-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3031,7 +3031,7 @@ dependencies = [
 
 [[package]]
 name = "sorted-vec"
-version = "0.23.45"
+version = "0.23.46"
 
 [[package]]
 name = "spin"
@@ -3050,7 +3050,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "static_assert"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -3058,7 +3058,7 @@ dependencies = [
 
 [[package]]
 name = "strace"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "clap",
@@ -3143,7 +3143,7 @@ dependencies = [
 
 [[package]]
 name = "sys"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "compiler_builtins",
  "config",
@@ -3158,7 +3158,7 @@ dependencies = [
 
 [[package]]
 name = "sysalloc"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "compiler_builtins",
@@ -3174,7 +3174,7 @@ dependencies = [
 
 [[package]]
 name = "sysapi"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "compiler_builtins",
  "config",
@@ -3184,7 +3184,7 @@ dependencies = [
 
 [[package]]
 name = "syscall"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "cfg-if",
@@ -3208,7 +3208,7 @@ dependencies = [
 
 [[package]]
 name = "syscomm"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "config",
  "libc",
@@ -3219,7 +3219,7 @@ dependencies = [
 
 [[package]]
 name = "syslog"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cfg-if",
  "compiler_builtins",
@@ -3232,7 +3232,7 @@ dependencies = [
 
 [[package]]
 name = "syslog-macros"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3284,7 +3284,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-arch"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "cc",
@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-c-bindings"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "config",
  "libc_string",
@@ -3317,7 +3317,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-cmdline-env-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3333,7 +3333,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-cmdline-len"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3350,7 +3350,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-dlfcn"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "libc_string",
  "nvx",
@@ -3364,7 +3364,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-env-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3380,7 +3380,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-execv-big-target"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3397,7 +3397,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-execv-target"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3413,7 +3413,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-execv-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3429,7 +3429,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-file"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3445,7 +3445,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-argv-space-target"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3461,7 +3461,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-argv-space-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3477,7 +3477,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-loop-target"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3493,7 +3493,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-loop-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3509,7 +3509,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-pipe-bulk-target"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3526,7 +3526,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-pipe-bulk-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3542,7 +3542,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-pipe-loop-target"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3559,7 +3559,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-pipe-loop-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3575,7 +3575,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-vfsd-target"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3591,7 +3591,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-vfsd-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3607,7 +3607,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-write-target"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3623,7 +3623,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-exec-write-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-guestfs"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3656,7 +3656,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-hostfs"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3672,7 +3672,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-fork-kcall"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3688,7 +3688,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-getenv-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3705,7 +3705,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-job-control"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3721,7 +3721,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-kernel"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "cc",
@@ -3738,7 +3738,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-kill"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3754,7 +3754,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-linux-app"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3770,7 +3770,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-memory"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3788,7 +3788,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-misc"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3806,7 +3806,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-mmio-fault"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "cc",
@@ -3821,7 +3821,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-mount-multipart-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3837,7 +3837,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-mount-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3854,7 +3854,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-network"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3871,7 +3871,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-pipe-dup2"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3887,7 +3887,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-setenv"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3904,7 +3904,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-sigsegv"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3918,7 +3918,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-snapshot-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "libc_string",
  "nvx",
@@ -3929,7 +3929,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-socket-fork"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3945,7 +3945,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-stress"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3962,7 +3962,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-testd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "cc",
@@ -3980,7 +3980,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-thread"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -3997,7 +3997,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-thread-vfs-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -4014,7 +4014,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-vfs-test"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -4031,7 +4031,7 @@ dependencies = [
 
 [[package]]
 name = "test-rust-waitpid"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "cc",
  "cfg-if",
@@ -4302,7 +4302,7 @@ dependencies = [
 
 [[package]]
 name = "type-safe"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-alloc",
@@ -4360,14 +4360,14 @@ dependencies = [
 
 [[package]]
 name = "user-vm-api"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "uservm"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "anyhow",
  "arch",
@@ -4469,7 +4469,7 @@ dependencies = [
 
 [[package]]
 name = "vfs"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "config",
  "error",
@@ -4482,11 +4482,11 @@ dependencies = [
 
 [[package]]
 name = "vfs-bench-common"
-version = "0.23.45"
+version = "0.23.46"
 
 [[package]]
 name = "vfs-bench-nostd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "build-utils",
  "cc",
@@ -4508,7 +4508,7 @@ dependencies = [
 
 [[package]]
 name = "vfsd"
-version = "0.23.45"
+version = "0.23.46"
 dependencies = [
  "arch",
  "cc",
