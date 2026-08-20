@@ -1,480 +1,266 @@
 # Nanvix Virtual-Memory Environment Interface
 
-## Goal
+## Goal and Scope
 
-The task is to add low-level Verus specifications for the boundary between Nanvix virtual-memory
-code and the MMU. The specifications should eventually permit verification of Nanvix while treating
-the MMU contract as trusted. An explicit executable or ghost model of the MMU is deferred.
+This document records the trusted interface between Nanvix virtual-memory code and the x86 MMU,
+plus the proof-ownership discipline used to reach that interface. Nanvix is verified against these
+contracts; an explicit MMU implementation or ghost state machine is deferred.
 
-The investigation begins at `src/kernel/src/mm/virt/vmem.rs` and follows all reachable virtual
-memory paths.
-
-## Informal MMU Model
+The investigation starts at `src/kernel/src/mm/virt/vmem.rs` and follows reachable paging-memory,
+translation-control, TLB, and fault-state operations. Ordinary instruction fetches and ordinary
+loads and stores are not terminal interactions for this inventory.
 
 The MMU:
 
-- reads paging structures rooted at the active translation-control register;
-- interprets physical targets, presence, permissions, page size, and caching fields;
+- walks paging structures rooted at the active CR3 value;
+- interprets presence, permissions, page size, caching, and physical targets;
 - may set architecturally managed accessed and dirty bits;
-- caches translations in the TLB;
-- may continue using a cached translation after a paging-memory write;
-- observes replacement mappings after the required invalidation or root change;
-- raises faults for absent, reserved, or disallowed translations.
+- may retain cached translations after paging-memory writes;
+- observes replacement mappings after the required invalidation or root change; and
+- faults on absent, reserved, or disallowed translations.
 
 Nanvix:
 
-- constructs architecturally valid paging entries;
-- publishes initialized child tables before making parent entries present;
-- keeps reachable paging structures alive;
+- constructs valid paging entries;
+- initializes child paging structures before publishing present parent entries;
+- keeps every reachable paging structure alive;
 - updates mappings and permissions;
-- invalidates stale translations separately;
-- handles faults and hardware-managed entry-bit changes.
-
-Ordinary instruction fetches and ordinary loads or stores are outside the interaction inventory.
-The boundary contains explicit paging-memory, control-register, fault-state, and TLB operations.
+- detaches paging pages before reclamation; and
+- performs TLB invalidation and root replacement as separate interactions.
 
 ## Architecture Distinction
 
-On x86, `PageDirectory` and `PageTable` are hardware-walked paging structures.
+On x86, `PageDirectory` and `PageTable` are hardware-walked structures.
 
-On x86_64, these two-level structures are mostly Nanvix bookkeeping. Hardware walks the separate
-PML4/PDPT/PD/PT hierarchy implemented in
+On x86_64, those two-level structures are primarily Nanvix bookkeeping. Hardware walks the
+PML4/PDPT/PD/PT hierarchy in
 `src/kernel/src/hal/arch/x86_64/mem/mmu/hwpt.rs`.
 
-Specifications must not assume that a logical Nanvix table is the hardware table on every target.
+Proof ownership and architectural interpretation must therefore be target-specific even where the
+high-level `Vmem` operations are shared.
 
 ## Interaction Inventory
 
-The broad investigation is recorded in:
-
-- `virtual-memory-interactions.md`
-- `virtual-memory-interactions-specific-lines.md`
-
-The terminal interactions are:
-
 ### Paging-structure memory
 
-- raw PDE reads, writes, and clearing in `page_directory.rs`;
-- raw PTE reads, writes, scans, fills, and clearing in `page_table.rs`;
-- volatile generic table reads and writes in
-  `src/libs/arch/src/x86/mem/paging/table.rs`;
-- volatile x86_64 hardware hierarchy reads, writes, and reused-page clearing in `hwpt.rs`.
+- PDE read, write, and clearing in `page_directory.rs`;
+- PTE read, write, iteration, fill, and clearing in `page_table.rs`;
+- generic typed volatile entry access in `src/libs/arch/src/x86/mem/paging/table.rs`; and
+- x86_64 hardware-entry read, write, and reused-page zeroing in `hwpt.rs`.
 
-### Translation control
+### Translation and cached state
 
 - CR0 reads and writes used to enable paging;
 - CR3 reads and writes used to inspect or replace the active root;
-- CR3 changes that also invalidate applicable cached translations.
+- `invlpg` on both x86 targets; and
+- CR2 reads in fault-entry assembly.
 
-### TLB state
+The two `hooks.rs` files remain intentionally unmodified. Their context-switch CR3 interactions
+are still part of the inventory and are not covered by the Rust-wrapper contracts described below.
 
-- `invlpg` in the shared x86 paging library;
-- the local x86_64 `invlpg` implementation.
+Terminal operations are isolated in `env_interaction_*` wrappers. The detailed PDE/PTE and x86_64
+entry accesses have trusted contracts. Isolated CR3 reads now guarantee a valid current
+configuration, and the x86 root-loading write requires a ready page directory at the encoded
+physical address. Generic table, CR0, TLB, fault, and context-switch CR3 interactions still lack
+complete semantic contracts.
 
-### Fault state
+## Shared Paging-Memory Knowledge
 
-- CR2 reads in architecture hook assembly.
+An initialized `PointsTo<PteWord>` carries persistent exact knowledge. That is too strong for an
+entry the MMU may change after Nanvix's last write. Privacy does not make stale exact knowledge
+sound.
 
-The user later excluded both `hooks.rs` files from modification. Their interactions remain part of
-the inventory but are not wrapped.
+Nanvix therefore converts allocator-provided raw permissions into protocol tokens exposing:
 
-## Isolation Work
-
-Every modified terminal operation was moved behind an `env_interaction_*` wrapper. For an original
-file `x.rs`, new wrappers were placed in `x.spec.rs`, which is included by `x.rs`. Original
-interaction lines were commented rather than deleted.
-
-Created specification files:
-
-- `src/kernel/src/hal/arch/shared/mem/mmu/page_directory.spec.rs`
-- `src/kernel/src/hal/arch/shared/mem/mmu/page_table.spec.rs`
-- `src/kernel/src/hal/arch/x86/mem/mmu/mod.spec.rs`
-- `src/kernel/src/hal/arch/x86_64/mem/mmu/hwpt.spec.rs`
-- `src/libs/arch/src/x86/cpu/cr3.spec.rs`
-- `src/libs/arch/src/x86/mem/paging/mod.spec.rs`
-- `src/libs/arch/src/x86/mem/paging/table.spec.rs`
-
-The wrappers currently cover:
-
-- PDE read, write, and clear;
-- PTE read, indexed read, write, and clear;
-- typed volatile paging-entry read and write;
-- x86_64 hardware-entry read, write, and zero;
-- CR0 and CR3 access;
-- TLB invalidation.
-
-Most wrappers still have no Verus contract. The current detailed work focuses only on
-`PageDirectory::env_interaction_write_page_directory_entry`.
-
-## PDE Write Contract
-
-The English contract is recorded in `virtual-memory-contract.md`. Its essential local obligations
-are:
-
-### Nanvix assumptions
-
-- the MMU interprets the active x86 paging format;
-- the MMU may cache the old translation until invalidation;
-- the MMU may update architecturally managed bits.
-
-### Nanvix guarantees
-
-- the written word is interpretable as a standard-page-table PDE;
-- the selected PDE is replaced with the requested value;
-- other PDEs are unchanged;
-- the paging structure retains the expected size;
-- separate code handles publication, lifetime, and TLB invalidation.
-
-### MMU guarantees relied upon
-
-- non-present entries are not followed;
-- permissions and invalid encodings cause the architectural fault behavior;
-- invalidation prevents later use of the superseded cached translation;
-- hardware changes only architecturally managed fields.
-
-The trusted wrapper should express only state Nanvix can observe. Earlier drafts introduced an
-`MmuState`, TLB maps, live-table sets, and an atomic invariant containing MMU state. That approach
-was rejected for the current stage because it begins implementing an environment model. Such state
-may be useful later, but it must not be part of the present trusted contract.
-
-## Why a PDE/PTE-Specific Token Interface
-
-The original specification used `&mut [PteWord]`. This was rejected because the MMU may also modify
-the underlying entry, especially accessed and dirty bits. A mutable reference models exclusive
-access and is therefore too strong.
-
-An intermediate design used raw `PointsTo<PteWord>` tokens. That design was also rejected as the
-current interface because initialized `PointsTo` retains persistent exact knowledge that becomes
-stale after an MMU-managed update. Making it private does not weaken that claim.
-
-The selected interface is intentionally independent of Verus ownership machinery. Each abstract
-Nanvix token exposes only:
-
-- `ptr()`, identifying one paging entry;
+- `ptr()`, the entry identity;
 - initialization state;
 - `expected()`, the baseline most recently established by Nanvix; and
-- `admits(value)`, describing values that may currently be observed.
+- `admits(value)`, the values the MMU may currently have produced.
 
-The selected implementation boundary converts allocator-provided raw `PointsTo` permissions into
-these tokens with trusted, linear minting functions. The conversion consumes `PointsTo`; the owning
-paging object stores only the Nanvix token. Persistent exact raw-memory knowledge is therefore not
-retained alongside a token that permits MMU-managed changes.
-
-## Refining Permission Knowledge for MMU-Managed Bits
-
-The earlier use of an initialized `PointsTo<PteWord>` as persistent exact knowledge was too strong
-for hardware-walked paging memory. The MMU may update an entry after Nanvix's last write and before
-Nanvix's next read. Making the permission private prevents callers from inspecting stale knowledge,
-but does not make the exclusive `PointsTo` claim sound.
-
-For a standard x86 PDE, where `PageSizeFlag::Standard` means that bit 7 is clear, the flag ownership
-is:
-
-| Nanvix flag | Bit | MMU behavior |
-|---|---:|---|
-| `PresentFlag` | 0 | Stable across MMU activity. |
-| `ReadWriteFlag` | 1 | Stable across MMU activity. |
-| `UserSupervisorFlag` | 2 | Stable across MMU activity. |
-| `PageWriteThroughFlag` | 3 | Stable across MMU activity. |
-| `PageCacheDisableFlag` | 4 | Stable across MMU activity. |
-| `AccessedFlag` | 5 | The MMU may set it during a page walk. |
-| `DirtyFlag` | 6 | Ignored by hardware for a standard non-leaf PDE. |
-| `PageSizeFlag` | 7 | Stable and required to remain clear by the current contract. |
-
-The page-table frame field is also stable across MMU activity. The dirty bit becomes
-hardware-managed for a PTE or a large-page PDE, but not for the standard PDE currently specified.
-
-Consequently, a PDE read must not generally guarantee equality with the exact value last recorded
-by Nanvix. It should guarantee:
-
-- the returned value is a valid standard PDE;
-- all stable fields equal the last value established or observed by Nanvix; and
-- the accessed bit differs only by an architecturally permitted MMU transition, normally from clear
-  to set.
-
-### Selected Compatibility Rules
-
-- A standard non-leaf PDE permits only a monotonic accessed-bit update; its dirty bit is not
-  MMU-managed.
-- A leaf PTE permits independent monotonic accessed- and dirty-bit updates.
-- All remaining fields must equal the Nanvix-established baseline.
-- A read returns an admitted observation, not `expected()` itself.
-- A write replaces `expected()`; it does not promise persistent exact equality afterward.
-- Postconditions derivable from the open `admits()` definition are omitted.
-
-No MMU-side token is introduced at this trusted-interface stage.
-
-### Immediate Validity of a Present PDE Target
-
-A present standard PDE may be followed immediately, so its write precondition includes a proof-only
-`Option<&PageTable<PageTableStorage>>`. The two valid cases correspond exactly:
+The conversion is trusted and linear:
 
 ```text
-present PDE     <=> Some(page table)
-non-present PDE <=> None
+allocator PointsTo -> Nanvix entry token -> owning paging object -> interaction
 ```
 
-For the present case, the page table must satisfy its invariant, contain exactly
-`PAGE_TABLE_LENGTH` entries, have every entry initialized with a valid PTE baseline, and have a
-physical base equal to the address encoded in the PDE. A zeroed table satisfies this requirement
-because zero is a valid non-present PTE.
+It consumes the source `PointsTo`; no duplicate exact permission remains. The token is conservative
+knowledge at the trusted-interface stage, not an implementation of an MMU-side owner.
 
-The page table therefore tracks virtual storage identity separately from its proof-only physical
-base. This precondition proves readiness at the PDE write; keeping the table alive while reachable
-remains a distinct lifetime obligation.
+### Compatibility rules
 
-## Current `PageDirectory` Proof State
+- A standard non-leaf x86 PDE permits a monotonic accessed-bit update.
+- A leaf x86 PTE permits monotonic accessed- and dirty-bit updates.
+- A present x86_64 non-leaf entry permits an accessed-bit update.
+- A present x86_64 leaf permits accessed- and dirty-bit updates.
+- Stable fields remain equal to the Nanvix baseline.
+- A non-present x86_64 entry is currently modeled as unchanged.
+- A read returns an admitted observation, not necessarily `expected()`.
+- A write replaces `expected()` but does not promise persistent exact equality.
 
-`PageDirectory<T>` retains its executable storage and one proof-only token map:
+These rules remain intentionally conservative. Complete reserved-bit and feature-dependent
+architectural validity is unfinished.
 
-```rust
-entries: T
-permissions: Tracked<Map<nat, NanvixPdeToken>>,
-```
+## x86 Page Directory and Page Table
 
-The permission field is gated with `#[cfg(verus_keep_ghost_body)]`. The earlier
-`entries_base: Ghost<*mut PteWord>` field was removed.
+### Ownership
 
-The generic storage bound is now:
+`PageDirectory<T>` owns a tracked map of `NanvixPdeToken`; `PageTable<T>` owns a tracked map of
+`NanvixPteToken`. Each map has the exact hardware length and ties every token pointer to the
+corresponding executable storage offset.
 
-```rust
-T: DerefMut<Target = [PteWord]> + GetPageDirectoryStorage
-```
+Raw permissions now originate at both real storage sources:
 
-`GetPageDirectoryStorage` is declared in `src/kernel/src/mm/virt/mod.rs`. Its spec method returns a
-reference to the existing `PageDirectoryStorage` enum. `PageDirectoryStorage::base_address()` then
-exposes the backing address in spec mode:
+1. `allocate_page_table_slot()` returns a BSS slot and
+   `PageTableSlotPermissions`.
+2. `KernelFrame::allocate_page_table()` returns a frame and a raw per-entry permission map.
 
-- the BSS variant stores a proof-only `Ghost<usize>` address captured when the executable reference
-  is constructed;
-- the `KernelPage` variant derives the address through spec accessors on `KernelPage`,
-  `KernelFrame`, and `FrameAddress`.
+The boot page tables, root page directory, cloned page directories, and dynamically allocated
+kernel and user page tables all thread these permissions into `PageDirectory::new()` or
+`PageTable::new()`. The constructors consume them through `mint_nanvix_pde_tokens()` or
+`mint_nanvix_pte_tokens()` and retain only specialized tokens.
 
-This avoids calling executable `as_ptr()` or `len()` functions from specification expressions.
-The permission-to-storage relationship uses `PageDirectoryEntry::SIZE` rather than an executable
-`size_of` call.
+Allocator minting is a trusted authority-origin boundary. Constructor conversion is a trusted
+representation boundary. The intervening transfer is proof-only and leaves runtime signatures and
+layouts unchanged.
 
-The invariant is split according to the data-structure idiom:
+### Terminal contracts
 
-```rust
-pub open spec fn wf(&self) -> bool;
-pub closed spec fn internal_inv(&self) -> bool;
-pub open spec fn inv(&self) -> bool {
-    self.wf() && self.internal_inv()
-}
-```
+The following six trusted interaction contracts were not changed by the allocator-threading work:
 
-`wf()` contains public sanity and value-validity facts:
+- `env_interaction_clear_page_directory`;
+- `env_interaction_read_page_directory_entry`;
+- `env_interaction_write_page_directory_entry`;
+- `env_interaction_clear_page_table`;
+- `env_interaction_read_page_table_entry`; and
+- `env_interaction_write_page_table_entry`.
 
-- the permission domain length is `PAGE_TABLE_LENGTH`;
-- the domain is exactly the range `0..PAGE_TABLE_LENGTH`;
-- every permission is either uninitialized or initialized with a value satisfying
-  `valid_standard_pde`.
+They preserve pointer identity and unaffected tokens, return admitted observations on reads, and
+replace the selected baseline on writes. A present PDE write receives an erased witness for the
+actual child page table and requires exact encoded-address correspondence and child readiness.
 
-`internal_inv()` contains the representation-dependent address correspondence. For each index, the
-permission address equals the storage base address plus `index * PageDirectoryEntry::SIZE`.
-`permissions_match_storage()` is private because clients do not need this implementation detail.
+### Validation status
 
-The constructor keeps its ordinary Rust signature:
+- formatting passes;
+- ordinary kernel checks pass for x86 and x86_64; and
+- Verus verification passes for `TARGET=x86`.
 
-```rust
-PageDirectory::new(entries)
-```
+### Remaining x86 work
 
-Its `#[verus_spec(with ...)]` receives allocator-provided
-`Map<nat, PointsTo<PteWord>>` only during verification. A trusted
-`mint_nanvix_pde_tokens()` conversion consumes that map and returns
-`Map<nat, NanvixPdeToken>`. `proof_with!` injects the resulting token map into the proof-only field.
-The constructor requires the raw map to have the expected domain, contain uninitialized
-permissions, and match the concrete storage base.
+- Strengthen `valid_standard_pde()` beyond the current page-size-bit check.
+- Strengthen `valid_pte()`, which currently accepts every `u32`.
+- Prove continued child lifetime and reachability, not only readiness at publication.
+- Restore constructor guarantees weakened during proof refactoring:
+  - both constructors previously guaranteed every baseline was exactly zero after cleaning;
+  - `PageTable::new()` also previously guaranteed `nmapped == 0`;
+  - `ready_for_mmu()` currently guarantees initialization and validity, not those stronger facts.
+- Review and minimize external type specifications and broad `external_body` boundaries where the
+  frontend can support direct verification.
 
-The BSS construction path in `Vmem::new` now:
+The constructor issue is not a change to the six environment-interaction contracts, but it is a
+real specification regression and should be corrected.
 
-1. allocates the executable entry array;
-2. computes its executable base address;
-3. supplies that address to the proof-only BSS field with `proof_with!`; and
-4. constructs `PageDirectoryStorage::Bss`.
+## x86_64 Hardware Paging Hierarchy
 
-The allocator-to-constructor connection remains intentionally assumed at current construction
-sites: callers must provide the raw permission map proof-only, while the work that mints
-`PointsTo` at BSS or frame allocation remains deferred. This is an explicit upstream proof
-obligation, not permission creation at the constructor.
+### Ownership partition
 
-## Current Page-Directory Interaction Specifications
+Each non-kernel `Vmem` owns a tracked map containing its private PML4, PDPT, PD, and PT page tokens.
+The root kernel `Vmem` uses the boot hierarchy and does not own a private root.
 
-All three wrappers are private `PageDirectory` methods outside `verus!`, preserving their runtime
-behavior and giving their contracts direct access to `self.permissions`.
+One shared proof manager owns:
 
-### Write
+- boot PML4/PDPT/PD pages shared by address spaces; and
+- unallocated or reclaimed `PT_POOL` pages.
 
-`env_interaction_write_page_directory_entry` reproduces the original indexed assignment:
+The manager uses a duplicable handle to one `LocalInvariant`; cloning the handle does not clone the
+linear page tokens. Allocation transfers one page token into a `Vmem`; reclamation transfers it
+back. A private address space borrows a witness for shared `PDPT[0]` rather than owning or freeing
+the boot PD.
 
-```rust
-&mut self,
-index: usize,
-value: PteWord,
-```
+The manager is minted once at virtual-memory-manager initialization from boot and pool permission
+maps. Minting authority at individual reads or allocations is prohibited.
 
-- `old(self).inv()`;
-- explicit lower and upper index bounds;
-- the new value satisfies `valid_standard_pde`; and
-- PDE presence exactly matches the optional page-table argument, with present targets ready for an
-  MMU walk and physically matching the encoded address.
+### Hierarchy invariants
 
-- `final(self).inv()`;
-- the selected token pointer is unchanged;
-- the selected token is initialized with `expected() == value`; and
-- every other token is unchanged.
-
-### Clear
-
-`env_interaction_clear_page_directory` reproduces the original loop over `self.entries`. It:
-
-- requires `old(self).inv()`;
-- ensures `final(self).inv()`;
-- preserves every permission pointer; and
-- initializes every permission with zero.
-
-An earlier whole-storage equality clause was removed because it was stronger than necessary.
-
-### Read
-
-`env_interaction_read_page_directory_entry` reproduces the original indexed read. Its current
-contract:
-
-- requires `self.inv()`;
-- requires explicit lower and upper index bounds;
-- requires the selected token to be initialized; and
-- returns a value admitted by that token.
-
-It intentionally does not guarantee equality with `expected()`, because the MMU may set the
-accessed bit between Nanvix operations.
-
-The current architectural validity predicate only checks that the page-size bit is clear:
-
-```rust
-value & 0x80 == 0
-```
-
-This is intentionally incomplete. Before generalizing the approach, confirm the exact x86 rules
-for standard PDE reserved, ignored, software-available, physical-address, and feature-dependent
-bits. The predicate should be strengthened without rejecting architecturally permitted fields.
-
-## Permission Origin and Threading
-
-The agreed ownership flow is:
+Private page maps tie keys to physical page identities and levels. Present non-leaf entries must
+target a ready owned child at the next level, except for the explicit shared boot edge. Child
+publication requires exact optional-witness correspondence:
 
 ```text
-raw allocation PointsTo
-    -> PageDirectory::new
-    -> mint_nanvix_pde_tokens
-    -> PageDirectory.permissions
-    -> environment interaction
+present non-leaf <=> Some(child)
+leaf or absent    <=> None
 ```
 
-The PTE path is identical through `mint_nanvix_pte_tokens`. Both minting functions are trusted proof
-functions with contracts that:
+`ensure_table()`, `split_2m_entry()`, `create_user_pml4()`, mapping, unmapping, and protection
+thread the corresponding tokens through the trusted entry read/write boundary.
 
-- consume the complete raw permission map;
-- preserve every permission pointer;
-- establish one uninitialized Nanvix token per entry; and
-- return exactly the original domain.
+### Reclamation
 
-There are two backing sources:
+`destroy_user_pml4()` now clears each parent entry before returning the child page token to the
+manager. This enforces detached-before-free order and preserves the ownership invariant during
+teardown.
 
-1. BSS slots from `PAGE_TABLE_ALLOCATOR.alloc_as()` in `Vmem::new`;
-2. runtime `KernelPage` storage used by `Vmem::clone`.
+This is a runtime hardening relative to the earlier implementation. Under the existing precondition
+that the hierarchy is not active in CR3, the old order was not known to cause an observable failure,
+but it did not establish the proof-relevant absence of environment-reachable dangling edges.
 
-Their allocator specifications must eventually transfer the raw permission map and retain no
-duplicate permission. The existing BSS ghost base address is storage identity, not a replacement
-for memory permissions.
+### Validation and trust status
 
-Present PDE publication now carries a proof-only reference to the actual page table through
-`PageDirectory::map()`, `write_pde()`, and the terminal write interaction. `Vmem::new()`,
-`Vmem::clone()`, and new kernel/user page-table installation supply `Some(&page_table)`.
-`PageDirectory::unmap()` supplies `None`. These arguments are erased and do not change runtime
-signatures.
+Ordinary x86_64 kernel compilation passes. Full x86_64 Verus verification reaches unrelated
+x86_64 slab-proof omissions, so the repository does not yet have an end-to-end successful
+x86_64 verification run.
 
-## Important Incomplete Work
+The current HWPT proof boundary is broader than the ideal terminal-operation-only design:
 
-Ordinary formatting and kernel compilation succeed, but Verus verification has not run because the
-configured Verus binary is unavailable.
+- boot and pool permission import is trusted;
+- allocation transfer and several mutable-static accessors are `external_body`;
+- `init()` remains a trusted boot-discovery boundary;
+- entry read and write are trusted transitions over the page tokens; and
+- the boot CR3 read validates the observed encoding and extracts its PML4 address, while TLB and
+  context-switch CR3 effects do not yet carry complete semantic contracts.
 
-The next blockers are:
+## Remaining Environment-Interface Work
 
-- thread assumed raw permissions through every BSS and `KernelPage` construction path, then connect
-  those obligations to the actual allocators;
-- verify the trusted `PointsTo`-to-token minting contracts with the pinned Verus version;
-- prove continued page-table lifetime separately from immediate write-time readiness;
-- run targeted Verus verification and correct attribute-mode issues; and
-- refine `valid_standard_pde` and `valid_pte` from the architecture definition.
+1. **Architectural validity**
+   - Complete x86 and x86_64 reserved-bit, physical-width, NX, PAT, caching, software-bit, and
+     large-page rules.
+   - Confirm exactly when accessed and dirty may change, including non-present entries.
 
-## Generalizing to Remaining Interactions
+2. **Translation control**
+   - Connect context-switch CR3 writes to root readiness and active-root lifetime.
+   - Specify CR0 reads and writes over system-visible register values.
+   - Connect CR3 replacement to architectural TLB effects.
 
-### Page table
+3. **TLB invalidation**
+   - State the guarantee relied upon after `invlpg` and CR3 replacement.
+   - Keep invalidation separate from paging-memory writes.
 
-`PageTable<T>` mirrors the page-directory token pattern, converts raw permissions with
-`mint_nanvix_pte_tokens()`, and tracks virtual and physical base facts. Upstream allocator threading
-remains incomplete. Its interactions specify:
+4. **Lifetime and reachability**
+   - Prove that every published child remains allocated while reachable.
+   - Connect detached page reclamation to active-root exclusion, not only the private owner map.
+   - Relate executable free-list contents to manager token ownership.
 
-- clear: every permission becomes initialized with zero;
-- read: the returned value is admitted by the selected token, permitting monotonic accessed and
-  dirty updates;
-- write: selected permission becomes `value`, others remain unchanged;
-- scans and iteration: observations are admitted by the relevant tokens;
-- bulk fill: exactly the target range changes;
-- PTE validity: currently accepts every raw word and still requires architectural refinement.
+5. **Generic and fault interactions**
+   - Add contracts for generic volatile `Table<E>` access.
+   - Complete the fault-state boundary without modifying the excluded hook files.
 
-### Generic volatile `Table<E>`
+6. **Trusted-boundary reduction**
+   - Narrow allocator, boot-import, mutable-static, and container `external_body` annotations where
+     supported.
+   - Keep authority minting distinct from MMU interaction transitions.
 
-Relate the typed table pointer to raw `PointsTo<PteWord>` permissions. Reads must decode the stored
-word; writes must store `entry.raw()`. Preserve volatility as executable behavior, while the
-contract reasons about memory contents.
+7. **Verification and regression review**
+   - Restore the x86 constructor postconditions described above.
+   - Resolve or isolate the unrelated x86_64 slab proof omissions, then run full x86_64 Verus.
+   - Compare trusted interaction contracts textually whenever ownership threading changes.
 
-### x86_64 hardware tables
+## Constraints
 
-Use level-aware page tokens for PML4, PDPT, PD, and PT pages. Private hierarchy pages should be
-owned directly by the corresponding `Vmem`; boot-shared pages and free/unallocated `PT_POOL`
-authority require a separate manager-level owner. Never duplicate the shared boot-PD token across
-all address spaces. The direct zeroing path must transition the same token model as `write_entry`.
-
-### CR0 and CR3
-
-These interactions do not use `PointsTo`. Introduce trusted contracts over system-visible register
-values:
-
-- CR0 read returns the current control value;
-- CR0 write installs the requested legal value;
-- CR3 read returns the current root and caching controls;
-- CR3 write installs an aligned, architecturally valid root and has the architectural TLB effect.
-
-Do not introduce a full MMU state object until the environment model stage.
-
-### TLB invalidation
-
-At the trusted-contract stage, specify the architectural guarantee relied upon after `invlpg` or a
-CR3 write. When an explicit MMU model is added, connect these functions to modeled cached
-translations.
-
-## Constraints to Preserve
-
-- Do not modify either `hooks.rs`.
-- Keep original interaction lines commented beside replacements.
-- Put new wrappers for `x.rs` in `x.spec.rs`.
-- Do not remove or rewrite imports that predated this work without necessity.
-- Keep proof state erased from ordinary Rust builds.
-- Do not pass `Tracked` or `Ghost` values as ordinary executable arguments.
-- Keep current runtime function signatures and control flow unless a runtime change is independently
-  required; proof convenience is not sufficient justification.
-- Do not introduce `MmuState` or another environment-owned state in the current trusted contracts.
-- Do not use `&mut` as the memory-content model for hardware-shared paging entries.
-- Derive permissions from allocation ownership and store them with the paging structure.
-
-## Recommended Next Session
-
-1. Thread raw permission maps through all logical paging constructors to their eventual allocators.
-2. Add a separate ownership protocol for keeping referenced tables alive.
-3. Implement the x86_64 split between per-`Vmem` private tokens and manager-owned boot/pool tokens.
-4. Run targeted Verus verification.
-5. Refine the PDE and PTE architectural validity predicates.
-6. Continue through registers and TLB operations.
+- Do not introduce a full `MmuState` during the trusted-contract stage.
+- Do not model hardware-shared paging memory solely with `&mut`.
+- Do not retain raw `PointsTo` after minting a specialized token.
+- Do not duplicate shared boot or free-pool authority across `Vmem` objects.
+- Do not return a page token to the manager before all environment-visible incoming edges are
+  removed.
+- Keep proof state erased and ordinary runtime signatures unchanged unless a runtime correction is
+  independently justified.
+- Keep original terminal operations auditable against their wrappers.

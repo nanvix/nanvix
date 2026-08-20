@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use ::core::arch;
+use ::vstd::prelude::*;
 
 include!("mod.spec.rs");
 
@@ -23,6 +24,14 @@ pub mod page_table;
 //==================================================================================================
 
 #[inline(never)]
+#[verus_verify(external_body)]
+#[verus_spec(
+    with
+        Ghost(root):
+            Ghost<&PageDirectory<crate::mm::PageDirectoryStorage>>,
+    requires
+        valid_cr3_root(cr3, root),
+)]
 pub unsafe fn load_page_directory(cr3: usize) {
     // arch::asm!(
     //     "mov {0}, %eax",
@@ -34,6 +43,9 @@ pub unsafe fn load_page_directory(cr3: usize) {
     //     options(nostack, att_syntax)
     // );
     unsafe {
+        proof_with! {
+            Ghost(root)
+        };
         env_interaction_write_cr3(cr3);
     }
     let mut cr0: usize = unsafe { env_interaction_read_cr0() };
