@@ -131,6 +131,11 @@ where
         self.wf() && self.internal_inv()
     }
 
+    /// Returns the physical base address of this page directory.
+    pub closed spec fn physical_base(&self) -> int {
+        self.entries.get_storage().base_address()
+    }
+
     /// Returns whether every page-directory entry has an initialized baseline.
     pub closed spec fn ready_for_mmu(&self) -> bool {
         &&& self.inv()

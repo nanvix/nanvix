@@ -27,9 +27,38 @@ pub const HW_DIRTY_BIT: u64 = 1 << 6;
 #[cfg(verus_keep_ghost_body)]
 pub const ADDR_MASK_1G: u64 = 0x000F_FFFF_C000_0000;
 
+/// Mask for CR3 fields other than the paging-structure base address.
+#[cfg(verus_keep_ghost_body)]
+pub const CR3_CONTROL_MASK: u64 = 0xFFF;
+
 /// Returns the size of one x86_64 hardware paging entry in bytes.
 pub open spec fn hw_entry_size() -> int {
     8
+}
+
+/// Extracts the PML4 physical address encoded in a CR3 value.
+pub open spec fn cr3_root_address(value: u64) -> u64 {
+    value & ADDR_MASK_4K
+}
+
+/// Returns whether a CR3 observation has a non-null, representable PML4 address.
+///
+/// Feature-dependent interpretation of the low control and PCID bits is deferred. This predicate
+/// constrains only the physical-address portion consumed by the current Nanvix implementation.
+pub open spec fn valid_cr3_value(value: u64) -> bool {
+    &&& value & !(ADDR_MASK_4K | CR3_CONTROL_MASK) == 0
+    &&& cr3_root_address(value) != 0
+}
+
+/// Returns whether `value` names the supplied initialized PML4 root.
+pub open spec fn valid_cr3_root(
+    value: u64,
+    root: &NanvixHwPageToken,
+) -> bool {
+    &&& valid_cr3_value(value)
+    &&& root.ready_for_mmu()
+    &&& root.level() == HwPagingLevel::Pml4
+    &&& root.physical_base() == cr3_root_address(value)
 }
 
 /// Level of one page in the x86_64 hardware paging hierarchy.
@@ -490,6 +519,11 @@ unsafe fn env_interaction_invalidate_tlb_page(vaddr: usize) {
 }
 
 // Equivalent to the replaced instruction because it returns the same current CR3 value.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    ensures
+        valid_cr3_value(result),
+)]
 unsafe fn env_interaction_read_cr3() -> u64 {
     let cr3: u64;
     unsafe {

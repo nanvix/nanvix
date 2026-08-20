@@ -328,9 +328,16 @@ impl Vmem {
         Ok(vmem)
     }
 
+    #[cfg_attr(not(target_arch = "x86_64"), verus_verify(external_body))]
     pub fn load(&self) -> Result<(), Error> {
         let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
-        unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+        unsafe {
+            #[cfg(not(target_arch = "x86_64"))]
+            proof_with! {
+                Ghost(&self.pgdir)
+            };
+            mmu::load_page_directory(pgdir_addr.into_raw_value())
+        };
         Ok(())
     }
 
