@@ -71,6 +71,7 @@ use ::spin::Mutex;
 use ::sys::pm::ProcessIdentifier;
 use ::sysapi::{
     fcntl::{
+        atflags::AT_SYMLINK_NOFOLLOW,
         file_control_request,
         file_creation_flags,
         file_status_flags,
@@ -2149,7 +2150,7 @@ pub fn vfs_fchownat(
 /// - `dirfd`: Directory file descriptor for relative path resolution.
 /// - `pathname`: Path to the target file.
 /// - `times`: Access (`[0]`) and modification (`[1]`) times.
-/// - `flags`: Flags (must be zero; unsupported flags are rejected).
+/// - `flags`: Accepts `AT_SYMLINK_NOFOLLOW`; other flags are rejected.
 ///
 /// # Errors
 ///
@@ -2162,10 +2163,10 @@ pub fn vfs_utimensat(
     times: &[timespec; 2],
     flags: c_int,
 ) -> Result<(), Fat32Error> {
-    // Reject unsupported flags since FAT32 does not handle them.
-    if flags != 0 {
+    if flags & !AT_SYMLINK_NOFOLLOW != 0 {
         return Err(Fat32Error::InvalidArgument);
     }
+    // FAT has no symlinks, so no-follow is equivalent to ordinary lookup.
     // POSIX requires no ownership or permission checks when both fields are omitted.
     if times.iter().all(|ts| ts.tv_nsec == UTIME_OMIT) {
         return Ok(());
