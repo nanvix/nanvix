@@ -417,6 +417,16 @@ fn test_stat_file() {
     assert_eq!(resp.status, 0);
     assert_eq!(resp.size, 10);
     assert_eq!(resp.is_dir, 0);
+
+    let times_payload = handler
+        .take_next_response_part()
+        .expect("missing stat timestamps");
+    let kind = u16::from_ne_bytes([times_payload[0], times_payload[1]]);
+    assert_eq!(kind, SystemCallMessageKind::HostFsStatTimesResponse as u16);
+    assert_eq!(get_op_id(&times_payload), OperationId::from_raw(0));
+    let times = StatTimesResponse::decode(&times_payload).expect("valid stat timestamps");
+    assert!(times.mtim.tv_nsec < 1_000_000_000);
+    assert!(handler.take_next_response_part().is_none());
 }
 
 #[test]
@@ -443,6 +453,7 @@ fn test_stat_invalid_fd() {
     let response: [u8; Message::PAYLOAD_SIZE] = handler.handle_request(&payload).unwrap();
     let resp: StatResponse = StatResponse::decode(&response);
     assert!(resp.status < 0, "stat of invalid fd should fail");
+    assert!(handler.take_next_response_part().is_none());
 }
 
 //==================================================================================================
@@ -1569,6 +1580,13 @@ fn test_lstat_regular_file() {
     assert_eq!(r.status, 0, "lstat should succeed");
     assert_eq!(r.kind, file_kind::REGULAR);
     assert_eq!(r.size, 5);
+    let times = handler
+        .take_next_response_part()
+        .expect("missing lstat timestamps");
+    assert_eq!(
+        u16::from_ne_bytes([times[0], times[1]]),
+        SystemCallMessageKind::HostFsStatTimesResponse as u16
+    );
 }
 
 #[test]
@@ -1619,6 +1637,13 @@ fn test_pathstat_regular_file() {
     assert_eq!(r.status, 0, "pathstat should succeed");
     assert_eq!(r.kind, file_kind::REGULAR);
     assert_eq!(r.size, 5);
+    let times = handler
+        .take_next_response_part()
+        .expect("missing pathstat timestamps");
+    assert_eq!(
+        u16::from_ne_bytes([times[0], times[1]]),
+        SystemCallMessageKind::HostFsStatTimesResponse as u16
+    );
 }
 
 #[test]
