@@ -715,7 +715,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2308,7 +2308,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2848,7 +2848,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3279,7 +3279,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4421,9 +4421,9 @@ checksum = "f5f2985ebd252c492375e32f2bfcff6e6a04523009a0d624785d3468f3729158"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-08-09-0044"
+version = "0.0.0-2026-08-23-0033"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57091b5661094900006f07621654a455ecf8ab40efc22981cb39b773ff7bc21c"
+checksum = "62f5b1ed2151955cfe25ebfc1382ab422ae004e5cda6c502871425cc9e2ad5f3"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -4550,9 +4550,9 @@ dependencies = [
 
 [[package]]
 name = "vstd"
-version = "0.0.0-2026-08-09-0044"
+version = "0.0.0-2026-08-23-0033"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "512e38f177f75c473a03121bf0934a276468f78fea84c073f979d6670e862705"
+checksum = "93b32ef60c0a4ce7d85691135c15fada7ab84b2c1471322d320fba313190e2e9"
 dependencies = [
  "verus_builtin",
  "verus_builtin_macros",
