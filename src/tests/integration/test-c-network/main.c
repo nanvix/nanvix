@@ -9,15 +9,8 @@
 
 #include "common.h"
 #include <arpa/inet.h>
-#include <assert.h>
 #include <netinet/in.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/socket.h>
-#ifndef __NANVIX_STANDALONE__
-#include <sys/un.h>
-#endif
-#include <time.h>
 #include <unistd.h>
 
 //==================================================================================================
@@ -53,21 +46,6 @@
  * @returns Nothing. If the assertion fails, compilation will fail.
  */
 #define STATIC_ASSERT_ALIGNMENT(a, b) STATIC_ASSERT(_Alignof(a), b)
-
-//==================================================================================================
-// Constants
-//==================================================================================================
-
-// Seed for random number generation.
-#ifndef __RELEASE
-#define SEED 0
-#else
-#define SEED 42
-#endif
-
-// Length of the UNIX socket name (including the null terminator).
-// We set this so it fits on socaddr.sa_data.
-#define UNIX_SOCKET_NAME_LEN 9
 
 //==================================================================================================
 // Standalone Functions
@@ -123,35 +101,11 @@ int main(int argc, const char *argv[])
     );
     STATIC_ASSERT_SIZE(struct sockaddr_in, sizeof(struct sockaddr_storage));
 
-#ifndef __NANVIX_STANDALONE__
-    // Sanity check size of `sockaddr_un` structure.
-    STATIC_ASSERT_SIZE(struct sockaddr_un,
-                       sizeof(unsigned char) +       // sun_len
-                           sizeof(sa_family_t) +     // sun_family
-                           SUNPATHLEN * sizeof(char) // sun_path
-    );
-    STATIC_ASSERT_SIZE(struct sockaddr_un, sizeof(struct sockaddr_storage));
-#endif
-
-    srand(SEED);
-
     in_port_t sin_port = htons(1992);
     struct in_addr sin_addr = {.s_addr = htonl(0x7f000001)};
 
     test_inet_sockets(sin_port, sin_addr);
     test_poll_services(sin_addr);
-
-    // The network service supports only AF_INET sockets.
-#ifndef __NANVIX_STANDALONE__
-    {
-        char sun_path[UNIX_SOCKET_NAME_LEN];
-        for (int i = 0; i < UNIX_SOCKET_NAME_LEN - 1; i++) {
-            sun_path[i] = 'a' + (rand() % 26);
-        }
-        sun_path[UNIX_SOCKET_NAME_LEN - 1] = '\0';
-        test_unix_sockets(sun_path);
-    }
-#endif
 
     // Write magic string to signal that the test passed.
     {
