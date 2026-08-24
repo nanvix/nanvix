@@ -998,7 +998,7 @@ impl Vmem {
 
         loop {
             let mut buf: [MaybeUninit<PageAligned<VirtualAddress>>; CHUNK] =
-                [const { MaybeUninit::uninit() }; CHUNK];
+                [MaybeUninit::uninit(); CHUNK];
             let mut count: usize = 0;
             // Break as soon as the batch is full. Without the early break each pass would
             // re-traverse every remaining mapping, making a full teardown quadratic in the number
