@@ -76,7 +76,7 @@ pub fn sigpending(
     };
 
     // Report it through the user-supplied buffer.
-    if let Err(error) = pm::copy_to_user(pm, caller_pid, set_ptr as *mut SigSet, &pending) {
+    if let Err(error) = pm::copy_to_user_addr(pm, caller_pid, set_addr, &pending) {
         error!("failed to copy pending signal set to user space (error={error:?})");
         return KcallResult::Error(error.code.into());
     }

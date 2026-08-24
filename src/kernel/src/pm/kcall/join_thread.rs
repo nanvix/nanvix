@@ -11,6 +11,7 @@ use crate::pm::{
     SleepError,
 };
 use ::sys::{
+    mm::VirtualAddress,
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -70,11 +71,11 @@ pub unsafe fn join_thread(
             return Err(SleepError::Generic(error));
         },
     };
-    let retval: *mut ExitStatus = arg1 as *mut ExitStatus;
+    let retval: VirtualAddress = VirtualAddress::from_raw_value(arg1 as usize);
 
     let status: ExitStatus = ProcessManager::join_thread(pid, tid)?;
 
-    pm::copy_to_user::<ExitStatus>(ProcessManager::get_mut(), pid, retval, &status)
+    pm::copy_to_user_addr::<ExitStatus>(ProcessManager::get_mut(), pid, retval, &status)
         .map_err(|error| SleepError::Generic(error))?;
 
     Ok(ExitStatus::ok())

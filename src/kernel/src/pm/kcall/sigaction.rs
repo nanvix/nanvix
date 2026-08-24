@@ -102,9 +102,7 @@ pub fn sigaction(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32)
 
         // Copy the new action from user space.
         let mut act: SigAction = SigAction::default();
-        if let Err(error) =
-            pm::copy_from_user(pm, caller_pid, &mut act, act_ptr as *const SigAction)
-        {
+        if let Err(error) = pm::copy_from_user_addr(pm, caller_pid, &mut act, act_addr) {
             error!("failed to copy new action from user space (error={error:?})");
             return KcallResult::Error(error.code.into());
         }
@@ -156,7 +154,8 @@ pub fn sigaction(caller_pid: ProcessIdentifier, arg0: u32, arg1: u32, arg2: u32)
 
     // Report the previous action through `oldact`, if requested.
     if oldact_ptr != 0 {
-        if let Err(error) = pm::copy_to_user(pm, caller_pid, oldact_ptr as *mut SigAction, &old) {
+        let oldact_addr: VirtualAddress = VirtualAddress::from_raw_value(oldact_ptr);
+        if let Err(error) = pm::copy_to_user_addr(pm, caller_pid, oldact_addr, &old) {
             error!("failed to copy old action to user space (error={error:?})");
             return KcallResult::Error(error.code.into());
         }

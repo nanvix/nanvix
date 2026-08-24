@@ -17,10 +17,7 @@ use ::arch::mem::PAGE_SIZE;
 use ::core::mem::size_of;
 use ::sys::{
     error::ErrorCode,
-    mm::{
-        Address,
-        VirtualAddress,
-    },
+    mm::VirtualAddress,
     pm::{
         ExecvArgs,
         ProcessIdentifier,
@@ -69,9 +66,7 @@ pub fn execv(pid: ProcessIdentifier, arg0: u32) -> KcallResult {
 
     // Copy the argument structure from user space.
     let mut args: ExecvArgs = ExecvArgs::default();
-    if let Err(error) =
-        pm::copy_from_user(pm, pid, &mut args, unsafe_args.into_raw_value() as *const ExecvArgs)
-    {
+    if let Err(error) = pm::copy_from_user_addr(pm, pid, &mut args, unsafe_args) {
         let reason: &str = "failed to copy execv args from user space";
         error!("{reason} (error={error:?})");
         return KcallResult::Error(error.code.into());

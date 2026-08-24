@@ -83,8 +83,7 @@ pub fn sigprocmask(
             return KcallResult::Error(ErrorCode::InvalidArgument.into());
         }
         let mut value: SigSet = 0;
-        if let Err(error) = pm::copy_from_user(pm, caller_pid, &mut value, set_ptr as *const SigSet)
-        {
+        if let Err(error) = pm::copy_from_user_addr(pm, caller_pid, &mut value, set_addr) {
             error!("failed to copy signal set from user space (error={error:?})");
             return KcallResult::Error(error.code.into());
         }
@@ -104,7 +103,8 @@ pub fn sigprocmask(
 
     // Report the previous mask through `oldset`, if requested.
     if oldset_ptr != 0 {
-        if let Err(error) = pm::copy_to_user(pm, caller_pid, oldset_ptr as *mut SigSet, &old) {
+        let oldset_addr: VirtualAddress = VirtualAddress::from_raw_value(oldset_ptr);
+        if let Err(error) = pm::copy_to_user_addr(pm, caller_pid, oldset_addr, &old) {
             error!("failed to copy old signal set to user space (error={error:?})");
             return KcallResult::Error(error.code.into());
         }

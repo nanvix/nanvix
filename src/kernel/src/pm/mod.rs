@@ -115,8 +115,29 @@ pub fn copy_from_user<T>(
     dst: &mut T,
     src: *const T,
 ) -> Result<(), Error> {
+    // Retained pointer-typed entry point (used by callers outside `pm`, e.g. `ipc`/`io`). It only
+    // carries the source address, so lower it to a `VirtualAddress` and delegate to the
+    // address-typed helper. `src as usize` is a supported pointer-to-integer cast.
+    copy_from_user_addr(pm, pid, dst, VirtualAddress::from_raw_value(src as usize))
+}
+
+///
+/// # Description
+///
+/// Address-typed counterpart of [`copy_from_user`]. The user-space source is supplied as a
+/// [`VirtualAddress`] — the type the copy path already lowers to internally — so callers that
+/// already hold the address as an integer/`VirtualAddress` need not synthesize a raw pointer just
+/// to satisfy the signature. Behavior is identical to [`copy_from_user`]: the source address is
+/// never dereferenced as a kernel pointer; only its bits are used to copy through the target
+/// process's page tables.
+///
+pub fn copy_from_user_addr<T>(
+    pm: &mut ProcessManager,
+    pid: ProcessIdentifier,
+    dst: &mut T,
+    src: VirtualAddress,
+) -> Result<(), Error> {
     let dst: VirtualAddress = VirtualAddress::from_raw_value(dst as *mut T as usize);
-    let src: VirtualAddress = VirtualAddress::from_raw_value(src as usize);
     let size: usize = core::mem::size_of::<T>();
 
     pm.vmcopy_from_user(pid, dst, src, size)
@@ -128,7 +149,28 @@ pub fn copy_to_user<T>(
     dst: *mut T,
     src: &T,
 ) -> Result<(), Error> {
-    let dst: VirtualAddress = VirtualAddress::from_raw_value(dst as usize);
+    // Retained pointer-typed entry point (used by callers outside `pm`, e.g. `ipc`/`io`). It only
+    // carries the destination address, so lower it to a `VirtualAddress` and delegate to the
+    // address-typed helper. `dst as usize` is a supported pointer-to-integer cast.
+    copy_to_user_addr(pm, pid, VirtualAddress::from_raw_value(dst as usize), src)
+}
+
+///
+/// # Description
+///
+/// Address-typed counterpart of [`copy_to_user`]. The user-space destination is supplied as a
+/// [`VirtualAddress`] — the type the copy path already lowers to internally — so callers that
+/// already hold the address as an integer/`VirtualAddress` need not synthesize a raw pointer just
+/// to satisfy the signature. Behavior is identical to [`copy_to_user`]: the destination address is
+/// never dereferenced as a kernel pointer; only its bits are used to copy through the target
+/// process's page tables.
+///
+pub fn copy_to_user_addr<T>(
+    pm: &mut ProcessManager,
+    pid: ProcessIdentifier,
+    dst: VirtualAddress,
+    src: &T,
+) -> Result<(), Error> {
     let src: VirtualAddress = VirtualAddress::from_raw_value(src as *const T as usize);
     let size: usize = core::mem::size_of::<T>();
 

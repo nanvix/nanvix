@@ -464,3 +464,85 @@ internal-item-statement (run-8). The array-fill candidate — the sole item that
 kept delivery open after run-8 — is now closed as a genuine limitation. No
 actionable category remains; the campaign is at a no-actionable-category fixed
 point.
+
+## Integer-to-pointer cast triage — sub-family A RESOLVED by landed PM-local rewrite; sub-family B genuine
+
+Node `triage-integer-pointer-cast-family`. Confirms the direct-cast frontend gap
+and refutes the **in-place pointer-synthesis spelling class** on the pinned Verus
+build (including the operator-named provenance-correct replacements). The
+address-only sub-family A is then **eliminated** by a landed, behavior-preserving
+PM-local rewrite (run-9 probe). Full engineer write-up + logs:
+`argus-pm-artifacts-20260824/reproducer/INTPTR_LIMITATION.md` and
+`.../reproducer/intptr/`.
+
+- **Minimized reproducer (rejection confirmed).** `intptr/intptr_bad.rs` →
+  Verus `0.2026.08.23.fbbbbcf` emits ``Verus does not support this cast: `usize`
+  to `*mut ExitStatus` `` (exit 1). Ordinary `rustc` compiles + runs the same
+  code (`intptr_legal_rust_check.rs`, exit 0) → legal Rust, genuine frontend
+  lowering gap.
+- **Equivalence class of in-place pointer-synthesis rewrites — all refuted.** Tested on the
+  pinned build (fresh external `CARGO_TARGET_DIR`):
+  - `addr as *const/*mut T` (current) → REJECTED (unsupported cast).
+  - `core::ptr::with_exposed_provenance[_mut]::<T>(addr)` (the operator-named
+    provenance-correct replacement; the std-defined exact equivalent) → REJECTED,
+    "not supported", resolvable ONLY by `assume_specification` = **forbidden
+    net-new trust** (`intptr_core_wep.stderr.log`).
+  - `core::ptr::without_provenance[_mut]::<T>(addr)` → REJECTED, forbidden
+    `assume_specification`; also not equivalent (no-provenance ≠ exposed).
+  - `core::mem::transmute::<usize, *mut T>(addr)` → REJECTED, forbidden
+    `assume_specification`.
+  - `vstd::raw_ptr::with_exposed_provenance::<T>(addr, Tracked(IsExposed::null()))`
+    → ACCEPTED (`2 verified, 0 errors`) but disqualified: (1) the null token
+    stamps `Provenance::null()` on a real address, **not** the exposed provenance
+    the `as` cast denotes — no semantics-preserving token is constructible from a
+    raw syscall/MMIO integer; (2) it injects a Verus-only ghost into the exec
+    path; (3) vstd is a verification-time library not linked into ordinary `pm`
+    exec.
+- **Exhaustive absolute inventory (all 66 PM files, not diagnostic-capped): 14
+  Verus-visible int→pointer sites**, split by provenance dependence:
+  - **A. Address-only (10):** `create_thread.rs:74`, `duplicate.rs:78`,
+    `execv.rs:73`, `sigaction.rs:106,159`, `sigpending.rs:79`,
+    `sigprocmask.rs:86,107`, `sigsuspend.rs:82`, `join_thread.rs:73` — the raw
+    pointer is fed to `copy_from_user`/`copy_to_user`, which do `ptr as usize` →
+    `VirtualAddress` and copy through page tables; the pointer is never
+    dereferenced (provenance is not observed; only address bits are used).
+  - **B. Genuinely dereferenced (4):** `clock.rs:115` (MMIO `read_volatile`),
+    `unsafe.rs:406,421` (`base_addr()->usize` → `from_raw_parts` UTF-8 read),
+    `mod.rs:533` (`forge_user_stack` writes through it) — provenance load-bearing,
+    no address-carrier remedy.
+  - **C. cfg-masked control (excluded from the family total):** `unsafe.rs:588`
+    under `#[cfg(all(debug_assertions, not(verus_keep_ghost)))]` is invisible to
+    Verus, but its source is `from: *mut ContextInformation`; it is a
+    pointer-to-pointer cast, not an integer-to-pointer conversion.
+- **Independent-review classification.** Integer-to-pointer construction is a
+  genuine Verus frontend limitation, and no sound *in-place* spelling exists.
+  Sub-family A is nonetheless **RESOLVED** by an *added* (not in-place) PM-local
+  API: new `pm::copy_from_user_addr`/`copy_to_user_addr` take the user address as
+  a `VirtualAddress`, and the retained pointer-typed `copy_from_user`/
+  `copy_to_user` **delegate** to them (so `ipc`/`io` callers are untouched). The
+  ten PM callers now pass the `VirtualAddress` they already compute, deleting
+  every int→pointer cast at those sites. Sub-family B remains a genuine
+  direct-construction limitation with its in-place alternatives refuted.
+- **Run-9 verification (landed rewrite).** Ordinary kernel check
+  `clippy -D warnings` exit 0; fresh isolated `CARGO_TARGET_DIR`; direct 66-file
+  inject/scan; layered, exhaustive, `--max-layer-rounds 100`; **fixed_point in 3
+  rounds**; **0/66 restoration mismatches** (PM source byte-restored). Family
+  delta run-8 → run-9: every address-only sub-family A cast → 0
+  (`usize→*const ThreadCreateArgs` 2→0, `usize→*const ExecvArgs` 1→0,
+  `usize→*const SigAction` 1→0, `usize→*const u64` 2→0, `usize→*mut u64` 1→0,
+  `u32→*mut ExitStatus` 1→0); `dereferencing a pointer (implicit)` **8→8
+  unchanged** (delegation relocates, not multiplies, the raw-ptr-deref finding);
+  sub-family B retained (`usize→*const u32` 1→1, `usize→*const u8` 1→1);
+  LIMITATION rows 26→18. Isolated frontend evidence:
+  `intptr/intptr_addr_carrier_ok.rs` ACCEPTED (`9 verified, 0 errors`);
+  `intptr/intptr_addr_helper_deref.rs` shows only the pre-existing implicit-deref
+  diagnostic and NO int→pointer cast error. Artifacts:
+  `probe/pm_acceptance_run-9.json`, `.../pm_acceptance_run-9_report.md`,
+  `.../run9_family_delta.json`, `probe/run-9/`, `run_pm_acceptance_run9.sh`.
+
+### Updated int↔ptr row (supersedes the run-8 residual table entry)
+
+| Family (count) | Classification | Why |
+| --- | --- | --- |
+| int→ptr casts — deref sub-family B (4) | genuine direct frontend limitation | provenance-bearing MMIO/`from_raw_parts`/stack-forge derefs; no in-place spelling is frontend-accepted + semantics-preserving |
+| int→ptr casts — address-only sub-family A (10) | RESOLVED (run-9) | landed PM-local `VirtualAddress` delegation helpers eliminate every cast; fixed_point, deref family 8→8, 0/66 restoration mismatches, `clippy -D warnings` exit 0 |

@@ -40,6 +40,14 @@
       "from_stage": "prove",
       "reason": "operator replaced the standing Manager objective; resetting the superseded 'software' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
       "to_stage": "prove"
+    },
+    {
+      "at": "2026-08-24T06:17:06.903599Z",
+      "by": "manager",
+      "direction": "complete",
+      "from_stage": "prove",
+      "reason": "reviewer certified the final-stage checklist, overriding the Manager hold (The PM limitation campaign reached a reviewer-certified no-actionable-category fixed point, but the mandatory prove-stage goal, proof-state, verification, bound)",
+      "to_stage": "prove"
     }
   ],
   "stages": {
@@ -49,7 +57,7 @@
     "prove": {
       "completion_contract_sha256": "33ce56d90f6a4d8919c7663b8304d3346811745a92a85ecb81a43a3f2dd2c3a2",
       "completion_contract_version": 3,
-      "status": "in_progress"
+      "status": "done"
     }
   },
   "vertical": "verus",

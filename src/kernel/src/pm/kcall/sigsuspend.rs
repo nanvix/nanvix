@@ -78,9 +78,7 @@ pub fn sigsuspend(
         // SAFETY: the process manager is initialized and access is synchronized.
         let pm: &mut ProcessManager = unsafe { ProcessManager::get_mut() };
         let mut value: SigSet = 0;
-        if let Err(error) =
-            pm::copy_from_user(pm, caller_pid, &mut value, mask_ptr as *const SigSet)
-        {
+        if let Err(error) = pm::copy_from_user_addr(pm, caller_pid, &mut value, mask_addr) {
             error!("failed to copy signal mask from user space (error={error:?})");
             return KcallResult::Error(error.code.into());
         }

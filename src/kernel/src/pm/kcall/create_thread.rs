@@ -20,10 +20,7 @@ use ::config::memory_layout::USER_STACK_MIN_SIZE;
 use ::core::mem::size_of;
 use ::sys::{
     error::ErrorCode,
-    mm::{
-        Address,
-        VirtualAddress,
-    },
+    mm::VirtualAddress,
     pm::{
         ProcessIdentifier,
         ThreadCreateArgs,
@@ -67,12 +64,9 @@ pub fn create_thread(pid: ProcessIdentifier, arg0: u32) -> KcallResult {
 
     // Copy thread_create_args from user space to kernel space.
     let mut thread_create_args: ThreadCreateArgs = ThreadCreateArgs::default();
-    if let Err(error) = pm::copy_from_user(
-        pm,
-        pid,
-        &mut thread_create_args,
-        unsafe_thread_create_args.into_raw_value() as *const ThreadCreateArgs,
-    ) {
+    if let Err(error) =
+        pm::copy_from_user_addr(pm, pid, &mut thread_create_args, unsafe_thread_create_args)
+    {
         let reason: &str = "failed to copy thread_create_args from user space";
         error!("{reason:?} (error={:?})", error);
         return KcallResult::Error(error.code.into());
