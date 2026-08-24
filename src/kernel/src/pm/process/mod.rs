@@ -104,19 +104,72 @@ impl LifecycleTerminationCredit {
     }
 }
 
-/// Harvested process termination awaiting either lifecycle commit or explicit release.
+/// Capacity credit reserved for the future termination of a live thread.
+#[derive(Debug)]
+#[must_use]
+pub(crate) struct ThreadLifecycleTerminationCredit {
+    _private: (),
+}
+
+/// Reservation for the future termination record of a thread being created.
+#[derive(Debug)]
+#[must_use]
+pub(super) struct ThreadLifecycleReservation {
+    termination_credit: ThreadLifecycleTerminationCredit,
+}
+
+impl ThreadLifecycleReservation {
+    ///
+    /// # Description
+    ///
+    /// Creates a thread lifecycle reservation.
+    ///
+    /// # Returns
+    ///
+    /// A thread lifecycle reservation.
+    ///
+    fn new() -> Self {
+        Self {
+            termination_credit: ThreadLifecycleTerminationCredit { _private: () },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Converts this reservation into the credit owned by a committed thread.
+    ///
+    /// # Returns
+    ///
+    /// A thread-termination capacity credit.
+    ///
+    fn into_credit(self) -> ThreadLifecycleTerminationCredit {
+        self.termination_credit
+    }
+}
+
+/// Process termination metadata retained through resource harvest.
 #[must_use]
 pub(crate) struct HarvestedProcess {
     info: ProcessTerminationInfo,
-    termination_credit: LifecycleTerminationCredit,
 }
 
 impl HarvestedProcess {
-    fn new(info: ProcessTerminationInfo, termination_credit: LifecycleTerminationCredit) -> Self {
-        Self {
-            info,
-            termination_credit,
-        }
+    ///
+    /// # Description
+    ///
+    /// Creates harvested process metadata from a process-termination record.
+    ///
+    /// # Parameters
+    ///
+    /// - `info`: Process-termination record retained through resource harvest.
+    ///
+    /// # Returns
+    ///
+    /// Harvested process metadata containing `info`.
+    ///
+    fn new(info: ProcessTerminationInfo) -> Self {
+        Self { info }
     }
 
     /// Returns the harvested process-termination information.
@@ -124,8 +177,17 @@ impl HarvestedProcess {
         &self.info
     }
 
-    fn into_parts(self) -> (ProcessTerminationInfo, LifecycleTerminationCredit) {
-        (self.info, self.termination_credit)
+    ///
+    /// # Description
+    ///
+    /// Consumes this harvested process and returns its termination information.
+    ///
+    /// # Returns
+    ///
+    /// The harvested process-termination information.
+    ///
+    pub(crate) fn into_info(self) -> ProcessTerminationInfo {
+        self.info
     }
 }
 
@@ -135,6 +197,32 @@ impl HarvestedProcess {
 
 #[cfg(feature = "test")]
 pub(crate) use manager::new_test_delivery_sequence;
+///
+/// # Description
+///
+/// Creates a synthetic thread-termination credit for an in-kernel test fixture.
+///
+/// # Returns
+///
+/// A synthetic thread-termination credit.
+///
+#[cfg(feature = "test")]
+pub(crate) fn new_test_thread_termination_credit() -> ThreadLifecycleTerminationCredit {
+    ThreadLifecycleTerminationCredit { _private: () }
+}
+///
+/// # Description
+///
+/// Creates a synthetic process-termination credit for an in-kernel test fixture.
+///
+/// # Returns
+///
+/// A synthetic process-termination credit.
+///
+#[cfg(feature = "test")]
+pub(crate) fn new_test_process_termination_credit() -> LifecycleTerminationCredit {
+    LifecycleTerminationCredit { _private: () }
+}
 pub(crate) use manager::DeliverySequence;
 pub use manager::{
     ExceptionGuard,

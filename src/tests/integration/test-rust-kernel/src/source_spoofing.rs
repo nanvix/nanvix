@@ -50,16 +50,34 @@ use ::sys::{
 // Test Cases
 //==================================================================================================
 
+///
+/// # Description
+///
 /// Verifies that the kernel overwrites a forged `source` with the caller's true identity.
 ///
 /// The forged source impersonates a different privileged daemon. A correct kernel stamps the
 /// caller's authoritative [`ProcessIdentifier`] over it, so the delivered message must carry the
 /// caller's own pid — never the forged one.
+///
+/// # Returns
+///
+/// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+///
+/// # Errors
+///
+/// This function returns an error if the message cannot be sent or received, or if the kernel does
+/// not stamp the caller's authoritative process identifier on the message.
+///
+/// # Panics
+///
+/// This function panics if the forged process identifier unexpectedly equals the caller's process
+/// identifier.
+///
 fn test_spoofed_source_is_overwritten() -> Result<(), Error> {
     let my_pid: ProcessIdentifier = pm::getpid_uncached()?;
 
-    // Impersonate a privileged daemon other than ourselves. In the test-kernel environment this
-    // process runs as PROCD, so forge VFSD; if it ever runs as VFSD, forge PROCD instead.
+    // Impersonate a privileged daemon other than ourselves. The test image includes procd as the
+    // lifecycle consumer, so the test process normally forges VFSD.
     let forged_pid: ProcessIdentifier = if my_pid == ProcessIdentifier::VFSD {
         ProcessIdentifier::PROCD
     } else {

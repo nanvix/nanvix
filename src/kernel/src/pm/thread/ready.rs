@@ -16,11 +16,13 @@ use crate::{
     },
     pm::{
         clock,
+        process::ThreadLifecycleTerminationCredit,
         sync::condvar::Condvar,
         thread::{
             state::ThreadState,
             RunningThread,
             ZombieThread,
+            ZombieThreadTransition,
         },
         InterruptReason,
     },
@@ -30,7 +32,10 @@ use ::core::fmt::Debug;
 use ::sys::{
     error::ErrorCode,
     mm::VirtualAddress,
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
     time::SystemTime,
 };
 
@@ -64,10 +69,12 @@ impl ReadyThread {
     /// # Parameters
     ///
     /// - `id`: Thread identifier.
+    /// - `termination_credit`: Optional reserved capacity for this thread's termination record.
     /// - `kernel_stack`: Optional kernel stack.
     /// - `user_stack`: Optional user stack.
     /// - `user_tda`: Optional base address for the user-space thread data area.
     /// - `context`: Execution context.
+    /// - `fpu_state`: Initial floating-point unit state.
     ///
     /// # Returns
     ///
@@ -75,6 +82,7 @@ impl ReadyThread {
     ///
     pub fn new(
         id: ThreadIdentifier,
+        termination_credit: Option<ThreadLifecycleTerminationCredit>,
         kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
         user_tda: Option<VirtualAddress>,
@@ -84,6 +92,7 @@ impl ReadyThread {
         Self {
             state: Box::new(ThreadState::new(
                 id,
+                termination_credit,
                 kernel_stack,
                 user_stack,
                 user_tda,
@@ -181,12 +190,22 @@ impl ReadyThread {
     ///
     /// Terminates the ready thread and transitions it to zombie state.
     ///
+    /// The returned transition owns both the zombie and its pending lifecycle record.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process that owns the thread.
+    ///
     /// # Returns
     ///
-    /// This function returns a [`ZombieThread`] instance.
+    /// This function returns the must-use zombie-thread transition.
     ///
-    pub fn terminate(self) -> ZombieThread {
-        ZombieThread::from_state(self.state, ErrorCode::Interrupted.into())
+    /// # Panics
+    ///
+    /// This function panics if the thread does not own a termination credit.
+    ///
+    pub fn terminate(self, pid: ProcessIdentifier) -> ZombieThreadTransition {
+        ZombieThread::from_state(pid, self.state, ErrorCode::Interrupted.into())
     }
 
     ///

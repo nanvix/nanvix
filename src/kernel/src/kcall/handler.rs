@@ -99,6 +99,15 @@ where
 ///
 /// Kernel call handler.
 ///
+/// # Returns
+///
+/// The exit status that should be reported when the kernel shuts down.
+///
+/// # Panics
+///
+/// This function panics if the event manager cannot be initialized, lifecycle state was already
+/// disposed, or lifecycle reservation accounting is inconsistent during shutdown.
+///
 pub fn kcall_handler() -> ExitStatus {
     if let Err(e) = event::init() {
         panic!("failed to initialize event manager: {:?}", e);
@@ -119,12 +128,8 @@ pub fn kcall_handler() -> ExitStatus {
                 // Check if the process manager daemon (PROCD) terminated.
                 if termination.info().pid == ProcessIdentifier::PROCD {
                     // It was, so we should shutdown.
-                    let info = pm!().release_process_termination(termination);
-                    break info.status;
+                    break termination.into_info().status;
                 }
-                // Commit the termination to the ordered delivery broker. Waking the lifecycle
-                // owner is deferred until no reference to the process manager is held.
-                pm!().commit_process_termination(termination);
                 harvested_process = true;
             },
             Err(e) => {
@@ -155,7 +160,7 @@ pub fn kcall_handler() -> ExitStatus {
     };
 
     while let Ok(Some(termination)) = pm!().harvest_zombies(mm!()) {
-        let info = pm!().release_process_termination(termination);
+        let info = termination.into_info();
         info!("harvested zombie process: pid={:?}, status={:?}", info.pid, info.status);
     }
     pm!().dispose_lifecycle();

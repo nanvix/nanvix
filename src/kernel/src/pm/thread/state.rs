@@ -15,6 +15,7 @@ use crate::{
         ustack::UserStack,
     },
     pm::{
+        process::ThreadLifecycleTerminationCredit,
         sync::{
             condvar::Condvar,
             mutex::MutexGuard,
@@ -69,6 +70,8 @@ pub struct KcallRestart {
 pub struct ThreadState {
     /// Thread identifier.
     id: ThreadIdentifier,
+    /// Capacity credit reserved for this thread's termination record.
+    termination_credit: Option<ThreadLifecycleTerminationCredit>,
     /// Kernel stack.
     kernel_stack: Option<KernelStack>,
     /// User stack.
@@ -123,10 +126,12 @@ impl ThreadState {
     /// # Parameters
     ///
     /// - `id`: Thread identifier.
+    /// - `termination_credit`: Optional reserved capacity for this thread's termination record.
     /// - `kernel_stack`: Optional kernel stack.
     /// - `user_stack`: Optional user stack.
-    /// - `user_tda`: Optional base address for the user-space user-space thread data area.
+    /// - `user_tda`: Optional base address for the user-space thread data area.
     /// - `context`: Execution context.
+    /// - `fpu_state`: Initial floating-point unit state.
     ///
     /// # Returns
     ///
@@ -134,6 +139,7 @@ impl ThreadState {
     ///
     pub(super) fn new(
         id: ThreadIdentifier,
+        termination_credit: Option<ThreadLifecycleTerminationCredit>,
         kernel_stack: Option<KernelStack>,
         user_stack: Option<UserStack>,
         user_tda: Option<VirtualAddress>,
@@ -142,6 +148,7 @@ impl ThreadState {
     ) -> Self {
         Self {
             id,
+            termination_credit,
             context: Box::pin(context),
             kernel_stack,
             user_stack,
@@ -195,6 +202,45 @@ impl ThreadState {
     ///
     pub(super) fn id(&self) -> ThreadIdentifier {
         self.id
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Installs the lifecycle capacity reserved for this thread's termination record.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: Thread-termination capacity credit to install.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the thread already owns a termination credit.
+    ///
+    pub(crate) fn install_termination_credit(&mut self, credit: ThreadLifecycleTerminationCredit) {
+        assert!(self.termination_credit.is_none(), "thread termination credit installed twice");
+        self.termination_credit = Some(credit);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Takes the lifecycle capacity reserved for this thread's termination record.
+    ///
+    /// # Returns
+    ///
+    /// The thread-termination capacity credit owned by this thread.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the thread does not own a termination credit. Only the permanent
+    /// bootstrap kernel thread may remain live without one.
+    ///
+    pub(super) fn take_termination_credit(&mut self) -> ThreadLifecycleTerminationCredit {
+        match self.termination_credit.take() {
+            Some(credit) => credit,
+            None => unreachable!("only the permanent bootstrap kernel thread may lack a credit"),
+        }
     }
 
     ///

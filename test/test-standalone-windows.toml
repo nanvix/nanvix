@@ -50,7 +50,7 @@ iterations = 2
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "terminal"
-program = "./bin/test-rust-kernel.elf"
+program = "./bin/test-rust-kernel.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 expect_empty_output = true
 expected_exit_code = 13
@@ -208,7 +208,7 @@ expected_output = "GETENV:HOME=(null) NVX_GETENV_A=(null) NVX_GETENV_B=(null) NV
 [[tests]]
 build_modes = ["debug", "release"]
 executor = "http"
-program = "./bin/test-rust-kernel.elf"
+program = "./bin/test-rust-kernel.initrd"
 extra_nanvixd_args = "-ramfs ./bin/test-kernel-ramfs.img"
 expect_empty_output = true
 expected_exit_code = 13
