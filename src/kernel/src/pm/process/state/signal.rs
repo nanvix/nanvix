@@ -508,8 +508,8 @@ impl Default for SignalControl {
     fn default() -> Self {
         Self {
             dispositions: [
-                Box::new(::core::array::from_fn(|_| SignalDisposition::Default)),
-                Box::new(::core::array::from_fn(|_| SignalDisposition::Default)),
+                Box::new(::core::array::from_fn(|_idx| SignalDisposition::Default)),
+                Box::new(::core::array::from_fn(|_idx| SignalDisposition::Default)),
             ],
             pending: 0,
             restorer: None,

@@ -590,7 +590,7 @@ impl ProcessManager {
                 )
             };
             debug_assert!(
-                !from_bytes.iter().all(|&b| b == slab::SLAB_POISON_BYTE),
+                !from_bytes.iter().all(|b| *b == slab::SLAB_POISON_BYTE),
                 "BUG: ContextInformation at {:p} freed before context switch (detached-thread UAF)",
                 from,
             );
@@ -1109,19 +1109,24 @@ impl ProcessManager {
         let pid: ProcessIdentifier = pm.get_running().state().pid();
         let mailbox: Option<(DeliverySequence, Message)> =
             pm.get_running().state().peek_message(tid);
-        let mailbox_sequence: Option<DeliverySequence> =
-            mailbox.as_ref().map(|(sequence, _)| *sequence);
+        let mailbox_sequence: Option<DeliverySequence> = mailbox.as_ref().map(|entry| entry.0);
         if pm
             .delivery
             .lifecycle_precedes(mailbox_sequence, lifecycle_eligible)
         {
-            return Ok(pm.delivery.peek_lifecycle(pid).map(|(sequence, message)| {
-                UncommittedMessage::new(message, UncommittedMessageToken::Lifecycle(sequence))
+            return Ok(pm.delivery.peek_lifecycle(pid).map(|record| {
+                UncommittedMessage::new(record.1, UncommittedMessageToken::Lifecycle(record.0))
             }));
         }
 
-        Ok(mailbox.map(|(sequence, message)| {
-            UncommittedMessage::new(message, UncommittedMessageToken::Mailbox { tid, sequence })
+        Ok(mailbox.map(|record| {
+            UncommittedMessage::new(
+                record.1,
+                UncommittedMessageToken::Mailbox {
+                    tid,
+                    sequence: record.0,
+                },
+            )
         }))
     }
 

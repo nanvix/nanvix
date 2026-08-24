@@ -679,7 +679,7 @@ impl DeliveryBroker {
     /// The sequence number of the oldest lifecycle record, or [`None`] if none is buffered.
     ///
     fn lifecycle_sequence(&self) -> Option<DeliverySequence> {
-        self.lifecycle.front().map(|(sequence, _)| *sequence)
+        self.lifecycle.front().map(|record| record.0)
     }
 
     ///
@@ -734,7 +734,7 @@ impl DeliveryBroker {
     ) -> Option<(DeliverySequence, Message)> {
         self.lifecycle
             .front()
-            .map(|(sequence, notification)| (*sequence, notification.to_message(owner)))
+            .map(|record| (record.0, record.1.to_message(owner)))
     }
 
     ///

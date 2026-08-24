@@ -170,7 +170,7 @@ impl Condvar {
     ///
     pub unsafe fn notify_thread(&self, tid: ThreadIdentifier) -> Result<(), Error> {
         // Find thread.
-        let idx: Option<usize> = self.inner.sleeping.borrow().iter().position(|&t| t == tid);
+        let idx: Option<usize> = self.inner.sleeping.borrow().iter().position(|t| *t == tid);
 
         // Remove thread from sleeping queue and wake it up.
         if let Some(at) = idx {
@@ -276,7 +276,7 @@ impl Condvar {
             Ok(()) => Ok(()),
             Err(error) => {
                 // Remove the thread from the sleeping queue if it was not woken up.
-                self.inner.sleeping.borrow_mut().retain(|&t| t != tid);
+                self.inner.sleeping.borrow_mut().retain(|t| *t != tid);
                 Err(error)
             },
         }

@@ -151,3 +151,33 @@ per-round trace. Reaching a true fixed point requires a peel strategy for
 signature/item-level limitations (candidate dummy-probe improvement) or an
 explicit decision to accept item-level limitations as terminal — deferred to
 the next node.
+
+## Run-5 — closure-parameter general-patterns family eliminated (10 → 0)
+
+Node `triage-general-pattern-family`. Rewrote every non-variable closure
+**parameter** in the six PM source files to a named variable plus equivalent
+field access / dereference (16 closure params: the 10 run-4-reported sites plus
+6 same-family sites masked by `--multiple-errors 4`). The `for (i, _)` loop
+pattern is a loop binding, not a closure parameter, and Verus accepts it —
+left unchanged.
+
+- Reproducer (`argus-pm-artifacts-20260824/reproducer/`): `closure_pattern_bad.rs`
+  → 6 `only variables are supported here, not general patterns` errors on
+  Verus `0.2026.08.23.fbbbbcf`; `closure_pattern_good.rs` → `7 verified, 0 errors`
+  (exit 0, passes frontend lowering); `legal_rust_check.rs` → ordinary `rustc`
+  exit 0 (legal Rust). Full write-up: `reproducer/CLOSURE_PATTERN_LIMITATION.md`.
+- Fresh full 66-file layered probe `run-5` (fresh isolated `CARGO_TARGET_DIR`
+  `.../target/cargo-target-run5`, direct `--inject-files`/`--scan-files` 66-file
+  lists, `--max-layer-rounds 100`, no reachability manifest):
+  `summary={LIMITATION:35, INCONCLUSIVE:3}` (38 rows, down from run-4's 48);
+  `layered.rounds=3`, `stop_reason=fixed_point`, `layered_complete=True`,
+  `shielded=37`. Artifacts: `probe/pm_acceptance_run-5.json`,
+  `probe/pm_acceptance_run-5_report.md`, `probe/run5_family_delta.json`.
+- Per-family delta (`run5_family_delta.json`): the general-patterns family
+  `10 → 0`; **every other family unchanged; no new family exposed**.
+- Restoration: all 66 pm files byte-identical to the pre-run rewritten source
+  (`hashes/pm_run5_pre.sha256` vs `hashes/pm_run5_restore_check.txt`, 66 OK /
+  0 mismatch).
+- Compilation: the probe's `cargo verus` full build of `kernel` succeeded
+  (verification results were produced), confirming the rewritten source compiles
+  under the x86-kernel target with `microvm,trace`.

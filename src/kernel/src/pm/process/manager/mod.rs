@@ -387,7 +387,7 @@ impl ProcessManager {
     /// process spawned by the kernel is the init process; anything else was forked by a user
     /// process.
     fn classify_role(&self, pid: ProcessIdentifier, parent: ProcessIdentifier) -> ProcessRole {
-        ProcessRole::classify(parent, self.daemon_pids.iter().any(|(_, p)| *p == pid))
+        ProcessRole::classify(parent, self.daemon_pids.iter().any(|entry| entry.1 == pid))
     }
 
     ///
@@ -1248,7 +1248,12 @@ impl ProcessManager {
             // Substitute ASCII spaces with NUL in place so the boot (space-separated) command line
             // is delivered in the NUL-separated wire format without allocating a converted copy.
             if space_is_delimiter {
-                for (i, _) in s.as_bytes().iter().enumerate().filter(|(_, &b)| b == b' ') {
+                for (i, _) in s
+                    .as_bytes()
+                    .iter()
+                    .enumerate()
+                    .filter(|pair| *pair.1 == b' ')
+                {
                     let space_vaddr: VirtualAddress =
                         VirtualAddress::new(dest.into_raw_value() + i);
                     vmem.copy_to_user_unaligned(
@@ -1310,13 +1315,8 @@ impl ProcessManager {
         let daemon_name: Option<&'static str> = ::config::daemons::GUEST_DAEMON_NAMES
             .iter()
             .copied()
-            .find(|&name| name == program_name)
-            .filter(|name| {
-                !self
-                    .daemon_pids
-                    .iter()
-                    .any(|(registered, _)| registered == name)
-            });
+            .find(|name| *name == program_name)
+            .filter(|name| !self.daemon_pids.iter().any(|entry| &entry.0 == name));
 
         let (reservation, (pid, next_pid, next_tid, parent_pid, mut prepared)): (
             LifecycleCreationReservation,
