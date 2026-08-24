@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use super::PteWord;
-use vstd::prelude::*;
 
 //==================================================================================================
 // Enumerations
@@ -17,7 +16,6 @@ use vstd::prelude::*;
 ///
 /// A type that represents the present flag of a page table entry.
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub enum PresentFlag {
     /// The page table entry is not present.
@@ -31,7 +29,6 @@ pub enum PresentFlag {
 ///
 /// A type that represents the read/write flag of a page table entry.
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub enum ReadWriteFlag {
     /// The page table entry is read-only.
@@ -45,7 +42,6 @@ pub enum ReadWriteFlag {
 ///
 /// A type that represents the user/supervisor flag of a page table entry.
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub enum UserSupervisorFlag {
     /// The page table entry is for supervisor mode.
@@ -59,7 +55,6 @@ pub enum UserSupervisorFlag {
 ///
 /// A type that represents the page write-through flag of a page table entry.
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub enum PageWriteThroughFlag {
     /// The page table entry is not write-through.
@@ -73,7 +68,6 @@ pub enum PageWriteThroughFlag {
 ///
 /// A type that represents the page cache disable flag of a page table entry.
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub enum PageCacheDisableFlag {
     /// The page table entry is not cache disabled.
@@ -87,7 +81,6 @@ pub enum PageCacheDisableFlag {
 ///
 /// A type that represents the accessed flag of a page table entry.
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub enum AccessedFlag {
     /// The page table entry has not been accessed.
@@ -101,7 +94,6 @@ pub enum AccessedFlag {
 ///
 /// A type that represents the dirty flag of a page table entry.
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub enum DirtyFlag {
     /// The page table entry has not been written.
@@ -116,7 +108,6 @@ pub enum DirtyFlag {
 /// A type that represents the page size flag of a page directory entry.
 /// When set, the entry maps a large page (4 MiB on x86).
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub enum PageSizeFlag {
     /// Standard page size (4 KiB page table reference).
@@ -133,7 +124,6 @@ pub enum PageSizeFlag {
 /// bit 9 of the x86 PTE). When set, the page is shared with another address space
 /// and writes to it must trigger a copy on the page-fault path.
 ///
-#[verus_verify]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CopyOnWriteFlag {
     /// The page is not shared via copy-on-write.
@@ -146,7 +136,6 @@ pub enum CopyOnWriteFlag {
 // Implementations
 //==================================================================================================
 
-#[verus_verify]
 impl PresentFlag {
     /// Bit shift of the present flag in the page table entry.
     const SHIFT: PteWord = 0;
@@ -171,7 +160,6 @@ impl PresentFlag {
     }
 }
 
-#[verus_verify]
 impl ReadWriteFlag {
     /// Bit shift of the read/write flag in the page table entry.
     const SHIFT: PteWord = 1;
@@ -190,7 +178,6 @@ impl ReadWriteFlag {
     }
 }
 
-#[verus_verify]
 impl UserSupervisorFlag {
     /// Bit shift of the user/supervisor flag in the page table entry.
     const SHIFT: PteWord = 2;
@@ -209,7 +196,6 @@ impl UserSupervisorFlag {
     }
 }
 
-#[verus_verify]
 impl PageWriteThroughFlag {
     /// Bit shift of the page write-through flag in the page table entry.
     const SHIFT: PteWord = 3;
@@ -228,7 +214,6 @@ impl PageWriteThroughFlag {
     }
 }
 
-#[verus_verify]
 impl PageCacheDisableFlag {
     /// Bit shift of the page cache disable flag in the page table entry.
     const SHIFT: PteWord = 4;
@@ -247,7 +232,6 @@ impl PageCacheDisableFlag {
     }
 }
 
-#[verus_verify]
 impl AccessedFlag {
     /// Bit shift of the accessed flag in the page table entry.
     const SHIFT: PteWord = 5;
@@ -266,7 +250,6 @@ impl AccessedFlag {
     }
 }
 
-#[verus_verify]
 impl DirtyFlag {
     /// Bit shift of the dirty flag in the page table entry.
     const SHIFT: PteWord = 6;
@@ -285,7 +268,6 @@ impl DirtyFlag {
     }
 }
 
-#[verus_verify]
 impl PageSizeFlag {
     /// Bit shift of the page size flag in the page directory entry.
     const SHIFT: PteWord = 7;
@@ -304,7 +286,6 @@ impl PageSizeFlag {
     }
 }
 
-#[verus_verify]
 impl CopyOnWriteFlag {
     /// Bit shift of the copy-on-write flag in the page table entry. This lives in one of
     /// the OS-available (AVL) bits (9..=11) of the x86 PTE.
