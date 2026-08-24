@@ -115,6 +115,10 @@ pub(crate) fn unix_to_datetime(secs: i64) -> DateTime {
 
 /// Converts a FAT `DateTime` back to Unix seconds.
 pub(crate) fn datetime_to_unix(dt: DateTime) -> i64 {
+    if !is_valid_date(dt.date) || dt.time.hour > 23 || dt.time.min > 59 || dt.time.sec > 59 {
+        return FAT_EPOCH_SECS;
+    }
+
     let days: i64 =
         days_from_civil(i64::from(dt.date.year), i64::from(dt.date.month), i64::from(dt.date.day));
     days * SECS_PER_DAY
@@ -125,7 +129,24 @@ pub(crate) fn datetime_to_unix(dt: DateTime) -> i64 {
 
 /// Converts a FAT `Date` (no time part) to Unix seconds at midnight.
 pub(crate) fn date_to_unix(date: Date) -> i64 {
+    if !is_valid_date(date) {
+        return FAT_EPOCH_SECS;
+    }
+
     days_from_civil(i64::from(date.year), i64::from(date.month), i64::from(date.day)) * SECS_PER_DAY
+}
+
+/// Returns whether a decoded FAT date has valid fields.
+fn is_valid_date(date: Date) -> bool {
+    let year: i64 = i64::from(date.year);
+    let max_day: u16 = match date.month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 => 29,
+        2 => 28,
+        _ => 0,
+    };
+    (MIN_FAT_YEAR..=MAX_FAT_YEAR).contains(&year) && date.day > 0 && date.day <= max_day
 }
 
 /// Civil (year, month, day) from days since the Unix epoch.
@@ -163,6 +184,7 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
+    use ::fatfs::NullTimeProvider;
 
     /// Round-trips a known timestamp through DateTime and back.
     #[test]
@@ -202,5 +224,13 @@ mod tests {
         assert_eq!(dt.date.year, 1980, "year");
         assert_eq!(dt.date.month, 1, "month");
         assert_eq!(dt.date.day, 1, "day");
+    }
+
+    /// Zero-valued FAT dates represent an unknown timestamp.
+    #[test]
+    fn null_date_uses_fat_epoch() {
+        let provider: NullTimeProvider = NullTimeProvider::new();
+        assert_eq!(date_to_unix(provider.get_current_date()), FAT_EPOCH_SECS);
+        assert_eq!(datetime_to_unix(provider.get_current_date_time()), FAT_EPOCH_SECS);
     }
 }

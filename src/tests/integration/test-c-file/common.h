@@ -148,6 +148,9 @@ extern void test_utimes(void);
 // Tests whether we can update file timestamps with `utime()`.
 extern void test_utime(void);
 
+// Tests whether `utime()` preserves timestamps imported by mkramfs.
+extern void test_utime_preserve_imported_timestamps(void);
+
 // Tests whether we can write and read to/from a file.
 extern void test_write_read(void);
 
