@@ -108,24 +108,25 @@ impl SleepingProcess {
         InterruptedProcess::new(self.state, interrupted_threads, self.zombie_threads)
     }
 
-    pub fn wakeup(mut self, tid: ThreadIdentifier) -> Result<RunnableProcess, SleepingProcess> {
-        let sleeping_threads: NonEmptyVecDeque<SleepingThread> = self.sleeping_threads;
+    pub fn wakeup(self, tid: ThreadIdentifier) -> Result<RunnableProcess, SleepingProcess> {
+        let mut this = self;
+        let sleeping_threads: NonEmptyVecDeque<SleepingThread> = this.sleeping_threads;
 
         // Search for the sleeping thread.
         match sleeping_threads.remove_if(|thread| thread.id() == tid) {
             Ok((sleeping_threads, sleeping_thread)) => {
                 let ready_thread: ReadyThread = sleeping_thread.wakeup();
                 Ok(RunnableProcess::from_state(
-                    self.state,
+                    this.state,
                     NonEmptyVecDeque::new(ready_thread),
                     None,
                     NonEmptyVecDeque::from(sleeping_threads),
-                    self.zombie_threads.take(),
+                    this.zombie_threads.take(),
                 ))
             },
             Err(sleeping_threads) => {
-                self.sleeping_threads = sleeping_threads;
-                Err(self)
+                this.sleeping_threads = sleeping_threads;
+                Err(this)
             },
         }
     }
@@ -152,32 +153,34 @@ impl SleepingProcess {
     /// thread. If no sleeping thread matches `tid`, the unchanged [`SleepingProcess`] is returned.
     ///
     pub fn interrupt_thread(
-        mut self,
+        self,
         tid: ThreadIdentifier,
         reason: InterruptReason,
     ) -> Result<InterruptedProcess, SleepingProcess> {
-        let sleeping_threads: NonEmptyVecDeque<SleepingThread> = self.sleeping_threads;
+        let mut this = self;
+        let sleeping_threads: NonEmptyVecDeque<SleepingThread> = this.sleeping_threads;
 
         // Search for the sleeping thread.
         match sleeping_threads.remove_if(|thread| thread.id() == tid) {
             Ok((sleeping_threads, sleeping_thread)) => {
                 let interrupted_thread: InterruptedThread = sleeping_thread.interrupt(reason);
                 Ok(InterruptedProcess::from_sleeping(
-                    self.state,
+                    this.state,
                     NonEmptyVecDeque::from(sleeping_threads),
                     NonEmptyVecDeque::new(interrupted_thread),
-                    self.zombie_threads.take(),
+                    this.zombie_threads.take(),
                 ))
             },
             Err(sleeping_threads) => {
-                self.sleeping_threads = sleeping_threads;
-                Err(self)
+                this.sleeping_threads = sleeping_threads;
+                Err(this)
             },
         }
     }
 
-    pub fn wakeup_alarm(mut self, now: SystemTime) -> Result<InterruptedProcess, SleepingProcess> {
-        let (mut sleeping_threads_to_process, sleeping_thread) = self.sleeping_threads.pop_front();
+    pub fn wakeup_alarm(self, now: SystemTime) -> Result<InterruptedProcess, SleepingProcess> {
+        let mut this = self;
+        let (mut sleeping_threads_to_process, sleeping_thread) = this.sleeping_threads.pop_front();
 
         // Check if thread has an alarm set.
         if let Some(alarm) = sleeping_thread.alarm() {
@@ -204,10 +207,10 @@ impl SleepingProcess {
                 }
 
                 return Ok(InterruptedProcess::from_sleeping(
-                    self.state,
+                    this.state,
                     NonEmptyVecDeque::from(sleeping_threads),
                     interrupted_threads,
-                    self.zombie_threads.take(),
+                    this.zombie_threads.take(),
                 ));
             } else {
                 // Alarm has not expired, fallthrough.
@@ -236,14 +239,14 @@ impl SleepingProcess {
 
         if let Some(interrupted_threads) = NonEmptyVecDeque::from(interrupted_threads) {
             Ok(InterruptedProcess::from_sleeping(
-                self.state,
+                this.state,
                 Some(sleeping_threads),
                 interrupted_threads,
-                self.zombie_threads.take(),
+                this.zombie_threads.take(),
             ))
         } else {
-            self.sleeping_threads = sleeping_threads;
-            Err(self)
+            this.sleeping_threads = sleeping_threads;
+            Err(this)
         }
     }
 

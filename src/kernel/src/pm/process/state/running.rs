@@ -191,11 +191,12 @@ impl RunningProcess {
         (old_vmem, old_zombie, from_ctx, to_ctx, user_tda)
     }
 
-    pub fn schedule(mut self) -> (RunnableProcess, *mut ContextInformation) {
-        let running_thread = self.running;
+    pub fn schedule(self) -> (RunnableProcess, *mut ContextInformation) {
+        let mut this = self;
+        let running_thread = this.running;
         let (ready_thread, ctx) = running_thread.schedule();
 
-        let ready_threads = match self.ready.take() {
+        let ready_threads = match this.ready.take() {
             Some(mut ready_threads) => {
                 ready_threads.push_back(ready_thread);
                 ready_threads
@@ -205,27 +206,28 @@ impl RunningProcess {
 
         (
             RunnableProcess::from_state(
-                self.state,
+                this.state,
                 ready_threads,
-                self.interrupted_threads.take(),
-                self.sleeping_threads.take(),
-                self.zombie.take(),
+                this.interrupted_threads.take(),
+                this.sleeping_threads.take(),
+                this.zombie.take(),
             ),
             ctx,
         )
     }
 
     pub fn sleep(
-        mut self,
+        self,
         alarm: Option<SystemTime>,
     ) -> Result<
         (RunnableProcess, *mut ContextInformation),
         (SleepingProcess, *mut ContextInformation),
     > {
-        let (sleeping_thread, ctx) = self.running.sleep(alarm);
+        let mut this = self;
+        let (sleeping_thread, ctx) = this.running.sleep(alarm);
 
         // Push sleeping thread.
-        let sleeping_threads = match self.sleeping_threads.take() {
+        let sleeping_threads = match this.sleeping_threads.take() {
             Some(mut sleeping_threads) => {
                 sleeping_threads.push_back(sleeping_thread);
                 sleeping_threads
@@ -234,48 +236,49 @@ impl RunningProcess {
         };
 
         // Check if there are ready threads.
-        if let Some(ready_threads) = self.ready.take() {
+        if let Some(ready_threads) = this.ready.take() {
             return Ok((
                 RunnableProcess::from_state(
-                    self.state,
+                    this.state,
                     ready_threads,
-                    self.interrupted_threads.take(),
+                    this.interrupted_threads.take(),
                     Some(sleeping_threads),
-                    self.zombie.take(),
+                    this.zombie.take(),
                 ),
                 ctx,
             ));
         }
 
         // Check if there are interrupted threads.
-        if let Some(interrupted_threads) = self.interrupted_threads.take() {
+        if let Some(interrupted_threads) = this.interrupted_threads.take() {
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
-                self.state,
+                this.state,
                 Some(sleeping_threads),
                 interrupted_threads,
-                self.zombie.take(),
+                this.zombie.take(),
             );
 
             return Ok((interrupted_process.resume(), ctx));
         }
 
-        Err((SleepingProcess::new(self.state, sleeping_threads, self.zombie.take()), ctx))
+        Err((SleepingProcess::new(this.state, sleeping_threads, this.zombie.take()), ctx))
     }
 
     pub fn exit(
-        mut self,
+        self,
         status: ExitStatus,
     ) -> Result<(RunnableProcess, *mut ContextInformation), (ZombieProcess, *mut ContextInformation)>
     {
+        let mut this = self;
         // Save the exit status before terminating any threads. This ensures that the intended
         // exit code from the first exit() call is preserved, even if subsequent thread cleanup
         // triggers additional exit() calls with different status values (e.g., ESRCH from
         // detached thread teardown). The set_pending_exit_status() method is a no-op when a
         // pending status is already set, so only the first caller's status is retained.
-        self.state.set_pending_exit_status(status);
+        this.state.set_pending_exit_status(status);
 
-        let (zombie_thread, ctx) = self.running.exit(status);
-        let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
+        let (zombie_thread, ctx) = this.running.exit(status);
+        let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match this.zombie.take() {
             Some(mut zombie_threads) => {
                 zombie_threads.push_back(zombie_thread);
                 zombie_threads
@@ -284,17 +287,17 @@ impl RunningProcess {
         };
 
         // Terminate all ready threads.
-        if let Some(ready_threads) = self.ready.take() {
+        if let Some(ready_threads) = this.ready.take() {
             let more_zombie_threads = NonEmptyVecDeque::map(ready_threads, ReadyThread::terminate);
             zombie_threads.append(more_zombie_threads);
         }
 
         // Collect interrupted threads.
         let mut interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>> =
-            self.interrupted_threads.take();
+            this.interrupted_threads.take();
 
         // Terminate all sleeping threads.
-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+        if let Some(sleeping_threads) = this.sleeping_threads.take() {
             let more_interrupted_threads = NonEmptyVecDeque::map(sleeping_threads, interrupt);
             match interrupted_threads.as_mut() {
                 None => interrupted_threads = Some(more_interrupted_threads),
@@ -304,7 +307,7 @@ impl RunningProcess {
 
         if let Some(interrupted_threads) = interrupted_threads {
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
-                self.state,
+                this.state,
                 None, // Sleeping threads were converted to interrupted above.
                 interrupted_threads,
                 Some(zombie_threads),
@@ -315,8 +318,8 @@ impl RunningProcess {
             // Use pending exit status (from the first exit() call). The unwrap_or fallback
             // should never be reached because set_pending_exit_status is called above, but is
             // kept as a defensive measure.
-            let final_status: ExitStatus = self.state.take_pending_exit_status().unwrap_or(status);
-            Err((ZombieProcess::new(self.state, zombie_threads, final_status), ctx))
+            let final_status: ExitStatus = this.state.take_pending_exit_status().unwrap_or(status);
+            Err((ZombieProcess::new(this.state, zombie_threads, final_status), ctx))
         }
     }
 
@@ -504,13 +507,14 @@ impl RunningProcess {
         }
     }
 
-    pub fn wakeup(mut self, tid: ThreadIdentifier) -> Result<RunningProcess, RunningProcess> {
-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+    pub fn wakeup(self, tid: ThreadIdentifier) -> Result<RunningProcess, RunningProcess> {
+        let mut this = self;
+        if let Some(sleeping_threads) = this.sleeping_threads.take() {
             match sleeping_threads.remove_if(|thread| thread.id() == tid) {
                 Ok((sleeping_threads, sleeping_thread)) => {
                     let ready_thread: ReadyThread = sleeping_thread.wakeup();
 
-                    let ready_threads = match self.ready.take() {
+                    let ready_threads = match this.ready.take() {
                         Some(mut ready_threads) => {
                             ready_threads.push_back(ready_thread);
                             ready_threads
@@ -519,21 +523,21 @@ impl RunningProcess {
                     };
 
                     Ok(Self::new(
-                        self.state,
-                        self.running,
+                        this.state,
+                        this.running,
                         Some(ready_threads),
-                        self.interrupted_threads.take(),
+                        this.interrupted_threads.take(),
                         NonEmptyVecDeque::from(sleeping_threads),
-                        self.zombie.take(),
+                        this.zombie.take(),
                     ))
                 },
                 Err(sleeping_threads) => {
-                    self.sleeping_threads = Some(sleeping_threads);
-                    Err(self)
+                    this.sleeping_threads = Some(sleeping_threads);
+                    Err(this)
                 },
             }
         } else {
-            Err(self)
+            Err(this)
         }
     }
 

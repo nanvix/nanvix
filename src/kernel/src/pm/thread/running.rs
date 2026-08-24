@@ -84,9 +84,10 @@ impl RunningThread {
     /// This function returns a tuple containing the sleeping thread and a mutable pointer to the
     /// execution context.
     ///
-    pub fn sleep(mut self, alarm: Option<SystemTime>) -> (SleepingThread, *mut ContextInformation) {
-        let ctx: *mut ContextInformation = self.state.context_mut();
-        (SleepingThread::from_state(self.state, alarm), ctx)
+    pub fn sleep(self, alarm: Option<SystemTime>) -> (SleepingThread, *mut ContextInformation) {
+        let mut this = self;
+        let ctx: *mut ContextInformation = this.state.context_mut();
+        (SleepingThread::from_state(this.state, alarm), ctx)
     }
 
     ///
@@ -99,9 +100,10 @@ impl RunningThread {
     /// This function returns a tuple containing the ready thread and a mutable pointer to the
     /// execution context.
     ///
-    pub fn schedule(mut self) -> (ReadyThread, *mut ContextInformation) {
-        let ctx: *mut ContextInformation = self.state.context_mut();
-        (ReadyThread::from_state(self.state), ctx)
+    pub fn schedule(self) -> (ReadyThread, *mut ContextInformation) {
+        let mut this = self;
+        let ctx: *mut ContextInformation = this.state.context_mut();
+        (ReadyThread::from_state(this.state), ctx)
     }
 
     ///
@@ -192,9 +194,10 @@ impl RunningThread {
     ///
     /// This function returns a tuple containing the zombie thread and a mutable pointer to the execution context.
     ///
-    pub fn exit(mut self, status: ExitStatus) -> (ZombieThread, *mut ContextInformation) {
-        let ctx: *mut ContextInformation = self.state.context_mut();
-        (ZombieThread::from_state(self.state, status), ctx)
+    pub fn exit(self, status: ExitStatus) -> (ZombieThread, *mut ContextInformation) {
+        let mut this = self;
+        let ctx: *mut ContextInformation = this.state.context_mut();
+        (ZombieThread::from_state(this.state, status), ctx)
     }
 
     ///
@@ -215,12 +218,13 @@ impl RunningThread {
     /// valid until the zombie is harvested, which the caller defers until after the context switch
     /// into the new image.
     ///
-    pub fn exit_for_exec(mut self) -> (ZombieThread, *mut ContextInformation) {
-        let ctx: *mut ContextInformation = self.state.context_mut();
+    pub fn exit_for_exec(self) -> (ZombieThread, *mut ContextInformation) {
+        let mut this = self;
+        let ctx: *mut ContextInformation = this.state.context_mut();
         // Drop the user-stack handle (a frame-less address holder) so harvest will not attempt to
         // unmap its range from the new address space.
-        let _ = self.state.take_user_stack();
-        (ZombieThread::from_state(self.state, ExitStatus::ok()), ctx)
+        let _ = this.state.take_user_stack();
+        (ZombieThread::from_state(this.state, ExitStatus::ok()), ctx)
     }
 
     ///

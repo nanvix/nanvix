@@ -182,14 +182,15 @@ impl RunnableProcess {
     /// - An optional pointer to the thread data area of the next thread to run.
     ///
     pub fn run(
-        mut self,
+        self,
     ) -> (RunningProcess, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
     {
+        let mut this = self;
         // Select and remove the thread with the earliest admission time.
         // NOTE: uses `remove_min_by_key()` to operate directly on `NonEmptyVecDeque`, avoiding
         // the heap allocation that a `VecDeque` conversion would require.
         let (ready_threads, next_thread) =
-            self.ready_threads.remove_min_by_key(|t| t.admission_time());
+            this.ready_threads.remove_min_by_key(|t| t.admission_time());
 
         let (running_thread, interrupt_reason, next_context, user_tda): (
             RunningThread,
@@ -199,12 +200,12 @@ impl RunnableProcess {
         ) = next_thread.run();
         (
             RunningProcess::new(
-                self.state,
+                this.state,
                 running_thread,
                 NonEmptyVecDeque::from(ready_threads),
-                self.interrupted_threads.take(),
-                self.sleeping_threads.take(),
-                self.zombie_threads.take(),
+                this.interrupted_threads.take(),
+                this.sleeping_threads.take(),
+                this.zombie_threads.take(),
             ),
             interrupt_reason,
             next_context,
@@ -212,13 +213,14 @@ impl RunnableProcess {
         )
     }
 
-    pub fn terminate(mut self) -> Result<InterruptedProcess, ZombieProcess> {
+    pub fn terminate(self) -> Result<InterruptedProcess, ZombieProcess> {
+        let mut this = self;
         // Terminate all ready threads.
         let mut more_zombie_threads: NonEmptyVecDeque<ZombieThread> =
-            NonEmptyVecDeque::map(self.ready_threads, ReadyThread::terminate);
+            NonEmptyVecDeque::map(this.ready_threads, ReadyThread::terminate);
 
         // Collect zombie threads.
-        let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie_threads.take() {
+        let zombie_threads: NonEmptyVecDeque<ZombieThread> = match this.zombie_threads.take() {
             Some(zombie_threads) => {
                 more_zombie_threads.append(zombie_threads);
                 more_zombie_threads
@@ -228,10 +230,10 @@ impl RunnableProcess {
 
         // Collect interrupted threads.
         let mut interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>> =
-            self.interrupted_threads.take();
+            this.interrupted_threads.take();
 
         // Terminate all sleeping threads.
-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+        if let Some(sleeping_threads) = this.sleeping_threads.take() {
             let more_interrupted_threads = NonEmptyVecDeque::map(sleeping_threads, interrupt);
             match interrupted_threads.as_mut() {
                 None => interrupted_threads = Some(more_interrupted_threads),
@@ -240,39 +242,40 @@ impl RunnableProcess {
         }
 
         if let Some(interrupted_threads) = interrupted_threads {
-            Ok(InterruptedProcess::new(self.state, interrupted_threads, Some(zombie_threads)))
+            Ok(InterruptedProcess::new(this.state, interrupted_threads, Some(zombie_threads)))
         } else {
             // Use pending exit status if set (from a prior exit() call), otherwise use
             // Interrupted error code.
-            let final_status: ExitStatus = self
+            let final_status: ExitStatus = this
                 .state
                 .take_pending_exit_status()
                 .unwrap_or_else(|| ErrorCode::Interrupted.into());
-            Err(ZombieProcess::new(self.state, zombie_threads, final_status))
+            Err(ZombieProcess::new(this.state, zombie_threads, final_status))
         }
     }
 
-    pub fn wakeup(mut self, tid: ThreadIdentifier) -> Result<Self, Self> {
-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+    pub fn wakeup(self, tid: ThreadIdentifier) -> Result<Self, Self> {
+        let mut this = self;
+        if let Some(sleeping_threads) = this.sleeping_threads.take() {
             match sleeping_threads.remove_if(|thread| thread.id() == tid) {
                 Ok((sleeping_threads, sleeping_thread)) => {
                     let ready_thread: ReadyThread = sleeping_thread.wakeup();
-                    self.ready_threads.push_back(ready_thread);
+                    this.ready_threads.push_back(ready_thread);
                     Ok(Self::from_state(
-                        self.state,
-                        self.ready_threads,
-                        self.interrupted_threads.take(),
+                        this.state,
+                        this.ready_threads,
+                        this.interrupted_threads.take(),
                         NonEmptyVecDeque::from(sleeping_threads),
-                        self.zombie_threads.take(),
+                        this.zombie_threads.take(),
                     ))
                 },
                 Err(sleeping_threads) => {
-                    self.sleeping_threads = Some(sleeping_threads);
-                    Err(self)
+                    this.sleeping_threads = Some(sleeping_threads);
+                    Err(this)
                 },
             }
         } else {
-            Err(self)
+            Err(this)
         }
     }
 

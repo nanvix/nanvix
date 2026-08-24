@@ -311,8 +311,9 @@ impl PreparedProcess {
     ///
     /// - `ready`: Queue of ready processes to append onto.
     ///
-    fn enqueue(mut self, ready: &mut LinkedList<RunnableProcess>) {
-        ready.append(&mut self.node);
+    fn enqueue(self, ready: &mut LinkedList<RunnableProcess>) {
+        let mut this = self;
+        ready.append(&mut this.node);
     }
 }
 

@@ -107,8 +107,9 @@ impl ZombieThread {
     ///
     /// This function returns a tuple containing the optional kernel stack and user stack of the terminated thread.
     ///
-    pub fn harvest(mut self) -> (Option<KernelStack>, Option<UserStack>) {
-        (self.state.take_kernel_stack(), self.state.take_user_stack())
+    pub fn harvest(self) -> (Option<KernelStack>, Option<UserStack>) {
+        let mut this = self;
+        (this.state.take_kernel_stack(), this.state.take_user_stack())
     }
 
     ///

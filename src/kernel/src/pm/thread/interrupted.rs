@@ -112,9 +112,10 @@ impl InterruptedThread {
     ///
     /// This function returns a [`ReadyThread`] instance.
     ///
-    pub fn resume(mut self) -> ReadyThread {
-        self.state.set_interrupt_reason(self.reason);
-        ReadyThread::from_state(self.state)
+    pub fn resume(self) -> ReadyThread {
+        let mut this = self;
+        this.state.set_interrupt_reason(this.reason);
+        ReadyThread::from_state(this.state)
     }
 
     ///

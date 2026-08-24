@@ -167,13 +167,14 @@ impl ReadyThread {
     /// - An optional base address for the user-space thread data area of the running thread.
     ///
     pub fn run(
-        mut self,
+        self,
     ) -> (RunningThread, Option<InterruptReason>, *mut ContextInformation, Option<VirtualAddress>)
     {
-        let ctx: *mut ContextInformation = self.state.context_mut();
-        let interrupt_reason: Option<InterruptReason> = self.state.take_interrupt_reason();
-        let user_tda: Option<VirtualAddress> = self.state.get_thread_data_area();
-        (RunningThread::from_state(self.state), interrupt_reason, ctx, user_tda)
+        let mut this = self;
+        let ctx: *mut ContextInformation = this.state.context_mut();
+        let interrupt_reason: Option<InterruptReason> = this.state.take_interrupt_reason();
+        let user_tda: Option<VirtualAddress> = this.state.get_thread_data_area();
+        (RunningThread::from_state(this.state), interrupt_reason, ctx, user_tda)
     }
 
     ///

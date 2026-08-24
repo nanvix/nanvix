@@ -79,17 +79,18 @@ impl InterruptedProcess {
         &mut self.state
     }
 
-    pub fn resume(mut self) -> RunnableProcess {
+    pub fn resume(self) -> RunnableProcess {
+        let mut this = self;
         let (interrupted_threads, next_thread): (VecDeque<InterruptedThread>, InterruptedThread) =
-            self.interrupted_threads.pop_front();
+            this.interrupted_threads.pop_front();
         let ready_thread = next_thread.resume();
 
         RunnableProcess::from_state(
-            self.state,
+            this.state,
             NonEmptyVecDeque::new(ready_thread),
             NonEmptyVecDeque::from(interrupted_threads),
-            self.sleeping_threads.take(),
-            self.zombie_threads.take(),
+            this.sleeping_threads.take(),
+            this.zombie_threads.take(),
         )
     }
 
@@ -107,21 +108,22 @@ impl InterruptedProcess {
     ///
     /// The interrupted process with all of its threads marked for termination.
     ///
-    pub fn terminate(mut self) -> InterruptedProcess {
+    pub fn terminate(self) -> InterruptedProcess {
+        let mut this = self;
         // Convert every already-interrupted thread into a killed thread.
-        for thread in self.interrupted_threads.iter_mut() {
+        for thread in this.interrupted_threads.iter_mut() {
             thread.set_killed();
         }
 
         // Interrupt any remaining sleeping threads with the killed reason and fold them into the
         // interrupted set.
-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
+        if let Some(sleeping_threads) = this.sleeping_threads.take() {
             let killed_threads: NonEmptyVecDeque<InterruptedThread> =
                 NonEmptyVecDeque::map(sleeping_threads, interrupt);
-            self.interrupted_threads.append(killed_threads);
+            this.interrupted_threads.append(killed_threads);
         }
 
-        self
+        this
     }
 
     ///
