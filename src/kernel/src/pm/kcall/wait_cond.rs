@@ -62,6 +62,9 @@ use ::sys::{
 /// - This function is invoked without holding any resources.
 /// - The calling process does not hold a reference to the process manager.
 ///
+// `map_err` uses explicit closures instead of the `SleepError::Generic`
+// constructor as a bare function value, which the Verus frontend cannot lower.
+#[allow(clippy::redundant_closure)]
 pub unsafe fn wait_cond(
     pid: ProcessIdentifier,
     tid: ThreadIdentifier,
@@ -106,7 +109,8 @@ pub unsafe fn wait_cond(
     };
 
     {
-        ProcessManager::take_mutex_guard(pid, tid, mutex_addr).map_err(SleepError::Generic)?;
+        ProcessManager::take_mutex_guard(pid, tid, mutex_addr)
+            .map_err(|error| SleepError::Generic(error))?;
         // The mutex guard is dropped, causing threads to be notified.
     }
 
@@ -124,12 +128,14 @@ pub unsafe fn wait_cond(
         }
         // The condition variable is dropped, causing its reference count to decrease.
     };
-    ProcessManager::put_cond(cond_addr).map_err(SleepError::Generic)?;
+    ProcessManager::put_cond(cond_addr).map_err(|error| SleepError::Generic(error))?;
 
     // Reacquire the mutex.
-    let mutex: Mutex = ProcessManager::get_mutex(mutex_addr).map_err(SleepError::Generic)?;
+    let mutex: Mutex =
+        ProcessManager::get_mutex(mutex_addr).map_err(|error| SleepError::Generic(error))?;
     let guard: MutexGuard = mutex.lock(None)?;
-    ProcessManager::put_mutex_guard(mutex_addr, guard).map_err(SleepError::Generic)?;
+    ProcessManager::put_mutex_guard(mutex_addr, guard)
+        .map_err(|error| SleepError::Generic(error))?;
 
     result
 }

@@ -40,7 +40,10 @@ impl DeliverySequence {
     ///
     /// The next delivery sequence, or [`None`] if this sequence is the terminal value.
     ///
+    // `map` uses an explicit closure instead of the `Self` tuple-struct
+    // constructor as a bare function value, which the Verus frontend cannot lower.
+    #[allow(clippy::redundant_closure)]
     pub(super) fn checked_next(self) -> Option<Self> {
-        self.0.checked_add(1).map(Self)
+        self.0.checked_add(1).map(|value| Self(value))
     }
 }

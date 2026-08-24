@@ -181,3 +181,66 @@ left unchanged.
 - Compilation: the probe's `cargo verus` full build of `kernel` succeeded
   (verification results were produced), confirming the rewritten source compiles
   under the x86-kernel target with `microvm,trace`.
+
+## Run-6 — datatype-constructor-as-function-value family eliminated (6 → 0)
+
+Node `triage-datatype-constructor-family`. Rewrote every site that passes a bare
+datatype-constructor path as a first-class function value to a combinator
+(`.map`/`.map_err`) into an equivalent explicit closure. Verus rejects
+`.map(Ctor)` (a constructor is not a first-class function value in the frontend);
+the behaviour-identical `.map(|x| Ctor(x))` lowers cleanly.
+
+- **Exhaustive source inventory (not the 6 run-5-reported declarations):** a
+  regex over all 66 pm files found **11 constructor-as-function-value sites across
+  6 files** — one more file than run-5 surfaced. The extra site,
+  `pm/kcall/join_thread.rs:75` (`.map_err(SleepError::Generic)`), was **masked**
+  in run-5: `join_thread` was already shielded for its unrelated `u32 → *mut
+  ExitStatus` cast limitation, which suppressed its body-level constructor
+  diagnostic. Exhaustive SOURCE scanning (not trusting the 6 reported rows) was
+  therefore essential. The six edited files / sites:
+  - `pm/kcall/join_thread.rs` @75 — `SleepError::Generic` (masked site)
+  - `pm/kcall/lock_mutex.rs` @96,98 — `SleepError::Generic`
+  - `pm/kcall/wait_cond.rs` @109,127,130,132 — `SleepError::Generic`
+  - `pm/process/manager/delivery/delivery_sequence.rs` @44 — `Self` (tuple struct)
+  - `pm/process/manager/mod.rs` @2616 — `Err`
+  - `pm/process/state/zombie.rs` @83,104 — `ThreadRef::Zombie`/`ThreadRefMut::Zombie`
+- Reproducer (`argus-pm-artifacts-20260824/reproducer/`):
+  `constructor_fn_value_bad.rs` → **5** `using a datatype constructor as a function
+  value` errors on Verus `0.2026.08.23.fbbbbcf` (`aborting due to 5 previous
+  errors`); `constructor_fn_value_good.rs` (explicit closures) → `6 verified, 0
+  errors` (exit 0, passes frontend lowering); `constructor_legal_rust_check.rs` →
+  ordinary `rustc` exit 0 (the rejected form is legal Rust). Full write-up:
+  `reproducer/CONSTRUCTOR_LIMITATION.md`.
+- **Clippy tension resolved:** Verus rejects `.map(Ctor)`, but clippy's
+  `redundant_closure` (inside `clippy::all = deny`) rejects the fix `|x| Ctor(x)`.
+  The pre-commit hook runs `lint-check` and the harness commits without
+  `--no-verify`, so both must pass. Resolution: explicit closure plus a
+  function-level `#[allow(clippy::redundant_closure)]` with an explanatory comment
+  (an existing codebase idiom, robust across clippy versions). On `mod.rs` the
+  existing `#[allow(clippy::type_complexity)]` was extended in place.
+- Fresh full 66-file layered probe `run-6` (fresh isolated `CARGO_TARGET_DIR`
+  `.../target/cargo-target-run6`, direct `--inject-files`/`--scan-files` 66-file
+  lists, `--max-layer-rounds 100`, no reachability manifest):
+  `summary={LIMITATION:29, INCONCLUSIVE:3}` (32 rows, down from run-5's 38);
+  `layered.rounds=3`, `stop_reason=fixed_point`, `layered_complete=True`,
+  `shield_events=31`. Artifacts: `probe/pm_acceptance_run-6.json`,
+  `probe/pm_acceptance_run-6_report.md`, `probe/run6_family_delta.json`.
+- Per-family delta (`run6_family_delta.json`): the constructor family `6 → 0` is
+  the **only** changed family; the other 14 families are byte-identical
+  (`deref 7→7`, `casts` all unchanged incl. `join_thread`'s `u32→*mut ExitStatus
+  1→1`, `general-patterns` stayed `0`, `complex break 3→3`, `Path Def 3→3`,
+  `internal 2→2`, `expected array 2→2`, `panic 1→1`, `unsafe impl Send/Sync 1/1`,
+  `static mut 1→1`). Per-declaration diff: exactly **6 declarations removed** (the
+  six constructor declarations — `lock_mutex`, `wait_cond`, `checked_next`,
+  `try_join_thread`, `find_thread`, `find_thread_mut` — now verify clean),
+  **0 declarations added** (no previously-masked limitation exposed by the fix),
+  **0 shared declarations changed family**. `join_thread` remains a limitation
+  under its unchanged cast family, as expected (its constructor site is fixed but
+  the cast persists).
+- Restoration: all 66 pm files byte-identical to the pre-run rewritten source
+  (`hashes/pm_run6_pre.sha256` vs `hashes/pm_run6_restore_check.txt`, 66 OK /
+  0 mismatch).
+- Ordinary Nanvix check on the edited tree (not the probe): `cargo clippy --locked
+  -p kernel ... -- -D warnings` (build-std, x86-kernel target, `microvm,trace`)
+  exit 0 with the `kernel` crate compiled (not cached); `cargo fmt -p kernel
+  --check` clean; codespell clean.

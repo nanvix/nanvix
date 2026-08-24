@@ -2607,13 +2607,15 @@ impl ProcessManager {
         }
     }
 
-    #[allow(clippy::type_complexity)]
+    // `map_err` uses an explicit closure instead of the `Err` constructor as a
+    // bare function value, which the Verus frontend cannot lower.
+    #[allow(clippy::type_complexity, clippy::redundant_closure)]
     fn try_join_thread(
         &mut self,
         pid: ProcessIdentifier,
         tid: ThreadIdentifier,
     ) -> Result<ZombieThread, Result<Condvar, Error>> {
-        match self.find_process_mut(pid).map_err(Err)? {
+        match self.find_process_mut(pid).map_err(|error| Err(error))? {
             ProcessRefMut::Running(process) => process.try_join_thread(tid),
             ProcessRefMut::Runnable(_) => {
                 let reason: &str = "process is runnable";

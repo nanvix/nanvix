@@ -76,11 +76,14 @@ impl ZombieProcess {
     /// If a thread that matches the specified thread identifier is found, then a reference to it is
     /// returned. Otherwise, empty is returned instead.
     ///
+    // `map` uses an explicit closure instead of the `ThreadRef::Zombie`
+    // constructor as a bare function value, which the Verus frontend cannot lower.
+    #[allow(clippy::redundant_closure)]
     pub fn find_thread(&self, tid: ThreadIdentifier) -> Option<ThreadRef<'_>> {
         self.zombie_threads
             .iter()
             .find(|thread| thread.id() == tid)
-            .map(ThreadRef::Zombie)
+            .map(|thread| ThreadRef::Zombie(thread))
     }
 
     ///
@@ -97,10 +100,13 @@ impl ZombieProcess {
     /// If a thread that matches the specified thread identifier is found, then a mutable reference
     /// to it is returned. Otherwise, empty is returned instead.
     ///
+    // `map` uses an explicit closure instead of the `ThreadRefMut::Zombie`
+    // constructor as a bare function value, which the Verus frontend cannot lower.
+    #[allow(clippy::redundant_closure)]
     pub fn find_thread_mut(&mut self, tid: ThreadIdentifier) -> Option<ThreadRefMut<'_>> {
         self.zombie_threads
             .iter_mut()
             .find(|thread| thread.id() == tid)
-            .map(ThreadRefMut::Zombie)
+            .map(|thread| ThreadRefMut::Zombie(thread))
     }
 }

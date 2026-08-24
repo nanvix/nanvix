@@ -54,6 +54,9 @@ use ::sys::{
 /// - The memory manager is initialized.
 /// - Access to the memory manager is synchronized.
 ///
+// `map_err` uses an explicit closure instead of the `SleepError::Generic`
+// constructor as a bare function value, which the Verus frontend cannot lower.
+#[allow(clippy::redundant_closure)]
 pub unsafe fn join_thread(
     pid: ProcessIdentifier,
     arg0: u32,
@@ -72,7 +75,7 @@ pub unsafe fn join_thread(
     let status: ExitStatus = ProcessManager::join_thread(pid, tid)?;
 
     pm::copy_to_user::<ExitStatus>(ProcessManager::get_mut(), pid, retval, &status)
-        .map_err(SleepError::Generic)?;
+        .map_err(|error| SleepError::Generic(error))?;
 
     Ok(ExitStatus::ok())
 }
