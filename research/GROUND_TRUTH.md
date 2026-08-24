@@ -187,6 +187,30 @@ the host x86_64 target, so arch paths were normalized x86_64/* -> x86/*.
     injection-induced probe findings, not failures of the current native
     verification surface. Exact command and output are retained in
     `probe_run5/make_verify_kernel.*`.
+11. **Peeling tool fix committed; run-6 canonical rerun reproduces the frontier
+    and is fully triaged.** The non-function declaration peeling category is now
+    committed in the isolated probe repo as `0f9825f9` (`fix(dummy_probe): peel
+    non-function declaration markers (static mut, assoc-const impl)`), file set
+    exactly `scripts/dummy_probe.py` + `tests/test_dummy_probe.py` (15 focused
+    peeling regression tests pass; 5 pre-existing `_bisect_panic_within_file`
+    failures reproduce at HEAD and are unrelated to this diff). The canonical
+    `run_probe_full.sh` rerun into fresh `probe_run6/` + fresh
+    `cargo-target-20260824-150838/` (Verus `0.2026.08.23.fbbbbcf`,
+    `--max-layer-rounds 100`, 30-scan/29-inject) reproduces run-5: same 6 peels
+    (5 `static mut` + `BssStorage` impl), `failed_peels=[]`,
+    `stop=unresolved_frontier`, `layered_complete=false`, **0 restoration
+    mismatches**, **0 residual markers**, pristine-baseline **0** diagnostics,
+    all **142** distinct diagnostics injection-induced. Full triage of every
+    finding/diagnostic (semantic category, occurrence set, evidence, disposition)
+    is in `probe_run6/triage.{json,md}`. Promoted (reproducer-backed) frontend
+    limitations: CAT-static-mut (5) and CAT-assoc-const-trait-impl E0407 (2).
+    Candidate frontend limitations behind the peeled frontier (36 diagnostics:
+    ptr casts, inline-asm, const-block, panic, deref, complex-break,
+    only-variables, closures-capturing-mut-ref, plus `Path Def(Static)` reads
+    coupled to the static-mut architecture) are NOT promoted — no minimized
+    reproducer built this node. The remaining 109 diagnostics are non-qualifying
+    project/type/assume-specification + opaque-type obligations. No proof/SMT
+    obligations were observed (front-end aborts before SMT).
 
 ## Still-unknown binding facts
 

@@ -21,6 +21,20 @@
       "reason": "operator replaced the standing Manager objective; resetting the superseded 'software' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
       "rolled_back_by": "manager",
       "to_stage": "prove"
+    },
+    {
+      "at": "2026-08-24T06:43:39.768799Z",
+      "from_stage": "delivery",
+      "reason": "Monitor recovery: the reviewed non-function peeling implementation remains uncommitted in the isolated tool repository and run-5 is unresolved_frontier.",
+      "rolled_back_by": "monitor",
+      "to_stage": "delivery"
+    },
+    {
+      "at": "2026-08-24T06:43:56.393272Z",
+      "from_stage": "prove",
+      "reason": "operator replaced the standing Manager objective; resetting the superseded 'software' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
+      "rolled_back_by": "manager",
+      "to_stage": "prove"
     }
   ],
   "stage_history": [
@@ -50,6 +64,30 @@
     },
     {
       "at": "2026-08-24T05:08:13.160427Z",
+      "by": "manager",
+      "direction": "reset",
+      "from_stage": "prove",
+      "reason": "operator replaced the standing Manager objective; resetting the superseded 'software' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
+      "to_stage": "prove"
+    },
+    {
+      "at": "2026-08-24T06:01:39.184518Z",
+      "by": "manager",
+      "direction": "complete",
+      "from_stage": "prove",
+      "reason": "reviewer certified the final-stage checklist, overriding the Manager hold (The non-function declaration peeling defect is fixed, but the final proof-stage checklist remains unmet: the goal-reachable specification/type/opaque frontier i)",
+      "to_stage": "prove"
+    },
+    {
+      "at": "2026-08-24T06:43:39.768799Z",
+      "by": "monitor",
+      "direction": "reset",
+      "from_stage": "delivery",
+      "reason": "Monitor recovery: the reviewed non-function peeling implementation remains uncommitted in the isolated tool repository and run-5 is unresolved_frontier.",
+      "to_stage": "delivery"
+    },
+    {
+      "at": "2026-08-24T06:43:56.393272Z",
       "by": "manager",
       "direction": "reset",
       "from_stage": "prove",
