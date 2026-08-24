@@ -63,7 +63,6 @@ use ::core::{
         ManuallyDrop,
         MaybeUninit,
     },
-    ops::ControlFlow,
 };
 use ::sys::{
     config,
@@ -911,58 +910,115 @@ impl Vmem {
     /// Upon success, `Ok(())` is returned. Upon failure, the first error returned by `f`
     /// is propagated.
     ///
+    #[allow(dead_code)]
     pub fn for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
     where
         F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<(), Error>,
     {
-        self.try_for_each_user_mapping(|vaddr, pte| {
-            f(vaddr, pte)?;
-            Ok(ControlFlow::Continue(()))
-        })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Like [`Self::for_each_user_mapping`], but the callback may stop the walk early by
-    /// returning [`ControlFlow::Break`]. Bounded consumers that snapshot a fixed-size batch of
-    /// mappings per pass use this to stop as soon as their buffer is full, instead of paying for
-    /// a full traversal of every remaining mapping on each pass.
-    ///
-    /// # Parameters
-    ///
-    /// - `f`: Callback invoked with `(vaddr, pte)` for every present user mapping, in the order
-    ///   they appear in the internal user page-table list. Returning `Ok(ControlFlow::Break(()))`
-    ///   stops the iteration; returning an error short-circuits and propagates it to the caller.
-    ///
-    /// # Returns
-    ///
-    /// Upon success, `Ok(())` is returned, whether the walk ran to completion or was stopped
-    /// early. Upon failure, the first error returned by `f` is propagated.
-    ///
-    pub(crate) fn try_for_each_user_mapping<F>(&self, mut f: F) -> Result<(), Error>
-    where
-        F: FnMut(PageAligned<VirtualAddress>, PageTableEntry) -> Result<ControlFlow<()>, Error>,
-    {
         for (pgtab_addr, page_table) in self.user_page_tables.iter() {
             let base: usize = pgtab_addr.into_raw_value();
             for (pte_idx, pte) in page_table.iter_present_ptes() {
-                let raw_vaddr: usize = base
-                    .checked_add(
-                        pte_idx.checked_mul(mem::PAGE_SIZE).ok_or_else(|| {
-                            Error::new(ErrorCode::BadAddress, "pte offset overflow")
-                        })?,
-                    )
-                    .ok_or_else(|| {
-                        Error::new(ErrorCode::BadAddress, "user mapping vaddr overflow")
-                    })?;
-                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
-                if f(vaddr, pte)?.is_break() {
-                    return Ok(());
-                }
+                let vaddr: PageAligned<VirtualAddress> = Self::user_mapping_vaddr(base, pte_idx)?;
+                f(vaddr, pte)?;
             }
         }
         Ok(())
+    }
+
+    fn user_mapping_vaddr(
+        pgtab_base: usize,
+        pte_idx: usize,
+    ) -> Result<PageAligned<VirtualAddress>, Error> {
+        let raw_vaddr: usize = pgtab_base
+            .checked_add(
+                pte_idx
+                    .checked_mul(mem::PAGE_SIZE)
+                    .ok_or_else(|| Error::new(ErrorCode::BadAddress, "pte offset overflow"))?,
+            )
+            .ok_or_else(|| Error::new(ErrorCode::BadAddress, "user mapping vaddr overflow"))?;
+        PageAligned::from_raw_value(raw_vaddr)
+    }
+
+    pub(crate) fn find_user_mapping_overlap(
+        &self,
+        other: &Vmem,
+    ) -> Result<Option<PageAligned<VirtualAddress>>, Error> {
+        for (pgtab_addr, page_table) in self.user_page_tables.iter() {
+            let base: usize = pgtab_addr.into_raw_value();
+            for (pte_idx, _pte) in page_table.iter_present_ptes() {
+                let vaddr: PageAligned<VirtualAddress> = Self::user_mapping_vaddr(base, pte_idx)?;
+                if other.try_find_user_pte(vaddr)?.is_some() {
+                    return Ok(Some(vaddr));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub(crate) fn collect_unmapped_user_link_mappings(
+        &self,
+        other: &Vmem,
+        buf: &mut [MaybeUninit<(PageAligned<VirtualAddress>, FrameAddress, bool, bool)>],
+    ) -> Result<usize, Error> {
+        let mut count: usize = 0;
+        for (pgtab_addr, page_table) in self.user_page_tables.iter() {
+            let base: usize = pgtab_addr.into_raw_value();
+            for (pte_idx, pte) in page_table.iter_present_ptes() {
+                let vaddr: PageAligned<VirtualAddress> = Self::user_mapping_vaddr(base, pte_idx)?;
+                if count < buf.len() && other.try_find_user_pte(vaddr)?.is_none() {
+                    let frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
+                    // Already-CoW pages are logically writable because they were shared writable by
+                    // an earlier fork; the caller must propagate CoW instead of treating them as
+                    // plain read-only mappings.
+                    let parent_cow: bool = pte.is_cow();
+                    let writable: bool = pte.flags().is_writable() || parent_cow;
+                    buf[count].write((vaddr, frame, writable, parent_cow));
+                    count += 1;
+                }
+            }
+        }
+        Ok(count)
+    }
+
+    pub(crate) fn collect_user_mapping_addrs_mapped_in(
+        &self,
+        other: &Vmem,
+        buf: &mut [MaybeUninit<PageAligned<VirtualAddress>>],
+    ) -> Result<usize, Error> {
+        let mut count: usize = 0;
+        for (pgtab_addr, page_table) in self.user_page_tables.iter() {
+            let base: usize = pgtab_addr.into_raw_value();
+            for (pte_idx, _pte) in page_table.iter_present_ptes() {
+                let vaddr: PageAligned<VirtualAddress> = Self::user_mapping_vaddr(base, pte_idx)?;
+                if count < buf.len() && other.is_user_page_mapped(vaddr)? {
+                    buf[count].write(vaddr);
+                    count += 1;
+                }
+            }
+        }
+        Ok(count)
+    }
+
+    pub(crate) fn collect_user_mapping_addrs(
+        &self,
+        buf: &mut [MaybeUninit<PageAligned<VirtualAddress>>],
+    ) -> Result<usize, Error> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let mut count: usize = 0;
+        for (pgtab_addr, page_table) in self.user_page_tables.iter() {
+            let base: usize = pgtab_addr.into_raw_value();
+            for (pte_idx, _pte) in page_table.iter_present_ptes() {
+                let vaddr: PageAligned<VirtualAddress> = Self::user_mapping_vaddr(base, pte_idx)?;
+                buf[count].write(vaddr);
+                count += 1;
+                if count == buf.len() {
+                    return Ok(count);
+                }
+            }
+        }
+        Ok(count)
     }
 
     ///
@@ -989,27 +1045,18 @@ impl Vmem {
         // Number of mappings unmapped per pass. This bounds an on-stack scratch buffer so the
         // routine performs no heap allocation: the kernel heap is a small slab allocator that
         // cannot satisfy the large buffer a full (potentially multi-megabyte) address space would
-        // otherwise require. `unmap` needs `&mut self` whereas `try_for_each_user_mapping` borrows
-        // `&self`, so each pass first snapshots up to `CHUNK` addresses, then unmaps them.
+        // otherwise require. `unmap` needs `&mut self`, so each pass first snapshots up to
+        // `CHUNK` addresses, then unmaps them.
         const CHUNK: usize = 32;
 
         loop {
             let mut buf: [MaybeUninit<PageAligned<VirtualAddress>>; CHUNK] =
                 [MaybeUninit::uninit(); CHUNK];
-            let mut count: usize = 0;
             // Break as soon as the batch is full. Without the early break each pass would
             // re-traverse every remaining mapping, making a full teardown quadratic in the number
             // of mapped pages. `unmap` removes emptied page tables from the front, so restarting
             // the walk each pass still advances and the whole teardown stays linear.
-            self.try_for_each_user_mapping(|vaddr, _pte| {
-                buf[count].write(vaddr);
-                count += 1;
-                if count == CHUNK {
-                    Ok(ControlFlow::Break(()))
-                } else {
-                    Ok(ControlFlow::Continue(()))
-                }
-            })?;
+            let count: usize = self.collect_user_mapping_addrs(&mut buf)?;
 
             if count == 0 {
                 return Ok(());

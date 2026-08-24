@@ -40,7 +40,6 @@ use ::alloc::{
 };
 use ::arch::mem::{
     self,
-    paging::PageTableEntry,
     PAGE_ALIGNMENT,
 };
 use ::core::{
@@ -283,14 +282,11 @@ impl VirtMemoryManager {
         // error rather than silently skipped. The chunked link loop below keeps its own
         // `child` presence filter, but that filter exists solely to tolerate the parent's
         // iteration revisiting entries this call has already linked.
-        parent.for_each_user_mapping(|vaddr, _pte| {
-            if child.try_find_user_pte(vaddr)?.is_some() {
-                let reason: &str = "child overlaps a parent user mapping";
-                error!("link_user_pages(): {reason} (vaddr={vaddr:?})");
-                return Err(Error::new(ErrorCode::EntryExists, reason));
-            }
-            Ok(())
-        })?;
+        if let Some(vaddr) = parent.find_user_mapping_overlap(child)? {
+            let reason: &str = "child overlaps a parent user mapping";
+            error!("link_user_pages(): {reason} (vaddr={vaddr:?})");
+            return Err(Error::new(ErrorCode::EntryExists, reason));
+        }
 
         // Process the parent's user mappings in fixed-size chunks. We cannot mutate
         // `parent` while borrowing its page tables via `for_each_user_mapping`, so each
@@ -306,24 +302,7 @@ impl VirtMemoryManager {
         // processed (e.g. writable entries that are now CoW-marked but still present).
         loop {
             let mut buf: LinkUserMappingBuf = [MaybeUninit::uninit(); LINK_CHUNK];
-            let mut count: usize = 0;
-            parent.for_each_user_mapping(|vaddr, pte: PageTableEntry| {
-                if count < LINK_CHUNK && child.try_find_user_pte(vaddr)?.is_none() {
-                    let frame: FrameAddress = FrameAddress::from_frame_number(pte.frame_number())?;
-                    // A page that is already copy-on-write (read-only in hardware with the
-                    // AVL CoW bit set) was shared writable by a prior fork and is therefore
-                    // logically writable. Classify it as writable so the new child is shared
-                    // copy-on-write too, rather than as a plain read-only mapping that would
-                    // fault fatally on the child's first write. The parent's current CoW
-                    // state is carried alongside so the link step can skip re-marking an
-                    // already-CoW parent (mark_cow requires a writable PTE).
-                    let parent_cow: bool = pte.is_cow();
-                    let writable: bool = pte.flags().is_writable() || parent_cow;
-                    buf[count].write((vaddr, frame, writable, parent_cow));
-                    count += 1;
-                }
-                Ok(())
-            })?;
+            let count: usize = parent.collect_unmapped_user_link_mappings(child, &mut buf)?;
 
             if count == 0 {
                 break;
@@ -456,26 +435,13 @@ impl VirtMemoryManager {
         loop {
             let mut buf: [MaybeUninit<PageAligned<VirtualAddress>>; LINK_CHUNK] =
                 [MaybeUninit::uninit(); LINK_CHUNK];
-            let mut count: usize = 0;
-            let walk: Result<(), Error> = child.for_each_user_mapping(|vaddr, _pte| {
-                if count < LINK_CHUNK {
-                    // Only consider pages that also exist in `parent`; a child mapping
-                    // without a parent counterpart was not installed by this call.
-                    match parent.is_user_page_mapped(vaddr) {
-                        Ok(true) => {
-                            buf[count].write(vaddr);
-                            count += 1;
-                        },
-                        Ok(false) => {},
-                        Err(e) => return Err(e),
-                    }
-                }
-                Ok(())
-            });
-            if let Err(e) = walk {
-                warn!("link_user_pages(): rollback walk failed (error={e:?})");
-                return;
-            }
+            let count: usize = match child.collect_user_mapping_addrs_mapped_in(parent, &mut buf) {
+                Ok(count) => count,
+                Err(e) => {
+                    warn!("link_user_pages(): rollback walk failed (error={e:?})");
+                    return;
+                },
+            };
             if count == 0 {
                 return;
             }
