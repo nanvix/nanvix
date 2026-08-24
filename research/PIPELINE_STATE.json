@@ -1,0 +1,29 @@
+{
+  "current_stage": "prove",
+  "rollback_history": [
+    {
+      "at": "2026-08-24T03:01:45.099920Z",
+      "from_stage": "prove",
+      "reason": "operator replaced the standing Manager objective; resetting the superseded 'verus' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
+      "rolled_back_by": "manager",
+      "to_stage": "prove"
+    }
+  ],
+  "stage_history": [
+    {
+      "at": "2026-08-24T03:01:45.099920Z",
+      "by": "manager",
+      "direction": "reset",
+      "from_stage": "prove",
+      "reason": "operator replaced the standing Manager objective; resetting the superseded 'verus' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
+      "to_stage": "prove"
+    }
+  ],
+  "stages": {
+    "prove": {
+      "status": "in_progress"
+    }
+  },
+  "vertical": "verus",
+  "workflow_mode": "staged"
+}

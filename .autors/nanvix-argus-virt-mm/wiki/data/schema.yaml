@@ -1,0 +1,51 @@
+# argus-skill idea-wiki -- required/optional fields per card type.
+# Mirrors the Python dataclasses in argus_skill.wiki.schema; if the two
+# drift, fix the YAML to match the dataclasses.
+
+pages:
+  concept:
+    required: [id, type, status, title, sources,
+               created_at, last_reviewed_at]
+    optional: [tags, related_projects, revisit_after, reviewer_note]
+  principle:
+    required: [id, type, status, title, sources,
+               created_at, last_reviewed_at]
+    optional: [tags, related_projects, revisit_after, reviewer_note]
+  fact:
+    required: [id, type, status, title, sources,
+               created_at, last_reviewed_at]
+    optional: [tags, related_projects, revisit_after, reviewer_note]
+  hypothesis:
+    required: [id, type, status, title, sources,
+               created_at, last_reviewed_at]
+    optional: [tags, related_projects, revisit_after, reviewer_note]
+  relationship:
+    required: [id, type, status, title, sources,
+               created_at, last_reviewed_at]
+    optional: [tags, related_projects, revisit_after, reviewer_note]
+  # Legacy page kinds remain valid while existing wikis migrate.
+  technique:
+    required: [id, type, status, title, tags, sources,
+               created_at, last_reviewed_at]
+    optional: [related_runs, related_projects, revisit_after, reviewer_note]
+  conflict:
+    required: [id, type, status, title, sources,
+               created_at, last_reviewed_at]
+    optional: [tags, related_runs, related_projects, reviewer_note,
+               resolved_by_run]
+  pattern:
+    required: [id, type, status, title, related_runs,
+               created_at, last_reviewed_at]
+    optional: [tags, sources, related_projects, reviewer_note]
+
+sources:
+  paper:
+    required: [id, url, title, ingested_at, ingested_by, checksum]
+  repo:
+    required: [id, url, title, ingested_at, ingested_by, checksum]
+  note:
+    required: [id, title, mission_id, created_at, tags]
+
+# Page status is a maturity state, not an evidence-result label. Producers must
+# not write values such as `observed` or `verified` here.
+valid_status: [scratch, candidate, stable]
