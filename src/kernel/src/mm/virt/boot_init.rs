@@ -216,7 +216,7 @@ pub fn init(
                         ),
                         false,
                     )
-                    .map_err(|(_count, e)| e)?;
+                    .map_err(|fill_error| fill_error.1)?;
                 debug_assert!(fill_count == count, "fill_count ({fill_count}) != count ({count})");
 
                 root_pagetables.push_back((page_table_addr, page_table));

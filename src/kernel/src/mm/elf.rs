@@ -510,10 +510,9 @@ fn do_elf32_load(
             return Err(Error::new(ErrorCode::BadFile, reason));
         }
 
-        let align: Alignment = phdr
-            .p_align
-            .try_into()
-            .map_err(|_| Error::new(ErrorCode::BadFile, "invalid alignment value in elf file"))?;
+        let align: Alignment = phdr.p_align.try_into().map_err(|_error| {
+            Error::new(ErrorCode::BadFile, "invalid alignment value in elf file")
+        })?;
         let adjusted_vaddr: usize = phdr.p_vaddr.checked_add(load_base).ok_or_else(|| {
             let reason: &str = "virtual address overflow in PIE segment";
             error!("{reason} (p_vaddr={:#x}, load_base={load_base:#x})", phdr.p_vaddr);

@@ -655,11 +655,14 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     /// `pte` is the decoded [`PageTableEntry`].
     ///
     pub fn iter_present_ptes(&self) -> impl Iterator<Item = (usize, PageTableEntry)> + '_ {
-        self.entries.iter().enumerate().filter_map(
-            |(idx, raw)| match PageTableEntry::from_raw_value(*raw) {
+        self.entries.iter().enumerate().filter_map(|entry| {
+            let idx: usize = entry.0;
+            let raw = entry.1;
+
+            match PageTableEntry::from_raw_value(*raw) {
                 Some(pte) if pte.is_present() => Some((idx, pte)),
                 _ => None,
-            },
-        )
+            }
+        })
     }
 }

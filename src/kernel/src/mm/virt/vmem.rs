@@ -1846,7 +1846,7 @@ impl Vmem {
             let at = self
                 .user_page_tables
                 .iter()
-                .position(|(addr, _)| addr == &pgtable_vaddr)
+                .position(|entry| entry.0 == pgtable_vaddr)
                 .expect("page table must be in the list of user page tables");
 
             let (_pgtable_addr, _page_table) = self.user_page_tables.remove(at);
@@ -2027,7 +2027,7 @@ impl Drop for Vmem {
         debug_assert!(
             self.user_page_tables
                 .iter()
-                .all(|(_, page_table)| page_table.nmapped() == 0),
+                .all(|entry| entry.1.nmapped() == 0),
             "Vmem dropped with user pages still mapped: user frames would leak"
         );
 
