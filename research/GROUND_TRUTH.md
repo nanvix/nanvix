@@ -170,18 +170,37 @@ the host x86_64 target, so arch paths were normalized x86_64/* -> x86/*.
    not occur (`layered_complete=false`). The three virt-MM-reachable microvm items
    (`virt_to_phys` identity fn, `is_valid_physical_region` checked_add bounds test,
    `NUM_PAGE_TABLES` const) are covered by item-level source inspection only.
+9. **Non-function declaration peeling now crosses the original two-round
+   blocker.** The repaired isolated probe assigns distinct AST identities to all
+   five `static mut` declarations and to the `BssStorage` impl, removes their
+   injected verification markers, and reaches a four-round terminal frontier.
+   Round 3 contains 133 diagnostics in
+   `ASSUME_SPECIFICATION_REQUIRED`, `OPAQUE_TYPE_FRONTIER`,
+   `PROJECT_SPECIFICATION_REQUIRED`, and `TYPE_SPECIFICATION_REQUIRED`; this is
+   deeper coverage, not a fixed point. The full command, per-round trace,
+   findings, baseline reconciliation, and restoration evidence are under
+   `/home/ruize/argus-virt-mm-artifacts-20260824/probe_run5/`.
+10. **Native `make verify-kernel` does not process the five `static mut`
+    declarations.** On the pristine tree with latest Verus it reports
+    `1882 verified, 0 errors` for the kernel (and zero errors for every
+    subsequent crate result). The `static mut` diagnostics are therefore
+    injection-induced probe findings, not failures of the current native
+    verification surface. Exact command and output are retained in
+    `probe_run5/make_verify_kernel.*`.
 
 ## Still-unknown binding facts
 
-1. **Whether the layered run can reach a real fixed point at all** given the
-   non-shieldable `static mut` blocker. Current run stops at `unresolved_frontier`
-   (round 2). Resolving this needs either a probe capability to skip static-mut
-   items or an architecture change — deferred (out of this baseline's scope).
-2. **Deeper limitations masked behind the static-mut sites** — unknown until the
-   blocker is skipped/repaired and the run re-executed.
-3. **Whether real `make verify-kernel` also rejects these `static mut` items** or
-   excludes them via a crate-level mechanism (determines if repair is required or
-   already boundaried).
+1. **Whether the layered run can reach a real fixed point after middle-layer
+   specification work.** The non-function blocker is resolved, but the current
+   run still stops at `unresolved_frontier` after four rounds because missing
+   project/type/function specifications and one opaque-type frontier are not
+   peelable frontend limitations.
+2. **What additional frontend limitations lie behind the newly exposed
+   specification/type frontier** remains unknown until those project-owned
+   dependencies and contracts are handled in later bounded missions.
+3. ~~Whether real `make verify-kernel` rejects the `static mut` items~~ —
+   **RESOLVED** (see Resolved fact #10). Native verification succeeds because
+   those declarations are outside its current verified surface.
 4. ~~Minimized legal-Rust reproducers~~ — **RESOLVED** (see Resolved fact #5).
    Both categories reproduced on latest Verus with root cause identified.
 5. ~~arch-crate reachability~~ — **RESOLVED** (see Depth-0 reachability). The

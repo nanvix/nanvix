@@ -7,6 +7,20 @@
       "reason": "operator replaced the standing Manager objective; resetting the superseded 'verus' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
       "rolled_back_by": "manager",
       "to_stage": "prove"
+    },
+    {
+      "at": "2026-08-24T05:07:57.454296Z",
+      "from_stage": "delivery",
+      "reason": "Monitor recovery: the accepted baseline explicitly ended at unresolved_frontier and is not whole-campaign completion.",
+      "rolled_back_by": "monitor",
+      "to_stage": "delivery"
+    },
+    {
+      "at": "2026-08-24T05:08:13.160427Z",
+      "from_stage": "prove",
+      "reason": "operator replaced the standing Manager objective; resetting the superseded 'software' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
+      "rolled_back_by": "manager",
+      "to_stage": "prove"
     }
   ],
   "stage_history": [
@@ -17,10 +31,39 @@
       "from_stage": "prove",
       "reason": "operator replaced the standing Manager objective; resetting the superseded 'verus' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
       "to_stage": "prove"
+    },
+    {
+      "at": "2026-08-24T04:47:58.944323Z",
+      "by": "manager",
+      "direction": "complete",
+      "from_stage": "prove",
+      "reason": "reviewer certified the final-stage checklist, overriding the Manager hold (The bounded audit is independently accepted and decision-relevant, but it does not prove the frozen goals or provide the mandatory green make-verify, anti-cheat)",
+      "to_stage": "prove"
+    },
+    {
+      "at": "2026-08-24T05:07:57.454296Z",
+      "by": "monitor",
+      "direction": "reset",
+      "from_stage": "delivery",
+      "reason": "Monitor recovery: the accepted baseline explicitly ended at unresolved_frontier and is not whole-campaign completion.",
+      "to_stage": "delivery"
+    },
+    {
+      "at": "2026-08-24T05:08:13.160427Z",
+      "by": "manager",
+      "direction": "reset",
+      "from_stage": "prove",
+      "reason": "operator replaced the standing Manager objective; resetting the superseded 'software' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
+      "to_stage": "prove"
     }
   ],
   "stages": {
+    "delivery": {
+      "status": "in_progress"
+    },
     "prove": {
+      "completion_contract_sha256": "33ce56d90f6a4d8919c7663b8304d3346811745a92a85ecb81a43a3f2dd2c3a2",
+      "completion_contract_version": 3,
       "status": "in_progress"
     }
   },
