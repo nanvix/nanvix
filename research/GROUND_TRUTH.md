@@ -298,3 +298,83 @@ block-tail read (value-position loops).
   rust-lint-check-kernel MACHINE=microvm LOG_LEVEL=trace RELEASE=no` (clippy
   `-D warnings`, build-std, x86-kernel) exit 0 — `probe/run-7/lint_check_kernel.log`.
 
+## Run-8 — internal item statements (items nested in a fn body) family eliminated (2 → 0)
+
+Node `triage-internal-item-statement-family`. Hoisted every item declared as a
+statement inside a PM function body to module scope. Verus `0.2026.08.23.fbbbbcf`
+rejects an inner item with `The verifier does not yet support the following Rust
+feature: internal item statements` (a `StmtKind::Item` in a fn body); a module-scope
+`static` / `extern` block has identical linkage/semantics and is accepted. Verus
+also accepts inner `const` and nested `fn`, so those PM sites are left unchanged.
+
+- **Exhaustive source inventory (independent of diagnostic caps):** a brace-tracked
+  scan of all 66 pm files for item keywords (`static`, `extern`, `fn`, `struct`,
+  `enum`, `union`, `trait`, `impl`, `mod`, `type`, `macro_rules`) inside a function
+  body found exactly **2 `static`/`extern` inner-item sites in 2 declarations, both
+  in `process/manager/mod.rs`**. The other inner items surfaced by the scan are all
+  function-local `const` (accepted by Verus) and are left untouched. No masked
+  extra `static`/`extern` site. The two edited sites:
+  - `process/manager/mod.rs` `forge_user_context` — `unsafe extern "C" { pub fn
+    __leave_kernel_to_user_mode(); }` → module-scope `unsafe extern "C" { fn
+    __leave_kernel_to_user_mode(); }` (symbol defined once in the arch asm hooks).
+  - `process/manager/mod.rs` `write_nul_terminated_to_user` — `static NUL: u8 = 0;`
+    → module-scope `static NUL: u8 = 0;`.
+- Reproducer (`argus-pm-artifacts-20260824/reproducer/`):
+  `internal_item_bad.rs` (inner `static` + inner `extern` block) → **2** `internal
+  item statements` errors on Verus `0.2026.08.23.fbbbbcf`; `internal_item_good.rs`
+  (both hoisted to module scope, + inner-`const` / nested-`fn` positive contrasts)
+  → `7 verified, 0 errors` (exit 0, passes frontend lowering AND verifies);
+  `internal_item_legal_rust_check.rs` → ordinary `rustc --edition 2021` exit 0 (the
+  rejected form is legal Rust). Full write-up: `reproducer/INTERNAL_ITEM_LIMITATION.md`.
+- Fresh full 66-file layered probe `run-8` (fresh isolated `CARGO_TARGET_DIR`
+  `.../target/cargo-target-run8`, direct `--inject-files`/`--scan-files` 66-file
+  lists, `--layered --exhaustive --max-layer-rounds 100`, no reachability manifest):
+  `summary={LIMITATION:26, INCONCLUSIVE:3}` (29 rows); `layered.rounds=3`,
+  `stop_reason=fixed_point`, `layered_complete=True`, `shield_events=28`, terminal
+  frontier `fully_enumerated=True` / `attribution_gaps=[]`. Artifacts:
+  `probe/pm_acceptance_run-8.json`, `probe/pm_acceptance_run-8_report.md`,
+  `probe/run8_family_delta.json`, `probe/run-8/`.
+- Per-family delta (`run8_family_delta.json`): the internal-item-statement family
+  `2 → 0` (eliminated everywhere in PM). **Masked-limitation exposure (documented,
+  non-regression):** removing the item-statement error unshields each declaration's
+  next frontend limitation, so `forge_user_context` now surfaces its `debug_assert!`
+  **panic** (panic `1 → 2`) and `write_nul_terminated_to_user` its implicit pointer
+  **dereference** (deref `7 → 8`). No other family changed. This mirrors run-6's
+  `join_thread` (constructor fixed, underlying cast persists): the targeted category
+  is genuinely closed; the surfaced panic/deref are the same fundamental
+  non-actionable limitations already dominating the residual set. Net finding count
+  stays 29 (2 internal findings replaced by 1 panic + 1 deref).
+- Restoration: all 66 pm files byte-identical to the pre-run rewritten source
+  (`hashes/pm_run8_pre.sha256` vs `hashes/pm_run8_restore_check.txt`, 66 OK /
+  0 mismatch).
+- Ordinary Nanvix check on the edited tree (probe Step 1): `make
+  rust-lint-check-kernel MACHINE=microvm LOG_LEVEL=trace RELEASE=no` (clippy
+  `-D warnings`, build-std, x86-kernel) exit 0 — `probe/run-8/lint_check_kernel.log`.
+
+### Residual actionability after run-8
+
+Actionable frontend-limitation categories closed so far: general-patterns (run-5),
+datatype-constructor (run-6), complex-break (run-7), internal-item-statement
+(run-8). The remaining 26 LIMITATION + 3 INCONCLUSIVE findings are fully located
+and evidence-classified, but they are not yet a demonstrated
+no-actionable-category fixed point:
+- integer→pointer / pointer→integer **casts** (11) — the fundamental user-copy /
+  MMIO address machinery (`… as *const/*mut T`, `… as usize`);
+- raw-pointer **dereferences** (8) — the copy_from/to_user and context/fpu accessors;
+- **Path Def** (3, `PROCESS_MANAGER` accessors) and **static mut** (1);
+- **panic** (2) — `debug_assert!`/`assert!` lowerings;
+- **array-fill** (1) — still actionable-candidate evidence, not a closed
+  classification: `LifecycleQueueChunk::new` uses
+  `[const { None }; LIFECYCLE_QUEUE_CHUNK_CAPACITY]`, while this PM tree already
+  contains Verus-accepted `core::array::from_fn(|_idx| ...)` calls. A minimized
+  latest-Verus comparison and a PM trial of `array::from_fn(|_idx| None)` have not
+  yet been recorded;
+- INCONCLUSIVE: **expected array** ICE (2), **unsafe impl Send/Sync** (1).
+The panic family remains non-actionable absent a behavior-identical accepted
+lowering: deleting or replacing `debug_assert!` changes debug-build panic
+semantics, while moving it to a helper only moves the diagnostic. The cast,
+deref, `Path Def`, `static mut`, and unsafe-impl families remain tied to PM's
+runtime address/unsafe/concurrency semantics; the expected-array diagnostics
+remain verifier ICEs. Each residual is evidence-classified as a genuine Verus
+frontend limitation or ICE rather than a Nanvix defect, but the array-fill
+candidate keeps campaign delivery open.

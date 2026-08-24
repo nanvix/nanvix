@@ -158,6 +158,26 @@ use ::type_safe::NonEmptyVecDeque;
 pub use self::r#unsafe::ExceptionGuard;
 
 //==================================================================================================
+// Foreign Symbols
+//==================================================================================================
+
+// Declared at module scope rather than inside `forge_user_context`: the Verus frontend rejects an
+// item statement nested in a function body ("internal item statements"). A module-scope `extern`
+// block declares the same C symbol with identical linkage and meaning.
+unsafe extern "C" {
+    fn __leave_kernel_to_user_mode();
+}
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+// Hoisted from `write_nul_terminated_to_user` for the same Verus frontend reason (an inner `static`
+// is an "internal item statement"). A module-scope `static` has identical single-instance,
+// 'static-lifetime semantics.
+static NUL: u8 = 0;
+
+//==================================================================================================
 // Tests
 //==================================================================================================
 
@@ -495,10 +515,6 @@ impl ProcessManager {
         enable_interrupts: bool,
     ) -> Result<(KernelStack, ContextInformation), Error> {
         trace!("args={args:?}, enable_interrupts={enable_interrupts:?}",);
-
-        unsafe extern "C" {
-            pub fn __leave_kernel_to_user_mode();
-        }
 
         // Assert pre-conditions (these should have been checked by the caller).
         debug_assert!(Vmem::is_user_region(args.user_stack_base, args.user_stack_size));
@@ -1242,7 +1258,6 @@ impl ProcessManager {
         s: &str,
         space_is_delimiter: bool,
     ) -> Result<(), Error> {
-        static NUL: u8 = 0;
         if !s.is_empty() {
             vmem.copy_to_user_unaligned(dest, VirtualAddress::new(s.as_ptr() as usize), s.len())?;
             // Substitute ASCII spaces with NUL in place so the boot (space-separated) command line
