@@ -1,0 +1,30 @@
+# Controlled vocab. Start small; reviewer extends as concepts recur.
+# When you add a tag, prefer reusing an existing one over near-synonyms.
+
+method:
+  - grpo
+  - ppo
+  - rlhf
+  - dpo
+  - sft
+
+problem:
+  - reward-hacking
+  - eval-leakage
+  - mode-collapse
+  - throughput-collapse
+  - nan-loss
+  - oom
+
+domain:
+  - visual-editing
+  - code-gen
+  - math-reasoning
+  - dialogue
+
+technique-area:
+  - sampling
+  - clipping
+  - reward-shaping
+  - judge-design
+  - data-curation
