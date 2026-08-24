@@ -378,3 +378,89 @@ runtime address/unsafe/concurrency semantics; the expected-array diagnostics
 remain verifier ICEs. Each residual is evidence-classified as a genuine Verus
 frontend limitation or ICE rather than a Nanvix defect, but the array-fill
 candidate keeps campaign delivery open.
+
+## Array-fill classification — GENUINE non-actionable frontend limitation (equivalence class refuted)
+
+Node `triage-array-fill-family`. Closes the run-8 open item: the array-fill
+candidate is classified by **equivalence-class refutation** against an empirical
+Verus oracle, not by single-form judgment. No PM source changes; run-8 remains the
+authoritative full-PM probe (66/66 byte-restored, PM source unchanged).
+
+Site: `process/manager/delivery.rs:247`, `LifecycleQueueChunk::new` —
+`records: [const { None }; LIFECYCLE_QUEUE_CHUNK_CAPACITY]`, element type
+`Option<LifecycleRecord>` = `Option<(DeliverySequence, LifecycleNotification)>`.
+
+- **Equivalence class = "fill a fixed `[Option<Record>; N]` with independent
+  `None`, Record non-Copy".** All members tested on Verus `0.2026.08.23.fbbbbcf`
+  (fresh single-file harness, `argus-pm-artifacts-20260824/reproducer/`):
+  - `[const { None }; N]` (current) → **REFUTED**: `array-fill expresion with
+    non-copy type` (`array_fill_bad.stderr.log`).
+  - `core::array::from_fn(|_idx| None)` (the run-8 reviewer candidate) → **REFUTED**:
+    `` `core::array::from_fn` is not supported `` — resolvable only by adding
+    `assume_specification`, i.e. FORBIDDEN trust (`array_fill_from_fn.stderr.log`).
+  - `[None; N]` plain Copy repeat → **ACCEPTED** (`3 verified, 0 errors`,
+    `array_fill_copy_ok.stdout.log`) but **NOT semantics-preserving**: it requires
+    the element to be `Copy`.
+  - explicit N-element literal → impractical: `N` =
+    `LIFECYCLE_QUEUE_CHUNK_CAPACITY` is a derived const; a literal breaks the
+    slab-capacity invariant.
+- **Why the element cannot be `Copy` (semantic proof).** `LifecycleNotification`
+  carries `LifecycleCreationCredit` / `LifecycleTerminationCredit`
+  (`process/mod.rs:22-29,85-90`): `#[must_use]`, no `Copy`, documented as
+  **linear resources** minted/consumed only by the delivery broker. Making them
+  `Copy` would let a credit be duplicated, breaking the capacity-reservation
+  accounting (double-release / over-commit). So `[None; N]` is categorically
+  unavailable — the accepted class member is not behavior-preserving.
+- **Oracle (Verus's own test corpus).**
+  `source/rust_verify_test/tests/arrays.rs`: `test_array_repeat_non_copy_const`
+  (lines 388-408) is an *expected error* asserting the identical string
+  "array-fill expresion with non-copy type" ("This is currently unsupported");
+  `test_array_repeat` (308-351) shows Copy repeat `[v; N]` / const-generic `[a; N]`
+  pass. No accepted `from_fn` test exists; `vstd/array.rs` specs only
+  `array_fill_for_copy_types`.
+- **Legal Rust:** `rustc --edition 2021` compiles + runs both rejected forms
+  (`array_fill_legal_rust_check.rs`, exit 0) — the rejected forms are legal,
+  equivalent Rust.
+- **Same-category inventory (independent of caps):** a scan of all 66 PM files
+  for the repeat *expression* `[value; N]` (excluding array *type* annotations
+  `[T; N]` and array *literals* `[a, b, c]`) finds **12 repeat-fill sites: 11 with
+  a Copy element and exactly one non-Copy**. The 11 Copy fills — `test.rs:81,115,
+  163,173,183` (`[0u8; PAYLOAD_SIZE]`), `process/manager/test.rs:265` (`[0u8;16]`),
+  `process/manager/signal.rs:610` (`[0u32;8]`), `:612` and `:661`
+  (`[0u8; FPU_AREA_SIZE]`), `process/state/sigframe_test.rs:47` (`[0u8;512]`),
+  `process/manager/delivery.rs:101` (`[0u8; PAYLOAD_SIZE]`) — are all accepted by
+  Verus (Copy repeat), so none is a finding. Only `delivery.rs:247`
+  (`[const { None }; LIFECYCLE_QUEUE_CHUNK_CAPACITY]`, element
+  `Option<LifecycleRecord>`, **non-Copy**) is rejected → this limitation. The
+  `from_fn` uses at `process/state/signal.rs:511-512` fill Copy-style
+  `SignalDisposition::Default` in a distinct construction, not a repeat fill and
+  not the array-fill site.
+- Full write-up: `reproducer/ARRAY_FILL_LIMITATION.md`.
+
+**Classification: GENUINE Verus frontend limitation, NOT actionable** — the whole
+equivalence class is refuted (every semantics-preserving spelling rejected; the
+only accepted spelling requires an illegal `Copy` change).
+
+### Residual actionability — fixed point reached (no actionable category remains)
+
+With array-fill classified genuine, every run-8 residual (26 LIMITATION + 3
+INCONCLUSIVE) is now positively evidence-classified as a genuine Verus frontend
+limitation or verifier ICE, with no remaining actionable-candidate:
+
+| Family (count) | Classification | Why non-actionable |
+| --- | --- | --- |
+| int↔ptr casts (11) | genuine | load-bearing user-copy / MMIO address machinery |
+| raw-pointer deref (8) | genuine | copy_from/to_user, context/fpu accessors |
+| Path Def (3) | genuine | `PROCESS_MANAGER` static accessors |
+| panic (2) | genuine | `debug_assert!`/`assert!` lowering; no behavior-identical accepted form |
+| array-fill (1) | genuine | whole equivalence class refuted (this section) |
+| static mut (1) | genuine | true shared-mutable global; no behavior-preserving rewrite |
+| expected array ICE (2) | INCONCLUSIVE | verifier internal error, not a construct rejection |
+| unsafe impl Send/Sync (1) | INCONCLUSIVE | verifier internal error |
+
+Actionable frontend-limitation categories closed across the campaign:
+general-patterns (run-5), datatype-constructor (run-6), complex-break (run-7),
+internal-item-statement (run-8). The array-fill candidate — the sole item that
+kept delivery open after run-8 — is now closed as a genuine limitation. No
+actionable category remains; the campaign is at a no-actionable-category fixed
+point.

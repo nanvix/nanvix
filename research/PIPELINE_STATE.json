@@ -1,5 +1,57 @@
 {
   "current_stage": "prove",
+  "rollback_history": [
+    {
+      "at": "2026-08-24T04:35:17.093692Z",
+      "from_stage": "delivery",
+      "reason": "Monitor recovery: run-6 still has 32 classified findings, so the prior verus prove-stage completion was not whole-campaign completion.",
+      "rolled_back_by": "monitor",
+      "to_stage": "delivery"
+    },
+    {
+      "at": "2026-08-24T04:35:36.089127Z",
+      "from_stage": "prove",
+      "reason": "operator replaced the standing Manager objective; resetting the superseded 'software' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
+      "rolled_back_by": "manager",
+      "to_stage": "prove"
+    }
+  ],
+  "stage_history": [
+    {
+      "at": "2026-08-24T04:19:18.716897Z",
+      "by": "manager",
+      "direction": "complete",
+      "from_stage": "prove",
+      "reason": "reviewer certified the final-stage checklist, overriding the Manager hold (The focused PM frontend rewrite is independently validated, but mandatory prove-stage evidence is missing: no authoritative goal/proof-state artifacts or verbat)",
+      "to_stage": "prove"
+    },
+    {
+      "at": "2026-08-24T04:35:17.093692Z",
+      "by": "monitor",
+      "direction": "reset",
+      "from_stage": "delivery",
+      "reason": "Monitor recovery: run-6 still has 32 classified findings, so the prior verus prove-stage completion was not whole-campaign completion.",
+      "to_stage": "delivery"
+    },
+    {
+      "at": "2026-08-24T04:35:36.089127Z",
+      "by": "manager",
+      "direction": "reset",
+      "from_stage": "prove",
+      "reason": "operator replaced the standing Manager objective; resetting the superseded 'software' pipeline to the first stage of 'verus' instead of preserving incompatible progress.",
+      "to_stage": "prove"
+    }
+  ],
+  "stages": {
+    "delivery": {
+      "status": "in_progress"
+    },
+    "prove": {
+      "completion_contract_sha256": "33ce56d90f6a4d8919c7663b8304d3346811745a92a85ecb81a43a3f2dd2c3a2",
+      "completion_contract_version": 3,
+      "status": "in_progress"
+    }
+  },
   "vertical": "verus",
   "workflow_mode": "staged"
 }
