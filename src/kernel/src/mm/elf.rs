@@ -609,7 +609,10 @@ fn do_elf32_load(
                 // permission from all segments that cover this page.
                 let mut already_mapped: bool = false;
                 let mut merged: AccessPermission = access;
-                for &(start, end, prev_access) in loaded_ranges.iter().take(loaded_count) {
+                for loaded_range in loaded_ranges.iter().take(loaded_count) {
+                    let start: usize = loaded_range.0;
+                    let end: usize = loaded_range.1;
+                    let prev_access: AccessPermission = loaded_range.2;
                     if page_addr >= start && page_addr < end {
                         merged = merge_access(merged, prev_access);
                         already_mapped = true;
