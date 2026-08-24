@@ -48,9 +48,8 @@ void test_mkdirat(void)
     assert(st.st_atime != 0); // Access time should not be zero.
     assert(st.st_mtime != 0); // Modification time should not be zero.
     assert(st.st_ctime != 0); // Change time should not be zero.
-    // TODO: Uncomment the following lines when user/group ID checks are supported.
-    // assert(st.st_uid == getuid()); // User ID of the owner.
-    // assert(st.st_gid == getgid()); // Group ID of the owner.
+    assert(st.st_uid == getuid()); // User ID of the owner.
+    assert(st.st_gid == getgid()); // Group ID of the owner.
 
     // Remove test directory.
     assert(unlinkat(AT_FDCWD, dirname, AT_REMOVEDIR) == 0);

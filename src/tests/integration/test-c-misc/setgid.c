@@ -25,5 +25,9 @@ void test_setgid(void)
     gid_t gid = getgid();
     assert(setgid(gid) == 0);
 
+    errno = 0;
+    assert(setgid(gid + 1) == -1);
+    assert(errno == EPERM);
+
     fprintf(stderr, "passed\n");
 }

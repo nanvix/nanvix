@@ -104,6 +104,9 @@ extern void test_setgroups(void);
 // Tests whether `initgroups()` initializes the supplementary group access list.
 extern void test_initgroups(void);
 
+// Tests whether the synthetic user and group databases describe the root identity.
+extern void test_user_group(void);
+
 // Tests whether we can retrieve process times with `times()`.
 extern void test_times(void);
 

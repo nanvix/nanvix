@@ -1571,6 +1571,7 @@ dependencies = [
 name = "libc_grp"
 version = "0.24.4"
 dependencies = [
+ "sys",
  "sysapi",
  "syslog",
 ]
@@ -1648,8 +1649,8 @@ dependencies = [
 name = "libc_pwd"
 version = "0.24.4"
 dependencies = [
+ "sys",
  "sysapi",
- "syscall",
  "syslog",
 ]
 
