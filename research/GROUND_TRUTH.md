@@ -244,3 +244,57 @@ the behaviour-identical `.map(|x| Ctor(x))` lowers cleanly.
   -p kernel ... -- -D warnings` (build-std, x86-kernel target, `microvm,trace`)
   exit 0 with the `kernel` crate compiled (not cached); `cargo fmt -p kernel
   --check` clean; codespell clean.
+
+## Run-7 — complex-break (value-carrying `break EXPR`) family eliminated (3 → 0)
+
+Node `triage-complex-break-family`. Rewrote every value-carrying `break EXPR` (a
+`break` that carries a value out of a `loop`) into its behaviour-preserving
+equivalent. Verus `0.2026.08.23.fbbbbcf` rejects `break VALUE` during frontend
+lowering with `The verifier does not yet support the following Rust feature:
+complex break expressions`; a plain `break;` is accepted. The two accepted forms
+are `return VALUE` (function-tail loops) and assign-then-plain-`break;` with a
+block-tail read (value-position loops).
+
+- **Exhaustive source inventory (independent of diagnostic caps):** a `\bbreak\b`
+  scan over all 66 pm files found exactly **4 value-carrying break sites across 3
+  files / 3 declarations**; every other `break` is plain (`break;` / `break,`) or
+  a comment. No masked extra site. The three edited files / sites:
+  - `pm/sync/mutex.rs` @179 — `Ok(guard) => break Ok(guard)` → `return Ok(guard)`
+    (tail loop = whole function body).
+  - `pm/process/manager/unsafe.rs` @773,780 — `break Ok(status)` /
+    `break Err(SleepError::Generic(error))` → `return …` (tail loop; two sites in
+    the one `join_thread` declaration).
+  - `pm/process/manager/signal.rs` @257 — tuple `break (signum, entry, mask,
+    flags)` → pre-declared `selected = (…)` then plain `break;`, block tail reads
+    `selected` (value-position loop; definite-assignment confirmed by a standalone
+    `rustc --edition 2021` compile).
+- Reproducer (`argus-pm-artifacts-20260824/reproducer/`):
+  `complex_break_bad.rs` → **3** `complex break expressions` errors on Verus
+  `0.2026.08.23.fbbbbcf` (`aborting due to 3 previous errors`);
+  `complex_break_good.rs` (return / assign-then-plain-break + `decreases`) → `7
+  verified, 0 errors` (exit 0, passes frontend lowering AND verifies);
+  `complex_break_legal_rust_check.rs` → ordinary `rustc --edition 2021` exit 0 (the
+  rejected form is legal Rust). Full write-up: `reproducer/COMPLEX_BREAK_LIMITATION.md`.
+- Fresh full 66-file layered probe `run-7` (fresh isolated `CARGO_TARGET_DIR`
+  `.../target/cargo-target-run7`, direct `--inject-files`/`--scan-files` 66-file
+  lists, `--layered --exhaustive --max-layer-rounds 100`, no reachability
+  manifest): `summary={LIMITATION:26, INCONCLUSIVE:3}` (29 rows, down from run-6's
+  32); `layered.rounds=3`, `stop_reason=fixed_point`, `layered_complete=True`,
+  `shield_events=28`. Artifacts: `probe/pm_acceptance_run-7.json`,
+  `probe/pm_acceptance_run-7_report.md`, `probe/run7_family_delta.json`,
+  `probe/run-7/` (supervisor verdict, lint log, manifest). Supervised subagent
+  `pm-complex-break-run7-1787546951` exit 0, 59 s.
+- Per-family delta (`run7_family_delta.json`): the complex-break family `3 → 0` is
+  the **only** changed family; every other family is byte-identical (`deref 7→7`,
+  every `usize/u32 → *…` cast unchanged, `Path Def 3→3`, `internal 2→2`,
+  `array-fill 1→1`, `panic 1→1`, `static mut 1→1`, `expected array 2→2`
+  [INCONCLUSIVE], `unsafe impl Send/Sync 1/1` [INCONCLUSIVE]). Terminal frontier
+  fully enumerated (`attribution_gaps=[]`); residual verdicts are the 26 remaining
+  LIMITATION rows plus 3 INCONCLUSIVE.
+- Restoration: all 66 pm files byte-identical to the pre-run rewritten source
+  (`hashes/pm_run7_pre.sha256` vs `hashes/pm_run7_restore_check.txt`, 66 OK /
+  0 mismatch).
+- Ordinary Nanvix check on the edited tree (probe Step 1): `make
+  rust-lint-check-kernel MACHINE=microvm LOG_LEVEL=trace RELEASE=no` (clippy
+  `-D warnings`, build-std, x86-kernel) exit 0 — `probe/run-7/lint_check_kernel.log`.
+

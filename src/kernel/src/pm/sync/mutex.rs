@@ -176,7 +176,7 @@ impl Mutex {
             // Attempt to acquire the mutex.
             match self.try_lock() {
                 // Success.
-                Ok(guard) => break Ok(guard),
+                Ok(guard) => return Ok(guard),
                 // Failed to acquire the mutex.
                 Err(()) => {
                     self.0.sleeping.wait(timeout)?;

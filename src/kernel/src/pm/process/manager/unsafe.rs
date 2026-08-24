@@ -770,14 +770,14 @@ impl ProcessManager {
                 Ok(zombie_thread) => {
                     let status: ExitStatus = zombie_thread.status();
                     Self::harvest_zombie_thread(pid, zombie_thread);
-                    break Ok(status);
+                    return Ok(status);
                 },
 
                 Err(Ok(join_cond)) => {
                     join_cond.wait(None)?;
                 },
 
-                Err(Err(error)) => break Err(SleepError::Generic(error)),
+                Err(Err(error)) => return Err(SleepError::Generic(error)),
             }
         }
     }

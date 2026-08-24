@@ -248,17 +248,21 @@ impl ProcessManager {
         let (signum, entry, sa_mask, sa_flags): (usize, usize, u64, i32) = {
             let signals = self.get_running_mut().state_mut().signals_mut();
             let mut deliverable: u64 = (signals.pending() | thread_pending) & !blocked;
+            let selected: (usize, usize, u64, i32);
             loop {
                 if deliverable == 0 {
                     return SignalDeliveryOutcome::None;
                 }
                 let signum: usize = (deliverable.trailing_zeros() as usize) + 1;
                 if let Some(SignalDisposition::Handler(handler)) = signals.disposition(signum) {
-                    break (signum, handler.entry.into_raw_value(), handler.mask, handler.flags);
+                    selected =
+                        (signum, handler.entry.into_raw_value(), handler.mask, handler.flags);
+                    break;
                 }
                 // Not a caught signal: leave it pending for its own phase and consider the next.
                 deliverable &= deliverable - 1;
             }
+            selected
         };
 
         // The handler return address must be a registered restorer trampoline.
