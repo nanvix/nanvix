@@ -114,12 +114,8 @@ where
         }
     }
 
-    pub closed spec fn internal_inv(&self) -> bool {
-        self.permissions_match_storage()
-    }
-
     pub closed spec fn inv(&self) -> bool {
-        self.wf() && self.internal_inv()
+        self.wf() && self.permissions_match_storage()
     }
 
     /// Returns the physical base address of this page directory.
