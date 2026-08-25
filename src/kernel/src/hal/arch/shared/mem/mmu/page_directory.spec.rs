@@ -12,11 +12,6 @@ verus! {
 #[allow(dead_code)]
 pub struct ExPageTableAddress(PageTableAddress);
 
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[allow(dead_code)]
-pub struct ExPageDirectoryEntry(PageDirectoryEntry);
-
 /// Mask for the accessed bit in a page-directory entry.
 #[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
 pub const ACCESSED_BIT: PteWord = 1 << 5;

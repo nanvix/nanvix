@@ -1,6 +1,8 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use vstd::prelude::*;
+
 include!("mod.spec.rs");
 
 //==================================================================================================
@@ -63,6 +65,7 @@ pub const NUM_HIERARCHY_PAGES: usize = 1;
 ///
 /// Must be called from kernel mode (ring 0).
 ///
+#[verus_verify(external_body)]
 #[inline]
 pub unsafe fn invlpg(vaddr: usize) {
     // core::arch::asm!(

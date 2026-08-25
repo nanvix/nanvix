@@ -8,6 +8,7 @@ use crate::hal::mem::types::address::{
     VirtualAddress,
 };
 use ::arch::mem;
+use vstd::prelude::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct PageAddress(PageAligned<VirtualAddress>);
@@ -50,10 +51,12 @@ impl PageTableAddress {
     pub fn new(address: PageTableAligned<VirtualAddress>) -> Self {
         Self(address)
     }
+    #[verus_verify(external_body)]
     pub fn into_raw_value(self) -> usize {
         self.0.into_raw_value()
     }
 
+    #[verus_verify(external_body)]
     pub fn get_pde_index(&self) -> usize {
         let addr: usize = self.into_raw_value();
         (addr & mem::PGTAB_MASK) >> mem::PGTAB_SHIFT
