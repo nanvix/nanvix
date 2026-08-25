@@ -152,7 +152,7 @@ int main(int argc, const char *argv[])
     test_getcwd();
     test_chdir(); // requires getcwd().
     test_fchdir();
-    // NULL times returns success even on FAT32 (timestamps are ignored).
+    test_utimensat();
     test_utimensat_now();
     test_utime_preserve_imported_timestamps();
 #ifndef __NANVIX_STANDALONE__

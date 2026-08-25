@@ -47,7 +47,11 @@ void test_utimensat(void)
     assert(fstat(fd, &st) == 0);
 
     // Set new timestamps.
+#ifdef __NANVIX_STANDALONE__
+    times[0].tv_sec = st.st_atime; // Access time is date-only on FAT.
+#else
     times[0].tv_sec = st.st_atime + 20; // Access time.
+#endif
     times[0].tv_nsec = 0;
     times[1].tv_sec = st.st_mtime + 10; // Modification time.
     times[1].tv_nsec = 0;
@@ -63,6 +67,41 @@ void test_utimensat(void)
     // Clean up.
     assert(close(fd) == 0);
     assert(unlink(filename) == 0);
+
+    const char *dirname = "testdir_utimensat";
+    const char *childname = "child.tmp";
+    const char *childpath = "testdir_utimensat/child.tmp";
+
+    assert(mkdir(dirname, S_IRWXU) == 0);
+    int dirfd = open(dirname, O_RDONLY | O_DIRECTORY);
+    assert(dirfd >= 0);
+    int childfd = openat(dirfd, childname, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+    assert(childfd >= 0);
+    assert(close(childfd) == 0);
+
+    assert(stat(childpath, &st) == 0);
+    times[0].tv_sec = st.st_atime;
+    times[1].tv_sec = st.st_mtime + 2;
+
+    assert(utimensat(dirfd, childname, times, 0) == 0);
+    assert(stat(childpath, &st) == 0);
+    assert(st.st_mtime == times[1].tv_sec);
+    assert(utimensat(dirfd, childname, NULL, 0) == 0);
+
+    assert(stat(childpath, &st) == 0);
+    times[0].tv_sec = st.st_atime;
+    times[1].tv_sec = st.st_mtime + 2;
+    assert(utimensat(AT_FDCWD, childpath, times, AT_SYMLINK_NOFOLLOW) == 0);
+    assert(stat(childpath, &st) == 0);
+    assert(st.st_mtime == times[1].tv_sec);
+
+    errno = 0;
+    assert(utimensat(AT_FDCWD, childpath, times, 1 << 30) == -1);
+    assert(errno == EINVAL);
+
+    assert(close(dirfd) == 0);
+    assert(unlink(childpath) == 0);
+    assert(rmdir(dirname) == 0);
 
     fprintf(stderr, "passed\n");
 }
