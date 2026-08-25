@@ -15,15 +15,34 @@ use crate::hal::arch::{
     split_kcall_result,
 };
 use crate::{
+    hal::arch::{
+        x86::cpu::FpuState,
+        ContextInformation,
+    },
     ipc::Mailbox,
     mm::{
         elf::Elf32Fhdr,
         VirtMemoryManager,
+        Vmem,
     },
     pm::{
         process::{
+            new_test_process_termination_credit,
+            new_test_thread_termination_credit,
+            state::{
+                PendingProcessTermination,
+                RunnableProcess,
+                RunningProcess,
+                ZombieProcess,
+            },
             LifecycleCreationReservation,
             LifecycleTerminationCredit,
+            ThreadLifecycleReservation,
+            ThreadLifecycleTerminationCredit,
+        },
+        thread::{
+            ReadyThread,
+            ThreadManager,
         },
         ProcessManager,
     },
@@ -34,6 +53,7 @@ use ::sys::{
         ProcessCreationInfo,
         ProcessRole,
         ProcessTerminationInfo,
+        ThreadTerminationInfo,
     },
     ipc::{
         Message,
@@ -131,6 +151,171 @@ fn receive_lifecycle(broker: &mut DeliveryBroker) -> Option<Message> {
     let (sequence, message): (DeliverySequence, Message) = broker.peek_lifecycle(test_pid())?;
     broker.commit_lifecycle(sequence);
     Some(message)
+}
+
+///
+/// # Description
+///
+/// Receives one lifecycle message and verifies its type and serialized payload.
+///
+/// # Parameters
+///
+/// - `broker`: Delivery broker from which to receive the lifecycle record.
+/// - `message_type`: Expected message type.
+/// - `expected_payload`: Expected serialized payload prefix.
+///
+/// # Returns
+///
+/// `true` if the next lifecycle message matches the expected type and payload, otherwise `false`.
+///
+/// # Panics
+///
+/// This function panics if `expected_payload` is larger than [`Message::PAYLOAD_SIZE`].
+///
+fn receive_expected_lifecycle(
+    broker: &mut DeliveryBroker,
+    message_type: MessageType,
+    expected_payload: &[u8],
+) -> bool {
+    let message: Message = match receive_lifecycle(broker) {
+        Some(message) => message,
+        None => {
+            error!("expected lifecycle record was not queued (type={message_type:?})");
+            return false;
+        },
+    };
+    if message.message_type != message_type
+        || message.payload[..expected_payload.len()] != *expected_payload
+    {
+        error!("lifecycle record did not match expected type or payload");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Creates a local process manager whose running process is a single credited user thread.
+///
+/// # Returns
+///
+/// The local process-manager fixture, or [`None`] if its resources could not be prepared.
+///
+fn new_user_process_manager() -> Option<ProcessManager> {
+    // SAFETY: process-manager tests run on one core with interrupts disabled and hold no other
+    // reference to either global manager.
+    let global_pm: &ProcessManager = unsafe { ProcessManager::get() };
+    let mm: &VirtMemoryManager = unsafe { VirtMemoryManager::get() };
+    let root: Vmem = match mm.new_vmem(global_pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(error) => {
+            error!("failed to create local process-manager root vmem (error={error:?})");
+            return None;
+        },
+    };
+    let user_vmem: Vmem = match mm.new_vmem(global_pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(error) => {
+            error!("failed to create local user-process vmem (error={error:?})");
+            return None;
+        },
+    };
+    let (kernel, tm): (ReadyThread, ThreadManager) = crate::pm::thread::init();
+    let mut manager: ProcessManager = match ProcessManager::new(false, kernel, root, tm) {
+        Ok(manager) => manager,
+        Err(error) => {
+            error!("failed to create local process manager (error={error:?})");
+            return None;
+        },
+    };
+    let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = match manager.tm.try_next_tid() {
+        Ok(ids) => ids,
+        Err(error) => {
+            error!("failed to reserve local user thread identifier (error={error:?})");
+            return None;
+        },
+    };
+    let thread: ReadyThread = ReadyThread::new(
+        tid,
+        Some(new_test_thread_termination_credit()),
+        None,
+        None,
+        None,
+        ContextInformation::default(),
+        // SAFETY: calls to FpuState::new are synchronized by the single-threaded test runner.
+        unsafe { FpuState::new() },
+    );
+    let pid: ProcessIdentifier = ProcessIdentifier::from(1);
+    let mut process: RunnableProcess =
+        RunnableProcess::new_uncommitted(pid, ProcessIdentifier::KERNEL, thread, user_vmem);
+    process.install_termination_credit(new_test_process_termination_credit());
+    let (running, reason, _ctx, _user_tda): (
+        RunningProcess,
+        Option<crate::pm::thread::InterruptReason>,
+        *mut ContextInformation,
+        Option<VirtualAddress>,
+    ) = process.run();
+    if reason.is_some() {
+        error!("local user process was unexpectedly interrupted");
+        return None;
+    }
+    manager.tm.commit_next_tid(next_tid);
+    manager.running = Some(running);
+    Some(manager)
+}
+
+///
+/// # Description
+///
+/// Snapshots state that must remain unchanged after failed standalone thread preparation.
+///
+/// # Parameters
+///
+/// - `pm`: Process manager to snapshot.
+///
+/// # Returns
+///
+/// A tuple containing the next thread identifiers, lifecycle capacity in use, running process and
+/// thread identifiers, and ready-queue length.
+///
+/// # Panics
+///
+/// This function panics if `pm` does not contain a running process.
+///
+fn thread_creation_state(
+    pm: &ProcessManager,
+) -> (
+    Option<(ThreadIdentifier, ThreadIdentifier)>,
+    Option<usize>,
+    ProcessIdentifier,
+    ThreadIdentifier,
+    usize,
+) {
+    (
+        pm.tm.try_next_tid().ok(),
+        pm.delivery.capacity_in_use(),
+        pm.get_running().state().pid(),
+        pm.get_running().get_tid(),
+        pm.ready.len(),
+    )
+}
+
+///
+/// # Description
+///
+/// Disarms and reports whether the standalone thread-preparation injection was consumed.
+///
+/// # Parameters
+///
+/// - `pm`: Process manager whose injection flag is disarmed.
+///
+/// # Returns
+///
+/// `true` if the injection was consumed by the call under test, otherwise `false`.
+///
+fn thread_injection_was_consumed(pm: &mut ProcessManager) -> bool {
+    !::core::mem::take(&mut pm.fail_next_thread_lifecycle_creation)
 }
 
 //==================================================================================================
@@ -344,6 +529,343 @@ fn test_duplicate_process_reservation_failure_rolls_back() -> bool {
         error!("duplicate_process() changed state after reservation rollback");
         return false;
     }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies ordinary thread preparation releases its reservation on failure.
+///
+/// # Returns
+///
+/// `true` if failed preparation leaves identifiers, process state, and lifecycle capacity
+/// unchanged, otherwise `false`.
+///
+fn test_create_thread_reservation_failure_rolls_back() -> bool {
+    let Some(mut pm) = new_user_process_manager() else {
+        return false;
+    };
+    let pid: ProcessIdentifier = pm.get_running().state().pid();
+    let args: ThreadCreateArgs = ThreadCreateArgs {
+        user_fn: VirtualAddress::from_raw_value(::config::memory_layout::USER_BASE_RAW),
+        user_fn_arg0: 0,
+        user_fn_arg1: 0,
+        user_stack_base: VirtualAddress::from_raw_value(
+            ::config::memory_layout::USER_STACK_TOP_RAW - ::arch::mem::PAGE_SIZE,
+        ),
+        user_stack_size: ::arch::mem::PAGE_SIZE,
+        user_tda: None,
+    };
+    let before = thread_creation_state(&pm);
+    pm.inject_thread_lifecycle_creation_failure();
+    // SAFETY: the local process manager is not aliased and tests run with interrupts disabled.
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+    match pm.create_thread(mm, pid, &args) {
+        Err(error) if error.code == ::sys::error::ErrorCode::OutOfMemory => {},
+        Err(error) => {
+            error!("injected create-thread failure returned wrong error (error={error:?})");
+            return false;
+        },
+        Ok(tid) => {
+            error!("create_thread() ignored injected reservation failure (tid={tid:?})");
+            return false;
+        },
+    }
+    if !thread_injection_was_consumed(&mut pm) || thread_creation_state(&pm) != before {
+        error!("create_thread() changed state or leaked capacity after reservation rollback");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies `execv()` replacement-thread preparation releases its reservation on failure.
+///
+/// # Returns
+///
+/// `true` if failed replacement preparation leaves the process and lifecycle capacity unchanged,
+/// otherwise `false`.
+///
+fn test_execv_thread_reservation_failure_rolls_back() -> bool {
+    let Some(mut pm) = new_user_process_manager() else {
+        return false;
+    };
+    let pid: ProcessIdentifier = pm.get_running().state().pid();
+    let before = thread_creation_state(&pm);
+    pm.inject_thread_lifecycle_creation_failure();
+    // SAFETY: the local process manager is not aliased and tests run with interrupts disabled.
+    let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+    match pm.do_execv(
+        mm,
+        pid,
+        VirtualAddress::from_raw_value(::config::memory_layout::USER_BASE_RAW),
+        1,
+        "",
+        "",
+    ) {
+        Err(error) if error.code == ::sys::error::ErrorCode::OutOfMemory => {},
+        Err(error) => {
+            error!("injected execv preparation failure returned wrong error (error={error:?})");
+            return false;
+        },
+        Ok(_) => {
+            error!("execv() ignored injected thread reservation failure");
+            return false;
+        },
+    }
+    if !thread_injection_was_consumed(&mut pm) || thread_creation_state(&pm) != before {
+        error!("execv() changed state or leaked capacity after thread reservation rollback");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies creation, exact thread termination, and process termination production order.
+///
+/// # Returns
+///
+/// `true` if lifecycle records carry exact metadata, preserve ordering, and release all capacity,
+/// otherwise `false`.
+///
+fn test_zombie_transitions_produce_ordered_lifecycle_records() -> bool {
+    let Some(mut broker) = new_broker() else {
+        return false;
+    };
+    let pid: ProcessIdentifier = test_pid();
+    let parent: ProcessIdentifier = ProcessIdentifier::from(99);
+    let tid: ThreadIdentifier = test_tid();
+    let ready_tid: ThreadIdentifier = ThreadIdentifier::from(1001);
+    let status: ExitStatus = ExitStatus::from(0x1020_3040_u32);
+    let creation: ProcessCreationInfo = ProcessCreationInfo::new(pid, parent, ProcessRole::User);
+
+    let process_reservation: LifecycleCreationReservation = match broker.try_reserve_creation() {
+        Ok(reservation) => reservation,
+        Err(error) => {
+            error!("failed to reserve process lifecycle capacity (error={error:?})");
+            return false;
+        },
+    };
+    let thread_reservation: ThreadLifecycleReservation = match broker.try_reserve_thread_creation()
+    {
+        Ok(reservation) => reservation,
+        Err(error) => {
+            broker.cancel_creation(process_reservation);
+            error!("failed to reserve thread lifecycle capacity (error={error:?})");
+            return false;
+        },
+    };
+    let ready_thread_reservation: ThreadLifecycleReservation =
+        match broker.try_reserve_thread_creation() {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                broker.cancel_thread_creation(thread_reservation);
+                broker.cancel_creation(process_reservation);
+                error!("failed to reserve ready-thread lifecycle capacity (error={error:?})");
+                return false;
+            },
+        };
+    let process_credit: LifecycleTerminationCredit =
+        broker.commit_creation(process_reservation, creation);
+    let thread_credit: ThreadLifecycleTerminationCredit =
+        broker.commit_thread_creation(thread_reservation);
+    let ready_thread_credit: ThreadLifecycleTerminationCredit =
+        broker.commit_thread_creation(ready_thread_reservation);
+
+    // SAFETY: process-manager tests run on one core with interrupts disabled and hold no other
+    // reference to either global manager.
+    let pm: &ProcessManager = unsafe { ProcessManager::get() };
+    let mm: &VirtMemoryManager = unsafe { VirtMemoryManager::get() };
+    let vmem: Vmem = match mm.new_vmem(pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(error) => {
+            error!("failed to create lifecycle transition vmem (error={error:?})");
+            return false;
+        },
+    };
+    let thread: ReadyThread = ReadyThread::new(
+        tid,
+        Some(thread_credit),
+        None,
+        None,
+        None,
+        ContextInformation::default(),
+        // SAFETY: calls to FpuState::new are synchronized by the single-threaded test runner.
+        unsafe { FpuState::new() },
+    );
+    let mut process: RunnableProcess = RunnableProcess::new_uncommitted(pid, parent, thread, vmem);
+    process.install_termination_credit(process_credit);
+    let (mut running, reason, _ctx, _user_tda) = process.run();
+    if reason.is_some() {
+        error!("new lifecycle transition fixture was unexpectedly interrupted");
+        return false;
+    }
+    running.add_thread(ReadyThread::new(
+        ready_tid,
+        Some(ready_thread_credit),
+        None,
+        None,
+        None,
+        ContextInformation::default(),
+        // SAFETY: calls to FpuState::new are synchronized by the single-threaded test runner.
+        unsafe { FpuState::new() },
+    ));
+
+    let (transition, _ctx) = match running.exit(status, &mut |pending| {
+        ProcessManager::commit_thread_termination(&mut broker, pending);
+    }) {
+        Err(transition) => transition,
+        Ok(_) => {
+            error!("process with a ready sibling did not transition to zombie state");
+            return false;
+        },
+    };
+    let (zombie, pending): (ZombieProcess, PendingProcessTermination) = transition.into_parts();
+    let (actual_pid, actual_parent, actual_status, process_credit) = pending.into_parts();
+    if actual_pid != pid || actual_parent != parent || actual_status != status {
+        error!("zombie process transition changed authoritative termination metadata");
+        return false;
+    }
+    let process_termination: ProcessTerminationInfo =
+        ProcessTerminationInfo::new(pid, status, parent, ProcessRole::User);
+    broker.commit_termination(process_credit, process_termination);
+
+    let thread_termination: ThreadTerminationInfo = ThreadTerminationInfo::new(pid, tid, status);
+    let ready_thread_termination: ThreadTerminationInfo =
+        ThreadTerminationInfo::new(pid, ready_tid, ::sys::error::ErrorCode::Interrupted.into());
+    if !receive_expected_lifecycle(
+        &mut broker,
+        MessageType::ProcessCreationEvent,
+        &creation.to_ne_bytes(),
+    ) || !receive_expected_lifecycle(
+        &mut broker,
+        MessageType::ThreadTerminationEvent,
+        &thread_termination.to_ne_bytes(),
+    ) || !receive_expected_lifecycle(
+        &mut broker,
+        MessageType::ThreadTerminationEvent,
+        &ready_thread_termination.to_ne_bytes(),
+    ) || !receive_expected_lifecycle(
+        &mut broker,
+        MessageType::ProcessTerminationEvent,
+        &process_termination.to_ne_bytes(),
+    ) {
+        return false;
+    }
+
+    let (zombie_threads, _state, buried_status) = zombie.bury();
+    let (mut remaining, first) = zombie_threads.pop_front();
+    let _ = first.harvest();
+    while let Some(thread) = remaining.pop_front() {
+        let _ = thread.harvest();
+    }
+    if buried_status != status || broker.has_lifecycle() || broker.capacity_in_use() != Some(0) {
+        error!("zombie reclamation produced a duplicate or retained lifecycle capacity");
+        return false;
+    }
+
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies `execv()` retirement emits one zero-status thread record and keeps the process live.
+///
+/// # Returns
+///
+/// `true` if image replacement emits only the outgoing thread record and preserves the process,
+/// otherwise `false`.
+///
+fn test_exec_replacement_produces_thread_termination_only() -> bool {
+    let Some(mut broker) = new_broker() else {
+        return false;
+    };
+    let reservation: ThreadLifecycleReservation = match broker.try_reserve_thread_creation() {
+        Ok(reservation) => reservation,
+        Err(error) => {
+            error!("failed to reserve exec retirement capacity (error={error:?})");
+            return false;
+        },
+    };
+    let old_credit: ThreadLifecycleTerminationCredit = broker.commit_thread_creation(reservation);
+    let pid: ProcessIdentifier = test_pid();
+    let old_tid: ThreadIdentifier = test_tid();
+    let new_tid: ThreadIdentifier = ThreadIdentifier::from(1001);
+
+    // SAFETY: process-manager tests run on one core with interrupts disabled and hold no other
+    // reference to either global manager.
+    let pm: &ProcessManager = unsafe { ProcessManager::get() };
+    let mm: &VirtMemoryManager = unsafe { VirtMemoryManager::get() };
+    let old_vmem: Vmem = match mm.new_vmem(pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(error) => {
+            error!("failed to create outgoing exec vmem (error={error:?})");
+            return false;
+        },
+    };
+    let new_vmem: Vmem = match mm.new_vmem(pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(error) => {
+            error!("failed to create replacement exec vmem (error={error:?})");
+            return false;
+        },
+    };
+    let old_thread: ReadyThread = ReadyThread::new(
+        old_tid,
+        Some(old_credit),
+        None,
+        None,
+        None,
+        ContextInformation::default(),
+        // SAFETY: calls to FpuState::new are synchronized by the single-threaded test runner.
+        unsafe { FpuState::new() },
+    );
+    let mut process: RunnableProcess =
+        RunnableProcess::new_uncommitted(pid, ProcessIdentifier::from(99), old_thread, old_vmem);
+    process.install_termination_credit(new_test_process_termination_credit());
+    let (mut running, reason, _ctx, _user_tda) = process.run();
+    if reason.is_some() {
+        error!("outgoing exec fixture was unexpectedly interrupted");
+        return false;
+    }
+    let new_thread: ReadyThread = ReadyThread::new(
+        new_tid,
+        Some(new_test_thread_termination_credit()),
+        None,
+        None,
+        None,
+        ContextInformation::default(),
+        // SAFETY: calls to FpuState::new are synchronized by the single-threaded test runner.
+        unsafe { FpuState::new() },
+    );
+    let (old_vmem, old_zombie, pending, _from_ctx, _to_ctx, _user_tda) =
+        running.replace_image(new_vmem, new_thread);
+    let (info, credit) = pending.into_parts();
+    let expected: ThreadTerminationInfo =
+        ThreadTerminationInfo::new(pid, old_tid, ExitStatus::ok());
+    if info != expected || old_zombie.status() != ExitStatus::ok() || running.get_tid() != new_tid {
+        error!("exec replacement changed retirement metadata or replacement identity");
+        return false;
+    }
+    broker.commit_thread_termination(credit, info);
+    if !receive_expected_lifecycle(
+        &mut broker,
+        MessageType::ThreadTerminationEvent,
+        &expected.to_ne_bytes(),
+    ) || broker.has_lifecycle()
+        || broker.capacity_in_use() != Some(0)
+    {
+        error!("exec replacement produced extra lifecycle state");
+        return false;
+    }
+    let _ = old_zombie.harvest();
+    drop(old_vmem);
     true
 }
 
@@ -660,6 +1182,10 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_cross_process_switch_resets_quantum);
     passed &= run_test!(test_create_process_reservation_failure_rolls_back);
     passed &= run_test!(test_duplicate_process_reservation_failure_rolls_back);
+    passed &= run_test!(test_create_thread_reservation_failure_rolls_back);
+    passed &= run_test!(test_execv_thread_reservation_failure_rolls_back);
+    passed &= run_test!(test_zombie_transitions_produce_ordered_lifecycle_records);
+    passed &= run_test!(test_exec_replacement_produces_thread_termination_only);
     passed &= run_test!(test_ipc_precedes_newer_lifecycle);
     passed &= run_test!(test_lifecycle_precedes_newer_ipc_after_failed_wakeup);
     passed &= run_test!(test_other_thread_ipc_does_not_block_lifecycle);

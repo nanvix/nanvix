@@ -21,6 +21,8 @@ use crate::{
         LifecycleCreationCredit,
         LifecycleCreationReservation,
         LifecycleTerminationCredit,
+        ThreadLifecycleReservation,
+        ThreadLifecycleTerminationCredit,
     },
 };
 use ::alloc::{
@@ -36,6 +38,7 @@ use ::sys::{
     event::{
         ProcessCreationInfo,
         ProcessTerminationInfo,
+        ThreadTerminationInfo,
     },
     ipc::{
         Message,
@@ -51,6 +54,7 @@ use ::sys::{
 
 ::static_assert::assert_eq!(mem::size_of::<ProcessTerminationInfo>() <= Message::PAYLOAD_SIZE);
 ::static_assert::assert_eq!(mem::size_of::<ProcessCreationInfo>() <= Message::PAYLOAD_SIZE);
+::static_assert::assert_eq!(mem::size_of::<ThreadTerminationInfo>() <= Message::PAYLOAD_SIZE);
 
 /// Number of process-creation reservations. This is the depth of the undelivered-creation buffer:
 /// it bounds how many processes may be created while the lifecycle consumer is stalled, not how many
@@ -62,14 +66,26 @@ const PROCESS_CREATION_RESERVATIONS: usize = ::config::kernel::MAX_PROCESSES;
 /// delivered. The excess over that bound is undelivered-termination buffer depth.
 const PROCESS_TERMINATION_RESERVATIONS: usize = ::config::kernel::MAX_PROCESSES;
 
-/// Number of lifecycle records that may be queued. Thread lifecycle records are not produced in
-/// this change, so the global thread limit does not consume queue capacity. Every admitted process
-/// owns at most one creation reservation and one eventual termination reservation.
-const LIFECYCLE_CAPACITY: usize =
-    match PROCESS_CREATION_RESERVATIONS.checked_add(PROCESS_TERMINATION_RESERVATIONS) {
+/// Number of thread-termination reservations. The permanent bootstrap kernel thread cannot
+/// terminate and therefore does not consume an undeliverable reservation.
+const THREAD_TERMINATION_RESERVATIONS: usize = match ::config::kernel::MAX_THREADS.checked_sub(1) {
+    Some(capacity) => capacity,
+    None => panic!("thread lifecycle capacity underflow"),
+};
+
+/// Number of lifecycle records that may be queued. This covers every credit even though credits
+/// retained by live processes and threads do not occupy queue slots.
+const LIFECYCLE_CAPACITY: usize = {
+    let process_capacity: usize =
+        match PROCESS_CREATION_RESERVATIONS.checked_add(PROCESS_TERMINATION_RESERVATIONS) {
+            Some(capacity) => capacity,
+            None => panic!("process lifecycle capacity overflow"),
+        };
+    match process_capacity.checked_add(THREAD_TERMINATION_RESERVATIONS) {
         Some(capacity) => capacity,
-        None => panic!("process lifecycle capacity overflow"),
-    };
+        None => panic!("thread lifecycle capacity overflow"),
+    }
+};
 
 //==================================================================================================
 // Lifecycle Notification
@@ -81,6 +97,8 @@ enum LifecycleNotification {
     Creation(ProcessCreationInfo, LifecycleCreationCredit),
     /// Process-termination record.
     Termination(ProcessTerminationInfo, LifecycleTerminationCredit),
+    /// Thread-termination record.
+    ThreadTermination(ThreadTerminationInfo, ThreadLifecycleTerminationCredit),
 }
 
 impl LifecycleNotification {
@@ -109,6 +127,11 @@ impl LifecycleNotification {
                 let info_bytes = info.to_ne_bytes();
                 payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
                 MessageType::ProcessTerminationEvent
+            },
+            Self::ThreadTermination(info, _) => {
+                let info_bytes = info.to_ne_bytes();
+                payload[0..info_bytes.len()].copy_from_slice(&info_bytes);
+                MessageType::ThreadTerminationEvent
             },
         };
 
@@ -457,7 +480,7 @@ pub(super) struct LifecycleDisposal {
 ///
 /// # Description
 ///
-/// Orders the delivery domain shared by local IPC and process lifecycle notifications: it reserves
+/// Orders the delivery domain shared by local IPC and lifecycle notifications: it reserves
 /// lifecycle capacity, allocates the sequence number stamped on every committed item, holds records
 /// in production-sequence order, and tracks whether the lifecycle owner needs a deferred wakeup.
 ///
@@ -470,6 +493,8 @@ pub(super) struct DeliveryBroker {
     creation_reservations: LifecycleReservationPool<PROCESS_CREATION_RESERVATIONS>,
     /// Capacity reserved by live processes or queued process-termination records.
     termination_reservations: LifecycleReservationPool<PROCESS_TERMINATION_RESERVATIONS>,
+    /// Capacity reserved by live threads or queued thread-termination records.
+    thread_termination_reservations: LifecycleReservationPool<THREAD_TERMINATION_RESERVATIONS>,
     /// Does the lifecycle owner need a deferred wakeup attempt?
     lifecycle_wakeup_pending: bool,
     /// Has terminal shutdown disposal already run?
@@ -486,9 +511,13 @@ impl DeliveryBroker {
     ///
     /// Upon success, an empty delivery broker is returned. Otherwise, an error is returned.
     ///
+    /// # Errors
+    ///
+    /// This function returns an error if the lifecycle queue cannot be preallocated.
+    ///
     pub(super) fn new() -> Result<Self, Error> {
         let lifecycle: LifecycleQueue = LifecycleQueue::new().inspect_err(|error| {
-            error!("failed to preallocate process lifecycle queue (error={error:?})");
+            error!("failed to preallocate lifecycle queue (error={error:?})");
         })?;
 
         Ok(Self {
@@ -496,6 +525,7 @@ impl DeliveryBroker {
             lifecycle,
             creation_reservations: LifecycleReservationPool::new(),
             termination_reservations: LifecycleReservationPool::new(),
+            thread_termination_reservations: LifecycleReservationPool::new(),
             lifecycle_wakeup_pending: false,
             disposed: false,
         })
@@ -558,6 +588,9 @@ impl DeliveryBroker {
         self.creation_reservations
             .in_use()
             .checked_add(self.termination_reservations.in_use())
+            .and_then(|capacity| {
+                capacity.checked_add(self.thread_termination_reservations.in_use())
+            })
     }
 
     ///
@@ -615,6 +648,81 @@ impl DeliveryBroker {
     ///
     /// # Description
     ///
+    /// Reserves capacity for the future termination of a thread being created.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, a thread lifecycle reservation is returned. Otherwise, an error is returned.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an [`ErrorCode::OutOfMemory`] error if thread lifecycle capacity is
+    /// exhausted.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed.
+    ///
+    pub(super) fn try_reserve_thread_creation(
+        &mut self,
+    ) -> Result<ThreadLifecycleReservation, Error> {
+        assert!(!self.disposed, "lifecycle delivery used after disposal");
+        if !self.thread_termination_reservations.try_reserve() {
+            let reason: &str = "thread lifecycle capacity exhausted";
+            error!("{reason}");
+            return Err(Error::new(ErrorCode::OutOfMemory, reason));
+        }
+
+        Ok(ThreadLifecycleReservation::new())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Cancels the lifecycle reservation for a thread whose creation did not commit.
+    ///
+    /// # Parameters
+    ///
+    /// - `_reservation`: Thread lifecycle reservation to cancel.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed or if the reservation pool
+    /// is empty.
+    ///
+    pub(super) fn cancel_thread_creation(&mut self, _reservation: ThreadLifecycleReservation) {
+        assert!(!self.disposed, "lifecycle delivery used after disposal");
+        self.thread_termination_reservations.release();
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Transfers a lifecycle reservation into a committed live thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `reservation`: Reservation to transfer into the committed thread.
+    ///
+    /// # Returns
+    ///
+    /// A capacity credit for the future termination of the committed thread.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed.
+    ///
+    pub(super) fn commit_thread_creation(
+        &mut self,
+        reservation: ThreadLifecycleReservation,
+    ) -> ThreadLifecycleTerminationCredit {
+        assert!(!self.disposed, "lifecycle delivery used after disposal");
+        reservation.into_credit()
+    }
+
+    ///
+    /// # Description
+    ///
     /// Commits a process-creation record in the ordered delivery domain.
     ///
     /// # Parameters
@@ -662,8 +770,49 @@ impl DeliveryBroker {
         self.lifecycle_wakeup_pending = true;
     }
 
-    /// Releases a termination credit when the process terminates without producing a lifecycle
+    ///
+    /// # Description
+    ///
+    /// Commits a thread-termination record in the ordered delivery domain.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: Capacity credit reserved when the thread was created.
+    /// - `info`: Thread-termination record to queue.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed, the delivery sequence is
+    /// exhausted, or the preallocated lifecycle queue is full.
+    ///
+    pub(super) fn commit_thread_termination(
+        &mut self,
+        credit: ThreadLifecycleTerminationCredit,
+        info: ThreadTerminationInfo,
+    ) {
+        assert!(!self.disposed, "lifecycle delivery used after disposal");
+        let sequence: DeliverySequence = self.allocate_sequence();
+        self.lifecycle
+            .push_back((sequence, LifecycleNotification::ThreadTermination(info, credit)));
+        self.lifecycle_wakeup_pending = true;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Releases a termination credit when a test process terminates without producing a lifecycle
     /// record.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: Process-termination capacity credit to release.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed or if the reservation pool
+    /// is empty.
+    ///
+    #[cfg(feature = "test")]
     pub(super) fn release_termination(&mut self, _credit: LifecycleTerminationCredit) {
         assert!(!self.disposed, "lifecycle delivery used after disposal");
         self.termination_reservations.release();
@@ -810,10 +959,17 @@ impl DeliveryBroker {
     ///
     /// - `notification`: Lifecycle record whose reservation is released.
     ///
+    /// # Panics
+    ///
+    /// This function panics if the reservation pool corresponding to `notification` is empty.
+    ///
     fn release_notification(&mut self, notification: LifecycleNotification) {
         match notification {
             LifecycleNotification::Creation(..) => self.creation_reservations.release(),
             LifecycleNotification::Termination(..) => self.termination_reservations.release(),
+            LifecycleNotification::ThreadTermination(..) => {
+                self.thread_termination_reservations.release()
+            },
         }
     }
 
@@ -822,13 +978,18 @@ impl DeliveryBroker {
     ///
     /// Disposes all lifecycle state during terminal shutdown. Queued records are removed as
     /// undelivered and release the exact reservations they own. Any reservation that remains in a
-    /// pending creation or live process is then released because no further lifecycle transition
-    /// can occur after this terminal operation.
+    /// pending creation, live process, or live thread is then released because no further lifecycle
+    /// transition can occur after this terminal operation.
     ///
     /// # Returns
     ///
     /// Disposal accounting that distinguishes undelivered records from externally retained
     /// reservations.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed or if lifecycle reservation
+    /// accounting is inconsistent.
     ///
     pub(super) fn dispose(&mut self) -> LifecycleDisposal {
         assert!(!self.disposed, "lifecycle delivery was already disposed");
@@ -843,8 +1004,15 @@ impl DeliveryBroker {
 
         let creation_reservations: usize = self.creation_reservations.release_all();
         let termination_reservations: usize = self.termination_reservations.release_all();
-        let retained_reservations: usize =
+        let thread_termination_reservations: usize =
+            self.thread_termination_reservations.release_all();
+        let process_reservations: usize =
             match creation_reservations.checked_add(termination_reservations) {
+                Some(reservations) => reservations,
+                None => unreachable!("lifecycle disposal accounting overflow"),
+            };
+        let retained_reservations: usize =
+            match process_reservations.checked_add(thread_termination_reservations) {
                 Some(reservations) => reservations,
                 None => unreachable!("lifecycle disposal accounting overflow"),
             };
@@ -922,18 +1090,26 @@ mod test {
         DeliveryBroker,
         DeliverySequence,
         LIFECYCLE_CAPACITY,
+        THREAD_TERMINATION_RESERVATIONS,
     };
     use crate::pm::process::{
         LifecycleCreationReservation,
         LifecycleTerminationCredit,
+        ThreadLifecycleReservation,
+        ThreadLifecycleTerminationCredit,
     };
     use ::sys::{
         event::{
             ProcessCreationInfo,
             ProcessRole,
             ProcessTerminationInfo,
+            ThreadTerminationInfo,
         },
-        pm::ProcessIdentifier,
+        ipc::MessageType,
+        pm::{
+            ProcessIdentifier,
+            ThreadIdentifier,
+        },
         ExitStatus,
     };
 
@@ -1084,6 +1260,72 @@ mod test {
         true
     }
 
+    ///
+    /// # Description
+    ///
+    /// Verifies thread lifecycle ownership across cancellation, commit, delivery, and reuse.
+    ///
+    /// # Returns
+    ///
+    /// `true` if every ownership transition preserves the expected capacity accounting, otherwise
+    /// `false`.
+    ///
+    fn test_thread_lifecycle_reservation_ownership_is_stateful() -> bool {
+        let Some(mut broker) = new_broker() else {
+            return false;
+        };
+
+        let cancelled: ThreadLifecycleReservation = match broker.try_reserve_thread_creation() {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                error!("thread lifecycle reservation failed (error={error:?})");
+                return false;
+            },
+        };
+        broker.cancel_thread_creation(cancelled);
+        if broker.capacity_in_use() != Some(0) {
+            error!("canceling a thread lifecycle reservation did not release capacity");
+            return false;
+        }
+
+        let reservation: ThreadLifecycleReservation = match broker.try_reserve_thread_creation() {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                error!("released thread lifecycle capacity was not reusable (error={error:?})");
+                return false;
+            },
+        };
+        let credit: ThreadLifecycleTerminationCredit = broker.commit_thread_creation(reservation);
+        if broker.capacity_in_use() != Some(1) || broker.has_lifecycle() {
+            error!("thread creation commit changed reservation ownership or queued a record");
+            return false;
+        }
+
+        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(
+            ProcessIdentifier::from(3),
+            ThreadIdentifier::from(7),
+            ExitStatus::from(11_u32),
+        );
+        broker.commit_thread_termination(credit, info);
+        let Some((_sequence, message)) = broker.peek_lifecycle(ProcessIdentifier::KERNEL) else {
+            error!("committed thread termination record was not selectable");
+            return false;
+        };
+        let info_bytes = info.to_ne_bytes();
+        if message.message_type != MessageType::ThreadTerminationEvent
+            || message.payload[..info_bytes.len()] != info_bytes
+        {
+            error!("thread termination record was serialized incorrectly");
+            return false;
+        }
+        if !commit_lifecycle(&mut broker) || broker.capacity_in_use() != Some(0) {
+            error!("thread termination dequeue did not release lifecycle capacity");
+            return false;
+        }
+
+        true
+    }
+
     /// Verifies a failed termination reservation rolls back the creation slot acquired first.
     fn test_termination_reservation_failure_rolls_back_creation() -> bool {
         let Some(mut broker) = new_broker() else {
@@ -1132,7 +1374,7 @@ mod test {
     ///
     /// Verifies deterministic backpressure and recovery while the lifecycle consumer is stalled.
     /// Every admitted process immediately terminates, proving that termination enqueue remains
-    /// infallible even as both preallocated reservation pools and the queue become full. The test
+    /// infallible even as all preallocated reservation pools and the queue become full. The test
     /// then drains and refills part of the queue to exercise ring wraparound before releasing all
     /// capacity through transactional dequeue.
     ///
@@ -1164,6 +1406,21 @@ mod test {
             };
             let credit: LifecycleTerminationCredit = broker.commit_creation(reservation, creation);
             broker.commit_termination(credit, termination);
+        }
+        let thread_termination: ThreadTerminationInfo =
+            ThreadTerminationInfo::new(pid, ThreadIdentifier::from(1), ExitStatus::ok());
+        for _ in 0..THREAD_TERMINATION_RESERVATIONS {
+            let reservation: ThreadLifecycleReservation = match broker.try_reserve_thread_creation()
+            {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    error!("thread lifecycle capacity exhausted too early (error={error:?})");
+                    return false;
+                },
+            };
+            let credit: ThreadLifecycleTerminationCredit =
+                broker.commit_thread_creation(reservation);
+            broker.commit_thread_termination(credit, thread_termination);
         }
 
         if broker.capacity_in_use() != Some(LIFECYCLE_CAPACITY)
@@ -1227,7 +1484,16 @@ mod test {
         broker.capacity_in_use() == Some(0)
     }
 
+    ///
+    /// # Description
+    ///
     /// Verifies terminal disposal releases queued and externally retained reservations separately.
+    ///
+    /// # Returns
+    ///
+    /// `true` if disposal reports and releases all queued and retained reservations, otherwise
+    /// `false`.
+    ///
     fn test_lifecycle_shutdown_disposal_accounts_undelivered_state() -> bool {
         let Some(mut broker) = new_broker() else {
             return false;
@@ -1272,8 +1538,40 @@ mod test {
                 return false;
             },
         };
+        let live_thread_reservation: ThreadLifecycleReservation =
+            match broker.try_reserve_thread_creation() {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    error!("failed to reserve live-thread fixture (error={error:?})");
+                    return false;
+                },
+            };
+        let _live_thread_credit: ThreadLifecycleTerminationCredit =
+            broker.commit_thread_creation(live_thread_reservation);
+        let terminated_thread_reservation: ThreadLifecycleReservation =
+            match broker.try_reserve_thread_creation() {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    error!("failed to reserve terminated-thread fixture (error={error:?})");
+                    return false;
+                },
+            };
+        let terminated_thread_credit: ThreadLifecycleTerminationCredit =
+            broker.commit_thread_creation(terminated_thread_reservation);
+        broker.commit_thread_termination(
+            terminated_thread_credit,
+            ThreadTerminationInfo::new(pid, ThreadIdentifier::from(1), ExitStatus::ok()),
+        );
+        let _pending_thread_reservation: ThreadLifecycleReservation =
+            match broker.try_reserve_thread_creation() {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    error!("failed to reserve pending-thread fixture (error={error:?})");
+                    return false;
+                },
+            };
         let disposal = broker.dispose();
-        if disposal.undelivered_records != 3 || disposal.retained_reservations != 3 {
+        if disposal.undelivered_records != 4 || disposal.retained_reservations != 5 {
             error!(
                 "lifecycle shutdown disposal reported incorrect accounting (undelivered={}, \
                  retained={})",
@@ -1291,11 +1589,20 @@ mod test {
         true
     }
 
+    ///
+    /// # Description
+    ///
     /// Runs all delivery broker in-kernel tests.
+    ///
+    /// # Returns
+    ///
+    /// `true` if every delivery broker test passes, otherwise `false`.
+    ///
     pub(super) fn test() -> bool {
         let mut passed: bool = true;
         passed &= run_test!(test_delivery_sequence_exhaustion_is_detected);
         passed &= run_test!(test_lifecycle_reservation_ownership_is_stateful);
+        passed &= run_test!(test_thread_lifecycle_reservation_ownership_is_stateful);
         passed &= run_test!(test_termination_reservation_failure_rolls_back_creation);
         passed &= run_test!(test_stalled_lifecycle_consumer_backpressures_and_recovers);
         passed &= run_test!(test_lifecycle_shutdown_disposal_accounts_undelivered_state);

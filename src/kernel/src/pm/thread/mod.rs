@@ -48,6 +48,10 @@ pub use running::RunningThread;
 pub use sleeping::SleepingThread;
 pub use state::KcallRestart;
 pub use zombie::ZombieThread;
+pub(crate) use zombie::{
+    PendingThreadTermination,
+    ZombieThreadTransition,
+};
 
 //==================================================================================================
 // Thread Reference
@@ -190,6 +194,7 @@ impl ThreadManager {
                 None,
                 None,
                 None,
+                None,
                 ContextInformation::default(),
                 // SAFETY: calls to FpuState::new are synchronized.
                 unsafe { FpuState::new() },
@@ -308,6 +313,7 @@ impl ThreadManager {
     ) -> ReadyThread {
         ReadyThread::new(
             id,
+            None,
             kernel_stack,
             user_stack,
             user_tda,

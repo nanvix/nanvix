@@ -15,11 +15,12 @@ use crate::{
             InterruptedProcess,
             ProcessState,
             RunnableProcess,
-            ZombieProcess,
+            ZombieProcessTransition,
         },
         sync::condvar::Condvar,
         thread::{
             InterruptedThread,
+            PendingThreadTermination,
             ReadyThread,
             RunningThread,
             SleepingThread,
@@ -36,7 +37,10 @@ use ::sys::{
         ErrorCode,
     },
     mm::VirtualAddress,
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
     time::SystemTime,
     ExitStatus,
 };
@@ -153,17 +157,23 @@ impl RunningProcess {
     /// A tuple of:
     /// - The outgoing address space, for deferred reclamation.
     /// - The outgoing thread as a zombie, for deferred kernel-stack reaping.
+    /// - The pending termination record for the outgoing thread.
     /// - A pointer to the outgoing thread's context (the "from" side of the switch).
     /// - A pointer to the new thread's context (the "to" side of the switch).
     /// - The optional thread data area of the new thread.
     ///
-    pub fn replace_image(
+    /// # Panics
+    ///
+    /// This function panics if the outgoing thread does not own a thread termination credit.
+    ///
+    pub(in crate::pm) fn replace_image(
         &mut self,
         new_vmem: Vmem,
         new_thread: ReadyThread,
     ) -> (
         Vmem,
         ZombieThread,
+        PendingThreadTermination,
         *mut ContextInformation,
         *mut ContextInformation,
         Option<VirtualAddress>,
@@ -178,7 +188,9 @@ impl RunningProcess {
         // Retire the outgoing thread. Its kernel stack and context survive inside the returned
         // zombie until the deferred reap that runs after the switch; its user-stack handle is
         // dropped so the harvest does not touch the new address space.
-        let (old_zombie, from_ctx) = old_thread.exit_for_exec();
+        let pid: ProcessIdentifier = self.state.pid();
+        let (transition, from_ctx) = old_thread.exit_for_exec(pid);
+        let (old_zombie, pending) = transition.into_parts();
 
         // Swap in the new address space, returning the old one for deferred reclamation.
         let old_vmem: Vmem = self.state.replace_vmem(new_vmem);
@@ -188,7 +200,7 @@ impl RunningProcess {
         // is cleared, and the restorer is dropped so the new image re-registers it at startup.
         self.state.signals_mut().reset_for_exec();
 
-        (old_vmem, old_zombie, from_ctx, to_ctx, user_tda)
+        (old_vmem, old_zombie, pending, from_ctx, to_ctx, user_tda)
     }
 
     pub fn schedule(mut self) -> (RunnableProcess, *mut ContextInformation) {
@@ -262,11 +274,37 @@ impl RunningProcess {
         Err((SleepingProcess::new(self.state, sleeping_threads, self.zombie.take()), ctx))
     }
 
-    pub fn exit(
+    ///
+    /// # Description
+    ///
+    /// Terminates the running process with the specified status. The running thread and every
+    /// ready thread transition immediately to zombie state, while sleeping and interrupted threads
+    /// are marked for termination. Each immediate thread transition is reported through
+    /// `on_thread_termination`.
+    ///
+    /// # Parameters
+    ///
+    /// - `status`: Exit status of the process and its running thread.
+    /// - `on_thread_termination`: Callback that commits each pending thread-termination record.
+    ///
+    /// # Returns
+    ///
+    /// `Ok((process, context))` if interrupted threads must resume before termination completes, or
+    /// `Err((transition, context))` if the process immediately becomes a zombie.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if an immediately terminated thread lacks its thread termination credit,
+    /// or if an immediate process transition lacks its process termination credit.
+    ///
+    pub(in crate::pm) fn exit(
         mut self,
         status: ExitStatus,
-    ) -> Result<(RunnableProcess, *mut ContextInformation), (ZombieProcess, *mut ContextInformation)>
-    {
+        on_thread_termination: &mut impl FnMut(PendingThreadTermination),
+    ) -> Result<
+        (RunnableProcess, *mut ContextInformation),
+        (ZombieProcessTransition, *mut ContextInformation),
+    > {
         // Save the exit status before terminating any threads. This ensures that the intended
         // exit code from the first exit() call is preserved, even if subsequent thread cleanup
         // triggers additional exit() calls with different status values (e.g., ESRCH from
@@ -274,7 +312,10 @@ impl RunningProcess {
         // pending status is already set, so only the first caller's status is retained.
         self.state.set_pending_exit_status(status);
 
-        let (zombie_thread, ctx) = self.running.exit(status);
+        let pid: ProcessIdentifier = self.state.pid();
+        let (transition, ctx) = self.running.exit(pid, status);
+        let (zombie_thread, pending) = transition.into_parts();
+        on_thread_termination(pending);
         let mut zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie.take() {
             Some(mut zombie_threads) => {
                 zombie_threads.push_back(zombie_thread);
@@ -285,7 +326,11 @@ impl RunningProcess {
 
         // Terminate all ready threads.
         if let Some(ready_threads) = self.ready.take() {
-            let more_zombie_threads = NonEmptyVecDeque::map(ready_threads, ReadyThread::terminate);
+            let more_zombie_threads = NonEmptyVecDeque::map(ready_threads, |thread| {
+                let (zombie, pending) = thread.terminate(pid).into_parts();
+                on_thread_termination(pending);
+                zombie
+            });
             zombie_threads.append(more_zombie_threads);
         }
 
@@ -316,7 +361,7 @@ impl RunningProcess {
             // should never be reached because set_pending_exit_status is called above, but is
             // kept as a defensive measure.
             let final_status: ExitStatus = self.state.take_pending_exit_status().unwrap_or(status);
-            Err((ZombieProcess::new(self.state, zombie_threads, final_status), ctx))
+            Err((ZombieProcessTransition::new(self.state, zombie_threads, final_status), ctx))
         }
     }
 
@@ -328,25 +373,31 @@ impl RunningProcess {
     /// # Parameters
     ///
     /// - `status`: Exit status.
+    /// - `on_thread_termination`: Callback that commits the pending thread-termination record.
     ///
     /// # Returns
     ///
-    /// If the process becomes a runnable process, a tuple containing the runnable process and the
-    /// context information of the running thread is returned. If the process becomes a sleeping
-    /// process, a tuple containing the sleeping process and the context information of the running
-    /// thread is returned. If the process becomes a zombie process, a tuple containing the zombie
-    /// process and the context information of the running thread is returned.
+    /// A tuple containing the process-state transition and an optional detached zombie for deferred
+    /// reaping is returned. The transition contains a runnable process when ready or interrupted
+    /// threads remain, a sleeping process when only sleeping threads remain, or a zombie-process
+    /// transition when no live threads remain.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the exiting thread does not own a thread termination credit, or if a
+    /// final process transition lacks its process termination credit.
     ///
     #[allow(clippy::type_complexity)]
-    pub fn exit_thread(
+    pub(in crate::pm) fn exit_thread(
         self,
         status: ExitStatus,
+        on_thread_termination: &mut impl FnMut(PendingThreadTermination),
     ) -> (
         Result<
             (Condvar, RunnableProcess, *mut ContextInformation),
             Result<
                 (Condvar, SleepingProcess, *mut ContextInformation),
-                (Condvar, ZombieProcess, *mut ContextInformation),
+                (Condvar, ZombieProcessTransition, *mut ContextInformation),
             >,
         >,
         Option<ZombieThread>, // Detached zombie that must be reaped after the context switch.
@@ -362,7 +413,10 @@ impl RunningProcess {
         let sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>> = self.sleeping_threads;
         let existing_zombies: Option<NonEmptyVecDeque<ZombieThread>> = self.zombie;
 
-        let (zombie_thread, ctx) = self.running.exit(status);
+        let pid: ProcessIdentifier = state.pid();
+        let (transition, ctx) = self.running.exit(pid, status);
+        let (zombie_thread, pending) = transition.into_parts();
+        on_thread_termination(pending);
 
         // Determine whether other threads remain. If so, a detached zombie must NOT be dropped
         // here — it owns the ContextInformation that `ctx` points to, and the context switch
@@ -435,7 +489,7 @@ impl RunningProcess {
                     (
                         Err(Err((
                             join_cond,
-                            ZombieProcess::new(state, zombie_threads, final_status),
+                            ZombieProcessTransition::new(state, zombie_threads, final_status),
                             ctx,
                         ))),
                         deferred_zombie,

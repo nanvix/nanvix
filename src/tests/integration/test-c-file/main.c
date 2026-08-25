@@ -154,10 +154,12 @@ int main(int argc, const char *argv[])
     test_fchdir();
     test_utimensat();
     test_utimensat_now();
+    test_utime_preserve_imported_timestamps();
 #ifndef __NANVIX_STANDALONE__
-    // FAT32 permissions and ownership are no-ops that fail assertions.
-    test_utimes();    // requires open(), close(), stat() and unlinkat().
-    test_utime();     // requires open(), close(), stat() and unlinkat().
+    // FAT32 timestamps, permissions, and ownership are no-ops that fail assertions.
+    test_utimensat();
+    test_utimes(); // requires open(), close(), stat() and unlinkat().
+    test_utime();  // requires open(), close(), stat() and unlinkat().
     test_chmod();     // requires open(), close(), stat() and unlinkat().
     test_fchmodat();  // requires open(), close(), stat() and unlinkat().
     test_fchmod();    // requires open(), close(), fstat() and unlink().

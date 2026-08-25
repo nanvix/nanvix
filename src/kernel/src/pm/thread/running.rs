@@ -17,6 +17,7 @@ use crate::{
             ReadyThread,
             SleepingThread,
             ZombieThread,
+            ZombieThreadTransition,
         },
     },
 };
@@ -27,6 +28,7 @@ use ::sys::{
     mm::VirtualAddress,
     pm::{
         MutexAddress,
+        ProcessIdentifier,
         ThreadIdentifier,
     },
     time::SystemTime,
@@ -186,41 +188,62 @@ impl RunningThread {
     ///
     /// # Parameters
     ///
+    /// - `pid`: Identifier of the process that owns this thread.
     /// - `status`: The exit status of the thread.
     ///
     /// # Returns
     ///
-    /// This function returns a tuple containing the zombie thread and a mutable pointer to the execution context.
+    /// This function returns the must-use zombie-thread transition and a mutable pointer to the
+    /// execution context.
     ///
-    pub fn exit(mut self, status: ExitStatus) -> (ZombieThread, *mut ContextInformation) {
+    /// # Panics
+    ///
+    /// This function panics if the thread does not own a termination credit.
+    ///
+    pub fn exit(
+        mut self,
+        pid: ProcessIdentifier,
+        status: ExitStatus,
+    ) -> (ZombieThreadTransition, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.state.context_mut();
-        (ZombieThread::from_state(self.state, status), ctx)
+        (ZombieThread::from_state(pid, self.state, status), ctx)
     }
 
     ///
     /// # Description
     ///
-    /// Retires the running thread as part of an `execv()`, returning a zombie thread that owns the
-    /// outgoing thread's kernel stack and execution context together with a pointer to that
-    /// context.
+    /// Retires the running thread as part of an `execv()`, returning a transition whose zombie owns
+    /// the outgoing thread's kernel stack and execution context and whose pending record owns the
+    /// termination reservation.
     ///
     /// Unlike [`Self::exit`], this drops the thread's user-stack handle before zombifying it. The
     /// user stack lives in the outgoing address space, which `execv()` reclaims wholesale; keeping
     /// the handle would cause the later zombie harvest to unmap the stack's virtual range from the
     /// *new* address space, since every image places its stack at the same fixed virtual address.
     ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process that owns this thread.
+    ///
     /// # Returns
     ///
-    /// A tuple with the zombie thread and a pointer to its execution context. The context remains
-    /// valid until the zombie is harvested, which the caller defers until after the context switch
-    /// into the new image.
+    /// A tuple with the must-use zombie-thread transition and a pointer to its execution context.
+    /// The context remains valid until the zombie is harvested, which the caller defers until after
+    /// the context switch into the new image.
     ///
-    pub fn exit_for_exec(mut self) -> (ZombieThread, *mut ContextInformation) {
+    /// # Panics
+    ///
+    /// This function panics if the thread does not own a termination credit.
+    ///
+    pub fn exit_for_exec(
+        mut self,
+        pid: ProcessIdentifier,
+    ) -> (ZombieThreadTransition, *mut ContextInformation) {
         let ctx: *mut ContextInformation = self.state.context_mut();
         // Drop the user-stack handle (a frame-less address holder) so harvest will not attempt to
         // unmap its range from the new address space.
         let _ = self.state.take_user_stack();
-        (ZombieThread::from_state(self.state, ExitStatus::ok()), ctx)
+        (ZombieThread::from_state(pid, self.state, ExitStatus::ok()), ctx)
     }
 
     ///

@@ -17,13 +17,15 @@ use crate::{
                 InterruptedProcess,
                 ProcessState,
                 RunningProcess,
-                ZombieProcess,
+                ZombieProcessTransition,
             },
             LifecycleTerminationCredit,
+            ThreadLifecycleTerminationCredit,
         },
         thread::{
             InterruptReason,
             InterruptedThread,
+            PendingThreadTermination,
             ReadyThread,
             RunningThread,
             SleepingThread,
@@ -111,6 +113,31 @@ impl RunnableProcess {
         credit: LifecycleTerminationCredit,
     ) {
         self.state.install_termination_credit(credit);
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Installs the termination credit in the sole thread of a newly prepared process.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: Capacity credit reserved for the main thread's termination record.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the process has no ready main thread or if that thread already owns
+    /// a termination credit.
+    ///
+    pub(in crate::pm::process) fn install_thread_termination_credit(
+        &mut self,
+        credit: ThreadLifecycleTerminationCredit,
+    ) {
+        let thread: &mut ReadyThread = match self.ready_threads.iter_mut().next() {
+            Some(thread) => thread,
+            None => unreachable!("newly prepared process has no main thread"),
+        };
+        thread.thread_state_mut().install_termination_credit(credit);
     }
 
     pub(in crate::pm::process) fn new_kernel(
@@ -212,10 +239,39 @@ impl RunnableProcess {
         )
     }
 
-    pub fn terminate(mut self) -> Result<InterruptedProcess, ZombieProcess> {
+    ///
+    /// # Description
+    ///
+    /// Terminates every ready thread and marks sleeping or interrupted threads for termination.
+    /// Each immediate live-to-zombie transition is reported through `on_thread_termination`.
+    ///
+    /// # Parameters
+    ///
+    /// - `on_thread_termination`: Callback that commits each pending thread-termination record.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(process)` if interrupted threads must resume before they can terminate, or
+    /// `Err(transition)` if the process immediately becomes a zombie.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if a thread that transitions to zombie state does not own a thread
+    /// termination credit, or if an immediate process transition lacks its process termination
+    /// credit.
+    ///
+    pub(in crate::pm) fn terminate(
+        mut self,
+        on_thread_termination: &mut impl FnMut(PendingThreadTermination),
+    ) -> Result<InterruptedProcess, ZombieProcessTransition> {
+        let pid: ProcessIdentifier = self.state.pid();
         // Terminate all ready threads.
         let mut more_zombie_threads: NonEmptyVecDeque<ZombieThread> =
-            NonEmptyVecDeque::map(self.ready_threads, ReadyThread::terminate);
+            NonEmptyVecDeque::map(self.ready_threads, |thread| {
+                let (zombie, pending) = thread.terminate(pid).into_parts();
+                on_thread_termination(pending);
+                zombie
+            });
 
         // Collect zombie threads.
         let zombie_threads: NonEmptyVecDeque<ZombieThread> = match self.zombie_threads.take() {
@@ -248,7 +304,7 @@ impl RunnableProcess {
                 .state
                 .take_pending_exit_status()
                 .unwrap_or_else(|| ErrorCode::Interrupted.into());
-            Err(ZombieProcess::new(self.state, zombie_threads, final_status))
+            Err(ZombieProcessTransition::new(self.state, zombie_threads, final_status))
         }
     }
 

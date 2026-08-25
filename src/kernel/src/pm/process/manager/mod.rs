@@ -67,6 +67,7 @@ use crate::{
                     UNBLOCKABLE,
                 },
                 InterruptedProcess,
+                PendingProcessTermination,
                 ProcessRef,
                 ProcessRefMut,
                 ProcessState,
@@ -74,10 +75,13 @@ use crate::{
                 RunningProcess,
                 SleepingProcess,
                 ZombieProcess,
+                ZombieProcessTransition,
             },
             HarvestedProcess,
             LifecycleCreationReservation,
             LifecycleTerminationCredit,
+            ThreadLifecycleReservation,
+            ThreadLifecycleTerminationCredit,
         },
         sync::{
             condvar::Condvar,
@@ -88,6 +92,7 @@ use crate::{
         },
         thread::{
             InterruptReason,
+            PendingThreadTermination,
             ReadyThread,
             ThreadManager,
             ThreadRef,
@@ -240,6 +245,9 @@ pub struct ProcessManager {
     /// Injects one process-creation preparation failure after lifecycle capacity is reserved.
     #[cfg(feature = "test")]
     fail_next_lifecycle_creation: bool,
+    /// Injects one thread-creation preparation failure after lifecycle capacity is reserved.
+    #[cfg(feature = "test")]
+    fail_next_thread_lifecycle_creation: bool,
     /// Detached-thread zombies whose reaping was deferred because their
     /// `ContextInformation` was still needed by an in-progress context switch.
     deferred_reap: Vec<(ProcessIdentifier, ZombieThread)>,
@@ -305,6 +313,27 @@ impl PreparedProcess {
     ///
     /// # Description
     ///
+    /// Installs the capacity credit reserved for the prepared process's main thread termination.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: Capacity credit to install in the prepared process's main thread.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the prepared process node is empty or the thread already owns a
+    /// termination credit.
+    ///
+    fn install_thread_termination_credit(&mut self, credit: ThreadLifecycleTerminationCredit) {
+        match self.node.front_mut() {
+            Some(process) => process.install_thread_termination_credit(credit),
+            None => unreachable!("prepared process node is empty"),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
     /// Appends this process to a queue of ready processes.
     ///
     /// # Parameters
@@ -320,7 +349,7 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Initializes the process manager and preallocates process lifecycle delivery capacity.
+    /// Initializes the process manager and preallocates lifecycle delivery capacity.
     ///
     /// # Parameters
     ///
@@ -374,6 +403,8 @@ impl ProcessManager {
             delivery,
             #[cfg(feature = "test")]
             fail_next_lifecycle_creation: false,
+            #[cfg(feature = "test")]
+            fail_next_thread_lifecycle_creation: false,
             deferred_reap: Vec::new(),
             deferred_exec_vmem: Vec::new(),
             daemon_pids: Vec::new(),
@@ -392,8 +423,8 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Runs fallible process-creation preparation while holding lifecycle capacity for both the
-    /// creation record and the process's future termination record.
+    /// Runs fallible process-creation preparation while holding lifecycle capacity for the process
+    /// creation, process termination, and main-thread termination records.
     ///
     /// If preparation fails, this function releases the reservation before returning the error.
     /// Sequence allocation is deferred until the caller commits the prepared process.
@@ -408,24 +439,101 @@ impl ProcessManager {
     ///
     /// # Returns
     ///
-    /// Upon success, the creation reservation and prepared value are returned. Otherwise, an error
-    /// is returned instead.
+    /// Upon success, the process and thread reservations and prepared value are returned.
+    /// Otherwise, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if lifecycle capacity cannot be reserved or if `prepare`
+    /// fails.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed.
     ///
     fn prepare_lifecycle_creation<T, F>(
         &mut self,
         prepare: F,
-    ) -> Result<(LifecycleCreationReservation, T), Error>
+    ) -> Result<(LifecycleCreationReservation, ThreadLifecycleReservation, T), Error>
     where
         F: FnOnce(&mut Self) -> Result<T, Error>,
     {
         let reservation: LifecycleCreationReservation = self.delivery.try_reserve_creation()?;
+        let thread_reservation: ThreadLifecycleReservation =
+            match self.delivery.try_reserve_thread_creation() {
+                Ok(reservation) => reservation,
+                Err(error) => {
+                    self.delivery.cancel_creation(reservation);
+                    return Err(error);
+                },
+            };
         match prepare(self) {
-            Ok(prepared) => Ok((reservation, prepared)),
+            Ok(prepared) => Ok((reservation, thread_reservation, prepared)),
             Err(error) => {
+                self.delivery.cancel_thread_creation(thread_reservation);
                 self.delivery.cancel_creation(reservation);
                 Err(error)
             },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Runs fallible thread preparation while holding its termination-record capacity.
+    ///
+    /// # Parameters
+    ///
+    /// - `prepare`: Fallible thread preparation to run while capacity is reserved.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the thread reservation and prepared value are returned. Otherwise, an error
+    /// is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if thread lifecycle capacity cannot be reserved, a test
+    /// failure is injected, or `prepare` fails.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed.
+    ///
+    fn prepare_thread_lifecycle_creation<T, F>(
+        &mut self,
+        prepare: F,
+    ) -> Result<(ThreadLifecycleReservation, T), Error>
+    where
+        F: FnOnce(&mut Self) -> Result<T, Error>,
+    {
+        let reservation: ThreadLifecycleReservation =
+            self.delivery.try_reserve_thread_creation()?;
+        #[cfg(feature = "test")]
+        if core::mem::take(&mut self.fail_next_thread_lifecycle_creation) {
+            self.delivery.cancel_thread_creation(reservation);
+            return Err(Error::new(
+                ErrorCode::OutOfMemory,
+                "injected thread lifecycle creation failure",
+            ));
+        }
+        match prepare(self) {
+            Ok(prepared) => Ok((reservation, prepared)),
+            Err(error) => {
+                self.delivery.cancel_thread_creation(reservation);
+                Err(error)
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Injects one failure into the next standalone thread or `execv()` thread preparation.
+    ///
+    #[cfg(feature = "test")]
+    fn inject_thread_lifecycle_creation_failure(&mut self) {
+        self.fail_next_thread_lifecycle_creation = true;
     }
 
     ///
@@ -546,12 +654,16 @@ impl ProcessManager {
     /// Upon successful completion, the thread identifier of the new thread is returned.
     /// Otherwise, an error is returned instead.
     ///
-    /// # Safety Notes
+    /// # Errors
     ///
-    /// - `thread_create_args` must have valid fields, specifically:
-    ///   - `user_wrapper_fn` must point to a user memory region that is executable.
-    ///   - `user_fn` must point to a user memory region that is executable.
-    ///   - `user_stack` must point to a user memory region that is writable.
+    /// This function returns an error if lifecycle capacity or a thread identifier cannot be
+    /// reserved, or if the thread execution context cannot be prepared.
+    ///
+    /// # Panics
+    ///
+    /// This function panics in debug builds if `thread_create_args.user_fn` is not a user address
+    /// or `pid` does not identify the running process. It also panics if lifecycle delivery was
+    /// disposed or a committed thread already owns a termination credit.
     ///
     pub fn create_thread(
         &mut self,
@@ -568,33 +680,29 @@ impl ProcessManager {
             "create_thread: pid must match the running process"
         );
 
-        // Reserve the next thread identifier early, before any resource allocation. Reap pending
-        // zombies on demand if the system-wide thread cap has been reached, so a terminate-heavy
-        // workload is not spuriously refused while reclaimable slots are awaiting harvest.
-        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
-            self.try_next_tid_reaping(mm)?;
-
-        let enable_interrupts: bool = self.interrupt_capable;
-
-        // Create a kernel context.
-        let (kernel_stack, context): (KernelStack, ContextInformation) = Self::forge_user_context(
-            mm,
-            self.get_running_mut().state_mut().vmem_mut(),
-            thread_create_args,
-            enable_interrupts,
-        )?;
-
-        //==============================================================
-        // NOTE: if we fail beyond this point we need to page mappings.
-        //==============================================================
-
-        // A new thread inherits the creating (running) thread's blocked-signal mask, as POSIX
-        // requires; the signal dispositions are process-wide and therefore already shared.
-        let inherited_blocked: SigSet = self
-            .get_running_mut()
-            .running_mut()
-            .thread_state()
-            .blocked();
+        let (reservation, (tid, next_tid, kernel_stack, context, inherited_blocked)): (
+            ThreadLifecycleReservation,
+            (ThreadIdentifier, ThreadIdentifier, KernelStack, ContextInformation, SigSet),
+        ) = self.prepare_thread_lifecycle_creation(|manager| {
+            // Reserve the next thread identifier early, before any resource allocation. Reap
+            // pending zombies on demand if the system-wide thread cap has been reached.
+            let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
+                manager.try_next_tid_reaping(mm)?;
+            let enable_interrupts: bool = manager.interrupt_capable;
+            let (kernel_stack, context): (KernelStack, ContextInformation) =
+                Self::forge_user_context(
+                    mm,
+                    manager.get_running_mut().state_mut().vmem_mut(),
+                    thread_create_args,
+                    enable_interrupts,
+                )?;
+            let inherited_blocked: SigSet = manager
+                .get_running_mut()
+                .running_mut()
+                .thread_state()
+                .blocked();
+            Ok((tid, next_tid, kernel_stack, context, inherited_blocked))
+        })?;
 
         Ok(no_fail!(ThreadIdentifier, {
             // Create a new thread.
@@ -605,6 +713,11 @@ impl ProcessManager {
                 thread_create_args.user_tda,
                 context,
             );
+            let termination_credit: ThreadLifecycleTerminationCredit =
+                self.delivery.commit_thread_creation(reservation);
+            ready_thread
+                .thread_state_mut()
+                .install_termination_credit(termination_credit);
             ready_thread
                 .thread_state_mut()
                 .set_blocked(inherited_blocked);
@@ -1280,6 +1393,17 @@ impl ProcessManager {
     /// Upon successful completion, the process identifier of the new process is returned.
     /// Otherwise, an error is returned instead.
     ///
+    /// # Errors
+    ///
+    /// This function returns an error if process or thread capacity is exhausted, lifecycle
+    /// capacity cannot be reserved, or the process image cannot be prepared.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was disposed, a lifecycle sequence is exhausted,
+    /// the preallocated lifecycle queue is full, or a committed process or thread already owns its
+    /// termination credit.
+    ///
     pub fn create_process(
         &mut self,
         mm: &mut VirtMemoryManager,
@@ -1317,8 +1441,9 @@ impl ProcessManager {
                     .any(|(registered, _)| registered == name)
             });
 
-        let (reservation, (pid, next_pid, next_tid, parent_pid, mut prepared)): (
+        let (reservation, thread_reservation, (pid, next_pid, next_tid, parent_pid, mut prepared)): (
             LifecycleCreationReservation,
+            ThreadLifecycleReservation,
             (
                 ProcessIdentifier,
                 ProcessIdentifier,
@@ -1382,7 +1507,10 @@ impl ProcessManager {
             let termination_credit = self
                 .delivery
                 .commit_creation(reservation, ProcessCreationInfo::new(pid, parent_pid, role));
+            let thread_termination_credit: ThreadLifecycleTerminationCredit =
+                self.delivery.commit_thread_creation(thread_reservation);
             prepared.install_termination_credit(termination_credit);
+            prepared.install_thread_termination_credit(thread_termination_credit);
             prepared.enqueue(&mut self.ready);
 
             Ok(pid)
@@ -1636,6 +1764,15 @@ impl ProcessManager {
     ///   resources that prevent it from being duplicated.
     /// - [`ErrorCode::InvalidArgument`]: The supplied entry function or stack does not lie
     ///   within the user address space.
+    /// - [`ErrorCode::OutOfMemory`]: Process, thread, or lifecycle capacity is exhausted, or the
+    ///   child process cannot be prepared.
+    ///
+    /// # Panics
+    ///
+    /// This function panics in debug builds if `pid` does not identify the running process. It also
+    /// panics if lifecycle delivery was disposed, a lifecycle sequence is exhausted, the
+    /// preallocated lifecycle queue is full, or a committed process or thread already owns its
+    /// termination credit.
     ///
     pub fn duplicate_process(
         &mut self,
@@ -1692,8 +1829,9 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
         #[allow(clippy::type_complexity)]
-        let (reservation, (child_pid, next_pid, next_tid, mut prepared)): (
+        let (reservation, thread_reservation, (child_pid, next_pid, next_tid, mut prepared)): (
             LifecycleCreationReservation,
+            ThreadLifecycleReservation,
             (ProcessIdentifier, ProcessIdentifier, ThreadIdentifier, PreparedProcess),
         ) = self.prepare_lifecycle_creation(|manager| {
             // Reserve identifiers early, before allocation. Reap pending zombies on demand if the
@@ -1766,7 +1904,10 @@ impl ProcessManager {
             let termination_credit = self
                 .delivery
                 .commit_creation(reservation, ProcessCreationInfo::new(child_pid, pid, role));
+            let thread_termination_credit: ThreadLifecycleTerminationCredit =
+                self.delivery.commit_thread_creation(thread_reservation);
             prepared.install_termination_credit(termination_credit);
+            prepared.install_thread_termination_credit(thread_termination_credit);
             prepared.enqueue(&mut self.ready);
 
             Ok(child_pid)
@@ -2101,6 +2242,19 @@ impl ProcessManager {
     ///
     /// On failure, an error is returned and the calling process is left unchanged.
     ///
+    /// # Errors
+    ///
+    /// This function returns an error if the kernel process attempts to replace its image, the
+    /// calling process is not single-threaded, the process owns resources that cannot survive an
+    /// image replacement, lifecycle capacity is exhausted, or the new image cannot be prepared.
+    ///
+    /// # Panics
+    ///
+    /// This function panics in debug builds if `pid` does not identify the running process. It also
+    /// panics if lifecycle delivery was disposed, the outgoing or replacement thread does not own
+    /// the expected termination credit, the delivery sequence is exhausted, or the preallocated
+    /// lifecycle queue is full.
+    ///
     #[allow(clippy::type_complexity)]
     fn do_execv(
         &mut self,
@@ -2151,24 +2305,29 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::OperationNotPermitted, reason));
         }
 
-        // Reserve a thread identifier for the new image's main thread.
-        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
+        let (reservation, (tid, next_tid, vmem, mut thread)): (
+            ThreadLifecycleReservation,
+            (ThreadIdentifier, ThreadIdentifier, Vmem, ReadyThread),
+        ) = self.prepare_thread_lifecycle_creation(|manager| {
+            // Reserve a thread identifier for the new image's main thread.
+            let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
+                manager.tm.try_next_tid()?;
 
-        // Build the new address space and main thread, streaming the ELF image directly from the
-        // calling process's (still-active) address space. All fallible work happens here; on
-        // failure the running process is left untouched.
-        let src_vmem: &Vmem = self.get_running().state().vmem();
-        let (vmem, thread): (Vmem, ReadyThread) = Self::build_user_image(
-            mm,
-            &self.tm,
-            src_vmem,
-            tid,
-            |mm, dst_vmem| mm.load_elf_from_user(dst_vmem, src_vmem, elf_base, elf_len),
-            args,
-            env,
-            false,
-            self.interrupt_capable,
-        )?;
+            // Build the new address space and main thread while the calling image remains intact.
+            let src_vmem: &Vmem = manager.get_running().state().vmem();
+            let (vmem, thread): (Vmem, ReadyThread) = Self::build_user_image(
+                mm,
+                &manager.tm,
+                src_vmem,
+                tid,
+                |mm, dst_vmem| mm.load_elf_from_user(dst_vmem, src_vmem, elf_base, elf_len),
+                args,
+                env,
+                false,
+                manager.interrupt_capable,
+            )?;
+            Ok((tid, next_tid, vmem, thread))
+        })?;
 
         //==============================================================
         // Commit. Everything below is infallible.
@@ -2183,15 +2342,23 @@ impl ProcessManager {
                 Option<VirtualAddress>,
             ),
             {
+                let termination_credit: ThreadLifecycleTerminationCredit =
+                    self.delivery.commit_thread_creation(reservation);
+                thread
+                    .thread_state_mut()
+                    .install_termination_credit(termination_credit);
+
                 // Swap the address space and running thread in place, retiring the outgoing
                 // thread.
-                let (old_vmem, old_zombie, from_ctx, to_ctx, user_tda): (
+                let (old_vmem, old_zombie, pending_termination, from_ctx, to_ctx, user_tda): (
                     Vmem,
                     ZombieThread,
+                    PendingThreadTermination,
                     *mut ContextInformation,
                     *mut ContextInformation,
                     Option<VirtualAddress>,
                 ) = self.get_running_mut().replace_image(vmem, thread);
+                Self::commit_thread_termination(&mut self.delivery, pending_termination);
 
                 // The new thread is now live; commit its reserved identifier.
                 self.tm.commit_next_tid(next_tid);
@@ -2232,6 +2399,13 @@ impl ProcessManager {
     /// - A pointer to the context information of the next thread.
     /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
+    /// # Panics
+    ///
+    /// This function panics if the kernel process attempts to exit, process-manager state cannot
+    /// provide a running or ready process during the context switch, a terminating thread or
+    /// process lacks its termination credit, lifecycle delivery was disposed, the delivery sequence
+    /// is exhausted, or the preallocated lifecycle queue is full.
+    ///
     fn do_exit(
         &mut self,
         status: ExitStatus,
@@ -2265,18 +2439,22 @@ impl ProcessManager {
         self.cleanup_rendezvous(running_process.state().pid(), "do_exit");
 
         // Terminate the calling thread.
-        let previous_context: *mut ContextInformation = match running_process.exit(status) {
-            // The calling process still has runnable threads, put it in the list of ready processes.
-            Ok((runnable_process, previous_context)) => {
-                self.ready.push_back(runnable_process);
-                previous_context
-            },
-            // The calling process has only sleeping threads left, put it in the list of zombies processes.
-            Err((zombie_process, previous_context)) => {
-                self.zombies.push_back(zombie_process);
-                previous_context
-            },
-        };
+        let previous_context: *mut ContextInformation =
+            match running_process.exit(status, &mut |pending| {
+                Self::commit_thread_termination(&mut self.delivery, pending);
+            }) {
+                // The calling process still has runnable threads, put it in the list of ready processes.
+                Ok((runnable_process, previous_context)) => {
+                    self.ready.push_back(runnable_process);
+                    previous_context
+                },
+                // The calling process has only sleeping threads left, put it in the list of zombies processes.
+                Err((transition, previous_context)) => {
+                    let zombie_process: ZombieProcess = self.commit_zombie_process(transition);
+                    self.zombies.push_back(zombie_process);
+                    previous_context
+                },
+            };
 
         // Schedule another thread to run.
         let next_process: RunnableProcess = self.take_earliest_ready();
@@ -2314,13 +2492,12 @@ impl ProcessManager {
     /// - A pointer to the context information of the next thread.
     /// - An optional base address for the user-space thread data area of the next thread to run.
     ///
-    /// # Safety
+    /// # Panics
     ///
-    /// This function is unsafe because it may panic.
-    ///
-    /// This function is safe to use if and only if the following conditions are met:
-    ///
-    /// - The calling process is not the kernel process.
+    /// This function panics if the kernel process attempts to exit a thread, process-manager state
+    /// cannot provide a running or ready process during the context switch, the terminating thread
+    /// or process lacks its termination credit, lifecycle delivery was disposed, the delivery
+    /// sequence is exhausted, or the preallocated lifecycle queue is full.
     ///
     fn do_exit_thread(
         &mut self,
@@ -2358,7 +2535,9 @@ impl ProcessManager {
 
         // Terminate the calling thread and schedule another thread to run.
         let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
-            match running_process.exit_thread(status) {
+            match running_process.exit_thread(status, &mut |pending| {
+                Self::commit_thread_termination(&mut self.delivery, pending);
+            }) {
                 // The calling process still has runnable threads, put it in the list of ready processes.
                 (Ok((join_cond, runnable_process, previous_context)), deferred_zombie) => {
                     let pid: ProcessIdentifier = runnable_process.state().pid();
@@ -2378,11 +2557,12 @@ impl ProcessManager {
                     (join_cond, previous_context)
                 },
                 // The calling process has only zombie threads left, put it in the list of zombies processes.
-                (Err(Err((join_cond, mut zombie_process, previous_context))), deferred_zombie) => {
+                (Err(Err((join_cond, transition, previous_context))), deferred_zombie) => {
                     debug_assert!(
                         deferred_zombie.is_none(),
                         "deferred zombie must be None when no other threads remain"
                     );
+                    let mut zombie_process: ZombieProcess = self.commit_zombie_process(transition);
                     let purged_messages: usize = zombie_process.state_mut().purge_messages();
                     self.note_messages_purged(purged_messages);
                     self.zombies.push_back(zombie_process);
@@ -2408,6 +2588,30 @@ impl ProcessManager {
         (next_pid, next_tid, join_cond, previous_context, next_context, user_tda)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Terminates a non-running process and marks its remaining threads for termination.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process to terminate.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, empty is returned. Otherwise, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an [`ErrorCode::InvalidArgument`] error if `pid` identifies the kernel
+    /// or running process, and an [`ErrorCode::NoSuchProcess`] error if the process does not exist.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if an immediately terminating thread or process lacks its termination
+    /// credit, lifecycle delivery was disposed, the delivery sequence is exhausted, or the
+    /// preallocated lifecycle queue is full.
+    ///
     pub fn terminate(&mut self, pid: ProcessIdentifier) -> Result<(), Error> {
         // Check if terminating kernel process.
         if pid == ProcessIdentifier::KERNEL {
@@ -2437,13 +2641,16 @@ impl ProcessManager {
         // Check if target process is ready.
         if let Some(process) = self.ready.iter().position(|p| p.state().pid() == pid) {
             let process: RunnableProcess = self.ready.remove(process);
-            match process.terminate() {
+            match process.terminate(&mut |pending| {
+                Self::commit_thread_termination(&mut self.delivery, pending);
+            }) {
                 Ok(interrupted_process) => {
                     let runnable_process: RunnableProcess = interrupted_process.resume();
                     self.ready.push_back(runnable_process);
                     return Ok(());
                 },
-                Err(zombie_process) => {
+                Err(transition) => {
+                    let zombie_process: ZombieProcess = self.commit_zombie_process(transition);
                     self.zombies.push_back(zombie_process);
                     return Ok(());
                 },
@@ -3332,25 +3539,48 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Commits a harvested process termination to the ordered delivery broker.
+    /// Commits a pending thread termination to the ordered delivery broker.
     ///
     /// # Parameters
     ///
-    /// - `termination`: Harvested process termination and its reserved capacity credit.
+    /// - `delivery`: Delivery broker that receives the termination record.
+    /// - `pending`: Pending thread termination and its reserved capacity credit.
     ///
-    pub(crate) fn commit_process_termination(&mut self, termination: HarvestedProcess) {
-        let (info, credit) = termination.into_parts();
-        self.delivery.commit_termination(credit, info);
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was disposed, the delivery sequence is exhausted,
+    /// or the preallocated lifecycle queue is full.
+    ///
+    fn commit_thread_termination(delivery: &mut DeliveryBroker, pending: PendingThreadTermination) {
+        let (info, credit) = pending.into_parts();
+        delivery.commit_thread_termination(credit, info);
     }
 
-    /// Releases the capacity credit of a harvested process without producing a lifecycle record.
-    pub(crate) fn release_process_termination(
-        &mut self,
-        termination: HarvestedProcess,
-    ) -> ProcessTerminationInfo {
-        let (info, credit) = termination.into_parts();
-        self.delivery.release_termination(credit);
-        info
+    ///
+    /// # Description
+    ///
+    /// Commits a process termination at zombie-process creation and returns the zombie.
+    ///
+    /// # Parameters
+    ///
+    /// - `transition`: Zombie-process transition containing the process and pending termination.
+    ///
+    /// # Returns
+    ///
+    /// The zombie process whose termination record was committed.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was disposed, the delivery sequence is exhausted,
+    /// or the preallocated lifecycle queue is full.
+    ///
+    fn commit_zombie_process(&mut self, transition: ZombieProcessTransition) -> ZombieProcess {
+        let (zombie, pending): (ZombieProcess, PendingProcessTermination) = transition.into_parts();
+        let (pid, parent, status, credit) = pending.into_parts();
+        let role: ProcessRole = self.classify_role(pid, parent);
+        self.delivery
+            .commit_termination(credit, ProcessTerminationInfo::new(pid, status, parent, role));
+        zombie
     }
 
     ///
@@ -3358,11 +3588,16 @@ impl ProcessManager {
     ///
     /// Disposes lifecycle state that cannot be delivered after terminal kernel shutdown begins.
     ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle state was already disposed or its reservation accounting
+    /// is inconsistent.
+    ///
     pub(crate) fn dispose_lifecycle(&mut self) {
         let disposal: LifecycleDisposal = self.delivery.dispose();
         if disposal.undelivered_records != 0 || disposal.retained_reservations != 0 {
             warn!(
-                "disposed process lifecycle state at shutdown (undelivered_records={}, \
+                "disposed lifecycle state at shutdown (undelivered_records={}, \
                  retained_reservations={})",
                 disposal.undelivered_records, disposal.retained_reservations
             );
@@ -3432,9 +3667,6 @@ impl ProcessManager {
     /// [`Self::reap_deferred_zombie_threads`]) so that detached threads do not reintroduce the same
     /// spurious exhaustion.
     ///
-    /// Each harvested termination is committed to the ordered delivery broker so it remains
-    /// observable exactly as if the zombie had been harvested by the idle loop.
-    ///
     /// The process manager daemon ([`ProcessIdentifier::PROCD`]) is never reaped here. Harvesting
     /// PROCD is the kernel's shutdown signal, which is observed only by the idle-loop harvester
     /// ([`crate::kcall::handler::kcall_handler`]). Reaping it on this path would consume that
@@ -3462,10 +3694,7 @@ impl ProcessManager {
                 }
             }
             match self.harvest_zombies(mm) {
-                Ok(Some(termination)) => {
-                    self.commit_process_termination(termination);
-                    reaped += 1;
-                },
+                Ok(Some(_termination)) => reaped += 1,
                 Ok(None) => break,
                 Err(e) => {
                     error!("failed to harvest zombies during admission: {:?}", e);
@@ -3577,6 +3806,11 @@ impl ProcessManager {
     /// Upon success, the reserved thread identifier together with the next thread identifier to
     /// commit. Otherwise, an error is returned.
     ///
+    /// # Errors
+    ///
+    /// This function returns an error if the system-wide thread capacity remains exhausted after
+    /// reclaiming pending zombies, or if the thread identifier would overflow.
+    ///
     fn try_next_tid_reaping(
         &mut self,
         mm: &mut VirtMemoryManager,
@@ -3597,6 +3831,26 @@ impl ProcessManager {
         }
     }
 
+    ///
+    /// # Description
+    ///
+    /// Harvests the oldest zombie process and reclaims the resources owned by all of its threads.
+    /// Lifecycle records are not produced here because they commit when the corresponding zombie
+    /// transitions are created.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager used to reclaim user-stack and address-space pages.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Some(termination))` if a zombie process was harvested, or `Ok(None)` if no zombie process
+    /// is pending.
+    ///
+    /// # Errors
+    ///
+    /// This function currently logs resource-reclamation failures and does not return an error.
+    ///
     pub(crate) fn harvest_zombies(
         &mut self,
         mm: &mut VirtMemoryManager,
@@ -3664,18 +3918,13 @@ impl ProcessManager {
             );
         }
 
-        // Build the authoritative termination record. The parent and role are known to the kernel,
-        // which spawns the init process and the daemons directly and recorded which identifiers are
-        // daemons at spawn time, so subscribers do not have to re-infer them from race-prone state.
+        // Preserve termination metadata for shutdown detection and diagnostics. The lifecycle
+        // record was already committed when this process first transitioned to zombie state.
         let pid: ProcessIdentifier = state.pid();
         let parent: ProcessIdentifier = state.ppid();
         let role: ProcessRole = self.classify_role(pid, parent);
-        let termination_credit = match state.take_termination_credit() {
-            Some(credit) => credit,
-            None => unreachable!("harvested user process must own a termination credit"),
-        };
         let info: ProcessTerminationInfo = ProcessTerminationInfo::new(pid, status, parent, role);
-        Ok(Some(HarvestedProcess::new(info, termination_credit)))
+        Ok(Some(HarvestedProcess::new(info)))
     }
 
     ///

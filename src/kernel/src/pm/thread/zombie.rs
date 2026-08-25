@@ -10,12 +10,19 @@ use crate::{
         kstack::KernelStack,
         ustack::UserStack,
     },
-    pm::thread::state::ThreadState,
+    pm::{
+        process::ThreadLifecycleTerminationCredit,
+        thread::state::ThreadState,
+    },
 };
 use ::alloc::boxed::Box;
 use ::core::fmt::Debug;
 use ::sys::{
-    pm::ThreadIdentifier,
+    event::ThreadTerminationInfo,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
     ExitStatus,
 };
 
@@ -36,6 +43,50 @@ pub struct ZombieThread {
     state: Box<ThreadState>,
 }
 
+/// Thread-termination record and the capacity credit transferred out of a live thread.
+#[must_use]
+pub(crate) struct PendingThreadTermination {
+    info: ThreadTerminationInfo,
+    credit: ThreadLifecycleTerminationCredit,
+}
+
+impl PendingThreadTermination {
+    ///
+    /// # Description
+    ///
+    /// Splits this pending termination into its record and reserved capacity credit.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the thread-termination record and its reserved capacity credit.
+    ///
+    pub(crate) fn into_parts(self) -> (ThreadTerminationInfo, ThreadLifecycleTerminationCredit) {
+        (self.info, self.credit)
+    }
+}
+
+/// Result of the authoritative live-to-zombie thread transition.
+#[must_use]
+pub(crate) struct ZombieThreadTransition {
+    zombie: ZombieThread,
+    pending: PendingThreadTermination,
+}
+
+impl ZombieThreadTransition {
+    ///
+    /// # Description
+    ///
+    /// Splits this transition into the zombie and its pending termination record.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the zombie thread and its pending termination record.
+    ///
+    pub(crate) fn into_parts(self) -> (ZombieThread, PendingThreadTermination) {
+        (self.zombie, self.pending)
+    }
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
@@ -48,15 +99,29 @@ impl ZombieThread {
     ///
     /// # Parameters
     ///
+    /// - `pid`: Identifier of the process that owns the thread.
     /// - `state`: The thread state.
     /// - `status`: The exit status of the terminated thread.
     ///
     /// # Returns
     ///
-    /// This function returns a new instance of a [`ZombieThread`].
+    /// This function returns the must-use zombie-thread transition.
     ///
-    pub(super) fn from_state(state: Box<ThreadState>, status: ExitStatus) -> Self {
-        Self { status, state }
+    /// # Panics
+    ///
+    /// This function panics if `state` does not own a thread termination credit.
+    ///
+    pub(super) fn from_state(
+        pid: ProcessIdentifier,
+        mut state: Box<ThreadState>,
+        status: ExitStatus,
+    ) -> ZombieThreadTransition {
+        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(pid, state.id(), status);
+        let credit: ThreadLifecycleTerminationCredit = state.take_termination_credit();
+        ZombieThreadTransition {
+            zombie: Self { status, state },
+            pending: PendingThreadTermination { info, credit },
+        }
     }
 
     ///

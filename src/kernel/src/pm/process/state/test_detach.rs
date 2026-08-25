@@ -19,6 +19,10 @@ use crate::{
         Vmem,
     },
     pm::{
+        process::{
+            new_test_process_termination_credit,
+            new_test_thread_termination_credit,
+        },
         thread::{
             InterruptReason,
             InterruptedThread,
@@ -33,6 +37,7 @@ use crate::{
 use ::alloc::boxed::Box;
 use ::sys::{
     error::ErrorCode,
+    event::ThreadTerminationInfo,
     pm::{
         ProcessIdentifier,
         ThreadIdentifier,
@@ -74,9 +79,18 @@ fn make_test_vmem() -> Option<Vmem> {
 ///
 /// Creates a [`ReadyThread`] with the given identifier and an otherwise empty context.
 ///
+/// # Parameters
+///
+/// - `tid`: Raw thread identifier to assign to the fixture.
+///
+/// # Returns
+///
+/// A ready thread fixture with the specified identifier.
+///
 fn make_ready_thread(tid: i32) -> ReadyThread {
     ReadyThread::new(
         ThreadIdentifier::from(tid),
+        Some(new_test_thread_termination_credit()),
         None,
         None,
         None,
@@ -100,8 +114,18 @@ fn make_running_thread(tid: i32) -> RunningThread {
 ///
 /// Creates a [`ZombieThread`] with the given identifier.
 ///
+/// # Parameters
+///
+/// - `tid`: Raw thread identifier to assign to the fixture.
+///
+/// # Returns
+///
+/// A zombie thread fixture with the specified identifier.
+///
 fn make_zombie_thread(tid: i32) -> ZombieThread {
-    make_running_thread(tid).exit(ExitStatus::from(0u32)).0
+    let (transition, _ctx) =
+        make_running_thread(tid).exit(ProcessIdentifier::from(1), ExitStatus::from(0u32));
+    transition.into_parts().0
 }
 
 ///
@@ -110,10 +134,19 @@ fn make_zombie_thread(tid: i32) -> ZombieThread {
 /// Creates a detached [`ZombieThread`] with the given identifier by detaching the running thread
 /// before it exits.
 ///
+/// # Parameters
+///
+/// - `tid`: Raw thread identifier to assign to the fixture.
+///
+/// # Returns
+///
+/// A detached zombie thread fixture with the specified identifier.
+///
 fn make_detached_zombie_thread(tid: i32) -> ZombieThread {
     let mut running: RunningThread = make_running_thread(tid);
     running.set_detached();
-    running.exit(ExitStatus::from(0u32)).0
+    let (transition, _ctx) = running.exit(ProcessIdentifier::from(1), ExitStatus::from(0u32));
+    transition.into_parts().0
 }
 
 ///
@@ -140,6 +173,14 @@ fn make_interrupted_thread(tid: i32) -> InterruptedThread {
 /// Wraps [`RunningProcess::new`] with a stub [`ProcessState`], assembling a running process from
 /// the supplied running thread and optional thread queues.
 ///
+/// # Parameters
+///
+/// - `running`: Running thread to install in the process.
+/// - `ready`: Optional ready-thread queue.
+/// - `interrupted`: Optional interrupted-thread queue.
+/// - `sleeping`: Optional sleeping-thread queue.
+/// - `zombie`: Optional zombie-thread queue.
+///
 /// # Returns
 ///
 /// Upon success, the new [`RunningProcess`] is returned. Otherwise, [`None`] is returned.
@@ -155,7 +196,7 @@ fn make_test_process(
     let state: Box<ProcessState> = Box::new(ProcessState::new(
         ProcessIdentifier::from(1),
         ProcessIdentifier::from(0),
-        None,
+        Some(new_test_process_termination_credit()),
         vmem,
     ));
     Some(RunningProcess::new(state, running, ready, interrupted, sleeping, zombie))
@@ -602,6 +643,11 @@ fn test_detach_nonexistent_tid() -> bool {
 /// (returned for deferred reaping) instead of enqueuing it, and the process transitions to a
 /// runnable process that does not retain the detached thread.
 ///
+/// # Returns
+///
+/// `true` if the detached thread produces one termination record and is deferred for reaping,
+/// otherwise `false`.
+///
 fn test_exit_detached_thread_auto_drops() -> bool {
     let mut running: RunningThread = make_running_thread(1);
     running.set_detached();
@@ -613,10 +659,29 @@ fn test_exit_detached_thread_auto_drops() -> bool {
         None => return false,
     };
 
-    let (result, deferred) = process.exit_thread(ExitStatus::from(0u32));
+    let status: ExitStatus = ExitStatus::from(0u32);
+    let mut termination: Option<ThreadTerminationInfo> = None;
+    let (result, deferred) = process.exit_thread(status, &mut |pending| {
+        let (info, _credit) = pending.into_parts();
+        termination = Some(info);
+    });
 
-    if deferred.is_none() {
-        error!("expected detached zombie to be returned for deferred reaping");
+    if termination
+        != Some(ThreadTerminationInfo::new(ProcessIdentifier::from(1), running_tid, status))
+    {
+        error!("detached thread produced an incorrect termination record");
+        return false;
+    }
+    let deferred: ZombieThread = match deferred {
+        Some(zombie) => zombie,
+        None => {
+            error!("expected detached zombie to be returned for deferred reaping");
+            return false;
+        },
+    };
+    let _ = deferred.harvest();
+    if termination.is_none() {
+        error!("deferred reap changed the committed thread termination record");
         return false;
     }
 
@@ -647,6 +712,10 @@ fn test_exit_detached_thread_auto_drops() -> bool {
 /// for deferred reaping and transitions the process to a sleeping process that does not retain the
 /// detached thread.
 ///
+/// # Returns
+///
+/// `true` if the detached thread is deferred and the process becomes sleeping, otherwise `false`.
+///
 fn test_exit_detached_thread_auto_drops_with_sleeping() -> bool {
     let mut running: RunningThread = make_running_thread(1);
     running.set_detached();
@@ -659,7 +728,7 @@ fn test_exit_detached_thread_auto_drops_with_sleeping() -> bool {
         None => return false,
     };
 
-    let (result, deferred) = process.exit_thread(ExitStatus::from(0u32));
+    let (result, deferred) = process.exit_thread(ExitStatus::from(0u32), &mut |_pending| {});
 
     if deferred.is_none() {
         error!("expected detached zombie to be returned for deferred reaping");
@@ -693,6 +762,10 @@ fn test_exit_detached_thread_auto_drops_with_sleeping() -> bool {
 /// zombie for deferred reaping and transitions the process to a runnable process that does not
 /// retain the detached thread.
 ///
+/// # Returns
+///
+/// `true` if the detached thread is deferred and the process becomes runnable, otherwise `false`.
+///
 fn test_exit_detached_thread_auto_drops_with_interrupted() -> bool {
     let mut running: RunningThread = make_running_thread(1);
     running.set_detached();
@@ -706,7 +779,7 @@ fn test_exit_detached_thread_auto_drops_with_interrupted() -> bool {
             None => return false,
         };
 
-    let (result, deferred) = process.exit_thread(ExitStatus::from(0u32));
+    let (result, deferred) = process.exit_thread(ExitStatus::from(0u32), &mut |_pending| {});
 
     if deferred.is_none() {
         error!("expected detached zombie to be returned for deferred reaping");
@@ -739,6 +812,10 @@ fn test_exit_detached_thread_auto_drops_with_interrupted() -> bool {
 /// Exiting a detached running thread that is the last thread preserves the zombie (so the zombie
 /// process can be constructed) and returns no deferred zombie.
 ///
+/// # Returns
+///
+/// `true` if the zombie is retained in the zombie-process transition, otherwise `false`.
+///
 fn test_exit_detached_last_thread_keeps_zombie() -> bool {
     let mut running: RunningThread = make_running_thread(1);
     running.set_detached();
@@ -748,7 +825,7 @@ fn test_exit_detached_last_thread_keeps_zombie() -> bool {
         None => return false,
     };
 
-    let (result, deferred) = process.exit_thread(ExitStatus::from(0u32));
+    let (result, deferred) = process.exit_thread(ExitStatus::from(0u32), &mut |_pending| {});
 
     if deferred.is_some() {
         error!("unexpected deferred zombie for last detached thread");
@@ -756,7 +833,8 @@ fn test_exit_detached_last_thread_keeps_zombie() -> bool {
     }
 
     match result {
-        Err(Err((_join_cond, zombie_process, _ctx))) => {
+        Err(Err((_join_cond, transition, _ctx))) => {
+            let (zombie_process, _pending) = transition.into_parts();
             if zombie_process.find_thread(running_tid).is_none() {
                 error!("zombie thread not preserved in zombie process");
                 return false;
