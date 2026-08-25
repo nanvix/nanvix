@@ -12,7 +12,12 @@ pub mod socket_message;
 cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod syscall;
-        pub use syscall::poll;
+        pub(crate) use syscall::{
+            poll,
+            PollEvents,
+            PollFd,
+            PollTimeout,
+        };
         pub mod bindings;
     }
 }

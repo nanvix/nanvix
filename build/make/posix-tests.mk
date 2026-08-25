@@ -112,10 +112,10 @@ $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_STRESS_SRCDIR)/%.c
 # links/permissions; select has no standalone backend).
 
 # file-c: only the sub-tests that main.c runs under __NANVIX_STANDALONE__. The
-# remaining files exercise links, permissions/ownership, timestamps, and
-# select(), which the standalone FAT32 VFS does not support.
+# remaining files exercise links, permissions/ownership, and timestamps, which
+# the standalone FAT32 VFS does not support.
 POSIX_TEST_FILES_test-c-file := \
-	main.c open_close.c create_unlink.c write_read.c poll.c posix_fadvise.c lseek.c \
+	main.c open_close.c create_unlink.c write_read.c poll.c select.c posix_fadvise.c lseek.c \
 	posix_fallocate.c readv.c preadv.c writev.c pwritev.c pread.c pwrite.c \
 	fdatasync.c stat.c device_namespace.c ftruncate.c truncate.c link.c linkat.c renameat.c renameat_subdir.c unlinkat.c mkdirat.c mkdir.c \
 	path_errno.c mkfifo.c mknod.c umask_ramfs.c umask.c dirent.c getcwd.c chdir.c fchdir.c \

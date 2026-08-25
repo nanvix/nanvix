@@ -50,7 +50,8 @@ use ::syslog::trace_syscall;
 /// - If `readfds` is not null, it points to a valid `fd_set` structure.
 /// - If `writefds` is not null, it points to a valid `fd_set` structure.
 /// - If `errorfds` is not null, it points to a valid `fd_set` structure.
-/// - If `timeout` is not null, it points to a valid `timeval` structure
+/// - If `timeout` is not null, it points to a valid `timeval` structure.
+/// - All non-null pointer arguments refer to disjoint memory regions.
 ///
 #[unsafe(no_mangle)]
 #[trace_syscall]

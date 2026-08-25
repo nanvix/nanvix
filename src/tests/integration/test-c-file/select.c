@@ -50,8 +50,11 @@ void test_select(void)
     assert(fd != -1);
 
     //----------------------------------------------------------------------------------------------
-    // Write readiness (select on writefds).
+    // Read and write readiness. A descriptor ready in both sets contributes two to the result.
     //----------------------------------------------------------------------------------------------
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(fd, &readfds);
     fd_set writefds;
     FD_ZERO(&writefds);
     FD_SET(fd, &writefds);
@@ -59,8 +62,9 @@ void test_select(void)
     tvw.tv_sec = SELECT_TIMEOUT_SECS;
     tvw.tv_usec = 0;
 
-    int ret = select(fd + 1, NULL, &writefds, NULL, &tvw);
-    assert(ret == 1);
+    int ret = select(fd + 1, &readfds, &writefds, NULL, &tvw);
+    assert(ret == 2);
+    assert(FD_ISSET(fd, &readfds));
     assert(FD_ISSET(fd, &writefds));
 
     // Write data.
@@ -73,7 +77,6 @@ void test_select(void)
     //----------------------------------------------------------------------------------------------
     // Read readiness (select on readfds).
     //----------------------------------------------------------------------------------------------
-    fd_set readfds;
     FD_ZERO(&readfds);
     FD_SET(fd, &readfds);
     struct timeval tvr;
@@ -108,16 +111,45 @@ void test_select(void)
     tve.tv_sec = SELECT_TIMEOUT_SECS;
     tve.tv_usec = 0;
 
-    // For regular files POSIX specifies they are always ready; but we tolerate a timeout for
-    // implementation-specific behavior while still asserting correctness when ready.
+    // Regular files are ready when an I/O request would not block, including at EOF.
     ret = select(fd + 1, &readfds, NULL, NULL, &tve);
-    assert(ret == 0 || (ret == 1 && FD_ISSET(fd, &readfds)));
+    assert(ret == 1);
+    assert(FD_ISSET(fd, &readfds));
 
     // Close file descriptor.
     assert(close(fd) == 0);
 
+    // A descriptor that is not open fails with EBADF.
+    FD_ZERO(&readfds);
+    FD_SET(fd, &readfds);
+    struct timeval invalid_tv = {0};
+    errno = 0;
+    assert(select(fd + 1, &readfds, NULL, NULL, &invalid_tv) == -1);
+    assert(errno == EBADF);
+    errno = 0;
+
     // Remove test file.
     assert(unlink(filename) == 0);
+
+    // An empty pipe is not readable before data arrives. Check immediate and finite timeouts.
+    int pipefds[2];
+    assert(pipe(pipefds) == 0);
+    FD_ZERO(&readfds);
+    FD_SET(pipefds[0], &readfds);
+    struct timeval zero_tv = {0};
+    assert(select(pipefds[0] + 1, &readfds, NULL, NULL, &zero_tv) == 0);
+    assert(!FD_ISSET(pipefds[0], &readfds));
+
+    FD_ZERO(&readfds);
+    FD_SET(pipefds[0], &readfds);
+    struct timeval finite_tv = {
+        .tv_sec = 0,
+        .tv_usec = 10000,
+    };
+    assert(select(pipefds[0] + 1, &readfds, NULL, NULL, &finite_tv) == 0);
+    assert(!FD_ISSET(pipefds[0], &readfds));
+    assert(close(pipefds[0]) == 0);
+    assert(close(pipefds[1]) == 0);
 
     fprintf(stderr, "passed\n");
 }
