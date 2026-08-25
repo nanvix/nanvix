@@ -101,12 +101,7 @@ where
         pgdir.clean();
         pgdir
     }
-}
 
-impl<T> PageDirectory<T>
-where
-    T: DerefMut<Target = [PteWord]> + GetPageDirectoryStorage,
-{
     #[verus_verify(external_body)]
     #[verus_spec(
         with
@@ -236,6 +231,7 @@ where
         Ok(paddr)
     }
 
+    #[verus_verify(external_body)]
     fn clean(&mut self) {
         // for pde in self.entries.iter_mut() {
         //     *pde = 0;
@@ -243,6 +239,7 @@ where
         self.env_interaction_clear_page_directory();
     }
 
+    #[verus_verify(external_body)]
     pub fn read_pde(&self, vaddr: PageTableAddress) -> Option<PageDirectoryEntry> {
         let pde_idx: usize = vaddr.get_pde_index();
         // PageDirectoryEntry::from_raw_value(self.entries[pde_idx])
@@ -264,6 +261,7 @@ where
         self.env_interaction_write_page_directory_entry(pde_idx, pde.into_raw_value());
     }
 
+    #[verus_verify(external_body)]
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
         let vaddr: usize = self.entries.as_ptr() as usize;
         let paddr: usize = crate::hal::platform::virt_to_phys(vaddr);

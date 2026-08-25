@@ -6,6 +6,7 @@
 //==================================================================================================
 
 use super::PteWord;
+use vstd::prelude::*;
 
 //==================================================================================================
 // Enumerations
@@ -17,6 +18,7 @@ use super::PteWord;
 /// A type that represents the present flag of a page table entry.
 ///
 #[derive(Clone, Copy, Debug)]
+#[verus_verify]
 pub enum PresentFlag {
     /// The page table entry is not present.
     NotPresent = 0,
@@ -30,6 +32,7 @@ pub enum PresentFlag {
 /// A type that represents the read/write flag of a page table entry.
 ///
 #[derive(Clone, Copy, Debug)]
+#[verus_verify]
 pub enum ReadWriteFlag {
     /// The page table entry is read-only.
     ReadOnly = 0,
@@ -43,6 +46,7 @@ pub enum ReadWriteFlag {
 /// A type that represents the user/supervisor flag of a page table entry.
 ///
 #[derive(Clone, Copy, Debug)]
+#[verus_verify]
 pub enum UserSupervisorFlag {
     /// The page table entry is for supervisor mode.
     Supervisor = 0,
@@ -56,6 +60,7 @@ pub enum UserSupervisorFlag {
 /// A type that represents the page write-through flag of a page table entry.
 ///
 #[derive(Clone, Copy, Debug)]
+#[verus_verify]
 pub enum PageWriteThroughFlag {
     /// The page table entry is not write-through.
     NotWriteThrough = 0,
@@ -69,6 +74,7 @@ pub enum PageWriteThroughFlag {
 /// A type that represents the page cache disable flag of a page table entry.
 ///
 #[derive(Clone, Copy, Debug)]
+#[verus_verify]
 pub enum PageCacheDisableFlag {
     /// The page table entry is not cache disabled.
     CacheEnabled = 0,
@@ -82,6 +88,7 @@ pub enum PageCacheDisableFlag {
 /// A type that represents the accessed flag of a page table entry.
 ///
 #[derive(Clone, Copy, Debug)]
+#[verus_verify]
 pub enum AccessedFlag {
     /// The page table entry has not been accessed.
     NotAccessed = 0,
@@ -95,6 +102,7 @@ pub enum AccessedFlag {
 /// A type that represents the dirty flag of a page table entry.
 ///
 #[derive(Clone, Copy, Debug)]
+#[verus_verify]
 pub enum DirtyFlag {
     /// The page table entry has not been written.
     NotDirty = 0,
@@ -109,6 +117,7 @@ pub enum DirtyFlag {
 /// When set, the entry maps a large page (4 MiB on x86).
 ///
 #[derive(Clone, Copy, Debug)]
+#[verus_verify]
 pub enum PageSizeFlag {
     /// Standard page size (4 KiB page table reference).
     Standard = 0,
