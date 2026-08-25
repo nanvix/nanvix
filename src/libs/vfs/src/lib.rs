@@ -83,6 +83,9 @@ pub mod line_discipline;
 /// Mount table and path resolution.
 pub mod mount;
 
+/// Resolved VFS paths.
+pub mod path;
+
 /// In-memory pipe buffers for POSIX unnamed pipes.
 pub mod pipe;
 

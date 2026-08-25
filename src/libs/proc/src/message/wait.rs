@@ -17,6 +17,7 @@ use ::sys::{
         MessageReceiver,
         MessageSender,
         MessageType,
+        RequestIdentifier,
         SystemMessage,
         SystemMessageHeader,
     },
@@ -82,6 +83,22 @@ pub struct WaitResponseMessage {
 
 // NOTE: The size of a wait response message must match the size of a process management message payload.
 ::static_assert::assert_eq_size!(WaitResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+
+/// Identifies a blocked wait request to cancel.
+#[repr(C, packed)]
+pub struct WaitCancelMessage {
+    request_id: u32,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::static_assert::assert_eq_size!(WaitCancelMessage, ProcessManagementMessage::PAYLOAD_SIZE);
+
+/// Reports whether a wait cancellation won the race with completion.
+#[repr(C, packed)]
+pub struct WaitCancelResponseMessage {
+    cancelled: u8,
+    _padding: [u8; Self::PADDING_SIZE],
+}
+::static_assert::assert_eq_size!(WaitCancelResponseMessage, ProcessManagementMessage::PAYLOAD_SIZE);
 
 //==================================================================================================
 // Implementations
@@ -237,6 +254,60 @@ impl WaitResponseMessage {
     }
 }
 
+impl WaitCancelMessage {
+    const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE - mem::size_of::<u32>();
+
+    /// Creates a cancellation request for `request_id`.
+    pub fn new(request_id: RequestIdentifier) -> Self {
+        Self {
+            request_id: request_id.raw(),
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    /// Deserializes a wait cancellation request.
+    pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    /// Serializes a wait cancellation request.
+    pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    /// Returns the request identifier to cancel.
+    pub fn request_id(&self) -> RequestIdentifier {
+        RequestIdentifier::from_raw(self.request_id)
+    }
+}
+
+impl WaitCancelResponseMessage {
+    const PADDING_SIZE: usize = ProcessManagementMessage::PAYLOAD_SIZE - mem::size_of::<u8>();
+
+    /// Creates a wait cancellation response.
+    pub fn new(cancelled: bool) -> Self {
+        Self {
+            cancelled: u8::from(cancelled),
+            _padding: [0; Self::PADDING_SIZE],
+        }
+    }
+
+    /// Deserializes a wait cancellation response.
+    pub fn from_bytes(bytes: [u8; ProcessManagementMessage::PAYLOAD_SIZE]) -> Self {
+        unsafe { mem::transmute(bytes) }
+    }
+
+    /// Serializes a wait cancellation response.
+    pub fn into_bytes(self) -> [u8; ProcessManagementMessage::PAYLOAD_SIZE] {
+        unsafe { mem::transmute(self) }
+    }
+
+    /// Returns whether the wait request was cancelled before completion.
+    pub fn cancelled(&self) -> bool {
+        self.cancelled != 0
+    }
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -343,4 +414,71 @@ pub fn wait_response(
     );
 
     Ok(ipc_message)
+}
+
+/// Builds a request to cancel one blocked wait operation.
+pub fn wait_cancel_request(
+    caller: ProcessIdentifier,
+    request_id: RequestIdentifier,
+) -> Result<Message, Error> {
+    let cancel: WaitCancelMessage = WaitCancelMessage::new(request_id);
+    let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::WaitCancel,
+        cancel.into_bytes(),
+    );
+    let system_message: SystemMessage =
+        SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
+    Ok(Message::new(
+        MessageSender::new(caller, ThreadIdentifier::NONE),
+        MessageReceiver::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+        MessageType::Ipc,
+        None,
+        system_message.into_bytes(),
+    ))
+}
+
+/// Builds the acknowledgement for a wait cancellation request.
+pub fn wait_cancel_response(
+    destination: ProcessIdentifier,
+    cancelled: bool,
+) -> Result<Message, Error> {
+    let response: WaitCancelResponseMessage = WaitCancelResponseMessage::new(cancelled);
+    let pm_message: ProcessManagementMessage = ProcessManagementMessage::new(
+        ProcessManagementMessageHeader::WaitCancelResponse,
+        response.into_bytes(),
+    );
+    let system_message: SystemMessage =
+        SystemMessage::new(SystemMessageHeader::ProcessManagement, pm_message.into_bytes());
+    Ok(Message::new(
+        MessageSender::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+        MessageReceiver::new(destination, ThreadIdentifier::NONE),
+        MessageType::Ipc,
+        None,
+        system_message.into_bytes(),
+    ))
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wait_cancel_request_round_trip() {
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(42);
+        let request: WaitCancelMessage = WaitCancelMessage::new(request_id);
+        let decoded: WaitCancelMessage = WaitCancelMessage::from_bytes(request.into_bytes());
+        assert_eq!(decoded.request_id(), request_id);
+    }
+
+    #[test]
+    fn wait_cancel_response_round_trip() {
+        let response: WaitCancelResponseMessage = WaitCancelResponseMessage::new(true);
+        let decoded: WaitCancelResponseMessage =
+            WaitCancelResponseMessage::from_bytes(response.into_bytes());
+        assert!(decoded.cancelled());
+    }
 }

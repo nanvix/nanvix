@@ -1,0 +1,130 @@
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --border: #0f3460;
+  --text: #e0e0e0;
+  --accent: #00adb5;
+  --muted: #888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-left { display: flex; align-items: center; gap: 1rem; }
+.header-left h1 { font-size: 1.2rem; font-weight: 600; }
+
+.badge {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.header-right { display: flex; align-items: center; gap: 0.5rem; }
+.header-right label { font-size: 0.85rem; color: var(--muted); }
+
+select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+#charts {
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.chart-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.chart-container h2 {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
+.chart-body {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.chart-canvas { flex: 2 1 0; min-width: 0; }
+.chart-table { flex: 1 1 0; min-width: 0; overflow-x: auto; }
+
+.chart-target {
+  font-size: 0.8rem;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-target:empty { display: none; }
+
+@media (max-width: 700px) {
+  .chart-body { flex-direction: column; }
+}
+
+.bench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-table th,
+.bench-table td {
+  padding: 0.25rem 0.5rem;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+
+.bench-table thead th { color: var(--muted); font-weight: 500; }
+.bench-table tbody th { text-align: left; color: var(--muted); font-weight: 500; }
+
+.delta-up { color: #ff6b81; }
+.delta-down { color: #00d5a0; }
+
+canvas { width: 100% !important; }
+
+.status {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}

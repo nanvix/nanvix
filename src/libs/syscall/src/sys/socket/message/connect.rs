@@ -11,7 +11,7 @@ use crate::{
         socklen_t,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -75,7 +75,7 @@ impl ConnectSocketRequest {
     ) -> Message {
         let message: Self = Self::new(sockfd, sockaddr, socklen);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ConnectSocketRequest,
+            SystemCallMessageKind::ConnectSocketRequest,
             message.into_bytes(),
         );
         let message: Message = Message::new(
@@ -126,7 +126,7 @@ impl ConnectSocketResponse {
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: Self = Self::default();
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ConnectSocketResponse,
+            SystemCallMessageKind::ConnectSocketResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

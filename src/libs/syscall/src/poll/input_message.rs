@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -16,6 +16,7 @@ use ::sys::{
         MessageReceiver,
         MessageSender,
         MessageType,
+        RequestIdentifier,
     },
     pm::{
         ProcessIdentifier,
@@ -72,7 +73,7 @@ impl PollInputRequest {
     pub fn build(tid: ThreadIdentifier, count: u32) -> Message {
         let request: Self = Self::new(count);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::PollInputRequest, request.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::PollInputRequest, request.into_bytes());
         Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE),
@@ -85,7 +86,7 @@ impl PollInputRequest {
     /// Builds a VFSD subscription request for console-input availability notifications.
     pub fn build_subscription(tid: ThreadIdentifier) -> Message {
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ConsoleInputSubscribe,
+            SystemCallMessageKind::ConsoleInputSubscribe,
             [0u8; SystemCallMessage::PAYLOAD_SIZE],
         );
         Message::new(
@@ -100,7 +101,7 @@ impl PollInputRequest {
     /// Builds a host-to-VFSD notification that console input or EOF is available.
     pub fn build_available_notification() -> Message {
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ConsoleInputAvailable,
+            SystemCallMessageKind::ConsoleInputAvailable,
             [0u8; SystemCallMessage::PAYLOAD_SIZE],
         );
         Message::new(
@@ -150,10 +151,8 @@ impl PollInputResponse {
     /// Builds a console input poll response message.
     pub fn build(tid: ThreadIdentifier, status: u8) -> Message {
         let response: Self = Self::new(status);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PollInputResponse,
-            response.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::PollInputResponse, response.into_bytes());
         Message::new(
             MessageSender::KERNEL,
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
@@ -171,7 +170,7 @@ impl ConsoleReadRetry {
     /// Builds a retry event addressed to VFSD's process mailbox.
     pub fn build(tid: ThreadIdentifier) -> Message {
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ConsoleReadRetry,
+            SystemCallMessageKind::ConsoleReadRetry,
             [0u8; SystemCallMessage::PAYLOAD_SIZE],
         );
         Message::new(
@@ -217,7 +216,7 @@ impl PipeReadRetry {
             _padding: [0; Self::PADDING_SIZE],
         };
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::PipeReadRetry, retry.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::PipeReadRetry, retry.into_bytes());
         Message::new(
             MessageSender::new(ProcessIdentifier::VFSD, tid),
             MessageReceiver::VFSD,
@@ -232,12 +231,13 @@ impl PipeReadRetry {
 pub struct ConsoleReadCancel;
 
 impl ConsoleReadCancel {
-    /// Builds a request that cancels the caller thread's parked console read.
-    pub fn build_request(tid: ThreadIdentifier) -> Message {
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ConsoleReadCancelRequest,
-            [0u8; SystemCallMessage::PAYLOAD_SIZE],
-        );
+    /// Builds a request that cancels one parked console read.
+    pub fn build_request(tid: ThreadIdentifier, target: RequestIdentifier) -> Message {
+        let mut payload: [u8; SystemCallMessage::PAYLOAD_SIZE] =
+            [0u8; SystemCallMessage::PAYLOAD_SIZE];
+        payload[..RequestIdentifier::SIZE].copy_from_slice(&target.raw().to_ne_bytes());
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::ConsoleReadCancelRequest, payload);
         Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(crate::VFS_DESTINATION, ThreadIdentifier::NONE),
@@ -247,12 +247,20 @@ impl ConsoleReadCancel {
         )
     }
 
+    /// Returns the identifier of the parked read targeted by a cancellation request.
+    pub fn target(payload: &[u8; SystemCallMessage::PAYLOAD_SIZE]) -> RequestIdentifier {
+        RequestIdentifier::from_raw(u32::from_ne_bytes([
+            payload[0], payload[1], payload[2], payload[3],
+        ]))
+    }
+
     /// Builds an acknowledgement for a console-read cancellation request.
-    pub fn build_response(tid: ThreadIdentifier) -> Message {
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::ConsoleReadCancelResponse,
-            [0u8; SystemCallMessage::PAYLOAD_SIZE],
-        );
+    pub fn build_response(tid: ThreadIdentifier, cancelled: bool) -> Message {
+        let mut payload: [u8; SystemCallMessage::PAYLOAD_SIZE] =
+            [0u8; SystemCallMessage::PAYLOAD_SIZE];
+        payload[0] = u8::from(cancelled);
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::ConsoleReadCancelResponse, payload);
         Message::new(
             MessageSender::new(ProcessIdentifier::VFSD, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
@@ -260,6 +268,11 @@ impl ConsoleReadCancel {
             None,
             message.into_bytes(),
         )
+    }
+
+    /// Returns whether a parked console read was found and cancelled.
+    pub fn cancelled(payload: &[u8; SystemCallMessage::PAYLOAD_SIZE]) -> bool {
+        payload[0] != 0
     }
 }
 
@@ -291,19 +304,23 @@ impl TryFrom<u8> for PipeOperation {
 pub struct PipeOpCancelRequest {
     fd: i32,
     operation: u8,
+    request_id: u32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(PipeOpCancelRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl PipeOpCancelRequest {
-    const PADDING_SIZE: usize =
-        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u8>();
+    const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
+        - mem::size_of::<i32>()
+        - mem::size_of::<u8>()
+        - mem::size_of::<u32>();
 
     /// Creates a pipe-operation cancellation request.
-    pub fn new(fd: i32, operation: PipeOperation) -> Self {
+    pub fn new(fd: i32, operation: PipeOperation, request_id: RequestIdentifier) -> Self {
         Self {
             fd,
             operation: operation as u8,
+            request_id: request_id.raw(),
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -323,15 +340,25 @@ impl PipeOpCancelRequest {
         PipeOperation::try_from(self.operation).ok()
     }
 
+    /// Returns the identifier of the parked operation targeted by this request.
+    pub fn request_id(&self) -> RequestIdentifier {
+        RequestIdentifier::from_raw(self.request_id)
+    }
+
     fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     /// Builds a pipe-operation cancellation request.
-    pub fn build(tid: ThreadIdentifier, fd: i32, operation: PipeOperation) -> Message {
-        let request: Self = Self::new(fd, operation);
+    pub fn build(
+        tid: ThreadIdentifier,
+        fd: i32,
+        operation: PipeOperation,
+        request_id: RequestIdentifier,
+    ) -> Message {
+        let request: Self = Self::new(fd, operation, request_id);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PipeOpCancelRequest,
+            SystemCallMessageKind::PipeOpCancelRequest,
             request.into_bytes(),
         );
         Message::new(
@@ -349,17 +376,20 @@ impl PipeOpCancelRequest {
 #[repr(C, packed)]
 pub struct PipeOpCancelResponse {
     transferred: u32,
+    cancelled: u8,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(PipeOpCancelResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl PipeOpCancelResponse {
-    const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<u32>();
+    const PADDING_SIZE: usize =
+        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<u32>() - mem::size_of::<u8>();
 
     /// Creates a pipe-operation cancellation response.
-    pub fn new(transferred: u32) -> Self {
+    pub fn new(transferred: u32, cancelled: bool) -> Self {
         Self {
             transferred,
+            cancelled: u8::from(cancelled),
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -374,15 +404,20 @@ impl PipeOpCancelResponse {
         self.transferred
     }
 
+    /// Returns whether a parked operation was found and cancelled.
+    pub fn cancelled(&self) -> bool {
+        self.cancelled != 0
+    }
+
     fn into_bytes(self) -> [u8; SystemCallMessage::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
     }
 
     /// Builds a pipe-operation cancellation response.
-    pub fn build(tid: ThreadIdentifier, transferred: u32) -> Message {
-        let response: Self = Self::new(transferred);
+    pub fn build(tid: ThreadIdentifier, transferred: u32, cancelled: bool) -> Message {
+        let response: Self = Self::new(transferred, cancelled);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PipeOpCancelResponse,
+            SystemCallMessageKind::PipeOpCancelResponse,
             response.into_bytes(),
         );
         Message::new(
@@ -419,20 +454,46 @@ mod tests {
         assert_eq!(decoded.status(), PollInputRequest::STATUS_DATA);
     }
 
+    /// Tests console-read cancellation target preservation through serialization.
+    #[test]
+    fn console_read_cancel_request_round_trip() {
+        let target: RequestIdentifier = RequestIdentifier::from_raw(0x1234_5678);
+        let request: Message = ConsoleReadCancel::build_request(ThreadIdentifier::from(1), target);
+        let message: SystemCallMessage = SystemCallMessage::try_from_bytes(request.payload)
+            .expect("console cancellation request should decode");
+        assert_eq!(ConsoleReadCancel::target(&message.payload), target);
+    }
+
+    /// Tests console-read cancellation outcome preservation through serialization.
+    #[test]
+    fn console_read_cancel_response_round_trip() {
+        for cancelled in [false, true] {
+            let response: Message =
+                ConsoleReadCancel::build_response(ThreadIdentifier::from(1), cancelled);
+            let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)
+                .expect("console cancellation response should decode");
+            assert_eq!(ConsoleReadCancel::cancelled(&message.payload), cancelled);
+        }
+    }
+
     /// Tests pipe cancellation request field preservation through serialization.
     #[test]
     fn pipe_cancel_request_round_trip() {
-        let request: PipeOpCancelRequest = PipeOpCancelRequest::new(7, PipeOperation::Write);
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(42);
+        let request: PipeOpCancelRequest =
+            PipeOpCancelRequest::new(7, PipeOperation::Write, request_id);
         let decoded: PipeOpCancelRequest = PipeOpCancelRequest::from_bytes(request.into_bytes());
         assert_eq!(decoded.fd(), 7);
         assert_eq!(decoded.operation(), Some(PipeOperation::Write));
+        assert_eq!(decoded.request_id(), request_id);
     }
 
     /// Tests pipe cancellation response field preservation through serialization.
     #[test]
     fn pipe_cancel_response_round_trip() {
-        let response: PipeOpCancelResponse = PipeOpCancelResponse::new(123);
+        let response: PipeOpCancelResponse = PipeOpCancelResponse::new(123, true);
         let decoded: PipeOpCancelResponse = PipeOpCancelResponse::from_bytes(response.into_bytes());
         assert_eq!(decoded.transferred(), 123);
+        assert!(decoded.cancelled());
     }
 }

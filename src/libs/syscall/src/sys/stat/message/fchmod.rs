@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt::Debug,
@@ -75,7 +75,7 @@ impl FileChmodRequest {
     ) -> Message {
         let message: FileChmodRequest = FileChmodRequest::new(fd, mode);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::FileChmodRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::FileChmodRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -119,10 +119,8 @@ impl FileChmodResponse {
         message_type: MessageType,
     ) -> Message {
         let message: FileChmodResponse = FileChmodResponse::new();
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileChmodResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::FileChmodResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

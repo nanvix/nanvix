@@ -24,10 +24,7 @@ use crate::{
     pm::{
         process::{
             manager::ProcessManager,
-            state::{
-                ProcessRefMut,
-                RunningProcess,
-            },
+            state::ProcessRefMut,
         },
         sync::{
             condvar::Condvar,
@@ -42,7 +39,10 @@ use crate::{
             ThreadManager,
             ZombieThread,
         },
+        DeliverySequence,
         SleepError,
+        UncommittedMessage,
+        UncommittedMessageToken,
         ORDER,
     },
     PERF_SCHED_EXIT_CONTEXT_SWITCHES,
@@ -1066,12 +1066,18 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Attempts to receive a message.
+    /// Selects the message that is eligible for delivery, without consuming it.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the target thread.
+    /// - `lifecycle_eligible`: Whether the caller owns the lifecycle scheduling-event class and may
+    ///   receive lifecycle records.
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the message is returned. Otherwise, an error code is returned
-    /// instead.
+    /// Upon successful completion, the selected message and the token that commits it are returned.
+    /// Otherwise, an error code is returned instead.
     ///
     /// # Safety
     ///
@@ -1081,16 +1087,125 @@ impl ProcessManager {
     ///
     /// - The calling process does not hold a reference to the process manager.
     ///
-    pub unsafe fn try_recv(tid: ThreadIdentifier) -> Result<Option<Message>, Error> {
+    pub unsafe fn peek_recv(
+        tid: ThreadIdentifier,
+        lifecycle_eligible: bool,
+    ) -> Result<Option<UncommittedMessage>, Error> {
         let pm: &mut ProcessManager = unsafe { Self::get_mut() };
-        let running: &mut RunningProcess = pm.get_running_mut();
-        match running.state_mut().receive_message(tid) {
-            Some(message) => {
-                pm.note_message_received()?;
-                Ok(Some(message))
-            },
-            None => Ok(None),
+        let pid: ProcessIdentifier = pm.get_running().state().pid();
+        let mailbox: Option<(DeliverySequence, Message)> =
+            pm.get_running().state().peek_message(tid);
+        let mailbox_sequence: Option<DeliverySequence> =
+            mailbox.as_ref().map(|(sequence, _)| *sequence);
+        if pm
+            .delivery
+            .lifecycle_precedes(mailbox_sequence, lifecycle_eligible)
+        {
+            return Ok(pm.delivery.peek_lifecycle(pid).map(|(sequence, message)| {
+                UncommittedMessage::new(message, UncommittedMessageToken::Lifecycle(sequence))
+            }));
         }
+
+        Ok(mailbox.map(|(sequence, message)| {
+            UncommittedMessage::new(message, UncommittedMessageToken::Mailbox { tid, sequence })
+        }))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Commits a message selected by [`Self::peek_recv`], removing it from its queue and updating
+    /// buffered-message accounting.
+    ///
+    /// # Parameters
+    ///
+    /// - `token`: Token returned by [`Self::peek_recv`].
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `token` no longer identifies the selected item, which indicates a
+    /// stale or duplicate commit and thus a kernel bug.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    /// - `token` was produced by [`Self::peek_recv`] on the running process and was not committed
+    ///   yet.
+    ///
+    pub unsafe fn commit_recv(token: UncommittedMessageToken) {
+        let pm: &mut ProcessManager = unsafe { Self::get_mut() };
+        match token {
+            UncommittedMessageToken::Lifecycle(sequence) => {
+                pm.delivery.commit_lifecycle(sequence);
+            },
+            UncommittedMessageToken::Mailbox { tid, sequence } => {
+                if !pm
+                    .get_running_mut()
+                    .state_mut()
+                    .commit_message(tid, sequence)
+                {
+                    // Selection and commit execute serially, and this token was created from the
+                    // selected mailbox entry. A missing entry therefore indicates a stale,
+                    // duplicate, or otherwise corrupted kernel token.
+                    unreachable!("mailbox delivery token identifies a missing message");
+                }
+                if pm.note_message_received().is_err() {
+                    // Posting increments buffered-message accounting exactly once, and the commit
+                    // above removed exactly one mailbox entry. Underflow therefore means that the
+                    // accounting state diverged from mailbox storage.
+                    unreachable!("buffered-message accounting underflow during delivery commit");
+                }
+            },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the event-service cursor of the running process.
+    ///
+    /// # Returns
+    ///
+    /// The event-service cursor of the running process.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn delivery_cursor() -> usize {
+        Self::get().get_running().state().delivery_cursor()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets the event-service cursor of the running process.
+    ///
+    /// # Parameters
+    ///
+    /// - `cursor`: New event-service cursor for the running process.
+    ///
+    /// # Safety
+    ///
+    /// This function is unsafe because it operates on global variables.
+    ///
+    /// This function is safe to use if and only if the following conditions are met:
+    ///
+    /// - The calling process does not hold a reference to the process manager.
+    ///
+    pub unsafe fn set_delivery_cursor(cursor: usize) {
+        Self::get_mut()
+            .get_running_mut()
+            .state_mut()
+            .set_delivery_cursor(cursor);
     }
 
     ///

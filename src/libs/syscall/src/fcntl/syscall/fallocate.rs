@@ -9,14 +9,17 @@ use crate::{
     fcntl::message::FileSpaceControlRequest,
     safe::RawFileDescriptor,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use sysapi::sys_types::off_t;
@@ -46,7 +49,7 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
-    let request: Message = FileSpaceControlRequest::build(
+    let mut request: Message = FileSpaceControlRequest::build(
         tid,
         backend_fd,
         offset,
@@ -54,10 +57,10 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,
     )?;
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -89,9 +92,9 @@ pub fn posix_fallocate(fd: RawFileDescriptor, offset: off_t, len: off_t) -> Resu
         // System call succeeded, parse response.
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
         // Response was successfully parsed.
-        match message.header {
+        match message.kind() {
             // Response was successfully parsed.
-            SystemCallMessageHeader::FileSpaceControlResponse => Ok(()),
+            SystemCallMessageKind::FileSpaceControlResponse => Ok(()),
             // Response was not parsed.
             header => {
                 ::syslog::warn!(

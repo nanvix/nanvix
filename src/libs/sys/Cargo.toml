@@ -14,10 +14,12 @@ homepage.workspace = true
 verify = true
 
 [dependencies]
+alloc = { version = "1.0.1", optional = true, package = "rustc-std-workspace-alloc" }
 config = { workspace = true }
 error = { workspace = true, features = ["verus"] }
 static_assert = { workspace = true }
 sysapi = { workspace = true }
+spin = { workspace = true, features = ["spin_mutex"] }
 core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
 compiler_builtins = { workspace = true, optional = true }
 vstd = { workspace = true }
@@ -26,11 +28,13 @@ vstd = { workspace = true }
 std = []
 kcall = []
 rustc-dep-of-std = [
+    "alloc",
     "core",
     "config/rustc-dep-of-std",
     "compiler_builtins/rustc-dep-of-std",
     "static_assert/rustc-dep-of-std",
     "error/rustc-dep-of-std",
+    "spin/rustc-dep-of-std",
     "sysapi/rustc-dep-of-std",
 ]
 

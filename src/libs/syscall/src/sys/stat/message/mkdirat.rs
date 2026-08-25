@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::String,
@@ -246,7 +246,7 @@ impl MessagePartitioner for MakeDirectoryAtRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::MakeDirectoryAtRequestPart,
+            SystemCallMessageKind::MakeDirectoryAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -294,7 +294,7 @@ impl MakeDirectoryAtResponse {
     ) -> Message {
         let message: MakeDirectoryAtResponse = MakeDirectoryAtResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::MakeDirectoryAtResponse,
+            SystemCallMessageKind::MakeDirectoryAtResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

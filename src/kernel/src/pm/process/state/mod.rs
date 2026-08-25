@@ -12,6 +12,8 @@
 // Modules
 //==================================================================================================
 
+#[cfg(feature = "test")]
+mod delivery_test;
 mod interrupted;
 #[cfg(feature = "test")]
 mod kill_test;
@@ -47,6 +49,7 @@ use crate::{
         process::{
             capability::Capabilities,
             state::signal::SignalControl,
+            LifecycleTerminationCredit,
         },
         sync::{
             condvar::Condvar,
@@ -56,6 +59,7 @@ use crate::{
             ThreadRef,
             ThreadRefMut,
         },
+        DeliverySequence,
     },
 };
 use ::alloc::collections::{
@@ -94,6 +98,29 @@ pub use signal::exception_to_signal;
 pub use sleeping::SleepingProcess;
 pub use zombie::ZombieProcess;
 
+///
+/// # Description
+///
+/// Reports whether an ownership guard matches the event being unregistered. Scheduling events are
+/// owned as a single class, so any scheduling guard matches a scheduling unregistration; other
+/// events match exactly.
+///
+/// # Parameters
+///
+/// - `owned`: Event carried by the ownership guard.
+/// - `requested`: Event being unregistered.
+///
+/// # Returns
+///
+/// `true` if the guard matches the requested event, otherwise `false`.
+///
+pub(crate) fn event_guard_matches(owned: &Event, requested: &Event) -> bool {
+    match requested {
+        Event::Scheduling(_) => matches!(owned, Event::Scheduling(_)),
+        _ => owned == requested,
+    }
+}
+
 //==================================================================================================
 // Tests
 //==================================================================================================
@@ -102,6 +129,7 @@ pub use zombie::ZombieProcess;
 #[cfg(feature = "test")]
 pub(super) fn test() -> bool {
     let mut passed: bool = true;
+    passed &= delivery_test::test();
     passed &= test_detach::test();
     passed &= signal_test::test();
     passed &= sigframe::test();
@@ -213,6 +241,9 @@ pub struct ProcessState {
     pid: ProcessIdentifier,
     /// Process identifier of the parent process.
     parent: ProcessIdentifier,
+    /// Capacity reserved for this process's future lifecycle termination record. The kernel process
+    /// has no credit because it has no lifecycle creation or termination record.
+    termination_credit: Option<LifecycleTerminationCredit>,
     /// Capabilities.
     capabilities: Capabilities,
     /// Memory address space.
@@ -221,6 +252,8 @@ pub struct ProcessState {
     events: LinkedList<EventOwnership>,
     /// Incoming messages.
     mailbox: Mailbox,
+    /// Next event-service class considered by this process.
+    delivery_cursor: usize,
     /// Memory mapped I/O regions.
     mmio: LinkedList<IoMemoryRegion>,
     /// I/O ports.
@@ -243,14 +276,21 @@ pub struct ProcessState {
 }
 
 impl ProcessState {
-    pub fn new(pid: ProcessIdentifier, parent: ProcessIdentifier, vmem: Vmem) -> Self {
+    pub(super) fn new(
+        pid: ProcessIdentifier,
+        parent: ProcessIdentifier,
+        termination_credit: Option<LifecycleTerminationCredit>,
+        vmem: Vmem,
+    ) -> Self {
         Self {
             pid,
             parent,
+            termination_credit,
             capabilities: Capabilities::default(),
             vmem,
             events: LinkedList::new(),
             mailbox: Mailbox::default(),
+            delivery_cursor: 0,
             mmio: LinkedList::new(),
             pmio: LinkedList::new(),
             mutexes: BTreeMap::new(),
@@ -267,6 +307,11 @@ impl ProcessState {
 
     pub fn ppid(&self) -> ProcessIdentifier {
         self.parent
+    }
+
+    /// Takes the capacity credit reserved for this process's termination record.
+    pub(super) fn take_termination_credit(&mut self) -> Option<LifecycleTerminationCredit> {
+        self.termination_credit.take()
     }
 
     ///
@@ -481,16 +526,113 @@ impl ProcessState {
         self.events.push_back(ownership)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Removes the ownership guards that match an event being unregistered.
+    ///
+    /// # Parameters
+    ///
+    /// - `ev`: Event being unregistered.
+    ///
     pub fn remove_event(&mut self, ev: &Event) {
-        self.events.retain(|o| o.event() != ev)
+        self.events
+            .retain(|ownership| !event_guard_matches(ownership.event(), ev))
     }
 
-    pub fn post_message(&mut self, message: Message) {
-        self.mailbox.send(message)
+    ///
+    /// # Description
+    ///
+    /// Posts a message into this process's mailbox.
+    ///
+    /// # Parameters
+    ///
+    /// - `sequence`: Sequence number assigned to the message.
+    /// - `message`: Message to be posted.
+    ///
+    pub fn post_message(&mut self, sequence: DeliverySequence, message: Message) {
+        self.mailbox.send(sequence, message)
     }
 
-    pub fn receive_message(&mut self, tid: ThreadIdentifier) -> Option<Message> {
-        self.mailbox.receive(tid)
+    ///
+    /// # Description
+    ///
+    /// Peeks the oldest mailbox message eligible for a thread without consuming it. A message is
+    /// eligible when it is addressed either to the thread itself or to its process.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the receiving thread.
+    ///
+    /// # Returns
+    ///
+    /// The selected message and its delivery sequence, or [`None`] if no mailbox message is
+    /// eligible for the thread.
+    ///
+    pub fn peek_message(&self, tid: ThreadIdentifier) -> Option<(DeliverySequence, Message)> {
+        self.mailbox.peek(tid)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Commits delivery of a mailbox message previously selected by [`Self::peek_message`]. The
+    /// selected message is removed from the mailbox only when its delivery sequence still matches
+    /// the oldest message eligible for the receiving thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the receiving thread.
+    /// - `sequence`: Delivery sequence returned by [`Self::peek_message`].
+    ///
+    /// # Returns
+    ///
+    /// `true` if the selected message was removed, or `false` if no mailbox message is eligible for
+    /// the thread.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if an eligible message exists but `sequence` does not identify it. This
+    /// indicates a stale, duplicate, or otherwise invalid delivery token.
+    ///
+    pub fn commit_message(&mut self, tid: ThreadIdentifier, sequence: DeliverySequence) -> bool {
+        self.mailbox.commit(tid, sequence)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns this process's event-service cursor.
+    ///
+    /// # Returns
+    ///
+    /// This process's event-service cursor.
+    ///
+    pub fn delivery_cursor(&self) -> usize {
+        self.delivery_cursor
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sets this process's event-service cursor.
+    ///
+    /// # Parameters
+    ///
+    /// - `cursor`: New event-service cursor for this process.
+    ///
+    pub fn set_delivery_cursor(&mut self, cursor: usize) {
+        self.delivery_cursor = cursor;
+    }
+
+    /// Removes every buffered message addressed exactly to `tid`.
+    pub fn purge_thread_messages(&mut self, tid: ThreadIdentifier) -> usize {
+        self.mailbox.purge_thread(tid)
+    }
+
+    /// Removes every buffered message.
+    pub fn purge_messages(&mut self) -> usize {
+        self.mailbox.purge_all()
     }
 
     /// # Description

@@ -642,32 +642,30 @@ pub fn exec_startup_barrier() {
 
     // Announce the image start to the process manager daemon and ask to be held until the
     // filesystem daemon has applied close-on-exec to our inherited descriptor table.
-    let request: Message = match exec_request(pid, ProcessIdentifier::PROCD, pid) {
+    let mut request: Message = match exec_request(pid, ProcessIdentifier::PROCD, pid) {
         Ok(request) => request,
         Err(error) => {
             ::syslog::warn!("exec_startup_barrier(): failed to build exec request: {error:?}");
             return;
         },
     };
-    if let Err(error) = ::sys::kcall::ipc::__kcall_send(&request) {
-        ::syslog::warn!("exec_startup_barrier(): failed to send exec request: {error:?}");
-        return;
-    }
+    let token: ::sys::ipc::RequestToken = match crate::rpc::send_request(&mut request) {
+        Ok(token) => token,
+        Err(error) => {
+            ::syslog::warn!("exec_startup_barrier(): failed to send exec request: {error:?}");
+            return;
+        },
+    };
 
     // Wait for the process manager daemon to release us. `execv` succeeds only when the kernel can
     // replace the image, and procd answers an exec request exactly once — with success once vfsd
     // has applied close-on-exec, or with a failure status if the relay could not be dispatched — so
-    // exactly one acknowledgement is expected, and it is the only message in flight before `main`.
-    //
-    // The wait is therefore a single receive: validate the reply and proceed. The image has already
-    // been replaced and the exec cannot be undone, so a malformed, misdelivered, or failing reply
-    // is logged and tolerated rather than retried. A retry loop would be unsafe here, not just
-    // unhelpful: crt0 has no non-blocking or timed receive primitive, so a second receive after an
-    // unexpected first message would block with nothing left to deliver. The self-addressed case
-    // (this image is `PROCD`) is already excluded above, so a separate procd is guaranteed to be
-    // the sender; a genuinely silent procd is a daemon-crash scenario beyond what the barrier can
-    // recover, exactly as for the fork barrier this mirrors.
-    let message: Message = match ::sys::kcall::ipc::__kcall_recv() {
+    // exactly one matching acknowledgement is expected. Unrelated mailbox traffic is set aside by
+    // request identifier instead of being consumed as the acknowledgement. The image has already
+    // been replaced and the exec cannot be undone, so a malformed or failing matching reply is
+    // logged and tolerated. The self-addressed case (this image is `PROCD`) is excluded above, so a
+    // separate procd is guaranteed to be the sender.
+    let message: Message = match crate::rpc::recv_response(&token) {
         Ok(message) => message,
         Err(error) => {
             ::syslog::warn!("exec_startup_barrier(): failed to receive exec ack: {error:?}");

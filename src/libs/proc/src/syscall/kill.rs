@@ -49,11 +49,11 @@ pub fn kill(target: ProcessIdentifier, signum: i32) -> Result<(), Error> {
     let caller: ProcessIdentifier = ::sys::kcall::pm::getpid()?;
 
     // Build kill message and send it.
-    let message: Message = message::kill_request(caller, target, signum)?;
-    ::sys::kcall::ipc::__kcall_send(&message)?;
+    let mut message: Message = message::kill_request(caller, target, signum)?;
+    let token = super::rpc::send_request(&mut message)?;
 
     // Wait response from the process manager daemon.
-    let message: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let message: Message = super::rpc::recv_response(&token)?;
 
     // Parse response.
     match message.message_type {

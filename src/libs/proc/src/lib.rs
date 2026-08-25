@@ -11,10 +11,10 @@
 // Modules
 //==================================================================================================
 
-#[cfg(feature = "daemon")]
+#[cfg(any(feature = "daemon", test))]
 mod daemon;
 mod message;
-#[cfg(feature = "syscall")]
+#[cfg(any(feature = "syscall", test))]
 mod syscall;
 
 pub mod identity;
@@ -23,8 +23,10 @@ pub mod identity;
 // Imports
 //==================================================================================================
 
-#[cfg(feature = "daemon")]
+#[cfg(any(feature = "daemon", test))]
 extern crate alloc;
+#[cfg(all(test, not(any(feature = "daemon", feature = "syscall"))))]
+extern crate log as syslog;
 
 //==================================================================================================
 // Exports
@@ -49,6 +51,8 @@ pub use message::{
     signup_response,
     terminal_access_request,
     terminal_signal_request,
+    wait_cancel_request,
+    wait_cancel_response,
     wait_request,
     wait_response,
     ExecAckMessage,
@@ -72,12 +76,14 @@ pub use message::{
     SignupResponseMessage,
     TerminalAccessMessage,
     TerminalSignalMessage,
+    WaitCancelMessage,
+    WaitCancelResponseMessage,
     WaitMessage,
     WaitResponseMessage,
     WaitTarget,
 };
 
-#[cfg(feature = "syscall")]
+#[cfg(any(feature = "syscall", test))]
 pub use syscall::{
     getegid,
     geteuid,
@@ -97,5 +103,5 @@ pub use syscall::{
     WaitOutcome,
 };
 
-#[cfg(feature = "daemon")]
+#[cfg(any(feature = "daemon", test))]
 pub use daemon::ProcessDaemon;

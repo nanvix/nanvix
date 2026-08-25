@@ -15,6 +15,7 @@ mod vfs;
 // Re-Exports
 //==================================================================================================
 
+pub(crate) use self::vfs::normalize_absolute;
 pub use self::{
     mount_point::Mount,
     vfs::Vfs,

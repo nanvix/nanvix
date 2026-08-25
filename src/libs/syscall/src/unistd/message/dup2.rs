@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt,
@@ -76,7 +76,7 @@ impl Dup2Request {
     ) -> Message {
         let message: Dup2Request = Dup2Request::new(oldfd, newfd);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::Dup2Request, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::Dup2Request, message.into_bytes());
         Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -139,7 +139,7 @@ impl Dup2Response {
     ) -> Message {
         let message: Dup2Response = Dup2Response::new(ret);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::Dup2Response, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::Dup2Response, message.into_bytes());
         Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt,
@@ -72,7 +72,7 @@ impl RegisterSocketRequest {
     ) -> Message {
         let message: RegisterSocketRequest = RegisterSocketRequest::new(remote_fd);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::RegisterSocketRequest,
+            SystemCallMessageKind::RegisterSocketRequest,
             message.into_bytes(),
         );
         Message::new(
@@ -143,7 +143,7 @@ impl RegisterSocketResponse {
     ) -> Message {
         let message: RegisterSocketResponse = RegisterSocketResponse::new(fd, epoch);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::RegisterSocketResponse,
+            SystemCallMessageKind::RegisterSocketResponse,
             message.into_bytes(),
         );
         Message::new(

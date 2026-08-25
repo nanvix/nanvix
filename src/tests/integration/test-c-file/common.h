@@ -81,6 +81,9 @@ extern void test_mkdirat(void);
 // Tests whether we can create a directory.
 extern void test_mkdir(void);
 
+// Tests path edge case errno values.
+extern void test_path_errno(void);
+
 // Tests whether `mkfifo()` reports that FIFO special files are unsupported.
 extern void test_mkfifo(void);
 
@@ -116,6 +119,9 @@ extern void test_readv(void);
 
 // Tests whether we can rename a file.
 extern void test_renameat(void);
+
+// Tests rename within subdirectories and replace-existing.
+extern void test_renameat_subdir(void);
 
 // Tests whether we can get file status information.
 extern void test_stat(void);

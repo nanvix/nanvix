@@ -12,7 +12,7 @@ use crate::{
         PartialWriteResponse,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::cmp;
 use ::sys::{
@@ -20,7 +20,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::sys_types::{
@@ -89,7 +92,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
         chunk[..chunk_size].copy_from_slice(&buffer[buffer_offset..buffer_offset + chunk_size]);
 
         // Build request and send it.
-        let request: Message = PartialWriteRequest::build(
+        let mut request: Message = PartialWriteRequest::build(
             tid,
             backend_fd,
             chunk_size as c_size_t,
@@ -98,10 +101,10 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
             crate::VFS_DESTINATION,
             crate::VFS_MESSAGE_TYPE,
         );
-        ::sys::kcall::ipc::__kcall_send(&request)?;
+        let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
         // Receive response.
-        let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+        let response: Message = crate::rpc::recv_response(&token)?;
 
         // Check whether the system call succeeded or not.
         if response.status != 0 {
@@ -125,9 +128,9 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
             // System call succeeded, parse response.
             let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
             // Response was successfully parsed.
-            match message.header {
+            match message.kind() {
                 // Response was successfully parsed.
-                SystemCallMessageHeader::PartialWriteResponse => {
+                SystemCallMessageKind::PartialWriteResponse => {
                     // Parse response.
                     let message: PartialWriteResponse =
                         PartialWriteResponse::from_bytes(message.payload);

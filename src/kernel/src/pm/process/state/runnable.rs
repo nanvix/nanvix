@@ -10,13 +10,16 @@ use crate::{
     mm::Vmem,
     pm::{
         clock,
-        process::state::{
-            interrupted::interrupt,
-            signal::SignalControl,
-            InterruptedProcess,
-            ProcessState,
-            RunningProcess,
-            ZombieProcess,
+        process::{
+            state::{
+                interrupted::interrupt,
+                signal::SignalControl,
+                InterruptedProcess,
+                ProcessState,
+                RunningProcess,
+                ZombieProcess,
+            },
+            LifecycleTerminationCredit,
         },
         thread::{
             InterruptReason,
@@ -63,14 +66,30 @@ pub struct RunnableProcess {
 }
 
 impl RunnableProcess {
-    pub fn new(
+    pub(in crate::pm::process) fn new(
+        pid: ProcessIdentifier,
+        parent: ProcessIdentifier,
+        termination_credit: LifecycleTerminationCredit,
+        ready_thread: ReadyThread,
+        vmem: Vmem,
+    ) -> Self {
+        Self {
+            state: Box::new(ProcessState::new(pid, parent, Some(termination_credit), vmem)),
+            ready_threads: NonEmptyVecDeque::new(ready_thread),
+            interrupted_threads: None,
+            sleeping_threads: None,
+            zombie_threads: None,
+        }
+    }
+
+    pub(in crate::pm::process) fn new_kernel(
         pid: ProcessIdentifier,
         parent: ProcessIdentifier,
         ready_thread: ReadyThread,
         vmem: Vmem,
     ) -> Self {
         Self {
-            state: Box::new(ProcessState::new(pid, parent, vmem)),
+            state: Box::new(ProcessState::new(pid, parent, None, vmem)),
             ready_threads: NonEmptyVecDeque::new(ready_thread),
             interrupted_threads: None,
             sleeping_threads: None,

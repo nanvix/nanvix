@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -66,7 +66,7 @@ impl ReadRequest {
     ) -> Message {
         let message: ReadRequest = ReadRequest::new(fd, count);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::ReadRequest, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::ReadRequest, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -114,7 +114,7 @@ impl ReadResponse {
     ) -> Message {
         let message: ReadResponse = ReadResponse::new(count, buffer);
         let message: SystemCallMessage =
-            SystemCallMessage::new(SystemCallMessageHeader::ReadResponse, message.into_bytes());
+            SystemCallMessage::new(SystemCallMessageKind::ReadResponse, message.into_bytes());
         let message: Message = Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

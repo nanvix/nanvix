@@ -31,7 +31,7 @@ use crate::{
     },
     safe::RawFileDescriptor,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::vec::Vec;
 use ::core::{
@@ -43,7 +43,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
     time::SystemTime,
 };
@@ -318,18 +321,16 @@ fn poll_vfs_once(
     events: &[c_short],
 ) -> Result<Vec<PollEvents>, Error> {
     let request: PollRequest = PollRequest::new(poll_fds, events, 0)?;
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
-    for request in &requests {
-        ::sys::kcall::ipc::__kcall_send(request)?;
-    }
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
     let capacity: usize = PollResponse::MAX_SIZE.div_ceil(SystemCallMessagePart::PAYLOAD_SIZE);
     let mut assembler: SystemCallLongMessage = SystemCallLongMessage::new(capacity)?;
     let mut interrupted: Option<Error> = None;
 
     loop {
-        let response: Message = receive_pending_response(&mut interrupted)?;
+        let response: Message = receive_pending_response(&token, &mut interrupted)?;
         if response.status != 0 {
             if let Some(error) = interrupted {
                 return Err(error);
@@ -344,8 +345,8 @@ fn poll_vfs_once(
         }
 
         let message: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-        match message.header {
-            SystemCallMessageHeader::PollResponsePart => {},
+        match message.kind() {
+            SystemCallMessageKind::PollResponsePart => {},
             _ => {
                 return Err(Error::new(
                     ErrorCode::InvalidMessage,
@@ -391,10 +392,10 @@ fn poll_direct_console_once(
         return Ok(PollEvents(0));
     }
 
-    let request: Message = PollInputRequest::build(tid, 0);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = PollInputRequest::build(tid, 0);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
     let mut interrupted: Option<Error> = None;
-    let response: Message = receive_pending_response(&mut interrupted)?;
+    let response: Message = receive_pending_response(&token, &mut interrupted)?;
     if let Some(error) = interrupted {
         return Err(error);
     }
@@ -414,8 +415,8 @@ fn poll_direct_console_once(
     }
 
     let response: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-    let header: SystemCallMessageHeader = response.header;
-    if header != SystemCallMessageHeader::PollInputResponse {
+    let header: SystemCallMessageKind = response.kind();
+    if header != SystemCallMessageKind::PollInputResponse {
         return Err(Error::new(
             ErrorCode::InvalidMessage,
             "direct console poll returned an unexpected response",
@@ -440,11 +441,11 @@ fn poll_socket_once(
     sockfd: RawFileDescriptor,
     events: c_short,
 ) -> Result<PollEvents, Error> {
-    let request: Message = PollSocketRequest::build(tid, sockfd, events);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = PollSocketRequest::build(tid, sockfd, events);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     let mut interrupted: Option<Error> = None;
-    let response: Message = receive_pending_response(&mut interrupted)?;
+    let response: Message = receive_pending_response(&token, &mut interrupted)?;
     if let Some(error) = interrupted {
         return Err(error);
     }
@@ -454,8 +455,8 @@ fn poll_socket_once(
     }
 
     let response: SystemCallMessage = SystemCallMessage::try_from_bytes(response.payload)?;
-    let header: SystemCallMessageHeader = response.header;
-    if header != SystemCallMessageHeader::PollSocketResponse {
+    let header: SystemCallMessageKind = response.kind();
+    if header != SystemCallMessageKind::PollSocketResponse {
         return Err(Error::new(
             ErrorCode::InvalidMessage,
             "socket poll returned an unexpected response",
@@ -466,9 +467,12 @@ fn poll_socket_once(
 }
 
 /// Receives a response while remembering signal interruption and keeping the mailbox synchronized.
-fn receive_pending_response(interrupted: &mut Option<Error>) -> Result<Message, Error> {
+fn receive_pending_response(
+    token: &RequestToken,
+    interrupted: &mut Option<Error>,
+) -> Result<Message, Error> {
     loop {
-        match ::sys::kcall::ipc::__kcall_recv() {
+        match crate::rpc::recv_response_interruptible(token) {
             Ok(response) => return Ok(response),
             Err(error) if error.code == ErrorCode::Interrupted => {
                 interrupted.get_or_insert(error);

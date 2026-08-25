@@ -12,7 +12,7 @@ use crate::{
     },
     message::MessagePartitioner,
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::vec::Vec;
 use ::sys::{
@@ -20,7 +20,10 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::{
@@ -42,14 +45,12 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
 
     // Build request and send it.
     let request: OpenAtRequest = OpenAtRequest::new(dirfd, &pathname, flags, mode)?;
-    let requests: Vec<Message> =
+    let mut requests: Vec<Message> =
         request.into_parts(tid, crate::VFS_DESTINATION, crate::VFS_MESSAGE_TYPE)?;
-    for request in &requests {
-        ::sys::kcall::ipc::__kcall_send(request)?;
-    }
+    let token: RequestToken = crate::rpc::send_requests(&mut requests)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -87,8 +88,8 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
         // System call succeeded, parse response.
         match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
-                SystemCallMessageHeader::OpenAtResponse => {
+            Ok(message) => match message.kind() {
+                SystemCallMessageKind::OpenAtResponse => {
                     // Parse response.
                     let response: OpenAtResponse = OpenAtResponse::from_bytes(message.payload);
                     let fd: c_int = response.ret;

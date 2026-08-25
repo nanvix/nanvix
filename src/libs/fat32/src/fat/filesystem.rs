@@ -388,6 +388,25 @@ impl Fat {
         })
     }
 
+    /// Returns `true` if any proper ancestor of `path` exists but is not a
+    /// directory. Disambiguates fatfs's `InvalidPath` (which conflates "bad
+    /// path" with "non-directory component in the traversal") into a proper
+    /// `NotADirectory` for POSIX `ENOTDIR` semantics. Walks from the immediate
+    /// parent up to the root, stopping at the first existing non-directory.
+    pub fn has_non_directory_ancestor(&self, path: &str) -> bool {
+        let mut end: usize = path.len();
+        while let Some(slash) = path[..end].rfind('/') {
+            let prefix = &path[..slash];
+            if let Ok(st) = self.stat(prefix) {
+                if !st.is_dir {
+                    return true;
+                }
+            }
+            end = slash;
+        }
+        false
+    }
+
     /// Creates a directory.
     ///
     /// # Parameters
@@ -417,7 +436,13 @@ impl Fat {
                 return Err(Fat32Error::AlreadyExists);
             }
 
-            root.create_dir(path).map_err(map_fatfs_error)?;
+            root.create_dir(path)
+                .map_err(|e| match map_fatfs_error(e) {
+                    Fat32Error::InvalidPath if self.has_non_directory_ancestor(path) => {
+                        Fat32Error::NotADirectory
+                    },
+                    e => e,
+                })?;
             Ok(())
         })
     }

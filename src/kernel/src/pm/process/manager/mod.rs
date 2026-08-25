@@ -3,8 +3,13 @@
 
 mod r#unsafe;
 
+mod delivery;
+
 mod signal;
 
+#[cfg(feature = "test")]
+pub(crate) use delivery::new_test_delivery_sequence;
+pub(crate) use delivery::DeliverySequence;
 pub use signal::{
     SigReturnFailure,
     SignalDeliveryOutcome,
@@ -18,6 +23,7 @@ mod test;
 // Imports
 //==================================================================================================
 
+use self::delivery::DeliveryBroker;
 use crate::{
     event::EventOwnership,
     hal::{
@@ -46,24 +52,28 @@ use crate::{
     },
     pm::{
         clock,
-        process::state::{
-            signal::{
-                compute_blocked,
-                default_action,
-                DefaultAction,
-                KillOutcome,
-                SignalControl,
-                SignalDisposition,
-                UNBLOCKABLE,
+        process::{
+            state::{
+                signal::{
+                    compute_blocked,
+                    default_action,
+                    DefaultAction,
+                    KillOutcome,
+                    SignalControl,
+                    SignalDisposition,
+                    UNBLOCKABLE,
+                },
+                InterruptedProcess,
+                ProcessRef,
+                ProcessRefMut,
+                ProcessState,
+                RunnableProcess,
+                RunningProcess,
+                SleepingProcess,
+                ZombieProcess,
             },
-            InterruptedProcess,
-            ProcessRef,
-            ProcessRefMut,
-            ProcessState,
-            RunnableProcess,
-            RunningProcess,
-            SleepingProcess,
-            ZombieProcess,
+            HarvestedProcess,
+            LifecycleCreationReservation,
         },
         sync::{
             condvar::Condvar,
@@ -136,6 +146,9 @@ use ::sys::{
     ExitStatus,
 };
 use ::type_safe::NonEmptyVecDeque;
+
+#[cfg(feature = "test")]
+use crate::pm::process::LifecycleTerminationCredit;
 
 //==================================================================================================
 // Exports
@@ -221,6 +234,8 @@ pub struct ProcessManager {
     live_count: usize,
     /// Number of messages buffered (not yet consumed).
     number_buffered_messages: usize,
+    /// Broker for ordered delivery-domain items.
+    delivery: DeliveryBroker,
     /// Detached-thread zombies whose reaping was deferred because their
     /// `ContextInformation` was still needed by an in-progress context switch.
     deferred_reap: Vec<(ProcessIdentifier, ZombieThread)>,
@@ -228,19 +243,6 @@ pub struct ProcessManager {
     /// outgoing page directory was still the active one during the switch into the new image.
     /// Drained by [`Self::reap_deferred`] once the switch has loaded the new page directory.
     deferred_exec_vmem: Vec<Vmem>,
-    /// Newly created processes whose creation has not yet been published as a scheduling event.
-    /// Drained by the kernel main loop, where no reference to the process manager is held, so that
-    /// subscribers can be woken safely. Bounded to [`config::kernel::MAX_PROCESSES`]: the
-    /// creation/duplication paths apply backpressure (failing the syscall) when the queue is full,
-    /// so it cannot grow without bound if publication stalls.
-    pending_creations: VecDeque<ProcessCreationInfo>,
-    /// Harvested zombie processes whose termination has not yet been published as a scheduling
-    /// event. Drained by the kernel main loop, where no reference to the process manager is held,
-    /// so that subscribers can be woken safely. Mirrors `pending_creations` so that termination
-    /// notifications are retried (rather than silently dropped) when the scheduling-event queue is
-    /// momentarily saturated. Bounded by the number of live processes, which is itself capped at
-    /// [`config::kernel::MAX_PROCESSES`].
-    pending_terminations: VecDeque<ProcessTerminationInfo>,
     /// Process identifiers of the system daemons the kernel spawned directly (procd, memd, and the
     /// like), recognized by program name at spawn time. Used to classify a process's
     /// [`ProcessRole`] authoritatively even when a daemon occupies a process identifier that another
@@ -262,7 +264,7 @@ impl ProcessManager {
         root: Vmem,
         tm: ThreadManager,
     ) -> Self {
-        let kernel: RunnableProcess = RunnableProcess::new(
+        let kernel: RunnableProcess = RunnableProcess::new_kernel(
             ProcessIdentifier::KERNEL,
             ProcessIdentifier::KERNEL,
             kernel,
@@ -289,10 +291,9 @@ impl ProcessManager {
             tm,
             live_count: 1,
             number_buffered_messages: 0,
+            delivery: DeliveryBroker::default(),
             deferred_reap: Vec::new(),
             deferred_exec_vmem: Vec::new(),
-            pending_creations: VecDeque::new(),
-            pending_terminations: VecDeque::new(),
             daemon_pids: Vec::new(),
         }
     }
@@ -304,6 +305,41 @@ impl ProcessManager {
     /// process.
     fn classify_role(&self, pid: ProcessIdentifier, parent: ProcessIdentifier) -> ProcessRole {
         ProcessRole::classify(parent, self.daemon_pids.iter().any(|(_, p)| *p == pid))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Runs fallible process-creation preparation while holding lifecycle capacity for both the
+    /// creation record and the process's future termination record.
+    ///
+    /// If preparation fails, this function releases the reservation before returning the error.
+    /// Sequence allocation is deferred until the caller commits the prepared process.
+    ///
+    /// # Parameters
+    ///
+    /// - `prepare`: Fallible process preparation to run while capacity is reserved.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the creation reservation and prepared value are returned. Otherwise, an error
+    /// is returned instead.
+    ///
+    fn prepare_lifecycle_creation<T, F>(
+        &mut self,
+        prepare: F,
+    ) -> Result<(LifecycleCreationReservation, T), Error>
+    where
+        F: FnOnce(&mut Self) -> Result<T, Error>,
+    {
+        let reservation: LifecycleCreationReservation = self.delivery.try_reserve_creation()?;
+        match prepare(self) {
+            Ok(prepared) => Ok((reservation, prepared)),
+            Err(error) => {
+                self.delivery.cancel_creation(reservation);
+                Err(error)
+            },
+        }
     }
 
     ///
@@ -1145,44 +1181,32 @@ impl ProcessManager {
             );
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
+        let (reservation, (pid, next_pid, next_tid, vmem, thread)): (
+            LifecycleCreationReservation,
+            (ProcessIdentifier, ProcessIdentifier, ThreadIdentifier, Vmem, ReadyThread),
+        ) = self.prepare_lifecycle_creation(|manager| {
+            // Reserve the next process and thread identifiers early, before resource allocation.
+            let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = manager.try_next_pid()?;
+            let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
+                manager.tm.try_next_tid()?;
 
-        // Refuse to create a new process when the pending process-creation queue is full. This
-        // bounds the queue and applies backpressure so it cannot grow without bound if publication
-        // of creation events stalls.
-        if self.pending_creations.len() >= ::config::kernel::MAX_PROCESSES {
-            let reason: &str = "pending process-creation queue is full";
-            error!(
-                "{reason} (pending={}, max_processes={})",
-                self.pending_creations.len(),
-                ::config::kernel::MAX_PROCESSES
-            );
-            return Err(Error::new(ErrorCode::OutOfMemory, reason));
-        }
+            // The boot command line is space-separated, but the user-space runtime parses the
+            // NUL-separated wire format produced by `execv()`. Stream the conversion into the new
+            // image's user page without allocating an intermediate buffer.
+            let (vmem, thread): (Vmem, ReadyThread) = Self::build_user_image(
+                mm,
+                &manager.tm,
+                manager.get_running().state().vmem(),
+                tid,
+                |mm, vmem| mm.load_elf(vmem, elf),
+                args,
+                env,
+                true,
+                manager.interrupt_capable,
+            )?;
 
-        // Reserve the next process and thread identifiers early, before any resource allocation.
-        let (pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
-        let (tid, next_tid): (ThreadIdentifier, ThreadIdentifier) = self.tm.try_next_tid()?;
-
-        // The boot command line is space-separated, but the user-space runtime parses the
-        // NUL-separated wire format that the `execv()` path produces (so a token may carry an
-        // embedded space). Rather than allocating a converted copy on the constrained kernel heap
-        // (a max-length command line would not fit), `build_user_image` is told to treat ASCII
-        // spaces as token delimiters and substitutes them with NUL in place while streaming the
-        // bytes into the new image's user page.
-
-        // Build the address space and main thread for the new image. All fallible work happens
-        // here; on failure the process manager state is left unchanged.
-        let (vmem, thread): (Vmem, ReadyThread) = Self::build_user_image(
-            mm,
-            &self.tm,
-            self.get_running().state().vmem(),
-            tid,
-            |mm, vmem| mm.load_elf(vmem, elf),
-            args,
-            env,
-            true,
-            self.interrupt_capable,
-        )?;
+            Ok((pid, next_pid, next_tid, vmem, thread))
+        })?;
 
         //==============================================================
         // NOTE: if we fail beyond this point we need to free page mappings.
@@ -1205,10 +1229,6 @@ impl ProcessManager {
             self.tm.commit_next_tid(next_tid);
             self.live_count += 1;
             let parent_pid: ProcessIdentifier = self.get_running().state().pid();
-            let process: RunnableProcess = RunnableProcess::new(pid, parent_pid, thread, vmem);
-
-            // Add process to the queue of ready processes.
-            self.ready.push_back(process);
 
             // Remember daemon identifiers so a process's role can be classified authoritatively
             // later (e.g. at termination), when only its identifier is available.
@@ -1223,12 +1243,17 @@ impl ProcessManager {
                 }
             }
 
-            // Record the creation so the kernel main loop can publish a process-creation
-            // scheduling event. Notifying subscribers here is unsafe because the process manager is
-            // mutably borrowed; deferring to the main loop avoids re-entrant access.
+            // Commit the creation to the ordered delivery broker. Waking the lifecycle owner is
+            // deferred because the process manager is mutably borrowed here.
             let role: ProcessRole = self.classify_role(pid, parent_pid);
-            self.pending_creations
-                .push_back(ProcessCreationInfo::new(pid, parent_pid, role));
+            let termination_credit = self
+                .delivery
+                .commit_creation(reservation, ProcessCreationInfo::new(pid, parent_pid, role));
+            let process: RunnableProcess =
+                RunnableProcess::new(pid, parent_pid, termination_credit, thread, vmem);
+
+            // Add process to the queue of ready processes.
+            self.ready.push_back(process);
 
             Ok(pid)
         }))
@@ -1536,80 +1561,87 @@ impl ProcessManager {
             );
             return Err(Error::new(ErrorCode::OutOfMemory, reason));
         }
+        #[allow(clippy::type_complexity)]
+        let (
+            reservation,
+            (
+                child_pid,
+                next_pid,
+                child_tid,
+                next_tid,
+                vmem,
+                kernel_stack,
+                context,
+                inherited_signals,
+                inherited_blocked,
+            ),
+        ): (
+            LifecycleCreationReservation,
+            (
+                ProcessIdentifier,
+                ProcessIdentifier,
+                ThreadIdentifier,
+                ThreadIdentifier,
+                Vmem,
+                KernelStack,
+                ContextInformation,
+                SignalControl,
+                SigSet,
+            ),
+        ) = self.prepare_lifecycle_creation(|manager| {
+            // Reserve identifiers early, before allocation. Reap pending zombies on demand if the
+            // thread cap is held by terminated-but-unharvested processes.
+            let (child_pid, next_pid): (ProcessIdentifier, ProcessIdentifier) =
+                manager.try_next_pid()?;
+            let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
+                manager.try_next_tid_reaping(mm)?;
 
-        // Refuse to create a new process when the pending process-creation queue is full. This
-        // bounds the queue and applies backpressure so it cannot grow without bound if publication
-        // of creation events stalls.
-        if self.pending_creations.len() >= ::config::kernel::MAX_PROCESSES {
-            let reason: &str = "pending process-creation queue is full";
-            error!(
-                "{reason} (pending={}, max_processes={})",
-                self.pending_creations.len(),
-                ::config::kernel::MAX_PROCESSES
-            );
-            return Err(Error::new(ErrorCode::OutOfMemory, reason));
-        }
+            // Clone the caller's address space.
+            let mut vmem: Vmem = mm.new_vmem(manager.get_running().state().vmem())?;
 
-        // Reserve identifiers early, before any allocation that could fail. Reap pending zombies
-        // on demand if the system-wide thread cap has been reached, so a terminate-heavy workload
-        // is not spuriously refused while reclaimable slots are awaiting harvest.
-        let (child_pid, next_pid): (ProcessIdentifier, ProcessIdentifier) = self.try_next_pid()?;
-        let (child_tid, next_tid): (ThreadIdentifier, ThreadIdentifier) =
-            self.try_next_tid_reaping(mm)?;
+            // Share the parent's user pages with the child and forge its initial context.
+            // Reclaim linked frames if either operation fails.
+            let forge_result: Result<(KernelStack, ContextInformation), Error> = match mm
+                .link_user_pages(manager.get_running_mut().state_mut().vmem_mut(), &mut vmem)
+            {
+                Ok(()) => Self::forge_user_context(mm, &mut vmem, args, manager.interrupt_capable),
+                Err(error) => Err(error),
+            };
 
-        // Clone caller's address space.
-        let mut vmem: Vmem = mm.new_vmem(self.get_running().state().vmem())?;
+            let (kernel_stack, context): (KernelStack, ContextInformation) = match forge_result {
+                Ok(parts) => parts,
+                Err(error) => {
+                    if let Err(cleanup_error) = vmem.clear_user_space() {
+                        warn!(
+                            "duplicate_process(): cleanup after failure also failed \
+                             (error={cleanup_error:?})"
+                        );
+                    }
+                    return Err(error);
+                },
+            };
 
-        // Share the parent's user pages with the child (copy-on-write) and forge the child's
-        // initial kernel context. If any step fails, reclaim the user frames already linked into
-        // the child before returning: dropping the address space alone frees only its page-table
-        // structures, not the user frames their entries map (here, the parent frames whose
-        // refcounts were bumped by the copy-on-write link), so a partial duplication would leak.
-        // The closure is a stand-in for a `try` block (collect `?` early-returns so the error path
-        // can run cleanup); it is invoked exactly once.
-        #[allow(clippy::redundant_closure_call)]
-        let forge_result: Result<(KernelStack, ContextInformation), Error> = (|| {
-            // Share parent's user-space pages with the child using copy-on-write semantics:
-            // both address spaces transparently see the same data until either side writes,
-            // at which point the in-kernel page-fault handler allocates a private copy for
-            // the faulting side.
-            mm.link_user_pages(self.get_running_mut().state_mut().vmem_mut(), &mut vmem)?;
+            // Capture the signal state inherited by the child.
+            let inherited_signals: SignalControl =
+                manager.get_running().state().signals().inherited_for_fork();
+            let inherited_blocked: SigSet = manager
+                .get_running_mut()
+                .running_mut()
+                .thread_state()
+                .blocked();
 
-            // Forge a kernel context that, on first dispatch, enters user mode at `user_fn` on the
-            // supplied user stack.
-            Self::forge_user_context(mm, &mut vmem, args, self.interrupt_capable)
-        })();
-
-        let (kernel_stack, context): (KernelStack, ContextInformation) = match forge_result {
-            Ok(parts) => parts,
-            Err(error) => {
-                // Reclaim any user frames already linked into the child before it is dropped.
-                if let Err(cleanup_error) = vmem.clear_user_space() {
-                    warn!(
-                        "duplicate_process(): cleanup after failure also failed \
-                         (error={cleanup_error:?})"
-                    );
-                }
-                return Err(error);
-            },
-        };
-
-        //==============================================================
-        // NOTE: if we fail beyond this point we leak page mappings.
-        //==============================================================
-
-        // Capture the parent's signal state to inherit into the child. POSIX requires a forked child
-        // to inherit the parent's signal dispositions and the calling thread's blocked-signal mask,
-        // while starting with an empty pending set. The dispositions (and restorer) are captured
-        // here and installed into the child below; the blocked mask is applied to the child's main
-        // thread.
-        let inherited_signals: SignalControl =
-            self.get_running().state().signals().inherited_for_fork();
-        let inherited_blocked: SigSet = self
-            .get_running_mut()
-            .running_mut()
-            .thread_state()
-            .blocked();
+            Ok((
+                child_pid,
+                next_pid,
+                child_tid,
+                next_tid,
+                vmem,
+                kernel_stack,
+                context,
+                inherited_signals,
+                inherited_blocked,
+            ))
+        })?;
 
         Ok(no_fail!(ProcessIdentifier, {
             let mut thread: ReadyThread =
@@ -1623,19 +1655,16 @@ impl ProcessManager {
             self.tm.commit_next_tid(next_tid);
             self.live_count += 1;
 
-            // Install the dispositions and restorer inherited from the parent into the freshly
-            // created child before it is enqueued; its pending set stays empty.
-            let mut process: RunnableProcess = RunnableProcess::new(child_pid, pid, thread, vmem);
+            // Commit the creation and install the termination credit in the child before enqueueing
+            // it. A forked child is never a system daemon, so classify it from its parent lineage.
+            let role: ProcessRole = self.classify_role(child_pid, pid);
+            let termination_credit = self
+                .delivery
+                .commit_creation(reservation, ProcessCreationInfo::new(child_pid, pid, role));
+            let mut process: RunnableProcess =
+                RunnableProcess::new(child_pid, pid, termination_credit, thread, vmem);
             process.set_signals(inherited_signals);
             self.ready.push_back(process);
-
-            // Record the creation so the kernel main loop can publish a process-creation
-            // scheduling event. Notifying subscribers here is unsafe because the process manager is
-            // mutably borrowed; deferring to the main loop avoids re-entrant access. A forked child
-            // is never a system daemon, so it is classified from its parent's lineage.
-            let role: ProcessRole = self.classify_role(child_pid, pid);
-            self.pending_creations
-                .push_back(ProcessCreationInfo::new(child_pid, pid, role));
 
             Ok(child_pid)
         }))
@@ -2113,7 +2142,7 @@ impl ProcessManager {
         // Check the running thread's kernel stack guard watermark before switching away.
         self.check_running_stack_guard();
 
-        let running_process: RunningProcess = self.take_running();
+        let mut running_process: RunningProcess = self.take_running();
         trace!(
             "pid={:?}, tid={:?}, status={status:?}",
             running_process.state().pid(),
@@ -2124,6 +2153,9 @@ impl ProcessManager {
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
             panic!("kernel process cannot exit");
         }
+
+        let purged_messages: usize = running_process.state_mut().purge_messages();
+        self.note_messages_purged(purged_messages);
 
         // Clean up any pending rendezvous entries for this process and wake up counterpart
         // threads that would otherwise block forever.
@@ -2201,7 +2233,8 @@ impl ProcessManager {
         // Check the running thread's kernel stack guard watermark before switching away.
         self.check_running_stack_guard();
 
-        let running_process: RunningProcess = self.take_running();
+        let mut running_process: RunningProcess = self.take_running();
+        let exiting_tid: ThreadIdentifier = running_process.get_tid();
 
         trace!(
             "pid={:?}, tid={:?}, status={:?}",
@@ -2214,6 +2247,11 @@ impl ProcessManager {
         if running_process.state().pid() == ProcessIdentifier::KERNEL {
             panic!("kernel process cannot exit (status={status:?})");
         }
+
+        let purged_messages: usize = running_process
+            .state_mut()
+            .purge_thread_messages(exiting_tid);
+        self.note_messages_purged(purged_messages);
 
         // Terminate the calling thread and schedule another thread to run.
         let (join_cond, previous_context): (Condvar, *mut ContextInformation) =
@@ -2237,11 +2275,13 @@ impl ProcessManager {
                     (join_cond, previous_context)
                 },
                 // The calling process has only zombie threads left, put it in the list of zombies processes.
-                (Err(Err((join_cond, zombie_process, previous_context))), deferred_zombie) => {
+                (Err(Err((join_cond, mut zombie_process, previous_context))), deferred_zombie) => {
                     debug_assert!(
                         deferred_zombie.is_none(),
                         "deferred zombie must be None when no other threads remain"
                     );
+                    let purged_messages: usize = zombie_process.state_mut().purge_messages();
+                    self.note_messages_purged(purged_messages);
                     self.zombies.push_back(zombie_process);
                     (join_cond, previous_context)
                 },
@@ -3014,6 +3054,21 @@ impl ProcessManager {
         }
     }
 
+    /// Removes purged messages from the global buffered-message count.
+    fn note_messages_purged(&mut self, purged_messages: usize) {
+        match self.number_buffered_messages.checked_sub(purged_messages) {
+            Some(n) => self.number_buffered_messages = n,
+            None => {
+                error!(
+                    "number of buffered messages underflowed while purging (buffered={}, \
+                     purged={})",
+                    self.number_buffered_messages, purged_messages
+                );
+                self.number_buffered_messages = 0;
+            },
+        }
+    }
+
     ///
     /// # Description
     ///
@@ -3174,75 +3229,72 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Removes and returns the next pending process-creation record, if any. The kernel main loop
-    /// drains these records to publish process-creation scheduling events to subscribers.
+    /// Commits a harvested process termination to the ordered delivery broker.
+    ///
+    /// # Parameters
+    ///
+    /// - `termination`: Harvested process termination and its reserved capacity credit.
+    ///
+    pub(crate) fn commit_process_termination(&mut self, termination: HarvestedProcess) {
+        let (info, credit) = termination.into_parts();
+        self.delivery.commit_termination(credit, info);
+    }
+
+    /// Releases the capacity credit of a harvested process without producing a lifecycle record.
+    pub(crate) fn release_process_termination(
+        &mut self,
+        termination: HarvestedProcess,
+    ) -> ProcessTerminationInfo {
+        let (info, credit) = termination.into_parts();
+        self.delivery.release_termination(credit);
+        info
+    }
+
+    /// Queues a synthetic creation record without retaining a future termination credit.
+    #[cfg(feature = "test")]
+    pub(crate) fn queue_test_process_creation(
+        &mut self,
+        info: ProcessCreationInfo,
+    ) -> Result<(), Error> {
+        let reservation: LifecycleCreationReservation = self.delivery.try_reserve_creation()?;
+        let credit: LifecycleTerminationCredit = self.delivery.commit_creation(reservation, info);
+        self.delivery.release_termination(credit);
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether lifecycle records are buffered in the delivery broker.
     ///
     /// # Returns
     ///
-    /// The next pending [`ProcessCreationInfo`], or [`None`] if there are no pending records.
+    /// `true` if lifecycle records are buffered, otherwise `false`.
     ///
-    pub fn take_pending_creation(&mut self) -> Option<ProcessCreationInfo> {
-        self.pending_creations.pop_front()
+    pub fn has_pending_lifecycle(&self) -> bool {
+        self.delivery.has_lifecycle()
     }
 
     ///
     /// # Description
     ///
-    /// Re-queues a process-creation record at the front of the pending queue. Used by the kernel
-    /// main loop to restore a record whose publication failed, so that it is retried later instead
-    /// of being lost.
+    /// Requests a deferred wakeup of the lifecycle owner when records are buffered.
     ///
-    /// # Parameters
-    ///
-    /// - `info`: The process-creation record to re-queue.
-    ///
-    pub fn requeue_pending_creation(&mut self, info: ProcessCreationInfo) {
-        self.pending_creations.push_front(info);
+    pub fn request_lifecycle_wakeup(&mut self) {
+        self.delivery.request_lifecycle_wakeup();
     }
 
     ///
     /// # Description
     ///
-    /// Records a harvested process termination so the kernel main loop can publish a
-    /// process-termination scheduling event. Buffering the record (rather than notifying inline)
-    /// lets the main loop apply the same retry/backpressure as process creation, so termination
-    /// events are not lost when the scheduling-event queue is momentarily full.
-    ///
-    /// # Parameters
-    ///
-    /// - `info`: The process-termination record to buffer.
-    ///
-    pub fn push_pending_termination(&mut self, info: ProcessTerminationInfo) {
-        self.pending_terminations.push_back(info);
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Removes and returns the next pending process-termination record, if any. The kernel main
-    /// loop drains these records to publish process-termination scheduling events to subscribers.
+    /// Takes the pending lifecycle-owner wakeup request, clearing it in the process.
     ///
     /// # Returns
     ///
-    /// The next pending [`ProcessTerminationInfo`], or [`None`] if there are no pending records.
+    /// `true` if a wakeup request was pending, otherwise `false`.
     ///
-    pub fn take_pending_termination(&mut self) -> Option<ProcessTerminationInfo> {
-        self.pending_terminations.pop_front()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Re-queues a process-termination record at the front of the pending queue. Used by the
-    /// kernel main loop to restore a record whose publication failed, so that it is retried later
-    /// instead of being lost.
-    ///
-    /// # Parameters
-    ///
-    /// - `info`: The process-termination record to re-queue.
-    ///
-    pub fn requeue_pending_termination(&mut self, info: ProcessTerminationInfo) {
-        self.pending_terminations.push_front(info);
+    pub fn take_lifecycle_wakeup_request(&mut self) -> bool {
+        self.delivery.take_lifecycle_wakeup_request()
     }
 
     ///
@@ -3261,9 +3313,8 @@ impl ProcessManager {
     /// [`Self::reap_deferred_zombie_threads`]) so that detached threads do not reintroduce the same
     /// spurious exhaustion.
     ///
-    /// Each harvested termination is buffered via [`Self::push_pending_termination`] so the kernel
-    /// idle loop still publishes a process-termination scheduling event for it, exactly as if the
-    /// zombie had been harvested there.
+    /// Each harvested termination is committed to the ordered delivery broker so it remains
+    /// observable exactly as if the zombie had been harvested by the idle loop.
     ///
     /// The process manager daemon ([`ProcessIdentifier::PROCD`]) is never reaped here. Harvesting
     /// PROCD is the kernel's shutdown signal, which is observed only by the idle-loop harvester
@@ -3292,8 +3343,8 @@ impl ProcessManager {
                 }
             }
             match self.harvest_zombies(mm) {
-                Ok(Some(info)) => {
-                    self.push_pending_termination(info);
+                Ok(Some(termination)) => {
+                    self.commit_process_termination(termination);
                     reaped += 1;
                 },
                 Ok(None) => break,
@@ -3427,10 +3478,10 @@ impl ProcessManager {
         }
     }
 
-    pub fn harvest_zombies(
+    pub(crate) fn harvest_zombies(
         &mut self,
         mm: &mut VirtMemoryManager,
-    ) -> Result<Option<ProcessTerminationInfo>, Error> {
+    ) -> Result<Option<HarvestedProcess>, Error> {
         let (mut zombie_threads, mut state, status): (
             VecDeque<ZombieThread>,
             Box<ProcessState>,
@@ -3500,7 +3551,12 @@ impl ProcessManager {
         let pid: ProcessIdentifier = state.pid();
         let parent: ProcessIdentifier = state.ppid();
         let role: ProcessRole = self.classify_role(pid, parent);
-        Ok(Some(ProcessTerminationInfo::new(pid, status, parent, role)))
+        let termination_credit = match state.take_termination_credit() {
+            Some(credit) => credit,
+            None => unreachable!("harvested user process must own a termination credit"),
+        };
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(pid, status, parent, role);
+        Ok(Some(HarvestedProcess::new(info, termination_credit)))
     }
 
     ///
@@ -3784,16 +3840,55 @@ impl ProcessManager {
         receiver: MessageReceiver,
         message: Message,
     ) -> Result<(), Error> {
+        // Validate the destination before allocating a sequence number, so that a rejected send
+        // does not consume one. The destination is resolved again afterwards because the broker
+        // and the process list cannot be borrowed mutably at the same time; nothing in between can
+        // invalidate the receiver.
         {
-            let mut process: ProcessRefMut = if receiver.tid.is_none() {
-                self.find_process_mut(receiver.pid)?
-            } else {
-                self.find_process_by_tid(receiver.tid)?
-            };
-            process.state_mut().post_message(message);
+            let mut process: ProcessRefMut = self.find_receiver_mut(receiver)?;
+            if matches!(&process, ProcessRefMut::Zombie(_)) {
+                let reason: &str = "cannot post a message to a zombie process";
+                warn!("{reason} (receiver={receiver:?})");
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            }
+            if !receiver.tid.is_none()
+                && matches!(process.find_thread_mut(receiver.tid), Some(ThreadRefMut::Zombie(_)))
+            {
+                let reason: &str = "cannot post a message to a zombie thread";
+                warn!("{reason} (receiver={receiver:?})");
+                return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+            }
         }
+
+        let sequence: DeliverySequence = self.delivery.allocate_sequence();
+        self.find_receiver_mut(receiver)?
+            .state_mut()
+            .post_message(sequence, message);
+
         self.note_message_posted()?;
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Resolves the process that owns the mailbox addressed by a receiver.
+    ///
+    /// # Parameters
+    ///
+    /// - `receiver`: Receiver whose owning process is resolved.
+    ///
+    /// # Returns
+    ///
+    /// Upon successful completion, a mutable reference to the owning process is returned. Otherwise,
+    /// an error is returned instead.
+    ///
+    fn find_receiver_mut(&mut self, receiver: MessageReceiver) -> Result<ProcessRefMut<'_>, Error> {
+        if receiver.tid.is_none() {
+            self.find_process_mut(receiver.pid)
+        } else {
+            self.find_process_by_tid(receiver.tid)
+        }
     }
 
     pub fn add_event(&mut self, ownership: EventOwnership) -> Result<(), Error> {

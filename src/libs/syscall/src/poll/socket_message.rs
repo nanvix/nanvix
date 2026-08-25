@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -73,10 +73,8 @@ impl PollSocketRequest {
     /// Builds a socket poll request message.
     pub fn build(tid: ThreadIdentifier, sockfd: i32, events: c_short) -> Message {
         let request: Self = Self::new(sockfd, events);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PollSocketRequest,
-            request.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::PollSocketRequest, request.into_bytes());
         Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(crate::NETWORK_DESTINATION, ThreadIdentifier::NONE),
@@ -125,7 +123,7 @@ impl PollSocketResponse {
     pub fn build(tid: ThreadIdentifier, revents: c_short) -> Message {
         let response: Self = Self::new(revents);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::PollSocketResponse,
+            SystemCallMessageKind::PollSocketResponse,
             response.into_bytes(),
         );
         Message::new(

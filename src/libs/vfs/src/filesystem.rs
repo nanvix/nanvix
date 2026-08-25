@@ -125,8 +125,15 @@ pub(crate) fn stat(cwd: &str, path: &str) -> Result<Stat, Fat32Error> {
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::ReadOnly`] if the mount is read-only.
-/// - [`Fat32Error::AlreadyExists`] if directory already exists.
+/// - [`Fat32Error::AlreadyExists`] if path already exists (file or directory).
 /// - [`Fat32Error::NotFound`] if parent directory doesn't exist.
+/// - [`Fat32Error::NotADirectory`] if a path component is not a directory.
+/// - [`Fat32Error::InvalidPath`] if the last component is not a valid FAT filename
+///   (e.g. contains unsupported characters) and every ancestor is a directory.
+///
+/// # References
+///
+/// - [POSIX mkdir()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/mkdir.html)
 pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
@@ -139,7 +146,14 @@ pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 
     state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
-        mount.fat_mut().mkdir(&relative_path)
+        let fat = mount.fat_mut();
+
+        // If path already exists (file or dir), return AlreadyExists.
+        if fat.stat(&relative_path).is_ok() {
+            return Err(Fat32Error::AlreadyExists);
+        }
+
+        fat.mkdir(&relative_path)
     })
 }
 
@@ -250,10 +264,25 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Erro
 /// # Errors
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
+/// - [`Fat32Error::ReadOnly`] if the mount is read-only.
 /// - [`Fat32Error::NotFound`] if `old_path` doesn't exist.
-/// - [`Fat32Error::AlreadyExists`] if `new_path` already exists.
-/// - [`Fat32Error::InvalidPath`] if paths are on different mounts.
+/// - [`Fat32Error::NotADirectory`] if source is a directory but destination is a file.
+/// - [`Fat32Error::NotAFile`] if source is a file but destination is a directory.
+/// - [`Fat32Error::NotEmpty`] if destination is a non-empty directory (via `rmdir`).
+/// - [`Fat32Error::InvalidArgument`] if either path ends in a `.` or `..` component.
+/// - [`Fat32Error::InvalidPath`] if paths are on different mounts, or if path resolution
+///   fails (e.g. an empty path, or a `cwd` that is not absolute).
+///
+/// # References
+///
+/// - [POSIX rename()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html)
 pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
+    // POSIX: a trailing "."/".." component is invalid for rename. Normalization
+    // strips these lexically, so guard on the raw path before resolving.
+    if ends_with_dot(old_path) || ends_with_dot(new_path) {
+        return Err(Fat32Error::InvalidArgument);
+    }
+
     let (old_idx, old_rel) = resolve_path(cwd, old_path)?;
     let (new_idx, new_rel) = resolve_path(cwd, new_path)?;
 
@@ -271,7 +300,42 @@ pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fa
 
     state::with_vfs(|vfs| {
         let mount = vfs.get_mount(old_idx).ok_or(Fat32Error::NotFound)?;
-        mount.fat().rename(&old_rel, &new_rel)
+        let fat = mount.fat();
+
+        // Ensure source exists before applying identity-rename fast path.
+        let src_stat = fat.stat(&old_rel)?;
+
+        // POSIX: rename(path, path) is a no-op (when the path exists).
+        if old_rel == new_rel {
+            return Ok(());
+        }
+
+        // POSIX rename(2): if destination exists, replace it.
+        // rust-fatfs returns AlreadyExists instead, so we must remove the
+        // target first after validating type compatibility.
+        // NOTE: unlink + rename is not atomic — if rename fails after
+        // unlink, the destination is lost. Fixing this requires upstream
+        // rust-fatfs changes.
+        match fat.stat(&new_rel) {
+            Ok(dst_stat) => {
+                if src_stat.is_dir && !dst_stat.is_dir {
+                    return Err(Fat32Error::NotADirectory);
+                }
+                if !src_stat.is_dir && dst_stat.is_dir {
+                    return Err(Fat32Error::NotAFile);
+                }
+                if dst_stat.is_dir {
+                    // POSIX: replacing a dir requires it to be empty.
+                    fat.rmdir(&new_rel)?;
+                } else {
+                    fat.unlink(&new_rel)?;
+                }
+            },
+            Err(Fat32Error::NotFound) => {},
+            Err(e) => return Err(e),
+        }
+
+        fat.rename(&old_rel, &new_rel)
     })
 }
 
@@ -286,14 +350,12 @@ pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fa
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::InvalidPath`] if the path is malformed.
 /// - [`Fat32Error::NotFound`] if no mount handles this path.
+/// - [`Fat32Error::NotADirectory`] if the path is not a directory.
 pub(crate) fn change_directory(cwd: &str, path: &str) -> Result<String, Fat32Error> {
-    let normalized: String = state::with_vfs_mut(|vfs| {
-        let normalized: String = vfs.normalize_path(path, cwd)?;
-        if !normalized.is_empty() && normalized != "/" {
-            let _ = vfs.resolve(&normalized, cwd)?;
-        }
-        Ok(normalized)
-    })?;
+    let normalized: String = normalize(cwd, path)?;
+    if !normalized.is_empty() && normalized != "/" && !stat(cwd, path)?.is_dir() {
+        return Err(Fat32Error::NotADirectory);
+    }
     Ok(normalized)
 }
 
@@ -318,6 +380,15 @@ pub(crate) fn normalize(cwd: &str, path: &str) -> Result<String, Fat32Error> {
 //==================================================================================================
 // Internal Functions
 //==================================================================================================
+
+/// Returns `true` if the final component of `path` is `.` or `..`.
+///
+/// POSIX forbids these as rename operands. Trailing slashes are ignored.
+fn ends_with_dot(path: &str) -> bool {
+    let trimmed: &str = path.trim_end_matches('/');
+    let last: &str = trimmed.rsplit('/').next().unwrap_or(trimmed);
+    last == "." || last == ".."
+}
 
 /// Resolves a path through the VFS to determine which mount handles it.
 ///
@@ -392,6 +463,11 @@ pub(crate) fn open_with_options(
     // references that the previous implementation created.
     let (fat_file, mount_path) = state::with_vfs_mut(|vfs| {
         let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
+
+        // If any ancestor component is a regular file, return ENOTDIR.
+        if mount.fat().has_non_directory_ancestor(&relative_path) {
+            return Err(Fat32Error::NotADirectory);
+        }
         let mount_path: String = String::from(mount.path());
 
         let fat_file = if create_new {

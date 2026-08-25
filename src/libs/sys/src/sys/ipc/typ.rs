@@ -40,6 +40,8 @@ pub enum MessageType {
     PullResponse = 6,
     /// The message encodes information about a process creation event.
     ProcessCreationEvent = 7,
+    /// The message encodes information about a thread termination event.
+    ThreadTerminationEvent = 8,
 }
 ::static_assert::assert_eq_size!(MessageType, 1);
 
@@ -69,6 +71,7 @@ impl MessageType {
             MessageType::Ikc => [5],
             MessageType::PullResponse => [6],
             MessageType::ProcessCreationEvent => [7],
+            MessageType::ThreadTerminationEvent => [8],
         }
     }
 
@@ -95,6 +98,7 @@ impl MessageType {
             [5] => Ok(MessageType::Ikc),
             [6] => Ok(MessageType::PullResponse),
             [7] => Ok(MessageType::ProcessCreationEvent),
+            [8] => Ok(MessageType::ThreadTerminationEvent),
             _ => Err(Error::new(ErrorCode::InvalidMessage, "invalid message type")),
         }
     }
@@ -110,6 +114,54 @@ impl fmt::Debug for MessageType {
             MessageType::Ikc => write!(f, "inter-kernel communication"),
             MessageType::PullResponse => write!(f, "pull response"),
             MessageType::ProcessCreationEvent => write!(f, "process creation event"),
+            MessageType::ThreadTerminationEvent => write!(f, "thread termination event"),
         }
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::alloc::format;
+
+    #[test]
+    fn message_type_discriminants_round_trip() {
+        let cases: [(MessageType, u8); 8] = [
+            (MessageType::Interrupt, 1),
+            (MessageType::Exception, 2),
+            (MessageType::Ipc, 3),
+            (MessageType::ProcessTerminationEvent, 4),
+            (MessageType::Ikc, 5),
+            (MessageType::PullResponse, 6),
+            (MessageType::ProcessCreationEvent, 7),
+            (MessageType::ThreadTerminationEvent, 8),
+        ];
+
+        for (message_type, raw) in cases {
+            assert_eq!(message_type.to_bytes(), [raw]);
+            assert_eq!(
+                MessageType::try_from_bytes([raw]).expect("valid message type should parse"),
+                message_type
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_message_type_discriminants_are_rejected() {
+        assert!(MessageType::try_from_bytes([0]).is_err());
+        assert!(MessageType::try_from_bytes([9]).is_err());
+        assert!(MessageType::try_from_bytes([u8::MAX]).is_err());
+    }
+
+    #[test]
+    fn thread_termination_message_type_is_formatted() {
+        assert_eq!(
+            format!("{:?}", MessageType::ThreadTerminationEvent),
+            "thread termination event"
+        );
     }
 }

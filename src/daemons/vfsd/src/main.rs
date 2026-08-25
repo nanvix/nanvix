@@ -47,7 +47,7 @@ use ::sys::{
     },
     pm::ProcessIdentifier,
 };
-use ::syscall::SystemCallMessageHeader;
+use ::syscall::SystemCallMessageKind;
 use alloc::collections::{
     BTreeMap,
     VecDeque,
@@ -64,6 +64,8 @@ pub fn main() {
         Err(e) => panic!("failed to get pid (error={:?})", e),
     };
     let myname: &str = ::config::daemons::VFSD_NAME;
+    let tid: ::sys::pm::ThreadIdentifier =
+        ::sys::kcall::pm::__kcall_gettid().expect("failed to get thread identifier");
 
     ::syslog::info!("running virtual file system daemon (pid={:?})...", mypid);
 
@@ -76,35 +78,47 @@ pub fn main() {
     // this by buffering any IPC messages received during the signup phase.
     let mut buffered_messages: VecDeque<Message> = VecDeque::new();
     {
-        let message: Message =
+        let token: ::sys::ipc::RequestToken =
+            ::sys::ipc::RequestToken::allocate(tid, ProcessIdentifier::PROCD)
+                .expect("failed to allocate signup request identifier");
+        let mut message: Message =
             ::proc::signup_request(mypid, myname).expect("failed to build signup request");
+        token.identifier().write_to(&mut message);
         ::sys::kcall::ipc::__kcall_send(&message).expect("failed to send signup request");
 
         // Wait for the signup response, buffering any interleaved IPC messages.
         loop {
             let message: Message =
                 ::sys::kcall::ipc::__kcall_recv().expect("failed to receive signup response");
-            if message.message_type == MessageType::Ipc {
-                // Try to parse as a signup response.
-                if let Ok(sys_msg) = SystemMessage::from_bytes(message.payload) {
-                    if matches!(sys_msg.header, SystemMessageHeader::ProcessManagement) {
-                        if let Ok(pm_msg) = ProcessManagementMessage::from_bytes(sys_msg.payload) {
-                            if matches!(
-                                pm_msg.header,
-                                ProcessManagementMessageHeader::SignupResponse
-                            ) {
-                                let resp = SignupResponseMessage::from_bytes(pm_msg.payload);
-                                let status = resp.status;
-                                if status != 0 {
-                                    panic!("signup failed (status={})", status);
-                                }
-                                ::syslog::info!("signed up with procd");
-                                break;
-                            }
-                        }
-                    }
+            let source: ::sys::ipc::MessageSender = message.source;
+            let request_id: ::sys::ipc::RequestIdentifier =
+                ::sys::ipc::RequestIdentifier::read_from(&message);
+            if source.pid == ProcessIdentifier::PROCD && request_id == token.identifier() {
+                assert_eq!(message.message_type, MessageType::Ipc, "invalid signup response type");
+                let sys_msg: SystemMessage =
+                    SystemMessage::from_bytes(message.payload).expect("invalid signup response");
+                assert!(
+                    matches!(sys_msg.header, SystemMessageHeader::ProcessManagement),
+                    "invalid signup system message"
+                );
+                let pm_msg: ProcessManagementMessage =
+                    ProcessManagementMessage::from_bytes(sys_msg.payload)
+                        .expect("invalid signup process-management message");
+                assert!(
+                    matches!(pm_msg.header, ProcessManagementMessageHeader::SignupResponse),
+                    "unexpected signup response"
+                );
+                let resp: SignupResponseMessage = SignupResponseMessage::from_bytes(pm_msg.payload);
+                let status: i32 = resp.status;
+                if status != 0 {
+                    panic!("signup failed (status={})", status);
                 }
-                // Not a signup response — buffer it for later processing.
+                ::syslog::info!("signed up with procd");
+                break;
+            }
+
+            if message.message_type == MessageType::Ipc {
+                // Not a signup response -- buffer it for later processing.
                 ::syslog::info!("buffered IPC message during signup");
                 buffered_messages.push_back(message);
             } else {
@@ -117,16 +131,14 @@ pub fn main() {
         }
     }
 
-    let tid: ::sys::pm::ThreadIdentifier =
-        ::sys::kcall::pm::__kcall_gettid().expect("failed to get vfsd thread id");
     let subscription: Message =
         ::syscall::poll::input_message::PollInputRequest::build_subscription(tid);
     ::sys::kcall::ipc::__kcall_send(&subscription)
         .expect("failed to subscribe to console input notifications");
 
-    // Multi-part request assembler map keyed by (tid_value, header_discriminant).
-    // TODO: add eviction/timeout for incomplete entries to prevent memory leaks from crashed clients.
-    let mut assemblers: BTreeMap<(i32, u16), assembler::AssemblerEntry> = BTreeMap::new();
+    // Bounded multi-part request assembler map keyed by exact caller, header, and request ID.
+    let mut assemblers: BTreeMap<assembler::AssemblerKey, assembler::AssemblerEntry> =
+        BTreeMap::new();
 
     // Pending hostfs operations awaiting IKC responses.
     let mut pending: pending::PendingQueue = pending::PendingQueue::new();
@@ -212,8 +224,8 @@ pub fn main() {
                     if let Ok(syscall_msg) =
                         ::syscall::SystemCallMessage::try_from_bytes(message.payload)
                     {
-                        let header: SystemCallMessageHeader = syscall_msg.header;
-                        if header == SystemCallMessageHeader::ConsoleInputAvailable {
+                        let header: SystemCallMessageKind = syscall_msg.kind();
+                        if header == SystemCallMessageKind::ConsoleInputAvailable {
                             let source: ::sys::ipc::MessageSender = message.source;
                             if source != ::sys::ipc::MessageSender::KERNEL {
                                 ::syslog::warn!(
@@ -228,21 +240,23 @@ pub fn main() {
                         // networkd acknowledges a forwarded socket-endpoint close with an IKC
                         // `CloseResponse`. That close is fire-and-forget — vfsd does not wait on it
                         // — so the acknowledgement is expected and silently discarded.
-                        if header == SystemCallMessageHeader::CloseResponse {
+                        if header == SystemCallMessageKind::CloseResponse {
                             continue;
                         }
                         // Console echo writes deliberately leave their `WriteResponse`
                         // acknowledgement for this event loop; consuming it in the helper with a
                         // nested receive could dequeue an unrelated guest request.
-                        if header == SystemCallMessageHeader::WriteResponse {
+                        if header == SystemCallMessageKind::WriteResponse {
                             continue;
                         }
                         // Multi-part response stream: assemble parts before dispatch.
-                        // The op_id is *not* at the standard payload[2..6] offset for
-                        // these messages (those bytes carry SystemCallMessagePart
-                        // framing) — it lives in the first 4 bytes of the assembled
-                        // body instead.
-                        if header == SystemCallMessageHeader::HostFsReadlinkResponsePart {
+                        // The outer request-ID field echoes op_id, and the assembled body retains
+                        // the same value for compatibility with the hostfs response decoder.
+                        if header == SystemCallMessageKind::HostFsReadlinkResponsePart {
+                            let outer_op_id: ::hostfs_api::OperationId =
+                                ::hostfs_api::OperationId::from_le_bytes(
+                                    syscall_msg.request_id().raw().to_le_bytes(),
+                                );
                             let part: ::syscall::message::SystemCallMessagePart =
                                 ::syscall::message::SystemCallMessagePart::from_bytes(
                                     syscall_msg.payload,
@@ -251,12 +265,16 @@ pub fn main() {
                                 &mut readlink_response_asm,
                                 &mut pending,
                                 part,
-                                "readlink",
+                                outer_op_id,
+                                pending::LongResponseStream::Readlink,
                             ) {
                                 // op_id is known from part 0; the body still carries it
                                 // in bytes [0..4] for `complete_readlink_long`.
                                 if let Some(op) = pending.remove(op_id) {
                                     pending::complete_readlink_long(op, &body);
+                                } else if pending.discard_abandoned_operation(op_id) {
+                                    // The originating process exited or exec'd while the multipart
+                                    // response was in flight.
                                 } else {
                                     ::syslog::warn!(
                                         "long readlink response with no pending op (op_id={})",
@@ -266,7 +284,11 @@ pub fn main() {
                             }
                             continue;
                         }
-                        if header == SystemCallMessageHeader::HostFsReadDirResponsePart {
+                        if header == SystemCallMessageKind::HostFsReadDirResponsePart {
+                            let outer_op_id: ::hostfs_api::OperationId =
+                                ::hostfs_api::OperationId::from_le_bytes(
+                                    syscall_msg.request_id().raw().to_le_bytes(),
+                                );
                             let part: ::syscall::message::SystemCallMessagePart =
                                 ::syscall::message::SystemCallMessagePart::from_bytes(
                                     syscall_msg.payload,
@@ -275,11 +297,15 @@ pub fn main() {
                                 &mut readdir_response_asm,
                                 &mut pending,
                                 part,
-                                "readdir",
+                                outer_op_id,
+                                pending::LongResponseStream::ReadDir,
                             ) {
                                 // Decode the long directory entry and fold it into the
                                 // in-progress getdents sweep, then advance the sweep
                                 // (request the next entry or send the final response).
+                                if pending.discard_abandoned_operation(op_id) {
+                                    continue;
+                                }
                                 let decoded =
                                     ::hostfs_api::long_msg::deserialize_long_readdir_response(
                                         &body,
@@ -346,7 +372,7 @@ pub fn main() {
                             // per round-trip. Keep the op buffered and re-arm another
                             // request until the directory is exhausted or the requested
                             // entry count is reached.
-                            if header == SystemCallMessageHeader::HostFsReadDirResponse {
+                            if header == SystemCallMessageKind::HostFsReadDirResponse {
                                 let step: Option<pending::GetdentsStep> =
                                     match pending.get_mut(op_id) {
                                         Some(op)
@@ -366,6 +392,10 @@ pub fn main() {
                             }
                             if let Some(op) = pending.remove(op_id) {
                                 pending::complete_pending_op(op, &message.payload);
+                            } else if pending.complete_abandoned_operation(op_id, &message.payload)
+                            {
+                                // The originating process exited or exec'd before hostfsd replied.
+                                // Any returned remote handle was closed without recreating VFS state.
                             } else if op_id == ::hostfs_api::OperationId::FIRE_AND_FORGET {
                                 // Expected: response to a fire-and-forget request (e.g. a
                                 // best-effort close on process exit or open-failure cleanup) for
@@ -393,6 +423,9 @@ pub fn main() {
                 },
                 MessageType::ProcessCreationEvent => {
                     ::syslog::warn!("received unexpected process creation event, ignoring");
+                },
+                MessageType::ThreadTerminationEvent => {
+                    ::syslog::warn!("received unexpected thread termination event, ignoring");
                 },
                 MessageType::PullResponse => {
                     ::syslog::warn!("received unexpected pull response, ignoring");

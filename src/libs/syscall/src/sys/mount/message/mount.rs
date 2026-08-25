@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::String,
@@ -195,7 +195,7 @@ impl MessagePartitioner for MountRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::HostMountRequestPart,
+            SystemCallMessageKind::HostMountRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -242,10 +242,8 @@ impl MountResponse {
         message_type: MessageType,
     ) -> Message {
         let message: MountResponse = MountResponse::new(ret);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::HostMountResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::HostMountResponse, message.into_bytes());
         Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

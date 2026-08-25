@@ -19,6 +19,7 @@ use ::sys::error::Error;
 //==================================================================================================
 
 pub use kcall::*;
+pub(crate) use manager::PendingDelivery;
 pub use manager::{
     EventManager,
     EventOwnership,
@@ -44,4 +45,10 @@ pub fn init() -> Result<(), Error> {
 #[cfg(feature = "test")]
 pub fn test() -> bool {
     manager::test::test()
+}
+
+/// Runs ordered-delivery integration tests after process-manager initialization.
+#[cfg(feature = "test")]
+pub fn test_delivery_integration() -> bool {
+    manager::test::test_delivery_integration()
 }

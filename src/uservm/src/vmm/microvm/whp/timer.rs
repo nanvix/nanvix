@@ -8,6 +8,7 @@
 // Imports
 //==================================================================================================
 
+use super::RunState;
 use ::log::trace;
 use ::std::{
     sync::{
@@ -48,7 +49,7 @@ unsafe extern "system" {
 /// 1 kHz) handles all timer interrupts inside the WHP LAPIC emulator.
 ///
 /// The timer thread fires at a low frequency (100 Hz) and calls
-/// `WHvCancelRunVirtualProcessor` to cause a `Canceled` exit. The VMM
+/// `WHvCancelRunVirtualProcessor` when a vCPU run is pending to cause a `Canceled` exit. The VMM
 /// loop uses these exits to update `system_time` on the pvclock page.
 ///
 /// The inter-tick wait is **interruptible**: the thread waits on a
@@ -62,6 +63,8 @@ unsafe extern "system" {
 pub struct Timer {
     /// WHP partition handle (for `WHvCancelRunVirtualProcessor`).
     partition: WHV_PARTITION_HANDLE,
+    /// State that limits cancellation to an active or pending vCPU run.
+    run_state: Arc<RunState>,
     /// Shared stop flag (`true` once the timer should exit) and the
     /// [`Condvar`] used to wake the timer thread promptly on stop.
     stop: Arc<(Mutex<bool>, Condvar)>,
@@ -80,9 +83,10 @@ unsafe impl Sync for Timer {}
 
 impl Timer {
     /// Creates a new timer for the given WHP partition. The timer is initially stopped.
-    pub fn new(partition: WHV_PARTITION_HANDLE) -> Self {
+    pub(super) fn new(partition: WHV_PARTITION_HANDLE, run_state: Arc<RunState>) -> Self {
         Self {
             partition,
+            run_state,
             stop: Arc::new((Mutex::new(false), Condvar::new())),
             thread: None,
         }
@@ -90,8 +94,8 @@ impl Timer {
 
     /// Starts the timer thread with the given period in microseconds.
     ///
-    /// Each tick calls `WHvCancelRunVirtualProcessor` to force a VM exit
-    /// so the VMM loop can update pvclock. No guest interrupt is injected.
+    /// Each tick cancels a pending vCPU run to force a VM exit so the VMM loop can update pvclock.
+    /// No guest interrupt is injected.
     pub fn start(&mut self, period_us: u64) {
         if self.thread.is_some() {
             return;
@@ -107,6 +111,7 @@ impl Timer {
 
         let stop: Arc<(Mutex<bool>, Condvar)> = self.stop.clone();
         let partition: WHV_PARTITION_HANDLE = self.partition;
+        let run_state: Arc<RunState> = self.run_state.clone();
         let period: Duration = Duration::from_micros(period_us);
 
         self.thread = Some(thread::spawn(move || {
@@ -131,12 +136,14 @@ impl Timer {
                 }
                 // Period elapsed: release the lock while cancelling so `stop()` can proceed.
                 drop(guard);
-                // SAFETY: `partition` is a valid WHP partition handle that outlives
-                // the timer thread (the Vmm struct owns both).
-                unsafe {
-                    let _: Result<(), windows::core::Error> =
-                        WHvCancelRunVirtualProcessor(partition, 0, 0);
-                }
+                run_state.cancel_if_pending(|| {
+                    // SAFETY: `partition` is a valid WHP partition handle that outlives
+                    // the timer thread (the Vmm struct owns both).
+                    unsafe {
+                        let _: Result<(), windows::core::Error> =
+                            WHvCancelRunVirtualProcessor(partition, 0, 0);
+                    }
+                });
                 stopped = lock.lock().unwrap();
             }
 

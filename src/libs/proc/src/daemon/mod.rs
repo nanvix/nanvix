@@ -21,6 +21,7 @@ use crate::{
     SignupMessage,
     TerminalAccessMessage,
     TerminalSignalMessage,
+    WaitCancelMessage,
     WaitMessage,
     WaitTarget,
 };
@@ -45,10 +46,14 @@ use ::sys::{
         ProcessRole,
         ProcessTerminationInfo,
         SchedulingEvent,
+        ThreadTerminationInfo,
     },
     ipc::{
         Message,
+        MessageReceiver,
+        MessageSender,
         MessageType,
+        RequestIdentifier,
         SystemMessage,
         SystemMessageHeader,
     },
@@ -56,6 +61,7 @@ use ::sys::{
         Capability,
         GroupIdentifier,
         ProcessIdentifier,
+        ThreadIdentifier,
         UserIdentifier,
         SIGCHLD,
         SIGTTIN,
@@ -73,6 +79,23 @@ use ::sys::{
 /// to user space), kept in sync by convention rather than by a shared definition, as this crate
 /// does not depend on the user-space API crate.
 const WNOHANG: i32 = 1;
+
+/// Maximum number of wait requests that may be blocked concurrently.
+const MAX_BLOCKED_WAITERS: usize = ::config::kernel::MAX_THREADS * 4;
+
+/// Maximum number of fork synchronizations that may await process creation or clone completion.
+const MAX_PENDING_FORK_SYNCS: usize = ::config::kernel::MAX_PROCESSES;
+
+/// A decoded process-lifecycle message from the kernel.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LifecycleMessage {
+    /// A process was created.
+    ProcessCreation(ProcessCreationInfo),
+    /// A process terminated.
+    ProcessTermination(ProcessTerminationInfo),
+    /// A thread terminated.
+    ThreadTermination(ThreadTerminationInfo),
+}
 
 ///
 /// # Description
@@ -99,6 +122,8 @@ struct ProcessRecord {
     /// with a failure acknowledgement instead of leaving it deadlocked on a snapshot that will never
     /// be taken.
     fork_clone_failed: bool,
+    /// Identifier of the fork-clone request awaiting acknowledgement from the filesystem daemon.
+    fork_clone_request_id: Option<RequestIdentifier>,
     /// Termination status once the process has terminated and is awaiting reap by `waitpid()`.
     /// `Some(status)` marks a zombie; `None` marks a live (or not-yet-terminated) process.
     zombie: Option<i32>,
@@ -110,6 +135,71 @@ struct ProcessRecord {
     /// group. Inherited from the parent on fork and changed by `setpgid()`/`setsid()`. Used for
     /// signal-to-process-group delivery and foreground/background terminal arbitration.
     pgid: ProcessIdentifier,
+}
+
+///
+/// # Description
+///
+/// Routing metadata retained from a request until its response is sent.
+///
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ResponseContext {
+    /// Exact process and thread that issued the request.
+    receiver: MessageReceiver,
+    /// Identifier that correlates the response with the request.
+    request_id: RequestIdentifier,
+}
+
+impl ResponseContext {
+    /// Creates response routing metadata from a request sender and identifier.
+    fn new(sender: MessageSender, request_id: RequestIdentifier) -> Self {
+        Self {
+            receiver: MessageReceiver::new(sender.pid, sender.tid),
+            request_id,
+        }
+    }
+
+    /// Applies this context to a response message.
+    fn prepare_response(self, response: &mut Message) {
+        response.destination = self.receiver;
+        self.request_id.write_to(response);
+    }
+
+    /// Sends a response to the exact requesting thread with the matching request identifier.
+    fn send(self, mut response: Message) -> Result<(), Error> {
+        self.prepare_response(&mut response);
+        ::sys::kcall::ipc::__kcall_send(&response)
+    }
+}
+
+///
+/// # Description
+///
+/// A fork-sync request awaiting completion of the child's filesystem clone.
+///
+#[derive(Clone, Copy)]
+struct PendingForkSync {
+    /// Process identifier of the freshly forked child.
+    child: ProcessIdentifier,
+    /// Process identifier of the parent waiting for the clone.
+    parent: ProcessIdentifier,
+    /// Routing metadata for the parent and child acknowledgements.
+    response_context: ResponseContext,
+}
+
+///
+/// # Description
+///
+/// An exec request awaiting completion of close-on-exec processing.
+///
+#[derive(Clone, Copy)]
+struct PendingExec {
+    /// Process held at the exec synchronization barrier.
+    process: ProcessIdentifier,
+    /// Identifier of the close-on-exec request awaiting acknowledgement from the filesystem daemon.
+    request_id: RequestIdentifier,
+    /// Routing metadata for the deferred acknowledgement.
+    response_context: ResponseContext,
 }
 
 impl ProcessRecord {
@@ -124,6 +214,7 @@ impl ProcessRecord {
             children: Vec::new(),
             fork_clone_done: false,
             fork_clone_failed: false,
+            fork_clone_request_id: None,
             zombie: None,
             sid: pid,
             pgid: pid,
@@ -163,11 +254,87 @@ struct BlockedWaiter {
     waiter: ProcessIdentifier,
     /// Children that the waiter is waiting for.
     selector: WaitSelector,
+    /// Routing metadata for the deferred response.
+    response_context: ResponseContext,
 }
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+/// Parses and authenticates a process-lifecycle message published by the kernel. Returns `None`
+/// when the message carries no lifecycle event, so that callers fall through to their own handling.
+fn parse_lifecycle_message(message: &Message) -> Result<Option<LifecycleMessage>, Error> {
+    match message.message_type {
+        MessageType::ProcessCreationEvent => {
+            authenticate_lifecycle_message(message)?;
+            let raw_info: [u8; ::core::mem::size_of::<ProcessCreationInfo>()] =
+                lifecycle_payload(message, "invalid process creation event payload")?;
+            Ok(Some(LifecycleMessage::ProcessCreation(ProcessCreationInfo::from_ne_bytes(
+                raw_info,
+            ))))
+        },
+        MessageType::ProcessTerminationEvent => {
+            authenticate_lifecycle_message(message)?;
+            let raw_info: [u8; ::core::mem::size_of::<ProcessTerminationInfo>()] =
+                lifecycle_payload(message, "invalid process termination event payload")?;
+            Ok(Some(LifecycleMessage::ProcessTermination(ProcessTerminationInfo::from_ne_bytes(
+                raw_info,
+            ))))
+        },
+        MessageType::ThreadTerminationEvent => {
+            authenticate_lifecycle_message(message)?;
+            let raw_info: [u8; ::core::mem::size_of::<ThreadTerminationInfo>()] =
+                lifecycle_payload(message, "invalid thread termination event payload")?;
+            Ok(Some(LifecycleMessage::ThreadTermination(ThreadTerminationInfo::from_ne_bytes(
+                raw_info,
+            ))))
+        },
+        _ => Ok(None),
+    }
+}
+
+/// Rejects a lifecycle message that the kernel did not stamp as its own. Local IPC stamps the real
+/// sender, so a user process that selects a lifecycle message type cannot impersonate the kernel.
+fn authenticate_lifecycle_message(message: &Message) -> Result<(), Error> {
+    let source: MessageSender = message.source;
+    if source != MessageSender::KERNEL {
+        let reason: &str = "process lifecycle message did not originate from kernel";
+        ::syslog::warn!("authenticate_lifecycle_message(): {reason} (source={source:?})");
+        return Err(Error::new(ErrorCode::PermissionDenied, reason));
+    }
+
+    Ok(())
+}
+
+/// Extracts a fixed-size lifecycle information structure from the head of a message payload.
+fn lifecycle_payload<const N: usize>(
+    message: &Message,
+    reason: &'static str,
+) -> Result<[u8; N], Error> {
+    match message
+        .payload
+        .get(..N)
+        .and_then(|payload| payload.try_into().ok())
+    {
+        Some(raw_info) => Ok(raw_info),
+        None => Err(Error::new(ErrorCode::InvalidArgument, reason)),
+    }
+}
+
+/// Sends a process-exit notification through the guest kernel-call boundary.
+fn send_process_exit_notification(request: &Message) -> Result<(), Error> {
+    #[cfg(not(test))]
+    {
+        ::sys::kcall::ipc::__kcall_send(request)
+    }
+
+    #[cfg(test)]
+    {
+        let _request: &Message = request;
+        Ok(())
+    }
+}
 
 pub struct ProcessDaemon {
     // FIXME: auto-signup process on process creation.
@@ -177,14 +344,13 @@ pub struct ProcessDaemon {
     /// made authoritatively from the role carried in the termination event, not from this field.
     init_proc: Option<ProcessIdentifier>,
     /// Fork-sync requests awaiting the filesystem daemon's acknowledgement that the child's
-    /// fork-clone snapshot has been taken, stored as `(child, parent)` pairs that map a child to the
-    /// blocked parent. Populated when a fork-sync request cannot be answered immediately -- either
-    /// the child's process-creation event has not yet been observed, or the clone has been
-    /// dispatched but not yet acknowledged; drained when the filesystem daemon acknowledges the
-    /// clone (releasing or failing the waiter) or when the clone could not be dispatched. A `Vec` is
-    /// used rather than a map because only a handful of fork operations are ever pending
-    /// concurrently, so a linear scan is cheaper than the overhead of an ordered map.
-    pending_fork_syncs: Vec<(ProcessIdentifier, ProcessIdentifier)>,
+    /// fork-clone snapshot has been taken. Populated when a fork-sync request cannot be answered
+    /// immediately -- either the child's process-creation event has not yet been observed, or the
+    /// clone has been dispatched but not yet acknowledged; drained when the filesystem daemon
+    /// acknowledges the clone (releasing or failing the waiter) or when the clone could not be
+    /// dispatched. A `Vec` is used rather than a map because only a handful of fork operations are
+    /// ever pending concurrently, so a linear scan is cheaper than the overhead of an ordered map.
+    pending_fork_syncs: Vec<PendingForkSync>,
     /// Processes held at the exec synchronization barrier, awaiting the filesystem daemon's
     /// acknowledgement that close-on-exec has been applied to their inherited descriptor table.
     /// Populated when a freshly `exec`'d process requests the barrier and the close-on-exec
@@ -192,7 +358,9 @@ pub struct ProcessDaemon {
     /// at which point the process is released. A `Vec` is used rather than a map because only a
     /// handful of exec operations are ever pending concurrently, so a linear scan is cheaper than
     /// the overhead of an ordered map.
-    pending_execs: Vec<ProcessIdentifier>,
+    pending_execs: Vec<PendingExec>,
+    /// Next identifier for an asynchronous request sent by this daemon's event-loop thread.
+    next_request_id: u32,
     /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
     /// answered later, when a `ProcessTermination` event for a matching child arrives.
     blocked: Vec<BlockedWaiter>,
@@ -204,6 +372,29 @@ pub struct ProcessDaemon {
 }
 
 impl ProcessDaemon {
+    /// Allocates an identifier that is not used by another asynchronous daemon request.
+    fn allocate_request_id(&mut self) -> RequestIdentifier {
+        loop {
+            let request_id: RequestIdentifier = RequestIdentifier::from_raw(self.next_request_id);
+            self.next_request_id = self.next_request_id.wrapping_add(1);
+            if self.next_request_id == RequestIdentifier::NONE.raw() {
+                self.next_request_id = 1;
+            }
+
+            let fork_request_active: bool = self
+                .processes
+                .values()
+                .any(|record| record.fork_clone_request_id == Some(request_id));
+            let exec_request_active: bool = self
+                .pending_execs
+                .iter()
+                .any(|pending| pending.request_id == request_id);
+            if !fork_request_active && !exec_request_active {
+                return request_id;
+            }
+        }
+    }
+
     /// Initializes the process manager daemon.
     pub fn init() -> Result<Self, Error> {
         ::syslog::info!("running process manager daemon...");
@@ -215,10 +406,9 @@ impl ProcessDaemon {
         ::sys::kcall::pm::__kcall_capctl(Capability::ProcessManagement, true)?;
 
         // Subscribe to scheduling events. Scheduling events are owned as a single class: a single
-        // registration claims ownership of every scheduling event, so this one call subscribes the
-        // daemon to both process-termination and process-creation events. The kernel publishes a
-        // creation event whenever a process forks a child, which the daemon uses to record the
-        // parent/child relationship without the parent having to register the child explicitly.
+        // registration claims ownership of every scheduling event. The kernel publishes a creation
+        // event whenever a process forks a child, which the daemon uses to record the parent/child
+        // relationship without the parent having to register the child explicitly.
         ::syslog::info!("subscribing to scheduling events...");
         ::sys::kcall::event::__kcall_evctrl(
             Event::Scheduling(SchedulingEvent::ProcessTermination),
@@ -230,6 +420,7 @@ impl ProcessDaemon {
             init_proc: None,
             pending_fork_syncs: Vec::new(),
             pending_execs: Vec::new(),
+            next_request_id: 1,
             blocked: Vec::new(),
             foreground_pgrp: None,
         })
@@ -241,41 +432,8 @@ impl ProcessDaemon {
         loop {
             match ::sys::kcall::ipc::__kcall_recv() {
                 Ok(message) => {
-                    ::syslog::info!("received message from={:?}", { message.source });
-                    match message.message_type {
-                        MessageType::Exception => unreachable!("should not receive exceptions"),
-                        MessageType::Ipc => {
-                            if let Err(e) = self.handle_ipc_message(message) {
-                                ::syslog::error!("failed to handle IPC message (error={:?})", e);
-                            }
-                        },
-                        MessageType::Interrupt => unreachable!("should not receive interrupts"),
-                        MessageType::Ikc => unreachable!("should not receive IKC messages"),
-                        MessageType::ProcessTerminationEvent => {
-                            match self.handle_process_termination_event(message) {
-                                Ok(Some(status)) => return status,
-                                Ok(None) => continue,
-                                Err(e) => {
-                                    ::syslog::error!(
-                                        "failed to handle scheduling event (error={:?})",
-                                        e
-                                    )
-                                },
-                            }
-                        },
-                        MessageType::PullResponse => {
-                            ::syslog::error!("received unexpected pull response, ignoring");
-                            continue;
-                        },
-                        MessageType::ProcessCreationEvent => {
-                            if let Err(e) = self.handle_process_creation_event(message) {
-                                ::syslog::error!(
-                                    "failed to handle process creation event (error={:?})",
-                                    e
-                                );
-                            }
-                            continue;
-                        },
+                    if let Some(status) = self.handle_message(message) {
+                        return status;
                     }
                 },
                 Err(e) => ::syslog::error!("failed to receive exception message (error={:?})", e),
@@ -283,18 +441,75 @@ impl ProcessDaemon {
         }
     }
 
+    /// Handles a message received in normal operation. Returns the exit status that shuts the
+    /// system down, or `None` to keep serving requests.
+    fn handle_message(&mut self, message: Message) -> Option<i32> {
+        ::syslog::info!("received message from={:?}", { message.source });
+
+        match parse_lifecycle_message(&message) {
+            Ok(Some(lifecycle)) => {
+                return match self.handle_lifecycle_message(lifecycle) {
+                    Ok(status) => status,
+                    Err(e) => {
+                        ::syslog::error!("failed to handle lifecycle message (error={:?})", e);
+                        None
+                    },
+                };
+            },
+            Ok(None) => {},
+            Err(e) => {
+                ::syslog::error!("failed to parse lifecycle message (error={:?})", e);
+                return None;
+            },
+        }
+
+        match message.message_type {
+            MessageType::Exception => unreachable!("should not receive exceptions"),
+            MessageType::Ipc => {
+                if let Err(e) = self.handle_ipc_message(message) {
+                    ::syslog::error!("failed to handle IPC message (error={:?})", e);
+                }
+            },
+            MessageType::Interrupt => unreachable!("should not receive interrupts"),
+            MessageType::Ikc => unreachable!("should not receive IKC messages"),
+            MessageType::PullResponse => {
+                ::syslog::error!("received unexpected pull response, ignoring");
+            },
+            // Consumed by the lifecycle parser above. Ignored rather than asserted, so that a
+            // regression in the parser cannot take the process manager down.
+            MessageType::ProcessTerminationEvent
+            | MessageType::ProcessCreationEvent
+            | MessageType::ThreadTerminationEvent => {
+                ::syslog::error!("lifecycle message escaped the lifecycle parser, ignoring");
+            },
+        }
+
+        None
+    }
+
+    /// Handles an authenticated process-lifecycle message in normal operation.
+    fn handle_lifecycle_message(
+        &mut self,
+        lifecycle: LifecycleMessage,
+    ) -> Result<Option<i32>, Error> {
+        match lifecycle {
+            LifecycleMessage::ProcessCreation(info) => {
+                self.handle_process_creation_event(info)?;
+                Ok(None)
+            },
+            LifecycleMessage::ProcessTermination(info) => {
+                self.handle_process_termination_event(info)
+            },
+            // Thread-termination cleanup is activated once bounded lifecycle delivery and its
+            // consumer are available. Until then, authenticated events are intentionally dormant.
+            LifecycleMessage::ThreadTermination(_info) => Ok(None),
+        }
+    }
+
     /// Handles a process-creation scheduling event published by the kernel. The kernel emits this
     /// event whenever a process forks a child, allowing the daemon to record the parent/child
     /// relationship without the parent having to register the child explicitly.
-    fn handle_process_creation_event(&mut self, message: Message) -> Result<(), Error> {
-        // Deserialize the process-creation information.
-        let raw_info: [u8; ::core::mem::size_of::<ProcessCreationInfo>()] = message.payload
-            [0..::core::mem::size_of::<ProcessCreationInfo>()]
-            .try_into()
-            .map_err(|_| {
-                Error::new(ErrorCode::InvalidArgument, "invalid process creation event payload")
-            })?;
-        let info: ProcessCreationInfo = ProcessCreationInfo::from_ne_bytes(raw_info);
+    fn handle_process_creation_event(&mut self, info: ProcessCreationInfo) -> Result<(), Error> {
         let child: ProcessIdentifier = info.pid;
         let parent: ProcessIdentifier = info.parent;
 
@@ -326,8 +541,12 @@ impl ProcessDaemon {
         // state; a successful dispatch is confirmed separately by the filesystem daemon's
         // acknowledgement (see below).
         if parent != ProcessIdentifier::KERNEL {
-            let clone_dispatched: bool = self.notify_fork_clone(parent, child);
-            if !clone_dispatched {
+            let request_id: Option<RequestIdentifier> = self.notify_fork_clone(parent, child);
+            if let Some(request_id) = request_id {
+                if let Some(record) = self.processes.get_mut(&child) {
+                    record.fork_clone_request_id = Some(request_id);
+                }
+            } else {
                 // The fork-clone notification could not be dispatched. Mark the failure so that a
                 // fork-sync waiter (whether already pending below or arriving later) is released
                 // with a failure acknowledgement rather than left blocked forever.
@@ -360,15 +579,15 @@ impl ProcessDaemon {
         if let Some(pos) = self
             .pending_fork_syncs
             .iter()
-            .position(|(c, _)| *c == child)
+            .position(|pending| pending.child == child)
         {
-            let (_, waiting_parent) = self.pending_fork_syncs[pos];
-            if waiting_parent != parent {
+            let pending: PendingForkSync = self.pending_fork_syncs[pos];
+            if pending.parent != parent {
                 // Forged waiter: drop it without acknowledging.
                 self.pending_fork_syncs.swap_remove(pos);
                 ::syslog::warn!(
                     "dropping forged fork-sync (waiter={:?}, child={:?}, real_parent={:?})",
-                    waiting_parent,
+                    pending.parent,
                     child,
                     parent
                 );
@@ -380,7 +599,7 @@ impl ProcessDaemon {
             {
                 // Genuine waiter and the fork-clone has been acknowledged: release it.
                 self.pending_fork_syncs.swap_remove(pos);
-                self.release_fork_sync(waiting_parent, child);
+                self.release_fork_sync(pending.parent, child, pending.response_context);
             } else if self
                 .processes
                 .get(&child)
@@ -394,10 +613,10 @@ impl ProcessDaemon {
                 self.pending_fork_syncs.swap_remove(pos);
                 ::syslog::warn!(
                     "fork-clone not dispatched, failing fork-sync waiter (parent={:?}, child={:?})",
-                    waiting_parent,
+                    pending.parent,
                     child
                 );
-                self.fail_fork_sync(waiting_parent, child);
+                self.fail_fork_sync(pending.parent, child, pending.response_context);
             }
             // Otherwise the clone was dispatched but not yet acknowledged: leave the waiter pending;
             // `handle_fork_clone_ack` releases it once the filesystem daemon confirms the snapshot.
@@ -414,18 +633,10 @@ impl ProcessDaemon {
     /// crash and also triggers shutdown), and a forked user process is reaped. Because the role and
     /// parent are carried in the event, procd no longer reconstructs them from prior, race-prone
     /// state.
-    fn handle_process_termination_event(&mut self, message: Message) -> Result<Option<i32>, Error> {
-        // Deserialize the authoritative termination information published by the kernel.
-        let raw_info: [u8; ::core::mem::size_of::<ProcessTerminationInfo>()] =
-            match message.payload[0..::core::mem::size_of::<ProcessTerminationInfo>()].try_into() {
-                Ok(bytes) => bytes,
-                Err(_) => {
-                    let reason: &str = "invalid process termination message payload";
-                    ::syslog::error!("handle_process_termination_event(): {reason:?}");
-                    return Err(Error::new(ErrorCode::InvalidArgument, reason));
-                },
-            };
-        let info: ProcessTerminationInfo = ProcessTerminationInfo::from_ne_bytes(raw_info);
+    fn handle_process_termination_event(
+        &mut self,
+        info: ProcessTerminationInfo,
+    ) -> Result<Option<i32>, Error> {
         let pid: ProcessIdentifier = info.pid;
         let status: i32 = info.status.as_u32() as i32;
 
@@ -489,12 +700,40 @@ impl ProcessDaemon {
     /// their own filesystem state lazily as they open files, and that state must be reclaimed too;
     /// it is a no-op in the filesystem daemon for a process that never registered any state.
     fn cleanup_terminated(&mut self, pid: ProcessIdentifier) {
-        // Drop any stale fork-sync bookkeeping for the terminating process.
-        self.pending_fork_syncs.retain(|(child, _)| *child != pid);
+        // Drop fork-sync bookkeeping owned by the terminating process. When the parent dies, fail
+        // the child with the retained request ID so it cannot remain blocked forever. When the
+        // child dies first, fail the surviving parent for the same reason.
+        let mut orphaned_children: Vec<PendingForkSync> = Vec::new();
+        let mut failed_parents: Vec<PendingForkSync> = Vec::new();
+        self.pending_fork_syncs.retain(|pending| {
+            if pending.parent == pid && pending.child != pid {
+                orphaned_children.push(*pending);
+                false
+            } else if pending.child == pid {
+                failed_parents.push(*pending);
+                false
+            } else {
+                true
+            }
+        });
+        for pending in orphaned_children {
+            self.send_fork_sync_ack_to_child(
+                pending.child,
+                ErrorCode::TryAgain.get(),
+                pending.response_context,
+            );
+        }
+        for pending in failed_parents {
+            self.send_fork_sync_ack_to_parent(
+                pending.parent,
+                ErrorCode::TryAgain.get(),
+                pending.response_context,
+            );
+        }
         // Drop any exec-barrier bookkeeping owned by the terminating process. A process that died
         // while held at the exec barrier can never be released, so leaving its entry behind would
         // strand it and leak the slot across pid reuse.
-        self.pending_execs.retain(|process| *process != pid);
+        self.pending_execs.retain(|pending| pending.process != pid);
         // Drop any blocked-wait bookkeeping owned by the terminating process. A process that was
         // itself parked in `waitpid()` can never be answered once it is gone, so leaving its entry
         // behind would leak memory and strand a stale waiter.
@@ -632,6 +871,7 @@ impl ProcessDaemon {
     fn handle_wait(
         &mut self,
         caller: ProcessIdentifier,
+        response_context: ResponseContext,
         message: WaitMessage,
     ) -> Result<Option<Message>, Error> {
         let options: i32 = message.options;
@@ -693,15 +933,44 @@ impl ProcessDaemon {
             return Ok(Some(reply));
         }
 
-        // Block the waiter; the reply is deferred until a matching child terminates.
-        // Keep at most one blocked wait per waiter to avoid unbounded growth / stale deferred replies.
-        self.blocked.retain(|w| w.waiter != caller);
+        // Block this exact request; another thread or a nested signal handler may have an
+        // independent wait in flight for the same process.
+        if self.blocked.len() >= MAX_BLOCKED_WAITERS {
+            let reply: Message = message::wait_response(
+                caller,
+                ProcessIdentifier::from(0),
+                0,
+                ErrorCode::NoBufferSpace.get(),
+            )?;
+            return Ok(Some(reply));
+        }
         self.blocked.push(BlockedWaiter {
             waiter: caller,
             selector,
+            response_context,
         });
 
         Ok(None)
+    }
+
+    /// Cancels one exact blocked wait request if completion has not already won.
+    fn handle_wait_cancel(
+        &mut self,
+        caller: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        request_id: RequestIdentifier,
+    ) -> bool {
+        let index: Option<usize> = self.blocked.iter().position(|waiter| {
+            waiter.waiter == caller
+                && waiter.response_context.receiver.tid == tid
+                && waiter.response_context.request_id == request_id
+        });
+        if let Some(index) = index {
+            self.blocked.swap_remove(index);
+            true
+        } else {
+            false
+        }
     }
 
     /// Wakes a parent blocked in `waitpid()` that is waiting for `child` (a child of `parent`) and
@@ -713,19 +982,77 @@ impl ProcessDaemon {
         child: ProcessIdentifier,
         status: i32,
     ) -> Result<(), Error> {
-        if let Some(index) = self
+        while let Some(index) = self
             .blocked
             .iter()
             .position(|waiter| waiter.waiter == parent && waiter.selector.matches(child))
         {
             let waiter_pid: ProcessIdentifier = self.blocked[index].waiter;
+            let response_context: ResponseContext = self.blocked[index].response_context;
             let reply: Message = message::wait_response(waiter_pid, child, status, 0)?;
-            ::sys::kcall::ipc::__kcall_send(&reply)?;
+            match response_context.send(reply) {
+                Ok(()) => {},
+                Err(error) if error.code == ErrorCode::NoSuchEntry => {
+                    self.blocked.swap_remove(index);
+                    ::syslog::warn!(
+                        "dropping unreachable wait request (waiter={:?}, tid={:?}, request_id={})",
+                        waiter_pid,
+                        response_context.receiver.tid,
+                        response_context.request_id.raw()
+                    );
+                    continue;
+                },
+                Err(error) => return Err(error),
+            }
 
             self.blocked.swap_remove(index);
             self.reap(parent, child);
+            self.resolve_ineligible_waiters(parent)?;
+            break;
         }
 
+        Ok(())
+    }
+
+    /// Resolves blocked waits that can no longer match any child after another waiter reaped one.
+    fn resolve_ineligible_waiters(&mut self, parent: ProcessIdentifier) -> Result<(), Error> {
+        let mut index: usize = 0;
+        while index < self.blocked.len() {
+            let has_eligible_child: bool = {
+                let waiter: &BlockedWaiter = &self.blocked[index];
+                waiter.waiter != parent
+                    || self.processes.get(&parent).is_some_and(|record| {
+                        record
+                            .children
+                            .iter()
+                            .any(|child| waiter.selector.matches(*child))
+                    })
+            };
+            if has_eligible_child {
+                index += 1;
+                continue;
+            }
+
+            let waiter: BlockedWaiter = self.blocked.swap_remove(index);
+            let reply: Message = message::wait_response(
+                waiter.waiter,
+                ProcessIdentifier::from(0),
+                0,
+                ErrorCode::NoChildProcess.get(),
+            )?;
+            // The waiter has already been dequeued, so an unreachable requesting thread must not
+            // abort the resolution of the remaining waiters.
+            if let Err(error) = waiter.response_context.send(reply) {
+                ::syslog::warn!(
+                    "failed to answer ineligible wait request (waiter={:?}, tid={:?}, \
+                     request_id={}, error={:?})",
+                    waiter.waiter,
+                    waiter.response_context.receiver.tid,
+                    waiter.response_context.request_id.raw(),
+                    error
+                );
+            }
+        }
         Ok(())
     }
 
@@ -1276,9 +1603,12 @@ impl ProcessDaemon {
     }
 
     fn handle_ipc_message(&mut self, message: Message) -> Result<(), Error> {
-        // The kernel stamps the authoritative originating process into `message.source.pid`, so the
-        // caller identity is taken directly from it.
-        let destination: ProcessIdentifier = { message.source }.pid;
+        // The kernel stamps the authoritative originating process and thread into `message.source`.
+        // Retain both, plus the request identifier, before parsing shadows the raw message.
+        let sender: MessageSender = { message.source };
+        let caller: ProcessIdentifier = sender.pid;
+        let request_id: RequestIdentifier = RequestIdentifier::read_from(&message);
+        let response_context: ResponseContext = ResponseContext::new(sender, request_id);
         let message: SystemMessage = SystemMessage::from_bytes(message.payload)?;
 
         ::syslog::info!("received system message (header={:?})", message.header);
@@ -1292,23 +1622,23 @@ impl ProcessDaemon {
             match message.header {
                 ProcessManagementMessageHeader::Signup => {
                     let message: SignupMessage = SignupMessage::from_bytes(message.payload);
-                    let message: Message = self.handle_signup(destination, message)?;
-                    ::sys::kcall::ipc::__kcall_send(&message)?;
+                    let message: Message = self.handle_signup(caller, message)?;
+                    response_context.send(message)?;
                 },
                 ProcessManagementMessageHeader::Lookup => {
                     let message: LookupMessage = LookupMessage::from_bytes(message.payload);
-                    let message: Message = self.handle_lookup(destination, message)?;
-                    ::sys::kcall::ipc::__kcall_send(&message)?;
+                    let message: Message = self.handle_lookup(caller, message)?;
+                    response_context.send(message)?;
                 },
                 ProcessManagementMessageHeader::ForkSync => {
                     let message: ForkSyncMessage = ForkSyncMessage::from_bytes(message.payload);
-                    self.handle_fork_sync(destination, message.child);
+                    self.handle_fork_sync(caller, message.child, response_context);
                 },
                 ProcessManagementMessageHeader::Exec => {
                     // A freshly `exec`'d process announces that it has replaced its image. The
                     // source is attributed by the kernel, so the subject is the source itself: a
                     // process can only ever request the barrier for itself, never for another.
-                    self.handle_exec_sync(destination);
+                    self.handle_exec_sync(caller, response_context);
                 },
                 ProcessManagementMessageHeader::ExecAck => {
                     // The filesystem daemon confirms whether close-on-exec was applied. Only it may
@@ -1317,11 +1647,11 @@ impl ProcessDaemon {
                     // without effect. The daemon's outcome (`status`) is forwarded unchanged to the
                     // held process so that a best-effort failure can be signalled rather than masked
                     // as success.
-                    if destination == ProcessIdentifier::VFSD {
+                    if caller == ProcessIdentifier::VFSD {
                         let ack: ExecAckMessage = ExecAckMessage::from_bytes(message.payload);
-                        self.handle_exec_ack(ack.pid, ack.status);
+                        self.handle_exec_ack(ack.pid, ack.status, request_id);
                     } else {
-                        ::syslog::warn!("dropping forged exec-ack (source={:?})", destination);
+                        ::syslog::warn!("dropping forged exec-ack (source={:?})", caller);
                     }
                 },
                 ProcessManagementMessageHeader::ForkCloneAck => {
@@ -1330,48 +1660,49 @@ impl ProcessDaemon {
                     // acknowledgement; one from any other source is a forgery that could release a
                     // fork-sync waiter before the snapshot was taken, so it is dropped without
                     // effect.
-                    if destination == ProcessIdentifier::VFSD {
+                    if caller == ProcessIdentifier::VFSD {
                         let ack: ForkCloneAckMessage =
                             ForkCloneAckMessage::from_bytes(message.payload);
-                        self.handle_fork_clone_ack(ack.child, ack.status);
+                        self.handle_fork_clone_ack(ack.child, ack.status, request_id);
                     } else {
-                        ::syslog::warn!(
-                            "dropping forged fork-clone-ack (source={:?})",
-                            destination
-                        );
+                        ::syslog::warn!("dropping forged fork-clone-ack (source={:?})", caller);
                     }
                 },
                 ProcessManagementMessageHeader::Wait => {
                     let message: WaitMessage = WaitMessage::from_bytes(message.payload);
                     // The reply is deferred (no send here) when the waiter blocks; it is produced
                     // later by the process-termination handler.
-                    if let Some(reply) = self.handle_wait(destination, message)? {
-                        ::sys::kcall::ipc::__kcall_send(&reply)?;
+                    if let Some(reply) = self.handle_wait(caller, response_context, message)? {
+                        response_context.send(reply)?;
                     }
+                },
+                ProcessManagementMessageHeader::WaitCancel => {
+                    let request: WaitCancelMessage = WaitCancelMessage::from_bytes(message.payload);
+                    let cancelled: bool =
+                        self.handle_wait_cancel(caller, sender.tid, request.request_id());
+                    let reply: Message = message::wait_cancel_response(caller, cancelled)?;
+                    response_context.send(reply)?;
                 },
                 ProcessManagementMessageHeader::Kill => {
                     let message: KillMessage = KillMessage::from_bytes(message.payload);
-                    let reply: Message = self.handle_kill(destination, message)?;
-                    ::sys::kcall::ipc::__kcall_send(&reply)?;
+                    let reply: Message = self.handle_kill(caller, message)?;
+                    response_context.send(reply)?;
                 },
                 ProcessManagementMessageHeader::JobControl => {
                     let request: JobControlRequest = JobControlRequest::from_bytes(message.payload);
-                    let reply: Message = self.handle_job_control(destination, request)?;
-                    ::sys::kcall::ipc::__kcall_send(&reply)?;
+                    let reply: Message = self.handle_job_control(caller, request)?;
+                    response_context.send(reply)?;
                 },
                 ProcessManagementMessageHeader::TerminalSignal => {
                     // The console line-discipline owner is the only legitimate source of a
                     // terminal-generated signal. A notification from any other process is a forgery
                     // that could signal the foreground group at will, so it is dropped.
-                    if destination == ProcessIdentifier::VFSD {
+                    if caller == ProcessIdentifier::VFSD {
                         let notification: TerminalSignalMessage =
                             TerminalSignalMessage::from_bytes(message.payload);
                         self.handle_terminal_signal(notification.signum);
                     } else {
-                        ::syslog::warn!(
-                            "dropping forged terminal-signal (source={:?})",
-                            destination
-                        );
+                        ::syslog::warn!("dropping forged terminal-signal (source={:?})", caller);
                     }
                 },
                 ProcessManagementMessageHeader::TerminalAccess => {
@@ -1380,12 +1711,12 @@ impl ProcessDaemon {
                     // stamps the source pid, making cross-process reports detectable.
                     let notification: TerminalAccessMessage =
                         TerminalAccessMessage::from_bytes(message.payload);
-                    match Self::terminal_access_subject(destination, &notification) {
+                    match Self::terminal_access_subject(caller, &notification) {
                         Some(pid) => self.handle_terminal_access(pid, notification.is_write()),
                         None => {
                             ::syslog::warn!(
                                 "dropping forged terminal-access (source={:?})",
-                                destination
+                                caller
                             );
                         },
                     }
@@ -1503,20 +1834,28 @@ impl ProcessDaemon {
     /// `false` return to mark the child's fork-clone as failed (a successful dispatch is instead
     /// confirmed later by the filesystem daemon's acknowledgement): a fork-sync request must not
     /// be acknowledged on the basis of a clone that was never delivered.
-    fn notify_fork_clone(&self, parent: ProcessIdentifier, child: ProcessIdentifier) -> bool {
+    fn notify_fork_clone(
+        &mut self,
+        parent: ProcessIdentifier,
+        child: ProcessIdentifier,
+    ) -> Option<RequestIdentifier> {
+        let request_id: RequestIdentifier = self.allocate_request_id();
         match message::fork_clone_request(parent, child) {
-            Ok(request) => match ::sys::kcall::ipc::__kcall_send(&request) {
-                Ok(()) => true,
-                Err(e) => {
-                    ::syslog::warn!(
-                        "notify_fork_clone: failed to notify vfsd to clone resources \
-                         (parent={:?}, child={:?}, error={:?})",
-                        parent,
-                        child,
-                        e
-                    );
-                    false
-                },
+            Ok(mut request) => {
+                request_id.write_to(&mut request);
+                match ::sys::kcall::ipc::__kcall_send(&request) {
+                    Ok(()) => Some(request_id),
+                    Err(e) => {
+                        ::syslog::warn!(
+                            "notify_fork_clone: failed to notify vfsd to clone resources \
+                             (parent={:?}, child={:?}, error={:?})",
+                            parent,
+                            child,
+                            e
+                        );
+                        None
+                    },
+                }
             },
             Err(e) => {
                 ::syslog::warn!(
@@ -1526,7 +1865,7 @@ impl ProcessDaemon {
                     child,
                     e
                 );
-                false
+                None
             },
         }
     }
@@ -1544,8 +1883,27 @@ impl ProcessDaemon {
     /// operation that races ahead of -- and is therefore dropped by -- the clone.
     ///
     /// [`handle_fork_clone_ack`]: Self::handle_fork_clone_ack
-    fn handle_fork_sync(&mut self, parent: ProcessIdentifier, child: ProcessIdentifier) {
+    fn handle_fork_sync(
+        &mut self,
+        parent: ProcessIdentifier,
+        child: ProcessIdentifier,
+        response_context: ResponseContext,
+    ) {
         ::syslog::info!("fork-sync request (parent={:?}, child={:?})", parent, child);
+
+        let parent_is_live: bool = self
+            .processes
+            .get(&parent)
+            .is_some_and(|record| record.zombie.is_none());
+        if !parent_is_live {
+            ::syslog::warn!(
+                "rejecting fork-sync from terminated parent (parent={:?}, child={:?})",
+                parent,
+                child
+            );
+            self.fail_fork_sync(parent, child, response_context);
+            return;
+        }
 
         // The request's source (`parent`) is attributed by the kernel and therefore trustworthy,
         // but the named `child` is taken from the untrusted request payload. When the child's
@@ -1554,7 +1912,7 @@ impl ProcessDaemon {
         // let a malicious process inject a spurious fork-sync acknowledgement into an arbitrary
         // victim's mailbox. Requests that arrive before the child's process-creation event (lineage
         // not yet known) are validated later, when that event is processed.
-        if let Some(record) = self.processes.get(&child) {
+        let child_is_verified: bool = if let Some(record) = self.processes.get(&child) {
             if record.parent != Some(parent) {
                 ::syslog::warn!(
                     "rejecting forged fork-sync (requester={:?}, child={:?}, real_parent={:?})",
@@ -1562,9 +1920,17 @@ impl ProcessDaemon {
                     child,
                     record.parent
                 );
+                self.send_fork_sync_ack_to_parent(
+                    parent,
+                    ErrorCode::InvalidArgument.get(),
+                    response_context,
+                );
                 return;
             }
-        }
+            true
+        } else {
+            false
+        };
 
         let (cloned, failed): (bool, bool) = self
             .processes
@@ -1572,7 +1938,7 @@ impl ProcessDaemon {
             .map(|record| (record.fork_clone_done, record.fork_clone_failed))
             .unwrap_or((false, false));
         if cloned {
-            self.release_fork_sync(parent, child);
+            self.release_fork_sync(parent, child, response_context);
         } else if failed {
             // The fork-clone could not be dispatched: abort the fork rather than block forever.
             ::syslog::warn!(
@@ -1580,12 +1946,57 @@ impl ProcessDaemon {
                 parent,
                 child
             );
-            self.fail_fork_sync(parent, child);
+            self.fail_fork_sync(parent, child, response_context);
         } else {
-            // Replace any stale entry for this child before recording the new waiter, preserving
-            // the at-most-one-waiter-per-child invariant that the map previously guaranteed.
-            self.pending_fork_syncs.retain(|(c, _)| *c != child);
-            self.pending_fork_syncs.push((child, parent));
+            if let Some(pending) = self
+                .pending_fork_syncs
+                .iter()
+                .find(|pending| pending.child == child)
+            {
+                ::syslog::warn!(
+                    "rejecting duplicate fork-sync (requester={:?}, child={:?}, waiter={:?})",
+                    parent,
+                    child,
+                    pending.parent
+                );
+                // The child may still be waiting on the original context. Reply only to this
+                // request's sender so a per-thread request-id collision cannot release the child.
+                self.send_fork_sync_ack_to_parent(
+                    parent,
+                    ErrorCode::ResourceBusy.get(),
+                    response_context,
+                );
+                return;
+            }
+            if self.pending_fork_syncs.len() >= MAX_PENDING_FORK_SYNCS {
+                ::syslog::warn!(
+                    "fork-sync queue is full, failing requester (parent={:?}, child={:?})",
+                    parent,
+                    child
+                );
+                if child_is_verified {
+                    self.send_fork_sync_ack(
+                        parent,
+                        child,
+                        ErrorCode::NoBufferSpace.get(),
+                        response_context,
+                    );
+                } else {
+                    // Until the process-creation event establishes lineage, `child` is untrusted.
+                    // The parent tears down its child after receiving this failure.
+                    self.send_fork_sync_ack_to_parent(
+                        parent,
+                        ErrorCode::NoBufferSpace.get(),
+                        response_context,
+                    );
+                }
+                return;
+            }
+            self.pending_fork_syncs.push(PendingForkSync {
+                child,
+                parent,
+                response_context,
+            });
         }
     }
 
@@ -1593,8 +2004,18 @@ impl ProcessDaemon {
     /// synchronization, by acknowledging both with success. The filesystem daemon has already
     /// acknowledged that it took the fork-clone snapshot, so these acknowledgements are necessarily
     /// ordered after it.
-    fn release_fork_sync(&self, parent: ProcessIdentifier, child: ProcessIdentifier) {
-        self.send_fork_sync_ack(parent, child, ForkSyncAckMessage::STATUS_SUCCESS);
+    fn release_fork_sync(
+        &self,
+        parent: ProcessIdentifier,
+        child: ProcessIdentifier,
+        response_context: ResponseContext,
+    ) {
+        self.send_fork_sync_ack(
+            parent,
+            child,
+            ForkSyncAckMessage::STATUS_SUCCESS,
+            response_context,
+        );
     }
 
     /// Releases a parent and its freshly forked child that are blocked awaiting fork
@@ -1602,16 +2023,30 @@ impl ProcessDaemon {
     /// failed -- either it could not be dispatched to the filesystem daemon, or the filesystem
     /// daemon acknowledged that it could not take the snapshot -- so that `fork()` aborts in both
     /// processes instead of deadlocking on a snapshot that will never be taken.
-    fn fail_fork_sync(&self, parent: ProcessIdentifier, child: ProcessIdentifier) {
-        self.send_fork_sync_ack(parent, child, ErrorCode::TryAgain.get());
+    fn fail_fork_sync(
+        &self,
+        parent: ProcessIdentifier,
+        child: ProcessIdentifier,
+        response_context: ResponseContext,
+    ) {
+        self.send_fork_sync_ack(parent, child, ErrorCode::TryAgain.get(), response_context);
     }
 
     /// Sends a fork-sync acknowledgement carrying `status` to both the `parent` and the `child`.
-    fn send_fork_sync_ack(&self, parent: ProcessIdentifier, child: ProcessIdentifier, status: i32) {
-        for pid in [parent, child] {
+    fn send_fork_sync_ack(
+        &self,
+        parent: ProcessIdentifier,
+        child: ProcessIdentifier,
+        status: i32,
+        response_context: ResponseContext,
+    ) {
+        for (pid, response_context) in [
+            (parent, response_context),
+            (child, Self::child_response_context(child, response_context)),
+        ] {
             match message::fork_sync_ack(pid, status) {
                 Ok(ack) => {
-                    if let Err(e) = ::sys::kcall::ipc::__kcall_send(&ack) {
+                    if let Err(e) = response_context.send(ack) {
                         ::syslog::warn!(
                             "send_fork_sync_ack: failed to acknowledge (pid={:?}, status={:?}, \
                              error={:?})",
@@ -1634,6 +2069,69 @@ impl ProcessDaemon {
         }
     }
 
+    /// Sends a fork-sync acknowledgement only to the child process mailbox.
+    fn send_fork_sync_ack_to_child(
+        &self,
+        child: ProcessIdentifier,
+        status: i32,
+        response_context: ResponseContext,
+    ) {
+        let child_context: ResponseContext = Self::child_response_context(child, response_context);
+        match message::fork_sync_ack(child, status) {
+            Ok(ack) => {
+                if let Err(error) = child_context.send(ack) {
+                    ::syslog::warn!(
+                        "failed to acknowledge orphaned fork child (child={:?}, error={:?})",
+                        child,
+                        error
+                    );
+                }
+            },
+            Err(error) => ::syslog::warn!(
+                "failed to build orphaned child acknowledgement (child={:?}, error={:?})",
+                child,
+                error
+            ),
+        }
+    }
+
+    /// Sends a fork-sync acknowledgement only to the parent process mailbox.
+    fn send_fork_sync_ack_to_parent(
+        &self,
+        parent: ProcessIdentifier,
+        status: i32,
+        response_context: ResponseContext,
+    ) {
+        match message::fork_sync_ack(parent, status) {
+            Ok(ack) => {
+                if let Err(error) = response_context.send(ack) {
+                    ::syslog::warn!(
+                        "failed to acknowledge parent of terminated fork child (parent={:?}, \
+                         error={:?})",
+                        parent,
+                        error
+                    );
+                }
+            },
+            Err(error) => ::syslog::warn!(
+                "failed to build parent acknowledgement for terminated fork child (parent={:?}, \
+                 error={:?})",
+                parent,
+                error
+            ),
+        }
+    }
+
+    fn child_response_context(
+        child: ProcessIdentifier,
+        response_context: ResponseContext,
+    ) -> ResponseContext {
+        ResponseContext {
+            receiver: MessageReceiver::new(child, ThreadIdentifier::NONE),
+            request_id: response_context.request_id,
+        }
+    }
+
     /// Handles a fork-clone acknowledgement from the filesystem daemon, recording the outcome for
     /// `child` and releasing a parent and child blocked at the fork-synchronization barrier.
     ///
@@ -1646,12 +2144,33 @@ impl ProcessDaemon {
     /// recorded real parent; a mismatch is a forged entry and is dropped without acknowledging.
     ///
     /// [`handle_fork_sync`]: Self::handle_fork_sync
-    fn handle_fork_clone_ack(&mut self, child: ProcessIdentifier, status: i32) {
+    fn handle_fork_clone_ack(
+        &mut self,
+        child: ProcessIdentifier,
+        status: i32,
+        request_id: RequestIdentifier,
+    ) {
+        let expected_request_id: Option<RequestIdentifier> = self
+            .processes
+            .get(&child)
+            .and_then(|record| record.fork_clone_request_id);
+        if expected_request_id != Some(request_id) {
+            ::syslog::warn!(
+                "dropping stale fork-clone-ack (child={:?}, expected_request_id={:?}, \
+                 request_id={})",
+                child,
+                expected_request_id.map(RequestIdentifier::raw),
+                request_id.raw()
+            );
+            return;
+        }
+
         let success: bool = status == ForkCloneAckMessage::STATUS_SUCCESS;
 
         // Record the outcome so a fork-sync request that races ahead of this acknowledgement is
         // answered on its fast path.
         if let Some(record) = self.processes.get_mut(&child) {
+            record.fork_clone_request_id = None;
             if success {
                 record.fork_clone_done = true;
             } else {
@@ -1663,29 +2182,29 @@ impl ProcessDaemon {
         if let Some(pos) = self
             .pending_fork_syncs
             .iter()
-            .position(|(c, _)| *c == child)
+            .position(|pending| pending.child == child)
         {
-            let (_, waiting_parent) = self.pending_fork_syncs[pos];
+            let pending: PendingForkSync = self.pending_fork_syncs[pos];
             let real_parent: Option<ProcessIdentifier> =
                 self.processes.get(&child).and_then(|record| record.parent);
             self.pending_fork_syncs.swap_remove(pos);
-            if real_parent != Some(waiting_parent) {
+            if real_parent != Some(pending.parent) {
                 ::syslog::warn!(
                     "dropping forged fork-sync on clone ack (waiter={:?}, child={:?}, \
                      real_parent={:?})",
-                    waiting_parent,
+                    pending.parent,
                     child,
                     real_parent
                 );
             } else if success {
-                self.release_fork_sync(waiting_parent, child);
+                self.release_fork_sync(pending.parent, child, pending.response_context);
             } else {
                 ::syslog::warn!(
                     "fork-clone failed, failing fork-sync waiter (parent={:?}, child={:?})",
-                    waiting_parent,
+                    pending.parent,
                     child
                 );
-                self.fail_fork_sync(waiting_parent, child);
+                self.fail_fork_sync(pending.parent, child, pending.response_context);
             }
         }
     }
@@ -1696,7 +2215,7 @@ impl ProcessDaemon {
     fn notify_process_exit(&self, pid: ProcessIdentifier) {
         match message::process_exit_request(pid) {
             Ok(request) => {
-                if let Err(e) = ::sys::kcall::ipc::__kcall_send(&request) {
+                if let Err(e) = send_process_exit_notification(&request) {
                     ::syslog::warn!(
                         "notify_process_exit: failed to notify vfsd (pid={:?}, error={:?})",
                         pid,
@@ -1723,19 +2242,33 @@ impl ProcessDaemon {
     /// could not be dispatched, the process is released immediately with a failure acknowledgement:
     /// its image has already been replaced and the `exec` cannot be undone, so it proceeds on a
     /// best-effort basis rather than blocking forever on an acknowledgement that will never come.
-    fn handle_exec_sync(&mut self, process: ProcessIdentifier) {
+    fn handle_exec_sync(&mut self, process: ProcessIdentifier, response_context: ResponseContext) {
         ::syslog::info!("exec-sync request (process={:?})", process);
-        if self.notify_exec(process) {
-            // Replace any stale entry for this process before recording the new one, preserving the
-            // at-most-one-pending-exec-per-process invariant across pid reuse.
-            self.pending_execs.retain(|p| *p != process);
-            self.pending_execs.push(process);
+        if self
+            .pending_execs
+            .iter()
+            .any(|pending| pending.process == process)
+        {
+            ::syslog::warn!("rejecting duplicate exec-sync (process={:?})", process);
+            self.release_exec_sync(process, ErrorCode::ResourceBusy.get(), response_context);
+            return;
+        }
+        // The old image and all of its thread identifiers are gone, so none of its blocked wait
+        // requests can receive a response. The replacement image may issue new waits after this
+        // barrier completes.
+        self.blocked.retain(|waiter| waiter.waiter != process);
+        if let Some(request_id) = self.notify_exec(process) {
+            self.pending_execs.push(PendingExec {
+                process,
+                request_id,
+                response_context,
+            });
         } else {
             ::syslog::warn!(
                 "exec close-on-exec not dispatched, failing exec-sync (process={:?})",
                 process
             );
-            self.release_exec_sync(process, ErrorCode::TryAgain.get());
+            self.release_exec_sync(process, ErrorCode::TryAgain.get(), response_context);
         }
     }
 
@@ -1746,19 +2279,23 @@ impl ProcessDaemon {
     /// not be built or sent. The daemon does not block on an acknowledgement here: the filesystem
     /// daemon's acknowledgement is delivered asynchronously and resolved in `handle_exec_ack()`,
     /// so that the receive path never risks swallowing an unrelated message.
-    fn notify_exec(&self, process: ProcessIdentifier) -> bool {
+    fn notify_exec(&mut self, process: ProcessIdentifier) -> Option<RequestIdentifier> {
+        let request_id: RequestIdentifier = self.allocate_request_id();
         match message::exec_request(ProcessIdentifier::PROCD, ProcessIdentifier::VFSD, process) {
-            Ok(request) => match ::sys::kcall::ipc::__kcall_send(&request) {
-                Ok(()) => true,
-                Err(e) => {
-                    ::syslog::warn!(
-                        "notify_exec: failed to notify vfsd to apply close-on-exec (process={:?}, \
-                         error={:?})",
-                        process,
-                        e
-                    );
-                    false
-                },
+            Ok(mut request) => {
+                request_id.write_to(&mut request);
+                match ::sys::kcall::ipc::__kcall_send(&request) {
+                    Ok(()) => Some(request_id),
+                    Err(e) => {
+                        ::syslog::warn!(
+                            "notify_exec: failed to notify vfsd to apply close-on-exec \
+                             (process={:?}, error={:?})",
+                            process,
+                            e
+                        );
+                        None
+                    },
+                }
             },
             Err(e) => {
                 ::syslog::warn!(
@@ -1766,7 +2303,7 @@ impl ProcessDaemon {
                     process,
                     e
                 );
-                false
+                None
             },
         }
     }
@@ -1779,14 +2316,24 @@ impl ProcessDaemon {
     /// a process spuriously. The filesystem daemon's `status` is forwarded unchanged to the
     /// released process: `0` reports that close-on-exec was applied, while a non-zero code lets the
     /// process proceed on a best-effort basis after the daemon could not complete it.
-    fn handle_exec_ack(&mut self, process: ProcessIdentifier, status: i32) {
-        if let Some(pos) = self.pending_execs.iter().position(|p| *p == process) {
-            self.pending_execs.swap_remove(pos);
-            self.release_exec_sync(process, status);
+    fn handle_exec_ack(
+        &mut self,
+        process: ProcessIdentifier,
+        status: i32,
+        request_id: RequestIdentifier,
+    ) {
+        if let Some(pos) = self
+            .pending_execs
+            .iter()
+            .position(|pending| pending.process == process && pending.request_id == request_id)
+        {
+            let pending: PendingExec = self.pending_execs.swap_remove(pos);
+            self.release_exec_sync(process, status, pending.response_context);
         } else {
             ::syslog::warn!(
-                "ignoring exec-ack for process not awaiting the barrier (process={:?})",
-                process
+                "ignoring stale exec-ack (process={:?}, request_id={})",
+                process,
+                request_id.raw()
             );
         }
     }
@@ -1794,10 +2341,15 @@ impl ProcessDaemon {
     /// Releases a `process` held at the exec barrier by acknowledging it with `status`. A `0`
     /// status releases it after close-on-exec has been applied; a non-zero status releases it on a
     /// best-effort basis after the barrier could not be completed.
-    fn release_exec_sync(&self, process: ProcessIdentifier, status: i32) {
+    fn release_exec_sync(
+        &self,
+        process: ProcessIdentifier,
+        status: i32,
+        response_context: ResponseContext,
+    ) {
         match message::exec_ack(ProcessIdentifier::PROCD, process, process, status) {
             Ok(ack) => {
-                if let Err(e) = ::sys::kcall::ipc::__kcall_send(&ack) {
+                if let Err(e) = response_context.send(ack) {
                     ::syslog::warn!(
                         "release_exec_sync: failed to acknowledge (process={:?}, status={:?}, \
                          error={:?})",
@@ -1892,36 +2444,43 @@ impl ProcessDaemon {
         // Wait for memory daemon to terminate.
         while !self.processes.is_empty() {
             match ::sys::kcall::ipc::__kcall_recv() {
-                Ok(message) => {
-                    if message.message_type == MessageType::ProcessTerminationEvent {
-                        // Deserialize process identifier.
-                        let pid: ProcessIdentifier = ProcessIdentifier::from(i32::from_le_bytes(
-                            message.payload[0..4].try_into().unwrap(),
-                        ));
-
-                        // Deserialize process status.
-                        let status: i32 =
-                            i32::from_le_bytes(message.payload[4..8].try_into().unwrap());
-
-                        // De-register process.
-                        if let Some(record) = self.processes.remove(&pid) {
-                            ::syslog::info!(
-                                "process terminated (name={:?}, pid={:?}, status={:?})",
-                                record.name,
-                                pid,
-                                status
-                            );
-                        } else {
-                            ::syslog::info!(
-                                "unknown process terminated (pid={:?}, status={:?})",
-                                pid,
-                                status
-                            );
-                        }
-                    }
-                },
+                Ok(message) => self.handle_shutdown_message(&message),
                 Err(e) => ::syslog::error!("failed to receive exception message (error={:?})", e),
             }
+        }
+    }
+
+    /// Handles a message received while shutting down. Anything that is not an authenticated
+    /// lifecycle message is ignored, so that the drain neither ends early nor mutates the registry.
+    fn handle_shutdown_message(&mut self, message: &Message) {
+        match parse_lifecycle_message(message) {
+            Ok(Some(lifecycle)) => self.handle_shutdown_lifecycle_message(lifecycle),
+            Ok(None) => {},
+            Err(e) => ::syslog::error!(
+                "failed to parse lifecycle message during shutdown (error={:?})",
+                e
+            ),
+        }
+    }
+
+    /// Handles an authenticated process-lifecycle message while shutting down.
+    fn handle_shutdown_lifecycle_message(&mut self, lifecycle: LifecycleMessage) {
+        let LifecycleMessage::ProcessTermination(info) = lifecycle else {
+            return;
+        };
+
+        let pid: ProcessIdentifier = info.pid;
+        let status: i32 = info.status.as_u32() as i32;
+
+        if let Some(record) = self.processes.remove(&pid) {
+            ::syslog::info!(
+                "process terminated (name={:?}, pid={:?}, status={:?})",
+                record.name,
+                pid,
+                status
+            );
+        } else {
+            ::syslog::info!("unknown process terminated (pid={:?}, status={:?})", pid, status);
         }
     }
 }
@@ -1954,6 +2513,7 @@ impl Drop for ProcessDaemon {
 mod tests {
     use super::*;
     use ::core::mem::ManuallyDrop;
+    use ::sys::ExitStatus;
 
     fn process_identity(uid: usize) -> ProcessIdentity {
         ProcessIdentity::new(UserIdentifier::from(uid), GroupIdentifier::ROOT)
@@ -1967,6 +2527,7 @@ mod tests {
             children: Vec::new(),
             fork_clone_done: false,
             fork_clone_failed: false,
+            fork_clone_request_id: None,
             zombie: None,
             sid: pid,
             pgid: pid,
@@ -1986,9 +2547,507 @@ mod tests {
             init_proc: None,
             pending_fork_syncs: Vec::new(),
             pending_execs: Vec::new(),
+            next_request_id: 1,
             blocked: Vec::new(),
             foreground_pgrp: None,
         })
+    }
+
+    fn response_context(process: ProcessIdentifier) -> ResponseContext {
+        ResponseContext::new(
+            MessageSender::new(process, ThreadIdentifier::from(20)),
+            RequestIdentifier::from_raw(99),
+        )
+    }
+
+    fn lifecycle_message<const N: usize>(
+        source: MessageSender,
+        message_type: MessageType,
+        payload: [u8; N],
+    ) -> Message {
+        let mut message_payload: [u8; Message::PAYLOAD_SIZE] = [0; Message::PAYLOAD_SIZE];
+        message_payload[..N].copy_from_slice(&payload);
+        Message::new(
+            source,
+            MessageReceiver::new(ProcessIdentifier::PROCD, ThreadIdentifier::NONE),
+            message_type,
+            None,
+            message_payload,
+        )
+    }
+
+    #[test]
+    fn normal_mode_handles_valid_process_creation_message() {
+        let child: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessCreationInfo =
+            ProcessCreationInfo::new(child, ProcessIdentifier::KERNEL, ProcessRole::Daemon);
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ProcessCreationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[]);
+
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(status, None, "process creation should not trigger shutdown");
+        assert!(daemon.processes.contains_key(&child), "child should be registered");
+    }
+
+    #[test]
+    fn normal_mode_rejects_forged_process_creation_message() {
+        let child: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessCreationInfo =
+            ProcessCreationInfo::new(child, ProcessIdentifier::KERNEL, ProcessRole::Daemon);
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ProcessCreationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[]);
+
+        let error: Error = parse_lifecycle_message(&message)
+            .expect_err("non-kernel lifecycle message should be rejected");
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+        assert_eq!(status, None, "forged creation should not trigger shutdown");
+        assert!(daemon.processes.is_empty(), "forged creation should not change registry");
+    }
+
+    #[test]
+    fn normal_mode_handles_valid_process_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let expected_status: i32 = 0x0102_0304;
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+            pid,
+            ExitStatus::from(expected_status as u32),
+            ProcessIdentifier::KERNEL,
+            ProcessRole::Init,
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ProcessTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(status, Some(expected_status), "init termination should trigger shutdown");
+        assert!(daemon.processes.is_empty(), "terminated init process should be removed");
+    }
+
+    #[test]
+    fn normal_mode_rejects_forged_process_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+            pid,
+            ExitStatus::ok(),
+            ProcessIdentifier::KERNEL,
+            ProcessRole::Init,
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ProcessTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(status, None, "forged termination should not trigger shutdown");
+        assert!(daemon.processes.contains_key(&pid), "forged termination should be ignored");
+    }
+
+    #[test]
+    fn normal_mode_decodes_thread_termination_without_mutating_state() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(
+            pid,
+            ThreadIdentifier::from(11),
+            ExitStatus::from(0x0102_0304_u32),
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ThreadTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+        let context: ResponseContext = response_context(pid);
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: context,
+        });
+
+        let parsed: Option<LifecycleMessage> = parse_lifecycle_message(&message)
+            .expect("kernel thread termination message should be decoded");
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(parsed, Some(LifecycleMessage::ThreadTermination(info)));
+        assert_eq!(status, None, "thread termination should not trigger shutdown");
+        assert!(daemon.processes.contains_key(&pid), "thread event should not change registry");
+        assert_eq!(daemon.blocked.len(), 1, "thread event should not release blocked waits");
+        assert_eq!(daemon.blocked[0].response_context, context);
+    }
+
+    #[test]
+    fn normal_mode_rejects_forged_thread_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ThreadTerminationInfo =
+            ThreadTerminationInfo::new(pid, ThreadIdentifier::from(11), ExitStatus::ok());
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ThreadTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+        let context: ResponseContext = response_context(pid);
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: context,
+        });
+
+        let error: Error = parse_lifecycle_message(&message)
+            .expect_err("non-kernel lifecycle message should be rejected");
+        let status: Option<i32> = daemon.handle_message(message);
+
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+        assert_eq!(status, None, "forged thread termination should not trigger shutdown");
+        assert!(daemon.processes.contains_key(&pid), "forged thread event should be ignored");
+        assert_eq!(daemon.blocked.len(), 1, "forged thread event should not release blocked waits");
+        assert_eq!(daemon.blocked[0].response_context, context);
+    }
+
+    #[test]
+    fn shutdown_mode_ignores_valid_process_creation_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let child: ProcessIdentifier = ProcessIdentifier::from(11);
+        let info: ProcessCreationInfo =
+            ProcessCreationInfo::new(child, ProcessIdentifier::KERNEL, ProcessRole::Daemon);
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ProcessCreationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        daemon.handle_shutdown_message(&message);
+
+        assert_eq!(daemon.processes.len(), 1, "creation should not change registry");
+        assert!(daemon.processes.contains_key(&pid), "tracked process should remain registered");
+        assert!(!daemon.processes.contains_key(&child), "new process should not be registered");
+    }
+
+    #[test]
+    fn shutdown_mode_rejects_forged_process_creation_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let child: ProcessIdentifier = ProcessIdentifier::from(11);
+        let info: ProcessCreationInfo =
+            ProcessCreationInfo::new(child, ProcessIdentifier::KERNEL, ProcessRole::Daemon);
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ProcessCreationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        daemon.handle_shutdown_message(&message);
+
+        assert_eq!(daemon.processes.len(), 1, "forged creation should not change registry");
+        assert!(daemon.processes.contains_key(&pid), "tracked process should remain registered");
+        assert!(!daemon.processes.contains_key(&child), "forged child should not be registered");
+    }
+
+    #[test]
+    fn shutdown_mode_handles_valid_process_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+            pid,
+            ExitStatus::from(0x0102_0304_u32),
+            ProcessIdentifier::KERNEL,
+            ProcessRole::Daemon,
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ProcessTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        daemon.handle_shutdown_message(&message);
+
+        assert!(daemon.processes.is_empty(), "terminated daemon should be removed");
+    }
+
+    #[test]
+    fn shutdown_mode_rejects_forged_process_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ProcessTerminationInfo = ProcessTerminationInfo::new(
+            pid,
+            ExitStatus::ok(),
+            ProcessIdentifier::KERNEL,
+            ProcessRole::Daemon,
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+            MessageType::ProcessTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        let error: Error = parse_lifecycle_message(&message)
+            .expect_err("non-kernel lifecycle message should be rejected");
+        daemon.handle_shutdown_message(&message);
+
+        assert_eq!(error.code, ErrorCode::PermissionDenied);
+        assert!(daemon.processes.contains_key(&pid), "forged termination should be ignored");
+    }
+
+    #[test]
+    fn shutdown_mode_ignores_valid_thread_termination_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let info: ThreadTerminationInfo = ThreadTerminationInfo::new(
+            pid,
+            ThreadIdentifier::from(11),
+            ExitStatus::from(0x0102_0304_u32),
+        );
+        let message: Message = lifecycle_message(
+            MessageSender::KERNEL,
+            MessageType::ThreadTerminationEvent,
+            info.to_ne_bytes(),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        daemon.handle_shutdown_message(&message);
+
+        // Deregistering the owning process here would end the shutdown drain before the process
+        // actually terminated.
+        assert!(daemon.processes.contains_key(&pid), "thread event should not deregister process");
+    }
+
+    #[test]
+    fn shutdown_mode_ignores_unrelated_message() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let message: Message = lifecycle_message(MessageSender::KERNEL, MessageType::Ipc, []);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+
+        let parsed: Option<LifecycleMessage> = parse_lifecycle_message(&message)
+            .expect("unrelated message should not fail lifecycle parsing");
+        daemon.handle_shutdown_message(&message);
+
+        assert_eq!(parsed, None, "IPC message should not be treated as lifecycle traffic");
+        assert!(daemon.processes.contains_key(&pid), "unrelated message should be ignored");
+    }
+
+    #[test]
+    fn relay_request_identifier_wraps_and_skips_active_identifiers() {
+        let process: ProcessIdentifier = ProcessIdentifier::from(10);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(process, Some(process_identity(1000)))]);
+        let fork_request_id: RequestIdentifier = RequestIdentifier::from_raw(u32::MAX);
+        let exec_request_id: RequestIdentifier = RequestIdentifier::from_raw(1);
+        daemon
+            .processes
+            .get_mut(&process)
+            .expect("process should exist")
+            .fork_clone_request_id = Some(fork_request_id);
+        daemon.pending_execs.push(PendingExec {
+            process,
+            request_id: exec_request_id,
+            response_context: response_context(process),
+        });
+        daemon.next_request_id = u32::MAX;
+
+        assert_eq!(daemon.allocate_request_id(), RequestIdentifier::from_raw(2));
+        assert_eq!(daemon.next_request_id, 3);
+    }
+
+    #[test]
+    fn stale_exec_ack_keeps_matching_request_pending() {
+        let process: ProcessIdentifier = ProcessIdentifier::from(10);
+        let expected: RequestIdentifier = RequestIdentifier::from_raw(7);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(process, Some(process_identity(1000)))]);
+        daemon.pending_execs.push(PendingExec {
+            process,
+            request_id: expected,
+            response_context: response_context(process),
+        });
+
+        daemon.handle_exec_ack(process, 0, RequestIdentifier::from_raw(8));
+
+        assert_eq!(daemon.pending_execs.len(), 1);
+        assert_eq!(daemon.pending_execs[0].request_id, expected);
+    }
+
+    #[test]
+    fn stale_fork_clone_ack_keeps_matching_request_pending() {
+        let child: ProcessIdentifier = ProcessIdentifier::from(11);
+        let expected: RequestIdentifier = RequestIdentifier::from_raw(7);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(child, Some(process_identity(1000)))]);
+        daemon
+            .processes
+            .get_mut(&child)
+            .expect("child should exist")
+            .fork_clone_request_id = Some(expected);
+
+        daemon.handle_fork_clone_ack(child, 0, RequestIdentifier::from_raw(8));
+
+        let record: &ProcessRecord = daemon.processes.get(&child).expect("child should exist");
+        assert_eq!(record.fork_clone_request_id, Some(expected));
+        assert!(!record.fork_clone_done);
+        assert!(!record.fork_clone_failed);
+    }
+
+    #[test]
+    fn immediate_wait_response_stamps_request_id_and_exact_thread() {
+        let process: ProcessIdentifier = ProcessIdentifier::from(10);
+        let thread: ThreadIdentifier = ThreadIdentifier::from(20);
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(0x12345678);
+        let response_context: ResponseContext =
+            ResponseContext::new(MessageSender::new(process, thread), request_id);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(process, Some(process_identity(1000)))]);
+        let mut response: Message = daemon
+            .handle_wait(process, response_context, WaitMessage::new(WaitTarget::Any, 0))
+            .expect("wait request should be handled")
+            .expect("caller without children should receive an immediate response");
+
+        response_context.prepare_response(&mut response);
+
+        assert_eq!(
+            { response.destination },
+            MessageReceiver::new(process, thread),
+            "response should target the requesting thread"
+        );
+        assert_eq!(
+            RequestIdentifier::read_from(&response),
+            request_id,
+            "response should echo the request identifier"
+        );
+    }
+
+    #[test]
+    fn blocked_waiter_retains_response_context() {
+        let parent: ProcessIdentifier = ProcessIdentifier::from(10);
+        let child: ProcessIdentifier = ProcessIdentifier::from(11);
+        let thread: ThreadIdentifier = ThreadIdentifier::from(20);
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(0x87654321);
+        let response_context: ResponseContext =
+            ResponseContext::new(MessageSender::new(parent, thread), request_id);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (parent, Some(process_identity(1000))),
+            (child, Some(process_identity(1000))),
+        ]);
+        daemon
+            .processes
+            .get_mut(&parent)
+            .expect("parent record should exist")
+            .children
+            .push(child);
+
+        let reply: Option<Message> = daemon
+            .handle_wait(parent, response_context, WaitMessage::new(WaitTarget::Pid(child), 0))
+            .expect("blocking wait should be accepted");
+
+        assert!(reply.is_none(), "live child should block the waiter");
+        assert_eq!(daemon.blocked.len(), 1, "waiter should be retained");
+        let retained_context: ResponseContext = daemon.blocked[0].response_context;
+        assert_eq!(
+            retained_context, response_context,
+            "waiter should retain the original response context"
+        );
+
+        let mut response: Message = message::wait_response(parent, child, 7, 0)
+            .expect("deferred wait response should be constructed");
+        retained_context.prepare_response(&mut response);
+        assert_eq!(
+            { response.destination },
+            MessageReceiver::new(parent, thread),
+            "deferred response should target the requesting thread"
+        );
+        assert_eq!(
+            RequestIdentifier::read_from(&response),
+            request_id,
+            "deferred response should echo the request identifier"
+        );
+    }
+
+    #[test]
+    fn concurrent_blocked_waiters_retain_distinct_response_contexts() {
+        let parent: ProcessIdentifier = ProcessIdentifier::from(10);
+        let child: ProcessIdentifier = ProcessIdentifier::from(11);
+        let first_context: ResponseContext = ResponseContext::new(
+            MessageSender::new(parent, ThreadIdentifier::from(20)),
+            RequestIdentifier::from_raw(100),
+        );
+        let second_context: ResponseContext = ResponseContext::new(
+            MessageSender::new(parent, ThreadIdentifier::from(21)),
+            RequestIdentifier::from_raw(101),
+        );
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (parent, Some(process_identity(1000))),
+            (child, Some(process_identity(1000))),
+        ]);
+        daemon
+            .processes
+            .get_mut(&parent)
+            .expect("parent record should exist")
+            .children
+            .push(child);
+
+        for context in [first_context, second_context] {
+            let reply: Option<Message> = daemon
+                .handle_wait(parent, context, WaitMessage::new(WaitTarget::Pid(child), 0))
+                .expect("blocking wait should be accepted");
+            assert!(reply.is_none(), "live child should block the waiter");
+        }
+
+        assert_eq!(daemon.blocked.len(), 2, "both waits should remain queued");
+        assert_eq!(daemon.blocked[0].response_context, first_context);
+        assert_eq!(daemon.blocked[1].response_context, second_context);
+    }
+
+    #[test]
+    fn wait_cancel_removes_only_exact_request() {
+        let parent: ProcessIdentifier = ProcessIdentifier::from(10);
+        let first_tid: ThreadIdentifier = ThreadIdentifier::from(20);
+        let second_tid: ThreadIdentifier = ThreadIdentifier::from(21);
+        let first_id: RequestIdentifier = RequestIdentifier::from_raw(100);
+        let second_id: RequestIdentifier = RequestIdentifier::from_raw(101);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(parent, Some(process_identity(1000)))]);
+        daemon.blocked.push(BlockedWaiter {
+            waiter: parent,
+            selector: WaitSelector::Any,
+            response_context: ResponseContext::new(MessageSender::new(parent, first_tid), first_id),
+        });
+        daemon.blocked.push(BlockedWaiter {
+            waiter: parent,
+            selector: WaitSelector::Any,
+            response_context: ResponseContext::new(
+                MessageSender::new(parent, second_tid),
+                second_id,
+            ),
+        });
+
+        assert!(daemon.handle_wait_cancel(parent, first_tid, first_id));
+        assert_eq!(daemon.blocked.len(), 1);
+        assert_eq!(daemon.blocked[0].response_context.request_id, second_id);
     }
 
     #[test]

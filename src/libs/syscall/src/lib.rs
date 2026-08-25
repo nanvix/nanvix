@@ -99,6 +99,10 @@ pub(crate) mod fdtable;
 #[cfg(feature = "syscall")]
 pub(crate) mod close_route;
 
+/// Correlated IPC request helpers.
+#[cfg(feature = "syscall")]
+pub(crate) mod rpc;
+
 // Safe wrappers.
 #[cfg(feature = "syscall")]
 pub mod safe;
@@ -117,7 +121,12 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestIdentifier,
+        REQUEST_IDENTIFIER_OFFSET,
+        REQUEST_IDENTIFIER_PREFIX_SIZE,
+    },
     pm::ProcessIdentifier,
 };
 
@@ -160,9 +169,10 @@ mod boot_order_invariants {
 // Structures
 //==================================================================================================
 
+/// Identifies the operation carried by a system call message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
-pub enum SystemCallMessageHeader {
+pub enum SystemCallMessageKind {
     OpenAtRequestPart,
     OpenAtResponse,
     UnlinkAtRequestPart,
@@ -223,6 +233,8 @@ pub enum SystemCallMessageHeader {
     ReceiveSocketResponse,
     SendSocketRequest,
     SendSocketResponse,
+    // Reserved legacy slots. The old 40-byte times response no longer fits in the correlated
+    // syscall payload; keep these discriminants so every following wire value remains stable.
     TimesRequest,
     TimesResponse,
     FileChownAtRequestPart,
@@ -346,12 +358,12 @@ pub enum SystemCallMessageHeader {
     PipeOpCancelResponse,
     PipeReadRetry,
 }
-// Manual TryFrom<u16> implementation for SystemCallMessageHeader
-impl TryFrom<u16> for SystemCallMessageHeader {
+// Manual TryFrom<u16> implementation for SystemCallMessageKind.
+impl TryFrom<u16> for SystemCallMessageKind {
     type Error = ();
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        use SystemCallMessageHeader::*;
+        use SystemCallMessageKind::*;
         match value {
             x if x == OpenAtRequestPart as u16 => Ok(OpenAtRequestPart),
             x if x == OpenAtResponse as u16 => Ok(OpenAtResponse),
@@ -539,7 +551,7 @@ impl TryFrom<u16> for SystemCallMessageHeader {
     }
 }
 
-impl SystemCallMessageHeader {
+impl SystemCallMessageKind {
     /// Returns `true` if this header identifies a host filesystem operation.
     pub fn is_hostfs(&self) -> bool {
         matches!(
@@ -591,11 +603,11 @@ impl SystemCallMessageHeader {
         )
     }
 
-    /// Returns the corresponding response header for a hostfs request header.
+    /// Returns the corresponding response kind for a hostfs request kind.
     ///
     /// This provides an explicit mapping instead of relying on enum discriminant arithmetic.
-    /// Returns `None` if the header is not a hostfs request.
-    pub fn hostfs_response_header(&self) -> Option<Self> {
+    /// Returns `None` if this is not a hostfs request kind.
+    pub fn hostfs_response_kind(&self) -> Option<Self> {
         match self {
             Self::HostFsOpenRequest | Self::HostFsOpenRequestPart => Some(Self::HostFsOpenResponse),
             Self::HostFsCloseRequest => Some(Self::HostFsCloseResponse),
@@ -634,14 +646,11 @@ impl SystemCallMessageHeader {
 
     /// Returns `true` if this header is a hostfs response variant.
     ///
-    /// Note: `HostFsReadlinkResponsePart` and `HostFsReadDirResponsePart` are
-    /// intentionally excluded because of their framing, not because vfsd lacks a
-    /// multi-part assembler (it now has one). For these parts, bytes `[2..6]` carry
-    /// `total_parts`/`part_number`, while the logical op_id lives in the first 4 bytes
-    /// of the assembled body. Treating them as regular hostfs responses would make
-    /// `get_op_id` read the framing bytes and remove the wrong entry from the pending
-    /// queue. They are dispatched through `is_hostfs_multipart_response` and the
-    /// dedicated assemblers in vfsd.
+    /// `HostFsReadlinkResponsePart` and `HostFsReadDirResponsePart` are intentionally excluded
+    /// because vfsd must assemble their bodies before dispatch. Their request-ID field echoes the
+    /// hostfs operation identifier, which also lives in the first four bytes of the assembled body.
+    /// They are dispatched through `is_hostfs_multipart_response` and the dedicated assemblers in
+    /// vfsd.
     pub fn is_hostfs_response(&self) -> bool {
         matches!(
             self,
@@ -671,14 +680,32 @@ impl SystemCallMessageHeader {
     }
 }
 
+/// Header shared by correlated system call requests and responses.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(C, packed)]
+pub struct SystemCallMessageHeader {
+    /// Operation carried by the message.
+    kind: SystemCallMessageKind,
+    /// Identifier that correlates a response with its request.
+    request_id: RequestIdentifier,
+}
+::static_assert::assert_eq_size!(SystemCallMessageHeader, REQUEST_IDENTIFIER_PREFIX_SIZE);
+::static_assert::assert_eq!(
+    mem::offset_of!(SystemCallMessageHeader, request_id) == REQUEST_IDENTIFIER_OFFSET
+);
+
+#[repr(C, packed)]
+/// Correlated system call message carried in an IPC payload.
 pub struct SystemCallMessage {
     /// Message header.
-    pub header: SystemCallMessageHeader,
+    header: SystemCallMessageHeader,
     /// Message payload.
     pub payload: [u8; Self::PAYLOAD_SIZE],
 }
 ::static_assert::assert_eq_size!(SystemCallMessage, Message::PAYLOAD_SIZE);
+::static_assert::assert_eq!(
+    mem::offset_of!(SystemCallMessage, payload) == REQUEST_IDENTIFIER_PREFIX_SIZE
+);
 
 //==================================================================================================
 // Constants
@@ -735,18 +762,51 @@ pub const VFS_PUSH_PULL_TID: ::sys::pm::ThreadIdentifier = ::sys::pm::ThreadIden
 // Implementations
 //==================================================================================================
 
-impl SystemCallMessage {
-    pub const PAYLOAD_SIZE: usize =
-        Message::PAYLOAD_SIZE - mem::size_of::<SystemCallMessageHeader>();
+impl SystemCallMessageHeader {
+    const fn new(kind: SystemCallMessageKind, request_id: RequestIdentifier) -> Self {
+        Self { kind, request_id }
+    }
 
-    pub fn new(header: SystemCallMessageHeader, payload: [u8; Self::PAYLOAD_SIZE]) -> Self {
-        Self { header, payload }
+    /// Returns the operation carried by the message.
+    pub const fn kind(self) -> SystemCallMessageKind {
+        self.kind
+    }
+
+    /// Returns the identifier that correlates a response with its request.
+    pub const fn request_id(self) -> RequestIdentifier {
+        self.request_id
+    }
+}
+
+impl SystemCallMessage {
+    pub const PAYLOAD_SIZE: usize = Message::PAYLOAD_SIZE - REQUEST_IDENTIFIER_PREFIX_SIZE;
+
+    pub fn new(kind: SystemCallMessageKind, payload: [u8; Self::PAYLOAD_SIZE]) -> Self {
+        Self {
+            header: SystemCallMessageHeader::new(kind, RequestIdentifier::NONE),
+            payload,
+        }
+    }
+
+    /// Returns the message header.
+    pub const fn header(&self) -> SystemCallMessageHeader {
+        self.header
+    }
+
+    /// Returns the operation carried by the message.
+    pub const fn kind(&self) -> SystemCallMessageKind {
+        self.header.kind()
+    }
+
+    /// Returns the identifier that correlates a response with its request.
+    pub const fn request_id(&self) -> RequestIdentifier {
+        self.header.request_id()
     }
 
     pub fn try_from_bytes(bytes: [u8; Message::PAYLOAD_SIZE]) -> Result<Self, Error> {
         // Check if message header is valid.
-        let _header: SystemCallMessageHeader =
-            SystemCallMessageHeader::try_from(u16::from_ne_bytes([bytes[0], bytes[1]]))
+        let _kind: SystemCallMessageKind =
+            SystemCallMessageKind::try_from(u16::from_ne_bytes([bytes[0], bytes[1]]))
                 .map_err(|_| Error::new(ErrorCode::InvalidMessage, "invalid message header"))?;
 
         let message: SystemCallMessage = unsafe { mem::transmute(bytes) };
@@ -756,5 +816,53 @@ impl SystemCallMessage {
 
     pub fn into_bytes(self) -> [u8; Message::PAYLOAD_SIZE] {
         unsafe { mem::transmute(self) }
+    }
+}
+
+// A nested request may have to set aside complete multipart responses for every other active
+// request. `getdents()` has the largest legal response in the syscall protocol, so this assertion
+// keeps the shared stash bound synchronized with protocol growth.
+::static_assert::assert_eq!(
+    ::sys::ipc::RESPONSE_STASH_CAPACITY
+        >= (::sys::ipc::MAX_ACTIVE_REQUESTS - 1)
+            * crate::dirent::message::GetDirectoryEntriesResponse::MAX_SIZE
+                .div_ceil(crate::message::SystemCallMessagePart::PAYLOAD_SIZE)
+);
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn system_call_message_request_id_round_trip() {
+        let request_id: RequestIdentifier = RequestIdentifier::from_raw(0x1234_5678);
+        let message: SystemCallMessage = SystemCallMessage::new(
+            SystemCallMessageKind::CloseRequest,
+            [0; SystemCallMessage::PAYLOAD_SIZE],
+        );
+        let bytes: [u8; Message::PAYLOAD_SIZE] = message.into_bytes();
+        let mut outer: Message = Message::new(
+            ::sys::ipc::MessageSender::KERNEL,
+            ::sys::ipc::MessageReceiver::KERNEL,
+            ::sys::ipc::MessageType::Ipc,
+            None,
+            bytes,
+        );
+        request_id.write_to(&mut outer);
+        assert_eq!(
+            &outer.payload
+                [REQUEST_IDENTIFIER_OFFSET..REQUEST_IDENTIFIER_OFFSET + RequestIdentifier::SIZE],
+            &request_id.raw().to_ne_bytes()
+        );
+        assert_eq!(RequestIdentifier::read_from(&outer), request_id);
+
+        let decoded: SystemCallMessage =
+            SystemCallMessage::try_from_bytes(outer.payload).expect("message should decode");
+        assert_eq!(decoded.kind(), SystemCallMessageKind::CloseRequest);
+        assert_eq!(decoded.request_id(), request_id);
     }
 }

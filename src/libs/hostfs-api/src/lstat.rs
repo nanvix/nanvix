@@ -15,7 +15,7 @@
 //==================================================================================================
 
 use crate::{
-    set_header,
+    set_kind,
     set_op_id,
     OperationId,
     HOSTFS_DATA_START,
@@ -106,13 +106,9 @@ impl LstatRequest {
     }
 
     /// Serializes this request into a complete message payload (header + op_id + data).
-    pub fn serialize(
-        &self,
-        header_value: u16,
-        op_id: OperationId,
-    ) -> [u8; Message::PAYLOAD_SIZE] {
+    pub fn serialize(&self, kind_value: u16, op_id: OperationId) -> [u8; Message::PAYLOAD_SIZE] {
         let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-        set_header(&mut payload, header_value);
+        set_kind(&mut payload, kind_value);
         set_op_id(&mut payload, op_id);
         let path_len_off: usize = HOSTFS_DATA_START + Self::OFFSET_OF_PATH_LEN;
         let path_off: usize = HOSTFS_DATA_START + Self::OFFSET_OF_PATH;

@@ -6,10 +6,12 @@
 # ======================================================================
 
 import argparse
+import base64
 import collections
 import csv
 import io
 import itertools
+import json
 import math
 import os
 import pathlib
@@ -26,6 +28,7 @@ from typing import Optional
 
 MICROVM_MACHINE_TYPE = "microvm"
 IS_WINDOWS = platform.system() == "Windows"
+DEFAULT_RUNNER_LABEL = "windows-baremetal" if IS_WINDOWS else "linux-baremetal"
 NA = "NA"
 NANVIX_BENCH_BINARY = "nanvix-bench.exe" if IS_WINDOWS else "nanvix-bench.elf"
 PERCENTILES = ["p50", "p95", "p99"]
@@ -79,6 +82,12 @@ PERCENTILE_BENCHMARKS = [
     COLD_START_UVM_BENCH,
     SNAPSHOT_RESTORE_BENCH,
 ]
+
+# Every benchmark the standard suite runs, in display order. Used as the
+# default --benchmarks value for ci-url.
+ALL_BENCHMARKS: list[str] = (
+    PERCENTILE_BENCHMARKS + [VFS_BENCH] + list(SIZE_SWEEP_BENCHMARKS)
+)
 
 # ======================================================================
 # Helper Functions
@@ -384,239 +393,9 @@ def read_benchmark_values_from_file(
     return result_dict
 
 
-def get_table_rows_for_benchmark(
-    benchmark, machine_arch_combinations, dev_dir, target_dir, percentile=None
-):
-    rows = {}
-
-    for machine, arch in machine_arch_combinations:
-        results_file = gen_filename_for_benchmark(benchmark, machine, arch)
-
-        dev_path = os.path.join(dev_dir, results_file)
-        dev_vals = read_benchmark_values_from_file(benchmark, dev_path, percentile)
-
-        tgt_path = os.path.join(target_dir, results_file)
-        tgt_vals = read_benchmark_values_from_file(benchmark, tgt_path, percentile)
-
-        must_add_keys = len(rows) == 0
-        for key, dev_val in dev_vals.items():
-            if key not in tgt_vals:
-                print(
-                    f"ERROR: key mismatch generating rows for '{benchmark}' benchmark"
-                )
-                print(f"ERROR: dev values: {dev_vals} - target values: {tgt_vals}")
-                raise ValueError("Key mismatch loading rows.")
-            tgt_val = tgt_vals[key]
-
-            if must_add_keys:
-                rows[key] = []
-
-            # Calculate delta
-            if tgt_val == NA or dev_val == NA:
-                delta_str = NA
-            else:
-                pct = float((int(tgt_val) / int(dev_val)) * 100)
-                if pct > 100:
-                    delta_str = "+{:.1f}%".format(pct - 100.0)
-                else:
-                    delta_str = "-{:.1f}%".format(100.0 - pct)
-
-            rows[key].append(dev_val)
-            rows[key].append(tgt_val)
-            rows[key].append(delta_str)
-
-    return rows
-
-
-def make_header(benchmark, table_width):
-    title = f"{benchmark} (us)"
-    total_width = table_width
-    padding = (
-        total_width - len(title) - 2
-    ) // 2  # minus 2 for leading and trailing '='
-    left = "=" * padding
-    right = "=" * (total_width - len(left) - len(title) - 2)
-    return f"{left} {title} {right}\n"
-
-
-def generate_benchmark_table(
-    dev_dir, target_dir, benchmark, machines, archs, percentile=None
-):
-    """
-        Generate a table summarizing the benchmark results, and comparing them
-        to the results of the current `dev` branch.
-
-        Each table has the following structure:
-
-    ============ boot-time (us) ============
-    |       |      microvm (X64)           |
-    |       |  dev  | target |      Δ      |
-    ...
-    ========================================
-
-        where the rows are benchmark-dependent.
-    """
-    # Calculate table dimensions
-    first_col_width = 7  # "| p50 "
-    sub_col_width = 12  # Width for each sub-column (dev, target, delta)
-    machine_col_width = sub_col_width * 3  # 3 sub-columns per machine
-
-    # Number of column groups is cartesian product of machines and archs
-    groups = list(itertools.product(machines, archs))
-    groups_count = len(groups)
-
-    # Calculate total table width correctly:
-    # 2 for leading and trailing '|', plus first column width, plus for each group
-    # 3 sub-columns (machine_col_width) and 3 internal separators between them.
-    # This yields the exact length of any data/sub-header row.
-    table_width = 2 + first_col_width + (groups_count * (machine_col_width + 3))
-
-    # Create header for this benchmark
-    if benchmark in SIZE_AWARE_BENCHMARKS and percentile is not None:
-        header = make_header(benchmark + f"-{percentile}", table_width)
-    else:
-        header = make_header(benchmark, table_width)
-
-    # Create table structure
-    table_lines = []
-
-    # Header row with machine names
-    machine_header_parts = [f" {'':^{first_col_width-2}} "]
-    for machine, arch in groups:
-        machine_name = f"{machine} ({arch})"
-        # Each machine spans 3 sub-columns + 2 separators
-        machine_span = sub_col_width * 3 + 2
-        machine_header_parts.append(f"{machine_name:^{machine_span}}")
-    machine_header_line = "|" + "|".join(machine_header_parts) + "|"
-    table_lines.append(machine_header_line)
-
-    # Sub-header row with dev/target/Δ columns
-    sub_header_parts = [f" {'':^{first_col_width-2}} "]
-    for _ in groups:
-        sub_header_parts.extend(
-            [
-                f"{'dev':^{sub_col_width}}",
-                f"{'target':^{sub_col_width}}",
-                f"{'Δ':^{sub_col_width}}",
-            ]
-        )
-    sub_header_line = "|" + "|".join(sub_header_parts) + "|"
-    table_lines.append(sub_header_line)
-
-    rows = get_table_rows_for_benchmark(
-        benchmark, groups, dev_dir, target_dir, percentile
-    )
-    for row_label, row_values in rows.items():
-        row_parts = [f" {row_label:^{first_col_width-2}} "]
-
-        for i in range(0, len(row_values), 3):
-            # Add each sub-column separately
-            row_parts.extend(
-                [
-                    f"{row_values[i]:^{sub_col_width}}",
-                    f"{row_values[i+1]:^{sub_col_width}}",
-                    f"{row_values[i+2]:^{sub_col_width}}",
-                ]
-            )
-
-        # Join the row parts with | separators
-        row_line = "|" + "|".join(row_parts) + "|"
-        table_lines.append(row_line)
-
-    # Add footer
-    footer_str = "=" * table_width
-
-    # Combine everything for this benchmark
-    table_str = "\n".join(table_lines)
-    output = header + table_str + "\n" + footer_str + "\n"
-
-    return output
-
-
 # ======================================================================
 # Entrypoint Functions
 # ======================================================================
-
-
-def ci_summary(args):
-    """
-    Generate a markdown summary to include in PRs as a comment.
-    """
-    print(
-        f"Generating CI summary (benchmarks={args.benchmarks}, "
-        f"machine_types={args.machine_types}, archs={args.archs})"
-    )
-
-    benchmarks = _split_csv_arg(args.benchmarks)
-    machines = _split_csv_arg(args.machine_types)
-    archs = _split_csv_arg(args.archs)
-
-    # General-purpose benchmarks that we put in similar tables.
-    bench_summary = "```"
-    for benchmark in benchmarks:
-        if benchmark in PERCENTILE_BENCHMARKS:
-            bench_summary += "\n" + generate_benchmark_table(
-                args.dev_dir, args.target_dir, benchmark, machines, archs
-            )
-        elif benchmark in SIZE_AWARE_BENCHMARKS:
-            for percentile in PERCENTILES:
-                bench_summary += "\n" + generate_benchmark_table(
-                    args.dev_dir,
-                    args.target_dir,
-                    benchmark,
-                    machines,
-                    archs,
-                    percentile,
-                )
-        elif benchmark == VFS_BENCH:
-            # VFS benchmark results are reported in a collapsed section.
-            continue
-        else:
-            print(f"ERROR: unrecognized benchmark '{benchmark}'")
-            raise ValueError("Unrecognized benchmark")
-    bench_summary += "```" + "\n"
-
-    # VFS benchmark collapsed section.
-    if VFS_BENCH in benchmarks:
-        vfs_summary = "<details>\n<summary>VFS Benchmark</summary>\n\n```"
-        table_width = 91
-        for machine, arch in list(itertools.product(machines, archs)):
-            file_name = gen_filename_for_benchmark(VFS_BENCH, machine, arch)
-            file_path = os.path.join(args.target_dir, file_name)
-            vfs_summary += "\n" + make_header(f"{VFS_BENCH} {machine}", table_width)
-            if os.path.exists(file_path):
-                try:
-                    with open(file_path, "r") as fh:
-                        reader = csv.DictReader(fh)
-                        current_section = ""
-                        for row in reader:
-                            if row["section"] != current_section:
-                                current_section = row["section"]
-                                vfs_summary += (
-                                    f"\n{current_section:<22} "
-                                    f"{'Samples':>8} "
-                                    f"{'p50 (us)':>10} "
-                                    f"{'p95 (us)':>10} "
-                                    f"{'p99 (us)':>10}\n"
-                                )
-                                vfs_summary += "-" * 62 + "\n"
-                            vfs_summary += (
-                                f"{row['operation']:<22} "
-                                f"{row['samples']:>8} "
-                                f"{row['p50']:>10} "
-                                f"{row['p95']:>10} "
-                                f"{row['p99']:>10}\n"
-                            )
-                except Exception as exc:
-                    vfs_summary += f"  (could not read results: {exc})\n"
-            else:
-                vfs_summary += "  (no results available)\n"
-            vfs_summary += "=" * table_width + "\n"
-        vfs_summary += "\n```\n</details>\n"
-        bench_summary += "\n" + vfs_summary
-
-    with open(args.output_file, "w") as fh:
-        fh.write(bench_summary)
 
 
 def _read_baseline_moving_median(
@@ -1179,16 +958,102 @@ def _prune_history(file_path: str, header: str, max_commits: int) -> None:
     )
 
 
+def _target_dir_and_runner_label(target_dir: Optional[str]) -> tuple[str, str]:
+    """Resolve --target-dir for ci-url, and derive its runner label.
+
+    The runner label is always the target dir's own basename -- there is no
+    separate --runner-label flag to keep in sync, so the two can never drift.
+    Defaults to www/bench/data/<current-platform-runner-label> when omitted.
+    """
+    if target_dir is None:
+        target_dir = os.path.join("www", "bench", "data", DEFAULT_RUNNER_LABEL)
+    runner_label = os.path.basename(os.path.normpath(target_dir))
+    return target_dir, runner_label
+
+
+def ci_url(args: argparse.Namespace) -> None:
+    """Generate a benchmark visualization URL.
+
+    With --commit given, reads per-benchmark result CSVs from the target
+    directory, filters them down to that commit, and embeds them as base64
+    blobs alongside the commit SHA -- the site then overlays this single
+    commit's results on top of the runner label's persisted history.
+
+    With --commit omitted, no CSVs are read at all: the payload just lists
+    the benchmarks and the runner label, and the site renders that runner
+    label's persisted history as-is, with no highlighted commit.
+    """
+    benchmarks: list[str] = _split_csv_arg(args.benchmarks)
+    machines: list[str] = _split_csv_arg(args.machine_types)
+    archs: list[str] = _split_csv_arg(args.archs)
+
+    # Validate single machine/arch — payload is keyed by bench name only,
+    # so multiple combinations would silently overwrite each other.
+    if len(machines) != 1:
+        raise ValueError(f"ci-url supports exactly one machine type, got: {machines}")
+    if len(archs) != 1:
+        raise ValueError(f"ci-url supports exactly one arch, got: {archs}")
+
+    machine: str = machines[0]
+    arch: str = archs[0]
+
+    target_dir, runner_label = _target_dir_and_runner_label(args.target_dir)
+
+    payload: dict
+    if args.commit is None:
+        payload = {
+            "r": runner_label,
+            "m": machine,
+            "a": arch,
+            "h": True,
+            "b": {bench: True for bench in benchmarks},
+        }
+    else:
+        commit: str = args.commit
+        b: dict[str, str] = {}
+        for bench in benchmarks:
+            filename: str = gen_filename_for_benchmark(bench, machine, arch)
+            filepath: str = os.path.join(target_dir, filename)
+            if not os.path.exists(filepath):
+                continue
+            with open(filepath, "r") as f:
+                csv_text: str = f.read().strip()
+            # Filter to only rows matching this commit
+            lines: list[str] = csv_text.split("\n")
+            header: str = lines[0]
+            matching: list[str] = [ln for ln in lines[1:] if ln.split(",")[0] == commit]
+            if not matching:
+                continue
+            blob: str = header + "\n" + "\n".join(matching)
+            b[bench] = base64.b64encode(blob.encode()).decode()
+
+        payload = {
+            "c": commit,
+            "r": runner_label,
+            "m": machine,
+            "a": arch,
+            "b": b,
+        }
+
+    json_str: str = json.dumps(payload, separators=(",", ":"))
+    encoded: str = base64.urlsafe_b64encode(json_str.encode()).decode()
+
+    url: str = f"{args.base_url}?d={encoded}"
+
+    if args.output_file:
+        with open(args.output_file, "w") as f:
+            f.write(url)
+    else:
+        print(url)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Run and plot the Nanvix performance benchmarks"
+        description="Run the Nanvix performance benchmarks and report results"
     )
     # Initialize sub-parsers.
     sub_parser = parser.add_subparsers(dest="cmd", required=True)
     run_parser = sub_parser.add_parser("run", help="Run a performance benchmark")
-    ci_summary_parser = sub_parser.add_parser(
-        "ci-summary", help="Generate a summary of the benchmark results"
-    )
     persist_parser = sub_parser.add_parser(
         "persist", help="Append benchmark results to history CSVs"
     )
@@ -1244,35 +1109,6 @@ if __name__ == "__main__":
         help="Commit SHA to tag this benchmark result. Defaults to HEAD.",
     )
     run_parser.set_defaults(func=run_benchmark)
-
-    # Command-line arguments for the ci-summary command.
-    ci_summary_parser.add_argument(
-        "--dev-dir", required=True, help="Directory for the results from the dev branch"
-    )
-    ci_summary_parser.add_argument(
-        "--target-dir",
-        required=True,
-        help="Directory for the results from the current branch",
-    )
-    ci_summary_parser.add_argument(
-        "--benchmarks",
-        required=True,
-        help="Comma-separated list of benchmarks to aggregate",
-    )
-    ci_summary_parser.add_argument(
-        "--machine-types",
-        required=True,
-        help="Comma-separated list of machines types benchmarked",
-    )
-    ci_summary_parser.add_argument(
-        "--archs",
-        required=True,
-        help="Comma-separated list of architectures benchmarked",
-    )
-    ci_summary_parser.add_argument(
-        "--output-file", required=True, help="File to output the benchmark summary"
-    )
-    ci_summary_parser.set_defaults(func=ci_summary)
 
     # Command-line arguments for the ci-gate command.
     ci_gate_parser = sub_parser.add_parser(
@@ -1341,6 +1177,56 @@ if __name__ == "__main__":
         help="Maximum number of unique commits to keep in history files. 0 means unlimited.",
     )
     persist_parser.set_defaults(func=persist_results)
+
+    # Command-line arguments for the ci-url command.
+    ci_url_parser = sub_parser.add_parser(
+        "ci-url", help="Generate a benchmark visualization URL"
+    )
+    ci_url_parser.add_argument(
+        "--target-dir",
+        default=None,
+        help=(
+            "Directory with current benchmark result CSVs. Its basename IS the "
+            "runner label (e.g. linux-baremetal, windows-baremetal) shown by the "
+            "site and used to fetch that runner's persisted history -- there is no "
+            "separate runner-label flag, so the two can never drift apart. Defaults "
+            f"to www/bench/data/{DEFAULT_RUNNER_LABEL} on this platform."
+        ),
+    )
+    ci_url_parser.add_argument(
+        "--benchmarks",
+        default=",".join(ALL_BENCHMARKS),
+        help="Comma-separated list of benchmarks. Defaults to all benchmarks.",
+    )
+    ci_url_parser.add_argument(
+        "--machine-types",
+        default=MICROVM_MACHINE_TYPE,
+        help="Comma-separated list of machine types",
+    )
+    ci_url_parser.add_argument(
+        "--archs",
+        default=X86_64_ARCH,
+        help="Comma-separated list of architectures",
+    )
+    ci_url_parser.add_argument(
+        "--commit",
+        default=None,
+        help=(
+            "Commit SHA for this benchmark run. If omitted, only the runner "
+            "label's persisted history is shown, with no highlighted commit."
+        ),
+    )
+    ci_url_parser.add_argument(
+        "--base-url",
+        default="http://localhost:8000/",
+        help="Base URL of the benchmark static site",
+    )
+    ci_url_parser.add_argument(
+        "--output-file",
+        default=None,
+        help="Write URL to file instead of stdout",
+    )
+    ci_url_parser.set_defaults(func=ci_url)
 
     args = parser.parse_args()
     # Dispatch the arguments to the selected top-level command.

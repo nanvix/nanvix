@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::String,
@@ -125,7 +125,7 @@ impl MessagePartitioner for UmountRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::HostUmountRequestPart,
+            SystemCallMessageKind::HostUmountRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -172,10 +172,8 @@ impl UmountResponse {
         message_type: MessageType,
     ) -> Message {
         let message: UmountResponse = UmountResponse::new(ret);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::HostUmountResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::HostUmountResponse, message.into_bytes());
         Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

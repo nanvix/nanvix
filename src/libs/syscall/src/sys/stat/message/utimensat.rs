@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::String,
@@ -268,7 +268,7 @@ impl MessagePartitioner for UpdateFileAccessTimeAtRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::UpdateFileAccessTimeAtRequestPart,
+            SystemCallMessageKind::UpdateFileAccessTimeAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -321,7 +321,7 @@ impl UpdateFileAccessTimeAtResponse {
     ) -> Message {
         let message: UpdateFileAccessTimeAtResponse = UpdateFileAccessTimeAtResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::UpdateFileAccessTimeAtResponse,
+            SystemCallMessageKind::UpdateFileAccessTimeAtResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

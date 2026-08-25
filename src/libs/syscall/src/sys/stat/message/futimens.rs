@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::mem;
 use ::sys::{
@@ -93,7 +93,7 @@ impl UpdateFileAccessTimeRequest {
     ) -> Message {
         let request = UpdateFileAccessTimeRequest { fd, times: *times };
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::UpdateFileAccessTimeRequest,
+            SystemCallMessageKind::UpdateFileAccessTimeRequest,
             request.into_bytes(),
         );
         let message: Message = Message::new(
@@ -145,7 +145,7 @@ impl UpdateFileAccessTimeResponse {
     ) -> Message {
         let message: UpdateFileAccessTimeResponse = UpdateFileAccessTimeResponse::new(ret);
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::UpdateFileAccessTimeResponse,
+            SystemCallMessageKind::UpdateFileAccessTimeResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

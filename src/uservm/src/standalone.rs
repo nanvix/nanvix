@@ -51,6 +51,7 @@ use ::sys::{
         MessageReceiver,
         MessageSender,
         MessageType,
+        RequestIdentifier,
     },
     pm::{
         ProcessIdentifier,
@@ -59,7 +60,7 @@ use ::sys::{
 };
 use ::syscall::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
     message::SystemCallMessagePart,
     poll::input_message::{
         PollInputRequest,
@@ -105,6 +106,7 @@ enum ConsoleInputRequest {
     /// A blocking console read, completed when input or EOF becomes available.
     Read {
         tid: ThreadIdentifier,
+        response_context: ConsoleResponseContext,
         pull_header: DataChunkHeader,
         max_bytes: usize,
     },
@@ -118,6 +120,7 @@ enum ConsoleInputRequest {
     PollStatus {
         source_pid: ProcessIdentifier,
         tid: ThreadIdentifier,
+        response_context: ConsoleResponseContext,
     },
 }
 
@@ -140,6 +143,36 @@ const IO_HANDLER_SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+/// Routing metadata for a direct console syscall response.
+#[derive(Clone, Copy)]
+struct ConsoleResponseContext {
+    destination: MessageReceiver,
+    request_id: RequestIdentifier,
+}
+
+impl ConsoleResponseContext {
+    fn new(source: MessageSender, request_id: RequestIdentifier) -> Self {
+        Self {
+            destination: MessageReceiver::new(source.pid, source.tid),
+            request_id,
+        }
+    }
+
+    fn prepare(self, mut response: Message) -> Message {
+        response.destination = self.destination;
+        self.request_id.write_to(&mut response);
+        response
+    }
+
+    fn source_pid(self) -> ProcessIdentifier {
+        self.destination.pid
+    }
+
+    fn source_tid(self) -> ThreadIdentifier {
+        self.destination.tid
+    }
+}
 
 ///
 /// # Description
@@ -614,49 +647,59 @@ async fn standalone_io_handler(
                         },
                     };
 
-                let header = syscall_msg.header;
+                let header = syscall_msg.kind();
                 match header {
-                    SystemCallMessageHeader::WriteRequest => {
-                        let tid: ThreadIdentifier = extract_tid(msg.source);
+                    SystemCallMessageKind::WriteRequest => {
+                        let source: MessageSender = msg.source;
+                        let tid: ThreadIdentifier = extract_tid(source);
+                        let response_context: ConsoleResponseContext =
+                            ConsoleResponseContext::new(source, syscall_msg.request_id());
                         let req: WriteRequest = WriteRequest::from_bytes(syscall_msg.payload);
                         handle_write_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
                             &output_tx,
                             tid,
+                            response_context,
                             &req,
                             &counters,
                         )
                         .await;
                     },
-                    SystemCallMessageHeader::ReadRequest => {
-                        let tid: ThreadIdentifier = extract_tid(msg.source);
+                    SystemCallMessageKind::ReadRequest => {
+                        let source: MessageSender = msg.source;
+                        let tid: ThreadIdentifier = extract_tid(source);
+                        let response_context: ConsoleResponseContext =
+                            ConsoleResponseContext::new(source, syscall_msg.request_id());
                         let req: ReadRequest = ReadRequest::from_bytes(syscall_msg.payload);
                         handle_read_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
                             &console_input_tx,
                             tid,
+                            response_context,
                             &req,
                             &counters,
                         )
                         .await;
                     },
-                    SystemCallMessageHeader::PollInputRequest => {
+                    SystemCallMessageKind::PollInputRequest => {
                         let source: MessageSender = msg.source;
-                        let tid: ThreadIdentifier = extract_tid(source);
+                        let response_context: ConsoleResponseContext =
+                            ConsoleResponseContext::new(source, syscall_msg.request_id());
                         let request: PollInputRequest =
                             PollInputRequest::from_bytes(syscall_msg.payload);
                         handle_poll_input_request(
                             &mut vm_stdout_rx,
+                            &vm_stdin_tx,
                             &console_input_tx,
-                            source.pid,
-                            tid,
+                            response_context,
                             &request,
+                            &counters,
                         )
                         .await;
                     },
-                    SystemCallMessageHeader::ConsoleInputSubscribe => {
+                    SystemCallMessageKind::ConsoleInputSubscribe => {
                         let source: MessageSender = msg.source;
                         if source.pid != ProcessIdentifier::VFSD {
                             warn!(
@@ -673,7 +716,7 @@ async fn standalone_io_handler(
                             error!("standalone io_handler: console input broker is unavailable");
                         }
                     },
-                    SystemCallMessageHeader::SendSocketRequest => {
+                    SystemCallMessageKind::SendSocketRequest => {
                         handle_send_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
@@ -684,7 +727,7 @@ async fn standalone_io_handler(
                         )
                         .await;
                     },
-                    SystemCallMessageHeader::SendToSocketRequest => {
+                    SystemCallMessageKind::SendToSocketRequest => {
                         handle_sendto_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
@@ -695,7 +738,7 @@ async fn standalone_io_handler(
                         )
                         .await;
                     },
-                    SystemCallMessageHeader::ReceiveFromSocketRequest => {
+                    SystemCallMessageKind::ReceiveFromSocketRequest => {
                         handle_recvfrom_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
@@ -706,7 +749,7 @@ async fn standalone_io_handler(
                         )
                         .await;
                     },
-                    SystemCallMessageHeader::ReceiveSocketRequest => {
+                    SystemCallMessageKind::ReceiveSocketRequest => {
                         handle_recv_request(
                             &mut vm_stdout_rx,
                             &vm_stdin_tx,
@@ -721,9 +764,9 @@ async fn standalone_io_handler(
                         // For multi-part long requests, vfsd allocates a single pending
                         // entry keyed on the logical op_id but emits N SystemCallMessagePart
                         // frames. If we naively responded once per fragment using the op_id
-                        // field read from Message.payload[2..6] (which for a part frame is
-                        // total_parts | (part_number << 16)), vfsd would never match any of
-                        // those responses and the originating syscall would block forever.
+                        // field read from Message.payload[2..6], vfsd could not match a request
+                        // whose outer identifier is absent or malformed and the originating
+                        // syscall would block forever.
                         //
                         // Resolve the logical op_id and decide whether this frame should
                         // produce an error response on the no-worker / channel-full paths.
@@ -746,17 +789,15 @@ async fn standalone_io_handler(
 
                         if let Some(ref tx) = hostfs_tx {
                             if tx
-                                .try_send((msg, vm_stdin_tx.clone(), counters.clone()))
+                                .send((msg, vm_stdin_tx.clone(), counters.clone()))
                                 .is_err()
                             {
-                                error!(
-                                    "standalone io_handler: hostfs worker channel full or closed"
-                                );
+                                error!("standalone io_handler: hostfs worker channel closed");
                                 // For single-message requests and part 0 of long requests,
                                 // `error_target` carries the logical op_id. For non-first
                                 // parts of a long request whose part 0 already entered the
-                                // worker, fall back to the cached `worker_long_op_id` so
-                                // vfsd's pending entry is still drained.
+                                // worker before it closed, fall back to the cached
+                                // `worker_long_op_id` so vfsd's pending entry is still drained.
                                 let effective_target: Option<::hostfs_api::OperationId> =
                                     error_target.or(worker_long_op_id);
                                 if let Some(op_id) = effective_target {
@@ -818,24 +859,9 @@ async fn standalone_io_handler(
                                  with header {:?}",
                                 header
                             );
-                            let tid: ThreadIdentifier = extract_tid(msg.source);
-                            let error_response: Message = Message::new(
-                                MessageSender::NETWORKD,
-                                MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
-                                MessageType::Ikc,
-                                Some(ErrorCode::OperationNotSupported),
-                                [0u8; Message::PAYLOAD_SIZE],
-                            );
-                            if vm_stdin_tx
-                                .send(IkcFrame::Message(error_response))
-                                .await
-                                .is_err()
-                            {
-                                error!(
-                                    "standalone io_handler: failed to send error response (VM \
-                                     input channel closed)"
-                                );
-                            }
+                            let response_context: ConsoleResponseContext =
+                                ConsoleResponseContext::new(msg.source, syscall_msg.request_id());
+                            send_networking_error(&vm_stdin_tx, response_context, &counters).await;
                             continue;
                         }
                         trace!("standalone io_handler: ignoring message with header {:?}", header);
@@ -876,20 +902,21 @@ async fn standalone_io_handler(
 /// the frame should be silently dropped (non-first long-request part).
 ///
 fn hostfs_error_target(
-    header: SystemCallMessageHeader,
+    header: SystemCallMessageKind,
     message_payload: &[u8; Message::PAYLOAD_SIZE],
     syscall_payload: &[u8; SystemCallMessage::PAYLOAD_SIZE],
 ) -> Option<::hostfs_api::OperationId> {
     let is_request_part: bool = matches!(
         header,
-        SystemCallMessageHeader::HostFsOpenRequestPart
-            | SystemCallMessageHeader::HostFsRenameRequestPart
-            | SystemCallMessageHeader::HostFsUnlinkRequestPart
-            | SystemCallMessageHeader::HostFsMkdirRequestPart
-            | SystemCallMessageHeader::HostFsRmdirRequestPart
-            | SystemCallMessageHeader::HostFsSymlinkRequestPart
-            | SystemCallMessageHeader::HostFsReadlinkRequestPart
-            | SystemCallMessageHeader::HostFsLstatRequestPart
+        SystemCallMessageKind::HostFsOpenRequestPart
+            | SystemCallMessageKind::HostFsRenameRequestPart
+            | SystemCallMessageKind::HostFsUnlinkRequestPart
+            | SystemCallMessageKind::HostFsMkdirRequestPart
+            | SystemCallMessageKind::HostFsRmdirRequestPart
+            | SystemCallMessageKind::HostFsSymlinkRequestPart
+            | SystemCallMessageKind::HostFsReadlinkRequestPart
+            | SystemCallMessageKind::HostFsLstatRequestPart
+            | SystemCallMessageKind::HostFsPathStatRequestPart
     );
 
     if is_request_part {
@@ -935,19 +962,20 @@ fn hostfs_error_target(
 /// using the op_id cached from part 0.
 ///
 fn hostfs_part_info(
-    header: SystemCallMessageHeader,
+    header: SystemCallMessageKind,
     syscall_payload: &[u8; SystemCallMessage::PAYLOAD_SIZE],
 ) -> Option<(u16, u16)> {
     let is_request_part: bool = matches!(
         header,
-        SystemCallMessageHeader::HostFsOpenRequestPart
-            | SystemCallMessageHeader::HostFsRenameRequestPart
-            | SystemCallMessageHeader::HostFsUnlinkRequestPart
-            | SystemCallMessageHeader::HostFsMkdirRequestPart
-            | SystemCallMessageHeader::HostFsRmdirRequestPart
-            | SystemCallMessageHeader::HostFsSymlinkRequestPart
-            | SystemCallMessageHeader::HostFsReadlinkRequestPart
-            | SystemCallMessageHeader::HostFsLstatRequestPart
+        SystemCallMessageKind::HostFsOpenRequestPart
+            | SystemCallMessageKind::HostFsRenameRequestPart
+            | SystemCallMessageKind::HostFsUnlinkRequestPart
+            | SystemCallMessageKind::HostFsMkdirRequestPart
+            | SystemCallMessageKind::HostFsRmdirRequestPart
+            | SystemCallMessageKind::HostFsSymlinkRequestPart
+            | SystemCallMessageKind::HostFsReadlinkRequestPart
+            | SystemCallMessageKind::HostFsLstatRequestPart
+            | SystemCallMessageKind::HostFsPathStatRequestPart
     );
     if !is_request_part {
         return None;
@@ -974,12 +1002,12 @@ fn hostfs_part_info(
 /// `PendingQueue::remove` can match it to the correct pending operation.
 ///
 async fn send_hostfs_error(
-    header: SystemCallMessageHeader,
+    header: SystemCallMessageKind,
     op_id: ::hostfs_api::OperationId,
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
     counters: &MessageCounters,
 ) {
-    let resp_header: SystemCallMessageHeader = match header.hostfs_response_header() {
+    let resp_header: SystemCallMessageKind = match header.hostfs_response_kind() {
         Some(resp) => resp,
         None => {
             error!("standalone io_handler: no response header for {header:?}");
@@ -994,13 +1022,13 @@ async fn send_hostfs_error(
 
     let ds: usize = ::hostfs_api::HOSTFS_DATA_START;
     match resp_header {
-        SystemCallMessageHeader::HostFsLseekResponse => {
+        SystemCallMessageKind::HostFsLseekResponse => {
             // Lseek completion checks offset as i64 < 0.
             err_payload[ds..ds + 8]
                 .copy_from_slice(&(::hostfs_api::HOSTFS_ERR_IO as i64).to_le_bytes());
         },
-        SystemCallMessageHeader::HostFsStatResponse
-        | SystemCallMessageHeader::HostFsReadDirResponse => {
+        SystemCallMessageKind::HostFsStatResponse
+        | SystemCallMessageKind::HostFsReadDirResponse => {
             // Stat uses all-zeros (size==0 && mode==0 && is_dir==0) as error sentinel.
             // Readdir uses name_len==0 as end-of-directory signal.
             // Zeros are already in place from the initialization above.
@@ -1081,6 +1109,7 @@ async fn handle_write_request(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
     output_tx: &mpsc::Sender<Vec<u8>>,
     tid: ThreadIdentifier,
+    response_context: ConsoleResponseContext,
     request: &WriteRequest,
     counters: &MessageCounters,
 ) {
@@ -1095,8 +1124,12 @@ async fn handle_write_request(
                 "standalone io_handler: expected bulk frame after WriteRequest, got {:?}",
                 other.as_ref().map(|f| f.frame_type_byte())
             );
-            let response: Message =
-                WriteResponse::build(tid, 0, ProcessIdentifier::KERNEL, MessageType::Ikc);
+            let response: Message = response_context.prepare(WriteResponse::build(
+                tid,
+                0,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            ));
             counters.increment_io_handler_messages_sent();
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
@@ -1110,8 +1143,12 @@ async fn handle_write_request(
     // Only bridge writes to stdout/stderr; reject other FDs.
     if fd != STDOUT_FILENO && fd != STDERR_FILENO {
         warn!("standalone io_handler: rejecting write to unsupported fd={fd} (tid={tid:?})");
-        let response: Message =
-            WriteResponse::build(tid, -1, ProcessIdentifier::KERNEL, MessageType::Ikc);
+        let response: Message = response_context.prepare(WriteResponse::build(
+            tid,
+            -1,
+            ProcessIdentifier::KERNEL,
+            MessageType::Ikc,
+        ));
         counters.increment_io_handler_messages_sent();
         if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
             error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
@@ -1123,8 +1160,12 @@ async fn handle_write_request(
         Ok(n) => n,
         Err(_) => {
             error!("standalone io_handler: write size overflows i32 (len={})", data.len());
-            let response: Message =
-                WriteResponse::build(tid, -1, ProcessIdentifier::KERNEL, MessageType::Ikc);
+            let response: Message = response_context.prepare(WriteResponse::build(
+                tid,
+                -1,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            ));
             counters.increment_io_handler_messages_sent();
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
@@ -1140,8 +1181,12 @@ async fn handle_write_request(
     // intermittent output mismatches.
     if output_tx.send(data).await.is_err() {
         trace!("standalone io_handler: output channel closed, discarding write data");
-        let response: Message =
-            WriteResponse::build(tid, -1, ProcessIdentifier::KERNEL, MessageType::Ikc);
+        let response: Message = response_context.prepare(WriteResponse::build(
+            tid,
+            -1,
+            ProcessIdentifier::KERNEL,
+            MessageType::Ikc,
+        ));
         counters.increment_io_handler_messages_sent();
         if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
             error!("standalone io_handler: failed to send WriteResponse (VM input channel closed)");
@@ -1150,8 +1195,12 @@ async fn handle_write_request(
     }
 
     // Send WriteResponse back to guest.
-    let response: Message =
-        WriteResponse::build(tid, written, ProcessIdentifier::KERNEL, MessageType::Ikc);
+    let response: Message = response_context.prepare(WriteResponse::build(
+        tid,
+        written,
+        ProcessIdentifier::KERNEL,
+        MessageType::Ikc,
+    ));
     trace!("standalone io_handler: sending WriteResponse (written={written}, tid={tid:?})");
     counters.increment_io_handler_messages_sent();
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
@@ -1172,6 +1221,7 @@ async fn handle_read_request(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
     console_input_tx: &mpsc::Sender<ConsoleInputRequest>,
     tid: ThreadIdentifier,
+    response_context: ConsoleResponseContext,
     request: &ReadRequest,
     counters: &MessageCounters,
 ) {
@@ -1188,8 +1238,11 @@ async fn handle_read_request(
                 "standalone io_handler: expected bulk frame after ReadRequest, got {:?}",
                 other.as_ref().map(|f| f.frame_type_byte())
             );
-            let response: Message =
-                ReadResponse::eof(tid, ProcessIdentifier::KERNEL, MessageType::Ikc);
+            let response: Message = response_context.prepare(ReadResponse::eof(
+                tid,
+                ProcessIdentifier::KERNEL,
+                MessageType::Ikc,
+            ));
             counters.increment_io_handler_messages_sent();
             if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
                 error!(
@@ -1220,8 +1273,13 @@ async fn handle_read_request(
             return;
         }
         let empty_buf: [u8; ReadResponse::BUFFER_SIZE] = [0u8; ReadResponse::BUFFER_SIZE];
-        let response: Message =
-            ReadResponse::build(tid, -1, empty_buf, ProcessIdentifier::KERNEL, MessageType::Ikc);
+        let response: Message = response_context.prepare(ReadResponse::build(
+            tid,
+            -1,
+            empty_buf,
+            ProcessIdentifier::KERNEL,
+            MessageType::Ikc,
+        ));
         if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
             error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
         }
@@ -1232,6 +1290,7 @@ async fn handle_read_request(
     if console_input_tx
         .send(ConsoleInputRequest::Read {
             tid,
+            response_context,
             pull_header,
             max_bytes,
         })
@@ -1240,24 +1299,50 @@ async fn handle_read_request(
     {
         error!("standalone io_handler: console input broker is unavailable");
         send_empty_pull_response(vm_stdin_tx, &pull_header, counters).await;
+        let response: Message = response_context.prepare(ReadResponse::build(
+            tid,
+            -1,
+            [0u8; ReadResponse::BUFFER_SIZE],
+            ProcessIdentifier::KERNEL,
+            MessageType::Ikc,
+        ));
+        counters.increment_io_handler_messages_sent();
+        if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
+            error!("standalone io_handler: failed to send ReadResponse (VM input channel closed)");
+        }
     }
 }
 
 /// Handles an immediate, non-blocking host-console input snapshot.
 async fn handle_poll_input_request(
     vm_stdout_rx: &mut mpsc::Receiver<IkcFrame>,
+    vm_stdin_tx: &mpsc::Sender<IkcFrame>,
     console_input_tx: &mpsc::Sender<ConsoleInputRequest>,
-    source_pid: ProcessIdentifier,
-    tid: ThreadIdentifier,
+    response_context: ConsoleResponseContext,
     request: &PollInputRequest,
+    counters: &MessageCounters,
 ) {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let tid: ThreadIdentifier = response_context.source_tid();
     if request.count() == 0 {
         if console_input_tx
-            .send(ConsoleInputRequest::PollStatus { source_pid, tid })
+            .send(ConsoleInputRequest::PollStatus {
+                source_pid,
+                tid,
+                response_context,
+            })
             .await
             .is_err()
         {
             error!("standalone io_handler: console input broker is unavailable");
+            send_console_poll_status(
+                vm_stdin_tx,
+                tid,
+                response_context,
+                PollInputRequest::STATUS_EMPTY,
+                counters,
+            )
+            .await;
         }
         return;
     }
@@ -1285,6 +1370,7 @@ async fn handle_poll_input_request(
         .is_err()
     {
         error!("standalone io_handler: console input broker is unavailable");
+        send_empty_pull_response(vm_stdin_tx, &pull_header, counters).await;
     }
 }
 
@@ -1304,8 +1390,12 @@ fn spawn_console_input_broker(
         let mut input_closed: bool = false;
         let mut notifications_enabled: bool = false;
         let mut notification_pending: bool = false;
-        let mut pending_reads: VecDeque<(ThreadIdentifier, DataChunkHeader, usize)> =
-            VecDeque::new();
+        let mut pending_reads: VecDeque<(
+            ThreadIdentifier,
+            ConsoleResponseContext,
+            DataChunkHeader,
+            usize,
+        )> = VecDeque::new();
 
         loop {
             while !pending_reads.is_empty()
@@ -1313,10 +1403,12 @@ fn spawn_console_input_broker(
                     || input_closed
                     || pending_reads
                         .front()
-                        .map(|read| read.2 == 0)
+                        .map(|read| read.3 == 0)
                         .unwrap_or(false))
             {
-                let Some((tid, pull_header, max_bytes)) = pending_reads.pop_front() else {
+                let Some((tid, response_context, pull_header, max_bytes)) =
+                    pending_reads.pop_front()
+                else {
                     break;
                 };
                 let available: usize = core::cmp::min(input_buffer.len(), max_bytes);
@@ -1324,7 +1416,15 @@ fn spawn_console_input_broker(
                 let Some(sender) = vm_stdin_tx.upgrade() else {
                     return;
                 };
-                send_console_read_response(&sender, tid, pull_header, data, &counters).await;
+                send_console_read_response(
+                    &sender,
+                    tid,
+                    response_context,
+                    pull_header,
+                    data,
+                    &counters,
+                )
+                .await;
             }
 
             tokio::select! {
@@ -1395,8 +1495,18 @@ fn spawn_console_input_broker(
                                 notification_pending = true;
                             }
                         },
-                        ConsoleInputRequest::Read { tid, pull_header, max_bytes } => {
-                            pending_reads.push_back((tid, pull_header, max_bytes));
+                        ConsoleInputRequest::Read {
+                            tid,
+                            response_context,
+                            pull_header,
+                            max_bytes,
+                        } => {
+                            pending_reads.push_back((
+                                tid,
+                                response_context,
+                                pull_header,
+                                max_bytes,
+                            ));
                         },
                         ConsoleInputRequest::Poll {
                             source_pid,
@@ -1445,7 +1555,11 @@ fn spawn_console_input_broker(
                                 notification_pending = true;
                             }
                         },
-                        ConsoleInputRequest::PollStatus { source_pid, tid } => {
+                        ConsoleInputRequest::PollStatus {
+                            source_pid,
+                            tid,
+                            response_context,
+                        } => {
                             let authorized: bool = !notifications_enabled
                                 || source_pid == ProcessIdentifier::VFSD;
                             let status: u8 = if !authorized {
@@ -1462,7 +1576,14 @@ fn spawn_console_input_broker(
                             let Some(sender) = vm_stdin_tx.upgrade() else {
                                 break;
                             };
-                            send_console_poll_status(&sender, tid, status, &counters).await;
+                            send_console_poll_status(
+                                &sender,
+                                tid,
+                                response_context,
+                                status,
+                                &counters,
+                            )
+                            .await;
                         },
                     }
                 },
@@ -1496,6 +1617,7 @@ async fn notify_console_input_available(
 async fn send_console_read_response(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
     tid: ThreadIdentifier,
+    response_context: ConsoleResponseContext,
     pull_header: DataChunkHeader,
     data: Vec<u8>,
     counters: &MessageCounters,
@@ -1526,13 +1648,13 @@ async fn send_console_read_response(
         return;
     }
 
-    let response: Message = ReadResponse::build(
+    let response: Message = response_context.prepare(ReadResponse::build(
         tid,
         actual_len.cast_signed(),
         [0u8; ReadResponse::BUFFER_SIZE],
         ProcessIdentifier::KERNEL,
         MessageType::Ikc,
-    );
+    ));
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
         error!("standalone io_handler: failed to send console read response");
     }
@@ -1574,11 +1696,12 @@ async fn send_console_poll_response(
 async fn send_console_poll_status(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
     tid: ThreadIdentifier,
+    response_context: ConsoleResponseContext,
     status: u8,
     counters: &MessageCounters,
 ) {
     counters.increment_io_handler_messages_sent();
-    let response: Message = PollInputResponse::build(tid, status);
+    let response: Message = response_context.prepare(PollInputResponse::build(tid, status));
     if vm_stdin_tx.send(IkcFrame::Message(response)).await.is_err() {
         error!("standalone io_handler: failed to send poll-input status response");
     }
@@ -1602,6 +1725,8 @@ async fn handle_send_request(
     counters: &MessageCounters,
 ) {
     let tid: ThreadIdentifier = extract_tid(source);
+    let response_context: ConsoleResponseContext =
+        ConsoleResponseContext::new(source, syscall_msg.request_id());
     trace!("standalone io_handler: handling SendSocketRequest (tid={tid:?})");
 
     // Wait for the push data frame that the guest's `ipc::push()` emits after the request.
@@ -1612,7 +1737,7 @@ async fn handle_send_request(
                 "standalone io_handler: expected bulk frame after SendSocketRequest, got {:?}",
                 other.as_ref().map(|f| f.frame_type_byte())
             );
-            send_networking_error(vm_stdin_tx, tid, counters).await;
+            send_networking_error(vm_stdin_tx, response_context, counters).await;
             return;
         },
     };
@@ -1621,7 +1746,7 @@ async fn handle_send_request(
         Some(nd) => nd.clone(),
         None => {
             warn!("standalone io_handler: networking not allowed, rejecting send (tid={tid:?})");
-            send_networking_error(vm_stdin_tx, tid, counters).await;
+            send_networking_error(vm_stdin_tx, response_context, counters).await;
             return;
         },
     };
@@ -1667,6 +1792,8 @@ async fn handle_sendto_request(
     counters: &MessageCounters,
 ) {
     let tid: ThreadIdentifier = extract_tid(source);
+    let response_context: ConsoleResponseContext =
+        ConsoleResponseContext::new(source, syscall_msg.request_id());
     trace!("standalone io_handler: handling SendToSocketRequest (tid={tid:?})");
 
     // Wait for the push data frame that the guest's `ipc::push()` emits after the request.
@@ -1677,7 +1804,7 @@ async fn handle_sendto_request(
                 "standalone io_handler: expected bulk frame after SendToSocketRequest, got {:?}",
                 other.as_ref().map(|f| f.frame_type_byte())
             );
-            send_networking_error(vm_stdin_tx, tid, counters).await;
+            send_networking_error(vm_stdin_tx, response_context, counters).await;
             return;
         },
     };
@@ -1686,7 +1813,7 @@ async fn handle_sendto_request(
         Some(nd) => nd.clone(),
         None => {
             warn!("standalone io_handler: networking not allowed, rejecting sendto (tid={tid:?})");
-            send_networking_error(vm_stdin_tx, tid, counters).await;
+            send_networking_error(vm_stdin_tx, response_context, counters).await;
             return;
         },
     };
@@ -1731,6 +1858,8 @@ async fn handle_recvfrom_request(
     counters: &MessageCounters,
 ) {
     let tid: ThreadIdentifier = extract_tid(source);
+    let response_context: ConsoleResponseContext =
+        ConsoleResponseContext::new(source, syscall_msg.request_id());
     trace!("standalone io_handler: handling ReceiveFromSocketRequest (tid={tid:?})");
 
     // Wait for the pull-header bulk frame that the guest's `ipc::pull()` emits after the request.
@@ -1743,7 +1872,7 @@ async fn handle_recvfrom_request(
                  {:?}",
                 other.as_ref().map(|f| f.frame_type_byte())
             );
-            send_networking_error(vm_stdin_tx, tid, counters).await;
+            send_networking_error(vm_stdin_tx, response_context, counters).await;
             return;
         },
     };
@@ -1757,7 +1886,7 @@ async fn handle_recvfrom_request(
             // Release the guest blocked in `ipc::pull()` with an empty transfer before reporting
             // the error so it does not deadlock.
             send_empty_pull_response(vm_stdin_tx, &pull_header, counters).await;
-            send_networking_error(vm_stdin_tx, tid, counters).await;
+            send_networking_error(vm_stdin_tx, response_context, counters).await;
             return;
         },
     };
@@ -1789,13 +1918,13 @@ async fn handle_recvfrom_request(
                 counters.increment_io_handler_messages_sent();
                 let _ = vm_stdin_tx
                     .blocking_send(IkcFrame::Bulk(DataChunk::new(empty_header, Vec::new())));
-                let err: Message = Message::new(
+                let err: Message = response_context.prepare(Message::new(
                     MessageSender::NETWORKD,
-                    MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
+                    MessageReceiver::KERNEL,
                     MessageType::Ikc,
                     Some(ErrorCode::InvalidMessage),
                     [0u8; Message::PAYLOAD_SIZE],
-                );
+                ));
                 let _ = vm_stdin_tx.blocking_send(IkcFrame::Message(err));
                 return;
             },
@@ -1856,6 +1985,8 @@ async fn handle_recv_request(
     counters: &MessageCounters,
 ) {
     let tid: ThreadIdentifier = extract_tid(source);
+    let response_context: ConsoleResponseContext =
+        ConsoleResponseContext::new(source, syscall_msg.request_id());
     trace!("standalone io_handler: handling ReceiveSocketRequest (tid={tid:?})");
 
     // Wait for the pull-header bulk frame that the guest's `ipc::pull()` emits after the request.
@@ -1867,7 +1998,7 @@ async fn handle_recv_request(
                 "standalone io_handler: expected bulk frame after ReceiveSocketRequest, got {:?}",
                 other.as_ref().map(|f| f.frame_type_byte())
             );
-            send_networking_error(vm_stdin_tx, tid, counters).await;
+            send_networking_error(vm_stdin_tx, response_context, counters).await;
             return;
         },
     };
@@ -1879,7 +2010,7 @@ async fn handle_recv_request(
             // Release the guest blocked in `ipc::pull()` with an empty transfer before reporting
             // the error so it does not deadlock.
             send_empty_pull_response(vm_stdin_tx, &pull_header, counters).await;
-            send_networking_error(vm_stdin_tx, tid, counters).await;
+            send_networking_error(vm_stdin_tx, response_context, counters).await;
             return;
         },
     };
@@ -1916,13 +2047,13 @@ async fn handle_recv_request(
                          channel closed): {error}"
                     );
                 }
-                let err: Message = Message::new(
+                let err: Message = response_context.prepare(Message::new(
                     MessageSender::NETWORKD,
-                    MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
+                    MessageReceiver::KERNEL,
                     MessageType::Ikc,
                     Some(ErrorCode::InvalidMessage),
                     [0u8; Message::PAYLOAD_SIZE],
-                );
+                ));
                 if let Err(error) = vm_stdin_tx.blocking_send(IkcFrame::Message(err)) {
                     error!(
                         "standalone io_handler: failed to send recv error response (VM input \
@@ -1973,21 +2104,21 @@ async fn handle_recv_request(
 ///
 /// # Description
 ///
-/// Sends a networking error response addressed to `tid`, releasing a guest blocked in
+/// Sends a correlated networking error response, releasing a guest blocked in
 /// `ipc::recv()` after a sendto/recvfrom/recv request when the operation cannot proceed.
 ///
 async fn send_networking_error(
     vm_stdin_tx: &mpsc::Sender<IkcFrame>,
-    tid: ThreadIdentifier,
+    response_context: ConsoleResponseContext,
     counters: &MessageCounters,
 ) {
-    let error_response: Message = Message::new(
+    let error_response: Message = response_context.prepare(Message::new(
         MessageSender::NETWORKD,
-        MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),
+        MessageReceiver::KERNEL,
         MessageType::Ikc,
         Some(ErrorCode::OperationNotSupported),
         [0u8; Message::PAYLOAD_SIZE],
-    );
+    ));
     counters.increment_io_handler_messages_sent();
     if vm_stdin_tx
         .send(IkcFrame::Message(error_response))

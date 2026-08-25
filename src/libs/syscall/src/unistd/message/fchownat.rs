@@ -13,7 +13,7 @@ use crate::{
         SystemCallMessagePart,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::alloc::{
     string::{
@@ -273,7 +273,7 @@ impl MessagePartitioner for FileChownAtRequest {
     ) -> Result<Message, Error> {
         SystemCallMessagePart::build_request(
             tid,
-            SystemCallMessageHeader::FileChownAtRequestPart,
+            SystemCallMessageKind::FileChownAtRequestPart,
             total_parts,
             part_number,
             payload_size,
@@ -315,7 +315,7 @@ impl FileChownAtResponse {
     ) -> Message {
         let message: FileChownAtResponse = FileChownAtResponse::new();
         let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::FileChownAtResponse,
+            SystemCallMessageKind::FileChownAtResponse,
             message.into_bytes(),
         );
         let message: Message = Message::new(

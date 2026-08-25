@@ -27,6 +27,11 @@ on:
   push:
     branches:
       - "dev"
+    # Benchmark baselines are pushed back to dev by benchmark-persist. Ignore
+    # them here so those commits only wake up deploy-bench, not the full
+    # pipeline.
+    paths-ignore:
+      - "www/bench/data/**"
 
 # Cancel previous running actions for the same PR
 concurrency:
@@ -84,7 +89,7 @@ jobs:
           github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           os: "Linux"
           runner-name-prefix: "prometheus"
-          runner-group: "Benchmark"
+          runner-label: "benchmark"
 
       - name: "Check Windows Runners"
         id: check-windows
@@ -93,7 +98,7 @@ jobs:
           github-token: ${{ secrets.RUNNER_ADMIN_TOKEN || secrets.GITHUB_TOKEN }}
           os: "Windows"
           runner-name-prefix: "WIN"
-          runner-group: "Benchmark"
+          runner-label: "benchmark"
 
   # ==========================================================================================
   # Benchmark Eligibility Gates
@@ -126,6 +131,7 @@ jobs:
           UP_TO_DATE: ${{ needs.precheck.outputs.up_to_date }}
           IS_DRAFT: ${{ github.event.pull_request.draft }}
           HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -euo pipefail
           should_run=false
@@ -141,8 +147,16 @@ jobs:
           elif [[ "${UP_TO_DATE}" == "true" ]]; then
             if [[ "${EVENT_NAME}" == "push" && "${HEAD_COMMIT_MSG}" == "Merge "* ]]; then
               echo "Skip: push event on a merge commit"
-            elif [[ "${EVENT_NAME}" == "pull_request" && "${IS_DRAFT}" == "true" ]]; then
-              echo "Skip: draft pull request"
+            elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              if [[ "${IS_DRAFT}" == "true" ]]; then
+                echo "Skip: draft pull request"
+              elif [[ "${PR_HEAD_REPO}" != "${REPO}" ]]; then
+                # Fork PRs are excluded from Linux benchmarks to prevent
+                # untrusted code from running on self-hosted runners.
+                echo "Skip: pull request from a fork"
+              else
+                should_run=true
+              fi
             else
               should_run=true
             fi
@@ -1086,13 +1100,11 @@ jobs:
             vfs-iterations: "100"
             standalone-socket-benchmarks: "warm-start-socket"
             standalone-socket-iterations: "100"
-    runs-on:
-      group: Benchmark
-      labels: [ self-hosted, Linux ]
+    runs-on: [ self-hosted, Linux, benchmark ]
     permissions:
       contents: read
 
-    # Eligibility (repo, event, precheck, draft, runner availability) is
+    # Eligibility (repo, event, precheck, draft, fork PR, runner availability) is
     # consolidated in the benchmark-gate-linux job. Skip gracefully when the
     # gate reports the benchmark pipeline should not run (e.g. no Linux
     # self-hosted runners are online).
@@ -1212,9 +1224,7 @@ jobs:
             standard-iterations: "100"
             payload-size: ""
             profiler: "PROFILER=yes"
-    runs-on:
-      group: Benchmark
-      labels: [ self-hosted, Windows ]
+    runs-on: [ self-hosted, Windows, benchmark ]
     permissions:
       contents: read
 
@@ -1380,8 +1390,9 @@ jobs:
             **/*.err
             bench_*.txt
 
-  # Aggregate benchmark results, post a PR comment, and persist the updated
-  # baselines on dev.
+  # Aggregate benchmark results, gate on regressions, and persist the updated
+  # baselines on dev. Results are stored in www/bench/data/linux-baremetal/ so
+  # that the static site can serve them.
   benchmark-finalize:
     name: "Benchmark Finalize"
     needs: [ benchmark-gate-linux, benchmark ]
@@ -1393,10 +1404,10 @@ jobs:
       needs.benchmark.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
+    outputs:
+      bench_url: ${{ steps.url.outputs.bench_url }}
     permissions:
       contents: write
-      pull-requests: write
-      issues: write
 
     steps:
       - uses: actions/checkout@v7
@@ -1410,32 +1421,36 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: benchmark-results-*
-          path: .
+          path: linux-baremetal
           merge-multiple: true
 
-      - name: "Report Benchmark Results"
-        uses: ./.github/actions/benchmark-report
-        with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
-            warm-start-gateway,warm-start-vmm,warm-start-socket"
-          machine-types: "microvm"
-          archs: "X64"
-          dev-dir: "data/baremetal"
-          runner-label: "self-hosted"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Generate Benchmark URL"
+        id: url
+        shell: bash
+        run: |
+          benchmarks="boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,warm-start-gateway,warm-start-vmm,warm-start-socket"
+          url=$(python3 ./scripts/benchmark.py \
+            ci-url \
+            --target-dir "linux-baremetal" \
+            --benchmarks "${benchmarks}" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --commit "${{ github.sha }}" \
+            --base-url "https://nanvix.github.io/nanvix/")
+          echo "bench_url=${url}" >> "$GITHUB_OUTPUT"
 
       - name: "Gate on Performance Regressions"
         if: github.ref_name != 'dev'
         shell: bash
         # vfs-bench uses a different CSV schema. Size-sweep benchmarks are also excluded.
+        # The in-tree baseline matches dev: the gate only runs the pipeline for
+        # branches that are up to date with it.
         run: |
-          git fetch origin dev --quiet
-          git checkout origin/dev -- data/baremetal
           benchmarks="boot-time,cold-start,cold-start-uvm,snapshot-restore"
           python3 ./scripts/benchmark.py \
             ci-gate \
-            --dev-dir "data/baremetal" \
-            --target-dir "$(pwd)" \
+            --dev-dir "www/bench/data/linux-baremetal" \
+            --target-dir "linux-baremetal" \
             --benchmarks "${benchmarks}" \
             --machine-types "microvm" \
             --archs "X64" \
@@ -1450,7 +1465,8 @@ jobs:
             warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
-          target-dir: "data/baremetal"
+          source-dir: "linux-baremetal"
+          target-dir: "www/bench/data/linux-baremetal"
 
       - name: "Upload logs in case of finalize failures"
         if: failure() || cancelled()
@@ -1465,10 +1481,10 @@ jobs:
             **/*.out
             **/*.err
 
-  # Aggregate Windows baremetal benchmark results, post a PR comment,
+  # Aggregate Windows baremetal benchmark results, gate on regressions,
   # and persist the updated baselines on dev.
-  # Results are stored in data/windows-baremetal/ to keep them isolated
-  # from the Linux and GitHub-hosted baselines.
+  # Results are stored in www/bench/data/windows-baremetal/ to keep them
+  # isolated from the Linux baselines.
   windows-benchmark-finalize:
     name: "Windows Benchmark Finalize"
     needs: [ benchmark-gate-windows, windows-benchmark, benchmark-finalize ]
@@ -1484,10 +1500,10 @@ jobs:
       needs.windows-benchmark.result == 'success' }}
     timeout-minutes: 30
     runs-on: ubuntu-24.04
+    outputs:
+      bench_url: ${{ steps.url.outputs.bench_url }}
     permissions:
       contents: write
-      pull-requests: write
-      issues: write
 
     steps:
       - uses: actions/checkout@v7
@@ -1504,33 +1520,37 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: benchmark-windows-baremetal-results-*
-          path: .
+          path: windows-baremetal
           merge-multiple: true
 
-      - name: "Report Benchmark Results"
-        uses: ./.github/actions/benchmark-report
-        with:
-          benchmarks: "boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,\
-            warm-start-gateway,warm-start-vmm,warm-start-socket"
-          machine-types: "microvm"
-          archs: "X64"
-          dev-dir: "data/windows-baremetal"
-          runner-label: "windows-baremetal"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Generate Benchmark URL"
+        id: url
+        shell: bash
+        run: |
+          benchmarks="boot-time,cold-start,cold-start-uvm,snapshot-restore,vfs-bench,warm-start-gateway,warm-start-vmm,warm-start-socket"
+          url=$(python3 ./scripts/benchmark.py \
+            ci-url \
+            --target-dir "windows-baremetal" \
+            --benchmarks "${benchmarks}" \
+            --machine-types "microvm" \
+            --archs "X64" \
+            --commit "${{ github.sha }}" \
+            --base-url "https://nanvix.github.io/nanvix/")
+          echo "bench_url=${url}" >> "$GITHUB_OUTPUT"
 
       - name: "Gate on Performance Regressions"
         if: github.ref_name != 'dev'
         shell: bash
         # vfs-bench is excluded: it uses a different CSV schema (not percentile-based).
         # Size-sweep benchmarks are also excluded (multi-row).
+        # The in-tree baseline matches dev: the gate only runs the pipeline for
+        # branches that are up to date with it.
         run: |
-          git fetch origin dev --quiet
-          git checkout origin/dev -- data/windows-baremetal
           benchmarks="boot-time,cold-start,cold-start-uvm"
           python3 ./scripts/benchmark.py \
             ci-gate \
-            --dev-dir "data/windows-baremetal" \
-            --target-dir "$(pwd)" \
+            --dev-dir "www/bench/data/windows-baremetal" \
+            --target-dir "windows-baremetal" \
             --benchmarks "${benchmarks}" \
             --machine-types "microvm" \
             --archs "X64" \
@@ -1545,7 +1565,8 @@ jobs:
             warm-start-gateway,warm-start-vmm,warm-start-socket"
           machine-types: "microvm"
           archs: "X64"
-          target-dir: "data/windows-baremetal"
+          source-dir: "windows-baremetal"
+          target-dir: "www/bench/data/windows-baremetal"
 
       - name: "Upload logs in case of finalize failures"
         if: failure() || cancelled()
@@ -1559,6 +1580,42 @@ jobs:
             **/*.log
             **/*.out
             **/*.err
+
+  # Post a single PR comment with links to both platform benchmark views.
+  # Fork PRs never reach this job: the benchmark gates skip the whole pipeline
+  # for them, so the token here always has write access.
+  benchmark-report:
+    name: "Benchmark Report"
+    needs: [ benchmark-finalize, windows-benchmark-finalize ]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' &&
+      (needs.benchmark-finalize.result == 'success' ||
+      needs.windows-benchmark-finalize.result == 'success') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: "Find existing benchmark comment"
+        uses: peter-evans/find-comment@v4
+        id: fc
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: "github-actions[bot]"
+          body-includes: "🔬 Benchmark Results"
+
+      - name: "Post benchmark comment"
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body: |
+            ## 🔬 Benchmark Results
+            - ${{ needs.benchmark-finalize.outputs.bench_url && format('[Linux]({0})', needs.benchmark-finalize.outputs.bench_url) || 'Linux (skipped)' }}
+            - ${{ needs.windows-benchmark-finalize.outputs.bench_url && format('[Windows]({0})', needs.windows-benchmark-finalize.outputs.bench_url) || 'Windows (skipped)' }}
 
   # ==========================================================================================
   # Stage 4: Post Actions (Conditional)
@@ -1594,7 +1651,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target-arch: [ x86 ]
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
         memory-size: [ 256 ]
     runs-on: ubuntu-24.04
@@ -1659,7 +1716,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target-arch: [ x86 ]
+        target-arch: [ x86, x86_64 ]
         machine-type: [ microvm ]
         memory-size: [ 256 ]
     runs-on: ubuntu-24.04

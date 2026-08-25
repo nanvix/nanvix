@@ -20,10 +20,15 @@ extern crate alloc;
 
 use crate::error::{
     build_error,
-    send_response,
+    ResponseContext,
 };
-use ::alloc::collections::BTreeMap;
+use ::alloc::collections::{
+    BTreeMap,
+    BTreeSet,
+};
 use ::hostfs_api::{
+    file_kind,
+    LstatResponse,
     OperationId,
     OperationIdAllocator,
 };
@@ -38,6 +43,11 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
+use ::syscall::unistd::message::ChangeDirectoryResponse;
+use ::vfs::{
+    fd::vfs_set_cwd,
+    path::ResolvedPath,
+};
 
 //==================================================================================================
 // Pending Operation Descriptor
@@ -45,9 +55,11 @@ use ::sys::{
 
 /// Describes a hostfs operation that is waiting for an IKC response from hostfsd.
 pub(crate) struct PendingOp {
-    /// Thread that initiated the request (to send the response back).
+    /// Exact response routing and correlation metadata for the original request.
+    pub response_context: ResponseContext,
+    /// Thread that initiated the request, used by payload builders and push rendezvous.
     pub source_tid: ThreadIdentifier,
-    /// Process that initiated the request.
+    /// Process that initiated the request, used for VFS state and push rendezvous.
     pub source_pid: ProcessIdentifier,
     /// The kind of operation, which determines how to interpret the IKC response.
     pub kind: PendingOpKind,
@@ -97,6 +109,12 @@ pub(crate) enum PendingOpKind {
     /// Path-based stat that follows the final symbolic link (default `stat(2)` semantics).
     /// Shares the `lstat` response wire format and completion path.
     PathStat,
+    /// chdir onto a hostfs path — a path-based stat whose completion commits the cwd
+    /// when the target is a directory (else `ENOTDIR`). Reuses the `PathStat` wire form.
+    Chdir {
+        /// Absolute hostfs path to become the cwd once confirmed to be a directory.
+        path: ResolvedPath,
+    },
     /// getdents — directory listing over hostfs.
     ///
     /// hostfsd returns one entry per IKC round-trip, so a single guest `getdents`
@@ -182,6 +200,8 @@ const STAT_NLINK_FILE: u64 = 1;
 /// a configurable deadline (e.g., 5 seconds without a response).
 pub(crate) struct PendingQueue {
     ops: BTreeMap<OperationId, PendingOp>,
+    abandoned_ops: BTreeSet<OperationId>,
+    abandoned_opens: BTreeSet<OperationId>,
     id_alloc: OperationIdAllocator,
 }
 
@@ -190,6 +210,8 @@ impl PendingQueue {
     pub fn new() -> Self {
         Self {
             ops: BTreeMap::new(),
+            abandoned_ops: BTreeSet::new(),
+            abandoned_opens: BTreeSet::new(),
             id_alloc: OperationIdAllocator::new(),
         }
     }
@@ -200,7 +222,8 @@ impl PendingQueue {
     /// Callers should use this ID when sending the IKC request so that the response can
     /// be matched back via [`remove`](Self::remove).
     pub fn alloc_op_id(&mut self) -> OperationId {
-        self.id_alloc.alloc(|id| self.ops.contains_key(id))
+        self.id_alloc
+            .alloc(|id| self.ops.contains_key(id) || self.abandoned_ops.contains(id))
     }
 
     /// Inserts a pending operation under the given operation identifier.
@@ -208,7 +231,7 @@ impl PendingQueue {
     /// Returns `Err(ErrorCode::ResourceBusy)` if the queue is full, so the caller
     /// can propagate the error without crashing vfsd.
     pub fn insert(&mut self, op_id: OperationId, op: PendingOp) -> Result<(), ErrorCode> {
-        if self.ops.len() >= MAX_PENDING_OPS {
+        if self.ops.len() + self.abandoned_ops.len() >= MAX_PENDING_OPS {
             return Err(ErrorCode::ResourceBusy);
         }
         self.ops.insert(op_id, op);
@@ -220,7 +243,7 @@ impl PendingQueue {
     /// Callers should check this BEFORE sending an IKC request to avoid orphaned
     /// responses when the queue is full.
     pub fn has_capacity(&self) -> bool {
-        self.ops.len() < MAX_PENDING_OPS
+        self.ops.len() + self.abandoned_ops.len() < MAX_PENDING_OPS
     }
 
     /// Removes and returns the pending operation associated with the given `op_id`.
@@ -234,6 +257,100 @@ impl PendingQueue {
     /// in place across IKC responses without removing the op until the sweep completes.
     pub fn get_mut(&mut self, op_id: OperationId) -> Option<&mut PendingOp> {
         self.ops.get_mut(&op_id)
+    }
+
+    /// Cancels one exact pending hostfs read and retains its ID until the late response drains.
+    pub fn cancel_read_request(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        request_id: ::sys::ipc::RequestIdentifier,
+    ) -> bool {
+        let op_id: Option<OperationId> = self.ops.iter().find_map(|(op_id, op)| {
+            (op.source_pid == pid
+                && op.source_tid == tid
+                && op.response_context.request_id() == request_id
+                && matches!(op.kind, PendingOpKind::Read { .. }))
+            .then_some(*op_id)
+        });
+        if let Some(op_id) = op_id {
+            self.ops.remove(&op_id);
+            self.abandoned_ops.insert(op_id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Removes pending operations owned by `pid`, retaining IDs until late responses drain.
+    pub fn purge_pid(&mut self, pid: ProcessIdentifier) {
+        let op_ids: ::alloc::vec::Vec<OperationId> = self
+            .ops
+            .iter()
+            .filter_map(|(op_id, op)| (op.source_pid == pid).then_some(*op_id))
+            .collect();
+        for op_id in op_ids {
+            if let Some(op) = self.ops.remove(&op_id) {
+                self.abandoned_ops.insert(op_id);
+                if matches!(op.kind, PendingOpKind::Open { .. }) {
+                    self.abandoned_opens.insert(op_id);
+                }
+            }
+        }
+    }
+
+    /// Handles a late response for an operation abandoned by cancellation, exit, or exec.
+    ///
+    /// A successful abandoned open is closed remotely; other responses are discarded.
+    pub fn complete_abandoned_operation(
+        &mut self,
+        op_id: OperationId,
+        response_payload: &[u8; Message::PAYLOAD_SIZE],
+    ) -> bool {
+        if !self.abandoned_ops.remove(&op_id) {
+            return false;
+        }
+        if !self.abandoned_opens.remove(&op_id) {
+            return true;
+        }
+
+        let header_raw: u16 = u16::from_ne_bytes([response_payload[0], response_payload[1]]);
+        if ::syscall::SystemCallMessageKind::try_from(header_raw)
+            != Ok(::syscall::SystemCallMessageKind::HostFsOpenResponse)
+        {
+            ::syslog::warn!(
+                "late abandoned hostfs open has invalid response header (op_id={})",
+                op_id
+            );
+            return true;
+        }
+
+        let response: ::hostfs_api::OpenResponse =
+            ::hostfs_api::OpenResponse::decode(response_payload);
+        let remote_fd: i32 = response.fd;
+        if remote_fd >= 0 {
+            if let Err(error) =
+                crate::hostfs::send_close_request(remote_fd, OperationId::FIRE_AND_FORGET)
+            {
+                ::syslog::warn!(
+                    "failed to close late abandoned hostfs open (op_id={}, remote_fd={}, \
+                     error={:?})",
+                    op_id,
+                    remote_fd,
+                    error
+                );
+            }
+        }
+        true
+    }
+
+    /// Discards a completed multipart response for an abandoned operation.
+    pub fn discard_abandoned_operation(&mut self, op_id: OperationId) -> bool {
+        if !self.abandoned_ops.remove(&op_id) {
+            return false;
+        }
+        self.abandoned_opens.remove(&op_id);
+        true
     }
 
     /// Returns true if there are no pending operations.
@@ -253,7 +370,8 @@ impl PendingQueue {
                 "hostfs pending queue drain: failing pending op for tid={:?}",
                 op.source_tid
             );
-            send_response(&build_error(op.source_tid, ErrorCode::IoErr));
+            op.response_context
+                .send(&build_error(op.source_tid, ErrorCode::IoErr));
         }
     }
 }
@@ -262,7 +380,7 @@ impl PendingQueue {
 /// payload. Intended for recovery paths (e.g., a long-response stream is discarded
 /// due to assembler desync) where the op must be cancelled rather than completed.
 pub(crate) fn cancel_pending_op(op: PendingOp, code: ErrorCode) {
-    send_response(&build_error(op.source_tid, code));
+    op.response_context.send(&build_error(op.source_tid, code));
 }
 
 //==================================================================================================
@@ -278,6 +396,7 @@ pub(crate) fn complete_pending_op(
     pending: PendingOp,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
 ) {
+    let response_context: ResponseContext = pending.response_context;
     // Bind the VFS to the requesting process so that descriptor allocation (e.g. for a completed
     // open) and directory-cursor updates land in its per-process state. `source_pid` was copied
     // from the kernel-attested `message.source.pid` when the request was dispatched, so it remains
@@ -307,52 +426,45 @@ pub(crate) fn complete_pending_op(
                 );
             }
         }
-        send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+        response_context.send(&build_error(pending.source_tid, ErrorCode::IoErr));
         return;
     }
 
     match pending.kind {
-        PendingOpKind::Open { path } => complete_open(pending.source_tid, response_payload, path),
-        PendingOpKind::Close => complete_close(pending.source_tid, response_payload),
-        PendingOpKind::Read { count } => {
-            complete_read(pending.source_pid, pending.source_tid, count, response_payload)
-        },
-        PendingOpKind::Write => complete_write(pending.source_tid, response_payload),
-        PendingOpKind::Seek => complete_seek(pending.source_tid, response_payload),
-        PendingOpKind::Flush => {
-            complete_status(pending.source_tid, response_payload, OpGroup::Flush)
-        },
+        PendingOpKind::Open { path } => complete_open(response_context, response_payload, path),
+        PendingOpKind::Close => complete_close(response_context, response_payload),
+        PendingOpKind::Read { count } => complete_read(response_context, count, response_payload),
+        PendingOpKind::Write => complete_write(response_context, response_payload),
+        PendingOpKind::Seek => complete_seek(response_context, response_payload),
+        PendingOpKind::Flush => complete_status(response_context, response_payload, OpGroup::Flush),
         PendingOpKind::Truncate => {
-            complete_status(pending.source_tid, response_payload, OpGroup::Truncate)
+            complete_status(response_context, response_payload, OpGroup::Truncate)
         },
-        PendingOpKind::Mkdir => {
-            complete_status(pending.source_tid, response_payload, OpGroup::Mkdir)
-        },
-        PendingOpKind::Rmdir => {
-            complete_status(pending.source_tid, response_payload, OpGroup::Rmdir)
-        },
+        PendingOpKind::Mkdir => complete_status(response_context, response_payload, OpGroup::Mkdir),
+        PendingOpKind::Rmdir => complete_status(response_context, response_payload, OpGroup::Rmdir),
         PendingOpKind::Unlink => {
-            complete_status(pending.source_tid, response_payload, OpGroup::Unlink)
+            complete_status(response_context, response_payload, OpGroup::Unlink)
         },
         PendingOpKind::Rename => {
-            complete_status(pending.source_tid, response_payload, OpGroup::Rename)
+            complete_status(response_context, response_payload, OpGroup::Rename)
         },
-        PendingOpKind::Stat => complete_stat(pending.source_tid, response_payload),
+        PendingOpKind::Stat => complete_stat(response_context, response_payload),
         PendingOpKind::Symlink => {
-            complete_status(pending.source_tid, response_payload, OpGroup::Symlink)
+            complete_status(response_context, response_payload, OpGroup::Symlink)
         },
         PendingOpKind::Readlink { bufsiz } => {
-            complete_readlink(pending.source_tid, response_payload, bufsiz)
+            complete_readlink(response_context, response_payload, bufsiz)
         },
-        PendingOpKind::Lstat => complete_lstat(pending.source_tid, response_payload),
-        PendingOpKind::PathStat => complete_lstat(pending.source_tid, response_payload),
+        PendingOpKind::Lstat => complete_lstat(response_context, response_payload),
+        PendingOpKind::PathStat => complete_lstat(response_context, response_payload),
+        PendingOpKind::Chdir { path } => complete_chdir(response_context, response_payload, path),
         PendingOpKind::Getdents { .. } => {
             // Getdents sweeps are driven entirely by the main event loop, which keeps
             // the op buffered across round-trips and finalizes it via `finish_getdents`.
             // Reaching here means a single-shot completion was attempted for a getdents
             // op, which is a logic error.
             ::syslog::error!("getdents pending op routed to single-shot completion");
-            send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+            response_context.send(&build_error(pending.source_tid, ErrorCode::IoErr));
         },
     }
 }
@@ -473,6 +585,8 @@ pub(crate) fn finish_getdents(op: PendingOp) {
         message::MessagePartitioner,
     };
 
+    let response_context: ResponseContext = op.response_context;
+    let source_tid: ThreadIdentifier = op.source_tid;
     let PendingOpKind::Getdents {
         remote_fd,
         guest_fd,
@@ -492,15 +606,15 @@ pub(crate) fn finish_getdents(op: PendingOp) {
     }
 
     let response: GetDirectoryEntriesResponse = GetDirectoryEntriesResponse::new(entries);
-    match response.into_parts(op.source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
+    match response.into_parts(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
         Ok(parts) => {
             for part in parts {
-                send_response(&part);
+                response_context.send(&part);
             }
         },
         Err(e) => {
             ::syslog::error!("finish_getdents: into_parts failed (error={:?})", e);
-            send_response(&build_error(op.source_tid, ErrorCode::IoErr));
+            response_context.send(&build_error(source_tid, ErrorCode::IoErr));
         },
     }
 }
@@ -536,12 +650,44 @@ pub(crate) fn drive_getdents(queue: &mut PendingQueue, op_id: OperationId, step:
     }
 }
 
+/// Multi-part hostfs response stream handled by [`accumulate_response_part`].
+#[derive(Clone, Copy)]
+pub(crate) enum LongResponseStream {
+    /// Long symbolic-link target returned by `readlink`.
+    Readlink,
+    /// Long directory entry name returned by `readdir`.
+    ReadDir,
+}
+
+impl LongResponseStream {
+    /// Returns the stream name used in log messages.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Readlink => "readlink",
+            Self::ReadDir => "readdir",
+        }
+    }
+
+    /// Returns the largest number of parts a well-formed stream may advertise.
+    fn max_parts(self) -> usize {
+        let body_size: usize = match self {
+            Self::Readlink => {
+                ::sysapi::limits::PATH_MAX + ::hostfs_api::long_msg::READLINK_RESPONSE_HEADER_SIZE
+            },
+            Self::ReadDir => {
+                ::sysapi::limits::NAME_MAX + ::hostfs_api::long_msg::READDIR_RESPONSE_HEADER_SIZE
+            },
+        };
+        body_size.div_ceil(::syscall::message::SystemCallMessagePart::PAYLOAD_SIZE)
+    }
+}
+
 /// Accumulates one part of a multi-part hostfs *response* stream into `slot`.
 ///
 /// Shared by the long-target `readlink` and long-name `readdir` response paths, which
 /// use identical framing: part 0 carries the op_id in its first 4 bytes, and the
-/// assembled body is the concatenation of every part's payload. `label` names the
-/// stream in log messages (e.g. `"readlink"`).
+/// assembled body is the concatenation of every part's payload. `stream` selects the
+/// advertised part-count bound and names the stream in log messages.
 ///
 /// `slot` holds the single in-flight assembler (hostfsd's single-threaded worker
 /// guarantees at most one stream is in flight at a time). On a fresh
@@ -556,8 +702,25 @@ pub(crate) fn accumulate_response_part(
     slot: &mut Option<(::syscall::message::SystemCallLongMessage, OperationId)>,
     queue: &mut PendingQueue,
     part: ::syscall::message::SystemCallMessagePart,
-    label: &str,
+    outer_op_id: OperationId,
+    stream: LongResponseStream,
 ) -> Option<(::alloc::vec::Vec<u8>, OperationId)> {
+    let label: &str = stream.label();
+    let total_parts: usize = part.total_parts as usize;
+    let max_parts: usize = stream.max_parts();
+    if total_parts == 0 || total_parts > max_parts {
+        ::syslog::error!(
+            "{} response advertises invalid part count (total_parts={}, max_parts={})",
+            label,
+            total_parts,
+            max_parts
+        );
+        if let Some(op) = queue.remove(outer_op_id) {
+            cancel_pending_op(op, ErrorCode::IoErr);
+        }
+        return None;
+    }
+
     // A fresh stream starts at part 0: validate, extract the op_id, drop any stale
     // stream, and allocate the assembler.
     if part.part_number == 0 {
@@ -567,6 +730,9 @@ pub(crate) fn accumulate_response_part(
                 label,
                 part.payload_size
             );
+            if let Some(op) = queue.remove(outer_op_id) {
+                cancel_pending_op(op, ErrorCode::IoErr);
+            }
             return None;
         }
         let op_id: OperationId = OperationId::from_le_bytes([
@@ -575,6 +741,18 @@ pub(crate) fn accumulate_response_part(
             part.payload[2],
             part.payload[3],
         ]);
+        if op_id != outer_op_id {
+            ::syslog::error!(
+                "{} response identifier mismatch (outer_op_id={}, body_op_id={})",
+                label,
+                outer_op_id,
+                op_id
+            );
+            if let Some(op) = queue.remove(outer_op_id) {
+                cancel_pending_op(op, ErrorCode::IoErr);
+            }
+            return None;
+        }
         if let Some((_, stale_op_id)) = slot.take() {
             ::syslog::warn!(
                 "discarding incomplete {} response stream on new part-0 arrival (cancelling stale \
@@ -586,7 +764,7 @@ pub(crate) fn accumulate_response_part(
                 cancel_pending_op(op, ErrorCode::IoErr);
             }
         }
-        let capacity: usize = part.total_parts.max(1) as usize;
+        let capacity: usize = total_parts;
         match ::syscall::message::SystemCallLongMessage::new(capacity) {
             Ok(asm) => {
                 *slot = Some((asm, op_id));
@@ -608,6 +786,26 @@ pub(crate) fn accumulate_response_part(
                 return None;
             },
         }
+    }
+
+    if slot
+        .as_ref()
+        .is_some_and(|(_, op_id)| *op_id != outer_op_id)
+    {
+        let (_, active_op_id) = slot.take().unwrap();
+        ::syslog::error!(
+            "{} response stream identifier changed (active_op_id={}, outer_op_id={})",
+            label,
+            active_op_id,
+            outer_op_id
+        );
+        if let Some(op) = queue.remove(active_op_id) {
+            cancel_pending_op(op, ErrorCode::IoErr);
+        }
+        if let Some(op) = queue.remove(outer_op_id) {
+            cancel_pending_op(op, ErrorCode::IoErr);
+        }
+        return None;
     }
 
     if let Some((asm, op_id)) = slot.as_mut() {
@@ -644,6 +842,9 @@ pub(crate) fn accumulate_response_part(
             label,
             pn
         );
+        if let Some(op) = queue.remove(outer_op_id) {
+            cancel_pending_op(op, ErrorCode::IoErr);
+        }
         None
     }
 }
@@ -652,33 +853,34 @@ pub(crate) fn accumulate_response_part(
 ///
 /// Returns `true` if the header is valid for this operation, `false` if desync is detected.
 fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOAD_SIZE]) -> bool {
-    use ::syscall::SystemCallMessageHeader;
+    use ::syscall::SystemCallMessageKind;
 
     let header_raw: u16 = u16::from_ne_bytes([payload[0], payload[1]]);
-    let header: SystemCallMessageHeader = match SystemCallMessageHeader::try_from(header_raw) {
+    let header: SystemCallMessageKind = match SystemCallMessageKind::try_from(header_raw) {
         Ok(h) => h,
         Err(_) => return false,
     };
 
     matches!(
         (kind, header),
-        (PendingOpKind::Open { .. }, SystemCallMessageHeader::HostFsOpenResponse)
-            | (PendingOpKind::Close, SystemCallMessageHeader::HostFsCloseResponse)
-            | (PendingOpKind::Read { .. }, SystemCallMessageHeader::HostFsReadResponse)
-            | (PendingOpKind::Write, SystemCallMessageHeader::HostFsWriteResponse)
-            | (PendingOpKind::Seek, SystemCallMessageHeader::HostFsLseekResponse)
-            | (PendingOpKind::Flush, SystemCallMessageHeader::HostFsFlushResponse)
-            | (PendingOpKind::Truncate, SystemCallMessageHeader::HostFsTruncateResponse)
-            | (PendingOpKind::Mkdir, SystemCallMessageHeader::HostFsMkdirResponse)
-            | (PendingOpKind::Rmdir, SystemCallMessageHeader::HostFsRmdirResponse)
-            | (PendingOpKind::Unlink, SystemCallMessageHeader::HostFsUnlinkResponse)
-            | (PendingOpKind::Rename, SystemCallMessageHeader::HostFsRenameResponse)
-            | (PendingOpKind::Stat, SystemCallMessageHeader::HostFsStatResponse)
-            | (PendingOpKind::Symlink, SystemCallMessageHeader::HostFsSymlinkResponse)
-            | (PendingOpKind::Readlink { .. }, SystemCallMessageHeader::HostFsReadlinkResponse)
-            | (PendingOpKind::Lstat, SystemCallMessageHeader::HostFsLstatResponse)
-            | (PendingOpKind::PathStat, SystemCallMessageHeader::HostFsPathStatResponse)
-            | (PendingOpKind::Getdents { .. }, SystemCallMessageHeader::HostFsReadDirResponse)
+        (PendingOpKind::Open { .. }, SystemCallMessageKind::HostFsOpenResponse)
+            | (PendingOpKind::Close, SystemCallMessageKind::HostFsCloseResponse)
+            | (PendingOpKind::Read { .. }, SystemCallMessageKind::HostFsReadResponse)
+            | (PendingOpKind::Write, SystemCallMessageKind::HostFsWriteResponse)
+            | (PendingOpKind::Seek, SystemCallMessageKind::HostFsLseekResponse)
+            | (PendingOpKind::Flush, SystemCallMessageKind::HostFsFlushResponse)
+            | (PendingOpKind::Truncate, SystemCallMessageKind::HostFsTruncateResponse)
+            | (PendingOpKind::Mkdir, SystemCallMessageKind::HostFsMkdirResponse)
+            | (PendingOpKind::Rmdir, SystemCallMessageKind::HostFsRmdirResponse)
+            | (PendingOpKind::Unlink, SystemCallMessageKind::HostFsUnlinkResponse)
+            | (PendingOpKind::Rename, SystemCallMessageKind::HostFsRenameResponse)
+            | (PendingOpKind::Stat, SystemCallMessageKind::HostFsStatResponse)
+            | (PendingOpKind::Symlink, SystemCallMessageKind::HostFsSymlinkResponse)
+            | (PendingOpKind::Readlink { .. }, SystemCallMessageKind::HostFsReadlinkResponse)
+            | (PendingOpKind::Lstat, SystemCallMessageKind::HostFsLstatResponse)
+            | (PendingOpKind::PathStat, SystemCallMessageKind::HostFsPathStatResponse)
+            | (PendingOpKind::Chdir { .. }, SystemCallMessageKind::HostFsPathStatResponse)
+            | (PendingOpKind::Getdents { .. }, SystemCallMessageKind::HostFsReadDirResponse)
     )
 }
 
@@ -687,16 +889,17 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
 //==================================================================================================
 
 fn complete_open(
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
     path: alloc::string::String,
 ) {
     use ::syscall::fcntl::message::OpenAtResponse;
 
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let resp: ::hostfs_api::OpenResponse = ::hostfs_api::OpenResponse::decode(response_payload);
     if resp.fd < 0 {
         let code: ErrorCode = hostfs_error_to_code(resp.fd);
-        send_response(&build_error(source_tid, code));
+        response_context.send(&build_error(source_tid, code));
         return;
     }
     let is_dir: bool = resp.is_dir != 0;
@@ -710,7 +913,7 @@ fn complete_open(
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
             );
-            send_response(&msg);
+            response_context.send(&msg);
         },
         Err(_) => {
             // Issue a best-effort close to hostfsd so the remote FD does not leak.
@@ -721,44 +924,49 @@ fn complete_open(
                 resp.fd,
                 ::hostfs_api::OperationId::FIRE_AND_FORGET,
             );
-            send_response(&build_error(source_tid, ErrorCode::TooManyOpenFiles));
+            response_context.send(&build_error(source_tid, ErrorCode::TooManyOpenFiles));
         },
     }
 }
 
-fn complete_close(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+fn complete_close(
+    response_context: ResponseContext,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) {
     use ::syscall::unistd::message::CloseResponse;
 
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     // Check if hostfsd reported an error (status in the data portion).
     let ds: usize = ::hostfs_api::HOSTFS_DATA_START;
     let status: i32 = i32::from_le_bytes(response_payload[ds..ds + 4].try_into().unwrap_or([0; 4]));
     if status < 0 {
-        send_response(&build_error(source_tid, hostfs_error_to_code(status)));
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(status)));
         return;
     }
     let msg: Message =
         CloseResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc);
-    send_response(&msg);
+    response_context.send(&msg);
 }
 
 fn complete_read(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     count: usize,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
 ) {
     use ::syscall::unistd::message::ReadResponse as SyscallReadResponse;
 
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let resp: ::hostfs_api::ReadResponse = ::hostfs_api::ReadResponse::decode(response_payload);
     if resp.bytes_read < 0 {
         let _ = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[]);
-        send_response(&build_error(source_tid, hostfs_error_to_code(resp.bytes_read)));
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.bytes_read)));
         return;
     }
     let n: usize = (resp.bytes_read as usize).min(count);
     if let Err(e) = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &resp.data[..n]) {
         ::syslog::error!("hostfs read complete: push failed (error={:?})", e);
-        send_response(&build_error(source_tid, ErrorCode::IoErr));
+        response_context.send(&build_error(source_tid, ErrorCode::IoErr));
         return;
     }
     let msg: Message = SyscallReadResponse::build(
@@ -768,15 +976,19 @@ fn complete_read(
         ProcessIdentifier::VFSD,
         MessageType::Ipc,
     );
-    send_response(&msg);
+    response_context.send(&msg);
 }
 
-fn complete_write(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+fn complete_write(
+    response_context: ResponseContext,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) {
     use ::syscall::unistd::message::WriteResponse as SyscallWriteResponse;
 
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let resp: ::hostfs_api::WriteResponse = ::hostfs_api::WriteResponse::decode(response_payload);
     if resp.bytes_written < 0 {
-        send_response(&build_error(source_tid, hostfs_error_to_code(resp.bytes_written)));
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.bytes_written)));
         return;
     }
     let msg: Message = SyscallWriteResponse::build(
@@ -785,20 +997,24 @@ fn complete_write(source_tid: ThreadIdentifier, response_payload: &[u8; Message:
         ProcessIdentifier::VFSD,
         MessageType::Ipc,
     );
-    send_response(&msg);
+    response_context.send(&msg);
 }
 
-fn complete_seek(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+fn complete_seek(
+    response_context: ResponseContext,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) {
     use ::syscall::unistd::message::SeekResponse;
 
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let resp: ::hostfs_api::LseekResponse = ::hostfs_api::LseekResponse::decode(response_payload);
     if resp.offset < 0 {
-        send_response(&build_error(source_tid, hostfs_error_to_code(resp.offset as i32)));
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.offset as i32)));
         return;
     }
     let msg: Message =
         SeekResponse::build(source_tid, resp.offset, ProcessIdentifier::VFSD, MessageType::Ipc);
-    send_response(&msg);
+    response_context.send(&msg);
 }
 
 /// Groups of operations that share the same "decode status code, send success/error" pattern.
@@ -813,14 +1029,15 @@ enum OpGroup {
 }
 
 fn complete_status(
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
     group: OpGroup,
 ) {
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let ds: usize = ::hostfs_api::HOSTFS_DATA_START;
     let status: i32 = i32::from_le_bytes(response_payload[ds..ds + 4].try_into().unwrap_or([0; 4]));
     if status < 0 {
-        send_response(&build_error(source_tid, hostfs_error_to_code(status)));
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(status)));
         return;
     }
     let msg: Message = match group {
@@ -849,7 +1066,7 @@ fn complete_status(
             SymbolicLinkAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
         },
     };
-    send_response(&msg);
+    response_context.send(&msg);
 }
 
 /// Maps a negative hostfsd error code back to an [`ErrorCode`].
@@ -870,7 +1087,10 @@ fn hostfs_error_to_code(code: i32) -> ErrorCode {
     }
 }
 
-fn complete_stat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+fn complete_stat(
+    response_context: ResponseContext,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) {
     use ::sysapi::{
         sys_stat::{
             file_mode,
@@ -885,12 +1105,13 @@ fn complete_stat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::
         sys::stat::message::FileStatAtResponse,
     };
 
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let resp: ::hostfs_api::StatResponse = ::hostfs_api::StatResponse::decode(response_payload);
 
     // Check the explicit status field for errors.
     if resp.status < 0 {
         let code: ErrorCode = hostfs_error_to_code(resp.status);
-        send_response(&build_error(source_tid, code));
+        response_context.send(&build_error(source_tid, code));
         return;
     }
 
@@ -945,12 +1166,12 @@ fn complete_stat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::
     match response.into_parts(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
         Ok(parts) => {
             for part in parts {
-                send_response(&part);
+                response_context.send(&part);
             }
         },
         Err(e) => {
             ::syslog::error!("complete_stat: into_parts failed (error={:?})", e);
-            send_response(&build_error(source_tid, ErrorCode::IoErr));
+            response_context.send(&build_error(source_tid, ErrorCode::IoErr));
         },
     }
 }
@@ -967,6 +1188,9 @@ pub(crate) fn complete_readlink_long(pending: PendingOp, body: &[u8]) {
         unistd::message::ReadLinkAtResponse,
     };
 
+    let response_context: ResponseContext = pending.response_context;
+    let source_tid: ThreadIdentifier = pending.source_tid;
+
     // Caller is responsible for routing only `Readlink` ops here; main.rs dispatches
     // long readlink responses via the dedicated assembler, and no other pending kind
     // produces a multi-part response in the current protocol.
@@ -982,13 +1206,13 @@ pub(crate) fn complete_readlink_long(pending: PendingOp, body: &[u8]) {
                     "complete_readlink_long: failed to deserialize response body (len={})",
                     body.len()
                 );
-                send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+                response_context.send(&build_error(source_tid, ErrorCode::IoErr));
                 return;
             },
         };
 
     if resp.status < 0 {
-        send_response(&build_error(pending.source_tid, hostfs_error_to_code(resp.status)));
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.status)));
         return;
     }
 
@@ -1000,25 +1224,25 @@ pub(crate) fn complete_readlink_long(pending: PendingOp, body: &[u8]) {
         Ok(r) => r,
         Err(e) => {
             ::syslog::error!("complete_readlink_long: build response failed (error={:?})", e);
-            send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+            response_context.send(&build_error(source_tid, ErrorCode::IoErr));
             return;
         },
     };
-    match response.into_parts(pending.source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
+    match response.into_parts(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
         Ok(parts) => {
             for part in parts {
-                send_response(&part);
+                response_context.send(&part);
             }
         },
         Err(e) => {
             ::syslog::error!("complete_readlink_long: into_parts failed (error={:?})", e);
-            send_response(&build_error(pending.source_tid, ErrorCode::IoErr));
+            response_context.send(&build_error(source_tid, ErrorCode::IoErr));
         },
     }
 }
 
 fn complete_readlink(
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
     bufsiz: usize,
 ) {
@@ -1027,18 +1251,19 @@ fn complete_readlink(
         unistd::message::ReadLinkAtResponse,
     };
 
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let resp: ::hostfs_api::ReadlinkResponse =
         match ::hostfs_api::ReadlinkResponse::decode(response_payload) {
             Some(r) => r,
             None => {
                 ::syslog::error!("complete_readlink: failed to decode response");
-                send_response(&build_error(source_tid, ErrorCode::IoErr));
+                response_context.send(&build_error(source_tid, ErrorCode::IoErr));
                 return;
             },
         };
 
     if resp.status < 0 {
-        send_response(&build_error(source_tid, hostfs_error_to_code(resp.status)));
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.status)));
         return;
     }
 
@@ -1050,24 +1275,27 @@ fn complete_readlink(
         Ok(r) => r,
         Err(e) => {
             ::syslog::error!("complete_readlink: build response failed (error={:?})", e);
-            send_response(&build_error(source_tid, ErrorCode::IoErr));
+            response_context.send(&build_error(source_tid, ErrorCode::IoErr));
             return;
         },
     };
     match response.into_parts(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
         Ok(parts) => {
             for part in parts {
-                send_response(&part);
+                response_context.send(&part);
             }
         },
         Err(e) => {
             ::syslog::error!("complete_readlink: into_parts failed (error={:?})", e);
-            send_response(&build_error(source_tid, ErrorCode::IoErr));
+            response_context.send(&build_error(source_tid, ErrorCode::IoErr));
         },
     }
 }
 
-fn complete_lstat(source_tid: ThreadIdentifier, response_payload: &[u8; Message::PAYLOAD_SIZE]) {
+fn complete_lstat(
+    response_context: ResponseContext,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+) {
     use ::sysapi::{
         sys_stat::{
             file_mode,
@@ -1082,18 +1310,19 @@ fn complete_lstat(source_tid: ThreadIdentifier, response_payload: &[u8; Message:
         sys::stat::message::FileStatAtResponse,
     };
 
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let resp: ::hostfs_api::LstatResponse =
         match ::hostfs_api::LstatResponse::decode(response_payload) {
             Some(r) => r,
             None => {
                 ::syslog::error!("complete_lstat: failed to decode response");
-                send_response(&build_error(source_tid, ErrorCode::IoErr));
+                response_context.send(&build_error(source_tid, ErrorCode::IoErr));
                 return;
             },
         };
 
     if resp.status < 0 {
-        send_response(&build_error(source_tid, hostfs_error_to_code(resp.status)));
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.status)));
         return;
     }
 
@@ -1155,12 +1384,47 @@ fn complete_lstat(source_tid: ThreadIdentifier, response_payload: &[u8; Message:
     match response.into_parts(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc) {
         Ok(parts) => {
             for part in parts {
-                send_response(&part);
+                response_context.send(&part);
             }
         },
         Err(e) => {
             ::syslog::error!("complete_lstat: into_parts failed (error={:?})", e);
-            send_response(&build_error(source_tid, ErrorCode::IoErr));
+            response_context.send(&build_error(source_tid, ErrorCode::IoErr));
         },
     }
+}
+
+/// Completes a deferred hostfs `chdir`: the pending path-stat has returned, so
+/// commit the cwd when the target is a directory, else surface `ENOTDIR`.
+fn complete_chdir(
+    response_context: ResponseContext,
+    response_payload: &[u8; Message::PAYLOAD_SIZE],
+    path: ResolvedPath,
+) {
+    let source_tid: ThreadIdentifier = response_context.source_tid();
+    let resp: LstatResponse = match LstatResponse::decode(response_payload) {
+        Some(r) => r,
+        None => {
+            ::syslog::error!("complete_chdir: failed to decode response");
+            response_context.send(&build_error(source_tid, ErrorCode::IoErr));
+            return;
+        },
+    };
+
+    if resp.status < 0 {
+        response_context.send(&build_error(source_tid, hostfs_error_to_code(resp.status)));
+        return;
+    }
+
+    if resp.kind != file_kind::DIRECTORY {
+        response_context.send(&build_error(source_tid, ErrorCode::InvalidDirectory));
+        return;
+    }
+
+    vfs_set_cwd(path);
+    response_context.send(&ChangeDirectoryResponse::build(
+        source_tid,
+        ProcessIdentifier::VFSD,
+        MessageType::Ipc,
+    ));
 }

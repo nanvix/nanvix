@@ -7,7 +7,7 @@
 
 use crate::{
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::core::{
     fmt,
@@ -84,10 +84,8 @@ impl TtyControlRequest {
         message_type: MessageType,
     ) -> Message {
         let message: TtyControlRequest = TtyControlRequest::new(fd, request, len);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::TtyControlRequest,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::TtyControlRequest, message.into_bytes());
         Message::new(
             MessageSender::new(ProcessIdentifier::from(i32::from(tid)), tid),
             MessageReceiver::new(destination, ThreadIdentifier::NONE),
@@ -150,10 +148,8 @@ impl TtyControlResponse {
         message_type: MessageType,
     ) -> Message {
         let message: TtyControlResponse = TtyControlResponse::new(ret);
-        let message: SystemCallMessage = SystemCallMessage::new(
-            SystemCallMessageHeader::TtyControlResponse,
-            message.into_bytes(),
-        );
+        let message: SystemCallMessage =
+            SystemCallMessage::new(SystemCallMessageKind::TtyControlResponse, message.into_bytes());
         Message::new(
             MessageSender::new(source, ThreadIdentifier::NONE),
             MessageReceiver::new(ProcessIdentifier::from(i32::from(tid)), tid),

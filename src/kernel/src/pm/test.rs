@@ -20,11 +20,20 @@ use crate::{
         VirtMemoryManager,
         Vmem,
     },
-    pm::ProcessManager,
+    pm::{
+        new_test_delivery_sequence,
+        DeliverySequence,
+        ProcessManager,
+    },
 };
 use ::arch::mem::paging::PageTableEntry;
 use ::sys::{
     error::ErrorCode,
+    event::{
+        Event,
+        InterruptEvent,
+        SchedulingEvent,
+    },
     ipc::{
         Message,
         MessageReceiver,
@@ -32,6 +41,10 @@ use ::sys::{
         MessageType,
     },
     mm::Address,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -44,10 +57,19 @@ use ::sys::{
 /// Verifies that a freshly constructed mailbox reports as empty, and that posting a single
 /// message causes it to report as non-empty.
 ///
+/// # Returns
+///
+/// `true` if empty-state tracking and empty-mailbox commit rejection are correct, otherwise
+/// `false`.
+///
 fn test_mailbox_is_empty_tracks_buffered_messages() -> bool {
     let mut mailbox: Mailbox = Mailbox::default();
     if !mailbox.is_empty() {
         error!("freshly constructed mailbox reported as non-empty");
+        return false;
+    }
+    if mailbox.commit(ThreadIdentifier::from(42), new_test_delivery_sequence(0)) {
+        error!("empty mailbox accepted a delivery commit");
         return false;
     }
 
@@ -58,11 +80,170 @@ fn test_mailbox_is_empty_tracks_buffered_messages() -> bool {
         Option::<ErrorCode>::None,
         [0u8; Message::PAYLOAD_SIZE],
     );
-    mailbox.send(message);
+    mailbox.send(new_test_delivery_sequence(0), message);
     if mailbox.is_empty() {
         error!("mailbox reported as empty after sending a message");
         return false;
     }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that mailbox purge operations report how many messages they remove.
+///
+/// # Returns
+///
+/// `true` if thread-specific and whole-mailbox purges remove the expected entries, otherwise
+/// `false`.
+///
+fn test_mailbox_purge_counts_removed_messages() -> bool {
+    let mut mailbox: Mailbox = Mailbox::default();
+    let tid: ThreadIdentifier = ThreadIdentifier::from(42);
+    let thread_receiver: MessageReceiver = MessageReceiver::new(ProcessIdentifier::KERNEL, tid);
+    let process_receiver: MessageReceiver =
+        MessageReceiver::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
+    for (sequence, receiver) in [thread_receiver, process_receiver].into_iter().enumerate() {
+        mailbox.send(
+            new_test_delivery_sequence(sequence as u64),
+            Message::new(
+                MessageSender::KERNEL,
+                receiver,
+                MessageType::Ipc,
+                Option::<ErrorCode>::None,
+                [0u8; Message::PAYLOAD_SIZE],
+            ),
+        );
+    }
+
+    if mailbox.purge_thread(tid) != 1 {
+        error!("thread-message purge removed an unexpected number of messages");
+        return false;
+    }
+    if mailbox.purge_all() != 1 {
+        error!("whole-mailbox purge removed an unexpected number of messages");
+        return false;
+    }
+    if !mailbox.is_empty() {
+        error!("mailbox remained non-empty after purging every message");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that an older process-directed message is delivered before a newer exact-thread
+/// message when both are eligible for the receiving thread.
+///
+/// # Returns
+///
+/// `true` if selection, retry, commit, and following-entry exposure preserve mailbox ordering,
+/// otherwise `false`.
+///
+fn test_mailbox_selects_oldest_eligible_message() -> bool {
+    let mut mailbox: Mailbox = Mailbox::default();
+    let tid: ThreadIdentifier = ThreadIdentifier::from(42);
+    let other_tid: ThreadIdentifier = ThreadIdentifier::from(43);
+    let other_receiver: MessageReceiver =
+        MessageReceiver::new(ProcessIdentifier::KERNEL, other_tid);
+    let process_receiver: MessageReceiver =
+        MessageReceiver::new(ProcessIdentifier::KERNEL, ThreadIdentifier::NONE);
+    let thread_receiver: MessageReceiver = MessageReceiver::new(ProcessIdentifier::KERNEL, tid);
+
+    mailbox.send(
+        new_test_delivery_sequence(0),
+        Message::new(
+            MessageSender::KERNEL,
+            other_receiver,
+            MessageType::Ipc,
+            Option::<ErrorCode>::None,
+            [0u8; Message::PAYLOAD_SIZE],
+        ),
+    );
+    mailbox.send(
+        new_test_delivery_sequence(1),
+        Message::new(
+            MessageSender::KERNEL,
+            process_receiver,
+            MessageType::Ipc,
+            Option::<ErrorCode>::None,
+            [0u8; Message::PAYLOAD_SIZE],
+        ),
+    );
+    mailbox.send(
+        new_test_delivery_sequence(2),
+        Message::new(
+            MessageSender::KERNEL,
+            thread_receiver,
+            MessageType::Ipc,
+            Option::<ErrorCode>::None,
+            [0u8; Message::PAYLOAD_SIZE],
+        ),
+    );
+
+    let first_sequence: DeliverySequence = match mailbox.peek(tid) {
+        Some((sequence, _)) => sequence,
+        None => {
+            error!("eligible mailbox message was not selected");
+            return false;
+        },
+    };
+    let retry_sequence: Option<DeliverySequence> = mailbox.peek(tid).map(|(sequence, _)| sequence);
+    if first_sequence != new_test_delivery_sequence(1)
+        || retry_sequence != Some(first_sequence)
+        || !mailbox.test_token_is_current(tid, first_sequence)
+    {
+        error!("mailbox retry did not preserve the selected sequence");
+        return false;
+    }
+    if !mailbox.commit(tid, first_sequence) {
+        error!("selected mailbox message could not be committed");
+        return false;
+    }
+    if mailbox.test_token_is_current(tid, first_sequence) {
+        error!("committed mailbox token did not become stale");
+        return false;
+    }
+    if mailbox.peek(other_tid).map(|(sequence, _)| sequence) != Some(new_test_delivery_sequence(0))
+    {
+        error!("mailbox commit removed the older entry for another thread");
+        return false;
+    }
+    if mailbox.peek(tid).map(|(sequence, _)| sequence) != Some(new_test_delivery_sequence(2)) {
+        error!("mailbox commit did not expose the next eligible message");
+        return false;
+    }
+
+    true
+}
+
+/// Verifies that scheduling ownership guards are removed class-wide, while other event classes
+/// retain exact-event matching.
+fn test_event_guard_matching_follows_ownership_scope() -> bool {
+    use crate::pm::process::state::event_guard_matches;
+
+    let creation: Event = Event::Scheduling(SchedulingEvent::ProcessCreation);
+    let termination: Event = Event::Scheduling(SchedulingEvent::ProcessTermination);
+    let thread_termination: Event = Event::Scheduling(SchedulingEvent::ThreadTermination);
+    if !event_guard_matches(&creation, &termination)
+        || !event_guard_matches(&creation, &thread_termination)
+    {
+        error!("scheduling events did not match their class-wide ownership guard");
+        return false;
+    }
+
+    let first_interrupt: Event = Event::Interrupt(InterruptEvent::VALUES[0]);
+    let second_interrupt: Event = Event::Interrupt(InterruptEvent::VALUES[1]);
+    if !event_guard_matches(&first_interrupt, &first_interrupt)
+        || event_guard_matches(&first_interrupt, &second_interrupt)
+    {
+        error!("interrupt ownership guards did not use exact-event matching");
+        return false;
+    }
+
     true
 }
 
@@ -861,6 +1042,9 @@ fn test_link_user_pages_rolls_back_on_partial_failure() -> bool {
 pub fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_mailbox_is_empty_tracks_buffered_messages);
+    passed &= run_test!(test_mailbox_purge_counts_removed_messages);
+    passed &= run_test!(test_mailbox_selects_oldest_eligible_message);
+    passed &= run_test!(test_event_guard_matching_follows_ownership_scope);
     passed &= run_test!(test_kernel_process_has_no_special_resources);
     passed &= run_test!(test_cow_resolution_creates_private_frame);
     passed &= run_test!(test_cow_resolution_fast_path_when_sole_owner);

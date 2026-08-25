@@ -4,7 +4,7 @@
 //! Rename request wire format.
 
 use crate::{
-    set_header,
+    set_kind,
     set_op_id,
     OperationId,
     HOSTFS_DATA_START,
@@ -49,13 +49,9 @@ impl RenameRequest {
     /// If the combined path lengths exceed [`MAX_INLINE_PATH_LEN`], the recorded
     /// `old_path_len` and `new_path_len` are saturated to match the number of bytes
     /// actually written, preventing inconsistency between header fields and data.
-    pub fn serialize(
-        &self,
-        header_value: u16,
-        op_id: OperationId,
-    ) -> [u8; Message::PAYLOAD_SIZE] {
+    pub fn serialize(&self, kind_value: u16, op_id: OperationId) -> [u8; Message::PAYLOAD_SIZE] {
         let mut payload: [u8; Message::PAYLOAD_SIZE] = [0u8; Message::PAYLOAD_SIZE];
-        set_header(&mut payload, header_value);
+        set_kind(&mut payload, kind_value);
         set_op_id(&mut payload, op_id);
         let data_start: usize = HOSTFS_DATA_START;
         // Widen to usize before adding to avoid u16 overflow.

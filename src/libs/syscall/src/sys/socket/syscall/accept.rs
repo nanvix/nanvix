@@ -14,14 +14,17 @@ use crate::{
         SocketAddr,
     },
     SystemCallMessage,
-    SystemCallMessageHeader,
+    SystemCallMessageKind,
 };
 use ::sys::{
     error::{
         Error,
         ErrorCode,
     },
-    ipc::Message,
+    ipc::{
+        Message,
+        RequestToken,
+    },
     pm::ThreadIdentifier,
 };
 use ::sysapi::ffi::c_int;
@@ -38,11 +41,11 @@ pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
     let backend_fd: c_int = crate::fdtable::resolve_socket(sockfd, "accept")?;
 
     // Build request and send it.
-    let request: Message = AcceptSocketRequest::build(tid, backend_fd);
-    ::sys::kcall::ipc::__kcall_send(&request)?;
+    let mut request: Message = AcceptSocketRequest::build(tid, backend_fd);
+    let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Receive response.
-    let response: Message = ::sys::kcall::ipc::__kcall_recv()?;
+    let response: Message = crate::rpc::recv_response(&token)?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
@@ -55,9 +58,9 @@ pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
         // System call succeeded, parse response.
         match SystemCallMessage::try_from_bytes(response.payload) {
             // Response was successfully parsed.
-            Ok(message) => match message.header {
+            Ok(message) => match message.kind() {
                 // Response was successfully parsed.
-                SystemCallMessageHeader::AcceptSocketResponse => {
+                SystemCallMessageKind::AcceptSocketResponse => {
                     let response: AcceptSocketResponse =
                         AcceptSocketResponse::from_bytes(message.payload);
                     let remote_fd: c_int = response.sockfd;

@@ -15,6 +15,8 @@ mod kcall_success;
 // Exports
 //==================================================================================================
 
+#[cfg(feature = "test")]
+pub(crate) use handler::drain_lifecycle_wakeup;
 pub use handler::kcall_handler as handler;
 pub use kcall_error::KcallError;
 pub use kcall_result::KcallResult;

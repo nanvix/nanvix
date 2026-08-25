@@ -34,6 +34,11 @@ use crate::{
         LineDiscipline,
         TerminalSignal,
     },
+    mount::normalize_absolute,
+    path::{
+        vfs_resolve_path,
+        ResolvedPath,
+    },
     process::{
         current_cwd,
         current_pid,
@@ -165,7 +170,7 @@ pub use crate::{
 /// descriptor with no slot in the current process is rejected. vfsd serves no I/O on console or
 /// socket tokens; the I/O methods on [`VfsFileHandle`] reject those handles, so this accessor does
 /// not need to special-case them.
-fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
+pub(crate) fn entry_arc(fd: c_int) -> Result<OpenFile, Fat32Error> {
     let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> = PROCESSES.lock();
     let state: &ProcessState = procs.get(&current_pid()).ok_or(Fat32Error::InvalidFd)?;
     state
@@ -960,62 +965,6 @@ pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
     Ok(revents)
 }
 
-/// Resolves a `dirfd` + `path` pair into an absolute VFS path.
-///
-/// If `path` is absolute, it is returned as-is (dirfd is ignored per POSIX).
-/// If `dirfd` is `AT_FDCWD`, the path is resolved against the VFS current
-/// working directory. If `dirfd` is a directory descriptor, the path is resolved
-/// relative to that directory's path.
-///
-/// Returns `None` if `dirfd` is neither `AT_FDCWD` nor a directory descriptor of the current
-/// process, indicating that VFS cannot handle this request.
-///
-/// # Limitations
-///
-/// For hostfs directory fds, resolution uses the path stored at open time.
-/// If the directory is renamed after being opened, subsequent `*at()` calls
-/// using this dirfd will resolve against the stale path. A future protocol
-/// extension could support `*at()` operations relative to a remote directory
-/// FD on the host side to provide stable POSIX-like dirfd semantics.
-pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Option<String> {
-    use ::sysapi::fcntl::atflags::AT_FDCWD;
-
-    // Absolute paths are always resolved directly (dirfd ignored per POSIX).
-    if path.starts_with('/') {
-        return Some(String::from(path));
-    }
-
-    // Relative path with AT_FDCWD: resolve against VFS cwd.
-    if dirfd == AT_FDCWD {
-        if !crate::state::is_initialized() {
-            return None;
-        }
-        let cwd: String = current_cwd();
-        return if cwd.ends_with('/') {
-            Some(alloc::format!("{}{}", cwd, path))
-        } else {
-            Some(alloc::format!("{}/{}", cwd, path))
-        };
-    }
-
-    // Relative path with a directory descriptor: resolve against that directory. Validity is the
-    // slot's handle type, not the descriptor number — a non-directory or absent descriptor yields
-    // `None` below rather than being pre-screened by a number range.
-    let file: OpenFile = entry_arc(dirfd).ok()?;
-    let guard = file.lock();
-    let dir_path: &str = match &guard.handle {
-        VfsFileHandle::Directory(dh) => dh.path(),
-        VfsFileHandle::HostFs(hh) if hh.is_dir() => hh.path()?,
-        _ => return None, // fd is not a directory
-    };
-
-    if dir_path.ends_with('/') {
-        Some(alloc::format!("{}{}", dir_path, path))
-    } else {
-        Some(alloc::format!("{}/{}", dir_path, path))
-    }
-}
-
 //==================================================================================================
 // POSIX-Compatible Operations
 //==================================================================================================
@@ -1048,8 +997,15 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
 /// example, when it is not a VFS directory file descriptor). The `dirfd` is
 /// never silently ignored.
 pub fn vfs_openat(dirfd: c_int, path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
-    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
-    vfs_open(&resolved, flags)
+    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_open_resolved(resolved, flags)
+}
+
+/// Opens an already-resolved path and allocates a system-wide FD.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+pub fn vfs_open_resolved(path: ResolvedPath, flags: c_int) -> Result<c_int, Fat32Error> {
+    vfs_open(path.as_str(), flags)
 }
 
 /// Reads from a VFS file descriptor.
@@ -1446,8 +1402,18 @@ pub fn vfs_fstatat(
     path: &str,
     buf: &mut ::sysapi::sys_stat::stat,
 ) -> Result<(), Fat32Error> {
-    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
-    vfs_stat(&resolved, buf)
+    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_stat_resolved(resolved, buf)
+}
+
+/// Gets file status for an already-resolved path.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+pub fn vfs_stat_resolved(
+    path: ResolvedPath,
+    buf: &mut ::sysapi::sys_stat::stat,
+) -> Result<(), Fat32Error> {
+    vfs_stat(path.as_str(), buf)
 }
 
 /// Renames a file or directory through the VFS.
@@ -1478,8 +1444,15 @@ pub fn vfs_mkdir(path: &str) -> Result<(), Fat32Error> {
 /// example, when it is not a VFS directory file descriptor). The `dirfd` is
 /// never silently ignored.
 pub fn vfs_mkdirat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
-    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
-    vfs_mkdir(&resolved)
+    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_mkdir_resolved(resolved)
+}
+
+/// Creates a directory at an already-resolved path.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+pub fn vfs_mkdir_resolved(path: ResolvedPath) -> Result<(), Fat32Error> {
+    vfs_mkdir(path.as_str())
 }
 
 /// Removes an empty directory through the VFS.
@@ -1493,6 +1466,19 @@ pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
     let normalized: String = filesystem::change_directory(&cwd, path)?;
     set_current_cwd(normalized);
     Ok(())
+}
+
+/// Commits the current working directory to a hostfs path, bypassing local
+/// mount-table validation.
+///
+/// Unlike [`vfs_chdir`], this performs NO existence/type check: vfsd uses it to
+/// finalize a chdir onto a hostfs path after hostfsd has confirmed the target is
+/// a directory (hostfs paths live outside the local FAT mount table, so
+/// [`vfs_chdir`] would reject them). Taking a [`ResolvedPath`] moves the
+/// absolute-path check to the caller; the path is normalized here so the stored
+/// cwd keeps the same canonical form as every other code path.
+pub fn vfs_set_cwd(path: ResolvedPath) {
+    set_current_cwd(normalize_absolute(&path));
 }
 
 /// Changes the current working directory to the directory referenced by a VFS FD.
@@ -1863,8 +1849,8 @@ pub fn vfs_access(path: &str) -> Result<(), Fat32Error> {
 /// example, when it is not a VFS directory file descriptor). The `dirfd` is
 /// never silently ignored.
 pub fn vfs_accessat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
-    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
-    vfs_access(&resolved)
+    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_access(resolved.as_str())
 }
 
 /// File control operation on a VFS file descriptor.
@@ -1976,11 +1962,19 @@ pub fn vfs_renameat(
     newdirfd: c_int,
     newpath: &str,
 ) -> Result<(), Fat32Error> {
-    let old_resolved: String =
-        vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
-    let new_resolved: String =
-        vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
-    filesystem::rename(&current_cwd(), &old_resolved, &new_resolved)
+    let old_resolved = vfs_resolve_path(olddirfd, oldpath).ok_or(Fat32Error::InvalidArgument)?;
+    let new_resolved = vfs_resolve_path(newdirfd, newpath).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_rename_resolved(old_resolved, new_resolved)
+}
+
+/// Renames between two already-resolved paths.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored both paths.
+pub fn vfs_rename_resolved(
+    old_path: ResolvedPath,
+    new_path: ResolvedPath,
+) -> Result<(), Fat32Error> {
+    filesystem::rename(&current_cwd(), old_path.as_str(), new_path.as_str())
 }
 
 /// Unlinks a file or removes a directory relative to a directory file descriptor through the VFS.
@@ -2000,12 +1994,19 @@ pub fn vfs_renameat(
 /// Returns a [`Fat32Error`] if the path does not exist, the directory is not empty (when removing
 /// a directory), or the path refers to a directory but `AT_REMOVEDIR` is not set.
 pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32Error> {
+    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    vfs_unlink_resolved(resolved, flags)
+}
+
+/// Unlinks a file or removes a directory at an already-resolved path.
+///
+/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+pub fn vfs_unlink_resolved(path: ResolvedPath, flags: c_int) -> Result<(), Fat32Error> {
     use ::sysapi::fcntl::atflags::AT_REMOVEDIR;
-    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     if flags & AT_REMOVEDIR != 0 {
-        filesystem::rmdir(&current_cwd(), &resolved)
+        filesystem::rmdir(&current_cwd(), path.as_str())
     } else {
-        filesystem::unlink(&current_cwd(), &resolved)
+        filesystem::unlink(&current_cwd(), path.as_str())
     }
 }
 
@@ -2075,9 +2076,9 @@ pub fn vfs_fchmodat(
     _mode: ::sysapi::sys_types::mode_t,
     _flag: c_int,
 ) -> Result<(), Fat32Error> {
-    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    filesystem::stat(&current_cwd(), &resolved).map(|_| ())
+    filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
 }
 
 /// Changes the owner and group of a file relative to a directory file descriptor through the VFS.
@@ -2104,9 +2105,9 @@ pub fn vfs_fchownat(
     _group: gid_t,
     _flag: c_int,
 ) -> Result<(), Fat32Error> {
-    let resolved: String = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, path).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    filesystem::stat(&current_cwd(), &resolved).map(|_| ())
+    filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
 }
 
 /// Sets file access and modification times through the VFS.
@@ -2136,9 +2137,9 @@ pub fn vfs_utimensat(
     if flags != 0 {
         return Err(Fat32Error::InvalidArgument);
     }
-    let path: String = vfs_resolve_path(dirfd, pathname).ok_or(Fat32Error::InvalidArgument)?;
+    let resolved = vfs_resolve_path(dirfd, pathname).ok_or(Fat32Error::InvalidArgument)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    filesystem::stat(&current_cwd(), &path).map(|_| ())
+    filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
 }
 
 //==================================================================================================

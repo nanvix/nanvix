@@ -547,7 +547,6 @@ pub fn __kcall_sig_restorer(restorer: usize) -> Result<(), Error> {
     r#"
     .global _do_start_thread
     .extern _do_exit_thread
-    .type _do_start_thread, @function
 
     _do_start_thread:
         #
@@ -615,7 +614,6 @@ pub fn __kcall_sig_restorer(restorer: usize) -> Result<(), Error> {
     r#"
     .global _do_start_thread
     .extern _do_exit_thread
-    .type _do_start_thread, @function
 
     _do_start_thread:
         #
@@ -641,6 +639,9 @@ pub fn __kcall_sig_restorer(restorer: usize) -> Result<(), Error> {
     1: jmp 1b
     "#
 );
+
+#[cfg(target_os = "none")]
+::core::arch::global_asm!(".type _do_start_thread, @function");
 
 ///
 /// # Description
@@ -719,8 +720,20 @@ pub fn __kcall_create_thread(args: &mut ThreadCreateArgs) -> Result<ThreadIdenti
 ///
 #[unsafe(no_mangle)]
 pub fn __kcall_exit_thread(status: usize) -> Result<!, Error> {
+    let tid: ThreadIdentifier = __kcall_gettid()?;
+    let blocked: SigSet = !0;
+    let mut previous: SigSet = 0;
+    unsafe {
+        __kcall_sigprocmask(crate::pm::SIG_SETMASK, &blocked, &mut previous)?;
+    }
+    // Dropping the response stash may enter the allocator. Keep signals blocked so allocator
+    // cleanup cannot deliver a handler that recreates request state for this departing thread.
+    crate::ipc::clear_request_state(tid);
     let result: i64 = kcall1!(KcallNumber::ExitThread.into(), status as u32);
 
+    unsafe {
+        __kcall_sigprocmask(crate::pm::SIG_SETMASK, &previous, core::ptr::null_mut())?;
+    }
     Err(Error::new(ErrorCode::try_from(result)?, "failed to terminate thread"))
 }
 
