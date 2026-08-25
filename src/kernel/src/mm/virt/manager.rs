@@ -114,19 +114,10 @@ unsafe fn store_memory_manager(manager: VirtMemoryManager) {
 ///
 /// Memory manager.
 ///
+#[verus_verify]
 pub struct VirtMemoryManager;
 
 verus! {
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[allow(dead_code)]
-pub struct ExVirtMemoryManager(VirtMemoryManager);
-
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[allow(dead_code)]
-pub struct ExVmem(Vmem);
 
 #[verifier::reject_recursive_types(T)]
 #[verifier::reject_recursive_types(A)]

@@ -95,6 +95,8 @@ use ::core::{
         Ordering,
     },
 };
+#[cfg(feature = "verus")]
+use ::vstd::prelude::*;
 
 //==================================================================================================
 // Traits and Types
@@ -126,6 +128,7 @@ pub const fn align_up(value: usize, alignment: usize) -> Option<usize> {
 ///
 /// Error type returned by [`FixedSizeBumpAllocator`] operations.
 ///
+#[cfg_attr(feature = "verus", verus_verify)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BumpAllocError {
     /// Storage capacity exhausted.

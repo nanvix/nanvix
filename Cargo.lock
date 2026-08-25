@@ -190,6 +190,9 @@ version = "0.23.10"
 [[package]]
 name = "bump-allocator"
 version = "0.23.10"
+dependencies = [
+ "vstd",
+]
 
 [[package]]
 name = "bumpalo"
