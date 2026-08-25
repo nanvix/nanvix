@@ -18,21 +18,95 @@ use crate::hal::mem::{
     PhysicalAddress,
 };
 use ::arch::mem;
+#[cfg(verus_keep_ghost)]
+use ::arch::mem::paging::PteWord;
 use ::core::ops::{
     Deref,
     DerefMut,
 };
 use ::sys::error::Error;
+use ::vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use ::vstd::raw_ptr::PointsTo;
+
+include!("kframe.spec.rs");
 
 //==================================================================================================
 // Kernel Frame
 //==================================================================================================
 
 /// A type that represents a kernel frame.
+#[verus_verify]
 #[derive(Debug)]
 pub struct KernelFrame {
     /// Frame address.
     base: FrameAddress,
+}
+
+#[verus_verify]
+impl KernelFrame {
+    /// Allocates a kernel frame for a paging structure and returns its raw entry permissions.
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        with
+            -> raw_permissions: Tracked<Map<nat, PointsTo<PteWord>>>,
+        ensures
+            match result {
+                Ok(frame) => {
+                    &&& raw_permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH
+                    &&& forall|i: nat| raw_permissions.dom().contains(i)
+                        <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH
+                    &&& forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
+                        let permission = #[trigger] raw_permissions[i];
+                        &&& permission.ptr()@.addr as int
+                            == frame.base_address() + i * 4
+                        &&& permission.is_uninit()
+                    }
+                },
+                Err(_) => raw_permissions.dom().is_empty(),
+            },
+    )]
+    pub(crate) fn allocate_page_table() -> Result<Self, Error> {
+        let frame_address: FrameAddress = match super::frame::alloc() {
+            Ok(frame_address) => frame_address,
+            Err(error) => {
+                proof_decl! {
+                    let tracked raw_permissions:
+                        Map<nat, PointsTo<PteWord>> = Map::tracked_empty();
+                }
+                return {
+                    proof_with!(|= Tracked(raw_permissions));
+                    Err(error)
+                };
+            },
+        };
+        match Self::new(frame_address) {
+            Ok(frame) => {
+                proof_decl! {
+                    let tracked raw_permissions:
+                        Map<nat, PointsTo<PteWord>> =
+                            mint_kernel_frame_page_table_permissions(
+                                frame.base_address(),
+                            );
+                }
+                proof_with!(|= Tracked(raw_permissions));
+                Ok(frame)
+            },
+            Err(error) => {
+                if let Err(free_error) = super::frame::free(frame_address) {
+                    warn!(
+                        "failed to free frame after page-table allocation failure: {free_error:?}"
+                    );
+                }
+                proof_decl! {
+                    let tracked raw_permissions:
+                        Map<nat, PointsTo<PteWord>> = Map::tracked_empty();
+                }
+                proof_with!(|= Tracked(raw_permissions));
+                Err(error)
+            },
+        }
+    }
 }
 
 impl KernelFrame {

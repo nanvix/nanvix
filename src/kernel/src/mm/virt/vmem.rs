@@ -35,10 +35,8 @@ use crate::{
         },
         virt::{
             kpage::KernelPage,
-            page_table_allocator::PAGE_TABLE_ALLOCATOR,
             PageDirectoryStorage,
             PageTableStorage,
-            VirtMemoryManager,
         },
     },
 };
@@ -72,6 +70,9 @@ use ::sys::{
         ErrorCode,
     },
 };
+use ::vstd::prelude::*;
+#[cfg(verus_keep_ghost)]
+use ::vstd::raw_ptr::PointsTo;
 
 //==================================================================================================
 // Constants
@@ -86,6 +87,7 @@ use ::sys::{
 //==================================================================================================
 
 /// A type that represents a virtual memory space.
+#[verus_verify(external_body)]
 pub struct Vmem {
     /// Underlying page directory.
     pgdir: PageDirectory<PageDirectoryStorage>,
@@ -104,10 +106,27 @@ pub struct Vmem {
     /// denotes the kernel address space (which runs on the VMM-provided boot PML4).
     #[cfg(target_arch = "x86_64")]
     hw_pml4: u64,
+    /// Proof ownership for process-private x86_64 hardware paging pages.
+    #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+    hw_pages: Tracked<Map<u64, crate::hal::arch::x86::mem::mmu::hwpt::NanvixHwPageToken>>,
+    /// Shared proof handle for boot hierarchy and page-table pool authority.
+    #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+    hwpt_manager: Tracked<crate::hal::arch::x86::mem::mmu::hwpt::HwptManagerHandle>,
 }
 
 impl Vmem {
     /// Initializes a new virtual memory space.
+    #[verus_verify(external_body)]
+    #[cfg_attr(
+        target_arch = "x86_64",
+        verus_spec(
+            with
+                Tracked(hwpt_manager):
+                    Tracked<
+                        crate::hal::arch::x86::mem::mmu::hwpt::HwptManagerHandle
+                    >
+        )
+    )]
     pub fn new(
         mut kernel_pages: LinkedList<KernelPage>,
         mut kernel_page_tables: LinkedList<(PageTableAddress, PageTable<PageTableStorage>)>,
@@ -115,18 +134,35 @@ impl Vmem {
         trace!("kernel_pages.len()={}", kernel_pages.len());
 
         // Create a clean page directory.
-        let mut pgdir: PageDirectory<PageDirectoryStorage> =
-            // SAFETY: this constructor is only used during early single-threaded init;
-            // BSS is zero-initialized, so assume_init_mut() is sound for integer arrays.
-            PageDirectory::new(PageDirectoryStorage::Bss(unsafe {
-                PAGE_TABLE_ALLOCATOR
-                    .alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>()
-                    .map_err(|e| {
-                        error!("Vmem::new(): page directory allocation failed: {}", e);
-                        Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
-                    })?
-                    .assume_init_mut()
-            }));
+        // SAFETY: this constructor is only used during early single-threaded init;
+        // BSS is zero-initialized, so assume_init_mut() is sound for integer arrays.
+        proof_decl! {
+            let tracked pgdir_slot_permissions:
+                super::page_table_allocator::PageTableSlotPermissions;
+        }
+        let pgdir_entries: &'static mut [PteWord; PAGE_TABLE_LENGTH] = unsafe {
+            proof_with! {
+                => Tracked(pgdir_slot_permissions)
+            };
+            super::page_table_allocator::allocate_page_table_slot()
+        }
+        .map_err(|e| {
+            error!("Vmem::new(): page directory allocation failed: {}", e);
+            Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
+        })?;
+        proof_decl! {
+            let ghost pgdir_base_address = pgdir_slot_permissions.base;
+            let tracked pgdir_raw_permissions = pgdir_slot_permissions.entries;
+        }
+        let pgdir_storage: PageDirectoryStorage = PageDirectoryStorage::Bss {
+            entries: pgdir_entries,
+            #[cfg(verus_keep_ghost_body)]
+            base_address: Ghost::new(pgdir_base_address),
+        };
+        proof_with! {
+            Tracked(pgdir_raw_permissions)
+        };
+        let mut pgdir: PageDirectory<PageDirectoryStorage> = PageDirectory::new(pgdir_storage);
 
         // Map and store root page tables.
         let mut kpage_tables: LinkedList<
@@ -135,6 +171,9 @@ impl Vmem {
         while let Some((vaddr, page_table)) = kernel_page_tables.pop_front() {
             let page_table_address: FrameAddress = page_table.physical_address()?;
             // FIXME: do not be so open about permissions.
+            proof_with! {
+                Ghost(&page_table)
+            };
             pgdir.map(vaddr, page_table_address, false, AccessPermission::RDWR)?;
             kpage_tables.push_back(Rc::new(RefCell::new((vaddr, page_table))));
         }
@@ -173,7 +212,15 @@ impl Vmem {
             kpages.push_back(Rc::new(RefCell::new(entry)));
         }
 
-        Ok(Self {
+        #[cfg(target_arch = "x86_64")]
+        proof_decl! {
+            let tracked hw_pages:
+                Map<
+                    u64,
+                    crate::hal::arch::x86::mem::mmu::hwpt::NanvixHwPageToken,
+                > = Map::tracked_empty();
+        }
+        let vmem: Self = Self {
             pgdir,
             kernel_page_tables: kpage_tables,
             kernel_pages: kpages,
@@ -181,12 +228,36 @@ impl Vmem {
             // The kernel address space runs on the VMM-provided boot PML4 (see `hw_pml4`).
             #[cfg(target_arch = "x86_64")]
             hw_pml4: 0,
-        })
+            #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+            hw_pages: Tracked::new(hw_pages),
+            #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+            hwpt_manager: Tracked::new(hwpt_manager),
+        };
+        Ok(vmem)
     }
 
     /// Clones the target virtual memory space.
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        with
+            Tracked(pgdir_raw_permissions):
+                Tracked<Map<nat, PointsTo<PteWord>>>,
+        requires
+            pgdir_raw_permissions.dom().len() == PAGE_TABLE_LENGTH,
+            forall|i: nat| pgdir_raw_permissions.dom().contains(i)
+                <==> 0 <= i < PAGE_TABLE_LENGTH,
+            forall|i: nat| 0 <= i < PAGE_TABLE_LENGTH ==> {
+                let permission = #[trigger] pgdir_raw_permissions[i];
+                &&& permission.ptr()@.addr as int
+                    == pgdir_page.base_address() + i * 4
+                &&& permission.is_uninit()
+            },
+    )]
     pub fn clone(from: &Vmem, pgdir_page: KernelPage) -> Result<Vmem, Error> {
         // Create a clean page directory backed by a kernel page from the pool.
+        proof_with! {
+            Tracked(pgdir_raw_permissions)
+        };
         let mut pgdir: PageDirectory<PageDirectoryStorage> =
             PageDirectory::new(PageDirectoryStorage::KernelPage(pgdir_page));
 
@@ -195,9 +266,13 @@ impl Vmem {
             Rc<RefCell<(PageTableAddress, PageTable<PageTableStorage>)>>,
         > = LinkedList::new();
         for entry in from.kernel_page_tables.iter() {
-            let page_table_address: FrameAddress = entry.borrow().1.physical_address()?;
+            let page_table_entry = entry.borrow();
+            let page_table_address: FrameAddress = page_table_entry.1.physical_address()?;
             // FIXME: do not be so open about permissions.
-            pgdir.map(entry.borrow().0, page_table_address, false, AccessPermission::RDWR)?;
+            proof_with! {
+                Ghost(&page_table_entry.1)
+            };
+            pgdir.map(page_table_entry.0, page_table_address, false, AccessPermission::RDWR)?;
             kernel_page_tables.push_back(entry.clone());
         }
 
@@ -220,21 +295,50 @@ impl Vmem {
         // mapping (and maps the LAPIC) and starts with an empty user space; user mappings are
         // mirrored into it as they are added (see `hw_map_user`/`hw_unmap_user`).
         #[cfg(target_arch = "x86_64")]
-        let hw_pml4: u64 = unsafe { crate::hal::arch::x86::mem::mmu::hwpt::create_user_pml4() };
+        proof_decl! {
+            let tracked hwpt_manager:
+                crate::hal::arch::x86::mem::mmu::hwpt::HwptManagerHandle =
+                    from.hwpt_manager.clone();
+            let tracked mut hw_pages:
+                Map<
+                    u64,
+                    crate::hal::arch::x86::mem::mmu::hwpt::NanvixHwPageToken,
+                > = Map::tracked_empty();
+        }
+        #[cfg(target_arch = "x86_64")]
+        let hw_pml4: u64 = unsafe {
+            proof_with! {
+                Tracked(&hwpt_manager),
+                Tracked(&mut hw_pages)
+            };
+            crate::hal::arch::x86::mem::mmu::hwpt::create_user_pml4()
+        };
 
-        Ok(Self {
+        let vmem: Self = Self {
             pgdir,
             kernel_page_tables,
             kernel_pages,
             user_page_tables: LinkedList::new(),
             #[cfg(target_arch = "x86_64")]
             hw_pml4,
-        })
+            #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+            hw_pages: Tracked::new(hw_pages),
+            #[cfg(all(target_arch = "x86_64", verus_keep_ghost_body))]
+            hwpt_manager: Tracked::new(hwpt_manager),
+        };
+        Ok(vmem)
     }
 
+    #[cfg_attr(not(target_arch = "x86_64"), verus_verify(external_body))]
     pub fn load(&self) -> Result<(), Error> {
         let pgdir_addr: FrameAddress = self.pgdir.physical_address()?;
-        unsafe { mmu::load_page_directory(pgdir_addr.into_raw_value()) };
+        unsafe {
+            #[cfg(not(target_arch = "x86_64"))]
+            proof_with! {
+                Ghost(&self.pgdir)
+            };
+            mmu::load_page_directory(pgdir_addr.into_raw_value())
+        };
         Ok(())
     }
 
@@ -265,10 +369,14 @@ impl Vmem {
     /// Mirrors a user-page mapping into the per-process hardware page table (x86_64). No-op on
     /// other architectures and for the kernel address space (`hw_pml4 == 0`).
     #[inline]
-    fn hw_map_user(&self, vaddr: usize, paddr: usize, writable: bool) {
+    fn hw_map_user(&mut self, vaddr: usize, paddr: usize, writable: bool) {
         #[cfg(target_arch = "x86_64")]
         if self.hw_pml4 != 0 {
             unsafe {
+                proof_with! {
+                    Tracked(&self.hwpt_manager),
+                    Tracked(&mut self.hw_pages)
+                };
                 crate::hal::arch::x86::mem::mmu::hwpt::map_user(
                     self.hw_pml4,
                     vaddr,
@@ -286,10 +394,13 @@ impl Vmem {
     /// Mirrors a user-page unmapping into the per-process hardware page table (x86_64). No-op on
     /// other architectures and for the kernel address space.
     #[inline]
-    fn hw_unmap_user(&self, vaddr: usize) {
+    fn hw_unmap_user(&mut self, vaddr: usize) {
         #[cfg(target_arch = "x86_64")]
         if self.hw_pml4 != 0 {
             unsafe {
+                proof_with! {
+                    Tracked(&mut self.hw_pages)
+                };
                 crate::hal::arch::x86::mem::mmu::hwpt::unmap_user(self.hw_pml4, vaddr);
             }
         }
@@ -302,10 +413,13 @@ impl Vmem {
     /// Mirrors a user-page permission change (copy-on-write) into the per-process hardware page
     /// table (x86_64). No-op on other architectures and for the kernel address space.
     #[inline]
-    fn hw_protect_user(&self, vaddr: usize, writable: bool) {
+    fn hw_protect_user(&mut self, vaddr: usize, writable: bool) {
         #[cfg(target_arch = "x86_64")]
         if self.hw_pml4 != 0 {
             unsafe {
+                proof_with! {
+                    Tracked(&mut self.hw_pages)
+                };
                 crate::hal::arch::x86::mem::mmu::hwpt::protect_user(self.hw_pml4, vaddr, writable);
             }
         }
@@ -320,9 +434,12 @@ impl Vmem {
     /// PML4 shares that page directory, the mapping becomes visible in all address spaces, matching
     /// the shared kernel page tables used on 32-bit targets. No-op on other architectures.
     #[inline]
-    fn hw_map_kernel_mmio(&self, vaddr: usize, paddr: usize, writable: bool) {
+    fn hw_map_kernel_mmio(&mut self, vaddr: usize, paddr: usize, writable: bool) {
         #[cfg(target_arch = "x86_64")]
         unsafe {
+            proof_with! {
+                Tracked(&self.hwpt_manager)
+            };
             crate::hal::arch::x86::mem::mmu::hwpt::map_kernel_mmio(vaddr, paddr, writable);
         }
         #[cfg(not(target_arch = "x86_64"))]
@@ -368,6 +485,9 @@ impl Vmem {
             let page_table: PageTable<PageTableStorage> = Self::allocate_kernel_page_table()?;
 
             // FIXME: do not be so open about permissions.
+            proof_with! {
+                Ghost(&page_table)
+            };
             self.pgdir.map(
                 pt_vaddr,
                 page_table.physical_address()?,
@@ -423,12 +543,20 @@ impl Vmem {
     /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
     ///
     fn allocate_kernel_page_table() -> Result<PageTable<PageTableStorage>, Error> {
-        let kpage: KernelPage = {
-            // SAFETY: the memory manager is initialized and access is synchronized.
-            let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
-            mm.alloc_kpage(true)?
+        proof_decl! {
+            let tracked raw_permissions:
+                Map<nat, PointsTo<PteWord>>;
+        }
+        proof_with! {
+            => Tracked(raw_permissions)
         };
+        let mut kframe: KernelFrame = KernelFrame::allocate_page_table()?;
+        kframe.clear()?;
+        let kpage: KernelPage = KernelPage::new(kframe);
         let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+        proof_with! {
+            Tracked(raw_permissions)
+        };
         let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
         Ok(page_table)
     }
@@ -445,11 +573,20 @@ impl Vmem {
     fn allocate_user_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
         // concurrent or re-entrant access to the physical memory manager is possible.
-        let mut kframe: KernelFrame =
-            unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
+        proof_decl! {
+            let tracked raw_permissions:
+                Map<nat, PointsTo<PteWord>>;
+        }
+        proof_with! {
+            => Tracked(raw_permissions)
+        };
+        let mut kframe: KernelFrame = KernelFrame::allocate_page_table()?;
         kframe.clear()?;
         let kpage: KernelPage = KernelPage::new(kframe);
         let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
+        proof_with! {
+            Tracked(raw_permissions)
+        };
         let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
         Ok(page_table)
     }
@@ -491,6 +628,9 @@ impl Vmem {
 
                 let page_table_address: FrameAddress = page_table.physical_address()?;
                 // FIXME: do not be so open about permissions.
+                proof_with! {
+                    Ghost(&page_table)
+                };
                 self.pgdir
                     .map(pgtable_vaddr, page_table_address, false, AccessPermission::RDWR)?;
 
@@ -2051,6 +2191,10 @@ impl Drop for Vmem {
         #[cfg(target_arch = "x86_64")]
         if self.hw_pml4 != 0 {
             unsafe {
+                proof_with! {
+                    Tracked(&self.hwpt_manager),
+                    Tracked(&mut self.hw_pages)
+                };
                 crate::hal::arch::x86::mem::mmu::hwpt::destroy_user_pml4(self.hw_pml4);
             }
             self.hw_pml4 = 0;

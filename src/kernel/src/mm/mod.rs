@@ -25,6 +25,15 @@ use ::arch::mem::{
     PAGE_ALIGNMENT,
     PGTAB_ALIGNMENT,
 };
+#[cfg(all(
+    not(target_arch = "x86_64"),
+    any(verus_keep_ghost, verus_keep_ghost_body)
+))]
+pub(crate) use virt::PageDirectoryStorage;
+pub(crate) use virt::{
+    GetPageDirectoryStorage,
+    GetPageTableStorage,
+};
 pub use virt::{
     KernelPage,
     PageTableStorage,

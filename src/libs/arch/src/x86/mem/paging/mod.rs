@@ -1,5 +1,10 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
+
+use vstd::prelude::*;
+
+include!("mod.spec.rs");
+
 //==================================================================================================
 // Modules
 //==================================================================================================
@@ -60,11 +65,15 @@ pub const NUM_HIERARCHY_PAGES: usize = 1;
 ///
 /// Must be called from kernel mode (ring 0).
 ///
+#[verus_verify(external_body)]
 #[inline]
 pub unsafe fn invlpg(vaddr: usize) {
-    core::arch::asm!(
-        "invlpg ({0})",
-        in(reg) vaddr,
-        options(nostack, preserves_flags, att_syntax)
-    );
+    // core::arch::asm!(
+    //     "invlpg ({0})",
+    //     in(reg) vaddr,
+    //     options(nostack, preserves_flags, att_syntax)
+    // );
+    unsafe {
+        env_interaction_invalidate_tlb_page(vaddr);
+    }
 }

@@ -22,6 +22,7 @@ use crate::{
         PteWord,
     },
 };
+use vstd::prelude::*;
 
 //==================================================================================================
 // Page Directory Entry Flags
@@ -32,6 +33,7 @@ use crate::{
 ///
 /// A type that represents flags of a page directory entry.
 ///
+#[verus_verify]
 #[derive(Clone, Copy, Debug)]
 pub struct PageDirectoryEntryFlags {
     /// Present flag.
@@ -73,6 +75,7 @@ impl PageDirectoryEntryFlags {
     ///
     /// A [`PageDirectoryEntryFlags`].
     ///
+    #[verus_verify(external_body)]
     pub fn new(
         present: PresentFlag,
         read_write: ReadWriteFlag,
@@ -253,6 +256,7 @@ impl PageDirectoryEntryFlags {
 ///
 /// A type that represents a page directory entry.
 ///
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct PageDirectoryEntry {
     /// Flags.
@@ -279,6 +283,7 @@ impl PageDirectoryEntry {
     ///
     /// A [`PageDirectoryEntry`].
     ///
+    #[verus_verify(external_body)]
     pub fn new(flags: PageDirectoryEntryFlags, frame: FrameNumber) -> Self {
         Self { flags, frame }
     }
@@ -297,6 +302,7 @@ impl PageDirectoryEntry {
     /// - `Some(`[`PageDirectoryEntry`]`)`: If the raw value is valid.
     /// - `None`: Otherwise.
     ///
+    #[verus_verify(external_body)]
     pub fn from_raw_value(value: PteWord) -> Option<Self> {
         Some(Self {
             flags: PageDirectoryEntryFlags::from_raw_value(value),
@@ -345,6 +351,7 @@ impl PageDirectoryEntry {
     /// `true`: If the target page directory entry is marked as present.
     /// `false`: Otherwise.
     ///
+    #[verus_verify(external_body)]
     pub fn is_present(&self) -> bool {
         self.flags.is_present()
     }
@@ -358,6 +365,7 @@ impl PageDirectoryEntry {
     ///
     /// The frame number.
     ///
+    #[verus_verify(external_body)]
     pub fn frame_number(&self) -> FrameNumber {
         self.frame
     }

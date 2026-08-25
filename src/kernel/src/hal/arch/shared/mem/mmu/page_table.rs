@@ -5,13 +5,16 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::mem::{
-    AccessPermission,
-    Address,
-    FrameAddress,
-    PageAddress,
-    PageAligned,
-    PhysicalAddress,
+use crate::{
+    hal::mem::{
+        AccessPermission,
+        Address,
+        FrameAddress,
+        PageAddress,
+        PageAligned,
+        PhysicalAddress,
+    },
+    mm::GetPageTableStorage,
 };
 use ::arch::mem::paging::{
     AccessedFlag,
@@ -33,6 +36,8 @@ use ::sys::error::{
     ErrorCode,
 };
 
+include!("page_table.spec.rs");
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -41,27 +46,68 @@ use ::sys::error::{
 ///
 /// A type that represents a page table.
 ///
-pub struct PageTable<T: DerefMut<Target = [PteWord]>> {
+#[verus_verify]
+pub struct PageTable<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageTableStorage,
+{
     /// Number of pages mapped in the page table.
     nmapped: usize,
     /// Entries.
     entries: T,
+    /// Specification tokens for page-table entries.
+    #[cfg(verus_keep_ghost_body)]
+    pub permissions: Tracked<Map<nat, NanvixPteToken>>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
+#[verus_verify]
+impl<T> PageTable<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageTableStorage,
+{
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        with
+            Tracked(raw_permissions):
+                Tracked<Map<nat, PointsTo<PteWord>>>,
+        requires
+            0 <= entries.get_storage().physical_base_address(),
+            entries.get_storage().physical_base_address()
+                % (::arch::mem::PAGE_SIZE as int) == 0,
+            raw_permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH,
+            forall|i: nat| raw_permissions.dom().contains(i)
+                <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH,
+            forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
+                let permission = #[trigger] raw_permissions[i];
+
+                permission.ptr()@.addr as int
+                    == entries.get_storage().entries_base_address()
+                        + i * 4
+                    && permission.is_uninit()
+            },
+        ensures
+            result.ready_for_mmu(),
+    )]
     pub fn new(entries: T) -> Self {
         let mut page_table: Self = Self {
             nmapped: 0,
             entries,
+            #[cfg(verus_keep_ghost_body)]
+            permissions: Tracked::new(mint_nanvix_pte_tokens(raw_permissions)),
         };
         page_table.clean();
         page_table
     }
+}
 
+impl<T> PageTable<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageTableStorage,
+{
     ///
     /// # Description
     ///
@@ -569,8 +615,9 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
 
         // Verify that all target entries are not present.
         if !skip_pte_verification {
-            for entry in &self.entries[start_index..end] {
-                if PresentFlag::is_set(*entry) {
+            for index in start_index..end {
+                // if PresentFlag::is_set(self.entries[index]) {
+                if PresentFlag::is_set(self.env_interaction_read_page_table_entry(index)) {
                     let reason: &str = "page table entry is busy";
                     error!("fill(): {}", reason);
                     return Err((0, Error::new(ErrorCode::ResourceBusy, reason)));
@@ -592,7 +639,8 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
                 (i, Error::new(ErrorCode::InvalidArgument, reason))
             })?;
             let pte: PageTableEntry = PageTableEntry::new(pte_flags, frame);
-            self.entries[start_index + i] = pte.into_raw_value();
+            // self.entries[start_index + i] = pte.into_raw_value();
+            self.env_interaction_write_page_table_entry(start_index + i, pte.into_raw_value());
             self.nmapped += 1;
         }
 
@@ -600,20 +648,24 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     }
 
     fn clean(&mut self) {
-        for pte in self.entries.iter_mut() {
-            *pte = 0;
-        }
+        // for pte in self.entries.iter_mut() {
+        //     *pte = 0;
+        // }
+        self.env_interaction_clear_page_table();
     }
 
     fn read_pte(&self, vaddr: PageAddress) -> Option<PageTableEntry> {
         let pte_idx: usize = vaddr.get_pte_index();
-        let pte: Option<PageTableEntry> = PageTableEntry::from_raw_value(self.entries[pte_idx]);
+        // let pte: Option<PageTableEntry> = PageTableEntry::from_raw_value(self.entries[pte_idx]);
+        let pte: Option<PageTableEntry> =
+            PageTableEntry::from_raw_value(self.env_interaction_read_page_table_entry(pte_idx));
         pte
     }
 
     fn write_pte(&mut self, vaddr: PageAddress, pte: PageTableEntry) {
         let pte_idx: usize = vaddr.get_pte_index();
-        self.entries[pte_idx] = pte.into_raw_value();
+        // self.entries[pte_idx] = pte.into_raw_value();
+        self.env_interaction_write_page_table_entry(pte_idx, pte.into_raw_value());
     }
 
     ///
@@ -655,8 +707,11 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     /// `pte` is the decoded [`PageTableEntry`].
     ///
     pub fn iter_present_ptes(&self) -> impl Iterator<Item = (usize, PageTableEntry)> + '_ {
-        self.entries.iter().enumerate().filter_map(
-            |(idx, raw)| match PageTableEntry::from_raw_value(*raw) {
+        (0..self.entries.len()).filter_map(
+            // |idx| match PageTableEntry::from_raw_value(self.entries[idx]) {
+            |idx| match PageTableEntry::from_raw_value(
+                self.env_interaction_read_page_table_entry(idx),
+            ) {
                 Some(pte) if pte.is_present() => Some((idx, pte)),
                 _ => None,
             },
