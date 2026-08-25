@@ -109,7 +109,9 @@ where
         &&& forall|i: nat| self.permissions.dom().contains(i)
             <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH
         &&& forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
-            self.permissions[i].wf()
+            let permission = #[trigger] self.permissions[i];
+
+            permission.wf()
         }
     }
 
@@ -187,9 +189,12 @@ where
         ensures
             final(self).inv(),
             forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
-                &&& final(self).permissions[i].ptr() == old(self).permissions[i].ptr()
-                &&& final(self).permissions[i].is_init()
-                &&& final(self).permissions[i].expected() == 0
+                let final_permission = #[trigger] final(self).permissions[i];
+                let old_permission = old(self).permissions[i];
+
+                &&& final_permission.ptr() == old_permission.ptr()
+                &&& final_permission.is_init()
+                &&& final_permission.expected() == 0
             },
     )]
     fn env_interaction_clear_page_directory(&mut self) {

@@ -201,9 +201,12 @@ where
             final(self).inv(),
             final(self).nmapped == old(self).nmapped,
             forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
-                &&& final(self).permissions[i].ptr() == old(self).permissions[i].ptr()
-                &&& final(self).permissions[i].is_init()
-                &&& final(self).permissions[i].expected() == 0
+                let final_permission = #[trigger] final(self).permissions[i];
+                let old_permission = old(self).permissions[i];
+
+                &&& final_permission.ptr() == old_permission.ptr()
+                &&& final_permission.is_init()
+                &&& final_permission.expected() == 0
             },
     )]
     fn env_interaction_clear_page_table(&mut self) {
