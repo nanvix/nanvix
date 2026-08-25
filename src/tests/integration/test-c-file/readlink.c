@@ -31,8 +31,8 @@ void test_readlink(void)
 {
     fprintf(stderr, "testing readlink() ... ");
 
-    const char *filename = "README.md";
-    const char *linkname = "README.link";
+    const char *filename = "readlink-target.tmp";
+    const char *linkname = "readlink-file.link";
     assert(strlen(filename) <= NAME_MAX);
 
     // Create a symbolic link.

@@ -31,11 +31,14 @@ void test_symlinkat(void)
 {
     fprintf(stderr, "testing symlinkat() ... ");
 
-    const char *filename = "README.md";
-    const char *linkname = "README.link";
+    const char *filename = "symlinkat-file.tmp";
+    const char *linkname = "symlinkat-file.link";
     assert(strlen(filename) <= NAME_MAX);
 
-    // Create a symbolic link.
+    // Create a test file and a symbolic link to it.
+    int fd = open(filename, O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR);
+    assert(fd >= 0);
+    assert(close(fd) == 0);
     assert(symlinkat(filename, AT_FDCWD, linkname) == 0);
 
     // Verify the symbolic link itself via lstat().
@@ -61,8 +64,9 @@ void test_symlinkat(void)
     assert(st.st_mtime != 0); // Modification time should not be zero.
     assert(st.st_ctime != 0); // Change time should not be zero.
 
-    // Remove the symbolic link.
+    // Remove the symbolic link and target file.
     assert(unlinkat(AT_FDCWD, linkname, 0) == 0);
+    assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
     fprintf(stderr, "passed\n");
 }

@@ -72,7 +72,7 @@ void test_chdir(void)
     assert(strcmp(new_cwd, original_cwd) == 0);
     assert(unlink(filename) == 0);
 
-    // Cross-mount coverage over hostfs (mounted at /mnt by test_umask()): chdir
+    // Cross-mount coverage over hostfs (mounted at /mnt by the suite driver): chdir
     // must forward to hostfsd, succeed onto a directory, and reject a file with
     // ENOTDIR.
     if (getenv("NANVIX_TEST_HOSTFS") != NULL) {

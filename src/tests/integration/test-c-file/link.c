@@ -31,11 +31,14 @@ void test_link(void)
 {
     fprintf(stderr, "testing link() ... ");
 
-    const char *filename = "README.md";
-    const char *linkname = "README.link";
+    const char *filename = "link-file.tmp";
+    const char *linkname = "link-file.link";
     assert(strlen(filename) <= NAME_MAX);
 
-    // Create a hard link.
+    // Create a test file and a hard link to it.
+    int fd = open(filename, O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR);
+    assert(fd >= 0);
+    assert(close(fd) == 0);
     assert(link(filename, linkname) == 0);
 
     // Get information from the original file.
@@ -58,8 +61,9 @@ void test_link(void)
     assert(st.st_mtime != 0);                // Modification time should not be zero.
     assert(st.st_ctime != 0);                // Change time should not be zero.
 
-    // Remove the hard link.
+    // Remove the hard link and original file.
     assert(unlinkat(AT_FDCWD, linkname, 0) == 0);
+    assert(unlinkat(AT_FDCWD, filename, 0) == 0);
 
     fprintf(stderr, "passed\n");
 }
