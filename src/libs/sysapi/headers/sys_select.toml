@@ -53,5 +53,8 @@ functions = ["select"]
 
 [overrides]
 select = '''
-extern int select(
-    int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);'''
+extern int select(int nfds,
+                  fd_set *restrict readfds,
+                  fd_set *restrict writefds,
+                  fd_set *restrict exceptfds,
+                  struct timeval *restrict timeout);'''
