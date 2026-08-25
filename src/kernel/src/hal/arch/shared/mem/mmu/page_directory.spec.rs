@@ -24,10 +24,11 @@ pub const PAGE_SIZE_BIT: PteWord = 1 << 7;
 pub const PAGE_TABLE_ADDRESS_MASK: PteWord = 0xffff_f000;
 
 /// Nanvix's authority and stable knowledge for one page-directory entry.
+/// Fields must be private to prevent mutation outside of TCB.
 #[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
-pub struct NanvixPdeToken {
-    pub ptr: *mut PteWord,
-    pub expected: Option<PteWord>,
+pub tracked struct NanvixPdeToken {
+    ptr: *mut PteWord,
+    expected: Option<PteWord>,
 }
 
 /// Converts raw-memory permissions into uninitialized page-directory-entry tokens.
@@ -61,32 +62,30 @@ impl NanvixPdeToken {
         self.ptr
     }
 
+    /// Returns the baseline value most recently established by Nanvix.
+    pub closed spec fn expected(&self) -> Option<PteWord>
+    {
+        self.expected
+    }
+
     /// Returns whether Nanvix has established a baseline value.
     pub open spec fn is_init(&self) -> bool {
-        self.expected.is_some()
+        self.expected().is_some()
     }
 
     /// Returns whether Nanvix has not established a baseline value.
     pub open spec fn is_uninit(&self) -> bool {
-        self.expected.is_none()
-    }
-
-    /// Returns the baseline value most recently established by Nanvix.
-    pub closed spec fn expected(&self) -> PteWord
-        recommends
-            self.is_init(),
-    {
-        self.expected.unwrap()
+        self.expected().is_none()
     }
 
     /// Returns whether `value` may currently be observed at this entry.
     pub open spec fn admits(&self, value: PteWord) -> bool {
-        self.is_init() && compatible_pde(self.expected(), value)
+        self.is_init() && compatible_pde(self.expected().unwrap(), value)
     }
 
     /// Returns whether this token is well formed.
     pub closed spec fn wf(&self) -> bool {
-        self.is_uninit() || valid_standard_pde(self.expected())
+        self.is_uninit() || valid_standard_pde(self.expected().unwrap())
     }
 }
 
@@ -194,7 +193,7 @@ where
 
                 &&& final_permission.ptr() == old_permission.ptr()
                 &&& final_permission.is_init()
-                &&& final_permission.expected() == 0
+                &&& final_permission.expected() == Some(0)
             },
     )]
     fn env_interaction_clear_page_directory(&mut self) {
@@ -233,7 +232,7 @@ where
             final(self).permissions[index as nat].ptr()
                 == old(self).permissions[index as nat].ptr(),
             final(self).permissions[index as nat].is_init(),
-            final(self).permissions[index as nat].expected() == value,
+            final(self).permissions[index as nat].expected() == Some(value),
             forall|i: nat|
                 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH && i != index as nat
                     ==> final(self).permissions[i] == old(self).permissions[i],
