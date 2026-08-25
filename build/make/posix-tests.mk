@@ -106,17 +106,6 @@ $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_STRESS_SRCDIR)/%.c
 # win over pattern rules), so the standalone-images machinery bundles the
 # resulting ELF into `<suite>.initrd` without any custom mkimage recipe.
 #
-# A suite may restrict the compiled set via POSIX_TEST_FILES_<suite> (a list of
-# file names under the suite directory) — used by file-c, whose remaining
-# sub-tests need features absent from the FAT32 VFS, including links,
-# permissions/ownership, timestamps, and select().
-POSIX_TEST_FILES_test-c-file := \
-	main.c open_close.c create_unlink.c write_read.c poll.c posix_fadvise.c lseek.c \
-	posix_fallocate.c readv.c preadv.c writev.c pwritev.c pread.c pwrite.c \
-	fdatasync.c stat.c ftruncate.c truncate.c renameat.c renameat_subdir.c unlinkat.c mkdirat.c mkdir.c \
-	path_errno.c mkfifo.c mknod.c umask_ramfs.c umask.c dirent.c getcwd.c chdir.c fchdir.c \
-	utimensat.c utimes.c utime.c futimens.c chown.c fchown.c fchownat.c lchown.c
-
 # Extra link flags for position-independent executables. The dlfcn PIE variants
 # build as PIE so the linker emits .dynsym/.dynstr/.dynamic and the executable's
 # own symbols are resolvable via dlopen(NULL)/RTLD_DEFAULT. Mirrors the proven
