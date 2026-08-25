@@ -87,6 +87,7 @@ use ::vstd::raw_ptr::PointsTo;
 //==================================================================================================
 
 /// A type that represents a virtual memory space.
+#[verus_verify(external_body)]
 pub struct Vmem {
     /// Underlying page directory.
     pgdir: PageDirectory<PageDirectoryStorage>,

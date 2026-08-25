@@ -44,6 +44,7 @@ impl PartialOrd for PageAddress {
     }
 }
 
+#[verus_verify]
 #[derive(Debug, Clone, Copy)]
 pub struct PageTableAddress(PageTableAligned<VirtualAddress>);
 

@@ -109,10 +109,6 @@ pub static PAGE_TABLE_ALLOCATOR: FixedSizeBumpAllocator<
 
 verus! {
 
-#[verifier::external_type_specification]
-#[allow(dead_code)]
-pub struct ExBumpAllocError(BumpAllocError);
-
 /// Raw entry permissions associated with one allocated page-table slot.
 #[allow(dead_code)]
 pub tracked struct PageTableSlotPermissions {
