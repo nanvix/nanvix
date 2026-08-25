@@ -15,16 +15,6 @@
 #include <unistd.h>
 
 //==================================================================================================
-// Imported Symbols
-//==================================================================================================
-
-extern int mount(
-    const char *source,
-    const char *target,
-    const char *filesystemtype,
-    unsigned long mountflags);
-
-//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
@@ -49,8 +39,6 @@ void test_umask(void)
         struct stat st = {0};
 
         // Hostfs exposes Unix permission bits, unlike the standalone FAT32 filesystem.
-        assert(mount("", "/mnt", "hostfs", 0) == 0);
-
         // Verify that the mask is applied when creating a regular file.
         int fd = open(filename, O_CREAT | O_EXCL | O_WRONLY, permissions);
         assert(fd >= 0);
