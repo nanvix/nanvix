@@ -23,6 +23,9 @@ sysapi = { workspace = true, features = ["std"] }
 syscall = { workspace = true, default-features = false }
 syslog = { workspace = true, features = ["std"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
 [dev-dependencies]
 hostfs-api = { workspace = true, features = ["test-support"] }
 sysapi = { workspace = true, features = ["std"] }

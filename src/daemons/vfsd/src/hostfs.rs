@@ -422,6 +422,21 @@ pub fn send_chmod_request(
     send_long_request(&buf, SystemCallMessageKind::HostFsChmodRequestPart, op_id)
 }
 
+/// Sends an ACCESS request to hostfsd.
+pub fn send_access_request(
+    path: &ResolvedPath,
+    mode: i32,
+    flags: i32,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path.as_str());
+    let buf: alloc::vec::Vec<u8> =
+        long_msg::serialize_long_mode_path_request(op_id, mode, flags, relative.as_bytes())
+            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageKind::HostFsAccessRequestPart, op_id)
+}
+
 /// Sends a STAT request to hostfsd (by remote FD).
 pub fn send_stat_request(
     remote_fd: i32,

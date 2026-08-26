@@ -379,6 +379,8 @@ pub enum SystemCallMessageKind {
     HostFsChmodResponse,
     HostFsFchmodRequest,
     HostFsFchmodResponse,
+    HostFsAccessRequestPart,
+    HostFsAccessResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageKind.
 impl TryFrom<u16> for SystemCallMessageKind {
@@ -582,6 +584,8 @@ impl TryFrom<u16> for SystemCallMessageKind {
             x if x == HostFsChmodResponse as u16 => Ok(HostFsChmodResponse),
             x if x == HostFsFchmodRequest as u16 => Ok(HostFsFchmodRequest),
             x if x == HostFsFchmodResponse as u16 => Ok(HostFsFchmodResponse),
+            x if x == HostFsAccessRequestPart as u16 => Ok(HostFsAccessRequestPart),
+            x if x == HostFsAccessResponse as u16 => Ok(HostFsAccessResponse),
             _ => Err(()),
         }
     }
@@ -650,6 +654,8 @@ impl SystemCallMessageKind {
                 | Self::HostFsChmodResponse
                 | Self::HostFsFchmodRequest
                 | Self::HostFsFchmodResponse
+                | Self::HostFsAccessRequestPart
+                | Self::HostFsAccessResponse
         )
     }
 
@@ -698,6 +704,7 @@ impl SystemCallMessageKind {
             Self::HostFsLinkRequestPart => Some(Self::HostFsLinkResponse),
             Self::HostFsChmodRequestPart => Some(Self::HostFsChmodResponse),
             Self::HostFsFchmodRequest => Some(Self::HostFsFchmodResponse),
+            Self::HostFsAccessRequestPart => Some(Self::HostFsAccessResponse),
             _ => None,
         }
     }
@@ -736,6 +743,7 @@ impl SystemCallMessageKind {
                 | Self::HostFsLinkResponse
                 | Self::HostFsChmodResponse
                 | Self::HostFsFchmodResponse
+                | Self::HostFsAccessResponse
         )
     }
 

@@ -248,6 +248,52 @@ fn test_open_nonexistent_file_fails() {
 }
 
 #[test]
+fn test_open_create_read_only_retains_read_only_handle() {
+    let (mut handler, _tmp) = setup();
+    let payload: [u8; Message::PAYLOAD_SIZE] =
+        make_open_request("read-only-create.txt", O_RDONLY | O_CREAT, 0);
+    let response: [u8; Message::PAYLOAD_SIZE] = handler
+        .handle_request(&payload)
+        .expect("open should return a response");
+    let fd: i32 = OpenResponse::decode(&response).fd;
+    assert!(fd > 0, "O_CREAT | O_RDONLY should create the file");
+
+    let write_response: [u8; Message::PAYLOAD_SIZE] = handler
+        .handle_request(&make_write_request(fd, b"x", -1))
+        .expect("write should return a response");
+    assert!(
+        WriteResponse::decode(&write_response).bytes_written < 0,
+        "created read-only descriptor must not be writable"
+    );
+
+    let read_response: [u8; Message::PAYLOAD_SIZE] = handler
+        .handle_request(&make_read_request(fd, 1, -1))
+        .expect("read should return a response");
+    assert_eq!(ReadResponse::decode(&read_response).bytes_read, 0);
+
+    #[cfg(unix)]
+    assert_eq!(
+        fs::metadata(_tmp.path().join("read-only-create.txt"))
+            .expect("created file should have metadata")
+            .permissions()
+            .mode()
+            & 0o777,
+        0
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_open_create_read_only_dangling_symlink_fails() {
+    let (mut handler, tmp) = setup();
+    std::os::unix::fs::symlink("missing.txt", tmp.path().join("dangling.txt"))
+        .expect("symlink creation should succeed");
+
+    let fd: i32 = open_file(&mut handler, "dangling.txt", O_RDONLY | O_CREAT);
+    assert!(fd < 0, "opening a dangling symlink should fail");
+}
+
+#[test]
 fn test_open_create_flag() {
     let (mut handler, tmp) = setup();
 
@@ -1281,6 +1327,59 @@ fn test_chmod_and_fchmod() {
         HOSTFS_ERR_NOT_SUPPORTED
     );
     assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o640);
+}
+
+#[cfg(unix)]
+#[test]
+fn test_access_uses_owner_permission_bits() {
+    use sysapi::unistd::access_mode::{
+        R_OK,
+        W_OK,
+    };
+
+    let (mut handler, tmp) = setup();
+    let path: PathBuf = tmp.path().join("mode.txt");
+    fs::write(&path, b"data").expect("test file creation should succeed");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o400))
+        .expect("setting test permissions should succeed");
+
+    let read_access = make_long_mode_path_parts(
+        SystemCallMessageKind::HostFsAccessRequestPart,
+        "mode.txt",
+        R_OK,
+        0,
+        OperationId::from_raw(102),
+    );
+    assert_eq!(response_status(&run_long_request(&mut handler, &read_access)), 0);
+    let write_access = make_long_mode_path_parts(
+        SystemCallMessageKind::HostFsAccessRequestPart,
+        "mode.txt",
+        W_OK,
+        0,
+        OperationId::from_raw(103),
+    );
+    assert_eq!(
+        response_status(&run_long_request(&mut handler, &write_access)),
+        HOSTFS_ERR_PERMISSION
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_access_rejects_unknown_mode_and_flags() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("access.txt"), b"data").unwrap();
+
+    for (op_id, mode, flags) in [(107, 8, 0), (108, 0, 4)] {
+        let request = make_long_mode_path_parts(
+            SystemCallMessageKind::HostFsAccessRequestPart,
+            "access.txt",
+            mode,
+            flags,
+            OperationId::from_raw(op_id),
+        );
+        assert_eq!(response_status(&run_long_request(&mut handler, &request)), HOSTFS_ERR_INVALID);
+    }
 }
 
 #[test]

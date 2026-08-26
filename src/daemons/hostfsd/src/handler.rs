@@ -68,10 +68,18 @@ use std::{
 };
 
 #[cfg(unix)]
-use std::os::unix::fs::{
-    MetadataExt,
-    PermissionsExt,
+use std::{
+    ffi::CString,
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{
+            MetadataExt,
+            PermissionsExt,
+        },
+        io::FromRawFd,
+    },
 };
+
 fn timestamp_to_system_time(seconds: i64, nanoseconds: i64) -> io::Result<SystemTime> {
     if !(0..1_000_000_000).contains(&nanoseconds) {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
@@ -110,29 +118,78 @@ fn file_times(times: &[::sysapi::time::timespec; 2]) -> io::Result<FileTimes> {
     Ok(result)
 }
 
-fn open_regular_file(
-    options: &OpenOptions,
-    host_path: &PathBuf,
-    create: bool,
-    exclusive: bool,
-) -> io::Result<(File, bool)> {
+fn open_regular_file(host_path: &PathBuf, mode: u32, flags: i32) -> io::Result<(File, bool)> {
+    let read_only: bool = (flags & O_ACCMODE) == O_RDONLY;
+    let write_only: bool = (flags & O_ACCMODE) == O_WRONLY;
+    let read_write: bool = (flags & O_ACCMODE) == O_RDWR;
+    let create: bool = (flags & O_CREAT) != 0;
+    let exclusive: bool = (flags & O_EXCL) != 0;
+    let truncate: bool = (flags & O_TRUNC) != 0;
+    let append: bool = (flags & O_APPEND) != 0;
+
+    let mut options: OpenOptions = OpenOptions::new();
+    options.read(read_only || read_write);
+    #[cfg(windows)]
+    if read_only {
+        use std::os::windows::fs::OpenOptionsExt;
+        const GENERIC_READ: u32 = 0x8000_0000;
+        const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
+        options.access_mode(GENERIC_READ | FILE_WRITE_ATTRIBUTES);
+    }
+    options.write(write_only || read_write);
+    options.create(create);
+    options.truncate(truncate);
+    // `append(true)` also grants write access.
+    options.append(append && (write_only || read_write));
+
     if !create {
         return options.open(host_path).map(|file| (file, false));
     }
 
-    let mut create_options: OpenOptions = options.clone();
-    create_options.create_new(true);
-
-    let mut existing_options: OpenOptions = options.clone();
-    existing_options.create(false);
-
     loop {
-        match create_options.open(host_path) {
+        let create_result: io::Result<File> = if read_only {
+            #[cfg(unix)]
+            {
+                let path: CString = CString::new(host_path.as_os_str().as_bytes())
+                    .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+                // SAFETY: `path` is NUL-terminated, and a successful call returns a new owned fd.
+                let fd: i32 = unsafe {
+                    libc::open(
+                        path.as_ptr(),
+                        libc::O_RDONLY | libc::O_CREAT | libc::O_EXCL | libc::O_CLOEXEC,
+                        mode as libc::mode_t,
+                    )
+                };
+                if fd < 0 {
+                    Err(io::Error::last_os_error())
+                } else {
+                    // SAFETY: `fd` was freshly returned by `open()` and ownership moves to `File`.
+                    Ok(unsafe { File::from_raw_fd(fd) })
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = mode;
+                let mut create_options: OpenOptions = options.clone();
+                create_options.create_new(true);
+                create_options.open(host_path)
+            }
+        } else {
+            let mut create_options: OpenOptions = options.clone();
+            create_options.create_new(true);
+            create_options.open(host_path)
+        };
+
+        match create_result {
             Ok(file) => return Ok((file, true)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists && !exclusive => {
+                let mut existing_options: OpenOptions = options.clone();
+                existing_options.create(false);
                 match existing_options.open(host_path) {
                     Ok(file) => return Ok((file, false)),
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {},
+                    Err(error)
+                        if error.kind() == io::ErrorKind::NotFound
+                            && fs::symlink_metadata(host_path).is_err() => {},
                     Err(error) => return Err(error),
                 }
             },
@@ -251,7 +308,8 @@ impl HostFsHandler {
             | SystemCallMessageKind::HostFsPathStatRequestPart
             | SystemCallMessageKind::HostFsChownAtRequestPart
             | SystemCallMessageKind::HostFsUpdateTimesAtRequestPart
-            | SystemCallMessageKind::HostFsChmodRequestPart => self.handle_long_part(
+            | SystemCallMessageKind::HostFsChmodRequestPart
+            | SystemCallMessageKind::HostFsAccessRequestPart => self.handle_long_part(
                 syscall_msg.kind(),
                 OperationId::from_le_bytes(syscall_msg.request_id().raw().to_le_bytes()),
                 &syscall_msg.payload,
@@ -506,6 +564,14 @@ impl HostFsHandler {
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
+            SystemCallMessageKind::HostFsAccessRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_mode_path(&assembled) {
+                    self.handle_long_access(req, &mut response);
+                } else {
+                    set_kind(&mut response, SystemCallMessageKind::HostFsAccessResponse as u16);
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
             _ => {
                 log::error!("hostfsd: unexpected assembled header: {:?}", dispatch_header);
                 if let Some(resp_header) = dispatch_header.hostfs_response_kind() {
@@ -535,38 +601,8 @@ impl HostFsHandler {
         };
 
         let flags: i32 = req.flags;
-        let mut opts: OpenOptions = OpenOptions::new();
-
-        let rdonly: bool = (flags & O_ACCMODE) == O_RDONLY;
         let wronly: bool = (flags & O_ACCMODE) == O_WRONLY;
         let rdwr: bool = (flags & O_ACCMODE) == O_RDWR;
-        let o_creat: bool = (flags & O_CREAT) != 0;
-        let o_excl: bool = (flags & O_EXCL) != 0;
-        let o_trunc: bool = (flags & O_TRUNC) != 0;
-        let o_append: bool = (flags & O_APPEND) != 0;
-
-        if rdonly || rdwr {
-            opts.read(true);
-        }
-        #[cfg(windows)]
-        if rdonly {
-            use std::os::windows::fs::OpenOptionsExt;
-            const GENERIC_READ: u32 = 0x8000_0000;
-            const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
-            opts.access_mode(GENERIC_READ | FILE_WRITE_ATTRIBUTES);
-        }
-        if wronly || rdwr {
-            opts.write(true);
-        }
-        if o_creat {
-            opts.create(true);
-        }
-        if o_trunc {
-            opts.truncate(true);
-        }
-        if o_append && (wronly || rdwr) {
-            opts.append(true);
-        }
 
         let o_directory: bool = (flags & O_DIRECTORY) != 0;
 
@@ -599,7 +635,7 @@ impl HostFsHandler {
                 },
             }
         } else {
-            match open_regular_file(&opts, &host_path, o_creat, o_excl) {
+            match open_regular_file(&host_path, req.mode, flags) {
                 Ok(result) => result,
                 Err(e) => {
                     set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
@@ -1088,6 +1124,80 @@ impl HostFsHandler {
         set_payload_data(response, &status.to_le_bytes());
     }
 
+    /// Handles a fully assembled long ACCESS request.
+    fn handle_long_access(
+        &mut self,
+        req: long_msg::LongModePathRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        use ::sysapi::{
+            fcntl::atflags::{
+                AT_EACCESS,
+                AT_SYMLINK_NOFOLLOW,
+            },
+            sys_stat::file_mode::{
+                S_IRUSR,
+                S_IWUSR,
+                S_IXUSR,
+            },
+            unistd::access_mode::{
+                R_OK,
+                W_OK,
+                X_OK,
+            },
+        };
+
+        set_kind(response, SystemCallMessageKind::HostFsAccessResponse as u16);
+        let valid_modes: i32 = R_OK | W_OK | X_OK;
+        let valid_flags: i32 = AT_EACCESS | AT_SYMLINK_NOFOLLOW;
+        let mode: i32 = req.mode();
+        let flags: i32 = req.flags();
+        if mode & !valid_modes != 0 || flags & !valid_flags != 0 {
+            set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
+            return;
+        }
+
+        let no_follow: bool = flags & AT_SYMLINK_NOFOLLOW != 0;
+        let host_path: PathBuf = match if no_follow {
+            self.sandbox.resolve_nofollow(req.path())
+        } else {
+            self.sandbox.resolve(req.path())
+        } {
+            Some(path) => path,
+            None => {
+                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                return;
+            },
+        };
+        let metadata = match if no_follow {
+            fs::symlink_metadata(&host_path)
+        } else {
+            fs::metadata(&host_path)
+        } {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                return;
+            },
+        };
+
+        #[cfg(unix)]
+        let owner_mode: u32 = metadata.permissions().mode();
+        #[cfg(not(unix))]
+        let owner_mode: u32 = S_IRUSR
+            | if metadata.permissions().readonly() {
+                0
+            } else {
+                S_IWUSR
+            }
+            | if metadata.is_dir() { S_IXUSR } else { 0 };
+        let denied: bool = (mode & R_OK != 0 && owner_mode & S_IRUSR == 0)
+            || (mode & W_OK != 0 && owner_mode & S_IWUSR == 0)
+            || (mode & X_OK != 0 && owner_mode & S_IXUSR == 0);
+        let status: i32 = if denied { HOSTFS_ERR_PERMISSION } else { 0 };
+        set_payload_data(response, &status.to_le_bytes());
+    }
+
     /// Handles an inline single-message READLINK request.
     fn handle_readlink(
         &mut self,
@@ -1516,43 +1626,9 @@ impl HostFsHandler {
             },
         };
 
-        // Translate POSIX flags to Rust OpenOptions.
         let flags: i32 = req.flags;
-        let mut opts: OpenOptions = OpenOptions::new();
-
-        let rdonly: bool = (flags & O_ACCMODE) == O_RDONLY;
         let wronly: bool = (flags & O_ACCMODE) == O_WRONLY;
         let rdwr: bool = (flags & O_ACCMODE) == O_RDWR;
-        let o_creat: bool = (flags & O_CREAT) != 0;
-        let o_excl: bool = (flags & O_EXCL) != 0;
-        let o_trunc: bool = (flags & O_TRUNC) != 0;
-        let o_append: bool = (flags & O_APPEND) != 0;
-
-        if rdonly || rdwr {
-            opts.read(true);
-        }
-        #[cfg(windows)]
-        if rdonly {
-            use std::os::windows::fs::OpenOptionsExt;
-            const GENERIC_READ: u32 = 0x8000_0000;
-            const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
-            opts.access_mode(GENERIC_READ | FILE_WRITE_ATTRIBUTES);
-        }
-        if wronly || rdwr {
-            opts.write(true);
-        }
-        if o_creat {
-            opts.create(true);
-        }
-        if o_trunc {
-            opts.truncate(true);
-        }
-        // Only set append when the access mode includes write. Rust's
-        // `OpenOptions::append(true)` implicitly enables write access, so setting it
-        // on a read-only open would incorrectly grant write permissions.
-        if o_append && (wronly || rdwr) {
-            opts.append(true);
-        }
 
         // Check if this is a directory open.
         let o_directory: bool = (flags & O_DIRECTORY) != 0;
@@ -1598,7 +1674,7 @@ impl HostFsHandler {
                 },
             }
         } else {
-            match open_regular_file(&opts, &host_path, o_creat, o_excl) {
+            match open_regular_file(&host_path, req.mode, flags) {
                 Ok(result) => result,
                 Err(e) => {
                     log::debug!(
