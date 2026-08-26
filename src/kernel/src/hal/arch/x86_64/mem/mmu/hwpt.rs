@@ -115,10 +115,7 @@ unsafe fn alloc_pt_page() -> u64 {
         // Zero the reused page before handing it out.
         let ptr: *mut u64 = paddr as *mut u64;
         for i in 0..ENTRIES_PER_TABLE {
-            // core::ptr::write_volatile(ptr.add(i), 0);
-            unsafe {
-                env_interaction_zero_hardware_page_table_entry(ptr.add(i));
-            }
+            core::ptr::write_volatile(ptr.add(i), 0);
         }
         return paddr;
     }
