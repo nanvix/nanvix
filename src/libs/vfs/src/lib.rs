@@ -62,6 +62,9 @@ extern crate alloc;
 /// Backend-neutral descriptor handle types.
 mod descriptor;
 
+/// Synthetic device namespace.
+mod devfs;
+
 /// Process-independent filesystem operations.
 mod filesystem;
 
