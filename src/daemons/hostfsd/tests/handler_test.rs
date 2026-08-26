@@ -1452,6 +1452,23 @@ fn make_long_rename_parts(
     split_into_parts(SystemCallMessageKind::HostFsRenameRequestPart, &data)
 }
 
+/// Serializes a long LINK request.
+fn make_long_link_parts(
+    old_path: &str,
+    new_path: &str,
+    flags: i32,
+    op_id: OperationId,
+) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
+    let data: Vec<u8> = long_msg::serialize_long_link_request(
+        op_id,
+        flags,
+        old_path.as_bytes(),
+        new_path.as_bytes(),
+    )
+    .expect("test link request should serialize");
+    split_into_parts(SystemCallMessageKind::HostFsLinkRequestPart, &data)
+}
+
 /// Feeds all parts of a multi-part request through the handler and returns the final response.
 fn feed_parts(
     handler: &mut HostFsHandler,
@@ -1677,6 +1694,34 @@ fn test_long_rename_multi_part() {
     assert_eq!(status, 0, "long rename should succeed");
     assert!(!tmp.path().join(&old_path).exists());
     assert_eq!(fs::read(tmp.path().join(&new_path)).unwrap(), b"payload");
+}
+
+#[test]
+fn test_long_link_missing_parent() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("old.txt"), b"payload").unwrap();
+
+    let parts: Vec<[u8; Message::PAYLOAD_SIZE]> =
+        make_long_link_parts("old.txt", "missing/new.txt", 0, OperationId::from_raw(16));
+    let response: [u8; Message::PAYLOAD_SIZE] = feed_parts(&mut handler, &parts);
+    let ds: usize = HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
+    assert_eq!(status, HOSTFS_ERR_NOT_FOUND);
+}
+
+#[test]
+fn test_long_link() {
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("old.txt"), b"payload").unwrap();
+
+    let parts: Vec<[u8; Message::PAYLOAD_SIZE]> =
+        make_long_link_parts("old.txt", "new.txt", 0, OperationId::from_raw(15));
+    let response: [u8; Message::PAYLOAD_SIZE] = feed_parts(&mut handler, &parts);
+    assert_eq!(get_op_id(&response), OperationId::from_raw(15));
+    let ds: usize = HOSTFS_DATA_START;
+    let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
+    assert_eq!(status, 0, "long link should succeed");
+    assert_eq!(fs::read(tmp.path().join("new.txt")).unwrap(), b"payload");
 }
 
 //==================================================================================================

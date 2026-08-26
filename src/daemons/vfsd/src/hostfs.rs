@@ -445,6 +445,26 @@ pub fn send_rename_request(
     send_long_request(&buf, SystemCallMessageKind::HostFsRenameRequestPart, op_id)
 }
 
+/// Sends a LINK request to hostfsd as a multi-part IKC message.
+pub fn send_link_request(
+    old_path: &ResolvedPath,
+    new_path: &ResolvedPath,
+    flags: i32,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let old_relative: &str = strip_mount_prefix(old_path.as_str());
+    let new_relative: &str = strip_mount_prefix(new_path.as_str());
+    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_link_request(
+        op_id,
+        flags,
+        old_relative.as_bytes(),
+        new_relative.as_bytes(),
+    )
+    .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageKind::HostFsLinkRequestPart, op_id)
+}
+
 /// Sends a SYMLINK request to hostfsd as a multi-part IKC message.
 ///
 /// `target` is the symlink target string (stored verbatim by the host) and `linkpath`

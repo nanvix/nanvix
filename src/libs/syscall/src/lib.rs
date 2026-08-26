@@ -371,6 +371,10 @@ pub enum SystemCallMessageKind {
     /// Path-based hostfs timestamp update.
     HostFsUpdateTimesAtRequestPart,
     HostFsUpdateTimesAtResponse,
+    /// Multi-part hard-link request for hostfs.
+    HostFsLinkRequestPart,
+    /// Hard-link response from hostfs.
+    HostFsLinkResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageKind.
 impl TryFrom<u16> for SystemCallMessageKind {
@@ -568,6 +572,8 @@ impl TryFrom<u16> for SystemCallMessageKind {
             x if x == HostFsUpdateTimesResponse as u16 => Ok(HostFsUpdateTimesResponse),
             x if x == HostFsUpdateTimesAtRequestPart as u16 => Ok(HostFsUpdateTimesAtRequestPart),
             x if x == HostFsUpdateTimesAtResponse as u16 => Ok(HostFsUpdateTimesAtResponse),
+            x if x == HostFsLinkRequestPart as u16 => Ok(HostFsLinkRequestPart),
+            x if x == HostFsLinkResponse as u16 => Ok(HostFsLinkResponse),
             _ => Err(()),
         }
     }
@@ -630,6 +636,8 @@ impl SystemCallMessageKind {
                 | Self::HostFsChownRequest
                 | Self::HostFsChownAtRequestPart
                 | Self::HostFsChownResponse
+                | Self::HostFsLinkRequestPart
+                | Self::HostFsLinkResponse
         )
     }
 
@@ -675,6 +683,7 @@ impl SystemCallMessageKind {
             },
             Self::HostFsUpdateTimesRequest => Some(Self::HostFsUpdateTimesResponse),
             Self::HostFsUpdateTimesAtRequestPart => Some(Self::HostFsUpdateTimesAtResponse),
+            Self::HostFsLinkRequestPart => Some(Self::HostFsLinkResponse),
             _ => None,
         }
     }
@@ -710,6 +719,7 @@ impl SystemCallMessageKind {
                 | Self::HostFsChownResponse
                 | Self::HostFsUpdateTimesResponse
                 | Self::HostFsUpdateTimesAtResponse
+                | Self::HostFsLinkResponse
         )
     }
 

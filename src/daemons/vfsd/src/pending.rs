@@ -106,6 +106,8 @@ pub(crate) enum PendingOpKind {
     Chown,
     /// fchownat — response is a status code.
     ChownAt,
+    /// link — response is a status code.
+    Link,
     /// stat/fstat — waiting for size, mode, and kind.
     Stat,
     /// stat/fstat — metadata arrived; waiting for timestamps.
@@ -563,6 +565,7 @@ pub(crate) fn complete_pending_op(
         PendingOpKind::ChownAt => {
             complete_status(response_context, response_payload, OpGroup::ChownAt)
         },
+        PendingOpKind::Link => complete_status(response_context, response_payload, OpGroup::Link),
         PendingOpKind::Stat => complete_stat(response_context, response_payload, None),
         PendingOpKind::Symlink => {
             complete_status(response_context, response_payload, OpGroup::Symlink)
@@ -1000,6 +1003,7 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::Rename, SystemCallMessageKind::HostFsRenameResponse)
             | (PendingOpKind::Chown, SystemCallMessageKind::HostFsChownResponse)
             | (PendingOpKind::ChownAt, SystemCallMessageKind::HostFsChownResponse)
+            | (PendingOpKind::Link, SystemCallMessageKind::HostFsLinkResponse)
             | (PendingOpKind::Stat, SystemCallMessageKind::HostFsStatResponse)
             | (PendingOpKind::Symlink, SystemCallMessageKind::HostFsSymlinkResponse)
             | (PendingOpKind::Readlink { .. }, SystemCallMessageKind::HostFsReadlinkResponse)
@@ -1155,6 +1159,7 @@ enum OpGroup {
     Rename,
     Chown,
     ChownAt,
+    Link,
     Symlink,
 }
 
@@ -1217,6 +1222,10 @@ fn complete_status(
             use ::syscall::unistd::message::FileChownAtResponse;
             FileChownAtResponse::build(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc)
         },
+        OpGroup::Link => {
+            use ::syscall::unistd::message::LinkAtResponse;
+            LinkAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
         OpGroup::Symlink => {
             use ::syscall::unistd::message::SymbolicLinkAtResponse;
             SymbolicLinkAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
@@ -1235,6 +1244,7 @@ fn hostfs_error_to_code(code: i32) -> ErrorCode {
         ::hostfs_api::HOSTFS_ERR_BAD_FD => ErrorCode::BadFile,
         ::hostfs_api::HOSTFS_ERR_PERMISSION => ErrorCode::PermissionDenied,
         ::hostfs_api::HOSTFS_ERR_EXISTS => ErrorCode::EntryExists,
+        ::hostfs_api::HOSTFS_ERR_CROSS_DEVICE => ErrorCode::CrossDeviceLink,
         ::hostfs_api::HOSTFS_ERR_NOT_DIR => ErrorCode::InvalidDirectory,
         ::hostfs_api::HOSTFS_ERR_IS_DIR => ErrorCode::IsDirectory,
         ::hostfs_api::HOSTFS_ERR_INVALID => ErrorCode::InvalidArgument,

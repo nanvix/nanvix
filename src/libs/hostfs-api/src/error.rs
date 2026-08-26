@@ -15,6 +15,8 @@ pub const HOSTFS_ERR_BAD_FD: i32 = -9;
 pub const HOSTFS_ERR_PERMISSION: i32 = -13;
 /// Error code: file or directory already exists.
 pub const HOSTFS_ERR_EXISTS: i32 = -17;
+/// Error code: cross-device link.
+pub const HOSTFS_ERR_CROSS_DEVICE: i32 = -18;
 /// Error code: not a directory.
 pub const HOSTFS_ERR_NOT_DIR: i32 = -20;
 /// Error code: is a directory.
