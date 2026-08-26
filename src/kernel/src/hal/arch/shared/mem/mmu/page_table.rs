@@ -57,8 +57,22 @@ where
     entries: T,
     /// Specification tokens for page-table entries.
     #[cfg(verus_keep_ghost_body)]
-    pub permissions: Tracked<Map<nat, NanvixPteToken>>,
+    permissions: Tracked<Map<nat, NanvixPteToken>>,
 }
+
+verus! {
+
+impl<T> PageTable<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageTableStorage,
+{
+    pub closed spec fn permissions(&self) -> Map<nat, NanvixPteToken>
+    {
+        self.permissions@
+    }
+}
+
+} // end verus!
 
 //==================================================================================================
 // Implementations
@@ -91,6 +105,10 @@ where
             },
         ensures
             result.ready_for_mmu(),
+            forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
+                &&& result.permissions().contains_key(i)
+                &&& (#[trigger] result.permissions()[i]).expected() == Some(0)
+            },
     )]
     pub fn new(entries: T) -> Self {
         let mut page_table: Self = Self {
