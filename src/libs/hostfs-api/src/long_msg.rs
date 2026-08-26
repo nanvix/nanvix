@@ -28,6 +28,7 @@
 //! - **Lstat**: `[op_id:4][path_len:2][path:N]`
 //! - **ChownAt**: `[op_id:4][owner:4][group:4][flags:4][path_len:2][path:N]`
 //! - **Update times**: `[op_id:4][flags:4][times:32][path_len:2][path:N]`
+//! - **Chmod**: `[op_id:4][mode:4][flags:4][path_len:2][path:N]`
 //!
 //! # Long Response Format
 //!
@@ -116,6 +117,18 @@ pub const CHOWNAT_HEADER_SIZE: usize = 18;
 
 /// Header size for long timestamp update: op_id(4) + flags(4) + times(32) + path_len(2) = 42.
 pub const UPDATE_TIMES_HEADER_SIZE: usize = 4 + 4 + 2 * ::sysapi::time::timespec::WIRE_SIZE + 2;
+/// Size of a file mode.
+const SIZE_OF_MODE: usize = mem::size_of::<i32>();
+/// Offset of the mode/path operation identifier.
+const MODE_PATH_OFFSET_OF_OPERATION_ID: usize = 0;
+/// Offset of the file mode.
+const MODE_PATH_OFFSET_OF_MODE: usize = MODE_PATH_OFFSET_OF_OPERATION_ID + SIZE_OF_OPERATION_ID;
+/// Offset of the mode/path flags.
+const MODE_PATH_OFFSET_OF_FLAGS: usize = MODE_PATH_OFFSET_OF_MODE + SIZE_OF_MODE;
+/// Offset of the mode/path length.
+const MODE_PATH_OFFSET_OF_PATH_LEN: usize = MODE_PATH_OFFSET_OF_FLAGS + SIZE_OF_FLAGS;
+/// Header size for a long mode/path request.
+pub const MODE_PATH_HEADER_SIZE: usize = MODE_PATH_OFFSET_OF_PATH_LEN + SIZE_OF_PATH_LEN;
 
 /// Header size for the long Readlink *response* body:
 /// `op_id(4) + status(4) + target_len(2) = 10`.
@@ -737,6 +750,78 @@ pub fn deserialize_long_update_times(bytes: &[u8]) -> Option<LongUpdateTimesRequ
     })
 }
 
+/// Result of deserializing a path request carrying a mode and flags.
+#[cfg(feature = "std")]
+pub struct LongModePathRequest {
+    op_id: OperationId,
+    mode: i32,
+    flags: i32,
+    path: std::string::String,
+}
+
+#[cfg(feature = "std")]
+impl LongModePathRequest {
+    /// Returns the operation identifier.
+    pub const fn op_id(&self) -> OperationId {
+        self.op_id
+    }
+
+    /// Returns the requested file mode.
+    pub const fn mode(&self) -> i32 {
+        self.mode
+    }
+
+    /// Returns the request flags.
+    pub const fn flags(&self) -> i32 {
+        self.flags
+    }
+
+    /// Returns the requested path.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+/// Deserializes a long chmod request.
+#[cfg(feature = "std")]
+pub fn deserialize_long_mode_path(bytes: &[u8]) -> Option<LongModePathRequest> {
+    if bytes.len() < MODE_PATH_HEADER_SIZE {
+        return None;
+    }
+    let op_id = OperationId::new(u32::from_le_bytes(
+        bytes[MODE_PATH_OFFSET_OF_OPERATION_ID..MODE_PATH_OFFSET_OF_MODE]
+            .try_into()
+            .ok()?,
+    ));
+    let mode = i32::from_le_bytes(
+        bytes[MODE_PATH_OFFSET_OF_MODE..MODE_PATH_OFFSET_OF_FLAGS]
+            .try_into()
+            .ok()?,
+    );
+    let flags = i32::from_le_bytes(
+        bytes[MODE_PATH_OFFSET_OF_FLAGS..MODE_PATH_OFFSET_OF_PATH_LEN]
+            .try_into()
+            .ok()?,
+    );
+    let path_len = u16::from_le_bytes(
+        bytes[MODE_PATH_OFFSET_OF_PATH_LEN..MODE_PATH_HEADER_SIZE]
+            .try_into()
+            .ok()?,
+    ) as usize;
+    let path_end = MODE_PATH_HEADER_SIZE.checked_add(path_len)?;
+    if bytes.len() < path_end {
+        return None;
+    }
+    let path =
+        std::string::String::from_utf8(bytes[MODE_PATH_HEADER_SIZE..path_end].to_vec()).ok()?;
+    Some(LongModePathRequest {
+        op_id,
+        mode,
+        flags,
+        path,
+    })
+}
+
 //==================================================================================================
 // Serialization (vfsd, no_std + alloc)
 //==================================================================================================
@@ -928,6 +1013,23 @@ pub fn serialize_long_update_times_request(
     Some(buf)
 }
 
+/// Serializes a long chmod request.
+pub fn serialize_long_mode_path_request(
+    op_id: OperationId,
+    mode: i32,
+    flags: i32,
+    path: &[u8],
+) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(MODE_PATH_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&mode.to_le_bytes());
+    buf.extend_from_slice(&flags.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
 //==================================================================================================
 // Tests
 //==================================================================================================
@@ -956,6 +1058,20 @@ mod tests {
         assert_eq!(request.flags, 0x400);
         assert_eq!(request.old_path, "old/path");
         assert_eq!(request.new_path, "new/path");
+    }
+
+    #[test]
+    fn mode_path_request_round_trip() {
+        let bytes = serialize_long_mode_path_request(OperationId::new(9), 0o754, 2, b"dir/file")
+            .expect("mode/path request should serialize");
+        #[cfg(feature = "std")]
+        {
+            let request = deserialize_long_mode_path(&bytes).expect("request should deserialize");
+            assert_eq!(request.op_id(), OperationId::new(9));
+            assert_eq!(request.mode(), 0o754);
+            assert_eq!(request.flags(), 2);
+            assert_eq!(request.path(), "dir/file");
+        }
     }
 
     #[test]

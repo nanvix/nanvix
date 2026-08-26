@@ -250,7 +250,8 @@ impl HostFsHandler {
             | SystemCallMessageKind::HostFsLstatRequestPart
             | SystemCallMessageKind::HostFsPathStatRequestPart
             | SystemCallMessageKind::HostFsChownAtRequestPart
-            | SystemCallMessageKind::HostFsUpdateTimesAtRequestPart => self.handle_long_part(
+            | SystemCallMessageKind::HostFsUpdateTimesAtRequestPart
+            | SystemCallMessageKind::HostFsChmodRequestPart => self.handle_long_part(
                 syscall_msg.kind(),
                 OperationId::from_le_bytes(syscall_msg.request_id().raw().to_le_bytes()),
                 &syscall_msg.payload,
@@ -281,6 +282,7 @@ impl HostFsHandler {
             SystemCallMessageKind::HostFsLstatRequest => run(self, Self::handle_lstat),
             SystemCallMessageKind::HostFsPathStatRequest => run(self, Self::handle_pathstat),
             SystemCallMessageKind::HostFsChownRequest => run(self, Self::handle_chown),
+            SystemCallMessageKind::HostFsFchmodRequest => run(self, Self::handle_fchmod),
             other => {
                 log::error!("hostfsd: unexpected message header: {:?}", other);
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
@@ -493,6 +495,14 @@ impl HostFsHandler {
                         &mut response,
                         SystemCallMessageKind::HostFsUpdateTimesAtResponse as u16,
                     );
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
+            SystemCallMessageKind::HostFsChmodRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_mode_path(&assembled) {
+                    self.handle_long_chmod(req, &mut response);
+                } else {
+                    set_kind(&mut response, SystemCallMessageKind::HostFsChmodResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
@@ -977,6 +987,104 @@ impl HostFsHandler {
             fs::set_times(host_path, times)
         };
         let status: i32 = result.map(|()| 0).unwrap_or_else(|e| io_error_to_code(&e));
+        set_payload_data(response, &status.to_le_bytes());
+    }
+
+    /// Handles a fully assembled long CHMOD request.
+    fn handle_long_chmod(
+        &mut self,
+        req: long_msg::LongModePathRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        use ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW;
+
+        set_kind(response, SystemCallMessageKind::HostFsChmodResponse as u16);
+        let flags: i32 = req.flags();
+        if flags != 0 && flags != AT_SYMLINK_NOFOLLOW {
+            set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
+            return;
+        }
+
+        let no_follow: bool = flags == AT_SYMLINK_NOFOLLOW;
+        let host_path: PathBuf = match if no_follow {
+            self.sandbox.resolve_nofollow(req.path())
+        } else {
+            self.sandbox.resolve(req.path())
+        } {
+            Some(path) => path,
+            None => {
+                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                return;
+            },
+        };
+
+        if no_follow {
+            match fs::symlink_metadata(&host_path) {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    set_payload_data(response, &HOSTFS_ERR_NOT_SUPPORTED.to_le_bytes());
+                    return;
+                },
+                Ok(_) => {},
+                Err(error) => {
+                    set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                    return;
+                },
+            }
+        }
+
+        #[cfg(unix)]
+        let permissions = fs::Permissions::from_mode(req.mode() as u32);
+        #[cfg(not(unix))]
+        let permissions = {
+            let mut permissions = match fs::metadata(&host_path) {
+                Ok(metadata) => metadata.permissions(),
+                Err(error) => {
+                    set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                    return;
+                },
+            };
+            permissions
+                .set_readonly(req.mode() as u32 & ::sysapi::sys_stat::file_mode::S_IWUSR == 0);
+            permissions
+        };
+        let status: i32 = match fs::set_permissions(&host_path, permissions) {
+            Ok(()) => 0,
+            Err(error) => io_error_to_code(&error),
+        };
+        set_payload_data(response, &status.to_le_bytes());
+    }
+
+    /// Handles an inline single-message FCHMOD request.
+    fn handle_fchmod(
+        &mut self,
+        payload: &[u8; Message::PAYLOAD_SIZE],
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        set_kind(response, SystemCallMessageKind::HostFsFchmodResponse as u16);
+        let request: ChmodRequest = ChmodRequest::decode(payload);
+        let Some(entry) = self.fd_table.get(request.fd()) else {
+            set_payload_data(response, &HOSTFS_ERR_BAD_FD.to_le_bytes());
+            return;
+        };
+
+        #[cfg(unix)]
+        let permissions = fs::Permissions::from_mode(request.mode());
+        #[cfg(not(unix))]
+        let permissions = {
+            let mut permissions = match entry.file.metadata() {
+                Ok(metadata) => metadata.permissions(),
+                Err(error) => {
+                    set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                    return;
+                },
+            };
+            permissions.set_readonly(request.mode() & ::sysapi::sys_stat::file_mode::S_IWUSR == 0);
+            permissions
+        };
+        let status: i32 = match entry.file.set_permissions(permissions) {
+            Ok(()) => 0,
+            Err(error) => io_error_to_code(&error),
+        };
         set_payload_data(response, &status.to_le_bytes());
     }
 

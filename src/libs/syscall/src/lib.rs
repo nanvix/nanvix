@@ -375,6 +375,10 @@ pub enum SystemCallMessageKind {
     HostFsLinkRequestPart,
     /// Hard-link response from hostfs.
     HostFsLinkResponse,
+    HostFsChmodRequestPart,
+    HostFsChmodResponse,
+    HostFsFchmodRequest,
+    HostFsFchmodResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageKind.
 impl TryFrom<u16> for SystemCallMessageKind {
@@ -574,6 +578,10 @@ impl TryFrom<u16> for SystemCallMessageKind {
             x if x == HostFsUpdateTimesAtResponse as u16 => Ok(HostFsUpdateTimesAtResponse),
             x if x == HostFsLinkRequestPart as u16 => Ok(HostFsLinkRequestPart),
             x if x == HostFsLinkResponse as u16 => Ok(HostFsLinkResponse),
+            x if x == HostFsChmodRequestPart as u16 => Ok(HostFsChmodRequestPart),
+            x if x == HostFsChmodResponse as u16 => Ok(HostFsChmodResponse),
+            x if x == HostFsFchmodRequest as u16 => Ok(HostFsFchmodRequest),
+            x if x == HostFsFchmodResponse as u16 => Ok(HostFsFchmodResponse),
             _ => Err(()),
         }
     }
@@ -638,6 +646,10 @@ impl SystemCallMessageKind {
                 | Self::HostFsChownResponse
                 | Self::HostFsLinkRequestPart
                 | Self::HostFsLinkResponse
+                | Self::HostFsChmodRequestPart
+                | Self::HostFsChmodResponse
+                | Self::HostFsFchmodRequest
+                | Self::HostFsFchmodResponse
         )
     }
 
@@ -684,6 +696,8 @@ impl SystemCallMessageKind {
             Self::HostFsUpdateTimesRequest => Some(Self::HostFsUpdateTimesResponse),
             Self::HostFsUpdateTimesAtRequestPart => Some(Self::HostFsUpdateTimesAtResponse),
             Self::HostFsLinkRequestPart => Some(Self::HostFsLinkResponse),
+            Self::HostFsChmodRequestPart => Some(Self::HostFsChmodResponse),
+            Self::HostFsFchmodRequest => Some(Self::HostFsFchmodResponse),
             _ => None,
         }
     }
@@ -720,6 +734,8 @@ impl SystemCallMessageKind {
                 | Self::HostFsUpdateTimesResponse
                 | Self::HostFsUpdateTimesAtResponse
                 | Self::HostFsLinkResponse
+                | Self::HostFsChmodResponse
+                | Self::HostFsFchmodResponse
         )
     }
 

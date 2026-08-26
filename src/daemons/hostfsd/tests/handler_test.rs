@@ -1138,6 +1138,59 @@ fn make_part_payload(
     buf
 }
 
+/// Serializes a long mode/path request into multi-part IKC payloads.
+#[cfg(unix)]
+fn make_long_mode_path_parts(
+    header: SystemCallMessageKind,
+    path: &str,
+    mode: i32,
+    flags: i32,
+    op_id: OperationId,
+) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
+    let data: Vec<u8> =
+        long_msg::serialize_long_mode_path_request(op_id, mode, flags, path.as_bytes())
+            .expect("mode/path request should serialize");
+    let chunk_size: usize = SystemCallMessagePart::PAYLOAD_SIZE;
+    let num_parts: u16 = data.len().div_ceil(chunk_size) as u16;
+
+    data.chunks(chunk_size)
+        .enumerate()
+        .map(|(index, chunk)| {
+            let mut part: [u8; Message::PAYLOAD_SIZE] =
+                make_part_payload(header, num_parts, index as u16, chunk.len() as u8, chunk);
+            set_op_id(&mut part, op_id);
+            part
+        })
+        .collect()
+}
+
+#[cfg(unix)]
+fn run_long_request(
+    handler: &mut HostFsHandler,
+    parts: &[[u8; Message::PAYLOAD_SIZE]],
+) -> [u8; Message::PAYLOAD_SIZE] {
+    for part in &parts[..parts.len() - 1] {
+        assert!(handler.handle_request(part).is_none());
+    }
+    handler
+        .handle_request(parts.last().expect("request has at least one part"))
+        .expect("final request part should return a response")
+}
+
+#[cfg(unix)]
+const OFFSET_OF_RESPONSE_STATUS: usize = HOSTFS_DATA_START;
+#[cfg(unix)]
+const SIZE_OF_RESPONSE_STATUS: usize = ::core::mem::size_of::<i32>();
+
+#[cfg(unix)]
+fn response_status(response: &[u8; Message::PAYLOAD_SIZE]) -> i32 {
+    i32::from_le_bytes(
+        response[OFFSET_OF_RESPONSE_STATUS..OFFSET_OF_RESPONSE_STATUS + SIZE_OF_RESPONSE_STATUS]
+            .try_into()
+            .expect("response contains status"),
+    )
+}
+
 /// Serializes a long OPEN request into multi-part IKC payloads.
 fn make_long_open_parts(
     path: &str,
@@ -1168,6 +1221,66 @@ fn make_long_open_parts(
         parts.push(part);
     }
     parts
+}
+
+#[cfg(unix)]
+#[test]
+fn test_chmod_and_fchmod() {
+    use sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW;
+
+    let (mut handler, tmp) = setup();
+    let path: PathBuf = tmp.path().join("mode.txt");
+    fs::write(&path, b"data").unwrap();
+
+    let chmod = make_long_mode_path_parts(
+        SystemCallMessageKind::HostFsChmodRequestPart,
+        "mode.txt",
+        0o400,
+        0,
+        OperationId::from_raw(101),
+    );
+    assert_eq!(response_status(&run_long_request(&mut handler, &chmod)), 0);
+    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o400);
+
+    let fd: i32 = open_file(&mut handler, "mode.txt", O_RDONLY);
+    let fchmod: [u8; Message::PAYLOAD_SIZE] = ChmodRequest::new(fd, 0o600)
+        .serialize(SystemCallMessageKind::HostFsFchmodRequest as u16, OperationId::from_raw(104));
+    let response = handler.handle_request(&fchmod).expect("fchmod response");
+    assert_eq!(response_status(&response), 0);
+    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+
+    let invalid_fchmod: [u8; Message::PAYLOAD_SIZE] = ChmodRequest::new(-1, 0o600)
+        .serialize(SystemCallMessageKind::HostFsFchmodRequest as u16, OperationId::from_raw(105));
+    let response = handler
+        .handle_request(&invalid_fchmod)
+        .expect("fchmod response");
+    assert_eq!(response_status(&response), HOSTFS_ERR_BAD_FD);
+
+    let hard_link: PathBuf = tmp.path().join("hard-link.txt");
+    fs::hard_link(&path, &hard_link).unwrap();
+    let hard_link_chmod = make_long_mode_path_parts(
+        SystemCallMessageKind::HostFsChmodRequestPart,
+        "hard-link.txt",
+        0o640,
+        AT_SYMLINK_NOFOLLOW,
+        OperationId::from_raw(106),
+    );
+    assert_eq!(response_status(&run_long_request(&mut handler, &hard_link_chmod)), 0);
+
+    let symlink: PathBuf = tmp.path().join("symlink.txt");
+    std::os::unix::fs::symlink(&path, &symlink).unwrap();
+    let symlink_chmod = make_long_mode_path_parts(
+        SystemCallMessageKind::HostFsChmodRequestPart,
+        "symlink.txt",
+        0o777,
+        AT_SYMLINK_NOFOLLOW,
+        OperationId::from_raw(107),
+    );
+    assert_eq!(
+        response_status(&run_long_request(&mut handler, &symlink_chmod)),
+        HOSTFS_ERR_NOT_SUPPORTED
+    );
+    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o640);
 }
 
 #[test]

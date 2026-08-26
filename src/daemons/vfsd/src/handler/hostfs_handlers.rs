@@ -365,6 +365,48 @@ pub(crate) fn handle_futimens_with_hostfs(
     Some(super::short::handle_futimens(source, msg))
 }
 
+pub(crate) fn handle_fchmod_with_hostfs(
+    response_context: ResponseContext,
+    msg: SystemCallMessage,
+    pending: &mut PendingQueue,
+) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    let req: ::syscall::sys::stat::message::FileChmodRequest =
+        ::syscall::sys::stat::message::FileChmodRequest::from_bytes(msg.payload);
+
+    if ::vfs::fd::vfs_resolve(req.fd).is_none() {
+        return Some(build_error(source, ErrorCode::BadFile));
+    }
+
+    if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(req.fd) {
+        if !pending.has_capacity() {
+            return Some(build_error(source, ErrorCode::ResourceBusy));
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        if hostfs::send_fchmod_request(remote_fd, req.mode, op_id).is_err() {
+            return Some(build_error(source, ErrorCode::IoErr));
+        }
+        if pending
+            .insert(
+                op_id,
+                PendingOp {
+                    response_context,
+                    source_tid: source,
+                    source_pid,
+                    kind: PendingOpKind::Fchmod,
+                },
+            )
+            .is_err()
+        {
+            return Some(build_error(source, ErrorCode::ResourceBusy));
+        }
+        return None;
+    }
+
+    Some(super::short::handle_fchmod(source, msg))
+}
+
 pub(crate) fn handle_ftruncate_with_hostfs(
     response_context: ResponseContext,
     msg: SystemCallMessage,
@@ -1124,6 +1166,50 @@ pub(crate) fn handle_mkdirat_with_hostfs(
     }
 
     Some(super::long::handle_mkdirat(source, resolved))
+}
+
+pub(crate) fn handle_fchmodat_with_hostfs(
+    response_context: ResponseContext,
+    request: ::syscall::sys::stat::message::FileChmodAtRequest,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+        Ok(path) => path,
+        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+    };
+
+    if hostfs::is_hostfs_path(resolved.as_str()) {
+        if request.flag != 0 && request.flag != ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW {
+            return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+        }
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        if let Err(error) = hostfs::send_chmod_request(&resolved, request.mode, request.flag, op_id)
+        {
+            return Some(vec![build_error(source, error)]);
+        }
+        if pending
+            .insert(
+                op_id,
+                PendingOp {
+                    response_context,
+                    source_tid: source,
+                    source_pid,
+                    kind: PendingOpKind::Chmod,
+                },
+            )
+            .is_err()
+        {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        return None;
+    }
+
+    Some(super::long::handle_fchmodat(source, request))
 }
 
 pub(crate) fn handle_symlinkat_with_hostfs(

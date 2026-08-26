@@ -489,8 +489,11 @@ pub(crate) fn handle_ipc_message(
             response_context.send(&response);
         },
         SystemCallMessageKind::FileChmodRequest => {
-            let response: Message = handler::handle_fchmod(source_tid, syscall_msg);
-            response_context.send(&response);
+            if let Some(response) =
+                handler::handle_fchmod_with_hostfs(response_context, syscall_msg, pending)
+            {
+                response_context.send(&response);
+            }
         },
         SystemCallMessageKind::FileCreationMaskRequest => {
             let response: Message = handler::handle_umask(source_tid, syscall_msg);

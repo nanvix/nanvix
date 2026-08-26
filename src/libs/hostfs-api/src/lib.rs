@@ -34,6 +34,7 @@ use ::sys::ipc::Message;
 //==================================================================================================
 
 mod chown;
+mod chmod;
 mod close;
 mod error;
 mod flush;
@@ -56,6 +57,7 @@ mod write;
 
 pub use self::{
     chown::ChownRequest,
+    chmod::ChmodRequest,
     close::CloseRequest,
     flush::FlushRequest,
     lseek::{
