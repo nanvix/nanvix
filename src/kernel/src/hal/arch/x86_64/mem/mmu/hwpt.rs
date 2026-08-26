@@ -23,31 +23,31 @@ const MAX_PT_PAGES: usize = 1024;
 
 /// Number of entries per page table level (PML4, PDPT, PD, PT).
 #[verus_verify]
-pub const ENTRIES_PER_TABLE: usize = 512;
+const ENTRIES_PER_TABLE: usize = 512;
 
 /// Page table entry flag: Present.
 #[verus_verify]
-pub const PTE_PRESENT: u64 = 1 << 0;
+const PTE_PRESENT: u64 = 1 << 0;
 
 /// Page table entry flag: Writable.
 #[verus_verify]
-pub const PTE_WRITABLE: u64 = 1 << 1;
+const PTE_WRITABLE: u64 = 1 << 1;
 
 /// Page table entry flag: User-accessible.
 #[verus_verify]
-pub const PTE_USER: u64 = 1 << 2;
+const PTE_USER: u64 = 1 << 2;
 
 /// Page directory entry flag: Page Size (2 MiB page).
 #[verus_verify]
-pub const PDE_PS: u64 = 1 << 7;
+const PDE_PS: u64 = 1 << 7;
 
 /// Mask for extracting the physical address from a 4 KiB page table entry.
 #[verus_verify]
-pub const ADDR_MASK_4K: u64 = 0x000F_FFFF_FFFF_F000;
+const ADDR_MASK_4K: u64 = 0x000F_FFFF_FFFF_F000;
 
 /// Mask for extracting the physical address from a 2 MiB page directory entry.
 #[verus_verify]
-pub const ADDR_MASK_2M: u64 = 0x000F_FFFF_FFE0_0000;
+const ADDR_MASK_2M: u64 = 0x000F_FFFF_FFE0_0000;
 
 //==================================================================================================
 // Global State
