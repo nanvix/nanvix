@@ -488,36 +488,6 @@ pub open spec fn valid_hw_entry_target(
 
 } // verus!
 
-// Equivalent to the replaced statement because it writes zero to the same entry address.
-unsafe fn env_interaction_zero_hardware_page_table_entry(ptr: *mut u64) {
-    unsafe {
-        ::core::ptr::write_volatile(ptr, 0);
-    }
-}
-
-// Equivalent to the replaced expression because it performs the same volatile 64-bit read.
-unsafe fn env_interaction_read_hardware_page_table_entry(ptr: *const u64) -> u64 {
-    unsafe { ::core::ptr::read_volatile(ptr) }
-}
-
-// Equivalent to the replaced statement because it performs the same volatile 64-bit write.
-unsafe fn env_interaction_write_hardware_page_table_entry(ptr: *mut u64, value: u64) {
-    unsafe {
-        ::core::ptr::write_volatile(ptr, value);
-    }
-}
-
-// Equivalent to the replaced instruction because it invalidates the same virtual page.
-unsafe fn env_interaction_invalidate_tlb_page(vaddr: usize) {
-    unsafe {
-        ::core::arch::asm!(
-            "invlpg [{}]",
-            in(reg) vaddr,
-            options(nostack, preserves_flags)
-        );
-    }
-}
-
 // Equivalent to the replaced instruction because it returns the same current CR3 value.
 #[verus_verify(external_body)]
 #[verus_spec(result =>
