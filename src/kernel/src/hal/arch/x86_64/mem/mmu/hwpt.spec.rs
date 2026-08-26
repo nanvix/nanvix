@@ -479,11 +479,15 @@ pub open spec fn valid_hw_entry_target(
     value: u64,
     child: Option<&NanvixHwPageToken>,
 ) -> bool {
-    &&& hw_entry_nonleaf(level, value) == child.is_some()
-    &&& (hw_entry_nonleaf(level, value)
-        ==> (child.unwrap().ready_for_mmu()
-            && child.unwrap().level() == next_hw_level(level)
-            && child.unwrap().physical_base() == hw_entry_target_address(value)))
+    match child {
+        None => !hw_entry_nonleaf(level, value),
+        Some(c) => {
+            &&& hw_entry_nonleaf(level, value)
+            &&& c.ready_for_mmu()
+            &&& c.level() == next_hw_level(level)
+            &&& c.physical_base() == hw_entry_target_address(value)
+        },
+    }
 }
 
 } // verus!
