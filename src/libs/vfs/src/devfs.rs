@@ -69,6 +69,17 @@ const STAT_BLOCK_SIZE: i64 = ::arch::mem::PAGE_SIZE as i64;
 /// Stable timestamp used until VFS defines backend-neutral synthetic timestamps.
 const STAT_TIMESTAMP_SECS: i64 = FAT_EPOCH_SECS;
 
+/// Name of the null device.
+const NULL_NAME: &str = "null";
+/// Absolute path of the null device.
+const NULL_PATH: &str = "/dev/null";
+
+/// Stable inode identifier for `/dev/null`.
+const NULL_INODE: u64 = 2;
+
+/// Character-device identifier reported for `/dev/null`.
+const NULL_SPECIAL_DEVICE_ID: u64 = 1;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -80,6 +91,8 @@ struct DeviceMetadata {
     device: u64,
     /// Stable inode identifier.
     inode: u64,
+    /// Device identifier for a character-special entry.
+    special_device: u64,
     /// Whether this entry is a directory.
     is_directory: bool,
 }
@@ -93,6 +106,8 @@ struct DeviceMetadata {
 pub(crate) enum DevicePath {
     /// The synthetic `/dev` directory.
     Directory,
+    /// The null device.
+    Null,
     /// An unknown entry below `/dev`.
     Missing,
 }
@@ -108,7 +123,14 @@ impl DevicePath {
             DevicePath::Directory => Some(DeviceMetadata {
                 device: DEVICE_NAMESPACE_ID,
                 inode: DIRECTORY_INODE,
+                special_device: 0,
                 is_directory: true,
+            }),
+            DevicePath::Null => Some(DeviceMetadata {
+                device: DEVICE_NAMESPACE_ID,
+                inode: NULL_INODE,
+                special_device: NULL_SPECIAL_DEVICE_ID,
+                is_directory: false,
             }),
             DevicePath::Missing => None,
         }
@@ -145,7 +167,11 @@ fn metadata(cwd: &str, path: &str) -> Result<Option<DeviceMetadata>, Fat32Error>
     let Some(device_path) = resolve_normalized(&normalized) else {
         return Ok(None);
     };
-    Ok(Some(device_path.metadata().ok_or(Fat32Error::NotFound)?))
+    let metadata: DeviceMetadata = device_path.metadata().ok_or(Fat32Error::NotFound)?;
+    if path.ends_with('/') && !metadata.is_directory {
+        return Err(Fat32Error::NotADirectory);
+    }
+    Ok(Some(metadata))
 }
 
 /// Synthesizes backend-neutral metadata for an existing devfs path.
@@ -164,28 +190,39 @@ pub(crate) fn stat(cwd: &str, path: &str) -> Result<Option<Stat>, Fat32Error> {
 
 /// Synthesizes POSIX metadata for an existing devfs path.
 pub(crate) fn posix_stat(cwd: &str, path: &str) -> Result<Option<PosixStat>, Fat32Error> {
-    let Some(metadata) = metadata(cwd, path)? else {
-        return Ok(None);
-    };
+    Ok(metadata(cwd, path)?.map(build_posix_stat))
+}
+
+/// Synthesizes POSIX metadata for `/dev/null`.
+pub(crate) fn null_posix_stat() -> PosixStat {
+    build_posix_stat(DevicePath::Null.metadata().expect("null device has metadata"))
+}
+
+/// Builds POSIX metadata for a devfs entry.
+fn build_posix_stat(metadata: DeviceMetadata) -> PosixStat {
     let timestamp: timespec = timespec {
         tv_sec: STAT_TIMESTAMP_SECS,
         tv_nsec: 0,
     };
-    Ok(Some(PosixStat {
+    PosixStat {
         st_dev: metadata.device,
         st_ino: metadata.inode,
-        st_mode: file_type::S_IFDIR | file_mode::S_IRWXU,
+        st_mode: if metadata.is_directory {
+            file_type::S_IFDIR | file_mode::S_IRWXU
+        } else {
+            file_type::S_IFCHR | file_mode::S_IRUSR | file_mode::S_IWUSR
+        },
         st_nlink: if metadata.is_directory { 2 } else { 1 },
         st_uid: UserIdentifier::ROOT.as_usize() as uid_t,
         st_gid: GroupIdentifier::ROOT.as_usize() as gid_t,
-        st_rdev: 0,
+        st_rdev: metadata.special_device,
         st_size: 0,
         st_blksize: STAT_BLOCK_SIZE,
         st_blocks: 0,
         st_atim: timestamp,
         st_mtim: timestamp,
         st_ctim: timestamp,
-    }))
+    }
 }
 
 /// Returns the `/dev` entry injected into the VFS root directory.
@@ -196,7 +233,11 @@ pub(crate) fn directory_entry() -> DirEntry {
 /// Reads a directory owned by devfs.
 pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Option<Vec<DirEntry>>, Fat32Error> {
     match resolve(cwd, path)? {
-        Some(DevicePath::Directory) => Ok(Some(Vec::new())),
+        Some(DevicePath::Directory) => Ok(Some(alloc::vec![DirEntry::new_character_device(
+            String::from(NULL_NAME),
+            NULL_INODE,
+        )])),
+        Some(DevicePath::Null) => Err(Fat32Error::NotADirectory),
         Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
         None => Ok(None),
     }
@@ -207,7 +248,10 @@ fn validate_components(path: &str) -> Result<(), Fat32Error> {
     let mut components: Vec<&str> = Vec::new();
     for component in path.split('/').filter(|component| !component.is_empty()) {
         if components.len() >= 2 && components[0] == DIRECTORY_NAME {
-            return Err(Fat32Error::NotFound);
+            return match components[1] {
+                NULL_NAME => Err(Fat32Error::NotADirectory),
+                _ => Err(Fat32Error::NotFound),
+            };
         }
         match component {
             "." => {},
@@ -224,6 +268,7 @@ fn validate_components(path: &str) -> Result<(), Fat32Error> {
 fn resolve_normalized(path: &str) -> Option<DevicePath> {
     match path {
         DIRECTORY_PATH => Some(DevicePath::Directory),
+        NULL_PATH => Some(DevicePath::Null),
         path if path.starts_with(DIRECTORY_PREFIX) => Some(DevicePath::Missing),
         _ => None,
     }
@@ -240,8 +285,10 @@ mod tests {
     #[test]
     fn resolves_namespace_paths() {
         assert_eq!(resolve("/", "/dev"), Ok(Some(DevicePath::Directory)));
+        assert_eq!(resolve("/", "/dev/null"), Ok(Some(DevicePath::Null)));
         assert_eq!(resolve("/", "/dev/unknown"), Ok(Some(DevicePath::Missing)));
         assert_eq!(resolve("/", "/dev/unknown/child"), Err(Fat32Error::NotFound));
+        assert_eq!(resolve("/", "/dev/null/child"), Err(Fat32Error::NotADirectory));
     }
 
     #[test]

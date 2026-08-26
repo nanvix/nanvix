@@ -172,6 +172,7 @@ pub use crate::{
         DirectoryHandle,
         FdFlags,
         HostFsHandle,
+        NullHandle,
         PipeClosure,
         ProcessExitReclaim,
         SocketHandle,
@@ -223,6 +224,11 @@ const MAX_OPEN_FDS: c_int = 2048;
 /// while the `networkd` descriptor that backs it lives in `networkd`'s own space and is invisible
 /// here.
 fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
+    alloc_fd_with_status(handle, 0)
+}
+
+/// Allocates a descriptor with initial open-file status flags.
+fn alloc_fd_with_status(handle: VfsFileHandle, status_flags: c_int) -> Result<c_int, Fat32Error> {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.entry(current_pid()).or_insert_with(ProcessState::new);
@@ -233,7 +239,7 @@ fn alloc_fd(handle: VfsFileHandle) -> Result<c_int, Fat32Error> {
     let file: OpenFile = Arc::new(Mutex::new(VfsEntry {
         handle,
         virtual_pos: 0,
-        status_flags: 0,
+        status_flags,
     }));
     state.slots.insert(fd, Slot::new(file));
     // Allocating a descriptor graduates a lazily-inserted placeholder into an active state: a
@@ -954,6 +960,7 @@ pub fn vfs_resolve(fd: c_int) -> Option<(VfsRoute, c_int)> {
         | VfsFileHandle::DirectRead(_)
         | VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
+        | VfsFileHandle::Null(_)
         | VfsFileHandle::Pipe(_) => (VfsRoute::Vfs, fd),
     };
     Some(resolution)
@@ -972,6 +979,7 @@ pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
             VfsFileHandle::Fat32(_) | VfsFileHandle::DirectRead(_) | VfsFileHandle::HostFs(_) => {
                 return Ok(events & (READ_EVENTS | WRITE_EVENTS))
             },
+            VfsFileHandle::Null(handle) => return Ok(handle.poll(events)),
             VfsFileHandle::Directory(_) => return Ok(events & READ_EVENTS),
             VfsFileHandle::Pipe(end) => return Ok(end.poll(events)),
             VfsFileHandle::Socket(_) => return Err(Fat32Error::NotSupported),
@@ -1013,10 +1021,13 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
         }
         let normalized: String = crate::filesystem::normalize(&cwd, path)?;
         let handle: VfsFileHandle = VfsFileHandle::Directory(DirectoryHandle::new(normalized));
-        return alloc_fd(handle);
+        let status_flags: c_int =
+            flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
+        return alloc_fd_with_status(handle, status_flags);
     }
     let handle: VfsFileHandle = open_adapter::open(&cwd, path, flags)?;
-    alloc_fd(handle)
+    let status_flags: c_int = flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
+    alloc_fd_with_status(handle, status_flags)
 }
 
 /// Opens a file relative to a directory file descriptor through the VFS.
@@ -1051,6 +1062,10 @@ pub fn vfs_read(fd: c_int, buf: &mut [u8]) -> Result<c_size_t, Fat32Error> {
     let mut guard = file.lock();
     let entry: &mut VfsEntry = &mut guard;
 
+    if let VfsFileHandle::Null(handle) = &entry.handle {
+        return handle.read().map(|count| count as c_size_t);
+    }
+
     if entry.handle.is_dir() {
         return Err(Fat32Error::NotAFile);
     }
@@ -1075,6 +1090,10 @@ pub fn vfs_write(fd: c_int, buf: &[u8]) -> Result<c_size_t, Fat32Error> {
     let file: OpenFile = entry_arc(fd)?;
     let mut guard = file.lock();
     let entry: &mut VfsEntry = &mut guard;
+
+    if let VfsFileHandle::Null(handle) = &entry.handle {
+        return handle.write(buf).map(|count| count as c_size_t);
+    }
 
     let size: u64 = entry.handle.size()?;
     if (entry.virtual_pos as u64) > size {
@@ -1110,6 +1129,10 @@ pub fn vfs_lseek(fd: c_int, offset: off_t, whence: c_int) -> Result<off_t, Fat32
     let file: OpenFile = entry_arc(fd)?;
     let mut guard = file.lock();
     let entry: &mut VfsEntry = &mut guard;
+
+    if let VfsFileHandle::Null(handle) = &entry.handle {
+        return handle.seek(whence);
+    }
 
     let size: i64 = entry.handle.size()? as i64;
     let new_pos: i64 = match whence {
@@ -1273,6 +1296,9 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
                 FAT_EPOCH_SECS,
             );
             buf.update_from_vfs(&info);
+        },
+        VfsFileHandle::Null(_) => {
+            *buf = devfs::null_posix_stat();
         },
         VfsFileHandle::Pipe(end) => {
             populate_pipe_stat_fields(buf, end.pipe_id(), end.created());
@@ -1619,6 +1645,7 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
             }
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
+        VfsFileHandle::Null(_) => Err(Fat32Error::InvalidArgument),
         VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
         | VfsFileHandle::Pipe(_)
@@ -1667,6 +1694,7 @@ pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Er
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
         VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
+        | VfsFileHandle::Null(_)
         | VfsFileHandle::Pipe(_)
         | VfsFileHandle::Console(_)
         | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
@@ -1682,6 +1710,7 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     let entry: &mut VfsEntry = &mut guard;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => file.flush(),
+        VfsFileHandle::Null(_) => Err(Fat32Error::InvalidArgument),
         VfsFileHandle::DirectRead(_)
         | VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
@@ -1826,9 +1855,16 @@ pub fn vfs_console_peek(fd: c_int, buf: &mut [u8]) -> Result<ConsoleReadOutcome,
 ///
 /// POSIX semantics: reading past EOF returns 0 bytes (not an error).
 pub fn vfs_pread(fd: c_int, buf: &mut [u8], offset: off_t) -> Result<c_size_t, Fat32Error> {
+    if offset < 0 {
+        return Err(Fat32Error::InvalidArgument);
+    }
     let file: OpenFile = entry_arc(fd)?;
     let mut guard = file.lock();
     let entry: &mut VfsEntry = &mut guard;
+
+    if let VfsFileHandle::Null(handle) = &entry.handle {
+        return handle.read().map(|count| count as c_size_t);
+    }
 
     // If the offset is at or past EOF, return 0 (POSIX EOF semantics).
     let size: u64 = entry.handle.size()?;
@@ -1850,9 +1886,16 @@ pub fn vfs_pread(fd: c_int, buf: &mut [u8], offset: off_t) -> Result<c_size_t, F
 ///
 /// POSIX semantics: writing past EOF extends the file with zeros up to the offset.
 pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat32Error> {
+    if offset < 0 {
+        return Err(Fat32Error::InvalidArgument);
+    }
     let file: OpenFile = entry_arc(fd)?;
     let mut guard = file.lock();
     let entry: &mut VfsEntry = &mut guard;
+
+    if let VfsFileHandle::Null(handle) = &entry.handle {
+        return handle.write(buf).map(|count| count as c_size_t);
+    }
 
     // Save current handle position.
     let saved: off_t = entry.handle.seek(0, file_seek::SEEK_CUR)?;
@@ -1944,7 +1987,10 @@ pub fn vfs_fcntl(fd: c_int, cmd: c_int, arg: c_int) -> Result<c_int, Fat32Error>
         file_control_request::F_SETFL => {
             // Persist only the mutable status-flag subset (currently `O_NONBLOCK`). The remaining
             // bits (access mode, creation flags) are not changeable via `F_SETFL` per POSIX.
-            entry_arc(fd)?.lock().status_flags = arg & file_status_flags::O_NONBLOCK;
+            let file: OpenFile = entry_arc(fd)?;
+            let mut entry = file.lock();
+            entry.status_flags = (entry.status_flags & file_access_mode::O_ACCMODE)
+                | (arg & file_status_flags::O_NONBLOCK);
             Ok(0)
         },
         _ => Err(Fat32Error::NotSupported), // Other commands not supported.
@@ -1984,6 +2030,8 @@ pub fn vfs_getdents(
             d_reclen: core::mem::size_of::<posix_dent>() as u16,
             d_type: if de.is_dir() {
                 dirent_file_type::DT_DIR
+            } else if de.is_character_device() {
+                dirent_file_type::DT_CHR
             } else {
                 dirent_file_type::DT_REG
             },
@@ -2322,15 +2370,160 @@ mod tests {
         let dev: Vec<filesystem::DirEntry> = vfs_readdir("/dev").expect("read /dev");
         assert_eq!(root.iter().map(|entry| entry.name()).collect::<Vec<_>>(), ["dev"]);
         assert_eq!(root[0].inode(), directory.st_ino);
-        assert!(dev.is_empty());
+        assert_eq!(dev.iter().map(|entry| entry.name()).collect::<Vec<_>>(), ["null"]);
+        assert!(dev[0].is_character_device());
 
         let fd: c_int = vfs_open("/dev", file_access_mode::O_RDONLY).expect("open /dev");
         let mut opened: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
         vfs_fstat(fd, &mut opened).expect("fstat /dev");
         assert_eq!(opened.st_dev, directory.st_dev);
         assert_eq!(opened.st_ino, directory.st_ino);
-        assert!(vfs_getdents(fd, 1).expect("getdents /dev").is_empty());
+        let dents: Vec<::sysapi::dirent::posix_dent> = vfs_getdents(fd, 1).expect("getdents /dev");
+        assert_eq!(dents.len(), 1);
+        assert_eq!(dents[0].d_type, ::sysapi::dirent::dirent_file_type::DT_CHR);
+        assert_eq!(dents[0].d_ino, dev[0].inode());
         vfs_close(fd).expect("close /dev");
+        forget_processes(&[pid]);
+    }
+
+    /// Tests null-device reads, writes, positioned I/O, and seeks.
+    #[test]
+    fn null_device_io() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7403);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_open("/dev/null", file_access_mode::O_RDWR).expect("open null");
+        assert_eq!(vfs_fcntl(fd, file_control_request::F_GETFL, 0), Ok(file_access_mode::O_RDWR));
+        assert_eq!(vfs_write(fd, b"discarded"), Ok(9));
+        assert_eq!(vfs_write(fd, b"again"), Ok(5));
+        assert_eq!(vfs_pwrite(fd, b"positionless", 42), Ok(12));
+        let mut data: [u8; 8] = [0; 8];
+        assert_eq!(vfs_read(fd, &mut data), Ok(0));
+        assert_eq!(vfs_pread(fd, &mut data, 42), Ok(0));
+        assert_eq!(vfs_pread(fd, &mut data, -1), Err(Fat32Error::InvalidArgument));
+        assert_eq!(vfs_pwrite(fd, b"rejected", -1), Err(Fat32Error::InvalidArgument));
+        for whence in [
+            file_seek::SEEK_SET,
+            file_seek::SEEK_CUR,
+            file_seek::SEEK_END,
+        ] {
+            assert_eq!(vfs_lseek(fd, 17, whence), Ok(0));
+        }
+        assert_eq!(vfs_lseek(fd, 0, -1), Err(Fat32Error::InvalidArgument));
+
+        vfs_close(fd).expect("close null");
+        forget_processes(&[pid]);
+    }
+
+    /// Tests null-device descriptor metadata against pathname metadata.
+    #[test]
+    fn null_device_fstat() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7404);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_open("/dev/null", file_access_mode::O_RDONLY).expect("open null");
+        let mut by_path: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        let mut by_fd: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        vfs_stat("/dev/null", &mut by_path).expect("stat null");
+        vfs_fstat(fd, &mut by_fd).expect("fstat null");
+
+        assert_eq!(by_fd.st_mode & file_type::S_IFMT, file_type::S_IFCHR);
+        assert_eq!(by_fd.st_dev, by_path.st_dev);
+        assert_eq!(by_fd.st_ino, by_path.st_ino);
+        assert_eq!(by_fd.st_rdev, by_path.st_rdev);
+        assert_eq!(by_fd.st_size, 0);
+        assert_eq!(by_fd.st_blocks, 0);
+
+        vfs_close(fd).expect("close null");
+        forget_processes(&[pid]);
+    }
+
+    /// Tests null-device creation flags and access modes.
+    #[test]
+    fn null_device_open_modes() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7405);
+        set_current_process(pid);
+        let mut data: [u8; 8] = [0; 8];
+
+        let flags: c_int = file_access_mode::O_WRONLY
+            | file_creation_flags::O_CREAT
+            | file_creation_flags::O_TRUNC;
+        let write_fd: c_int = vfs_open("/dev/null", flags).expect("open null for writing");
+        assert_eq!(
+            vfs_fcntl(write_fd, file_control_request::F_GETFL, 0),
+            Ok(file_access_mode::O_WRONLY)
+        );
+        assert_eq!(vfs_write(write_fd, b"discarded"), Ok(9));
+        assert_eq!(vfs_read(write_fd, &mut data), Err(Fat32Error::InvalidFd));
+        vfs_close(write_fd).expect("close write-only null");
+
+        let read_fd: c_int = vfs_open("/dev/null", file_access_mode::O_RDONLY).expect("open null");
+        assert_eq!(
+            vfs_fcntl(read_fd, file_control_request::F_GETFL, 0),
+            Ok(file_access_mode::O_RDONLY)
+        );
+        assert_eq!(vfs_write(read_fd, b"rejected"), Err(Fat32Error::InvalidFd));
+        vfs_close(read_fd).expect("close read-only null");
+
+        let exclusive_flags: c_int =
+            file_access_mode::O_WRONLY | file_creation_flags::O_CREAT | file_creation_flags::O_EXCL;
+        assert_eq!(vfs_open("/dev/null", exclusive_flags), Err(Fat32Error::AlreadyExists));
+        assert_eq!(
+            vfs_open("/dev/null", file_access_mode::O_EXEC),
+            Err(Fat32Error::PermissionDenied)
+        );
+        forget_processes(&[pid]);
+    }
+
+    /// Tests null-device polling and synchronization.
+    #[test]
+    fn null_device_poll_and_sync() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7406);
+        set_current_process(pid);
+
+        for mode in [file_access_mode::O_RDONLY, file_access_mode::O_WRONLY] {
+            let fd: c_int = vfs_open("/dev/null", mode).expect("open null");
+            let events: c_short = POLLIN | POLLOUT | POLLRDNORM | POLLWRNORM;
+            assert_eq!(vfs_poll(fd, events), Ok(events));
+            assert_eq!(vfs_fsync(fd), Err(Fat32Error::InvalidArgument));
+            assert_eq!(vfs_ftruncate(fd, 0), Err(Fat32Error::InvalidArgument));
+            vfs_close(fd).expect("close null");
+        }
+        forget_processes(&[pid]);
+    }
+
+    /// Tests directory requirements when opening the null device.
+    #[test]
+    fn null_device_path_errors() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7407);
+        set_current_process(pid);
+
+        let directory_flags: c_int = file_access_mode::O_RDONLY | file_creation_flags::O_DIRECTORY;
+        assert_eq!(vfs_open("/dev/null", directory_flags), Err(Fat32Error::NotADirectory));
+        assert_eq!(
+            vfs_open("/dev/null/", file_access_mode::O_RDONLY),
+            Err(Fat32Error::NotADirectory)
+        );
         forget_processes(&[pid]);
     }
 
