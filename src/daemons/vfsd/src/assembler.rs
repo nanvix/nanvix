@@ -376,7 +376,8 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageKind::UpdateFileAccessTimeAtRequestPart => {
             match UpdateFileAccessTimeAtRequest::from_parts(parts) {
-                Ok(req) => handler::handle_utimensat(source, req),
+                Ok(req) => handler::handle_utimensat_with_hostfs(response_context, req, pending)
+                    .unwrap_or_default(),
                 Err(e) => {
                     ::syslog::error!("dispatch: utimensat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]

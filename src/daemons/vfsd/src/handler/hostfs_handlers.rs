@@ -323,6 +323,48 @@ pub(crate) fn handle_fsync_with_hostfs(
     Some(super::short::handle_fsync(source, msg))
 }
 
+pub(crate) fn handle_futimens_with_hostfs(
+    response_context: ResponseContext,
+    msg: SystemCallMessage,
+    pending: &mut PendingQueue,
+) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    let request: UpdateFileAccessTimeRequest =
+        match UpdateFileAccessTimeRequest::from_bytes(msg.payload) {
+            Ok(request) => request,
+            Err(error) => return Some(build_error(source, error.code)),
+        };
+
+    if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(request.fd) {
+        if !pending.has_capacity() {
+            return Some(build_error(source, ErrorCode::ResourceBusy));
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        if pending
+            .insert(
+                op_id,
+                PendingOp {
+                    response_context,
+                    source_tid: source,
+                    source_pid,
+                    kind: PendingOpKind::UpdateTimes,
+                },
+            )
+            .is_err()
+        {
+            return Some(build_error(source, ErrorCode::ResourceBusy));
+        }
+        if hostfs::send_update_times_request(remote_fd, &request.times, op_id).is_err() {
+            pending.remove(op_id);
+            return Some(build_error(source, ErrorCode::IoErr));
+        }
+        return None;
+    }
+
+    Some(super::short::handle_futimens(source, msg))
+}
+
 pub(crate) fn handle_ftruncate_with_hostfs(
     response_context: ResponseContext,
     msg: SystemCallMessage,
@@ -443,6 +485,59 @@ pub(crate) fn handle_fstat_with_hostfs(
     }
 
     Some(super::long::handle_fstat(source, msg))
+}
+
+pub(crate) fn handle_utimensat_with_hostfs(
+    response_context: ResponseContext,
+    request: UpdateFileAccessTimeAtRequest,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    if request.flag & !::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW != 0 {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+    }
+    if request
+        .times
+        .iter()
+        .all(|time| time.tv_nsec == ::sysapi::sys_stat::UTIME_OMIT)
+    {
+        return Some(super::long::handle_utimensat(source, request));
+    }
+    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+        Ok(resolved) => resolved,
+        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+    };
+
+    if hostfs::is_hostfs_path(resolved.as_str()) {
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        if pending
+            .insert(
+                op_id,
+                PendingOp {
+                    response_context,
+                    source_tid: source,
+                    source_pid,
+                    kind: PendingOpKind::UpdateTimesAt,
+                },
+            )
+            .is_err()
+        {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        if let Err(error) =
+            hostfs::send_update_times_at_request(&resolved, request.flag, &request.times, op_id)
+        {
+            pending.remove(op_id);
+            return Some(vec![build_error(source, error)]);
+        }
+        return None;
+    }
+
+    Some(super::long::handle_utimensat(source, request))
 }
 
 pub(crate) fn handle_fstatat_with_hostfs(
@@ -694,6 +789,8 @@ use ::syscall::{
         FileStatAtRequest,
         FileStatRequest,
         MakeDirectoryAtRequest,
+        UpdateFileAccessTimeAtRequest,
+        UpdateFileAccessTimeRequest,
     },
     unistd::message::{
         FileChownAtRequest,

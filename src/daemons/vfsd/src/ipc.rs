@@ -508,8 +508,11 @@ pub(crate) fn handle_ipc_message(
             response_context.send(&response);
         },
         SystemCallMessageKind::UpdateFileAccessTimeRequest => {
-            let response: Message = handler::handle_futimens(source_tid, syscall_msg);
-            response_context.send(&response);
+            if let Some(response) =
+                handler::handle_futimens_with_hostfs(response_context, syscall_msg, pending)
+            {
+                response_context.send(&response);
+            }
         },
 
         //==========================================================================================

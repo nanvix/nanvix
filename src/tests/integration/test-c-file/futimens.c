@@ -59,6 +59,26 @@ void test_futimens(void)
     assert(st.st_atime == times[0].tv_sec);
     assert(st.st_mtime == times[1].tv_sec);
 
+    // Update one timestamp while preserving the other.
+    const struct timespec old_atime = st.st_atim;
+    times[0].tv_nsec = UTIME_OMIT;
+    times[1].tv_sec = st.st_mtime + 10;
+    times[1].tv_nsec = 123456789;
+    assert(futimens(fd, times) == 0);
+    assert(fstat(fd, &st) == 0);
+    assert(st.st_atim.tv_sec == old_atime.tv_sec);
+    assert(st.st_atim.tv_nsec == old_atime.tv_nsec);
+    assert(st.st_mtim.tv_sec == times[1].tv_sec);
+    assert(st.st_mtim.tv_nsec == times[1].tv_nsec);
+
+    // Reject an invalid nanosecond value.
+    times[0].tv_sec = 0;
+    times[0].tv_nsec = -1;
+    times[1].tv_nsec = UTIME_OMIT;
+    errno = 0;
+    assert(futimens(fd, times) == -1);
+    assert(errno == EINVAL);
+
     // Clean up.
     assert(close(fd) == 0);
     assert(unlink(filename) == 0);

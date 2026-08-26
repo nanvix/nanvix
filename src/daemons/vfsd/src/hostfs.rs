@@ -328,6 +328,25 @@ pub fn send_flush_request(
     }
 }
 
+/// Sends a descriptor-based timestamp update request to hostfsd.
+pub fn send_update_times_request(
+    remote_fd: i32,
+    times: &[::sysapi::time::timespec; 2],
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let payload: [u8; Message::PAYLOAD_SIZE] = UpdateTimesRequest {
+        fd: remote_fd,
+        times: *times,
+    }
+    .serialize(SystemCallMessageKind::HostFsUpdateTimesRequest as u16, op_id);
+
+    if send_request(&payload) {
+        Ok(())
+    } else {
+        Err(::sys::error::ErrorCode::IoErr)
+    }
+}
+
 /// Sends a MKDIR request to hostfsd as a multi-part IKC message.
 pub fn send_mkdir_request(
     path: &ResolvedPath,
@@ -527,6 +546,21 @@ pub fn send_lstat_request(
         .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsLstatRequestPart, op_id)
+}
+
+/// Sends a path-based timestamp update request to hostfsd.
+pub fn send_update_times_at_request(
+    path: &ResolvedPath,
+    flags: i32,
+    times: &[::sysapi::time::timespec; 2],
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path.as_str());
+    let buf: alloc::vec::Vec<u8> =
+        long_msg::serialize_long_update_times_request(op_id, flags, times, relative.as_bytes())
+            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageKind::HostFsUpdateTimesAtRequestPart, op_id)
 }
 
 /// Sends a path-based *following* STAT request to hostfsd.

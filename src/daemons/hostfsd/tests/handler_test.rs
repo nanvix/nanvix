@@ -22,6 +22,7 @@ use std::{
 use sys::ipc::Message;
 use sysapi::{
     fcntl::{
+        atflags::AT_SYMLINK_NOFOLLOW,
         file_access_mode::{
             O_RDONLY,
             O_RDWR,
@@ -34,6 +35,11 @@ use sysapi::{
             O_TRUNC,
         },
     },
+    sys_stat::{
+        UTIME_NOW,
+        UTIME_OMIT,
+    },
+    time::timespec,
     unistd::file_seek::{
         SEEK_END,
         SEEK_SET,
@@ -173,6 +179,14 @@ fn make_flush_request(fd: i32) -> [u8; Message::PAYLOAD_SIZE] {
     let req: FlushRequest = FlushRequest { fd };
     req.serialize(
         SystemCallMessageKind::HostFsFlushRequest as u16,
+        OperationId::from_le_bytes([0; 4]),
+    )
+}
+
+/// Builds a descriptor-based timestamp update request payload.
+fn make_update_times_request(fd: i32, times: [timespec; 2]) -> [u8; Message::PAYLOAD_SIZE] {
+    UpdateTimesRequest { fd, times }.serialize(
+        SystemCallMessageKind::HostFsUpdateTimesRequest as u16,
         OperationId::from_le_bytes([0; 4]),
     )
 }
@@ -637,6 +651,103 @@ fn test_truncate_negative_length_fails() {
     let ds: usize = HOSTFS_DATA_START;
     let status: i32 = i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap());
     assert_eq!(status, HOSTFS_ERR_INVALID, "truncate with negative length should fail with EINVAL");
+}
+
+//==================================================================================================
+// Tests: Timestamps
+//==================================================================================================
+
+#[test]
+fn test_update_times_by_descriptor() {
+    let (mut handler, tmp) = setup();
+    let path: PathBuf = tmp.path().join("times.txt");
+    fs::write(&path, b"data").unwrap();
+    let fd: i32 = open_file(&mut handler, "times.txt", O_RDONLY);
+
+    let times: [timespec; 2] = [
+        timespec {
+            tv_sec: 1_700_000_000,
+            tv_nsec: 123_456_700,
+        },
+        timespec {
+            tv_sec: 1_700_000_010,
+            tv_nsec: 234_567_800,
+        },
+    ];
+    let response = handler
+        .handle_request(&make_update_times_request(fd, times))
+        .unwrap();
+    let ds: usize = HOSTFS_DATA_START;
+    assert_eq!(i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap()), 0);
+
+    let modified = fs::metadata(&path)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    assert_eq!(modified.as_secs(), times[1].tv_sec as u64);
+    assert_eq!(modified.subsec_nanos(), times[1].tv_nsec as u32);
+
+    let now: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_NOW,
+        },
+    ];
+    let before = std::time::SystemTime::now();
+    let response = handler
+        .handle_request(&make_update_times_request(fd, now))
+        .unwrap();
+    let after = std::time::SystemTime::now();
+    assert_eq!(i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap()), 0);
+    let modified = fs::metadata(path).unwrap().modified().unwrap();
+    assert!(modified >= before && modified <= after);
+}
+
+#[test]
+fn test_update_times_rejects_invalid_fd() {
+    let (mut handler, _tmp) = setup();
+    let times: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_NOW,
+        },
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_NOW,
+        },
+    ];
+    let response = handler
+        .handle_request(&make_update_times_request(999, times))
+        .unwrap();
+    let ds: usize = HOSTFS_DATA_START;
+    assert_eq!(i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap()), HOSTFS_ERR_BAD_FD);
+}
+
+#[test]
+fn test_update_times_rejects_invalid_nanoseconds() {
+    let (mut handler, _tmp) = setup();
+    let fd: i32 = open_file(&mut handler, "invalid-times.txt", O_RDWR | O_CREAT);
+    let times: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: -1,
+        },
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+    ];
+    let response = handler
+        .handle_request(&make_update_times_request(fd, times))
+        .unwrap();
+    let ds: usize = HOSTFS_DATA_START;
+    assert_eq!(i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap()), HOSTFS_ERR_INVALID);
 }
 
 //==================================================================================================
@@ -1307,6 +1418,22 @@ fn make_long_mkdir_parts(
 }
 
 /// Serializes a long RENAME request: `[op_id:4][old_path_len:2][new_path_len:2][old_path][new_path]`.
+fn make_long_update_times_parts(
+    path: &str,
+    flags: i32,
+    times: &[timespec; 2],
+    op_id: OperationId,
+) -> Vec<[u8; Message::PAYLOAD_SIZE]> {
+    let data = hostfs_api::long_msg::serialize_long_update_times_request(
+        op_id,
+        flags,
+        times,
+        path.as_bytes(),
+    )
+    .unwrap();
+    split_into_parts(SystemCallMessageKind::HostFsUpdateTimesAtRequestPart, &data)
+}
+
 fn make_long_rename_parts(
     old_path: &str,
     new_path: &str,
@@ -1338,6 +1465,104 @@ fn feed_parts(
     handler
         .handle_request(parts.last().unwrap())
         .expect("final part should produce a response")
+}
+
+#[test]
+fn test_long_update_times_path() {
+    let (mut handler, tmp) = setup();
+    let path: String = format!("{}/file.txt", "t".repeat(60));
+    fs::create_dir(tmp.path().join("t".repeat(60))).unwrap();
+    fs::write(tmp.path().join(&path), b"data").unwrap();
+    let times: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+        timespec {
+            tv_sec: 1_700_000_020,
+            tv_nsec: 345_678_900,
+        },
+    ];
+    let parts = make_long_update_times_parts(&path, 0, &times, OperationId::from_raw(10));
+    let response = feed_parts(&mut handler, &parts);
+    let ds: usize = HOSTFS_DATA_START;
+    assert_eq!(i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap()), 0);
+    let modified = fs::metadata(tmp.path().join(path))
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    assert_eq!(modified.as_secs(), times[1].tv_sec as u64);
+    assert_eq!(modified.subsec_nanos(), times[1].tv_nsec as u32);
+}
+
+#[test]
+fn test_long_update_times_nofollow_updates_symlink() {
+    let (mut handler, tmp) = setup();
+    let target: PathBuf = tmp.path().join("target.txt");
+    let link: PathBuf = tmp.path().join("link.txt");
+    fs::write(&target, b"data").unwrap();
+    if let Err(error) = host_symlink(std::path::Path::new("target.txt"), &link) {
+        if is_privilege_error(&error) {
+            println!("skipping: host cannot create symlinks ({error})");
+            return;
+        }
+        panic!("host_symlink failed: {error}");
+    }
+
+    let target_times: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+        timespec {
+            tv_sec: 1_700_000_030,
+            tv_nsec: 0,
+        },
+    ];
+    let response = feed_parts(
+        &mut handler,
+        &make_long_update_times_parts("target.txt", 0, &target_times, OperationId::from_raw(14)),
+    );
+    let ds: usize = HOSTFS_DATA_START;
+    assert_eq!(i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap()), 0);
+
+    let link_times: [timespec; 2] = [
+        timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+        timespec {
+            tv_sec: 1_700_000_040,
+            tv_nsec: 0,
+        },
+    ];
+    let response = feed_parts(
+        &mut handler,
+        &make_long_update_times_parts(
+            "link.txt",
+            AT_SYMLINK_NOFOLLOW,
+            &link_times,
+            OperationId::from_raw(15),
+        ),
+    );
+    assert_eq!(i32::from_le_bytes(response[ds..ds + 4].try_into().unwrap()), 0);
+
+    let target_modified = fs::metadata(target)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    let link_modified = fs::symlink_metadata(link)
+        .unwrap()
+        .modified()
+        .unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    assert_eq!(target_modified.as_secs(), target_times[1].tv_sec as u64);
+    assert_eq!(link_modified.as_secs(), link_times[1].tv_sec as u64);
 }
 
 #[test]

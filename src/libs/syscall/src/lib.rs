@@ -365,6 +365,12 @@ pub enum SystemCallMessageKind {
     HostFsChownAtRequestPart,
     /// Hostfs ownership response.
     HostFsChownResponse,
+    /// Descriptor-based hostfs timestamp update.
+    HostFsUpdateTimesRequest,
+    HostFsUpdateTimesResponse,
+    /// Path-based hostfs timestamp update.
+    HostFsUpdateTimesAtRequestPart,
+    HostFsUpdateTimesAtResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageKind.
 impl TryFrom<u16> for SystemCallMessageKind {
@@ -558,6 +564,10 @@ impl TryFrom<u16> for SystemCallMessageKind {
             x if x == HostFsChownRequest as u16 => Ok(HostFsChownRequest),
             x if x == HostFsChownAtRequestPart as u16 => Ok(HostFsChownAtRequestPart),
             x if x == HostFsChownResponse as u16 => Ok(HostFsChownResponse),
+            x if x == HostFsUpdateTimesRequest as u16 => Ok(HostFsUpdateTimesRequest),
+            x if x == HostFsUpdateTimesResponse as u16 => Ok(HostFsUpdateTimesResponse),
+            x if x == HostFsUpdateTimesAtRequestPart as u16 => Ok(HostFsUpdateTimesAtRequestPart),
+            x if x == HostFsUpdateTimesAtResponse as u16 => Ok(HostFsUpdateTimesAtResponse),
             _ => Err(()),
         }
     }
@@ -570,6 +580,10 @@ impl SystemCallMessageKind {
             self,
             Self::HostFsOpenRequest
                 | Self::HostFsOpenResponse
+                | Self::HostFsUpdateTimesRequest
+                | Self::HostFsUpdateTimesResponse
+                | Self::HostFsUpdateTimesAtRequestPart
+                | Self::HostFsUpdateTimesAtResponse
                 | Self::HostFsCloseRequest
                 | Self::HostFsCloseResponse
                 | Self::HostFsReadRequest
@@ -659,6 +673,8 @@ impl SystemCallMessageKind {
             Self::HostFsChownRequest | Self::HostFsChownAtRequestPart => {
                 Some(Self::HostFsChownResponse)
             },
+            Self::HostFsUpdateTimesRequest => Some(Self::HostFsUpdateTimesResponse),
+            Self::HostFsUpdateTimesAtRequestPart => Some(Self::HostFsUpdateTimesAtResponse),
             _ => None,
         }
     }
@@ -692,6 +708,8 @@ impl SystemCallMessageKind {
                 | Self::HostFsPathStatResponse
                 | Self::HostFsStatTimesResponse
                 | Self::HostFsChownResponse
+                | Self::HostFsUpdateTimesResponse
+                | Self::HostFsUpdateTimesAtResponse
         )
     }
 

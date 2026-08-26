@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -171,6 +172,17 @@ int main(int argc, const char *argv[])
     test_utimensat();
     test_utimensat_now();
     test_utime_preserve_imported_timestamps();
+if (getenv("NANVIX_TEST_HOSTFS") != NULL) {
+    char cwd[PATH_MAX];
+    assert(getcwd(cwd, sizeof(cwd)) != NULL);
+    assert(chdir("/mnt") == 0);
+    test_utimensat();
+    test_utimensat_now();
+    test_utimes();
+    test_utime();
+    test_futimens();
+    assert(chdir(cwd) == 0);
+}
 #ifndef __NANVIX_STANDALONE__
     // FAT32 timestamps, permissions, and ownership are no-ops that fail assertions.
     test_utimensat();

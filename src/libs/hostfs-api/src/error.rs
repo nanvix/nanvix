@@ -9,6 +9,8 @@ pub const HOSTFS_ERR_NOT_PERMITTED: i32 = -1;
 pub const HOSTFS_ERR_NOT_FOUND: i32 = -2;
 /// Error code: generic I/O error.
 pub const HOSTFS_ERR_IO: i32 = -5;
+/// Error code: invalid file descriptor.
+pub const HOSTFS_ERR_BAD_FD: i32 = -9;
 /// Error code: permission denied.
 pub const HOSTFS_ERR_PERMISSION: i32 = -13;
 /// Error code: file or directory already exists.

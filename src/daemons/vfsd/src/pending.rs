@@ -90,6 +90,10 @@ pub(crate) enum PendingOpKind {
     Flush,
     /// ftruncate — response is a status code.
     Truncate,
+    /// futimens — response is a status code.
+    UpdateTimes,
+    /// utimensat — response is a status code.
+    UpdateTimesAt,
     /// mkdir — response is a status code.
     Mkdir,
     /// rmdir — response is a status code.
@@ -541,6 +545,12 @@ pub(crate) fn complete_pending_op(
         PendingOpKind::Truncate => {
             complete_status(response_context, response_payload, OpGroup::Truncate)
         },
+        PendingOpKind::UpdateTimes => {
+            complete_status(response_context, response_payload, OpGroup::UpdateTimes)
+        },
+        PendingOpKind::UpdateTimesAt => {
+            complete_status(response_context, response_payload, OpGroup::UpdateTimesAt)
+        },
         PendingOpKind::Mkdir => complete_status(response_context, response_payload, OpGroup::Mkdir),
         PendingOpKind::Rmdir => complete_status(response_context, response_payload, OpGroup::Rmdir),
         PendingOpKind::Unlink => {
@@ -982,6 +992,8 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::Seek, SystemCallMessageKind::HostFsLseekResponse)
             | (PendingOpKind::Flush, SystemCallMessageKind::HostFsFlushResponse)
             | (PendingOpKind::Truncate, SystemCallMessageKind::HostFsTruncateResponse)
+            | (PendingOpKind::UpdateTimes, SystemCallMessageKind::HostFsUpdateTimesResponse)
+            | (PendingOpKind::UpdateTimesAt, SystemCallMessageKind::HostFsUpdateTimesAtResponse,)
             | (PendingOpKind::Mkdir, SystemCallMessageKind::HostFsMkdirResponse)
             | (PendingOpKind::Rmdir, SystemCallMessageKind::HostFsRmdirResponse)
             | (PendingOpKind::Unlink, SystemCallMessageKind::HostFsUnlinkResponse)
@@ -1135,6 +1147,8 @@ fn complete_seek(
 enum OpGroup {
     Flush,
     Truncate,
+    UpdateTimes,
+    UpdateTimesAt,
     Mkdir,
     Rmdir,
     Unlink,
@@ -1164,6 +1178,24 @@ fn complete_status(
         OpGroup::Truncate => {
             use ::syscall::unistd::message::FileTruncateResponse;
             FileTruncateResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+        OpGroup::UpdateTimes => {
+            use ::syscall::sys::stat::message::UpdateFileAccessTimeResponse;
+            UpdateFileAccessTimeResponse::build(
+                source_tid,
+                0,
+                ProcessIdentifier::VFSD,
+                MessageType::Ipc,
+            )
+        },
+        OpGroup::UpdateTimesAt => {
+            use ::syscall::sys::stat::message::UpdateFileAccessTimeAtResponse;
+            UpdateFileAccessTimeAtResponse::build(
+                source_tid,
+                0,
+                ProcessIdentifier::VFSD,
+                MessageType::Ipc,
+            )
         },
         OpGroup::Mkdir => {
             use ::syscall::sys::stat::message::MakeDirectoryAtResponse;
@@ -1200,6 +1232,7 @@ fn hostfs_error_to_code(code: i32) -> ErrorCode {
     match code {
         ::hostfs_api::HOSTFS_ERR_NOT_PERMITTED => ErrorCode::OperationNotPermitted,
         ::hostfs_api::HOSTFS_ERR_NOT_FOUND => ErrorCode::NoSuchEntry,
+        ::hostfs_api::HOSTFS_ERR_BAD_FD => ErrorCode::BadFile,
         ::hostfs_api::HOSTFS_ERR_PERMISSION => ErrorCode::PermissionDenied,
         ::hostfs_api::HOSTFS_ERR_EXISTS => ErrorCode::EntryExists,
         ::hostfs_api::HOSTFS_ERR_NOT_DIR => ErrorCode::InvalidDirectory,
