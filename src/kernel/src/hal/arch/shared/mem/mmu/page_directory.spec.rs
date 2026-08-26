@@ -163,11 +163,14 @@ pub open spec fn valid_pde_target(
     value: PteWord,
     page_table: Option<&PageTable<PageTableStorage>>,
 ) -> bool {
-    &&& present_pde(value) == page_table.is_some()
-    &&& (present_pde(value)
-        ==> (page_table.is_some()
-            && page_table.unwrap().ready_for_mmu()
-            && page_table.unwrap().physical_base() == pde_page_table_address(value)))
+    match page_table {
+        None => !present_pde(value),
+        Some(pt) => {
+            &&& present_pde(value)
+            &&& pt.ready_for_mmu()
+            &&& pt.physical_base() == pde_page_table_address(value)
+        },
+    }
 }
 
 } // verus!
