@@ -179,8 +179,7 @@ unsafe fn free_pt_page(paddr: u64) {
 )]
 unsafe fn read_entry(table_paddr: u64, index: usize) -> u64 {
     let ptr: *const u64 = (table_paddr as usize + index * 8) as *const u64;
-    // core::ptr::read_volatile(ptr)
-    unsafe { env_interaction_read_hardware_page_table_entry(ptr) }
+    core::ptr::read_volatile(ptr)
 }
 
 /// Writes a 64-bit entry to a page table at `table_paddr[index]`.
@@ -216,10 +215,7 @@ unsafe fn read_entry(table_paddr: u64, index: usize) -> u64 {
 )]
 unsafe fn write_entry(table_paddr: u64, index: usize, value: u64) {
     let ptr: *mut u64 = (table_paddr as usize + index * 8) as *mut u64;
-    // core::ptr::write_volatile(ptr, value);
-    unsafe {
-        env_interaction_write_hardware_page_table_entry(ptr, value);
-    }
+    core::ptr::write_volatile(ptr, value);
 }
 
 /// Reads an entry using the unique page token stored by its executable owner.
@@ -539,10 +535,7 @@ unsafe fn split_2m_entry(pd_paddr: u64, pd_index: usize) -> u64 {
 #[inline]
 #[verus_verify(external_body)]
 unsafe fn invlpg(vaddr: usize) {
-    // core::arch::asm!("invlpg [{}]", in(reg) vaddr, options(nostack, preserves_flags));
-    unsafe {
-        env_interaction_invalidate_tlb_page(vaddr);
-    }
+    core::arch::asm!("invlpg [{}]", in(reg) vaddr, options(nostack, preserves_flags));
 }
 
 //==================================================================================================
