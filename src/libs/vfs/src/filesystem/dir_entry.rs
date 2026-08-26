@@ -22,6 +22,8 @@ pub struct DirEntry {
     inode: u64,
     /// Whether this entry is a directory.
     is_dir: bool,
+    /// Whether this entry is a character device.
+    is_character_device: bool,
     /// Size in bytes (0 for directories).
     size: u64,
 }
@@ -44,7 +46,19 @@ impl DirEntry {
             name,
             inode,
             is_dir,
+            is_character_device: false,
             size,
+        }
+    }
+
+    /// Creates a character-device directory entry.
+    pub fn new_character_device(name: String, inode: u64) -> Self {
+        Self {
+            name,
+            inode,
+            is_dir: false,
+            is_character_device: true,
+            size: 0,
         }
     }
 
@@ -64,6 +78,12 @@ impl DirEntry {
     #[must_use]
     pub fn is_dir(&self) -> bool {
         self.is_dir
+    }
+
+    /// Returns whether this entry is a character device.
+    #[must_use]
+    pub fn is_character_device(&self) -> bool {
+        self.is_character_device
     }
 
     /// Returns the size in bytes (0 for directories).

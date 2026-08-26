@@ -12,6 +12,7 @@ use super::{
     DirectReadHandle,
     DirectoryHandle,
     HostFsHandle,
+    NullHandle,
     SocketHandle,
 };
 use crate::{
@@ -44,6 +45,8 @@ pub enum VfsFileHandle {
     /// Remote file opened through the host filesystem daemon (hostfsd).
     /// Operations on this handle must be forwarded via IKC by the caller (vfsd).
     HostFs(HostFsHandle),
+    /// The null device.
+    Null(NullHandle),
     /// One end of a POSIX unnamed pipe.
     Pipe(PipeEnd),
     /// Routing token for a console stream (stdin/stdout/stderr).
@@ -64,6 +67,7 @@ impl VfsFileHandle {
             VfsFileHandle::DirectRead(handle) => state::with_storage_lock(|| Ok(handle.read(buf))),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::Null(handle) => handle.read(),
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
         }
@@ -76,6 +80,7 @@ impl VfsFileHandle {
             VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::Null(handle) => handle.write(buf),
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
         }
@@ -91,6 +96,7 @@ impl VfsFileHandle {
             VfsFileHandle::DirectRead(handle) => handle.seek(offset, whence),
             VfsFileHandle::Directory(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::Null(handle) => handle.seek(whence),
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
         }
@@ -103,6 +109,7 @@ impl VfsFileHandle {
             VfsFileHandle::DirectRead(handle) => Ok(handle.size() as u64),
             VfsFileHandle::Directory(_) => Ok(0),
             VfsFileHandle::HostFs(_) => Ok(0),
+            VfsFileHandle::Null(_) => Ok(0),
             VfsFileHandle::Pipe(_) => Ok(0),
             VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Ok(0),
         }

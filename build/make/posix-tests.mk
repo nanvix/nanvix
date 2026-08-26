@@ -117,7 +117,7 @@ $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_STRESS_SRCDIR)/%.c
 POSIX_TEST_FILES_test-c-file := \
 	main.c open_close.c create_unlink.c write_read.c poll.c posix_fadvise.c lseek.c \
 	posix_fallocate.c readv.c preadv.c writev.c pwritev.c pread.c pwrite.c \
-	fdatasync.c stat.c ftruncate.c truncate.c link.c linkat.c renameat.c renameat_subdir.c unlinkat.c mkdirat.c mkdir.c \
+	fdatasync.c stat.c device_namespace.c ftruncate.c truncate.c link.c linkat.c renameat.c renameat_subdir.c unlinkat.c mkdirat.c mkdir.c \
 	path_errno.c mkfifo.c mknod.c umask_ramfs.c umask.c dirent.c getcwd.c chdir.c fchdir.c \
 	utimensat.c utimes.c utime.c futimens.c chown.c fchown.c fchownat.c lchown.c \
 	chmod.c fchmodat.c fchmod.c lchmod.c faccessat.c access.c

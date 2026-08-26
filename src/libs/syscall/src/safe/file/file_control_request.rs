@@ -16,16 +16,19 @@ use ::sys::error::{
     ErrorCode,
 };
 use ::sysapi::{
-    fcntl::file_control_request::{
-        F_DUPFD,
-        F_DUPFD_CLOEXEC,
-        F_DUPFD_CLOFORK,
-        F_GETFD,
-        F_GETFL,
-        F_GETOWN,
-        F_SETFD,
-        F_SETFL,
-        F_SETOWN,
+    fcntl::{
+        file_access_mode,
+        file_control_request::{
+            F_DUPFD,
+            F_DUPFD_CLOEXEC,
+            F_DUPFD_CLOFORK,
+            F_GETFD,
+            F_GETFL,
+            F_GETOWN,
+            F_SETFD,
+            F_SETFL,
+            F_SETOWN,
+        },
     },
     ffi::c_int,
 };
@@ -127,7 +130,8 @@ impl TryFrom<(c_int, Option<c_int>)> for FileControlRequest {
             },
             (F_GETFL, None) => Ok(FileControlRequest::GetFileStatusFlags),
             (F_SETFL, Some(flags)) => {
-                let fd_flags: FileStatusFlags = FileStatusFlags::try_from(flags)?;
+                let fd_flags: FileStatusFlags =
+                    FileStatusFlags::try_from(flags & !file_access_mode::O_ACCMODE)?;
                 Ok(FileControlRequest::SetFileStatusFlags(fd_flags))
             },
             (F_GETOWN, None) => Ok(FileControlRequest::GetSocketOwner),
@@ -173,7 +177,8 @@ impl<'a> TryFrom<(c_int, VaList<'a>)> for FileControlRequest {
             F_SETFL => {
                 let flags: c_int = unsafe { arg.next_arg() };
                 ::syslog::debug!("F_SETFL: flags={flags:?}");
-                let status_flags: FileStatusFlags = FileStatusFlags::try_from(flags)?;
+                let status_flags: FileStatusFlags =
+                    FileStatusFlags::try_from(flags & !file_access_mode::O_ACCMODE)?;
                 Ok(FileControlRequest::SetFileStatusFlags(status_flags))
             },
             F_GETOWN => Ok(FileControlRequest::GetSocketOwner),
