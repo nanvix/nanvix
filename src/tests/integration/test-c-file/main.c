@@ -8,7 +8,10 @@
 //==================================================================================================
 
 #include "common.h"
+#include <assert.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -147,6 +150,19 @@ int main(int argc, const char *argv[])
     test_mknod();      // mknod() is unsupported; verifies it fails with ENOTSUP.
     test_umask_ramfs(); // tests umask(), open(), close(), stat(), and unlink() on RAMFS.
     test_umask();      // tests umask(), open(), stat(), mkdir(), and unlinkat().
+
+    if (getenv("NANVIX_TEST_HOSTFS") != NULL) {
+        int cwd = open(".", O_RDONLY | O_DIRECTORY);
+        assert(cwd != -1);
+        assert(chdir("/mnt") == 0);
+        test_fchownat();
+        test_chown();
+        test_fchown();
+        test_lchown();
+        assert(fchdir(cwd) == 0);
+        assert(close(cwd) == 0);
+    }
+
     test_poll_hostfs(); // requires test_umask() to mount hostfs.
     test_dirent();
     test_getcwd();

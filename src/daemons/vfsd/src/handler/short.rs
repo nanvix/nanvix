@@ -275,6 +275,9 @@ pub(crate) fn handle_fchdir(source: ThreadIdentifier, msg: SystemCallMessage) ->
 pub(crate) fn handle_fchown(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {
     let req: FileChownRequest = FileChownRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
+    if ::vfs::fd::vfs_resolve(fd).is_none() {
+        return build_error(source, ErrorCode::BadFile);
+    }
     // fchown is a no-op in our VFS.
     ::syslog::trace!("handle_fchown(): stubbed (fd={})", fd);
     FileChownResponse::build(source, ProcessIdentifier::VFSD, MessageType::Ipc)

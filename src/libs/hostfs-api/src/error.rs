@@ -3,6 +3,8 @@
 
 //! Host filesystem error codes.
 
+/// Error code: operation not permitted.
+pub const HOSTFS_ERR_NOT_PERMITTED: i32 = -1;
 /// Error code: file or directory not found.
 pub const HOSTFS_ERR_NOT_FOUND: i32 = -2;
 /// Error code: generic I/O error.

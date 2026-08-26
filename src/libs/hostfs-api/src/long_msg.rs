@@ -25,6 +25,7 @@
 //! - **Symlink**: `[op_id:4][target_len:2][linkpath_len:2][target:N][linkpath:M]`
 //! - **Readlink**: `[op_id:4][path_len:2][path:N]`
 //! - **Lstat**: `[op_id:4][path_len:2][path:N]`
+//! - **ChownAt**: `[op_id:4][owner:4][group:4][flags:4][path_len:2][path:N]`
 //!
 //! # Long Response Format
 //!
@@ -78,6 +79,9 @@ pub const READLINK_HEADER_SIZE: usize = 6;
 
 /// Header size for long lstat: op_id(4) + path_len(2) = 6
 pub const LSTAT_HEADER_SIZE: usize = 6;
+
+/// Header size for long chownat: op_id(4) + owner(4) + group(4) + flags(4) + path_len(2) = 18.
+pub const CHOWNAT_HEADER_SIZE: usize = 18;
 
 /// Header size for the long Readlink *response* body:
 /// `op_id(4) + status(4) + target_len(2) = 10`.
@@ -569,6 +573,43 @@ pub fn deserialize_long_lstat(bytes: &[u8]) -> Option<LongLstatRequest> {
     Some(LongLstatRequest { op_id, path })
 }
 
+/// Result of deserializing a long CHOWNAT request.
+#[cfg(feature = "std")]
+pub struct LongChownAtRequest {
+    pub op_id: OperationId,
+    pub owner: u32,
+    pub group: u32,
+    pub flags: i32,
+    pub path: std::string::String,
+}
+
+/// Deserializes a long CHOWNAT request from assembled bytes.
+#[cfg(feature = "std")]
+pub fn deserialize_long_chownat(bytes: &[u8]) -> Option<LongChownAtRequest> {
+    if bytes.len() < CHOWNAT_HEADER_SIZE {
+        return None;
+    }
+    let op_id = OperationId::new(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]));
+    let owner = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    let group = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+    let flags = i32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
+    let path_len = u16::from_le_bytes([bytes[16], bytes[17]]) as usize;
+    if bytes.len() < CHOWNAT_HEADER_SIZE + path_len {
+        return None;
+    }
+    let path = std::string::String::from_utf8(
+        bytes[CHOWNAT_HEADER_SIZE..CHOWNAT_HEADER_SIZE + path_len].to_vec(),
+    )
+    .ok()?;
+    Some(LongChownAtRequest {
+        op_id,
+        owner,
+        group,
+        flags,
+        path,
+    })
+}
+
 //==================================================================================================
 // Serialization (vfsd, no_std + alloc)
 //==================================================================================================
@@ -694,6 +735,27 @@ pub fn serialize_long_lstat_request(op_id: OperationId, path: &[u8]) -> Option<V
     let path_len: u16 = u16::try_from(path.len()).ok()?;
     let mut buf: Vec<u8> = Vec::with_capacity(LSTAT_HEADER_SIZE + path.len());
     buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
+/// Serializes the body of a long CHOWNAT request.
+///
+/// Wire format: `[op_id:4][owner:4][group:4][flags:4][path_len:2][path:N]`.
+pub fn serialize_long_chownat_request(
+    op_id: OperationId,
+    owner: u32,
+    group: u32,
+    flags: i32,
+    path: &[u8],
+) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(CHOWNAT_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&owner.to_le_bytes());
+    buf.extend_from_slice(&group.to_le_bytes());
+    buf.extend_from_slice(&flags.to_le_bytes());
     buf.extend_from_slice(&path_len.to_le_bytes());
     buf.extend_from_slice(path);
     Some(buf)

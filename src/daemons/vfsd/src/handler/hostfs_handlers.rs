@@ -368,6 +368,45 @@ pub(crate) fn handle_ftruncate_with_hostfs(
 // HostFs-Aware Read/Write Handlers
 //==================================================================================================
 
+pub(crate) fn handle_fchown_with_hostfs(
+    response_context: ResponseContext,
+    msg: SystemCallMessage,
+    pending: &mut PendingQueue,
+) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    let req: ::syscall::unistd::message::FileChownRequest =
+        ::syscall::unistd::message::FileChownRequest::from_bytes(msg.payload);
+
+    if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(req.fd) {
+        if !pending.has_capacity() {
+            return Some(build_error(source, ErrorCode::ResourceBusy));
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        if pending
+            .insert(
+                op_id,
+                PendingOp {
+                    response_context,
+                    source_tid: source,
+                    source_pid,
+                    kind: PendingOpKind::Chown,
+                },
+            )
+            .is_err()
+        {
+            return Some(build_error(source, ErrorCode::ResourceBusy));
+        }
+        if hostfs::send_chown_request(remote_fd, req.owner, req.group, op_id).is_err() {
+            pending.remove(op_id);
+            return Some(build_error(source, ErrorCode::IoErr));
+        }
+        return None;
+    }
+
+    Some(super::short::handle_fchown(source, msg))
+}
+
 pub(crate) fn handle_fstat_with_hostfs(
     response_context: ResponseContext,
     msg: SystemCallMessage,
@@ -657,6 +696,7 @@ use ::syscall::{
         MakeDirectoryAtRequest,
     },
     unistd::message::{
+        FileChownAtRequest,
         ReadLinkAtRequest,
         SymbolicLinkAtRequest,
     },
@@ -746,6 +786,53 @@ pub(crate) fn handle_getdents_with_hostfs(
     }
 
     Some(super::long::handle_getdents(source, msg))
+}
+
+pub(crate) fn handle_fchownat_with_hostfs(
+    response_context: ResponseContext,
+    request: FileChownAtRequest,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+        Ok(resolved) => resolved,
+        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+    };
+
+    if hostfs::is_hostfs_path(resolved.as_str()) {
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        if pending
+            .insert(
+                op_id,
+                PendingOp {
+                    response_context,
+                    source_tid: source,
+                    source_pid,
+                    kind: PendingOpKind::ChownAt,
+                },
+            )
+            .is_err()
+        {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        if let Err(e) = hostfs::send_chownat_request(
+            &resolved,
+            request.owner,
+            request.group,
+            request.flag,
+            op_id,
+        ) {
+            pending.remove(op_id);
+            return Some(vec![build_error(source, e)]);
+        }
+        return None;
+    }
+
+    Some(super::long::handle_fchownat(source, request))
 }
 
 pub(crate) fn handle_openat_with_hostfs(

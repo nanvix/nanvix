@@ -33,6 +33,7 @@ use ::sys::ipc::Message;
 // Modules
 //==================================================================================================
 
+mod chown;
 mod close;
 mod error;
 mod flush;
@@ -53,6 +54,7 @@ mod unlink;
 mod write;
 
 pub use self::{
+    chown::ChownRequest,
     close::CloseRequest,
     flush::FlushRequest,
     lseek::{
@@ -288,6 +290,7 @@ pub use self::error::{
     HOSTFS_ERR_NOT_DIR,
     HOSTFS_ERR_NOT_EMPTY,
     HOSTFS_ERR_NOT_FOUND,
+    HOSTFS_ERR_NOT_PERMITTED,
     HOSTFS_ERR_NOT_SUPPORTED,
     HOSTFS_ERR_PERMISSION,
 };

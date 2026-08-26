@@ -209,7 +209,8 @@ impl HostFsHandler {
             | SystemCallMessageKind::HostFsSymlinkRequestPart
             | SystemCallMessageKind::HostFsReadlinkRequestPart
             | SystemCallMessageKind::HostFsLstatRequestPart
-            | SystemCallMessageKind::HostFsPathStatRequestPart => self.handle_long_part(
+            | SystemCallMessageKind::HostFsPathStatRequestPart
+            | SystemCallMessageKind::HostFsChownAtRequestPart => self.handle_long_part(
                 syscall_msg.kind(),
                 OperationId::from_le_bytes(syscall_msg.request_id().raw().to_le_bytes()),
                 &syscall_msg.payload,
@@ -238,6 +239,7 @@ impl HostFsHandler {
             SystemCallMessageKind::HostFsReadlinkRequest => run(self, Self::handle_readlink),
             SystemCallMessageKind::HostFsLstatRequest => run(self, Self::handle_lstat),
             SystemCallMessageKind::HostFsPathStatRequest => run(self, Self::handle_pathstat),
+            SystemCallMessageKind::HostFsChownRequest => run(self, Self::handle_chown),
             other => {
                 log::error!("hostfsd: unexpected message header: {:?}", other);
                 let mut response = [0u8; Message::PAYLOAD_SIZE];
@@ -420,6 +422,15 @@ impl HostFsHandler {
                 } else {
                     log::error!("hostfsd: failed to deserialize long pathstat request");
                     set_kind(&mut response, SystemCallMessageKind::HostFsPathStatResponse as u16);
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
+            SystemCallMessageKind::HostFsChownAtRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_chownat(&assembled) {
+                    self.handle_long_chownat(req, &mut response);
+                } else {
+                    log::error!("hostfsd: failed to deserialize long chownat request");
+                    set_kind(&mut response, SystemCallMessageKind::HostFsChownResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
@@ -755,6 +766,51 @@ impl HostFsHandler {
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
         self.do_pathstat(req.op_id, &req.path, response);
+    }
+
+    /// Handles a fully assembled path-based ownership request.
+    fn handle_long_chownat(
+        &mut self,
+        req: long_msg::LongChownAtRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        set_kind(response, SystemCallMessageKind::HostFsChownResponse as u16);
+        let nofollow: i32 = ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW;
+        if req.flags != 0 && req.flags != nofollow {
+            set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
+            return;
+        }
+
+        let host_path: PathBuf = match if req.flags == nofollow {
+            self.sandbox.resolve_nofollow(&req.path)
+        } else {
+            self.sandbox.resolve(&req.path)
+        } {
+            Some(path) => path,
+            None => {
+                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                return;
+            },
+        };
+
+        #[cfg(unix)]
+        let result: io::Result<()> = {
+            let owner: Option<u32> = (req.owner != u32::MAX).then_some(req.owner);
+            let group: Option<u32> = (req.group != u32::MAX).then_some(req.group);
+            if req.flags == nofollow {
+                ::std::os::unix::fs::lchown(&host_path, owner, group)
+            } else {
+                ::std::os::unix::fs::chown(&host_path, owner, group)
+            }
+        };
+        #[cfg(not(unix))]
+        let result: io::Result<()> = {
+            let _ = host_path;
+            Err(io::Error::new(io::ErrorKind::Unsupported, "ownership changes are not supported"))
+        };
+
+        let status: i32 = result.as_ref().map_or_else(io_error_to_code, |_| 0);
+        set_payload_data(response, &status.to_le_bytes());
     }
 
     /// Handles an inline single-message READLINK request.
@@ -1933,6 +1989,37 @@ impl HostFsHandler {
         }
     }
 
+    fn handle_chown(
+        &mut self,
+        payload: &[u8; Message::PAYLOAD_SIZE],
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        let req: ChownRequest = ChownRequest::decode(payload);
+        set_kind(response, SystemCallMessageKind::HostFsChownResponse as u16);
+        let entry: &FdEntry = match self.fd_table.get(req.fd) {
+            Some(entry) => entry,
+            None => {
+                set_payload_data(response, &HOSTFS_ERR_IO.to_le_bytes());
+                return;
+            },
+        };
+
+        #[cfg(unix)]
+        let result: io::Result<()> = {
+            let owner: Option<u32> = (req.owner != u32::MAX).then_some(req.owner);
+            let group: Option<u32> = (req.group != u32::MAX).then_some(req.group);
+            ::std::os::unix::fs::fchown(&entry.file, owner, group)
+        };
+        #[cfg(not(unix))]
+        let result: io::Result<()> = {
+            let _ = entry;
+            Err(io::Error::new(io::ErrorKind::Unsupported, "ownership changes are not supported"))
+        };
+
+        let status: i32 = result.as_ref().map_or_else(io_error_to_code, |_| 0);
+        set_payload_data(response, &status.to_le_bytes());
+    }
+
     fn handle_flush(
         &mut self,
         payload: &[u8; Message::PAYLOAD_SIZE],
@@ -1972,6 +2059,10 @@ impl HostFsHandler {
 fn io_error_to_code(e: &io::Error) -> i32 {
     // ELOOP-style errors do not have a stable `ErrorKind`, so probe the raw OS code.
     if let Some(raw) = e.raw_os_error() {
+        #[cfg(unix)]
+        if raw == ::sysapi::errno::EPERM {
+            return HOSTFS_ERR_NOT_PERMITTED;
+        }
         #[cfg(target_os = "linux")]
         const ELOOP_RAW: i32 = 40;
         #[cfg(target_os = "macos")]
@@ -1996,6 +2087,7 @@ fn io_error_to_code(e: &io::Error) -> i32 {
         io::ErrorKind::NotADirectory => HOSTFS_ERR_NOT_DIR,
         io::ErrorKind::IsADirectory => HOSTFS_ERR_IS_DIR,
         io::ErrorKind::DirectoryNotEmpty => HOSTFS_ERR_NOT_EMPTY,
+        io::ErrorKind::Unsupported => HOSTFS_ERR_NOT_SUPPORTED,
         _ => HOSTFS_ERR_IO,
     }
 }

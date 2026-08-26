@@ -359,6 +359,12 @@ pub enum SystemCallMessageKind {
     PipeReadRetry,
     /// Timestamp continuation for successful hostfs stat operations.
     HostFsStatTimesResponse,
+    /// Descriptor-based hostfs ownership request.
+    HostFsChownRequest,
+    /// Multi-part path-based hostfs ownership request.
+    HostFsChownAtRequestPart,
+    /// Hostfs ownership response.
+    HostFsChownResponse,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageKind.
 impl TryFrom<u16> for SystemCallMessageKind {
@@ -549,6 +555,9 @@ impl TryFrom<u16> for SystemCallMessageKind {
             x if x == PipeOpCancelResponse as u16 => Ok(PipeOpCancelResponse),
             x if x == PipeReadRetry as u16 => Ok(PipeReadRetry),
             x if x == HostFsStatTimesResponse as u16 => Ok(HostFsStatTimesResponse),
+            x if x == HostFsChownRequest as u16 => Ok(HostFsChownRequest),
+            x if x == HostFsChownAtRequestPart as u16 => Ok(HostFsChownAtRequestPart),
+            x if x == HostFsChownResponse as u16 => Ok(HostFsChownResponse),
             _ => Err(()),
         }
     }
@@ -604,6 +613,9 @@ impl SystemCallMessageKind {
                 | Self::HostFsPathStatRequestPart
                 | Self::HostFsPathStatResponse
                 | Self::HostFsStatTimesResponse
+                | Self::HostFsChownRequest
+                | Self::HostFsChownAtRequestPart
+                | Self::HostFsChownResponse
         )
     }
 
@@ -644,6 +656,9 @@ impl SystemCallMessageKind {
             Self::HostFsPathStatRequest | Self::HostFsPathStatRequestPart => {
                 Some(Self::HostFsPathStatResponse)
             },
+            Self::HostFsChownRequest | Self::HostFsChownAtRequestPart => {
+                Some(Self::HostFsChownResponse)
+            },
             _ => None,
         }
     }
@@ -676,6 +691,7 @@ impl SystemCallMessageKind {
                 | Self::HostFsLstatResponse
                 | Self::HostFsPathStatResponse
                 | Self::HostFsStatTimesResponse
+                | Self::HostFsChownResponse
         )
     }
 
