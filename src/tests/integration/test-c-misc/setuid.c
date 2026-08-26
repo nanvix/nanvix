@@ -25,5 +25,9 @@ void test_setuid(void)
     uid_t uid = getuid();
     assert(setuid(uid) == 0);
 
+    errno = 0;
+    assert(setuid(uid + 1) == -1);
+    assert(errno == EPERM);
+
     fprintf(stderr, "passed\n");
 }

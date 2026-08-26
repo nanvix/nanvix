@@ -19,6 +19,9 @@ use crate::error::{
 ///
 /// A type that represents a group identifier.
 ///
+/// Nanvix supports one group. Every process and filesystem object belongs to
+/// [`GroupIdentifier::ROOT`].
+///
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct GroupIdentifier(usize);
 
@@ -28,6 +31,11 @@ pub struct GroupIdentifier(usize);
 
 impl GroupIdentifier {
     pub const ROOT: GroupIdentifier = GroupIdentifier(0);
+
+    /// Returns the underlying identifier.
+    pub const fn as_usize(self) -> usize {
+        self.0
+    }
 }
 
 impl From<usize> for GroupIdentifier {
@@ -44,7 +52,15 @@ impl From<u32> for GroupIdentifier {
 
 impl From<GroupIdentifier> for usize {
     fn from(gid: GroupIdentifier) -> usize {
-        gid.0
+        gid.as_usize()
+    }
+}
+
+impl TryFrom<GroupIdentifier> for u32 {
+    type Error = core::num::TryFromIntError;
+
+    fn try_from(gid: GroupIdentifier) -> Result<Self, Self::Error> {
+        u32::try_from(gid.as_usize())
     }
 }
 

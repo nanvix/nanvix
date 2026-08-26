@@ -68,7 +68,11 @@ use ::fat32::{
     FAT_EPOCH_SECS,
 };
 use ::spin::Mutex;
-use ::sys::pm::ProcessIdentifier;
+use ::sys::pm::{
+    GroupIdentifier,
+    ProcessIdentifier,
+    UserIdentifier,
+};
 use ::sysapi::{
     fcntl::{
         atflags::AT_SYMLINK_NOFOLLOW,
@@ -135,6 +139,12 @@ const FILE_PERMISSION_BITS: mode_t = file_mode::S_IRWXU | file_mode::S_IRWXG | f
 
 /// Shared console device retained independently of process descriptor tables.
 static CONSOLE_TERMINAL: Mutex<Option<Arc<Mutex<LineDiscipline>>>> = Mutex::new(None);
+
+/// Assigns the single Nanvix identity to a POSIX stat result.
+fn set_root_ownership(buf: &mut ::sysapi::sys_stat::stat) {
+    buf.st_uid = UserIdentifier::ROOT.as_usize() as uid_t;
+    buf.st_gid = GroupIdentifier::ROOT.as_usize() as gid_t;
+}
 
 /// Returns the process-global console terminal, creating it on first use.
 fn console_device() -> Arc<Mutex<LineDiscipline>> {
@@ -1254,6 +1264,7 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
             buf.update_from_vfs(&info);
         },
     }
+    set_root_ownership(buf);
 
     Ok(())
 }
@@ -1405,6 +1416,7 @@ pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     }
 
     buf.update_from_vfs(&info);
+    set_root_ownership(buf);
 
     Ok(())
 }

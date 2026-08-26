@@ -21,7 +21,7 @@ void test_getegid(void)
 {
     fprintf(stderr, "testing getegid() ... ");
 
-    assert(getegid() != (gid_t)-1);
+    assert(getegid() == getgid());
 
     fprintf(stderr, "passed\n");
 }

@@ -40,8 +40,10 @@ use ::sys::{
         MessageType,
     },
     pm::{
+        GroupIdentifier,
         ProcessIdentifier,
         ThreadIdentifier,
+        UserIdentifier,
     },
 };
 use ::syscall::unistd::message::ChangeDirectoryResponse;
@@ -1250,8 +1252,8 @@ fn complete_stat(
         } else {
             STAT_NLINK_FILE
         },
-        st_uid: 0,
-        st_gid: 0,
+        st_uid: usize::from(UserIdentifier::ROOT) as _,
+        st_gid: usize::from(GroupIdentifier::ROOT) as _,
         st_rdev: 0,
         st_size: resp.size as off_t,
         st_atim: timespec {
@@ -1474,8 +1476,8 @@ fn complete_lstat(
         } else {
             STAT_NLINK_FILE
         },
-        st_uid: 0,
-        st_gid: 0,
+        st_uid: usize::from(UserIdentifier::ROOT) as _,
+        st_gid: usize::from(GroupIdentifier::ROOT) as _,
         st_rdev: 0,
         st_size: resp.size as off_t,
         st_atim: timespec {

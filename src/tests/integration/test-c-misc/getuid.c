@@ -21,7 +21,7 @@ void test_getuid(void)
 {
     fprintf(stderr, "testing getuid() ... ");
 
-    assert(getuid() != (uid_t)-1);
+    assert(getuid() == 0);
 
     fprintf(stderr, "passed\n");
 }

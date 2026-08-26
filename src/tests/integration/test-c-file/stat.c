@@ -40,6 +40,8 @@ void test_stat(void)
     assert(st.st_blocks > 0);
     assert(st.st_dev != 0);
     assert(st.st_ino != 0);
+    assert(st.st_uid == getuid());
+    assert(st.st_gid == getgid());
 
     // Clean up.
     assert(unlink(filename) == 0);

@@ -6,7 +6,6 @@
 //==================================================================================================
 
 use ::core::cmp;
-use ::sysapi::sys_types::gid_t;
 
 //==================================================================================================
 // Constants
@@ -26,22 +25,6 @@ pub(super) const PW_DIR_CAP: usize = 256;
 /// write a NUL terminator at the returned offset.
 pub(super) fn pw_dir_copy_len(home: &[u8]) -> usize {
     cmp::min(home.len(), PW_DIR_CAP - 1)
-}
-
-//==================================================================================================
-// resolve_gid()
-//==================================================================================================
-
-/// Resolves the real group ID of the calling process, falling back to `0` (root)
-/// when the underlying `getgid()` lookup fails.
-pub(super) fn resolve_gid() -> gid_t {
-    match ::syscall::unistd::getgid() {
-        Ok(gid) => gid,
-        Err(error) => {
-            ::syslog::warn!("getpwuid(): getgid() failed (error={:?})", error);
-            0
-        },
-    }
 }
 
 //==================================================================================================

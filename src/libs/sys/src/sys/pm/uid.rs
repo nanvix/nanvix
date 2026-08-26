@@ -19,6 +19,9 @@ use crate::error::{
 ///
 /// A type that represents a user identifier.
 ///
+/// Nanvix supports one user. Every process and filesystem object belongs to
+/// [`UserIdentifier::ROOT`].
+///
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct UserIdentifier(usize);
 
@@ -28,6 +31,11 @@ pub struct UserIdentifier(usize);
 
 impl UserIdentifier {
     pub const ROOT: UserIdentifier = UserIdentifier(0);
+
+    /// Returns the underlying identifier.
+    pub const fn as_usize(self) -> usize {
+        self.0
+    }
 }
 
 impl From<usize> for UserIdentifier {
@@ -44,7 +52,15 @@ impl From<u32> for UserIdentifier {
 
 impl From<UserIdentifier> for usize {
     fn from(uid: UserIdentifier) -> usize {
-        uid.0
+        uid.as_usize()
+    }
+}
+
+impl TryFrom<UserIdentifier> for u32 {
+    type Error = core::num::TryFromIntError;
+
+    fn try_from(uid: UserIdentifier) -> Result<Self, Self::Error> {
+        u32::try_from(uid.as_usize())
     }
 }
 

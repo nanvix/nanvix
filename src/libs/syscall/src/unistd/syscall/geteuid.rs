@@ -24,5 +24,5 @@ use ::sysapi::sys_types::uid_t;
 ///
 pub fn geteuid() -> Result<uid_t, Error> {
     ::syslog::trace!("geteuid()");
-    Ok(usize::from(::sys::pm::UserIdentifier::ROOT) as uid_t)
+    Ok(::sys::pm::UserIdentifier::ROOT.as_usize() as uid_t)
 }

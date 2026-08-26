@@ -24,5 +24,5 @@ use ::sysapi::sys_types::gid_t;
 ///
 pub fn getegid() -> Result<gid_t, Error> {
     ::syslog::trace!("getegid()");
-    Ok(usize::from(::sys::pm::GroupIdentifier::ROOT) as gid_t)
+    Ok(::sys::pm::GroupIdentifier::ROOT.as_usize() as gid_t)
 }

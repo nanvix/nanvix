@@ -49,6 +49,7 @@ int main(int argc, const char *argv[])
     test_setresgid();
     test_setgroups();
     test_initgroups();
+    test_user_group();
     test_clock_getres();
     test_clock_gettime();
 #ifndef __hyperlight__
