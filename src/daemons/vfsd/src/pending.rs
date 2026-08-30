@@ -98,6 +98,10 @@ pub(crate) enum PendingOpKind {
     Unlink,
     /// rename — response is a status code.
     Rename,
+    /// fchown — response is a status code.
+    Chown,
+    /// fchownat — response is a status code.
+    ChownAt,
     /// stat/fstat — waiting for size, mode, and kind.
     Stat,
     /// stat/fstat — metadata arrived; waiting for timestamps.
@@ -545,6 +549,10 @@ pub(crate) fn complete_pending_op(
         PendingOpKind::Rename => {
             complete_status(response_context, response_payload, OpGroup::Rename)
         },
+        PendingOpKind::Chown => complete_status(response_context, response_payload, OpGroup::Chown),
+        PendingOpKind::ChownAt => {
+            complete_status(response_context, response_payload, OpGroup::ChownAt)
+        },
         PendingOpKind::Stat => complete_stat(response_context, response_payload, None),
         PendingOpKind::Symlink => {
             complete_status(response_context, response_payload, OpGroup::Symlink)
@@ -978,6 +986,8 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::Rmdir, SystemCallMessageKind::HostFsRmdirResponse)
             | (PendingOpKind::Unlink, SystemCallMessageKind::HostFsUnlinkResponse)
             | (PendingOpKind::Rename, SystemCallMessageKind::HostFsRenameResponse)
+            | (PendingOpKind::Chown, SystemCallMessageKind::HostFsChownResponse)
+            | (PendingOpKind::ChownAt, SystemCallMessageKind::HostFsChownResponse)
             | (PendingOpKind::Stat, SystemCallMessageKind::HostFsStatResponse)
             | (PendingOpKind::Symlink, SystemCallMessageKind::HostFsSymlinkResponse)
             | (PendingOpKind::Readlink { .. }, SystemCallMessageKind::HostFsReadlinkResponse)
@@ -1129,6 +1139,8 @@ enum OpGroup {
     Rmdir,
     Unlink,
     Rename,
+    Chown,
+    ChownAt,
     Symlink,
 }
 
@@ -1165,6 +1177,14 @@ fn complete_status(
             use ::syscall::fcntl::message::RenameAtResponse;
             RenameAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
         },
+        OpGroup::Chown => {
+            use ::syscall::unistd::message::FileChownResponse;
+            FileChownResponse::build(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+        OpGroup::ChownAt => {
+            use ::syscall::unistd::message::FileChownAtResponse;
+            FileChownAtResponse::build(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
         OpGroup::Symlink => {
             use ::syscall::unistd::message::SymbolicLinkAtResponse;
             SymbolicLinkAtResponse::build(source_tid, 0, ProcessIdentifier::VFSD, MessageType::Ipc)
@@ -1178,6 +1198,7 @@ fn complete_status(
 /// These codes are defined in the `hostfs-api` crate as `HOSTFS_ERR_*` constants.
 fn hostfs_error_to_code(code: i32) -> ErrorCode {
     match code {
+        ::hostfs_api::HOSTFS_ERR_NOT_PERMITTED => ErrorCode::OperationNotPermitted,
         ::hostfs_api::HOSTFS_ERR_NOT_FOUND => ErrorCode::NoSuchEntry,
         ::hostfs_api::HOSTFS_ERR_PERMISSION => ErrorCode::PermissionDenied,
         ::hostfs_api::HOSTFS_ERR_EXISTS => ErrorCode::EntryExists,

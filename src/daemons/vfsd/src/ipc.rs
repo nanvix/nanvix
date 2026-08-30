@@ -497,8 +497,11 @@ pub(crate) fn handle_ipc_message(
             response_context.send(&response);
         },
         SystemCallMessageKind::FileChownRequest => {
-            let response: Message = handler::handle_fchown(source_tid, syscall_msg);
-            response_context.send(&response);
+            if let Some(response) =
+                handler::handle_fchown_with_hostfs(response_context, syscall_msg, pending)
+            {
+                response_context.send(&response);
+            }
         },
         SystemCallMessageKind::FileChdirRequest => {
             let response: Message = handler::handle_fchdir(source_tid, syscall_msg);

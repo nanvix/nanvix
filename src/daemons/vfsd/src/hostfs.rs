@@ -292,6 +292,27 @@ pub fn send_truncate_request(
     }
 }
 
+/// Sends a descriptor-based CHOWN request to hostfsd.
+pub fn send_chown_request(
+    remote_fd: i32,
+    owner: u32,
+    group: u32,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let payload: [u8; Message::PAYLOAD_SIZE] = ChownRequest {
+        fd: remote_fd,
+        owner,
+        group,
+    }
+    .serialize(SystemCallMessageKind::HostFsChownRequest as u16, op_id);
+
+    if send_request(&payload) {
+        Ok(())
+    } else {
+        Err(::sys::error::ErrorCode::IoErr)
+    }
+}
+
 /// Sends a FLUSH (fsync) request to hostfsd.
 pub fn send_flush_request(
     remote_fd: i32,
@@ -459,6 +480,22 @@ pub fn send_readlink_request(
         .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsReadlinkRequestPart, op_id)
+}
+
+/// Sends a path-based CHOWN request to hostfsd.
+pub fn send_chownat_request(
+    path: &ResolvedPath,
+    owner: u32,
+    group: u32,
+    flags: i32,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let relative: &str = strip_mount_prefix(path.as_str());
+    let buf: alloc::vec::Vec<u8> =
+        long_msg::serialize_long_chownat_request(op_id, owner, group, flags, relative.as_bytes())
+            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageKind::HostFsChownAtRequestPart, op_id)
 }
 
 /// Sends an LSTAT request to hostfsd.

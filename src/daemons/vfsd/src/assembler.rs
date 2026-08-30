@@ -385,7 +385,8 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageKind::FileChownAtRequestPart => {
             match FileChownAtRequest::from_parts(parts) {
-                Ok(req) => handler::handle_fchownat(source, req),
+                Ok(req) => handler::handle_fchownat_with_hostfs(response_context, req, pending)
+                    .unwrap_or_default(),
                 Err(e) => {
                     ::syslog::error!("dispatch: fchownat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]
