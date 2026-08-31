@@ -19,6 +19,8 @@ use ::spin::Mutex;
 /// Identity of a named terminal device.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TerminalDevice {
+    /// The calling process's controlling terminal.
+    Tty,
     /// The system console.
     Console,
 }

@@ -26,12 +26,12 @@
 void test_device_namespace(void)
 {
     struct stat directory = {0};
-    struct stat devices[2] = {{0}};
-    const char *paths[2] = {"/dev/null", "/dev/console"};
+    struct stat devices[3] = {{0}};
+    const char *paths[3] = {"/dev/null", "/dev/tty", "/dev/console"};
 
     assert(stat("/dev", &directory) == 0);
     assert(S_ISDIR(directory.st_mode));
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         assert(stat(paths[i], &devices[i]) == 0);
         assert(S_ISCHR(devices[i].st_mode));
         assert(devices[i].st_dev == directory.st_dev);
@@ -41,7 +41,11 @@ void test_device_namespace(void)
         assert(devices[i].st_blocks == 0);
     }
     assert(devices[0].st_ino != devices[1].st_ino);
+    assert(devices[0].st_ino != devices[2].st_ino);
+    assert(devices[1].st_ino != devices[2].st_ino);
     assert(devices[0].st_rdev != devices[1].st_rdev);
+    assert(devices[0].st_rdev != devices[2].st_rdev);
+    assert(devices[1].st_rdev != devices[2].st_rdev);
 
     struct stat missing = {0};
     errno = 0;
@@ -63,9 +67,9 @@ void test_device_namespace(void)
 
     DIR *dev = opendir("/dev");
     assert(dev != NULL);
-    bool found[2] = {false, false};
+    bool found[3] = {false, false, false};
     while ((entry = readdir(dev)) != NULL) {
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 3; i++) {
             const char *name = paths[i] + strlen("/dev/");
             if (strcmp(entry->d_name, name) == 0) {
                 found[i] = true;
@@ -73,7 +77,7 @@ void test_device_namespace(void)
             }
         }
     }
-    assert(found[0] && found[1]);
+    assert(found[0] && found[1] && found[2]);
     assert(closedir(dev) == 0);
 
     int nullfd = open("/dev/null", O_RDWR);

@@ -33,6 +33,7 @@ use ::proc::{
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     ShutdownMessage,
+    TerminalDetachMessage,
 };
 use ::sys::{
     error::{
@@ -175,6 +176,12 @@ fn handle_system_message(
                             e
                         ),
                     }
+                    Ok(false)
+                },
+                ProcessManagementMessageHeader::TerminalDetach => {
+                    let detach: TerminalDetachMessage =
+                        TerminalDetachMessage::from_bytes(pm_msg.payload);
+                    ::vfs::fd::vfs_detach_controlling_terminal(detach.pid);
                     Ok(false)
                 },
                 ProcessManagementMessageHeader::ProcessExit => {
