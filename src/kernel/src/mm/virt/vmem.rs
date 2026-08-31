@@ -151,8 +151,8 @@ impl Vmem {
             Error::new(ErrorCode::OutOfMemory, "BSS page directory allocation failed")
         })?;
         proof_decl! {
-            let ghost pgdir_base_address = pgdir_slot_permissions.base;
-            let tracked pgdir_raw_permissions = pgdir_slot_permissions.entries;
+            let ghost pgdir_base_address = pgdir_slot_permissions@.base;
+            let tracked pgdir_raw_permissions = pgdir_slot_permissions@.entries;
         }
         let pgdir_storage: PageDirectoryStorage = PageDirectoryStorage::Bss {
             entries: pgdir_entries,

@@ -109,13 +109,31 @@ pub static PAGE_TABLE_ALLOCATOR: FixedSizeBumpAllocator<
 
 verus! {
 
-/// Raw entry permissions associated with one allocated page-table slot.
 #[allow(dead_code)]
-pub tracked struct PageTableSlotPermissions {
+pub struct PageTableSlotPermissionsView {
     /// Base address of the allocated slot.
     pub base: usize,
     /// Raw permissions for every entry in the slot.
     pub entries: Map<nat, PointsTo<PteWord>>,
+}
+
+/// Raw entry permissions associated with one allocated page-table slot.
+#[allow(dead_code)]
+pub tracked struct PageTableSlotPermissions {
+    /// Base address of the allocated slot.
+    base: usize,
+    /// Raw permissions for every entry in the slot.
+    entries: Map<nat, PointsTo<PteWord>>,
+}
+
+impl View for PageTableSlotPermissions
+{
+    type V = PageTableSlotPermissionsView;
+
+    closed spec fn view(&self) -> PageTableSlotPermissionsView
+    {
+        PageTableSlotPermissionsView { base: self.base, entries: self.entries }
+    }
 }
 
 /// Creates the raw entry permissions returned by the page-table allocator.
@@ -147,17 +165,17 @@ proof fn mint_page_table_slot_permissions(
     ensures
         match result {
             Ok(_) => {
-                &&& slot_permissions.entries.dom().len() == PAGE_TABLE_LENGTH
-                &&& forall|i: nat| slot_permissions.entries.dom().contains(i)
+                &&& slot_permissions@@.entries.dom().len() == PAGE_TABLE_LENGTH
+                &&& forall|i: nat| slot_permissions@@.entries.dom().contains(i)
                     <==> 0 <= i < PAGE_TABLE_LENGTH
                 &&& forall|i: nat| 0 <= i < PAGE_TABLE_LENGTH ==> {
-                    let permission = #[trigger] slot_permissions.entries[i];
+                    let permission = #[trigger] slot_permissions@@.entries[i];
                     &&& permission.ptr()@.addr as int
-                        == slot_permissions.base as int + i * 4
+                        == slot_permissions@@.base as int + i * 4
                     &&& permission.is_uninit()
                 }
             },
-            Err(_) => slot_permissions.entries.dom().is_empty(),
+            Err(_) => slot_permissions@@.entries.dom().is_empty(),
         },
 )]
 pub unsafe fn allocate_page_table_slot(

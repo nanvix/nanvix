@@ -144,8 +144,8 @@ pub fn init(
                                     )
                                 })?;
                             proof_decl! {
-                                let ghost pgtable_base_address = slot_permissions.base;
-                                let tracked raw_permissions = slot_permissions.entries;
+                                let ghost pgtable_base_address = slot_permissions@.base;
+                                let tracked raw_permissions = slot_permissions@.entries;
                             }
                             let pgtable_storage: PageTableStorage = PageTableStorage::Bss {
                                 entries: pgtable_entries,
@@ -190,8 +190,8 @@ pub fn init(
                         Error::new(ErrorCode::OutOfMemory, "BSS page table allocation failed")
                     })?;
                     proof_decl! {
-                        let ghost pgtable_base_address = slot_permissions.base;
-                        let tracked raw_permissions = slot_permissions.entries;
+                        let ghost pgtable_base_address = slot_permissions@.base;
+                        let tracked raw_permissions = slot_permissions@.entries;
                     }
                     let pgtable_storage: PageTableStorage = PageTableStorage::Bss {
                         entries: pgtable_entries,
