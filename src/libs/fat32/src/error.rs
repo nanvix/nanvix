@@ -40,6 +40,7 @@ use ::error::ErrorCode;
 /// | IoError | `IoErr` (EIO) |
 /// | OutOfMemory | `OutOfMemory` (ENOMEM) |
 /// | FileLocked | `TryAgain` (EAGAIN) |
+/// | NoDevice | `NoSuchDeviceOrAddress` (ENXIO) |
 /// | PermissionDenied | `PermissionDenied` (EACCES) |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fat32Error {
@@ -77,6 +78,8 @@ pub enum Fat32Error {
     OutOfMemory,
     /// Resource is in use and cannot be freed (e.g., unmount with open files).
     FileLocked,
+    /// No device is associated with the caller.
+    NoDevice,
     /// Permission denied (cannot perform operation on this resource).
     PermissionDenied,
 }
@@ -105,6 +108,7 @@ impl From<Fat32Error> for ErrorCode {
             Fat32Error::IoError => ErrorCode::IoErr,
             Fat32Error::OutOfMemory => ErrorCode::OutOfMemory,
             Fat32Error::FileLocked => ErrorCode::TryAgain,
+            Fat32Error::NoDevice => ErrorCode::NoSuchDeviceOrAddress,
             Fat32Error::PermissionDenied => ErrorCode::PermissionDenied,
         }
     }
@@ -130,6 +134,7 @@ impl fmt::Display for Fat32Error {
             Fat32Error::IoError => write!(f, "I/O error"),
             Fat32Error::OutOfMemory => write!(f, "out of memory"),
             Fat32Error::FileLocked => write!(f, "file is locked"),
+            Fat32Error::NoDevice => write!(f, "no device associated with caller"),
             Fat32Error::PermissionDenied => write!(f, "permission denied"),
         }
     }
@@ -167,6 +172,7 @@ mod tests {
             (Fat32Error::IoError, ErrorCode::IoErr),
             (Fat32Error::OutOfMemory, ErrorCode::OutOfMemory),
             (Fat32Error::FileLocked, ErrorCode::TryAgain),
+            (Fat32Error::NoDevice, ErrorCode::NoSuchDeviceOrAddress),
             (Fat32Error::PermissionDenied, ErrorCode::PermissionDenied),
         ];
 
@@ -197,6 +203,7 @@ mod tests {
             Fat32Error::IoError,
             Fat32Error::OutOfMemory,
             Fat32Error::FileLocked,
+            Fat32Error::NoDevice,
             Fat32Error::PermissionDenied,
         ];
 

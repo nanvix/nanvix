@@ -80,16 +80,27 @@ const NULL_INODE: u64 = 2;
 /// Character-device identifier reported for `/dev/null`.
 const NULL_SPECIAL_DEVICE_ID: u64 = 1;
 
+/// Name of the controlling-terminal device.
+const TTY_NAME: &str = "tty";
+/// Absolute path of the controlling-terminal device.
+const TTY_PATH: &str = "/dev/tty";
+
+/// Stable inode identifier for `/dev/tty`.
+const TTY_INODE: u64 = 3;
+
+/// Character-device identifier reported for `/dev/tty`.
+const TTY_SPECIAL_DEVICE_ID: u64 = 2;
+
 /// Name of the console device.
 const CONSOLE_NAME: &str = "console";
 /// Absolute path of the console device.
 const CONSOLE_PATH: &str = "/dev/console";
 
 /// Stable inode identifier for `/dev/console`.
-const CONSOLE_INODE: u64 = 3;
+const CONSOLE_INODE: u64 = 4;
 
 /// Character-device identifier reported for `/dev/console`.
-const CONSOLE_SPECIAL_DEVICE_ID: u64 = 2;
+const CONSOLE_SPECIAL_DEVICE_ID: u64 = 3;
 
 //==================================================================================================
 // Structures
@@ -119,6 +130,8 @@ pub(crate) enum DevicePath {
     Directory,
     /// The null device.
     Null,
+    /// The calling process's controlling terminal.
+    Tty,
     /// The system console.
     Console,
     /// An unknown entry below `/dev`.
@@ -143,6 +156,12 @@ impl DevicePath {
                 device: DEVICE_NAMESPACE_ID,
                 inode: NULL_INODE,
                 special_device: NULL_SPECIAL_DEVICE_ID,
+                is_directory: false,
+            }),
+            DevicePath::Tty => Some(DeviceMetadata {
+                device: DEVICE_NAMESPACE_ID,
+                inode: TTY_INODE,
+                special_device: TTY_SPECIAL_DEVICE_ID,
                 is_directory: false,
             }),
             DevicePath::Console => Some(DeviceMetadata {
@@ -217,6 +236,11 @@ pub(crate) fn null_posix_stat() -> PosixStat {
     build_posix_stat(DevicePath::Null.metadata().expect("null device has metadata"))
 }
 
+/// Synthesizes POSIX metadata for `/dev/tty`.
+pub(crate) fn tty_posix_stat() -> PosixStat {
+    build_posix_stat(DevicePath::Tty.metadata().expect("tty device has metadata"))
+}
+
 /// Synthesizes POSIX metadata for `/dev/console`.
 pub(crate) fn console_posix_stat() -> PosixStat {
     build_posix_stat(DevicePath::Console.metadata().expect("console device has metadata"))
@@ -259,9 +283,12 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Option<Vec<DirEntry>>, F
     match resolve(cwd, path)? {
         Some(DevicePath::Directory) => Ok(Some(alloc::vec![
             DirEntry::new_character_device(String::from(NULL_NAME), NULL_INODE),
+            DirEntry::new_character_device(String::from(TTY_NAME), TTY_INODE),
             DirEntry::new_character_device(String::from(CONSOLE_NAME), CONSOLE_INODE),
         ])),
-        Some(DevicePath::Null | DevicePath::Console) => Err(Fat32Error::NotADirectory),
+        Some(DevicePath::Null | DevicePath::Tty | DevicePath::Console) => {
+            Err(Fat32Error::NotADirectory)
+        }
         Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
         None => Ok(None),
     }
@@ -273,7 +300,7 @@ fn validate_components(path: &str) -> Result<(), Fat32Error> {
     for component in path.split('/').filter(|component| !component.is_empty()) {
         if components.len() >= 2 && components[0] == DIRECTORY_NAME {
             return match components[1] {
-                NULL_NAME | CONSOLE_NAME => Err(Fat32Error::NotADirectory),
+                NULL_NAME | TTY_NAME | CONSOLE_NAME => Err(Fat32Error::NotADirectory),
                 _ => Err(Fat32Error::NotFound),
             };
         }
@@ -293,6 +320,7 @@ fn resolve_normalized(path: &str) -> Option<DevicePath> {
     match path {
         DIRECTORY_PATH => Some(DevicePath::Directory),
         NULL_PATH => Some(DevicePath::Null),
+        TTY_PATH => Some(DevicePath::Tty),
         CONSOLE_PATH => Some(DevicePath::Console),
         path if path.starts_with(DIRECTORY_PREFIX) => Some(DevicePath::Missing),
         _ => None,

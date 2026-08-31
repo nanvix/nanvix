@@ -401,6 +401,7 @@ pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
     let mut procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
         PROCESSES.lock();
     let state: &mut ProcessState = procs.entry(pid).or_insert_with(ProcessState::new);
+    state.has_controlling_terminal = true;
     // The three standard streams share one terminal device, so they reference a single shared
     // terminal-state object. A `tcsetattr` through any of them is therefore visible through the
     // others, and the shared object flows down every `fork`/`dup` with the descriptor slots.
@@ -422,6 +423,13 @@ pub fn vfs_seed_root_console(pid: ProcessIdentifier) {
     // placeholder/active invariant uniform across every code path.)
     state.initialized = true;
     state.bump_generation();
+}
+
+/// Detaches a process from the system controlling terminal.
+pub fn vfs_detach_controlling_terminal(pid: ProcessIdentifier) {
+    if let Some(state) = PROCESSES.lock().get_mut(&pid) {
+        state.has_controlling_terminal = false;
+    }
 }
 
 /// Reclaims the per-process filesystem state of a terminated process.
@@ -1055,12 +1063,27 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
         return alloc_fd_with_status(handle, status_flags);
     }
 
-    if matches!(devfs::resolve(&cwd, path)?, Some(DevicePath::Console)) {
+    if let Some(device) = match devfs::resolve(&cwd, path)? {
+        Some(DevicePath::Tty) => Some(TerminalDevice::Tty),
+        Some(DevicePath::Console) => Some(TerminalDevice::Console),
+        _ => None,
+    } {
         if flags & file_creation_flags::O_CREAT != 0 && flags & file_creation_flags::O_EXCL != 0 {
             return Err(Fat32Error::AlreadyExists);
         }
         if flags & file_access_mode::O_EXEC != 0 {
             return Err(Fat32Error::PermissionDenied);
+        }
+        if device == TerminalDevice::Tty {
+            let processes: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
+                PROCESSES.lock();
+            if !processes
+                .get(&current_pid())
+                .map(|state| state.has_controlling_terminal)
+                .unwrap_or(false)
+            {
+                return Err(Fat32Error::NoDevice);
+            }
         }
         let access_mode: AccessMode = match flags & file_access_mode::O_ACCMODE {
             file_access_mode::O_RDONLY => AccessMode::ReadOnly,
@@ -1069,7 +1092,7 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
             _ => return Err(Fat32Error::InvalidArgument),
         };
         let handle: VfsFileHandle = VfsFileHandle::Terminal(TerminalHandle::new(
-            TerminalDevice::Console,
+            device,
             access_mode,
             console_device(),
         ));
@@ -1361,6 +1384,7 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
         },
         VfsFileHandle::Terminal(handle) => {
             match handle.device() {
+                TerminalDevice::Tty => *buf = devfs::tty_posix_stat(),
                 TerminalDevice::Console => *buf = devfs::console_posix_stat(),
             }
         },
@@ -2455,7 +2479,7 @@ mod tests {
         assert_eq!(root[0].inode(), directory.st_ino);
         assert_eq!(
             dev.iter().map(|entry| entry.name()).collect::<Vec<_>>(),
-            ["null", "console"]
+            ["null", "tty", "console"]
         );
         assert!(dev.iter().all(|entry| entry.is_character_device()));
 
@@ -2613,9 +2637,9 @@ mod tests {
         forget_processes(&[pid]);
     }
 
-    /// Tests an opened console device independently of the standard descriptor slots.
+    /// Tests opened terminal devices independently of the standard descriptor slots.
     #[test]
-    fn console_device_open_modes() {
+    fn terminal_device_open_modes() {
         let _guard = FORK_TEST_GUARD.lock();
         if !crate::state::is_initialized() {
             crate::state::init().expect("initialize VFS");
@@ -2634,16 +2658,29 @@ mod tests {
         assert!(!vfs_isatty(STDERR_FILENO));
 
         assert_eq!(
+            vfs_open("/dev/tty", file_access_mode::O_EXEC),
+            Err(Fat32Error::PermissionDenied)
+        );
+        assert_eq!(
             vfs_open("/dev/console", file_access_mode::O_EXEC),
             Err(Fat32Error::PermissionDenied)
         );
-        let console_flags: c_int = file_access_mode::O_RDWR
+        let tty_read: c_int = vfs_open("/dev/tty", file_access_mode::O_RDONLY).expect("open tty");
+        let console_write_flags: c_int = file_access_mode::O_WRONLY
             | file_creation_flags::O_CREAT
             | file_creation_flags::O_TRUNC;
-        let console: c_int = vfs_open("/dev/console", console_flags).expect("open console");
-        assert!(vfs_isatty(console));
-        assert_eq!(vfs_resolve(console), Some((VfsRoute::Terminal, console)));
-        assert_eq!(vfs_terminal_access(console), Ok((true, true)));
+        let console_write: c_int =
+            vfs_open("/dev/console", console_write_flags).expect("open console");
+        let tty_readwrite: c_int =
+            vfs_open("/dev/tty", file_access_mode::O_RDWR).expect("open read-write tty");
+
+        for fd in [tty_read, console_write, tty_readwrite] {
+            assert!(vfs_isatty(fd));
+            assert_eq!(vfs_resolve(fd), Some((VfsRoute::Terminal, fd)));
+        }
+        assert_eq!(vfs_terminal_access(tty_read), Ok((true, false)));
+        assert_eq!(vfs_terminal_access(console_write), Ok((false, true)));
+        assert_eq!(vfs_terminal_access(tty_readwrite), Ok((true, true)));
 
         let resized: Winsize = Winsize {
             ws_row: 40,
@@ -2651,21 +2688,44 @@ mod tests {
             ws_xpixel: 0,
             ws_ypixel: 0,
         };
-        vfs_tty_set_winsize(console, resized).expect("set console winsize");
-        assert_eq!(vfs_tty_get_winsize(console), Ok(resized));
+        vfs_tty_set_winsize(tty_read, resized).expect("set tty winsize");
+        assert_eq!(vfs_tty_get_winsize(console_write), Ok(resized));
 
-        let mut path: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
-        let mut descriptor: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
-        vfs_stat("/dev/console", &mut path).expect("stat console");
-        vfs_fstat(console, &mut descriptor).expect("fstat console");
-        assert_eq!(descriptor.st_ino, path.st_ino);
+        let child: ProcessIdentifier = ProcessIdentifier::from(0x7408);
+        vfs_fork_clone(pid, child).expect("fork terminal descriptors");
+        set_current_process(child);
+        assert_eq!(vfs_terminal_access(tty_readwrite), Ok((true, true)));
+        assert_eq!(vfs_tty_get_winsize(console_write), Ok(resized));
+        vfs_detach_controlling_terminal(child);
+        let exclusive_tty: c_int =
+            file_access_mode::O_RDONLY | file_creation_flags::O_CREAT | file_creation_flags::O_EXCL;
+        assert_eq!(vfs_open("/dev/tty", exclusive_tty), Err(Fat32Error::AlreadyExists));
+        assert_eq!(vfs_open("/dev/tty", file_access_mode::O_RDONLY), Err(Fat32Error::NoDevice));
+        let detached_console: c_int =
+            vfs_open("/dev/console", file_access_mode::O_RDONLY).expect("open system console");
+        vfs_close(detached_console).expect("close system console");
+        set_current_process(pid);
+
+        let mut tty_path: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        let mut tty_fd: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        let mut console_path: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        let mut console_fd: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        vfs_stat("/dev/tty", &mut tty_path).expect("stat tty");
+        vfs_fstat(tty_read, &mut tty_fd).expect("fstat tty");
+        vfs_stat("/dev/console", &mut console_path).expect("stat console");
+        vfs_fstat(console_write, &mut console_fd).expect("fstat console");
+        assert_eq!(tty_fd.st_ino, tty_path.st_ino);
+        assert_eq!(console_fd.st_ino, console_path.st_ino);
+        assert_ne!(tty_fd.st_ino, console_fd.st_ino);
 
         let exclusive_flags: c_int =
             file_access_mode::O_WRONLY | file_creation_flags::O_CREAT | file_creation_flags::O_EXCL;
-        assert_eq!(vfs_open("/dev/console", exclusive_flags), Err(Fat32Error::AlreadyExists));
+        assert_eq!(vfs_open("/dev/tty", exclusive_flags), Err(Fat32Error::AlreadyExists));
 
-        vfs_close(console).expect("close console");
-        forget_processes(&[pid]);
+        for fd in [tty_read, console_write, tty_readwrite] {
+            vfs_close(fd).expect("close terminal");
+        }
+        forget_processes(&[pid, child]);
     }
 
     // -- DirectReadHandle tests --------------------------------------------------

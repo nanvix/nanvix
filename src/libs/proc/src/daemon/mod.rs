@@ -336,6 +336,20 @@ fn send_process_exit_notification(request: &Message) -> Result<(), Error> {
     }
 }
 
+/// Sends a controlling-terminal detachment notification to vfsd.
+fn send_terminal_detach_notification(request: &Message) -> Result<(), Error> {
+    #[cfg(not(test))]
+    {
+        ::sys::kcall::ipc::__kcall_send(request)
+    }
+
+    #[cfg(test)]
+    {
+        let _request: &Message = request;
+        Ok(())
+    }
+}
+
 pub struct ProcessDaemon {
     // FIXME: auto-signup process on process creation.
     processes: BTreeMap<ProcessIdentifier, ProcessRecord>,
@@ -364,6 +378,8 @@ pub struct ProcessDaemon {
     /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
     /// answered later, when a `ProcessTermination` event for a matching child arrives.
     blocked: Vec<BlockedWaiter>,
+    /// Session that owns the controlling terminal.
+    terminal_sid: Option<ProcessIdentifier>,
     /// Foreground process group of the controlling terminal (the console), set by `tcsetpgrp()` and
     /// reported by `tcgetpgrp()`. Terminal-generated signals (`^C`/`^Z`) are delivered to this group,
     /// and console access by a process outside it is a background access that raises `SIGTTIN` or
@@ -422,6 +438,7 @@ impl ProcessDaemon {
             pending_execs: Vec::new(),
             next_request_id: 1,
             blocked: Vec::new(),
+            terminal_sid: None,
             foreground_pgrp: None,
         })
     }
@@ -1354,6 +1371,8 @@ impl ProcessDaemon {
             ));
         }
 
+        let notification: Message = message::terminal_detach_request(caller)?;
+        send_terminal_detach_notification(&notification)?;
         record.sid = caller;
         record.pgid = caller;
         Ok(caller)
@@ -1485,6 +1504,16 @@ impl ProcessDaemon {
             ));
         }
 
+        if let Some(terminal_sid) = self.terminal_sid {
+            if terminal_sid != caller_sid {
+                return Err(Error::new(
+                    ErrorCode::NotTerminal,
+                    "caller does not own the controlling terminal",
+                ));
+            }
+        } else {
+            self.terminal_sid = Some(caller_sid);
+        }
         self.foreground_pgrp = Some(pgrp);
         Ok(pgrp)
     }
@@ -1530,6 +1559,9 @@ impl ProcessDaemon {
     /// access from the foreground group, or while no foreground group is established, is allowed
     /// silently.
     fn handle_terminal_access(&mut self, pid: ProcessIdentifier, write: bool) {
+        if !self.process_has_controlling_terminal(pid) {
+            return;
+        }
         let foreground: ProcessIdentifier = match self.foreground_pgrp {
             Some(pgrp) => pgrp,
             None => return,
@@ -1557,6 +1589,17 @@ impl ProcessDaemon {
             signum
         );
         self.post_group_signal(pgid, signum);
+    }
+
+    /// Returns whether a process belongs to the controlling terminal's session.
+    fn process_has_controlling_terminal(&self, pid: ProcessIdentifier) -> bool {
+        let Some(terminal_sid) = self.terminal_sid else {
+            return false;
+        };
+        self.processes
+            .get(&pid)
+            .map(|record| record.sid == terminal_sid)
+            .unwrap_or(false)
     }
 
     /// Resolves the subject of a terminal-access notification from `reporter`.
@@ -2583,6 +2626,7 @@ mod tests {
             pending_execs: Vec::new(),
             next_request_id: 1,
             blocked: Vec::new(),
+            terminal_sid: None,
             foreground_pgrp: None,
         })
     }
@@ -3321,6 +3365,30 @@ mod tests {
             .expect_err("target without identity should not be authorized");
 
         assert_eq!(error.code, ErrorCode::NoSuchProcess);
+    }
+
+    #[test]
+    fn terminal_session_detaches_on_setsid() {
+        let leader: ProcessIdentifier = ProcessIdentifier::from(10);
+        let foreground: ProcessIdentifier = ProcessIdentifier::from(11);
+        let detached: ProcessIdentifier = ProcessIdentifier::from(12);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (leader, Some(process_identity(1000))),
+            (foreground, Some(process_identity(1000))),
+            (detached, Some(process_identity(1000))),
+        ]);
+        for pid in [foreground, detached] {
+            let record: &mut ProcessRecord = daemon.processes.get_mut(&pid).expect("process");
+            record.sid = leader;
+            record.pgid = foreground;
+        }
+
+        daemon
+            .job_control_tcsetpgrp(leader, foreground)
+            .expect("establish controlling terminal session");
+        assert!(daemon.process_has_controlling_terminal(detached));
+        daemon.job_control_setsid(detached).expect("detach session");
+        assert!(!daemon.process_has_controlling_terminal(detached));
     }
 
     #[test]

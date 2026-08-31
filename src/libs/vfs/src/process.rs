@@ -89,6 +89,8 @@ pub(crate) struct ProcessState {
     pub(crate) cwd: String,
     /// Explicit file mode creation mask, or `None` for the default mask.
     pub(crate) file_creation_mask: Option<mode_t>,
+    /// Whether the process has the system console as its controlling terminal.
+    pub(crate) has_controlling_terminal: bool,
     /// Whether this state is active rather than a lazy placeholder.
     pub(crate) initialized: bool,
     /// Descriptor-table coherence generation.
@@ -102,6 +104,7 @@ impl ProcessState {
             slots: BTreeMap::new(),
             cwd: String::from(DEFAULT_CWD),
             file_creation_mask: None,
+            has_controlling_terminal: false,
             initialized: false,
             generation: 0,
         }
@@ -113,6 +116,7 @@ impl ProcessState {
             slots: self.slots.clone(),
             cwd: self.cwd.clone(),
             file_creation_mask: self.file_creation_mask,
+            has_controlling_terminal: self.has_controlling_terminal,
             initialized: true,
             generation: self.generation,
         }
