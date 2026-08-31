@@ -566,14 +566,8 @@ impl Vmem {
     fn allocate_user_page_table() -> Result<PageTable<PageTableStorage>, Error> {
         // SAFETY: the kernel is single-threaded and runs with interrupts disabled; no
         // concurrent or re-entrant access to the physical memory manager is possible.
-        proof_decl! {
-            let tracked raw_permissions:
-                Map<nat, PointsTo<PteWord>>;
-        }
-        proof_with! {
-            => Tracked(raw_permissions)
-        };
-        let mut kframe: KernelFrame = KernelFrame::allocate_page_table()?;
+        let mut kframe: KernelFrame =
+            unsafe { PhysMemoryManager::get_mut() }.alloc_kernel_frame()?;
         kframe.clear()?;
         let kpage: KernelPage = KernelPage::new(kframe);
         let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
