@@ -14,6 +14,8 @@ impl KernelFrame {
 pub(super) proof fn mint_kernel_frame_page_table_permissions(
     base: int,
 ) -> (tracked permissions: Map<nat, PointsTo<PteWord>>)
+    requires
+        false // can only be called from audited, trusted code
     ensures
         permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH,
         forall|i: nat| permissions.dom().contains(i)
