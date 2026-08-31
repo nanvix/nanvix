@@ -66,7 +66,7 @@ endif
 export MAKE_NO_PRINT ?= yes
 
 # Make command for recursive invocations (adds --no-print-directory if MAKE_NO_PRINT=yes)
-export MAKE_QUIET := $(MAKE) $(if $(filter yes,$(MAKE_NO_PRINT)),--no-print-directory)
+export MAKE_QUIET := "$(MAKE)" $(if $(filter yes,$(MAKE_NO_PRINT)),--no-print-directory)
 
 #===================================================================================================
 # Directories
