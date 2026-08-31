@@ -102,9 +102,21 @@ pub fn openat(dirfd: i32, pathname: &str, flags: c_int, mode: mode_t) -> Result<
                         // be aligned. Read it through a raw pointer to avoid forming an unaligned
                         // reference, which is undefined behavior on targets that fault on misaligned
                         // loads.
+                        let route: u32 =
+                            unsafe { ::core::ptr::addr_of!(response.route).read_unaligned() };
                         let epoch: u64 =
                             unsafe { ::core::ptr::addr_of!(response.epoch).read_unaligned() };
-                        crate::fdtable::record(fd, crate::fdtable::Route::Vfs, fd, epoch);
+                        let route: crate::fdtable::Route = match route {
+                            OpenAtResponse::ROUTE_VFS => crate::fdtable::Route::Vfs,
+                            OpenAtResponse::ROUTE_TERMINAL => crate::fdtable::Route::Terminal,
+                            _ => {
+                                return Err(Error::new(
+                                    ErrorCode::InvalidMessage,
+                                    "openat(): invalid descriptor route",
+                                ));
+                            },
+                        };
+                        crate::fdtable::record(fd, route, fd, epoch);
                     }
 
                     // Return file descriptor.

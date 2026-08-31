@@ -160,12 +160,25 @@ fn console_device() -> Arc<Mutex<LineDiscipline>> {
         .clone()
 }
 
+/// Access and line-discipline state of a terminal descriptor.
+struct TerminalState {
+    /// Standard stream identity, if this is a seeded console descriptor.
+    stream: Option<ConsoleStream>,
+    /// Shared console line discipline.
+    terminal: Arc<Mutex<LineDiscipline>>,
+    /// Whether reads are permitted.
+    readable: bool,
+    /// Whether writes are permitted.
+    writable: bool,
+}
+
 //==================================================================================================
 // Public Re-Exports
 //==================================================================================================
 
 pub use crate::{
     descriptor::{
+        AccessMode,
         ConsoleHandle,
         ConsoleStream,
         DirectReadHandle,
@@ -176,6 +189,8 @@ pub use crate::{
         PipeClosure,
         ProcessExitReclaim,
         SocketHandle,
+        TerminalDevice,
+        TerminalHandle,
         TtyError,
         VfsFileHandle,
         VfsRoute,
@@ -955,6 +970,7 @@ pub fn vfs_resolve(fd: c_int) -> Option<(VfsRoute, c_int)> {
             },
         ),
         VfsFileHandle::Socket(h) => (VfsRoute::Socket, h.remote_fd()),
+        VfsFileHandle::Terminal(_) => (VfsRoute::Terminal, fd),
         // Every other handle is served by vfsd, addressed by the raw descriptor.
         VfsFileHandle::Fat32(_)
         | VfsFileHandle::DirectRead(_)
@@ -980,6 +996,19 @@ pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
                 return Ok(events & (READ_EVENTS | WRITE_EVENTS))
             },
             VfsFileHandle::Null(handle) => return Ok(handle.poll(events)),
+            VfsFileHandle::Terminal(handle) => {
+                let mut ready: c_short = 0;
+                if handle.readable()
+                    && events & READ_EVENTS != 0
+                    && handle.terminal().lock().is_readable()
+                {
+                    ready |= events & READ_EVENTS;
+                }
+                if handle.writable() {
+                    ready |= events & WRITE_EVENTS;
+                }
+                return Ok(ready);
+            },
             VfsFileHandle::Directory(_) => return Ok(events & READ_EVENTS),
             VfsFileHandle::Pipe(end) => return Ok(end.poll(events)),
             VfsFileHandle::Socket(_) => return Err(Fat32Error::NotSupported),
@@ -1025,6 +1054,30 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
             flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
         return alloc_fd_with_status(handle, status_flags);
     }
+
+    if matches!(devfs::resolve(&cwd, path)?, Some(DevicePath::Console)) {
+        if flags & file_creation_flags::O_CREAT != 0 && flags & file_creation_flags::O_EXCL != 0 {
+            return Err(Fat32Error::AlreadyExists);
+        }
+        if flags & file_access_mode::O_EXEC != 0 {
+            return Err(Fat32Error::PermissionDenied);
+        }
+        let access_mode: AccessMode = match flags & file_access_mode::O_ACCMODE {
+            file_access_mode::O_RDONLY => AccessMode::ReadOnly,
+            file_access_mode::O_WRONLY => AccessMode::WriteOnly,
+            file_access_mode::O_RDWR => AccessMode::ReadWrite,
+            _ => return Err(Fat32Error::InvalidArgument),
+        };
+        let handle: VfsFileHandle = VfsFileHandle::Terminal(TerminalHandle::new(
+            TerminalDevice::Console,
+            access_mode,
+            console_device(),
+        ));
+        let status_flags: c_int =
+            flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
+        return alloc_fd_with_status(handle, status_flags);
+    }
+
     let handle: VfsFileHandle = open_adapter::open(&cwd, path, flags)?;
     let status_flags: c_int = flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
     alloc_fd_with_status(handle, status_flags)
@@ -1305,6 +1358,11 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
         },
         VfsFileHandle::Console(handle) => {
             populate_console_stat_fields(buf, handle.stream(), handle.created());
+        },
+        VfsFileHandle::Terminal(handle) => {
+            match handle.device() {
+                TerminalDevice::Console => *buf = devfs::console_posix_stat(),
+            }
         },
         VfsFileHandle::Socket(_) => {
             // TODO: Report socket metadata instead of treating the descriptor as a regular file.
@@ -1645,7 +1703,7 @@ pub fn vfs_ftruncate(fd: c_int, length: off_t) -> Result<(), Fat32Error> {
             }
         },
         VfsFileHandle::DirectRead(_) => Err(Fat32Error::ReadOnly),
-        VfsFileHandle::Null(_) => Err(Fat32Error::InvalidArgument),
+        VfsFileHandle::Null(_) | VfsFileHandle::Terminal(_) => Err(Fat32Error::InvalidArgument),
         VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
         | VfsFileHandle::Pipe(_)
@@ -1697,6 +1755,7 @@ pub fn vfs_fallocate(fd: c_int, offset: off_t, len: off_t) -> Result<(), Fat32Er
         | VfsFileHandle::Null(_)
         | VfsFileHandle::Pipe(_)
         | VfsFileHandle::Console(_)
+        | VfsFileHandle::Terminal(_)
         | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
     }
 }
@@ -1710,7 +1769,7 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     let entry: &mut VfsEntry = &mut guard;
     match &mut entry.handle {
         VfsFileHandle::Fat32(file) => file.flush(),
-        VfsFileHandle::Null(_) => Err(Fat32Error::InvalidArgument),
+        VfsFileHandle::Null(_) | VfsFileHandle::Terminal(_) => Err(Fat32Error::InvalidArgument),
         VfsFileHandle::DirectRead(_)
         | VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)
@@ -1722,21 +1781,26 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
 
 /// Checks if a descriptor refers to a terminal.
 ///
-/// A descriptor is a terminal if and only if its slot in the current process resolves to the
-/// console backend. This makes `isatty` authoritative against the flat slot table: a duplicate of a
-/// console descriptor answers `true`, while a regular file, pipe, or socket answers `false`. A
-/// descriptor with no slot answers `false` (the caller maps the absent slot to `EBADF`).
+/// A descriptor is a terminal when its slot contains a seeded console stream or an opened named
+/// terminal. This makes `isatty` authoritative against the flat slot table: duplicates remain
+/// terminals, while regular files, pipes, and sockets do not. A descriptor with no slot answers
+/// `false` (the caller maps the absent slot to `EBADF`).
 pub fn vfs_isatty(fd: c_int) -> bool {
-    matches!(vfs_resolve(fd), Some((VfsRoute::Console, _)))
+    let Ok(file) = entry_arc(fd) else {
+        return false;
+    };
+    let is_terminal: bool =
+        matches!(&file.lock().handle, VfsFileHandle::Console(_) | VfsFileHandle::Terminal(_));
+    is_terminal
 }
 
-/// Returns the shared terminal device state of `fd` when it is a console descriptor.
+/// Returns the shared terminal device state of a seeded console or opened named terminal.
 ///
 /// The shared [`Arc`] is cloned out from under the registry lock and the per-entry lock is released
 /// before it is returned, so the caller may lock the terminal without nesting registry or entry
-/// locks. A descriptor with no slot yields [`TtyError::BadFd`]; a non-console descriptor yields
+/// locks. A descriptor with no slot yields [`TtyError::BadFd`]; a non-terminal descriptor yields
 /// [`TtyError::NotTty`].
-fn console_handle(fd: c_int) -> Result<(ConsoleStream, Arc<Mutex<LineDiscipline>>), TtyError> {
+fn terminal_handle(fd: c_int) -> Result<TerminalState, TtyError> {
     let file: OpenFile = {
         let procs: spin::MutexGuard<'_, BTreeMap<ProcessIdentifier, ProcessState>> =
             PROCESSES.lock();
@@ -1751,18 +1815,37 @@ fn console_handle(fd: c_int) -> Result<(ConsoleStream, Arc<Mutex<LineDiscipline>
     };
     let guard = file.lock();
     match &guard.handle {
-        VfsFileHandle::Console(h) => Ok((h.stream(), h.terminal().clone())),
+        VfsFileHandle::Console(handle) => {
+            let stream: ConsoleStream = handle.stream();
+            Ok(TerminalState {
+                stream: Some(stream),
+                terminal: handle.terminal().clone(),
+                readable: stream == ConsoleStream::Stdin,
+                writable: matches!(stream, ConsoleStream::Stdout | ConsoleStream::Stderr),
+            })
+        },
+        VfsFileHandle::Terminal(handle) => Ok(TerminalState {
+            stream: None,
+            terminal: handle.terminal().clone(),
+            readable: handle.readable(),
+            writable: handle.writable(),
+        }),
         _ => Err(TtyError::NotTty),
     }
 }
 
 /// Returns the console stream represented by descriptor `fd`.
 pub fn vfs_console_stream(fd: c_int) -> Result<ConsoleStream, TtyError> {
-    console_handle(fd).map(|(stream, _)| stream)
+    terminal_handle(fd).and_then(|state| state.stream.ok_or(TtyError::NotTty))
+}
+
+/// Returns the read and write access permitted by a terminal descriptor.
+pub fn vfs_terminal_access(fd: c_int) -> Result<(bool, bool), TtyError> {
+    terminal_handle(fd).map(|state| (state.readable, state.writable))
 }
 
 fn console_terminal(fd: c_int) -> Result<Arc<Mutex<LineDiscipline>>, TtyError> {
-    console_handle(fd).map(|(_, terminal)| terminal)
+    terminal_handle(fd).map(|state| state.terminal)
 }
 
 /// Reads the terminal attributes of the console descriptor `fd` (`TCGETS`/`tcgetattr`).
@@ -2370,8 +2453,11 @@ mod tests {
         let dev: Vec<filesystem::DirEntry> = vfs_readdir("/dev").expect("read /dev");
         assert_eq!(root.iter().map(|entry| entry.name()).collect::<Vec<_>>(), ["dev"]);
         assert_eq!(root[0].inode(), directory.st_ino);
-        assert_eq!(dev.iter().map(|entry| entry.name()).collect::<Vec<_>>(), ["null"]);
-        assert!(dev[0].is_character_device());
+        assert_eq!(
+            dev.iter().map(|entry| entry.name()).collect::<Vec<_>>(),
+            ["null", "console"]
+        );
+        assert!(dev.iter().all(|entry| entry.is_character_device()));
 
         let fd: c_int = vfs_open("/dev", file_access_mode::O_RDONLY).expect("open /dev");
         let mut opened: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
@@ -2524,6 +2610,61 @@ mod tests {
             vfs_open("/dev/null/", file_access_mode::O_RDONLY),
             Err(Fat32Error::NotADirectory)
         );
+        forget_processes(&[pid]);
+    }
+
+    /// Tests an opened console device independently of the standard descriptor slots.
+    #[test]
+    fn console_device_open_modes() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = root_process_identifier();
+        vfs_seed_root_console(pid);
+        set_current_process(pid);
+
+        let redirected: c_int = vfs_alloc_hostfs(10, false, None).expect("open redirected file");
+        for fd in [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO] {
+            vfs_dup2(redirected, fd).expect("redirect standard descriptor");
+        }
+        vfs_close(redirected).expect("close redirected file");
+        assert!(!vfs_isatty(STDIN_FILENO));
+        assert!(!vfs_isatty(STDOUT_FILENO));
+        assert!(!vfs_isatty(STDERR_FILENO));
+
+        assert_eq!(
+            vfs_open("/dev/console", file_access_mode::O_EXEC),
+            Err(Fat32Error::PermissionDenied)
+        );
+        let console_flags: c_int = file_access_mode::O_RDWR
+            | file_creation_flags::O_CREAT
+            | file_creation_flags::O_TRUNC;
+        let console: c_int = vfs_open("/dev/console", console_flags).expect("open console");
+        assert!(vfs_isatty(console));
+        assert_eq!(vfs_resolve(console), Some((VfsRoute::Terminal, console)));
+        assert_eq!(vfs_terminal_access(console), Ok((true, true)));
+
+        let resized: Winsize = Winsize {
+            ws_row: 40,
+            ws_col: 100,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        vfs_tty_set_winsize(console, resized).expect("set console winsize");
+        assert_eq!(vfs_tty_get_winsize(console), Ok(resized));
+
+        let mut path: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        let mut descriptor: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        vfs_stat("/dev/console", &mut path).expect("stat console");
+        vfs_fstat(console, &mut descriptor).expect("fstat console");
+        assert_eq!(descriptor.st_ino, path.st_ino);
+
+        let exclusive_flags: c_int =
+            file_access_mode::O_WRONLY | file_creation_flags::O_CREAT | file_creation_flags::O_EXCL;
+        assert_eq!(vfs_open("/dev/console", exclusive_flags), Err(Fat32Error::AlreadyExists));
+
+        vfs_close(console).expect("close console");
         forget_processes(&[pid]);
     }
 

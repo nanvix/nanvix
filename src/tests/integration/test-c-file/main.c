@@ -133,6 +133,7 @@ int main(int argc, const char *argv[])
     test_fdatasync();       // requires open(), close(), read(), write(), and unlink().
     test_stat();
     test_device_namespace();
+    test_terminal_devices();
     test_ftruncate(); // requires open(), close(), fstat() and unlink().
     test_truncate();  // requires open(), close(), stat() and unlinkat().
 #ifndef __NANVIX_STANDALONE__

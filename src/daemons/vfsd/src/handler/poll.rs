@@ -41,10 +41,7 @@ use ::syscall::{
         PollResponse,
     },
 };
-use ::vfs::{
-    fd::ConsoleStream,
-    Fat32Error,
-};
+use ::vfs::Fat32Error;
 
 //==================================================================================================
 // Standalone Functions
@@ -111,7 +108,7 @@ fn console_probe(request: &PollRequest) -> Option<(i32, i16)> {
             if events & READ_EVENTS == 0 {
                 return None;
             }
-            if !matches!(::vfs::fd::vfs_console_stream(fd), Ok(ConsoleStream::Stdin)) {
+            if !matches!(::vfs::fd::vfs_terminal_access(fd), Ok((true, _))) {
                 return None;
             }
             match ::vfs::fd::vfs_poll(fd, events) {

@@ -140,9 +140,14 @@ pub(crate) fn handle_openat(
     match ::vfs::fd::vfs_open_resolved(path, flags) {
         Ok(fd) => {
             let epoch: u64 = ::vfs::fd::vfs_current_generation();
+            let route: u32 = match ::vfs::fd::vfs_resolve(fd) {
+                Some((::vfs::fd::VfsRoute::Terminal, _)) => OpenAtResponse::ROUTE_TERMINAL,
+                _ => OpenAtResponse::ROUTE_VFS,
+            };
             vec![OpenAtResponse::build(
                 source,
                 fd,
+                route,
                 epoch,
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,

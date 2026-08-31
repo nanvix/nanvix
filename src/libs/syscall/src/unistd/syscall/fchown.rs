@@ -56,7 +56,7 @@ pub fn fchown(fd: RawFileDescriptor, owner: uid_t, group: gid_t) -> Result<(), E
             Route,
         };
         match resolve_result(fd)? {
-            Some(res) if res.route == Route::Vfs => res.backend_fd,
+            Some(res) if matches!(res.route, Route::Vfs | Route::Terminal) => res.backend_fd,
             _ => {
                 ::syslog::warn!("fchown(): bad file descriptor fd={fd}");
                 return Err(Error::new(ErrorCode::BadFile, "fchown: fd is not a VFS fd"));

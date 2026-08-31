@@ -33,7 +33,7 @@ pub fn isatty(fd: RawFileDescriptor) -> Result<bool, Error> {
     ::syslog::trace!("isatty(): fd={}", fd);
 
     // vfsd's flat slot table is authoritative: a descriptor is a terminal if and
-    // only if it resolves to the console backend, so a duplicated or redirected console descriptor
+    // only if it resolves to a terminal route, so a duplicated or redirected terminal descriptor
     // answers correctly rather than being judged by its number. An unresolvable descriptor is
     // rejected with `EBADF`.
     use crate::fdtable::{
@@ -41,7 +41,9 @@ pub fn isatty(fd: RawFileDescriptor) -> Result<bool, Error> {
         Route,
     };
     match resolve_result(fd)? {
-        Some(resolution) if resolution.route == Route::Console => Ok(true),
+        Some(resolution) if matches!(resolution.route, Route::Console | Route::Terminal) => {
+            Ok(true)
+        },
         Some(_) => {
             ::syslog::trace!("isatty(): file descriptor is not a terminal (fd={})", fd);
             Ok(false)

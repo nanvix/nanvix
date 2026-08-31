@@ -52,7 +52,7 @@ pub fn fchmod(fd: RawFileDescriptor, mode: mode_t) -> Result<(), Error> {
             Route,
         };
         match resolve_result(fd)? {
-            Some(res) if res.route == Route::Vfs => res.backend_fd,
+            Some(res) if matches!(res.route, Route::Vfs | Route::Terminal) => res.backend_fd,
             _ => {
                 ::syslog::warn!("fchmod(): bad file descriptor fd={fd}");
                 return Err(Error::new(ErrorCode::BadFile, "fchmod: fd is not a VFS fd"));

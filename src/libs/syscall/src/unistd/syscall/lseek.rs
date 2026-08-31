@@ -47,7 +47,7 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
             // VFS-backed descriptors fall through to the vfsd seek path below.
             Some(res) if res.route == Route::Vfs => res.backend_fd,
             // Seeking the console (stdin/stdout/stderr) is an illegal seek.
-            Some(res) if res.route == Route::Console => {
+            Some(res) if matches!(res.route, Route::Console | Route::Terminal) => {
                 ::syslog::warn!(
                     "lseek(): illegal seek on stdio (fd={fd:?}, offset={offset}, whence={whence})",
                 );

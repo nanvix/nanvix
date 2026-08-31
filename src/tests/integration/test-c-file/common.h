@@ -128,6 +128,7 @@ extern void test_renameat_subdir(void);
 
 // Tests whether we can get file status information.
 extern void test_stat(void);
+extern void test_terminal_devices(void);
 
 // Tests whether we can create a symbolic link to a file.
 extern void test_symlinkat(void);

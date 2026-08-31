@@ -14,6 +14,7 @@ use super::{
     HostFsHandle,
     NullHandle,
     SocketHandle,
+    TerminalHandle,
 };
 use crate::{
     filesystem::File,
@@ -51,6 +52,8 @@ pub enum VfsFileHandle {
     Pipe(PipeEnd),
     /// Routing token for a console stream (stdin/stdout/stderr).
     Console(ConsoleHandle),
+    /// An opened named terminal device.
+    Terminal(TerminalHandle),
     /// Routing token for a socket, holding the descriptor assigned by `networkd`.
     Socket(SocketHandle),
 }
@@ -69,7 +72,9 @@ impl VfsFileHandle {
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::Null(handle) => handle.read(),
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
-            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::Console(_) | VfsFileHandle::Terminal(_) | VfsFileHandle::Socket(_) => {
+                Err(Fat32Error::NotSupported)
+            },
         }
     }
 
@@ -82,7 +87,9 @@ impl VfsFileHandle {
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::Null(handle) => handle.write(buf),
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
-            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::Console(_) | VfsFileHandle::Terminal(_) | VfsFileHandle::Socket(_) => {
+                Err(Fat32Error::NotSupported)
+            },
         }
     }
 
@@ -98,7 +105,9 @@ impl VfsFileHandle {
             VfsFileHandle::HostFs(_) => Err(Fat32Error::NotSupported),
             VfsFileHandle::Null(handle) => handle.seek(whence),
             VfsFileHandle::Pipe(_) => Err(Fat32Error::NotSupported),
-            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Err(Fat32Error::NotSupported),
+            VfsFileHandle::Console(_) | VfsFileHandle::Terminal(_) | VfsFileHandle::Socket(_) => {
+                Err(Fat32Error::NotSupported)
+            },
         }
     }
 
@@ -111,7 +120,9 @@ impl VfsFileHandle {
             VfsFileHandle::HostFs(_) => Ok(0),
             VfsFileHandle::Null(_) => Ok(0),
             VfsFileHandle::Pipe(_) => Ok(0),
-            VfsFileHandle::Console(_) | VfsFileHandle::Socket(_) => Ok(0),
+            VfsFileHandle::Console(_) | VfsFileHandle::Terminal(_) | VfsFileHandle::Socket(_) => {
+                Ok(0)
+            },
         }
     }
 

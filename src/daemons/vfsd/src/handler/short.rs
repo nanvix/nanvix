@@ -90,6 +90,7 @@ pub(crate) fn handle_resolve_fd(source: ThreadIdentifier, msg: SystemCallMessage
         Some((route, backend_fd)) => {
             let wire_route: u32 = match route {
                 VfsRoute::Console => ResolveFdResponse::ROUTE_CONSOLE,
+                VfsRoute::Terminal => ResolveFdResponse::ROUTE_TERMINAL,
                 VfsRoute::Vfs => ResolveFdResponse::ROUTE_VFS,
                 VfsRoute::Socket => ResolveFdResponse::ROUTE_SOCKET,
             };

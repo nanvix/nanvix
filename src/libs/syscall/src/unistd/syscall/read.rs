@@ -335,7 +335,7 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         },
         ConsoleLookup::Other => match resolve_result(fd)? {
             // VFS-backed descriptors go to vfsd.
-            Some(res) if res.route == Route::Vfs => read_ipc(
+            Some(res) if matches!(res.route, Route::Vfs | Route::Terminal) => read_ipc(
                 res.backend_fd,
                 buffer,
                 ReadBackend {

@@ -107,12 +107,13 @@ impl fmt::Debug for ResolveFdRequest {
 /// at (its coherence epoch).
 ///
 /// The route is carried as a small integer rather than an enum so the wire layout is fixed: `0` is
-/// the console (kernel), `1` is vfsd, and `2` is a `networkd` socket. A descriptor with no slot in
+/// the console (kernel), `1` is vfsd, `2` is a `networkd` socket, and `3` is a terminal served by
+/// vfsd. A descriptor with no slot in
 /// the process is reported by an error response (non-zero status), not by this message.
 ///
 #[repr(C, packed)]
 pub struct ResolveFdResponse {
-    /// The backend route: `0` = console, `1` = vfsd, `2` = socket.
+    /// The backend route: `0` = console, `1` = vfsd, `2` = socket, `3` = vfsd terminal.
     pub route: u32,
     /// The descriptor number the backend expects.
     pub backend_fd: i32,
@@ -129,6 +130,8 @@ impl ResolveFdResponse {
     pub const ROUTE_VFS: u32 = 1;
     /// Wire value for a `networkd` socket descriptor.
     pub const ROUTE_SOCKET: u32 = 2;
+    /// Wire value for a terminal descriptor served by vfsd.
+    pub const ROUTE_TERMINAL: u32 = 3;
 
     pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
         - mem::size_of::<u32>()
