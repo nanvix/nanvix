@@ -51,6 +51,7 @@ mod stat;
 mod stat_times;
 mod truncate;
 mod unlink;
+mod update_times;
 mod write;
 
 pub use self::{
@@ -96,6 +97,7 @@ pub use self::{
     },
     truncate::TruncateRequest,
     unlink::UnlinkRequest,
+    update_times::UpdateTimesRequest,
     write::{
         WriteRequest,
         WriteResponse,
@@ -282,6 +284,7 @@ pub const MAX_DIR_ENTRY_NAME_LEN: usize = Message::PAYLOAD_SIZE - HOSTFS_DATA_ST
 //==================================================================================================
 
 pub use self::error::{
+    HOSTFS_ERR_BAD_FD,
     HOSTFS_ERR_EXISTS,
     HOSTFS_ERR_INVALID,
     HOSTFS_ERR_IO,

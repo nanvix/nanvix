@@ -49,6 +49,7 @@ use std::{
     fs::{
         self,
         File,
+        FileTimes,
         OpenOptions,
     },
     io::{
@@ -59,6 +60,11 @@ use std::{
         Write,
     },
     path::PathBuf,
+    time::{
+        Duration,
+        SystemTime,
+        UNIX_EPOCH,
+    },
 };
 
 #[cfg(unix)]
@@ -66,11 +72,43 @@ use std::os::unix::fs::{
     MetadataExt,
     PermissionsExt,
 };
-#[cfg(not(unix))]
-use std::time::{
-    SystemTime,
-    UNIX_EPOCH,
-};
+fn timestamp_to_system_time(seconds: i64, nanoseconds: i64) -> io::Result<SystemTime> {
+    if !(0..1_000_000_000).contains(&nanoseconds) {
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
+    }
+
+    let time: Option<SystemTime> = if seconds >= 0 {
+        UNIX_EPOCH.checked_add(Duration::new(seconds as u64, nanoseconds as u32))
+    } else if nanoseconds == 0 {
+        UNIX_EPOCH.checked_sub(Duration::from_secs(seconds.unsigned_abs()))
+    } else {
+        UNIX_EPOCH.checked_sub(Duration::new(
+            seconds.unsigned_abs() - 1,
+            (1_000_000_000 - nanoseconds) as u32,
+        ))
+    };
+    time.ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))
+}
+
+fn file_times(times: &[::sysapi::time::timespec; 2]) -> io::Result<FileTimes> {
+    let now: SystemTime = SystemTime::now();
+    let resolve = |time: &::sysapi::time::timespec| -> io::Result<Option<SystemTime>> {
+        match time.tv_nsec {
+            n if n == ::sysapi::sys_stat::UTIME_NOW => Ok(Some(now)),
+            n if n == ::sysapi::sys_stat::UTIME_OMIT => Ok(None),
+            n => timestamp_to_system_time(time.tv_sec, n).map(Some),
+        }
+    };
+
+    let mut result: FileTimes = FileTimes::new();
+    if let Some(accessed) = resolve(&times[0])? {
+        result = result.set_accessed(accessed);
+    }
+    if let Some(modified) = resolve(&times[1])? {
+        result = result.set_modified(modified);
+    }
+    Ok(result)
+}
 
 fn open_regular_file(
     options: &OpenOptions,
@@ -210,7 +248,8 @@ impl HostFsHandler {
             | SystemCallMessageKind::HostFsReadlinkRequestPart
             | SystemCallMessageKind::HostFsLstatRequestPart
             | SystemCallMessageKind::HostFsPathStatRequestPart
-            | SystemCallMessageKind::HostFsChownAtRequestPart => self.handle_long_part(
+            | SystemCallMessageKind::HostFsChownAtRequestPart
+            | SystemCallMessageKind::HostFsUpdateTimesAtRequestPart => self.handle_long_part(
                 syscall_msg.kind(),
                 OperationId::from_le_bytes(syscall_msg.request_id().raw().to_le_bytes()),
                 &syscall_msg.payload,
@@ -236,6 +275,7 @@ impl HostFsHandler {
             SystemCallMessageKind::HostFsLseekRequest => run(self, Self::handle_lseek),
             SystemCallMessageKind::HostFsTruncateRequest => run(self, Self::handle_truncate),
             SystemCallMessageKind::HostFsFlushRequest => run(self, Self::handle_flush),
+            SystemCallMessageKind::HostFsUpdateTimesRequest => run(self, Self::handle_update_times),
             SystemCallMessageKind::HostFsReadlinkRequest => run(self, Self::handle_readlink),
             SystemCallMessageKind::HostFsLstatRequest => run(self, Self::handle_lstat),
             SystemCallMessageKind::HostFsPathStatRequest => run(self, Self::handle_pathstat),
@@ -434,6 +474,18 @@ impl HostFsHandler {
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
+            SystemCallMessageKind::HostFsUpdateTimesAtRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_update_times(&assembled) {
+                    self.handle_long_update_times(req, &mut response);
+                } else {
+                    log::error!("hostfsd: failed to deserialize long timestamp request");
+                    set_kind(
+                        &mut response,
+                        SystemCallMessageKind::HostFsUpdateTimesAtResponse as u16,
+                    );
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
             _ => {
                 log::error!("hostfsd: unexpected assembled header: {:?}", dispatch_header);
                 if let Some(resp_header) = dispatch_header.hostfs_response_kind() {
@@ -475,6 +527,13 @@ impl HostFsHandler {
 
         if rdonly || rdwr {
             opts.read(true);
+        }
+        #[cfg(windows)]
+        if rdonly {
+            use std::os::windows::fs::OpenOptionsExt;
+            const GENERIC_READ: u32 = 0x8000_0000;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
+            opts.access_mode(GENERIC_READ | FILE_WRITE_ATTRIBUTES);
         }
         if wronly || rdwr {
             opts.write(true);
@@ -810,6 +869,46 @@ impl HostFsHandler {
         };
 
         let status: i32 = result.as_ref().map_or_else(io_error_to_code, |_| 0);
+        set_payload_data(response, &status.to_le_bytes());
+    }
+
+    /// Handles a path-based timestamp update.
+    fn handle_long_update_times(
+        &mut self,
+        req: long_msg::LongUpdateTimesRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        set_kind(response, SystemCallMessageKind::HostFsUpdateTimesAtResponse as u16);
+
+        let no_follow: bool = req.flags & ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW != 0;
+        if req.flags & !::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW != 0 {
+            set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
+            return;
+        }
+        let host_path: PathBuf = match if no_follow {
+            self.sandbox.resolve_nofollow(&req.path)
+        } else {
+            self.sandbox.resolve(&req.path)
+        } {
+            Some(path) => path,
+            None => {
+                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                return;
+            },
+        };
+        let times: FileTimes = match file_times(&req.times) {
+            Ok(times) => times,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                return;
+            },
+        };
+        let result: io::Result<()> = if no_follow {
+            fs::set_times_nofollow(host_path, times)
+        } else {
+            fs::set_times(host_path, times)
+        };
+        let status: i32 = result.map(|()| 0).unwrap_or_else(|e| io_error_to_code(&e));
         set_payload_data(response, &status.to_le_bytes());
     }
 
@@ -1255,6 +1354,13 @@ impl HostFsHandler {
 
         if rdonly || rdwr {
             opts.read(true);
+        }
+        #[cfg(windows)]
+        if rdonly {
+            use std::os::windows::fs::OpenOptionsExt;
+            const GENERIC_READ: u32 = 0x8000_0000;
+            const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
+            opts.access_mode(GENERIC_READ | FILE_WRITE_ATTRIBUTES);
         }
         if wronly || rdwr {
             opts.write(true);
@@ -2020,6 +2126,41 @@ impl HostFsHandler {
         set_payload_data(response, &status.to_le_bytes());
     }
 
+    fn handle_update_times(
+        &mut self,
+        payload: &[u8; Message::PAYLOAD_SIZE],
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        set_kind(response, SystemCallMessageKind::HostFsUpdateTimesResponse as u16);
+        let request: UpdateTimesRequest = match UpdateTimesRequest::decode(payload) {
+            Some(request) => request,
+            None => {
+                set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                return;
+            },
+        };
+        let times: FileTimes = match file_times(&request.times) {
+            Ok(times) => times,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                return;
+            },
+        };
+        let entry: &FdEntry = match self.fd_table.get(request.fd) {
+            Some(entry) => entry,
+            None => {
+                set_payload_data(response, &HOSTFS_ERR_BAD_FD.to_le_bytes());
+                return;
+            },
+        };
+        let status: i32 = entry
+            .file
+            .set_times(times)
+            .map(|()| 0)
+            .unwrap_or_else(|error| io_error_to_code(&error));
+        set_payload_data(response, &status.to_le_bytes());
+    }
+
     fn handle_flush(
         &mut self,
         payload: &[u8; Message::PAYLOAD_SIZE],
@@ -2106,8 +2247,11 @@ fn open_dir_handle(path: &std::path::Path) -> io::Result<File> {
         // FILE_FLAG_BACKUP_SEMANTICS is required to obtain a handle on a
         // directory via CreateFileW.
         const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        const GENERIC_READ: u32 = 0x8000_0000;
+        const FILE_WRITE_ATTRIBUTES: u32 = 0x0000_0100;
         OpenOptions::new()
             .read(true)
+            .access_mode(GENERIC_READ | FILE_WRITE_ATTRIBUTES)
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
             .open(path)
     }

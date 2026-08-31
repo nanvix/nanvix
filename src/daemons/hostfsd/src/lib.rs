@@ -13,6 +13,8 @@
 //! (e.g., `../`) that escape the root are rejected. Symlinks pointing outside the root are also
 //! rejected.
 
+#![feature(fs_set_times)]
+
 mod fd_table;
 mod handler;
 mod sandbox;

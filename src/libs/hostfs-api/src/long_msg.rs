@@ -26,6 +26,7 @@
 //! - **Readlink**: `[op_id:4][path_len:2][path:N]`
 //! - **Lstat**: `[op_id:4][path_len:2][path:N]`
 //! - **ChownAt**: `[op_id:4][owner:4][group:4][flags:4][path_len:2][path:N]`
+//! - **Update times**: `[op_id:4][flags:4][times:32][path_len:2][path:N]`
 //!
 //! # Long Response Format
 //!
@@ -82,6 +83,9 @@ pub const LSTAT_HEADER_SIZE: usize = 6;
 
 /// Header size for long chownat: op_id(4) + owner(4) + group(4) + flags(4) + path_len(2) = 18.
 pub const CHOWNAT_HEADER_SIZE: usize = 18;
+
+/// Header size for long timestamp update: op_id(4) + flags(4) + times(32) + path_len(2) = 42.
+pub const UPDATE_TIMES_HEADER_SIZE: usize = 4 + 4 + 2 * ::sysapi::time::timespec::WIRE_SIZE + 2;
 
 /// Header size for the long Readlink *response* body:
 /// `op_id(4) + status(4) + target_len(2) = 10`.
@@ -610,6 +614,47 @@ pub fn deserialize_long_chownat(bytes: &[u8]) -> Option<LongChownAtRequest> {
     })
 }
 
+/// Result of deserializing a long path-based timestamp update request.
+#[cfg(feature = "std")]
+pub struct LongUpdateTimesRequest {
+    pub op_id: OperationId,
+    pub flags: i32,
+    pub times: [::sysapi::time::timespec; 2],
+    pub path: std::string::String,
+}
+
+/// Deserializes a long path-based timestamp update request.
+#[cfg(feature = "std")]
+pub fn deserialize_long_update_times(bytes: &[u8]) -> Option<LongUpdateTimesRequest> {
+    use ::sysapi::time::timespec;
+
+    if bytes.len() < UPDATE_TIMES_HEADER_SIZE {
+        return None;
+    }
+    let op_id = OperationId::new(u32::from_le_bytes(bytes[0..4].try_into().ok()?));
+    let flags = i32::from_le_bytes(bytes[4..8].try_into().ok()?);
+    let times_start: usize = 8;
+    let times = [
+        timespec::try_from_bytes(&bytes[times_start..times_start + timespec::WIRE_SIZE]).ok()?,
+        timespec::try_from_bytes(
+            &bytes[times_start + timespec::WIRE_SIZE..times_start + 2 * timespec::WIRE_SIZE],
+        )
+        .ok()?,
+    ];
+    let path_len_start: usize = times_start + 2 * timespec::WIRE_SIZE;
+    let path_len =
+        u16::from_le_bytes(bytes[path_len_start..path_len_start + 2].try_into().ok()?) as usize;
+    let path_start: usize = UPDATE_TIMES_HEADER_SIZE;
+    let path_end: usize = path_start.checked_add(path_len)?;
+    let path = std::string::String::from_utf8(bytes.get(path_start..path_end)?.to_vec()).ok()?;
+    Some(LongUpdateTimesRequest {
+        op_id,
+        flags,
+        times,
+        path,
+    })
+}
+
 //==================================================================================================
 // Serialization (vfsd, no_std + alloc)
 //==================================================================================================
@@ -756,6 +801,24 @@ pub fn serialize_long_chownat_request(
     buf.extend_from_slice(&owner.to_le_bytes());
     buf.extend_from_slice(&group.to_le_bytes());
     buf.extend_from_slice(&flags.to_le_bytes());
+    buf.extend_from_slice(&path_len.to_le_bytes());
+    buf.extend_from_slice(path);
+    Some(buf)
+}
+
+/// Serializes a long path-based timestamp update request.
+pub fn serialize_long_update_times_request(
+    op_id: OperationId,
+    flags: i32,
+    times: &[::sysapi::time::timespec; 2],
+    path: &[u8],
+) -> Option<Vec<u8>> {
+    let path_len: u16 = u16::try_from(path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(UPDATE_TIMES_HEADER_SIZE + path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&flags.to_le_bytes());
+    buf.extend_from_slice(&times[0].to_bytes());
+    buf.extend_from_slice(&times[1].to_bytes());
     buf.extend_from_slice(&path_len.to_le_bytes());
     buf.extend_from_slice(path);
     Some(buf)

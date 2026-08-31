@@ -99,6 +99,11 @@ void test_utimensat(void)
     assert(utimensat(AT_FDCWD, childpath, times, 1 << 30) == -1);
     assert(errno == EINVAL);
 
+    // Omitting both timestamps does not require resolving the path or directory descriptor.
+    times[0].tv_nsec = UTIME_OMIT;
+    times[1].tv_nsec = UTIME_OMIT;
+    assert(utimensat(123456, "missing.tmp", times, 0) == 0);
+
     assert(close(dirfd) == 0);
     assert(unlink(childpath) == 0);
     assert(rmdir(dirname) == 0);
