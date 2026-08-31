@@ -37,6 +37,7 @@ use crate::{
             kpage::KernelPage,
             PageDirectoryStorage,
             PageTableStorage,
+            VirtMemoryManager,
         },
     },
 };
@@ -543,20 +544,12 @@ impl Vmem {
     /// Upon success, `Ok(page_table)` is returned. Upon failure, an error is returned.
     ///
     fn allocate_kernel_page_table() -> Result<PageTable<PageTableStorage>, Error> {
-        proof_decl! {
-            let tracked raw_permissions:
-                Map<nat, PointsTo<PteWord>>;
-        }
-        proof_with! {
-            => Tracked(raw_permissions)
+        let kpage: KernelPage = {
+            // SAFETY: the memory manager is initialized and access is synchronized.
+            let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+            mm.alloc_kpage(true)?
         };
-        let mut kframe: KernelFrame = KernelFrame::allocate_page_table()?;
-        kframe.clear()?;
-        let kpage: KernelPage = KernelPage::new(kframe);
         let pgtable_storage: PageTableStorage = PageTableStorage::KernelPage(kpage);
-        proof_with! {
-            Tracked(raw_permissions)
-        };
         let page_table: PageTable<PageTableStorage> = PageTable::new(pgtable_storage);
         Ok(page_table)
     }
