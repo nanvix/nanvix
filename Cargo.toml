@@ -329,7 +329,7 @@ uuid = { version = "1.23.1", default-features = false }
 user-vm-api = { path = "src/libs/user-vm-api", default-features = false }
 vfs = { path = "src/libs/vfs", default-features = false }
 vfs-bench-common = { path = "src/libs/vfs-bench-common", default-features = false }
-vstd = { version = "=0.0.0-2026-08-23-0033", default-features = false, features = [
+vstd = { version = "=0.0.0-2026-08-30-0159", default-features = false, features = [
         "alloc",
 ] }
 vmm-sys-util = { version = "0.15.0", default-features = false }
