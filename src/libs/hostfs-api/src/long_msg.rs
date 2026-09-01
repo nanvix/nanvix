@@ -59,6 +59,17 @@ use crate::OperationId;
 /// Maximum length of a single path in the long-message wire format (u16::MAX).
 pub const MAX_PATH_LEN: usize = u16::MAX as usize;
 
+/// Maximum size of an assembled multi-part hostfs message.
+///
+/// This one-page limit accommodates two [`sysapi::limits::PATH_MAX`]-byte paths plus request
+/// metadata while bounding the memory reserved for malformed requests.
+pub const MAX_LONG_MESSAGE_SIZE: usize = 4 * 1024;
+
+/// Checks whether an assembled multi-part hostfs message has a valid size.
+pub const fn is_valid_long_message_size(size: usize) -> bool {
+    size > 0 && size <= MAX_LONG_MESSAGE_SIZE
+}
+
 /// Header size for long open: op_id(4) + flags(4) + mode(4) + path_len(2) = 14.
 pub const OPEN_HEADER_SIZE: usize = 14;
 
@@ -924,6 +935,13 @@ pub fn serialize_long_update_times_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_message_size_boundary() {
+        assert!(is_valid_long_message_size(MAX_LONG_MESSAGE_SIZE));
+        assert!(!is_valid_long_message_size(MAX_LONG_MESSAGE_SIZE + 1));
+        assert!(!is_valid_long_message_size(0));
+    }
 
     #[test]
     #[cfg(feature = "std")]

@@ -143,6 +143,10 @@ fn send_long_request(
     header: SystemCallMessageKind,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
+    if !long_msg::is_valid_long_message_size(data.len()) {
+        return Err(::sys::error::ErrorCode::InvalidArgument);
+    }
+
     let num_parts: u16 = data
         .len()
         .div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
