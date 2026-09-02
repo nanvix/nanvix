@@ -397,7 +397,8 @@ fn dispatch_assembled_request(
         },
         SystemCallMessageKind::FileChmodAtRequestPart => {
             match FileChmodAtRequest::from_parts(parts) {
-                Ok(req) => handler::handle_fchmodat(source, req),
+                Ok(req) => handler::handle_fchmodat_with_hostfs(response_context, req, pending)
+                    .unwrap_or_default(),
                 Err(e) => {
                     ::syslog::error!("dispatch: fchmodat from_parts failed (error={:?})", e);
                     vec![build_error(source, ErrorCode::InvalidMessage)]

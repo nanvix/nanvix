@@ -162,6 +162,10 @@ int main(int argc, const char *argv[])
         test_chown();
         test_fchown();
         test_lchown();
+        test_chmod();    // requires open(), close(), stat() and unlinkat().
+        test_fchmodat(); // requires open(), close(), stat() and unlinkat().
+        test_fchmod();   // requires open(), close(), fstat() and unlink().
+        test_lchmod();   // requires open(), close(), stat(), link() and unlinkat().
         assert(fchdir(cwd) == 0);
         assert(close(cwd) == 0);
     }

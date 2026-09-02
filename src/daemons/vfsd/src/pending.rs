@@ -94,6 +94,10 @@ pub(crate) enum PendingOpKind {
     UpdateTimes,
     /// utimensat — response is a status code.
     UpdateTimesAt,
+    /// chmod — response is a status code.
+    Chmod,
+    /// fchmod — response is a status code.
+    Fchmod,
     /// mkdir — response is a status code.
     Mkdir,
     /// rmdir — response is a status code.
@@ -553,6 +557,10 @@ pub(crate) fn complete_pending_op(
         PendingOpKind::UpdateTimesAt => {
             complete_status(response_context, response_payload, OpGroup::UpdateTimesAt)
         },
+        PendingOpKind::Chmod => complete_status(response_context, response_payload, OpGroup::Chmod),
+        PendingOpKind::Fchmod => {
+            complete_status(response_context, response_payload, OpGroup::Fchmod)
+        },
         PendingOpKind::Mkdir => complete_status(response_context, response_payload, OpGroup::Mkdir),
         PendingOpKind::Rmdir => complete_status(response_context, response_payload, OpGroup::Rmdir),
         PendingOpKind::Unlink => {
@@ -997,6 +1005,8 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::Truncate, SystemCallMessageKind::HostFsTruncateResponse)
             | (PendingOpKind::UpdateTimes, SystemCallMessageKind::HostFsUpdateTimesResponse)
             | (PendingOpKind::UpdateTimesAt, SystemCallMessageKind::HostFsUpdateTimesAtResponse,)
+            | (PendingOpKind::Chmod, SystemCallMessageKind::HostFsChmodResponse)
+            | (PendingOpKind::Fchmod, SystemCallMessageKind::HostFsFchmodResponse)
             | (PendingOpKind::Mkdir, SystemCallMessageKind::HostFsMkdirResponse)
             | (PendingOpKind::Rmdir, SystemCallMessageKind::HostFsRmdirResponse)
             | (PendingOpKind::Unlink, SystemCallMessageKind::HostFsUnlinkResponse)
@@ -1153,6 +1163,8 @@ enum OpGroup {
     Truncate,
     UpdateTimes,
     UpdateTimesAt,
+    Chmod,
+    Fchmod,
     Mkdir,
     Rmdir,
     Unlink,
@@ -1201,6 +1213,14 @@ fn complete_status(
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
             )
+        },
+        OpGroup::Chmod => {
+            use ::syscall::sys::stat::message::FileChmodAtResponse;
+            FileChmodAtResponse::build(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+        OpGroup::Fchmod => {
+            use ::syscall::sys::stat::message::FileChmodResponse;
+            FileChmodResponse::build(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc)
         },
         OpGroup::Mkdir => {
             use ::syscall::sys::stat::message::MakeDirectoryAtResponse;
@@ -1660,6 +1680,11 @@ mod tests {
         }
         .encode(&mut payload);
         payload
+    }
+
+    #[test]
+    fn bad_fd_protocol_error_maps_to_bad_file() {
+        assert_eq!(hostfs_error_to_code(::hostfs_api::HOSTFS_ERR_BAD_FD), ErrorCode::BadFile);
     }
 
     #[test]
