@@ -7,25 +7,67 @@
 // Imports
 //==================================================================================================
 
-use crate::mount::{
-    anchor_path,
-    normalize_anchored,
+use crate::{
+    filesystem::{
+        DirEntry,
+        Stat,
+    },
+    mount::{
+        anchor_path,
+        normalize_anchored,
+    },
 };
 use ::alloc::{
     string::String,
     vec::Vec,
 };
-use ::fat32::Fat32Error;
+use ::fat32::{
+    Fat32Error,
+    FAT_EPOCH_SECS,
+};
+use ::sys::pm::{
+    GroupIdentifier,
+    UserIdentifier,
+};
+use ::sysapi::{
+    sys_stat::{
+        file_mode,
+        file_type,
+        stat as PosixStat,
+    },
+    sys_types::{
+        gid_t,
+        uid_t,
+    },
+    time::timespec,
+};
 
 //==================================================================================================
 // Constants
 //==================================================================================================
 
-/// Synthetic device identifier for the device namespace.
+/// Synthetic device identifier for devfs.
+///
+/// IDs 1 through 3 identify the VFS file namespace, pipefs, and console.
 const DEVICE_NAMESPACE_ID: u64 = 4;
 
+/// Name of the devfs root directory.
+const DIRECTORY_NAME: &str = "dev";
+/// Absolute path of the devfs root directory.
+const DIRECTORY_PATH: &str = "/dev";
+/// Absolute prefix for devfs entries.
+const DIRECTORY_PREFIX: &str = "/dev/";
+
 /// Stable inode identifier for `/dev`.
-pub(crate) const DIRECTORY_INODE: u64 = 1;
+///
+/// Inode zero is reserved, so `/dev` uses the first available identifier.
+const DIRECTORY_INODE: u64 = 1;
+
+/// Preferred I/O block size reported for devfs entries.
+const STAT_BLOCK_SIZE: i64 = ::arch::mem::PAGE_SIZE as i64;
+
+/// Stable timestamp used until VFS defines backend-neutral synthetic timestamps.
+const STAT_TIMESTAMP_SECS: i64 = FAT_EPOCH_SECS;
 
 //==================================================================================================
 // Structures
@@ -33,7 +75,7 @@ pub(crate) const DIRECTORY_INODE: u64 = 1;
 
 /// Metadata for a synthetic device-namespace entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct DeviceMetadata {
+struct DeviceMetadata {
     /// Synthetic device identifier.
     device: u64,
     /// Stable inode identifier.
@@ -59,26 +101,9 @@ pub(crate) enum DevicePath {
 // Implementations
 //==================================================================================================
 
-impl DeviceMetadata {
-    /// Returns the synthetic device identifier.
-    pub(crate) fn device(&self) -> u64 {
-        self.device
-    }
-
-    /// Returns the stable inode identifier.
-    pub(crate) fn inode(&self) -> u64 {
-        self.inode
-    }
-
-    /// Returns whether this entry is a directory.
-    pub(crate) fn is_directory(&self) -> bool {
-        self.is_directory
-    }
-}
-
 impl DevicePath {
     /// Returns metadata for an existing namespace entry.
-    pub(crate) fn metadata(self) -> Option<DeviceMetadata> {
+    fn metadata(self) -> Option<DeviceMetadata> {
         match self {
             DevicePath::Directory => Some(DeviceMetadata {
                 device: DEVICE_NAMESPACE_ID,
@@ -95,7 +120,7 @@ impl DevicePath {
 //==================================================================================================
 
 /// Resolves a path in the synthetic device namespace.
-pub(crate) fn resolve(path: &str, cwd: &str) -> Result<Option<DevicePath>, Fat32Error> {
+pub(crate) fn resolve(cwd: &str, path: &str) -> Result<Option<DevicePath>, Fat32Error> {
     let anchored: String = anchor_path(path, cwd)?;
     validate_components(&anchored)?;
     let normalized: String = normalize_anchored(&anchored);
@@ -103,7 +128,7 @@ pub(crate) fn resolve(path: &str, cwd: &str) -> Result<Option<DevicePath>, Fat32
 }
 
 /// Returns whether routing for a path belongs to the synthetic device namespace.
-pub(crate) fn owns(path: &str, cwd: &str) -> Result<bool, Fat32Error> {
+pub(crate) fn owns(cwd: &str, path: &str) -> Result<bool, Fat32Error> {
     let anchored: String = anchor_path(path, cwd)?;
     if validate_components(&anchored).is_err() {
         return Ok(true);
@@ -113,7 +138,7 @@ pub(crate) fn owns(path: &str, cwd: &str) -> Result<bool, Fat32Error> {
 }
 
 /// Resolves metadata for an existing device-namespace path.
-pub(crate) fn metadata(path: &str, cwd: &str) -> Result<Option<DeviceMetadata>, Fat32Error> {
+fn metadata(cwd: &str, path: &str) -> Result<Option<DeviceMetadata>, Fat32Error> {
     let anchored: String = anchor_path(path, cwd)?;
     validate_components(&anchored)?;
     let normalized: String = normalize_anchored(&anchored);
@@ -123,11 +148,65 @@ pub(crate) fn metadata(path: &str, cwd: &str) -> Result<Option<DeviceMetadata>, 
     Ok(Some(device_path.metadata().ok_or(Fat32Error::NotFound)?))
 }
 
+/// Synthesizes backend-neutral metadata for an existing devfs path.
+pub(crate) fn stat(cwd: &str, path: &str) -> Result<Option<Stat>, Fat32Error> {
+    let Some(metadata) = metadata(cwd, path)? else {
+        return Ok(None);
+    };
+    Ok(Some(Stat::new(
+        0,
+        metadata.is_directory,
+        STAT_TIMESTAMP_SECS,
+        STAT_TIMESTAMP_SECS,
+        STAT_TIMESTAMP_SECS,
+    )))
+}
+
+/// Synthesizes POSIX metadata for an existing devfs path.
+pub(crate) fn posix_stat(cwd: &str, path: &str) -> Result<Option<PosixStat>, Fat32Error> {
+    let Some(metadata) = metadata(cwd, path)? else {
+        return Ok(None);
+    };
+    let timestamp: timespec = timespec {
+        tv_sec: STAT_TIMESTAMP_SECS,
+        tv_nsec: 0,
+    };
+    Ok(Some(PosixStat {
+        st_dev: metadata.device,
+        st_ino: metadata.inode,
+        st_mode: file_type::S_IFDIR | file_mode::S_IRWXU,
+        st_nlink: if metadata.is_directory { 2 } else { 1 },
+        st_uid: UserIdentifier::ROOT.as_usize() as uid_t,
+        st_gid: GroupIdentifier::ROOT.as_usize() as gid_t,
+        st_rdev: 0,
+        st_size: 0,
+        st_blksize: STAT_BLOCK_SIZE,
+        st_blocks: 0,
+        st_atim: timestamp,
+        st_mtim: timestamp,
+        st_ctim: timestamp,
+    }))
+}
+
+/// Returns the `/dev` entry injected into the VFS root directory.
+pub(crate) fn directory_entry() -> DirEntry {
+    DirEntry::new(String::from(DIRECTORY_NAME), DIRECTORY_INODE, true, 0)
+}
+
+/// Reads a directory owned by devfs.
+pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Option<Vec<DirEntry>>, Fat32Error> {
+    match resolve(cwd, path)? {
+        Some(DevicePath::Directory) => Ok(Some(Vec::new())),
+        Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
+        None => Ok(None),
+    }
+}
+
 /// Rejects traversal through an unknown namespace entry.
 fn validate_components(path: &str) -> Result<(), Fat32Error> {
     let mut components: Vec<&str> = Vec::new();
     for component in path.split('/').filter(|component| !component.is_empty()) {
-        if components.len() >= 2 && components[0] == "dev" {
+        if components.len() >= 2 && components[0] == DIRECTORY_NAME {
             return Err(Fat32Error::NotFound);
         }
         match component {
@@ -144,8 +223,8 @@ fn validate_components(path: &str) -> Result<(), Fat32Error> {
 /// Classifies a normalized, absolute path.
 fn resolve_normalized(path: &str) -> Option<DevicePath> {
     match path {
-        "/dev" => Some(DevicePath::Directory),
-        path if path.starts_with("/dev/") => Some(DevicePath::Missing),
+        DIRECTORY_PATH => Some(DevicePath::Directory),
+        path if path.starts_with(DIRECTORY_PREFIX) => Some(DevicePath::Missing),
         _ => None,
     }
 }
@@ -160,28 +239,49 @@ mod tests {
 
     #[test]
     fn resolves_namespace_paths() {
-        assert_eq!(resolve("/dev", "/"), Ok(Some(DevicePath::Directory)));
-        assert_eq!(resolve("/dev/unknown", "/"), Ok(Some(DevicePath::Missing)));
-        assert_eq!(resolve("/dev/unknown/child", "/"), Err(Fat32Error::NotFound));
+        assert_eq!(resolve("/", "/dev"), Ok(Some(DevicePath::Directory)));
+        assert_eq!(resolve("/", "/dev/unknown"), Ok(Some(DevicePath::Missing)));
+        assert_eq!(resolve("/", "/dev/unknown/child"), Err(Fat32Error::NotFound));
+    }
+
+    #[test]
+    fn synthesizes_stat() {
+        let stat: Stat = stat("/", "/dev").expect("valid path").expect("existing path");
+        assert_eq!(
+            stat,
+            Stat::new(
+                0,
+                true,
+                STAT_TIMESTAMP_SECS,
+                STAT_TIMESTAMP_SECS,
+                STAT_TIMESTAMP_SECS,
+            )
+        );
+
+        let stat: PosixStat =
+            posix_stat("/", "/dev").expect("valid path").expect("existing path");
+        assert_eq!(stat.st_dev, DEVICE_NAMESPACE_ID);
+        assert_eq!(stat.st_ino, DIRECTORY_INODE);
+        assert_eq!(stat.st_blksize, ::arch::mem::PAGE_SIZE as i64);
     }
 
     #[test]
     fn routing_ownership_is_distinct_from_validity() {
-        assert!(owns("/dev/unknown/child", "/").expect("valid path"));
-        assert!(!owns("/dev/../tmp", "/").expect("valid path"));
+        assert!(owns("/", "/dev/unknown/child").expect("valid path"));
+        assert!(!owns("/", "/dev/../tmp").expect("valid path"));
     }
 
     #[test]
     fn normalizes_paths_before_resolving() {
-        assert_eq!(resolve("/dev/", "/"), Ok(Some(DevicePath::Directory)));
-        assert_eq!(resolve("dev", "/"), Ok(Some(DevicePath::Directory)));
-        assert_eq!(resolve("/dev/../tmp", "/"), Ok(None));
+        assert_eq!(resolve("/", "/dev/"), Ok(Some(DevicePath::Directory)));
+        assert_eq!(resolve("/", "dev"), Ok(Some(DevicePath::Directory)));
+        assert_eq!(resolve("/", "/dev/../tmp"), Ok(None));
     }
 
     #[test]
     fn ignores_similar_prefixes() {
         assert_eq!(resolve("/", "/"), Ok(None));
-        assert_eq!(resolve("/device", "/"), Ok(None));
-        assert_eq!(resolve("/devil/null", "/"), Ok(None));
+        assert_eq!(resolve("/", "/device"), Ok(None));
+        assert_eq!(resolve("/", "/devil/null"), Ok(None));
     }
 }

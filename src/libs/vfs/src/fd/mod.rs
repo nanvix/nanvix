@@ -30,7 +30,6 @@ use self::open as open_adapter;
 use crate::{
     devfs::{
         self,
-        DeviceMetadata,
         DevicePath,
     },
     filesystem,
@@ -920,7 +919,7 @@ pub fn vfs_current_generation() -> u64 {
 /// Returns `true` if the given path is handled by the VFS.
 pub fn is_vfs_path(path: &str) -> bool {
     let cwd: String = current_cwd();
-    matches!(devfs::owns(path, &cwd), Ok(true)) || open_adapter::exists(&cwd, path)
+    matches!(devfs::owns(&cwd, path), Ok(true)) || open_adapter::exists(&cwd, path)
 }
 
 /// Resolves a flat descriptor to its backend route and the descriptor that backend expects.
@@ -997,7 +996,7 @@ pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
 /// Opens a file through the VFS and allocates a system-wide FD.
 pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
     let cwd: String = current_cwd();
-    if matches!(devfs::resolve(path, &cwd)?, Some(DevicePath::Directory)) {
+    if matches!(devfs::resolve(&cwd, path)?, Some(DevicePath::Directory)) {
         if flags & file_creation_flags::O_CREAT != 0 && flags & file_creation_flags::O_EXCL != 0 {
             return Err(Fat32Error::AlreadyExists);
         }
@@ -1237,29 +1236,6 @@ fn populate_console_stat_fields(
     };
 }
 
-/// Populates stat fields for a synthetic device-namespace entry.
-fn populate_device_stat_fields(buf: &mut ::sysapi::sys_stat::stat, metadata: DeviceMetadata) {
-    buf.st_size = 0;
-    buf.st_nlink = if metadata.is_directory() { 2 } else { 1 };
-    buf.st_dev = metadata.device();
-    buf.st_ino = metadata.inode();
-    buf.st_mode = file_type::S_IFDIR | file_mode::S_IRWXU;
-    buf.st_blksize = STAT_BLOCK_SIZE;
-    buf.st_blocks = 0;
-    buf.st_atim = timespec {
-        tv_sec: FAT_EPOCH_SECS,
-        tv_nsec: 0,
-    };
-    buf.st_mtim = timespec {
-        tv_sec: FAT_EPOCH_SECS,
-        tv_nsec: 0,
-    };
-    buf.st_ctim = timespec {
-        tv_sec: FAT_EPOCH_SECS,
-        tv_nsec: 0,
-    };
-}
-
 /// Gets file status for a VFS file descriptor.
 pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
     let file: OpenFile = entry_arc(fd)?;
@@ -1273,8 +1249,8 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
 
     match &mut entry.handle {
         VfsFileHandle::Directory(directory) => {
-            if let Some(metadata) = devfs::metadata(directory.path(), "/")? {
-                populate_device_stat_fields(buf, metadata);
+            if let Some(stat) = devfs::posix_stat("/", directory.path())? {
+                *buf = stat;
             } else {
                 let info: filesystem::Stat =
                     filesystem::Stat::new(0, true, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS);
@@ -1457,17 +1433,17 @@ pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
 pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
     let cwd: String = current_cwd();
 
+    if let Some(stat) = devfs::posix_stat(&cwd, path)? {
+        *buf = stat;
+        return Ok(());
+    }
+
     // Zero-initialize the stat buffer.
     unsafe {
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
-
-    if let Some(metadata) = devfs::metadata(path, &cwd)? {
-        populate_device_stat_fields(buf, metadata);
-    } else {
-        let info: filesystem::Stat = filesystem::stat(&cwd, path)?;
-        buf.update_from_vfs(&info);
-    }
+    let info: filesystem::Stat = filesystem::stat(&cwd, path)?;
+    buf.update_from_vfs(&info);
     set_root_ownership(buf);
 
     Ok(())

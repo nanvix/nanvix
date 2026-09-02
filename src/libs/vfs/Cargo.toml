@@ -14,6 +14,7 @@ homepage.workspace = true
 crate-type = ["lib"]
 
 [dependencies]
+arch = { workspace = true }
 config = { workspace = true }
 error = { workspace = true }
 fat32 = { workspace = true }

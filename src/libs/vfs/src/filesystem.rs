@@ -82,7 +82,7 @@ pub(crate) fn open(cwd: &str, path: &str) -> Result<File, Fat32Error> {
 ///
 /// - `path`: The path to the file.
 pub(crate) fn file_raw_region(cwd: &str, path: &str) -> Option<(*const u8, usize)> {
-    if devfs::owns(path, cwd).ok()? {
+    if devfs::owns(cwd, path).ok()? {
         return None;
     }
     let (mount_idx, relative_path): (usize, String) = resolve_path(cwd, path).ok()?;
@@ -112,14 +112,8 @@ pub(crate) fn file_raw_region(cwd: &str, path: &str) -> Option<(*const u8, usize
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
 pub(crate) fn stat(cwd: &str, path: &str) -> Result<Stat, Fat32Error> {
     let requires_dir: bool = path.ends_with('/');
-    if let Some(metadata) = devfs::metadata(path, cwd)? {
-        return Ok(Stat::new(
-            0,
-            metadata.is_directory(),
-            FAT_EPOCH_SECS,
-            FAT_EPOCH_SECS,
-            FAT_EPOCH_SECS,
-        ));
+    if let Some(stat) = devfs::stat(cwd, path)? {
+        return Ok(stat);
     }
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
@@ -205,14 +199,10 @@ pub(crate) fn set_times(
 ///
 /// - [POSIX mkdir()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/mkdir.html)
 pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
-    match devfs::metadata(path, cwd) {
-        Ok(Some(_)) => return Err(Fat32Error::AlreadyExists),
-        Ok(None) => {},
-        Err(Fat32Error::NotFound) => match devfs::resolve(path, cwd)? {
-            Some(DevicePath::Missing) => return Err(Fat32Error::PermissionDenied),
-            Some(DevicePath::Directory) | None => return Err(Fat32Error::NotFound),
-        },
-        Err(error) => return Err(error),
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Directory) => return Err(Fat32Error::AlreadyExists),
+        Some(DevicePath::Missing) => return Err(Fat32Error::PermissionDenied),
+        None => {},
     }
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
@@ -313,11 +303,8 @@ pub(crate) fn unlink(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
 /// - [`Fat32Error::NotADirectory`] if the path is a file.
 pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
-    if let Some(metadata) = devfs::metadata(path, cwd)? {
-        if !metadata.is_directory() {
-            return Err(Fat32Error::NotADirectory);
-        }
-        return Ok(Vec::new());
+    if let Some(entries) = devfs::read_dir(cwd, path)? {
+        return Ok(entries);
     }
 
     let normalized: String = normalize(cwd, path)?;
@@ -343,13 +330,9 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Erro
         Err(error) => return Err(error),
     };
     if normalized == "/" {
-        entries.retain(|entry| entry.name() != "dev");
-        entries.push(DirEntry::new(
-            String::from("dev"),
-            devfs::DIRECTORY_INODE,
-            true,
-            0,
-        ));
+        let devfs_entry: DirEntry = devfs::directory_entry();
+        entries.retain(|entry| entry.name() != devfs_entry.name());
+        entries.push(devfs_entry);
     }
     Ok(entries)
 }
@@ -491,21 +474,18 @@ pub(crate) fn normalize(cwd: &str, path: &str) -> Result<String, Fat32Error> {
 
 /// Rejects mutation of an existing synthetic device-namespace entry.
 fn reject_device_mutation(cwd: &str, path: &str) -> Result<(), Fat32Error> {
-    if devfs::metadata(path, cwd)?.is_some() {
-        return Err(Fat32Error::PermissionDenied);
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Directory) => Err(Fat32Error::PermissionDenied),
+        Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 /// Rejects a valid rename destination in the synthetic device namespace.
 fn reject_device_destination(cwd: &str, path: &str) -> Result<(), Fat32Error> {
-    match devfs::metadata(path, cwd) {
-        Ok(Some(_)) => Err(Fat32Error::PermissionDenied),
-        Ok(None) => Ok(()),
-        Err(Fat32Error::NotFound) if devfs::resolve(path, cwd)?.is_some() => {
-            Err(Fat32Error::PermissionDenied)
-        },
-        Err(error) => Err(error),
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Directory | DevicePath::Missing) => Err(Fat32Error::PermissionDenied),
+        None => Ok(()),
     }
 }
 
@@ -570,18 +550,13 @@ pub(crate) fn open_with_options(
         return Err(Fat32Error::InvalidArgument);
     }
 
-    match devfs::metadata(path, cwd) {
-        Ok(Some(_)) => return Err(Fat32Error::NotAFile),
-        Ok(None) => {},
-        Err(Fat32Error::NotFound) => match devfs::resolve(path, cwd)? {
-            Some(DevicePath::Missing) if create || create_new => {
-                return Err(Fat32Error::PermissionDenied);
-            },
-            Some(DevicePath::Directory | DevicePath::Missing) | None => {
-                return Err(Fat32Error::NotFound);
-            },
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Directory) => return Err(Fat32Error::NotAFile),
+        Some(DevicePath::Missing) if create || create_new => {
+            return Err(Fat32Error::PermissionDenied);
         },
-        Err(error) => return Err(error),
+        Some(DevicePath::Missing) => return Err(Fat32Error::NotFound),
+        None => {},
     }
 
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
