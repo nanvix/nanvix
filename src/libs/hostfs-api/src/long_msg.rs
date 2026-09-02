@@ -22,6 +22,7 @@
 //! - **Rmdir**: `[op_id:4][path_len:2][path:N]`
 //! - **Mkdir**: `[op_id:4][mode:4][path_len:2][path:N]`
 //! - **Rename**: `[op_id:4][old_path_len:2][new_path_len:2][old_path:N][new_path:M]`
+//! - **Link**: `[op_id:4][flags:4][old_path_len:2][new_path_len:2][old_path:N][new_path:M]`
 //! - **Symlink**: `[op_id:4][target_len:2][linkpath_len:2][target:N][linkpath:M]`
 //! - **Readlink**: `[op_id:4][path_len:2][path:N]`
 //! - **Lstat**: `[op_id:4][path_len:2][path:N]`
@@ -45,6 +46,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::mem;
 
 use ::sys::ipc::Message;
 
@@ -56,6 +58,17 @@ use crate::OperationId;
 
 /// Maximum length of a single path in the long-message wire format (u16::MAX).
 pub const MAX_PATH_LEN: usize = u16::MAX as usize;
+
+/// Maximum size of an assembled multi-part hostfs message.
+///
+/// This one-page limit accommodates two [`sysapi::limits::PATH_MAX`]-byte paths plus request
+/// metadata while bounding the memory reserved for malformed requests.
+pub const MAX_LONG_MESSAGE_SIZE: usize = 4 * 1024;
+
+/// Checks whether an assembled multi-part hostfs message has a valid size.
+pub const fn is_valid_long_message_size(size: usize) -> bool {
+    size > 0 && size <= MAX_LONG_MESSAGE_SIZE
+}
 
 /// Header size for long open: op_id(4) + flags(4) + mode(4) + path_len(2) = 14.
 pub const OPEN_HEADER_SIZE: usize = 14;
@@ -71,6 +84,23 @@ pub const MKDIR_HEADER_SIZE: usize = 10;
 
 /// Header size for long rename: op_id(4) + old_path_len(2) + new_path_len(2) = 8
 pub const RENAME_HEADER_SIZE: usize = 8;
+
+/// Size of an operation identifier.
+const SIZE_OF_OPERATION_ID: usize = mem::size_of::<u32>();
+/// Size of request flags.
+const SIZE_OF_FLAGS: usize = mem::size_of::<i32>();
+/// Size of a path length.
+const SIZE_OF_PATH_LEN: usize = mem::size_of::<u16>();
+/// Offset of the link operation identifier.
+const LINK_OFFSET_OF_OPERATION_ID: usize = 0;
+/// Offset of the link flags.
+const LINK_OFFSET_OF_FLAGS: usize = LINK_OFFSET_OF_OPERATION_ID + SIZE_OF_OPERATION_ID;
+/// Offset of the old path length.
+const LINK_OFFSET_OF_OLD_PATH_LEN: usize = LINK_OFFSET_OF_FLAGS + SIZE_OF_FLAGS;
+/// Offset of the new path length.
+const LINK_OFFSET_OF_NEW_PATH_LEN: usize = LINK_OFFSET_OF_OLD_PATH_LEN + SIZE_OF_PATH_LEN;
+/// Header size for long link.
+pub const LINK_HEADER_SIZE: usize = LINK_OFFSET_OF_NEW_PATH_LEN + SIZE_OF_PATH_LEN;
 
 /// Header size for long symlink: op_id(4) + target_len(2) + linkpath_len(2) = 8
 pub const SYMLINK_HEADER_SIZE: usize = 8;
@@ -487,6 +517,58 @@ pub fn deserialize_long_rename(bytes: &[u8]) -> Option<LongRenameRequest> {
     })
 }
 
+/// Result of deserializing a long LINK request.
+#[cfg(feature = "std")]
+pub struct LongLinkRequest {
+    pub op_id: OperationId,
+    pub flags: i32,
+    pub old_path: std::string::String,
+    pub new_path: std::string::String,
+}
+
+/// Deserializes a long LINK request from assembled bytes.
+#[cfg(feature = "std")]
+pub fn deserialize_long_link(bytes: &[u8]) -> Option<LongLinkRequest> {
+    if bytes.len() < LINK_HEADER_SIZE {
+        return None;
+    }
+    let op_id = OperationId::new(u32::from_le_bytes(
+        bytes[LINK_OFFSET_OF_OPERATION_ID..LINK_OFFSET_OF_FLAGS]
+            .try_into()
+            .ok()?,
+    ));
+    let flags = i32::from_le_bytes(
+        bytes[LINK_OFFSET_OF_FLAGS..LINK_OFFSET_OF_OLD_PATH_LEN]
+            .try_into()
+            .ok()?,
+    );
+    let old_path_len = u16::from_le_bytes(
+        bytes[LINK_OFFSET_OF_OLD_PATH_LEN..LINK_OFFSET_OF_NEW_PATH_LEN]
+            .try_into()
+            .ok()?,
+    ) as usize;
+    let new_path_len = u16::from_le_bytes(
+        bytes[LINK_OFFSET_OF_NEW_PATH_LEN..LINK_HEADER_SIZE]
+            .try_into()
+            .ok()?,
+    ) as usize;
+    if bytes.len() < LINK_HEADER_SIZE + old_path_len + new_path_len {
+        return None;
+    }
+    let old_start = LINK_HEADER_SIZE;
+    let new_start = old_start + old_path_len;
+    let old_path =
+        std::string::String::from_utf8(bytes[old_start..old_start + old_path_len].to_vec()).ok()?;
+    let new_path =
+        std::string::String::from_utf8(bytes[new_start..new_start + new_path_len].to_vec()).ok()?;
+    Some(LongLinkRequest {
+        op_id,
+        flags,
+        old_path,
+        new_path,
+    })
+}
+
 /// Result of deserializing a long SYMLINK request.
 ///
 /// `target` is the textual target stored in the symbolic link (interpreted verbatim;
@@ -739,6 +821,28 @@ pub fn serialize_long_rename_request(
     Some(buf)
 }
 
+/// Serializes the body of a long LINK request.
+///
+/// Wire format: `[op_id:4][flags:4][old_path_len:2][new_path_len:2][old_path:N][new_path:M]`.
+/// Returns `None` if either path is longer than [`MAX_PATH_LEN`].
+pub fn serialize_long_link_request(
+    op_id: OperationId,
+    flags: i32,
+    old_path: &[u8],
+    new_path: &[u8],
+) -> Option<Vec<u8>> {
+    let old_path_len: u16 = u16::try_from(old_path.len()).ok()?;
+    let new_path_len: u16 = u16::try_from(new_path.len()).ok()?;
+    let mut buf: Vec<u8> = Vec::with_capacity(LINK_HEADER_SIZE + old_path.len() + new_path.len());
+    buf.extend_from_slice(&op_id.to_le_bytes());
+    buf.extend_from_slice(&flags.to_le_bytes());
+    buf.extend_from_slice(&old_path_len.to_le_bytes());
+    buf.extend_from_slice(&new_path_len.to_le_bytes());
+    buf.extend_from_slice(old_path);
+    buf.extend_from_slice(new_path);
+    Some(buf)
+}
+
 /// Serializes the body of a long SYMLINK request.
 ///
 /// Wire format: `[op_id:4][target_len:2][linkpath_len:2][target:N][linkpath:M]`.
@@ -831,6 +935,28 @@ pub fn serialize_long_update_times_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_message_size_boundary() {
+        assert!(is_valid_long_message_size(MAX_LONG_MESSAGE_SIZE));
+        assert!(!is_valid_long_message_size(MAX_LONG_MESSAGE_SIZE + 1));
+        assert!(!is_valid_long_message_size(0));
+    }
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn long_link_round_trip() {
+        let op_id: OperationId = OperationId::new(11);
+        let bytes: Vec<u8> = serialize_long_link_request(op_id, 0x400, b"old/path", b"new/path")
+            .expect("link request should serialize");
+        let request: LongLinkRequest =
+            deserialize_long_link(&bytes).expect("link request should deserialize");
+
+        assert_eq!(request.op_id, op_id);
+        assert_eq!(request.flags, 0x400);
+        assert_eq!(request.old_path, "old/path");
+        assert_eq!(request.new_path, "new/path");
+    }
 
     #[test]
     fn long_response_part_enforces_chunk_limit() {

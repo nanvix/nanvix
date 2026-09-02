@@ -156,6 +156,8 @@ int main(int argc, const char *argv[])
         int cwd = open(".", O_RDONLY | O_DIRECTORY);
         assert(cwd != -1);
         assert(chdir("/mnt") == 0);
+        test_linkat(); // requires open(), stat() and unlinkat().
+        test_link();   // requires open(), stat() and unlinkat().
         test_fchownat();
         test_chown();
         test_fchown();

@@ -143,6 +143,10 @@ fn send_long_request(
     header: SystemCallMessageKind,
     op_id: OperationId,
 ) -> Result<(), ::sys::error::ErrorCode> {
+    if !long_msg::is_valid_long_message_size(data.len()) {
+        return Err(::sys::error::ErrorCode::InvalidArgument);
+    }
+
     let num_parts: u16 = data
         .len()
         .div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
@@ -443,6 +447,26 @@ pub fn send_rename_request(
     .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsRenameRequestPart, op_id)
+}
+
+/// Sends a LINK request to hostfsd as a multi-part IKC message.
+pub fn send_link_request(
+    old_path: &ResolvedPath,
+    new_path: &ResolvedPath,
+    flags: i32,
+    op_id: OperationId,
+) -> Result<(), ::sys::error::ErrorCode> {
+    let old_relative: &str = strip_mount_prefix(old_path.as_str());
+    let new_relative: &str = strip_mount_prefix(new_path.as_str());
+    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_link_request(
+        op_id,
+        flags,
+        old_relative.as_bytes(),
+        new_relative.as_bytes(),
+    )
+    .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+
+    send_long_request(&buf, SystemCallMessageKind::HostFsLinkRequestPart, op_id)
 }
 
 /// Sends a SYMLINK request to hostfsd as a multi-part IKC message.

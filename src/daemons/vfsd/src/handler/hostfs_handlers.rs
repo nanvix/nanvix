@@ -794,6 +794,7 @@ use ::syscall::{
     },
     unistd::message::{
         FileChownAtRequest,
+        LinkAtRequest,
         ReadLinkAtRequest,
         SymbolicLinkAtRequest,
     },
@@ -1167,6 +1168,57 @@ pub(crate) fn handle_symlinkat_with_hostfs(
     }
 
     Some(super::long::handle_symlinkat(source, request))
+}
+
+pub(crate) fn handle_linkat_with_hostfs(
+    response_context: ResponseContext,
+    request: LinkAtRequest,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    let old_path = match vfs_resolve_path(request.olddirfd, &request.oldpath) {
+        Ok(path) => path,
+        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+    };
+    let new_path = match vfs_resolve_path(request.newdirfd, &request.newpath) {
+        Ok(path) => path,
+        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+    };
+    let old_is_hostfs: bool = hostfs::is_hostfs_path(old_path.as_str());
+    let new_is_hostfs: bool = hostfs::is_hostfs_path(new_path.as_str());
+
+    if old_is_hostfs != new_is_hostfs {
+        return Some(vec![build_error(source, ErrorCode::CrossDeviceLink)]);
+    }
+    if !old_is_hostfs {
+        return Some(super::long::handle_linkat(source, request));
+    }
+
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+    match hostfs::send_link_request(&old_path, &new_path, request.flags, op_id) {
+        Ok(()) => {
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind: PendingOpKind::Link,
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(error) => Some(vec![build_error(source, error)]),
+    }
 }
 
 pub(crate) fn handle_readlinkat_with_hostfs(

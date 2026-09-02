@@ -358,7 +358,8 @@ fn dispatch_assembled_request(
             }
         },
         SystemCallMessageKind::LinkAtRequestPart => match LinkAtRequest::from_parts(parts) {
-            Ok(req) => handler::handle_linkat(source, req),
+            Ok(req) => handler::handle_linkat_with_hostfs(response_context, req, pending)
+                .unwrap_or_default(),
             Err(e) => {
                 ::syslog::error!("dispatch: linkat from_parts failed (error={:?})", e);
                 vec![build_error(source, ErrorCode::InvalidMessage)]

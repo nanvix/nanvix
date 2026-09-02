@@ -241,6 +241,7 @@ impl HostFsHandler {
             // Multi-part request messages: accumulate parts.
             SystemCallMessageKind::HostFsOpenRequestPart
             | SystemCallMessageKind::HostFsRenameRequestPart
+            | SystemCallMessageKind::HostFsLinkRequestPart
             | SystemCallMessageKind::HostFsUnlinkRequestPart
             | SystemCallMessageKind::HostFsMkdirRequestPart
             | SystemCallMessageKind::HostFsRmdirRequestPart
@@ -399,6 +400,15 @@ impl HostFsHandler {
                 } else {
                     log::error!("hostfsd: failed to deserialize long rename request");
                     set_kind(&mut response, SystemCallMessageKind::HostFsRenameResponse as u16);
+                    set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                }
+            },
+            SystemCallMessageKind::HostFsLinkRequestPart => {
+                if let Some(req) = long_msg::deserialize_long_link(&assembled) {
+                    self.handle_long_link(req, &mut response);
+                } else {
+                    log::error!("hostfsd: failed to deserialize long link request");
+                    set_kind(&mut response, SystemCallMessageKind::HostFsLinkResponse as u16);
                     set_payload_data(&mut response, &HOSTFS_ERR_INVALID.to_le_bytes());
                 }
             },
@@ -658,6 +668,64 @@ impl HostFsHandler {
                 );
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
                 set_payload_data(response, &io_error_to_code(&e).to_le_bytes());
+            },
+        }
+    }
+
+    /// Handles a fully assembled long LINK request.
+    fn handle_long_link(
+        &mut self,
+        req: long_msg::LongLinkRequest,
+        response: &mut [u8; Message::PAYLOAD_SIZE],
+    ) {
+        use ::sysapi::fcntl::atflags::AT_SYMLINK_FOLLOW;
+
+        set_kind(response, SystemCallMessageKind::HostFsLinkResponse as u16);
+        if req.flags & !AT_SYMLINK_FOLLOW != 0 {
+            set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
+            return;
+        }
+
+        let resolution_error = |path: &str| {
+            let candidate: PathBuf = self.sandbox.root().join(path.trim_start_matches('/'));
+            match candidate.parent().map(fs::metadata) {
+                Some(Err(error)) => io_error_to_code(&error),
+                Some(Ok(metadata)) if !metadata.is_dir() => HOSTFS_ERR_NOT_DIR,
+                _ => HOSTFS_ERR_PERMISSION,
+            }
+        };
+
+        let old_path: Option<PathBuf> = if req.flags & AT_SYMLINK_FOLLOW != 0 {
+            self.sandbox.resolve(&req.old_path)
+        } else {
+            self.sandbox.resolve_nofollow(&req.old_path)
+        };
+        let Some(mut old_path): Option<PathBuf> = old_path else {
+            set_payload_data(response, &resolution_error(&req.old_path).to_le_bytes());
+            return;
+        };
+        if req.flags & AT_SYMLINK_FOLLOW != 0 {
+            old_path = match old_path.canonicalize() {
+                Ok(path) => path,
+                Err(error) => {
+                    set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                    return;
+                },
+            };
+        }
+        let Some(new_path): Option<PathBuf> = self.sandbox.resolve_nofollow(&req.new_path) else {
+            set_payload_data(response, &resolution_error(&req.new_path).to_le_bytes());
+            return;
+        };
+
+        match fs::hard_link(&old_path, &new_path) {
+            Ok(()) => {
+                self.fd_table.invalidate_dir_caches();
+                set_payload_data(response, &0i32.to_le_bytes());
+            },
+            Err(error) => {
+                log::debug!("hostfsd: link failed ({:?} -> {:?}): {}", old_path, new_path, error);
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
             },
         }
     }
@@ -2224,6 +2292,7 @@ fn io_error_to_code(e: &io::Error) -> i32 {
         io::ErrorKind::NotFound => HOSTFS_ERR_NOT_FOUND,
         io::ErrorKind::PermissionDenied => HOSTFS_ERR_PERMISSION,
         io::ErrorKind::AlreadyExists => HOSTFS_ERR_EXISTS,
+        io::ErrorKind::CrossesDevices => HOSTFS_ERR_CROSS_DEVICE,
         io::ErrorKind::InvalidInput => HOSTFS_ERR_INVALID,
         io::ErrorKind::NotADirectory => HOSTFS_ERR_NOT_DIR,
         io::ErrorKind::IsADirectory => HOSTFS_ERR_IS_DIR,
@@ -2458,9 +2527,7 @@ fn metadata_mode(meta: &fs::Metadata, kind: u8) -> u32 {
 //==================================================================================================
 
 /// Maximum buffer size for any valid long request.
-///
-/// The largest wire format is RENAME: `RENAME_HEADER_SIZE + 2 * MAX_PATH_LEN`.
-const MAX_LONG_BUFFER_SIZE: usize = long_msg::RENAME_HEADER_SIZE + 2 * long_msg::MAX_PATH_LEN;
+const MAX_LONG_BUFFER_SIZE: usize = long_msg::MAX_LONG_MESSAGE_SIZE;
 
 /// Maximum allowed value of `total_parts` for a long request.
 ///
@@ -2696,5 +2763,52 @@ impl HostFsAssembler {
         self.parts_received = 0;
         self.next_part_number = 0;
         self.buffer.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn part(total_parts: u16, part_number: u16) -> SystemCallMessagePart {
+        SystemCallMessagePart {
+            total_parts,
+            part_number,
+            payload_size: SystemCallMessagePart::PAYLOAD_SIZE as u8,
+            payload: [0; SystemCallMessagePart::PAYLOAD_SIZE],
+        }
+    }
+
+    #[test]
+    fn assembler_size_boundary() {
+        assert_eq!(MAX_LONG_BUFFER_SIZE % SystemCallMessagePart::PAYLOAD_SIZE, 0);
+
+        let mut assembler: HostFsAssembler = HostFsAssembler::new();
+        for part_number in 0..MAX_TOTAL_PARTS {
+            let expected: AssemblyStatus = if part_number + 1 == MAX_TOTAL_PARTS {
+                AssemblyStatus::Complete
+            } else {
+                AssemblyStatus::NeedMore
+            };
+            assert_eq!(
+                assembler.add_part(
+                    SystemCallMessageKind::HostFsOpenRequestPart,
+                    OperationId::from_raw(1),
+                    part(MAX_TOTAL_PARTS, part_number),
+                ),
+                expected
+            );
+        }
+        assert_eq!(assembler.buffer.len(), MAX_LONG_BUFFER_SIZE);
+
+        let mut assembler: HostFsAssembler = HostFsAssembler::new();
+        assert_eq!(
+            assembler.add_part(
+                SystemCallMessageKind::HostFsOpenRequestPart,
+                OperationId::from_raw(1),
+                part(MAX_TOTAL_PARTS + 1, 0),
+            ),
+            AssemblyStatus::Error
+        );
     }
 }
