@@ -10,6 +10,7 @@
 #include "common.h"
 #include <assert.h>
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdlib.h>
@@ -166,8 +167,11 @@ int main(int argc, const char *argv[])
         test_fchmodat(); // requires open(), close(), stat() and unlinkat().
         test_fchmod();   // requires open(), close(), fstat() and unlink().
         test_lchmod();   // requires open(), close(), stat(), link() and unlinkat().
+        test_faccessat(); // requires open(), close() and unlinkat().
+        test_access();    // requires open(), close() and unlink().
         assert(fchdir(cwd) == 0);
         assert(close(cwd) == 0);
+        errno = 0;
     }
 
     test_poll_hostfs(); // requires test_umask() to mount hostfs.

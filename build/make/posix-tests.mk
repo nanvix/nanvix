@@ -120,7 +120,7 @@ POSIX_TEST_FILES_test-c-file := \
 	fdatasync.c stat.c ftruncate.c truncate.c link.c linkat.c renameat.c renameat_subdir.c unlinkat.c mkdirat.c mkdir.c \
 	path_errno.c mkfifo.c mknod.c umask_ramfs.c umask.c dirent.c getcwd.c chdir.c fchdir.c \
 	utimensat.c utimes.c utime.c futimens.c chown.c fchown.c fchownat.c lchown.c \
-	chmod.c fchmodat.c fchmod.c lchmod.c
+	chmod.c fchmodat.c fchmod.c lchmod.c faccessat.c access.c
 
 # Extra link flags for position-independent executables. The dlfcn PIE variants
 # build as PIE so the linker emits .dynsym/.dynstr/.dynamic and the executable's

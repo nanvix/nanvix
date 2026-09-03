@@ -98,6 +98,8 @@ pub(crate) enum PendingOpKind {
     Chmod,
     /// fchmod — response is a status code.
     Fchmod,
+    /// access — response is a status code.
+    Access,
     /// mkdir — response is a status code.
     Mkdir,
     /// rmdir — response is a status code.
@@ -561,6 +563,9 @@ pub(crate) fn complete_pending_op(
         PendingOpKind::Fchmod => {
             complete_status(response_context, response_payload, OpGroup::Fchmod)
         },
+        PendingOpKind::Access => {
+            complete_status(response_context, response_payload, OpGroup::Access)
+        },
         PendingOpKind::Mkdir => complete_status(response_context, response_payload, OpGroup::Mkdir),
         PendingOpKind::Rmdir => complete_status(response_context, response_payload, OpGroup::Rmdir),
         PendingOpKind::Unlink => {
@@ -1007,6 +1012,7 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
             | (PendingOpKind::UpdateTimesAt, SystemCallMessageKind::HostFsUpdateTimesAtResponse,)
             | (PendingOpKind::Chmod, SystemCallMessageKind::HostFsChmodResponse)
             | (PendingOpKind::Fchmod, SystemCallMessageKind::HostFsFchmodResponse)
+            | (PendingOpKind::Access, SystemCallMessageKind::HostFsAccessResponse)
             | (PendingOpKind::Mkdir, SystemCallMessageKind::HostFsMkdirResponse)
             | (PendingOpKind::Rmdir, SystemCallMessageKind::HostFsRmdirResponse)
             | (PendingOpKind::Unlink, SystemCallMessageKind::HostFsUnlinkResponse)
@@ -1165,6 +1171,7 @@ enum OpGroup {
     UpdateTimesAt,
     Chmod,
     Fchmod,
+    Access,
     Mkdir,
     Rmdir,
     Unlink,
@@ -1221,6 +1228,10 @@ fn complete_status(
         OpGroup::Fchmod => {
             use ::syscall::sys::stat::message::FileChmodResponse;
             FileChmodResponse::build(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc)
+        },
+        OpGroup::Access => {
+            use ::syscall::unistd::message::FileAccessAtResponse;
+            FileAccessAtResponse::build(source_tid, ProcessIdentifier::VFSD, MessageType::Ipc)
         },
         OpGroup::Mkdir => {
             use ::syscall::sys::stat::message::MakeDirectoryAtResponse;

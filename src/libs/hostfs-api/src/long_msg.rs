@@ -28,7 +28,7 @@
 //! - **Lstat**: `[op_id:4][path_len:2][path:N]`
 //! - **ChownAt**: `[op_id:4][owner:4][group:4][flags:4][path_len:2][path:N]`
 //! - **Update times**: `[op_id:4][flags:4][times:32][path_len:2][path:N]`
-//! - **Chmod**: `[op_id:4][mode:4][flags:4][path_len:2][path:N]`
+//! - **Mode/path**: `[op_id:4][mode:4][flags:4][path_len:2][path:N]`
 //!
 //! # Long Response Format
 //!
@@ -782,7 +782,7 @@ impl LongModePathRequest {
     }
 }
 
-/// Deserializes a long chmod request.
+/// Deserializes a long mode/path request.
 #[cfg(feature = "std")]
 pub fn deserialize_long_mode_path(bytes: &[u8]) -> Option<LongModePathRequest> {
     if bytes.len() < MODE_PATH_HEADER_SIZE {
@@ -1013,7 +1013,7 @@ pub fn serialize_long_update_times_request(
     Some(buf)
 }
 
-/// Serializes a long chmod request.
+/// Serializes a long mode/path request.
 pub fn serialize_long_mode_path_request(
     op_id: OperationId,
     mode: i32,

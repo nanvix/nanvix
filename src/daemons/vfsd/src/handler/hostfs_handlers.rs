@@ -1212,6 +1212,56 @@ pub(crate) fn handle_fchmodat_with_hostfs(
     Some(super::long::handle_fchmodat(source, request))
 }
 
+pub(crate) fn handle_faccessat_with_hostfs(
+    response_context: ResponseContext,
+    request: ::syscall::unistd::message::FileAccessAtRequest,
+    pending: &mut PendingQueue,
+) -> Option<Vec<Message>> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source: ThreadIdentifier = response_context.source_tid();
+    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+        Ok(path) => path,
+        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+    };
+
+    if hostfs::is_hostfs_path(resolved.as_str()) {
+        const VALID_MODES: i32 = ::sysapi::unistd::access_mode::R_OK
+            | ::sysapi::unistd::access_mode::W_OK
+            | ::sysapi::unistd::access_mode::X_OK;
+        const VALID_FLAGS: i32 =
+            ::sysapi::fcntl::atflags::AT_EACCESS | ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW;
+        if request.mode & !VALID_MODES != 0 || request.flag & !VALID_FLAGS != 0 {
+            return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
+        }
+        if !pending.has_capacity() {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+        if let Err(error) =
+            hostfs::send_access_request(&resolved, request.mode, request.flag, op_id)
+        {
+            return Some(vec![build_error(source, error)]);
+        }
+        if pending
+            .insert(
+                op_id,
+                PendingOp {
+                    response_context,
+                    source_tid: source,
+                    source_pid,
+                    kind: PendingOpKind::Access,
+                },
+            )
+            .is_err()
+        {
+            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+        }
+        return None;
+    }
+
+    Some(super::long::handle_faccessat(source, request))
+}
+
 pub(crate) fn handle_symlinkat_with_hostfs(
     response_context: ResponseContext,
     request: SymbolicLinkAtRequest,
