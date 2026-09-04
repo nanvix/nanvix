@@ -10,6 +10,7 @@
 #include "common.h"
 #include <arpa/inet.h>
 #include <assert.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,6 +141,19 @@ int main(int argc, const char *argv[])
 
     test_inet_sockets(sin_port, sin_addr);
     test_poll_services(sin_addr);
+
+    if (getenv("NANVIX_TEST_HOSTFS") != NULL) {
+        char cwd[PATH_MAX];
+        assert(getcwd(cwd, sizeof(cwd)) != NULL);
+        assert(chdir("/mnt") == 0);
+        char sun_path[UNIX_SOCKET_NAME_LEN];
+        for (int i = 0; i < UNIX_SOCKET_NAME_LEN - 1; i++) {
+            sun_path[i] = 'a' + (rand() % 26);
+        }
+        sun_path[UNIX_SOCKET_NAME_LEN - 1] = '\0';
+        test_unix_sockets(sun_path);
+        assert(chdir(cwd) == 0);
+    }
 
     // The network service supports only AF_INET sockets.
 #ifndef __NANVIX_STANDALONE__
