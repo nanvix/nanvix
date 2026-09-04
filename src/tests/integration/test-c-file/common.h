@@ -6,6 +6,8 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+#include <stdbool.h>
+
 // Tests whether we can check access permissions of a file using access().
 extern void test_access(void);
 
@@ -139,7 +141,7 @@ extern void test_umask(void);
 extern void test_umask_ramfs(void);
 
 // Tests whether we can change file access and modification times.
-extern void test_utimensat(void);
+extern void test_utimensat(bool update_access_time);
 extern void test_utimensat_now(void);
 
 // Tests whether we can update file timestamps with `utimes()`.

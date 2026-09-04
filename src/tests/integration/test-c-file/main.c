@@ -131,15 +131,7 @@ int main(int argc, const char *argv[])
     test_stat();
     test_ftruncate(); // requires open(), close(), fstat() and unlink().
     test_truncate();  // requires open(), close(), stat() and unlinkat().
-#ifndef __NANVIX_STANDALONE__
-    // FAT32 does not support hard links or symbolic links.
-    test_linkat();     // requires open(), stat() and unlinkat().
-    test_link();       // requires open(), stat() and unlinkat().
-    test_symlinkat();  // requires open(), stat() and unlinkat().
-    test_readlinkat(); // requires symlinkat() and unlinkat().
-    test_readlink();   // requires symlinkat() and unlink().
-#endif                 // __NANVIX_STANDALONE__
-    test_renameat();   // requires open(), close() and unlink().
+    test_renameat();  // requires open(), close() and unlink().
     test_renameat_subdir(); // subdir rename + replace-existing.
     test_unlinkat();   // requires open() and close().
     test_mkdirat();    // requires stat() and unlinkat().
@@ -154,8 +146,12 @@ int main(int argc, const char *argv[])
         int cwd = open(".", O_RDONLY | O_DIRECTORY);
         assert(cwd != -1);
         assert(chdir("/mnt") == 0);
-        test_linkat(); // requires open(), stat() and unlinkat().
-        test_link();   // requires open(), stat() and unlinkat().
+        test_select();     // requires open(), close(), write(), read(), and unlink().
+        test_linkat();     // requires open(), stat() and unlinkat().
+        test_link();       // requires open(), stat() and unlinkat().
+        test_symlinkat();  // requires open(), stat() and unlinkat().
+        test_readlinkat(); // requires symlinkat() and unlinkat().
+        test_readlink();   // requires symlinkat() and unlink().
         test_fchownat();
         test_chown();
         test_fchown();
@@ -176,38 +172,20 @@ int main(int argc, const char *argv[])
     test_getcwd();
     test_chdir(); // requires getcwd().
     test_fchdir();
-    test_utimensat();
+    test_utimensat(false);
     test_utimensat_now();
     test_utime_preserve_imported_timestamps();
     if (getenv("NANVIX_TEST_HOSTFS") != NULL) {
         char cwd[PATH_MAX];
         assert(getcwd(cwd, sizeof(cwd)) != NULL);
         assert(chdir("/mnt") == 0);
-        test_utimensat();
+        test_utimensat(true);
         test_utimensat_now();
         test_utimes();
         test_utime();
         test_futimens();
         assert(chdir(cwd) == 0);
     }
-#ifndef __NANVIX_STANDALONE__
-    // FAT32 timestamps, permissions, and ownership are no-ops that fail assertions.
-    test_utimensat();
-    test_utimes(); // requires open(), close(), stat() and unlinkat().
-    test_utime();  // requires open(), close(), stat() and unlinkat().
-    test_chmod();     // requires open(), close(), stat() and unlinkat().
-    test_fchmodat();  // requires open(), close(), stat() and unlinkat().
-    test_fchmod();    // requires open(), close(), fstat() and unlink().
-    test_lchmod();    // requires open(), close(), stat(), link() and unlinkat().
-    test_fchownat();  // requires open(), close() and unlinkat().
-    test_faccessat(); // requires open(), close(), chmodat() and unlinkat().
-    test_access();    // requires open(), close(), chmodat() and unlinkat().
-    test_chown();     // requires open(), close(), and unlinkat().
-    test_fchown();    // requires open(), close() and unlink().
-    test_lchown();    // requires open(), close() and unlinkat().
-    test_futimens();  // Requires open(), fstat(), close() and unlink().
-#endif                // __NANVIX_STANDALONE__
-
     // Write magic string to signal that the test passed.
     {
         const char *magic_string = "ok";

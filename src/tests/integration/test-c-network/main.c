@@ -15,9 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#ifndef __NANVIX_STANDALONE__
 #include <sys/un.h>
-#endif
 #include <time.h>
 #include <unistd.h>
 
@@ -124,7 +122,6 @@ int main(int argc, const char *argv[])
     );
     STATIC_ASSERT_SIZE(struct sockaddr_in, sizeof(struct sockaddr_storage));
 
-#ifndef __NANVIX_STANDALONE__
     // Sanity check size of `sockaddr_un` structure.
     STATIC_ASSERT_SIZE(struct sockaddr_un,
                        sizeof(unsigned char) +       // sun_len
@@ -132,7 +129,6 @@ int main(int argc, const char *argv[])
                            SUNPATHLEN * sizeof(char) // sun_path
     );
     STATIC_ASSERT_SIZE(struct sockaddr_un, sizeof(struct sockaddr_storage));
-#endif
 
     srand(SEED);
 
@@ -154,18 +150,6 @@ int main(int argc, const char *argv[])
         test_unix_sockets(sun_path);
         assert(chdir(cwd) == 0);
     }
-
-    // The network service supports only AF_INET sockets.
-#ifndef __NANVIX_STANDALONE__
-    {
-        char sun_path[UNIX_SOCKET_NAME_LEN];
-        for (int i = 0; i < UNIX_SOCKET_NAME_LEN - 1; i++) {
-            sun_path[i] = 'a' + (rand() % 26);
-        }
-        sun_path[UNIX_SOCKET_NAME_LEN - 1] = '\0';
-        test_unix_sockets(sun_path);
-    }
-#endif
 
     // Write magic string to signal that the test passed.
     {
