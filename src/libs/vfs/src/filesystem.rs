@@ -29,7 +29,13 @@ pub use self::{
 // Imports
 //==================================================================================================
 
-use crate::state;
+use crate::{
+    devfs::{
+        self,
+        DevicePath,
+    },
+    state,
+};
 use ::alloc::{
     string::String,
     vec::Vec,
@@ -76,6 +82,9 @@ pub(crate) fn open(cwd: &str, path: &str) -> Result<File, Fat32Error> {
 ///
 /// - `path`: The path to the file.
 pub(crate) fn file_raw_region(cwd: &str, path: &str) -> Option<(*const u8, usize)> {
+    if devfs::owns(cwd, path).ok()? {
+        return None;
+    }
     let (mount_idx, relative_path): (usize, String) = resolve_path(cwd, path).ok()?;
     state::with_vfs(|vfs| {
         let mount: &crate::mount::Mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
@@ -103,6 +112,9 @@ pub(crate) fn file_raw_region(cwd: &str, path: &str) -> Option<(*const u8, usize
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
 pub(crate) fn stat(cwd: &str, path: &str) -> Result<Stat, Fat32Error> {
     let requires_dir: bool = path.ends_with('/');
+    if let Some(stat) = devfs::stat(cwd, path)? {
+        return Ok(stat);
+    }
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
     // Handle root of mount specially.
@@ -145,6 +157,8 @@ pub(crate) fn set_times(
         return Ok(());
     }
 
+    reject_device_mutation(cwd, path)?;
+
     // Normalization drops trailing slashes, so enforce the directory requirement first.
     if path.ends_with('/') {
         stat(cwd, path)?;
@@ -185,6 +199,11 @@ pub(crate) fn set_times(
 ///
 /// - [POSIX mkdir()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/mkdir.html)
 pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Directory) => return Err(Fat32Error::AlreadyExists),
+        Some(DevicePath::Missing) => return Err(Fat32Error::PermissionDenied),
+        None => {},
+    }
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
     // Root of a mount always exists — return AlreadyExists (mirrors stat()).
@@ -220,7 +239,9 @@ pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotFound`] if directory doesn't exist.
 /// - [`Fat32Error::NotEmpty`] if directory is not empty.
 /// - [`Fat32Error::NotADirectory`] if path is a file.
+/// - [`Fat32Error::PermissionDenied`] if path names an existing synthetic namespace entry.
 pub(crate) fn rmdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
+    reject_device_mutation(cwd, path)?;
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
     // Cannot remove the root of a mount.
@@ -248,7 +269,9 @@ pub(crate) fn rmdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::ReadOnly`] if the mount is read-only.
 /// - [`Fat32Error::NotFound`] if file doesn't exist.
 /// - [`Fat32Error::NotAFile`] if path is a directory.
+/// - [`Fat32Error::PermissionDenied`] if path names an existing synthetic namespace entry.
 pub(crate) fn unlink(cwd: &str, path: &str) -> Result<(), Fat32Error> {
+    reject_device_mutation(cwd, path)?;
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;
 
     // Root of a mount is a directory, not a file.
@@ -280,26 +303,38 @@ pub(crate) fn unlink(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
 /// - [`Fat32Error::NotADirectory`] if the path is a file.
 pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
-    let (mount_idx, relative_path) = resolve_path(cwd, path)?;
+    if let Some(entries) = devfs::read_dir(cwd, path)? {
+        return Ok(entries);
+    }
 
-    state::with_vfs(|vfs| {
-        let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
-
-        let fat_path: &str = if relative_path.is_empty() {
-            "."
-        } else {
-            &relative_path
-        };
-
-        let fat_entries = mount.fat().read_dir(fat_path)?;
-
-        let entries: Vec<DirEntry> = fat_entries
-            .into_iter()
-            .map(|e| DirEntry::new(e.name, e.is_dir, e.size))
-            .collect();
-
-        Ok(entries)
-    })
+    let normalized: String = normalize(cwd, path)?;
+    let resolution: Result<(usize, String), Fat32Error> = resolve_path(cwd, path);
+    let mut entries: Vec<DirEntry> = match resolution {
+        Ok((mount_idx, relative_path)) => state::with_vfs(|vfs| {
+            let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
+            let fat_path: &str = if relative_path.is_empty() {
+                "."
+            } else {
+                &relative_path
+            };
+            let fat_entries = mount.fat().read_dir(fat_path)?;
+            Ok(fat_entries
+                .into_iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    DirEntry::new(entry.name, index as u64 + 1, entry.is_dir, entry.size)
+                })
+                .collect())
+        })?,
+        Err(Fat32Error::NotFound) if normalized == "/" => Vec::new(),
+        Err(error) => return Err(error),
+    };
+    if normalized == "/" {
+        let devfs_entry: DirEntry = devfs::directory_entry();
+        entries.retain(|entry| entry.name() != devfs_entry.name());
+        entries.push(devfs_entry);
+    }
+    Ok(entries)
 }
 
 /// Renames a file or directory.
@@ -322,6 +357,8 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Erro
 /// - [`Fat32Error::InvalidArgument`] if either path ends in a `.` or `..` component.
 /// - [`Fat32Error::InvalidPath`] if paths are on different mounts, or if path resolution
 ///   fails (e.g. an empty path, or a `cwd` that is not absolute).
+/// - [`Fat32Error::PermissionDenied`] if the source is an existing synthetic entry or the
+///   destination is a valid path in the synthetic device namespace.
 ///
 /// # References
 ///
@@ -332,6 +369,10 @@ pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fa
     if ends_with_dot(old_path) || ends_with_dot(new_path) {
         return Err(Fat32Error::InvalidArgument);
     }
+
+    reject_device_mutation(cwd, old_path)?;
+    stat(cwd, old_path)?;
+    reject_device_destination(cwd, new_path)?;
 
     let (old_idx, old_rel) = resolve_path(cwd, old_path)?;
     let (new_idx, new_rel) = resolve_path(cwd, new_path)?;
@@ -431,6 +472,23 @@ pub(crate) fn normalize(cwd: &str, path: &str) -> Result<String, Fat32Error> {
 // Internal Functions
 //==================================================================================================
 
+/// Rejects mutation of an existing synthetic device-namespace entry.
+fn reject_device_mutation(cwd: &str, path: &str) -> Result<(), Fat32Error> {
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Directory) => Err(Fat32Error::PermissionDenied),
+        Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
+        None => Ok(()),
+    }
+}
+
+/// Rejects a valid rename destination in the synthetic device namespace.
+fn reject_device_destination(cwd: &str, path: &str) -> Result<(), Fat32Error> {
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Directory | DevicePath::Missing) => Err(Fat32Error::PermissionDenied),
+        None => Ok(()),
+    }
+}
+
 /// Returns `true` if the final component of `path` is `.` or `..`.
 ///
 /// POSIX forbids these as rename operands. Trailing slashes are ignored.
@@ -490,6 +548,15 @@ pub(crate) fn open_with_options(
     }
     if create_new && (create || truncate) {
         return Err(Fat32Error::InvalidArgument);
+    }
+
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Directory) => return Err(Fat32Error::NotAFile),
+        Some(DevicePath::Missing) if create || create_new => {
+            return Err(Fat32Error::PermissionDenied);
+        },
+        Some(DevicePath::Missing) => return Err(Fat32Error::NotFound),
+        None => {},
     }
 
     let (mount_idx, relative_path) = resolve_path(cwd, path)?;

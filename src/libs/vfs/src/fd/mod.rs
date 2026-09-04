@@ -28,6 +28,10 @@ mod open;
 
 use self::open as open_adapter;
 use crate::{
+    devfs::{
+        self,
+        DevicePath,
+    },
     filesystem,
     line_discipline::{
         ConsoleReadOutcome,
@@ -76,6 +80,7 @@ use ::sys::pm::{
 use ::sysapi::{
     fcntl::{
         atflags::AT_SYMLINK_NOFOLLOW,
+        file_access_mode,
         file_control_request,
         file_creation_flags,
         file_status_flags,
@@ -913,7 +918,8 @@ pub fn vfs_current_generation() -> u64 {
 
 /// Returns `true` if the given path is handled by the VFS.
 pub fn is_vfs_path(path: &str) -> bool {
-    open_adapter::exists(&current_cwd(), path)
+    let cwd: String = current_cwd();
+    matches!(devfs::owns(&cwd, path), Ok(true)) || open_adapter::exists(&cwd, path)
 }
 
 /// Resolves a flat descriptor to its backend route and the descriptor that backend expects.
@@ -990,6 +996,15 @@ pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
 /// Opens a file through the VFS and allocates a system-wide FD.
 pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
     let cwd: String = current_cwd();
+    if matches!(devfs::resolve(&cwd, path)?, Some(DevicePath::Directory)) {
+        if flags & file_creation_flags::O_CREAT != 0 && flags & file_creation_flags::O_EXCL != 0 {
+            return Err(Fat32Error::AlreadyExists);
+        }
+        let access_mode: c_int = flags & file_access_mode::O_ACCMODE;
+        if access_mode != file_access_mode::O_RDONLY || flags & file_creation_flags::O_TRUNC != 0 {
+            return Err(Fat32Error::NotAFile);
+        }
+    }
     // If O_DIRECTORY is set, verify the path is a directory before opening.
     if flags & file_creation_flags::O_DIRECTORY != 0 {
         let info: filesystem::Stat = filesystem::stat(&cwd, path)?;
@@ -1233,9 +1248,17 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     }
 
     match &mut entry.handle {
+        VfsFileHandle::Directory(directory) => {
+            if let Some(stat) = devfs::posix_stat("/", directory.path())? {
+                *buf = stat;
+            } else {
+                let info: filesystem::Stat =
+                    filesystem::Stat::new(0, true, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS);
+                buf.update_from_vfs(&info);
+            }
+        },
         handle @ (VfsFileHandle::Fat32(_)
         | VfsFileHandle::DirectRead(_)
-        | VfsFileHandle::Directory(_)
         | VfsFileHandle::HostFs(_)) => {
             // upstream exposes timestamps through directory entries, not open
             // files. Re-querying by path can identify a different file after
@@ -1408,13 +1431,18 @@ pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
 
 /// Gets file status for a path through the VFS.
 pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
-    let info: filesystem::Stat = filesystem::stat(&current_cwd(), path)?;
+    let cwd: String = current_cwd();
+
+    if let Some(stat) = devfs::posix_stat(&cwd, path)? {
+        *buf = stat;
+        return Ok(());
+    }
 
     // Zero-initialize the stat buffer.
     unsafe {
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
-
+    let info: filesystem::Stat = filesystem::stat(&cwd, path)?;
     buf.update_from_vfs(&info);
     set_root_ownership(buf);
 
@@ -1949,11 +1977,10 @@ pub fn vfs_getdents(
 
     let entries: Vec<filesystem::DirEntry> = dir_handle.read_entries(count)?;
 
-    // FAT32 has no real inodes; use synthetic 1-based indices.
     let mut result: Vec<posix_dent> = Vec::new();
-    for (i, de) in entries.iter().enumerate() {
+    for de in &entries {
         let mut dent: posix_dent = posix_dent {
-            d_ino: (i + 1) as u64,
+            d_ino: de.inode(),
             d_reclen: core::mem::size_of::<posix_dent>() as u16,
             d_type: if de.is_dir() {
                 dirent_file_type::DT_DIR
@@ -2215,10 +2242,97 @@ pub fn vfs_utimensat(
 mod tests {
     use super::*;
     use crate::process::CURRENT_PID;
-    use ::sysapi::fcntl::file_descriptor_flags::{
-        FD_CLOEXEC,
-        FD_CLOFORK,
+    use ::sysapi::fcntl::{
+        file_access_mode,
+        file_descriptor_flags::{
+            FD_CLOEXEC,
+            FD_CLOFORK,
+        },
     };
+
+    // -- Device namespace tests -------------------------------------------------
+
+    /// Tests pathname metadata and enumeration for the synthetic `/dev` directory.
+    #[test]
+    fn devfs_directory() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7402);
+        set_current_process(pid);
+
+        let mut directory: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        let mut missing: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        vfs_stat("/dev", &mut directory).expect("stat /dev");
+        assert_eq!(directory.st_mode & file_type::S_IFMT, file_type::S_IFDIR);
+        assert_eq!(vfs_stat("/dev/missing", &mut missing), Err(Fat32Error::NotFound));
+        assert_eq!(vfs_rmdir("/dev"), Err(Fat32Error::PermissionDenied));
+        assert_eq!(vfs_unlink("/dev/missing"), Err(Fat32Error::NotFound));
+        assert_eq!(vfs_mkdir("/dev"), Err(Fat32Error::AlreadyExists));
+        assert_eq!(
+            vfs_open(
+                "/dev",
+                file_access_mode::O_RDONLY
+                    | file_creation_flags::O_CREAT
+                    | file_creation_flags::O_EXCL,
+            ),
+            Err(Fat32Error::AlreadyExists)
+        );
+        assert_eq!(vfs_open("/dev", file_access_mode::O_WRONLY), Err(Fat32Error::NotAFile));
+        assert_eq!(
+            vfs_open("/dev", file_access_mode::O_WRONLY | file_creation_flags::O_TRUNC,),
+            Err(Fat32Error::NotAFile)
+        );
+        assert_eq!(vfs_mkdir("/dev/hidden"), Err(Fat32Error::PermissionDenied));
+        assert_eq!(vfs_mkdir("/dev/hidden/child"), Err(Fat32Error::NotFound));
+        assert_eq!(
+            vfs_open("/dev/hidden", file_access_mode::O_WRONLY | file_creation_flags::O_CREAT,),
+            Err(Fat32Error::PermissionDenied)
+        );
+        assert_eq!(
+            vfs_open(
+                "/dev/hidden/child",
+                file_access_mode::O_WRONLY | file_creation_flags::O_CREAT,
+            ),
+            Err(Fat32Error::NotFound)
+        );
+        assert!(filesystem::file_raw_region("/", "/dev/hidden").is_none());
+        assert_eq!(
+            filesystem::set_times("/", "/dev", Some(FAT_EPOCH_SECS), None),
+            Err(Fat32Error::PermissionDenied)
+        );
+        let times: [timespec; 2] = [
+            timespec {
+                tv_sec: FAT_EPOCH_SECS,
+                tv_nsec: 0,
+            },
+            timespec {
+                tv_sec: FAT_EPOCH_SECS,
+                tv_nsec: 0,
+            },
+        ];
+        assert_eq!(
+            vfs_utimensat(::sysapi::fcntl::atflags::AT_FDCWD, "/dev", &times, 0),
+            Err(Fat32Error::PermissionDenied)
+        );
+        assert_eq!(vfs_rename("/dev", "/outside-dev"), Err(Fat32Error::PermissionDenied));
+
+        let root: Vec<filesystem::DirEntry> = vfs_readdir("/").expect("read root");
+        let dev: Vec<filesystem::DirEntry> = vfs_readdir("/dev").expect("read /dev");
+        assert_eq!(root.iter().map(|entry| entry.name()).collect::<Vec<_>>(), ["dev"]);
+        assert_eq!(root[0].inode(), directory.st_ino);
+        assert!(dev.is_empty());
+
+        let fd: c_int = vfs_open("/dev", file_access_mode::O_RDONLY).expect("open /dev");
+        let mut opened: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        vfs_fstat(fd, &mut opened).expect("fstat /dev");
+        assert_eq!(opened.st_dev, directory.st_dev);
+        assert_eq!(opened.st_ino, directory.st_ino);
+        assert!(vfs_getdents(fd, 1).expect("getdents /dev").is_empty());
+        vfs_close(fd).expect("close /dev");
+        forget_processes(&[pid]);
+    }
 
     // -- DirectReadHandle tests --------------------------------------------------
 

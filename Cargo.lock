@@ -4473,6 +4473,7 @@ dependencies = [
 name = "vfs"
 version = "0.24.15"
 dependencies = [
+ "arch",
  "config",
  "error",
  "fat32",

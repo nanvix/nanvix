@@ -145,23 +145,7 @@ impl Vfs {
     /// - [POSIX Base Definitions, Chapter 4 — Pathname Resolution](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap04.html)
     /// - [POSIX open() — `ENOENT` for empty path](https://pubs.opengroup.org/onlinepubs/9799919799/functions/open.html)
     pub fn normalize_path(&self, path: &str, cwd: &str) -> Result<String, Fat32Error> {
-        if path.is_empty() {
-            return Err(Fat32Error::NotFound);
-        }
-
-        let abs_path: String = if path.starts_with('/') {
-            String::from(path)
-        } else if !cwd.starts_with('/') {
-            // Relative paths are anchored to `cwd`, which must be absolute per this function's
-            // contract; reject a malformed `cwd` rather than silently produce a bogus result.
-            return Err(Fat32Error::InvalidPath);
-        } else if cwd == "/" {
-            alloc::format!("/{}", path)
-        } else {
-            alloc::format!("{}/{}", cwd, path)
-        };
-
-        Ok(normalize_components(&abs_path))
+        normalize_path(path, cwd)
     }
 
     /// Resolves a path to a mount and relative path within that mount.
@@ -243,13 +227,39 @@ impl Vfs {
     }
 }
 
+/// Anchors a path to an absolute working directory without normalizing its components.
+pub(crate) fn anchor_path(path: &str, cwd: &str) -> Result<String, Fat32Error> {
+    if path.is_empty() {
+        return Err(Fat32Error::NotFound);
+    }
+    if path.starts_with('/') {
+        Ok(String::from(path))
+    } else if !cwd.starts_with('/') {
+        Err(Fat32Error::InvalidPath)
+    } else if cwd == "/" {
+        Ok(alloc::format!("/{}", path))
+    } else {
+        Ok(alloc::format!("{}/{}", cwd, path))
+    }
+}
+
+/// Normalizes a path after anchoring it to an absolute working directory.
+pub(crate) fn normalize_path(path: &str, cwd: &str) -> Result<String, Fat32Error> {
+    Ok(normalize_anchored(&anchor_path(path, cwd)?))
+}
+
 /// Lexically normalizes a resolved path.
 ///
 /// Resolves `.` and `..`, collapses repeated separators, and drops trailing
 /// slashes. Never fails: [`ResolvedPath`] is absolute by construction, and `..`
 /// at the root clamps to the root, as POSIX defines `/..` to be `/`.
 pub(crate) fn normalize_absolute(path: &ResolvedPath) -> String {
-    normalize_components(path.as_str())
+    normalize_anchored(path.as_str())
+}
+
+/// Lexically normalizes an anchored absolute path.
+pub(crate) fn normalize_anchored(path: &str) -> String {
+    normalize_components(path)
 }
 
 /// Lexically normalizes an absolute `path`.
