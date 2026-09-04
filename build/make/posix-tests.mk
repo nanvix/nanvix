@@ -61,10 +61,10 @@ POSIX_TEST_CRT_OBJ := $(POSIX_TESTS_OBJDIR)/common/crt0-stubs.o
 
 # Compile flags: the freestanding guest C flags, plus the upstream suite defines
 # (mirroring nanvix/posix-tests' src/Makefile) so the ported sources behave the
-# same as upstream — standalone build, microvm platform, and the system/node
-# name strings that misc-c compares against.
+# same as upstream on the microvm platform and use the system/node name strings
+# that misc-c compares against.
 POSIX_TEST_CFLAGS := $(GUEST_C_APP_CFLAGS)
-POSIX_TEST_CFLAGS += -D__NANVIX_STANDALONE__ -D__microvm__
+POSIX_TEST_CFLAGS += -D__microvm__
 POSIX_TEST_CFLAGS += -D__NANVIX_SYSNAME__=\"nanvix\" -D__NANVIX_NODENAME__=\"localhost\"
 
 #---------------------------------------------------------------------------------------------------
@@ -106,22 +106,6 @@ $(POSIX_TESTS_OBJDIR)/%.o: $(POSIX_TESTS_STRESS_SRCDIR)/%.c
 # win over pattern rules), so the standalone-images machinery bundles the
 # resulting ELF into `<suite>.initrd` without any custom mkimage recipe.
 #
-# A suite may restrict the compiled set via POSIX_TEST_FILES_<suite> (a list of
-# file names under the suite directory) — used by file-c, whose link-only and
-# guarded sub-tests need features absent from the standalone VFS (FAT32 has no
-# links/permissions; select has no standalone backend).
-
-# file-c: only the sub-tests that main.c runs under __NANVIX_STANDALONE__. The
-# remaining files exercise links, permissions/ownership, and timestamps, which
-# the standalone FAT32 VFS does not support.
-POSIX_TEST_FILES_test-c-file := \
-	main.c open_close.c create_unlink.c write_read.c poll.c select.c posix_fadvise.c lseek.c \
-	posix_fallocate.c readv.c preadv.c writev.c pwritev.c pread.c pwrite.c \
-	fdatasync.c stat.c device_namespace.c ftruncate.c truncate.c link.c linkat.c renameat.c renameat_subdir.c unlinkat.c mkdirat.c mkdir.c \
-	path_errno.c mkfifo.c mknod.c umask_ramfs.c umask.c dirent.c terminal_devices.c getcwd.c chdir.c fchdir.c \
-	utimensat.c utimes.c utime.c futimens.c chown.c fchown.c fchownat.c lchown.c \
-	chmod.c fchmodat.c fchmod.c lchmod.c faccessat.c access.c
-
 # Extra link flags for position-independent executables. The dlfcn PIE variants
 # build as PIE so the linker emits .dynsym/.dynstr/.dynamic and the executable's
 # own symbols are resolvable via dlopen(NULL)/RTLD_DEFAULT. Mirrors the proven
@@ -283,7 +267,7 @@ POSIX_TEST_EXTRA_LDLIBS_test-c-dlfcn-hello := -L$(LIBRARIES_DIR) -l:libc.so -l:l
 
 define POSIX_TEST_RULE
 POSIX_TEST_SRCROOT_$(1) := $$(if $$(POSIX_TEST_STRESS_$(1)),$$(POSIX_TESTS_STRESS_SRCDIR),$$(POSIX_TESTS_SRCDIR))
-POSIX_TEST_SRCS_$(1) := $$(if $$(POSIX_TEST_FILES_$(1)),$$(addprefix $$(POSIX_TEST_SRCROOT_$(1))/$(1)/,$$(POSIX_TEST_FILES_$(1))),$$(wildcard $$(POSIX_TEST_SRCROOT_$(1))/$(1)/*.c))
+POSIX_TEST_SRCS_$(1) := $$(wildcard $$(POSIX_TEST_SRCROOT_$(1))/$(1)/*.c)
 POSIX_TEST_OBJS_$(1) := $$(patsubst $$(POSIX_TEST_SRCROOT_$(1))/%.c,$$(POSIX_TESTS_OBJDIR)/%.o,$$(POSIX_TEST_SRCS_$(1)))
 # PIE suites compile their objects with -fPIE and use the architecture's PIC
 # crt0/libc/libm archives.
@@ -310,6 +294,7 @@ $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_RULE,$(suite))))
 
 # The guest compiler targets Nanvix, so pass the host OS explicitly to the Unix socket tests.
 ifeq ($(IS_WINDOWS),yes)
+$(POSIX_TESTS_OBJDIR)/test-c-network/main.o \
 $(POSIX_TESTS_OBJDIR)/test-c-network/unix.o: POSIX_TEST_EXTRA_CFLAGS += -DNANVIX_HOST_WINDOWS
 endif
 
