@@ -18,6 +18,16 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
+/* `restrict` is C99-only; expand it to the keyword in C and to nothing in C++,
+   where it is a parse error (even as `__restrict`) inside array parameters. */
+#ifndef __nanvix_restrict
+#ifdef __cplusplus
+#define __nanvix_restrict
+#else
+#define __nanvix_restrict restrict
+#endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -56,8 +66,11 @@ typedef struct {
  * Functions
  *==================================================================================================*/
 
-extern int select(
-    int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struct timeval *timeout);
+extern int select(int nfds,
+                  fd_set *__nanvix_restrict readfds,
+                  fd_set *__nanvix_restrict writefds,
+                  fd_set *__nanvix_restrict exceptfds,
+                  struct timeval *__nanvix_restrict timeout);
 
 #ifdef __cplusplus
 }
