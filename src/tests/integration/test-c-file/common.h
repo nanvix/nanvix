@@ -21,6 +21,9 @@ extern void test_open_close(void);
 // Tests whether we can create and unlink a file.
 extern void test_create_unlink(void);
 
+// Tests the synthetic device namespace.
+extern void test_device_namespace(void);
+
 // Tests whether we can get the current working directory.
 extern void test_getcwd(void);
 

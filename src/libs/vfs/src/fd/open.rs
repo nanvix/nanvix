@@ -13,9 +13,15 @@
 
 use crate::{
     descriptor::{
+        AccessMode,
         DirectReadHandle,
         DirectoryHandle,
+        NullHandle,
         VfsFileHandle,
+    },
+    devfs::{
+        self,
+        DevicePath,
     },
     filesystem,
 };
@@ -112,6 +118,33 @@ pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32E
 
     let access_mode: c_int = flags & file_access_mode::O_ACCMODE;
     let is_read_only: bool = access_mode == file_access_mode::O_RDONLY;
+
+    match devfs::resolve(cwd, path)? {
+        Some(DevicePath::Null) => {
+            if flags & file_access_mode::O_EXEC != 0 {
+                return Err(Fat32Error::PermissionDenied);
+            }
+            if flags & file_creation_flags::O_CREAT != 0 && flags & file_creation_flags::O_EXCL != 0
+            {
+                return Err(Fat32Error::AlreadyExists);
+            }
+            let access_mode: AccessMode = match access_mode {
+                file_access_mode::O_RDONLY => AccessMode::ReadOnly,
+                file_access_mode::O_WRONLY => AccessMode::WriteOnly,
+                file_access_mode::O_RDWR => AccessMode::ReadWrite,
+                _ => return Err(Fat32Error::InvalidArgument),
+            };
+            return Ok(VfsFileHandle::Null(NullHandle::new(access_mode)));
+        },
+        Some(DevicePath::Missing) => {
+            if flags & file_creation_flags::O_CREAT != 0 {
+                return Err(Fat32Error::PermissionDenied);
+            }
+            return Err(Fat32Error::NotFound);
+        },
+        Some(DevicePath::Directory) => return Err(Fat32Error::NotAFile),
+        None => {},
+    }
 
     // Try zero-copy direct read for read-only opens of contiguous files.
     let creation_flags: c_int =
