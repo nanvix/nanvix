@@ -6,11 +6,12 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from scripts.setup import verus as verusmod
 
@@ -72,6 +73,67 @@ class TestDownloadVerusArchive(unittest.TestCase):
 
             self.assertEqual(destination.read_bytes(), archive_contents)
             self.assertEqual(cached_archive.read_bytes(), archive_contents)
+
+
+class TestEnsureVerusToolchain(unittest.TestCase):
+    """Tests for installing the Rust toolchain required by Verus."""
+
+    def test_strips_rustup_annotation_before_install(self) -> None:
+        """Rustup annotations in Verus metadata are not part of the toolchain name."""
+        toolchain = "1.98.0-x86_64-unknown-linux-gnu"
+        annotated_toolchain = (
+            f"{toolchain} (overridden by environment variable RUSTUP_TOOLCHAIN)"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            install_dir = Path(temp_dir)
+            (install_dir / "version.json").write_text(
+                f'{{"verus": {{"toolchain": "{annotated_toolchain}"}}}}',
+                encoding="utf-8",
+            )
+
+            with (
+                patch.object(verusmod.shutil, "which", return_value="rustup"),
+                patch.object(
+                    verusmod.subprocess,
+                    "run",
+                    side_effect=[
+                        subprocess.CompletedProcess(args=[], returncode=1),
+                        subprocess.CompletedProcess(args=[], returncode=0),
+                    ],
+                ) as run_command,
+                patch.object(verusmod, "print_warning") as print_warning,
+            ):
+                verusmod.ensure_verus_toolchain(install_dir)
+
+        print_warning.assert_called_once_with(
+            "Verus Rust toolchain metadata contains an annotation; "
+            f"using '{toolchain}'."
+        )
+        self.assertEqual(
+            run_command.call_args_list,
+            [
+                call(
+                    ["rustup", "run", toolchain, "rustc", "--version"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                ),
+                call(
+                    [
+                        "rustup",
+                        "toolchain",
+                        "install",
+                        toolchain,
+                        "--profile",
+                        "minimal",
+                        "--component",
+                        "rust-src",
+                    ],
+                    check=True,
+                ),
+            ],
+        )
 
 
 if __name__ == "__main__":
