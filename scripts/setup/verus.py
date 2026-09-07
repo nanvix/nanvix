@@ -441,6 +441,18 @@ def ensure_verus_toolchain(install_dir: Path) -> None:
     if not isinstance(required_toolchain, str) or not required_toolchain:
         return
 
+    toolchain_parts = required_toolchain.split(maxsplit=1)
+    if not toolchain_parts:
+        return
+
+    normalized_toolchain = toolchain_parts[0]
+    if normalized_toolchain != required_toolchain:
+        print_warning(
+            "Verus Rust toolchain metadata contains an annotation; "
+            f"using '{normalized_toolchain}'."
+        )
+    required_toolchain = normalized_toolchain
+
     probe = subprocess.run(
         [rustup, "run", required_toolchain, "rustc", "--version"],
         stdout=subprocess.DEVNULL,
