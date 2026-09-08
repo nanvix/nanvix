@@ -91,6 +91,10 @@ pub mod stdlib;
 #[cfg(feature = "syscall")]
 pub(crate) mod path;
 
+/// Descriptor backend classification.
+#[cfg(any(feature = "syscall", test))]
+mod fd_route;
+
 /// Client-side file-descriptor resolution cache.
 #[cfg(feature = "syscall")]
 pub(crate) mod fdtable;

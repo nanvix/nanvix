@@ -20,6 +20,7 @@
 //! `vfsd`. An entry older than that ([`is_coherent`]) is treated as stale and re-resolved, so a
 //! number reused for a different backend can never be answered from an outdated entry.
 
+pub(crate) use crate::fd_route::Route;
 use ::alloc::collections::BTreeMap;
 #[cfg(test)]
 use ::core::sync::atomic::AtomicBool;
@@ -38,19 +39,6 @@ use ::sysapi::unistd::{
 //==================================================================================================
 // Structures
 //==================================================================================================
-
-/// The backend that serves a descriptor's operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Route {
-    /// A console stream (`stdin`/`stdout`/`stderr`); I/O flows directly to the kernel.
-    Console,
-    /// A terminal device whose I/O is served by vfsd.
-    Terminal,
-    /// A `vfsd`-managed object: regular file, directory, host file, or pipe end.
-    Vfs,
-    /// A `networkd`-managed socket.
-    Socket,
-}
 
 /// A resolved routing decision: which backend serves a descriptor and the descriptor number that
 /// backend expects.
