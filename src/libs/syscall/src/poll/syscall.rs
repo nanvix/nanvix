@@ -151,11 +151,6 @@ impl PollFd {
     pub fn fd(&self) -> RawFileDescriptor {
         self.fd
     }
-
-    /// Returns the input events.
-    pub fn events(&self) -> &PollEvents {
-        &self.events
-    }
 }
 
 //==================================================================================================
@@ -174,10 +169,13 @@ impl PollFd {
 ///
 /// # Returns
 ///
-/// Upon success, this function returns a tuple containing the number of file descriptors that are
-/// ready for I/O and a vector of events that occurred on each file descriptor. If `zero` is
-/// returned, the timeout expired without any file descriptor becoming ready. On failure, this
-/// function returns an error.
+/// Upon success, this function returns one event mask for each input descriptor. If every mask is
+/// empty, the timeout expired without any descriptor becoming ready. On failure, this function
+/// returns an error.
+///
+/// # References
+///
+/// - [POSIX `poll()`](https://pubs.opengroup.org/onlinepubs/9799919799/functions/poll.html)
 ///
 pub fn poll(fds: &[PollFd], timeout: PollTimeout) -> Result<Vec<PollEvents>, Error> {
     ::syslog::trace!("poll(): fds={fds:?}, timeout={timeout:?}");
@@ -185,14 +183,23 @@ pub fn poll(fds: &[PollFd], timeout: PollTimeout) -> Result<Vec<PollEvents>, Err
     let timeout: c_int = timeout.into();
 
     if fds.is_empty() || fds.iter().all(|fd| fd.fd() < 0) {
+        const MAX_SLEEP: Duration = Duration::from_secs(u32::MAX as u64);
         if timeout < 0 {
-            const MAX_SLEEP: Duration = Duration::from_secs(u32::MAX as u64);
             loop {
                 ::sys::kcall::pm::__kcall_sleep(MAX_SLEEP)?;
             }
         }
         if timeout > 0 {
-            ::sys::kcall::pm::__kcall_sleep(Duration::from_millis(timeout as u64))?;
+            let mut remaining: Duration = Duration::from_millis(timeout as u64);
+            while remaining > MAX_SLEEP {
+                ::sys::kcall::pm::__kcall_sleep(MAX_SLEEP)?;
+                remaining = remaining.checked_sub(MAX_SLEEP).ok_or_else(|| {
+                    Error::new(ErrorCode::InvalidArgument, "poll timeout underflow")
+                })?;
+            }
+            if !remaining.is_zero() {
+                ::sys::kcall::pm::__kcall_sleep(remaining)?;
+            }
         }
         return Ok(fds.iter().map(|_| PollEvents(0)).collect());
     }
