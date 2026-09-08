@@ -41,7 +41,7 @@ pub(crate) struct CloseTarget {
 pub(crate) fn close_target(fd: i32, resolution: Resolution) -> CloseTarget {
     match resolution.route {
         // VFS-backed descriptors are closed by vfsd using the backend descriptor it reported.
-        Route::Vfs => CloseTarget {
+        Route::Vfs | Route::Terminal => CloseTarget {
             fd: resolution.backend_fd,
             destination: crate::VFS_DESTINATION,
             message_type: crate::VFS_MESSAGE_TYPE,

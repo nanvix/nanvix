@@ -18,6 +18,7 @@ mod null_handle;
 mod pipe_closure;
 mod process_exit_reclaim;
 mod socket_handle;
+mod terminal_handle;
 mod tty_error;
 mod vfs_file_handle;
 mod vfs_route;
@@ -38,6 +39,10 @@ pub use self::{
     pipe_closure::PipeClosure,
     process_exit_reclaim::ProcessExitReclaim,
     socket_handle::SocketHandle,
+    terminal_handle::{
+        TerminalDevice,
+        TerminalHandle,
+    },
     tty_error::TtyError,
     vfs_file_handle::VfsFileHandle,
     vfs_route::VfsRoute,

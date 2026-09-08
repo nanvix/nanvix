@@ -64,7 +64,7 @@ pub fn pwrite(fd: RawFileDescriptor, buffer: &[u8], offset: off_t) -> Result<c_s
             // VFS-backed descriptors fall through to the vfsd write path below.
             Some(res) if res.route == Route::Vfs => res.backend_fd,
             // The console (stdin/stdout/stderr) is not seekable.
-            Some(res) if res.route == Route::Console => {
+            Some(res) if matches!(res.route, Route::Console | Route::Terminal) => {
                 ::syslog::warn!(
                     "pwrite(): illegal seek on stdio (fd={fd:?}, buffer={buffer:?}, \
                      offset={offset})",

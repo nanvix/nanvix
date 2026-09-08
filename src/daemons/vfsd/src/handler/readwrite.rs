@@ -74,10 +74,7 @@ use ::syscall::{
     SystemCallMessage,
 };
 use ::vfs::{
-    fd::{
-        ConsoleStream,
-        TtyError,
-    },
+    fd::TtyError,
     line_discipline::{
         ConsoleReadOutcome,
         TerminalSignal,
@@ -173,13 +170,13 @@ pub(crate) fn handle_read(
 pub(crate) fn handle_console_read(
     response_context: ResponseContext,
     fd: i32,
-    stream: ConsoleStream,
+    readable: bool,
     count: usize,
     console_wait: &mut ConsoleWaitTable,
 ) -> Option<Message> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source_tid: ThreadIdentifier = response_context.source_tid();
-    if stream != ConsoleStream::Stdin {
+    if !readable {
         console_wait.park(BlockedConsoleReader {
             response_context,
             source_pid,
@@ -213,6 +210,46 @@ pub(crate) fn handle_console_read(
         wake_console_readers(console_wait);
     }
     None
+}
+
+/// Handles a write to an opened terminal device.
+pub(crate) fn handle_terminal_write(
+    source_pid: ProcessIdentifier,
+    source_tid: ThreadIdentifier,
+    msg: SystemCallMessage,
+    writable: bool,
+) -> Message {
+    let req: WriteRequest = WriteRequest::from_bytes(msg.payload);
+    let count: usize = req.count as usize;
+    let buf_size: usize = count.min(MAX_BULK_TRANSFER_SIZE);
+    // Safety: vfsd is single-threaded; no concurrent access to BULK_BUFFER.
+    let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
+
+    match ::sys::kcall::ipc::__kcall_pull(source_pid, source_tid, buf) {
+        Ok(pulled) => {
+            if !writable {
+                return build_error(source_tid, ErrorCode::BadFile);
+            }
+            let write_len: usize = pulled.min(count);
+            if write_len > 0 {
+                notify_terminal_access(source_pid, true);
+                if let Err(error) = kernel_write_console(STDOUT_FILENO, &buf[..write_len]) {
+                    ::syslog::error!("terminal write failed (error={:?})", error);
+                    return build_error(source_tid, ErrorCode::IoErr);
+                }
+            }
+            WriteResponse::build(
+                source_tid,
+                write_len as i32,
+                ProcessIdentifier::VFSD,
+                MessageType::Ipc,
+            )
+        },
+        Err(error) => {
+            ::syslog::error!("terminal write pull failed (error={:?})", error);
+            build_error(source_tid, ErrorCode::IoErr)
+        },
+    }
 }
 
 pub(crate) fn handle_write(

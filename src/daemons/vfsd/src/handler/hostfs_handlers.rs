@@ -695,11 +695,11 @@ pub(crate) fn handle_read_with_hostfs(
     let req: ReadRequest = ReadRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
 
-    if let Ok(stream) = ::vfs::fd::vfs_console_stream(fd) {
+    if let Ok((readable, _)) = ::vfs::fd::vfs_terminal_access(fd) {
         return super::readwrite::handle_console_read(
             response_context,
             fd,
-            stream,
+            readable,
             req.count as usize,
             console_wait,
         );
@@ -760,6 +760,12 @@ pub(crate) fn handle_write_with_hostfs(
     let source_tid: ThreadIdentifier = response_context.source_tid();
     let req: WriteRequest = WriteRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
+
+    if let Ok((_, writable)) = ::vfs::fd::vfs_terminal_access(fd) {
+        return Some(super::readwrite::handle_terminal_write(
+            source_pid, source_tid, msg, writable,
+        ));
+    }
 
     // Pipe write end: served by the pipe handler (which may park the caller).
     if let Some((pipe_id, is_write)) = ::vfs::fd::vfs_pipe_id(fd) {

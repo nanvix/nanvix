@@ -239,6 +239,8 @@ impl MessagePartitioner for OpenAtRequest {
 #[repr(C, packed)]
 pub struct OpenAtResponse {
     pub ret: i32,
+    /// Descriptor backend route, using the `ROUTE_*` constants.
+    pub route: u32,
     /// The `vfsd` descriptor-table generation at the time this descriptor was returned.
     ///
     /// libposix stamps the resolution-cache entry for `ret` with this epoch so that a later plan
@@ -249,12 +251,20 @@ pub struct OpenAtResponse {
 ::static_assert::assert_eq_size!(OpenAtResponse, SystemCallMessage::PAYLOAD_SIZE);
 
 impl OpenAtResponse {
-    pub const PADDING_SIZE: usize =
-        SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>() - mem::size_of::<u64>();
+    /// Wire value for a vfsd-served descriptor.
+    pub const ROUTE_VFS: u32 = 0;
+    /// Wire value for a terminal descriptor served by vfsd.
+    pub const ROUTE_TERMINAL: u32 = 1;
 
-    pub fn new(ret: i32, epoch: u64) -> Self {
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
+        - mem::size_of::<i32>()
+        - mem::size_of::<u32>()
+        - mem::size_of::<u64>();
+
+    pub fn new(ret: i32, route: u32, epoch: u64) -> Self {
         Self {
             ret,
+            route,
             epoch,
             _padding: [0; Self::PADDING_SIZE],
         }
@@ -271,11 +281,12 @@ impl OpenAtResponse {
     pub fn build(
         tid: ThreadIdentifier,
         ret: i32,
+        route: u32,
         epoch: u64,
         source: ProcessIdentifier,
         message_type: MessageType,
     ) -> Message {
-        let message: OpenAtResponse = OpenAtResponse::new(ret, epoch);
+        let message: OpenAtResponse = OpenAtResponse::new(ret, route, epoch);
         let message: SystemCallMessage =
             SystemCallMessage::new(SystemCallMessageKind::OpenAtResponse, message.into_bytes());
         let message: Message = Message::new(

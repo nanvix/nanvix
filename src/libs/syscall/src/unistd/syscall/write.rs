@@ -220,7 +220,7 @@ pub fn write(fd: RawFileDescriptor, buffer: &[u8]) -> Result<c_size_t, Error> {
             )
         },
         // VFS-backed descriptors go to vfsd.
-        Some(res) if res.route == Route::Vfs => write_ipc(
+        Some(res) if matches!(res.route, Route::Vfs | Route::Terminal) => write_ipc(
             res.backend_fd,
             buffer,
             WriteBackend {

@@ -10,6 +10,7 @@ use super::{
     util::page_chunk_size,
 };
 use crate::{
+    fdtable::Route,
     poll::input_message::{
         ConsoleReadCancel,
         PipeOperation,
@@ -46,22 +47,27 @@ use ::sysapi::{
 // Standalone Functions
 //==================================================================================================
 
-/// Backend routing and interruption policy for one read operation.
+/// Read backend; transport and cancellation follow from the variant.
 #[derive(Clone, Copy)]
-struct ReadBackend {
-    destination: ProcessIdentifier,
-    message_type: MessageType,
-    pull_pid: ProcessIdentifier,
-    pull_tid: ThreadIdentifier,
-    cancellation: ReadCancellation,
+enum ReadBackend {
+    /// Direct console input without VFSD.
+    KernelConsole,
+    /// Terminal input parked in VFSD's console wait table.
+    VfsConsole,
+    /// File or pipe input served by VFSD.
+    Vfs,
 }
 
-/// Cancellation protocol to run when a read's bulk pull is interrupted.
-#[derive(Clone, Copy)]
-enum ReadCancellation {
-    None,
-    Console,
-    Pipe,
+impl TryFrom<Route> for ReadBackend {
+    type Error = Error;
+
+    fn try_from(route: Route) -> Result<Self, Self::Error> {
+        match route {
+            Route::Console | Route::Terminal => Ok(Self::VfsConsole),
+            Route::Vfs => Ok(Self::Vfs),
+            Route::Socket => Err(Error::new(ErrorCode::BadFile, "read: unsupported socket route")),
+        }
+    }
 }
 
 ///
@@ -87,26 +93,38 @@ fn read_chunk(
     chunk: &mut [u8],
     backend: ReadBackend,
 ) -> Result<c_size_t, Error> {
+    let (destination, message_type, pull_pid, pull_tid): (
+        ProcessIdentifier,
+        MessageType,
+        ProcessIdentifier,
+        ThreadIdentifier,
+    ) = match backend {
+        ReadBackend::KernelConsole => {
+            (crate::HOST_IO, MessageType::Ikc, ProcessIdentifier::KERNEL, ThreadIdentifier::KERNEL)
+        },
+        ReadBackend::VfsConsole | ReadBackend::Vfs => (
+            crate::VFS_DESTINATION,
+            crate::VFS_MESSAGE_TYPE,
+            crate::VFS_PUSH_PULL_PID,
+            crate::VFS_PUSH_PULL_TID,
+        ),
+    };
+
     // Send metadata-only ReadRequest via IPC message.
-    let mut request: Message = ReadRequest::build(
-        tid,
-        fd,
-        chunk.len() as c_size_t,
-        backend.destination,
-        backend.message_type,
-    );
+    let mut request: Message =
+        ReadRequest::build(tid, fd, chunk.len() as c_size_t, destination, message_type);
     let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Pull data via data chunk transfer.
     let mut interrupted: Option<Error> = None;
     let bytes_pulled: Option<usize> =
-        match ::sys::kcall::ipc::__kcall_pull(backend.pull_pid, backend.pull_tid, chunk) {
+        match ::sys::kcall::ipc::__kcall_pull(pull_pid, pull_tid, chunk) {
             Ok(bytes_pulled) => Some(bytes_pulled),
             Err(error) if error.code == ErrorCode::Interrupted => {
-                let cancelled: bool = match backend.cancellation {
-                    ReadCancellation::None => return Err(error),
-                    ReadCancellation::Console => cancel_console_read(tid, token.identifier())?,
-                    ReadCancellation::Pipe => {
+                let cancelled: bool = match backend {
+                    ReadBackend::KernelConsole => return Err(error),
+                    ReadBackend::VfsConsole => cancel_console_read(tid, token.identifier())?,
+                    ReadBackend::Vfs => {
                         cancel_pipe_operation(tid, fd, PipeOperation::Read, token.identifier())?
                             .is_some()
                     },
@@ -293,7 +311,6 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         resolve_console,
         resolve_result,
         ConsoleLookup,
-        Route,
     };
     match resolve_console(fd)? {
         // When vfsd owns the console slot, use the flat descriptor so vfsd can apply the shared
@@ -304,29 +321,9 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
             via_vfsd,
         } => {
             if via_vfsd {
-                read_ipc(
-                    fd,
-                    buffer,
-                    ReadBackend {
-                        destination: crate::VFS_DESTINATION,
-                        message_type: crate::VFS_MESSAGE_TYPE,
-                        pull_pid: crate::VFS_PUSH_PULL_PID,
-                        pull_tid: crate::VFS_PUSH_PULL_TID,
-                        cancellation: ReadCancellation::Console,
-                    },
-                )
+                read_ipc(fd, buffer, ReadBackend::VfsConsole)
             } else {
-                read_ipc(
-                    STDIN_FILENO,
-                    buffer,
-                    ReadBackend {
-                        destination: crate::HOST_IO,
-                        message_type: MessageType::Ikc,
-                        pull_pid: ProcessIdentifier::KERNEL,
-                        pull_tid: ThreadIdentifier::KERNEL,
-                        cancellation: ReadCancellation::None,
-                    },
-                )
+                read_ipc(STDIN_FILENO, buffer, ReadBackend::KernelConsole)
             }
         },
         ConsoleLookup::Console { .. } | ConsoleLookup::BadFile => {
@@ -335,17 +332,9 @@ pub fn read(fd: RawFileDescriptor, buffer: &mut [u8]) -> Result<c_size_t, Error>
         },
         ConsoleLookup::Other => match resolve_result(fd)? {
             // VFS-backed descriptors go to vfsd.
-            Some(res) if res.route == Route::Vfs => read_ipc(
-                res.backend_fd,
-                buffer,
-                ReadBackend {
-                    destination: crate::VFS_DESTINATION,
-                    message_type: crate::VFS_MESSAGE_TYPE,
-                    pull_pid: crate::VFS_PUSH_PULL_PID,
-                    pull_tid: crate::VFS_PUSH_PULL_TID,
-                    cancellation: ReadCancellation::Pipe,
-                },
-            ),
+            Some(res) if matches!(res.route, Route::Vfs | Route::Terminal) => {
+                read_ipc(res.backend_fd, buffer, ReadBackend::try_from(res.route)?)
+            },
             // stdout/stderr, sockets, and unroutable descriptors are not readable here.
             _ => {
                 ::syslog::warn!("read(): bad file descriptor fd={fd}");
@@ -394,4 +383,31 @@ fn read_ipc(
     }
 
     Ok(total_read)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReadBackend;
+    use crate::fdtable::Route;
+    use ::sys::error::ErrorCode;
+
+    #[test]
+    fn terminal_reads_use_console_backend() {
+        for route in [Route::Console, Route::Terminal] {
+            assert!(matches!(ReadBackend::try_from(route), Ok(ReadBackend::VfsConsole)));
+        }
+    }
+
+    #[test]
+    fn other_vfs_reads_use_vfs_backend() {
+        assert!(matches!(ReadBackend::try_from(Route::Vfs), Ok(ReadBackend::Vfs)));
+    }
+
+    #[test]
+    fn sockets_are_not_read_backends() {
+        assert!(matches!(
+            ReadBackend::try_from(Route::Socket),
+            Err(error) if error.code == ErrorCode::BadFile
+        ));
+    }
 }
