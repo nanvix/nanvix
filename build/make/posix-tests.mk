@@ -308,6 +308,11 @@ endef
 
 $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_RULE,$(suite))))
 
+# The guest compiler targets Nanvix, so pass the host OS explicitly to the Unix socket tests.
+ifeq ($(IS_WINDOWS),yes)
+$(POSIX_TESTS_OBJDIR)/test-c-network/unix.o: POSIX_TEST_EXTRA_CFLAGS += -DNANVIX_HOST_WINDOWS
+endif
+
 #---------------------------------------------------------------------------------------------------
 # Per-suite standalone image rule.
 #---------------------------------------------------------------------------------------------------

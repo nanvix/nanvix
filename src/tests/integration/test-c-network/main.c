@@ -144,6 +144,8 @@ int main(int argc, const char *argv[])
     test_inet_sockets(sin_port, sin_addr);
     test_poll_services(sin_addr);
 
+    test_unix_socket_pairs();
+
     if (getenv("NANVIX_TEST_HOSTFS") != NULL) {
         char cwd[PATH_MAX];
         assert(getcwd(cwd, sizeof(cwd)) != NULL);
@@ -157,21 +159,20 @@ int main(int argc, const char *argv[])
         int length = snprintf(sun_path, sizeof(sun_path), "%s%s", UNIX_SOCKET_HOST_DIRECTORY,
                               sun_name);
         assert(length > 0 && (size_t)length < sizeof(sun_path));
-        test_unix_sockets(sun_path, sun_name);
+        test_unix_pathname_sockets(sun_path, sun_name);
         assert(chdir(cwd) == 0);
-    }
-
-    // The network service supports only AF_INET sockets.
-#ifndef __NANVIX_STANDALONE__
-    {
+    } else {
+#ifdef __NANVIX_STANDALONE__
+        fprintf(stderr, "skipping UNIX pathname sockets (hostfs not enabled)\n");
+#else
         char sun_path[UNIX_SOCKET_NAME_LEN];
         for (int i = 0; i < UNIX_SOCKET_NAME_LEN - 1; i++) {
             sun_path[i] = 'a' + (rand() % 26);
         }
         sun_path[UNIX_SOCKET_NAME_LEN - 1] = '\0';
-        test_unix_sockets(sun_path, sun_path);
-    }
+        test_unix_pathname_sockets(sun_path, sun_path);
 #endif
+    }
 
     // Write magic string to signal that the test passed.
     {

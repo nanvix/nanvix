@@ -10,6 +10,7 @@
 #include "common.h"
 #include <arpa/inet.h>
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -19,6 +20,7 @@
 // Standalone Functions
 //==================================================================================================
 
+#ifndef NANVIX_HOST_WINDOWS
 // Tests if we succeed to create a pair of connected sockets.
 static void test_create_socket_pair(int domain, int type, int protocol)
 {
@@ -103,10 +105,13 @@ static void test_shutdown(int domain, int type, int protocol)
     ret = close(sockfds[1]);
     assert(ret == 0);
 }
+#endif
 
-// Tests operations on UNIX sockets.
-void test_unix_sockets(const char sun_path[], const char unlink_path[])
+// Tests operations on pathname UNIX sockets.
+void test_unix_pathname_sockets(const char sun_path[], const char unlink_path[])
 {
+    fprintf(stderr, "testing UNIX pathname sockets ... ");
+
     int domain = AF_UNIX;
     int type = SOCK_STREAM;
     int protocol = IPPROTO_IP;
@@ -138,8 +143,26 @@ void test_unix_sockets(const char sun_path[], const char unlink_path[])
         domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
     assert(unlink(unlink_path) == 0);
 
+    fprintf(stderr, "passed\n");
+}
+
+// Tests operations on unnamed UNIX socket pairs independently of hostfs.
+void test_unix_socket_pairs(void)
+{
+#ifdef NANVIX_HOST_WINDOWS
+    fprintf(stderr, "skipping UNIX socket pairs (socketpair is unsupported on Windows)\n");
+#else
+    fprintf(stderr, "testing UNIX socket pairs ... ");
+
+    int domain = AF_UNIX;
+    int type = SOCK_STREAM;
+    int protocol = IPPROTO_IP;
+
     test_create_socket_pair(domain, type, protocol);
     test_getpeername(domain, type, protocol);
     test_send_recv(domain, type, protocol);
     test_shutdown(domain, type, protocol);
+
+    fprintf(stderr, "passed\n");
+#endif
 }
