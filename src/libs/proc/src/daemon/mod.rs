@@ -20,6 +20,7 @@ use crate::{
     ProcessManagementMessageHeader,
     SignupMessage,
     TerminalAccessMessage,
+    TerminalDetachAckMessage,
     TerminalSignalMessage,
     WaitCancelMessage,
     WaitMessage,
@@ -202,6 +203,37 @@ struct PendingExec {
     response_context: ResponseContext,
 }
 
+/// A `setsid()` request awaiting terminal detachment by the filesystem daemon.
+#[derive(Clone, Copy)]
+struct PendingSetSid {
+    /// Process creating a new session.
+    process: ProcessIdentifier,
+    /// Identifier of the terminal-detachment request awaiting acknowledgement.
+    request_id: RequestIdentifier,
+    /// Routing metadata for the deferred job-control response.
+    response_context: ResponseContext,
+}
+
+/// State of the system controlling terminal.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ControllingTerminal {
+    /// The init process has not yet been observed.
+    Unassigned,
+    /// The terminal belongs to `session`, with an optional foreground process group.
+    Assigned {
+        session: ProcessIdentifier,
+        foreground_pgrp: Option<ProcessIdentifier>,
+    },
+}
+
+/// Completion mode for a job-control request.
+enum JobControlDisposition {
+    /// Send this response immediately.
+    Reply(Message),
+    /// The response is retained until another daemon acknowledges the operation.
+    Deferred,
+}
+
 impl ProcessRecord {
     /// Instantiates a new process record. The process starts as the leader of its own session and
     /// process group (`sid == pgid == pid`); callers that know a parent override these to inherit the
@@ -375,16 +407,13 @@ pub struct ProcessDaemon {
     pending_execs: Vec<PendingExec>,
     /// Next identifier for an asynchronous request sent by this daemon's event-loop thread.
     next_request_id: u32,
+    /// `setsid()` requests awaiting terminal-detachment acknowledgement from the filesystem daemon.
+    pending_setsid: Vec<PendingSetSid>,
     /// Parents currently blocked in a `Wait` operation. A blocking `waitpid()` is parked here and
-    /// answered later, when a `ProcessTermination` event for a matching child arrives.
+    /// answered later, when a process-termination event for a matching child arrives.
     blocked: Vec<BlockedWaiter>,
-    /// Session that owns the controlling terminal.
-    terminal_sid: Option<ProcessIdentifier>,
-    /// Foreground process group of the controlling terminal (the console), set by `tcsetpgrp()` and
-    /// reported by `tcgetpgrp()`. Terminal-generated signals (`^C`/`^Z`) are delivered to this group,
-    /// and console access by a process outside it is a background access that raises `SIGTTIN` or
-    /// `SIGTTOU`. `None` until a foreground group is established.
-    foreground_pgrp: Option<ProcessIdentifier>,
+    /// Ownership and foreground-group state of the system controlling terminal.
+    controlling_terminal: ControllingTerminal,
 }
 
 impl ProcessDaemon {
@@ -405,7 +434,11 @@ impl ProcessDaemon {
                 .pending_execs
                 .iter()
                 .any(|pending| pending.request_id == request_id);
-            if !fork_request_active && !exec_request_active {
+            let setsid_request_active: bool = self
+                .pending_setsid
+                .iter()
+                .any(|pending| pending.request_id == request_id);
+            if !fork_request_active && !exec_request_active && !setsid_request_active {
                 return request_id;
             }
         }
@@ -437,9 +470,9 @@ impl ProcessDaemon {
             pending_fork_syncs: Vec::new(),
             pending_execs: Vec::new(),
             next_request_id: 1,
+            pending_setsid: Vec::new(),
             blocked: Vec::new(),
-            terminal_sid: None,
-            foreground_pgrp: None,
+            controlling_terminal: ControllingTerminal::Unassigned,
         })
     }
 
@@ -547,6 +580,10 @@ impl ProcessDaemon {
         if info.role == ProcessRole::Init && self.init_proc.is_none() {
             ::syslog::info!("recording init process (pid={:?})", child);
             self.init_proc = Some(child);
+            self.controlling_terminal = ControllingTerminal::Assigned {
+                session: child,
+                foreground_pgrp: None,
+            };
         }
 
         // The kernel spawns daemons and the init process directly (parent is the kernel), so
@@ -777,6 +814,9 @@ impl ProcessDaemon {
         // while held at the exec barrier can never be released, so leaving its entry behind would
         // strand it and leak the slot across pid reuse.
         self.pending_execs.retain(|pending| pending.process != pid);
+        // A terminated process cannot receive its deferred `setsid()` response. Drop the pending
+        // transaction so its request identifier cannot remain reserved across pid reuse.
+        self.pending_setsid.retain(|pending| pending.process != pid);
         // Drop any blocked-wait bookkeeping owned by the terminating process. A process that was
         // itself parked in `waitpid()` can never be answered once it is gone, so leaving its entry
         // behind would leak memory and strand a stale waiter.
@@ -1259,9 +1299,18 @@ impl ProcessDaemon {
 
     /// Clears the terminal foreground process group when it no longer has any live member.
     fn clear_foreground_pgrp_if_empty(&mut self) {
-        if let Some(pgrp) = self.foreground_pgrp {
-            if self.group_members(pgrp).is_empty() {
-                self.foreground_pgrp = None;
+        let foreground_pgrp: Option<ProcessIdentifier> = match self.controlling_terminal {
+            ControllingTerminal::Unassigned => None,
+            ControllingTerminal::Assigned {
+                foreground_pgrp, ..
+            } => foreground_pgrp,
+        };
+        if foreground_pgrp.is_some_and(|pgrp| self.group_members(pgrp).is_empty()) {
+            if let ControllingTerminal::Assigned {
+                foreground_pgrp, ..
+            } = &mut self.controlling_terminal
+            {
+                *foreground_pgrp = None;
             }
         }
     }
@@ -1291,18 +1340,19 @@ impl ProcessDaemon {
     /// # Parameters
     ///
     /// - `caller`: Process identifier of the requesting process.
+    /// - `response_context`: Routing metadata retained when the response must be deferred.
     /// - `request`: The job-control request.
     ///
     /// # Returns
     ///
-    /// Upon successful completion, the job-control response to send back to the caller. Upon
-    /// failure, an error is returned instead.
+    /// Whether the response is ready or deferred until another daemon acknowledges the operation.
     ///
     fn handle_job_control(
         &mut self,
         caller: ProcessIdentifier,
+        response_context: ResponseContext,
         request: JobControlRequest,
-    ) -> Result<Message, Error> {
+    ) -> Result<JobControlDisposition, Error> {
         // Copy the fields out of the packed request before use to avoid unaligned references.
         let pid: ProcessIdentifier = request.pid;
         let pgid: ProcessIdentifier = request.pgid;
@@ -1310,11 +1360,12 @@ impl ProcessDaemon {
         let op: JobControlOp = match request.op() {
             Ok(op) => op,
             Err(_) => {
-                return message::job_control_response(
+                let reply: Message = message::job_control_response(
                     caller,
                     ErrorCode::InvalidArgument.get(),
                     ProcessIdentifier::from(0),
-                );
+                )?;
+                return Ok(JobControlDisposition::Reply(reply));
             },
         };
 
@@ -1327,7 +1378,10 @@ impl ProcessDaemon {
         );
 
         let outcome: Result<ProcessIdentifier, Error> = match op {
-            JobControlOp::SetSid => self.job_control_setsid(caller),
+            JobControlOp::SetSid => match self.begin_setsid(caller, response_context) {
+                Ok(()) => return Ok(JobControlDisposition::Deferred),
+                Err(e) => Err(e),
+            },
             JobControlOp::SetPgid => self.job_control_setpgid(caller, pid, pgid).map(|()| pid),
             JobControlOp::GetPgid => self.job_control_getpgid(caller, pid),
             JobControlOp::GetSid => self.job_control_getsid(caller, pid),
@@ -1339,8 +1393,8 @@ impl ProcessDaemon {
             Ok(result) => (0, result),
             Err(e) => (e.code.get(), ProcessIdentifier::from(0)),
         };
-
-        message::job_control_response(caller, error, result)
+        let reply: Message = message::job_control_response(caller, error, result)?;
+        Ok(JobControlDisposition::Reply(reply))
     }
 
     /// Resolves a job-control target pid, where `0` selects the caller.
@@ -1352,30 +1406,96 @@ impl ProcessDaemon {
         }
     }
 
-    /// Implements `setsid()`: the caller becomes the leader of a new session and a new process
-    /// group. Fails with `EPERM` when the caller is already a process-group leader, as POSIX
-    /// requires (a group leader cannot move itself into a brand-new session).
-    fn job_control_setsid(
+    /// Begins `setsid()` and retains the response until vfsd confirms terminal detachment.
+    fn begin_setsid(
         &mut self,
         caller: ProcessIdentifier,
-    ) -> Result<ProcessIdentifier, Error> {
-        let record: &mut ProcessRecord = self
+        response_context: ResponseContext,
+    ) -> Result<(), Error> {
+        let record: &ProcessRecord = self
             .processes
-            .get_mut(&caller)
+            .get(&caller)
             .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))?;
-
         if record.pgid == caller {
             return Err(Error::new(
                 ErrorCode::OperationNotPermitted,
                 "caller is already a process-group leader",
             ));
         }
+        if self
+            .pending_setsid
+            .iter()
+            .any(|pending| pending.process == caller)
+        {
+            return Err(Error::new(ErrorCode::ResourceBusy, "setsid is already pending"));
+        }
 
-        let notification: Message = message::terminal_detach_request(caller)?;
+        let request_id: RequestIdentifier = self.allocate_request_id();
+        let mut notification: Message = message::terminal_detach_request(caller)?;
+        request_id.write_to(&mut notification);
         send_terminal_detach_notification(&notification)?;
-        record.sid = caller;
-        record.pgid = caller;
-        Ok(caller)
+        self.pending_setsid.push(PendingSetSid {
+            process: caller,
+            request_id,
+            response_context,
+        });
+        Ok(())
+    }
+
+    /// Completes a pending `setsid()` after vfsd acknowledges terminal detachment.
+    fn handle_terminal_detach_ack(
+        &mut self,
+        process: ProcessIdentifier,
+        status: i32,
+        request_id: RequestIdentifier,
+    ) -> Option<(ResponseContext, Message)> {
+        let Some(pos) = self
+            .pending_setsid
+            .iter()
+            .position(|pending| pending.process == process && pending.request_id == request_id)
+        else {
+            ::syslog::warn!(
+                "ignoring stale terminal-detach ack (process={:?}, request_id={})",
+                process,
+                request_id.raw()
+            );
+            return None;
+        };
+        let pending: PendingSetSid = self.pending_setsid.swap_remove(pos);
+        let result: Result<ProcessIdentifier, Error> =
+            if status == TerminalDetachAckMessage::STATUS_SUCCESS {
+                match self.processes.get_mut(&process) {
+                    Some(record) => {
+                        record.sid = process;
+                        record.pgid = process;
+                        Ok(process)
+                    },
+                    None => Err(Error::new(ErrorCode::NoSuchProcess, "caller not found")),
+                }
+            } else {
+                Err(Error::new(
+                    ErrorCode::try_from(status).unwrap_or(ErrorCode::TryAgain),
+                    "terminal detachment failed",
+                ))
+            };
+        if result.is_ok() {
+            self.clear_foreground_pgrp_if_empty();
+        }
+        let (error, result): (i32, ProcessIdentifier) = match result {
+            Ok(result) => (0, result),
+            Err(e) => (e.code.get(), ProcessIdentifier::from(0)),
+        };
+        match message::job_control_response(process, error, result) {
+            Ok(reply) => Some((pending.response_context, reply)),
+            Err(e) => {
+                ::syslog::warn!(
+                    "failed to build setsid response (process={:?}, error={:?})",
+                    process,
+                    e
+                );
+                None
+            },
+        }
     }
 
     /// Implements `setpgid()`: moves `pid` (or the caller when `pid` is `0`) into process group
@@ -1395,6 +1515,16 @@ impl ProcessDaemon {
             .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))?;
 
         let target: ProcessIdentifier = Self::resolve_target(caller, pid);
+        if self
+            .pending_setsid
+            .iter()
+            .any(|pending| pending.process == caller || pending.process == target)
+        {
+            return Err(Error::new(
+                ErrorCode::ResourceBusy,
+                "setsid is pending for a participating process",
+            ));
+        }
 
         let (target_sid, target_parent): (ProcessIdentifier, Option<ProcessIdentifier>) = {
             let record: &ProcessRecord = self
@@ -1491,6 +1621,19 @@ impl ProcessDaemon {
             .get(&caller)
             .map(|record| record.sid)
             .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))?;
+        let ControllingTerminal::Assigned {
+            session,
+            foreground_pgrp,
+        } = &mut self.controlling_terminal
+        else {
+            return Err(Error::new(ErrorCode::NotTerminal, "controlling terminal is unassigned"));
+        };
+        if *session != caller_sid {
+            return Err(Error::new(
+                ErrorCode::NotTerminal,
+                "caller does not own the controlling terminal",
+            ));
+        }
 
         // The requested foreground group must be a group in the caller's session.
         let valid: bool = self
@@ -1504,17 +1647,7 @@ impl ProcessDaemon {
             ));
         }
 
-        if let Some(terminal_sid) = self.terminal_sid {
-            if terminal_sid != caller_sid {
-                return Err(Error::new(
-                    ErrorCode::NotTerminal,
-                    "caller does not own the controlling terminal",
-                ));
-            }
-        } else {
-            self.terminal_sid = Some(caller_sid);
-        }
-        self.foreground_pgrp = Some(pgrp);
+        *foreground_pgrp = Some(pgrp);
         Ok(pgrp)
     }
 
@@ -1522,20 +1655,37 @@ impl ProcessDaemon {
     /// When no foreground group has been established, the caller's own group is reported, matching
     /// the default in which the caller is the foreground process.
     fn job_control_tcgetpgrp(&self, caller: ProcessIdentifier) -> Result<ProcessIdentifier, Error> {
-        if let Some(pgrp) = self.foreground_pgrp {
-            return Ok(pgrp);
-        }
-        self.processes
+        let record: &ProcessRecord = self
+            .processes
             .get(&caller)
-            .map(|record| record.pgid)
-            .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))
+            .ok_or_else(|| Error::new(ErrorCode::NoSuchProcess, "caller not found"))?;
+        let ControllingTerminal::Assigned {
+            session,
+            foreground_pgrp,
+        } = self.controlling_terminal
+        else {
+            return Err(Error::new(ErrorCode::NotTerminal, "controlling terminal is unassigned"));
+        };
+        if session != record.sid {
+            return Err(Error::new(
+                ErrorCode::NotTerminal,
+                "caller does not own the controlling terminal",
+            ));
+        }
+        Ok(foreground_pgrp.unwrap_or(record.pgid))
     }
 
     /// Handles a terminal-signal notification from the console owner: delivers `signum` to the
     /// controlling terminal's foreground process group. A signal posted while no foreground group is
     /// established has nowhere to go and is dropped.
     fn handle_terminal_signal(&mut self, signum: i32) {
-        match self.foreground_pgrp {
+        let foreground_pgrp: Option<ProcessIdentifier> = match self.controlling_terminal {
+            ControllingTerminal::Unassigned => None,
+            ControllingTerminal::Assigned {
+                foreground_pgrp, ..
+            } => foreground_pgrp,
+        };
+        match foreground_pgrp {
             Some(pgrp) => {
                 ::syslog::info!(
                     "handle_terminal_signal(): delivering signum={} to foreground group {:?}",
@@ -1562,9 +1712,16 @@ impl ProcessDaemon {
         if !self.process_has_controlling_terminal(pid) {
             return;
         }
-        let foreground: ProcessIdentifier = match self.foreground_pgrp {
-            Some(pgrp) => pgrp,
-            None => return,
+        let foreground: ProcessIdentifier = match self.controlling_terminal {
+            ControllingTerminal::Assigned {
+                foreground_pgrp: Some(pgrp),
+                ..
+            } => pgrp,
+            ControllingTerminal::Unassigned
+            | ControllingTerminal::Assigned {
+                foreground_pgrp: None,
+                ..
+            } => return,
         };
 
         let pgid: ProcessIdentifier = match self.processes.get(&pid) {
@@ -1593,12 +1750,12 @@ impl ProcessDaemon {
 
     /// Returns whether a process belongs to the controlling terminal's session.
     fn process_has_controlling_terminal(&self, pid: ProcessIdentifier) -> bool {
-        let Some(terminal_sid) = self.terminal_sid else {
+        let ControllingTerminal::Assigned { session, .. } = self.controlling_terminal else {
             return false;
         };
         self.processes
             .get(&pid)
-            .map(|record| record.sid == terminal_sid)
+            .map(|record| record.sid == session)
             .unwrap_or(false)
     }
 
@@ -1737,6 +1894,22 @@ impl ProcessDaemon {
                         ::syslog::warn!("dropping forged fork-clone-ack (source={:?})", caller);
                     }
                 },
+                ProcessManagementMessageHeader::TerminalDetachAck => {
+                    if caller == ProcessIdentifier::VFSD {
+                        let ack: TerminalDetachAckMessage =
+                            TerminalDetachAckMessage::from_bytes(message.payload);
+                        if let Some((response_context, reply)) =
+                            self.handle_terminal_detach_ack(ack.pid, ack.status, request_id)
+                        {
+                            response_context.send(reply)?;
+                        }
+                    } else {
+                        ::syslog::warn!(
+                            "dropping forged terminal-detach ack (source={:?})",
+                            caller
+                        );
+                    }
+                },
                 ProcessManagementMessageHeader::Wait => {
                     let message: WaitMessage = WaitMessage::from_bytes(message.payload);
                     // The reply is deferred (no send here) when the waiter blocks; it is produced
@@ -1759,8 +1932,10 @@ impl ProcessDaemon {
                 },
                 ProcessManagementMessageHeader::JobControl => {
                     let request: JobControlRequest = JobControlRequest::from_bytes(message.payload);
-                    let reply: Message = self.handle_job_control(caller, request)?;
-                    response_context.send(reply)?;
+                    match self.handle_job_control(caller, response_context, request)? {
+                        JobControlDisposition::Reply(reply) => response_context.send(reply)?,
+                        JobControlDisposition::Deferred => {},
+                    }
                 },
                 ProcessManagementMessageHeader::TerminalSignal => {
                     // The console line-discipline owner is the only legitimate source of a
@@ -2625,9 +2800,9 @@ mod tests {
             pending_fork_syncs: Vec::new(),
             pending_execs: Vec::new(),
             next_request_id: 1,
+            pending_setsid: Vec::new(),
             blocked: Vec::new(),
-            terminal_sid: None,
-            foreground_pgrp: None,
+            controlling_terminal: ControllingTerminal::Unassigned,
         })
     }
 
@@ -2636,6 +2811,26 @@ mod tests {
             MessageSender::new(process, ThreadIdentifier::from(20)),
             RequestIdentifier::from_raw(99),
         )
+    }
+
+    fn assign_controlling_terminal(
+        daemon: &mut ProcessDaemon,
+        session: ProcessIdentifier,
+        foreground_pgrp: Option<ProcessIdentifier>,
+    ) {
+        daemon.controlling_terminal = ControllingTerminal::Assigned {
+            session,
+            foreground_pgrp,
+        };
+    }
+
+    fn terminal_foreground_pgrp(daemon: &ProcessDaemon) -> Option<ProcessIdentifier> {
+        match daemon.controlling_terminal {
+            ControllingTerminal::Unassigned => None,
+            ControllingTerminal::Assigned {
+                foreground_pgrp, ..
+            } => foreground_pgrp,
+        }
     }
 
     fn lifecycle_message<const N: usize>(
@@ -3045,6 +3240,7 @@ mod tests {
             process_daemon(&[(process, Some(process_identity(1000)))]);
         let fork_request_id: RequestIdentifier = RequestIdentifier::from_raw(u32::MAX);
         let exec_request_id: RequestIdentifier = RequestIdentifier::from_raw(1);
+        let setsid_request_id: RequestIdentifier = RequestIdentifier::from_raw(2);
         daemon
             .processes
             .get_mut(&process)
@@ -3055,10 +3251,15 @@ mod tests {
             request_id: exec_request_id,
             response_context: response_context(process),
         });
+        daemon.pending_setsid.push(PendingSetSid {
+            process,
+            request_id: setsid_request_id,
+            response_context: response_context(process),
+        });
         daemon.next_request_id = u32::MAX;
 
-        assert_eq!(daemon.allocate_request_id(), RequestIdentifier::from_raw(2));
-        assert_eq!(daemon.next_request_id, 3);
+        assert_eq!(daemon.allocate_request_id(), RequestIdentifier::from_raw(3));
+        assert_eq!(daemon.next_request_id, 4);
     }
 
     #[test]
@@ -3368,7 +3569,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_session_detaches_on_setsid() {
+    fn terminal_session_detaches_only_after_acknowledgement() {
         let leader: ProcessIdentifier = ProcessIdentifier::from(10);
         let foreground: ProcessIdentifier = ProcessIdentifier::from(11);
         let detached: ProcessIdentifier = ProcessIdentifier::from(12);
@@ -3382,13 +3583,125 @@ mod tests {
             record.sid = leader;
             record.pgid = foreground;
         }
+        assign_controlling_terminal(&mut daemon, leader, Some(foreground));
 
-        daemon
-            .job_control_tcsetpgrp(leader, foreground)
-            .expect("establish controlling terminal session");
         assert!(daemon.process_has_controlling_terminal(detached));
-        daemon.job_control_setsid(detached).expect("detach session");
+        daemon
+            .begin_setsid(detached, response_context(detached))
+            .expect("begin setsid");
+        assert!(daemon.process_has_controlling_terminal(detached));
+        assert_eq!(daemon.processes.get(&detached).expect("process").sid, leader);
+
+        let request_id: RequestIdentifier = daemon.pending_setsid[0].request_id;
+        let response: Option<(ResponseContext, Message)> = daemon.handle_terminal_detach_ack(
+            detached,
+            TerminalDetachAckMessage::STATUS_SUCCESS,
+            request_id,
+        );
+
+        assert!(response.is_some());
+        assert!(daemon.pending_setsid.is_empty());
+        assert_eq!(daemon.processes.get(&detached).expect("process").sid, detached);
         assert!(!daemon.process_has_controlling_terminal(detached));
+    }
+
+    #[test]
+    fn setpgid_rejects_process_with_pending_setsid() {
+        let parent: ProcessIdentifier = ProcessIdentifier::from(10);
+        let process: ProcessIdentifier = ProcessIdentifier::from(11);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (parent, Some(process_identity(1000))),
+            (process, Some(process_identity(1000))),
+        ]);
+        let record: &mut ProcessRecord = daemon.processes.get_mut(&process).expect("process");
+        record.parent = Some(parent);
+        record.sid = parent;
+        record.pgid = parent;
+        daemon
+            .begin_setsid(process, response_context(process))
+            .expect("begin setsid");
+
+        let error: Error = daemon
+            .job_control_setpgid(parent, process, process)
+            .expect_err("setpgid should not race a pending setsid");
+
+        assert_eq!(error.code, ErrorCode::ResourceBusy);
+        assert_eq!(daemon.processes.get(&process).expect("process").pgid, parent);
+    }
+
+    #[test]
+    fn terminal_detach_failure_preserves_session() {
+        let leader: ProcessIdentifier = ProcessIdentifier::from(10);
+        let process: ProcessIdentifier = ProcessIdentifier::from(11);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (leader, Some(process_identity(1000))),
+            (process, Some(process_identity(1000))),
+        ]);
+        let record: &mut ProcessRecord = daemon.processes.get_mut(&process).expect("process");
+        record.sid = leader;
+        record.pgid = leader;
+        assign_controlling_terminal(&mut daemon, leader, Some(leader));
+        daemon
+            .begin_setsid(process, response_context(process))
+            .expect("begin setsid");
+        let request_id: RequestIdentifier = daemon.pending_setsid[0].request_id;
+
+        let response: Option<(ResponseContext, Message)> =
+            daemon.handle_terminal_detach_ack(process, ErrorCode::TryAgain.get(), request_id);
+
+        assert!(response.is_some());
+        assert!(daemon.pending_setsid.is_empty());
+        let record: &ProcessRecord = daemon.processes.get(&process).expect("process");
+        assert_eq!(record.sid, leader);
+        assert_eq!(record.pgid, leader);
+    }
+
+    #[test]
+    fn stale_terminal_detach_ack_keeps_request_pending() {
+        let leader: ProcessIdentifier = ProcessIdentifier::from(10);
+        let process: ProcessIdentifier = ProcessIdentifier::from(11);
+        let expected: RequestIdentifier = RequestIdentifier::from_raw(7);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (leader, Some(process_identity(1000))),
+            (process, Some(process_identity(1000))),
+        ]);
+        daemon.pending_setsid.push(PendingSetSid {
+            process,
+            request_id: expected,
+            response_context: response_context(process),
+        });
+
+        let response: Option<(ResponseContext, Message)> = daemon.handle_terminal_detach_ack(
+            process,
+            TerminalDetachAckMessage::STATUS_SUCCESS,
+            RequestIdentifier::from_raw(8),
+        );
+
+        assert!(response.is_none());
+        assert_eq!(daemon.pending_setsid.len(), 1);
+        assert_eq!(daemon.pending_setsid[0].request_id, expected);
+        assert_eq!(daemon.processes.get(&process).expect("process").sid, process);
+    }
+
+    #[test]
+    fn terminal_operations_reject_detached_session() {
+        let owner: ProcessIdentifier = ProcessIdentifier::from(10);
+        let detached: ProcessIdentifier = ProcessIdentifier::from(11);
+        let mut daemon: ManuallyDrop<ProcessDaemon> = process_daemon(&[
+            (owner, Some(process_identity(1000))),
+            (detached, Some(process_identity(1000))),
+        ]);
+        assign_controlling_terminal(&mut daemon, owner, Some(owner));
+
+        let get_error: Error = daemon
+            .job_control_tcgetpgrp(detached)
+            .expect_err("detached session should not query foreground group");
+        let set_error: Error = daemon
+            .job_control_tcsetpgrp(detached, detached)
+            .expect_err("detached session should not set foreground group");
+
+        assert_eq!(get_error.code, ErrorCode::NotTerminal);
+        assert_eq!(set_error.code, ErrorCode::NotTerminal);
     }
 
     #[test]
@@ -3424,12 +3737,12 @@ mod tests {
         let leader: ProcessIdentifier = ProcessIdentifier::from(10);
         let mut daemon: ManuallyDrop<ProcessDaemon> =
             process_daemon(&[(leader, Some(process_identity(0)))]);
-        daemon.foreground_pgrp = Some(leader);
+        assign_controlling_terminal(&mut daemon, leader, Some(leader));
 
         daemon.processes.remove(&leader);
         daemon.clear_foreground_pgrp_if_empty();
 
-        assert_eq!(daemon.foreground_pgrp, None);
+        assert_eq!(terminal_foreground_pgrp(&daemon), None);
     }
 
     #[test]
@@ -3440,7 +3753,7 @@ mod tests {
             (leader, Some(process_identity(0))),
             (member, Some(process_identity(0))),
         ]);
-        daemon.foreground_pgrp = Some(leader);
+        assign_controlling_terminal(&mut daemon, leader, Some(leader));
         daemon
             .processes
             .get_mut(&member)
@@ -3459,7 +3772,7 @@ mod tests {
             .zombie = Some(0);
         daemon.clear_foreground_pgrp_if_empty();
 
-        assert_eq!(daemon.foreground_pgrp, None);
+        assert_eq!(terminal_foreground_pgrp(&daemon), None);
     }
 
     #[test]
@@ -3470,7 +3783,7 @@ mod tests {
             (leader, Some(process_identity(0))),
             (member, Some(process_identity(0))),
         ]);
-        daemon.foreground_pgrp = Some(leader);
+        assign_controlling_terminal(&mut daemon, leader, Some(leader));
         daemon
             .processes
             .get_mut(&member)
@@ -3484,6 +3797,6 @@ mod tests {
             .zombie = Some(0);
         daemon.clear_foreground_pgrp_if_empty();
 
-        assert_eq!(daemon.foreground_pgrp, Some(leader));
+        assert_eq!(terminal_foreground_pgrp(&daemon), Some(leader));
     }
 }

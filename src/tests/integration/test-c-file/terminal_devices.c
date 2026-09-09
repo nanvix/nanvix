@@ -65,8 +65,6 @@ void test_terminal_devices(void)
     assert(output.revents & POLLOUT);
     assert(write(console, ".", 1) == 1);
 
-    assert(close(tty) == 0);
-    assert(close(console) == 0);
     assert(dup2(saved[0], STDIN_FILENO) == STDIN_FILENO);
     assert(dup2(saved[1], STDOUT_FILENO) == STDOUT_FILENO);
     assert(dup2(saved[2], STDERR_FILENO) == STDERR_FILENO);
@@ -83,6 +81,12 @@ void test_terminal_devices(void)
         errno = 0;
         assert(open("/dev/tty", O_RDONLY) == -1);
         assert(errno == ENXIO);
+        errno = 0;
+        assert(tcgetpgrp(tty) == -1);
+        assert(errno == ENOTTY);
+        errno = 0;
+        assert(tcsetpgrp(tty, getpgrp()) == -1);
+        assert(errno == ENOTTY);
         int detached_console = open("/dev/console", O_RDONLY);
         assert(detached_console >= 0);
         assert(close(detached_console) == 0);
@@ -93,4 +97,6 @@ void test_terminal_devices(void)
     assert(waitpid(child, &status, 0) == child);
     assert(WIFEXITED(status));
     assert(WEXITSTATUS(status) == 0);
+    assert(close(tty) == 0);
+    assert(close(console) == 0);
 }
