@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <netinet/in.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -66,9 +67,10 @@
 #define SEED 42
 #endif
 
-// Length of the UNIX socket name (including the null terminator).
-// We set this so it fits on socaddr.sa_data.
-#define UNIX_SOCKET_NAME_LEN 9
+// Keep the host-relative socket path within `sockaddr_un.sun_path`.
+#define UNIX_SOCKET_HOST_DIRECTORY "bin/n/"
+#define UNIX_SOCKET_NAME_LEN 6
+#define UNIX_SOCKET_PATH_LEN (sizeof(UNIX_SOCKET_HOST_DIRECTORY) + UNIX_SOCKET_NAME_LEN - 1)
 
 //==================================================================================================
 // Standalone Functions
@@ -146,12 +148,16 @@ int main(int argc, const char *argv[])
         char cwd[PATH_MAX];
         assert(getcwd(cwd, sizeof(cwd)) != NULL);
         assert(chdir("/mnt") == 0);
-        char sun_path[UNIX_SOCKET_NAME_LEN];
+        char sun_name[UNIX_SOCKET_NAME_LEN];
         for (int i = 0; i < UNIX_SOCKET_NAME_LEN - 1; i++) {
-            sun_path[i] = 'a' + (rand() % 26);
+            sun_name[i] = 'a' + (rand() % 26);
         }
-        sun_path[UNIX_SOCKET_NAME_LEN - 1] = '\0';
-        test_unix_sockets(sun_path);
+        sun_name[UNIX_SOCKET_NAME_LEN - 1] = '\0';
+        char sun_path[UNIX_SOCKET_PATH_LEN];
+        int length = snprintf(sun_path, sizeof(sun_path), "%s%s", UNIX_SOCKET_HOST_DIRECTORY,
+                              sun_name);
+        assert(length > 0 && (size_t)length < sizeof(sun_path));
+        test_unix_sockets(sun_path, sun_name);
         assert(chdir(cwd) == 0);
     }
 
@@ -163,7 +169,7 @@ int main(int argc, const char *argv[])
             sun_path[i] = 'a' + (rand() % 26);
         }
         sun_path[UNIX_SOCKET_NAME_LEN - 1] = '\0';
-        test_unix_sockets(sun_path);
+        test_unix_sockets(sun_path, sun_path);
     }
 #endif
 

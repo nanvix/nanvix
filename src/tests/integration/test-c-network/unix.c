@@ -105,27 +105,38 @@ static void test_shutdown(int domain, int type, int protocol)
 }
 
 // Tests operations on UNIX sockets.
-void test_unix_sockets(char sun_path[])
+void test_unix_sockets(const char sun_path[], const char unlink_path[])
 {
     int domain = AF_UNIX;
     int type = SOCK_STREAM;
     int protocol = IPPROTO_IP;
 
     struct sockaddr_un sockaddr = {
-        .sun_len = sizeof(struct sockaddr),
+        .sun_len = sizeof(struct sockaddr_un),
         .sun_family = domain,
     };
     strncpy(sockaddr.sun_path, sun_path, sizeof(sockaddr.sun_path) - 1);
     sockaddr.sun_path[sizeof(sockaddr.sun_path) - 1] = '\0';
 
     // Clean up any leftover socket file from a previous run.
-    unlink(sun_path);
+    unlink(unlink_path);
 
     test_create_socket(domain, type, protocol);
+
     test_bind_socket(domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
+    assert(unlink(unlink_path) == 0);
+
     test_listen_socket(
         domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
-    test_get_sockname(domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
+    assert(unlink(unlink_path) == 0);
+
+    test_getsockname_bound_socket(
+        domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
+    assert(unlink(unlink_path) == 0);
+
+    test_getsockname_listening_socket(
+        domain, type, protocol, (const struct sockaddr *)&sockaddr, sizeof(sockaddr));
+    assert(unlink(unlink_path) == 0);
 
     test_create_socket_pair(domain, type, protocol);
     test_getpeername(domain, type, protocol);
