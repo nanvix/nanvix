@@ -13,6 +13,9 @@
 
 pub mod message;
 
+#[cfg(any(feature = "syscall", test))]
+mod read_backend;
+
 //==================================================================================================
 
 // The getopt back-end and its C ABI binding are host-testable, so the `syscall` and `bindings`

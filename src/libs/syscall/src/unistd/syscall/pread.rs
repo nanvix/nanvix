@@ -64,7 +64,7 @@ pub fn pread(fd: RawFileDescriptor, buffer: &mut [u8], offset: off_t) -> Result<
             // VFS-backed descriptors fall through to the vfsd read path below.
             Some(res) if res.route == Route::Vfs => res.backend_fd,
             // The console (stdin/stdout/stderr) is not seekable.
-            Some(res) if res.route == Route::Console => {
+            Some(res) if matches!(res.route, Route::Console | Route::Terminal) => {
                 ::syslog::warn!(
                     "pread(): illegal seek on stdio (fd={fd}, buffer={buffer:?}, offset={offset})",
                 );

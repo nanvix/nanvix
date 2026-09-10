@@ -20,6 +20,7 @@
 //! `vfsd`. An entry older than that ([`is_coherent`]) is treated as stale and re-resolved, so a
 //! number reused for a different backend can never be answered from an outdated entry.
 
+pub(crate) use crate::fd_route::Route;
 use ::alloc::collections::BTreeMap;
 #[cfg(test)]
 use ::core::sync::atomic::AtomicBool;
@@ -38,17 +39,6 @@ use ::sysapi::unistd::{
 //==================================================================================================
 // Structures
 //==================================================================================================
-
-/// The backend that serves a descriptor's operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Route {
-    /// A console stream (`stdin`/`stdout`/`stderr`); I/O flows directly to the kernel.
-    Console,
-    /// A `vfsd`-managed object: regular file, directory, host file, or pipe end.
-    Vfs,
-    /// A `networkd`-managed socket.
-    Socket,
-}
 
 /// A resolved routing decision: which backend serves a descriptor and the descriptor number that
 /// backend expects.
@@ -239,7 +229,9 @@ pub(crate) fn resolve_vfs(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
     match resolve_result(fd)? {
-        Some(resolution) if resolution.route == Route::Vfs => Ok(resolution.backend_fd),
+        Some(resolution) if matches!(resolution.route, Route::Vfs | Route::Terminal) => {
+            Ok(resolution.backend_fd)
+        },
         _ => {
             ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
             Err(Error::new(ErrorCode::BadFile, "fd is not a VFS fd"))
@@ -279,7 +271,11 @@ pub(crate) fn resolve_table_op(fd: i32, syscall_name: &str) -> Result<i32, Error
     use ::sys::error::ErrorCode;
 
     match resolve_result(fd)? {
-        Some(resolution) if matches!(resolution.route, Route::Vfs | Route::Console) => Ok(fd),
+        Some(resolution)
+            if matches!(resolution.route, Route::Vfs | Route::Console | Route::Terminal) =>
+        {
+            Ok(fd)
+        },
         _ => {
             ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
             Err(Error::new(ErrorCode::BadFile, "fd is not a vfsd table descriptor"))
@@ -290,16 +286,16 @@ pub(crate) fn resolve_table_op(fd: i32, syscall_name: &str) -> Result<i32, Error
 /// Resolves `fd` for a terminal-control `ioctl` request (`TCGETS`/`TCSETS`/`TIOCGWINSZ`/
 /// `TIOCSWINSZ`) and returns the flat descriptor `vfsd` expects.
 ///
-/// A descriptor is a terminal only when it resolves to the console backend. A console descriptor is
-/// accepted and returned unchanged (vfsd owns the terminal state keyed by the flat number); a valid
-/// non-console descriptor is rejected with `ENOTTY`; an unknown descriptor is rejected with `EBADF`.
+/// A descriptor is a terminal when it resolves to a direct console or vfsd terminal route. It is
+/// returned unchanged because vfsd owns terminal state keyed by the flat number; a valid
+/// non-terminal descriptor is rejected with `ENOTTY`, and an unknown descriptor with `EBADF`.
 /// This is the ioctl counterpart of [`resolve_socket`] and [`resolve_vfs`], the "new resolver arm"
 /// for terminal probing.
 pub(crate) fn resolve_tty(fd: i32, syscall_name: &str) -> Result<i32, Error> {
     use ::sys::error::ErrorCode;
 
     match resolve_result(fd)? {
-        Some(resolution) if resolution.route == Route::Console => Ok(fd),
+        Some(resolution) if matches!(resolution.route, Route::Console | Route::Terminal) => Ok(fd),
         Some(_) => {
             ::syslog::warn!("{syscall_name}(): fd is not a terminal fd={fd}");
             Err(Error::new(ErrorCode::NotTerminal, "fd is not a terminal"))
@@ -414,6 +410,7 @@ fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
         ResolveFdResponse::ROUTE_CONSOLE => Route::Console,
         ResolveFdResponse::ROUTE_VFS => Route::Vfs,
         ResolveFdResponse::ROUTE_SOCKET => Route::Socket,
+        ResolveFdResponse::ROUTE_TERMINAL => Route::Terminal,
         other => {
             ::syslog::warn!("resolve_via_vfsd(): unknown route tag {other} (fd={fd})");
             return Ok(VfsdResolution::BadFile);
@@ -520,6 +517,20 @@ mod tests {
         for fd in [0, 1, 2, 5] {
             assert_eq!(resolve(fd), None, "an unknown flat descriptor must be unroutable");
         }
+
+        clear();
+    }
+
+    /// Tests that a vfsd-served terminal supports both terminal control and VFS data routing.
+    #[test]
+    fn terminal_route_supports_control_and_io() {
+        let _guard = CACHE_TEST_GUARD.lock();
+        clear();
+
+        mock_vfsd(4, Route::Terminal, 4, 1);
+        assert_eq!(resolve_tty(4, "ioctl").expect("resolve terminal control"), 4);
+        assert_eq!(resolve_vfs(4, "read").expect("resolve terminal I/O"), 4);
+        assert!(matches!(resolve_console(4), Ok(ConsoleLookup::Other)));
 
         clear();
     }

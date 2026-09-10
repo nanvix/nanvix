@@ -54,7 +54,7 @@ pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
             // it owns, addressed by the caller-facing flat descriptor. For a console this is the
             // slot number, not the stream number used to route I/O — the slot is the operand,
             // so a `dup`'d console descriptor shares its source's character-device identity.
-            Some(res) if matches!(res.route, Route::Vfs | Route::Console) => fd,
+            Some(res) if matches!(res.route, Route::Vfs | Route::Console | Route::Terminal) => fd,
             // Sockets and unroutable descriptors have no stat here.
             _ => {
                 ::syslog::warn!("fstat(): bad file descriptor fd={fd}");

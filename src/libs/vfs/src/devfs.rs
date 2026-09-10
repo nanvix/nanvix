@@ -80,6 +80,17 @@ const NULL_INODE: u64 = 2;
 /// Character-device identifier reported for `/dev/null`.
 const NULL_SPECIAL_DEVICE_ID: u64 = 1;
 
+/// Name of the console device.
+const CONSOLE_NAME: &str = "console";
+/// Absolute path of the console device.
+const CONSOLE_PATH: &str = "/dev/console";
+
+/// Stable inode identifier for `/dev/console`.
+const CONSOLE_INODE: u64 = 3;
+
+/// Character-device identifier reported for `/dev/console`.
+const CONSOLE_SPECIAL_DEVICE_ID: u64 = 2;
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -108,6 +119,8 @@ pub(crate) enum DevicePath {
     Directory,
     /// The null device.
     Null,
+    /// The system console.
+    Console,
     /// An unknown entry below `/dev`.
     Missing,
 }
@@ -130,6 +143,12 @@ impl DevicePath {
                 device: DEVICE_NAMESPACE_ID,
                 inode: NULL_INODE,
                 special_device: NULL_SPECIAL_DEVICE_ID,
+                is_directory: false,
+            }),
+            DevicePath::Console => Some(DeviceMetadata {
+                device: DEVICE_NAMESPACE_ID,
+                inode: CONSOLE_INODE,
+                special_device: CONSOLE_SPECIAL_DEVICE_ID,
                 is_directory: false,
             }),
             DevicePath::Missing => None,
@@ -195,7 +214,20 @@ pub(crate) fn posix_stat(cwd: &str, path: &str) -> Result<Option<PosixStat>, Fat
 
 /// Synthesizes POSIX metadata for `/dev/null`.
 pub(crate) fn null_posix_stat() -> PosixStat {
-    build_posix_stat(DevicePath::Null.metadata().expect("null device has metadata"))
+    build_posix_stat(
+        DevicePath::Null
+            .metadata()
+            .expect("null device has metadata"),
+    )
+}
+
+/// Synthesizes POSIX metadata for `/dev/console`.
+pub(crate) fn console_posix_stat() -> PosixStat {
+    build_posix_stat(
+        DevicePath::Console
+            .metadata()
+            .expect("console device has metadata"),
+    )
 }
 
 /// Builds POSIX metadata for a devfs entry.
@@ -233,11 +265,11 @@ pub(crate) fn directory_entry() -> DirEntry {
 /// Reads a directory owned by devfs.
 pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Option<Vec<DirEntry>>, Fat32Error> {
     match resolve(cwd, path)? {
-        Some(DevicePath::Directory) => Ok(Some(alloc::vec![DirEntry::new_character_device(
-            String::from(NULL_NAME),
-            NULL_INODE,
-        )])),
-        Some(DevicePath::Null) => Err(Fat32Error::NotADirectory),
+        Some(DevicePath::Directory) => Ok(Some(alloc::vec![
+            DirEntry::new_character_device(String::from(NULL_NAME), NULL_INODE),
+            DirEntry::new_character_device(String::from(CONSOLE_NAME), CONSOLE_INODE),
+        ])),
+        Some(DevicePath::Null | DevicePath::Console) => Err(Fat32Error::NotADirectory),
         Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
         None => Ok(None),
     }
@@ -249,7 +281,7 @@ fn validate_components(path: &str) -> Result<(), Fat32Error> {
     for component in path.split('/').filter(|component| !component.is_empty()) {
         if components.len() >= 2 && components[0] == DIRECTORY_NAME {
             return match components[1] {
-                NULL_NAME => Err(Fat32Error::NotADirectory),
+                NULL_NAME | CONSOLE_NAME => Err(Fat32Error::NotADirectory),
                 _ => Err(Fat32Error::NotFound),
             };
         }
@@ -269,6 +301,7 @@ fn resolve_normalized(path: &str) -> Option<DevicePath> {
     match path {
         DIRECTORY_PATH => Some(DevicePath::Directory),
         NULL_PATH => Some(DevicePath::Null),
+        CONSOLE_PATH => Some(DevicePath::Console),
         path if path.starts_with(DIRECTORY_PREFIX) => Some(DevicePath::Missing),
         _ => None,
     }
@@ -293,20 +326,17 @@ mod tests {
 
     #[test]
     fn synthesizes_stat() {
-        let stat: Stat = stat("/", "/dev").expect("valid path").expect("existing path");
+        let stat: Stat = stat("/", "/dev")
+            .expect("valid path")
+            .expect("existing path");
         assert_eq!(
             stat,
-            Stat::new(
-                0,
-                true,
-                STAT_TIMESTAMP_SECS,
-                STAT_TIMESTAMP_SECS,
-                STAT_TIMESTAMP_SECS,
-            )
+            Stat::new(0, true, STAT_TIMESTAMP_SECS, STAT_TIMESTAMP_SECS, STAT_TIMESTAMP_SECS,)
         );
 
-        let stat: PosixStat =
-            posix_stat("/", "/dev").expect("valid path").expect("existing path");
+        let stat: PosixStat = posix_stat("/", "/dev")
+            .expect("valid path")
+            .expect("existing path");
         assert_eq!(stat.st_dev, DEVICE_NAMESPACE_ID);
         assert_eq!(stat.st_ino, DIRECTORY_INODE);
         assert_eq!(stat.st_blksize, ::arch::mem::PAGE_SIZE as i64);

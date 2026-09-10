@@ -3,6 +3,10 @@
  * Licensed under the MIT License.
  */
 
+//==================================================================================================
+// Imports
+//==================================================================================================
+
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
@@ -14,20 +18,30 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-// Tests the synthetic namespace and null device.
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+// Tests pathname, metadata, enumeration, null I/O, and mutation behavior for /dev.
 void test_device_namespace(void)
 {
     struct stat directory = {0};
-    struct stat null = {0};
+    struct stat devices[2] = {{0}};
+    const char *paths[2] = {"/dev/null", "/dev/console"};
+
     assert(stat("/dev", &directory) == 0);
     assert(S_ISDIR(directory.st_mode));
-    assert(stat("/dev/null", &null) == 0);
-    assert(S_ISCHR(null.st_mode));
-    assert(null.st_dev == directory.st_dev);
-    assert(null.st_ino != directory.st_ino);
-    assert(null.st_rdev != 0);
-    assert(null.st_size == 0);
-    assert(null.st_blocks == 0);
+    for (int i = 0; i < 2; i++) {
+        assert(stat(paths[i], &devices[i]) == 0);
+        assert(S_ISCHR(devices[i].st_mode));
+        assert(devices[i].st_dev == directory.st_dev);
+        assert(devices[i].st_ino != directory.st_ino);
+        assert(devices[i].st_rdev != 0);
+        assert(devices[i].st_size == 0);
+        assert(devices[i].st_blocks == 0);
+    }
+    assert(devices[0].st_ino != devices[1].st_ino);
+    assert(devices[0].st_rdev != devices[1].st_rdev);
 
     struct stat missing = {0};
     errno = 0;
@@ -49,11 +63,17 @@ void test_device_namespace(void)
 
     DIR *dev = opendir("/dev");
     assert(dev != NULL);
-    entry = readdir(dev);
-    assert(entry != NULL);
-    assert(strcmp(entry->d_name, "null") == 0);
-    assert(entry->d_ino == null.st_ino);
-    assert(readdir(dev) == NULL);
+    bool found[2] = {false, false};
+    while ((entry = readdir(dev)) != NULL) {
+        for (int i = 0; i < 2; i++) {
+            const char *name = paths[i] + strlen("/dev/");
+            if (strcmp(entry->d_name, name) == 0) {
+                found[i] = true;
+                assert(entry->d_ino == devices[i].st_ino);
+            }
+        }
+    }
+    assert(found[0] && found[1]);
     assert(closedir(dev) == 0);
 
     int nullfd = open("/dev/null", O_RDWR);
@@ -71,17 +91,15 @@ void test_device_namespace(void)
     assert(read(nullfd, buffer, sizeof(buffer)) == 0);
     struct stat opened = {0};
     assert(fstat(nullfd, &opened) == 0);
-    assert(opened.st_dev == null.st_dev);
-    assert(opened.st_ino == null.st_ino);
-    assert(opened.st_rdev == null.st_rdev);
+    assert(opened.st_dev == devices[0].st_dev);
+    assert(opened.st_ino == devices[0].st_ino);
+    assert(opened.st_rdev == devices[0].st_rdev);
     assert(close(nullfd) == 0);
 
-    nullfd = open("/dev/null", O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    int flags = O_WRONLY | O_CREAT | O_TRUNC;
+    nullfd = open("/dev/null", flags, 0600);
     assert(nullfd >= 0);
     assert(write(nullfd, "discarded", 9) == 9);
-    errno = 0;
-    assert(read(nullfd, buffer, sizeof(buffer)) == -1);
-    assert(errno == EBADF);
     assert(close(nullfd) == 0);
 
     errno = 0;
@@ -100,6 +118,13 @@ void test_device_namespace(void)
     };
     assert(poll(&pollfd, 1, 0) == 1);
     assert((pollfd.revents & (POLLIN | POLLOUT)) == (POLLIN | POLLOUT));
+    assert(close(nullfd) == 0);
+
+    nullfd = open("/dev/null", O_WRONLY);
+    assert(nullfd >= 0);
+    errno = 0;
+    assert(read(nullfd, buffer, sizeof(buffer)) == -1);
+    assert(errno == EBADF);
     assert(close(nullfd) == 0);
 
     errno = 0;

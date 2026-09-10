@@ -1055,6 +1055,7 @@ fn complete_open(
             let msg: Message = OpenAtResponse::build(
                 source_tid,
                 local_fd,
+                OpenAtResponse::ROUTE_VFS,
                 epoch,
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,

@@ -143,7 +143,7 @@ pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32E
             return Err(Fat32Error::NotFound);
         },
         Some(DevicePath::Directory) => return Err(Fat32Error::NotAFile),
-        None => {},
+        Some(DevicePath::Console) | None => {},
     }
 
     // Try zero-copy direct read for read-only opens of contiguous files.
