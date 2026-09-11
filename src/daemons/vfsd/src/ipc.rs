@@ -26,6 +26,7 @@ use crate::{
 use ::proc::{
     exec_ack,
     fork_clone_ack,
+    terminal_detach_ack,
     ExecMessage,
     ForkCloneAckMessage,
     ForkCloneMessage,
@@ -33,6 +34,8 @@ use ::proc::{
     ProcessManagementMessage,
     ProcessManagementMessageHeader,
     ShutdownMessage,
+    TerminalDetachAckMessage,
+    TerminalDetachMessage,
 };
 use ::sys::{
     error::{
@@ -175,6 +178,16 @@ fn handle_system_message(
                             e
                         ),
                     }
+                    Ok(false)
+                },
+                ProcessManagementMessageHeader::TerminalDetach => {
+                    let detach: TerminalDetachMessage =
+                        TerminalDetachMessage::from_bytes(pm_msg.payload);
+                    let pid: ProcessIdentifier = detach.pid;
+                    ::vfs::fd::vfs_detach_controlling_terminal(pid);
+                    let acknowledgement: Message =
+                        terminal_detach_ack(pid, TerminalDetachAckMessage::STATUS_SUCCESS)?;
+                    response_context.send(&acknowledgement);
                     Ok(false)
                 },
                 ProcessManagementMessageHeader::ProcessExit => {

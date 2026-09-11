@@ -15,6 +15,7 @@ mod process_exit;
 mod shutdown;
 mod signup;
 mod terminal;
+mod terminal_detach;
 mod wait;
 
 //==================================================================================================
@@ -31,6 +32,7 @@ pub use process_exit::*;
 pub use shutdown::*;
 pub use signup::*;
 pub use terminal::*;
+pub use terminal_detach::*;
 pub use wait::*;
 
 //==================================================================================================
@@ -125,6 +127,10 @@ pub enum ProcessManagementMessageHeader {
     WaitCancel = 21,
     /// Reports whether a blocked wait request was cancelled before completion.
     WaitCancelResponse = 22,
+    /// Requests that a new session detach from its controlling terminal.
+    TerminalDetach = 23,
+    /// Confirms that a controlling-terminal detachment was applied.
+    TerminalDetachAck = 24,
 }
 
 impl TryFrom<u8> for ProcessManagementMessageHeader {
@@ -154,6 +160,8 @@ impl TryFrom<u8> for ProcessManagementMessageHeader {
             20 => Ok(ProcessManagementMessageHeader::TerminalAccess),
             21 => Ok(ProcessManagementMessageHeader::WaitCancel),
             22 => Ok(ProcessManagementMessageHeader::WaitCancelResponse),
+            23 => Ok(ProcessManagementMessageHeader::TerminalDetach),
+            24 => Ok(ProcessManagementMessageHeader::TerminalDetachAck),
             _ => Err(Error::new(ErrorCode::InvalidArgument, "invalid process management message")),
         }
     }
@@ -184,6 +192,8 @@ impl From<&ProcessManagementMessageHeader> for u8 {
             ProcessManagementMessageHeader::TerminalAccess => 20,
             ProcessManagementMessageHeader::WaitCancel => 21,
             ProcessManagementMessageHeader::WaitCancelResponse => 22,
+            ProcessManagementMessageHeader::TerminalDetach => 23,
+            ProcessManagementMessageHeader::TerminalDetachAck => 24,
         }
     }
 }

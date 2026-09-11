@@ -97,6 +97,7 @@ pub(crate) fn fat32_to_error_code(e: &::vfs::Fat32Error) -> ErrorCode {
         Fat32Error::IoError => ErrorCode::IoErr,
         Fat32Error::OutOfMemory => ErrorCode::OutOfMemory,
         Fat32Error::FileLocked => ErrorCode::ResourceBusy,
+        Fat32Error::NoDevice => ErrorCode::NoSuchDeviceOrAddress,
         Fat32Error::PermissionDenied => ErrorCode::PermissionDenied,
     }
 }
