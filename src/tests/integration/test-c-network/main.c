@@ -16,9 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
-#ifndef __NANVIX_STANDALONE__
 #include <sys/un.h>
-#endif
 #include <time.h>
 #include <unistd.h>
 
@@ -126,7 +124,6 @@ int main(int argc, const char *argv[])
     );
     STATIC_ASSERT_SIZE(struct sockaddr_in, sizeof(struct sockaddr_storage));
 
-#ifndef __NANVIX_STANDALONE__
     // Sanity check size of `sockaddr_un` structure.
     STATIC_ASSERT_SIZE(struct sockaddr_un,
                        sizeof(unsigned char) +       // sun_len
@@ -134,7 +131,6 @@ int main(int argc, const char *argv[])
                            SUNPATHLEN * sizeof(char) // sun_path
     );
     STATIC_ASSERT_SIZE(struct sockaddr_un, sizeof(struct sockaddr_storage));
-#endif
 
     srand(SEED);
 
@@ -162,7 +158,7 @@ int main(int argc, const char *argv[])
         test_unix_pathname_sockets(sun_path, sun_name);
         assert(chdir(cwd) == 0);
     } else {
-#ifdef __NANVIX_STANDALONE__
+#ifdef NANVIX_HOST_WINDOWS
         fprintf(stderr, "skipping UNIX pathname sockets (hostfs not enabled)\n");
 #else
         char sun_path[UNIX_SOCKET_NAME_LEN];

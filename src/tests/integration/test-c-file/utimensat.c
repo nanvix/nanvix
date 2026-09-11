@@ -30,7 +30,7 @@
 //==================================================================================================
 
 // Tests whether we can update file timestamps with `utimensat()`.
-void test_utimensat(void)
+void test_utimensat(bool update_access_time)
 {
     fprintf(stderr, "testing utimensat() ... ");
 
@@ -47,11 +47,7 @@ void test_utimensat(void)
     assert(fstat(fd, &st) == 0);
 
     // Set new timestamps.
-#ifdef __NANVIX_STANDALONE__
-    times[0].tv_sec = st.st_atime; // Access time is date-only on FAT.
-#else
-    times[0].tv_sec = st.st_atime + 20; // Access time.
-#endif
+    times[0].tv_sec = update_access_time ? st.st_atime + 20 : st.st_atime;
     times[0].tv_nsec = 0;
     times[1].tv_sec = st.st_mtime + 10; // Modification time.
     times[1].tv_nsec = 0;
@@ -112,7 +108,7 @@ void test_utimensat(void)
 }
 
 // Tests whether the time-setting calls accept a NULL `times` (set to current
-// time). NULL returns success even on FAT32, where timestamps are ignored.
+// time). FAT timestamp resolution makes resulting values unobservable here.
 void test_utimensat_now(void)
 {
     fprintf(stderr, "testing NULL times (set to now) ... ");
