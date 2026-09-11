@@ -148,6 +148,7 @@ int main(int argc, const char *argv[])
         int cwd = open(".", O_RDONLY | O_DIRECTORY);
         assert(cwd != -1);
         assert(chdir("/mnt") == 0);
+        test_hostfs_stat_identity(); // requires open(), stat(), lstat(), fstat(), and unlink().
         test_select();     // requires open(), close(), write(), read(), and unlink().
         test_linkat();     // requires open(), stat() and unlinkat().
         test_link();       // requires open(), stat() and unlinkat().

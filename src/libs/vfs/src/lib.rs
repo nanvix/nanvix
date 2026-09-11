@@ -68,6 +68,9 @@ mod devfs;
 /// Process-independent filesystem operations.
 mod filesystem;
 
+/// Statically allocated identifiers for synthetic filesystem metadata.
+pub mod identifiers;
+
 /// Process-aware file opening options.
 mod open_options;
 

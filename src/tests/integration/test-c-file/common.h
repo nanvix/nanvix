@@ -130,6 +130,10 @@ extern void test_renameat_subdir(void);
 
 // Tests whether we can get file status information.
 extern void test_stat(void);
+
+// Tests whether hostfs reports a consistent identity through stat(), lstat(), and fstat().
+extern void test_hostfs_stat_identity(void);
+
 extern void test_terminal_devices(void);
 
 // Tests whether we can create a symbolic link to a file.

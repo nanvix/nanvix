@@ -33,6 +33,12 @@ use crate::{
         DevicePath,
     },
     filesystem,
+    identifiers::{
+        ConsoleInodeId,
+        FilesystemDeviceId,
+        HostFsInodeId,
+        VfsInodeId,
+    },
     line_discipline::{
         ConsoleReadOutcome,
         LineDiscipline,
@@ -104,7 +110,9 @@ use ::sysapi::{
     },
     sys_types::{
         c_size_t,
+        dev_t,
         gid_t,
+        ino_t,
         mode_t,
         off_t,
         uid_t,
@@ -1091,11 +1099,8 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
             file_access_mode::O_RDWR => AccessMode::ReadWrite,
             _ => return Err(Fat32Error::InvalidArgument),
         };
-        let handle: VfsFileHandle = VfsFileHandle::Terminal(TerminalHandle::new(
-            device,
-            access_mode,
-            console_device(),
-        ));
+        let handle: VfsFileHandle =
+            VfsFileHandle::Terminal(TerminalHandle::new(device, access_mode, console_device()));
         let status_flags: c_int =
             flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
         return alloc_fd_with_status(handle, status_flags);
@@ -1234,14 +1239,32 @@ pub fn vfs_lseek(fd: c_int, offset: off_t, whence: c_int) -> Result<off_t, Fat32
 /// Updates a POSIX stat buffer from VFS metadata.
 trait StatExt {
     fn update_from_vfs(&mut self, info: &filesystem::Stat);
+    fn update_from_hostfs(&mut self, info: &filesystem::Stat);
+    fn update_from_synthetic(&mut self, info: &filesystem::Stat, device: dev_t, inode: ino_t);
 }
 
 impl StatExt for ::sysapi::sys_stat::stat {
     fn update_from_vfs(&mut self, info: &filesystem::Stat) {
+        self.update_from_synthetic(
+            info,
+            FilesystemDeviceId::Vfs.into(),
+            VfsInodeId::Fallback.into(),
+        );
+    }
+
+    fn update_from_hostfs(&mut self, info: &filesystem::Stat) {
+        self.update_from_synthetic(
+            info,
+            FilesystemDeviceId::HostFs.into(),
+            HostFsInodeId::Fallback.into(),
+        );
+    }
+
+    fn update_from_synthetic(&mut self, info: &filesystem::Stat, device: dev_t, inode: ino_t) {
         self.st_size = info.size() as off_t;
         self.st_nlink = if info.is_dir() { 2 } else { 1 };
-        self.st_dev = 1;
-        self.st_ino = 1;
+        self.st_dev = device;
+        self.st_ino = inode;
         self.st_mode = if info.is_dir() {
             file_type::S_IFDIR | file_mode::S_IRWXU
         } else {
@@ -1274,7 +1297,7 @@ impl StatExt for ::sysapi::sys_stat::stat {
 fn populate_pipe_stat_fields(buf: &mut ::sysapi::sys_stat::stat, pipe_id: u64, created: i64) {
     buf.st_size = 0;
     buf.st_nlink = 1;
-    buf.st_dev = 2; // Synthetic pipefs device ID, distinct from the VFS file device (1).
+    buf.st_dev = FilesystemDeviceId::PipeFs.into();
     buf.st_ino = pipe_id;
     buf.st_mode = file_type::S_IFIFO | file_mode::S_IRUSR | file_mode::S_IWUSR;
     buf.st_blksize = STAT_BLOCK_SIZE;
@@ -1297,8 +1320,8 @@ fn populate_pipe_stat_fields(buf: &mut ::sysapi::sys_stat::stat, pipe_id: u64, c
 /// Populates stat fields for a console-backed descriptor (a character device).
 ///
 /// A console stream reports as a character device (`S_IFCHR`) with a stable identity: a synthetic
-/// console `st_dev` distinct from the VFS file device (1) and the pipefs device (2), and an `st_ino`
-/// derived from the stream so the three standard streams have distinct, stable inodes. Because the
+/// console `st_dev` distinct from other filesystems, and an `st_ino` derived from the stream so the
+/// three standard streams have distinct, stable inodes. Because the
 /// inode follows the stream rather than the slot, a `dup`'d console descriptor reports the same
 /// `(st_dev, st_ino)` as its source, matching POSIX shared-identity expectations. A console carries
 /// no size or on-disk blocks, so both are zero.
@@ -1308,15 +1331,15 @@ fn populate_console_stat_fields(
     created: i64,
 ) {
     // Stable per-stream inode: stdin/stdout/stderr get distinct values that a duplicate inherits.
-    let ino: u64 = match stream {
-        ConsoleStream::Stdin => 1,
-        ConsoleStream::Stdout => 2,
-        ConsoleStream::Stderr => 3,
+    let inode: ino_t = match stream {
+        ConsoleStream::Stdin => ConsoleInodeId::Stdin.into(),
+        ConsoleStream::Stdout => ConsoleInodeId::Stdout.into(),
+        ConsoleStream::Stderr => ConsoleInodeId::Stderr.into(),
     };
     buf.st_size = 0;
     buf.st_nlink = 1;
-    buf.st_dev = 3; // Synthetic console device, distinct from VFS file (1) and pipefs (2).
-    buf.st_ino = ino;
+    buf.st_dev = FilesystemDeviceId::Console.into();
+    buf.st_ino = inode;
     buf.st_mode = file_type::S_IFCHR | file_mode::S_IRUSR | file_mode::S_IWUSR;
     buf.st_blksize = STAT_BLOCK_SIZE;
     buf.st_blocks = 0;
@@ -1356,9 +1379,7 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
                 buf.update_from_vfs(&info);
             }
         },
-        handle @ (VfsFileHandle::Fat32(_)
-        | VfsFileHandle::DirectRead(_)
-        | VfsFileHandle::HostFs(_)) => {
+        handle @ (VfsFileHandle::Fat32(_) | VfsFileHandle::DirectRead(_)) => {
             // upstream exposes timestamps through directory entries, not open
             // files. Re-querying by path can identify a different file after
             // rename or unlink, so retain the epoch
@@ -1372,6 +1393,16 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
                 FAT_EPOCH_SECS,
             );
             buf.update_from_vfs(&info);
+        },
+        VfsFileHandle::HostFs(handle) => {
+            let info: filesystem::Stat = filesystem::Stat::new(
+                0,
+                handle.is_dir(),
+                FAT_EPOCH_SECS,
+                FAT_EPOCH_SECS,
+                FAT_EPOCH_SECS,
+            );
+            buf.update_from_hostfs(&info);
         },
         VfsFileHandle::Null(_) => {
             *buf = devfs::null_posix_stat();
@@ -4809,7 +4840,24 @@ mod tests {
         forget_processes(&[pid]);
     }
 
-    // -- console fstat tests ------------------------------------------------------
+    // -- synthetic metadata tests -------------------------------------------------
+
+    /// Tests that a hostfs descriptor uses the shared hostfs identity allocation.
+    #[test]
+    fn fstat_hostfs_uses_hostfs_identity() {
+        let _guard = FORK_TEST_GUARD.lock();
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7508);
+        set_current_process(pid);
+
+        let fd: c_int = vfs_alloc_hostfs(80, false, None).expect("hostfs alloc");
+        let mut st: ::sysapi::sys_stat::stat = Default::default();
+        vfs_fstat(fd, &mut st).expect("fstat hostfs");
+
+        assert_eq!(st.st_dev, FilesystemDeviceId::HostFs.into());
+        assert_eq!(st.st_ino, HostFsInodeId::Fallback.into());
+
+        forget_processes(&[pid]);
+    }
 
     /// Tests that `vfs_fstat` reports a console descriptor as a character device with a stable
     /// identity, and that a `dup`'d console descriptor shares that identity.
