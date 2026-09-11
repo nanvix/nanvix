@@ -308,6 +308,11 @@ endef
 
 $(foreach suite,$(ALL_POSIX_TESTS),$(eval $(call POSIX_TEST_RULE,$(suite))))
 
+# The guest compiler targets Nanvix, so pass the host OS explicitly to the Unix socket tests.
+ifeq ($(IS_WINDOWS),yes)
+$(POSIX_TESTS_OBJDIR)/test-c-network/unix.o: POSIX_TEST_EXTRA_CFLAGS += -DNANVIX_HOST_WINDOWS
+endif
+
 #---------------------------------------------------------------------------------------------------
 # Per-suite standalone image rule.
 #---------------------------------------------------------------------------------------------------
@@ -459,6 +464,14 @@ POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite
 POSIX_TEST_RAMFS_SUITES := test-c-file test-c-stdio test-c-dlfcn test-c-dlfcn-refcount test-c-dlfcn-pie test-c-dlfcn-global test-c-dlfcn-needed test-c-dlfcn-diamond
 POSIX_TEST_RAMFS_SEED   := $(BINARIES_DIR)/posix-tests-ramfs-seed
 POSIX_TEST_RAMFS_IMG    := $(BINARIES_DIR)/posix-tests-ramfs.img
+
+# Keep this path short enough to fit with a socket name in sockaddr_un.sun_path.
+POSIX_TEST_NETWORK_HOSTFS_DIR := $(BINARIES_DIR)/n
+POSIX_TEST_NETWORK_HOSTFS_MARKER := $(POSIX_TEST_NETWORK_HOSTFS_DIR)/marker.txt
+
+$(POSIX_TEST_NETWORK_HOSTFS_MARKER):
+	@$(MKDIR_CMD) $(POSIX_TEST_NETWORK_HOSTFS_DIR)
+	@echo "posix-tests network hostfs marker" > $@
 
 $(POSIX_TEST_RAMFS_SEED)/marker.txt:
 	@$(MKDIR_CMD) $(POSIX_TEST_RAMFS_SEED)
@@ -1522,6 +1535,7 @@ $(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG
 .PHONY: all-posix-test-images
 all-posix-test-images: $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
+		$(POSIX_TEST_NETWORK_HOSTFS_MARKER) \
 		$(POSIX_TEST_DLFCN_FIXTURE_IMGS) \
 		$(POSIX_TEST_EXECVP_IMG)
 	@echo "All POSIX C test-suite images built."
@@ -1554,7 +1568,7 @@ ifeq ($(filter $(TARGET),x86 x86_64),)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (no guest C toolchain for TARGET=$(TARGET))."
 else
-run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG)
+run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_NETWORK_HOSTFS_MARKER) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }

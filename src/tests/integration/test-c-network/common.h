@@ -51,7 +51,11 @@ extern void test_get_sockname(int domain,
                               const struct sockaddr *sockaddr,
                               socklen_t addrlen);
 
-extern void test_unix_sockets(char sun_path[]);
+// Tests host pathname sockets, with cleanup through the guest filesystem.
+extern void test_unix_pathname_sockets(const char sun_path[], const char unlink_path[]);
+
+// Tests unnamed Unix socket pairs without requiring hostfs.
+extern void test_unix_socket_pairs(void);
 extern void test_inet_sockets(in_port_t sin_port, struct in_addr sin_addr);
 
 // Tests poll() routing through hostfsd, networkd, VFSD, and all three services together.
