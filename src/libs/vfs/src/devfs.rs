@@ -12,6 +12,11 @@ use crate::{
         DirEntry,
         Stat,
     },
+    identifiers::{
+        DevFsCharacterDeviceId,
+        DevFsInodeId,
+        FilesystemDeviceId,
+    },
     mount::{
         anchor_path,
         normalize_anchored,
@@ -46,22 +51,12 @@ use ::sysapi::{
 // Constants
 //==================================================================================================
 
-/// Synthetic device identifier for devfs.
-///
-/// IDs 1 through 3 identify the VFS file namespace, pipefs, and console.
-const DEVICE_NAMESPACE_ID: u64 = 4;
-
 /// Name of the devfs root directory.
 const DIRECTORY_NAME: &str = "dev";
 /// Absolute path of the devfs root directory.
 const DIRECTORY_PATH: &str = "/dev";
 /// Absolute prefix for devfs entries.
 const DIRECTORY_PREFIX: &str = "/dev/";
-
-/// Stable inode identifier for `/dev`.
-///
-/// Inode zero is reserved, so `/dev` uses the first available identifier.
-const DIRECTORY_INODE: u64 = 1;
 
 /// Preferred I/O block size reported for devfs entries.
 const STAT_BLOCK_SIZE: i64 = ::arch::mem::PAGE_SIZE as i64;
@@ -74,33 +69,15 @@ const NULL_NAME: &str = "null";
 /// Absolute path of the null device.
 const NULL_PATH: &str = "/dev/null";
 
-/// Stable inode identifier for `/dev/null`.
-const NULL_INODE: u64 = 2;
-
-/// Character-device identifier reported for `/dev/null`.
-const NULL_SPECIAL_DEVICE_ID: u64 = 1;
-
 /// Name of the controlling-terminal device.
 const TTY_NAME: &str = "tty";
 /// Absolute path of the controlling-terminal device.
 const TTY_PATH: &str = "/dev/tty";
 
-/// Stable inode identifier for `/dev/tty`.
-const TTY_INODE: u64 = 3;
-
-/// Character-device identifier reported for `/dev/tty`.
-const TTY_SPECIAL_DEVICE_ID: u64 = 2;
-
 /// Name of the console device.
 const CONSOLE_NAME: &str = "console";
 /// Absolute path of the console device.
 const CONSOLE_PATH: &str = "/dev/console";
-
-/// Stable inode identifier for `/dev/console`.
-const CONSOLE_INODE: u64 = 4;
-
-/// Character-device identifier reported for `/dev/console`.
-const CONSOLE_SPECIAL_DEVICE_ID: u64 = 3;
 
 //==================================================================================================
 // Structures
@@ -109,12 +86,10 @@ const CONSOLE_SPECIAL_DEVICE_ID: u64 = 3;
 /// Metadata for a synthetic device-namespace entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DeviceMetadata {
-    /// Synthetic device identifier.
-    device: u64,
     /// Stable inode identifier.
-    inode: u64,
+    inode: DevFsInodeId,
     /// Device identifier for a character-special entry.
-    special_device: u64,
+    special_device: Option<DevFsCharacterDeviceId>,
     /// Whether this entry is a directory.
     is_directory: bool,
 }
@@ -147,27 +122,23 @@ impl DevicePath {
     fn metadata(self) -> Option<DeviceMetadata> {
         match self {
             DevicePath::Directory => Some(DeviceMetadata {
-                device: DEVICE_NAMESPACE_ID,
-                inode: DIRECTORY_INODE,
-                special_device: 0,
+                inode: DevFsInodeId::Directory,
+                special_device: None,
                 is_directory: true,
             }),
             DevicePath::Null => Some(DeviceMetadata {
-                device: DEVICE_NAMESPACE_ID,
-                inode: NULL_INODE,
-                special_device: NULL_SPECIAL_DEVICE_ID,
+                inode: DevFsInodeId::Null,
+                special_device: Some(DevFsCharacterDeviceId::Null),
                 is_directory: false,
             }),
             DevicePath::Tty => Some(DeviceMetadata {
-                device: DEVICE_NAMESPACE_ID,
-                inode: TTY_INODE,
-                special_device: TTY_SPECIAL_DEVICE_ID,
+                inode: DevFsInodeId::Tty,
+                special_device: Some(DevFsCharacterDeviceId::Tty),
                 is_directory: false,
             }),
             DevicePath::Console => Some(DeviceMetadata {
-                device: DEVICE_NAMESPACE_ID,
-                inode: CONSOLE_INODE,
-                special_device: CONSOLE_SPECIAL_DEVICE_ID,
+                inode: DevFsInodeId::Console,
+                special_device: Some(DevFsCharacterDeviceId::Console),
                 is_directory: false,
             }),
             DevicePath::Missing => None,
@@ -261,8 +232,8 @@ fn build_posix_stat(metadata: DeviceMetadata) -> PosixStat {
         tv_nsec: 0,
     };
     PosixStat {
-        st_dev: metadata.device,
-        st_ino: metadata.inode,
+        st_dev: FilesystemDeviceId::DevFs.into(),
+        st_ino: metadata.inode.into(),
         st_mode: if metadata.is_directory {
             file_type::S_IFDIR | file_mode::S_IRWXU
         } else {
@@ -271,7 +242,7 @@ fn build_posix_stat(metadata: DeviceMetadata) -> PosixStat {
         st_nlink: if metadata.is_directory { 2 } else { 1 },
         st_uid: UserIdentifier::ROOT.as_usize() as uid_t,
         st_gid: GroupIdentifier::ROOT.as_usize() as gid_t,
-        st_rdev: metadata.special_device,
+        st_rdev: metadata.special_device.map_or(0, Into::into),
         st_size: 0,
         st_blksize: STAT_BLOCK_SIZE,
         st_blocks: 0,
@@ -283,20 +254,23 @@ fn build_posix_stat(metadata: DeviceMetadata) -> PosixStat {
 
 /// Returns the `/dev` entry injected into the VFS root directory.
 pub(crate) fn directory_entry() -> DirEntry {
-    DirEntry::new(String::from(DIRECTORY_NAME), DIRECTORY_INODE, true, 0)
+    DirEntry::new(String::from(DIRECTORY_NAME), DevFsInodeId::Directory.into(), true, 0)
 }
 
 /// Reads a directory owned by devfs.
 pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Option<Vec<DirEntry>>, Fat32Error> {
     match resolve(cwd, path)? {
         Some(DevicePath::Directory) => Ok(Some(alloc::vec![
-            DirEntry::new_character_device(String::from(NULL_NAME), NULL_INODE),
-            DirEntry::new_character_device(String::from(TTY_NAME), TTY_INODE),
-            DirEntry::new_character_device(String::from(CONSOLE_NAME), CONSOLE_INODE),
+            DirEntry::new_character_device(String::from(NULL_NAME), DevFsInodeId::Null.into()),
+            DirEntry::new_character_device(String::from(TTY_NAME), DevFsInodeId::Tty.into()),
+            DirEntry::new_character_device(
+                String::from(CONSOLE_NAME),
+                DevFsInodeId::Console.into(),
+            ),
         ])),
         Some(DevicePath::Null | DevicePath::Tty | DevicePath::Console) => {
             Err(Fat32Error::NotADirectory)
-        }
+        },
         Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
         None => Ok(None),
     }
@@ -365,8 +339,8 @@ mod tests {
         let stat: PosixStat = posix_stat("/", "/dev")
             .expect("valid path")
             .expect("existing path");
-        assert_eq!(stat.st_dev, DEVICE_NAMESPACE_ID);
-        assert_eq!(stat.st_ino, DIRECTORY_INODE);
+        assert_eq!(stat.st_dev, FilesystemDeviceId::DevFs.into());
+        assert_eq!(stat.st_ino, DevFsInodeId::Directory.into());
         assert_eq!(stat.st_blksize, ::arch::mem::PAGE_SIZE as i64);
     }
 
