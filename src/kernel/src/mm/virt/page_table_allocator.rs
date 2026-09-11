@@ -23,7 +23,12 @@ use ::arch::mem::{
 use ::bump_allocator::{
     align_up,
     BssStorage,
+    BumpAllocError,
     FixedSizeBumpAllocator,
+};
+use ::vstd::{
+    prelude::*,
+    raw_ptr::PointsTo,
 };
 
 //==================================================================================================
@@ -101,3 +106,102 @@ pub static PAGE_TABLE_ALLOCATOR: FixedSizeBumpAllocator<
     PAGE_TABLE_SLOT_ALIGN,
     PageTableBss,
 > = unsafe { FixedSizeBumpAllocator::new() };
+
+verus! {
+
+#[allow(dead_code)]
+pub struct PageTableSlotPermissionsView {
+    /// Base address of the allocated slot.
+    pub base: usize,
+    /// Raw permissions for every entry in the slot.
+    pub entries: Map<nat, PointsTo<PteWord>>,
+}
+
+/// Raw entry permissions associated with one allocated page-table slot.
+#[allow(dead_code)]
+pub tracked struct PageTableSlotPermissions {
+    /// Base address of the allocated slot.
+    base: usize,
+    /// Raw permissions for every entry in the slot.
+    entries: Map<nat, PointsTo<PteWord>>,
+}
+
+impl View for PageTableSlotPermissions
+{
+    type V = PageTableSlotPermissionsView;
+
+    closed spec fn view(&self) -> PageTableSlotPermissionsView
+    {
+        PageTableSlotPermissionsView { base: self.base, entries: self.entries }
+    }
+}
+
+/// Creates the raw entry permissions returned by the page-table allocator.
+#[verifier::external_body]
+proof fn mint_page_table_slot_permissions(
+    base: usize,
+) -> (tracked permissions: PageTableSlotPermissions)
+    ensures
+        permissions.base == base,
+        permissions.entries.dom().len() == PAGE_TABLE_LENGTH,
+        forall|i: nat| permissions.entries.dom().contains(i)
+            <==> 0 <= i < PAGE_TABLE_LENGTH,
+        forall|i: nat| 0 <= i < PAGE_TABLE_LENGTH ==> {
+            let permission = #[trigger] permissions.entries[i];
+            &&& permission.ptr()@.addr as int == base as int + i * 4
+            &&& permission.is_uninit()
+        },
+{
+    unimplemented!()
+}
+
+}
+
+/// Allocates one BSS-backed page-table slot and returns its raw entry permissions.
+#[verus_verify(external_body)]
+#[verus_spec(result =>
+    with
+        -> slot_permissions: Tracked<PageTableSlotPermissions>,
+    ensures
+        match result {
+            Ok(_) => {
+                &&& slot_permissions@@.entries.dom().len() == PAGE_TABLE_LENGTH
+                &&& forall|i: nat| slot_permissions@@.entries.dom().contains(i)
+                    <==> 0 <= i < PAGE_TABLE_LENGTH
+                &&& forall|i: nat| 0 <= i < PAGE_TABLE_LENGTH ==> {
+                    let permission = #[trigger] slot_permissions@@.entries[i];
+                    &&& permission.ptr()@.addr as int
+                        == slot_permissions@@.base as int + i * 4
+                    &&& permission.is_uninit()
+                }
+            },
+            Err(_) => slot_permissions@@.entries.dom().is_empty(),
+        },
+)]
+pub unsafe fn allocate_page_table_slot(
+) -> Result<&'static mut [PteWord; PAGE_TABLE_LENGTH], BumpAllocError> {
+    match unsafe { PAGE_TABLE_ALLOCATOR.alloc_as::<[PteWord; PAGE_TABLE_LENGTH]>() } {
+        Ok(slot) => {
+            let entries: &'static mut [PteWord; PAGE_TABLE_LENGTH] =
+                unsafe { slot.assume_init_mut() };
+            let _entries_base: usize = entries.as_mut_ptr() as usize;
+            proof_decl! {
+                let tracked slot_permissions: PageTableSlotPermissions =
+                        mint_page_table_slot_permissions(_entries_base);
+            }
+            proof_with!(|= Tracked(slot_permissions));
+            Ok(entries)
+        },
+        Err(error) => {
+            proof_decl! {
+                let tracked slot_permissions: PageTableSlotPermissions =
+                    PageTableSlotPermissions {
+                        base: 0,
+                        entries: Map::tracked_empty(),
+                    };
+            }
+            proof_with!(|= Tracked(slot_permissions));
+            Err(error)
+        },
+    }
+}

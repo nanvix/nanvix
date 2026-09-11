@@ -5,13 +5,20 @@
 // Imports
 //==================================================================================================
 
-use crate::hal::mem::{
-    AccessPermission,
-    Address,
-    FrameAddress,
-    PageAligned,
-    PageTableAddress,
-    PhysicalAddress,
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
+use super::page_table::PageTable;
+#[cfg(any(verus_keep_ghost, verus_keep_ghost_body))]
+use crate::mm::PageTableStorage;
+use crate::{
+    hal::mem::{
+        AccessPermission,
+        Address,
+        FrameAddress,
+        PageAligned,
+        PageTableAddress,
+        PhysicalAddress,
+    },
+    mm::GetPageDirectoryStorage,
 };
 use ::arch::mem::paging::{
     AccessedFlag,
@@ -33,6 +40,8 @@ use ::sys::error::{
     ErrorCode,
 };
 
+include!("page_directory.spec.rs");
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -42,22 +51,66 @@ use ::sys::error::{
 ///
 /// A type that represents a page directory.
 ///
-pub struct PageDirectory<T: DerefMut<Target = [PteWord]>> {
+#[verus_verify]
+pub struct PageDirectory<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageDirectoryStorage,
+{
     /// Entries.
     entries: T,
+    /// Specification tokens for page-directory entries.
+    #[cfg(verus_keep_ghost_body)]
+    pub permissions: Tracked<Map<nat, NanvixPdeToken>>,
 }
 
 //==================================================================================================
 // Implementations
 //==================================================================================================
 
-impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
+#[verus_verify]
+impl<T> PageDirectory<T>
+where
+    T: DerefMut<Target = [PteWord]> + GetPageDirectoryStorage,
+{
+    #[verus_verify(external_body)]
+    #[verus_spec(result =>
+        with
+            Tracked(raw_permissions):
+                Tracked<Map<nat, PointsTo<PteWord>>>,
+        requires
+            raw_permissions.dom().len() == ::arch::mem::PAGE_TABLE_LENGTH,
+            forall|i: nat| raw_permissions.dom().contains(i)
+                <==> 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH,
+            forall|i: nat| 0 <= i < ::arch::mem::PAGE_TABLE_LENGTH ==> {
+                let permission = #[trigger] raw_permissions[i];
+
+                permission.ptr()@.addr as int
+                    == entries.get_storage().base_address()
+                        + i * 4
+                    && permission.is_uninit()
+            },
+        ensures
+            result.ready_for_mmu(),
+    )]
     pub fn new(entries: T) -> Self {
-        let mut pgdir: PageDirectory<T> = PageDirectory { entries };
+        let mut pgdir: PageDirectory<T> = PageDirectory {
+            entries,
+            #[cfg(verus_keep_ghost_body)]
+            permissions: Tracked::new(mint_nanvix_pde_tokens(raw_permissions)),
+        };
         pgdir.clean();
         pgdir
     }
 
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        with
+            Ghost(page_table):
+                Ghost<&PageTable<PageTableStorage>>,
+        requires
+            page_table.ready_for_mmu(),
+            page_table.physical_base() == paddr@,
+    )]
     pub fn map(
         &mut self,
         vaddr: PageTableAddress,
@@ -106,6 +159,9 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         );
 
         // Write page directory entry
+        proof_with! {
+            Ghost(Some(page_table))
+        };
         self.write_pde(vaddr, pde);
 
         Ok(())
@@ -162,6 +218,9 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         );
 
         // Write page directory entry.
+        proof_with! {
+            Ghost(None)
+        };
         self.write_pde(pgtable_address, pde);
 
         // Invalidate the TLB entry for this page table range so the CPU does not use a
@@ -172,22 +231,37 @@ impl<T: DerefMut<Target = [PteWord]>> PageDirectory<T> {
         Ok(paddr)
     }
 
+    #[verus_verify(external_body)]
     fn clean(&mut self) {
-        for pde in self.entries.iter_mut() {
-            *pde = 0;
-        }
+        // for pde in self.entries.iter_mut() {
+        //     *pde = 0;
+        // }
+        self.env_interaction_clear_page_directory();
     }
 
+    #[verus_verify(external_body)]
     pub fn read_pde(&self, vaddr: PageTableAddress) -> Option<PageDirectoryEntry> {
         let pde_idx: usize = vaddr.get_pde_index();
-        PageDirectoryEntry::from_raw_value(self.entries[pde_idx])
+        // PageDirectoryEntry::from_raw_value(self.entries[pde_idx])
+        PageDirectoryEntry::from_raw_value(self.env_interaction_read_page_directory_entry(pde_idx))
     }
 
+    #[verus_verify(external_body)]
+    #[verus_spec(
+        with
+            Ghost(page_table):
+                Ghost<Option<&PageTable<PageTableStorage>>>,
+    )]
     fn write_pde(&mut self, vaddr: PageTableAddress, pde: PageDirectoryEntry) {
         let pde_idx: usize = vaddr.get_pde_index();
-        self.entries[pde_idx] = pde.into_raw_value();
+        // self.entries[pde_idx] = pde.into_raw_value();
+        proof_with! {
+            Ghost(page_table)
+        };
+        self.env_interaction_write_page_directory_entry(pde_idx, pde.into_raw_value());
     }
 
+    #[verus_verify(external_body)]
     pub fn physical_address(&self) -> Result<FrameAddress, Error> {
         let vaddr: usize = self.entries.as_ptr() as usize;
         let paddr: usize = crate::hal::platform::virt_to_phys(vaddr);
