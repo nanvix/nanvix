@@ -21,6 +21,8 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate alloc;
+
 // The wire format uses native-endian encoding for the kind and op_id fields
 // (matching the `SystemCallMessage` packed struct layout) and explicit little-endian
 // for operation-specific data. This is only correct on little-endian hosts.
@@ -43,6 +45,7 @@ mod lseek;
 mod lstat;
 mod mkdir;
 mod open;
+mod path;
 mod read;
 mod readdir;
 mod readlink;
@@ -73,6 +76,10 @@ pub use self::{
     open::{
         OpenRequest,
         OpenResponse,
+    },
+    path::{
+        HostResolvedPath,
+        HOSTFS_MOUNT_PATH,
     },
     read::{
         ReadRequest,

@@ -25,6 +25,7 @@ extern crate alloc;
 
 pub mod error;
 pub mod fat;
+mod path;
 
 //==================================================================================================
 // Public Re-exports
@@ -39,4 +40,5 @@ pub use crate::{
         ReadOnlyMemoryStorage,
         FAT_EPOCH_SECS,
     },
+    path::FatResolvedPath,
 };
