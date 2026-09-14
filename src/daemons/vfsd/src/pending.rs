@@ -49,6 +49,10 @@ use ::sys::{
 use ::syscall::unistd::message::ChangeDirectoryResponse;
 use ::vfs::{
     fd::vfs_set_cwd,
+    identifiers::{
+        FilesystemDeviceId,
+        HostFsInodeId,
+    },
     path::ResolvedPath,
 };
 
@@ -203,18 +207,6 @@ const STAT_BLOCK_SIZE: i64 = 4096;
 
 /// POSIX-defined unit (in bytes) used to convert `st_size` into `st_blocks`.
 const STAT_SECTOR_SIZE: u64 = 512;
-
-/// Synthetic device id reported as `st_dev` for hostfs entries.
-///
-/// Distinct from ramfs (`1`) so guest tooling can tell the two filesystems apart;
-/// hostfsd does not expose the host's real `st_dev`.
-const STAT_HOSTFS_DEV: u64 = 2;
-
-/// Synthetic inode number reported as `st_ino`.
-///
-/// Inode numbers are not tracked by hostfsd; a constant keeps the field valid
-/// without implying any cross-call identity (callers must not key caches on it).
-const STAT_SYNTHETIC_INO: u64 = 1;
 
 /// `st_nlink` value for directories (self + `.`).
 const STAT_NLINK_DIR: u64 = 2;
@@ -1340,8 +1332,8 @@ fn complete_stat(
     };
 
     let st = stat {
-        st_dev: STAT_HOSTFS_DEV,
-        st_ino: STAT_SYNTHETIC_INO,
+        st_dev: FilesystemDeviceId::HostFs.into(),
+        st_ino: HostFsInodeId::Fallback.into(),
         st_mode: mode,
         st_nlink: if is_dir {
             STAT_NLINK_DIR
@@ -1564,8 +1556,8 @@ fn complete_lstat(
     let is_dir: bool = resp.kind == ::hostfs_api::file_kind::DIRECTORY;
 
     let st = stat {
-        st_dev: STAT_HOSTFS_DEV,
-        st_ino: STAT_SYNTHETIC_INO,
+        st_dev: FilesystemDeviceId::HostFs.into(),
+        st_ino: HostFsInodeId::Fallback.into(),
         st_mode: mode,
         st_nlink: if is_dir {
             STAT_NLINK_DIR

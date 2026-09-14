@@ -48,3 +48,33 @@ void test_stat(void)
 
     fprintf(stderr, "passed\n");
 }
+
+// Tests whether hostfs reports a consistent identity through stat(), lstat(), and fstat().
+void test_hostfs_stat_identity(void)
+{
+    fprintf(stderr, "testing hostfs stat identity ... ");
+
+    const char *filename = "/mnt/testfile_hostfs_stat_identity.tmp";
+    int fd = open(filename, O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR);
+    assert(fd != -1);
+
+    struct stat path_stat = {0};
+    struct stat path_lstat = {0};
+    struct stat fd_stat = {0};
+
+    assert(stat(filename, &path_stat) == 0);
+    assert(lstat(filename, &path_lstat) == 0);
+    assert(fstat(fd, &fd_stat) == 0);
+
+    assert(path_stat.st_dev != 0);
+    assert(path_stat.st_ino != 0);
+    assert(path_stat.st_dev == path_lstat.st_dev);
+    assert(path_stat.st_ino == path_lstat.st_ino);
+    assert(path_stat.st_dev == fd_stat.st_dev);
+    assert(path_stat.st_ino == fd_stat.st_ino);
+
+    assert(close(fd) == 0);
+    assert(unlink(filename) == 0);
+
+    fprintf(stderr, "passed\n");
+}
