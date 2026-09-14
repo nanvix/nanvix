@@ -20,11 +20,25 @@ use ::alloc::{
     string::String,
 };
 use ::fat32::Fat32Error;
-use ::sysapi::ffi::c_int;
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    ffi::c_int,
+};
 
 //==================================================================================================
 // Structures
 //==================================================================================================
+
+/// How a raw path is anchored in the VFS namespace.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PathAnchor {
+    /// An absolute path, along with the ignored descriptor supplied by the caller.
+    Absolute(c_int),
+    /// A relative path anchored at the current working directory.
+    CurrentDirectory,
+    /// A relative path anchored at a directory descriptor.
+    Directory(c_int),
+}
 
 /// A raw directory descriptor and path pair supplied at a system-call boundary.
 ///
@@ -32,8 +46,8 @@ use ::sysapi::ffi::c_int;
 /// backend resolver consumes this value and applies the appropriate anchoring policy.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AnchoredPath {
-    /// Directory descriptor used to anchor a relative path.
-    dirfd: c_int,
+    /// Typed anchoring mode selected from the raw descriptor and path.
+    anchor: PathAnchor,
     /// Raw path supplied by the caller.
     path: String,
 }
@@ -50,12 +64,23 @@ impl AnchoredPath {
     ///
     /// A path value that preserves the supplied pair without validation or transformation.
     pub fn new(dirfd: c_int, path: String) -> Self {
-        Self { dirfd, path }
+        let anchor: PathAnchor = if path.starts_with('/') {
+            PathAnchor::Absolute(dirfd)
+        } else if dirfd == AT_FDCWD {
+            PathAnchor::CurrentDirectory
+        } else {
+            PathAnchor::Directory(dirfd)
+        };
+
+        Self { anchor, path }
     }
 
     /// Returns the directory descriptor supplied by the caller.
     pub fn dirfd(&self) -> c_int {
-        self.dirfd
+        match self.anchor {
+            PathAnchor::Absolute(dirfd) | PathAnchor::Directory(dirfd) => dirfd,
+            PathAnchor::CurrentDirectory => AT_FDCWD,
+        }
     }
 
     /// Returns the raw path supplied by the caller.
@@ -65,16 +90,20 @@ impl AnchoredPath {
 
     /// Consumes this value and anchors its path in the VFS namespace.
     pub(crate) fn into_absolute(self) -> Result<String, Fat32Error> {
-        anchor_with(
-            self,
-            || {
+        if self.path.is_empty() {
+            return Err(Fat32Error::NotFound);
+        }
+
+        match self.anchor {
+            PathAnchor::Absolute(_) => Ok(self.path),
+            PathAnchor::CurrentDirectory => {
                 if !crate::state::is_initialized() {
                     return Err(Fat32Error::InvalidArgument);
                 }
-                Ok(current_cwd())
+                Ok(join(&current_cwd(), &self.path))
             },
-            resolve_directory,
-        )
+            PathAnchor::Directory(dirfd) => Ok(join(&resolve_directory(dirfd)?, &self.path)),
+        }
     }
 }
 
@@ -142,33 +171,6 @@ pub fn vfs_resolve_path(dirfd: c_int, path: &str) -> Result<ResolvedPath, Fat32E
 // Private Functions
 //==================================================================================================
 
-/// Anchors a raw path using injected current-directory and descriptor lookups.
-fn anchor_with<C, D>(
-    anchored: AnchoredPath,
-    current_directory: C,
-    descriptor_directory: D,
-) -> Result<String, Fat32Error>
-where
-    C: FnOnce() -> Result<String, Fat32Error>,
-    D: FnOnce(c_int) -> Result<String, Fat32Error>,
-{
-    use ::sysapi::fcntl::atflags::AT_FDCWD;
-
-    if anchored.path.is_empty() {
-        return Err(Fat32Error::NotFound);
-    }
-    if anchored.path.starts_with('/') {
-        return Ok(anchored.path);
-    }
-
-    let base: String = if anchored.dirfd == AT_FDCWD {
-        current_directory()?
-    } else {
-        descriptor_directory(anchored.dirfd)?
-    };
-    Ok(join(&base, &anchored.path))
-}
-
 /// Returns the namespace path associated with a directory descriptor.
 fn resolve_directory(dirfd: c_int) -> Result<String, Fat32Error> {
     let file: OpenFile = entry_arc(dirfd).map_err(|_| Fat32Error::InvalidFd)?;
@@ -200,17 +202,17 @@ fn join(base: &str, path: &str) -> String {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use ::sysapi::fcntl::atflags::AT_FDCWD;
 
     #[test]
-    fn construction_preserves_raw_pair() {
-        for (dirfd, path) in [
-            (AT_FDCWD, ""),
-            (17, "/absolute/../path"),
-            (AT_FDCWD, "relative/path"),
-            (42, "relative/./path"),
+    fn construction_selects_explicit_anchor_state() {
+        for (dirfd, path, expected) in [
+            (AT_FDCWD, "", PathAnchor::CurrentDirectory),
+            (17, "/absolute/../path", PathAnchor::Absolute(17)),
+            (AT_FDCWD, "relative/path", PathAnchor::CurrentDirectory),
+            (42, "relative/./path", PathAnchor::Directory(42)),
         ] {
             let anchored: AnchoredPath = AnchoredPath::new(dirfd, String::from(path));
+            assert_eq!(anchored.anchor, expected);
             assert_eq!(anchored.dirfd(), dirfd);
             assert_eq!(anchored.path(), path);
         }
@@ -218,66 +220,23 @@ mod tests {
 
     #[test]
     fn empty_path_is_rejected_when_consumed() {
-        let result: Result<String, Fat32Error> = anchor_with(
-            AnchoredPath::new(AT_FDCWD, String::new()),
-            || Ok(String::from("/cwd")),
-            |_| Ok(String::from("/descriptor")),
-        );
+        let result: Result<String, Fat32Error> =
+            AnchoredPath::new(AT_FDCWD, String::new()).into_absolute();
         assert_eq!(result, Err(Fat32Error::NotFound));
     }
 
     #[test]
     fn absolute_path_ignores_directory_descriptor() {
-        let result: String = anchor_with(
-            AnchoredPath::new(-99, String::from("/absolute/../path")),
-            || Err(Fat32Error::InvalidArgument),
-            |_| Err(Fat32Error::InvalidFd),
-        )
-        .expect("absolute path should not inspect its directory descriptor");
+        let result: String = AnchoredPath::new(-99, String::from("/absolute/../path"))
+            .into_absolute()
+            .expect("absolute path should not inspect its directory descriptor");
         assert_eq!(result, "/absolute/../path");
     }
 
     #[test]
-    fn relative_path_uses_current_directory() {
-        let result: String = anchor_with(
-            AnchoredPath::new(AT_FDCWD, String::from("relative/path")),
-            || Ok(String::from("/cwd")),
-            |_| Err(Fat32Error::InvalidFd),
-        )
-        .expect("AT_FDCWD path should use the current directory");
-        assert_eq!(result, "/cwd/relative/path");
-    }
-
-    #[test]
-    fn relative_path_uses_directory_descriptor() {
-        let result: String = anchor_with(
-            AnchoredPath::new(17, String::from("relative/path")),
-            || Err(Fat32Error::InvalidArgument),
-            |dirfd| {
-                assert_eq!(dirfd, 17);
-                Ok(String::from("/descriptor"))
-            },
-        )
-        .expect("relative path should use its directory descriptor");
-        assert_eq!(result, "/descriptor/relative/path");
-    }
-
-    #[test]
-    fn anchor_errors_are_preserved() {
-        let uninitialized: Result<String, Fat32Error> = anchor_with(
-            AnchoredPath::new(AT_FDCWD, String::from("relative")),
-            || Err(Fat32Error::InvalidArgument),
-            |_| Ok(String::from("/descriptor")),
-        );
-        assert_eq!(uninitialized, Err(Fat32Error::InvalidArgument));
-
-        for error in [Fat32Error::InvalidFd, Fat32Error::NotADirectory] {
-            let result: Result<String, Fat32Error> = anchor_with(
-                AnchoredPath::new(17, String::from("relative")),
-                || Ok(String::from("/cwd")),
-                |_| Err(error),
-            );
-            assert_eq!(result, Err(error));
-        }
+    fn missing_directory_descriptor_is_rejected() {
+        let result: Result<String, Fat32Error> =
+            AnchoredPath::new(c_int::MAX, String::from("relative/path")).into_absolute();
+        assert_eq!(result, Err(Fat32Error::InvalidFd));
     }
 }
