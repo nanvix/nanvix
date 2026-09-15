@@ -21,6 +21,7 @@ use crate::{
         anchor_path,
         normalize_anchored,
     },
+    path::AnchoredPath,
 };
 use ::alloc::{
     string::String,
@@ -150,30 +151,40 @@ impl DevicePath {
 // Standalone Functions
 //==================================================================================================
 
+/// Resolves raw path provenance in the synthetic device namespace.
+///
+/// TODO (#3101): Remove this allowance when typed callers replace the legacy adapters.
+#[allow(dead_code)]
+pub(crate) fn resolve_anchored(path: AnchoredPath) -> Result<Option<DevicePath>, Fat32Error> {
+    let absolute: String = path.into_absolute()?;
+    resolve_absolute(&absolute)
+}
+
 /// Resolves a path in the synthetic device namespace.
+///
+/// TODO (#3101): Remove this working-directory adapter after callers pass [`AnchoredPath`].
 pub(crate) fn resolve(cwd: &str, path: &str) -> Result<Option<DevicePath>, Fat32Error> {
-    let anchored: String = anchor_path(path, cwd)?;
-    validate_components(&anchored)?;
-    let normalized: String = normalize_anchored(&anchored);
-    Ok(resolve_normalized(&normalized))
+    let absolute: String = anchor_path(path, cwd)?;
+    resolve_absolute(&absolute)
 }
 
 /// Returns whether routing for a path belongs to the synthetic device namespace.
+///
+/// TODO (#3101): Remove this working-directory adapter after callers pass [`AnchoredPath`].
 pub(crate) fn owns(cwd: &str, path: &str) -> Result<bool, Fat32Error> {
-    let anchored: String = anchor_path(path, cwd)?;
-    if validate_components(&anchored).is_err() {
-        return Ok(true);
+    let absolute: String = anchor_path(path, cwd)?;
+    match resolve_absolute(&absolute) {
+        Ok(path) => Ok(path.is_some()),
+        Err(Fat32Error::NotFound | Fat32Error::NotADirectory) => Ok(true),
+        Err(error) => Err(error),
     }
-    let normalized: String = normalize_anchored(&anchored);
-    Ok(resolve_normalized(&normalized).is_some())
 }
 
 /// Resolves metadata for an existing device-namespace path.
+///
+/// TODO (#3101): Remove this working-directory adapter after callers pass [`AnchoredPath`].
 fn metadata(cwd: &str, path: &str) -> Result<Option<DeviceMetadata>, Fat32Error> {
-    let anchored: String = anchor_path(path, cwd)?;
-    validate_components(&anchored)?;
-    let normalized: String = normalize_anchored(&anchored);
-    let Some(device_path) = resolve_normalized(&normalized) else {
+    let Some(device_path) = resolve(cwd, path)? else {
         return Ok(None);
     };
     let metadata: DeviceMetadata = device_path.metadata().ok_or(Fat32Error::NotFound)?;
@@ -184,6 +195,8 @@ fn metadata(cwd: &str, path: &str) -> Result<Option<DeviceMetadata>, Fat32Error>
 }
 
 /// Synthesizes backend-neutral metadata for an existing devfs path.
+///
+/// TODO (#3101): Remove this working-directory adapter after callers pass [`AnchoredPath`].
 pub(crate) fn stat(cwd: &str, path: &str) -> Result<Option<Stat>, Fat32Error> {
     let Some(metadata) = metadata(cwd, path)? else {
         return Ok(None);
@@ -198,6 +211,8 @@ pub(crate) fn stat(cwd: &str, path: &str) -> Result<Option<Stat>, Fat32Error> {
 }
 
 /// Synthesizes POSIX metadata for an existing devfs path.
+///
+/// TODO (#3101): Remove this working-directory adapter after callers pass [`AnchoredPath`].
 pub(crate) fn posix_stat(cwd: &str, path: &str) -> Result<Option<PosixStat>, Fat32Error> {
     Ok(metadata(cwd, path)?.map(build_posix_stat))
 }
@@ -258,6 +273,8 @@ pub(crate) fn directory_entry() -> DirEntry {
 }
 
 /// Reads a directory owned by devfs.
+///
+/// TODO (#3101): Remove this working-directory adapter after callers pass [`AnchoredPath`].
 pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Option<Vec<DirEntry>>, Fat32Error> {
     match resolve(cwd, path)? {
         Some(DevicePath::Directory) => Ok(Some(alloc::vec![
@@ -274,6 +291,13 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Option<Vec<DirEntry>>, F
         Some(DevicePath::Missing) => Err(Fat32Error::NotFound),
         None => Ok(None),
     }
+}
+
+/// Validates and classifies an absolute namespace path.
+fn resolve_absolute(path: &str) -> Result<Option<DevicePath>, Fat32Error> {
+    validate_components(path)?;
+    let normalized: String = normalize_anchored(path);
+    Ok(resolve_normalized(&normalized))
 }
 
 /// Rejects traversal through an unknown namespace entry.
@@ -314,47 +338,100 @@ fn resolve_normalized(path: &str) -> Option<DevicePath> {
 //==================================================================================================
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::mount::{
+        Mount,
+        Vfs,
+    };
+    use ::fat32::{
+        Fat,
+        FatResolvedPath,
+        RawMemoryStorage,
+    };
 
-    #[test]
-    fn resolves_namespace_paths() {
-        assert_eq!(resolve("/", "/dev"), Ok(Some(DevicePath::Directory)));
-        assert_eq!(resolve("/", "/dev/null"), Ok(Some(DevicePath::Null)));
-        assert_eq!(resolve("/", "/dev/unknown"), Ok(Some(DevicePath::Missing)));
-        assert_eq!(resolve("/", "/dev/unknown/child"), Err(Fat32Error::NotFound));
-        assert_eq!(resolve("/", "/dev/null/child"), Err(Fat32Error::NotADirectory));
+    /// Creates a root FAT mount and keeps its backing allocation alive beside it.
+    fn make_root_vfs() -> (Vfs, Vec<u8>) {
+        let size: usize = 64 * 1024;
+        let mut buffer: Vec<u8> = alloc::vec![0u8; size];
+        let pointer: *mut u8 = buffer.as_mut_ptr();
+        let mut storage: RawMemoryStorage =
+            unsafe { RawMemoryStorage::new(pointer, size).expect("valid storage") };
+        ::fatfs::format_volume(&mut storage, ::fatfs::FormatVolumeOptions::new())
+            .expect("format should succeed");
+        let fat: Fat = unsafe { Fat::from_memory(pointer, size).expect("valid FAT") };
+        let mount: Mount = Mount::new(String::from("/"), fat, false).expect("valid mount");
+        let mut vfs: Vfs = Vfs::new();
+        vfs.add_mount(mount).expect("add root mount");
+        (vfs, buffer)
     }
 
     #[test]
-    fn synthesizes_stat() {
-        let stat: Stat = stat("/", "/dev")
+    fn anchored_resolution_uses_checked_paths() {
+        let path: AnchoredPath = AnchoredPath::new(-99, String::from("/tmp/../dev//./null"))
+            .expect("valid raw path should be accepted");
+        assert_eq!(resolve_anchored(path), Ok(Some(DevicePath::Null)));
+
+        assert_eq!(AnchoredPath::new(-99, String::new()), Err(Fat32Error::NotFound));
+
+        let invalid: &str = "/tmp/invalid\0/../dev/null";
+        assert_eq!(AnchoredPath::new(-99, String::from(invalid)), Err(Fat32Error::InvalidPath),);
+        assert_eq!(resolve("/", invalid), Err(Fat32Error::InvalidPath));
+    }
+
+    #[test]
+    fn legacy_resolution_anchors_relative_paths() {
+        assert_eq!(resolve("/", "dev"), Ok(Some(DevicePath::Directory)));
+        assert_eq!(resolve("/tmp/work", "../../dev//./console"), Ok(Some(DevicePath::Console)));
+        assert_eq!(resolve("/", "/dev/../tmp"), Ok(None));
+    }
+
+    #[test]
+    fn validates_traversal_through_device_nodes() {
+        assert_eq!(resolve("/", "/dev/unknown"), Ok(Some(DevicePath::Missing)));
+        assert_eq!(resolve("/", "/dev/unknown/child"), Err(Fat32Error::NotFound));
+        assert_eq!(resolve("/", "/dev/null/../console"), Err(Fat32Error::NotADirectory));
+        assert_eq!(resolve("/", "/dev/console/child"), Err(Fat32Error::NotADirectory));
+    }
+
+    #[test]
+    fn synthesizes_stat_and_preserves_trailing_slashes() {
+        let vfs_stat: Stat = stat("/", "/dev/")
             .expect("valid path")
             .expect("existing path");
         assert_eq!(
-            stat,
+            vfs_stat,
             Stat::new(0, true, STAT_TIMESTAMP_SECS, STAT_TIMESTAMP_SECS, STAT_TIMESTAMP_SECS,)
         );
 
-        let stat: PosixStat = posix_stat("/", "/dev")
+        let posix_stat: PosixStat = posix_stat("/", "/dev")
             .expect("valid path")
             .expect("existing path");
-        assert_eq!(stat.st_dev, FilesystemDeviceId::DevFs.into());
-        assert_eq!(stat.st_ino, DevFsInodeId::Directory.into());
-        assert_eq!(stat.st_blksize, ::arch::mem::PAGE_SIZE as i64);
+        assert_eq!(posix_stat.st_dev, FilesystemDeviceId::DevFs.into());
+        assert_eq!(posix_stat.st_ino, DevFsInodeId::Directory.into());
+        assert_eq!(posix_stat.st_blksize, ::arch::mem::PAGE_SIZE as i64);
+        assert_eq!(stat("/", "/dev/null/"), Err(Fat32Error::NotADirectory));
+    }
+
+    #[test]
+    fn reads_only_the_device_directory() {
+        let entries: Vec<DirEntry> = read_dir("/", "/dev")
+            .expect("valid path")
+            .expect("devfs directory");
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].name(), NULL_NAME);
+        assert_eq!(entries[1].name(), TTY_NAME);
+        assert_eq!(entries[2].name(), CONSOLE_NAME);
+        assert_eq!(read_dir("/", "/dev/null"), Err(Fat32Error::NotADirectory));
+        assert_eq!(read_dir("/", "/dev/missing"), Err(Fat32Error::NotFound));
     }
 
     #[test]
     fn routing_ownership_is_distinct_from_validity() {
-        assert!(owns("/", "/dev/unknown/child").expect("valid path"));
-        assert!(!owns("/", "/dev/../tmp").expect("valid path"));
-    }
-
-    #[test]
-    fn normalizes_paths_before_resolving() {
-        assert_eq!(resolve("/", "/dev/"), Ok(Some(DevicePath::Directory)));
-        assert_eq!(resolve("/", "dev"), Ok(Some(DevicePath::Directory)));
-        assert_eq!(resolve("/", "/dev/../tmp"), Ok(None));
+        assert!(owns("/", "/dev/unknown/child").expect("owned invalid path"));
+        assert!(owns("/", "/dev/null/child").expect("owned invalid traversal"));
+        assert!(!owns("/", "/dev/../tmp").expect("path outside devfs"));
     }
 
     #[test]
@@ -362,5 +439,24 @@ mod tests {
         assert_eq!(resolve("/", "/"), Ok(None));
         assert_eq!(resolve("/", "/device"), Ok(None));
         assert_eq!(resolve("/", "/devil/null"), Ok(None));
+    }
+
+    #[test]
+    fn routes_devfs_before_fat_and_preserves_fat_cache_parity() {
+        let (mut vfs, _buffer) = make_root_vfs();
+        let device_path: AnchoredPath = AnchoredPath::new(-99, String::from("/dev/null"))
+            .expect("valid raw path should be accepted");
+
+        assert_eq!(resolve_anchored(device_path), Ok(Some(DevicePath::Null)));
+        assert_eq!(vfs.resolve_cache_len(), 0, "devfs routing must not consult FAT");
+
+        let fat_path: AnchoredPath = AnchoredPath::new(-99, String::from("/data//./file"))
+            .expect("valid raw path should be accepted");
+        assert_eq!(resolve_anchored(fat_path.clone()), Ok(None));
+        let first: FatResolvedPath = vfs.resolve(fat_path.clone()).expect("FAT fallthrough");
+        let second: FatResolvedPath = vfs.resolve(fat_path).expect("cached FAT fallthrough");
+        assert_eq!(first.as_str(), "data/file");
+        assert_eq!(first, second, "cache hit must preserve the checked FAT path");
+        assert_eq!(vfs.resolve_cache_len(), 1);
     }
 }

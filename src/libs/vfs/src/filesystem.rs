@@ -518,7 +518,7 @@ fn ends_with_dot(path: &str) -> bool {
 ///
 /// A tuple of `(mount_index, relative_path)`.
 fn resolve_path(cwd: &str, path: &str) -> Result<(usize, String), Fat32Error> {
-    state::with_vfs_mut(|vfs| vfs.resolve(path, cwd))
+    state::with_vfs_mut(|vfs| vfs.resolve_legacy(path, cwd))
 }
 
 /// Returns [`Fat32Error::ReadOnly`] if the mount at `mount_idx` is read-only.
