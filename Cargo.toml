@@ -176,7 +176,7 @@ homepage = "https://github.com/nanvix"
 arch = { path = "src/libs/arch", default-features = false }
 anyhow = "1.0.102"
 async-trait = "0.1.89"
-base64 = "0.22.1"
+base64 = "0.23.1"
 bitmap = { path = "src/libs/bitmap", default-features = false }
 bump-allocator = { path = "src/libs/bump_allocator", default-features = false }
 build-utils = { path = "src/libs/build-utils" }
