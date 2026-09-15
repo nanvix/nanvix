@@ -153,8 +153,8 @@ impl Vfs {
     /// # Errors
     ///
     /// Returns [`Fat32Error::NotFound`] if the path is empty. Returns
-    /// [`Fat32Error::InvalidPath`] if a relative `path` is anchored to a `cwd` that is not
-    /// absolute. `..` at the root clamps to the root, per POSIX.
+    /// [`Fat32Error::InvalidPath`] if `path` contains an embedded null byte or a relative `path` is
+    /// anchored to a `cwd` that is not absolute. `..` at the root clamps to the root, per POSIX.
     ///
     /// # References
     ///
@@ -274,9 +274,7 @@ impl Vfs {
 
 /// Anchors a path to an absolute working directory without normalizing its components.
 pub(crate) fn anchor_path(path: &str, cwd: &str) -> Result<String, Fat32Error> {
-    if path.is_empty() {
-        return Err(Fat32Error::NotFound);
-    }
+    AnchoredPath::validate_raw(path)?;
     if path.starts_with('/') {
         Ok(String::from(path))
     } else if !cwd.starts_with('/') {
@@ -356,6 +354,7 @@ impl Default for Vfs {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use ::sysapi::fcntl::atflags::AT_FDCWD;
 
     // -- normalize_path tests ----------------------------------------------------
 
@@ -480,7 +479,7 @@ mod tests {
 
     /// Creates raw provenance for an absolute path, which ignores the supplied descriptor.
     fn anchored(path: &str) -> AnchoredPath {
-        AnchoredPath::new(-1, String::from(path))
+        AnchoredPath::new(-1, String::from(path)).expect("valid raw path should be accepted")
     }
 
     /// Tests that Mount::matches returns empty string for exact path match.
@@ -660,6 +659,34 @@ mod tests {
             .resolve(anchored("/data2/file"))
             .expect("false prefix should fall through to root mount");
         assert_eq!(false_prefix.as_str(), "data2/file");
+    }
+
+    #[test]
+    fn resolution_rejects_null_before_normalization() {
+        let mut vfs: Vfs = Vfs::new();
+        let (mount, _buffer) = make_mount("/data");
+        vfs.add_mount(mount).expect("add data mount");
+
+        let path: &str = "/data/invalid\0/../file";
+        assert_eq!(AnchoredPath::new(-1, String::from(path)), Err(Fat32Error::InvalidPath),);
+        assert_eq!(vfs.resolve_legacy(path, "/"), Err(Fat32Error::InvalidPath));
+        assert_eq!(vfs.resolve_cache_len(), 0);
+    }
+
+    #[test]
+    fn current_directory_resolution_does_not_relock_vfs_state() {
+        if !crate::state::is_initialized() {
+            let _result: Result<(), Fat32Error> = crate::state::init();
+        }
+
+        crate::state::with_vfs_mut(|vfs: &mut Vfs| {
+            let path: AnchoredPath =
+                AnchoredPath::new(AT_FDCWD, String::from("typed-resolution-lock-check"))
+                    .expect("valid raw path should be accepted");
+            let _resolution: Result<FatResolvedPath, Fat32Error> = vfs.resolve(path);
+            Ok(())
+        })
+        .expect("typed resolution should not recursively lock VFS state");
     }
 
     /// Tests that the temporary projection delegates to the checked resolver core.

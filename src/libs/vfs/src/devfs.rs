@@ -368,12 +368,16 @@ mod tests {
     }
 
     #[test]
-    fn anchored_resolution_validates_once() {
-        let path: AnchoredPath = AnchoredPath::new(-99, String::from("/tmp/../dev//./null"));
+    fn anchored_resolution_uses_checked_paths() {
+        let path: AnchoredPath = AnchoredPath::new(-99, String::from("/tmp/../dev//./null"))
+            .expect("valid raw path should be accepted");
         assert_eq!(resolve_anchored(path), Ok(Some(DevicePath::Null)));
 
-        let empty: AnchoredPath = AnchoredPath::new(-99, String::new());
-        assert_eq!(resolve_anchored(empty), Err(Fat32Error::NotFound));
+        assert_eq!(AnchoredPath::new(-99, String::new()), Err(Fat32Error::NotFound));
+
+        let invalid: &str = "/tmp/invalid\0/../dev/null";
+        assert_eq!(AnchoredPath::new(-99, String::from(invalid)), Err(Fat32Error::InvalidPath),);
+        assert_eq!(resolve("/", invalid), Err(Fat32Error::InvalidPath));
     }
 
     #[test]
@@ -440,12 +444,14 @@ mod tests {
     #[test]
     fn routes_devfs_before_fat_and_preserves_fat_cache_parity() {
         let (mut vfs, _buffer) = make_root_vfs();
-        let device_path: AnchoredPath = AnchoredPath::new(-99, String::from("/dev/null"));
+        let device_path: AnchoredPath = AnchoredPath::new(-99, String::from("/dev/null"))
+            .expect("valid raw path should be accepted");
 
         assert_eq!(resolve_anchored(device_path), Ok(Some(DevicePath::Null)));
         assert_eq!(vfs.resolve_cache_len(), 0, "devfs routing must not consult FAT");
 
-        let fat_path: AnchoredPath = AnchoredPath::new(-99, String::from("/data//./file"));
+        let fat_path: AnchoredPath = AnchoredPath::new(-99, String::from("/data//./file"))
+            .expect("valid raw path should be accepted");
         assert_eq!(resolve_anchored(fat_path.clone()), Ok(None));
         let first: FatResolvedPath = vfs.resolve(fat_path.clone()).expect("FAT fallthrough");
         let second: FatResolvedPath = vfs.resolve(fat_path).expect("cached FAT fallthrough");

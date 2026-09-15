@@ -37,6 +37,27 @@ impl FatResolvedPath {
     ///
     /// Returns [`Fat32Error::InvalidPath`] if `path` is absolute, contains a null byte, or contains
     /// empty, current-directory, or parent-directory components.
+    ///
+    /// # Examples
+    ///
+    /// If a FAT filesystem is mounted at `/data`, resolving the namespace path
+    /// `/data/directory/file` strips the mount prefix before calling this constructor:
+    ///
+    /// ```
+    /// use ::std::string::String;
+    /// use ::fat32::{
+    ///     Fat32Error,
+    ///     FatResolvedPath,
+    /// };
+    ///
+    /// let path: FatResolvedPath = FatResolvedPath::new(String::from("directory/file"))?;
+    /// assert_eq!(path.as_str(), "directory/file");
+    /// assert_eq!(
+    ///     FatResolvedPath::new(String::from("/data/directory/file")),
+    ///     Err(Fat32Error::InvalidPath),
+    /// );
+    /// # Ok::<(), Fat32Error>(())
+    /// ```
     pub fn new(path: String) -> Result<Self, Fat32Error> {
         if path.contains('\0')
             || path.starts_with('/')
