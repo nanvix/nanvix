@@ -19,11 +19,9 @@ use crate::{
         NullHandle,
         VfsFileHandle,
     },
-    devfs::{
-        self,
-        DevicePath,
-    },
+    devfs::DevicePath,
     filesystem,
+    path::AnchoredPath,
 };
 use ::alloc::string::String;
 use ::fat32::Fat32Error;
@@ -39,25 +37,24 @@ use ::sysapi::{
 // Path Operations
 //==================================================================================================
 
-/// Returns `true` if the given path is handled by any VFS mount.
-///
-/// Checks both the path itself and its parent directory against
-/// registered mount points.
-///
-/// # Parameters
-///
-/// - `path`: Absolute or relative path to check.
-pub fn exists(cwd: &str, path: &str) -> bool {
-    if filesystem::stat(cwd, path).is_ok() {
+/// Returns whether an anchored path or its parent exists in the local VFS.
+pub fn exists(path: AnchoredPath) -> bool {
+    if stat(path.clone()).is_ok() {
         return true;
     }
-    if let Some(pos) = path.rfind('/') {
-        let parent: &str = if pos == 0 { "/" } else { &path[..pos] };
-        return filesystem::stat(cwd, parent).is_ok();
-    }
-    // Relative path with no directory separator — check whether the current
-    // working directory itself lives inside a VFS mount.
-    filesystem::stat(cwd, ".").is_ok()
+
+    let parent: &str = match path.path().rfind('/') {
+        Some(0) => "/",
+        Some(pos) => &path.path()[..pos],
+        None => ".",
+    };
+    AnchoredPath::new(path.dirfd(), String::from(parent)).is_ok_and(|path| stat(path).is_ok())
+}
+
+/// Gets metadata for an anchored path.
+fn stat(path: AnchoredPath) -> Result<filesystem::Stat, Fat32Error> {
+    let path = filesystem::VfsResolvedPath::new(path)?;
+    filesystem::stat(&path)
 }
 
 //==================================================================================================
@@ -83,43 +80,32 @@ pub fn exists(cwd: &str, path: &str) -> bool {
 ///
 /// - [POSIX open()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/open.html)
 /// - [POSIX pathname resolution (trailing slash rule)](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap04.html)
-pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32Error> {
-    // Handle O_DIRECTORY or paths that resolve to directories.
+pub fn open(path: &filesystem::VfsResolvedPath, flags: c_int) -> Result<VfsFileHandle, Fat32Error> {
     // POSIX allows opening directories with O_RDONLY for fchdir()/getdents().
     if flags & file_creation_flags::O_DIRECTORY != 0 {
-        let info: filesystem::Stat = filesystem::stat(cwd, path)?;
+        let info = filesystem::stat(path)?;
         if !info.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
-        let normalized: String = filesystem::normalize(cwd, path)?;
-        return Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)));
+        return directory_handle(path);
     }
 
-    // Auto-detect directories even without O_DIRECTORY flag.
-    // POSIX: trailing slash forces directory semantics. If path ends with
-    // '/' the target must be an existing directory; otherwise fail.
-    if path.ends_with('/') {
-        match filesystem::stat(cwd, path) {
-            Ok(info) if info.is_dir() => {
-                let normalized: String = filesystem::normalize(cwd, path)?;
-                return Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)));
-            },
-            Ok(_) => return Err(Fat32Error::NotADirectory),
-            Err(e) => return Err(e),
+    // A trailing slash forces directory semantics.
+    if path.has_trailing_separator() {
+        let info = filesystem::stat(path)?;
+        if !info.is_dir() {
+            return Err(Fat32Error::NotADirectory);
         }
+        return directory_handle(path);
     }
 
-    if let Ok(info) = filesystem::stat(cwd, path) {
-        if info.is_dir() {
-            let normalized: String = filesystem::normalize(cwd, path)?;
-            return Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)));
-        }
+    if filesystem::stat(path).is_ok_and(|info| info.is_dir()) {
+        return directory_handle(path);
     }
 
     let access_mode: c_int = flags & file_access_mode::O_ACCMODE;
     let is_read_only: bool = access_mode == file_access_mode::O_RDONLY;
-
-    match devfs::resolve(cwd, path)? {
+    match path.device() {
         Some(DevicePath::Null) => {
             if flags & file_access_mode::O_EXEC != 0 {
                 return Err(Fat32Error::PermissionDenied);
@@ -146,16 +132,14 @@ pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32E
         Some(DevicePath::Tty | DevicePath::Console) | None => {},
     }
 
-    // Try zero-copy direct read for read-only opens of contiguous files.
     let creation_flags: c_int =
         file_creation_flags::O_CREAT | file_creation_flags::O_TRUNC | file_creation_flags::O_EXCL;
     if is_read_only && (flags & creation_flags) == 0 {
-        if let Some((data_ptr, size)) = filesystem::file_raw_region(cwd, path) {
+        if let Some((data_ptr, size)) = filesystem::file_raw_region(path) {
             return Ok(VfsFileHandle::DirectRead(DirectReadHandle::new(data_ptr, size)));
         }
     }
 
-    // Fall back to standard VFS open.
     let read: bool = access_mode != file_access_mode::O_WRONLY;
     let write: bool =
         access_mode == file_access_mode::O_WRONLY || access_mode == file_access_mode::O_RDWR;
@@ -163,24 +147,12 @@ pub fn open(cwd: &str, path: &str, flags: c_int) -> Result<VfsFileHandle, Fat32E
     let create_new: bool = create_requested && flags & file_creation_flags::O_EXCL != 0;
     let create: bool = create_requested && !create_new;
     let truncate: bool = flags & file_creation_flags::O_TRUNC != 0;
-
-    let file: filesystem::File =
-        filesystem::open_with_options(cwd, path, read, write, create, create_new, truncate)?;
+    let file = filesystem::open(path, read, write, create, create_new, truncate)?;
     Ok(VfsFileHandle::Fat32(file))
 }
 
-//==================================================================================================
-// Unit Tests
-//==================================================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Tests that `exists()` returns false for a path with no mounts.
-    #[test]
-    fn exists_no_mounts_returns_false() {
-        // Without any VFS initialization, no path should exist.
-        assert!(!exists("/", "/nonexistent"), "path should not exist without mounts");
-    }
+/// Creates a directory handle from an already-resolved path.
+fn directory_handle(path: &filesystem::VfsResolvedPath) -> Result<VfsFileHandle, Fat32Error> {
+    let normalized = String::from(path.normalized()?);
+    Ok(VfsFileHandle::Directory(DirectoryHandle::new(normalized)))
 }

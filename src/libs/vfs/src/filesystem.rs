@@ -5,7 +5,7 @@
 //!
 //! This module provides:
 //! - [`File`]: A unified file handle for FAT filesystem files.
-//! - Free functions that resolve paths against an explicit working directory.
+//! - Free functions that consume anchored paths for local VFS operations.
 
 //==================================================================================================
 // Modules
@@ -34,6 +34,8 @@ use crate::{
         self,
         DevicePath,
     },
+    mount::normalize_anchored,
+    path::AnchoredPath,
     state,
 };
 use ::alloc::{
@@ -43,8 +45,85 @@ use ::alloc::{
 use ::fat32::{
     Fat32Error,
     FatFile,
+    FatResolvedPath,
     FAT_EPOCH_SECS,
 };
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+/// FAT resolution retained for one local filesystem operation.
+struct FatPath {
+    /// Index of the selected mount.
+    mount_index: usize,
+    /// Checked path relative to the selected FAT mount.
+    path: FatResolvedPath,
+}
+
+/// A path prepared for local VFS dispatch.
+pub(crate) struct VfsResolvedPath {
+    /// Normalized absolute namespace path.
+    normalized: String,
+    /// Synthetic-device classification, when the path belongs to devfs.
+    device: Option<DevicePath>,
+    /// FAT resolution for paths outside devfs.
+    fat: Result<FatPath, Fat32Error>,
+    /// Whether the raw path ended with a separator.
+    has_trailing_separator: bool,
+}
+
+//==================================================================================================
+// Implementations
+//==================================================================================================
+
+impl VfsResolvedPath {
+    /// Consumes raw path provenance and prepares one local VFS operation.
+    pub(crate) fn new(path: AnchoredPath) -> Result<Self, Fat32Error> {
+        let joined: String = path.into_absolute()?;
+        let has_trailing_separator: bool = joined.ends_with('/');
+        let normalized: String = normalize_anchored(&joined);
+        let device: Option<DevicePath> = devfs::resolve_joined(&joined, &normalized)?;
+        let fat: Result<FatPath, Fat32Error> = match device {
+            Some(_) => Err(Fat32Error::NotFound),
+            None => state::with_vfs_mut(|vfs| {
+                let (mount_index, path): (usize, FatResolvedPath) =
+                    vfs.resolve_normalized(&normalized)?;
+                Ok(FatPath { mount_index, path })
+            }),
+        };
+
+        Ok(Self {
+            normalized,
+            device,
+            fat,
+            has_trailing_separator,
+        })
+    }
+
+    /// Returns the synthetic-device classification.
+    pub(crate) fn device(&self) -> Option<DevicePath> {
+        self.device
+    }
+
+    /// Returns whether the raw path ended with a separator.
+    pub(crate) fn has_trailing_separator(&self) -> bool {
+        self.has_trailing_separator
+    }
+
+    /// Returns the normalized absolute namespace path.
+    pub(crate) fn normalized(&self) -> Result<&str, Fat32Error> {
+        if !state::is_initialized() {
+            return Err(Fat32Error::NotInitialized);
+        }
+        Ok(&self.normalized)
+    }
+
+    /// Returns the FAT resolution.
+    fn fat(&self) -> Result<&FatPath, Fat32Error> {
+        self.fat.as_ref().map_err(|error| *error)
+    }
+}
 
 //==================================================================================================
 // Public API Functions
@@ -66,8 +145,9 @@ use ::fat32::{
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
-pub(crate) fn open(cwd: &str, path: &str) -> Result<File, Fat32Error> {
-    open_with_options(cwd, path, true, false, false, false, false)
+pub(crate) fn open_anchored(path: AnchoredPath) -> Result<File, Fat32Error> {
+    let path: VfsResolvedPath = VfsResolvedPath::new(path)?;
+    open(&path, true, false, false, false, false)
 }
 
 /// Returns a pointer and size for zero-copy access to a file's data in
@@ -81,16 +161,18 @@ pub(crate) fn open(cwd: &str, path: &str) -> Result<File, Fat32Error> {
 /// # Parameters
 ///
 /// - `path`: The path to the file.
-pub(crate) fn file_raw_region(cwd: &str, path: &str) -> Option<(*const u8, usize)> {
-    if devfs::owns(cwd, path).ok()? {
+pub(crate) fn file_raw_region(path: &VfsResolvedPath) -> Option<(*const u8, usize)> {
+    if path.device().is_some() {
         return None;
     }
-    let (mount_idx, relative_path): (usize, String) = resolve_path(cwd, path).ok()?;
+    let fat_path: &FatPath = path.fat().ok()?;
     state::with_vfs(|vfs| {
-        let mount: &crate::mount::Mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
+        let mount: &crate::mount::Mount = vfs
+            .get_mount(fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
         mount
             .fat()
-            .file_raw_region(&relative_path)
+            .file_raw_region(&fat_path.path)
             .ok_or(Fat32Error::NotFound)
     })
     .ok()
@@ -110,23 +192,28 @@ pub(crate) fn file_raw_region(cwd: &str, path: &str) -> Option<(*const u8, usize
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
-pub(crate) fn stat(cwd: &str, path: &str) -> Result<Stat, Fat32Error> {
-    let requires_dir: bool = path.ends_with('/');
-    if let Some(stat) = devfs::stat(cwd, path)? {
+pub(crate) fn stat(path: &VfsResolvedPath) -> Result<Stat, Fat32Error> {
+    if let Some(device) = path.device() {
+        let stat: Stat = devfs::stat(device)?;
+        if path.has_trailing_separator() && !stat.is_dir() {
+            return Err(Fat32Error::NotADirectory);
+        }
         return Ok(stat);
     }
-    let (mount_idx, relative_path) = resolve_path(cwd, path)?;
+    let fat_path: &FatPath = path.fat()?;
 
     // Handle root of mount specially.
-    if relative_path.is_empty() {
+    if fat_path.path.as_str().is_empty() {
         return Ok(Stat::new(0, true, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS));
     }
 
     state::with_vfs(|vfs| {
-        let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
-        let fat_stat = mount.fat().stat(&relative_path)?;
+        let mount = vfs
+            .get_mount(fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
+        let fat_stat = mount.fat().stat(&fat_path.path)?;
         // POSIX treats a trailing slash as a directory requirement.
-        if requires_dir && !fat_stat.is_dir {
+        if path.has_trailing_separator() && !fat_stat.is_dir {
             return Err(Fat32Error::NotADirectory);
         }
         Ok(Stat::new(
@@ -148,8 +235,7 @@ pub(crate) fn stat(cwd: &str, path: &str) -> Result<Stat, Fat32Error> {
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
 /// - [`Fat32Error::ReadOnly`] if the mount is read-only.
 pub(crate) fn set_times(
-    cwd: &str,
-    path: &str,
+    path: &VfsResolvedPath,
     atime: Option<i64>,
     mtime: Option<i64>,
 ) -> Result<(), Fat32Error> {
@@ -157,25 +243,27 @@ pub(crate) fn set_times(
         return Ok(());
     }
 
-    reject_device_mutation(cwd, path)?;
+    reject_device_mutation(path.device())?;
 
     // Normalization drops trailing slashes, so enforce the directory requirement first.
-    if path.ends_with('/') {
-        stat(cwd, path)?;
+    if path.has_trailing_separator() {
+        stat(path)?;
     }
 
-    let (mount_idx, relative_path) = resolve_path(cwd, path)?;
+    let fat_path: &FatPath = path.fat()?;
 
     // Mount root has no writable time entry; nothing to do.
-    if relative_path.is_empty() {
+    if fat_path.path.as_str().is_empty() {
         return Ok(());
     }
 
-    check_writable(mount_idx)?;
+    check_writable(fat_path.mount_index)?;
 
     state::with_vfs(|vfs| {
-        let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
-        mount.fat().set_times(&relative_path, atime, mtime)
+        let mount = vfs
+            .get_mount(fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
+        mount.fat().set_times(&fat_path.path, atime, mtime)
     })
 }
 
@@ -198,33 +286,36 @@ pub(crate) fn set_times(
 /// # References
 ///
 /// - [POSIX mkdir()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/mkdir.html)
-pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
-    match devfs::resolve(cwd, path)? {
+pub(crate) fn mkdir(path: AnchoredPath) -> Result<(), Fat32Error> {
+    let path: VfsResolvedPath = VfsResolvedPath::new(path)?;
+    match path.device() {
         Some(DevicePath::Directory | DevicePath::Null | DevicePath::Tty | DevicePath::Console) => {
             return Err(Fat32Error::AlreadyExists);
         },
         Some(DevicePath::Missing) => return Err(Fat32Error::PermissionDenied),
         None => {},
     }
-    let (mount_idx, relative_path) = resolve_path(cwd, path)?;
+    let fat_path: &FatPath = path.fat()?;
 
     // Root of a mount always exists — return AlreadyExists (mirrors stat()).
-    if relative_path.is_empty() {
+    if fat_path.path.as_str().is_empty() {
         return Err(Fat32Error::AlreadyExists);
     }
 
-    check_writable(mount_idx)?;
+    check_writable(fat_path.mount_index)?;
 
     state::with_vfs_mut(|vfs| {
-        let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
+        let mount = vfs
+            .get_mount_mut(fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
         let fat = mount.fat_mut();
 
         // If path already exists (file or dir), return AlreadyExists.
-        if fat.stat(&relative_path).is_ok() {
+        if fat.stat(&fat_path.path).is_ok() {
             return Err(Fat32Error::AlreadyExists);
         }
 
-        fat.mkdir(&relative_path)
+        fat.mkdir(&fat_path.path)
     })
 }
 
@@ -242,20 +333,23 @@ pub(crate) fn mkdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotEmpty`] if directory is not empty.
 /// - [`Fat32Error::NotADirectory`] if path is a file.
 /// - [`Fat32Error::PermissionDenied`] if path names an existing synthetic namespace entry.
-pub(crate) fn rmdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
-    reject_device_mutation(cwd, path)?;
-    let (mount_idx, relative_path) = resolve_path(cwd, path)?;
+pub(crate) fn rmdir(path: AnchoredPath) -> Result<(), Fat32Error> {
+    let path: VfsResolvedPath = VfsResolvedPath::new(path)?;
+    reject_device_mutation(path.device())?;
+    let fat_path: &FatPath = path.fat()?;
 
     // Cannot remove the root of a mount.
-    if relative_path.is_empty() {
+    if fat_path.path.as_str().is_empty() {
         return Err(Fat32Error::NotFound);
     }
 
-    check_writable(mount_idx)?;
+    check_writable(fat_path.mount_index)?;
 
     state::with_vfs_mut(|vfs| {
-        let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
-        mount.fat_mut().rmdir(&relative_path)
+        let mount = vfs
+            .get_mount_mut(fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
+        mount.fat_mut().rmdir(&fat_path.path)
     })
 }
 
@@ -272,20 +366,23 @@ pub(crate) fn rmdir(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotFound`] if file doesn't exist.
 /// - [`Fat32Error::NotAFile`] if path is a directory.
 /// - [`Fat32Error::PermissionDenied`] if path names an existing synthetic namespace entry.
-pub(crate) fn unlink(cwd: &str, path: &str) -> Result<(), Fat32Error> {
-    reject_device_mutation(cwd, path)?;
-    let (mount_idx, relative_path) = resolve_path(cwd, path)?;
+pub(crate) fn unlink(path: AnchoredPath) -> Result<(), Fat32Error> {
+    let path: VfsResolvedPath = VfsResolvedPath::new(path)?;
+    reject_device_mutation(path.device())?;
+    let fat_path: &FatPath = path.fat()?;
 
     // Root of a mount is a directory, not a file.
-    if relative_path.is_empty() {
+    if fat_path.path.as_str().is_empty() {
         return Err(Fat32Error::NotFound);
     }
 
-    check_writable(mount_idx)?;
+    check_writable(fat_path.mount_index)?;
 
     state::with_vfs_mut(|vfs| {
-        let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
-        mount.fat_mut().unlink(&relative_path)
+        let mount = vfs
+            .get_mount_mut(fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
+        mount.fat_mut().unlink(&fat_path.path)
     })
 }
 
@@ -304,22 +401,19 @@ pub(crate) fn unlink(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::NotFound`] if the path doesn't exist.
 /// - [`Fat32Error::NotADirectory`] if the path is a file.
-pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
-    if let Some(entries) = devfs::read_dir(cwd, path)? {
-        return Ok(entries);
+pub(crate) fn read_dir(path: AnchoredPath) -> Result<Vec<DirEntry>, Fat32Error> {
+    let path: VfsResolvedPath = VfsResolvedPath::new(path)?;
+    if let Some(device) = path.device() {
+        return devfs::read_dir(device);
     }
 
-    let normalized: String = normalize(cwd, path)?;
-    let resolution: Result<(usize, String), Fat32Error> = resolve_path(cwd, path);
-    let mut entries: Vec<DirEntry> = match resolution {
-        Ok((mount_idx, relative_path)) => state::with_vfs(|vfs| {
-            let mount = vfs.get_mount(mount_idx).ok_or(Fat32Error::NotFound)?;
-            let fat_path: &str = if relative_path.is_empty() {
-                "."
-            } else {
-                &relative_path
-            };
-            let fat_entries = mount.fat().read_dir(fat_path)?;
+    let normalized: &str = path.normalized()?;
+    let mut entries: Vec<DirEntry> = match path.fat() {
+        Ok(fat_path) => state::with_vfs(|vfs| {
+            let mount = vfs
+                .get_mount(fat_path.mount_index)
+                .ok_or(Fat32Error::NotFound)?;
+            let fat_entries = mount.fat().read_dir(&fat_path.path)?;
             Ok(fat_entries
                 .into_iter()
                 .enumerate()
@@ -365,41 +459,46 @@ pub(crate) fn read_dir(cwd: &str, path: &str) -> Result<Vec<DirEntry>, Fat32Erro
 /// # References
 ///
 /// - [POSIX rename()](https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html)
-pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
+pub(crate) fn rename(old_path: AnchoredPath, new_path: AnchoredPath) -> Result<(), Fat32Error> {
     // POSIX: a trailing "."/".." component is invalid for rename. Normalization
     // strips these lexically, so guard on the raw path before resolving.
-    if ends_with_dot(old_path) || ends_with_dot(new_path) {
+    if ends_with_dot(old_path.path()) || ends_with_dot(new_path.path()) {
         return Err(Fat32Error::InvalidArgument);
     }
 
-    reject_device_mutation(cwd, old_path)?;
-    stat(cwd, old_path)?;
-    reject_device_destination(cwd, new_path)?;
+    let old_path: VfsResolvedPath = VfsResolvedPath::new(old_path)?;
+    reject_device_mutation(old_path.device())?;
+    stat(&old_path)?;
 
-    let (old_idx, old_rel) = resolve_path(cwd, old_path)?;
-    let (new_idx, new_rel) = resolve_path(cwd, new_path)?;
+    let new_path: VfsResolvedPath = VfsResolvedPath::new(new_path)?;
+    reject_device_destination(new_path.device())?;
+
+    let old_fat_path: &FatPath = old_path.fat()?;
+    let new_fat_path: &FatPath = new_path.fat()?;
 
     // Cannot rename mount roots.
-    if old_rel.is_empty() || new_rel.is_empty() {
+    if old_fat_path.path.as_str().is_empty() || new_fat_path.path.as_str().is_empty() {
         return Err(Fat32Error::NotFound);
     }
 
     // Both must be on the same mount.
-    if old_idx != new_idx {
+    if old_fat_path.mount_index != new_fat_path.mount_index {
         return Err(Fat32Error::InvalidPath);
     }
 
-    check_writable(old_idx)?;
+    check_writable(old_fat_path.mount_index)?;
 
     state::with_vfs(|vfs| {
-        let mount = vfs.get_mount(old_idx).ok_or(Fat32Error::NotFound)?;
+        let mount = vfs
+            .get_mount(old_fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
         let fat = mount.fat();
 
         // Ensure source exists before applying identity-rename fast path.
-        let src_stat = fat.stat(&old_rel)?;
+        let src_stat = fat.stat(&old_fat_path.path)?;
 
         // POSIX: rename(path, path) is a no-op (when the path exists).
-        if old_rel == new_rel {
+        if old_fat_path.path == new_fat_path.path {
             return Ok(());
         }
 
@@ -409,7 +508,7 @@ pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fa
         // NOTE: unlink + rename is not atomic — if rename fails after
         // unlink, the destination is lost. Fixing this requires upstream
         // rust-fatfs changes.
-        match fat.stat(&new_rel) {
+        match fat.stat(&new_fat_path.path) {
             Ok(dst_stat) => {
                 if src_stat.is_dir && !dst_stat.is_dir {
                     return Err(Fat32Error::NotADirectory);
@@ -419,16 +518,16 @@ pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fa
                 }
                 if dst_stat.is_dir {
                     // POSIX: replacing a dir requires it to be empty.
-                    fat.rmdir(&new_rel)?;
+                    fat.rmdir(&new_fat_path.path)?;
                 } else {
-                    fat.unlink(&new_rel)?;
+                    fat.unlink(&new_fat_path.path)?;
                 }
             },
             Err(Fat32Error::NotFound) => {},
             Err(e) => return Err(e),
         }
 
-        fat.rename(&old_rel, &new_rel)
+        fat.rename(&old_fat_path.path, &new_fat_path.path)
     })
 }
 
@@ -444,9 +543,10 @@ pub(crate) fn rename(cwd: &str, old_path: &str, new_path: &str) -> Result<(), Fa
 /// - [`Fat32Error::InvalidPath`] if the path is malformed.
 /// - [`Fat32Error::NotFound`] if no mount handles this path.
 /// - [`Fat32Error::NotADirectory`] if the path is not a directory.
-pub(crate) fn change_directory(cwd: &str, path: &str) -> Result<String, Fat32Error> {
-    let normalized: String = normalize(cwd, path)?;
-    if !normalized.is_empty() && normalized != "/" && !stat(cwd, path)?.is_dir() {
+pub(crate) fn change_directory(path: AnchoredPath) -> Result<String, Fat32Error> {
+    let path: VfsResolvedPath = VfsResolvedPath::new(path)?;
+    let normalized: String = String::from(path.normalized()?);
+    if !normalized.is_empty() && normalized != "/" && !stat(&path)?.is_dir() {
         return Err(Fat32Error::NotADirectory);
     }
     Ok(normalized)
@@ -466,8 +566,9 @@ pub(crate) fn change_directory(cwd: &str, path: &str) -> Result<String, Fat32Err
 ///
 /// - [`Fat32Error::NotInitialized`] if the filesystem hasn't been initialized.
 /// - [`Fat32Error::InvalidPath`] if the path is malformed.
-pub(crate) fn normalize(cwd: &str, path: &str) -> Result<String, Fat32Error> {
-    state::with_vfs(|vfs| vfs.normalize_path(path, cwd))
+pub(crate) fn normalize(path: AnchoredPath) -> Result<String, Fat32Error> {
+    let joined: String = path.into_absolute()?;
+    state::with_vfs(|_| Ok(normalize_anchored(&joined)))
 }
 
 //==================================================================================================
@@ -475,8 +576,8 @@ pub(crate) fn normalize(cwd: &str, path: &str) -> Result<String, Fat32Error> {
 //==================================================================================================
 
 /// Rejects mutation of an existing synthetic device-namespace entry.
-fn reject_device_mutation(cwd: &str, path: &str) -> Result<(), Fat32Error> {
-    match devfs::resolve(cwd, path)? {
+fn reject_device_mutation(path: Option<DevicePath>) -> Result<(), Fat32Error> {
+    match path {
         Some(DevicePath::Directory | DevicePath::Null | DevicePath::Tty | DevicePath::Console) => {
             Err(Fat32Error::PermissionDenied)
         },
@@ -486,14 +587,14 @@ fn reject_device_mutation(cwd: &str, path: &str) -> Result<(), Fat32Error> {
 }
 
 /// Rejects a valid rename destination in the synthetic device namespace.
-fn reject_device_destination(cwd: &str, path: &str) -> Result<(), Fat32Error> {
-    match devfs::resolve(cwd, path)? {
+fn reject_device_destination(path: Option<DevicePath>) -> Result<(), Fat32Error> {
+    match path {
         Some(
             DevicePath::Directory
-                | DevicePath::Null
-                | DevicePath::Tty
-                | DevicePath::Console
-                | DevicePath::Missing,
+            | DevicePath::Null
+            | DevicePath::Tty
+            | DevicePath::Console
+            | DevicePath::Missing,
         ) => Err(Fat32Error::PermissionDenied),
         None => Ok(()),
     }
@@ -506,19 +607,6 @@ fn ends_with_dot(path: &str) -> bool {
     let trimmed: &str = path.trim_end_matches('/');
     let last: &str = trimmed.rsplit('/').next().unwrap_or(trimmed);
     last == "." || last == ".."
-}
-
-/// Resolves a path through the VFS to determine which mount handles it.
-///
-/// # Parameters
-///
-/// - `path`: The path to resolve.
-///
-/// # Returns
-///
-/// A tuple of `(mount_index, relative_path)`.
-fn resolve_path(cwd: &str, path: &str) -> Result<(usize, String), Fat32Error> {
-    state::with_vfs_mut(|vfs| vfs.resolve_legacy(path, cwd))
 }
 
 /// Returns [`Fat32Error::ReadOnly`] if the mount at `mount_idx` is read-only.
@@ -544,9 +632,8 @@ fn check_writable(mount_idx: usize) -> Result<(), Fat32Error> {
 /// - `create`: Create if doesn't exist.
 /// - `create_new`: Fail if already exists (O_EXCL).
 /// - `truncate`: Truncate to zero length.
-pub(crate) fn open_with_options(
-    cwd: &str,
-    path: &str,
+pub(crate) fn open(
+    path: &VfsResolvedPath,
     read: bool,
     write: bool,
     create: bool,
@@ -560,7 +647,7 @@ pub(crate) fn open_with_options(
         return Err(Fat32Error::InvalidArgument);
     }
 
-    match devfs::resolve(cwd, path)? {
+    match path.device() {
         Some(DevicePath::Directory | DevicePath::Null | DevicePath::Tty | DevicePath::Console) => {
             return Err(Fat32Error::NotAFile);
         },
@@ -571,10 +658,10 @@ pub(crate) fn open_with_options(
         None => {},
     }
 
-    let (mount_idx, relative_path) = resolve_path(cwd, path)?;
+    let fat_path: &FatPath = path.fat()?;
 
     // Root of a mount is a directory, not a file — cannot be opened as a file.
-    if relative_path.is_empty() {
+    if fat_path.path.as_str().is_empty() {
         return Err(Fat32Error::NotFound);
     }
 
@@ -584,27 +671,29 @@ pub(crate) fn open_with_options(
     // O_CREAT that could create a file is blocked here before it reaches
     // the FAT layer, preventing stale negative-cache entries.
     if write || create || create_new || truncate {
-        check_writable(mount_idx)?;
+        check_writable(fat_path.mount_index)?;
     }
 
     // Open the file under a single VFS lock scope, resolving both the
     // mount path and file handle together. This avoids aliased &/&mut
     // references that the previous implementation created.
     let (fat_file, mount_path) = state::with_vfs_mut(|vfs| {
-        let mount = vfs.get_mount_mut(mount_idx).ok_or(Fat32Error::NotFound)?;
+        let mount = vfs
+            .get_mount_mut(fat_path.mount_index)
+            .ok_or(Fat32Error::NotFound)?;
 
         // If any ancestor component is a regular file, return ENOTDIR.
-        if mount.fat().has_non_directory_ancestor(&relative_path) {
+        if mount.fat().has_non_directory_ancestor(&fat_path.path) {
             return Err(Fat32Error::NotADirectory);
         }
         let mount_path: String = String::from(mount.path());
 
         let fat_file = if create_new {
-            mount.fat_mut().create_new(&relative_path, read, write)?
+            mount.fat_mut().create_new(&fat_path.path, read, write)?
         } else {
             mount
                 .fat_mut()
-                .open(&relative_path, read, write, create, truncate)?
+                .open(&fat_path.path, read, write, create, truncate)?
         };
 
         // SAFETY: The FatFile borrows from the FAT filesystem stored in the

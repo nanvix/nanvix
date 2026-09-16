@@ -22,10 +22,10 @@ pub const HOSTFS_MOUNT_PATH: &str = "/mnt";
 // Structures
 //==================================================================================================
 
-/// A path relative to the host filesystem mount.
+/// A checked path passed to host filesystem operations.
 ///
-/// The path spelling is preserved so that the host filesystem can resolve separators, `.` and `..`
-/// components, and symbolic links according to its physical filesystem semantics.
+/// This type proves only that the path contains no null byte; it carries no VFS mount or descriptor
+/// provenance. Path spelling is preserved for host filesystem resolution.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostResolvedPath(String);
 

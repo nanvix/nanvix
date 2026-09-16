@@ -17,8 +17,8 @@ use crate::Fat32Error;
 
 /// A normalized path relative to the root of a FAT filesystem.
 ///
-/// The empty path represents the root of the filesystem. Non-empty paths contain only normalized
-/// relative components.
+/// This type proves path syntax only; it carries no VFS mount identity or system-call anchoring
+/// provenance. The empty path represents the filesystem root.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FatResolvedPath(String);
 
