@@ -18,9 +18,15 @@
 
 extern crate alloc;
 
-use crate::error::{
-    build_error,
-    ResponseContext,
+use crate::{
+    error::{
+        build_error,
+        ResponseContext,
+    },
+    hostfs::{
+        self,
+        RoutedHostPath,
+    },
 };
 use ::alloc::collections::{
     BTreeMap,
@@ -29,6 +35,7 @@ use ::alloc::collections::{
 use ::hostfs_api::{
     file_kind,
     LstatResponse,
+    OpenResponse,
     OperationId,
     OperationIdAllocator,
     StatTimesResponse,
@@ -47,13 +54,17 @@ use ::sys::{
     },
 };
 use ::syscall::unistd::message::ChangeDirectoryResponse;
+use ::syslog::error;
 use ::vfs::{
-    fd::vfs_set_cwd,
+    fd::{
+        vfs_alloc_hostfs,
+        vfs_current_generation,
+        vfs_set_cwd,
+    },
     identifiers::{
         FilesystemDeviceId,
         HostFsInodeId,
     },
-    path::ResolvedPath,
 };
 
 //==================================================================================================
@@ -76,8 +87,8 @@ pub(crate) struct PendingOp {
 pub(crate) enum PendingOpKind {
     /// open() — response contains a remote FD; we allocate a local hostfs FD.
     Open {
-        /// Absolute path that was opened (stored so `HostFsHandle` can resolve relative paths).
-        path: alloc::string::String,
+        /// Routed hostfs path retained so a directory handle can keep its guest path spelling.
+        path: RoutedHostPath,
     },
     /// close() — response is a status code; local FD has already been released.
     Close,
@@ -150,13 +161,13 @@ pub(crate) enum PendingOpKind {
     /// chdir onto a hostfs path — a path-based stat whose completion commits the cwd
     /// when the target is a directory (else `ENOTDIR`). Reuses the `PathStat` wire form.
     Chdir {
-        /// Absolute hostfs path to become the cwd once confirmed to be a directory.
-        path: ResolvedPath,
+        /// Routed hostfs path to become the cwd once confirmed to be a directory.
+        path: RoutedHostPath,
     },
     /// chdir metadata arrived; waiting for the timestamp continuation.
     ChdirTimes {
-        /// Absolute hostfs path to become the cwd once confirmed to be a directory.
-        path: ResolvedPath,
+        /// Routed hostfs path to become the cwd once confirmed to be a directory.
+        path: RoutedHostPath,
         /// First response payload.
         metadata: [u8; Message::PAYLOAD_SIZE],
     },
@@ -1029,22 +1040,30 @@ fn validate_response_header(kind: &PendingOpKind, payload: &[u8; Message::PAYLOA
 fn complete_open(
     response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
-    path: alloc::string::String,
+    path: RoutedHostPath,
 ) {
     use ::syscall::fcntl::message::OpenAtResponse;
 
-    let source_tid: ThreadIdentifier = response_context.source_tid();
-    let resp: ::hostfs_api::OpenResponse = ::hostfs_api::OpenResponse::decode(response_payload);
+    let source_tid = response_context.source_tid();
+    let resp = OpenResponse::decode(response_payload);
     if resp.fd < 0 {
-        let code: ErrorCode = hostfs_error_to_code(resp.fd);
+        let code = hostfs_error_to_code(resp.fd);
         response_context.send(&build_error(source_tid, code));
         return;
     }
-    let is_dir: bool = resp.is_dir != 0;
-    match ::vfs::fd::vfs_alloc_hostfs(resp.fd, is_dir, if is_dir { Some(path) } else { None }) {
+    let is_dir = resp.is_dir != 0;
+    match vfs_alloc_hostfs(
+        resp.fd,
+        is_dir,
+        if is_dir {
+            Some(path.into_guest_path().into_string())
+        } else {
+            None
+        },
+    ) {
         Ok(local_fd) => {
-            let epoch: u64 = ::vfs::fd::vfs_current_generation();
-            let msg: Message = OpenAtResponse::build(
+            let epoch = vfs_current_generation();
+            let msg = OpenAtResponse::build(
                 source_tid,
                 local_fd,
                 OpenAtResponse::ROUTE_VFS,
@@ -1059,10 +1078,7 @@ fn complete_open(
             // We tag the request with the `FIRE_AND_FORGET` sentinel op_id and do not register
             // a pending op; the main loop recognizes that sentinel on hostfsd's response and
             // discards it without logging, since no pending entry exists.
-            let _ = crate::hostfs::send_close_request(
-                resp.fd,
-                ::hostfs_api::OperationId::FIRE_AND_FORGET,
-            );
+            let _ = hostfs::send_close_request(resp.fd, OperationId::FIRE_AND_FORGET);
             response_context.send(&build_error(source_tid, ErrorCode::TooManyOpenFiles));
         },
     }
@@ -1603,13 +1619,13 @@ fn complete_lstat(
 fn complete_chdir(
     response_context: ResponseContext,
     response_payload: &[u8; Message::PAYLOAD_SIZE],
-    path: ResolvedPath,
+    path: RoutedHostPath,
 ) {
-    let source_tid: ThreadIdentifier = response_context.source_tid();
-    let resp: LstatResponse = match LstatResponse::decode(response_payload) {
+    let source_tid = response_context.source_tid();
+    let resp = match LstatResponse::decode(response_payload) {
         Some(r) => r,
         None => {
-            ::syslog::error!("complete_chdir: failed to decode response");
+            error!("complete_chdir: failed to decode response");
             response_context.send(&build_error(source_tid, ErrorCode::IoErr));
             return;
         },
@@ -1625,7 +1641,7 @@ fn complete_chdir(
         return;
     }
 
-    vfs_set_cwd(path);
+    vfs_set_cwd(path.into_guest_path());
     response_context.send(&ChangeDirectoryResponse::build(
         source_tid,
         ProcessIdentifier::VFSD,
@@ -1645,6 +1661,7 @@ mod tests {
         RequestIdentifier,
     };
     use ::syscall::SystemCallMessageKind;
+    use ::vfs::path::vfs_resolve_path;
 
     fn pending(kind: PendingOpKind) -> PendingOp {
         let process = ProcessIdentifier::from(10);
@@ -1724,7 +1741,14 @@ mod tests {
 
     #[test]
     fn chdir_retains_path_while_waiting_for_timestamps() {
-        let path = ::vfs::path::vfs_resolve_path(0, "/host/dir").unwrap();
+        // No filesystem lookup happens here. The guest path stays `/mnt/dir/../child//`, while
+        // stripping the mount prefix produces `dir/../child//` for the host. If `dir` is an
+        // ordinary directory this reaches `/mnt/child`; a symlink may select a different parent.
+        // Both spellings must survive the pending metadata/timestamp round trip unchanged.
+        let guest = vfs_resolve_path(0, "/mnt/dir/../child//").expect("anchor hostfs directory");
+        let path = RoutedHostPath::new(guest).expect("route hostfs directory");
+        assert_eq!(path.host_path().as_str(), "dir/../child//");
+        assert_eq!(path.clone().into_guest_path().as_str(), "/mnt/dir/../child//");
         let mut op = pending(PendingOpKind::Chdir { path: path.clone() });
         let payload = lstat_payload(SystemCallMessageKind::HostFsPathStatResponse);
 
