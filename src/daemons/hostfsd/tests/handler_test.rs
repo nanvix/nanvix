@@ -218,6 +218,191 @@ fn open_file(handler: &mut HostFsHandler, path: &str, flags: i32) -> i32 {
 }
 
 //==================================================================================================
+// Tests: Decoded Path Boundaries
+//==================================================================================================
+
+/// Invalid paths must fail before dispatch without losing response routing or queuing continuations.
+fn assert_invalid_path_response(
+    handler: &mut HostFsHandler,
+    response: &[u8; Message::PAYLOAD_SIZE],
+    request_kind: SystemCallMessageKind,
+    op_id: OperationId,
+) {
+    let response_kind = request_kind
+        .hostfs_response_kind()
+        .expect("path response kind");
+    assert_eq!(u16::from_ne_bytes([response[0], response[1]]), response_kind as u16);
+    assert_eq!(get_op_id(response), op_id);
+    let status = i32::from_le_bytes(
+        response[HOSTFS_DATA_START..HOSTFS_DATA_START + 4]
+            .try_into()
+            .expect("response status"),
+    );
+    assert_eq!(status, HOSTFS_ERR_INVALID, "invalid path in {request_kind:?}");
+    assert!(handler.take_next_response_part().is_none(), "invalid paths must not queue a reply");
+}
+
+#[test]
+fn test_inline_paths_reject_invalid_wire_spelling() {
+    use SystemCallMessageKind::*;
+
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("file"), b"unchanged").expect("create sentinel");
+    let op_id = OperationId::from_raw(91);
+    for invalid in [b"file\0name".as_slice(), b"file\xff".as_slice()] {
+        let requests = [
+            (
+                HostFsOpenRequest,
+                OpenRequest::from_path(O_RDWR | O_TRUNC, 0, invalid)
+                    .expect("inline path")
+                    .serialize(HostFsOpenRequest as u16, op_id),
+            ),
+            (
+                HostFsMkdirRequest,
+                MkdirRequest::from_path(0o700, invalid)
+                    .expect("inline path")
+                    .serialize(HostFsMkdirRequest as u16, op_id),
+            ),
+            (
+                HostFsRmdirRequest,
+                RmdirRequest::from_path(invalid)
+                    .expect("inline path")
+                    .serialize(HostFsRmdirRequest as u16, op_id),
+            ),
+            (
+                HostFsUnlinkRequest,
+                UnlinkRequest::from_path(invalid)
+                    .expect("inline path")
+                    .serialize(HostFsUnlinkRequest as u16, op_id),
+            ),
+            (
+                HostFsLstatRequest,
+                LstatRequest::from_path(invalid)
+                    .expect("inline path")
+                    .serialize(HostFsLstatRequest as u16, op_id),
+            ),
+            (
+                HostFsPathStatRequest,
+                LstatRequest::from_path(invalid)
+                    .expect("inline path")
+                    .serialize(HostFsPathStatRequest as u16, op_id),
+            ),
+            (
+                HostFsReadlinkRequest,
+                ReadlinkRequest::from_path(invalid)
+                    .expect("inline path")
+                    .serialize(HostFsReadlinkRequest as u16, op_id),
+            ),
+            (
+                HostFsRenameRequest,
+                RenameRequest::from_paths(invalid, b"new")
+                    .expect("inline paths")
+                    .serialize(HostFsRenameRequest as u16, op_id),
+            ),
+            (
+                HostFsRenameRequest,
+                RenameRequest::from_paths(b"file", invalid)
+                    .expect("inline paths")
+                    .serialize(HostFsRenameRequest as u16, op_id),
+            ),
+        ];
+        for (kind, payload) in requests {
+            let response = handler.handle_request(&payload).expect("inline response");
+            assert_invalid_path_response(&mut handler, &response, kind, op_id);
+        }
+    }
+    assert_eq!(fs::read(tmp.path().join("file")).expect("read sentinel"), b"unchanged");
+    assert_eq!(fs::read_dir(tmp.path()).expect("list sandbox").count(), 1);
+}
+
+#[test]
+fn test_multipart_paths_reject_invalid_wire_spelling() {
+    use long_msg::*;
+    use SystemCallMessageKind::*;
+
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("file"), b"unchanged").expect("create sentinel");
+    let op_id = OperationId::from_raw(92);
+    let times = [timespec {
+        tv_sec: 0,
+        tv_nsec: UTIME_OMIT,
+    }; 2];
+    for invalid in [b"file\0name".as_slice(), b"file\xff".as_slice()] {
+        let requests = [
+            (
+                HostFsOpenRequestPart,
+                serialize_long_open_request(op_id, O_RDWR | O_TRUNC, 0, invalid),
+            ),
+            (HostFsMkdirRequestPart, serialize_long_mkdir_request(op_id, 0o700, invalid)),
+            (HostFsRmdirRequestPart, serialize_long_rmdir_request(op_id, invalid)),
+            (HostFsUnlinkRequestPart, serialize_long_unlink_request(op_id, invalid)),
+            (HostFsLstatRequestPart, serialize_long_lstat_request(op_id, invalid)),
+            (HostFsPathStatRequestPart, serialize_long_lstat_request(op_id, invalid)),
+            (HostFsReadlinkRequestPart, serialize_long_readlink_request(op_id, invalid)),
+            (HostFsRenameRequestPart, serialize_long_rename_request(op_id, invalid, b"new")),
+            (HostFsRenameRequestPart, serialize_long_rename_request(op_id, b"file", invalid)),
+            (HostFsLinkRequestPart, serialize_long_link_request(op_id, 0, invalid, b"new")),
+            (HostFsLinkRequestPart, serialize_long_link_request(op_id, 0, b"file", invalid)),
+            (HostFsSymlinkRequestPart, serialize_long_symlink_request(op_id, b"file", invalid)),
+            (
+                HostFsChownAtRequestPart,
+                serialize_long_chownat_request(op_id, u32::MAX, u32::MAX, 0, invalid),
+            ),
+            (
+                HostFsUpdateTimesAtRequestPart,
+                serialize_long_update_times_request(op_id, 0, &times, invalid),
+            ),
+            (HostFsChmodRequestPart, serialize_long_mode_path_request(op_id, 0o600, 0, invalid)),
+            (HostFsAccessRequestPart, serialize_long_mode_path_request(op_id, 0, 0, invalid)),
+        ];
+        for (kind, data) in requests {
+            let parts = split_into_parts(kind, &data.expect("serialize path request"));
+            let response = feed_parts(&mut handler, &parts);
+            assert_invalid_path_response(&mut handler, &response, kind, op_id);
+        }
+    }
+    assert_eq!(fs::read(tmp.path().join("file")).expect("read sentinel"), b"unchanged");
+    assert_eq!(fs::read_dir(tmp.path()).expect("list sandbox").count(), 1);
+}
+
+#[test]
+fn test_decoded_paths_do_not_strip_a_second_mount_prefix() {
+    let (mut handler, tmp) = setup();
+    fs::create_dir(tmp.path().join("mnt")).expect("create host directory named mnt");
+    fs::write(tmp.path().join("file"), b"decoy").expect("create decoy");
+    fs::write(tmp.path().join("mnt/file"), b"host-relative").expect("create target");
+    let op_id = OperationId::from_raw(93);
+    for spelling in ["mnt/file", "/mnt/file", "//mnt//./file"] {
+        let parts = make_long_open_parts(spelling, O_RDONLY, 0, op_id);
+        for response in [
+            handler
+                .handle_request(&make_open_request(spelling, O_RDONLY, 0))
+                .expect("inline open"),
+            feed_parts(&mut handler, &parts),
+        ] {
+            let fd = OpenResponse::decode(&response).fd;
+            assert!(fd > 0, "open should accept {spelling}");
+            let response = handler
+                .handle_request(&make_read_request(fd, 32, 0))
+                .expect("read");
+            let read = ReadResponse::decode(&response);
+            assert_eq!(read.bytes_read, b"host-relative".len() as i32);
+            assert_eq!(&read.data[..read.bytes_read as usize], b"host-relative");
+            handler
+                .handle_request(&make_close_request(fd))
+                .expect("close");
+        }
+    }
+    for spelling in ["", "/", "//"] {
+        let fd = open_file(&mut handler, spelling, O_RDONLY | O_DIRECTORY);
+        assert!(fd > 0, "root spelling should remain valid: {spelling:?}");
+        handler
+            .handle_request(&make_close_request(fd))
+            .expect("close root");
+    }
+}
+
+//==================================================================================================
 // Tests: File Open/Close
 //==================================================================================================
 
