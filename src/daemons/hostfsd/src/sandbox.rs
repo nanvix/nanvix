@@ -6,6 +6,7 @@
 //! Ensures all guest-requested paths resolve within the configured root directory.
 //! Rejects path traversal attacks and symlinks that escape the sandbox.
 
+use ::hostfs_api::HostResolvedPath;
 use std::{
     io,
     path::{
@@ -36,7 +37,10 @@ impl Sandbox {
         Ok(Self { root })
     }
 
-    /// Resolves a guest-relative path to an absolute host path within the sandbox.
+    /// Resolves a checked host-relative path to an absolute host path within the sandbox.
+    ///
+    /// The value checks path syntax only, not containment. Components and symlinks are interpreted
+    /// here against the configured host root; a leading `mnt/` is an ordinary directory name.
     ///
     /// Returns `None` if the resolved path escapes the sandbox root (path traversal).
     ///
@@ -56,9 +60,9 @@ impl Sandbox {
     ///
     /// TODO(#sandbox-toctou): use `openat()` with `O_NOFOLLOW` to eliminate the
     /// symlink TOCTOU window for non-existent paths.
-    pub fn resolve(&self, relative_path: &str) -> Option<PathBuf> {
-        // Strip leading '/' — guest paths are relative to the mount point.
-        let cleaned: &str = relative_path.trim_start_matches('/');
+    pub fn resolve(&self, relative_path: &HostResolvedPath) -> Option<PathBuf> {
+        // Strip leading '/' — wire paths are relative to the mount point.
+        let cleaned = relative_path.as_str().trim_start_matches('/');
 
         // Join with root and canonicalize to resolve `.` and `..`.
         let candidate: PathBuf = self.root.join(cleaned);
@@ -92,7 +96,7 @@ impl Sandbox {
     ///
     /// # Description
     ///
-    /// Resolves a guest-relative path to an absolute host path *without* following the
+    /// Resolves a checked host-relative path to an absolute host path *without* following the
     /// final path component.
     ///
     /// Behaves like [`Self::resolve`] for every component except the last: the parent
@@ -106,9 +110,8 @@ impl Sandbox {
     ///
     /// # Parameters
     ///
-    /// - `relative_path`: The guest path to resolve, relative to the sandbox root. A
-    ///   leading `/` is also accepted and treated as guest-absolute; it is normalized
-    ///   to a sandbox-relative path before resolution.
+    /// - `relative_path`: A decoded path relative to the sandbox root. Leading `/` characters
+    ///   are removed as for [`Self::resolve`]; the guest mount prefix is not stripped again.
     ///
     /// # Symlink TOCTOU
     ///
@@ -117,8 +120,8 @@ impl Sandbox {
     /// influence subsequent operations on the returned path. Closing that gap requires
     /// `openat()`-based dirfd operations.
     ///
-    pub fn resolve_nofollow(&self, relative_path: &str) -> Option<PathBuf> {
-        let cleaned: &str = relative_path.trim_start_matches('/');
+    pub fn resolve_nofollow(&self, relative_path: &HostResolvedPath) -> Option<PathBuf> {
+        let cleaned = relative_path.as_str().trim_start_matches('/');
         if cleaned.is_empty() {
             // Refers to the sandbox root itself; resolve normally.
             return Some(self.root.clone());
@@ -149,7 +152,6 @@ impl Sandbox {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::hostfs_api::HostResolvedPath;
     use ::std::fs;
     use ::tempfile::TempDir;
 
@@ -256,7 +258,7 @@ mod tests {
         let target: PathBuf = sandbox.root().join("file.txt");
         fs::write(&target, b"hello").unwrap();
 
-        let resolved: PathBuf = sandbox.resolve("file.txt").expect("resolve");
+        let resolved = sandbox.resolve(&wire_path("file.txt")).expect("resolve");
         assert_eq!(resolved, target.canonicalize().unwrap());
     }
 
@@ -265,22 +267,26 @@ mod tests {
         let (_tmp, sandbox) = make_sandbox();
         fs::write(sandbox.root().join("file.txt"), b"hello").unwrap();
 
-        let a: PathBuf = sandbox.resolve("/file.txt").expect("resolve");
-        let b: PathBuf = sandbox.resolve("file.txt").expect("resolve");
+        let a = sandbox.resolve(&wire_path("/file.txt")).expect("resolve");
+        let b = sandbox.resolve(&wire_path("file.txt")).expect("resolve");
         assert_eq!(a, b);
     }
 
     #[test]
     fn resolve_nonexistent_file_via_parent_canonicalization() {
         let (_tmp, sandbox) = make_sandbox();
-        let resolved: PathBuf = sandbox.resolve("not-yet-created.txt").expect("resolve");
+        let resolved = sandbox
+            .resolve(&wire_path("not-yet-created.txt"))
+            .expect("resolve");
         assert_eq!(resolved, sandbox.root().join("not-yet-created.txt"));
     }
 
     #[test]
     fn resolve_nonexistent_parent_returns_none() {
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve("missing-dir/file.txt").is_none());
+        assert!(sandbox
+            .resolve(&wire_path("missing-dir/file.txt"))
+            .is_none());
     }
 
     #[test]
@@ -288,7 +294,7 @@ mod tests {
         let (_tmp, sandbox) = make_sandbox();
         // Create a sibling outside the sandbox and try to traverse to it.
         let escape: &str = "../escape.txt";
-        assert!(sandbox.resolve(escape).is_none());
+        assert!(sandbox.resolve(&wire_path(escape)).is_none());
     }
 
     #[test]
@@ -308,9 +314,7 @@ mod tests {
         let path = wire_path("alias//.././file");
         assert_eq!(path.as_str(), "alias//.././file", "construction must preserve spelling");
         assert_eq!(
-            sandbox
-                .resolve(path.as_str())
-                .expect("follow physical parent"),
+            sandbox.resolve(&path).expect("follow physical parent"),
             sandbox
                 .root()
                 .join("real/file")
@@ -319,9 +323,7 @@ mod tests {
         );
         let link = wire_path("alias//../link");
         assert_eq!(
-            sandbox
-                .resolve_nofollow(link.as_str())
-                .expect("keep final symlink"),
+            sandbox.resolve_nofollow(&link).expect("keep final symlink"),
             sandbox
                 .root()
                 .join("real")
@@ -330,10 +332,8 @@ mod tests {
                 .join("link"),
         );
         assert_eq!(
-            sandbox
-                .resolve(link.as_str())
-                .expect("follow final symlink"),
-            sandbox.resolve(path.as_str()).expect("physical target"),
+            sandbox.resolve(&link).expect("follow final symlink"),
+            sandbox.resolve(&path).expect("physical target"),
         );
     }
 
@@ -343,7 +343,9 @@ mod tests {
         fs::create_dir(sandbox.root().join("sub")).unwrap();
         fs::write(sandbox.root().join("file.txt"), b"x").unwrap();
 
-        let resolved: PathBuf = sandbox.resolve("sub/../file.txt").expect("resolve");
+        let resolved = sandbox
+            .resolve(&wire_path("sub/../file.txt"))
+            .expect("resolve");
         assert_eq!(resolved, sandbox.root().join("file.txt").canonicalize().unwrap());
     }
 
@@ -353,14 +355,14 @@ mod tests {
         fs::create_dir_all(sandbox.root().join("a/b")).unwrap();
         fs::write(sandbox.root().join("a/b/c.txt"), b"x").unwrap();
 
-        let resolved: PathBuf = sandbox.resolve("a/b/c.txt").expect("resolve");
+        let resolved = sandbox.resolve(&wire_path("a/b/c.txt")).expect("resolve");
         assert_eq!(resolved, sandbox.root().join("a/b/c.txt").canonicalize().unwrap());
     }
 
     #[test]
     fn resolve_root_itself() {
         let (_tmp, sandbox) = make_sandbox();
-        let resolved: PathBuf = sandbox.resolve("").expect("resolve");
+        let resolved = sandbox.resolve(&wire_path("")).expect("resolve");
         assert_eq!(resolved, sandbox.root());
     }
 
@@ -375,7 +377,7 @@ mod tests {
         let link: PathBuf = sandbox.root().join("link.txt");
         symlink_file(&target, &link).unwrap();
 
-        let resolved: PathBuf = sandbox.resolve("link.txt").expect("resolve");
+        let resolved = sandbox.resolve(&wire_path("link.txt")).expect("resolve");
         assert_eq!(resolved, target.canonicalize().unwrap());
     }
 
@@ -392,7 +394,7 @@ mod tests {
         let link: PathBuf = sandbox.root().join("escape");
         symlink_file(&outside_file, &link).unwrap();
 
-        assert!(sandbox.resolve("escape").is_none());
+        assert!(sandbox.resolve(&wire_path("escape")).is_none());
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -402,42 +404,52 @@ mod tests {
     #[test]
     fn resolve_nofollow_bare_name_against_root() {
         let (_tmp, sandbox) = make_sandbox();
-        let resolved: PathBuf = sandbox.resolve_nofollow("file.txt").expect("resolve");
+        let resolved = sandbox
+            .resolve_nofollow(&wire_path("file.txt"))
+            .expect("resolve");
         assert_eq!(resolved, sandbox.root().join("file.txt"));
     }
 
     #[test]
     fn resolve_nofollow_strips_leading_slash() {
         let (_tmp, sandbox) = make_sandbox();
-        let a: PathBuf = sandbox.resolve_nofollow("/file.txt").expect("resolve");
-        let b: PathBuf = sandbox.resolve_nofollow("file.txt").expect("resolve");
+        let a = sandbox
+            .resolve_nofollow(&wire_path("/file.txt"))
+            .expect("resolve");
+        let b = sandbox
+            .resolve_nofollow(&wire_path("file.txt"))
+            .expect("resolve");
         assert_eq!(a, b);
     }
 
     #[test]
     fn resolve_nofollow_empty_returns_root() {
         let (_tmp, sandbox) = make_sandbox();
-        let resolved: PathBuf = sandbox.resolve_nofollow("").expect("resolve");
+        let resolved = sandbox.resolve_nofollow(&wire_path("")).expect("resolve");
         assert_eq!(resolved, sandbox.root());
     }
 
     #[test]
     fn resolve_nofollow_root_slash_returns_root() {
         let (_tmp, sandbox) = make_sandbox();
-        let resolved: PathBuf = sandbox.resolve_nofollow("/").expect("resolve");
+        let resolved = sandbox.resolve_nofollow(&wire_path("/")).expect("resolve");
         assert_eq!(resolved, sandbox.root());
     }
 
     #[test]
     fn resolve_nofollow_missing_parent_returns_none() {
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve_nofollow("missing/file.txt").is_none());
+        assert!(sandbox
+            .resolve_nofollow(&wire_path("missing/file.txt"))
+            .is_none());
     }
 
     #[test]
     fn resolve_nofollow_rejects_dotdot_escape() {
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve_nofollow("../escape.txt").is_none());
+        assert!(sandbox
+            .resolve_nofollow(&wire_path("../escape.txt"))
+            .is_none());
     }
 
     #[test]
@@ -445,8 +457,8 @@ mod tests {
         // `resolve_nofollow("..")` must not produce `<root>/..`, which would
         // escape the sandbox once handed to a filesystem syscall.
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve_nofollow("..").is_none());
-        assert!(sandbox.resolve_nofollow("/..").is_none());
+        assert!(sandbox.resolve_nofollow(&wire_path("..")).is_none());
+        assert!(sandbox.resolve_nofollow(&wire_path("/..")).is_none());
     }
 
     #[test]
@@ -455,8 +467,8 @@ mod tests {
         // target for operations that act on a named entry (lstat, readlink,
         // unlink, symlink). Callers wanting the root should pass "" or "/".
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve_nofollow(".").is_none());
-        assert!(sandbox.resolve_nofollow("/.").is_none());
+        assert!(sandbox.resolve_nofollow(&wire_path(".")).is_none());
+        assert!(sandbox.resolve_nofollow(&wire_path("/.")).is_none());
     }
 
     #[test]
@@ -467,7 +479,7 @@ mod tests {
         // (`sub/.` ≡ `sub`), so it is not a separate escape vector here.
         let (_tmp, sandbox) = make_sandbox();
         fs::create_dir(sandbox.root().join("sub")).unwrap();
-        assert!(sandbox.resolve_nofollow("sub/..").is_none());
+        assert!(sandbox.resolve_nofollow(&wire_path("sub/..")).is_none());
     }
 
     #[test]
@@ -475,7 +487,9 @@ mod tests {
         let (_tmp, sandbox) = make_sandbox();
         fs::create_dir_all(sandbox.root().join("a/b")).unwrap();
 
-        let resolved: PathBuf = sandbox.resolve_nofollow("a/b/c.txt").expect("resolve");
+        let resolved = sandbox
+            .resolve_nofollow(&wire_path("a/b/c.txt"))
+            .expect("resolve");
         assert_eq!(
             resolved,
             sandbox
@@ -498,7 +512,9 @@ mod tests {
         let link: PathBuf = sandbox.root().join("link.txt");
         symlink_file(&target, &link).unwrap();
 
-        let resolved: PathBuf = sandbox.resolve_nofollow("link.txt").expect("resolve");
+        let resolved = sandbox
+            .resolve_nofollow(&wire_path("link.txt"))
+            .expect("resolve");
         // The returned path must still point at the link itself, not the target.
         assert_eq!(resolved, sandbox.root().join("link.txt"));
         assert!(resolved
@@ -519,7 +535,9 @@ mod tests {
         fs::create_dir(sandbox.root().join("real")).unwrap();
         symlink_dir(&sandbox.root().join("real"), &sandbox.root().join("alias")).unwrap();
 
-        let resolved: PathBuf = sandbox.resolve_nofollow("alias/file.txt").expect("resolve");
+        let resolved = sandbox
+            .resolve_nofollow(&wire_path("alias/file.txt"))
+            .expect("resolve");
         assert_eq!(
             resolved,
             sandbox
@@ -541,6 +559,8 @@ mod tests {
         let (_tmp, sandbox) = make_sandbox();
         symlink_dir(outside.path(), &sandbox.root().join("escape")).unwrap();
 
-        assert!(sandbox.resolve_nofollow("escape/file.txt").is_none());
+        assert!(sandbox
+            .resolve_nofollow(&wire_path("escape/file.txt"))
+            .is_none());
     }
 }
