@@ -80,6 +80,24 @@ use std::{
     },
 };
 
+/// Reconstructs the host-relative path type after multipart decoding, without changing its spelling.
+/// The type does not prove sender provenance or sandbox containment; the sandbox still checks that.
+fn check_path(
+    path: String,
+    response_kind: SystemCallMessageKind,
+    response: &mut [u8; Message::PAYLOAD_SIZE],
+) -> Option<HostResolvedPath> {
+    match HostResolvedPath::from_wire(path) {
+        Ok(path) => Some(path),
+        Err(error) => {
+            log::warn!("hostfsd: invalid path in {:?} request", response_kind);
+            set_kind(response, response_kind as u16);
+            set_payload_data(response, &error.to_le_bytes());
+            None
+        },
+    }
+}
+
 fn timestamp_to_system_time(seconds: i64, nanoseconds: i64) -> io::Result<SystemTime> {
     if !(0..1_000_000_000).contains(&nanoseconds) {
         return Err(io::Error::from(io::ErrorKind::InvalidInput));
@@ -590,10 +608,15 @@ impl HostFsHandler {
         req: long_msg::LongOpenRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        let host_path: PathBuf = match self.sandbox.resolve(&req.path) {
+        let Some(path) = check_path(req.path, SystemCallMessageKind::HostFsOpenResponse, response)
+        else {
+            return;
+        };
+
+        let host_path = match self.sandbox.resolve(path.as_str()) {
             Some(p) => p,
             None => {
-                log::warn!("hostfsd: path traversal rejected: {:?}", req.path);
+                log::warn!("hostfsd: path traversal rejected: {:?}", path.as_str());
                 set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
@@ -682,7 +705,12 @@ impl HostFsHandler {
         req: long_msg::LongRenameRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        let old_path: PathBuf = match self.sandbox.resolve(&req.old_path) {
+        let Some(old_relative) =
+            check_path(req.old_path, SystemCallMessageKind::HostFsRenameResponse, response)
+        else {
+            return;
+        };
+        let old_path = match self.sandbox.resolve(old_relative.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
@@ -690,7 +718,12 @@ impl HostFsHandler {
                 return;
             },
         };
-        let new_path: PathBuf = match self.sandbox.resolve(&req.new_path) {
+        let Some(new_relative) =
+            check_path(req.new_path, SystemCallMessageKind::HostFsRenameResponse, response)
+        else {
+            return;
+        };
+        let new_path = match self.sandbox.resolve(new_relative.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
@@ -732,8 +765,19 @@ impl HostFsHandler {
             return;
         }
 
+        let Some(old_relative) =
+            check_path(req.old_path, SystemCallMessageKind::HostFsLinkResponse, response)
+        else {
+            return;
+        };
+        let Some(new_relative) =
+            check_path(req.new_path, SystemCallMessageKind::HostFsLinkResponse, response)
+        else {
+            return;
+        };
+
         let resolution_error = |path: &str| {
-            let candidate: PathBuf = self.sandbox.root().join(path.trim_start_matches('/'));
+            let candidate = self.sandbox.root().join(path.trim_start_matches('/'));
             match candidate.parent().map(fs::metadata) {
                 Some(Err(error)) => io_error_to_code(&error),
                 Some(Ok(metadata)) if !metadata.is_dir() => HOSTFS_ERR_NOT_DIR,
@@ -742,12 +786,12 @@ impl HostFsHandler {
         };
 
         let old_path: Option<PathBuf> = if req.flags & AT_SYMLINK_FOLLOW != 0 {
-            self.sandbox.resolve(&req.old_path)
+            self.sandbox.resolve(old_relative.as_str())
         } else {
-            self.sandbox.resolve_nofollow(&req.old_path)
+            self.sandbox.resolve_nofollow(old_relative.as_str())
         };
         let Some(mut old_path): Option<PathBuf> = old_path else {
-            set_payload_data(response, &resolution_error(&req.old_path).to_le_bytes());
+            set_payload_data(response, &resolution_error(old_relative.as_str()).to_le_bytes());
             return;
         };
         if req.flags & AT_SYMLINK_FOLLOW != 0 {
@@ -759,8 +803,9 @@ impl HostFsHandler {
                 },
             };
         }
-        let Some(new_path): Option<PathBuf> = self.sandbox.resolve_nofollow(&req.new_path) else {
-            set_payload_data(response, &resolution_error(&req.new_path).to_le_bytes());
+        let Some(new_path): Option<PathBuf> = self.sandbox.resolve_nofollow(new_relative.as_str())
+        else {
+            set_payload_data(response, &resolution_error(new_relative.as_str()).to_le_bytes());
             return;
         };
 
@@ -782,7 +827,13 @@ impl HostFsHandler {
         req: long_msg::LongUnlinkRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        let host_path: PathBuf = match self.sandbox.resolve_nofollow(&req.path) {
+        let Some(path) =
+            check_path(req.path, SystemCallMessageKind::HostFsUnlinkResponse, response)
+        else {
+            return;
+        };
+
+        let host_path = match self.sandbox.resolve_nofollow(path.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
@@ -810,7 +861,12 @@ impl HostFsHandler {
         req: long_msg::LongMkdirRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        let host_path: PathBuf = match self.sandbox.resolve(&req.path) {
+        let Some(path) = check_path(req.path, SystemCallMessageKind::HostFsMkdirResponse, response)
+        else {
+            return;
+        };
+
+        let host_path = match self.sandbox.resolve(path.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
@@ -843,7 +899,12 @@ impl HostFsHandler {
         req: long_msg::LongRmdirRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        let host_path: PathBuf = match self.sandbox.resolve(&req.path) {
+        let Some(path) = check_path(req.path, SystemCallMessageKind::HostFsRmdirResponse, response)
+        else {
+            return;
+        };
+
+        let host_path = match self.sandbox.resolve(path.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
@@ -890,10 +951,16 @@ impl HostFsHandler {
             return;
         }
 
-        let link_path: PathBuf = match self.sandbox.resolve_nofollow(&req.linkpath) {
+        let Some(path) =
+            check_path(req.linkpath, SystemCallMessageKind::HostFsSymlinkResponse, response)
+        else {
+            return;
+        };
+
+        let link_path = match self.sandbox.resolve_nofollow(path.as_str()) {
             Some(p) => p,
             None => {
-                log::warn!("hostfsd: symlink linkpath escapes sandbox: {:?}", req.linkpath);
+                log::warn!("hostfsd: symlink linkpath escapes sandbox: {:?}", path.as_str());
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
             },
@@ -916,7 +983,12 @@ impl HostFsHandler {
         req: long_msg::LongReadlinkRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        self.do_readlink(req.op_id, &req.path, response);
+        let Some(path) =
+            check_path(req.path, SystemCallMessageKind::HostFsReadlinkResponse, response)
+        else {
+            return;
+        };
+        self.do_readlink(req.op_id, path.as_str(), response);
     }
 
     /// Handles a fully assembled long LSTAT request.
@@ -925,7 +997,11 @@ impl HostFsHandler {
         req: long_msg::LongLstatRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        self.do_lstat(req.op_id, &req.path, response);
+        let Some(path) = check_path(req.path, SystemCallMessageKind::HostFsLstatResponse, response)
+        else {
+            return;
+        };
+        self.do_lstat(req.op_id, path.as_str(), response);
     }
 
     /// Handles a fully assembled long path-based following STAT request.
@@ -938,7 +1014,12 @@ impl HostFsHandler {
         req: long_msg::LongLstatRequest,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
-        self.do_pathstat(req.op_id, &req.path, response);
+        let Some(path) =
+            check_path(req.path, SystemCallMessageKind::HostFsPathStatResponse, response)
+        else {
+            return;
+        };
+        self.do_pathstat(req.op_id, path.as_str(), response);
     }
 
     /// Handles a fully assembled path-based ownership request.
@@ -954,10 +1035,15 @@ impl HostFsHandler {
             return;
         }
 
-        let host_path: PathBuf = match if req.flags == nofollow {
-            self.sandbox.resolve_nofollow(&req.path)
+        let Some(path) = check_path(req.path, SystemCallMessageKind::HostFsChownResponse, response)
+        else {
+            return;
+        };
+
+        let host_path = match if req.flags == nofollow {
+            self.sandbox.resolve_nofollow(path.as_str())
         } else {
-            self.sandbox.resolve(&req.path)
+            self.sandbox.resolve(path.as_str())
         } {
             Some(path) => path,
             None => {
@@ -999,10 +1085,16 @@ impl HostFsHandler {
             set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
             return;
         }
-        let host_path: PathBuf = match if no_follow {
-            self.sandbox.resolve_nofollow(&req.path)
+        let Some(path) =
+            check_path(req.path, SystemCallMessageKind::HostFsUpdateTimesAtResponse, response)
+        else {
+            return;
+        };
+
+        let host_path = match if no_follow {
+            self.sandbox.resolve_nofollow(path.as_str())
         } else {
-            self.sandbox.resolve(&req.path)
+            self.sandbox.resolve(path.as_str())
         } {
             Some(path) => path,
             None => {
@@ -1042,10 +1134,16 @@ impl HostFsHandler {
         }
 
         let no_follow: bool = flags == AT_SYMLINK_NOFOLLOW;
-        let host_path: PathBuf = match if no_follow {
-            self.sandbox.resolve_nofollow(req.path())
+        let Some(path) =
+            check_path(req.path().to_owned(), SystemCallMessageKind::HostFsChmodResponse, response)
+        else {
+            return;
+        };
+
+        let host_path = match if no_follow {
+            self.sandbox.resolve_nofollow(path.as_str())
         } else {
-            self.sandbox.resolve(req.path())
+            self.sandbox.resolve(path.as_str())
         } {
             Some(path) => path,
             None => {
@@ -1158,10 +1256,18 @@ impl HostFsHandler {
         }
 
         let no_follow: bool = flags & AT_SYMLINK_NOFOLLOW != 0;
-        let host_path: PathBuf = match if no_follow {
-            self.sandbox.resolve_nofollow(req.path())
+        let Some(path) = check_path(
+            req.path().to_owned(),
+            SystemCallMessageKind::HostFsAccessResponse,
+            response,
+        ) else {
+            return;
+        };
+
+        let host_path = match if no_follow {
+            self.sandbox.resolve_nofollow(path.as_str())
         } else {
-            self.sandbox.resolve(req.path())
+            self.sandbox.resolve(path.as_str())
         } {
             Some(path) => path,
             None => {
@@ -1218,7 +1324,7 @@ impl HostFsHandler {
             },
         };
         let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
-        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+        let path = match HostResolvedPath::from_wire_bytes(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
                 set_kind(response, SystemCallMessageKind::HostFsReadlinkResponse as u16);
@@ -1231,7 +1337,7 @@ impl HostFsHandler {
                 return;
             },
         };
-        self.do_readlink(get_op_id(payload), path_str, response);
+        self.do_readlink(get_op_id(payload), path.as_str(), response);
     }
 
     /// Handles an inline single-message LSTAT request.
@@ -1255,7 +1361,7 @@ impl HostFsHandler {
             },
         };
         let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
-        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+        let path = match HostResolvedPath::from_wire_bytes(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
                 set_kind(response, SystemCallMessageKind::HostFsLstatResponse as u16);
@@ -1269,7 +1375,7 @@ impl HostFsHandler {
                 return;
             },
         };
-        self.do_lstat(get_op_id(payload), path_str, response);
+        self.do_lstat(get_op_id(payload), path.as_str(), response);
     }
 
     /// Handles an inline single-message path-based following STAT request.
@@ -1297,7 +1403,7 @@ impl HostFsHandler {
             },
         };
         let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
-        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+        let path = match HostResolvedPath::from_wire_bytes(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
                 set_kind(response, SystemCallMessageKind::HostFsPathStatResponse as u16);
@@ -1311,7 +1417,7 @@ impl HostFsHandler {
                 return;
             },
         };
-        self.do_pathstat(get_op_id(payload), path_str, response);
+        self.do_pathstat(get_op_id(payload), path.as_str(), response);
     }
 
     /// Shared `readlink` implementation used by both the inline and multi-part
@@ -1324,12 +1430,12 @@ impl HostFsHandler {
     fn do_readlink(
         &mut self,
         op_id: OperationId,
-        path_str: &str,
+        path: &str,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
         set_kind(response, SystemCallMessageKind::HostFsReadlinkResponse as u16);
 
-        let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
+        let host_path = match self.sandbox.resolve_nofollow(path) {
             Some(p) => p,
             None => {
                 let err = ReadlinkResponse {
@@ -1496,12 +1602,12 @@ impl HostFsHandler {
     fn do_lstat(
         &mut self,
         op_id: OperationId,
-        path_str: &str,
+        path: &str,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
         set_kind(response, SystemCallMessageKind::HostFsLstatResponse as u16);
 
-        let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
+        let host_path = match self.sandbox.resolve_nofollow(path) {
             Some(p) => p,
             None => {
                 let err = LstatResponse {
@@ -1556,12 +1662,12 @@ impl HostFsHandler {
     fn do_pathstat(
         &mut self,
         op_id: OperationId,
-        path_str: &str,
+        path: &str,
         response: &mut [u8; Message::PAYLOAD_SIZE],
     ) {
         set_kind(response, SystemCallMessageKind::HostFsPathStatResponse as u16);
 
-        let host_path: PathBuf = match self.sandbox.resolve(path_str) {
+        let host_path = match self.sandbox.resolve(path) {
             Some(p) => p,
             None => {
                 let err = LstatResponse {
@@ -1607,7 +1713,7 @@ impl HostFsHandler {
     ) {
         let req: OpenRequest = OpenRequest::decode(payload);
         let path_len: usize = (req.path_len as usize).min(req.path.len());
-        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+        let path = match HostResolvedPath::from_wire_bytes(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
                 set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
@@ -1616,10 +1722,10 @@ impl HostFsHandler {
             },
         };
 
-        let host_path: PathBuf = match self.sandbox.resolve(path_str) {
+        let host_path = match self.sandbox.resolve(path.as_str()) {
             Some(p) => p,
             None => {
-                log::warn!("hostfsd: path traversal rejected: {:?}", path_str);
+                log::warn!("hostfsd: path traversal rejected: {:?}", path.as_str());
                 set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
@@ -2077,7 +2183,7 @@ impl HostFsHandler {
     ) {
         let req: MkdirRequest = MkdirRequest::decode(payload);
         let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
-        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+        let path = match HostResolvedPath::from_wire_bytes(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
                 set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
@@ -2086,10 +2192,10 @@ impl HostFsHandler {
             },
         };
 
-        let host_path: PathBuf = match self.sandbox.resolve(path_str) {
+        let host_path = match self.sandbox.resolve(path.as_str()) {
             Some(p) => p,
             None => {
-                log::warn!("hostfsd: mkdir path traversal rejected: {:?}", path_str);
+                log::warn!("hostfsd: mkdir path traversal rejected: {:?}", path.as_str());
                 set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
                 set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
                 return;
@@ -2116,7 +2222,7 @@ impl HostFsHandler {
     ) {
         let req: RmdirRequest = RmdirRequest::decode(payload);
         let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
-        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+        let path = match HostResolvedPath::from_wire_bytes(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
                 set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
@@ -2125,7 +2231,7 @@ impl HostFsHandler {
             },
         };
 
-        let host_path: PathBuf = match self.sandbox.resolve(path_str) {
+        let host_path = match self.sandbox.resolve(path.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
@@ -2154,7 +2260,7 @@ impl HostFsHandler {
     ) {
         let req: UnlinkRequest = UnlinkRequest::decode(payload);
         let path_len: usize = (req.path_len as usize).min(MAX_INLINE_PATH_LEN);
-        let path_str: &str = match core::str::from_utf8(&req.path[..path_len]) {
+        let path = match HostResolvedPath::from_wire_bytes(&req.path[..path_len]) {
             Ok(s) => s,
             Err(_) => {
                 set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
@@ -2163,7 +2269,7 @@ impl HostFsHandler {
             },
         };
 
-        let host_path: PathBuf = match self.sandbox.resolve_nofollow(path_str) {
+        let host_path = match self.sandbox.resolve_nofollow(path.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
@@ -2202,7 +2308,7 @@ impl HostFsHandler {
             return;
         }
 
-        let old_str: &str = match core::str::from_utf8(&req.paths[..old_len]) {
+        let old_relative = match HostResolvedPath::from_wire_bytes(&req.paths[..old_len]) {
             Ok(s) => s,
             Err(_) => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
@@ -2210,16 +2316,17 @@ impl HostFsHandler {
                 return;
             },
         };
-        let new_str: &str = match core::str::from_utf8(&req.paths[old_len..old_len + new_len]) {
-            Ok(s) => s,
-            Err(_) => {
-                set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
-                return;
-            },
-        };
+        let new_relative =
+            match HostResolvedPath::from_wire_bytes(&req.paths[old_len..old_len + new_len]) {
+                Ok(s) => s,
+                Err(_) => {
+                    set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
+                    set_payload_data(response, &HOSTFS_ERR_INVALID.to_le_bytes());
+                    return;
+                },
+            };
 
-        let old_path: PathBuf = match self.sandbox.resolve(old_str) {
+        let old_path = match self.sandbox.resolve(old_relative.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
@@ -2227,7 +2334,7 @@ impl HostFsHandler {
                 return;
             },
         };
-        let new_path: PathBuf = match self.sandbox.resolve(new_str) {
+        let new_path = match self.sandbox.resolve(new_relative.as_str()) {
             Some(p) => p,
             None => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
