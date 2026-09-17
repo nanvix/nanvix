@@ -307,7 +307,7 @@ fn test_routed_directory_paths() -> Result<(), Error> {
 
     let previous = getcwd()?;
     chdir(SPELLED)?;
-    assert_eq!(getcwd()?.as_str(), NESTED);
+    assert_eq!(getcwd()?.as_str(), SPELLED);
     let relative = openat(AT_FDCWD, "./file", O_RDONLY, 0)?;
     close(relative)?;
     assert_eq!(
@@ -315,7 +315,7 @@ fn test_routed_directory_paths() -> Result<(), Error> {
         Some(ErrorCode::InvalidDirectory),
         "failed hostfs chdir must not commit a regular file as cwd",
     );
-    assert_eq!(getcwd()?.as_str(), NESTED);
+    assert_eq!(getcwd()?.as_str(), SPELLED);
     chdir(&previous)?;
 
     unlinkat(AT_FDCWD, FILE, 0)?;

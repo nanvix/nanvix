@@ -44,7 +44,6 @@ use crate::{
         LineDiscipline,
         TerminalSignal,
     },
-    mount::normalize_anchored,
     path::{
         AnchoredPath,
         ResolvedPath,
@@ -1686,11 +1685,14 @@ pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
 /// Unlike [`vfs_chdir`], this performs NO existence/type check: vfsd uses it to
 /// finalize a chdir onto a hostfs path after hostfsd has confirmed the target is
 /// a directory (hostfs paths live outside the local FAT mount table, so
-/// [`vfs_chdir`] would reject them). Taking a [`ResolvedPath`] moves the
-/// absolute-path check to the caller; the path is normalized here so the stored
-/// cwd keeps the same canonical form as every other code path.
+/// [`vfs_chdir`] would reject them). Taking a [`ResolvedPath`] guarantees an absolute guest path.
+/// Preserve its spelling: collapsing `symlink/..` here can select a different directory from the
+/// one hostfsd validated. Later relative operations must leave those components for the host.
+///
+/// Hostfs `getcwd` returns this preserved guest spelling, not a physically canonicalized path;
+/// the host's directory check does not return a canonical path over the existing protocol.
 pub fn vfs_set_cwd(path: ResolvedPath) {
-    set_current_cwd(normalize_anchored(path.as_str()));
+    set_current_cwd(path.into_string());
 }
 
 /// Changes the current working directory to the directory referenced by a VFS FD.
@@ -1711,6 +1713,9 @@ pub fn vfs_fchdir(fd: c_int) -> Result<(), Fat32Error> {
 }
 
 /// Gets the VFS current working directory.
+///
+/// Hostfs paths retain the guest spelling committed by [`vfs_set_cwd`], including symlinks and
+/// dot components. Local paths are normalized by [`vfs_chdir`].
 pub fn vfs_getcwd() -> Result<alloc::string::String, Fat32Error> {
     if !crate::state::is_initialized() {
         return Err(Fat32Error::NotInitialized);
@@ -2744,6 +2749,34 @@ mod tests {
         vfs_close(file).expect("close tracked FAT file");
         crate::state::unmount(mount).expect("unmount closed filesystem");
         crate::state::unmount(cache_flush_mount).expect("unmount cache-flush filesystem");
+        forget_processes(&[pid]);
+    }
+
+    /// Hostfs cwd bookkeeping preserves spelling; local chdir retains its normalization policy.
+    #[test]
+    fn hostfs_cwd_preserves_path_spelling() {
+        use crate::path::vfs_resolve_path;
+
+        const HOST_CWD: &str = "/mnt/link//.././";
+
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid = ProcessIdentifier::from(0x740c);
+        set_current_process(pid);
+        let path = vfs_resolve_path(-99, HOST_CWD).expect("absolute hostfs path");
+        vfs_set_cwd(path);
+        assert_eq!(vfs_getcwd().expect("hostfs cwd"), HOST_CWD);
+        assert_eq!(
+            vfs_resolve_path(AT_FDCWD, "marker")
+                .expect("cwd-relative path")
+                .as_str(),
+            "/mnt/link//.././marker",
+        );
+
+        vfs_chdir("/dev//./").expect("change to local directory");
+        assert_eq!(vfs_getcwd().expect("local cwd"), "/dev");
         forget_processes(&[pid]);
     }
 

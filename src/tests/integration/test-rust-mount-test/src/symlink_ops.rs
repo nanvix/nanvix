@@ -226,7 +226,9 @@ fn test_physical_parent_resolution() -> Result<(), Error> {
             mkdir,
         },
         unistd::{
+            chdir,
             close,
+            getcwd,
             read,
             readlinkat,
             symlinkat,
@@ -306,6 +308,25 @@ fn test_physical_parent_resolution() -> Result<(), Error> {
         assert_eq!(&buf[..count], DATA, "directory bookkeeping must not normalize host symlinks");
         close(fd)?;
         close(dirfd)?;
+
+        // The same spelling must survive deferred chdir completion and later cwd-relative calls.
+        let previous_cwd = getcwd()?;
+        let spelled_cwd = format!("{alias}//.././");
+        chdir(&spelled_cwd)?;
+        let reported_cwd = getcwd()?;
+        let fd = openat(AT_FDCWD, "marker", O_RDONLY, 0)?;
+        let count = read(fd, &mut buf)? as usize;
+        close(fd)?;
+        let mut st = stat::default();
+        fstatat(AT_FDCWD, "marker", &mut st, 0)?;
+        let failed_chdir = chdir("marker");
+        let cwd_after_failure = getcwd()?;
+        chdir(&previous_cwd)?;
+        assert_eq!(&buf[..count], DATA, "cwd-relative open must use the host-selected directory");
+        assert_eq!(st.st_size, DATA.len() as i64, "cwd-relative stat must use the same directory");
+        assert_eq!(reported_cwd, spelled_cwd, "getcwd must retain a usable hostfs spelling");
+        assert_eq!(failed_chdir.err().map(|error| error.code), Some(ErrorCode::InvalidDirectory));
+        assert_eq!(cwd_after_failure, reported_cwd, "failed chdir must not change cwd");
         unlinkat(AT_FDCWD, &alias, 0)?;
     }
 
