@@ -160,12 +160,9 @@ fn chunk_response_header(
     request_header: &DataChunkHeader,
     chunk_len: usize,
 ) -> Result<DataChunkHeader> {
-    Ok(DataChunkHeader::new(
-        request_header.source_pid(),
-        request_header.source_tid(),
-        request_header.destination_pid(),
-        request_header.destination_tid(),
-        request_header.data_addr(),
+    // Copy the pull header so the response keeps its correlation tag. The kernel completes host
+    // pulls by thread and tag, so an untagged response would leave the guest reader asleep.
+    Ok((*request_header).with_data_len(
         u32::try_from(chunk_len)
             .map_err(|e| anyhow::anyhow!("bulk chunk length exceeds u32: {e}"))?,
     ))
@@ -517,5 +514,38 @@ impl Benchmark {
         }
 
         Ok(())
+    }
+}
+
+//==================================================================================================
+// Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chunk_response_header_preserves_pull_correlation() {
+        let pull_header: DataChunkHeader = DataChunkHeader::new_tagged(
+            ProcessIdentifier::from(2),
+            ThreadIdentifier::from(3),
+            ProcessIdentifier::KERNEL,
+            ThreadIdentifier::KERNEL,
+            0x1000_0000,
+            4080,
+            42,
+        );
+
+        let response_header: DataChunkHeader =
+            chunk_response_header(&pull_header, 32).expect("chunk length should fit in u32");
+
+        assert_eq!(response_header.tag(), pull_header.tag());
+        assert_eq!(response_header.source_pid(), pull_header.source_pid());
+        assert_eq!(response_header.source_tid(), pull_header.source_tid());
+        assert_eq!(response_header.destination_pid(), pull_header.destination_pid());
+        assert_eq!(response_header.destination_tid(), pull_header.destination_tid());
+        assert_eq!(response_header.data_addr(), pull_header.data_addr());
+        assert_eq!(response_header.data_len(), 32);
     }
 }

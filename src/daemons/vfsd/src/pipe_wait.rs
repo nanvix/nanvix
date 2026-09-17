@@ -24,9 +24,12 @@ use ::alloc::{
     },
     vec::Vec,
 };
-use ::sys::pm::{
-    ProcessIdentifier,
-    ThreadIdentifier,
+use ::sys::{
+    error::ErrorCode,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
 };
 
 //==================================================================================================
@@ -46,6 +49,8 @@ pub(crate) struct BlockedReader {
     pub fd: i32,
     /// Number of bytes the caller requested.
     pub count: usize,
+    /// Error to report once the caller registers its pull.
+    pub error: Option<ErrorCode>,
 }
 
 /// A `write` request suspended on a full pipe.
@@ -202,8 +207,8 @@ impl PipeWaitTable {
 
     /// Drops every suspended request issued by `pid`.
     ///
-    /// Called when a process exits: it can no longer be answered, so its parked readers and writers
-    /// are discarded before the exit-driven EOF/`EPIPE` wakeups run for its peers.
+    /// Called when a process exits or replaces its image: its parked readers and writers can no
+    /// longer be answered, so they are discarded before EOF/`EPIPE` wakeups run for its peers.
     pub fn purge_pid(&mut self, pid: ProcessIdentifier) {
         Self::purge_readers(&mut self.readers, pid);
         Self::purge_writers(&mut self.writers, pid);

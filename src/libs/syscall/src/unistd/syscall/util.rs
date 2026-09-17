@@ -6,15 +6,134 @@
 //==================================================================================================
 
 use ::arch::mem::PAGE_SIZE;
-use ::core::cmp;
-use ::sys::ipc::{
-    SG_BULK_MAX_BYTES,
-    SG_BULK_MAX_SEGMENTS,
+use ::core::{
+    cmp,
+    time::Duration,
 };
+use ::sys::{
+    error::{
+        Error,
+        ErrorCode,
+    },
+    ipc::{
+        SG_BULK_MAX_BYTES,
+        SG_BULK_MAX_SEGMENTS,
+    },
+    time::SystemTime,
+};
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Maximum time a request waits for earlier offset-sensitive I/O on its open file description.
+///
+/// vfsd serializes HostFS reads, writes, and seeks per open file description and rejects a request
+/// with [`ErrorCode::OperationAlreadyInProgress`] while an earlier one, including one abandoned by
+/// cancellation or process exit, still awaits its host response. Bounding the retry keeps a host
+/// that never answers from stalling later I/O on the descriptor forever.
+const IO_IN_PROGRESS_TIMEOUT: Duration = Duration::from_secs(5);
 
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+///
+/// # Description
+///
+/// Retries `operation` while it reports earlier offset-sensitive I/O on the same open file
+/// description. The clock is read only after the first busy report, so uncontended requests pay
+/// no extra kernel calls.
+///
+/// # Parameters
+///
+/// - `operation`: Issues one request and returns its outcome.
+/// - `now`: Reads the current time.
+/// - `wait`: Relinquishes the processor before the next attempt.
+///
+/// # Returns
+///
+/// Upon successful completion, the first outcome of `operation` that is not a busy report is
+/// returned. Otherwise, an error is returned instead.
+///
+/// # Errors
+///
+/// - [`ErrorCode::OperationTimedOut`]: The earlier I/O did not drain within
+///   [`IO_IN_PROGRESS_TIMEOUT`].
+/// - [`ErrorCode::ValueOutOfRange`]: The retry deadline overflows the clock.
+/// - Any error reported by `now` or `wait`.
+///
+pub fn retry_while_in_progress_with<T>(
+    mut operation: impl FnMut() -> Result<T, Error>,
+    mut now: impl FnMut() -> Result<SystemTime, Error>,
+    mut wait: impl FnMut() -> Result<(), Error>,
+) -> Result<T, Error> {
+    let mut deadline: Option<SystemTime> = None;
+    loop {
+        match operation() {
+            Err(error) if error.code == ErrorCode::OperationAlreadyInProgress => {},
+            result => return result,
+        }
+
+        let current: SystemTime = now()?;
+        let expiry: SystemTime = match deadline {
+            Some(expiry) => expiry,
+            None => match current.checked_add_duration(&IO_IN_PROGRESS_TIMEOUT) {
+                Some(expiry) => {
+                    deadline = Some(expiry);
+                    expiry
+                },
+                None => {
+                    let reason: &str = "I/O retry deadline overflow";
+                    #[cfg(feature = "syscall")]
+                    ::syslog::warn!("retry_while_in_progress_with(): {reason} (now={current:?})");
+                    return Err(Error::new(ErrorCode::ValueOutOfRange, reason));
+                },
+            },
+        };
+        if current >= expiry {
+            let reason: &str = "earlier I/O on the open file description did not complete";
+            #[cfg(feature = "syscall")]
+            ::syslog::warn!(
+                "retry_while_in_progress_with(): {reason} (timeout={IO_IN_PROGRESS_TIMEOUT:?})"
+            );
+            return Err(Error::new(ErrorCode::OperationTimedOut, reason));
+        }
+        wait()?;
+    }
+}
+
+///
+/// # Description
+///
+/// Retries a VFS request while earlier offset-sensitive I/O on the same open file description is
+/// in flight, yielding the processor between attempts.
+///
+/// # Parameters
+///
+/// - `operation`: Issues one request and returns its outcome.
+///
+/// # Returns
+///
+/// Upon successful completion, the first outcome of `operation` that is not a busy report is
+/// returned. Otherwise, an error is returned instead.
+///
+/// # Errors
+///
+/// See [`retry_while_in_progress_with`].
+///
+#[cfg(feature = "syscall")]
+pub fn retry_while_in_progress<T>(operation: impl FnMut() -> Result<T, Error>) -> Result<T, Error> {
+    retry_while_in_progress_with(
+        operation,
+        || {
+            let mut now: SystemTime = SystemTime::default();
+            ::sys::kcall::pm::__kcall_gettime(&mut now)?;
+            Ok(now)
+        },
+        ::sys::kcall::sched::__kcall_sched_yield,
+    )
+}
 
 ///
 /// # Description
@@ -84,6 +203,7 @@ pub fn page_chunk_size(ptr: usize, remaining: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::core::cell::Cell;
 
     /// Number of distinct pages a `len`-byte buffer starting at `ptr` touches. This is the upper
     /// bound on the number of scatter/gather segment descriptors the kernel builds for the chunk,
@@ -234,5 +354,129 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Builds the busy report vfsd returns while earlier I/O on the descriptor is in flight.
+    fn in_progress() -> Error {
+        Error::new(ErrorCode::OperationAlreadyInProgress, "earlier I/O is still in flight")
+    }
+
+    /// Builds a fake clock that starts at the epoch and advances one second per reading.
+    fn ticking_clock(readings: &Cell<u64>) -> impl FnMut() -> Result<SystemTime, Error> + '_ {
+        move || {
+            let seconds: u64 = readings.get();
+            readings.set(seconds + 1);
+            Ok(SystemTime::new(seconds, 0).expect("fake clock reading must be valid"))
+        }
+    }
+
+    /// Builds a wait hook that counts how many times the retry loop yielded.
+    fn counting_wait(waits: &Cell<usize>) -> impl FnMut() -> Result<(), Error> + '_ {
+        move || {
+            waits.set(waits.get() + 1);
+            Ok(())
+        }
+    }
+
+    /// An uncontended request returns its outcome without reading the clock or waiting.
+    #[test]
+    fn retry_returns_first_outcome_without_reading_clock() {
+        let readings: Cell<u64> = Cell::new(0);
+        let waits: Cell<usize> = Cell::new(0);
+
+        let result: Result<u32, Error> =
+            retry_while_in_progress_with(|| Ok(7), ticking_clock(&readings), counting_wait(&waits));
+
+        assert_eq!(result.expect("an uncontended request must succeed"), 7);
+        assert_eq!(readings.get(), 0, "an uncontended request must not read the clock");
+        assert_eq!(waits.get(), 0, "an uncontended request must not wait");
+    }
+
+    /// Errors other than the busy report are returned without retrying.
+    #[test]
+    fn retry_returns_other_errors_unchanged() {
+        let attempts: Cell<usize> = Cell::new(0);
+        let readings: Cell<u64> = Cell::new(0);
+        let waits: Cell<usize> = Cell::new(0);
+
+        let result: Result<(), Error> = retry_while_in_progress_with(
+            || {
+                attempts.set(attempts.get() + 1);
+                Err(Error::new(ErrorCode::BadFile, "bad file descriptor"))
+            },
+            ticking_clock(&readings),
+            counting_wait(&waits),
+        );
+
+        let error: Error = result.expect_err("a non-busy error must be returned");
+        assert_eq!(error.code, ErrorCode::BadFile, "the original error must be preserved");
+        assert_eq!(attempts.get(), 1, "a non-busy error must not be retried");
+        assert_eq!(waits.get(), 0, "a non-busy error must not wait");
+    }
+
+    /// A busy request is retried until the earlier I/O drains.
+    #[test]
+    fn retry_waits_until_earlier_io_drains() {
+        let attempts: Cell<usize> = Cell::new(0);
+        let readings: Cell<u64> = Cell::new(0);
+        let waits: Cell<usize> = Cell::new(0);
+
+        let result: Result<u32, Error> = retry_while_in_progress_with(
+            || {
+                attempts.set(attempts.get() + 1);
+                if attempts.get() < 3 {
+                    Err(in_progress())
+                } else {
+                    Ok(3)
+                }
+            },
+            ticking_clock(&readings),
+            counting_wait(&waits),
+        );
+
+        assert_eq!(result.expect("the request must succeed once earlier I/O drains"), 3);
+        assert_eq!(attempts.get(), 3, "each busy report must trigger exactly one retry");
+        assert_eq!(waits.get(), 2, "the loop must yield before every retry");
+    }
+
+    /// A request fails with a timeout instead of retrying forever behind I/O that never drains.
+    #[test]
+    fn retry_times_out_when_earlier_io_never_drains() {
+        let budget: usize =
+            usize::try_from(IO_IN_PROGRESS_TIMEOUT.as_secs()).expect("retry budget must fit usize");
+        let attempts: Cell<usize> = Cell::new(0);
+        let readings: Cell<u64> = Cell::new(0);
+        let waits: Cell<usize> = Cell::new(0);
+
+        let result: Result<(), Error> = retry_while_in_progress_with(
+            || {
+                attempts.set(attempts.get() + 1);
+                Err(in_progress())
+            },
+            ticking_clock(&readings),
+            counting_wait(&waits),
+        );
+
+        let error: Error = result.expect_err("a request must not wait forever");
+        assert_eq!(error.code, ErrorCode::OperationTimedOut, "an expired wait must time out");
+        // The first busy report starts the budget, and the fake clock advances one second per
+        // attempt, so the deadline is reached on the attempt after the budget is spent.
+        assert_eq!(attempts.get(), budget + 1, "the request must stop once the budget is spent");
+        assert_eq!(waits.get(), budget, "the loop must not yield after the deadline");
+    }
+
+    /// A failure to relinquish the processor aborts the retry.
+    #[test]
+    fn retry_propagates_wait_errors() {
+        let readings: Cell<u64> = Cell::new(0);
+
+        let result: Result<(), Error> = retry_while_in_progress_with(
+            || Err(in_progress()),
+            ticking_clock(&readings),
+            || Err(Error::new(ErrorCode::Interrupted, "yield failed")),
+        );
+
+        let error: Error = result.expect_err("a wait failure must abort the retry");
+        assert_eq!(error.code, ErrorCode::Interrupted, "the wait error must be preserved");
     }
 }

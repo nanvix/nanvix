@@ -30,6 +30,7 @@ extern crate nvx;
 extern crate nvx_crt0;
 
 mod cross_fs;
+mod delayed_read;
 mod dirfd_reject;
 mod file_ops;
 mod fs_ops;
@@ -62,6 +63,9 @@ pub fn main() -> Result<(), Error> {
 
     // Phase 3: File operations (write/read, seek, fstat, truncate, fsync).
     file_ops::test()?;
+
+    // Phase 3.1: A delayed HostFS bulk pull fails without blocking vfsd or advancing the offset.
+    delayed_read::test()?;
 
     // Phase 3.5: Symbolic link operations (symlink, readlink, lstat).
     symlink_ops::test()?;

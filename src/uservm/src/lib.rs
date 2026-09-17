@@ -653,6 +653,7 @@ struct ValidatedSgBulk {
     destination_tid: ::sys::pm::ThreadIdentifier,
     kind: GuestSgBulkKind,
     total_len: usize,
+    tag: u32,
     segments: Vec<SgSegmentRange>,
 }
 
@@ -789,6 +790,7 @@ fn parse_guest_sg_bulk(vmem: &VirtualMemory, header_addr: u64) -> Result<Validat
         destination_tid: header.destination_tid(),
         kind,
         total_len,
+        tag: header.tag(),
         segments,
     })
 }
@@ -1011,12 +1013,7 @@ fn build_input_fn(
                         // Construct a PullResponse notification message. The kernel's
                         // main loop reads this from the regular message buffer, detects the
                         // message type, and wakes the sleeping pull thread.
-                        let completion_header: DataChunkHeader = DataChunkHeader::new(
-                            bulk.header().source_pid(),
-                            bulk.header().source_tid(),
-                            bulk.header().destination_pid(),
-                            bulk.header().destination_tid(),
-                            bulk.header().data_addr(),
+                        let completion_header: DataChunkHeader = (*bulk.header()).with_data_len(
                             u32::try_from(actual_len).map_err(|e| {
                                 let reason: String = format!("bulk data length exceeds u32: {e}");
                                 error!("{reason}");
@@ -1177,7 +1174,7 @@ fn output_fn(
                             }
                         }
 
-                        let header: HostBulkTransferHeader = HostBulkTransferHeader::new(
+                        let header: HostBulkTransferHeader = HostBulkTransferHeader::new_tagged(
                             sg_bulk.source_pid,
                             sg_bulk.source_tid,
                             sg_bulk.destination_pid,
@@ -1189,6 +1186,7 @@ fn output_fn(
                                 error!("{reason}");
                                 anyhow::Error::msg(reason)
                             })?,
+                            sg_bulk.tag,
                         );
                         let bulk: DataChunk = DataChunk::new(header, data);
 
@@ -1212,7 +1210,7 @@ fn output_fn(
                         let transfer_id: u32 = sg_bulk_registry
                             .blocking_lock()
                             .insert(pending, first_valid_transfer_id)?;
-                        let header: HostBulkTransferHeader = HostBulkTransferHeader::new(
+                        let header: HostBulkTransferHeader = HostBulkTransferHeader::new_tagged(
                             sg_bulk.source_pid,
                             sg_bulk.source_tid,
                             sg_bulk.destination_pid,
@@ -1224,6 +1222,7 @@ fn output_fn(
                                 error!("{reason}");
                                 anyhow::Error::msg(reason)
                             })?,
+                            sg_bulk.tag,
                         );
                         let bulk: DataChunk = DataChunk::new(header, Vec::new());
 

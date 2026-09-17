@@ -252,13 +252,14 @@ pub fn send_close_request(remote_fd: i32, op_id: OperationId) -> Result<(), Erro
 pub fn send_read_request(
     remote_fd: i32,
     count: usize,
+    offset: i64,
     op_id: OperationId,
 ) -> Result<(), ErrorCode> {
     let count: u32 = count.min(MAX_INLINE_READ_DATA) as u32;
     let payload: [u8; Message::PAYLOAD_SIZE] = ReadRequest {
         fd: remote_fd,
         count,
-        offset: -1, // Use current position.
+        offset,
     }
     .serialize(SystemCallMessageKind::HostFsReadRequest as u16, op_id);
 
@@ -270,9 +271,13 @@ pub fn send_read_request(
 }
 
 /// Sends a WRITE request to hostfsd.
-pub fn send_write_request(remote_fd: i32, buf: &[u8], op_id: OperationId) -> Result<(), ErrorCode> {
-    // Offset -1 means use current file position.
-    let payload: [u8; Message::PAYLOAD_SIZE] = WriteRequest::from_slice(remote_fd, -1, buf)
+pub fn send_write_request(
+    remote_fd: i32,
+    buf: &[u8],
+    offset: i64,
+    op_id: OperationId,
+) -> Result<(), ErrorCode> {
+    let payload: [u8; Message::PAYLOAD_SIZE] = WriteRequest::from_slice(remote_fd, offset, buf)
         .serialize(SystemCallMessageKind::HostFsWriteRequest as u16, op_id);
 
     if send_request(&payload) {

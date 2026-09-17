@@ -63,19 +63,25 @@ pub fn lseek(fd: RawFileDescriptor, offset: off_t, whence: c_int) -> Result<off_
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
-    // Build request and send it.
-    let mut request: Message = SeekRequest::build(
-        tid,
-        backend_fd,
-        offset,
-        whence,
-        crate::VFS_DESTINATION,
-        crate::VFS_MESSAGE_TYPE,
-    );
-    let token: RequestToken = crate::rpc::send_request(&mut request)?;
-
-    // Receive response.
-    let response: Message = crate::rpc::recv_response(&token)?;
+    let response: Message = super::util::retry_while_in_progress(|| {
+        let mut request: Message = SeekRequest::build(
+            tid,
+            backend_fd,
+            offset,
+            whence,
+            crate::VFS_DESTINATION,
+            crate::VFS_MESSAGE_TYPE,
+        );
+        let token: RequestToken = crate::rpc::send_request(&mut request)?;
+        let response: Message = crate::rpc::recv_response(&token)?;
+        if response.status == ErrorCode::OperationAlreadyInProgress.get() {
+            return Err(Error::new(
+                ErrorCode::OperationAlreadyInProgress,
+                "earlier I/O is still in flight",
+            ));
+        }
+        Ok(response)
+    })?;
 
     // Check whether system call succeeded or not.
     if response.status != 0 {
