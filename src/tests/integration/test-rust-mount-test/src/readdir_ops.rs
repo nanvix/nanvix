@@ -132,7 +132,7 @@ fn expect_entry(listing: &[(String, FileType)], name: &str, expected: FileType) 
 /// capacity and verifies that the full names round-trip with the correct type.
 ///
 /// This is the core behavior this change adds: an entry whose name exceeds
-/// `INLINE_NAME_CAP` (29 bytes) is returned as a multi-part `HostFsReadDirResponsePart`
+/// `INLINE_NAME_CAP` is returned as a multi-part `HostFsReadDirResponsePart`
 /// stream carrying the complete name, instead of being truncated to the inline field. vfsd
 /// reassembles each long entry and folds it into the in-progress getdents sweep, so a
 /// regression (a truncated or corrupted name, or a dropped entry) surfaces here as a name

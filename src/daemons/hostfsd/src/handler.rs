@@ -1822,7 +1822,10 @@ impl HostFsHandler {
         let entry: &mut FdEntry = match self.fd_table.get_mut(req.fd) {
             Some(e) => e,
             None => {
-                let resp: WriteResponse = WriteResponse { bytes_written: -1 };
+                let resp: WriteResponse = WriteResponse {
+                    bytes_written: -1,
+                    offset: -1,
+                };
                 resp.encode(response);
                 set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
                 return;
@@ -1831,7 +1834,10 @@ impl HostFsHandler {
 
         // Reject writes on directory file descriptors.
         if entry.is_dir {
-            let resp: WriteResponse = WriteResponse { bytes_written: -1 };
+            let resp: WriteResponse = WriteResponse {
+                bytes_written: -1,
+                offset: -1,
+            };
             resp.encode(response);
             set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
             return;
@@ -1842,7 +1848,10 @@ impl HostFsHandler {
         let saved_pos: Option<u64> = if req.offset >= 0 {
             let pos: Option<u64> = entry.file.stream_position().ok();
             if entry.file.seek(SeekFrom::Start(req.offset as u64)).is_err() {
-                let resp: WriteResponse = WriteResponse { bytes_written: -1 };
+                let resp: WriteResponse = WriteResponse {
+                    bytes_written: -1,
+                    offset: -1,
+                };
                 resp.encode(response);
                 set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
                 return;
@@ -1854,6 +1863,12 @@ impl HostFsHandler {
 
         let write_count: usize = (req.data_len as usize).min(MAX_INLINE_WRITE_DATA);
         let result = entry.file.write(&req.data[..write_count]);
+        let resulting_offset: i64 = entry
+            .file
+            .stream_position()
+            .ok()
+            .and_then(|offset| i64::try_from(offset).ok())
+            .unwrap_or(-1);
 
         // Restore position after positional write.
         if let Some(pos) = saved_pos {
@@ -1864,13 +1879,17 @@ impl HostFsHandler {
             Ok(n) => {
                 let resp: WriteResponse = WriteResponse {
                     bytes_written: n as i32,
+                    offset: resulting_offset,
                 };
                 resp.encode(response);
                 set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
             },
             Err(e) => {
                 log::debug!("hostfsd: write failed (fd={}, kind={:?}): {}", req.fd, e.kind(), e);
-                let resp: WriteResponse = WriteResponse { bytes_written: -1 };
+                let resp: WriteResponse = WriteResponse {
+                    bytes_written: -1,
+                    offset: -1,
+                };
                 resp.encode(response);
                 set_kind(response, SystemCallMessageKind::HostFsWriteResponse as u16);
             },
@@ -1957,16 +1976,32 @@ impl HostFsHandler {
                 .map(|c| (c.name.to_string_lossy().into_owned(), c.is_dir, c.size)),
             None => {
                 log::warn!("hostfsd: readdir on unknown fd {} (offset={})", req.fd, req.offset);
-                None
+                ReadDirEntry {
+                    status: HOSTFS_ERR_IO,
+                    name_len: 0,
+                    is_dir: 0,
+                    size: 0,
+                    name: [0u8; MAX_DIR_ENTRY_NAME_LEN],
+                }
+                .encode(response);
+                set_kind(response, SystemCallMessageKind::HostFsReadDirResponse as u16);
+                return;
             },
         };
 
         let (name, is_dir, size) = match cached {
             Some(t) => t,
             None => {
-                // Missing FD or past end of directory: name_len=0 signals end.
+                // Past end of directory: name_len=0 with a successful status signals end.
                 set_kind(response, SystemCallMessageKind::HostFsReadDirResponse as u16);
-                set_payload_data(response, &[0u8; 2]);
+                ReadDirEntry {
+                    status: 0,
+                    name_len: 0,
+                    is_dir: 0,
+                    size: 0,
+                    name: [0u8; MAX_DIR_ENTRY_NAME_LEN],
+                }
+                .encode(response);
                 return;
             },
         };
@@ -1978,6 +2013,7 @@ impl HostFsHandler {
             entry_name[..name_bytes.len()].copy_from_slice(name_bytes);
 
             let resp: ReadDirEntry = ReadDirEntry {
+                status: 0,
                 name_len: name_bytes.len() as u16,
                 is_dir: if is_dir { 1 } else { 0 },
                 size,

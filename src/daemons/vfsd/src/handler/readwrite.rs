@@ -15,6 +15,7 @@ use crate::{
         fat32_to_error_code,
         ResponseContext,
     },
+    pending::prepare_read_error,
 };
 use ::alloc::{
     boxed::Box,
@@ -30,6 +31,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageType,
+        RequestIdentifier,
     },
     pm::{
         ProcessIdentifier,
@@ -50,7 +52,10 @@ use ::sysapi::{
     },
     sys_types::c_size_t,
     termios::Termios,
-    unistd::STDOUT_FILENO,
+    unistd::{
+        file_seek::SEEK_SET,
+        STDOUT_FILENO,
+    },
 };
 use ::syscall::{
     poll::input_message::{
@@ -89,6 +94,9 @@ use ::vfs::{
 /// Must be at least as large as the page-aligned chunk size used by the syscall layer.
 const MAX_BULK_TRANSFER_SIZE: usize = PAGE_SIZE;
 
+/// Maximum time an initial request handler waits for the caller to register its bulk transfer.
+const BULK_REQUEST_TIMEOUT: Duration = Duration::from_millis(100);
+
 /// Static buffer used for bulk read/write data transfers.
 /// Safety: vfsd processes one request at a time (single-threaded message loop),
 /// so there is no concurrent access to this buffer.
@@ -115,10 +123,12 @@ enum ConsoleInputSnapshot {
 //==================================================================================================
 
 pub(crate) fn handle_read(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
-) -> Message {
+) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
+    let request_id: RequestIdentifier = response_context.request_id();
     let req: ReadRequest = ReadRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
     let count: usize = req.count as usize;
@@ -133,32 +143,47 @@ pub(crate) fn handle_read(
     // Safety: vfsd is single-threaded; no concurrent access to BULK_BUFFER.
     let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
 
-    match ::vfs::fd::vfs_read(fd, buf) {
+    let offset: i64 = match ::vfs::fd::vfs_lseek(fd, 0, ::sysapi::unistd::file_seek::SEEK_CUR) {
+        Ok(offset) => offset,
+        Err(error) => {
+            return prepare_read_error(response_context, fat32_to_error_code(&error));
+        },
+    };
+
+    match ::vfs::fd::vfs_pread(fd, buf, offset) {
         Ok(n) => {
             let n: usize = n as usize;
 
             // Push the data to the caller.
-            if let Err(e) = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &buf[..n]) {
+            if let Err(e) = ::sys::kcall::ipc::__kcall_push_tagged_timed(
+                source_pid,
+                source_tid,
+                &buf[..n],
+                request_id,
+                Some(BULK_REQUEST_TIMEOUT),
+            ) {
                 ::syslog::error!("handle_read(): push failed (error={:?})", e);
-                return build_error(source_tid, ErrorCode::IoErr);
+                return if e.code == ErrorCode::OperationTimedOut {
+                    prepare_read_error(response_context, ErrorCode::IoErr)
+                } else {
+                    None
+                };
             }
 
-            ReadResponse::build(
+            if let Err(error) = ::vfs::fd::vfs_lseek(fd, offset + n as i64, SEEK_SET) {
+                ::syslog::error!("handle_read(): failed to advance offset (error={:?})", error);
+                return Some(build_error(source_tid, ErrorCode::IoErr));
+            }
+
+            Some(ReadResponse::build(
                 source_tid,
                 n as i32,
                 [0u8; ReadResponse::BUFFER_SIZE],
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
-            )
+            ))
         },
-        Err(e) => {
-            // The client is blocked on __kcall_pull — push an empty buffer to unblock it
-            // before sending the error response, otherwise the client deadlocks.
-            if let Err(push_err) = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[]) {
-                ::syslog::error!("handle_read(): unblock push failed (error={:?})", push_err);
-            }
-            build_error(source_tid, fat32_to_error_code(&e))
-        },
+        Err(e) => prepare_read_error(response_context, fat32_to_error_code(&e)),
     }
 }
 
@@ -214,49 +239,59 @@ pub(crate) fn handle_console_read(
 
 /// Handles a write to an opened terminal device.
 pub(crate) fn handle_terminal_write(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     writable: bool,
-) -> Message {
+) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
     let req: WriteRequest = WriteRequest::from_bytes(msg.payload);
     let count: usize = req.count as usize;
     let buf_size: usize = count.min(MAX_BULK_TRANSFER_SIZE);
     // Safety: vfsd is single-threaded; no concurrent access to BULK_BUFFER.
     let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
 
-    match ::sys::kcall::ipc::__kcall_pull(source_pid, source_tid, buf) {
+    match ::sys::kcall::ipc::__kcall_pull_tagged_timed(
+        source_pid,
+        source_tid,
+        buf,
+        response_context.request_id(),
+        Some(BULK_REQUEST_TIMEOUT),
+    ) {
         Ok(pulled) => {
             if !writable {
-                return build_error(source_tid, ErrorCode::BadFile);
+                return Some(build_error(source_tid, ErrorCode::BadFile));
             }
             let write_len: usize = pulled.min(count);
             if write_len > 0 {
                 notify_terminal_access(source_pid, true);
                 if let Err(error) = kernel_write_console(STDOUT_FILENO, &buf[..write_len]) {
                     ::syslog::error!("terminal write failed (error={:?})", error);
-                    return build_error(source_tid, ErrorCode::IoErr);
+                    return Some(build_error(source_tid, ErrorCode::IoErr));
                 }
             }
-            WriteResponse::build(
+            Some(WriteResponse::build(
                 source_tid,
                 write_len as i32,
                 ProcessIdentifier::VFSD,
                 MessageType::Ipc,
-            )
+            ))
         },
+        Err(error) if error.code == ErrorCode::OperationTimedOut => None,
         Err(error) => {
             ::syslog::error!("terminal write pull failed (error={:?})", error);
-            build_error(source_tid, ErrorCode::IoErr)
+            Some(build_error(source_tid, ErrorCode::IoErr))
         },
     }
 }
 
 pub(crate) fn handle_write(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
-) -> Message {
+) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
+    let request_id: RequestIdentifier = response_context.request_id();
     let req: WriteRequest = WriteRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
     let count: usize = req.count as usize;
@@ -272,10 +307,16 @@ pub(crate) fn handle_write(
     let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
 
     // Pull the data from the caller.
-    match ::sys::kcall::ipc::__kcall_pull(source_pid, source_tid, buf) {
+    match ::sys::kcall::ipc::__kcall_pull_tagged_timed(
+        source_pid,
+        source_tid,
+        buf,
+        request_id,
+        Some(BULK_REQUEST_TIMEOUT),
+    ) {
         Ok(pulled) => {
             let write_len: usize = if pulled < count { pulled } else { count };
-            match ::vfs::fd::vfs_write(fd, &buf[..write_len]) {
+            Some(match ::vfs::fd::vfs_write(fd, &buf[..write_len]) {
                 Ok(n) => WriteResponse::build(
                     source_tid,
                     n as i32,
@@ -283,11 +324,12 @@ pub(crate) fn handle_write(
                     MessageType::Ipc,
                 ),
                 Err(e) => build_error(source_tid, fat32_to_error_code(&e)),
-            }
+            })
         },
+        Err(e) if e.code == ErrorCode::OperationTimedOut => None,
         Err(e) => {
             ::syslog::error!("handle_write(): pull failed (error={:?})", e);
-            build_error(source_tid, ErrorCode::IoErr)
+            Some(build_error(source_tid, ErrorCode::IoErr))
         },
     }
 }
@@ -369,10 +411,11 @@ pub(crate) fn service_pending_console_input(console_wait: &mut ConsoleWaitTable)
 fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
     while let Some(reader) = console_wait.front() {
         if let Some(error) = reader.error {
-            match ::sys::kcall::ipc::__kcall_push_timed(
+            match ::sys::kcall::ipc::__kcall_push_tagged_timed(
                 reader.source_pid,
                 reader.source_tid,
                 &[],
+                reader.response_context.request_id(),
                 Some(Duration::ZERO),
             ) {
                 Ok(()) => {
@@ -399,10 +442,11 @@ fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
         let buf: &mut [u8] = unsafe { &mut BULK_BUFFER[..buf_size] };
         match ::vfs::fd::vfs_console_peek(reader.fd, buf) {
             Ok(ConsoleReadOutcome::Read(n)) => {
-                match ::sys::kcall::ipc::__kcall_push_timed(
+                match ::sys::kcall::ipc::__kcall_push_tagged_timed(
                     reader.source_pid,
                     reader.source_tid,
                     &buf[..n],
+                    reader.response_context.request_id(),
                     Some(Duration::ZERO),
                 ) {
                     Ok(()) => {},
@@ -435,10 +479,11 @@ fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
                 }
             },
             Ok(ConsoleReadOutcome::Eof) => {
-                match ::sys::kcall::ipc::__kcall_push_timed(
+                match ::sys::kcall::ipc::__kcall_push_tagged_timed(
                     reader.source_pid,
                     reader.source_tid,
                     &[],
+                    reader.response_context.request_id(),
                     Some(Duration::ZERO),
                 ) {
                     Ok(()) => {},
@@ -471,10 +516,11 @@ fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
                 }
             },
             Ok(ConsoleReadOutcome::WouldBlock) if is_nonblocking(reader.fd) => {
-                match ::sys::kcall::ipc::__kcall_push_timed(
+                match ::sys::kcall::ipc::__kcall_push_tagged_timed(
                     reader.source_pid,
                     reader.source_tid,
                     &[],
+                    reader.response_context.request_id(),
                     Some(Duration::ZERO),
                 ) {
                     Ok(()) => {
@@ -494,10 +540,11 @@ fn wake_console_readers(console_wait: &mut ConsoleWaitTable) {
             },
             Ok(ConsoleReadOutcome::WouldBlock) => break,
             Err(error) => {
-                match ::sys::kcall::ipc::__kcall_push_timed(
+                match ::sys::kcall::ipc::__kcall_push_tagged_timed(
                     reader.source_pid,
                     reader.source_tid,
                     &[],
+                    reader.response_context.request_id(),
                     Some(Duration::ZERO),
                 ) {
                     Ok(()) => {
@@ -776,11 +823,13 @@ fn tty_error_code(error: TtyError) -> ErrorCode {
 /// to release a *get* caller blocked in `__kcall_pull`) before the error response is sent, so the
 /// caller never deadlocks.
 pub(crate) fn handle_tty_control(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
+    response_context: ResponseContext,
     msg: SystemCallMessage,
     console_wait: &mut ConsoleWaitTable,
-) -> Message {
+) -> Option<Message> {
+    let source_pid: ProcessIdentifier = response_context.source_pid();
+    let source_tid: ThreadIdentifier = response_context.source_tid();
+    let request_id: RequestIdentifier = response_context.request_id();
     let req: TtyControlRequest = TtyControlRequest::from_bytes(msg.payload);
     let fd: i32 = req.fd;
     let request: i32 = req.request;
@@ -792,7 +841,13 @@ pub(crate) fn handle_tty_control(
             // The console payload never exceeds a `termios`; cap the pull at its size.
             let mut buf: [u8; Termios::SIZE] = [0u8; Termios::SIZE];
             let pull_len: usize = if len > buf.len() { buf.len() } else { len };
-            match ::sys::kcall::ipc::__kcall_pull(source_pid, source_tid, &mut buf[..pull_len]) {
+            match ::sys::kcall::ipc::__kcall_pull_tagged_timed(
+                source_pid,
+                source_tid,
+                &mut buf[..pull_len],
+                request_id,
+                Some(BULK_REQUEST_TIMEOUT),
+            ) {
                 Ok(pulled) => {
                     let outcome: Result<(), ErrorCode> = if request == TCSETS {
                         let termios: Termios = Termios::from_bytes(&buf[..pulled]);
@@ -801,7 +856,7 @@ pub(crate) fn handle_tty_control(
                         let winsize: Winsize = Winsize::from_bytes(&buf[..pulled]);
                         ::vfs::fd::vfs_tty_set_winsize(fd, winsize).map_err(tty_error_code)
                     };
-                    match outcome {
+                    Some(match outcome {
                         Ok(()) => {
                             if request == TCSETS {
                                 wake_console_readers(console_wait);
@@ -814,11 +869,15 @@ pub(crate) fn handle_tty_control(
                             )
                         },
                         Err(code) => build_error(source_tid, code),
-                    }
+                    })
                 },
                 Err(e) => {
                     ::syslog::error!("handle_tty_control(): pull failed (error={:?})", e);
-                    build_error(source_tid, ErrorCode::IoErr)
+                    if e.code == ErrorCode::OperationTimedOut {
+                        None
+                    } else {
+                        Some(build_error(source_tid, ErrorCode::IoErr))
+                    }
                 },
             }
         },
@@ -836,38 +895,34 @@ pub(crate) fn handle_tty_control(
             };
             match payload {
                 Ok(n) => {
-                    if let Err(e) =
-                        ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &buf[..n])
-                    {
+                    if let Err(e) = ::sys::kcall::ipc::__kcall_push_tagged_timed(
+                        source_pid,
+                        source_tid,
+                        &buf[..n],
+                        request_id,
+                        Some(BULK_REQUEST_TIMEOUT),
+                    ) {
                         ::syslog::error!("handle_tty_control(): push failed (error={:?})", e);
-                        return build_error(source_tid, ErrorCode::IoErr);
+                        return if e.code == ErrorCode::OperationTimedOut {
+                            prepare_read_error(response_context, ErrorCode::IoErr)
+                        } else {
+                            None
+                        };
                     }
-                    TtyControlResponse::build(
+                    Some(TtyControlResponse::build(
                         source_tid,
                         0,
                         ProcessIdentifier::VFSD,
                         MessageType::Ipc,
-                    )
+                    ))
                 },
-                Err(code) => {
-                    // The caller is blocked in `__kcall_pull`; release it with an empty push before
-                    // reporting the error, otherwise it deadlocks.
-                    if let Err(push_err) =
-                        ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[])
-                    {
-                        ::syslog::error!(
-                            "handle_tty_control(): unblock push failed (error={:?})",
-                            push_err
-                        );
-                    }
-                    build_error(source_tid, code)
-                },
+                Err(code) => prepare_read_error(response_context, code),
             }
         },
         // No other request reaches vfsd: the client forwards only terminal-control requests.
         other => {
             ::syslog::warn!("handle_tty_control(): unsupported request {other:#x}");
-            build_error(source_tid, ErrorCode::NotTerminal)
+            Some(build_error(source_tid, ErrorCode::NotTerminal))
         },
     }
 }

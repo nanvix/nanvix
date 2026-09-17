@@ -184,14 +184,14 @@ pub fn read() -> Result<Option<Message>, Error> {
 /// Upon success, empty is returned. Upon failure, an error is returned instead.
 ///
 pub fn write_bulk(
-    source_pid: ProcessIdentifier,
-    source_tid: ThreadIdentifier,
-    destination_pid: ProcessIdentifier,
-    destination_tid: ThreadIdentifier,
+    source: (ProcessIdentifier, ThreadIdentifier),
+    destination: (ProcessIdentifier, ThreadIdentifier),
     kind: GuestSgBulkKind,
     segments: &[GuestSgSegment],
     data_len: u32,
+    tag: u32,
 ) -> Result<(), Error> {
+    let (source_pid, source_tid): (ProcessIdentifier, ThreadIdentifier) = source;
     if segments.is_empty() {
         let reason: &str = "scatter/gather transfer has no segments";
         error!("{reason} (source_pid={source_pid:?}, source_tid={source_tid:?})");
@@ -208,11 +208,12 @@ pub fn write_bulk(
     // Build scatter/gather transfer header in the caller's stack. The descriptor chain (the `next`
     // links between segments) is wired up by the ipc subsystem that built `segments`.
     let header: GuestSgBulkHeader = GuestSgBulkHeader::new(
-        (source_pid, source_tid),
-        (destination_pid, destination_tid),
+        source,
+        destination,
         kind,
         segment_count,
         data_len,
+        tag,
         segments[0],
     );
     let reason: &str = "scatter/gather header address exceeds u32";
