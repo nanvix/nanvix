@@ -27,13 +27,32 @@ use ::sysapi::{
         S_IWUSR,
     },
 };
-use ::syscall::safe::{
-    FileSystem,
-    FileSystemPath,
-    FileSystemPermissions,
-    RegularFile,
-    RegularFileOpenFlags,
+use ::syscall::{
+    fcntl::{
+        openat,
+        renameat,
+        unlinkat,
+    },
+    safe::{
+        FileSystem,
+        FileSystemPath,
+        FileSystemPermissions,
+        RegularFile,
+        RegularFileOpenFlags,
+    },
+    sys::stat::{
+        fstatat,
+        mkdir,
+    },
+    unistd::{
+        chdir,
+        close,
+        getcwd,
+        read,
+        write,
+    },
 };
+use ::syslog::info;
 
 pub fn test() -> Result<(), Error> {
     test_mkdir_rmdir()?;
@@ -42,6 +61,7 @@ pub fn test() -> Result<(), Error> {
     test_unlink_dir_fd()?;
     test_rename_dir_fd()?;
     test_open_close_long_path()?;
+    test_routed_directory_paths()?;
     Ok(())
 }
 
@@ -202,41 +222,106 @@ fn test_unlink_dir_fd() -> Result<(), Error> {
 
 /// Tests `renameat()` with directory file descriptors over hostfs.
 fn test_rename_dir_fd() -> Result<(), Error> {
-    let dir: &str = "/mnt/test-renameat-dir";
-    let src: &str = "source.txt";
-    let dst: &str = "destination.txt";
-    let mode: c_int = (S_IRUSR | S_IWUSR) as c_int;
+    let dir = "/mnt/test-renameat-dir";
+    let destination_dir = "/mnt/test-renameat-destination";
+    let src = "source.txt";
+    let dst = "destination.txt";
+    let mode = (S_IRUSR | S_IWUSR) as c_int;
 
     // Create directory and file inside it.
-    ::syscall::sys::stat::mkdir(dir, S_IRWXU)?;
-    let full_path: &str = "/mnt/test-renameat-dir/source.txt";
-    let fd: c_int =
-        ::syscall::fcntl::openat(AT_FDCWD, full_path, O_CREAT | O_WRONLY | O_TRUNC, mode as u32)?;
-    ::syscall::unistd::close(fd)?;
+    mkdir(dir, S_IRWXU)?;
+    let full_path = "/mnt/test-renameat-dir/source.txt";
+    let fd = openat(AT_FDCWD, full_path, O_CREAT | O_WRONLY | O_TRUNC, mode as u32)?;
+    close(fd)?;
 
     // Open directory as dirfd.
-    let dirfd: c_int = ::syscall::fcntl::openat(AT_FDCWD, dir, O_RDONLY | O_DIRECTORY, 0)?;
+    let dirfd = openat(AT_FDCWD, dir, O_RDONLY | O_DIRECTORY, 0)?;
 
-    // Rename using dirfd.
-    ::syscall::fcntl::renameat(dirfd, src, dirfd, dst)?;
-    ::syslog::info!("mount-test: [PASS] renameat with dirfd");
+    mkdir(destination_dir, S_IRWXU)?;
+    let destination_fd = openat(AT_FDCWD, destination_dir, O_RDONLY | O_DIRECTORY, 0)?;
+
+    // The two operands must retain independent directory anchors through routing.
+    renameat(dirfd, src, destination_fd, dst)?;
+    info!("mount-test: [PASS] renameat with dirfd");
 
     // Verify old name is gone, new name exists.
-    let result = ::syscall::fcntl::openat(dirfd, src, O_RDONLY, 0);
+    let result = openat(dirfd, src, O_RDONLY, 0);
     if let Ok(fd) = result {
         // Close the unexpectedly-opened fd before panicking to avoid leaking it
         // (and exhausting the FD table for subsequent tests).
-        let _ = ::syscall::unistd::close(fd);
+        let _ = close(fd);
         panic!("old file should not exist after renameat with dirfd");
     }
-    let new_fd: c_int = ::syscall::fcntl::openat(dirfd, dst, O_RDONLY, 0)?;
-    ::syscall::unistd::close(new_fd)?;
+    let new_fd = openat(destination_fd, dst, O_RDONLY, 0)?;
+    close(new_fd)?;
 
     // Clean up.
-    ::syscall::fcntl::unlinkat(dirfd, dst, 0)?;
-    ::syscall::unistd::close(dirfd)?;
-    ::syscall::fcntl::unlinkat(AT_FDCWD, dir, AT_REMOVEDIR)?;
+    unlinkat(destination_fd, dst, 0)?;
+    close(destination_fd)?;
+    close(dirfd)?;
+    unlinkat(AT_FDCWD, destination_dir, AT_REMOVEDIR)?;
+    unlinkat(AT_FDCWD, dir, AT_REMOVEDIR)?;
 
+    Ok(())
+}
+
+/// Exercises guest path bookkeeping after deferred directory open and chdir completion.
+fn test_routed_directory_paths() -> Result<(), Error> {
+    use ::sys::error::ErrorCode;
+    use ::sysapi::sys_stat::stat;
+
+    const DIRECTORY: &str = "/mnt/routed-dir";
+    const NESTED: &str = "/mnt/routed-dir/mnt";
+    const SPELLED: &str = "/mnt//routed-dir/./mnt//";
+    const FILE: &str = "/mnt/routed-dir/mnt/file";
+    const DATA: &[u8] = b"routed-host-file";
+    const INVALID_FD: c_int = -99;
+
+    mkdir(DIRECTORY, S_IRWXU)?;
+    mkdir(NESTED, S_IRWXU)?;
+    let dirfd = openat(INVALID_FD, SPELLED, O_RDONLY | O_DIRECTORY, 0)?;
+    let file = openat(dirfd, "./file", O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR)?;
+    assert_eq!(write(file, DATA)? as usize, DATA.len());
+
+    // Absolute paths ignore both absent and non-directory descriptors.
+    for anchor in [INVALID_FD, file] {
+        let absolute = openat(anchor, FILE, O_RDONLY, 0)?;
+        close(absolute)?;
+        let mut st = stat::default();
+        fstatat(anchor, FILE, &mut st, 0)?;
+        assert_eq!(st.st_size, DATA.len() as i64);
+    }
+    close(file)?;
+    close(dirfd)?;
+
+    // All mount-root spellings send an empty/root payload but must retain a guest path dirfd.
+    for root in ["/mnt", "/mnt/", "/mnt//"] {
+        let rootfd = openat(AT_FDCWD, root, O_RDONLY | O_DIRECTORY, 0)?;
+        let opened = openat(rootfd, "routed-dir/mnt/file", O_RDONLY, 0)?;
+        let mut buf = [0; 32];
+        let count = read(opened, &mut buf)? as usize;
+        assert_eq!(&buf[..count], DATA, "directory completion must retain the guest path prefix");
+        close(opened)?;
+        close(rootfd)?;
+    }
+
+    let previous = getcwd()?;
+    chdir(SPELLED)?;
+    assert_eq!(getcwd()?.as_str(), NESTED);
+    let relative = openat(AT_FDCWD, "./file", O_RDONLY, 0)?;
+    close(relative)?;
+    assert_eq!(
+        chdir("file").err().map(|error| error.code),
+        Some(ErrorCode::InvalidDirectory),
+        "failed hostfs chdir must not commit a regular file as cwd",
+    );
+    assert_eq!(getcwd()?.as_str(), NESTED);
+    chdir(&previous)?;
+
+    unlinkat(AT_FDCWD, FILE, 0)?;
+    unlinkat(AT_FDCWD, NESTED, AT_REMOVEDIR)?;
+    unlinkat(AT_FDCWD, DIRECTORY, AT_REMOVEDIR)?;
+    info!("mount-test: [PASS] typed hostfs directory paths, root, and cwd routing");
     Ok(())
 }
 

@@ -55,6 +55,19 @@ pub fn test() -> Result<(), Error> {
         ::syslog::info!("mount-test: [PASS] umount succeeded");
     }
 
+    // The host file still exists, but disabling the route must make it inaccessible to the guest.
+    {
+        use ::syslog::info;
+
+        let pathname = FileSystemPath::new("/mnt/lifecycle.txt")?;
+        assert!(
+            FileSystem::open_regular_file(&pathname, &RegularFileOpenFlags::read_only(), None)
+                .is_err(),
+            "an unmounted hostfs path must not be forwarded to the host",
+        );
+        info!("mount-test: [PASS] unmounted hostfs path is not forwarded");
+    }
+
     // Test 5: Verify double-umount fails.
     {
         let result = ::syscall::sys::mount::umount("/mnt");

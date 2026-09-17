@@ -15,7 +15,7 @@ use crate::HOSTFS_ERR_INVALID;
 // Constants
 //==================================================================================================
 
-/// Mount point at which the host filesystem is exposed in the VFS namespace.
+/// Guest mount point at which the host filesystem is exposed.
 pub const HOSTFS_MOUNT_PATH: &str = "/mnt";
 
 //==================================================================================================
@@ -30,27 +30,32 @@ pub const HOSTFS_MOUNT_PATH: &str = "/mnt";
 pub struct HostResolvedPath(String);
 
 impl HostResolvedPath {
-    /// Resolves a VFS namespace path beneath the host filesystem mount.
+    /// Converts a guest path beneath `/mnt` to a host-relative path.
+    ///
+    /// This strips exactly one guest mount prefix and rejects null bytes. It does not check whether
+    /// hostfs is enabled, look up an object, normalize components, or resolve symlinks.
+    ///
+    /// For example, `/mnt` and `/mnt/` become `""`, `/mnt/file` becomes `file`, and
+    /// `/mnt/dir/../child//` becomes `dir/../child//`. `/mntfoo/file` is rejected.
     ///
     /// # Parameters
     ///
-    /// - `path`: A path in the VFS namespace.
+    /// - `path`: An absolute guest path at or beneath the hostfs mount point.
     ///
     /// # Returns
     ///
-    /// A host-relative path with exactly one mount boundary removed. An exact mount match produces
-    /// an empty path.
+    /// A host-relative path with the mount prefix removed and all remaining spelling preserved.
     ///
     /// # Errors
     ///
     /// Returns [`HOSTFS_ERR_INVALID`] if `path` is outside the host filesystem mount or contains an
     /// embedded null byte.
-    pub fn from_namespace_path(path: &str) -> Result<Self, i32> {
-        let relative: &str = if path == HOSTFS_MOUNT_PATH {
+    pub fn from_guest_path(path: &str) -> Result<Self, i32> {
+        let relative = if path == HOSTFS_MOUNT_PATH {
             ""
         } else {
             path.strip_prefix(HOSTFS_MOUNT_PATH)
-                .and_then(|suffix: &str| suffix.strip_prefix('/'))
+                .and_then(|suffix| suffix.strip_prefix('/'))
                 .ok_or(HOSTFS_ERR_INVALID)?
         };
 
@@ -118,17 +123,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolves_hostfs_namespace_paths() {
+    fn strips_guest_mount_prefix_without_normalizing() {
         for (path, expected) in [
             ("/mnt", ""),
+            ("/mnt/", ""),
+            ("/mnt//", "/"),
+            ("/mnt/mnt/file", "mnt/file"),
+            ("/mnt/a//./b/", "a//./b/"),
             ("/mnt/file", "file"),
             ("/mnt//file", "/file"),
             ("/mnt/./file", "./file"),
             ("/mnt/directory/../file", "directory/../file"),
             ("/mnt/directory//file", "directory//file"),
         ] {
-            let resolved: HostResolvedPath = HostResolvedPath::from_namespace_path(path)
-                .expect("hostfs namespace path should be accepted");
+            let resolved = HostResolvedPath::from_guest_path(path)
+                .expect("hostfs guest path should be accepted");
             assert_eq!(resolved.as_str(), expected);
             assert_eq!(resolved.into_string(), expected);
         }
@@ -138,7 +147,7 @@ mod tests {
     fn rejects_paths_outside_hostfs_mount() {
         for path in ["", "/", "/mntfoo", "/mntfoo/file"] {
             assert_eq!(
-                HostResolvedPath::from_namespace_path(path),
+                HostResolvedPath::from_guest_path(path),
                 Err(HOSTFS_ERR_INVALID),
                 "path outside hostfs mount should be rejected: {path:?}",
             );
@@ -157,6 +166,30 @@ mod tests {
             HostResolvedPath::from_wire(String::from("file\0name")),
             Err(HOSTFS_ERR_INVALID),
         );
+    }
+
+    #[test]
+    fn typed_paths_keep_existing_wire_encoding() {
+        use crate::{
+            long_msg,
+            LstatRequest,
+            OperationId,
+        };
+
+        let path =
+            HostResolvedPath::from_guest_path("/mnt/a/../b//").expect("valid hostfs guest path");
+        let bytes = path.as_str().as_bytes();
+        let op_id = OperationId::from_le_bytes(7u32.to_le_bytes());
+        // The wire library treats the caller's message kind as an opaque field.
+        const KIND: u16 = 1;
+        let inline = LstatRequest::from_path(bytes).expect("short path fits inline");
+        let expected = LstatRequest::from_path(b"a/../b//").expect("short path fits inline");
+        assert_eq!(inline.serialize(KIND, op_id), expected.serialize(KIND, op_id));
+        let long =
+            long_msg::serialize_long_open_request(op_id, 0, 0, bytes).expect("valid long request");
+        let expected_long = long_msg::serialize_long_open_request(op_id, 0, 0, b"a/../b//")
+            .expect("valid long request");
+        assert_eq!(long, expected_long, "typed paths must not add wire tags or normalize spelling");
     }
 
     #[test]

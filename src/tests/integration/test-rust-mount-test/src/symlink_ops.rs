@@ -21,6 +21,8 @@ use ::syscall::safe::{
 };
 
 pub fn test() -> Result<(), Error> {
+    // Exercise the daemon route directly; the compatibility symlink wrapper may reject locally.
+    test_physical_parent_resolution()?;
     // Create a regular file as the symlink target so readlink/lstat have something
     // to refer to (the target is stored verbatim and not validated at create time).
     let target_path: FileSystemPath = FileSystemPath::new("/mnt/symlink-target.txt")?;
@@ -189,6 +191,136 @@ fn test_symlink_to_nonexistent_target() -> Result<(), Error> {
     ::syslog::info!("mount-test: [PASS] dangling symlink: create, lstat, readlink all OK");
 
     ::syscall::safe::fs::unlink(&link_path)?;
+    Ok(())
+}
+
+/// A symlink ancestor followed by `..` must be interpreted on the host, not collapsed in vfsd.
+fn test_physical_parent_resolution() -> Result<(), Error> {
+    use ::alloc::format;
+    use ::hostfs_api::MAX_INLINE_PATH_LEN;
+    use ::sysapi::{
+        fcntl::{
+            atflags::{
+                AT_FDCWD,
+                AT_REMOVEDIR,
+            },
+            file_access_mode::O_RDONLY,
+            file_creation_flags::O_DIRECTORY,
+        },
+        sys_stat::{
+            file_mode::S_IRWXU,
+            stat,
+        },
+    };
+    use ::syscall::{
+        fcntl::{
+            openat,
+            unlinkat,
+        },
+        safe::{
+            fs::lstat,
+            RegularFileOpenFlags,
+        },
+        sys::stat::{
+            fstatat,
+            mkdir,
+        },
+        unistd::{
+            close,
+            read,
+            readlinkat,
+            symlinkat,
+        },
+    };
+    use ::syslog::{
+        info,
+        warn,
+    };
+
+    const ROOT: &str = "/mnt/route-links";
+    const PHYSICAL: &str = "/mnt/route-links/p";
+    const CHILD: &str = "/mnt/route-links/p/sub";
+    const TARGET: &str = "./p//sub/../sub";
+    const LINK_TARGET: &str = "../missing//./target";
+    const DATA: &[u8] = b"physical-parent";
+    const PROBE: &str = "/mnt/typed-symlink-probe";
+
+    match symlinkat("missing-target", AT_FDCWD, PROBE) {
+        Ok(()) => unlinkat(AT_FDCWD, PROBE, 0)?,
+        Err(error) if error.code == ErrorCode::OperationNotSupported => {
+            warn!("mount-test: [SKIP] host symlinkat is not supported");
+            return Ok(());
+        },
+        Err(error) => return Err(error),
+    }
+
+    for directory in [ROOT, PHYSICAL, CHILD] {
+        mkdir(directory, S_IRWXU)?;
+    }
+    let permissions = FileSystemPermissions::empty()
+        .user_read(true)
+        .user_write(true);
+    for (path, content) in [
+        ("/mnt/route-links/marker", b"lexical".as_slice()),
+        ("/mnt/route-links/p/marker", DATA),
+    ] {
+        let path = FileSystemPath::new(path)?;
+        let mut file = FileSystem::create_regular_file(&path, Some(permissions))?;
+        file.write(content)?;
+    }
+    symlinkat(LINK_TARGET, AT_FDCWD, "/mnt/route-links/p/link")?;
+    symlinkat("lexical-target", AT_FDCWD, "/mnt/route-links/link")?;
+
+    for (name, multipart) in [
+        ("a", false),
+        ("long-directory-alias-for-multipart-routing", true),
+    ] {
+        let alias = format!("{ROOT}/{name}");
+        symlinkat(TARGET, AT_FDCWD, &alias)?;
+        let mut target_buf = [0; 64];
+        let count = readlinkat(AT_FDCWD, &alias, &mut target_buf)? as usize;
+        assert_eq!(&target_buf[..count], TARGET.as_bytes(), "symlink targets must stay verbatim");
+
+        let path = FileSystemPath::new(&format!("{alias}/../marker"))?;
+        let wire_len = path.as_str().len() - "/mnt/".len();
+        assert_eq!(wire_len > MAX_INLINE_PATH_LEN, multipart);
+        let mut st = stat::default();
+        fstatat(AT_FDCWD, path.as_str(), &mut st, 0)?;
+        assert_eq!(st.st_size, DATA.len() as i64, "stat must select the physical parent");
+        let file = FileSystem::open_regular_file(&path, &RegularFileOpenFlags::read_only(), None)?;
+        let mut buf = [0; 32];
+        let count = file.read(&mut buf)?;
+        assert_eq!(&buf[..count], DATA, "symlink/.. must select the physical parent");
+        drop(file);
+
+        let path = FileSystemPath::new(&format!("{alias}/../link"))?;
+        let attr = lstat(&path)?;
+        assert_eq!(attr.file_type(), FileType::SymbolicLink);
+        let count = readlinkat(AT_FDCWD, path.as_str(), &mut target_buf)? as usize;
+        assert_eq!(&target_buf[..count], LINK_TARGET.as_bytes());
+
+        // Open completion must retain the uncollapsed guest path for later dirfd anchoring.
+        let dirfd = openat(AT_FDCWD, &alias, O_RDONLY | O_DIRECTORY, 0)?;
+        let fd = openat(dirfd, "../marker", O_RDONLY, 0)?;
+        let count = read(fd, &mut buf)? as usize;
+        assert_eq!(&buf[..count], DATA, "directory bookkeeping must not normalize host symlinks");
+        close(fd)?;
+        close(dirfd)?;
+        unlinkat(AT_FDCWD, &alias, 0)?;
+    }
+
+    for path in [
+        "/mnt/route-links/p/link",
+        "/mnt/route-links/link",
+        "/mnt/route-links/p/marker",
+        "/mnt/route-links/marker",
+    ] {
+        unlinkat(AT_FDCWD, path, 0)?;
+    }
+    for directory in [CHILD, PHYSICAL, ROOT] {
+        unlinkat(AT_FDCWD, directory, AT_REMOVEDIR)?;
+    }
+    info!("mount-test: [PASS] physical symlink parent resolution, inline and multipart");
     Ok(())
 }
 
