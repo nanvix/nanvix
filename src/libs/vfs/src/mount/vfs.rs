@@ -23,10 +23,7 @@ use super::{
     path_cache::PathCache,
     Mount,
 };
-use crate::path::{
-    AnchoredPath,
-    ResolvedPath,
-};
+use crate::path::AnchoredPath;
 use ::alloc::{
     string::String,
     vec::Vec,
@@ -194,6 +191,7 @@ impl Vfs {
     ///
     /// TODO (#3101): Remove this compatibility projection after filesystem consumers accept typed
     /// resolution results.
+    #[cfg(test)]
     pub(crate) fn resolve_legacy(
         &mut self,
         path: &str,
@@ -202,6 +200,15 @@ impl Vfs {
         let normalized: String = self.normalize_path(path, cwd)?;
         let context: FatResolutionContext = self.resolve_context(normalized)?;
         Ok((context.mount_index, context.fat_path.into_string()))
+    }
+
+    /// Resolves a normalized absolute path for a local filesystem operation.
+    pub(crate) fn resolve_normalized(
+        &mut self,
+        normalized: &str,
+    ) -> Result<(usize, FatResolvedPath), Fat32Error> {
+        let context: FatResolutionContext = self.resolve_context(String::from(normalized))?;
+        Ok((context.mount_index, context.fat_path))
     }
 
     /// Resolves a normalized absolute path through the cache and mount table.
@@ -291,15 +298,6 @@ pub(crate) fn normalize_path(path: &str, cwd: &str) -> Result<String, Fat32Error
     Ok(normalize_anchored(&anchor_path(path, cwd)?))
 }
 
-/// Lexically normalizes a resolved path.
-///
-/// Resolves `.` and `..`, collapses repeated separators, and drops trailing
-/// slashes. Never fails: [`ResolvedPath`] is absolute by construction, and `..`
-/// at the root clamps to the root, as POSIX defines `/..` to be `/`.
-pub(crate) fn normalize_absolute(path: &ResolvedPath) -> String {
-    normalize_anchored(path.as_str())
-}
-
 /// Lexically normalizes an anchored absolute path.
 pub(crate) fn normalize_anchored(path: &str) -> String {
     normalize_components(path)
@@ -308,7 +306,7 @@ pub(crate) fn normalize_anchored(path: &str) -> String {
 /// Lexically normalizes an absolute `path`.
 ///
 /// Shared with [`Vfs::normalize_path`], which anchors relative paths against a
-/// `cwd` before calling in and so cannot hand over a [`ResolvedPath`].
+/// `cwd` before calling in.
 fn normalize_components(path: &str) -> String {
     let mut components: Vec<&str> = Vec::new();
 

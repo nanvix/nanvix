@@ -7,15 +7,19 @@
 // Imports
 //==================================================================================================
 
-use crate::filesystem::{
-    self,
-    DirEntry,
+use crate::{
+    filesystem::{
+        self,
+        DirEntry,
+    },
+    path::AnchoredPath,
 };
 use ::alloc::{
     string::String,
     vec::Vec,
 };
 use ::fat32::Fat32Error;
+use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
 // Structures
@@ -60,7 +64,8 @@ impl DirectoryHandle {
     /// up to `count` entries per invocation.
     pub fn read_entries(&mut self, count: usize) -> Result<Vec<DirEntry>, Fat32Error> {
         if self.entries.is_none() {
-            self.entries = Some(filesystem::read_dir("/", &self.path)?);
+            let path = AnchoredPath::new(AT_FDCWD, self.path.clone())?;
+            self.entries = Some(filesystem::read_dir(path)?);
         }
         let all: &[DirEntry] = self.entries.as_ref().unwrap();
         let remaining: &[DirEntry] = if self.cursor < all.len() {

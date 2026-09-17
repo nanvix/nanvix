@@ -44,9 +44,9 @@ use crate::{
         LineDiscipline,
         TerminalSignal,
     },
-    mount::normalize_absolute,
+    mount::normalize_anchored,
     path::{
-        vfs_resolve_path,
+        AnchoredPath,
         ResolvedPath,
     },
     process::{
@@ -85,7 +85,10 @@ use ::sys::pm::{
 };
 use ::sysapi::{
     fcntl::{
-        atflags::AT_SYMLINK_NOFOLLOW,
+        atflags::{
+            AT_FDCWD,
+            AT_SYMLINK_NOFOLLOW,
+        },
         file_access_mode,
         file_control_request,
         file_creation_flags,
@@ -955,8 +958,12 @@ pub fn vfs_current_generation() -> u64 {
 
 /// Returns `true` if the given path is handled by the VFS.
 pub fn is_vfs_path(path: &str) -> bool {
-    let cwd: String = current_cwd();
-    matches!(devfs::owns(&cwd, path), Ok(true)) || open_adapter::exists(&cwd, path)
+    let path = match AnchoredPath::new(AT_FDCWD, String::from(path)) {
+        Ok(path) => path,
+        Err(_) => return false,
+    };
+    let is_devfs: bool = devfs::owns(path.clone()).unwrap_or(false);
+    is_devfs || open_adapter::exists(path)
 }
 
 /// Resolves a flat descriptor to its backend route and the descriptor that backend expects.
@@ -1048,8 +1055,13 @@ pub fn vfs_poll(fd: c_int, events: c_short) -> Result<c_short, Fat32Error> {
 
 /// Opens a file through the VFS and allocates a system-wide FD.
 pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
-    let cwd: String = current_cwd();
-    if matches!(devfs::resolve(&cwd, path)?, Some(DevicePath::Directory)) {
+    vfs_open_anchored(AnchoredPath::new(AT_FDCWD, String::from(path))?, flags)
+}
+
+/// Opens a path whose descriptor provenance has already been captured.
+fn vfs_open_anchored(path: AnchoredPath, flags: c_int) -> Result<c_int, Fat32Error> {
+    let path = filesystem::VfsResolvedPath::new(path)?;
+    if matches!(path.device(), Some(DevicePath::Directory)) {
         if flags & file_creation_flags::O_CREAT != 0 && flags & file_creation_flags::O_EXCL != 0 {
             return Err(Fat32Error::AlreadyExists);
         }
@@ -1059,19 +1071,19 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
         }
     }
     // O_DIRECTORY and trailing slashes require a directory.
-    if flags & file_creation_flags::O_DIRECTORY != 0 || path.ends_with('/') {
-        let info: filesystem::Stat = filesystem::stat(&cwd, path)?;
+    if flags & file_creation_flags::O_DIRECTORY != 0 || path.has_trailing_separator() {
+        let info = filesystem::stat(&path)?;
         if !info.is_dir() {
             return Err(Fat32Error::NotADirectory);
         }
-        let normalized: String = crate::filesystem::normalize(&cwd, path)?;
-        let handle: VfsFileHandle = VfsFileHandle::Directory(DirectoryHandle::new(normalized));
+        let normalized = String::from(path.normalized()?);
+        let handle = VfsFileHandle::Directory(DirectoryHandle::new(normalized));
         let status_flags: c_int =
             flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
         return alloc_fd_with_status(handle, status_flags);
     }
 
-    if let Some(device) = match devfs::resolve(&cwd, path)? {
+    if let Some(device) = match path.device() {
         Some(DevicePath::Tty) => Some(TerminalDevice::Tty),
         Some(DevicePath::Console) => Some(TerminalDevice::Console),
         _ => None,
@@ -1106,15 +1118,14 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
         return alloc_fd_with_status(handle, status_flags);
     }
 
-    let handle: VfsFileHandle = open_adapter::open(&cwd, path, flags)?;
+    let handle: VfsFileHandle = open_adapter::open(&path, flags)?;
     let status_flags: c_int = flags & (file_access_mode::O_ACCMODE | file_status_flags::O_NONBLOCK);
     alloc_fd_with_status(handle, status_flags)
 }
 
 /// Opens a file relative to a directory file descriptor through the VFS.
 ///
-/// The `path` is resolved against `dirfd` via [`vfs_resolve_path`] and the
-/// resulting path is opened with [`vfs_open`].
+/// The raw descriptor and path are kept together until local VFS resolution consumes them.
 ///
 /// # Errors
 ///
@@ -1122,15 +1133,14 @@ pub fn vfs_open(path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
 /// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
 /// directory. An empty `path` returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 pub fn vfs_openat(dirfd: c_int, path: &str, flags: c_int) -> Result<c_int, Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path)?;
-    vfs_open_resolved(resolved, flags)
+    vfs_open_anchored(AnchoredPath::new(dirfd, String::from(path))?, flags)
 }
 
 /// Opens an already-resolved path and allocates a system-wide FD.
 ///
-/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
+/// Skips path anchoring: the caller already supplied an absolute path.
 pub fn vfs_open_resolved(path: ResolvedPath, flags: c_int) -> Result<c_int, Fat32Error> {
-    vfs_open(path.as_str(), flags)
+    vfs_open_anchored(AnchoredPath::new(AT_FDCWD, path.into_string())?, flags)
 }
 
 /// Reads from a VFS file descriptor.
@@ -1371,8 +1381,9 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
 
     match &mut entry.handle {
         VfsFileHandle::Directory(directory) => {
-            if let Some(stat) = devfs::posix_stat("/", directory.path())? {
-                *buf = stat;
+            let path = AnchoredPath::new(AT_FDCWD, String::from(directory.path()))?;
+            if let Some(device) = devfs::resolve_anchored(path)? {
+                *buf = devfs::posix_stat(device)?;
             } else {
                 let info: filesystem::Stat =
                     filesystem::Stat::new(0, true, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS);
@@ -1568,10 +1579,18 @@ pub fn vfs_dup2(oldfd: c_int, newfd: c_int) -> Result<c_int, Fat32Error> {
 
 /// Gets file status for a path through the VFS.
 pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
-    let cwd: String = current_cwd();
+    vfs_stat_anchored(AnchoredPath::new(AT_FDCWD, String::from(path))?, buf)
+}
 
-    if let Some(stat) = devfs::posix_stat(&cwd, path)? {
-        *buf = stat;
+/// Gets file status for a path whose descriptor provenance has already been captured.
+fn vfs_stat_anchored(
+    path: AnchoredPath,
+    buf: &mut ::sysapi::sys_stat::stat,
+) -> Result<(), Fat32Error> {
+    let path = filesystem::VfsResolvedPath::new(path)?;
+    let info = filesystem::stat(&path)?;
+    if let Some(device) = path.device() {
+        *buf = devfs::posix_stat(device)?;
         return Ok(());
     }
 
@@ -1579,7 +1598,6 @@ pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
     unsafe {
         ::core::ptr::write_bytes(buf as *mut ::sysapi::sys_stat::stat, 0, 1);
     }
-    let info: filesystem::Stat = filesystem::stat(&cwd, path)?;
     buf.update_from_vfs(&info);
     set_root_ownership(buf);
 
@@ -1588,8 +1606,7 @@ pub fn vfs_stat(path: &str, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
 
 /// Gets file status for a path relative to a directory file descriptor through the VFS.
 ///
-/// The `path` is resolved against `dirfd` via [`vfs_resolve_path`] and the
-/// resulting path is queried with [`vfs_stat`].
+/// The raw descriptor and path are kept together until local VFS resolution consumes them.
 ///
 /// # Errors
 ///
@@ -1601,41 +1618,40 @@ pub fn vfs_fstatat(
     path: &str,
     buf: &mut ::sysapi::sys_stat::stat,
 ) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path)?;
-    vfs_stat_resolved(resolved, buf)
+    vfs_stat_anchored(AnchoredPath::new(dirfd, String::from(path))?, buf)
 }
 
 /// Gets file status for an already-resolved path.
-///
-/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
 pub fn vfs_stat_resolved(
     path: ResolvedPath,
     buf: &mut ::sysapi::sys_stat::stat,
 ) -> Result<(), Fat32Error> {
-    vfs_stat(path.as_str(), buf)
+    vfs_stat_anchored(AnchoredPath::new(AT_FDCWD, path.into_string())?, buf)
 }
 
 /// Renames a file or directory through the VFS.
 ///
 /// Both paths must be on the same VFS mount.
 pub fn vfs_rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
-    filesystem::rename(&current_cwd(), old_path, new_path)
+    filesystem::rename(
+        AnchoredPath::new(AT_FDCWD, String::from(old_path))?,
+        AnchoredPath::new(AT_FDCWD, String::from(new_path))?,
+    )
 }
 
 /// Deletes a file through the VFS.
 pub fn vfs_unlink(path: &str) -> Result<(), Fat32Error> {
-    filesystem::unlink(&current_cwd(), path)
+    filesystem::unlink(AnchoredPath::new(AT_FDCWD, String::from(path))?)
 }
 
 /// Creates a directory through the VFS.
 pub fn vfs_mkdir(path: &str) -> Result<(), Fat32Error> {
-    filesystem::mkdir(&current_cwd(), path)
+    filesystem::mkdir(AnchoredPath::new(AT_FDCWD, String::from(path))?)
 }
 
 /// Creates a directory relative to a directory file descriptor through the VFS.
 ///
-/// The `path` is resolved against `dirfd` via [`vfs_resolve_path`] and the
-/// resulting directory is created with [`vfs_mkdir`].
+/// The raw descriptor and path are kept together until local VFS resolution consumes them.
 ///
 /// # Errors
 ///
@@ -1643,26 +1659,23 @@ pub fn vfs_mkdir(path: &str) -> Result<(), Fat32Error> {
 /// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
 /// directory. An empty `path` returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 pub fn vfs_mkdirat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path)?;
-    vfs_mkdir_resolved(resolved)
+    filesystem::mkdir(AnchoredPath::new(dirfd, String::from(path))?)
 }
 
 /// Creates a directory at an already-resolved path.
-///
-/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
 pub fn vfs_mkdir_resolved(path: ResolvedPath) -> Result<(), Fat32Error> {
-    vfs_mkdir(path.as_str())
+    filesystem::mkdir(AnchoredPath::new(AT_FDCWD, path.into_string())?)
 }
 
 /// Removes an empty directory through the VFS.
 pub fn vfs_rmdir(path: &str) -> Result<(), Fat32Error> {
-    filesystem::rmdir(&current_cwd(), path)
+    filesystem::rmdir(AnchoredPath::new(AT_FDCWD, String::from(path))?)
 }
 
 /// Changes the VFS current working directory.
 pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
-    let cwd: String = current_cwd();
-    let normalized: String = filesystem::change_directory(&cwd, path)?;
+    let path = AnchoredPath::new(AT_FDCWD, String::from(path))?;
+    let normalized = filesystem::change_directory(path)?;
     set_current_cwd(normalized);
     Ok(())
 }
@@ -1677,7 +1690,7 @@ pub fn vfs_chdir(path: &str) -> Result<(), Fat32Error> {
 /// absolute-path check to the caller; the path is normalized here so the stored
 /// cwd keeps the same canonical form as every other code path.
 pub fn vfs_set_cwd(path: ResolvedPath) {
-    set_current_cwd(normalize_absolute(&path));
+    set_current_cwd(normalize_anchored(path.as_str()));
 }
 
 /// Changes the current working directory to the directory referenced by a VFS FD.
@@ -1709,7 +1722,8 @@ pub fn vfs_getcwd() -> Result<alloc::string::String, Fat32Error> {
 ///
 /// Returns a vector of directory entries.
 pub fn vfs_readdir(path: &str) -> Result<alloc::vec::Vec<filesystem::DirEntry>, Fat32Error> {
-    filesystem::read_dir(&current_cwd(), path)
+    let path = AnchoredPath::new(AT_FDCWD, String::from(path))?;
+    filesystem::read_dir(path)
 }
 
 /// Truncates a VFS file descriptor to the given length.
@@ -2068,7 +2082,7 @@ pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat3
 /// FAT32 does not support POSIX permission bits, so the mode is accepted
 /// but silently ignored. Returns `Err` if the path does not exist.
 pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), Fat32Error> {
-    filesystem::stat(&current_cwd(), path).map(|_| ())
+    vfs_access_anchored(AnchoredPath::new(AT_FDCWD, String::from(path))?)
 }
 
 /// Checks file accessibility through the VFS.
@@ -2076,13 +2090,18 @@ pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), F
 /// Returns `Ok(())` if the path exists, `Err` otherwise.
 /// FAT32 does not have UNIX permissions, so only existence is checked.
 pub fn vfs_access(path: &str) -> Result<(), Fat32Error> {
-    filesystem::stat(&current_cwd(), path).map(|_| ())
+    vfs_access_anchored(AnchoredPath::new(AT_FDCWD, String::from(path))?)
+}
+
+/// Checks a path whose descriptor provenance has already been captured.
+fn vfs_access_anchored(path: AnchoredPath) -> Result<(), Fat32Error> {
+    let path = filesystem::VfsResolvedPath::new(path)?;
+    filesystem::stat(&path).map(|_| ())
 }
 
 /// Checks the accessibility of a file relative to a directory file descriptor.
 ///
-/// The `path` is resolved against `dirfd` via [`vfs_resolve_path`] and the
-/// resulting path is checked with [`vfs_access`].
+/// The raw descriptor and path are kept together until local VFS resolution consumes them.
 ///
 /// # Errors
 ///
@@ -2090,8 +2109,7 @@ pub fn vfs_access(path: &str) -> Result<(), Fat32Error> {
 /// descriptor, or [`Fat32Error::NotADirectory`] (POSIX `ENOTDIR`) if it is not a
 /// directory. An empty `path` returns [`Fat32Error::NotFound`] (POSIX `ENOENT`).
 pub fn vfs_accessat(dirfd: c_int, path: &str) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path)?;
-    vfs_access(resolved.as_str())
+    vfs_access_anchored(AnchoredPath::new(dirfd, String::from(path))?)
 }
 
 /// File control operation on a VFS file descriptor.
@@ -2185,15 +2203,15 @@ pub fn vfs_getdents(
 
 /// Renames a file or directory relative to directory file descriptors through the VFS.
 ///
-/// Both paths must resolve to the same VFS mount. The `olddirfd` and `newdirfd` parameters must
-/// be `AT_FDCWD`; the VFS resolves all paths from the CWD and does not support dirfd-relative
-/// resolution.
+/// Both paths must resolve to the same VFS mount. Relative paths are resolved from their respective
+/// directory descriptors; `AT_FDCWD` selects the process working directory, while absolute paths
+/// ignore the corresponding descriptor.
 ///
 /// # Parameters
 ///
-/// - `olddirfd`: Directory file descriptor for the old path (must be `AT_FDCWD`).
+/// - `olddirfd`: Directory descriptor used when `oldpath` is relative.
 /// - `oldpath`: Current path of the file or directory.
-/// - `newdirfd`: Directory file descriptor for the new path (must be `AT_FDCWD`).
+/// - `newdirfd`: Directory descriptor used when `newpath` is relative.
 /// - `newpath`: New path for the file or directory.
 ///
 /// # Errors
@@ -2209,19 +2227,21 @@ pub fn vfs_renameat(
     newdirfd: c_int,
     newpath: &str,
 ) -> Result<(), Fat32Error> {
-    let old_resolved = vfs_resolve_path(olddirfd, oldpath)?;
-    let new_resolved = vfs_resolve_path(newdirfd, newpath)?;
-    vfs_rename_resolved(old_resolved, new_resolved)
+    filesystem::rename(
+        AnchoredPath::new(olddirfd, String::from(oldpath))?,
+        AnchoredPath::new(newdirfd, String::from(newpath))?,
+    )
 }
 
 /// Renames between two already-resolved paths.
-///
-/// Skips the [`vfs_resolve_path`] step: the caller already anchored both paths.
 pub fn vfs_rename_resolved(
     old_path: ResolvedPath,
     new_path: ResolvedPath,
 ) -> Result<(), Fat32Error> {
-    filesystem::rename(&current_cwd(), old_path.as_str(), new_path.as_str())
+    filesystem::rename(
+        AnchoredPath::new(AT_FDCWD, old_path.into_string())?,
+        AnchoredPath::new(AT_FDCWD, new_path.into_string())?,
+    )
 }
 
 /// Unlinks a file or removes a directory relative to a directory file descriptor through the VFS.
@@ -2231,7 +2251,8 @@ pub fn vfs_rename_resolved(
 ///
 /// # Parameters
 ///
-/// - `dirfd`: Directory file descriptor (must be `AT_FDCWD`).
+/// - `dirfd`: Directory descriptor used when `path` is relative; `AT_FDCWD` selects the process
+///   working directory, while an absolute `path` ignores it.
 /// - `path`: Path of the file or directory to remove.
 /// - `flags`: If `AT_REMOVEDIR` (0x8) is set, remove a directory; otherwise remove a file.
 ///
@@ -2243,19 +2264,21 @@ pub fn vfs_rename_resolved(
 /// Returns a [`Fat32Error`] if the path does not exist, the directory is not empty (when removing
 /// a directory), or the path refers to a directory but `AT_REMOVEDIR` is not set.
 pub fn vfs_unlinkat(dirfd: c_int, path: &str, flags: c_int) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path)?;
-    vfs_unlink_resolved(resolved, flags)
+    vfs_unlink_anchored(AnchoredPath::new(dirfd, String::from(path))?, flags)
 }
 
 /// Unlinks a file or removes a directory at an already-resolved path.
-///
-/// Skips the [`vfs_resolve_path`] step: the caller already anchored the path.
 pub fn vfs_unlink_resolved(path: ResolvedPath, flags: c_int) -> Result<(), Fat32Error> {
+    vfs_unlink_anchored(AnchoredPath::new(AT_FDCWD, path.into_string())?, flags)
+}
+
+/// Applies unlink semantics to a path whose descriptor provenance has already been captured.
+fn vfs_unlink_anchored(path: AnchoredPath, flags: c_int) -> Result<(), Fat32Error> {
     use ::sysapi::fcntl::atflags::AT_REMOVEDIR;
     if flags & AT_REMOVEDIR != 0 {
-        filesystem::rmdir(&current_cwd(), path.as_str())
+        filesystem::rmdir(path)
     } else {
-        filesystem::unlink(&current_cwd(), path.as_str())
+        filesystem::unlink(path)
     }
 }
 
@@ -2325,9 +2348,8 @@ pub fn vfs_fchmodat(
     _mode: ::sysapi::sys_types::mode_t,
     _flag: c_int,
 ) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
+    vfs_access_anchored(AnchoredPath::new(dirfd, String::from(path))?)
 }
 
 /// Changes the owner and group of a file relative to a directory file descriptor through the VFS.
@@ -2354,9 +2376,8 @@ pub fn vfs_fchownat(
     _group: gid_t,
     _flag: c_int,
 ) -> Result<(), Fat32Error> {
-    let resolved = vfs_resolve_path(dirfd, path)?;
     // Verify that the target exists using the VFS-level stat for consistent semantics.
-    filesystem::stat(&current_cwd(), resolved.as_str()).map(|_| ())
+    vfs_access_anchored(AnchoredPath::new(dirfd, String::from(path))?)
 }
 
 /// Sets file access and modification times through the VFS.
@@ -2394,7 +2415,7 @@ pub fn vfs_utimensat(
     if times.iter().all(|ts| ts.tv_nsec == UTIME_OMIT) {
         return Ok(());
     }
-    let resolved = vfs_resolve_path(dirfd, pathname)?;
+    let path = filesystem::VfsResolvedPath::new(AnchoredPath::new(dirfd, String::from(pathname))?)?;
 
     // POSIX permission check (owner / write access / privilege) is not enforced:
     // Nanvix is single-user so it always passes. Tracked for the multiuser model.
@@ -2414,7 +2435,7 @@ pub fn vfs_utimensat(
     let atime: Option<i64> = resolve(&times[0], now)?;
     let mtime: Option<i64> = resolve(&times[1], now)?;
 
-    filesystem::set_times(&current_cwd(), resolved.as_str(), atime, mtime)
+    filesystem::set_times(&path, atime, mtime)
 }
 
 //==================================================================================================
@@ -2481,9 +2502,13 @@ mod tests {
             ),
             Err(Fat32Error::NotFound)
         );
-        assert!(filesystem::file_raw_region("/", "/dev/hidden").is_none());
+        assert!(crate::file::file_raw_region("/dev/hidden").is_none());
+        let dev_path = filesystem::VfsResolvedPath::new(
+            AnchoredPath::new(AT_FDCWD, String::from("/dev")).expect("anchor /dev"),
+        )
+        .expect("resolve /dev");
         assert_eq!(
-            filesystem::set_times("/", "/dev", Some(FAT_EPOCH_SECS), None),
+            filesystem::set_times(&dev_path, Some(FAT_EPOCH_SECS), None),
             Err(Fat32Error::PermissionDenied)
         );
         let times: [timespec; 2] = [
@@ -2663,6 +2688,156 @@ mod tests {
             vfs_open("/dev/null/", file_access_mode::O_RDONLY),
             Err(Fat32Error::NotADirectory)
         );
+        forget_processes(&[pid]);
+    }
+
+    /// Tests typed FAT consumers through open, stat, cache, and mount-lifetime behavior.
+    #[test]
+    fn typed_fat_consumers_preserve_open_semantics() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x740a);
+        set_current_process(pid);
+        let mount: &str = "/typed-consumers";
+        let cache_flush_mount: &str = "/typed-cache-flush";
+        crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+        vfs_mkdir("/typed-consumers/dir").expect("create directory");
+        let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+        let file: c_int = vfs_open("/typed-consumers/file", create_flags).expect("create file");
+        vfs_close(file).expect("close created file");
+
+        let directory_flags: c_int = file_access_mode::O_RDONLY | file_creation_flags::O_DIRECTORY;
+        assert_eq!(
+            vfs_open("/typed-consumers/file/", file_access_mode::O_RDONLY),
+            Err(Fat32Error::NotADirectory)
+        );
+        assert_eq!(
+            vfs_open("/typed-consumers/file", directory_flags),
+            Err(Fat32Error::NotADirectory)
+        );
+        for path in ["/typed-consumers/dir/", "/typed-consumers/dir", mount] {
+            let fd: c_int = vfs_open(path, file_access_mode::O_RDONLY).expect("open directory");
+            vfs_close(fd).expect("close directory");
+        }
+
+        let mut root_stat: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        vfs_stat(mount, &mut root_stat).expect("stat mount root");
+        assert_eq!(root_stat.st_mode & file_type::S_IFMT, file_type::S_IFDIR);
+
+        crate::state::create_mount(cache_flush_mount, crate::state::MIN_FAT_SIZE)
+            .expect("create cache-flush mount");
+        let first = crate::file::stat("/typed-consumers/file").expect("stat cache miss");
+        let after_miss: usize =
+            crate::state::with_vfs(|vfs| Ok(vfs.resolve_cache_len())).expect("read cache size");
+        let second = crate::file::stat("/typed-consumers//./file").expect("stat cache hit");
+        let after_hit: usize =
+            crate::state::with_vfs(|vfs| Ok(vfs.resolve_cache_len())).expect("read cache size");
+        assert_eq!(first, second, "cache hit must preserve metadata");
+        assert_eq!(after_miss, 1, "first resolution should populate one cache entry");
+        assert_eq!(after_hit, after_miss, "equivalent path should reuse the cache entry");
+
+        let file: c_int = vfs_open("/typed-consumers/file", file_access_mode::O_RDWR)
+            .expect("open tracked FAT file");
+        assert_eq!(crate::state::unmount(mount), Err(Fat32Error::FileLocked));
+        vfs_close(file).expect("close tracked FAT file");
+        crate::state::unmount(mount).expect("unmount closed filesystem");
+        crate::state::unmount(cache_flush_mount).expect("unmount cache-flush filesystem");
+        forget_processes(&[pid]);
+    }
+
+    /// Tests local `*at` resolution and its required error cases.
+    #[test]
+    fn at_paths_resolve_directory_descriptors() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7408);
+        set_current_process(pid);
+        let mount: &str = "/typed-at";
+        crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+        vfs_mkdir("/typed-at/base").expect("create base directory");
+
+        let directory_flags: c_int = file_access_mode::O_RDONLY | file_creation_flags::O_DIRECTORY;
+        let directory: c_int = vfs_open("/typed-at/base", directory_flags).expect("open base");
+        let bad_dirfd: c_int = -99;
+        assert_eq!(vfs_accessat(bad_dirfd, "missing"), Err(Fat32Error::InvalidFd));
+        vfs_mkdirat(bad_dirfd, "/typed-at/absolute").expect("absolute path ignores bad dirfd");
+        assert_eq!(vfs_mkdirat(directory, ""), Err(Fat32Error::NotFound));
+        vfs_mkdirat(directory, "child").expect("create relative directory");
+
+        let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+        let file: c_int =
+            vfs_openat(directory, "file", create_flags).expect("create relative file");
+        assert_eq!(
+            vfs_openat(file, "nested", file_access_mode::O_RDONLY),
+            Err(Fat32Error::NotADirectory)
+        );
+
+        let mut metadata: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+        vfs_fstatat(directory, "file", &mut metadata).expect("stat relative file");
+        assert_eq!(metadata.st_mode & file_type::S_IFMT, file_type::S_IFREG);
+        vfs_accessat(directory, "file").expect("access relative file");
+        vfs_fchmodat(directory, "file", 0, 0).expect("validate chmod target");
+        vfs_fchownat(directory, "file", 0, 0, 0).expect("validate chown target");
+        let times: [timespec; 2] = [
+            timespec {
+                tv_sec: FAT_EPOCH_SECS,
+                tv_nsec: 0,
+            },
+            timespec {
+                tv_sec: FAT_EPOCH_SECS,
+                tv_nsec: UTIME_OMIT,
+            },
+        ];
+        vfs_utimensat(directory, "file", &times, 0).expect("set relative timestamps");
+
+        vfs_close(file).expect("close relative file");
+        vfs_unlinkat(directory, "file", 0).expect("unlink relative file");
+        vfs_unlinkat(directory, "child", ::sysapi::fcntl::atflags::AT_REMOVEDIR)
+            .expect("remove relative directory");
+        vfs_rmdir("/typed-at/absolute").expect("remove absolute directory");
+        vfs_close(directory).expect("close base directory");
+        vfs_rmdir("/typed-at/base").expect("remove base directory");
+        crate::state::unmount(mount).expect("unmount filesystem");
+        forget_processes(&[pid]);
+    }
+
+    /// Tests that `renameat()` resolves its two directory descriptors independently.
+    #[test]
+    fn renameat_uses_separate_anchors() {
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x7409);
+        set_current_process(pid);
+        let mount: &str = "/typed-renameat";
+        crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+        vfs_mkdir("/typed-renameat/source").expect("create source directory");
+        vfs_mkdir("/typed-renameat/destination").expect("create destination directory");
+
+        let directory_flags: c_int = file_access_mode::O_RDONLY | file_creation_flags::O_DIRECTORY;
+        let source: c_int =
+            vfs_open("/typed-renameat/source", directory_flags).expect("open source directory");
+        let destination: c_int = vfs_open("/typed-renameat/destination", directory_flags)
+            .expect("open destination directory");
+        let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+        let file: c_int = vfs_openat(source, "file", create_flags).expect("create source file");
+        vfs_close(file).expect("close source file");
+
+        vfs_renameat(source, "file", destination, "renamed").expect("rename between anchors");
+        assert_eq!(vfs_accessat(source, "file"), Err(Fat32Error::NotFound));
+        vfs_accessat(destination, "renamed").expect("renamed file exists");
+
+        vfs_unlinkat(destination, "renamed", 0).expect("unlink renamed file");
+        vfs_close(source).expect("close source directory");
+        vfs_close(destination).expect("close destination directory");
+        vfs_rmdir("/typed-renameat/source").expect("remove source directory");
+        vfs_rmdir("/typed-renameat/destination").expect("remove destination directory");
+        crate::state::unmount(mount).expect("unmount filesystem");
         forget_processes(&[pid]);
     }
 

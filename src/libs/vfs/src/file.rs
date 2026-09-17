@@ -25,6 +25,7 @@ pub use crate::{
 
 use crate::{
     filesystem,
+    path::AnchoredPath,
     process,
     state,
 };
@@ -33,6 +34,7 @@ use ::alloc::{
     vec::Vec,
 };
 use ::fat32::Fat32Error;
+use ::sysapi::fcntl::atflags::AT_FDCWD;
 
 //==================================================================================================
 // Public API Functions
@@ -45,13 +47,14 @@ use ::fat32::Fat32Error;
 /// Returns an error when the filesystem is not initialized, the path is invalid, or the file does
 /// not exist.
 pub fn open(path: &str) -> Result<File, Fat32Error> {
-    filesystem::open(&process::current_cwd(), path)
+    filesystem::open_anchored(anchored(path)?)
 }
 
 /// Returns a pointer and size for zero-copy access to a file's data.
 #[must_use]
 pub fn file_raw_region(path: &str) -> Option<(*const u8, usize)> {
-    filesystem::file_raw_region(&process::current_cwd(), path)
+    let path = filesystem::VfsResolvedPath::new(anchored(path).ok()?).ok()?;
+    filesystem::file_raw_region(&path)
 }
 
 /// Gets file metadata without opening the file.
@@ -60,7 +63,8 @@ pub fn file_raw_region(path: &str) -> Option<(*const u8, usize)> {
 ///
 /// Returns an error when the filesystem is not initialized or the path does not exist.
 pub fn stat(path: &str) -> Result<Stat, Fat32Error> {
-    filesystem::stat(&process::current_cwd(), path)
+    let path = filesystem::VfsResolvedPath::new(anchored(path)?)?;
+    filesystem::stat(&path)
 }
 
 /// Creates a directory.
@@ -69,7 +73,7 @@ pub fn stat(path: &str) -> Result<Stat, Fat32Error> {
 ///
 /// Returns an error when the path is invalid, already exists, or belongs to a read-only mount.
 pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
-    filesystem::mkdir(&process::current_cwd(), path)
+    filesystem::mkdir(anchored(path)?)
 }
 
 /// Removes an empty directory.
@@ -78,7 +82,7 @@ pub fn mkdir(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Returns an error when the path is invalid, nonempty, or belongs to a read-only mount.
 pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
-    filesystem::rmdir(&process::current_cwd(), path)
+    filesystem::rmdir(anchored(path)?)
 }
 
 /// Deletes a file.
@@ -87,7 +91,7 @@ pub fn rmdir(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Returns an error when the path is invalid, names a directory, or belongs to a read-only mount.
 pub fn unlink(path: &str) -> Result<(), Fat32Error> {
-    filesystem::unlink(&process::current_cwd(), path)
+    filesystem::unlink(anchored(path)?)
 }
 
 /// Lists the contents of a directory.
@@ -96,7 +100,7 @@ pub fn unlink(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Returns an error when the filesystem is not initialized or the path is not a directory.
 pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
-    filesystem::read_dir(&process::current_cwd(), path)
+    filesystem::read_dir(anchored(path)?)
 }
 
 /// Renames a file or directory.
@@ -106,7 +110,7 @@ pub fn read_dir(path: &str) -> Result<Vec<DirEntry>, Fat32Error> {
 /// Returns an error when either path is invalid, the paths resolve to different mounts, or the
 /// mount is read-only.
 pub fn rename(old_path: &str, new_path: &str) -> Result<(), Fat32Error> {
-    filesystem::rename(&process::current_cwd(), old_path, new_path)
+    filesystem::rename(anchored(old_path)?, anchored(new_path)?)
 }
 
 /// Gets the current working directory.
@@ -127,8 +131,7 @@ pub fn cwd() -> Result<String, Fat32Error> {
 ///
 /// Returns an error when the filesystem is not initialized or the path cannot be resolved.
 pub fn chdir(path: &str) -> Result<(), Fat32Error> {
-    let cwd: String = process::current_cwd();
-    let normalized: String = filesystem::change_directory(&cwd, path)?;
+    let normalized = filesystem::change_directory(anchored(path)?)?;
     process::set_current_cwd(normalized);
     Ok(())
 }
@@ -139,12 +142,17 @@ pub fn chdir(path: &str) -> Result<(), Fat32Error> {
 ///
 /// Returns an error when the filesystem is not initialized or the path is malformed.
 pub fn normalize(path: &str) -> Result<String, Fat32Error> {
-    filesystem::normalize(&process::current_cwd(), path)
+    filesystem::normalize(anchored(path)?)
 }
 
 //==================================================================================================
 // Internal Functions
 //==================================================================================================
+
+/// Records a path relative to the process working directory.
+fn anchored(path: &str) -> Result<AnchoredPath, Fat32Error> {
+    AnchoredPath::new(AT_FDCWD, String::from(path))
+}
 
 /// Opens a file with specific access and creation options.
 pub(crate) fn open_with_options(
@@ -155,13 +163,6 @@ pub(crate) fn open_with_options(
     create_new: bool,
     truncate: bool,
 ) -> Result<File, Fat32Error> {
-    filesystem::open_with_options(
-        &process::current_cwd(),
-        path,
-        read,
-        write,
-        create,
-        create_new,
-        truncate,
-    )
+    let path = filesystem::VfsResolvedPath::new(anchored(path)?)?;
+    filesystem::open(&path, read, write, create, create_new, truncate)
 }
