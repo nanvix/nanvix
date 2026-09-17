@@ -19,6 +19,7 @@ use ::hostfs_api::{
     *,
 };
 use ::sys::{
+    error::ErrorCode,
     ipc::{
         Message,
         MessageReceiver,
@@ -31,6 +32,7 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
+use ::sysapi::time::timespec;
 use ::syscall::{
     message::SystemCallMessagePart,
     SystemCallMessageKind,
@@ -49,7 +51,7 @@ use core::sync::atomic::{
 //==================================================================================================
 
 /// Mount path prefix that routes to the host filesystem.
-pub const HOSTFS_MOUNT_PATH: &str = "/mnt";
+pub use ::hostfs_api::HOSTFS_MOUNT_PATH;
 
 //==================================================================================================
 // State
@@ -78,29 +80,61 @@ pub fn is_enabled() -> bool {
 // Path Routing
 //==================================================================================================
 
-/// Returns `true` if the given path should be routed to hostfsd.
-///
-/// The exact path `/mnt` matches intentionally — it maps to the root of the mounted
-/// directory via [`strip_mount_prefix`], allowing operations such as `open("/mnt")`
-/// or `getdents("/mnt")` to enumerate the mount root.
-pub fn is_hostfs_path(path: &str) -> bool {
-    if !is_enabled() {
-        return false;
-    }
-    path == HOSTFS_MOUNT_PATH || path.starts_with("/mnt/")
+/// Backend selected for an anchored guest path, without inspecting object metadata.
+#[derive(Debug)]
+pub(crate) enum RoutedPath {
+    /// A guest path for the local VFS to normalize and dispatch.
+    Local(ResolvedPath),
+    /// A hostfs path whose spelling must be preserved until host-side resolution.
+    Host(RoutedHostPath),
 }
 
-/// Strips the hostfs mount prefix from a path, returning the relative path.
+/// A routed hostfs path and the guest spelling needed by deferred open/chdir completion.
 ///
-/// E.g., `/mnt/foo/bar.txt` → `foo/bar.txt`
-/// `/mnt` → `` (empty string, meaning root of mounted dir)
-pub fn strip_mount_prefix(path: &str) -> &str {
-    if path == HOSTFS_MOUNT_PATH {
-        ""
-    } else if let Some(rest) = path.strip_prefix("/mnt/") {
-        rest
+/// The guest form must be retained separately: both `/mnt` and `/mnt/` have an empty
+/// host-relative payload, but the original guest spelling belongs in descriptor/cwd state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RoutedHostPath {
+    guest: ResolvedPath,
+    relative: HostResolvedPath,
+}
+
+impl RoutedHostPath {
+    /// Checks the hostfs mount boundary without normalizing components or inspecting the host.
+    pub(crate) fn new(guest: ResolvedPath) -> Result<Self, i32> {
+        let relative = HostResolvedPath::from_guest_path(guest.as_str())?;
+        Ok(Self { guest, relative })
+    }
+
+    /// Returns the checked host-relative payload to serialize with the existing wire format.
+    pub(crate) fn host_path(&self) -> &HostResolvedPath {
+        &self.relative
+    }
+
+    /// Returns the guest spelling retained for descriptor/cwd bookkeeping.
+    pub(crate) fn into_guest_path(self) -> ResolvedPath {
+        self.guest
+    }
+}
+
+/// Routes a joined guest path without FAT normalization or a mount-table lookup.
+///
+/// With hostfs enabled, `/mnt` and `/mnt/` select its root (empty host-relative path),
+/// `/mnt/file` sends `file`, and `/mnt/a/../b` sends `a/../b` for the host to interpret.
+/// `/mntfoo/file` stays local: the prefix must end at a separator, not inside a component.
+/// With hostfs disabled, every path stays local.
+pub(crate) fn route_path(path: ResolvedPath) -> Result<RoutedPath, ErrorCode> {
+    let guest = path.as_str();
+    let is_host = guest == HOSTFS_MOUNT_PATH
+        || guest
+            .strip_prefix(HOSTFS_MOUNT_PATH)
+            .is_some_and(|suffix| suffix.starts_with('/'));
+    if is_enabled() && is_host {
+        RoutedHostPath::new(path)
+            .map(RoutedPath::Host)
+            .map_err(|_| ErrorCode::InvalidArgument)
     } else {
-        path
+        Ok(RoutedPath::Local(path))
     }
 }
 
@@ -142,16 +176,16 @@ fn send_long_request(
     data: &[u8],
     header: SystemCallMessageKind,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+) -> Result<(), ErrorCode> {
     if !long_msg::is_valid_long_message_size(data.len()) {
-        return Err(::sys::error::ErrorCode::InvalidArgument);
+        return Err(ErrorCode::InvalidArgument);
     }
 
     let num_parts: u16 = data
         .len()
         .div_ceil(SystemCallMessagePart::PAYLOAD_SIZE)
         .try_into()
-        .map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+        .map_err(|_| ErrorCode::InvalidArgument)?;
 
     for (part_number, chunk) in data.chunks(SystemCallMessagePart::PAYLOAD_SIZE).enumerate() {
         let mut payload = [0u8; SystemCallMessagePart::PAYLOAD_SIZE];
@@ -167,7 +201,7 @@ fn send_long_request(
             ProcessIdentifier::KERNEL,
             MessageType::Ikc,
         )
-        .map_err(|_| ::sys::error::ErrorCode::InvalidArgument)?;
+        .map_err(|_| ErrorCode::InvalidArgument)?;
         RequestIdentifier::from_raw(u32::from_le_bytes(op_id.to_le_bytes())).write_to(&mut message);
 
         if let Err(e) = ::sys::kcall::ipc::__kcall_send(&message) {
@@ -177,7 +211,7 @@ fn send_long_request(
                 num_parts,
                 e
             );
-            return Err(::sys::error::ErrorCode::IoErr);
+            return Err(ErrorCode::IoErr);
         }
     }
 
@@ -190,31 +224,27 @@ fn send_long_request(
 
 /// Sends an OPEN request to hostfsd as a multi-part IKC message.
 pub fn send_open_request(
-    path: &ResolvedPath,
+    path: &HostResolvedPath,
     flags: i32,
     mode: u32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let buf: alloc::vec::Vec<u8> =
-        long_msg::serialize_long_open_request(op_id, flags, mode, relative.as_bytes())
-            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let buf = long_msg::serialize_long_open_request(op_id, flags, mode, relative.as_bytes())
+        .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsOpenRequestPart, op_id)
 }
 
 /// Sends a CLOSE request to hostfsd.
-pub fn send_close_request(
-    remote_fd: i32,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+pub fn send_close_request(remote_fd: i32, op_id: OperationId) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = CloseRequest { fd: remote_fd }
         .serialize(SystemCallMessageKind::HostFsCloseRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
@@ -223,7 +253,7 @@ pub fn send_read_request(
     remote_fd: i32,
     count: usize,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+) -> Result<(), ErrorCode> {
     let count: u32 = count.min(MAX_INLINE_READ_DATA) as u32;
     let payload: [u8; Message::PAYLOAD_SIZE] = ReadRequest {
         fd: remote_fd,
@@ -235,16 +265,12 @@ pub fn send_read_request(
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
 /// Sends a WRITE request to hostfsd.
-pub fn send_write_request(
-    remote_fd: i32,
-    buf: &[u8],
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+pub fn send_write_request(remote_fd: i32, buf: &[u8], op_id: OperationId) -> Result<(), ErrorCode> {
     // Offset -1 means use current file position.
     let payload: [u8; Message::PAYLOAD_SIZE] = WriteRequest::from_slice(remote_fd, -1, buf)
         .serialize(SystemCallMessageKind::HostFsWriteRequest as u16, op_id);
@@ -252,7 +278,7 @@ pub fn send_write_request(
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
@@ -262,7 +288,7 @@ pub fn send_lseek_request(
     offset: i64,
     whence: i32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = LseekRequest {
         fd: remote_fd,
         offset,
@@ -273,7 +299,7 @@ pub fn send_lseek_request(
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
@@ -282,7 +308,7 @@ pub fn send_truncate_request(
     remote_fd: i32,
     length: i64,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = TruncateRequest {
         fd: remote_fd,
         length,
@@ -292,7 +318,7 @@ pub fn send_truncate_request(
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
@@ -302,7 +328,7 @@ pub fn send_chown_request(
     owner: u32,
     group: u32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = ChownRequest {
         fd: remote_fd,
         owner,
@@ -313,31 +339,28 @@ pub fn send_chown_request(
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
 /// Sends a FLUSH (fsync) request to hostfsd.
-pub fn send_flush_request(
-    remote_fd: i32,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+pub fn send_flush_request(remote_fd: i32, op_id: OperationId) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = FlushRequest { fd: remote_fd }
         .serialize(SystemCallMessageKind::HostFsFlushRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
 /// Sends a descriptor-based timestamp update request to hostfsd.
 pub fn send_update_times_request(
     remote_fd: i32,
-    times: &[::sysapi::time::timespec; 2],
+    times: &[timespec; 2],
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = UpdateTimesRequest {
         fd: remote_fd,
         times: *times,
@@ -347,108 +370,91 @@ pub fn send_update_times_request(
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
 /// Sends a MKDIR request to hostfsd as a multi-part IKC message.
 pub fn send_mkdir_request(
-    path: &ResolvedPath,
+    path: &HostResolvedPath,
     mode: u32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let buf: alloc::vec::Vec<u8> =
-        long_msg::serialize_long_mkdir_request(op_id, mode, relative.as_bytes())
-            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let buf = long_msg::serialize_long_mkdir_request(op_id, mode, relative.as_bytes())
+        .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsMkdirRequestPart, op_id)
 }
 
 /// Sends an RMDIR request to hostfsd as a multi-part IKC message.
-pub fn send_rmdir_request(
-    path: &ResolvedPath,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let buf: alloc::vec::Vec<u8> =
-        long_msg::serialize_long_rmdir_request(op_id, relative.as_bytes())
-            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+pub fn send_rmdir_request(path: &HostResolvedPath, op_id: OperationId) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let buf = long_msg::serialize_long_rmdir_request(op_id, relative.as_bytes())
+        .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsRmdirRequestPart, op_id)
 }
 
 /// Sends an UNLINK request to hostfsd as a multi-part IKC message.
-pub fn send_unlink_request(
-    path: &ResolvedPath,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let buf: alloc::vec::Vec<u8> =
-        long_msg::serialize_long_unlink_request(op_id, relative.as_bytes())
-            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+pub fn send_unlink_request(path: &HostResolvedPath, op_id: OperationId) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let buf = long_msg::serialize_long_unlink_request(op_id, relative.as_bytes())
+        .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsUnlinkRequestPart, op_id)
 }
 
 /// Sends an FCHMOD request to hostfsd.
-pub fn send_fchmod_request(
-    remote_fd: i32,
-    mode: u32,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+pub fn send_fchmod_request(remote_fd: i32, mode: u32, op_id: OperationId) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = ChmodRequest::new(remote_fd, mode)
         .serialize(SystemCallMessageKind::HostFsFchmodRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
 /// Sends a CHMOD request to hostfsd.
 pub fn send_chmod_request(
-    path: &ResolvedPath,
+    path: &HostResolvedPath,
     mode: u32,
     flags: i32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let buf: alloc::vec::Vec<u8> =
+) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let buf =
         long_msg::serialize_long_mode_path_request(op_id, mode as i32, flags, relative.as_bytes())
-            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+            .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsChmodRequestPart, op_id)
 }
 
 /// Sends an ACCESS request to hostfsd.
 pub fn send_access_request(
-    path: &ResolvedPath,
+    path: &HostResolvedPath,
     mode: i32,
     flags: i32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let buf: alloc::vec::Vec<u8> =
-        long_msg::serialize_long_mode_path_request(op_id, mode, flags, relative.as_bytes())
-            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let buf = long_msg::serialize_long_mode_path_request(op_id, mode, flags, relative.as_bytes())
+        .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsAccessRequestPart, op_id)
 }
 
 /// Sends a STAT request to hostfsd (by remote FD).
-pub fn send_stat_request(
-    remote_fd: i32,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+pub fn send_stat_request(remote_fd: i32, op_id: OperationId) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = StatRequest { fd: remote_fd }
         .serialize(SystemCallMessageKind::HostFsStatRequest as u16, op_id);
 
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
@@ -462,7 +468,7 @@ pub fn send_readdir_request(
     remote_fd: i32,
     offset: u32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+) -> Result<(), ErrorCode> {
     let payload: [u8; Message::PAYLOAD_SIZE] = ::hostfs_api::ReadDirRequest {
         fd: remote_fd,
         _reserved: 0,
@@ -473,44 +479,44 @@ pub fn send_readdir_request(
     if send_request(&payload) {
         Ok(())
     } else {
-        Err(::sys::error::ErrorCode::IoErr)
+        Err(ErrorCode::IoErr)
     }
 }
 
 /// Sends a RENAME request to hostfsd as a multi-part IKC message.
 pub fn send_rename_request(
-    old_path: &ResolvedPath,
-    new_path: &ResolvedPath,
+    old_path: &HostResolvedPath,
+    new_path: &HostResolvedPath,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let old_relative: &str = strip_mount_prefix(old_path.as_str());
-    let new_relative: &str = strip_mount_prefix(new_path.as_str());
-    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_rename_request(
+) -> Result<(), ErrorCode> {
+    let old_relative = old_path.as_str();
+    let new_relative = new_path.as_str();
+    let buf = long_msg::serialize_long_rename_request(
         op_id,
         old_relative.as_bytes(),
         new_relative.as_bytes(),
     )
-    .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+    .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsRenameRequestPart, op_id)
 }
 
 /// Sends a LINK request to hostfsd as a multi-part IKC message.
 pub fn send_link_request(
-    old_path: &ResolvedPath,
-    new_path: &ResolvedPath,
+    old_path: &HostResolvedPath,
+    new_path: &HostResolvedPath,
     flags: i32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let old_relative: &str = strip_mount_prefix(old_path.as_str());
-    let new_relative: &str = strip_mount_prefix(new_path.as_str());
-    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_link_request(
+) -> Result<(), ErrorCode> {
+    let old_relative = old_path.as_str();
+    let new_relative = new_path.as_str();
+    let buf = long_msg::serialize_long_link_request(
         op_id,
         flags,
         old_relative.as_bytes(),
         new_relative.as_bytes(),
     )
-    .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+    .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsLinkRequestPart, op_id)
 }
@@ -518,7 +524,7 @@ pub fn send_link_request(
 /// Sends a SYMLINK request to hostfsd as a multi-part IKC message.
 ///
 /// `target` is the symlink target string (stored verbatim by the host) and `linkpath`
-/// is the absolute guest path (under `/mnt`) where the symlink is to be created.
+/// is the host-relative path where the symlink is to be created.
 ///
 /// Unlike [`send_readlink_request`] and [`send_lstat_request`], this always uses the
 /// multi-part wire format even for short payloads. Symlink has no inline single-message
@@ -527,17 +533,17 @@ pub fn send_link_request(
 /// acceptable since symlink creation is rare relative to readlink/lstat.
 pub fn send_symlink_request(
     target: &str,
-    linkpath: &ResolvedPath,
+    linkpath: &HostResolvedPath,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
+) -> Result<(), ErrorCode> {
     // The target is opaque to vfsd and stored verbatim by the host; do not strip /mnt.
-    let link_relative: &str = strip_mount_prefix(linkpath.as_str());
-    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_symlink_request(
+    let link_relative = linkpath.as_str();
+    let buf = long_msg::serialize_long_symlink_request(
         op_id,
         target.as_bytes(),
         link_relative.as_bytes(),
     )
-    .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+    .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsSymlinkRequestPart, op_id)
 }
@@ -546,43 +552,39 @@ pub fn send_symlink_request(
 ///
 /// Uses the single-message inline form when the path fits within
 /// [`MAX_INLINE_PATH_LEN`], and falls back to a multi-part request otherwise.
-pub fn send_readlink_request(
-    path: &ResolvedPath,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let path_bytes: &[u8] = relative.as_bytes();
+pub fn send_readlink_request(path: &HostResolvedPath, op_id: OperationId) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let path_bytes = relative.as_bytes();
 
     // Inline fast path: avoids the multi-part assembler when the path fits.
     if let Some(req) = ReadlinkRequest::from_path(path_bytes) {
-        let payload: [u8; Message::PAYLOAD_SIZE] =
-            req.serialize(SystemCallMessageKind::HostFsReadlinkRequest as u16, op_id);
+        let payload = req.serialize(SystemCallMessageKind::HostFsReadlinkRequest as u16, op_id);
         return if send_request(&payload) {
             Ok(())
         } else {
-            Err(::sys::error::ErrorCode::IoErr)
+            Err(ErrorCode::IoErr)
         };
     }
 
     // Serialize the multi-part body via hostfs-api.
-    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_readlink_request(op_id, path_bytes)
-        .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+    let buf = long_msg::serialize_long_readlink_request(op_id, path_bytes)
+        .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsReadlinkRequestPart, op_id)
 }
 
 /// Sends a path-based CHOWN request to hostfsd.
 pub fn send_chownat_request(
-    path: &ResolvedPath,
+    path: &HostResolvedPath,
     owner: u32,
     group: u32,
     flags: i32,
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let buf: alloc::vec::Vec<u8> =
+) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let buf =
         long_msg::serialize_long_chownat_request(op_id, owner, group, flags, relative.as_bytes())
-            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+            .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsChownAtRequestPart, op_id)
 }
@@ -593,42 +595,38 @@ pub fn send_chownat_request(
 /// stat that does not follow the final symbolic link component. Uses the
 /// single-message inline form when the path fits within [`MAX_INLINE_PATH_LEN`],
 /// and falls back to a multi-part request otherwise.
-pub fn send_lstat_request(
-    path: &ResolvedPath,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let path_bytes: &[u8] = relative.as_bytes();
+pub fn send_lstat_request(path: &HostResolvedPath, op_id: OperationId) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let path_bytes = relative.as_bytes();
 
     // Inline fast path: avoids the multi-part assembler when the path fits.
     if let Some(req) = LstatRequest::from_path(path_bytes) {
-        let payload: [u8; Message::PAYLOAD_SIZE] =
-            req.serialize(SystemCallMessageKind::HostFsLstatRequest as u16, op_id);
+        let payload = req.serialize(SystemCallMessageKind::HostFsLstatRequest as u16, op_id);
         return if send_request(&payload) {
             Ok(())
         } else {
-            Err(::sys::error::ErrorCode::IoErr)
+            Err(ErrorCode::IoErr)
         };
     }
 
     // Serialize the multi-part body via hostfs-api.
-    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_lstat_request(op_id, path_bytes)
-        .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+    let buf = long_msg::serialize_long_lstat_request(op_id, path_bytes)
+        .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsLstatRequestPart, op_id)
 }
 
 /// Sends a path-based timestamp update request to hostfsd.
 pub fn send_update_times_at_request(
-    path: &ResolvedPath,
+    path: &HostResolvedPath,
     flags: i32,
-    times: &[::sysapi::time::timespec; 2],
+    times: &[timespec; 2],
     op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let buf: alloc::vec::Vec<u8> =
+) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let buf =
         long_msg::serialize_long_update_times_request(op_id, flags, times, relative.as_bytes())
-            .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+            .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsUpdateTimesAtRequestPart, op_id)
 }
@@ -641,27 +639,23 @@ pub fn send_update_times_at_request(
 /// distinguished only by the `HostFsPathStat*` headers. Uses the single-message inline
 /// form when the path fits within [`MAX_INLINE_PATH_LEN`], and falls back to a
 /// multi-part request otherwise.
-pub fn send_pathstat_request(
-    path: &ResolvedPath,
-    op_id: OperationId,
-) -> Result<(), ::sys::error::ErrorCode> {
-    let relative: &str = strip_mount_prefix(path.as_str());
-    let path_bytes: &[u8] = relative.as_bytes();
+pub fn send_pathstat_request(path: &HostResolvedPath, op_id: OperationId) -> Result<(), ErrorCode> {
+    let relative = path.as_str();
+    let path_bytes = relative.as_bytes();
 
     // Inline fast path: avoids the multi-part assembler when the path fits.
     if let Some(req) = LstatRequest::from_path(path_bytes) {
-        let payload: [u8; Message::PAYLOAD_SIZE] =
-            req.serialize(SystemCallMessageKind::HostFsPathStatRequest as u16, op_id);
+        let payload = req.serialize(SystemCallMessageKind::HostFsPathStatRequest as u16, op_id);
         return if send_request(&payload) {
             Ok(())
         } else {
-            Err(::sys::error::ErrorCode::IoErr)
+            Err(ErrorCode::IoErr)
         };
     }
 
     // Serialize the multi-part body via hostfs-api (reuses the lstat wire format).
-    let buf: alloc::vec::Vec<u8> = long_msg::serialize_long_lstat_request(op_id, path_bytes)
-        .ok_or(::sys::error::ErrorCode::InvalidArgument)?;
+    let buf = long_msg::serialize_long_lstat_request(op_id, path_bytes)
+        .ok_or(ErrorCode::InvalidArgument)?;
 
     send_long_request(&buf, SystemCallMessageKind::HostFsPathStatRequestPart, op_id)
 }
