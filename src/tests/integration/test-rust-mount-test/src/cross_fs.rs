@@ -26,6 +26,7 @@ use ::syscall::safe::{
 const RAMFS_SCRATCH: &str = "/tmp";
 
 pub fn test() -> Result<(), Error> {
+    test_mixed_backend_paths()?;
     // Ensure the scratch directory exists (may already exist in full ramfs images).
     // With a minimal initrd the root ramfs is read-only, so mkdir will fail. When that happens,
     // skip the cross-filesystem comparison tests — the mount/file/fs phases already validate
@@ -64,6 +65,40 @@ pub fn test() -> Result<(), Error> {
     test_open_nonexistent_consistency()?;
     test_unlink_nonexistent_consistency()?;
     test_double_create_consistency()?;
+    Ok(())
+}
+
+/// Both operand orders must be classified before dispatch, even without a writable local mount.
+fn test_mixed_backend_paths() -> Result<(), Error> {
+    use ::sysapi::fcntl::atflags::AT_FDCWD;
+    use ::syscall::{
+        fcntl::renameat,
+        unistd::linkat,
+    };
+    use ::syslog::info;
+
+    for (old, new) in [
+        ("/mnt/lifecycle.txt", "/dev/null"),
+        ("/dev/null", "/mnt/mixed-route-destination"),
+        ("/mnt/lifecycle.txt", "/mntfoo/destination"),
+        ("/mntfoo/source", "/mnt/mixed-route-destination"),
+    ] {
+        let rename = renameat(AT_FDCWD, old, AT_FDCWD, new);
+        assert_eq!(
+            rename.err().map(|error| error.code),
+            Some(ErrorCode::OperationNotSupported),
+            "mixed-backend rename must retain its existing error",
+        );
+        let link = linkat(AT_FDCWD, old, AT_FDCWD, new, 0);
+        assert_eq!(
+            link.err().map(|error| error.code),
+            Some(ErrorCode::CrossDeviceLink),
+            "mixed-backend link must fail before either backend is dispatched",
+        );
+    }
+    let source = FileSystemPath::new("/mnt/lifecycle.txt")?;
+    FileSystem::open_regular_file(&source, &RegularFileOpenFlags::read_only(), None)?;
+    info!("mount-test: [PASS] mixed-backend paths and mount-prefix boundary");
     Ok(())
 }
 
