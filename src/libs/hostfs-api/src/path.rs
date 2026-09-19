@@ -121,14 +121,18 @@ mod tests {
     fn resolves_hostfs_namespace_paths() {
         for (path, expected) in [
             ("/mnt", ""),
+            ("/mnt/", ""),
+            ("/mnt//", "/"),
+            ("/mnt/mnt/file", "mnt/file"),
+            ("/mnt/a//./b/", "a//./b/"),
             ("/mnt/file", "file"),
             ("/mnt//file", "/file"),
             ("/mnt/./file", "./file"),
             ("/mnt/directory/../file", "directory/../file"),
             ("/mnt/directory//file", "directory//file"),
         ] {
-            let resolved: HostResolvedPath = HostResolvedPath::from_namespace_path(path)
-                .expect("hostfs namespace path should be accepted");
+            let resolved = HostResolvedPath::from_namespace_path(path)
+                .expect("hostfs guest path should be accepted");
             assert_eq!(resolved.as_str(), expected);
             assert_eq!(resolved.into_string(), expected);
         }
@@ -157,6 +161,30 @@ mod tests {
             HostResolvedPath::from_wire(String::from("file\0name")),
             Err(HOSTFS_ERR_INVALID),
         );
+    }
+
+    #[test]
+    fn typed_paths_keep_existing_wire_encoding() {
+        use crate::{
+            long_msg,
+            LstatRequest,
+            OperationId,
+        };
+
+        let path =
+            HostResolvedPath::from_namespace_path("/mnt/a/../b//").expect("valid hostfs guest path");
+        let bytes = path.as_str().as_bytes();
+        let op_id = OperationId::from_le_bytes(7u32.to_le_bytes());
+        // The wire library treats the caller's message kind as an opaque field.
+        const KIND: u16 = 1;
+        let inline = LstatRequest::from_path(bytes).expect("short path fits inline");
+        let expected = LstatRequest::from_path(b"a/../b//").expect("short path fits inline");
+        assert_eq!(inline.serialize(KIND, op_id), expected.serialize(KIND, op_id));
+        let long =
+            long_msg::serialize_long_open_request(op_id, 0, 0, bytes).expect("valid long request");
+        let expected_long = long_msg::serialize_long_open_request(op_id, 0, 0, b"a/../b//")
+            .expect("valid long request");
+        assert_eq!(long, expected_long, "typed paths must not add wire tags or normalize spelling");
     }
 
     #[test]

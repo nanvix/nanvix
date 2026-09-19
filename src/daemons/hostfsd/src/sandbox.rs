@@ -149,6 +149,7 @@ impl Sandbox {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::hostfs_api::HostResolvedPath;
     use ::std::fs;
     use ::tempfile::TempDir;
 
@@ -158,6 +159,12 @@ mod tests {
         let tmp: TempDir = TempDir::new().expect("create tempdir");
         let sandbox: Sandbox = Sandbox::new(tmp.path().to_path_buf()).expect("create sandbox");
         (tmp, sandbox)
+    }
+
+    /// Builds the same checked host-relative value produced by request decoding.
+    #[allow(clippy::expect_used)]
+    fn wire_path(path: &str) -> HostResolvedPath {
+        HostResolvedPath::from_wire(path.to_owned()).expect("valid test path")
     }
 
     /// Creates a file symlink in a cross-platform way.
@@ -282,6 +289,52 @@ mod tests {
         // Create a sibling outside the sandbox and try to traverse to it.
         let escape: &str = "../escape.txt";
         assert!(sandbox.resolve(escape).is_none());
+    }
+
+    #[test]
+    fn checked_paths_keep_physical_symlink_parent_resolution() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::create_dir_all(sandbox.root().join("real/child")).expect("create physical directories");
+        fs::write(sandbox.root().join("file"), b"lexical").expect("create decoy");
+        fs::write(sandbox.root().join("real/file"), b"physical").expect("create target");
+        symlink_dir(&sandbox.root().join("real/child"), &sandbox.root().join("alias"))
+            .expect("create ancestor symlink");
+        symlink_file(&sandbox.root().join("real/file"), &sandbox.root().join("real/link"))
+            .expect("create final symlink");
+
+        let path = wire_path("alias//.././file");
+        assert_eq!(path.as_str(), "alias//.././file", "construction must preserve spelling");
+        assert_eq!(
+            sandbox
+                .resolve(path.as_str())
+                .expect("follow physical parent"),
+            sandbox
+                .root()
+                .join("real/file")
+                .canonicalize()
+                .expect("canonical target"),
+        );
+        let link = wire_path("alias//../link");
+        assert_eq!(
+            sandbox
+                .resolve_nofollow(link.as_str())
+                .expect("keep final symlink"),
+            sandbox
+                .root()
+                .join("real")
+                .canonicalize()
+                .expect("canonical parent")
+                .join("link"),
+        );
+        assert_eq!(
+            sandbox
+                .resolve(link.as_str())
+                .expect("follow final symlink"),
+            sandbox.resolve(path.as_str()).expect("physical target"),
+        );
     }
 
     #[test]
