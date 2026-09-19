@@ -73,6 +73,13 @@ fn read_chunk(
     chunk: &mut [u8],
     backend: ReadBackend,
 ) -> Result<c_size_t, Error> {
+    let signal_mask: Option<crate::rpc::SignalMaskGuard> =
+        if matches!(backend, ReadBackend::KernelConsole) {
+            None
+        } else {
+            Some(crate::rpc::SignalMaskGuard::block_all()?)
+        };
+
     let (destination, message_type, pull_pid, pull_tid): (
         ProcessIdentifier,
         MessageType,
@@ -97,26 +104,38 @@ fn read_chunk(
 
     // Pull data via data chunk transfer.
     let mut interrupted: Option<Error> = None;
-    let bytes_pulled: Option<usize> =
-        match ::sys::kcall::ipc::__kcall_pull(pull_pid, pull_tid, chunk) {
-            Ok(bytes_pulled) => Some(bytes_pulled),
-            Err(error) if error.code == ErrorCode::Interrupted => {
-                let cancelled: bool = match backend {
-                    ReadBackend::KernelConsole => return Err(error),
-                    ReadBackend::VfsConsole => cancel_console_read(tid, token.identifier())?,
-                    ReadBackend::Vfs => {
-                        cancel_pipe_operation(tid, fd, PipeOperation::Read, token.identifier())?
-                            .is_some()
-                    },
-                };
-                if cancelled {
-                    return Err(error);
-                }
-                interrupted = Some(error);
-                None
-            },
-            Err(error) => return Err(error),
-        };
+    let pull_result: Result<usize, Error> = match signal_mask.as_ref() {
+        Some(signal_mask) => ::sys::kcall::ipc::__kcall_pull_tagged_restoring_signals(
+            pull_pid,
+            pull_tid,
+            chunk,
+            token.identifier(),
+            signal_mask.previous(),
+        ),
+        None => {
+            ::sys::kcall::ipc::__kcall_pull_tagged(pull_pid, pull_tid, chunk, token.identifier())
+        },
+    };
+    drop(signal_mask);
+    let bytes_pulled: Option<usize> = match pull_result {
+        Ok(bytes_pulled) => Some(bytes_pulled),
+        Err(error) if error.code == ErrorCode::Interrupted => {
+            let cancelled: bool = match backend {
+                ReadBackend::KernelConsole => return Err(error),
+                ReadBackend::VfsConsole => cancel_console_read(tid, token.identifier())?,
+                ReadBackend::Vfs => {
+                    cancel_pipe_operation(tid, fd, PipeOperation::Read, token.identifier())?
+                        .is_some()
+                },
+            };
+            if cancelled {
+                return Err(error);
+            }
+            interrupted = Some(error);
+            None
+        },
+        Err(error) => return Err(error),
+    };
 
     // Receive response metadata (count, status). Once the bulk transfer completed, always drain the
     // matching response so a caught signal cannot leave stale metadata in this thread's mailbox.
@@ -340,7 +359,14 @@ fn read_ipc(
             page_chunk_size(buffer[offset..].as_ptr() as usize, buffer.len() - offset);
         let chunk: &mut [u8] = &mut buffer[offset..offset + chunk_size];
 
-        let count: c_size_t = read_chunk(tid, fd, chunk, backend)?;
+        let count: c_size_t = loop {
+            match read_chunk(tid, fd, chunk, backend) {
+                Err(error) if error.code == ErrorCode::OperationAlreadyInProgress => {
+                    ::sys::kcall::sched::__kcall_sched_yield()?;
+                },
+                result => break result?,
+            }
+        };
 
         // EOF or zero-length read.
         if count == 0 {

@@ -1018,6 +1018,57 @@ impl ProcessManager {
     ///
     /// # Description
     ///
+    /// Restores a rendezvous caller's blocked-signal mask after its pending push or pull is
+    /// registered, and reports whether a caught pending signal became deliverable.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the calling process.
+    /// - `tid`: Identifier of the calling thread.
+    /// - `mask`: Blocked-signal mask to restore.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `true` is returned when a caught pending signal is deliverable under the
+    /// restored mask. Otherwise, `false` is returned.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the process or thread does not exist.
+    ///
+    pub fn restore_rendezvous_signal_mask(
+        &mut self,
+        pid: ProcessIdentifier,
+        tid: ThreadIdentifier,
+        mask: SigSet,
+    ) -> Result<bool, Error> {
+        self.find_process(pid)?;
+
+        let installed: SigSet = mask & !UNBLOCKABLE;
+        let thread_pending: SigSet = {
+            let mut thread: ThreadRefMut = self.find_thread_mut(tid)?;
+            let state = thread.thread_state_mut();
+            state.set_blocked(installed);
+            state.pending()
+        };
+
+        let mut process: ProcessRefMut = self.find_process_mut(pid)?;
+        let signals: &mut SignalControl = process.state_mut().signals_mut();
+        let mut deliverable: SigSet = (signals.pending() | thread_pending) & !installed;
+        while deliverable != 0 {
+            let signum: usize = (deliverable.trailing_zeros() as usize) + 1;
+            if let Some(SignalDisposition::Handler(_)) = signals.disposition(signum) {
+                return Ok(true);
+            }
+            deliverable &= deliverable - 1;
+        }
+
+        Ok(false)
+    }
+
+    ///
+    /// # Description
+    ///
     /// Reinstates the blocked-signal mask that [`Self::install_sigsuspend_mask`] saved, undoing a
     /// `sigsuspend()` that is unwinding without delivering a handler.
     ///
@@ -2513,8 +2564,22 @@ impl ProcessManager {
         // Check the running thread's kernel stack guard watermark before switching away.
         self.check_running_stack_guard();
 
+        let exiting_tid: ThreadIdentifier = self.get_running().get_tid();
+        // SAFETY: single-core system with interrupts disabled.
+        unsafe { crate::ipc::bulk_pull::cleanup_thread(exiting_tid) };
+        // SAFETY: single-core system with interrupts disabled.
+        let orphaned_tids: ::alloc::vec::Vec<ThreadIdentifier> =
+            unsafe { crate::ipc::rendezvous::cleanup_thread(exiting_tid) };
+        for tid in orphaned_tids {
+            if !self.interrupt_rendezvous_thread(tid) {
+                warn!(
+                    "do_exit_thread(): failed to interrupt orphaned rendezvous thread \
+                     (tid={tid:?})"
+                );
+            }
+        }
+
         let mut running_process: RunningProcess = self.take_running();
-        let exiting_tid: ThreadIdentifier = running_process.get_tid();
 
         trace!(
             "pid={:?}, tid={:?}, status={:?}",
@@ -3115,16 +3180,95 @@ impl ProcessManager {
     ///
     fn cleanup_rendezvous(&mut self, pid: ProcessIdentifier, caller: &str) {
         // SAFETY: single-core system with interrupts disabled.
+        unsafe { crate::ipc::bulk_pull::cleanup_process(pid) };
+        // SAFETY: single-core system with interrupts disabled.
         let orphaned_tids: ::alloc::vec::Vec<ThreadIdentifier> =
             unsafe { crate::ipc::rendezvous::cleanup_process(pid) };
         for tid in orphaned_tids {
-            if let Err(e) = self.do_wakeup(tid) {
-                warn!(
-                    "{caller}(): failed to wake orphaned rendezvous thread (tid={tid:?}, \
-                     error={e:?})"
-                );
+            if !self.interrupt_rendezvous_thread(tid) {
+                warn!("{caller}(): failed to interrupt orphaned rendezvous thread (tid={tid:?})");
             }
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Interrupts a sleeping rendezvous thread so its kernel call returns an error.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Identifier of the sleeping counterpart thread.
+    ///
+    /// # Returns
+    ///
+    /// `true` is returned if the thread was interrupted. Otherwise, `false` is returned.
+    ///
+    fn interrupt_rendezvous_thread(&mut self, tid: ThreadIdentifier) -> bool {
+        let reason: InterruptReason = InterruptReason::TimedOut;
+
+        if self
+            .running
+            .as_ref()
+            .is_some_and(|running| running.find_thread(tid).is_some())
+        {
+            let running: RunningProcess = self.take_running();
+            return match running.interrupt_thread(tid, reason) {
+                Ok(running) => {
+                    self.running = Some(running);
+                    true
+                },
+                Err(running) => {
+                    self.running = Some(running);
+                    false
+                },
+            };
+        }
+
+        let mut suspended: LinkedList<SleepingProcess> = LinkedList::new();
+        while let Some(process) = self.suspended.pop_front() {
+            if process.find_thread(tid).is_some() {
+                let interrupted: bool = match process.interrupt_thread(tid, reason) {
+                    Ok(process) => {
+                        self.ready.push_back(process.resume());
+                        true
+                    },
+                    Err(process) => {
+                        self.suspended.push_front(process);
+                        false
+                    },
+                };
+                while let Some(process) = suspended.pop_back() {
+                    self.suspended.push_front(process);
+                }
+                return interrupted;
+            }
+            suspended.push_back(process);
+        }
+        self.suspended = suspended;
+
+        let mut ready: LinkedList<RunnableProcess> = LinkedList::new();
+        while let Some(process) = self.ready.pop_front() {
+            if process.find_thread(tid).is_some() {
+                let interrupted: bool = match process.interrupt_thread(tid, reason) {
+                    Ok(process) => {
+                        self.ready.push_front(process);
+                        true
+                    },
+                    Err(process) => {
+                        self.ready.push_front(process);
+                        false
+                    },
+                };
+                while let Some(process) = ready.pop_back() {
+                    self.ready.push_front(process);
+                }
+                return interrupted;
+            }
+            ready.push_back(process);
+        }
+        self.ready = ready;
+        false
     }
 
     fn take_running(&mut self) -> RunningProcess {
@@ -3249,6 +3393,65 @@ impl ProcessManager {
             error!("{reason} (tid={tid:?})");
             Err(Error::new(ErrorCode::NoSuchEntry, reason))
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Ensures that a thread identifier names a live thread that can participate in a rendezvous.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Thread identifier to validate.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned.
+    ///
+    /// # Errors
+    ///
+    /// This function returns [`ErrorCode::NoSuchEntry`] if the thread does not exist or is a
+    /// zombie.
+    ///
+    pub fn ensure_live_thread(&mut self, tid: ThreadIdentifier) -> Result<(), Error> {
+        let mut process: ProcessRefMut = self.find_process_by_tid(tid)?;
+        if matches!(&process, ProcessRefMut::Zombie(_))
+            || matches!(process.find_thread_mut(tid), Some(ThreadRefMut::Zombie(_)) | None)
+        {
+            let reason: &str = "rendezvous destination thread is not live";
+            return Err(Error::new(ErrorCode::NoSuchEntry, reason));
+        }
+        Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether a thread currently sleeps inside a blocking kernel operation.
+    ///
+    /// # Parameters
+    ///
+    /// - `tid`: Thread identifier to inspect.
+    ///
+    /// # Returns
+    ///
+    /// `true` is returned if the thread is sleeping. Otherwise, `false` is returned.
+    ///
+    pub fn is_thread_sleeping(&self, tid: ThreadIdentifier) -> bool {
+        if matches!(self.get_running().find_thread(tid), Some(ThreadRef::Sleeping(_))) {
+            return true;
+        }
+        self.ready
+            .iter()
+            .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
+            || self
+                .suspended
+                .iter()
+                .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
+            || self
+                .interrupted
+                .iter()
+                .any(|process| matches!(process.find_thread(tid), Some(ThreadRef::Sleeping(_))))
     }
 
     ///

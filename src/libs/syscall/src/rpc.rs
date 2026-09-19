@@ -14,8 +14,50 @@ use ::sys::{
         Message,
         RequestToken,
     },
-    pm::ProcessIdentifier,
+    pm::{
+        ProcessIdentifier,
+        SigSet,
+        SIG_SETMASK,
+    },
 };
+
+//==================================================================================================
+// Structures
+//==================================================================================================
+
+/// Keeps signals blocked until a tagged bulk rendezvous is registered in the kernel.
+pub(crate) struct SignalMaskGuard {
+    previous: SigSet,
+}
+
+impl SignalMaskGuard {
+    /// Blocks all catchable signals and retains the previous mask for atomic restoration.
+    pub(crate) fn block_all() -> Result<Self, Error> {
+        let blocked: SigSet = !0;
+        let mut previous: SigSet = 0;
+        unsafe {
+            ::sys::kcall::pm::__kcall_sigprocmask(SIG_SETMASK, &blocked, &mut previous)?;
+        }
+        Ok(Self { previous })
+    }
+
+    /// Returns the signal mask that the kernel should restore after registration.
+    pub(crate) const fn previous(&self) -> SigSet {
+        self.previous
+    }
+}
+
+impl Drop for SignalMaskGuard {
+    fn drop(&mut self) {
+        unsafe {
+            let _result: Result<(), Error> = ::sys::kcall::pm::__kcall_sigprocmask(
+                SIG_SETMASK,
+                &self.previous,
+                core::ptr::null_mut(),
+            );
+        }
+    }
+}
 
 //==================================================================================================
 // Standalone Functions
