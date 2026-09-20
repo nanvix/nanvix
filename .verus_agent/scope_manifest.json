@@ -1,0 +1,45 @@
+{
+  "frozen_branch": "frozen",
+  "top_spec": [
+    "src/kernel/src/mm/virt/manager.spec.rs",
+    "src/kernel/src/mm/virt/vmem.spec.rs"
+  ],
+  "goal": [
+    {
+      "file": "src/kernel/src/mm/virt/manager.rs",
+      "symbol": "VirtMemoryManager::alloc_upages"
+    },
+    {
+      "file": "src/kernel/src/mm/virt/manager.rs",
+      "symbol": "VirtMemoryManager::ctrl_upage"
+    },
+    {
+      "file": "src/kernel/src/mm/virt/manager.rs",
+      "symbol": "VirtMemoryManager::link_user_pages"
+    },
+    {
+      "file": "src/kernel/src/mm/virt/manager.rs",
+      "symbol": "VirtMemoryManager::new_vmem"
+    },
+    {
+      "file": "src/kernel/src/mm/virt/manager.rs",
+      "symbol": "VirtMemoryManager::try_resolve_cow_fault"
+    },
+    {
+      "file": "src/kernel/src/mm/virt/manager.rs",
+      "symbol": "VirtMemoryManager::try_unmap_upage"
+    },
+    {
+      "file": "src/kernel/src/mm/virt/vmem.rs",
+      "symbol": "Vmem::clear_user_space"
+    },
+    {
+      "file": "src/kernel/src/mm/virt/vmem.rs",
+      "symbol": "Vmem::destroy"
+    }
+  ],
+  "src_roots": [
+    "src/kernel/src",
+    "src/libs"
+  ]
+}

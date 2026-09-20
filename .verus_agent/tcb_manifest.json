@@ -1,0 +1,34 @@
+{
+  "sanctioned": [
+    {
+      "kind": "symbol",
+      "value": "PageDirectory::env_interaction_read_page_directory_entry",
+      "marker": "external_body"
+    },
+    {
+      "kind": "symbol",
+      "value": "PageDirectory::env_interaction_write_page_directory_entry",
+      "marker": "external_body"
+    },
+    {
+      "kind": "symbol",
+      "value": "PageTable::env_interaction_read_page_table_entry",
+      "marker": "external_body"
+    },
+    {
+      "kind": "symbol",
+      "value": "PageTable::env_interaction_write_page_table_entry",
+      "marker": "external_body"
+    },
+    {
+      "kind": "symbol",
+      "value": "mint_nanvix_pde_tokens",
+      "marker": "external_body"
+    },
+    {
+      "kind": "symbol",
+      "value": "mint_nanvix_pte_tokens",
+      "marker": "external_body"
+    }
+  ]
+}
