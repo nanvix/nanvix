@@ -26,9 +26,15 @@ use crate::{
         ProcessManager,
     },
 };
-use ::arch::mem::paging::PageTableEntry;
+use ::arch::{
+    cpu::excp::ErrorCode as PageFaultErrorCode,
+    mem::paging::PageTableEntry,
+};
 use ::sys::{
-    error::ErrorCode,
+    error::{
+        Error,
+        ErrorCode,
+    },
     event::{
         Event,
         InterruptEvent,
@@ -574,6 +580,116 @@ fn test_cow_resolution_fast_path_when_sole_owner() -> bool {
     true
 }
 
+///
+/// # Description
+///
+/// Verifies that explicit read-only control prevents CoW fault resolution for both shared
+/// and sole-owner mappings.
+///
+/// Creates real CoW mappings through [`VirtMemoryManager::link_user_pages`]. The parent is
+/// tested while the frame is shared, then cleared so the child becomes the sole owner.
+/// Both must retain their read-only mapping and original frame after a user-write fault is
+/// passed to [`VirtMemoryManager::try_resolve_cow_fault`].
+///
+fn test_readonly_control_revokes_cow() -> bool {
+    const TEST_VADDR_RAW: usize = ::config::memory_layout::USER_MMAP_BASE_RAW;
+    const USER_WRITE_PROTECTION_FAULT: PageFaultErrorCode = PageFaultErrorCode::new(0b111);
+
+    // SAFETY: pm/init() runs after the physical and virtual memory managers are initialized;
+    // access is synchronized because the kernel is single-threaded with interrupts disabled.
+    let pm: &ProcessManager = unsafe { ProcessManager::get() };
+    let mm: &VirtMemoryManager = unsafe { VirtMemoryManager::get() };
+    let mut parent: Vmem = match mm.new_vmem(pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(e) => {
+            error!("new_vmem(parent) failed (error={e:?})");
+            return false;
+        },
+    };
+    let mut child: Vmem = match mm.new_vmem(pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(e) => {
+            error!("new_vmem(child) failed (error={e:?})");
+            return false;
+        },
+    };
+
+    let result: Result<bool, Error> = (|| {
+        let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(TEST_VADDR_RAW)?;
+        // SAFETY: the initialized physical manager is accessed with interrupts disabled.
+        let frame: UserFrame = unsafe { PhysMemoryManager::get_mut() }.alloc_user_frame()?;
+        let original_frame: usize = frame.address().into_frame_number().into_raw_value();
+        parent.map(frame, vaddr, AccessPermission::RDWR)?;
+        parent.memset(vaddr, 0)?;
+
+        // SAFETY: initialization is single-threaded and the shared manager borrow has ended.
+        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+        mm.link_user_pages(&mut parent, &mut child)?;
+
+        let mut passed: bool = true;
+        for (owner, vmem) in [("shared", &mut parent), ("sole", &mut child)] {
+            let before: PageTableEntry = match vmem.try_find_user_pte(vaddr)? {
+                Some(pte) => pte,
+                None => {
+                    error!("CoW mapping missing before revocation (owner={owner})");
+                    return Ok(false);
+                },
+            };
+            if !before.is_present()
+                || !before.flags().is_user()
+                || before.flags().is_writable()
+                || !before.is_cow()
+                || before.frame_number().into_raw_value() != original_frame
+            {
+                error!("invalid CoW mapping before revocation (owner={owner})");
+                return Ok(false);
+            }
+
+            mm.ctrl_upage(vmem, vaddr, AccessPermission::RDONLY)?;
+            let resolved: bool =
+                mm.try_resolve_cow_fault(vmem, TEST_VADDR_RAW, USER_WRITE_PROTECTION_FAULT)?;
+            let after: PageTableEntry = match vmem.try_find_user_pte(vaddr)? {
+                Some(pte) => pte,
+                None => {
+                    error!("mapping missing after revocation (owner={owner})");
+                    return Ok(false);
+                },
+            };
+            if resolved
+                || !after.is_present()
+                || !after.flags().is_user()
+                || after.flags().is_writable()
+                || after.is_cow()
+                || after.frame_number().into_raw_value() != original_frame
+            {
+                error!("write revocation failed (owner={owner}, resolved={resolved})");
+                passed = false;
+            }
+
+            // Releasing the parent mapping leaves the child on the sole-owner path.
+            vmem.clear_user_space()?;
+        }
+        Ok(passed)
+    })();
+
+    let mut passed: bool = match result {
+        Ok(passed) => passed,
+        Err(e) => {
+            error!("CoW revocation test failed (error={e:?})");
+            false
+        },
+    };
+
+    // Always reclaim mappings, including after setup or assertion failures.
+    for vmem in [&mut parent, &mut child] {
+        if let Err(e) = vmem.clear_user_space() {
+            error!("clear_user_space failed during test teardown (error={e:?})");
+            passed = false;
+        }
+    }
+    passed
+}
+
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
@@ -1048,6 +1164,7 @@ pub fn test() -> bool {
     passed &= run_test!(test_kernel_process_has_no_special_resources);
     passed &= run_test!(test_cow_resolution_creates_private_frame);
     passed &= run_test!(test_cow_resolution_fast_path_when_sole_owner);
+    passed &= run_test!(test_readonly_control_revokes_cow);
     passed &= run_test!(test_link_user_pages_errors_on_preexisting_child_overlap);
     passed &= run_test!(test_link_user_pages_rolls_back_on_partial_failure);
     passed &= super::process::test();
