@@ -75,6 +75,11 @@ use ::vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use ::vstd::raw_ptr::PointsTo;
 
+#[cfg(all(target_arch = "x86", verus_keep_ghost))]
+include!("vmem.spec.rs");
+#[cfg(all(target_arch = "x86", verus_keep_ghost))]
+include!("vmem.proof.rs");
+
 //==================================================================================================
 // Constants
 //==================================================================================================
@@ -88,7 +93,8 @@ use ::vstd::raw_ptr::PointsTo;
 //==================================================================================================
 
 /// A type that represents a virtual memory space.
-#[verus_verify(external_body)]
+#[cfg_attr(target_arch = "x86", verus_verify)]
+#[cfg_attr(not(target_arch = "x86"), verus_verify(external_body))]
 pub struct Vmem {
     /// Underlying page directory.
     pgdir: PageDirectory<PageDirectoryStorage>,
@@ -1115,6 +1121,21 @@ impl Vmem {
     /// Errors from this function indicate an internal bug and may leave the address space in a
     /// potentially inconsistent state. Callers typically log the error and rely on the debug
     /// assertion in `Vmem::drop` (debug/test builds) to catch leaked user mappings.
+    #[cfg_attr(target_arch = "x86", verus_spec(result =>
+        with Tracked(world): Tracked<&mut VmProofState>, Ghost(space): Ghost<SpaceId>
+        requires
+            old(world).inv(),
+            old(world).owns(old(self), space),
+            old(world).lifecycle().inactive(space),
+        ensures
+            final(world).inv(),
+            old(world).preserves_bindings(final(world)),
+            final(world).owns(final(self), space),
+            old(world).snapshot().conserves(final(world).snapshot()),
+            spec_clear_user_space(
+                old(world)@, final(world)@,
+                old(world).lifecycle(), final(world).lifecycle(), space, result.is_ok()),
+    ))]
     pub fn clear_user_space(&mut self) -> Result<(), Error> {
         // Number of mappings unmapped per pass. This bounds an on-stack scratch buffer so the
         // routine performs no heap allocation: the kernel heap is a small slab allocator that
@@ -1125,7 +1146,7 @@ impl Vmem {
 
         loop {
             let mut buf: [MaybeUninit<PageAligned<VirtualAddress>>; CHUNK] =
-                [const { MaybeUninit::uninit() }; CHUNK];
+                [MaybeUninit::uninit(); CHUNK];
             let mut count: usize = 0;
             // Break as soon as the batch is full. Without the early break each pass would
             // re-traverse every remaining mapping, making a full teardown quadratic in the number
@@ -1161,6 +1182,32 @@ impl Vmem {
                 return Ok(());
             }
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Consumes an empty, inactive space, including all automatic field destructors.
+    ///
+    /// The TOP guarantee applies after the complete drop, not only after `Drop::drop`.
+    ///
+    #[cfg_attr(target_arch = "x86", verus_spec(
+        with Tracked(world): Tracked<&mut VmProofState>, Ghost(space): Ghost<SpaceId>
+        requires
+            old(world).inv(),
+            old(world).owns(&self, space),
+            old(world).lifecycle().inactive(space),
+            old(world)@.spaces[space].pages.dom().is_empty(),
+        ensures
+            final(world).inv(),
+            old(world).preserves_bindings(final(world)),
+            old(world).snapshot().conserves(final(world).snapshot()),
+            spec_destroy_vmem(
+                old(world)@, final(world)@,
+                old(world).lifecycle(), final(world).lifecycle(), space),
+    ))]
+    pub fn destroy(self) {
+        drop(self);
     }
 
     ///

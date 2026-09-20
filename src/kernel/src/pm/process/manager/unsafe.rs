@@ -642,7 +642,7 @@ impl ProcessManager {
                     error
                 );
             }
-            drop(vmem);
+            vmem.destroy();
         }
     }
 

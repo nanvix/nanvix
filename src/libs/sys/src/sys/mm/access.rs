@@ -11,6 +11,9 @@ use crate::error::{
 };
 use ::vstd::prelude::*;
 
+#[cfg(verus_keep_ghost)]
+include!("access.proof.rs");
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -372,6 +375,7 @@ impl AccessPermission {
     ///
     /// Returns `true` if write access is allowed, `false` otherwise.
     ///
+    #[verus_spec(result => ensures result == self.spec_writable())]
     pub fn is_writable(&self) -> bool {
         match self.write {
             WritePermission::Allow => true,

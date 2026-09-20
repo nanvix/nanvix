@@ -62,6 +62,11 @@ use ::vstd::prelude::*;
 #[cfg(verus_keep_ghost)]
 use ::vstd::raw_ptr::PointsTo;
 
+#[cfg(all(target_arch = "x86", verus_keep_ghost))]
+include!("manager.spec.rs");
+#[cfg(all(target_arch = "x86", verus_keep_ghost))]
+include!("manager.proof.rs");
+
 //==================================================================================================
 // Constants
 //==================================================================================================
@@ -75,6 +80,7 @@ const ORDER: Ordering = Ordering::Relaxed;
 /// and [`VirtMemoryManager::rollback_linked_pages`]. Sized so the per-chunk buffer fits
 /// comfortably on the kernel stack while keeping the snapshot/rollback walks of the
 /// parent's user mappings to a small number of passes for typical user processes.
+#[cfg_attr(target_arch = "x86", verus_verify)]
 const LINK_CHUNK: usize = 32;
 
 /// Snapshot entry for one parent user mapping consumed by
@@ -296,6 +302,29 @@ impl VirtMemoryManager {
     /// - `Ok(new_vmem)` if the new virtual address space was successfully created.
     /// - `Err(_)` if the new virtual address space could not be created.
     ///
+    #[cfg_attr(target_arch = "x86", verus_spec(result =>
+        with Tracked(world): Tracked<&mut VmProofState>, Ghost(source): Ghost<SpaceId>
+        requires
+            old(world).inv(),
+            old(world).owns(vmem, source),
+        ensures
+            final(world).inv(),
+            old(world).preserves_bindings(final(world)),
+            final(world).lifecycle().active_spaces == old(world).lifecycle().active_spaces,
+            final(world).owns(vmem, source),
+            match result {
+                Ok(created) => exists|space: SpaceId|
+                    final(world).owns(&created, space)
+                    && spec_new_vmem(old(world)@, final(world)@, source, Ok(space))
+                    && spec_new_vmem_resources(
+                        old(world).snapshot(), final(world).snapshot(), source, Ok(space)),
+                Err(error) => exists|failure: VmFailure|
+                    vm_error_refines(error, failure)
+                    && spec_new_vmem(old(world)@, final(world)@, source, Err(failure))
+                    && spec_new_vmem_resources(
+                        old(world).snapshot(), final(world).snapshot(), source, Err(failure)),
+            },
+    ))]
     pub fn new_vmem(&self, vmem: &Vmem) -> Result<Vmem, Error> {
         // Allocate a kernel page for the new page directory.
         proof_decl! {
@@ -353,11 +382,31 @@ impl VirtMemoryManager {
     ///
     /// Upon success, `Ok(())` is returned. If `child` already contains a user mapping
     /// overlapping one of `parent`'s, [`ErrorCode::EntryExists`] is returned and neither
-    /// `parent` nor `child` is modified. Upon any other failure, an error is returned and
-    /// both `parent` and `child` are restored to the state they had on entry: any pages
-    /// already linked into `child` are unmapped (releasing the shared refcount) and any
-    /// copy-on-write marks installed on `parent` are cleared.
+    /// `parent` nor `child` is modified. Other failures must restore child mappings and
+    /// resource ownership, but additional parent CoW marks may remain. Proving the current
+    /// best-effort rollback and fallible collection paths remains a TOP obligation.
     ///
+    #[cfg_attr(target_arch = "x86", verus_spec(result =>
+        with Tracked(world): Tracked<&mut VmProofState>,
+             Ghost(parent_id): Ghost<SpaceId>, Ghost(child_id): Ghost<SpaceId>
+        requires
+            old(world).inv(),
+            old(world).owns(old(parent), parent_id),
+            old(world).owns(old(child), child_id),
+            parent_id != child_id,
+        ensures
+            final(world).inv(),
+            old(world).preserves_bindings(final(world)),
+            final(world).lifecycle().active_spaces == old(world).lifecycle().active_spaces,
+            final(world).owns(final(parent), parent_id),
+            final(world).owns(final(child), child_id),
+            (exists|outcome: Result<(), VmFailure>|
+                vm_result_refines(result, outcome)
+                && spec_link_user_pages(
+                    old(world)@, final(world)@, parent_id, child_id, outcome)
+                && spec_link_user_pages_resources(
+                    old(world).snapshot(), final(world).snapshot(), parent_id, child_id, outcome)),
+    ))]
     pub fn link_user_pages(&mut self, parent: &mut Vmem, child: &mut Vmem) -> Result<(), Error> {
         // Enforce the contract that `child` must not already contain any user mapping
         // overlapping `parent`'s. This pre-pass runs before any page is linked, so the
@@ -388,7 +437,7 @@ impl VirtMemoryManager {
         // robust against the parent's iteration revisiting entries we have already
         // processed (e.g. writable entries that are now CoW-marked but still present).
         loop {
-            let mut buf: LinkUserMappingBuf = [const { MaybeUninit::uninit() }; LINK_CHUNK];
+            let mut buf: LinkUserMappingBuf = [MaybeUninit::uninit(); LINK_CHUNK];
             let mut count: usize = 0;
             parent.for_each_user_mapping(|vaddr, pte: PageTableEntry| {
                 if count < LINK_CHUNK && child.try_find_user_pte(vaddr)?.is_none() {
@@ -602,6 +651,25 @@ impl VirtMemoryManager {
     ///   to the registered handler.
     /// - `Err(_)` if the fault was a copy-on-write fault but resolving it failed.
     ///
+    #[cfg_attr(target_arch = "x86", verus_spec(result =>
+        with Tracked(world): Tracked<&mut VmProofState>, Ghost(space): Ghost<SpaceId>
+        requires
+            old(world).inv(),
+            old(world).owns(old(vmem), space),
+        ensures
+            final(world).inv(),
+            old(world).preserves_bindings(final(world)),
+            final(world).lifecycle().active_spaces == old(world).lifecycle().active_spaces,
+            final(world).owns(final(vmem), space),
+            (exists|outcome: Result<bool, VmFailure>|
+                vm_result_refines(result, outcome)
+                && spec_try_resolve_cow_fault(
+                    old(world)@, final(world)@, space,
+                    vm_fault_input(fault_addr, error_code), outcome)
+                && spec_cow_resources(
+                    old(world).snapshot(), final(world).snapshot(), space,
+                    vm_fault_input(fault_addr, error_code), outcome)),
+    ))]
     pub fn try_resolve_cow_fault(
         &mut self,
         vmem: &mut Vmem,
@@ -643,6 +711,24 @@ impl VirtMemoryManager {
     /// - `Ok(false)` if the page was not present.
     /// - `Err(_)` on unexpected failures.
     ///
+    #[cfg_attr(target_arch = "x86", verus_spec(result =>
+        with Tracked(world): Tracked<&mut VmProofState>, Ghost(space): Ghost<SpaceId>
+        requires
+            old(world).inv(),
+            old(world).owns(old(vmem), space),
+            vaddr.inv(),
+        ensures
+            final(world).inv(),
+            old(world).preserves_bindings(final(world)),
+            final(world).lifecycle().active_spaces == old(world).lifecycle().active_spaces,
+            final(world).owns(final(vmem), space),
+            (exists|outcome: Result<bool, VmFailure>|
+                vm_result_refines(result, outcome)
+                && spec_try_unmap_upage(
+                    old(world)@, final(world)@, space, vaddr@, outcome)
+                && spec_unmap_resources(
+                    old(world).snapshot(), final(world).snapshot(), space, outcome)),
+    ))]
     pub fn try_unmap_upage(
         &mut self,
         vmem: &mut Vmem,
@@ -671,6 +757,30 @@ impl VirtMemoryManager {
     /// Upon success, `Ok(())` is returned. Upon failure, all successfully mapped pages are rolled
     /// back and an error is returned instead.
     ///
+    #[cfg_attr(target_arch = "x86", verus_spec(result =>
+        with Tracked(world): Tracked<&mut VmProofState>, Ghost(space): Ghost<SpaceId>
+        requires
+            old(world).inv(),
+            old(world).owns(old(vmem), space),
+            vaddr.inv(),
+        ensures
+            final(world).inv(),
+            old(world).preserves_bindings(final(world)),
+            final(world).lifecycle().active_spaces == old(world).lifecycle().active_spaces,
+            final(world).owns(final(vmem), space),
+            vm_scratch_capacity(final(uframes)) == vm_scratch_capacity(old(uframes)),
+            if old(uframes)@.len() != 0 || vm_scratch_capacity(old(uframes)) < nframes {
+                final(uframes)@ == old(uframes)@
+            } else {
+                final(uframes)@.len() == 0
+            },
+            (exists|outcome: Result<(), VmFailure>|
+                vm_result_refines(result, outcome)
+                && spec_alloc_upages_request(
+                    old(world).snapshot(), final(world).snapshot(), space, vaddr@, nframes as nat,
+                    vm_page_access(access), clear, old(uframes)@.len(),
+                    vm_scratch_capacity(old(uframes)), outcome)),
+    ))]
     pub fn alloc_upages(
         &mut self,
         vmem: &mut Vmem,
@@ -764,7 +874,9 @@ impl VirtMemoryManager {
             // Rollback: unmap all pages that were successfully mapped.
             let mut rollback_addr: PageAligned<VirtualAddress> = start_vaddr;
             for _ in 0..mapped_count {
-                if let Err(re) = self.try_unmap_upage(vmem, rollback_addr) {
+                #[cfg_attr(target_arch = "x86", verus_spec(with Tracked(&mut *world), Ghost(space)))]
+                let unmap_result: Result<bool, Error> = self.try_unmap_upage(vmem, rollback_addr);
+                if let Err(re) = unmap_result {
                     warn!(
                         "alloc_upages(): rollback failed (vaddr={rollback_addr:?}, error={re:?})"
                     );
@@ -797,6 +909,25 @@ impl VirtMemoryManager {
     ///
     /// Upon success, empty is returned. Upon failure, an error is returned instead.
     ///
+    #[cfg_attr(target_arch = "x86", verus_spec(result =>
+        with Tracked(world): Tracked<&mut VmProofState>, Ghost(space): Ghost<SpaceId>
+        requires
+            old(world).inv(),
+            old(world).owns(old(vmem), space),
+            vaddr.inv(),
+        ensures
+            final(world).inv(),
+            old(world).preserves_bindings(final(world)),
+            final(world).lifecycle().active_spaces == old(world).lifecycle().active_spaces,
+            final(world).owns(final(vmem), space),
+            old(world).snapshot().conserves(final(world).snapshot()),
+            old(world).snapshot().resources_unchanged(final(world).snapshot()),
+            (exists|outcome: Result<(), VmFailure>|
+                vm_result_refines(result, outcome)
+                && spec_ctrl_upage(
+                    old(world)@, final(world)@, space, vaddr@,
+                    vm_page_access(access), outcome)),
+    ))]
     pub fn ctrl_upage(
         &mut self,
         vmem: &mut Vmem,

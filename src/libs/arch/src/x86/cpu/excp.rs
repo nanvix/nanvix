@@ -1,6 +1,11 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
+use ::vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+include!("excp.proof.rs");
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -18,6 +23,7 @@
 ///
 #[derive(Clone, Copy)]
 #[must_use]
+#[verus_verify]
 pub struct ErrorCode(u32);
 
 impl ErrorCode {
@@ -27,6 +33,7 @@ impl ErrorCode {
     }
 
     /// Returns the raw 32-bit value.
+    #[verus_spec(result => ensures result == self.spec_raw())]
     pub const fn raw(self) -> u32 {
         self.0
     }
@@ -35,21 +42,27 @@ impl ErrorCode {
     ///
     /// `true` when the fault was caused by a page-level protection violation.
     /// `false` when the fault was caused by a non-present page.
+    #[verus_spec(result => ensures result == (self.spec_raw() & 1u32 != 0))]
     pub const fn is_present(self) -> bool {
+        proof! { lemma_fault_masks(); }
         (self.0 & (1 << 0)) != 0
     }
 
     /// Page-fault bit 1 — *Write*.
     ///
     /// `true` when the access that caused the fault was a write.
+    #[verus_spec(result => ensures result == (self.spec_raw() & 2u32 != 0))]
     pub const fn is_write(self) -> bool {
+        proof! { lemma_fault_masks(); }
         (self.0 & (1 << 1)) != 0
     }
 
     /// Page-fault bit 2 — *User*.
     ///
     /// `true` when the fault occurred while the CPU was in user mode (CPL = 3).
+    #[verus_spec(result => ensures result == (self.spec_raw() & 4u32 != 0))]
     pub const fn is_user(self) -> bool {
+        proof! { lemma_fault_masks(); }
         (self.0 & (1 << 2)) != 0
     }
 

@@ -41,6 +41,8 @@ use ::sys::error::{
 };
 
 include!("page_directory.spec.rs");
+#[cfg(verus_keep_ghost)]
+include!("page_directory.proof.rs");
 
 //==================================================================================================
 // Structures

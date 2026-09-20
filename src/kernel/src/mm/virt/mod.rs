@@ -43,6 +43,18 @@ pub use kpage::KernelPage;
 pub use manager::VirtMemoryManager;
 pub use vmem::Vmem;
 
+#[cfg(all(target_arch = "x86", verus_keep_ghost))]
+pub use vmem::{
+    SpaceId,
+    VmCapacityView,
+    VmLifecycleView,
+    VmMappingDemand,
+    VmProofState,
+    VmResourceId,
+    VmResourceView,
+    VmWorldView,
+};
+
 //==================================================================================================
 // Structures and Enums
 //==================================================================================================
