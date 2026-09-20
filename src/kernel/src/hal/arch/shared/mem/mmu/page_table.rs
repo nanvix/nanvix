@@ -378,6 +378,7 @@ where
             pte.set_read_write(ReadWriteFlag::ReadWrite);
         } else {
             pte.set_read_write(ReadWriteFlag::ReadOnly);
+            pte.set_cow(CopyOnWriteFlag::NotCopyOnWrite);
         }
         if supervisor {
             pte.set_user_supervisor(UserSupervisorFlag::Supervisor);
