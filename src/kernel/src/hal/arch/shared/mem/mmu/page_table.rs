@@ -279,6 +279,8 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     }
 
     /// Changes access permissions on a page.
+    ///
+    /// Explicit read-only access also cancels copy-on-write eligibility.
     pub fn ctrl(
         &mut self,
         supervisor: bool,
@@ -314,6 +316,7 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
             pte.set_read_write(ReadWriteFlag::ReadWrite);
         } else {
             pte.set_read_write(ReadWriteFlag::ReadOnly);
+            pte.set_cow(CopyOnWriteFlag::NotCopyOnWrite);
         }
         if supervisor {
             pte.set_user_supervisor(UserSupervisorFlag::Supervisor);
