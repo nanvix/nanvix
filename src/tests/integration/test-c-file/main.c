@@ -139,6 +139,7 @@ int main(int argc, const char *argv[])
     test_mkdirat();    // requires stat() and unlinkat().
     test_mkdir();      // requires stat() and unlinkat().
     test_path_errno(); // path edge case errno values.
+    test_realpath();
     test_mkfifo();     // mkfifo() is unsupported; verifies it fails with ENOTSUP.
     test_mknod();      // mknod() is unsupported; verifies it fails with ENOTSUP.
     test_umask_ramfs(); // tests umask(), open(), close(), stat(), and unlink() on RAMFS.
@@ -155,6 +156,7 @@ int main(int argc, const char *argv[])
         test_symlinkat();  // requires open(), stat() and unlinkat().
         test_readlinkat(); // requires symlinkat() and unlinkat().
         test_readlink();   // requires symlinkat() and unlink().
+        test_realpath_hostfs();
         test_fchownat();
         test_chown();
         test_fchown();
