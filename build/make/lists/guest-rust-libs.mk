@@ -14,6 +14,7 @@ ALL_GUEST_RUST_LIBS := \
 	elf \
 	error \
 	fat32 \
+	fs-core \
 	type-safe \
 	koptions \
 	nvx \

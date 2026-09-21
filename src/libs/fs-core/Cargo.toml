@@ -1,0 +1,23 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+[package]
+name = "fs-core"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Backend-independent filesystem algorithms"
+homepage.workspace = true
+
+[dependencies]
+core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
+compiler_builtins = { workspace = true, optional = true }
+
+[features]
+default = []
+std = []
+rustc-dep-of-std = ["core", "compiler_builtins/rustc-dep-of-std"]
+
+[lints]
+workspace = true

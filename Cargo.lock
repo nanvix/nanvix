@@ -801,6 +801,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs-core"
+version = "0.24.44"
+dependencies = [
+ "compiler_builtins",
+ "rustc-std-workspace-core",
+]
+
+[[package]]
 name = "futures"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1697,6 +1705,7 @@ dependencies = [
  "compiler_builtins",
  "config",
  "flexi_logger",
+ "fs-core",
  "log",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
