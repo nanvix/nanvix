@@ -6,13 +6,27 @@
 //! Ensures all guest-requested paths resolve within the configured root directory.
 //! Rejects path traversal attacks and symlinks that escape the sandbox.
 
+#[cfg(windows)]
+use std::fs;
 use std::{
-    io,
+    io::{
+        self,
+        ErrorKind,
+    },
     path::{
+        Component,
         Path,
         PathBuf,
     },
 };
+
+/// Maximum symlink expansions during one Windows path walk.
+#[cfg(windows)]
+const MAX_SYMLINK_EXPANSIONS: usize = 40;
+
+/// Windows reports cyclic symlink traversal with this error; the hostfs error mapper preserves it.
+#[cfg(windows)]
+const ERROR_CANT_RESOLVE_FILENAME: i32 = 1921;
 
 /// A sandbox that constrains all filesystem operations to a root directory.
 pub struct Sandbox {
@@ -38,7 +52,8 @@ impl Sandbox {
 
     /// Resolves a guest-relative path to an absolute host path within the sandbox.
     ///
-    /// Returns `None` if the resolved path escapes the sandbox root (path traversal).
+    /// Returns a permission error for sandbox rejection and preserves filesystem errors such as
+    /// missing ancestors and symlink loops.
     ///
     /// This avoids TOCTOU races by attempting `canonicalize()` directly rather than
     /// branching on `exists()`. If canonicalization fails (e.g., file not yet created),
@@ -56,32 +71,148 @@ impl Sandbox {
     ///
     /// TODO(#sandbox-toctou): use `openat()` with `O_NOFOLLOW` to eliminate the
     /// symlink TOCTOU window for non-existent paths.
-    pub fn resolve(&self, relative_path: &str) -> Option<PathBuf> {
+    pub fn resolve(&self, relative_path: &str) -> io::Result<PathBuf> {
         // Strip leading '/' — guest paths are relative to the mount point.
         let cleaned: &str = relative_path.trim_start_matches('/');
 
-        // Join with root and canonicalize to resolve `.` and `..`.
-        let candidate: PathBuf = self.root.join(cleaned);
+        // Resolve intermediate symlinks before interpreting parent components on Windows.
+        let candidate = self.candidate(cleaned, true)?;
 
         // Try to canonicalize directly (handles existing files and symlink resolution).
         // Fall back to parent canonicalization for files that don't exist yet (e.g., create).
         let resolved: PathBuf = match candidate.canonicalize() {
             Ok(p) => p,
-            Err(_) => {
-                // Canonicalize the parent directory (must exist).
-                let parent: &Path = candidate.parent()?;
-                let parent_resolved: PathBuf = parent.canonicalize().ok()?;
-                let file_name: &std::ffi::OsStr = candidate.file_name()?;
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                // Only a missing final entry is eligible for creation, not a traversal error.
+                let parent = candidate.parent().ok_or(ErrorKind::PermissionDenied)?;
+                let parent_resolved = parent.canonicalize()?;
+                let file_name = candidate.file_name().ok_or(ErrorKind::PermissionDenied)?;
                 parent_resolved.join(file_name)
             },
+            Err(error) => return Err(error),
         };
 
         // Verify the resolved path is within the sandbox root.
         if resolved.starts_with(&self.root) {
-            Some(resolved)
+            Ok(resolved)
         } else {
-            None
+            Err(ErrorKind::PermissionDenied.into())
         }
+    }
+
+    /// Joins a host-relative path without discarding symlink-sensitive parent components.
+    /// Containment is checked by the caller after resolution.
+    fn candidate(&self, relative: &str, follow_final: bool) -> io::Result<PathBuf> {
+        #[cfg(not(windows))]
+        {
+            let _ = follow_final;
+            Ok(self.root.join(relative))
+        }
+        #[cfg(windows)]
+        {
+            let path = Path::new(relative);
+            if path
+                .components()
+                .any(|c| matches!(c, Component::Prefix(_) | Component::RootDir))
+            {
+                return Err(ErrorKind::PermissionDenied.into());
+            }
+            let mut links_left = MAX_SYMLINK_EXPANSIONS;
+            Self::walk_windows_path(&self.root, path, follow_final, true, &mut links_left)
+        }
+    }
+
+    /// Windows verbatim paths cannot contain raw `..`, and joining onto them collapses it
+    /// lexically. Follow each intermediate link before applying the next parent component.
+    /// TODO (#3182): Share traversal with guest realpath while keeping platform-specific adapters.
+    #[cfg(windows)]
+    fn walk_windows_path(
+        base: &Path,
+        path: &Path,
+        follow_final: bool,
+        allow_missing_final: bool,
+        links_left: &mut usize,
+    ) -> io::Result<PathBuf> {
+        let mut current = Self::windows_target_base(base, path)?;
+        let mut components = path.components().peekable();
+        while let Some(component) = components.next() {
+            let last = components.peek().is_none();
+            match component {
+                Component::Normal(name) => {
+                    current.push(name);
+                    if last && !follow_final {
+                        continue;
+                    }
+                    let metadata = match fs::symlink_metadata(&current) {
+                        Ok(metadata) => metadata,
+                        // Let the existing parent fallback handle a not-yet-created final entry.
+                        Err(error)
+                            if last
+                                && allow_missing_final
+                                && error.kind() == ErrorKind::NotFound =>
+                        {
+                            return Ok(current);
+                        },
+                        Err(error) => return Err(error),
+                    };
+                    if metadata.file_type().is_symlink() {
+                        *links_left = links_left.checked_sub(1).ok_or_else(|| {
+                            io::Error::from_raw_os_error(ERROR_CANT_RESOLVE_FILENAME)
+                        })?;
+                        let target = fs::read_link(&current)?;
+                        // A verbatim POSIX-style target can contain `/` and `..`, which native
+                        // Windows symlink traversal rejects. Interpret it without rewriting it.
+                        // A dangling target must stay ENOENT, not become a creatable final entry.
+                        current = Self::walk_windows_path(
+                            current.parent().ok_or(ErrorKind::PermissionDenied)?,
+                            &target,
+                            true,
+                            false,
+                            links_left,
+                        )?;
+                    } else {
+                        current = current.canonicalize()?;
+                    }
+                    if !last && !current.is_dir() {
+                        return Err(ErrorKind::NotADirectory.into());
+                    }
+                },
+                Component::CurDir => {},
+                Component::ParentDir => {
+                    if !current.pop() {
+                        return Err(ErrorKind::PermissionDenied.into());
+                    }
+                },
+                // Absolute targets read from host symlinks are allowed, subject to the caller's
+                // containment check. The request itself must stay host-relative.
+                Component::Prefix(_) | Component::RootDir => {}, // Already anchored above.
+            }
+        }
+        Ok(current)
+    }
+
+    /// Anchors a stored Windows target without consulting process-global per-drive cwd state.
+    #[cfg(windows)]
+    fn windows_target_base(base: &Path, target: &Path) -> io::Result<PathBuf> {
+        if target.is_absolute() {
+            return Ok(target
+                .components()
+                .take_while(|c| matches!(c, Component::Prefix(_) | Component::RootDir))
+                .collect());
+        }
+        if matches!(target.components().next(), Some(Component::Prefix(_))) {
+            // `C:foo` is drive-relative, unlike `C:\\foo` or `\\foo`. Do not guess its cwd.
+            return Err(ErrorKind::InvalidInput.into());
+        }
+        if target.has_root() {
+            // `\\assets\\file` inherits the link's drive, or its server/share on a UNC volume.
+            // Preserve the prefix rather than using the daemon's current drive.
+            if !base.is_absolute() {
+                return Err(ErrorKind::InvalidInput.into());
+            }
+            return Ok(base.components().take(2).collect());
+        }
+        Ok(base.to_path_buf())
     }
 
     /// Returns the sandbox root directory.
@@ -117,28 +248,28 @@ impl Sandbox {
     /// influence subsequent operations on the returned path. Closing that gap requires
     /// `openat()`-based dirfd operations.
     ///
-    pub fn resolve_nofollow(&self, relative_path: &str) -> Option<PathBuf> {
+    pub fn resolve_nofollow(&self, relative_path: &str) -> io::Result<PathBuf> {
         let cleaned: &str = relative_path.trim_start_matches('/');
         if cleaned.is_empty() {
             // Refers to the sandbox root itself; resolve normally.
-            return Some(self.root.clone());
+            return Ok(self.root.clone());
         }
-        let candidate: PathBuf = self.root.join(cleaned);
-
-        // Reject `.` or `..` as the final component: these would let the resolved path step outside
-        // the sandbox after the parent-only containment check (e.g. `resolve_nofollow("..")` would
-        // otherwise yield `<root>/..`).
-        let last_component: ::std::path::Component<'_> = candidate.components().next_back()?;
-        if !matches!(last_component, ::std::path::Component::Normal(_)) {
-            return None;
+        // Check the raw final component before the Windows walk consumes any parent components.
+        let last_component = Path::new(cleaned)
+            .components()
+            .next_back()
+            .ok_or(ErrorKind::PermissionDenied)?;
+        if !matches!(last_component, Component::Normal(_)) {
+            return Err(ErrorKind::PermissionDenied.into());
         }
-        let file_name: &std::ffi::OsStr = candidate.file_name()?;
-        let parent: &Path = candidate.parent()?;
-        let parent_resolved: PathBuf = parent.canonicalize().ok()?;
+        let candidate = self.candidate(cleaned, false)?;
+        let file_name = candidate.file_name().ok_or(ErrorKind::PermissionDenied)?;
+        let parent = candidate.parent().ok_or(ErrorKind::PermissionDenied)?;
+        let parent_resolved = parent.canonicalize()?;
         if !parent_resolved.starts_with(&self.root) {
-            return None;
+            return Err(ErrorKind::PermissionDenied.into());
         }
-        Some(parent_resolved.join(file_name))
+        Ok(parent_resolved.join(file_name))
     }
 }
 
@@ -149,6 +280,7 @@ impl Sandbox {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::hostfs_api::HostResolvedPath;
     use ::std::fs;
     use ::tempfile::TempDir;
 
@@ -158,6 +290,12 @@ mod tests {
         let tmp: TempDir = TempDir::new().expect("create tempdir");
         let sandbox: Sandbox = Sandbox::new(tmp.path().to_path_buf()).expect("create sandbox");
         (tmp, sandbox)
+    }
+
+    /// Builds the same checked host-relative value produced by request decoding.
+    #[allow(clippy::expect_used)]
+    fn wire_path(path: &str) -> HostResolvedPath {
+        HostResolvedPath::from_wire(path.to_owned()).expect("valid test path")
     }
 
     /// Creates a file symlink in a cross-platform way.
@@ -271,9 +409,9 @@ mod tests {
     }
 
     #[test]
-    fn resolve_nonexistent_parent_returns_none() {
+    fn resolve_nonexistent_parent_returns_error() {
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve("missing-dir/file.txt").is_none());
+        assert!(sandbox.resolve("missing-dir/file.txt").is_err());
     }
 
     #[test]
@@ -281,7 +419,162 @@ mod tests {
         let (_tmp, sandbox) = make_sandbox();
         // Create a sibling outside the sandbox and try to traverse to it.
         let escape: &str = "../escape.txt";
-        assert!(sandbox.resolve(escape).is_none());
+        assert!(sandbox.resolve(escape).is_err());
+    }
+
+    #[test]
+    fn checked_paths_keep_physical_symlink_parent_resolution() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::create_dir_all(sandbox.root().join("real/child")).expect("create physical directories");
+        fs::write(sandbox.root().join("file"), b"lexical").expect("create decoy");
+        fs::write(sandbox.root().join("real/file"), b"physical").expect("create target");
+        symlink_dir(Path::new("./real//child/../child"), &sandbox.root().join("alias"))
+            .expect("create ancestor symlink");
+        symlink_file(&sandbox.root().join("real/file"), &sandbox.root().join("real/link"))
+            .expect("create final symlink");
+
+        let path = wire_path("alias//.././file");
+        assert_eq!(path.as_str(), "alias//.././file", "construction must preserve spelling");
+        assert_eq!(
+            sandbox
+                .resolve(path.as_str())
+                .expect("follow physical parent"),
+            sandbox
+                .root()
+                .join("real/file")
+                .canonicalize()
+                .expect("canonical target"),
+        );
+        let link = wire_path("alias//../link");
+        assert_eq!(
+            sandbox
+                .resolve_nofollow(link.as_str())
+                .expect("keep final symlink"),
+            sandbox
+                .root()
+                .join("real")
+                .canonicalize()
+                .expect("canonical parent")
+                .join("link"),
+        );
+        assert_eq!(
+            sandbox
+                .resolve(link.as_str())
+                .expect("follow final symlink"),
+            sandbox.resolve(path.as_str()).expect("physical target"),
+        );
+    }
+
+    #[test]
+    fn physical_parent_walk_preserves_creation_and_containment() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::create_dir_all(sandbox.root().join("real/child")).expect("create directories");
+        symlink_dir(&sandbox.root().join("real/child"), &sandbox.root().join("alias"))
+            .expect("create ancestor symlink");
+        let expected = sandbox
+            .root()
+            .join("real")
+            .canonicalize()
+            .expect("physical parent")
+            .join("new");
+        assert_eq!(sandbox.resolve("alias/../new").ok(), Some(expected.clone()));
+        assert_eq!(sandbox.resolve_nofollow("alias/../new").ok(), Some(expected));
+        fs::write(sandbox.root().join("file"), b"not a directory").expect("create file");
+        assert!(sandbox.resolve("file/../new").is_err());
+        assert!(sandbox.resolve_nofollow("file/../new").is_err());
+        assert!(sandbox.resolve("missing/../new").is_err());
+        assert!(sandbox.resolve_nofollow("missing/../new").is_err());
+        let outside = TempDir::new().expect("outside sandbox");
+        fs::create_dir(outside.path().join("child")).expect("outside child");
+        fs::write(outside.path().join("secret"), b"secret").expect("outside sentinel");
+        symlink_dir(&outside.path().join("child"), &sandbox.root().join("escape"))
+            .expect("outside ancestor symlink");
+        assert!(sandbox.resolve("escape/../secret").is_err());
+        assert!(sandbox.resolve_nofollow("escape/../secret").is_err());
+    }
+
+    #[test]
+    fn symlink_target_spelling_and_cycles() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::create_dir(sandbox.root().join("dir")).expect("create directory");
+        fs::write(sandbox.root().join("dir/file"), b"target").expect("create file");
+        let spelling = Path::new("./dir//../dir/file");
+        symlink_file(spelling, &sandbox.root().join("link")).expect("create spelled symlink");
+        assert_eq!(fs::read_link(sandbox.root().join("link")).expect("read target"), spelling);
+        assert_eq!(
+            sandbox.resolve("link").expect("follow spelled target"),
+            sandbox
+                .root()
+                .join("dir/file")
+                .canonicalize()
+                .expect("canonical target"),
+        );
+        assert_eq!(sandbox.resolve_nofollow("link").ok(), Some(sandbox.root().join("link")));
+        symlink_file(Path::new("cycle"), &sandbox.root().join("cycle")).expect("create cycle");
+        // Following a cycle must not loop indefinitely; no-follow still addresses the link.
+        assert!(sandbox.resolve("cycle/child").is_err());
+        assert_eq!(sandbox.resolve_nofollow("cycle").ok(), Some(sandbox.root().join("cycle")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_root_relative_symlink_target() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::write(sandbox.root().join("file"), b"target").expect("create target file");
+        fs::create_dir(sandbox.root().join("dir")).expect("create target directory");
+        for (name, is_directory) in [("file", false), ("dir", true)] {
+            let target = sandbox.root().join(name);
+            let rooted = target.components().skip(1).collect::<PathBuf>();
+            let link_name = format!("{name}-link");
+            let link = sandbox.root().join(&link_name);
+            let create = if is_directory {
+                symlink_dir
+            } else {
+                symlink_file
+            };
+            create(&rooted, &link).expect("create root-relative link");
+            assert_eq!(
+                sandbox.resolve(&link_name).expect("inherit link volume"),
+                target.canonicalize().expect("canonical target")
+            );
+            assert_eq!(
+                sandbox
+                    .resolve_nofollow(&link_name)
+                    .expect("keep final link"),
+                link
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_rejects_windows_path_prefixes() {
+        let (_tmp, sandbox) = make_sandbox();
+        for path in [
+            r"C:\file",
+            r"C:file",
+            r"\file",
+            r"\\server\share\file",
+            r"\\?\C:\file",
+        ] {
+            assert!(sandbox.resolve(path).is_err(), "hostfs paths must be relative: {path}");
+            assert!(
+                sandbox.resolve_nofollow(path).is_err(),
+                "hostfs paths must be relative: {path}"
+            );
+        }
     }
 
     #[test]
@@ -339,7 +632,7 @@ mod tests {
         let link: PathBuf = sandbox.root().join("escape");
         symlink_file(&outside_file, &link).unwrap();
 
-        assert!(sandbox.resolve("escape").is_none());
+        assert!(sandbox.resolve("escape").is_err());
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -376,15 +669,15 @@ mod tests {
     }
 
     #[test]
-    fn resolve_nofollow_missing_parent_returns_none() {
+    fn resolve_nofollow_missing_parent_returns_error() {
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve_nofollow("missing/file.txt").is_none());
+        assert!(sandbox.resolve_nofollow("missing/file.txt").is_err());
     }
 
     #[test]
     fn resolve_nofollow_rejects_dotdot_escape() {
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve_nofollow("../escape.txt").is_none());
+        assert!(sandbox.resolve_nofollow("../escape.txt").is_err());
     }
 
     #[test]
@@ -392,8 +685,8 @@ mod tests {
         // `resolve_nofollow("..")` must not produce `<root>/..`, which would
         // escape the sandbox once handed to a filesystem syscall.
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve_nofollow("..").is_none());
-        assert!(sandbox.resolve_nofollow("/..").is_none());
+        assert!(sandbox.resolve_nofollow("..").is_err());
+        assert!(sandbox.resolve_nofollow("/..").is_err());
     }
 
     #[test]
@@ -402,8 +695,8 @@ mod tests {
         // target for operations that act on a named entry (lstat, readlink,
         // unlink, symlink). Callers wanting the root should pass "" or "/".
         let (_tmp, sandbox) = make_sandbox();
-        assert!(sandbox.resolve_nofollow(".").is_none());
-        assert!(sandbox.resolve_nofollow("/.").is_none());
+        assert!(sandbox.resolve_nofollow(".").is_err());
+        assert!(sandbox.resolve_nofollow("/.").is_err());
     }
 
     #[test]
@@ -414,7 +707,7 @@ mod tests {
         // (`sub/.` ≡ `sub`), so it is not a separate escape vector here.
         let (_tmp, sandbox) = make_sandbox();
         fs::create_dir(sandbox.root().join("sub")).unwrap();
-        assert!(sandbox.resolve_nofollow("sub/..").is_none());
+        assert!(sandbox.resolve_nofollow("sub/..").is_err());
     }
 
     #[test]
@@ -488,6 +781,6 @@ mod tests {
         let (_tmp, sandbox) = make_sandbox();
         symlink_dir(outside.path(), &sandbox.root().join("escape")).unwrap();
 
-        assert!(sandbox.resolve_nofollow("escape/file.txt").is_none());
+        assert!(sandbox.resolve_nofollow("escape/file.txt").is_err());
     }
 }
