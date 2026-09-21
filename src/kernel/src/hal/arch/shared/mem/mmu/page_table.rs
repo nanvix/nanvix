@@ -281,11 +281,14 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
     /// Changes access permissions on a page.
     ///
     /// Explicit read-only access also cancels copy-on-write eligibility.
+    /// For writable access, `Some(cow)` sets CoW eligibility and defers hardware writes
+    /// when CoW is requested. `None` preserves the existing kernel-page CoW policy.
     pub fn ctrl(
         &mut self,
         supervisor: bool,
         page_address: PageAddress,
         access: AccessPermission,
+        cow: Option<CopyOnWriteFlag>,
     ) -> Result<(), Error> {
         // Obtain a cached copy of the page table entry.
         let mut pte: PageTableEntry = match self.read_pte(page_address) {
@@ -313,7 +316,14 @@ impl<T: DerefMut<Target = [PteWord]>> PageTable<T> {
 
         // Modify page table entry.
         if access.is_writable() {
-            pte.set_read_write(ReadWriteFlag::ReadWrite);
+            pte.set_read_write(if cow == Some(CopyOnWriteFlag::CopyOnWrite) {
+                ReadWriteFlag::ReadOnly
+            } else {
+                ReadWriteFlag::ReadWrite
+            });
+            if let Some(cow) = cow {
+                pte.set_cow(cow);
+            }
         } else {
             pte.set_read_write(ReadWriteFlag::ReadOnly);
             pte.set_cow(CopyOnWriteFlag::NotCopyOnWrite);

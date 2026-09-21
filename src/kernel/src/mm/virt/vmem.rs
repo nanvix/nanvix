@@ -49,6 +49,7 @@ use ::alloc::{
 use ::arch::mem::{
     self,
     paging::{
+        CopyOnWriteFlag,
         PageDirectoryEntry,
         PageTableEntry,
         PteWord,
@@ -1857,7 +1858,10 @@ impl Vmem {
         Ok(Some(UserFrame::new(frame_address)))
     }
 
-    /// Changes access permissions on a page.
+    /// Changes access permissions on a user page.
+    ///
+    /// Writable access to a shared frame remains hardware read-only until a CoW fault
+    /// isolates the writer. Read-only access cancels that deferred write permission.
     pub fn uctrl(
         &mut self,
         vaddr: PageAligned<VirtualAddress>,
@@ -1898,8 +1902,26 @@ impl Vmem {
 
         let page_address: PageAddress = PageAddress::new(vaddr);
 
+        let cow: CopyOnWriteFlag = if access.is_writable() {
+            let frame: FrameAddress = page_table.lookup(page_address)?;
+            // As in resolve_cow_at(), observe the mapped reference without releasing it.
+            // Single-threaded execution with interrupts disabled keeps the count stable.
+            let probe: ManuallyDrop<UserFrame> = ManuallyDrop::new(UserFrame::new(frame));
+            if probe.refcount()? > 1 {
+                CopyOnWriteFlag::CopyOnWrite
+            } else {
+                CopyOnWriteFlag::NotCopyOnWrite
+            }
+        } else {
+            CopyOnWriteFlag::NotCopyOnWrite
+        };
+
         // Change access permissions on the page.
-        page_table.ctrl(false, page_address, access)?;
+        page_table.ctrl(false, page_address, access, Some(cow))?;
+        self.hw_protect_user(
+            vaddr.into_raw_value(),
+            access.is_writable() && cow == CopyOnWriteFlag::NotCopyOnWrite,
+        );
 
         Ok(())
     }
@@ -1997,7 +2019,7 @@ impl Vmem {
                     )?;
                 },
                 Ok(true) => {
-                    pt_mut.1.ctrl(false, page_address, access)?;
+                    pt_mut.1.ctrl(false, page_address, access, None)?;
                 },
                 Err(e) => return Err(e),
             }
