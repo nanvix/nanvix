@@ -59,7 +59,10 @@ use std::{
         SeekFrom,
         Write,
     },
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
     time::{
         Duration,
         SystemTime,
@@ -188,7 +191,11 @@ fn open_regular_file(host_path: &PathBuf, mode: u32, flags: i32) -> io::Result<(
             #[cfg(not(unix))]
             {
                 let _ = mode;
-                let mut create_options: OpenOptions = options.clone();
+                let mut create_options = options.clone();
+                // Rust requires a write/append builder flag for creation. On Windows the explicit
+                // access_mode above overrides it, so the actual handle still cannot write data.
+                #[cfg(windows)]
+                create_options.write(true);
                 create_options.create_new(true);
                 create_options.open(host_path)
             }
@@ -614,11 +621,11 @@ impl HostFsHandler {
         };
 
         let host_path = match self.sandbox.resolve(path.as_str()) {
-            Some(p) => p,
-            None => {
-                log::warn!("hostfsd: path traversal rejected: {:?}", path.as_str());
+            Ok(p) => p,
+            Err(error) => {
+                log::warn!("hostfsd: path resolution failed: {:?}", path.as_str());
                 set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -711,10 +718,10 @@ impl HostFsHandler {
             return;
         };
         let old_path = match self.sandbox.resolve(old_relative.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -724,10 +731,10 @@ impl HostFsHandler {
             return;
         };
         let new_path = match self.sandbox.resolve(new_relative.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -776,23 +783,17 @@ impl HostFsHandler {
             return;
         };
 
-        let resolution_error = |path: &str| {
-            let candidate = self.sandbox.root().join(path.trim_start_matches('/'));
-            match candidate.parent().map(fs::metadata) {
-                Some(Err(error)) => io_error_to_code(&error),
-                Some(Ok(metadata)) if !metadata.is_dir() => HOSTFS_ERR_NOT_DIR,
-                _ => HOSTFS_ERR_PERMISSION,
-            }
-        };
-
-        let old_path: Option<PathBuf> = if req.flags & AT_SYMLINK_FOLLOW != 0 {
+        let old_path = if req.flags & AT_SYMLINK_FOLLOW != 0 {
             self.sandbox.resolve(old_relative.as_str())
         } else {
             self.sandbox.resolve_nofollow(old_relative.as_str())
         };
-        let Some(mut old_path): Option<PathBuf> = old_path else {
-            set_payload_data(response, &resolution_error(old_relative.as_str()).to_le_bytes());
-            return;
+        let mut old_path = match old_path {
+            Ok(path) => path,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                return;
+            },
         };
         if req.flags & AT_SYMLINK_FOLLOW != 0 {
             old_path = match old_path.canonicalize() {
@@ -803,10 +804,12 @@ impl HostFsHandler {
                 },
             };
         }
-        let Some(new_path): Option<PathBuf> = self.sandbox.resolve_nofollow(new_relative.as_str())
-        else {
-            set_payload_data(response, &resolution_error(new_relative.as_str()).to_le_bytes());
-            return;
+        let new_path = match self.sandbox.resolve_nofollow(new_relative.as_str()) {
+            Ok(path) => path,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
+                return;
+            },
         };
 
         match fs::hard_link(&old_path, &new_path) {
@@ -834,15 +837,15 @@ impl HostFsHandler {
         };
 
         let host_path = match self.sandbox.resolve_nofollow(path.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
 
-        match fs::remove_file(&host_path) {
+        match unlink_file(&host_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
                 set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
@@ -867,10 +870,10 @@ impl HostFsHandler {
         };
 
         let host_path = match self.sandbox.resolve(path.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -905,10 +908,10 @@ impl HostFsHandler {
         };
 
         let host_path = match self.sandbox.resolve(path.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -958,10 +961,10 @@ impl HostFsHandler {
         };
 
         let link_path = match self.sandbox.resolve_nofollow(path.as_str()) {
-            Some(p) => p,
-            None => {
-                log::warn!("hostfsd: symlink linkpath escapes sandbox: {:?}", path.as_str());
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+            Ok(p) => p,
+            Err(error) => {
+                log::warn!("hostfsd: symlink linkpath resolution failed: {:?}", path.as_str());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -1045,9 +1048,9 @@ impl HostFsHandler {
         } else {
             self.sandbox.resolve(path.as_str())
         } {
-            Some(path) => path,
-            None => {
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+            Ok(path) => path,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -1096,9 +1099,9 @@ impl HostFsHandler {
         } else {
             self.sandbox.resolve(path.as_str())
         } {
-            Some(path) => path,
-            None => {
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+            Ok(path) => path,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -1145,9 +1148,9 @@ impl HostFsHandler {
         } else {
             self.sandbox.resolve(path.as_str())
         } {
-            Some(path) => path,
-            None => {
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+            Ok(path) => path,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -1269,9 +1272,9 @@ impl HostFsHandler {
         } else {
             self.sandbox.resolve(path.as_str())
         } {
-            Some(path) => path,
-            None => {
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+            Ok(path) => path,
+            Err(error) => {
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -1436,10 +1439,10 @@ impl HostFsHandler {
         set_kind(response, SystemCallMessageKind::HostFsReadlinkResponse as u16);
 
         let host_path = match self.sandbox.resolve_nofollow(path) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 let err = ReadlinkResponse {
-                    status: HOSTFS_ERR_PERMISSION,
+                    status: io_error_to_code(&error),
                     target_len: 0,
                     target: [0u8; MAX_INLINE_READLINK_TARGET],
                 };
@@ -1608,10 +1611,10 @@ impl HostFsHandler {
         set_kind(response, SystemCallMessageKind::HostFsLstatResponse as u16);
 
         let host_path = match self.sandbox.resolve_nofollow(path) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 let err = LstatResponse {
-                    status: HOSTFS_ERR_PERMISSION,
+                    status: io_error_to_code(&error),
                     size: 0,
                     mode: 0,
                     kind: file_kind::OTHER,
@@ -1668,10 +1671,10 @@ impl HostFsHandler {
         set_kind(response, SystemCallMessageKind::HostFsPathStatResponse as u16);
 
         let host_path = match self.sandbox.resolve(path) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 let err = LstatResponse {
-                    status: HOSTFS_ERR_PERMISSION,
+                    status: io_error_to_code(&error),
                     size: 0,
                     mode: 0,
                     kind: file_kind::OTHER,
@@ -1723,11 +1726,11 @@ impl HostFsHandler {
         };
 
         let host_path = match self.sandbox.resolve(path.as_str()) {
-            Some(p) => p,
-            None => {
-                log::warn!("hostfsd: path traversal rejected: {:?}", path.as_str());
+            Ok(p) => p,
+            Err(error) => {
+                log::warn!("hostfsd: path resolution failed: {:?}", path.as_str());
                 set_kind(response, SystemCallMessageKind::HostFsOpenResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -2193,11 +2196,11 @@ impl HostFsHandler {
         };
 
         let host_path = match self.sandbox.resolve(path.as_str()) {
-            Some(p) => p,
-            None => {
-                log::warn!("hostfsd: mkdir path traversal rejected: {:?}", path.as_str());
+            Ok(p) => p,
+            Err(error) => {
+                log::warn!("hostfsd: mkdir path resolution failed: {:?}", path.as_str());
                 set_kind(response, SystemCallMessageKind::HostFsMkdirResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -2232,10 +2235,10 @@ impl HostFsHandler {
         };
 
         let host_path = match self.sandbox.resolve(path.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsRmdirResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -2270,15 +2273,15 @@ impl HostFsHandler {
         };
 
         let host_path = match self.sandbox.resolve_nofollow(path.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
 
-        match fs::remove_file(&host_path) {
+        match unlink_file(&host_path) {
             Ok(()) => {
                 self.fd_table.invalidate_dir_caches();
                 set_kind(response, SystemCallMessageKind::HostFsUnlinkResponse as u16);
@@ -2327,18 +2330,18 @@ impl HostFsHandler {
             };
 
         let old_path = match self.sandbox.resolve(old_relative.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
         let new_path = match self.sandbox.resolve(new_relative.as_str()) {
-            Some(p) => p,
-            None => {
+            Ok(p) => p,
+            Err(error) => {
                 set_kind(response, SystemCallMessageKind::HostFsRenameResponse as u16);
-                set_payload_data(response, &HOSTFS_ERR_PERMISSION.to_le_bytes());
+                set_payload_data(response, &io_error_to_code(&error).to_le_bytes());
                 return;
             },
         };
@@ -2619,6 +2622,21 @@ fn open_dir_handle(path: &std::path::Path) -> io::Result<File> {
     {
         File::open(path)
     }
+}
+
+/// Removes a file or symlink without following a directory symlink into its target.
+fn unlink_file(path: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileTypeExt;
+
+        // Windows requires RemoveDirectory for directory symlinks, but an ordinary directory
+        // must still fail unlink. Inspect the entry itself, including dangling symlinks.
+        if fs::symlink_metadata(path)?.file_type().is_symlink_dir() {
+            return fs::remove_dir(path);
+        }
+    }
+    fs::remove_file(path)
 }
 
 /// Creates a symbolic link at `linkpath` pointing to the verbatim `target` string.

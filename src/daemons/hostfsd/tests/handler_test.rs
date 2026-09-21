@@ -2327,6 +2327,38 @@ fn test_pathstat_directory() {
 }
 
 #[test]
+fn test_pathstat_preserves_symlink_resolution_errors() {
+    let (mut handler, tmp) = setup();
+    for (name, target, expected) in [
+        ("cycle", PathBuf::from("cycle"), HOSTFS_ERR_LOOP),
+        ("missing", PathBuf::from("missing-parent").join("file"), HOSTFS_ERR_NOT_FOUND),
+    ] {
+        if let Err(error) = host_symlink(&target, &tmp.path().join(name)) {
+            if is_privilege_error(&error) {
+                println!("skipping: host cannot create symlinks ({error})");
+                return;
+            }
+            panic!("create {name}: {error}");
+        }
+        let inline = handler
+            .handle_request(&make_pathstat_request(name))
+            .expect("inline stat");
+        let multipart =
+            feed_parts(&mut handler, &make_long_pathstat_parts(name, OperationId::from_raw(161)));
+        for response in [inline, multipart] {
+            assert_eq!(
+                LstatResponse::decode(&response)
+                    .expect("stat response")
+                    .status,
+                expected,
+                "{name} must not become a permission error"
+            );
+            assert!(handler.take_next_response_part().is_none(), "failed stat has no timestamps");
+        }
+    }
+}
+
+#[test]
 fn test_pathstat_nonexistent_fails() {
     let (mut handler, _tmp) = setup();
     let req = make_pathstat_request("missing");
@@ -2494,6 +2526,76 @@ fn test_unlink_removes_symlink_not_target() {
     assert!(
         !tmp.path().join("link").exists() && fs::symlink_metadata(tmp.path().join("link")).is_err()
     );
+}
+
+#[test]
+fn test_unlink_directory_symlink_preserves_target() {
+    use std::path::Path;
+
+    for multipart in [false, true] {
+        for dangling in [false, true] {
+            let (mut handler, tmp) = setup();
+            fs::create_dir(tmp.path().join("target")).expect("create target directory");
+            let link = tmp.path().join("link");
+            if let Err(error) = host_symlink_dir(Path::new("target"), &link) {
+                if is_privilege_error(&error) {
+                    println!("skipping: host cannot create symlinks ({error})");
+                    return;
+                }
+                panic!("directory symlink failed: {error}");
+            }
+            if dangling {
+                fs::remove_dir(tmp.path().join("target")).expect("remove dangling target");
+            } else {
+                fs::write(tmp.path().join("target/marker"), b"keep").expect("create sentinel");
+            }
+            let response = if multipart {
+                feed_parts(
+                    &mut handler,
+                    &make_long_unlink_parts("link", OperationId::from_raw(141)),
+                )
+            } else {
+                handler
+                    .handle_request(&make_unlink_request("link"))
+                    .expect("unlink response")
+            };
+            let status = i32::from_le_bytes(
+                response[HOSTFS_DATA_START..HOSTFS_DATA_START + 4]
+                    .try_into()
+                    .expect("status"),
+            );
+            assert_eq!(
+                status, 0,
+                "directory symlink unlink (multipart={multipart}, dangling={dangling})"
+            );
+            assert!(fs::symlink_metadata(&link).is_err(), "link must be removed");
+            if !dangling {
+                assert_eq!(
+                    fs::read(tmp.path().join("target/marker")).expect("read sentinel"),
+                    b"keep"
+                );
+            }
+
+            fs::create_dir(tmp.path().join("empty")).expect("create ordinary directory");
+            let response = if multipart {
+                feed_parts(
+                    &mut handler,
+                    &make_long_unlink_parts("empty", OperationId::from_raw(142)),
+                )
+            } else {
+                handler
+                    .handle_request(&make_unlink_request("empty"))
+                    .expect("unlink response")
+            };
+            let status = i32::from_le_bytes(
+                response[HOSTFS_DATA_START..HOSTFS_DATA_START + 4]
+                    .try_into()
+                    .expect("status"),
+            );
+            assert!(status < 0, "unlink must still reject an ordinary directory");
+            assert!(tmp.path().join("empty").is_dir());
+        }
+    }
 }
 
 #[test]
