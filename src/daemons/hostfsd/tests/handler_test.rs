@@ -467,6 +467,85 @@ fn test_open_create_read_only_retains_read_only_handle() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn test_windows_read_only_create_flags() {
+    use sysapi::fcntl::file_status_flags::O_APPEND;
+
+    for multipart in [false, true] {
+        for flags in [
+            O_RDONLY | O_CREAT,
+            O_RDONLY | O_CREAT | O_EXCL,
+            O_RDONLY | O_CREAT | O_APPEND,
+        ] {
+            let (mut handler, tmp) = setup();
+            let open = |handler: &mut HostFsHandler| {
+                let response = if multipart {
+                    feed_parts(
+                        handler,
+                        &make_long_open_parts("readonly", flags, 0, OperationId::from_raw(171)),
+                    )
+                } else {
+                    handler
+                        .handle_request(&make_open_request("readonly", flags, 0))
+                        .expect("open response")
+                };
+                OpenResponse::decode(&response).fd
+            };
+            let fd = open(&mut handler);
+            assert!(fd > 0, "create readonly, flags={flags:#x}, multipart={multipart}");
+            let response = handler
+                .handle_request(&make_write_request(fd, b"x", -1))
+                .expect("write response");
+            assert!(
+                WriteResponse::decode(&response).bytes_written < 0,
+                "creation must not grant data writes"
+            );
+            let response = handler
+                .handle_request(&make_truncate_request(fd, 1))
+                .expect("truncate response");
+            let status = i32::from_le_bytes(
+                response[HOSTFS_DATA_START..HOSTFS_DATA_START + 4]
+                    .try_into()
+                    .expect("truncate status"),
+            );
+            assert!(status < 0, "creation must not grant truncation rights");
+            let response = handler
+                .handle_request(&make_read_request(fd, 1, -1))
+                .expect("read response");
+            assert_eq!(ReadResponse::decode(&response).bytes_read, 0);
+            handler
+                .handle_request(&make_close_request(fd))
+                .expect("close response");
+
+            fs::write(tmp.path().join("readonly"), b"existing").expect("seed existing file");
+            let reopened = open(&mut handler);
+            if flags & O_EXCL != 0 {
+                assert_eq!(
+                    reopened, HOSTFS_ERR_EXISTS,
+                    "exclusive create must reject existing files"
+                );
+            } else {
+                assert!(reopened > 0);
+                let response = handler
+                    .handle_request(&make_write_request(reopened, b"x", -1))
+                    .expect("write response");
+                assert!(
+                    WriteResponse::decode(&response).bytes_written < 0,
+                    "existing handle must remain read-only"
+                );
+                handler
+                    .handle_request(&make_close_request(reopened))
+                    .expect("close response");
+            }
+            assert_eq!(
+                fs::read(tmp.path().join("readonly")).expect("read existing file"),
+                b"existing"
+            );
+        }
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn test_open_create_read_only_dangling_symlink_fails() {
@@ -2324,6 +2403,357 @@ fn test_pathstat_directory() {
     let r = LstatResponse::decode(&resp).expect("decode");
     assert_eq!(r.status, 0, "pathstat should succeed");
     assert_eq!(r.kind, file_kind::DIRECTORY);
+}
+
+/// Checks both stat wire forms, including the successful metadata/timestamp continuation.
+fn stat_path_response(
+    handler: &mut HostFsHandler,
+    path: &str,
+    follow: bool,
+    multipart: bool,
+) -> LstatResponse {
+    let op_id = OperationId::from_raw(161);
+    let response = if multipart {
+        let kind = if follow {
+            SystemCallMessageKind::HostFsPathStatRequestPart
+        } else {
+            SystemCallMessageKind::HostFsLstatRequestPart
+        };
+        let data = long_msg::serialize_long_lstat_request(op_id, path.as_bytes())
+            .expect("serialize stat path");
+        feed_parts(handler, &split_into_parts(kind, &data))
+    } else {
+        let kind = if follow {
+            SystemCallMessageKind::HostFsPathStatRequest
+        } else {
+            SystemCallMessageKind::HostFsLstatRequest
+        };
+        let payload = LstatRequest::from_path(path.as_bytes())
+            .expect("inline path")
+            .serialize(kind as u16, op_id);
+        handler.handle_request(&payload).expect("stat response")
+    };
+    let expected_kind = if follow {
+        SystemCallMessageKind::HostFsPathStatResponse
+    } else {
+        SystemCallMessageKind::HostFsLstatResponse
+    };
+    assert_eq!(u16::from_ne_bytes([response[0], response[1]]), expected_kind as u16);
+    assert_eq!(get_op_id(&response), op_id);
+    let metadata = LstatResponse::decode(&response).expect("stat metadata");
+    if metadata.status == 0 {
+        let continuation = handler
+            .take_next_response_part()
+            .expect("timestamp continuation");
+        assert_eq!(get_op_id(&continuation), op_id);
+        assert!(StatTimesResponse::decode(&continuation).is_some());
+    }
+    assert!(handler.take_next_response_part().is_none());
+    metadata
+}
+
+#[test]
+fn test_symlink_traversal_errors_keep_errno() {
+    use std::path::PathBuf;
+
+    let (mut handler, tmp) = setup();
+    fs::write(tmp.path().join("file"), b"not a directory").expect("create ordinary file");
+    for directory_link in [false, true] {
+        for (label, target, expected) in [
+            ("cycle", None, HOSTFS_ERR_LOOP),
+            ("leaf", Some(PathBuf::from("missing")), HOSTFS_ERR_NOT_FOUND),
+            ("parent", Some(PathBuf::from("missing").join("leaf")), HOSTFS_ERR_NOT_FOUND),
+            ("notdir", Some(PathBuf::from("file").join("child")), HOSTFS_ERR_NOT_DIR),
+        ] {
+            let name = format!("{label}-{}", u8::from(directory_link));
+            let target = target.unwrap_or_else(|| PathBuf::from(&name));
+            let link = tmp.path().join(&name);
+            let create = if directory_link {
+                host_symlink_dir
+            } else {
+                host_symlink
+            };
+            if let Err(error) = create(&target, &link) {
+                if is_privilege_error(&error) {
+                    println!("skipping: host cannot create symlinks ({error})");
+                    return;
+                }
+                panic!("create {name}: {error}");
+            }
+            for multipart in [false, true] {
+                let following = stat_path_response(&mut handler, &name, true, multipart);
+                assert_eq!(following.status, expected, "{name}, multipart={multipart}");
+                let nofollow = stat_path_response(&mut handler, &name, false, multipart);
+                assert_eq!(nofollow.status, 0, "lstat {name}, multipart={multipart}");
+                assert_eq!(nofollow.kind, file_kind::SYMLINK);
+                // No-follow affects only the final component, not a symlink ancestor.
+                let child = format!("{name}/child");
+                for follow in [false, true] {
+                    assert_eq!(
+                        stat_path_response(&mut handler, &child, follow, multipart).status,
+                        expected,
+                        "{child}, follow={follow}, multipart={multipart}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn test_windows_symlink_target_matrix() {
+    use std::path::{
+        Path,
+        PathBuf,
+    };
+
+    // Forms: native/POSIX relative, native/POSIX root-relative, DOS absolute, verbatim absolute.
+    // Cross each with both Windows link kinds, both object kinds, both stat modes and wire forms.
+    for form in 0..6 {
+        for target_is_directory in [false, true] {
+            for directory_link in [false, true] {
+                let (mut handler, tmp) = setup();
+                let root = tmp.path().canonicalize().expect("canonical root");
+                fs::create_dir_all(root.join("assets/sub")).expect("create directories");
+                let target = root.join("assets/item");
+                if target_is_directory {
+                    fs::create_dir(&target).expect("create target directory");
+                    fs::write(target.join("child"), b"child").expect("create child");
+                } else {
+                    fs::write(&target, b"target").expect("create target file");
+                }
+                let rooted = target.components().skip(1).collect::<PathBuf>();
+                let spelling = match form {
+                    0 => PathBuf::from(r"assets\item"),
+                    1 => PathBuf::from("./assets//sub/../item"),
+                    2 => rooted.clone(),
+                    3 => PathBuf::from(rooted.to_string_lossy().replace('\\', "/")),
+                    4 => PathBuf::from(
+                        target
+                            .to_string_lossy()
+                            .strip_prefix(r"\\?\")
+                            .expect("verbatim disk root"),
+                    ),
+                    _ => target.clone(),
+                };
+                let link = root.join("link");
+                let create = if directory_link {
+                    host_symlink_dir
+                } else {
+                    host_symlink
+                };
+                if let Err(error) = create(&spelling, &link) {
+                    if is_privilege_error(&error) {
+                        println!("skipping: host cannot create symlinks ({error})");
+                        return;
+                    }
+                    panic!("create link to {spelling:?}: {error}");
+                }
+                let stored = fs::read_link(&link).expect("stored target");
+                for follow in [false, true] {
+                    for multipart in [false, true] {
+                        let context = format!(
+                            "target={spelling:?}, dir_target={target_is_directory}, \
+                             dir_link={directory_link}, follow={follow}, multipart={multipart}"
+                        );
+                        let result = stat_path_response(&mut handler, "link", follow, multipart);
+                        assert_eq!(result.status, 0, "{context}");
+                        let expected_kind = if !follow {
+                            file_kind::SYMLINK
+                        } else if target_is_directory {
+                            file_kind::DIRECTORY
+                        } else {
+                            file_kind::REGULAR
+                        };
+                        assert_eq!(result.kind, expected_kind, "{context}");
+                        if follow && !target_is_directory {
+                            assert_eq!(result.size, 6, "{context}");
+                        }
+                        let child =
+                            stat_path_response(&mut handler, "link/child", follow, multipart);
+                        if target_is_directory {
+                            assert_eq!(child.status, 0, "child: {context}");
+                            assert_eq!(child.size, 5, "child: {context}");
+                        } else {
+                            assert_eq!(child.status, HOSTFS_ERR_NOT_DIR, "child: {context}");
+                        }
+                    }
+                }
+                if target_is_directory {
+                    fs::remove_dir_all(&target).expect("remove target directory");
+                } else {
+                    fs::remove_file(&target).expect("remove target file");
+                }
+                for missing_parent in [false, true] {
+                    if missing_parent {
+                        fs::remove_dir_all(root.join("assets")).expect("remove target parent");
+                    }
+                    for follow in [false, true] {
+                        for multipart in [false, true] {
+                            let result =
+                                stat_path_response(&mut handler, "link", follow, multipart);
+                            assert_eq!(
+                                result.status,
+                                if follow { HOSTFS_ERR_NOT_FOUND } else { 0 },
+                                "dangling {spelling:?}, parent_missing={missing_parent}, \
+                                 follow={follow}, multipart={multipart}"
+                            );
+                            if !follow {
+                                assert_eq!(result.kind, file_kind::SYMLINK);
+                            }
+                            assert_eq!(
+                                stat_path_response(&mut handler, "link/child", follow, multipart)
+                                    .status,
+                                HOSTFS_ERR_NOT_FOUND,
+                                "dangling ancestor {spelling:?}, parent_missing={missing_parent}"
+                            );
+                        }
+                    }
+                }
+                assert_eq!(fs::read_link(&link).expect("target remains"), stored);
+                // Test an outward target of the same link kind and spelling class as well.
+                let outside = TempDir::new().expect("outside root");
+                let outside_target = outside
+                    .path()
+                    .canonicalize()
+                    .expect("canonical outside")
+                    .join("item");
+                if target_is_directory {
+                    fs::create_dir(&outside_target).expect("outside directory");
+                } else {
+                    fs::write(&outside_target, b"outside").expect("outside file");
+                }
+                let outside_rooted = outside_target.components().skip(1).collect::<PathBuf>();
+                let outward = match form {
+                    0 | 1 => {
+                        let relative = Path::new("..")
+                            .join(outside.path().file_name().expect("outside name"))
+                            .join("item");
+                        if form == 1 {
+                            PathBuf::from(relative.to_string_lossy().replace('\\', "/"))
+                        } else {
+                            relative
+                        }
+                    },
+                    2 => outside_rooted,
+                    3 => PathBuf::from(outside_rooted.to_string_lossy().replace('\\', "/")),
+                    4 => PathBuf::from(
+                        outside_target
+                            .to_string_lossy()
+                            .strip_prefix(r"\\?\")
+                            .expect("verbatim outside"),
+                    ),
+                    _ => outside_target.clone(),
+                };
+                create(&outward, &root.join("escape")).expect("outward symlink");
+                for multipart in [false, true] {
+                    assert_eq!(
+                        stat_path_response(&mut handler, "escape", true, multipart).status,
+                        HOSTFS_ERR_PERMISSION,
+                        "outward target={outward:?}"
+                    );
+                    assert_eq!(
+                        stat_path_response(&mut handler, "escape", false, multipart).kind,
+                        file_kind::SYMLINK,
+                        "nofollow must not dereference {outward:?}"
+                    );
+                }
+                if target_is_directory {
+                    fs::remove_dir(&outside_target).expect("remove outside target directory");
+                } else {
+                    fs::remove_file(&outside_target).expect("remove outside target file");
+                }
+                for missing_parent in [false, true] {
+                    if missing_parent {
+                        fs::remove_dir(outside.path()).expect("remove outside target parent");
+                    }
+                    for multipart in [false, true] {
+                        assert_eq!(
+                            stat_path_response(&mut handler, "escape", true, multipart).status,
+                            HOSTFS_ERR_NOT_FOUND,
+                            "unresolved outward target={outward:?}, \
+                             parent_missing={missing_parent}"
+                        );
+                        assert_eq!(
+                            stat_path_response(&mut handler, "escape", false, multipart).kind,
+                            file_kind::SYMLINK
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn test_windows_junction_and_hard_link_paths() {
+    use std::process::Command;
+
+    let (mut handler, tmp) = setup();
+    fs::create_dir_all(tmp.path().join("real/child")).expect("create directories");
+    fs::write(tmp.path().join("marker"), b"lexical").expect("create decoy");
+    fs::write(tmp.path().join("real/marker"), b"physical-parent").expect("create target");
+    let junction = tmp.path().join("junction");
+    let output = Command::new("cmd.exe")
+        .current_dir(tmp.path())
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(&junction)
+        .arg(tmp.path().join("real").join("child"))
+        .output()
+        .expect("create junction");
+    assert!(
+        output.status.success(),
+        "mklink /J failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    fs::hard_link(tmp.path().join("real/marker"), tmp.path().join("hardlink"))
+        .expect("create hard link");
+    for follow in [false, true] {
+        for multipart in [false, true] {
+            let junction_stat = stat_path_response(&mut handler, "junction", follow, multipart);
+            assert_eq!(junction_stat.status, 0);
+            assert_eq!(
+                junction_stat.kind,
+                if follow {
+                    file_kind::DIRECTORY
+                } else {
+                    file_kind::SYMLINK
+                }
+            );
+            for path in ["junction/../marker", "hardlink"] {
+                let result = stat_path_response(&mut handler, path, follow, multipart);
+                assert_eq!(result.status, 0, "{path}, follow={follow}, multipart={multipart}");
+                assert_eq!(result.kind, file_kind::REGULAR);
+                assert_eq!(result.size, 15);
+            }
+            assert_eq!(
+                stat_path_response(&mut handler, "hardlink/child", follow, multipart).status,
+                HOSTFS_ERR_NOT_DIR
+            );
+        }
+    }
+    for link in ["junction", "hardlink"] {
+        let response = handler
+            .handle_request(&make_unlink_request(link))
+            .expect("unlink response");
+        assert_eq!(
+            i32::from_le_bytes(
+                response[HOSTFS_DATA_START..HOSTFS_DATA_START + 4]
+                    .try_into()
+                    .expect("unlink status")
+            ),
+            0,
+            "unlink {link}"
+        );
+        assert!(fs::symlink_metadata(tmp.path().join(link)).is_err());
+    }
+    assert!(tmp.path().join("real/child").is_dir());
+    assert_eq!(
+        fs::read(tmp.path().join("real/marker")).expect("target survives"),
+        b"physical-parent"
+    );
 }
 
 #[test]
