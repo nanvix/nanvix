@@ -692,12 +692,37 @@ fn test_readonly_control_revokes_cow() -> bool {
     passed
 }
 
+/// Checks the actual x86_64 hardware mapping rather than the software bookkeeping PTE.
+#[cfg(target_arch = "x86_64")]
+fn check_user_hardware_mapping(
+    vmem: &Vmem,
+    vaddr: PageAligned<VirtualAddress>,
+    frame: usize,
+    writable: bool,
+) -> Result<bool, Error> {
+    let root: usize = vmem.cr3_value()?;
+    // SAFETY: these private test address spaces remain alive and mapped, and tests run with
+    // interrupts disabled. The query only reads their identity-mapped hardware page tables.
+    let actual: Option<(usize, bool)> = unsafe {
+        crate::hal::arch::x86::mem::mmu::hwpt::query_user_page(root as u64, vaddr.into_raw_value())
+    };
+    if actual != Some((frame, writable)) {
+        error!(
+            "hardware user mapping mismatch (root={root:#x}, vaddr={vaddr:?}, frame={frame:#x}, \
+             writable={writable}, actual={actual:?})"
+        );
+        return Ok(false);
+    }
+    Ok(true)
+}
+
 ///
 /// # Description
 ///
 /// Verifies that writable control preserves CoW while a frame is shared, including after
 /// explicit read-only control has cleared the CoW bit. Resolving the subsequent write fault
 /// must isolate the writer; the remaining sole owner may then become writable in place.
+/// On x86_64, also checks the actual hardware mapping through each permission transition.
 ///
 #[inline(never)]
 fn test_writable_control_preserves_cow() -> bool {
@@ -731,6 +756,10 @@ fn test_writable_control_preserves_cow() -> bool {
         let original_frame: FrameAddress = frame.address();
         parent.map(frame, vaddr, AccessPermission::RDWR)?;
         parent.memset(vaddr, u32::from(INITIAL_BYTE))?;
+        #[cfg(target_arch = "x86_64")]
+        if !check_user_hardware_mapping(&parent, vaddr, original_frame.into_raw_value(), true)? {
+            return Ok(false);
+        }
 
         // Observe the mapped reference without acquiring or releasing an additional owner.
         let probe: ManuallyDrop<UserFrame> = ManuallyDrop::new(UserFrame::new(original_frame));
@@ -753,6 +782,15 @@ fn test_writable_control_preserves_cow() -> bool {
         for revoke_first in [false, true] {
             if revoke_first {
                 mm.ctrl_upage(&mut parent, vaddr, AccessPermission::RDONLY)?;
+                #[cfg(target_arch = "x86_64")]
+                if !check_user_hardware_mapping(
+                    &parent,
+                    vaddr,
+                    original_frame.into_raw_value(),
+                    false,
+                )? {
+                    return Ok(false);
+                }
             }
             mm.ctrl_upage(&mut parent, vaddr, AccessPermission::RDWR)?;
             let parent_pte: PageTableEntry = parent.try_find_user_pte(vaddr)?.ok_or_else(|| {
@@ -772,6 +810,21 @@ fn test_writable_control_preserves_cow() -> bool {
                 error!("shared writable control bypassed CoW (revoke_first={revoke_first})");
                 passed = false;
             }
+            #[cfg(target_arch = "x86_64")]
+            {
+                passed &= check_user_hardware_mapping(
+                    &parent,
+                    vaddr,
+                    original_frame.into_raw_value(),
+                    false,
+                )?;
+                passed &= check_user_hardware_mapping(
+                    &child,
+                    vaddr,
+                    original_frame.into_raw_value(),
+                    false,
+                )?;
+            }
         }
         if !passed {
             return Ok(false);
@@ -790,6 +843,12 @@ fn test_writable_control_preserves_cow() -> bool {
             || probe.refcount()? != 1
         {
             error!("write fault did not create a private writable mapping");
+            return Ok(false);
+        }
+        #[cfg(target_arch = "x86_64")]
+        if !check_user_hardware_mapping(&parent, vaddr, private_pte.frame_address(), true)?
+            || !check_user_hardware_mapping(&child, vaddr, original_frame.into_raw_value(), false)?
+        {
             return Ok(false);
         }
 
@@ -826,8 +885,36 @@ fn test_writable_control_preserves_cow() -> bool {
             error!("exclusive writable control did not restore writes in place");
             return Ok(false);
         }
+        #[cfg(target_arch = "x86_64")]
+        if !check_user_hardware_mapping(&child, vaddr, original_frame.into_raw_value(), true)?
+            || !check_user_hardware_mapping(&parent, vaddr, private_pte.frame_address(), true)?
+        {
+            return Ok(false);
+        }
         if mm.try_resolve_cow_fault(&mut child, TEST_VADDR_RAW, USER_WRITE_PROTECTION_FAULT)? {
             error!("exclusive writable control retained CoW fault eligibility");
+            return Ok(false);
+        }
+
+        mm.ctrl_upage(&mut child, vaddr, AccessPermission::RDONLY)?;
+        let revoked_pte: PageTableEntry = child.try_find_user_pte(vaddr)?.ok_or_else(|| {
+            Error::new(ErrorCode::NoSuchEntry, "child PTE missing after revocation")
+        })?;
+        if revoked_pte.flags().is_writable()
+            || revoked_pte.is_cow()
+            || revoked_pte.frame_address() != original_frame.into_raw_value()
+        {
+            error!("exclusive revocation did not retain a read-only mapping");
+            return Ok(false);
+        }
+        #[cfg(target_arch = "x86_64")]
+        if !check_user_hardware_mapping(&child, vaddr, original_frame.into_raw_value(), false)?
+            || !check_user_hardware_mapping(&parent, vaddr, private_pte.frame_address(), true)?
+        {
+            return Ok(false);
+        }
+        if mm.try_resolve_cow_fault(&mut child, TEST_VADDR_RAW, USER_WRITE_PROTECTION_FAULT)? {
+            error!("exclusive revocation left CoW fault eligibility");
             return Ok(false);
         }
         Ok(true)
