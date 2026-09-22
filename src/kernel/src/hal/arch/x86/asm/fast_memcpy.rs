@@ -43,8 +43,8 @@ pub(crate) unsafe fn fast_memcpy(dst: *mut u8, src: *const u8, size: usize) {
                 "rep movsd",
                 "pop edi",
                 "pop esi",
-                dst = in(reg) dst as usize,
-                src = in(reg) src as usize,
+                dst = in(reg_abcd) dst as usize,
+                src = in(reg_abcd) src as usize,
                 inout("ecx") count => _,
             );
         }
@@ -59,8 +59,8 @@ pub(crate) unsafe fn fast_memcpy(dst: *mut u8, src: *const u8, size: usize) {
                 "rep movsb",
                 "pop edi",
                 "pop esi",
-                dst = in(reg) dst as usize,
-                src = in(reg) src as usize,
+                dst = in(reg_abcd) dst as usize,
+                src = in(reg_abcd) src as usize,
                 inout("ecx") size => _,
             );
         }
