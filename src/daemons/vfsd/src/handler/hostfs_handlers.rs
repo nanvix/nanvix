@@ -31,12 +31,14 @@ use crate::{
     },
     hostfs,
     pending::{
+        prepare_read_error,
         PendingOp,
         PendingOpKind,
         PendingQueue,
     },
     pipe_wait::PipeWaitTable,
 };
+use ::core::time::Duration;
 use ::sys::{
     error::ErrorCode,
     ipc::{
@@ -48,7 +50,13 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
-use ::sysapi::fcntl::atflags::AT_FDCWD;
+use ::sysapi::{
+    fcntl::atflags::AT_FDCWD,
+    unistd::file_seek::{
+        SEEK_CUR,
+        SEEK_SET,
+    },
+};
 use ::syscall::{
     unistd::message::{
         ChangeDirectoryRequest,
@@ -63,6 +71,9 @@ use ::syscall::{
     },
     SystemCallMessage,
 };
+
+/// Maximum time an initial request handler waits for the caller to register its bulk transfer.
+const BULK_REQUEST_TIMEOUT: Duration = Duration::from_millis(100);
 
 //==================================================================================================
 // HostFs-Aware Short Request Handlers
@@ -261,8 +272,23 @@ pub(crate) fn handle_seek_with_hostfs(
         if !pending.has_capacity() {
             return Some(build_error(source, ErrorCode::ResourceBusy));
         }
+        if pending.has_active_io(remote_fd) {
+            return Some(build_error(source, ErrorCode::OperationAlreadyInProgress));
+        }
+        let previous_offset: i64 = match ::vfs::fd::vfs_lseek(fd, 0, SEEK_CUR) {
+            Ok(offset) => offset,
+            Err(error) => return Some(build_error(source, fat32_to_error_code(&error))),
+        };
+        let (offset, whence): (i64, i32) = if req.whence == SEEK_CUR {
+            match previous_offset.checked_add(req.offset) {
+                Some(offset) => (offset, SEEK_SET),
+                None => return Some(build_error(source, ErrorCode::InvalidArgument)),
+            }
+        } else {
+            (req.offset, req.whence)
+        };
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        if hostfs::send_lseek_request(remote_fd, req.offset, req.whence, op_id).is_err() {
+        if hostfs::send_lseek_request(remote_fd, offset, whence, op_id).is_err() {
             return Some(build_error(source, ErrorCode::IoErr));
         }
         if pending
@@ -272,7 +298,11 @@ pub(crate) fn handle_seek_with_hostfs(
                     response_context,
                     source_tid: source,
                     source_pid,
-                    kind: PendingOpKind::Seek,
+                    kind: PendingOpKind::Seek {
+                        fd,
+                        remote_fd,
+                        previous_offset,
+                    },
                 },
             )
             .is_err()
@@ -719,15 +749,22 @@ pub(crate) fn handle_read_with_hostfs(
 
     if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
         if !pending.has_capacity() {
-            let _ = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[]);
-            return Some(build_error(source_tid, ErrorCode::ResourceBusy));
+            return prepare_read_error(response_context, ErrorCode::ResourceBusy);
+        }
+        if pending.has_active_io(remote_fd) {
+            return prepare_read_error(response_context, ErrorCode::OperationAlreadyInProgress);
         }
         let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
         let count: usize = req.count as usize;
         let buf_size: usize = count.min(::hostfs_api::MAX_INLINE_READ_DATA);
-        if hostfs::send_read_request(remote_fd, buf_size, op_id).is_err() {
-            let _ = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[]);
-            return Some(build_error(source_tid, ErrorCode::IoErr));
+        let offset: i64 = match ::vfs::fd::vfs_lseek(fd, 0, SEEK_CUR) {
+            Ok(offset) => offset,
+            Err(error) => {
+                return prepare_read_error(response_context, fat32_to_error_code(&error));
+            },
+        };
+        if hostfs::send_read_request(remote_fd, buf_size, offset, op_id).is_err() {
+            return prepare_read_error(response_context, ErrorCode::IoErr);
         }
         if pending
             .insert(
@@ -736,18 +773,25 @@ pub(crate) fn handle_read_with_hostfs(
                     response_context,
                     source_tid,
                     source_pid,
-                    kind: PendingOpKind::Read { count: buf_size },
+                    kind: PendingOpKind::Read {
+                        count: buf_size,
+                        fd,
+                        remote_fd,
+                        offset,
+                        response: None,
+                        delivery_error: None,
+                        delivery_retries: 0,
+                    },
                 },
             )
             .is_err()
         {
-            let _ = ::sys::kcall::ipc::__kcall_push(source_pid, source_tid, &[]);
-            return Some(build_error(source_tid, ErrorCode::ResourceBusy));
+            return prepare_read_error(response_context, ErrorCode::ResourceBusy);
         }
         return None;
     }
 
-    Some(super::readwrite::handle_read(source_pid, source_tid, msg))
+    super::readwrite::handle_read(response_context, msg)
 }
 
 pub(crate) fn handle_write_with_hostfs(
@@ -762,9 +806,7 @@ pub(crate) fn handle_write_with_hostfs(
     let fd: i32 = req.fd;
 
     if let Ok((_, writable)) = ::vfs::fd::vfs_terminal_access(fd) {
-        return Some(super::readwrite::handle_terminal_write(
-            source_pid, source_tid, msg, writable,
-        ));
+        return super::readwrite::handle_terminal_write(response_context, msg, writable);
     }
 
     // Pipe write end: served by the pipe handler (which may park the caller).
@@ -780,20 +822,36 @@ pub(crate) fn handle_write_with_hostfs(
     }
 
     if let Some(remote_fd) = ::vfs::fd::vfs_hostfs_remote_fd(fd) {
-        if !pending.has_capacity() {
-            return Some(build_error(source_tid, ErrorCode::ResourceBusy));
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
         let count: usize = req.count as usize;
         let buf_size: usize = count.min(::hostfs_api::MAX_INLINE_WRITE_DATA);
         let mut buf: [u8; ::hostfs_api::MAX_INLINE_WRITE_DATA] =
             [0u8; ::hostfs_api::MAX_INLINE_WRITE_DATA];
 
         // Pull the data from the caller BEFORE sending the IKC request.
-        match ::sys::kcall::ipc::__kcall_pull(source_pid, source_tid, &mut buf[..buf_size]) {
+        match ::sys::kcall::ipc::__kcall_pull_tagged_timed(
+            source_pid,
+            source_tid,
+            &mut buf[..buf_size],
+            response_context.request_id(),
+            Some(BULK_REQUEST_TIMEOUT),
+        ) {
             Ok(pulled) => {
                 let write_len: usize = pulled.min(buf_size);
-                if hostfs::send_write_request(remote_fd, &buf[..write_len], op_id).is_err() {
+                if !pending.has_capacity() {
+                    return Some(build_error(source_tid, ErrorCode::ResourceBusy));
+                }
+                if pending.has_active_io(remote_fd) {
+                    return Some(build_error(source_tid, ErrorCode::OperationAlreadyInProgress));
+                }
+                let offset: i64 = match ::vfs::fd::vfs_lseek(fd, 0, SEEK_CUR) {
+                    Ok(offset) => offset,
+                    Err(error) => {
+                        return Some(build_error(source_tid, fat32_to_error_code(&error)));
+                    },
+                };
+                let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
+                if hostfs::send_write_request(remote_fd, &buf[..write_len], offset, op_id).is_err()
+                {
                     return Some(build_error(source_tid, ErrorCode::IoErr));
                 }
                 if pending
@@ -803,7 +861,11 @@ pub(crate) fn handle_write_with_hostfs(
                             response_context,
                             source_tid,
                             source_pid,
-                            kind: PendingOpKind::Write,
+                            kind: PendingOpKind::Write {
+                                fd,
+                                remote_fd,
+                                offset,
+                            },
                         },
                     )
                     .is_err()
@@ -812,6 +874,7 @@ pub(crate) fn handle_write_with_hostfs(
                 }
                 return None;
             },
+            Err(e) if e.code == ErrorCode::OperationTimedOut => return None,
             Err(e) => {
                 ::syslog::error!("hostfs write: pull failed (error={:?})", e);
                 return Some(build_error(source_tid, ErrorCode::IoErr));
@@ -819,7 +882,7 @@ pub(crate) fn handle_write_with_hostfs(
         }
     }
 
-    Some(super::readwrite::handle_write(source_pid, source_tid, msg))
+    super::readwrite::handle_write(response_context, msg)
 }
 
 //==================================================================================================

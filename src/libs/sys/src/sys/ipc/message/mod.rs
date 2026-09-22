@@ -27,6 +27,7 @@ pub use kernel::{
     PullArgs,
     PushArgs,
     SegmentCount,
+    SignalMaskRestore,
     Timeout,
     VmBusMessage,
     VmBusMessageKind,

@@ -4529,6 +4529,7 @@ dependencies = [
  "nvx",
  "nvx-crt0",
  "proc",
+ "spin",
  "sys",
  "sysalloc",
  "sysapi",

@@ -89,7 +89,12 @@ pub fn sendto(
     let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Push the datagram payload via data chunk transfer.
-    ::sys::kcall::ipc::__kcall_push(ProcessIdentifier::KERNEL, ThreadIdentifier::KERNEL, buffer)?;
+    ::sys::kcall::ipc::__kcall_push_tagged(
+        ProcessIdentifier::KERNEL,
+        ThreadIdentifier::KERNEL,
+        buffer,
+        token.identifier(),
+    )?;
 
     // Receive response.
     let response: Message = crate::rpc::recv_response(&token)?;
