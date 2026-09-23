@@ -29,7 +29,10 @@ use crate::{
         fat32_to_error_code,
         ResponseContext,
     },
-    hostfs,
+    hostfs::{
+        self,
+        RoutedPath,
+    },
     pending::{
         PendingOp,
         PendingOpKind,
@@ -48,7 +51,14 @@ use ::sys::{
         ThreadIdentifier,
     },
 };
-use ::sysapi::fcntl::atflags::AT_FDCWD;
+use ::sysapi::{
+    fcntl::atflags::{
+        self,
+        AT_FDCWD,
+    },
+    sys_stat::UTIME_OMIT,
+    unistd::access_mode,
+};
 use ::syscall::{
     unistd::message::{
         ChangeDirectoryRequest,
@@ -534,52 +544,51 @@ pub(crate) fn handle_utimensat_with_hostfs(
     request: UpdateFileAccessTimeAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    if request.flag & !::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW != 0 {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    if request.flag & !atflags::AT_SYMLINK_NOFOLLOW != 0 {
         return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     }
-    if request
-        .times
-        .iter()
-        .all(|time| time.tv_nsec == ::sysapi::sys_stat::UTIME_OMIT)
-    {
-        return Some(super::long::handle_utimensat(source, request));
+    if request.times.iter().all(|time| time.tv_nsec == UTIME_OMIT) {
+        return Some(long::handle_utimensat(source, request));
     }
-    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+    let resolved = match resolve_path(request.dirfd, &request.path) {
         Ok(resolved) => resolved,
-        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+        Err(error) => return Some(vec![build_error(source, error)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        if pending
-            .insert(
-                op_id,
-                PendingOp {
-                    response_context,
-                    source_tid: source,
-                    source_pid,
-                    kind: PendingOpKind::UpdateTimesAt,
-                },
-            )
-            .is_err()
-        {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        if let Err(error) =
-            hostfs::send_update_times_at_request(&resolved, request.flag, &request.times, op_id)
-        {
-            pending.remove(op_id);
-            return Some(vec![build_error(source, error)]);
-        }
-        return None;
+    let resolved = match resolved {
+        RoutedPath::Local(_) => return Some(long::handle_utimensat(source, request)),
+        RoutedPath::Host(host) => host,
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(super::long::handle_utimensat(source, request))
+    let op_id = pending.alloc_op_id();
+    if pending
+        .insert(
+            op_id,
+            PendingOp {
+                response_context,
+                source_tid: source,
+                source_pid,
+                kind: PendingOpKind::UpdateTimesAt,
+            },
+        )
+        .is_err()
+    {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    if let Err(error) = hostfs::send_update_times_at_request(
+        resolved.host_path(),
+        request.flag,
+        &request.times,
+        op_id,
+    ) {
+        pending.remove(op_id);
+        return Some(vec![build_error(source, error)]);
+    }
+    None
 }
 
 pub(crate) fn handle_fstatat_with_hostfs(
@@ -587,52 +596,52 @@ pub(crate) fn handle_fstatat_with_hostfs(
     request: FileStatAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let resolved = match resolve_path(request.dirfd, &request.path) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        // Both stat modes are supported over hostfs. No-follow (`AT_SYMLINK_NOFOLLOW`)
-        // maps to a path-based lstat; following stat (the default for `stat(2)`) maps to
-        // a path-based following stat. Both reuse the same response wire format
-        // (`LstatResponse`) and completion path (`complete_lstat`); only the host-side
-        // resolution differs (no-follow vs follow of the final component).
-        let no_follow: bool = request.flag & ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW != 0;
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        let (send_result, kind) = if no_follow {
-            (hostfs::send_lstat_request(&resolved, op_id), PendingOpKind::Lstat)
-        } else {
-            (hostfs::send_pathstat_request(&resolved, op_id), PendingOpKind::PathStat)
-        };
-        match send_result {
-            Ok(()) => {
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            response_context,
-                            source_tid: source,
-                            source_pid,
-                            kind,
-                        },
-                    )
-                    .is_err()
-                {
-                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-                }
-                return None;
-            },
-            Err(e) => return Some(vec![build_error(source, e)]),
-        }
+    let resolved = match resolved {
+        RoutedPath::Local(local) => return Some(long::handle_fstatat(source, local)),
+        RoutedPath::Host(host) => host,
+    };
+    // Both stat modes are supported over hostfs. No-follow (`AT_SYMLINK_NOFOLLOW`)
+    // maps to a path-based lstat; following stat (the default for `stat(2)`) maps to
+    // a path-based following stat. Both reuse the same response wire format
+    // (`LstatResponse`) and completion path (`complete_lstat`); only the host-side
+    // resolution differs (no-follow vs follow of the final component).
+    let no_follow = request.flag & atflags::AT_SYMLINK_NOFOLLOW != 0;
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(super::long::handle_fstatat(source, resolved))
+    let op_id = pending.alloc_op_id();
+    let (send_result, kind) = if no_follow {
+        (hostfs::send_lstat_request(resolved.host_path(), op_id), PendingOpKind::Lstat)
+    } else {
+        (hostfs::send_pathstat_request(resolved.host_path(), op_id), PendingOpKind::PathStat)
+    };
+    match send_result {
+        Ok(()) => {
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind,
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(e) => Some(vec![build_error(source, e)]),
+    }
 }
 
 /// hostfs-aware `chdir`.
@@ -646,41 +655,41 @@ pub(crate) fn handle_chdir_with_hostfs(
     request: ChangeDirectoryRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(AT_FDCWD, &request.path) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let resolved = match resolve_path(AT_FDCWD, &request.path) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id = pending.alloc_op_id();
-        match hostfs::send_pathstat_request(&resolved, op_id) {
-            Ok(()) => {
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            response_context,
-                            source_tid: source,
-                            source_pid,
-                            kind: PendingOpKind::Chdir { path: resolved },
-                        },
-                    )
-                    .is_err()
-                {
-                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-                }
-                return None;
-            },
-            Err(e) => return Some(vec![build_error(source, e)]),
-        }
+    let resolved = match resolved {
+        RoutedPath::Local(_) => return Some(long::handle_chdir(source, request)),
+        RoutedPath::Host(host) => host,
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(handle_chdir(source, request))
+    let op_id = pending.alloc_op_id();
+    match hostfs::send_pathstat_request(resolved.host_path(), op_id) {
+        Ok(()) => {
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind: PendingOpKind::Chdir { path: resolved },
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(e) => Some(vec![build_error(source, e)]),
+    }
 }
 
 pub(crate) fn handle_read_with_hostfs(
@@ -834,6 +843,7 @@ use ::syscall::{
         UnlinkAtRequest,
     },
     sys::stat::message::{
+        FileChmodAtRequest,
         FileStatAtRequest,
         FileStatRequest,
         MakeDirectoryAtRequest,
@@ -841,19 +851,29 @@ use ::syscall::{
         UpdateFileAccessTimeRequest,
     },
     unistd::message::{
+        FileAccessAtRequest,
         FileChownAtRequest,
         LinkAtRequest,
         ReadLinkAtRequest,
         SymbolicLinkAtRequest,
     },
 };
-use ::vfs::path::vfs_resolve_path;
+use ::vfs::{
+    fd::vfs_apply_umask,
+    path::vfs_resolve_path,
+};
 use alloc::{
     vec,
     vec::Vec,
 };
 
-use super::long::handle_chdir;
+use super::long;
+
+/// Anchors once for sidechannel routing, leaving component interpretation to the selected backend.
+fn resolve_path(dirfd: i32, path: &str) -> Result<RoutedPath, ErrorCode> {
+    let guest = vfs_resolve_path(dirfd, path).map_err(|error| fat32_to_error_code(&error))?;
+    hostfs::route_path(guest)
+}
 
 /// Handles getdents with hostfs awareness.
 ///
@@ -939,46 +959,46 @@ pub(crate) fn handle_fchownat_with_hostfs(
     request: FileChownAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let resolved = match resolve_path(request.dirfd, &request.path) {
         Ok(resolved) => resolved,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        if pending
-            .insert(
-                op_id,
-                PendingOp {
-                    response_context,
-                    source_tid: source,
-                    source_pid,
-                    kind: PendingOpKind::ChownAt,
-                },
-            )
-            .is_err()
-        {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        if let Err(e) = hostfs::send_chownat_request(
-            &resolved,
-            request.owner,
-            request.group,
-            request.flag,
-            op_id,
-        ) {
-            pending.remove(op_id);
-            return Some(vec![build_error(source, e)]);
-        }
-        return None;
+    let resolved = match resolved {
+        RoutedPath::Local(_) => return Some(long::handle_fchownat(source, request)),
+        RoutedPath::Host(host) => host,
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(super::long::handle_fchownat(source, request))
+    let op_id = pending.alloc_op_id();
+    if pending
+        .insert(
+            op_id,
+            PendingOp {
+                response_context,
+                source_tid: source,
+                source_pid,
+                kind: PendingOpKind::ChownAt,
+            },
+        )
+        .is_err()
+    {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    if let Err(e) = hostfs::send_chownat_request(
+        resolved.host_path(),
+        request.owner,
+        request.group,
+        request.flag,
+        op_id,
+    ) {
+        pending.remove(op_id);
+        return Some(vec![build_error(source, e)]);
+    }
+    None
 }
 
 pub(crate) fn handle_openat_with_hostfs(
@@ -986,43 +1006,42 @@ pub(crate) fn handle_openat_with_hostfs(
     mut request: OpenAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
-    let resolved = match vfs_resolve_path(request.dirfd, &request.pathname) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    request.mode = vfs_apply_umask(request.mode);
+    let resolved = match resolve_path(request.dirfd, &request.pathname) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        let open_path: alloc::string::String = alloc::string::String::from(resolved.as_str());
-        match hostfs::send_open_request(&resolved, request.flags, request.mode, op_id) {
-            Ok(()) => {
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            response_context,
-                            source_tid: source,
-                            source_pid,
-                            kind: PendingOpKind::Open { path: open_path },
-                        },
-                    )
-                    .is_err()
-                {
-                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-                }
-                return None;
-            },
-            Err(e) => return Some(vec![build_error(source, e)]),
-        }
+    let resolved = match resolved {
+        RoutedPath::Local(local) => return Some(long::handle_openat(source, local, request.flags)),
+        RoutedPath::Host(host) => host,
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(super::long::handle_openat(source, resolved, request.flags))
+    let op_id = pending.alloc_op_id();
+    match hostfs::send_open_request(resolved.host_path(), request.flags, request.mode, op_id) {
+        Ok(()) => {
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind: PendingOpKind::Open { path: resolved },
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(e) => Some(vec![build_error(source, e)]),
+    }
 }
 
 pub(crate) fn handle_renameat_with_hostfs(
@@ -1030,52 +1049,50 @@ pub(crate) fn handle_renameat_with_hostfs(
     request: RenameAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let old_resolved = match vfs_resolve_path(request.olddirfd, &request.oldpath) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let old_resolved = match resolve_path(request.olddirfd, &request.oldpath) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
-    let new_resolved = match vfs_resolve_path(request.newdirfd, &request.newpath) {
+    let new_resolved = match resolve_path(request.newdirfd, &request.newpath) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
-    let old_is_hostfs: bool = hostfs::is_hostfs_path(old_resolved.as_str());
-    let new_is_hostfs: bool = hostfs::is_hostfs_path(new_resolved.as_str());
-
-    // Reject cross-filesystem renames (one path on hostfs, the other on ramfs).
-    if old_is_hostfs != new_is_hostfs {
-        return Some(vec![build_error(source, ErrorCode::OperationNotSupported)]);
+    let (old_resolved, new_resolved) = match (old_resolved, new_resolved) {
+        (RoutedPath::Local(old), RoutedPath::Local(new)) => {
+            return Some(long::handle_renameat(source, old, new));
+        },
+        (RoutedPath::Host(old), RoutedPath::Host(new)) => (old, new),
+        (RoutedPath::Local(_), RoutedPath::Host(_))
+        | (RoutedPath::Host(_), RoutedPath::Local(_)) => {
+            return Some(vec![build_error(source, ErrorCode::OperationNotSupported)]);
+        },
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    if old_is_hostfs {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        match hostfs::send_rename_request(&old_resolved, &new_resolved, op_id) {
-            Ok(()) => {
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            response_context,
-                            source_tid: source,
-                            source_pid,
-                            kind: PendingOpKind::Rename,
-                        },
-                    )
-                    .is_err()
-                {
-                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-                }
-                return None;
-            },
-            Err(e) => return Some(vec![build_error(source, e)]),
-        }
+    let op_id = pending.alloc_op_id();
+    match hostfs::send_rename_request(old_resolved.host_path(), new_resolved.host_path(), op_id) {
+        Ok(()) => {
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind: PendingOpKind::Rename,
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(e) => Some(vec![build_error(source, e)]),
     }
-
-    Some(super::long::handle_renameat(source, old_resolved, new_resolved))
 }
 
 pub(crate) fn handle_unlinkat_with_hostfs(
@@ -1083,52 +1100,54 @@ pub(crate) fn handle_unlinkat_with_hostfs(
     request: UnlinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(request.dirfd, &request.pathname) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let resolved = match resolve_path(request.dirfd, &request.pathname) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        let is_rmdir: bool = (request.flags & ::sysapi::fcntl::atflags::AT_REMOVEDIR) != 0;
-        let result = if is_rmdir {
-            hostfs::send_rmdir_request(&resolved, op_id)
-        } else {
-            hostfs::send_unlink_request(&resolved, op_id)
-        };
-        match result {
-            Ok(()) => {
-                let kind = if is_rmdir {
-                    PendingOpKind::Rmdir
-                } else {
-                    PendingOpKind::Unlink
-                };
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            response_context,
-                            source_tid: source,
-                            source_pid,
-                            kind,
-                        },
-                    )
-                    .is_err()
-                {
-                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-                }
-                return None;
-            },
-            Err(e) => return Some(vec![build_error(source, e)]),
-        }
+    let resolved = match resolved {
+        RoutedPath::Local(local) => {
+            return Some(long::handle_unlinkat(source, local, request.flags))
+        },
+        RoutedPath::Host(host) => host,
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(super::long::handle_unlinkat(source, resolved, request.flags))
+    let op_id = pending.alloc_op_id();
+    let is_rmdir = (request.flags & atflags::AT_REMOVEDIR) != 0;
+    let result = if is_rmdir {
+        hostfs::send_rmdir_request(resolved.host_path(), op_id)
+    } else {
+        hostfs::send_unlink_request(resolved.host_path(), op_id)
+    };
+    match result {
+        Ok(()) => {
+            let kind = if is_rmdir {
+                PendingOpKind::Rmdir
+            } else {
+                PendingOpKind::Unlink
+            };
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind,
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(e) => Some(vec![build_error(source, e)]),
+    }
 }
 
 pub(crate) fn handle_mkdirat_with_hostfs(
@@ -1136,136 +1155,134 @@ pub(crate) fn handle_mkdirat_with_hostfs(
     mut request: MakeDirectoryAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    request.mode = ::vfs::fd::vfs_apply_umask(request.mode);
-    let resolved = match vfs_resolve_path(request.dirfd, &request.pathname) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    request.mode = vfs_apply_umask(request.mode);
+    let resolved = match resolve_path(request.dirfd, &request.pathname) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        match hostfs::send_mkdir_request(&resolved, request.mode, op_id) {
-            Ok(()) => {
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            response_context,
-                            source_tid: source,
-                            source_pid,
-                            kind: PendingOpKind::Mkdir,
-                        },
-                    )
-                    .is_err()
-                {
-                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-                }
-                return None;
-            },
-            Err(e) => return Some(vec![build_error(source, e)]),
-        }
+    let resolved = match resolved {
+        RoutedPath::Local(local) => return Some(long::handle_mkdirat(source, local)),
+        RoutedPath::Host(host) => host,
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(super::long::handle_mkdirat(source, resolved))
+    let op_id = pending.alloc_op_id();
+    match hostfs::send_mkdir_request(resolved.host_path(), request.mode, op_id) {
+        Ok(()) => {
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind: PendingOpKind::Mkdir,
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(e) => Some(vec![build_error(source, e)]),
+    }
 }
 
 pub(crate) fn handle_fchmodat_with_hostfs(
     response_context: ResponseContext,
-    request: ::syscall::sys::stat::message::FileChmodAtRequest,
+    request: FileChmodAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let resolved = match resolve_path(request.dirfd, &request.path) {
         Ok(path) => path,
-        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+        Err(error) => return Some(vec![build_error(source, error)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if request.flag != 0 && request.flag != ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW {
-            return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
-        }
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        if let Err(error) = hostfs::send_chmod_request(&resolved, request.mode, request.flag, op_id)
-        {
-            return Some(vec![build_error(source, error)]);
-        }
-        if pending
-            .insert(
-                op_id,
-                PendingOp {
-                    response_context,
-                    source_tid: source,
-                    source_pid,
-                    kind: PendingOpKind::Chmod,
-                },
-            )
-            .is_err()
-        {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        return None;
+    let resolved = match resolved {
+        RoutedPath::Local(_) => return Some(long::handle_fchmodat(source, request)),
+        RoutedPath::Host(host) => host,
+    };
+    if request.flag != 0 && request.flag != atflags::AT_SYMLINK_NOFOLLOW {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     }
-
-    Some(super::long::handle_fchmodat(source, request))
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    let op_id = pending.alloc_op_id();
+    if let Err(error) =
+        hostfs::send_chmod_request(resolved.host_path(), request.mode, request.flag, op_id)
+    {
+        return Some(vec![build_error(source, error)]);
+    }
+    if pending
+        .insert(
+            op_id,
+            PendingOp {
+                response_context,
+                source_tid: source,
+                source_pid,
+                kind: PendingOpKind::Chmod,
+            },
+        )
+        .is_err()
+    {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    None
 }
 
 pub(crate) fn handle_faccessat_with_hostfs(
     response_context: ResponseContext,
-    request: ::syscall::unistd::message::FileAccessAtRequest,
+    request: FileAccessAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let resolved = match resolve_path(request.dirfd, &request.path) {
         Ok(path) => path,
-        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+        Err(error) => return Some(vec![build_error(source, error)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        const VALID_MODES: i32 = ::sysapi::unistd::access_mode::R_OK
-            | ::sysapi::unistd::access_mode::W_OK
-            | ::sysapi::unistd::access_mode::X_OK;
-        const VALID_FLAGS: i32 =
-            ::sysapi::fcntl::atflags::AT_EACCESS | ::sysapi::fcntl::atflags::AT_SYMLINK_NOFOLLOW;
-        if request.mode & !VALID_MODES != 0 || request.flag & !VALID_FLAGS != 0 {
-            return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
-        }
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        if let Err(error) =
-            hostfs::send_access_request(&resolved, request.mode, request.flag, op_id)
-        {
-            return Some(vec![build_error(source, error)]);
-        }
-        if pending
-            .insert(
-                op_id,
-                PendingOp {
-                    response_context,
-                    source_tid: source,
-                    source_pid,
-                    kind: PendingOpKind::Access,
-                },
-            )
-            .is_err()
-        {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        return None;
+    let resolved = match resolved {
+        RoutedPath::Local(_) => return Some(long::handle_faccessat(source, request)),
+        RoutedPath::Host(host) => host,
+    };
+    const VALID_MODES: i32 = access_mode::R_OK | access_mode::W_OK | access_mode::X_OK;
+    const VALID_FLAGS: i32 = atflags::AT_EACCESS | atflags::AT_SYMLINK_NOFOLLOW;
+    if request.mode & !VALID_MODES != 0 || request.flag & !VALID_FLAGS != 0 {
+        return Some(vec![build_error(source, ErrorCode::InvalidArgument)]);
     }
-
-    Some(super::long::handle_faccessat(source, request))
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    let op_id = pending.alloc_op_id();
+    if let Err(error) =
+        hostfs::send_access_request(resolved.host_path(), request.mode, request.flag, op_id)
+    {
+        return Some(vec![build_error(source, error)]);
+    }
+    if pending
+        .insert(
+            op_id,
+            PendingOp {
+                response_context,
+                source_tid: source,
+                source_pid,
+                kind: PendingOpKind::Access,
+            },
+        )
+        .is_err()
+    {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+    }
+    None
 }
 
 pub(crate) fn handle_symlinkat_with_hostfs(
@@ -1273,43 +1290,43 @@ pub(crate) fn handle_symlinkat_with_hostfs(
     request: SymbolicLinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
     // Routing key is `linkpath` (where the symlink will live). `target` is an opaque
     // string stored verbatim by the host and intentionally not consulted here.
-    let resolved = match vfs_resolve_path(request.dirfd, &request.linkpath) {
+    let resolved = match resolve_path(request.dirfd, &request.linkpath) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        match hostfs::send_symlink_request(&request.target, &resolved, op_id) {
-            Ok(()) => {
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            response_context,
-                            source_tid: source,
-                            source_pid,
-                            kind: PendingOpKind::Symlink,
-                        },
-                    )
-                    .is_err()
-                {
-                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-                }
-                return None;
-            },
-            Err(e) => return Some(vec![build_error(source, e)]),
-        }
+    let resolved = match resolved {
+        RoutedPath::Local(_) => return Some(long::handle_symlinkat(source, request)),
+        RoutedPath::Host(host) => host,
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(super::long::handle_symlinkat(source, request))
+    let op_id = pending.alloc_op_id();
+    match hostfs::send_symlink_request(&request.target, resolved.host_path(), op_id) {
+        Ok(()) => {
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind: PendingOpKind::Symlink,
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(e) => Some(vec![build_error(source, e)]),
+    }
 }
 
 pub(crate) fn handle_linkat_with_hostfs(
@@ -1317,31 +1334,37 @@ pub(crate) fn handle_linkat_with_hostfs(
     request: LinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let old_path = match vfs_resolve_path(request.olddirfd, &request.oldpath) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let old_path = match resolve_path(request.olddirfd, &request.oldpath) {
         Ok(path) => path,
-        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+        Err(error) => return Some(vec![build_error(source, error)]),
     };
-    let new_path = match vfs_resolve_path(request.newdirfd, &request.newpath) {
+    let new_path = match resolve_path(request.newdirfd, &request.newpath) {
         Ok(path) => path,
-        Err(error) => return Some(vec![build_error(source, fat32_to_error_code(&error))]),
+        Err(error) => return Some(vec![build_error(source, error)]),
     };
-    let old_is_hostfs: bool = hostfs::is_hostfs_path(old_path.as_str());
-    let new_is_hostfs: bool = hostfs::is_hostfs_path(new_path.as_str());
-
-    if old_is_hostfs != new_is_hostfs {
-        return Some(vec![build_error(source, ErrorCode::CrossDeviceLink)]);
-    }
-    if !old_is_hostfs {
-        return Some(super::long::handle_linkat(source, request));
-    }
+    let (old_path, new_path) = match (old_path, new_path) {
+        (RoutedPath::Local(_), RoutedPath::Local(_)) => {
+            return Some(long::handle_linkat(source, request));
+        },
+        (RoutedPath::Host(old), RoutedPath::Host(new)) => (old, new),
+        (RoutedPath::Local(_), RoutedPath::Host(_))
+        | (RoutedPath::Host(_), RoutedPath::Local(_)) => {
+            return Some(vec![build_error(source, ErrorCode::CrossDeviceLink)]);
+        },
+    };
 
     if !pending.has_capacity() {
         return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-    let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-    match hostfs::send_link_request(&old_path, &new_path, request.flags, op_id) {
+    let op_id = pending.alloc_op_id();
+    match hostfs::send_link_request(
+        old_path.host_path(),
+        new_path.host_path(),
+        request.flags,
+        op_id,
+    ) {
         Ok(()) => {
             if pending
                 .insert(
@@ -1368,40 +1391,40 @@ pub(crate) fn handle_readlinkat_with_hostfs(
     request: ReadLinkAtRequest,
     pending: &mut PendingQueue,
 ) -> Option<Vec<Message>> {
-    let source_pid: ProcessIdentifier = response_context.source_pid();
-    let source: ThreadIdentifier = response_context.source_tid();
-    let resolved = match vfs_resolve_path(request.dirfd, &request.path) {
+    let source_pid = response_context.source_pid();
+    let source = response_context.source_tid();
+    let resolved = match resolve_path(request.dirfd, &request.path) {
         Ok(r) => r,
-        Err(e) => return Some(vec![build_error(source, fat32_to_error_code(&e))]),
+        Err(e) => return Some(vec![build_error(source, e)]),
     };
 
-    if hostfs::is_hostfs_path(resolved.as_str()) {
-        if !pending.has_capacity() {
-            return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-        }
-        let op_id: ::hostfs_api::OperationId = pending.alloc_op_id();
-        let bufsiz: usize = request.bufsiz;
-        match hostfs::send_readlink_request(&resolved, op_id) {
-            Ok(()) => {
-                if pending
-                    .insert(
-                        op_id,
-                        PendingOp {
-                            response_context,
-                            source_tid: source,
-                            source_pid,
-                            kind: PendingOpKind::Readlink { bufsiz },
-                        },
-                    )
-                    .is_err()
-                {
-                    return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
-                }
-                return None;
-            },
-            Err(e) => return Some(vec![build_error(source, e)]),
-        }
+    let resolved = match resolved {
+        RoutedPath::Local(_) => return Some(long::handle_readlinkat(source, request)),
+        RoutedPath::Host(host) => host,
+    };
+    if !pending.has_capacity() {
+        return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
     }
-
-    Some(super::long::handle_readlinkat(source, request))
+    let op_id = pending.alloc_op_id();
+    let bufsiz = request.bufsiz;
+    match hostfs::send_readlink_request(resolved.host_path(), op_id) {
+        Ok(()) => {
+            if pending
+                .insert(
+                    op_id,
+                    PendingOp {
+                        response_context,
+                        source_tid: source,
+                        source_pid,
+                        kind: PendingOpKind::Readlink { bufsiz },
+                    },
+                )
+                .is_err()
+            {
+                return Some(vec![build_error(source, ErrorCode::ResourceBusy)]);
+            }
+            None
+        },
+        Err(e) => Some(vec![build_error(source, e)]),
+    }
 }
