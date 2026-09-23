@@ -537,6 +537,93 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn windows_symlink_budget_boundary() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::write(sandbox.root().join("file"), b"target").expect("create target");
+        let mut target = PathBuf::from("file");
+        for index in (1..=MAX_SYMLINK_EXPANSIONS + 1).rev() {
+            let name = format!("link-{index}");
+            symlink_file(&target, &sandbox.root().join(&name)).expect("create link chain");
+            target = PathBuf::from(name);
+        }
+        assert_eq!(
+            sandbox
+                .resolve(&wire_path("link-2"))
+                .expect("exactly 40 expansions"),
+            sandbox
+                .root()
+                .join("file")
+                .canonicalize()
+                .expect("canonical target")
+        );
+        assert_eq!(
+            sandbox
+                .resolve(&wire_path("link-1"))
+                .expect_err("41 expansions must fail")
+                .raw_os_error(),
+            Some(ERROR_CANT_RESOLVE_FILENAME)
+        );
+        assert_eq!(
+            sandbox
+                .resolve_nofollow(&wire_path("link-1"))
+                .expect("nofollow uses no expansion budget"),
+            sandbox.root().join("link-1")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_target_anchor_matrix() {
+        // UNC coverage is syntactic and requires no SMB share, credentials, or network access.
+        for (base, root) in [
+            (r"C:\work\links", r"C:\"),
+            (r"D:\work\links", r"D:\"),
+            (r"\\?\D:\work\links", r"\\?\D:\"),
+            (r"\\server\share\work\links", r"\\server\share\"),
+            (r"\\?\UNC\server\share\work\links", r"\\?\UNC\server\share\"),
+        ] {
+            for target in [r"assets\file", "./assets//file"] {
+                assert_eq!(
+                    Sandbox::windows_target_base(Path::new(base), Path::new(target))
+                        .expect("relative target"),
+                    Path::new(base)
+                );
+            }
+            for target in [r"\assets\file", "/assets/file"] {
+                assert_eq!(
+                    Sandbox::windows_target_base(Path::new(base), Path::new(target))
+                        .expect("root-relative target"),
+                    Path::new(root)
+                );
+            }
+            for (target, expected_root) in [
+                (r"E:\assets\file", r"E:\"),
+                (r"\\?\E:\assets\file", r"\\?\E:\"),
+                (r"\\other\data\file", r"\\other\data\"),
+                (r"\\?\UNC\other\data\file", r"\\?\UNC\other\data\"),
+            ] {
+                assert_eq!(
+                    Sandbox::windows_target_base(Path::new(base), Path::new(target))
+                        .expect("absolute target"),
+                    Path::new(expected_root)
+                );
+            }
+            for target in [r"C:assets\file", r"D:assets\file"] {
+                assert_eq!(
+                    Sandbox::windows_target_base(Path::new(base), Path::new(target))
+                        .expect_err("drive-relative target needs process-global cwd")
+                        .kind(),
+                    ErrorKind::InvalidInput
+                );
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn windows_root_relative_symlink_target() {
         if !symlinks_supported() {
             return;
