@@ -205,3 +205,6 @@ pub fn walk<A: Adapter>(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
