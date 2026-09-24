@@ -802,7 +802,7 @@ dependencies = [
 
 [[package]]
 name = "fs-core"
-version = "0.24.44"
+version = "0.24.47"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
