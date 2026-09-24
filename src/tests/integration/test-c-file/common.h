@@ -119,6 +119,10 @@ extern void test_readlink(void);
 // Tests whether we can read a symbolic link.
 extern void test_readlinkat(void);
 
+// Tests physical path resolution and both realpath() output allocation modes.
+extern void test_realpath(void);
+extern void test_realpath_hostfs(void);
+
 // Tests whether we can read from a file using vectorized I/O.
 extern void test_readv(void);
 

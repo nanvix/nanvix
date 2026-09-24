@@ -6,8 +6,18 @@
 //==================================================================================================
 
 use crate::set_errno;
+use ::core::ops::Range;
+use ::fs_core::path::{
+    walk,
+    Adapter,
+    Component,
+    EntryKind,
+    FinalComponent,
+    WalkError,
+};
 use ::sysapi::{
     errno::{
+        __errno_location,
         EINVAL,
         ELOOP,
         ENAMETOOLONG,
@@ -37,7 +47,7 @@ use ::sysapi::{
 //==================================================================================================
 
 /// Maximum number of symbolic links to resolve before reporting a loop.
-const SYMLOOP_MAX: u32 = 40;
+const SYMLOOP_MAX: usize = 40;
 
 //==================================================================================================
 // Private Standalone Functions
@@ -193,153 +203,173 @@ fn compose_pending(target: &[u8], remaining: &[u8], out: &mut [u8]) -> Option<us
     Some(total_len)
 }
 
-///
-/// # Description
-///
-/// Resolves `path` against `cwd`, expanding symbolic links and writing the canonical absolute path
-/// to `out`.
-///
-/// # Returns
-///
-/// The length of the resolved path, excluding the null terminator, on success; [`None`] on failure.
-/// When failure is due to local bounds or path-shape validation, this function sets `errno`.
-/// Failures from `lstat()` and `readlink()` propagate their existing `errno` value.
-///
-/// # Safety
-///
-/// The platform `lstat()` and `readlink()` symbols must follow their C contracts. `path`, `cwd`,
-/// and `out` are Rust slices and are therefore valid for their lengths.
-///
-unsafe fn resolve_path(path: &[u8], cwd: &[u8], out: &mut [u8]) -> Option<usize> {
-    unsafe extern "C" {
-        fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::stat) -> c_int;
-        fn readlink(path: *const c_char, buf: *mut c_char, bufsize: c_size_t) -> c_ssize_t;
+/// Fixed-buffer POSIX storage and guest filesystem bindings for the shared walker.
+struct Realpath<'a> {
+    pending: [u8; PATH_MAX],
+    pending_len: usize,
+    cursor: usize,
+    out: &'a mut [u8],
+    len: usize,
+}
+
+impl<'a> Realpath<'a> {
+    fn new(path: &[u8], cwd: &[u8], out: &'a mut [u8]) -> Result<Self, c_int> {
+        let mut pending = [0; PATH_MAX];
+        if path.len() >= pending.len() {
+            return Err(ENAMETOOLONG);
+        }
+        pending[..path.len()].copy_from_slice(path);
+        let mut len = 0;
+        // Preserve the existing lexical cwd seed; only the requested path is physically walked.
+        if path.first() != Some(&b'/') && !append_components(cwd, out, &mut len) {
+            return Err(ENAMETOOLONG);
+        }
+        Ok(Self {
+            pending,
+            pending_len: path.len(),
+            cursor: 0,
+            out,
+            len,
+        })
     }
 
-    let mut pending: [u8; PATH_MAX] = [0; PATH_MAX];
-    if path.len() >= pending.len() {
-        set_errno(ENAMETOOLONG);
-        return None;
+    fn finish(mut self) -> Result<usize, c_int> {
+        if self.len == 0 {
+            if self.out.is_empty() {
+                return Err(ENAMETOOLONG);
+            }
+            self.out[0] = b'/';
+            self.len = 1;
+        }
+        if self.len >= self.out.len() {
+            return Err(ENAMETOOLONG);
+        }
+        self.out[self.len] = 0;
+        Ok(self.len)
     }
-    pending[..path.len()].copy_from_slice(path);
-    let mut pending_len: usize = path.len();
-    let mut cursor: usize = 0;
 
-    let mut len: usize = 0;
-    if path.first() != Some(&b'/') && !append_components(cwd, out, &mut len) {
-        set_errno(ENAMETOOLONG);
-        return None;
+    fn splice_target(&mut self, parent: usize, target: &[u8]) -> Result<(), c_int> {
+        if target.is_empty() || target.len() >= PATH_MAX {
+            return Err(ENAMETOOLONG);
+        }
+        let mut next_pending = [0; PATH_MAX];
+        let len = compose_pending(
+            target,
+            &self.pending[self.cursor..self.pending_len],
+            &mut next_pending,
+        )
+        .ok_or(ENAMETOOLONG)?;
+        self.len = if target[0] == b'/' { 0 } else { parent };
+        self.pending[..len].copy_from_slice(&next_pending[..len]);
+        self.pending_len = len;
+        self.cursor = 0;
+        Ok(())
     }
+}
 
-    let mut symlinks: u32 = 0;
-    while cursor < pending_len {
-        while cursor < pending_len && pending[cursor] == b'/' {
-            cursor += 1;
-        }
-        if cursor >= pending_len {
-            break;
-        }
+impl Adapter for Realpath<'_> {
+    type Name = Range<usize>;
+    type Parent = usize;
+    type Error = c_int;
 
-        let start: usize = cursor;
-        while cursor < pending_len && pending[cursor] != b'/' {
-            cursor += 1;
+    fn next_component(&mut self) -> Option<Component<Self::Name>> {
+        while self.cursor < self.pending_len && self.pending[self.cursor] == b'/' {
+            self.cursor += 1;
         }
-        let comp: &[u8] = &pending[start..cursor];
-
-        if comp == b"." {
-            continue;
-        }
-        if comp == b".." {
-            len = pop_component(out, len);
-            continue;
-        }
-
-        let Some(parent_len) = append_component(comp, out, &mut len) else {
-            set_errno(ENAMETOOLONG);
+        if self.cursor == self.pending_len {
             return None;
+        }
+        let start = self.cursor;
+        while self.cursor < self.pending_len && self.pending[self.cursor] != b'/' {
+            self.cursor += 1;
+        }
+        Some(match &self.pending[start..self.cursor] {
+            b"." => Component::Current,
+            b".." => Component::Parent,
+            _ => Component::Name(start..self.cursor),
+        })
+    }
+
+    fn requires_directory(&self) -> bool {
+        self.cursor < self.pending_len
+    }
+
+    fn push(&mut self, name: Self::Name) -> Result<usize, c_int> {
+        let parent =
+            append_component(&self.pending[name], self.out, &mut self.len).ok_or(ENAMETOOLONG)?;
+        self.out[self.len] = 0;
+        Ok(parent)
+    }
+
+    fn parent(&mut self) -> Result<(), c_int> {
+        self.len = pop_component(self.out, self.len);
+        Ok(())
+    }
+
+    fn inspect(&mut self) -> Result<EntryKind, c_int> {
+        unsafe extern "C" {
+            fn lstat(pathname: *const c_char, statbuf: *mut sys_stat::stat) -> c_int;
+        }
+        let mut statbuf = sys_stat::stat::default();
+        // SAFETY: push() terminated the current path; statbuf has the guest ABI and is writable.
+        if unsafe { lstat(self.out.as_ptr().cast::<c_char>(), &mut statbuf) } != 0 {
+            return Err(last_errno());
+        }
+        Ok(if S_ISLNK(statbuf.st_mode) {
+            EntryKind::Symlink
+        } else if S_ISDIR(statbuf.st_mode) {
+            EntryKind::Directory
+        } else {
+            EntryKind::Other
+        })
+    }
+
+    fn expand_link(&mut self, parent: usize) -> Result<(), c_int> {
+        unsafe extern "C" {
+            fn readlink(path: *const c_char, buf: *mut c_char, bufsize: c_size_t) -> c_ssize_t;
+        }
+        let mut target = [0; PATH_MAX];
+        // SAFETY: push() terminated the path; target is writable for PATH_MAX bytes.
+        // PATH_MAX (1024) fits in c_size_t.
+        #[allow(clippy::cast_possible_truncation)]
+        let len = unsafe {
+            readlink(
+                self.out.as_ptr().cast::<c_char>(),
+                target.as_mut_ptr().cast::<c_char>(),
+                PATH_MAX as c_size_t,
+            )
         };
-        out[len] = 0;
-
-        let mut statbuf: sys_stat::stat = sys_stat::stat::default();
-        if unsafe { lstat(out.as_ptr().cast::<c_char>(), &mut statbuf) } != 0 {
-            return None;
+        if len < 0 {
+            return Err(last_errno());
         }
-
-        if S_ISLNK(statbuf.st_mode) {
-            if symlinks >= SYMLOOP_MAX {
-                set_errno(ELOOP);
-                return None;
-            }
-            symlinks += 1;
-
-            let mut target: [u8; PATH_MAX] = [0; PATH_MAX];
-            // PATH_MAX (1024) trivially fits in c_size_t, so this cast cannot truncate.
-            #[allow(clippy::cast_possible_truncation)]
-            let target_len: c_ssize_t = unsafe {
-                readlink(
-                    out.as_ptr().cast::<c_char>(),
-                    target.as_mut_ptr().cast::<c_char>(),
-                    PATH_MAX as c_size_t,
-                )
-            };
-            if target_len < 0 {
-                return None;
-            }
-
-            let target_len: usize = match usize::try_from(target_len) {
-                Ok(len) => len,
-                Err(_) => {
-                    set_errno(ENAMETOOLONG);
-                    return None;
-                },
-            };
-            if target_len == 0 || target_len >= PATH_MAX {
-                set_errno(ENAMETOOLONG);
-                return None;
-            }
-
-            len = parent_len;
-            if target[0] == b'/' {
-                len = 0;
-            }
-
-            let mut next_pending: [u8; PATH_MAX] = [0; PATH_MAX];
-            let Some(next_pending_len) = compose_pending(
-                &target[..target_len],
-                &pending[cursor..pending_len],
-                &mut next_pending,
-            ) else {
-                set_errno(ENAMETOOLONG);
-                return None;
-            };
-
-            pending[..next_pending_len].copy_from_slice(&next_pending[..next_pending_len]);
-            pending_len = next_pending_len;
-            cursor = 0;
-            continue;
+        let len = usize::try_from(len).map_err(|_| ENAMETOOLONG)?;
+        if len >= target.len() {
+            return Err(ENAMETOOLONG);
         }
-
-        if cursor < pending_len && !S_ISDIR(statbuf.st_mode) {
-            set_errno(ENOTDIR);
-            return None;
-        }
+        self.splice_target(parent, &target[..len])
     }
 
-    if len == 0 {
-        if out.is_empty() {
-            set_errno(ENAMETOOLONG);
-            return None;
-        }
-        out[0] = b'/';
-        len = 1;
+    fn is_not_found(error: &c_int) -> bool {
+        *error == ENOENT
     }
+}
 
-    if len >= out.len() {
-        set_errno(ENAMETOOLONG);
-        return None;
-    }
-    out[len] = 0;
-    Some(len)
+fn last_errno() -> c_int {
+    // SAFETY: __errno_location() returns this thread's valid errno pointer.
+    unsafe { *__errno_location() }
+}
+
+/// Resolves into a terminated byte buffer, preserving filesystem errno and local bounds errors.
+fn resolve_path(path: &[u8], cwd: &[u8], out: &mut [u8]) -> Result<usize, c_int> {
+    let mut adapter = Realpath::new(path, cwd, out)?;
+    walk(&mut adapter, FinalComponent::FollowExisting, SYMLOOP_MAX).map_err(
+        |error| match error {
+            WalkError::Backend(code) => code,
+            WalkError::TooManySymlinks => ELOOP,
+            WalkError::NotDirectory => ENOTDIR,
+        },
+    )?;
+    adapter.finish()
 }
 
 //==================================================================================================
@@ -428,8 +458,12 @@ pub unsafe extern "C" fn realpath(path: *const c_char, resolved_path: *mut c_cha
 
     // Canonicalize the path and resolve symbolic links.
     let mut out: [u8; PATH_MAX] = [0; PATH_MAX];
-    let Some(out_len) = (unsafe { resolve_path(path_bytes, cwd_bytes, &mut out) }) else {
-        return core::ptr::null_mut();
+    let out_len = match resolve_path(path_bytes, cwd_bytes, &mut out) {
+        Ok(len) => len,
+        Err(error) => {
+            set_errno(error);
+            return core::ptr::null_mut();
+        },
     };
 
     // Select the destination: the caller's buffer, or a freshly allocated one.
@@ -459,8 +493,99 @@ pub unsafe extern "C" fn realpath(path: *const c_char, resolved_path: *mut c_cha
 
 #[cfg(all(test, feature = "std"))]
 mod test {
-    use super::canonicalize;
+    use super::*;
     use ::std::vec::Vec;
+
+    // Exercise fixed storage without calling guest-ABI lstat/readlink on the host.
+    fn append_next(adapter: &mut Realpath<'_>) -> Result<usize, c_int> {
+        match adapter.next_component() {
+            Some(Component::Name(name)) => adapter.push(name),
+            _ => Err(EINVAL),
+        }
+    }
+
+    #[test]
+    fn byte_names_and_link_suffix_are_preserved() -> Result<(), c_int> {
+        let mut out = [0; PATH_MAX];
+        let mut adapter = Realpath::new(b"/dir/\xff-link/../child//", b"/", &mut out)?;
+        append_next(&mut adapter)?;
+        let parent = append_next(&mut adapter)?;
+        assert_eq!(&adapter.out[..=adapter.len], b"/dir/\xff-link\0");
+        assert!(adapter.requires_directory());
+        adapter.splice_target(parent, b"../\xfe-target")?;
+        assert_eq!(&adapter.pending[..adapter.pending_len], b"../\xfe-target/../child//");
+        assert_eq!(adapter.next_component(), Some(Component::Parent));
+        adapter.parent()?;
+        append_next(&mut adapter)?;
+        assert_eq!(&adapter.out[..=adapter.len], b"/\xfe-target\0");
+        Ok(())
+    }
+
+    #[test]
+    fn link_targets_reanchor_without_collapsing_components() -> Result<(), c_int> {
+        for (target, expected_parent, expected_pending) in [
+            (b"next/..".as_slice(), 4, b"next/../suffix".as_slice()),
+            (b"/root/..", 0, b"/root/../suffix"),
+        ] {
+            let mut out = [0; PATH_MAX];
+            let mut adapter = Realpath::new(b"/dir/link/suffix", b"/", &mut out)?;
+            append_next(&mut adapter)?;
+            let parent = append_next(&mut adapter)?;
+            adapter.splice_target(parent, target)?;
+            assert_eq!(adapter.len, expected_parent);
+            assert_eq!(&adapter.pending[..adapter.pending_len], expected_pending);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn fixed_buffers_reserve_terminator_space() -> Result<(), c_int> {
+        let mut out = [0; 5];
+        let mut adapter = Realpath::new(b"/abc", b"/", &mut out)?;
+        append_next(&mut adapter)?;
+        assert_eq!(adapter.finish(), Ok(4));
+        assert_eq!(&out, b"/abc\0");
+        let mut adapter = Realpath::new(b"/abcd", b"/", &mut out)?;
+        assert_eq!(append_next(&mut adapter), Err(ENAMETOOLONG));
+        assert!(matches!(Realpath::new(&[b'x'; PATH_MAX], b"/", &mut out), Err(ENAMETOOLONG)));
+        assert!(matches!(Realpath::new(b".", b"/long-cwd", &mut out), Err(ENAMETOOLONG)));
+        assert_eq!(Realpath::new(b"/", b"/", &mut [])?.finish(), Err(ENAMETOOLONG));
+        assert_eq!(Realpath::new(b"/", b"/", &mut [0])?.finish(), Err(ENAMETOOLONG));
+        Ok(())
+    }
+
+    #[test]
+    fn expanded_target_and_suffix_share_the_existing_bound() -> Result<(), c_int> {
+        let mut out = [0; PATH_MAX];
+        let mut adapter = Realpath::new(b"link/x", b"/", &mut out)?;
+        let parent = append_next(&mut adapter)?;
+        assert_eq!(adapter.splice_target(parent, b""), Err(ENAMETOOLONG));
+        assert_eq!(adapter.splice_target(parent, &[b'x'; PATH_MAX]), Err(ENAMETOOLONG));
+        assert_eq!(adapter.splice_target(parent, &[b'x'; PATH_MAX - 2]), Err(ENAMETOOLONG));
+        adapter.splice_target(parent, &[b'x'; PATH_MAX - 3])?;
+        assert_eq!(adapter.pending_len, PATH_MAX - 1);
+        assert_eq!(&adapter.pending[PATH_MAX - 3..PATH_MAX - 1], b"/x");
+        Ok(())
+    }
+
+    #[test]
+    fn cwd_seeding_and_root_parent_behavior_are_unchanged() -> Result<(), c_int> {
+        let mut out = [0; PATH_MAX];
+        let mut adapter = Realpath::new(b".", b"/dir/../cwd//", &mut out)?;
+        assert_eq!(adapter.next_component(), Some(Component::Current));
+        assert_eq!(adapter.next_component(), None);
+        assert_eq!(adapter.finish(), Ok(4));
+        assert_eq!(&out[..5], b"/cwd\0");
+        let mut adapter = Realpath::new(b"/../../", b"/unused", &mut out)?;
+        for _ in 0..2 {
+            assert_eq!(adapter.next_component(), Some(Component::Parent));
+            adapter.parent()?;
+        }
+        assert_eq!(adapter.next_component(), None);
+        assert_eq!(adapter.finish(), Ok(1));
+        assert_eq!(&out[..2], b"/\0");
+        Ok(())
+    }
 
     /// Canonicalizes `path` against `cwd`, returning the resulting bytes.
     fn run(path: &str, cwd: &str) -> Option<Vec<u8>> {

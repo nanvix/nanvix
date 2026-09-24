@@ -13,6 +13,7 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := \
 	elf \
 	error \
 	fat32 \
+	fs-core \
 	hostfs-api \
 	type-safe \
 	koptions \
