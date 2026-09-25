@@ -6,9 +6,18 @@
 //! Ensures all guest-requested paths resolve within the configured root directory.
 //! Rejects path traversal attacks and symlinks that escape the sandbox.
 
-use ::hostfs_api::HostResolvedPath;
 #[cfg(windows)]
-use std::fs;
+mod windows;
+
+#[cfg(windows)]
+use self::windows::WindowsPath;
+#[cfg(windows)]
+use ::fs_core::path::{
+    walk,
+    FinalComponent,
+    WalkError,
+};
+use ::hostfs_api::HostResolvedPath;
 use std::{
     io::{
         self,
@@ -121,78 +130,21 @@ impl Sandbox {
             {
                 return Err(ErrorKind::PermissionDenied.into());
             }
-            let mut links_left = MAX_SYMLINK_EXPANSIONS;
-            Self::walk_windows_path(&self.root, path, follow_final, true, &mut links_left)
-        }
-    }
-
-    /// Windows verbatim paths cannot contain raw `..`, and joining onto them collapses it
-    /// lexically. Follow each intermediate link before applying the next parent component.
-    /// TODO (#3182): Share traversal with guest realpath while keeping platform-specific adapters.
-    #[cfg(windows)]
-    fn walk_windows_path(
-        base: &Path,
-        path: &Path,
-        follow_final: bool,
-        allow_missing_final: bool,
-        links_left: &mut usize,
-    ) -> io::Result<PathBuf> {
-        let mut current = Self::windows_target_base(base, path)?;
-        let mut components = path.components().peekable();
-        while let Some(component) = components.next() {
-            let last = components.peek().is_none();
-            match component {
-                Component::Normal(name) => {
-                    current.push(name);
-                    if last && !follow_final {
-                        continue;
-                    }
-                    let metadata = match fs::symlink_metadata(&current) {
-                        Ok(metadata) => metadata,
-                        // Let the existing parent fallback handle a not-yet-created final entry.
-                        Err(error)
-                            if last
-                                && allow_missing_final
-                                && error.kind() == ErrorKind::NotFound =>
-                        {
-                            return Ok(current);
-                        },
-                        Err(error) => return Err(error),
-                    };
-                    if metadata.file_type().is_symlink() {
-                        *links_left = links_left.checked_sub(1).ok_or_else(|| {
-                            io::Error::from_raw_os_error(ERROR_CANT_RESOLVE_FILENAME)
-                        })?;
-                        let target = fs::read_link(&current)?;
-                        // A verbatim POSIX-style target can contain `/` and `..`, which native
-                        // Windows symlink traversal rejects. Interpret it without rewriting it.
-                        // A dangling target must stay ENOENT, not become a creatable final entry.
-                        current = Self::walk_windows_path(
-                            current.parent().ok_or(ErrorKind::PermissionDenied)?,
-                            &target,
-                            true,
-                            false,
-                            links_left,
-                        )?;
-                    } else {
-                        current = current.canonicalize()?;
-                    }
-                    if !last && !current.is_dir() {
-                        return Err(ErrorKind::NotADirectory.into());
-                    }
+            let mut adapter = WindowsPath::new(&self.root, path);
+            let policy = if follow_final {
+                FinalComponent::FollowOrMissing
+            } else {
+                FinalComponent::LeaveUninspected
+            };
+            walk(&mut adapter, policy, MAX_SYMLINK_EXPANSIONS).map_err(|error| match error {
+                WalkError::Backend(error) => error,
+                WalkError::TooManySymlinks => {
+                    io::Error::from_raw_os_error(ERROR_CANT_RESOLVE_FILENAME)
                 },
-                Component::CurDir => {},
-                Component::ParentDir => {
-                    if !current.pop() {
-                        return Err(ErrorKind::PermissionDenied.into());
-                    }
-                },
-                // Absolute targets read from host symlinks are allowed, subject to the caller's
-                // containment check. The request itself must stay host-relative.
-                Component::Prefix(_) | Component::RootDir => {}, // Already anchored above.
-            }
+                WalkError::NotDirectory => ErrorKind::NotADirectory.into(),
+            })?;
+            Ok(adapter.into_path())
         }
-        Ok(current)
     }
 
     /// Anchors a stored Windows target without consulting process-global per-drive cwd state.
@@ -572,6 +524,201 @@ mod tests {
                 .expect("nofollow uses no expansion budget"),
             sandbox.root().join("link-1")
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_final_entry_policies() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::create_dir(sandbox.root().join("real")).expect("create directory");
+        fs::write(sandbox.root().join("real/file"), b"target").expect("create file");
+        symlink_dir(Path::new("real"), &sandbox.root().join("alias")).expect("directory link");
+        for (name, target) in [
+            ("leaf", "real/file"),
+            ("dangling", "absent"),
+            ("chain", "dangling"),
+            ("missing-parent", "absent/../real/file"),
+            ("cycle", "cycle"),
+        ] {
+            symlink_file(Path::new(target), &sandbox.root().join(name)).expect("file link");
+        }
+        for name in ["real/file", "leaf"] {
+            assert_eq!(
+                sandbox.resolve(&wire_path(name)).expect("existing target"),
+                sandbox
+                    .root()
+                    .join("real/file")
+                    .canonicalize()
+                    .expect("canonical file")
+            );
+        }
+        for name in ["new", "real/new", "alias/new"] {
+            let expected = if name == "new" { "new" } else { "real/new" };
+            assert_eq!(
+                sandbox
+                    .resolve(&wire_path(name))
+                    .expect("ordinary missing final entry"),
+                sandbox.root().join(expected)
+            );
+            assert_eq!(
+                sandbox
+                    .resolve_nofollow(&wire_path(name))
+                    .expect("uninspected final entry"),
+                sandbox.root().join(expected)
+            );
+        }
+        for name in ["leaf", "dangling", "chain", "missing-parent", "cycle"] {
+            assert_eq!(
+                sandbox
+                    .resolve_nofollow(&wire_path(name))
+                    .expect("keep final link"),
+                sandbox.root().join(name)
+            );
+        }
+        for name in ["dangling", "chain", "missing-parent"] {
+            assert_eq!(
+                sandbox
+                    .resolve(&wire_path(name))
+                    .expect_err("target must exist")
+                    .kind(),
+                ErrorKind::NotFound
+            );
+            for follow in [false, true] {
+                assert_eq!(
+                    sandbox
+                        .candidate(&format!("{name}/new"), follow)
+                        .expect_err("ancestor must exist")
+                        .kind(),
+                    ErrorKind::NotFound
+                );
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_budget_spans_separate_link_components() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::write(sandbox.root().join("file"), b"target").expect("create target");
+        symlink_dir(Path::new("."), &sandbox.root().join("hop")).expect("link to current dir");
+        symlink_file(Path::new("file"), &sandbox.root().join("leaf")).expect("final file link");
+        let prefix = "hop/".repeat(MAX_SYMLINK_EXPANSIONS);
+        assert_eq!(
+            sandbox
+                .resolve(&wire_path(&format!("{prefix}file")))
+                .expect("40 separate expansions"),
+            sandbox
+                .root()
+                .join("file")
+                .canonicalize()
+                .expect("canonical target")
+        );
+        assert_eq!(
+            sandbox
+                .resolve_nofollow(&wire_path(&format!("{prefix}leaf")))
+                .expect("keep final link"),
+            sandbox.root().join("leaf")
+        );
+        assert_eq!(
+            sandbox
+                .resolve(&wire_path(&format!("{prefix}leaf")))
+                .expect_err("41st expansion")
+                .raw_os_error(),
+            Some(ERROR_CANT_RESOLVE_FILENAME)
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_target_parsing_keeps_native_trailing_syntax_policy() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        fs::write(sandbox.root().join("file"), b"target").expect("create target");
+        for (name, target) in [("dot", "file/."), ("slash", "file/")] {
+            symlink_file(Path::new(target), &sandbox.root().join(name)).expect("stored target");
+            // Native components discard these endings; do not import libc's trailing-slash policy.
+            assert_eq!(
+                sandbox
+                    .resolve(&wire_path(name))
+                    .expect("native target syntax"),
+                sandbox
+                    .root()
+                    .join("file")
+                    .canonicalize()
+                    .expect("canonical target")
+            );
+            for follow in [false, true] {
+                assert_eq!(
+                    sandbox
+                        .candidate(&format!("{name}/child"), follow)
+                        .expect_err("a real suffix still requires a directory")
+                        .kind(),
+                    ErrorKind::NotADirectory
+                );
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_symlink_target_preserves_non_unicode_name() {
+        use std::{
+            ffi::OsString,
+            os::windows::ffi::OsStringExt,
+        };
+
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        // NTFS names can contain an unpaired UTF-16 surrogate; no UTF-8 conversion is valid here.
+        let name = OsString::from_wide(&[0x66, 0xd800, 0x78]);
+        let target = sandbox.root().join(&name);
+        fs::write(&target, b"native").expect("create native name");
+        symlink_file(Path::new(&name), &sandbox.root().join("link")).expect("native target");
+        assert_eq!(
+            sandbox
+                .resolve(&wire_path("link"))
+                .expect("follow native target"),
+            target.canonicalize().expect("canonical target")
+        );
+        assert_eq!(fs::read(&target).expect("target contents"), b"native");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_unavailable_target_root_requires_directory_before_suffix() {
+        if !symlinks_supported() {
+            return;
+        }
+        let (_tmp, sandbox) = make_sandbox();
+        let drive = (b'A'..=b'Z')
+            .rev()
+            .find(|drive| !Path::new(&format!("{}:\\", char::from(*drive))).exists())
+            .expect("an unavailable drive for the link target");
+        for (name, suffix) in [("root", ""), ("dot", "."), ("dots", r".\.")] {
+            let target = format!(r"\\?\{}:\{suffix}", char::from(drive));
+            symlink_dir(Path::new(&target), &sandbox.root().join(name))
+                .expect("unavailable target");
+            for follow in [false, true] {
+                assert_eq!(
+                    sandbox
+                        .candidate(&format!("{name}/child"), follow)
+                        .expect_err("target root must be a directory before the suffix")
+                        .kind(),
+                    ErrorKind::NotADirectory,
+                    "target={target:?}, follow={follow}"
+                );
+            }
+        }
     }
 
     #[cfg(windows)]

@@ -26,6 +26,9 @@ syslog = { workspace = true, features = ["std"] }
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
 
+[target.'cfg(windows)'.dependencies]
+fs-core = { workspace = true }
+
 [dev-dependencies]
 hostfs-api = { workspace = true, features = ["test-support"] }
 sysapi = { workspace = true, features = ["std"] }
