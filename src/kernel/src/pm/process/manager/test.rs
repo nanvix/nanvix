@@ -49,6 +49,7 @@ use crate::{
 };
 use ::config::kernel::SCHEDULER_FREQ;
 use ::sys::{
+    error::ErrorCode,
     event::{
         ProcessCreationInfo,
         ProcessRole,
@@ -63,6 +64,7 @@ use ::sys::{
     },
     mm::VirtualAddress,
     pm::{
+        Capability,
         ProcessIdentifier,
         ThreadCreateArgs,
         ThreadIdentifier,
@@ -203,6 +205,28 @@ fn receive_expected_lifecycle(
 /// The local process-manager fixture, or [`None`] if its resources could not be prepared.
 ///
 fn new_user_process_manager() -> Option<ProcessManager> {
+    new_process_manager_running(ProcessIdentifier::from(1), ProcessIdentifier::KERNEL)
+}
+
+///
+/// # Description
+///
+/// Creates a local process manager whose running process is a single credited user thread with a
+/// given identity.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the running process.
+/// - `parent`: Identifier of the parent of the running process.
+///
+/// # Returns
+///
+/// The local process-manager fixture, or [`None`] if its resources could not be prepared.
+///
+fn new_process_manager_running(
+    pid: ProcessIdentifier,
+    parent: ProcessIdentifier,
+) -> Option<ProcessManager> {
     // SAFETY: process-manager tests run on one core with interrupts disabled and hold no other
     // reference to either global manager.
     let global_pm: &ProcessManager = unsafe { ProcessManager::get() };
@@ -246,9 +270,8 @@ fn new_user_process_manager() -> Option<ProcessManager> {
         // SAFETY: calls to FpuState::new are synchronized by the single-threaded test runner.
         unsafe { FpuState::new() },
     );
-    let pid: ProcessIdentifier = ProcessIdentifier::from(1);
     let mut process: RunnableProcess =
-        RunnableProcess::new_uncommitted(pid, ProcessIdentifier::KERNEL, thread, user_vmem);
+        RunnableProcess::new_uncommitted(pid, parent, thread, user_vmem);
     process.install_termination_credit(new_test_process_termination_credit());
     let (running, reason, _ctx, _user_tda): (
         RunningProcess,
@@ -1163,6 +1186,229 @@ fn test_signal_kcall_result_split_join_preserves_bits() -> bool {
 }
 
 //==================================================================================================
+// Capability Control Tests
+//==================================================================================================
+
+/// Every capability that a process may attempt to acquire.
+const CAPABILITIES: [Capability; 5] = [
+    Capability::ExceptionControl,
+    Capability::InterruptControl,
+    Capability::IoManagement,
+    Capability::MemoryManagement,
+    Capability::ProcessManagement,
+];
+
+/// Raw identifier of a user process forked from the init process.
+const FORKED_PID_RAW: i32 = ProcessIdentifier::INIT_RAW + 1;
+
+///
+/// # Description
+///
+/// Creates a local process manager whose running process has a given identity and verifies that
+/// the kernel classifies that process with the expected role.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the running process.
+/// - `parent`: Identifier of the parent of the running process.
+/// - `daemon_name`: Name under which the running process is registered as a system daemon, if
+///   any.
+/// - `expected`: Role that the running process is expected to have.
+///
+/// # Returns
+///
+/// The local process-manager fixture, or [`None`] if it could not be prepared or the running
+/// process does not have the expected role.
+///
+fn new_capctl_fixture(
+    pid: ProcessIdentifier,
+    parent: ProcessIdentifier,
+    daemon_name: Option<&'static str>,
+    expected: ProcessRole,
+) -> Option<ProcessManager> {
+    let mut pm: ProcessManager = new_process_manager_running(pid, parent)?;
+    if let Some(daemon_name) = daemon_name {
+        pm.daemon_pids.push((daemon_name, pid));
+    }
+    let role: ProcessRole = pm.classify_role(pid, parent);
+    if role != expected {
+        error!("capctl fixture has an unexpected role (pid={pid:?}, role={role:?})");
+        return None;
+    }
+    Some(pm)
+}
+
+///
+/// # Description
+///
+/// Acquires and releases every capability on behalf of a process, checking the capability state of
+/// the process after each step.
+///
+/// # Parameters
+///
+/// - `pm`: Process manager that hosts the process.
+/// - `pid`: Identifier of the process.
+///
+/// # Returns
+///
+/// `true` if every capability was acquired and released, otherwise `false`.
+///
+fn acquire_and_release_all(pm: &mut ProcessManager, pid: ProcessIdentifier) -> bool {
+    for capability in CAPABILITIES {
+        if let Err(error) = pm.capctl(pid, capability, true) {
+            error!("failed to acquire capability (capability={capability:?}, error={error:?})");
+            return false;
+        }
+        if !matches!(pm.has_capability(pid, capability), Ok(true)) {
+            error!("acquired capability is not set (capability={capability:?})");
+            return false;
+        }
+        if let Err(error) = pm.capctl(pid, capability, false) {
+            error!("failed to release capability (capability={capability:?}, error={error:?})");
+            return false;
+        }
+        if !matches!(pm.has_capability(pid, capability), Ok(false)) {
+            error!("released capability is still set (capability={capability:?})");
+            return false;
+        }
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that the init process, which the kernel spawns directly, may acquire and release every
+/// capability.
+///
+/// # Returns
+///
+/// `true` if the init process acquired and released every capability, otherwise `false`.
+///
+fn test_capctl_allows_acquire_from_init_process() -> bool {
+    let pid: ProcessIdentifier = ProcessIdentifier::INIT;
+    let Some(mut pm) = new_capctl_fixture(pid, ProcessIdentifier::KERNEL, None, ProcessRole::Init)
+    else {
+        return false;
+    };
+    acquire_and_release_all(&mut pm, pid)
+}
+
+///
+/// # Description
+///
+/// Verifies that a system daemon, which the kernel spawns directly and registers by name, may
+/// acquire and release every capability.
+///
+/// # Returns
+///
+/// `true` if the daemon acquired and released every capability, otherwise `false`.
+///
+fn test_capctl_allows_acquire_from_daemon_process() -> bool {
+    let pid: ProcessIdentifier = ProcessIdentifier::PROCD;
+    let Some(mut pm) = new_capctl_fixture(
+        pid,
+        ProcessIdentifier::KERNEL,
+        Some(::config::daemons::PROCD_NAME),
+        ProcessRole::Daemon,
+    ) else {
+        return false;
+    };
+    acquire_and_release_all(&mut pm, pid)
+}
+
+///
+/// # Description
+///
+/// Verifies that a process forked from a user process cannot acquire any capability, and that a
+/// denied acquisition leaves the capability unset.
+///
+/// # Returns
+///
+/// `true` if every acquisition is denied with [`ErrorCode::PermissionDenied`], otherwise `false`.
+///
+fn test_capctl_denies_acquire_from_user_process() -> bool {
+    let pid: ProcessIdentifier = ProcessIdentifier::from(FORKED_PID_RAW);
+    let Some(mut pm) = new_capctl_fixture(pid, ProcessIdentifier::INIT, None, ProcessRole::User)
+    else {
+        return false;
+    };
+    for capability in CAPABILITIES {
+        match pm.capctl(pid, capability, true) {
+            Err(error) if error.code == ErrorCode::PermissionDenied => {},
+            result => {
+                error!(
+                    "user process acquisition was not denied (capability={capability:?}, \
+                     result={result:?})"
+                );
+                return false;
+            },
+        }
+        if !matches!(pm.has_capability(pid, capability), Ok(false)) {
+            error!("denied acquisition changed capability state (capability={capability:?})");
+            return false;
+        }
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// Verifies that a process forked from a user process may still relinquish capabilities, since
+/// doing so can only reduce its privileges. Releasing a capability that the process does not hold
+/// fails with [`ErrorCode::NoSuchEntry`] rather than [`ErrorCode::PermissionDenied`], and releasing
+/// one that it holds succeeds without authorizing the process to acquire it back.
+///
+/// # Returns
+///
+/// `true` if every release follows this policy, otherwise `false`.
+///
+fn test_capctl_allows_release_from_user_process() -> bool {
+    let pid: ProcessIdentifier = ProcessIdentifier::from(FORKED_PID_RAW);
+    let Some(mut pm) = new_capctl_fixture(pid, ProcessIdentifier::INIT, None, ProcessRole::User)
+    else {
+        return false;
+    };
+    for capability in CAPABILITIES {
+        match pm.capctl(pid, capability, false) {
+            Err(error) if error.code == ErrorCode::NoSuchEntry => {},
+            result => {
+                error!(
+                    "release of an unset capability did not report a missing entry \
+                     (capability={capability:?}, result={result:?})"
+                );
+                return false;
+            },
+        }
+
+        // Install the capability directly, because the process cannot acquire it by itself.
+        pm.get_running_mut().state_mut().set_capability(capability);
+        if let Err(error) = pm.capctl(pid, capability, false) {
+            error!(
+                "failed to release held capability (capability={capability:?}, error={error:?})"
+            );
+            return false;
+        }
+        if !matches!(pm.has_capability(pid, capability), Ok(false)) {
+            error!("released capability is still set (capability={capability:?})");
+            return false;
+        }
+        match pm.capctl(pid, capability, true) {
+            Err(error) if error.code == ErrorCode::PermissionDenied => {},
+            result => {
+                error!(
+                    "user process acquired a released capability (capability={capability:?}, \
+                     result={result:?})"
+                );
+                return false;
+            },
+        }
+    }
+    true
+}
+
+//==================================================================================================
 // Test Runner
 //==================================================================================================
 
@@ -1192,6 +1438,10 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_lifecycle_fifo_and_eligibility);
     passed &= run_test!(test_lifecycle_delivery_is_transactional);
     passed &= run_test!(test_lifecycle_wakeup_request_can_be_rearmed);
+    passed &= run_test!(test_capctl_allows_acquire_from_init_process);
+    passed &= run_test!(test_capctl_allows_acquire_from_daemon_process);
+    passed &= run_test!(test_capctl_denies_acquire_from_user_process);
+    passed &= run_test!(test_capctl_allows_release_from_user_process);
     passed &= super::delivery::test();
     #[cfg(target_arch = "x86")]
     {
