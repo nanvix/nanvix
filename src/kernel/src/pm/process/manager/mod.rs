@@ -265,6 +265,10 @@ pub struct ProcessManager {
     /// daemon name (e.g. a misconfigured boot image, or a future spawn-by-name path): only the first
     /// process to claim a given name is classified as that daemon, so a later duplicate is treated as
     /// an init process rather than silently recorded as a daemon.
+    ///
+    /// Entries are never removed. This is sound only because process identifiers are never
+    /// recycled: since the role also authorizes capability acquisition, a recycled daemon identifier
+    /// would otherwise let an unrelated process inherit the daemon's authority.
     daemon_pids: Vec<(&'static str, ProcessIdentifier)>,
 }
 
@@ -418,6 +422,34 @@ impl ProcessManager {
     /// process.
     fn classify_role(&self, pid: ProcessIdentifier, parent: ProcessIdentifier) -> ProcessRole {
         ProcessRole::classify(parent, self.daemon_pids.iter().any(|(_, p)| *p == pid))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Determines whether a process with a given [`ProcessRole`] may acquire capabilities.
+    ///
+    /// The role derives only from state that the kernel fixes when it creates a process (its
+    /// identifier, its parent, and the daemon identifiers recorded at spawn time), so a process
+    /// cannot change its own role and therefore cannot authorize itself to acquire capabilities.
+    ///
+    /// # Parameters
+    ///
+    /// - `role`: Role of the process.
+    ///
+    /// # Returns
+    ///
+    /// `true` if a process with the given role may acquire capabilities, otherwise `false`.
+    ///
+    fn may_acquire_capabilities(role: ProcessRole) -> bool {
+        match role {
+            // The kernel spawns the init process and the system daemons directly from the boot
+            // image, so they are trusted to acquire the capabilities they need. The kernel process
+            // also classifies as the init process.
+            ProcessRole::Init | ProcessRole::Daemon => true,
+            // A process forked from a user process is never trusted to escalate its privileges.
+            ProcessRole::User => false,
+        }
     }
 
     ///
@@ -2745,17 +2777,35 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Sets/clears the capability of a process.
+    /// Sets/clears a capability of a process on behalf of that same process.
+    ///
+    /// Acquiring a capability is authorized by the [`ProcessRole`] that the kernel assigned to the
+    /// process when it created it, an authority that cannot itself be obtained through this
+    /// function. Only processes that the kernel spawned directly (the init process and registered
+    /// system daemons) may acquire capabilities; a process forked from a user process may not, so
+    /// it cannot escalate its own privileges. Relinquishing a capability is always permitted,
+    /// because it can only reduce the privileges of the process.
     ///
     /// # Parameters
     ///
-    /// - `pid`: Process identifier.
+    /// - `pid`: Identifier of the process whose capability is set/cleared, which is also the
+    ///   process requesting the change.
     /// - `capability`: Capability to set/clear.
-    /// - `value`: Set capability if true, clear capability if false.
+    /// - `set`: Set capability if true, clear capability if false.
     ///
     /// # Returns
     ///
     /// Upon successful completion, empty is returned. Otherwise, an error code is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// This function fails with the following error codes:
+    ///
+    /// - [`ErrorCode::NoSuchProcess`]: `pid` does not identify an existing process.
+    /// - [`ErrorCode::PermissionDenied`]: `set` is true and the process is not allowed to acquire
+    ///   capabilities.
+    /// - [`ErrorCode::ResourceBusy`]: `set` is true and the capability is already set.
+    /// - [`ErrorCode::NoSuchEntry`]: `set` is false and the capability is not set.
     ///
     pub fn capctl(
         &mut self,
@@ -2763,6 +2813,17 @@ impl ProcessManager {
         capability: Capability,
         set: bool,
     ) -> Result<(), Error> {
+        // Authorize acquisitions before borrowing the target process mutably.
+        if set {
+            let parent: ProcessIdentifier = self.find_process(pid)?.state().ppid();
+            let role: ProcessRole = self.classify_role(pid, parent);
+            if !Self::may_acquire_capabilities(role) {
+                let reason: &str = "process is not allowed to acquire capabilities";
+                error!("{reason} (pid={pid:?}, role={role:?}, capability={capability:?})");
+                return Err(Error::new(ErrorCode::PermissionDenied, reason));
+            }
+        }
+
         let mut process: ProcessRefMut = self.find_process_mut(pid)?;
 
         // Check whether the capability should be set or cleared.
