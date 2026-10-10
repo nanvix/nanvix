@@ -33,6 +33,7 @@ use ::sys::{
     ipc::{
         Message,
         MessageType,
+        RequestIdentifier,
     },
     pm::{
         ProcessIdentifier,
@@ -54,7 +55,6 @@ use ::vfs::{
         vfs_pipe,
         vfs_pipe_consume,
         vfs_pipe_peek,
-        vfs_pipe_read,
         vfs_pipe_write,
         PipeReadOutcome,
         PipeWriteOutcome,
@@ -74,6 +74,9 @@ const PIPE_BULK_SIZE: usize = PAGE_SIZE;
 
 /// Revive pushes are non-blocking probes; callers without a registered pull stay queued for retry.
 const PIPE_REVIVE_PUSH_TIMEOUT: Duration = Duration::ZERO;
+
+/// Maximum time an initial pipe-write handler waits for the caller's tagged push.
+const PIPE_REQUEST_PULL_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Compile-time guarantee that a single pipe request is always atomic.
 ///
@@ -110,15 +113,21 @@ enum PushOutcome {
 }
 
 /// Pushes an empty buffer to `(pid, tid)` to release a caller blocked in `__kcall_pull`.
-fn push_empty(pid: ProcessIdentifier, tid: ThreadIdentifier, reviving: bool) -> PushOutcome {
-    let result: Result<(), Error> = if reviving {
-        ::sys::kcall::ipc::__kcall_push_timed(pid, tid, &[], Some(PIPE_REVIVE_PUSH_TIMEOUT))
-    } else {
-        ::sys::kcall::ipc::__kcall_push(pid, tid, &[])
-    };
+fn push_empty(
+    pid: ProcessIdentifier,
+    tid: ThreadIdentifier,
+    request_id: RequestIdentifier,
+) -> PushOutcome {
+    let result: Result<(), Error> = ::sys::kcall::ipc::__kcall_push_tagged_timed(
+        pid,
+        tid,
+        &[],
+        request_id,
+        Some(PIPE_REVIVE_PUSH_TIMEOUT),
+    );
     match result {
         Ok(()) => PushOutcome::Delivered,
-        Err(error) if reviving && error.code == ErrorCode::OperationTimedOut => PushOutcome::Retry,
+        Err(error) if error.code == ErrorCode::OperationTimedOut => PushOutcome::Retry,
         Err(error) => {
             ::syslog::error!(
                 "pipe: unblock push failed (pid={:?}, tid={:?}, error={:?})",
@@ -175,6 +184,7 @@ fn try_serve_reader(
     tid: ThreadIdentifier,
     fd: i32,
     count: usize,
+    request_id: RequestIdentifier,
     reviving: bool,
 ) -> ServeOutcome {
     let cap: usize = count.min(PIPE_BULK_SIZE);
@@ -183,26 +193,19 @@ fn try_serve_reader(
     let buf: &mut [u8] = unsafe { &mut PIPE_BULK_BUFFER[..cap] };
     // A revive must not consume the bytes before they are known to have reached the caller: the
     // push may time out on a caller that a signal pulled out of its `__kcall_pull`.
-    let read: Result<PipeReadOutcome, Fat32Error> = if reviving {
-        vfs_pipe_peek(fd, buf)
-    } else {
-        vfs_pipe_read(fd, buf)
-    };
+    let read: Result<PipeReadOutcome, Fat32Error> = vfs_pipe_peek(fd, buf);
     match read {
         Ok(PipeReadOutcome::Read(n)) => {
-            let push: Result<(), Error> = if reviving {
-                ::sys::kcall::ipc::__kcall_push_timed(
-                    pid,
-                    tid,
-                    &buf[..n],
-                    Some(PIPE_REVIVE_PUSH_TIMEOUT),
-                )
-            } else {
-                ::sys::kcall::ipc::__kcall_push(pid, tid, &buf[..n])
-            };
+            let push: Result<(), Error> = ::sys::kcall::ipc::__kcall_push_tagged_timed(
+                pid,
+                tid,
+                &buf[..n],
+                request_id,
+                Some(PIPE_REVIVE_PUSH_TIMEOUT),
+            );
             match push {
                 Ok(()) => {},
-                Err(error) if reviving && error.code == ErrorCode::OperationTimedOut => {
+                Err(error) if error.code == ErrorCode::OperationTimedOut => {
                     return ServeOutcome::Retry;
                 },
                 Err(error) => {
@@ -213,40 +216,34 @@ fn try_serve_reader(
                         fd,
                         error
                     );
-                    return if reviving {
-                        ServeOutcome::Abandoned
-                    } else {
-                        ServeOutcome::Error
-                    };
+                    return ServeOutcome::Abandoned;
                 },
             }
-            if reviving {
-                match vfs_pipe_consume(fd, n) {
-                    Ok(consumed) if consumed == n => {},
-                    Ok(consumed) => ::syslog::error!(
-                        "pipe read: consume count mismatch (fd={}, expected={}, consumed={})",
-                        fd,
-                        n,
-                        consumed
-                    ),
-                    Err(error) => ::syslog::error!(
-                        "pipe read: consume failed (fd={}, count={}, error={:?})",
-                        fd,
-                        n,
-                        error
-                    ),
-                }
+            match vfs_pipe_consume(fd, n) {
+                Ok(consumed) if consumed == n => {},
+                Ok(consumed) => ::syslog::error!(
+                    "pipe read: consume count mismatch (fd={}, expected={}, consumed={})",
+                    fd,
+                    n,
+                    consumed
+                ),
+                Err(error) => ::syslog::error!(
+                    "pipe read: consume failed (fd={}, count={}, error={:?})",
+                    fd,
+                    n,
+                    error
+                ),
             }
             ServeOutcome::Served(n)
         },
-        Ok(PipeReadOutcome::Eof) => match push_empty(pid, tid, reviving) {
+        Ok(PipeReadOutcome::Eof) => match push_empty(pid, tid, request_id) {
             PushOutcome::Delivered => ServeOutcome::Eof,
             PushOutcome::Retry => ServeOutcome::Retry,
             PushOutcome::Failed if reviving => ServeOutcome::Abandoned,
             PushOutcome::Failed => ServeOutcome::Eof,
         },
         Ok(PipeReadOutcome::WouldBlock) => ServeOutcome::WouldBlock,
-        Err(_) => match push_empty(pid, tid, reviving) {
+        Err(_) => match push_empty(pid, tid, request_id) {
             PushOutcome::Delivered => ServeOutcome::Error,
             PushOutcome::Retry => ServeOutcome::Retry,
             PushOutcome::Failed if reviving => ServeOutcome::Abandoned,
@@ -302,20 +299,55 @@ pub(crate) fn handle_pipe_read(
 ) -> Option<Message> {
     let source_pid: ProcessIdentifier = response_context.source_pid();
     let source_tid: ThreadIdentifier = response_context.source_tid();
+    let request_id: RequestIdentifier = response_context.request_id();
     // Reading the write end is rejected with `EBADF`, regardless of `count`. The caller is blocked
     // in `__kcall_pull`, so release it before sending the error response.
     if is_write {
-        push_empty(source_pid, source_tid, false);
-        return Some(build_error(source_tid, ErrorCode::BadFile));
+        return match push_empty(source_pid, source_tid, request_id) {
+            PushOutcome::Delivered | PushOutcome::Failed => {
+                Some(build_error(source_tid, ErrorCode::BadFile))
+            },
+            PushOutcome::Retry => {
+                pipe_wait.park_reader(
+                    pipe_id,
+                    BlockedReader {
+                        response_context,
+                        source_tid,
+                        source_pid,
+                        fd,
+                        count,
+                        error: Some(ErrorCode::BadFile),
+                    },
+                );
+                schedule_pipe_read_retry(pipe_id, pipe_wait);
+                None
+            },
+        };
     }
 
     // A zero-length read returns immediately without blocking.
     if count == 0 {
-        push_empty(source_pid, source_tid, false);
-        return Some(read_response(source_tid, 0));
+        return match push_empty(source_pid, source_tid, request_id) {
+            PushOutcome::Delivered | PushOutcome::Failed => Some(read_response(source_tid, 0)),
+            PushOutcome::Retry => {
+                pipe_wait.park_reader(
+                    pipe_id,
+                    BlockedReader {
+                        response_context,
+                        source_tid,
+                        source_pid,
+                        fd,
+                        count,
+                        error: None,
+                    },
+                );
+                schedule_pipe_read_retry(pipe_id, pipe_wait);
+                None
+            },
+        };
     }
 
-    match try_serve_reader(source_pid, source_tid, fd, count, false) {
+    match try_serve_reader(source_pid, source_tid, fd, count, request_id, false) {
         ServeOutcome::Served(n) => {
             // Freed buffer space: a suspended writer may now make progress.
             rebalance(pipe_id, pipe_wait);
@@ -325,8 +357,26 @@ pub(crate) fn handle_pipe_read(
         ServeOutcome::WouldBlock => {
             if is_nonblocking(fd) {
                 // The caller is blocked in `__kcall_pull`; release it before the error response.
-                push_empty(source_pid, source_tid, false);
-                Some(build_error(source_tid, ErrorCode::TryAgain))
+                match push_empty(source_pid, source_tid, request_id) {
+                    PushOutcome::Delivered | PushOutcome::Failed => {
+                        Some(build_error(source_tid, ErrorCode::TryAgain))
+                    },
+                    PushOutcome::Retry => {
+                        pipe_wait.park_reader(
+                            pipe_id,
+                            BlockedReader {
+                                response_context,
+                                source_tid,
+                                source_pid,
+                                fd,
+                                count,
+                                error: Some(ErrorCode::TryAgain),
+                            },
+                        );
+                        schedule_pipe_read_retry(pipe_id, pipe_wait);
+                        None
+                    },
+                }
             } else {
                 pipe_wait.park_reader(
                     pipe_id,
@@ -336,14 +386,29 @@ pub(crate) fn handle_pipe_read(
                         source_pid,
                         fd,
                         count,
+                        error: None,
                     },
                 );
                 None
             }
         },
         ServeOutcome::Error => Some(build_error(source_tid, ErrorCode::BadFile)),
-        // Unreachable: only a revive push can be retried or abandoned, and this path never revives.
-        ServeOutcome::Retry | ServeOutcome::Abandoned => None,
+        ServeOutcome::Retry => {
+            pipe_wait.park_reader(
+                pipe_id,
+                BlockedReader {
+                    response_context,
+                    source_tid,
+                    source_pid,
+                    fd,
+                    count,
+                    error: None,
+                },
+            );
+            schedule_pipe_read_retry(pipe_id, pipe_wait);
+            None
+        },
+        ServeOutcome::Abandoned => Some(build_error(source_tid, ErrorCode::IoErr)),
     }
 }
 
@@ -372,8 +437,15 @@ pub(crate) fn handle_pipe_write(
     let pulled: usize = {
         // SAFETY: single-threaded; the borrow is released at the end of this block.
         let buf: &mut [u8] = unsafe { &mut PIPE_BULK_BUFFER[..cap] };
-        match ::sys::kcall::ipc::__kcall_pull(source_pid, source_tid, buf) {
+        match ::sys::kcall::ipc::__kcall_pull_tagged_timed(
+            source_pid,
+            source_tid,
+            buf,
+            response_context.request_id(),
+            Some(PIPE_REQUEST_PULL_TIMEOUT),
+        ) {
             Ok(p) => p.min(cap),
+            Err(e) if e.code == ErrorCode::OperationTimedOut => return None,
             Err(e) => {
                 ::syslog::error!("pipe write: pull failed (error={:?})", e);
                 return Some(build_error(source_tid, ErrorCode::IoErr));
@@ -467,8 +539,39 @@ fn wake_readers(pipe_id: u64, pipe_wait: &mut PipeWaitTable) -> bool {
     let mut progress: bool = false;
     while let Some(reader) = pipe_wait.front_reader(pipe_id) {
         set_current_process(reader.source_pid);
-        match try_serve_reader(reader.source_pid, reader.source_tid, reader.fd, reader.count, true)
-        {
+        if let Some(error) = reader.error {
+            match push_empty(
+                reader.source_pid,
+                reader.source_tid,
+                reader.response_context.request_id(),
+            ) {
+                PushOutcome::Delivered => {
+                    pipe_wait.pop_reader(pipe_id);
+                    reader
+                        .response_context
+                        .send(&build_error(reader.source_tid, error));
+                    progress = true;
+                    continue;
+                },
+                PushOutcome::Retry => {
+                    schedule_pipe_read_retry(pipe_id, pipe_wait);
+                    break;
+                },
+                PushOutcome::Failed => {
+                    pipe_wait.pop_reader(pipe_id);
+                    progress = true;
+                    continue;
+                },
+            }
+        }
+        match try_serve_reader(
+            reader.source_pid,
+            reader.source_tid,
+            reader.fd,
+            reader.count,
+            reader.response_context.request_id(),
+            true,
+        ) {
             ServeOutcome::Served(n) => {
                 pipe_wait.pop_reader(pipe_id);
                 reader

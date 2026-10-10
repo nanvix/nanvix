@@ -26,8 +26,12 @@ use ::sys::{
     ipc::{
         DataChunkHeader,
         Message,
+        MAX_ACTIVE_REQUESTS,
     },
-    pm::ThreadIdentifier,
+    pm::{
+        ProcessIdentifier,
+        ThreadIdentifier,
+    },
     time::SystemTime,
 };
 
@@ -38,6 +42,12 @@ use ::sys::{
 /// Ordering used for all atomic operations. Relaxed is safe because Nanvix is a single-core system
 /// and the kernel runs with interrupts disabled.
 const ORDER: Ordering = Ordering::Relaxed;
+
+/// Maximum number of pending host bulk pulls.
+const MAX_PENDING_BULK_PULLS: usize = ::config::kernel::MAX_THREADS * MAX_ACTIVE_REQUESTS;
+
+/// Correlation key for one pending host bulk pull.
+type PendingBulkPullKey = (ThreadIdentifier, u32);
 
 //==================================================================================================
 // Structures
@@ -50,6 +60,8 @@ const ORDER: Ordering = Ordering::Relaxed;
 /// the host I/O backend to supply the requested data via the vmbus.
 ///
 struct PendingBulkPull {
+    /// Process that owns the pulling thread.
+    pid: ProcessIdentifier,
     /// Condition variable on which the pulling thread is sleeping.
     condvar: Condvar,
     /// Actual bytes transferred, written by the completion handler before waking.
@@ -60,8 +72,8 @@ struct PendingBulkPull {
 // Global Variables
 //==================================================================================================
 
-/// Pending bulk pull requests keyed by thread identifier.
-static mut PENDING_BULK_PULLS: BTreeMap<ThreadIdentifier, PendingBulkPull> = BTreeMap::new();
+/// Pending bulk pull requests keyed by thread identifier and request correlation tag.
+static mut PENDING_BULK_PULLS: BTreeMap<PendingBulkPullKey, PendingBulkPull> = BTreeMap::new();
 
 //==================================================================================================
 // Private Functions
@@ -100,7 +112,9 @@ fn is_timeout(error: &SleepError) -> bool {
 ///
 /// # Parameters
 ///
+/// - `caller_pid`: Process identifier of the thread requesting the pull.
 /// - `caller_tid`: Thread identifier of the thread requesting the pull.
+/// - `tag`: Request correlation tag carried by the host bulk transfer.
 /// - `alarm`: Optional absolute deadline that bounds the wait. [`None`] blocks until the host
 ///   responds; [`Some`] reports [`ErrorCode::OperationTimedOut`](sys::error::ErrorCode) once the
 ///   deadline elapses, so a slow or wedged host cannot block the guest thread forever.
@@ -112,11 +126,8 @@ fn is_timeout(error: &SleepError) -> bool {
 ///
 /// # Errors
 ///
-/// Fails with [`ErrorCode::ResourceBusy`] if a previous bulk pull from the same thread timed out
-/// while its host completion was still in flight and that completion has not yet drained. The new
-/// request is refused until then, because completions are correlated back to the thread by
-/// identifier alone and overwriting the pending entry would let the stale completion be
-/// mis-delivered to this request.
+/// Fails with [`ErrorCode::ResourceBusy`] if the pending table is full or the same thread already
+/// owns an in-flight bulk pull with the same correlation tag.
 ///
 /// # Caveats
 ///
@@ -131,11 +142,14 @@ fn is_timeout(error: &SleepError) -> bool {
 /// (<https://github.com/nanvix/nanvix/issues/2908>).
 ///
 pub fn register_and_sleep(
+    caller_pid: ProcessIdentifier,
     caller_tid: ThreadIdentifier,
+    tag: u32,
     alarm: Option<SystemTime>,
 ) -> Result<usize, SleepError> {
     let condvar: Condvar = Condvar::new();
     let bytes_transferred: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+    let key: PendingBulkPullKey = (caller_tid, tag);
 
     // Keep a local clone of the condvar and bytes counter so they remain valid after the entry is
     // removed from the map by `complete()`.
@@ -143,31 +157,30 @@ pub fn register_and_sleep(
     let bytes_transferred_clone: Arc<AtomicUsize> = bytes_transferred.clone();
 
     // SAFETY: single-core system with interrupts disabled.
-    let pending: &mut BTreeMap<ThreadIdentifier, PendingBulkPull> =
+    let pending: &mut BTreeMap<PendingBulkPullKey, PendingBulkPull> =
         unsafe { &mut PENDING_BULK_PULLS };
 
-    // Refuse to overwrite an entry left behind by a previous bulk pull from this thread. Such an
-    // entry lingers only when that earlier request timed out while its host completion was still in
-    // flight: the pending map is keyed solely by thread identifier, so the late completion is
-    // correlated back to this thread by TID alone. Because the calling thread is synchronous, an
-    // existing entry can only be such a leftover, and overwriting it would let the stale completion
-    // wake and complete this new request with the earlier request's data. Fail fast until the
-    // in-flight completion drains the entry.
-    if pending.contains_key(&caller_tid) {
-        let reason: &str = "a previous bulk pull from this thread is still in flight";
-        warn!("register_and_sleep(): {reason} (caller_tid={caller_tid:?})");
+    if pending.len() >= MAX_PENDING_BULK_PULLS {
+        let reason: &str = "too many pending host bulk pulls";
+        warn!("register_and_sleep(): {reason} (caller_tid={caller_tid:?}, tag={tag})");
+        return Err(SleepError::Generic(Error::new(ErrorCode::ResourceBusy, reason)));
+    }
+    if pending.contains_key(&key) {
+        let reason: &str = "a host bulk pull with this tag is still in flight";
+        warn!("register_and_sleep(): {reason} (caller_tid={caller_tid:?}, tag={tag})");
         return Err(SleepError::Generic(Error::new(ErrorCode::ResourceBusy, reason)));
     }
 
     pending.insert(
-        caller_tid,
+        key,
         PendingBulkPull {
+            pid: caller_pid,
             condvar: condvar_clone,
             bytes_transferred: bytes_transferred_clone,
         },
     );
 
-    trace!("bulk pull sleeping (caller_tid={caller_tid:?})");
+    trace!("bulk pull sleeping (caller_tid={caller_tid:?}, tag={tag})");
 
     // Sleep on the condition variable until the completion handler wakes us up or the deadline
     // expires.
@@ -186,9 +199,9 @@ pub fn register_and_sleep(
                 // above) until that late completion drains it, so the completion can never be
                 // mis-delivered to a different request.
                 // SAFETY: single-core system with interrupts disabled.
-                let pending: &mut BTreeMap<ThreadIdentifier, PendingBulkPull> =
+                let pending: &mut BTreeMap<PendingBulkPullKey, PendingBulkPull> =
                     unsafe { &mut PENDING_BULK_PULLS };
-                pending.remove(&caller_tid);
+                pending.remove(&key);
             }
             Err(error)
         },
@@ -202,8 +215,8 @@ pub fn register_and_sleep(
 /// from a [`PullResponse`] message, storing the result, and waking the sleeping thread.
 ///
 /// The message payload must contain a serialized [`DataChunkHeader`] starting at byte offset 0.
-/// The `source_tid` field identifies the thread to wake, and `data_len` holds the actual number of
-/// bytes transferred.
+/// The `source_tid` and `tag` fields identify the pending request to wake, and `data_len` holds the
+/// actual number of bytes transferred.
 ///
 /// # Parameters
 ///
@@ -226,14 +239,16 @@ pub fn complete(message: &Message) -> bool {
     };
 
     let caller_tid: ThreadIdentifier = header.source_tid();
+    let tag: u32 = header.tag();
     let bytes_transferred: usize = header.data_len() as usize;
+    let key: PendingBulkPullKey = (caller_tid, tag);
 
     // SAFETY: single-core system with interrupts disabled.
-    let pending: &mut BTreeMap<ThreadIdentifier, PendingBulkPull> =
+    let pending: &mut BTreeMap<PendingBulkPullKey, PendingBulkPull> =
         unsafe { &mut PENDING_BULK_PULLS };
 
-    // Find and remove the matching pending pull by thread identifier.
-    if let Some(entry) = pending.remove(&caller_tid) {
+    // Find and remove the exact pending pull.
+    if let Some(entry) = pending.remove(&key) {
         // Store the actual bytes transferred so the woken thread can read it.
         entry.bytes_transferred.store(bytes_transferred, ORDER);
 
@@ -247,13 +262,55 @@ pub fn complete(message: &Message) -> bool {
         }
 
         trace!(
-            "bulk pull completed (caller_tid={caller_tid:?}, \
+            "bulk pull completed (caller_tid={caller_tid:?}, tag={tag}, \
              bytes_transferred={bytes_transferred})"
         );
 
         true
     } else {
-        warn!("complete(): no pending bulk pull found for tid={caller_tid:?}");
+        warn!("complete(): no pending bulk pull found (tid={caller_tid:?}, tag={tag})");
         false
     }
+}
+
+///
+/// # Description
+///
+/// Removes pending host bulk pulls owned by a terminated process.
+///
+/// # Parameters
+///
+/// - `pid`: Identifier of the terminated process.
+///
+/// # Safety
+///
+/// This function accesses global mutable state and must run on the single-core kernel with
+/// interrupts disabled.
+///
+pub unsafe fn cleanup_process(pid: ProcessIdentifier) {
+    // SAFETY: guaranteed by the caller.
+    let pending: &mut BTreeMap<PendingBulkPullKey, PendingBulkPull> =
+        unsafe { &mut PENDING_BULK_PULLS };
+    pending.retain(|_, pull| pull.pid != pid);
+}
+
+///
+/// # Description
+///
+/// Removes pending host bulk pulls owned by an exiting thread.
+///
+/// # Parameters
+///
+/// - `tid`: Identifier of the exiting thread.
+///
+/// # Safety
+///
+/// This function accesses global mutable state and must run on the single-core kernel with
+/// interrupts disabled.
+///
+pub unsafe fn cleanup_thread(tid: ThreadIdentifier) {
+    // SAFETY: guaranteed by the caller.
+    let pending: &mut BTreeMap<PendingBulkPullKey, PendingBulkPull> =
+        unsafe { &mut PENDING_BULK_PULLS };
+    pending.retain(|(pending_tid, _), _| *pending_tid != tid);
 }

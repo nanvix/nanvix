@@ -136,6 +136,17 @@ pub fn main() {
     ::sys::kcall::ipc::__kcall_send(&subscription)
         .expect("failed to subscribe to console input notifications");
 
+    // Delay HostFS read-delivery retries without sleeping the single-threaded event loop.
+    let main_tid_raw: usize = tid
+        .try_into()
+        .expect("failed to encode vfsd thread identifier");
+    let read_retry_scheduler: ::sysapi::sys_types::pthread_t = ::syscall::pthread::pthread_create(
+        pending::read_retry_scheduler,
+        main_tid_raw,
+        ::config::memory_layout::USER_THREAD_STACK_SIZE,
+    )
+    .expect("failed to create HostFS read retry scheduler");
+
     // Bounded multi-part request assembler map keyed by exact caller, header, and request ID.
     let mut assemblers: BTreeMap<assembler::AssemblerKey, assembler::AssemblerEntry> =
         BTreeMap::new();
@@ -382,7 +393,11 @@ pub fn main() {
                                     Some(pending::StatMetadataStep::Wait) => continue,
                                     Some(pending::StatMetadataStep::Complete) => {
                                         if let Some(op) = pending.remove(op_id) {
-                                            pending::complete_pending_op(op, &message.payload);
+                                            if let Some(op) =
+                                                pending::complete_pending_op(op, &message.payload)
+                                            {
+                                                pending.defer_read_delivery(op_id, op);
+                                            }
                                         }
                                         continue;
                                     },
@@ -456,7 +471,10 @@ pub fn main() {
                                 }
                             }
                             if let Some(op) = pending.remove(op_id) {
-                                pending::complete_pending_op(op, &message.payload);
+                                if let Some(op) = pending::complete_pending_op(op, &message.payload)
+                                {
+                                    pending.defer_read_delivery(op_id, op);
+                                }
                             } else if pending.complete_abandoned_operation(op_id, &message.payload)
                             {
                                 // The originating process exited or exec'd before hostfsd replied.
@@ -498,6 +516,17 @@ pub fn main() {
             },
             Err(e) => ::syslog::error!("failed to receive message (error={:?})", e),
         }
+    }
+
+    match pending::shutdown_read_retry_scheduler() {
+        Ok(()) => {
+            if let Err(error) = ::syscall::pthread::pthread_join(read_retry_scheduler) {
+                ::syslog::warn!("failed to join HostFS read retry scheduler (error={:?})", error);
+            }
+        },
+        Err(error) => {
+            ::syslog::warn!("failed to stop HostFS read retry scheduler (error={:?})", error);
+        },
     }
 
     // Shutdown VFS daemon.

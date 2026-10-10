@@ -385,6 +385,8 @@ pub enum SystemCallMessageKind {
     HostFsFchmodResponse,
     HostFsAccessRequestPart,
     HostFsAccessResponse,
+    /// Internal VFSD request to retry a completed HostFS read delivery.
+    HostFsReadRetry,
 }
 // Manual TryFrom<u16> implementation for SystemCallMessageKind.
 impl TryFrom<u16> for SystemCallMessageKind {
@@ -590,6 +592,7 @@ impl TryFrom<u16> for SystemCallMessageKind {
             x if x == HostFsFchmodResponse as u16 => Ok(HostFsFchmodResponse),
             x if x == HostFsAccessRequestPart as u16 => Ok(HostFsAccessRequestPart),
             x if x == HostFsAccessResponse as u16 => Ok(HostFsAccessResponse),
+            x if x == HostFsReadRetry as u16 => Ok(HostFsReadRetry),
             _ => Err(()),
         }
     }

@@ -71,6 +71,11 @@ pub fn pull(
     let sender_tid: ThreadIdentifier = args.src_tid;
     let buffer_raw: usize = args.buffer as usize;
     let transfer_len: usize = args.len as usize;
+    let tag: u32 = args.tag;
+    let signal_mask_restore: Option<::sys::pm::SigSet> = args
+        .signal_mask_restore
+        .mask()
+        .map_err(SleepError::Generic)?;
 
     // Validate the sender identifiers copied from user space. The by-pointer ABI lets a caller place
     // an arbitrary raw value in the descriptor, so reject the negative/sentinel identifiers that the
@@ -139,13 +144,12 @@ pub fn pull(
         .map_err(SleepError::Generic)?;
 
         crate::stdio::write_bulk(
-            caller_pid,
-            caller_tid,
-            sender_pid,
-            sender_tid,
+            (caller_pid, caller_tid),
+            (sender_pid, sender_tid),
             GuestSgBulkKind::Pull,
             &segments,
             args.len,
+            tag,
         )
         .map_err(SleepError::Generic)?;
 
@@ -159,7 +163,12 @@ pub fn pull(
         // `bulk_pull::register_and_sleep` and issue #2908
         // (https://github.com/nanvix/nanvix/issues/2908). All current callers use the infinite
         // variant.
-        return super::bulk_pull::register_and_sleep(caller_tid, timeout.deadline());
+        return super::bulk_pull::register_and_sleep(
+            caller_pid,
+            caller_tid,
+            tag,
+            timeout.deadline(),
+        );
     }
 
     super::rendezvous::do_pull(
@@ -169,6 +178,6 @@ pub fn pull(
         sender_tid,
         buffer_raw,
         transfer_len,
-        timeout,
+        super::rendezvous::RendezvousOptions::new(tag, timeout, signal_mask_restore, false),
     )
 }

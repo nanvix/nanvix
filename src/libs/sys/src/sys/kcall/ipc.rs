@@ -14,12 +14,15 @@ use crate::{
         Message,
         PullArgs,
         PushArgs,
+        RequestIdentifier,
+        SignalMaskRestore,
         Timeout,
     },
     kcall1,
     number::KcallNumber,
     pm::{
         ProcessIdentifier,
+        SigSet,
         ThreadIdentifier,
     },
 };
@@ -89,7 +92,106 @@ pub fn __kcall_push(
     destination_tid: ThreadIdentifier,
     buffer: &[u8],
 ) -> Result<(), Error> {
-    push_with_timeout(destination_pid, destination_tid, buffer, Timeout::infinite())
+    push_with_timeout(
+        destination_pid,
+        destination_tid,
+        buffer,
+        RequestIdentifier::NONE,
+        SignalMaskRestore::none(),
+        Timeout::infinite(),
+        0,
+    )
+}
+
+/// Pushes data using a request identifier as the rendezvous correlation tag.
+pub fn __kcall_push_tagged(
+    destination_pid: ProcessIdentifier,
+    destination_tid: ThreadIdentifier,
+    buffer: &[u8],
+    tag: RequestIdentifier,
+) -> Result<(), Error> {
+    push_with_timeout(
+        destination_pid,
+        destination_tid,
+        buffer,
+        tag,
+        SignalMaskRestore::none(),
+        Timeout::infinite(),
+        0,
+    )
+}
+
+/// Pushes tagged data and atomically restores a signal mask after rendezvous registration.
+pub fn __kcall_push_tagged_restoring_signals(
+    destination_pid: ProcessIdentifier,
+    destination_tid: ThreadIdentifier,
+    buffer: &[u8],
+    tag: RequestIdentifier,
+    restore_mask: SigSet,
+) -> Result<(), Error> {
+    push_with_timeout(
+        destination_pid,
+        destination_tid,
+        buffer,
+        tag,
+        SignalMaskRestore::new(restore_mask),
+        Timeout::infinite(),
+        0,
+    )
+}
+
+/// Pushes tagged data, atomically restores a signal mask, and bounds the rendezvous wait.
+pub fn __kcall_push_tagged_restoring_signals_timed(
+    destination_pid: ProcessIdentifier,
+    destination_tid: ThreadIdentifier,
+    buffer: &[u8],
+    tag: RequestIdentifier,
+    restore_mask: SigSet,
+    timeout: Duration,
+) -> Result<(), Error> {
+    push_with_timeout(
+        destination_pid,
+        destination_tid,
+        buffer,
+        tag,
+        SignalMaskRestore::new(restore_mask),
+        Timeout::from_duration(Some(timeout)),
+        0,
+    )
+}
+
+/// Registers a tagged zero-length push without waiting for the destination to pull it.
+pub fn __kcall_push_tagged_deferred(
+    destination_pid: ProcessIdentifier,
+    destination_tid: ThreadIdentifier,
+    tag: RequestIdentifier,
+) -> Result<(), Error> {
+    push_with_timeout(
+        destination_pid,
+        destination_tid,
+        &[],
+        tag,
+        SignalMaskRestore::none(),
+        Timeout::infinite(),
+        PushArgs::FLAG_DEFERRED,
+    )
+}
+
+/// Cancels an exact tagged deferred push previously registered by the caller.
+pub fn __kcall_cancel_tagged_deferred_push(
+    destination_pid: ProcessIdentifier,
+    destination_tid: ThreadIdentifier,
+    tag: RequestIdentifier,
+) -> Result<(), Error> {
+    push_with_timeout(
+        destination_pid,
+        destination_tid,
+        &[],
+        tag,
+        SignalMaskRestore::none(),
+        Timeout::infinite(),
+        PushArgs::FLAG_CANCEL_DEFERRED,
+    )
 }
 
 ///
@@ -124,7 +226,34 @@ pub fn __kcall_push_timed(
     buffer: &[u8],
     timeout: Option<Duration>,
 ) -> Result<(), Error> {
-    push_with_timeout(destination_pid, destination_tid, buffer, Timeout::from_duration(timeout))
+    push_with_timeout(
+        destination_pid,
+        destination_tid,
+        buffer,
+        RequestIdentifier::NONE,
+        SignalMaskRestore::none(),
+        Timeout::from_duration(timeout),
+        0,
+    )
+}
+
+/// Pushes tagged data while bounding the rendezvous wait.
+pub fn __kcall_push_tagged_timed(
+    destination_pid: ProcessIdentifier,
+    destination_tid: ThreadIdentifier,
+    buffer: &[u8],
+    tag: RequestIdentifier,
+    timeout: Option<Duration>,
+) -> Result<(), Error> {
+    push_with_timeout(
+        destination_pid,
+        destination_tid,
+        buffer,
+        tag,
+        SignalMaskRestore::none(),
+        Timeout::from_duration(timeout),
+        0,
+    )
 }
 
 ///
@@ -137,7 +266,10 @@ fn push_with_timeout(
     destination_pid: ProcessIdentifier,
     destination_tid: ThreadIdentifier,
     buffer: &[u8],
+    tag: RequestIdentifier,
+    signal_mask_restore: SignalMaskRestore,
     timeout: Timeout,
+    flags: u32,
 ) -> Result<(), Error> {
     let transfer_len: u32 = buffer
         .len()
@@ -149,7 +281,10 @@ fn push_with_timeout(
         dst_tid: destination_tid,
         buffer: buffer.as_ptr() as usize as u32,
         len: transfer_len,
+        tag: tag.raw(),
+        signal_mask_restore,
         timeout,
+        flags,
     };
 
     let result: i64 = kcall1!(KcallNumber::Push.into(), &args as *const PushArgs as usize as u32);
@@ -193,7 +328,49 @@ pub fn __kcall_pull(
     sender_tid: ThreadIdentifier,
     buffer: &mut [u8],
 ) -> Result<usize, Error> {
-    pull_with_timeout(sender_pid, sender_tid, buffer, Timeout::infinite())
+    pull_with_timeout(
+        sender_pid,
+        sender_tid,
+        buffer,
+        RequestIdentifier::NONE,
+        SignalMaskRestore::none(),
+        Timeout::infinite(),
+    )
+}
+
+/// Pulls data using a request identifier as the rendezvous correlation tag.
+pub fn __kcall_pull_tagged(
+    sender_pid: ProcessIdentifier,
+    sender_tid: ThreadIdentifier,
+    buffer: &mut [u8],
+    tag: RequestIdentifier,
+) -> Result<usize, Error> {
+    pull_with_timeout(
+        sender_pid,
+        sender_tid,
+        buffer,
+        tag,
+        SignalMaskRestore::none(),
+        Timeout::infinite(),
+    )
+}
+
+/// Pulls tagged data and atomically restores a signal mask after rendezvous registration.
+pub fn __kcall_pull_tagged_restoring_signals(
+    sender_pid: ProcessIdentifier,
+    sender_tid: ThreadIdentifier,
+    buffer: &mut [u8],
+    tag: RequestIdentifier,
+    restore_mask: SigSet,
+) -> Result<usize, Error> {
+    pull_with_timeout(
+        sender_pid,
+        sender_tid,
+        buffer,
+        tag,
+        SignalMaskRestore::new(restore_mask),
+        Timeout::infinite(),
+    )
 }
 
 ///
@@ -229,7 +406,32 @@ pub fn __kcall_pull_timed(
     buffer: &mut [u8],
     timeout: Option<Duration>,
 ) -> Result<usize, Error> {
-    pull_with_timeout(sender_pid, sender_tid, buffer, Timeout::from_duration(timeout))
+    pull_with_timeout(
+        sender_pid,
+        sender_tid,
+        buffer,
+        RequestIdentifier::NONE,
+        SignalMaskRestore::none(),
+        Timeout::from_duration(timeout),
+    )
+}
+
+/// Pulls tagged data while bounding the rendezvous wait.
+pub fn __kcall_pull_tagged_timed(
+    sender_pid: ProcessIdentifier,
+    sender_tid: ThreadIdentifier,
+    buffer: &mut [u8],
+    tag: RequestIdentifier,
+    timeout: Option<Duration>,
+) -> Result<usize, Error> {
+    pull_with_timeout(
+        sender_pid,
+        sender_tid,
+        buffer,
+        tag,
+        SignalMaskRestore::none(),
+        Timeout::from_duration(timeout),
+    )
 }
 
 ///
@@ -242,6 +444,8 @@ fn pull_with_timeout(
     sender_pid: ProcessIdentifier,
     sender_tid: ThreadIdentifier,
     buffer: &mut [u8],
+    tag: RequestIdentifier,
+    signal_mask_restore: SignalMaskRestore,
     timeout: Timeout,
 ) -> Result<usize, Error> {
     let transfer_len: u32 = buffer
@@ -254,6 +458,8 @@ fn pull_with_timeout(
         src_tid: sender_tid,
         buffer: buffer.as_mut_ptr() as usize as u32,
         len: transfer_len,
+        tag: tag.raw(),
+        signal_mask_restore,
         timeout,
     };
 

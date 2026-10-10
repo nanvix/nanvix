@@ -54,10 +54,11 @@ pub fn recv(sockfd: i32, buffer: &mut [u8], flags: c_int) -> Result<usize, Error
     let token: RequestToken = crate::rpc::send_request(&mut request)?;
 
     // Pull the payload via data chunk transfer directly into the user buffer.
-    let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull(
+    let bytes_pulled: usize = ::sys::kcall::ipc::__kcall_pull_tagged(
         ProcessIdentifier::KERNEL,
         ThreadIdentifier::KERNEL,
         &mut buffer[..recv_len],
+        token.identifier(),
     )?;
 
     // Receive response.

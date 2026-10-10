@@ -16,6 +16,8 @@
 // Imports
 //==================================================================================================
 
+use crate::poll::input_message::PipeOperation;
+use ::core::time::Duration;
 use ::sys::error::{
     Error,
     ErrorCode,
@@ -28,6 +30,9 @@ use ::sysapi::ffi::{
 //==================================================================================================
 // Standalone Functions
 //==================================================================================================
+
+/// Maximum time a terminal setter waits for VFSD's bulk pull.
+const BULK_PUSH_TIMEOUT: Duration = Duration::from_secs(1);
 
 ///
 /// # Description
@@ -159,6 +164,7 @@ fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, 
     };
 
     let tid: ::sys::pm::ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+    let signal_mask: crate::rpc::SignalMaskGuard = crate::rpc::SignalMaskGuard::block_all()?;
 
     // Safety: `out` is non-null (checked by the caller) and points to a `len`-byte object the caller
     // owns; vfsd pushes exactly `len` bytes into it.
@@ -173,8 +179,33 @@ fn tty_pull(fd: i32, request: c_int, out: *mut u8, len: usize) -> Result<c_int, 
         crate::VFS_MESSAGE_TYPE,
     );
     let token: RequestToken = crate::rpc::send_request(&mut req)?;
-    let bytes_pulled: usize =
-        ::sys::kcall::ipc::__kcall_pull(crate::VFS_PUSH_PULL_PID, crate::VFS_PUSH_PULL_TID, out)?;
+    let pull_result: Result<usize, Error> =
+        ::sys::kcall::ipc::__kcall_pull_tagged_restoring_signals(
+            crate::VFS_PUSH_PULL_PID,
+            crate::VFS_PUSH_PULL_TID,
+            out,
+            token.identifier(),
+            signal_mask.previous(),
+        );
+    drop(signal_mask);
+    let bytes_pulled: usize = match pull_result {
+        Ok(bytes_pulled) => bytes_pulled,
+        Err(error) if error.code == ErrorCode::Interrupted => {
+            if crate::unistd::syscall::cancel_pipe_operation(
+                tid,
+                fd,
+                PipeOperation::Read,
+                token.identifier(),
+            )?
+            .is_some()
+            {
+                return Err(error);
+            }
+            let _response: Message = crate::rpc::recv_response(&token)?;
+            return Err(error);
+        },
+        Err(error) => return Err(error),
+    };
     let response: Message = crate::rpc::recv_response(&token)?;
     check_status(&response)?;
 
@@ -202,6 +233,7 @@ fn tty_push(fd: i32, request: c_int, data: &[u8]) -> Result<c_int, Error> {
     };
 
     let tid: ::sys::pm::ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
+    let signal_mask: crate::rpc::SignalMaskGuard = crate::rpc::SignalMaskGuard::block_all()?;
 
     let mut req: Message = TtyControlRequest::build(
         tid,
@@ -212,7 +244,30 @@ fn tty_push(fd: i32, request: c_int, data: &[u8]) -> Result<c_int, Error> {
         crate::VFS_MESSAGE_TYPE,
     );
     let token: RequestToken = crate::rpc::send_request(&mut req)?;
-    ::sys::kcall::ipc::__kcall_push(crate::VFS_PUSH_PULL_PID, crate::VFS_PUSH_PULL_TID, data)?;
+    let push_result: Result<(), Error> =
+        ::sys::kcall::ipc::__kcall_push_tagged_restoring_signals_timed(
+            crate::VFS_PUSH_PULL_PID,
+            crate::VFS_PUSH_PULL_TID,
+            data,
+            token.identifier(),
+            signal_mask.previous(),
+            BULK_PUSH_TIMEOUT,
+        );
+    drop(signal_mask);
+    match push_result {
+        Ok(()) => {},
+        Err(error) if error.code == ErrorCode::OperationTimedOut => return Err(error),
+        Err(error) if error.code == ErrorCode::Interrupted => {
+            let _ = crate::unistd::syscall::cancel_pipe_operation(
+                tid,
+                fd,
+                PipeOperation::Write,
+                token.identifier(),
+            )?;
+            return Err(error);
+        },
+        Err(error) => return Err(error),
+    }
     let response: Message = crate::rpc::recv_response(&token)?;
     check_status(&response)?;
     Ok(0)

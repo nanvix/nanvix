@@ -31,9 +31,13 @@ use ::sys::{
         Error,
         ErrorCode,
     },
-    ipc::Timeout,
+    ipc::{
+        Timeout,
+        MAX_ACTIVE_REQUESTS,
+    },
     pm::{
         ProcessIdentifier,
+        SigSet,
         ThreadIdentifier,
     },
     time::SystemTime,
@@ -46,6 +50,9 @@ use ::sys::{
 /// Ordering used for all atomic operations. Relaxed is safe because Nanvix is a single-core system
 /// and the kernel runs with interrupts disabled.
 const ORDER: Ordering = Ordering::Relaxed;
+
+/// Maximum number of deferred pushes that may be registered at once.
+const MAX_DEFERRED_PUSHES: usize = ::config::kernel::MAX_THREADS * MAX_ACTIVE_REQUESTS;
 
 //==================================================================================================
 // Rendezvous Timeout
@@ -130,6 +137,35 @@ impl RendezvousTimeout {
     }
 }
 
+/// Correlation and wait policy for one rendezvous operation.
+pub struct RendezvousOptions {
+    /// Correlation tag supplied by both counterparts.
+    tag: u32,
+    /// Wait policy when no matching counterpart is ready.
+    timeout: RendezvousTimeout,
+    /// Signal mask to restore after registering the rendezvous.
+    signal_mask_restore: Option<SigSet>,
+    /// Whether a zero-length push should remain registered without sleeping its owner.
+    deferred: bool,
+}
+
+impl RendezvousOptions {
+    /// Creates rendezvous options from a correlation tag and timeout.
+    pub const fn new(
+        tag: u32,
+        timeout: RendezvousTimeout,
+        signal_mask_restore: Option<SigSet>,
+        deferred: bool,
+    ) -> Self {
+        Self {
+            tag,
+            timeout,
+            signal_mask_restore,
+            deferred,
+        }
+    }
+}
+
 //==================================================================================================
 // Structures
 //==================================================================================================
@@ -152,6 +188,10 @@ struct PendingPush {
     buffer: usize,
     /// Maximum transfer length.
     transfer_len: usize,
+    /// Correlation tag supplied by both counterparts.
+    tag: u32,
+    /// Whether the owner is sleeping and must be woken when this push is consumed.
+    wake_owner: bool,
 }
 
 ///
@@ -172,6 +212,8 @@ struct PendingPull {
     buffer: usize,
     /// Maximum transfer length.
     transfer_len: usize,
+    /// Correlation tag supplied by both counterparts.
+    tag: u32,
     /// Actual bytes transferred, set by the matching push before waking.
     bytes_transferred: Arc<AtomicUsize>,
 }
@@ -303,8 +345,12 @@ pub fn do_push(
     dst_tid: ThreadIdentifier,
     buffer: usize,
     transfer_len: usize,
-    timeout: RendezvousTimeout,
+    options: RendezvousOptions,
 ) -> Result<(), SleepError> {
+    let tag: u32 = options.tag;
+    let timeout: RendezvousTimeout = options.timeout;
+    let signal_mask_restore: Option<SigSet> = options.signal_mask_restore;
+    let deferred: bool = options.deferred;
     // Prevent self-deadlock: a thread cannot push to itself.
     if caller_tid == dst_tid {
         let reason: &str = "cannot push data to self";
@@ -317,13 +363,18 @@ pub fn do_push(
 
     // SAFETY: single-core system with interrupts disabled.
     let pending_pulls: &mut Vec<PendingPull> = unsafe { PENDING.pulls() };
+    // A signal or timeout may have made a puller runnable before it resumed far enough to remove
+    // its rendezvous entry. Such an entry no longer represents a waiting counterpart and must not
+    // consume data or suppress the server's response.
+    pending_pulls.retain(|pull| unsafe { ProcessManager::get() }.is_thread_sleeping(pull.tid));
 
     // Search for a matching pending pull request. A pull matches if the puller is the destination
     // and the puller is waiting for data from the caller.
     //
-    // Thread identifiers are globally unique and never recycled, so the (src_tid, dst_tid) pair
-    // identifies the rendezvous unambiguously and the process identifiers are redundant for
-    // matching. Keying on the thread identifiers alone keeps the rendezvous working when a
+    // Thread identifiers are globally unique and never recycled, so the (src_tid, dst_tid, tag)
+    // tuple identifies the rendezvous and the process identifiers are redundant for matching.
+    // Keying on the thread identifiers and caller-supplied correlation tag keeps the rendezvous
+    // working when a
     // counterpart's process identifier cannot be derived from its thread identifier — e.g. a
     // thread reached via fork()+execv(), whose main-thread tid no longer equals its pid, so a peer
     // such as vfsd that derives the destination pid by casting the tid supplies a mismatched
@@ -331,15 +382,14 @@ pub fn do_push(
     // for the cross-process copy below.
     let match_idx: Option<usize> = pending_pulls
         .iter()
-        .position(|pull| pull.src_tid == caller_tid && pull.tid == dst_tid);
+        .position(|pull| pull.src_tid == caller_tid && pull.tid == dst_tid && pull.tag == tag);
 
     if let Some(idx) = match_idx {
         // Found a matching pull: the destination is already waiting for our data.
         // NOTE: `swap_remove` is O(1) but does not preserve insertion order. This is acceptable
-        // because the rendezvous protocol is strictly 1:1: at most one pending push (or pull)
-        // can exist for a given (caller_tid, dst_tid) pair at any time.
-        // Multiple concurrent pushes from the same thread to the same destination are not
-        // supported and would require FIFO ordering if ever needed.
+        // because at most one pending push (or pull) can exist for a given
+        // (caller_tid, dst_tid, tag) tuple. Endpoint-equal requests with distinct tags are
+        // independent, so their relative order is irrelevant.
         let pull_req: PendingPull = pending_pulls.swap_remove(idx);
 
         // Determine actual transfer length (minimum of what both sides can handle).
@@ -403,6 +453,41 @@ pub fn do_push(
         // Register this push and sleep until a matching pull arrives or the deadline expires.
         // SAFETY: single-core system with interrupts disabled.
         let pending_pushes: &mut Vec<PendingPush> = unsafe { PENDING.pushes() };
+        if deferred {
+            if pending_pushes
+                .iter()
+                .filter(|push| !push.wake_owner && push.dst_tid == dst_tid)
+                .count()
+                >= MAX_ACTIVE_REQUESTS
+            {
+                return Err(SleepError::Generic(Error::new(
+                    ErrorCode::ResourceBusy,
+                    "too many deferred pushes for destination thread",
+                )));
+            }
+            if pending_pushes
+                .iter()
+                .filter(|push| !push.wake_owner)
+                .count()
+                >= MAX_DEFERRED_PUSHES
+            {
+                return Err(SleepError::Generic(Error::new(
+                    ErrorCode::ResourceBusy,
+                    "too many deferred pushes",
+                )));
+            }
+            if pending_pushes.iter().any(|push| {
+                push.tid == caller_tid
+                    && push.dst_tid == dst_tid
+                    && push.tag == tag
+                    && !push.wake_owner
+            }) {
+                return Err(SleepError::Generic(Error::new(
+                    ErrorCode::OperationAlreadyInProgress,
+                    "deferred push already registered",
+                )));
+            }
+        }
         pending_pushes.push(PendingPush {
             pid: caller_pid,
             tid: caller_tid,
@@ -410,7 +495,45 @@ pub fn do_push(
             dst_tid,
             buffer,
             transfer_len,
+            tag,
+            wake_owner: !deferred,
         });
+
+        if deferred {
+            return Ok(());
+        }
+
+        if let Some(mask) = signal_mask_restore {
+            // Restore signal delivery only after the request is visible to its counterpart. A
+            // pending signal may now interrupt the sleep without opening a metadata/bulk gap.
+            match unsafe { ProcessManager::get_mut() }
+                .restore_rendezvous_signal_mask(caller_pid, caller_tid, mask)
+            {
+                Ok(false) => {},
+                Ok(true) => {
+                    pending_pushes.retain(|push| {
+                        push.pid != caller_pid
+                            || push.tid != caller_tid
+                            || push.dst_pid != dst_pid
+                            || push.dst_tid != dst_tid
+                            || push.tag != tag
+                            || !push.wake_owner
+                    });
+                    return Err(SleepError::Interrupted(InterruptReason::Signaled));
+                },
+                Err(error) => {
+                    pending_pushes.retain(|push| {
+                        push.pid != caller_pid
+                            || push.tid != caller_tid
+                            || push.dst_pid != dst_pid
+                            || push.dst_tid != dst_tid
+                            || push.tag != tag
+                            || !push.wake_owner
+                    });
+                    return Err(SleepError::Generic(error));
+                },
+            }
+        }
 
         trace!(
             "push sleeping (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
@@ -437,7 +560,14 @@ pub fn do_push(
                 // window cannot actually occur, but the logic is correct regardless.
                 // SAFETY: single-core system with interrupts disabled.
                 let pending_pushes: &mut Vec<PendingPush> = unsafe { PENDING.pushes() };
-                pending_pushes.retain(|push| push.pid != caller_pid || push.tid != caller_tid);
+                pending_pushes.retain(|push| {
+                    push.pid != caller_pid
+                        || push.tid != caller_tid
+                        || push.dst_pid != dst_pid
+                        || push.dst_tid != dst_tid
+                        || push.tag != tag
+                        || !push.wake_owner
+                });
                 Err(error)
             },
         }
@@ -473,8 +603,11 @@ pub fn do_pull(
     src_tid: ThreadIdentifier,
     buffer: usize,
     transfer_len: usize,
-    timeout: RendezvousTimeout,
+    options: RendezvousOptions,
 ) -> Result<usize, SleepError> {
+    let tag: u32 = options.tag;
+    let timeout: RendezvousTimeout = options.timeout;
+    let signal_mask_restore: Option<SigSet> = options.signal_mask_restore;
     // Prevent self-deadlock: a thread cannot pull from itself.
     if caller_tid == src_tid {
         let reason: &str = "cannot pull data from self";
@@ -487,13 +620,19 @@ pub fn do_pull(
 
     // SAFETY: single-core system with interrupts disabled.
     let pending_pushes: &mut Vec<PendingPush> = unsafe { PENDING.pushes() };
+    // Deferred pushes intentionally have no sleeping owner. Every ordinary push does, so remove
+    // entries left behind by a signal or timeout before looking for a match.
+    pending_pushes.retain(|push| {
+        !push.wake_owner || unsafe { ProcessManager::get() }.is_thread_sleeping(push.tid)
+    });
 
     // Search for a matching pending push request. A push matches if the pusher is the expected
     // source and the pusher is targeting the caller.
     //
-    // Thread identifiers are globally unique and never recycled, so the (src_tid, dst_tid) pair
-    // identifies the rendezvous unambiguously and the process identifiers are redundant for
-    // matching. Keying on the thread identifiers alone keeps the rendezvous working when a
+    // Thread identifiers are globally unique and never recycled, so the (src_tid, dst_tid, tag)
+    // tuple identifies the rendezvous and the process identifiers are redundant for matching.
+    // Keying on the thread identifiers and caller-supplied correlation tag keeps the rendezvous
+    // working when a
     // counterpart's process identifier cannot be derived from its thread identifier — e.g. a
     // thread reached via fork()+execv(), whose main-thread tid no longer equals its pid, so a peer
     // such as vfsd that derives the source pid by casting the tid supplies a mismatched `src_pid`.
@@ -501,15 +640,14 @@ pub fn do_pull(
     // cross-process copy below.
     let match_idx: Option<usize> = pending_pushes
         .iter()
-        .position(|push| push.tid == src_tid && push.dst_tid == caller_tid);
+        .position(|push| push.tid == src_tid && push.dst_tid == caller_tid && push.tag == tag);
 
     if let Some(idx) = match_idx {
         // Found a matching push: the source is already waiting to send data.
         // NOTE: `swap_remove` is O(1) but does not preserve insertion order. This is acceptable
-        // because the rendezvous protocol is strictly 1:1: at most one pending push (or pull)
-        // can exist for a given (caller_tid, dst_tid) pair at any time.
-        // Multiple concurrent pulls from the same thread to the same source are not
-        // supported and would require FIFO ordering if ever needed.
+        // because at most one pending push (or pull) can exist for a given
+        // (src_tid, caller_tid, tag) tuple. Endpoint-equal requests with distinct tags are
+        // independent, so their relative order is irrelevant.
         let push_req: PendingPush = pending_pushes.swap_remove(idx);
 
         // Determine actual transfer length (minimum of what both sides can handle).
@@ -543,9 +681,11 @@ pub fn do_pull(
             }
         }
 
-        // Wake up the pushing thread.
-        // SAFETY: the calling process does not hold a reference to the process manager.
-        unsafe { ProcessManager::wakeup(push_req.tid) }.map_err(SleepError::Generic)?;
+        if push_req.wake_owner {
+            // Wake up the pushing thread.
+            // SAFETY: the calling process does not hold a reference to the process manager.
+            unsafe { ProcessManager::wakeup(push_req.tid) }.map_err(SleepError::Generic)?;
+        }
 
         trace!(
             "pull completed immediately (caller_tid={caller_tid:?}, src_tid={src_tid:?}, \
@@ -580,8 +720,39 @@ pub fn do_pull(
             src_tid,
             buffer,
             transfer_len,
+            tag,
             bytes_transferred: bytes_transferred_clone,
         });
+
+        if let Some(mask) = signal_mask_restore {
+            // Restore signal delivery only after the request is visible to its counterpart. A
+            // pending signal may now interrupt the sleep without opening a metadata/bulk gap.
+            match unsafe { ProcessManager::get_mut() }
+                .restore_rendezvous_signal_mask(caller_pid, caller_tid, mask)
+            {
+                Ok(false) => {},
+                Ok(true) => {
+                    pending_pulls.retain(|pull| {
+                        pull.pid != caller_pid
+                            || pull.tid != caller_tid
+                            || pull.src_pid != src_pid
+                            || pull.src_tid != src_tid
+                            || pull.tag != tag
+                    });
+                    return Err(SleepError::Interrupted(InterruptReason::Signaled));
+                },
+                Err(error) => {
+                    pending_pulls.retain(|pull| {
+                        pull.pid != caller_pid
+                            || pull.tid != caller_tid
+                            || pull.src_pid != src_pid
+                            || pull.src_tid != src_tid
+                            || pull.tag != tag
+                    });
+                    return Err(SleepError::Generic(error));
+                },
+            }
+        }
 
         trace!(
             "pull sleeping (caller_pid={caller_pid:?}, caller_tid={caller_tid:?}, \
@@ -611,11 +782,39 @@ pub fn do_pull(
                 // window cannot actually occur, but the logic is correct regardless.
                 // SAFETY: single-core system with interrupts disabled.
                 let pending_pulls: &mut Vec<PendingPull> = unsafe { PENDING.pulls() };
-                pending_pulls.retain(|pull| pull.pid != caller_pid || pull.tid != caller_tid);
+                pending_pulls.retain(|pull| {
+                    pull.pid != caller_pid
+                        || pull.tid != caller_tid
+                        || pull.src_pid != src_pid
+                        || pull.src_tid != src_tid
+                        || pull.tag != tag
+                });
                 Err(error)
             },
         }
     }
+}
+
+/// Cancels an exact deferred push registered by `caller_tid` for `dst_tid` and `tag`.
+pub fn cancel_deferred_push(
+    caller_pid: ProcessIdentifier,
+    caller_tid: ThreadIdentifier,
+    dst_tid: ThreadIdentifier,
+    tag: u32,
+) -> Result<(), Error> {
+    // SAFETY: single-core system with interrupts disabled.
+    let pending_pushes: &mut Vec<PendingPush> = unsafe { PENDING.pushes() };
+    let Some(index) = pending_pushes.iter().position(|push| {
+        push.pid == caller_pid
+            && push.tid == caller_tid
+            && push.dst_tid == dst_tid
+            && push.tag == tag
+            && !push.wake_owner
+    }) else {
+        return Err(Error::new(ErrorCode::NoSuchEntry, "deferred push not found"));
+    };
+    pending_pushes.swap_remove(index);
+    Ok(())
 }
 
 ///
@@ -665,7 +864,9 @@ pub unsafe fn cleanup_process(pid: ProcessIdentifier) -> Vec<ThreadIdentifier> {
         } else if push.dst_pid == pid {
             // Counterpart entry: a thread in another process is sleeping while waiting for the
             // terminated process to pull data. Collect the TID so the caller wakes it up.
-            threads_to_wake.push(push.tid);
+            if push.wake_owner {
+                threads_to_wake.push(push.tid);
+            }
             removed_pushes += 1;
             false
         } else {
@@ -703,4 +904,40 @@ pub unsafe fn cleanup_process(pid: ProcessIdentifier) -> Vec<ThreadIdentifier> {
     }
 
     threads_to_wake
+}
+
+/// Removes pending rendezvous entries owned by or targeting one exiting thread.
+#[must_use]
+pub unsafe fn cleanup_thread(tid: ThreadIdentifier) -> Vec<ThreadIdentifier> {
+    let mut threads_to_interrupt: Vec<ThreadIdentifier> = Vec::new();
+
+    // SAFETY: single-core system with interrupts disabled.
+    let pending_pushes: &mut Vec<PendingPush> = unsafe { PENDING.pushes() };
+    pending_pushes.retain(|push| {
+        if push.tid == tid {
+            false
+        } else if push.dst_tid == tid {
+            if push.wake_owner {
+                threads_to_interrupt.push(push.tid);
+            }
+            false
+        } else {
+            true
+        }
+    });
+
+    // SAFETY: single-core system with interrupts disabled.
+    let pending_pulls: &mut Vec<PendingPull> = unsafe { PENDING.pulls() };
+    pending_pulls.retain(|pull| {
+        if pull.tid == tid {
+            false
+        } else if pull.src_tid == tid {
+            threads_to_interrupt.push(pull.tid);
+            false
+        } else {
+            true
+        }
+    });
+
+    threads_to_interrupt
 }
