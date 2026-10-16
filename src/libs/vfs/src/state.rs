@@ -342,11 +342,12 @@ pub fn unmount(mount_path: &str) -> Result<(), Fat32Error> {
         mounts.remove(pos)
     };
 
-    // Remove from VFS.
-    let remove_result = {
+    // Remove from VFS. The removed mount must be dropped before its backing memory is freed below,
+    // because unmounting a FAT filesystem writes its clean-shutdown flag back to the image.
+    let remove_result: Result<(), Fat32Error> = {
         let mut state = VFS_STATE.lock();
         let vfs: &mut Vfs = state.as_mut().ok_or(Fat32Error::NotInitialized)?;
-        vfs.remove_mount(mount_path)
+        vfs.remove_mount(mount_path).map(drop)
     };
 
     if let Err(e) = remove_result {
