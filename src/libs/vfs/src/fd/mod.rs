@@ -2752,6 +2752,29 @@ mod tests {
         forget_processes(&[pid]);
     }
 
+    /// Tests that unmounting a modified guest mount flushes its FAT filesystem before freeing it.
+    #[test]
+    fn unmount_flushes_fat_before_freeing_image() {
+        // Host allocators unmap allocations this large when freeing them, so any write to a freed
+        // image faults. The size exceeds both the cap on glibc's dynamic mmap threshold (32 MiB)
+        // and the Windows heap's threshold for allocating from virtual memory (about 1 MiB).
+        const UNMAPPED_IMAGE_SIZE: usize = 64 * 1024 * 1024;
+
+        let _guard = FORK_TEST_GUARD.lock();
+        if !crate::state::is_initialized() {
+            crate::state::init().expect("initialize VFS");
+        }
+        let pid: ProcessIdentifier = ProcessIdentifier::from(0x740d);
+        set_current_process(pid);
+        let mount: &str = "/unmount-flush";
+        crate::state::create_mount(mount, UNMAPPED_IMAGE_SIZE).expect("create mount");
+
+        // Modifying the filesystem marks it dirty, so unmounting it writes back to the image.
+        vfs_mkdir("/unmount-flush/dir").expect("create directory");
+        crate::state::unmount(mount).expect("unmount modified filesystem");
+        forget_processes(&[pid]);
+    }
+
     /// Hostfs cwd bookkeeping preserves spelling; local chdir retains its normalization policy.
     #[test]
     fn hostfs_cwd_preserves_path_spelling() {
