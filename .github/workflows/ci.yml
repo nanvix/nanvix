@@ -452,6 +452,11 @@ jobs:
         with:
           version: "v0.10.0"
 
+      # Start the sccache server ahead of the build, so that transient cache-service errors are
+      # retried instead of failing the first compilation.
+      - name: "Start sccache Server"
+        uses: ./.github/actions/sccache-start
+
       # Cache the Cargo registry index, downloaded crate archives (.crate
       # files), and git dependency database so dependency resolution and crate
       # downloads are not repeated on every run. The extracted sources under
@@ -873,6 +878,10 @@ jobs:
         uses: Mozilla-Actions/sccache-action@v0.0.11
         with:
           version: "v0.10.0"
+
+      # Start the sccache server ahead of the build (see ci-build).
+      - name: "Start sccache Server"
+        uses: ./.github/actions/sccache-start
 
       - name: "Setup Prerequisites"
         shell: pwsh

@@ -1,0 +1,51 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Start SCCACHE Server"
+description: "Start the SCCACHE server ahead of the build, retrying transient cache failures"
+
+runs:
+  using: "composite"
+  steps:
+    # On startup, the sccache server probes its cache backend and exits if that probe fails, so a
+    # transient GitHub Actions cache error fails whichever compilation happens to start the server.
+    # Start the server here instead, retrying such failures. If the backend stays unreachable, fall
+    # back to a local (cold) cache: the build gets slower, but it does not fail.
+    - name: "Start SCCACHE Server"
+      shell: bash
+      env:
+        MAX_ATTEMPTS: "4"
+        RETRY_DELAY_SECONDS: "5"
+        # Keep the server running for the rest of the job, so that no later compilation has to
+        # restart it (and probe the cache backend again).
+        SCCACHE_IDLE_TIMEOUT: "0"
+      run: |
+        if [[ -n "${SCCACHE:-}" ]] && [[ -x "${SCCACHE}" ]]; then
+          sccache_bin="${SCCACHE}"
+        else
+          sccache_bin="$(command -v sccache 2>/dev/null || true)"
+        fi
+        if [[ -z "${sccache_bin}" ]] || [[ ! -x "${sccache_bin}" ]]; then
+          echo "SCCACHE not configured or not available"
+          exit 0
+        fi
+
+        # `--zero-stats` connects to a running server or starts a new one, so retrying it is safe
+        # even if an attempt timed out while its server was still coming up.
+        for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
+          if "${sccache_bin}" --zero-stats; then
+            echo "SCCACHE server is running"
+            exit 0
+          fi
+          if ((attempt < MAX_ATTEMPTS)); then
+            delay=$((attempt * RETRY_DELAY_SECONDS))
+            echo "Failed to start SCCACHE server (attempt ${attempt}/${MAX_ATTEMPTS})," \
+              "retrying in ${delay}s..."
+            sleep "${delay}"
+          fi
+        done
+
+        echo "::warning title=SCCACHE::Failed to start SCCACHE server after ${MAX_ATTEMPTS}" \
+          "attempts, falling back to a local cache"
+        SCCACHE_GHA_ENABLED=false "${sccache_bin}" --zero-stats
+        echo "SCCACHE server is running (local cache)"

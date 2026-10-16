@@ -820,15 +820,24 @@ python-lint: python-init
 test-python: python-init
 	@$(PYTHON_VENV_PYTHON) -m unittest discover -s tests -p "test_*.py" $(PY_VERBOSE)
 
+# Header generator binary (always built with the default dev profile).
+#
+# The generator is built and run in separate steps rather than with `cargo run --quiet`: when a
+# process spawned by Cargo fails (e.g., the rustc wrapper), `cargo run --quiet` exits with that
+# process's status but suppresses its error output, leaving the failure undiagnosable.
+GEN_HEADERS_BIN := $(OBJECTS_DIR)/debug/gen-headers$(CARGO_EXE_SUFFIX)
+
 # Generates C headers from Rust libc crate sources.
 .PHONY: gen-headers
 gen-headers:
-	@$(CARGO) run --locked --quiet -p gen-headers
+	@$(CARGO) build --locked --quiet -p gen-headers
+	@$(GEN_HEADERS_BIN)
 
 # Checks that generated C headers are up to date.
 .PHONY: gen-headers-check
 gen-headers-check:
-	@$(CARGO) run --locked --quiet -p gen-headers -- --check
+	@$(CARGO) build --locked --quiet -p gen-headers
+	@$(GEN_HEADERS_BIN) --check
 
 # Checks for linting issues in shell scripts.
 shell-lint-check:
