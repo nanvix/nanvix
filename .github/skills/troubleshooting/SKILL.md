@@ -59,6 +59,19 @@ There is also a cleanup script for `nanvixd` resources:
 ./z build -- all SCCACHE=
 ```
 
+### sccache Server Fails to Start
+
+**Symptom**: The build fails on its first Rust compilation, with Cargo reporting that
+`sccache rustc -vV` exited with code 2 and sccache reporting
+`Server startup failed: cache storage failed to read`.
+
+**Cause**: On startup, the sccache server probes its cache backend and exits if the probe fails
+(e.g., a transient GitHub Actions cache error).
+
+**Fix**: Re-run the build. CI build jobs start the server ahead of the build through
+`.github/actions/sccache-start`, which retries and falls back to a local cache. For manual builds,
+start the server with `sccache --start-server` before building, or disable sccache with `SCCACHE=`.
+
 ## Runtime Failures
 
 ### KVM Not Available
