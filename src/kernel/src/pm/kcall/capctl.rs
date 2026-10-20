@@ -29,15 +29,18 @@ fn do_capctl(
 ) -> Result<(), Error> {
     trace!("pid={:?}, capability={:?}, value={:?}", pid, capability, value);
 
-    //FIXME: check if process has enough privileges to change capabilities.
-
+    // The process manager authorizes the request against the role that the kernel assigned to the
+    // calling process when it created it, so an unprivileged process cannot grant itself
+    // capabilities.
     pm.capctl(pid, capability, value)
 }
 
 ///
 /// # Description
 ///
-/// Kernel call handler for controlling process capabilities.
+/// Kernel call handler for controlling process capabilities. A process may relinquish any
+/// capability that it holds, but only a process that the kernel spawned directly (the init process
+/// or a registered system daemon) may acquire one.
 ///
 /// # Parameters
 ///
@@ -47,7 +50,9 @@ fn do_capctl(
 ///
 /// # Returns
 ///
-/// A [`KcallResult`] indicating success or the error code.
+/// A [`KcallResult`] indicating success or the error code. Acquiring a capability from a process
+/// that is not allowed to do so fails with
+/// [`ErrorCode::PermissionDenied`](::sys::error::ErrorCode::PermissionDenied).
 ///
 pub fn capctl(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
     // SAFETY: the process manager is initialized and access is synchronized.
