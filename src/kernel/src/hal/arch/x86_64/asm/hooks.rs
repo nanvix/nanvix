@@ -40,6 +40,7 @@ global_asm!(
     ".extern do_exception",
     ".extern do_kcall",
     ".extern do_interrupt",
+    ".extern do_signal_checkpoint",
 
     // -----------------------------------------------------------------
     // Exported Symbols
@@ -212,12 +213,27 @@ global_asm!(
     // -----------------------------------------------------------------
     // _do_hwint_macro — low-level hardware interrupt dispatcher
     // -----------------------------------------------------------------
+    //
+    // A dummy error code is pushed so that the saved frame has the
+    // `ContextInformation` layout produced by the exception hooks. This
+    // lets the signal checkpoint read and redirect the interrupted
+    // context before it is restored: a thread preempted by the timer
+    // resumes through this path once it is rescheduled. The dummy error
+    // code shifts the stack by 8 bytes, so an 8-byte pad keeps the calls
+    // 16-byte aligned, as the System V ABI requires.
+    //
     r".macro _do_hwint_macro num",
     r"_do_hwint\num:",
+    "    pushq $0",
     "    context_save %rax",
+    "    subq ${QWORD_SIZE}, %rsp",
     r"    movq $\num, %rdi",
     "    call do_interrupt",
+    "    leaq {QWORD_SIZE}(%rsp), %rdi",
+    "    call do_signal_checkpoint",
+    "    addq ${QWORD_SIZE}, %rsp",
     "    context_restore",
+    "    addq ${QWORD_SIZE}, %rsp",
     "    iretq",
     ".endm",
 
@@ -272,6 +288,13 @@ global_asm!(
     "    movq %rsp, %rsi", // Exception info pointer.
     "    call do_exception",
     "    addq ${EXCEPTION_SIZE}, %rsp",
+
+    // Deliver pending signals before resuming the interrupted context. The
+    // pad keeps the call 16-byte aligned, as the System V ABI requires.
+    "    subq ${QWORD_SIZE}, %rsp",
+    "    leaq {QWORD_SIZE}(%rsp), %rdi", // Execution context.
+    "    call do_signal_checkpoint",
+    "    addq ${QWORD_SIZE}, %rsp",
 
     "    context_restore",
 

@@ -44,6 +44,7 @@
 //==================================================================================================
 
 use ::core::{
+    hint::black_box,
     ptr,
     sync::atomic::{
         AtomicBool,
@@ -73,6 +74,7 @@ use ::sys::{
         SIG_BLOCK,
         SIG_MAX,
         SIG_SETMASK,
+        SIG_UNBLOCK,
         SIGCHLD,
         SIGCONT,
         SIGKILL,
@@ -766,6 +768,257 @@ fn test_sigpending_reports_blocked_pending() -> Result<(), Error> {
 }
 
 //==================================================================================================
+// Preemption Delivery
+//==================================================================================================
+
+/// Upper bound on the iterations of the compute-bound child's loop. The handler is expected within a
+/// few scheduling quanta of the signal being posted, a small fraction of the seconds this loop takes
+/// to run to completion, while the bound keeps a delivery regression from stalling the suite.
+const COMPUTE_LOOP_ITERATIONS: u64 = 1 << 32;
+
+/// Seed of the linear congruential generator stepped by the compute-bound child.
+const COMPUTE_SEED: u64 = 0x0123_4567_89ab_cdef;
+/// Multiplier of the linear congruential generator stepped by the compute-bound child.
+const COMPUTE_MULTIPLIER: u64 = 6_364_136_223_846_793_005;
+/// Increment of the linear congruential generator stepped by the compute-bound child.
+const COMPUTE_INCREMENT: u64 = 1_442_695_040_888_963_407;
+
+/// Exit status reported by the compute-bound child when its handler ran before its loop completed
+/// and the computation the handler interrupted resumed intact.
+const COMPUTE_HANDLED: c_int = 66;
+/// Exit status reported by the compute-bound child when its loop ran to completion without its
+/// handler ever running.
+const COMPUTE_NOT_HANDLED: c_int = 67;
+/// Exit status reported by the compute-bound child when its handler ran but the computation it
+/// interrupted did not resume exactly where it was preempted.
+const COMPUTE_CORRUPTED: c_int = 68;
+/// Exit status reported by the compute-bound child when it could not place its loop just above a
+/// page boundary of fresh stack, so the test would not exercise what it claims to.
+const COMPUTE_UNPLACED: c_int = 69;
+
+/// Size of a page of the user stack, in bytes.
+const PAGE_SIZE: usize = 4096;
+
+/// Depth, in bytes, of the stack that the compute-bound child descends through before it places
+/// its loop at a page boundary, and again how much deeper it may go to find one. This is far deeper
+/// than the rest of this suite uses the stack, so the pages below the loop were never touched and
+/// are therefore not mapped yet.
+const COMPUTE_STACK_DESCENT: usize = 128 * 1024;
+
+/// Width, in bytes, of the window above a page boundary in which the compute-bound child places its
+/// loop, beyond one frame stride. The stack pointer then lies less than a stride plus this width
+/// above the boundary, too close to fit a signal frame below it within the page.
+const COMPUTE_STACK_WINDOW: usize = 256;
+
+/// Placement of the compute-bound child's loop on its stack.
+#[derive(Clone, Copy)]
+enum ComputeStack {
+    /// The child's current stack, whose pages below the loop are already mapped.
+    Current,
+    /// Fresh stack just above a page boundary, so that the signal frame built below the interrupted
+    /// loop extends into a stack page that is not mapped yet.
+    PageBoundary,
+}
+
+/// Advances the compute-bound child's linear congruential generator by one step.
+fn compute_step(state: u64) -> u64 {
+    state
+        .wrapping_mul(COMPUTE_MULTIPLIER)
+        .wrapping_add(COMPUTE_INCREMENT)
+}
+
+/// Runs the compute-bound child's loop, which makes no kernel calls, until it observes the handler
+/// or runs to completion. Returns the final generator state and the number of completed steps. It is
+/// always inlined, so the loop runs in the frame of its caller.
+#[inline(always)]
+fn compute_until_handled() -> (u64, u64) {
+    let mut state: u64 = black_box(COMPUTE_SEED);
+    let mut iterations: u64 = 0;
+    while iterations < COMPUTE_LOOP_ITERATIONS && !HANDLER_RAN.load(Ordering::SeqCst) {
+        state = compute_step(state);
+        iterations += 1;
+    }
+    (state, iterations)
+}
+
+/// Recurses one frame at a time and runs the compute loop in the first frame that lies below
+/// `floor` and just above a page boundary. Frames are only touched on the way down, so the pages
+/// below that frame are not mapped yet, and the signal frame built below the interrupted loop must
+/// extend into one of them. Exits with [`COMPUTE_UNPLACED`] if no such frame is found above `limit`.
+#[inline(never)]
+fn compute_at_page_boundary(floor: usize, limit: usize, previous: Option<usize>) -> (u64, u64) {
+    let marker: u8 = black_box(0);
+    let here: usize = ptr::from_ref(&marker).addr();
+    if here < limit {
+        // SAFETY: the freshly forked child holds no resources requiring cleanup.
+        unsafe { bindings::_exit::_exit(COMPUTE_UNPLACED) };
+    }
+
+    // The stack pointer of this frame lies less than one frame stride below `marker`, so an offset
+    // of at least one stride keeps it in the same page, at most a stride plus the window above the
+    // page boundary.
+    let at_boundary: bool = match previous {
+        Some(previous) => {
+            let stride: usize = previous.saturating_sub(here);
+            let offset: usize = here % PAGE_SIZE;
+            here < floor && offset >= stride && offset < stride + COMPUTE_STACK_WINDOW
+        },
+        None => false,
+    };
+    let result: (u64, u64) = if at_boundary {
+        compute_until_handled()
+    } else {
+        compute_at_page_boundary(floor, limit, Some(here))
+    };
+
+    // Keep this frame live across the recursive call, so the recursion is not turned into a loop.
+    black_box(&marker);
+    result
+}
+
+/// Child entry point for the compute-bound delivery tests. Installs and unblocks a `SIGUSR1` handler,
+/// notifies the parent, and then runs a bounded loop that makes no kernel calls, placed on its stack
+/// as `stack` requests. The handler can only run if the signal is delivered when the child returns
+/// from an interrupt, such as the timer interrupt that preempts it. The loop stops as soon as it
+/// observes the handler. The child then replays the steps it completed without interruption to
+/// confirm that the handler resumed the interrupted computation exactly, and reports the outcome
+/// through its exit status. Never returns.
+fn run_compute_child(stack: ComputeStack) -> ! {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+    let parent: ProcessIdentifier = match pm::__kcall_getppid() {
+        Ok(parent) => parent,
+        // SAFETY: the freshly forked child holds no resources requiring cleanup.
+        Err(_) => unsafe { bindings::_exit::_exit(CHILD_FAIL) },
+    };
+    if install_sigusr1_handler(0).is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+    let unblock: SigSet = 1u64 << (SIGUSR1 - 1);
+    // SAFETY: `unblock` points to a valid `SigSet`; the old-mask output is not requested.
+    let unblocked: Result<(), Error> =
+        unsafe { pm::__kcall_sigprocmask(SIG_UNBLOCK, &raw const unblock, ptr::null_mut()) };
+    if unblocked.is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+
+    // This is the last kernel call before the loop. The parent posts the signal only after this
+    // notification arrives, so the signal cannot be delivered when a kernel call returns.
+    if notify_ready(parent).is_err() {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(CHILD_FAIL) };
+    }
+
+    let (state, iterations): (u64, u64) = match stack {
+        ComputeStack::Current => compute_until_handled(),
+        ComputeStack::PageBoundary => {
+            let marker: u8 = black_box(0);
+            let floor: usize = ptr::from_ref(&marker)
+                .addr()
+                .saturating_sub(COMPUTE_STACK_DESCENT);
+            let limit: usize = floor.saturating_sub(COMPUTE_STACK_DESCENT);
+            compute_at_page_boundary(floor, limit, None)
+        },
+    };
+
+    if !HANDLER_RAN.load(Ordering::SeqCst) {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(COMPUTE_NOT_HANDLED) };
+    }
+
+    // The loop state lives in registers, which the handler clobbers; only an exact restoration of
+    // the interrupted context reproduces the uninterrupted result.
+    let mut expected: u64 = black_box(COMPUTE_SEED);
+    for _ in 0..iterations {
+        expected = compute_step(expected);
+    }
+    if expected != state {
+        // SAFETY: as above.
+        unsafe { bindings::_exit::_exit(COMPUTE_CORRUPTED) };
+    }
+
+    // SAFETY: as above.
+    unsafe { bindings::_exit::_exit(COMPUTE_HANDLED) };
+}
+
+/// Forks a compute-bound child that places its loop as `stack` requests. Returns the child's PID in
+/// the parent; the child never returns here.
+fn spawn_compute_child(stack: ComputeStack) -> Result<ProcessIdentifier, Error> {
+    let ret: pid_t = bindings::fork::fork();
+    if ret == 0 {
+        run_compute_child(stack);
+    }
+    assert!(ret > 0, "fork() failed in parent (ret={})", ret);
+    Ok(ProcessIdentifier::from(ret))
+}
+
+/// Spawns a compute-bound child that places its loop as `stack` requests, posts `SIGUSR1` to it once
+/// it is about to start its loop, and asserts that the handler ran before the loop completed and
+/// resumed the interrupted computation intact.
+fn signal_compute_child(stack: ComputeStack) -> Result<(), Error> {
+    let child: ProcessIdentifier = spawn_compute_child(stack)?;
+    await_ready()?;
+    post_signal(child, as_signum(SIGUSR1)?);
+
+    let mut status: c_int = 0;
+    // SAFETY: `status` points to a valid `c_int`.
+    let reaped: pid_t = unsafe { bindings::waitpid::waitpid(i32::from(child), &raw mut status, 0) };
+    assert!(
+        reaped == i32::from(child),
+        "waitpid() must reap the compute-bound child (ret={}, child={})",
+        reaped,
+        i32::from(child)
+    );
+    assert!(
+        wifexited(status),
+        "compute-bound child must surface as a normal exit (status={:#x})",
+        status
+    );
+    let code: c_int = wexitstatus(status);
+    assert!(
+        code != ErrorCode::Interrupted.get(),
+        "compute-bound child was terminated instead of running its SIGUSR1 handler"
+    );
+    assert!(
+        code != COMPUTE_NOT_HANDLED,
+        "SIGUSR1 handler did not run before the compute-bound child's loop completed"
+    );
+    assert!(
+        code != COMPUTE_CORRUPTED,
+        "SIGUSR1 handler did not resume the interrupted computation intact"
+    );
+    assert!(
+        code != COMPUTE_UNPLACED,
+        "compute-bound child could not place its loop just above a page boundary"
+    );
+    assert!(
+        code == COMPUTE_HANDLED,
+        "compute-bound child exited with an unexpected status (got={}, expected={})",
+        code,
+        COMPUTE_HANDLED
+    );
+    Ok(())
+}
+
+/// Verifies that a caught signal preempts a compute-bound thread that makes no kernel calls. The
+/// child spins in a bounded pure-compute loop, so its handler can only run when the signal is
+/// delivered on an interrupt return path, notably that of the timer interrupt through which the
+/// preempted child resumes. The child must observe its handler before the loop completes, and the
+/// computation the handler interrupted must resume intact.
+fn test_caught_signal_preempts_compute_loop() -> Result<(), Error> {
+    signal_compute_child(ComputeStack::Current)
+}
+
+/// Verifies that a caught signal preempts a compute-bound thread whose stack pointer sits just above
+/// a page boundary of its demand-paged stack. The signal frame then extends into a stack page that
+/// was never touched, which the kernel must allocate on demand, exactly as it would for a user
+/// write, instead of terminating the process.
+fn test_caught_signal_preempts_compute_loop_at_page_boundary() -> Result<(), Error> {
+    signal_compute_child(ComputeStack::PageBoundary)
+}
+
+//==================================================================================================
 // Job Control (Stop/Continue)
 //==================================================================================================
 
@@ -1278,6 +1531,8 @@ pub fn run() -> Result<(), Error> {
     test_sigsuspend_returns_after_handler()?;
     test_sigsuspend_delivers_pending_unblocked_signal()?;
     test_sigpending_reports_blocked_pending()?;
+    test_caught_signal_preempts_compute_loop()?;
+    test_caught_signal_preempts_compute_loop_at_page_boundary()?;
     test_sigstop_stops_and_sigcont_resumes()?;
     test_sigstop_is_uncatchable()?;
     test_caught_sigcont_continues_and_runs_handler()?;

@@ -4,15 +4,21 @@
 //!
 //! # Asynchronous Signal Delivery
 //!
-//! Glue between the process manager and the architecture-neutral [`sigframe`] logic. At the
-//! return-to-user boundary the kernel checks the running process for a deliverable caught signal
-//! and, if one is found, redirects the interrupted thread through its user-space handler by:
+//! Glue between the process manager and the architecture-neutral [`sigframe`] logic. At every
+//! return-to-user boundary — the end of a kernel call, and the return from a hardware interrupt or
+//! a CPU exception — the kernel checks the running process for a deliverable caught signal and, if
+//! one is found, redirects the interrupted thread through its user-space handler by:
 //!
-//! 1. reading the interrupted user context off the top of the thread's kernel stack (the hardware
-//!    trap frame plus the callee-saved registers preserved by the kernel-call entry stub),
+//! 1. reading the interrupted user context, either off the top of the thread's kernel stack (the
+//!    hardware trap frame plus the registers preserved by the kernel-call entry stub) or from the
+//!    full context saved by the interrupt and exception entry hooks,
 //! 2. building a signal frame on the thread's user stack that saves that context, the FPU state,
 //!    and the blocked mask, and
-//! 3. rewriting the trap frame so the kernel-call return path resumes in the handler.
+//! 3. rewriting the interrupted context so the return path resumes in the handler.
+//!
+//! The interrupt return path matters for threads that never make kernel calls: a compute-bound
+//! thread is still preempted by the timer interrupt, so a signal posted while it was descheduled is
+//! delivered as soon as it is rescheduled and returns from that interrupt.
 //!
 //! `sigreturn()` reverses the process: it validates the on-stack frame, restores the saved context,
 //! FPU state, and mask, and resumes the interrupted instruction stream.
@@ -40,10 +46,17 @@ use crate::{
             redirect_to_handler,
             restore_trap_context,
             returning_to_user,
+            ContextInformation,
         },
-        mem::Address,
+        mem::{
+            Address,
+            PageAligned,
+        },
     },
-    mm::Vmem,
+    mm::{
+        VirtMemoryManager,
+        Vmem,
+    },
     pm::{
         process::state::{
             sigframe::{
@@ -68,6 +81,7 @@ use crate::{
         ORDER,
     },
 };
+use ::arch::mem::PAGE_SIZE;
 use ::sys::{
     error::Error,
     mm::VirtualAddress,
@@ -147,9 +161,83 @@ pub enum SigReturnFailure {
     Unsupported,
 }
 
+///
+/// # Description
+///
+/// User context interrupted at a return-to-user checkpoint, which the asynchronous-delivery path
+/// snapshots into a signal frame and redirects into the handler.
+///
+enum InterruptedContext<'a> {
+    /// Trap frame that the kernel-call entry stub leaves on top of the running thread's kernel
+    /// stack.
+    KernelCall {
+        /// Top of the running thread's kernel stack, which holds the trap frame of the kernel call
+        /// being returned from.
+        esp0: usize,
+        /// Value the kernel call returns to user space, saved as the interrupted accumulator so it
+        /// survives the handler.
+        result: i64,
+    },
+    /// Full context that the hardware-interrupt or exception entry hooks saved on the running
+    /// thread's kernel stack.
+    Trap(&'a mut ContextInformation),
+}
+
 //==================================================================================================
 // Implementations
 //==================================================================================================
+
+impl InterruptedContext<'_> {
+    ///
+    /// # Description
+    ///
+    /// Snapshots the interrupted user context to save into a signal frame.
+    ///
+    /// # Returns
+    ///
+    /// The [`SignalCpuContext`] of the interrupted thread.
+    ///
+    fn snapshot(&self) -> SignalCpuContext {
+        match self {
+            // SAFETY: `esp0` is the top of the running thread's kernel stack, which holds the trap
+            // frame of the kernel call being returned from.
+            Self::KernelCall { esp0, result } => unsafe { read_trap_context(*esp0, *result) },
+            Self::Trap(ctx) => ctx.to_signal_context(),
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Redirects the interrupted context so that the return path resumes in a signal handler.
+    ///
+    /// # Parameters
+    ///
+    /// - `entry`: Address of the user-space signal handler.
+    /// - `frame_top`: Stack pointer the handler is entered with (top of the signal frame).
+    /// - `signum`: The signal number delivered to the handler.
+    /// - `info_ptr`: User address of the embedded `siginfo` image (`SA_SIGINFO`), or `0`.
+    /// - `ctx_ptr`: User address of the embedded context image (`SA_SIGINFO`), or `0`.
+    ///
+    fn redirect(
+        &mut self,
+        entry: usize,
+        frame_top: usize,
+        signum: usize,
+        info_ptr: usize,
+        ctx_ptr: usize,
+    ) {
+        match self {
+            // SAFETY: as for `snapshot()`.
+            Self::KernelCall { esp0, .. } => unsafe {
+                redirect_to_handler(*esp0, entry, frame_top, signum, info_ptr, ctx_ptr)
+            },
+            Self::Trap(ctx) => {
+                ctx.redirect_to_signal_handler(entry, frame_top, signum, info_ptr, ctx_ptr)
+            },
+        }
+    }
+}
 
 impl ProcessManager {
     ///
@@ -212,11 +300,9 @@ impl ProcessManager {
     /// A [`SignalDeliveryOutcome`] describing what happened.
     ///
     pub fn try_deliver_signal(&mut self, result: i64) -> SignalDeliveryOutcome {
-        let pid: ProcessIdentifier = self.get_pid();
         let tid: ThreadIdentifier = self.get_tid();
 
         // Locate the running thread's kernel stack and read its blocked and pending sets.
-        let owner_tid: ThreadIdentifier = ThreadIdentifier::from(FPU_OWNER_TID.load(ORDER));
         let (esp0, blocked, thread_pending, restart): (usize, u64, u64, Option<KcallRestart>) = {
             let mut thread = match self.get_running_mut().find_thread_mut(tid) {
                 Some(thread) => thread,
@@ -235,9 +321,93 @@ impl ProcessManager {
         };
 
         // Deliver only when the kernel-call return resumes in user mode.
+        // SAFETY: `esp0` is the top of the running thread's kernel stack, which holds the trap frame
+        // of the kernel call being returned from.
         if !unsafe { returning_to_user(esp0) } {
             return SignalDeliveryOutcome::None;
         }
+
+        self.deliver_async_signal(
+            InterruptedContext::KernelCall { esp0, result },
+            blocked,
+            thread_pending,
+            restart,
+        )
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Evaluates and, if warranted, performs delivery of a pending caught signal to the running
+    /// thread at a hardware-interrupt or exception return-to-user boundary.
+    ///
+    /// This is what delivers a signal to a thread that makes no kernel calls: the timer interrupt
+    /// that preempts such a thread is also the path through which it resumes once rescheduled, so
+    /// a signal posted while it was descheduled is delivered on that return. The handler resumes
+    /// the interrupted instruction stream exactly, because the saved context covers the whole
+    /// register file.
+    ///
+    /// # Parameters
+    ///
+    /// - `ctx`: Context of the running thread saved by the interrupt or exception entry hook, which
+    ///   is rewritten to enter the handler when a signal is delivered.
+    ///
+    /// # Returns
+    ///
+    /// A [`SignalDeliveryOutcome`] describing what happened.
+    ///
+    pub fn try_deliver_signal_on_return(
+        &mut self,
+        ctx: &mut ContextInformation,
+    ) -> SignalDeliveryOutcome {
+        // Deliver only when the interrupted context resumes in user mode. A trap taken in kernel
+        // mode (for example, while the kernel idles) resumes the interrupted kernel code untouched.
+        if !ctx.returns_to_user() {
+            return SignalDeliveryOutcome::None;
+        }
+
+        // Read the running thread's blocked and pending sets. No restart record is consumed here:
+        // the kernel-call checkpoint always consumes it before the call returns to user mode.
+        let tid: ThreadIdentifier = self.get_tid();
+        let (blocked, thread_pending): (u64, u64) =
+            match self.get_running_mut().find_thread_mut(tid) {
+                Some(mut thread) => {
+                    let state = thread.thread_state_mut();
+                    (state.blocked(), state.pending())
+                },
+                None => return SignalDeliveryOutcome::None,
+            };
+
+        self.deliver_async_signal(InterruptedContext::Trap(ctx), blocked, thread_pending, None)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Delivers the lowest-numbered deliverable caught signal, if any, to the running thread, whose
+    /// interrupted context resumes in user mode.
+    ///
+    /// # Parameters
+    ///
+    /// - `ctx`: The interrupted user context.
+    /// - `blocked`: The running thread's blocked mask.
+    /// - `thread_pending`: The running thread's thread-directed pending set.
+    /// - `restart`: The blocking kernel call that the signal interrupted, if any.
+    ///
+    /// # Returns
+    ///
+    /// A [`SignalDeliveryOutcome`] describing what happened.
+    ///
+    fn deliver_async_signal(
+        &mut self,
+        mut ctx: InterruptedContext<'_>,
+        blocked: u64,
+        thread_pending: u64,
+        restart: Option<KcallRestart>,
+    ) -> SignalDeliveryOutcome {
+        let pid: ProcessIdentifier = self.get_pid();
+        let tid: ThreadIdentifier = self.get_tid();
+        let owner_tid: ThreadIdentifier = ThreadIdentifier::from(FPU_OWNER_TID.load(ORDER));
 
         // Select the lowest-numbered deliverable, caught signal and capture its handler. The
         // deliverable set unions the process-directed pending set with the faulting thread's
@@ -278,7 +448,7 @@ impl ProcessManager {
         };
 
         // Snapshot the interrupted CPU context and place the frame on the user stack.
-        let mut cpu: SignalCpuContext = unsafe { read_trap_context(esp0, result) };
+        let mut cpu: SignalCpuContext = ctx.snapshot();
 
         // If a blocking call was interrupted by this signal and the handler that is about to run is
         // installed with SA_RESTART, rewind the saved context to the kernel-call trap and reload the
@@ -321,7 +491,7 @@ impl ProcessManager {
         // handler's first argument register and, for `SA_SIGINFO` handlers, `info_ptr`/`ctx_ptr` in
         // the second and third (register-argument ABIs); on stack-argument ABIs they were already
         // written to the frame and these values are ignored.
-        unsafe { redirect_to_handler(esp0, entry, frame_top, signum, info_ptr, ctx_ptr) };
+        ctx.redirect(entry, frame_top, signum, info_ptr, ctx_ptr);
 
         SignalDeliveryOutcome::Delivered
     }
@@ -455,7 +625,7 @@ impl ProcessManager {
     /// # Description
     ///
     /// Builds the save area and on-stack arguments of a signal frame on the running thread's user
-    /// stack, shared by the kernel-call and synchronous-exception delivery paths.
+    /// stack, shared by the asynchronous and synchronous-exception delivery paths.
     ///
     /// The caller is responsible for snapshotting the interrupted context into `cpu`, redirecting
     /// the interrupted thread into the handler, and committing the blocked-mask and pending-set
@@ -498,6 +668,10 @@ impl ProcessManager {
         let layout: FrameLayout = frame_layout(user_sp)?;
         let frame_size: usize =
             RETADDR_SIZE + save_area_offset_from_sigreturn_sp() + core::mem::size_of::<SigFrame>();
+        // A thread interrupted at an arbitrary point may sit right above the lowest page of its
+        // stack mapped so far. Demand-allocate the stack pages the frame needs, as a user write to
+        // them would through the stack page-fault handler.
+        self.map_missing_stack_pages(layout.frame_top, frame_size);
         // The target stack address derives from user-controlled state, so confirm the whole frame
         // region is mapped and writable before writing it. An unmapped or read-only page escalates
         // to the signal's default action instead of faulting the kernel's physical-alias write path
@@ -556,6 +730,56 @@ impl ProcessManager {
         }
 
         Some((layout.frame_top, info_ptr, ctx_ptr))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Demand-allocates the pages of the running process's main-thread stack that the user region
+    /// `[start, start + size)` covers but that are not mapped yet, following the same growth policy
+    /// as user stack page faults.
+    ///
+    /// This is best effort: pages outside the stack region are left alone, and a failed allocation
+    /// is logged and ends the scan. Either way, the caller's writability check rejects the region.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Start address of the user region.
+    /// - `size`: Size of the user region in bytes.
+    ///
+    fn map_missing_stack_pages(&mut self, start: usize, size: usize) {
+        let end: usize = match start.checked_add(size) {
+            Some(end) => end,
+            None => return,
+        };
+
+        // SAFETY: the virtual memory manager is initialized and access to it is synchronized, as
+        // this is a single-core system and the kernel runs with interrupts disabled. The signal
+        // delivery paths that build frames hold no other reference to it.
+        let mm: &mut VirtMemoryManager = unsafe { VirtMemoryManager::get_mut() };
+        let mut page: usize = start & !(PAGE_SIZE - 1);
+        while page < end {
+            let vaddr: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(page) {
+                Ok(vaddr) => vaddr,
+                Err(_) => return,
+            };
+            let mapped: bool = matches!(
+                self.get_running().state().vmem().try_find_user_pte(vaddr),
+                Ok(Some(pte)) if pte.is_present()
+            );
+            if !mapped {
+                if let Err(error) = self.grow_user_stack(mm, page) {
+                    error!(
+                        "failed to map stack page for signal frame (vaddr={vaddr:?}, {error:?})"
+                    );
+                    return;
+                }
+            }
+            page = match page.checked_add(PAGE_SIZE) {
+                Some(next) => next,
+                None => return,
+            };
+        }
     }
 
     ///
@@ -646,8 +870,8 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Returns the FPU image of thread `tid`, refreshing the kernel-side copy from the live FPU
-    /// first when the thread currently owns it.
+    /// Returns the FPU image of the running thread `tid`, refreshing the kernel-side copy from the
+    /// live FPU first when the thread currently owns it.
     ///
     fn snapshot_thread_fpu(
         &mut self,
@@ -657,6 +881,8 @@ impl ProcessManager {
         let mut image: [u8; FPU_AREA_SIZE] = [0u8; FPU_AREA_SIZE];
         if let Some(mut thread) = self.get_running_mut().find_thread_mut(tid) {
             let fpu_ptr = thread.thread_state_mut().fpu_state_mut();
+            // SAFETY: `fpu_ptr` is the FPU save area of `tid`, which callers pass as the running
+            // thread, so it is the thread that owns the live FPU whenever `is_owner` is set.
             image = unsafe { capture_fpu(fpu_ptr, is_owner) };
         }
         image
@@ -665,8 +891,8 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Writes `image` into thread `tid`'s FPU state, and reloads the live FPU when the thread
-    /// currently owns it so the restored state takes effect immediately.
+    /// Writes `image` into the running thread `tid`'s FPU state, and reloads the live FPU when the
+    /// thread currently owns it so the restored state takes effect immediately.
     ///
     fn restore_thread_fpu(
         &mut self,
@@ -676,6 +902,7 @@ impl ProcessManager {
     ) {
         if let Some(mut thread) = self.get_running_mut().find_thread_mut(tid) {
             let fpu_ptr = thread.thread_state_mut().fpu_state_mut();
+            // SAFETY: as for `snapshot_thread_fpu()`.
             unsafe { install_fpu(fpu_ptr, is_owner, image) };
         }
     }

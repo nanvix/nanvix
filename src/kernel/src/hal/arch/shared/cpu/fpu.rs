@@ -131,16 +131,21 @@ impl FpuState {
 /// Captures a thread's FPU image into a raw buffer.
 ///
 /// When `is_owner` is set the thread currently owns the live FPU, so its registers are flushed to
-/// the kernel-side save area first; otherwise the already-saved area is copied as is.
+/// the kernel-side save area first; otherwise the already-saved area is copied as is. Before
+/// flushing, `CR0.TS` is cleared, exactly as the device-not-available handler would do for the
+/// owning thread: a context switch sets it even when the incoming thread still owns the live FPU,
+/// and `FXSAVE` would otherwise raise a nested exception in the middle of the caller.
 ///
 /// # Safety
 ///
-/// `fpu` must point to the FPU save area of the target thread. When `is_owner` is set, the live FPU
-/// must belong to that thread so flushing it does not clobber another thread's state.
+/// `fpu` must point to the FPU save area of the target thread. When `is_owner` is set, the target
+/// thread must be the running thread and own the live FPU, so flushing it does not clobber another
+/// thread's state and leaving the FPU enabled for it is correct.
 pub unsafe fn capture_fpu(fpu: *mut FpuState, is_owner: bool) -> [u8; FPU_STATE_SIZE] {
     let mut image: [u8; FPU_STATE_SIZE] = [0u8; FPU_STATE_SIZE];
     unsafe {
         if is_owner {
+            crate::hal::arch::clear_task_switched();
             FpuState::save(fpu);
         }
         ::core::ptr::copy_nonoverlapping(fpu.cast::<u8>(), image.as_mut_ptr(), FPU_STATE_SIZE);
@@ -151,7 +156,8 @@ pub unsafe fn capture_fpu(fpu: *mut FpuState, is_owner: bool) -> [u8; FPU_STATE_
 /// Installs a raw FPU image into a thread.
 ///
 /// When `is_owner` is set the thread currently owns the live FPU, so the restored area is reloaded
-/// into the registers; otherwise only the kernel-side save area is updated.
+/// into the registers, after clearing `CR0.TS` for the same reason as in [`capture_fpu`]; otherwise
+/// only the kernel-side save area is updated.
 ///
 /// # Safety
 ///
@@ -161,6 +167,7 @@ pub unsafe fn install_fpu(fpu: *mut FpuState, is_owner: bool, image: &[u8; FPU_S
     unsafe {
         ::core::ptr::copy_nonoverlapping(image.as_ptr(), fpu.cast::<u8>(), FPU_STATE_SIZE);
         if is_owner {
+            crate::hal::arch::clear_task_switched();
             FpuState::restore(fpu);
         }
     }

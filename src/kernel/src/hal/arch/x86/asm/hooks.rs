@@ -57,6 +57,7 @@ global_asm!(
     ".extern do_exception",
     ".extern do_kcall",
     ".extern do_interrupt",
+    ".extern do_signal_checkpoint",
     // EXCP_STACK_GUARD is only needed when the microvm guard-check code is compiled in; when
     // `{MICROVM}=0`, this `.extern` is compiled out together with the guard-check block.
     ".if {MICROVM}",
@@ -252,13 +253,26 @@ global_asm!(
     // -----------------------------------------------------------------
     // _do_hwint_macro — low-level hardware interrupt dispatcher
     // -----------------------------------------------------------------
+    //
+    // A dummy error code is pushed so that the saved frame has the
+    // `ContextInformation` layout produced by the exception hooks. This
+    // lets the signal checkpoint read and redirect the interrupted
+    // context before it is restored: a thread preempted by the timer
+    // resumes through this path once it is rescheduled.
+    //
     r".macro _do_hwint_macro num",
     r"_do_hwint\num:",
+    "    pushl $0",
     "    context_save %eax",
     r"    pushl $\num",
     "    call do_interrupt",
     "    addl ${WORD_SIZE}, %esp",
+    "    movl %esp, %eax",
+    "    pushl %eax",
+    "    call do_signal_checkpoint",
+    "    addl ${WORD_SIZE}, %esp",
     "    context_restore",
+    "    addl ${WORD_SIZE}, %esp",
     "    iret",
     ".endm",
 
@@ -310,6 +324,12 @@ global_asm!(
     "    call do_exception",
     "    addl $(2*{WORD_SIZE}), %esp",
     "    addl ${EXCEPTION_SIZE}, %esp",
+
+    // Deliver pending signals before resuming the interrupted context.
+    "    movl %esp, %eax",
+    "    pushl %eax", // Execution context.
+    "    call do_signal_checkpoint",
+    "    addl ${WORD_SIZE}, %esp",
 
     "    context_restore",
 
