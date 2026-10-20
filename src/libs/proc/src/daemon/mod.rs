@@ -514,14 +514,21 @@ impl ProcessDaemon {
         }
 
         match message.message_type {
-            MessageType::Exception => unreachable!("should not receive exceptions"),
             MessageType::Ipc => {
                 if let Err(e) = self.handle_ipc_message(message) {
                     ::syslog::error!("failed to handle IPC message (error={:?})", e);
                 }
             },
-            MessageType::Interrupt => unreachable!("should not receive interrupts"),
-            MessageType::Ikc => unreachable!("should not receive IKC messages"),
+            // These types are not addressed to the process manager, but the kernel posts any
+            // non-IKC type that a sender selects. Ignored rather than asserted, so that a forged
+            // message cannot take the process manager down.
+            MessageType::Exception | MessageType::Interrupt | MessageType::Ikc => {
+                ::syslog::warn!(
+                    "received unexpected {:?} message, ignoring (source={:?})",
+                    { message.message_type },
+                    { message.source }
+                );
+            },
             MessageType::PullResponse => {
                 ::syslog::error!("received unexpected pull response, ignoring");
             },
@@ -3059,6 +3066,40 @@ mod tests {
         assert!(daemon.processes.contains_key(&pid), "forged thread event should be ignored");
         assert_eq!(daemon.blocked.len(), 1, "forged thread event should not release blocked waits");
         assert_eq!(daemon.blocked[0].response_context, context);
+    }
+
+    #[test]
+    fn normal_mode_ignores_unexpected_message_types() {
+        let pid: ProcessIdentifier = ProcessIdentifier::from(10);
+        let tid: ThreadIdentifier = ThreadIdentifier::from(11);
+        let mut daemon: ManuallyDrop<ProcessDaemon> =
+            process_daemon(&[(pid, Some(process_identity(0)))]);
+        let context: ResponseContext =
+            ResponseContext::new(MessageSender::new(pid, tid), RequestIdentifier::from_raw(1));
+        daemon.blocked.push(BlockedWaiter {
+            waiter: pid,
+            selector: WaitSelector::Any,
+            response_context: context,
+        });
+
+        for message_type in [
+            MessageType::Exception,
+            MessageType::Interrupt,
+            MessageType::Ikc,
+        ] {
+            let message: Message = lifecycle_message(
+                MessageSender::new(ProcessIdentifier::from(20), ThreadIdentifier::from(21)),
+                message_type,
+                [],
+            );
+
+            let status: Option<i32> = daemon.handle_message(message);
+
+            assert_eq!(status, None, "{message_type:?} should not trigger shutdown");
+            assert!(daemon.processes.contains_key(&pid), "{message_type:?} should be ignored");
+            assert_eq!(daemon.blocked.len(), 1, "{message_type:?} should retain blocked waits");
+            assert_eq!(daemon.blocked[0].response_context, context);
+        }
     }
 
     #[test]
