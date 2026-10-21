@@ -10,6 +10,7 @@ use crate::{
         self,
         EventManager,
     },
+    hal::arch::ContextInformation,
     mm::VirtMemoryManager,
     pm::{
         ProcessManager,
@@ -174,16 +175,78 @@ pub fn kcall_handler() -> ExitStatus {
 /// Delivers a pending caught signal to the running thread at the kernel-call return-to-user
 /// boundary, redirecting it through its user-space handler.
 ///
-/// This is the asynchronous-delivery checkpoint: it runs at the end of every kernel call, mirroring
-/// [`poll_ikc_messages`]. When a signal frame cannot be built safely, the offending process is
-/// terminated via its default action.
+/// This is the asynchronous-delivery checkpoint of the kernel-call path: it runs at the end of every
+/// kernel call, mirroring [`poll_ikc_messages`]. When a signal frame cannot be built safely, the
+/// offending process is terminated via its default action.
 ///
 /// # Parameters
 ///
 /// - `result`: The return value the interrupted kernel call would otherwise deliver to user space.
 ///
 pub fn deliver_pending_signals(result: i64) {
-    match pm!().try_deliver_signal(result) {
+    let outcome: SignalDeliveryOutcome = pm!().try_deliver_signal(result);
+    complete_signal_delivery(outcome);
+}
+
+///
+/// # Description
+///
+/// Asynchronous signal-delivery checkpoint of the hardware-interrupt and exception return paths.
+///
+/// The low-level interrupt and exception hooks call this function right before they restore the
+/// interrupted context. When that context resumes in user mode, a pending caught signal is
+/// delivered to the running thread by redirecting the saved context through its user-space handler.
+/// This complements the kernel-call checkpoint ([`deliver_pending_signals`]) for threads that make
+/// no kernel calls: a compute-bound thread is preempted by the timer interrupt and resumes through
+/// this path once rescheduled, so a signal posted while it was descheduled is delivered then. When
+/// a signal frame cannot be built safely, the offending process is terminated via its default
+/// action.
+///
+/// # Parameters
+///
+/// - `ctx`: Interrupted context saved by the entry hook.
+///
+/// # Safety
+///
+/// This function is unsafe because it dereferences a raw pointer and may terminate the calling
+/// process.
+///
+/// It is safe to call this function if and only if the following conditions are met:
+/// - `ctx` points to the context saved on the current kernel stack by the interrupt or exception
+///   entry hook that restores it once this function returns.
+/// - The processor is running with interrupts disabled in privileged mode.
+/// - The caller does not hold a reference to the process manager.
+///
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn do_signal_checkpoint(ctx: *mut ContextInformation) {
+    // Check the privilege level before borrowing the context or touching the process manager: a
+    // trap taken in kernel mode (for example, while the kernel idles or when kernel code faults)
+    // saves an incomplete context and must resume the interrupted kernel code untouched.
+    // SAFETY: the caller guarantees that `ctx` points to the context saved by the entry hook.
+    if !unsafe { ContextInformation::returns_to_user_raw(ctx) } {
+        return;
+    }
+
+    // SAFETY: a trap taken from user mode saves a complete context on the current kernel stack,
+    // which nothing else accesses until this function returns.
+    let ctx: &mut ContextInformation = unsafe { &mut *ctx };
+
+    let outcome: SignalDeliveryOutcome = pm!().try_deliver_signal_on_return(ctx);
+    complete_signal_delivery(outcome);
+}
+
+///
+/// # Description
+///
+/// Completes an asynchronous signal delivery attempt, terminating the running process when its
+/// signal frame could not be built safely.
+///
+/// # Parameters
+///
+/// - `outcome`: Outcome of the delivery attempt.
+///
+fn complete_signal_delivery(outcome: SignalDeliveryOutcome) {
+    match outcome {
         SignalDeliveryOutcome::None | SignalDeliveryOutcome::Delivered => {},
         SignalDeliveryOutcome::Escalate => {
             // The frame could not be built safely (for example, a corrupt user stack). Take the

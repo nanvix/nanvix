@@ -240,6 +240,35 @@ impl ContextInformation {
     ///
     /// # Description
     ///
+    /// Returns whether the context saved at `ctx` resumes in user mode, reading only its saved
+    /// code-segment selector.
+    ///
+    /// Unlike [`Self::returns_to_user`], this does not form a reference to the whole structure. A
+    /// trap taken in kernel mode saves no stack pointer or stack segment, so the trailing fields of
+    /// its context overlap the interrupted kernel stack and must not be borrowed.
+    ///
+    /// # Parameters
+    ///
+    /// - `ctx`: Context saved by an interrupt or exception entry hook.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the interrupted context is ring 3, `false` otherwise.
+    ///
+    /// # Safety
+    ///
+    /// `ctx` must point to a context saved by an interrupt or exception entry hook.
+    ///
+    pub unsafe fn returns_to_user_raw(ctx: *const Self) -> bool {
+        // SAFETY: the caller guarantees that `ctx` points to a saved context, whose code-segment
+        // selector is always present. The packed field is read without forming a reference.
+        let cs: u32 = unsafe { ::core::ptr::addr_of!((*ctx).cs).read_unaligned() };
+        (cs & SELECTOR_RPL_MASK) == PrivilegeLevel::Ring3 as u32
+    }
+
+    ///
+    /// # Description
+    ///
     /// Switches to another execution context.
     ///
     /// # Parameters

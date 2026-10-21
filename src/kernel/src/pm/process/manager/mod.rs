@@ -1348,8 +1348,11 @@ impl ProcessManager {
     /// at its return-to-user checkpoint.
     ///
     /// Only a fully-suspended process needs explicit help; a process that still has a ready or
-    /// running thread reaches its own checkpoint without being woken. A signal that the candidate
-    /// thread would block is left pending and interrupts nothing.
+    /// running thread reaches its own checkpoint without being woken, because every return to user
+    /// mode is a checkpoint — including the return from the timer interrupt through which a
+    /// preempted thread resumes, so even a thread that makes no kernel calls observes the signal
+    /// once it is rescheduled. A signal that the candidate thread would block is left pending and
+    /// interrupts nothing.
     ///
     /// # Parameters
     ///
@@ -4566,16 +4569,38 @@ impl ProcessManager {
             return Ok(false);
         }
 
-        // Check if the faulting address falls within the main-thread user stack region.
+        self.grow_user_stack(mm, fault_addr)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Demand-allocates the page of the running process's main-thread user stack that contains
+    /// `addr`. This is the stack-growth policy shared by user stack page faults and signal-frame
+    /// construction: any page of the stack region may be allocated on demand, and nothing outside it.
+    ///
+    /// # Parameters
+    ///
+    /// - `mm`: Virtual memory manager.
+    /// - `addr`: Address within the page to allocate, which must not be mapped yet.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(true)` if a new stack page was mapped.
+    /// - `Ok(false)` if `addr` is not within the user stack region.
+    /// - `Err(...)` if page allocation failed.
+    ///
+    fn grow_user_stack(&mut self, mm: &mut VirtMemoryManager, addr: usize) -> Result<bool, Error> {
+        // Check if the address falls within the main-thread user stack region.
         // The stack occupies [USER_STACK_TOP_RAW, USER_STACK_TOP_RAW + USER_STACK_SIZE).
         const STACK_REGION_START: usize = USER_STACK_TOP_RAW;
         const STACK_REGION_END: usize = STACK_REGION_START + USER_STACK_SIZE;
-        if !(STACK_REGION_START..STACK_REGION_END).contains(&fault_addr) {
+        if !(STACK_REGION_START..STACK_REGION_END).contains(&addr) {
             return Ok(false);
         }
 
-        // Page-align the faulting address and map the page.
-        let page_addr: usize = fault_addr & !(PAGE_SIZE - 1);
+        // Page-align the address and map the page.
+        let page_addr: usize = addr & !(PAGE_SIZE - 1);
         let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(page_addr)?;
         let pid: ProcessIdentifier = self.get_pid();
         debug!("demand-paging stack page (pid={pid:?}, vaddr={vaddr:?})");
