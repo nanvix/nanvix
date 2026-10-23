@@ -137,7 +137,9 @@ Or run the full CI pipeline locally:
 ./scripts/pipeline.sh
 ```
 
-The CI pipeline runs automatically on every pull request and push to `dev`.
+The CI pipeline runs automatically on every pull request and push to `dev`. Pull requests that
+only change documentation (Markdown files other than the root `README.md`, or files under `doc/`)
+skip the build, test, and benchmark jobs.
 
 ## License
 

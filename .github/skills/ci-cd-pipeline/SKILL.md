@@ -73,6 +73,11 @@ Matrix coverage in GitHub Actions:
 - `lint`, `verify`, `ci-build`: `microvm` in debug and release configurations.
 - `ci-test`: same matrix.
 
+Pull requests that only change documentation (Markdown files other than the root `README.md`, or
+files under `doc/`) skip the build, test, and benchmark jobs; source checks, lint, and verify still
+run. The root `README.md` does not count as documentation because it is copied into the guest root
+file system images that the integration tests read.
+
 > **Note:** The `ci-windows` workflow validates Windows host builds (nanvixd, UserVM, source checks)
 > and runs a smoke test using nanvixd in standalone interactive mode on WHP-enabled runners.
 
