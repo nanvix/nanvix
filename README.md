@@ -138,7 +138,7 @@ git clone -c core.symlinks=true https://github.com/nanvix/nanvix.git; cd nanvix
 .\z.ps1 build -- all
 
 # Run an example application.
-.\bin\uservm.exe -kernel .\bin\kernel.elf -initrd .\bin\hello-rust-nostd.elf -standalone
+.\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
 ```
 
 > For more details, see the full [setup](doc/setup.md), [build](doc/build.md), and
