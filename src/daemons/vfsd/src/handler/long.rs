@@ -50,10 +50,8 @@ use ::syscall::{
         FileChownAtResponse,
         GetCurrentWorkingDirectoryResponse,
         LinkAtRequest,
-        LinkAtResponse,
         ReadLinkAtRequest,
         SymbolicLinkAtRequest,
-        SymbolicLinkAtResponse,
     },
     SystemCallMessage,
 };
@@ -260,37 +258,26 @@ pub(crate) fn handle_symlinkat(
     source: ThreadIdentifier,
     request: SymbolicLinkAtRequest,
 ) -> Vec<Message> {
-    match ::vfs::fd::vfs_symlinkat(&request.target, request.dirfd, &request.linkpath) {
-        Ok(()) => {
-            vec![SymbolicLinkAtResponse::build(
-                source,
-                0,
-                ProcessIdentifier::VFSD,
-                MessageType::Ipc,
-            )]
-        },
-        Err(e) => vec![build_error(source, fat32_to_error_code(&e))],
-    }
+    // Symbolic links are not supported by our VFS.
+    ::syslog::trace!(
+        "handle_symlinkat(): not supported (target={:?}, dirfd={}, linkpath={:?})",
+        request.target,
+        request.dirfd,
+        request.linkpath
+    );
+    vec![build_error(source, ErrorCode::OperationNotSupported)]
 }
 
 pub(crate) fn handle_linkat(source: ThreadIdentifier, request: LinkAtRequest) -> Vec<Message> {
-    match ::vfs::fd::vfs_linkat(
+    // Hard links are not supported by our VFS.
+    ::syslog::trace!(
+        "handle_linkat(): not supported (olddirfd={}, oldpath={:?}, newdirfd={}, newpath={:?})",
         request.olddirfd,
-        &request.oldpath,
+        request.oldpath,
         request.newdirfd,
-        &request.newpath,
-        request.flags,
-    ) {
-        Ok(()) => {
-            vec![LinkAtResponse::build(
-                source,
-                0,
-                ProcessIdentifier::VFSD,
-                MessageType::Ipc,
-            )]
-        },
-        Err(e) => vec![build_error(source, fat32_to_error_code(&e))],
-    }
+        request.newpath
+    );
+    vec![build_error(source, ErrorCode::OperationNotSupported)]
 }
 
 pub(crate) fn handle_readlinkat(

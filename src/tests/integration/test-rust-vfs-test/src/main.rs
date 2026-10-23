@@ -1216,7 +1216,8 @@ fn test_resolve_path() -> Result<(), Error> {
 // Test: Chmod
 //==================================================================================================
 
-/// Tests that `vfs_chmod()` succeeds on an existing file and fails on a missing one.
+/// Tests that `chmod()`, which reaches the VFS as `vfs_fchmodat()` with `AT_FDCWD`, succeeds on an
+/// existing file and fails on a missing one.
 fn test_chmod() -> Result<(), Error> {
     ::syslog::info!("vfs-test: test_chmod begin");
 
@@ -1235,10 +1236,11 @@ fn test_chmod() -> Result<(), Error> {
     }
 
     // chmod on an existing file should succeed (FAT32 ignores mode).
-    vfs::fd::vfs_chmod("/chm/f.txt", 0o644).map_err(|e| fat_err(e, "chmod existing file"))?;
+    vfs::fd::vfs_fchmodat(AT_FDCWD, "/chm/f.txt", 0o644, 0)
+        .map_err(|e| fat_err(e, "chmod existing file"))?;
 
     // chmod on a non-existent file should fail.
-    if vfs::fd::vfs_chmod("/chm/missing.txt", 0o644).is_ok() {
+    if vfs::fd::vfs_fchmodat(AT_FDCWD, "/chm/missing.txt", 0o644, 0).is_ok() {
         return Err(Error::new(ErrorCode::InvalidArgument, "chmod on missing file should fail"));
     }
 
