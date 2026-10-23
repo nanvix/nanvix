@@ -549,14 +549,14 @@ class TestPathHelpers(unittest.TestCase):
 
     def test_prepend_path_adds_to_front(self) -> None:
         """_prepend_path inserts the directory at the beginning of PATH."""
-        os.environ["PATH"] = "/usr/bin:/usr/local/bin"
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/usr/local/bin"])
         zmod._prepend_path("/my/dir")
         entries = os.environ["PATH"].split(os.pathsep)
         self.assertEqual(entries[0], "/my/dir")
 
     def test_prepend_path_idempotent(self) -> None:
         """_prepend_path does not duplicate an already-present directory."""
-        os.environ["PATH"] = "/my/dir:/usr/bin"
+        os.environ["PATH"] = os.pathsep.join(["/my/dir", "/usr/bin"])
         zmod._prepend_path("/my/dir")
         count = os.environ["PATH"].split(os.pathsep).count("/my/dir")
         self.assertEqual(count, 1)
@@ -565,7 +565,7 @@ class TestPathHelpers(unittest.TestCase):
         """_prepend_path treats paths as case-insensitive when deduplicating."""
         # Intentional cross-platform design: z.py uses case-insensitive
         # comparison so PATH dedup works on both Windows and Linux.
-        os.environ["PATH"] = "/My/Dir:/usr/bin"
+        os.environ["PATH"] = os.pathsep.join(["/My/Dir", "/usr/bin"])
         zmod._prepend_path("/my/dir")
         # Should not add because case-fold matches.
         entries = os.environ["PATH"].split(os.pathsep)
@@ -575,14 +575,14 @@ class TestPathHelpers(unittest.TestCase):
 
     def test_append_path_adds_to_end(self) -> None:
         """_append_path appends the directory at the end of PATH."""
-        os.environ["PATH"] = "/usr/bin:/usr/local/bin"
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/usr/local/bin"])
         zmod._append_path("/my/dir")
         entries = os.environ["PATH"].split(os.pathsep)
         self.assertEqual(entries[-1], "/my/dir")
 
     def test_append_path_idempotent(self) -> None:
         """_append_path does not duplicate an already-present directory."""
-        os.environ["PATH"] = "/usr/bin:/my/dir"
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/my/dir"])
         zmod._append_path("/my/dir")
         count = os.environ["PATH"].split(os.pathsep).count("/my/dir")
         self.assertEqual(count, 1)
@@ -591,7 +591,7 @@ class TestPathHelpers(unittest.TestCase):
         """_append_path treats paths as case-insensitive when deduplicating."""
         # Intentional cross-platform design: z.py uses case-insensitive
         # comparison so PATH dedup works on both Windows and Linux.
-        os.environ["PATH"] = "/usr/bin:/My/Dir"
+        os.environ["PATH"] = os.pathsep.join(["/usr/bin", "/My/Dir"])
         zmod._append_path("/my/dir")
         entries = os.environ["PATH"].split(os.pathsep)
         self.assertNotIn("/my/dir", entries)
