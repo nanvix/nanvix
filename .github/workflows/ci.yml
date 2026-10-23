@@ -52,6 +52,9 @@ env:
 #   push (dev)        → release only (CI pipeline only, no release publish)
 #   schedule          → release only (nightly release archives & publish pipeline)
 #   workflow_dispatch → both          (full coverage for manual runs)
+#
+# Documentation-only pull requests skip builds, tests, and benchmarks (see the
+# 'changes' job).
 
 jobs:
   # ==========================================================================================
@@ -100,6 +103,85 @@ jobs:
           runner-name-prefix: "WIN"
           runner-label: "benchmark"
 
+  # Detect pull requests that only change documentation (Markdown files and
+  # anything under doc/). Builds, tests, and benchmarks are skipped for them,
+  # while source checks (format, spellcheck), lint, and verify still run. Every
+  # other event reports docs-only=false and runs the full pipeline.
+  changes:
+    name: "Detect Changes"
+    timeout-minutes: 10
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      docs-only: ${{ steps.classify.outputs.docs-only }}
+    steps:
+      # The test-merge commit and its parents suffice to diff the pull request
+      # against its base branch.
+      - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+
+      - name: "Classify Changed Files"
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          # The root README.md is not documentation-only: it is copied into the
+          # guest root file system images that the integration tests read.
+          is_documentation() {
+            case "$1" in
+              README.md) return 1 ;;
+              doc/* | *.md) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          docs_only=false
+          if [[ "${EVENT_NAME}" != "pull_request" ]]; then
+            echo "Not a pull request: running the full pipeline."
+          elif ! git rev-parse --quiet --verify "HEAD^2" > /dev/null; then
+            echo "HEAD is not a test-merge commit: running the full pipeline."
+          else
+            # The first parent of the test-merge commit is the base branch, so
+            # this lists exactly the files that the pull request changes. Rename
+            # detection is disabled so that both paths of a rename are checked.
+            changed_files="${RUNNER_TEMP}/changed-files"
+            git diff --name-only --no-renames -z "HEAD^1" HEAD > "${changed_files}"
+
+            # File names come from the pull request: do not let the runner
+            # parse them as workflow commands while they are logged.
+            stop_token="$(uuidgen)"
+            echo "::stop-commands::${stop_token}"
+            count=0
+            non_docs=0
+            while IFS= read -r -d '' file; do
+              count=$((count + 1))
+              if is_documentation "${file}"; then
+                echo "  documentation: ${file}"
+              else
+                echo "  other:         ${file}"
+                non_docs=$((non_docs + 1))
+              fi
+            done < "${changed_files}"
+            echo "::${stop_token}::"
+
+            if [[ "${count}" -eq 0 ]]; then
+              echo "No changed files found: running the full pipeline."
+            elif [[ "${non_docs}" -gt 0 ]]; then
+              echo "${non_docs} of ${count} changed file(s) are not documentation: running the full pipeline."
+            else
+              echo "All ${count} changed file(s) are documentation: skipping builds, tests, and benchmarks."
+              docs_only=true
+            fi
+          fi
+          echo "Decision: docs-only=${docs_only}"
+          echo "docs-only=${docs_only}" >> "${GITHUB_OUTPUT}"
+
   # ==========================================================================================
   # Benchmark Eligibility Gates
   # ==========================================================================================
@@ -114,7 +196,7 @@ jobs:
 
   benchmark-gate-linux:
     name: "Benchmark Gate (Linux)"
-    needs: [ precheck, check-runners ]
+    needs: [ precheck, check-runners, changes ]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     permissions:
@@ -132,11 +214,14 @@ jobs:
           IS_DRAFT: ${{ github.event.pull_request.draft }}
           HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs-only }}
         run: |
           set -euo pipefail
           should_run=false
           if [[ "${REPO}" != "nanvix/nanvix" ]]; then
             echo "Skip: repository is not nanvix/nanvix"
+          elif [[ "${DOCS_ONLY}" == "true" ]]; then
+            echo "Skip: only documentation changed"
           elif [[ "${RUNNERS_AVAILABLE}" != "true" ]]; then
             # Fail closed: treat empty / unknown values (e.g. check-runners
             # was skipped or failed) as unavailable to prevent benchmark jobs
@@ -168,7 +253,7 @@ jobs:
 
   benchmark-gate-windows:
     name: "Benchmark Gate (Windows)"
-    needs: [ precheck, check-runners ]
+    needs: [ precheck, check-runners, changes ]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     permissions:
@@ -186,11 +271,14 @@ jobs:
           IS_DRAFT: ${{ github.event.pull_request.draft }}
           HEAD_COMMIT_MSG: ${{ github.event.head_commit.message }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs-only }}
         run: |
           set -euo pipefail
           should_run=false
           if [[ "${REPO}" != "nanvix/nanvix" ]]; then
             echo "Skip: repository is not nanvix/nanvix"
+          elif [[ "${DOCS_ONLY}" == "true" ]]; then
+            echo "Skip: only documentation changed"
           elif [[ "${RUNNERS_AVAILABLE}" != "true" ]]; then
             # Fail closed: treat empty / unknown values (e.g. check-runners
             # was skipped or failed) as unavailable to prevent benchmark jobs
@@ -392,7 +480,7 @@ jobs:
     name: "Build (${{ matrix.build-type }}, ${{ matrix.target-arch }}, ${{
       matrix.machine-type }}, ${{
       matrix.memory-size }}mb)"
-    needs: [ precheck, checks, lint, verify ]
+    needs: [ precheck, changes, checks, lint, verify ]
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -426,9 +514,12 @@ jobs:
 
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # !failure() ensures the build does not start when checks/lint/verify fail.
+    # Documentation-only pull requests skip the build and, transitively, the
+    # tests that consume its artifacts.
     if: |
       !cancelled() && !failure() &&
-      github.repository == 'nanvix/nanvix' && (
+      github.repository == 'nanvix/nanvix' &&
+      needs.changes.outputs.docs-only != 'true' && (
         github.event_name == 'merge_group' || github.event_name == 'schedule' || (
           needs.precheck.outputs.up_to_date == 'true' && (
             github.event_name != 'push' ||
@@ -824,11 +915,14 @@ jobs:
   windows-ci-build:
     name: "Windows Build (${{ matrix.build-type }}, ${{ matrix.target-arch }}, ${{
       matrix.machine-type }}, ${{ matrix.memory-size }}mb)"
-    needs: [ windows-format-check, windows-lint-check, windows-verify ]
+    needs: [ changes, windows-format-check, windows-lint-check, windows-verify ]
     # NOTE: !cancelled() — see comment on 'checks' job (actions/runner#2205).
     # !failure() ensures the build does not start when checks/lint/verify fail.
+    # Documentation-only pull requests skip the build and, transitively, the
+    # integration tests that consume its artifacts.
     if: |
       !cancelled() && !failure() &&
+      needs.changes.outputs.docs-only != 'true' &&
       needs.windows-format-check.result == 'success' &&
       needs.windows-lint-check.result == 'success' &&
       needs.windows-verify.result == 'success'
@@ -1113,10 +1207,10 @@ jobs:
     permissions:
       contents: read
 
-    # Eligibility (repo, event, precheck, draft, fork PR, runner availability) is
-    # consolidated in the benchmark-gate-linux job. Skip gracefully when the
-    # gate reports the benchmark pipeline should not run (e.g. no Linux
-    # self-hosted runners are online).
+    # Eligibility (repo, event, precheck, draft, fork PR, documentation-only
+    # changes, runner availability) is consolidated in the benchmark-gate-linux
+    # job. Skip gracefully when the gate reports the benchmark pipeline should
+    # not run (e.g. no Linux self-hosted runners are online).
     #
     # NOTE: !cancelled() is required so the matrix expands when an ancestor
     # in the needs graph is skipped (e.g. precheck on schedule events).
@@ -1237,10 +1331,10 @@ jobs:
     permissions:
       contents: read
 
-    # Eligibility (repo, event, precheck, draft, fork PR, runner availability)
-    # is consolidated in the benchmark-gate-windows job. Skip gracefully when
-    # the gate reports the benchmark pipeline should not run (e.g. no Windows
-    # self-hosted runners are online).
+    # Eligibility (repo, event, precheck, draft, fork PR, documentation-only
+    # changes, runner availability) is consolidated in the benchmark-gate-windows
+    # job. Skip gracefully when the gate reports the benchmark pipeline should
+    # not run (e.g. no Windows self-hosted runners are online).
     #
     # NOTE: !cancelled() is required so the matrix expands when an ancestor
     # in the needs graph is skipped (e.g. precheck on schedule events).
@@ -1807,6 +1901,7 @@ jobs:
         windows-benchmark,
         windows-benchmark-finalize,
         check-runners,
+        changes,
         release-archive,
         windows-release-archive,
         publish-release,
