@@ -1851,21 +1851,6 @@ pub fn vfs_fsync(fd: c_int) -> Result<(), Fat32Error> {
     }
 }
 
-/// Checks if a descriptor refers to a terminal.
-///
-/// A descriptor is a terminal when its slot contains a seeded console stream or an opened named
-/// terminal. This makes `isatty` authoritative against the flat slot table: duplicates remain
-/// terminals, while regular files, pipes, and sockets do not. A descriptor with no slot answers
-/// `false` (the caller maps the absent slot to `EBADF`).
-pub fn vfs_isatty(fd: c_int) -> bool {
-    let Ok(file) = entry_arc(fd) else {
-        return false;
-    };
-    let is_terminal: bool =
-        matches!(&file.lock().handle, VfsFileHandle::Console(_) | VfsFileHandle::Terminal(_));
-    is_terminal
-}
-
 /// Returns the shared terminal device state of a seeded console or opened named terminal.
 ///
 /// The shared [`Arc`] is cloned out from under the registry lock and the per-entry lock is released
@@ -2082,14 +2067,6 @@ pub fn vfs_pwrite(fd: c_int, buf: &[u8], offset: off_t) -> Result<c_size_t, Fat3
     Ok(n as c_size_t)
 }
 
-/// Changes file mode bits through the VFS.
-///
-/// FAT32 does not support POSIX permission bits, so the mode is accepted
-/// but silently ignored. Returns `Err` if the path does not exist.
-pub fn vfs_chmod(path: &str, _mode: ::sysapi::sys_types::mode_t) -> Result<(), Fat32Error> {
-    vfs_access_anchored(AnchoredPath::new(AT_FDCWD, String::from(path))?)
-}
-
 /// Checks file accessibility through the VFS.
 ///
 /// Returns `Ok(())` if the path exists, `Err` otherwise.
@@ -2285,50 +2262,6 @@ fn vfs_unlink_anchored(path: AnchoredPath, flags: c_int) -> Result<(), Fat32Erro
     } else {
         filesystem::unlink(path)
     }
-}
-
-/// Attempts to create a hard link through the VFS.
-///
-/// FAT32 does not support hard links. This function always returns
-/// [`Fat32Error::NotSupported`].
-///
-/// # Parameters
-///
-/// - `_olddirfd`: Directory file descriptor for the old path (ignored).
-/// - `_oldpath`: Path to the existing file.
-/// - `_newdirfd`: Directory file descriptor for the new path (ignored).
-/// - `_newpath`: Path for the new link.
-/// - `_flags`: Link flags (ignored).
-///
-/// # Errors
-///
-/// Always returns [`Fat32Error::NotSupported`].
-pub fn vfs_linkat(
-    _olddirfd: c_int,
-    _oldpath: &str,
-    _newdirfd: c_int,
-    _newpath: &str,
-    _flags: c_int,
-) -> Result<(), Fat32Error> {
-    Err(Fat32Error::NotSupported)
-}
-
-/// Attempts to create a symbolic link through the VFS.
-///
-/// FAT32 does not support symbolic links. This function always returns
-/// [`Fat32Error::NotSupported`].
-///
-/// # Parameters
-///
-/// - `_target`: Path that the symbolic link should point to.
-/// - `_dirfd`: Directory file descriptor for the link path (ignored).
-/// - `_linkpath`: Path for the new symbolic link.
-///
-/// # Errors
-///
-/// Always returns [`Fat32Error::NotSupported`].
-pub fn vfs_symlinkat(_target: &str, _dirfd: c_int, _linkpath: &str) -> Result<(), Fat32Error> {
-    Err(Fat32Error::NotSupported)
 }
 
 /// Changes the mode of a file relative to a directory file descriptor through the VFS.
@@ -2913,9 +2846,9 @@ mod tests {
             vfs_dup2(redirected, fd).expect("redirect standard descriptor");
         }
         vfs_close(redirected).expect("close redirected file");
-        assert!(!vfs_isatty(STDIN_FILENO));
-        assert!(!vfs_isatty(STDOUT_FILENO));
-        assert!(!vfs_isatty(STDERR_FILENO));
+        for fd in [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO] {
+            assert_eq!(vfs_resolve(fd), Some((VfsRoute::Vfs, fd)));
+        }
 
         assert_eq!(
             vfs_open("/dev/tty", file_access_mode::O_EXEC),
@@ -2942,7 +2875,6 @@ mod tests {
             vfs_open("/dev/tty", file_access_mode::O_RDWR).expect("open read-write tty");
 
         for fd in [tty_read, console_write, tty_readwrite] {
-            assert!(vfs_isatty(fd));
             assert_eq!(vfs_resolve(fd), Some((VfsRoute::Terminal, fd)));
         }
         assert_eq!(vfs_terminal_access(tty_read), Ok((true, false)));
@@ -4036,10 +3968,11 @@ mod tests {
         forget_processes(&[root]);
     }
 
-    /// Tests that `isatty` and the terminal-control queries are authoritative against the slot
-    /// table: a console descriptor (and a duplicate of one) is a terminal, while a regular file, a
-    /// socket, and an absent descriptor are not, and the queries map a non-terminal to `ENOTTY` and
-    /// an absent descriptor to `EBADF`.
+    /// Tests that the route classification `isatty` answers from and the terminal-control queries
+    /// are authoritative against the slot table: a console descriptor (and a duplicate of one)
+    /// routes to the console, while a regular file and a socket route to their own backends and an
+    /// absent descriptor has no route, and the queries map a non-terminal to `ENOTTY` and an absent
+    /// descriptor to `EBADF`.
     #[test]
     fn isatty_and_tty_control_are_authoritative() {
         let _guard = FORK_TEST_GUARD.lock();
@@ -4050,14 +3983,30 @@ mod tests {
         let file_fd: c_int = vfs_alloc_hostfs(50, false, None).expect("hostfs alloc");
         let socket_fd: c_int = vfs_register_socket(2060).expect("socket register");
 
-        assert!(vfs_isatty(STDIN_FILENO), "a console descriptor is a terminal");
-        assert!(!vfs_isatty(file_fd), "a regular file is not a terminal");
-        assert!(!vfs_isatty(socket_fd), "a socket is not a terminal");
-        assert!(!vfs_isatty(4096), "an absent descriptor is not a terminal");
+        assert_eq!(
+            vfs_resolve(STDIN_FILENO),
+            Some((VfsRoute::Console, STDIN_FILENO)),
+            "a console descriptor is a terminal"
+        );
+        assert_eq!(
+            vfs_resolve(file_fd),
+            Some((VfsRoute::Vfs, file_fd)),
+            "a regular file is not a terminal"
+        );
+        assert_eq!(
+            vfs_resolve(socket_fd),
+            Some((VfsRoute::Socket, 2060)),
+            "a socket is not a terminal"
+        );
+        assert_eq!(vfs_resolve(4096), None, "an absent descriptor has no route");
 
         // A duplicate of a console descriptor remains a terminal.
         let dup_fd: c_int = vfs_dup(STDOUT_FILENO).expect("dup console");
-        assert!(vfs_isatty(dup_fd), "a duplicate of a console descriptor is a terminal");
+        assert_eq!(
+            vfs_resolve(dup_fd),
+            Some((VfsRoute::Console, STDOUT_FILENO)),
+            "a duplicate of a console descriptor is a terminal"
+        );
 
         // Terminal-control queries distinguish a valid non-terminal from an absent descriptor.
         assert_eq!(
