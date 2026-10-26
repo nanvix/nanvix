@@ -376,10 +376,9 @@ ALL_HOST_RUST_LIBS := \
 	nanvix nanvix-http nanvix-sandbox-config \
 	nanvix-terminal syscomm user-vm-api
 # Host rlibs excluded on Windows:
-#  - nanvix-http: depends on Unix-only APIs.
 #  - syscomm: test code references cfg(unix)-gated SocketAddr::Unix variant.
 ifeq ($(IS_WINDOWS),yes)
-WINDOWS_EXCLUDED_HOST_RLIBS := nanvix-http syscomm
+WINDOWS_EXCLUDED_HOST_RLIBS := syscomm
 ALL_HOST_RUST_LIBS := $(filter-out $(WINDOWS_EXCLUDED_HOST_RLIBS),$(ALL_HOST_RUST_LIBS))
 endif
 ALL_HOST_UTILS := echo-client gen-headers mkimage mkramfs strace
