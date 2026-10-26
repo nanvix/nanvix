@@ -88,7 +88,10 @@ use ::sys::{
     },
 };
 use ::sysapi::{
-    ffi::c_int,
+    ffi::{
+        c_int,
+        c_uint,
+    },
     sys_types::{
         pid_t,
         time_t,
@@ -102,7 +105,10 @@ use ::sysapi::{
 };
 use ::syscall::{
     signal::bindings::kill::kill,
-    time::bindings::nanosleep::nanosleep,
+    time::bindings::{
+        nanosleep::nanosleep,
+        usleep::usleep,
+    },
     unistd::bindings,
 };
 
@@ -125,6 +131,9 @@ const CHILD_NOT_KILLED: c_int = 112;
 /// interrupted mid-wait rather than completing on its own), yet bounded so that a regression in
 /// signal interruption stalls the suite for only this long instead of an hour.
 const INTERRUPTIBLE_SLEEP_SECS: time_t = 10;
+
+/// Number of microseconds in a second.
+const MICROSECONDS_PER_SECOND: time_t = 1_000_000;
 
 //==================================================================================================
 // Wait Selection
@@ -615,6 +624,36 @@ fn test_eintr_interrupts_sleep() -> Result<(), Error> {
     assert!(
         read_errno() == ErrorCode::Interrupted.get(),
         "nanosleep() must fail with EINTR (errno={})",
+        read_errno()
+    );
+    reap_signaller(signaller);
+    Ok(())
+}
+
+/// Verifies that a deliverable caught signal interrupts a thread blocked in `usleep()`, which then
+/// fails with `EINTR` after the handler runs, when the handler is installed without `SA_RESTART`.
+fn test_eintr_interrupts_usleep() -> Result<(), Error> {
+    HANDLER_RAN.store(false, Ordering::SeqCst);
+    install_sigusr1_handler(0)?;
+
+    // Sleep for as long as the interruptible `nanosleep()` above, for the same reasons. The interval
+    // exceeds one second, which `usleep()` honors rather than rejecting, so the sleep is still in
+    // progress when the signal arrives.
+    let usec: c_uint = c_uint::try_from(INTERRUPTIBLE_SLEEP_SECS * MICROSECONDS_PER_SECOND)
+        .map_err(|_| Error::new(ErrorCode::ValueOutOfRange, "sleep interval out of range"))?;
+
+    let signaller: ProcessIdentifier = spawn_signaller()?;
+    send_empty(signaller)?;
+    let ret: c_int = usleep(usec);
+
+    assert!(
+        HANDLER_RAN.load(Ordering::SeqCst),
+        "SIGUSR1 handler did not run after interrupting a blocked usleep()"
+    );
+    assert!(ret == -1, "usleep() must report interruption (ret={})", ret);
+    assert!(
+        read_errno() == ErrorCode::Interrupted.get(),
+        "usleep() must fail with EINTR (errno={})",
         read_errno()
     );
     reap_signaller(signaller);
@@ -1527,6 +1566,7 @@ pub fn run() -> Result<(), Error> {
     test_siginfo_signal_runs_three_arg_handler()?;
     test_eintr_interrupts_recv()?;
     test_eintr_interrupts_sleep()?;
+    test_eintr_interrupts_usleep()?;
     test_sa_restart_restarts_sleep()?;
     test_sigsuspend_returns_after_handler()?;
     test_sigsuspend_delivers_pending_unblocked_signal()?;
