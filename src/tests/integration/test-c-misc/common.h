@@ -80,6 +80,9 @@ extern void test_nanosleep(void);
 // Tests whether `sleep()` suspends the caller for the requested number of seconds.
 extern void test_sleep(void);
 
+// Tests whether `usleep()` suspends the caller for the requested number of microseconds.
+extern void test_usleep(void);
+
 // Tests whether `setegid()` can be used to set the effective group ID of the calling process.
 extern void test_setegid(void);
 

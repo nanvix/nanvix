@@ -55,6 +55,7 @@ int main(int argc, const char *argv[])
 #ifndef __hyperlight__
     test_nanosleep();
     test_sleep();
+    test_usleep();
 #endif
     test_times();
     test_uname();
