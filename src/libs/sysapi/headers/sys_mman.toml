@@ -109,6 +109,16 @@ c_value = "8"
 comment = "Contents of the pages may be discarded."
 
 [[rust_constants]]
+path = "sys_mman::mlockall_flags::MCL_CURRENT"
+c_value = "0x1"
+comment = "Lock all currently mapped pages."
+
+[[rust_constants]]
+path = "sys_mman::mlockall_flags::MCL_FUTURE"
+c_value = "0x2"
+comment = "Lock all pages mapped in the future."
+
+[[rust_constants]]
 path = "sys_mman::MAP_FAILED"
 c_declaration = "\n/** @brief Returned by mmap() on failure. */\n#define MAP_FAILED ((void *)-1)"
 no_comment = true

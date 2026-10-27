@@ -42,6 +42,8 @@ extern "C" {
 #define MADV_WILLNEED 3 /**< Expect access in the near future. */
 #define MADV_DONTNEED 4 /**< Do not expect access in the near future. */
 #define MADV_FREE 8 /**< Contents of the pages may be discarded. */
+#define MCL_CURRENT 0x1 /**< Lock all currently mapped pages. */
+#define MCL_FUTURE 0x2 /**< Lock all pages mapped in the future. */
 
 /** @brief Returned by mmap() on failure. */
 #define MAP_FAILED ((void *)-1)

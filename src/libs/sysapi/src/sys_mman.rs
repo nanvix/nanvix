@@ -62,3 +62,13 @@ pub mod memory_advice {
     /// Contents of the pages may be discarded.
     pub const MADV_FREE: c_int = 8;
 }
+
+/// Flags for use with `mlockall()`. Values match Linux.
+pub mod mlockall_flags {
+    use crate::ffi::c_int;
+
+    /// Lock all pages currently mapped into the address space.
+    pub const MCL_CURRENT: c_int = 0x1;
+    /// Lock all pages that become mapped into the address space in the future.
+    pub const MCL_FUTURE: c_int = 0x2;
+}
