@@ -18,7 +18,6 @@ apt-get install -y build-essential --no-install-recommends
 apt-get install -y        \
     bzip2                 \
     clang                 \
-    codespell             \
     cpu-checker           \
     curl                  \
     gawk                  \
