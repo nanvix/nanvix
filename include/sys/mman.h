@@ -72,6 +72,12 @@ extern int munlock(const void *addr, size_t len);
 
 extern int msync(void *addr, size_t length, int flags);
 
+/*==================================================================================================
+ * Memory Advice
+ *==================================================================================================*/
+
+extern int madvise(void *addr, size_t length, int advice);
+
 #ifdef __cplusplus
 }
 #endif

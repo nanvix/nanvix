@@ -30,6 +30,7 @@ cfg_if::cfg_if! {
     if #[cfg(feature = "syscall")] {
         mod syscalls;
         pub use self::syscalls::{
+            madvise::madvise,
             mlock::mlock,
             mmap::mmap,
             mmap_reserve,
