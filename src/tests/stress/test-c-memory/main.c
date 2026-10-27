@@ -63,6 +63,7 @@ int main(int argc, const char *argv[])
     (void)argv;
 
     test_mmap_munmap();
+    test_madvise();
     test_malloc_free();
     test_aligned_alloc_free();
     test_malloc_usable_size();
