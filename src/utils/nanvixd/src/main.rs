@@ -27,7 +27,10 @@ use ::nanvix::{
     terminal::Terminal,
 };
 use ::nanvixd::args::Args;
-use ::std::process::ExitCode;
+use ::std::{
+    path::Path,
+    process::ExitCode,
+};
 use ::tokio::fs;
 
 //==================================================================================================
@@ -152,15 +155,22 @@ async fn async_main() -> Result<ExitCode> {
 /// On success, returns the kernel binary path. On failure, returns an error.
 ///
 async fn ensure_kernel_binary_available(args: &Args) -> Result<String> {
-    let kernel_binary_path: String = format!("{}/{}", args.binary_directory(), KERNEL_BINARY_NAME);
+    // Both components are UTF-8, so converting the joined path back to a string is lossless.
+    let kernel_binary_path: String = Path::new(args.binary_directory())
+        .join(KERNEL_BINARY_NAME)
+        .to_string_lossy()
+        .into_owned();
     match fs::metadata(&kernel_binary_path).await {
         Ok(_) => {
             info!("using local binary {KERNEL_BINARY_NAME}: {kernel_binary_path}");
             Ok(kernel_binary_path)
         },
         Err(error) => {
-            let reason: String =
-                format!("kernel binary not available locally: {kernel_binary_path}: {error}");
+            let reason: String = format!(
+                "kernel binary not available locally: {kernel_binary_path}: {error} (use {} to \
+                 set the directory containing Nanvix binaries)",
+                Args::OPT_BIN_DIRECTORY
+            );
             error!("ensure_kernel_binary_available(): {reason}");
             Err(::anyhow::anyhow!(reason))
         },
@@ -242,5 +252,6 @@ mod tests {
         let message: String = error.to_string();
         assert!(message.contains("not available locally"));
         assert!(message.contains(KERNEL_BINARY_NAME));
+        assert!(message.contains(Args::OPT_BIN_DIRECTORY));
     }
 }
