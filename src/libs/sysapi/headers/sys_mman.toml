@@ -109,6 +109,16 @@ c_value = "8"
 comment = "Contents of the pages may be discarded."
 
 [[rust_constants]]
+path = "sys_mman::mlockall_flags::MCL_CURRENT"
+c_value = "0x1"
+comment = "Lock all currently mapped pages."
+
+[[rust_constants]]
+path = "sys_mman::mlockall_flags::MCL_FUTURE"
+c_value = "0x2"
+comment = "Lock all pages mapped in the future."
+
+[[rust_constants]]
 path = "sys_mman::MAP_FAILED"
 c_declaration = "\n/** @brief Returned by mmap() on failure. */\n#define MAP_FAILED ((void *)-1)"
 no_comment = true
@@ -123,6 +133,8 @@ munmap = "extern int munmap(void *addr, size_t length);"
 mprotect = "extern int mprotect(void *addr, size_t length, int prot);"
 mlock = "extern int mlock(const void *addr, size_t len);"
 munlock = "extern int munlock(const void *addr, size_t len);"
+mlockall = "extern int mlockall(int flags);"
+munlockall = "extern int munlockall(void);"
 msync = "extern int msync(void *addr, size_t length, int flags);"
 madvise = "extern int madvise(void *addr, size_t length, int advice);"
 
@@ -132,7 +144,7 @@ functions = ["mprotect"]
 
 [[sections]]
 title = "Memory Locking"
-functions = ["mlock", "munlock"]
+functions = ["mlock", "munlock", "mlockall", "munlockall"]
 
 [[sections]]
 title = "Memory Synchronization"

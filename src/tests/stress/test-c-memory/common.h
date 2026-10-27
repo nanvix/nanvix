@@ -12,6 +12,13 @@ extern void test_mmap_munmap(void);
 // Tests whether we can advise the system about the use of mapped memory with `madvise()`.
 extern void test_madvise(void);
 
+// Tests whether we can lock and unlock ranges of mapped memory with `mlock()` and `munlock()`.
+extern void test_mlock_munlock(void);
+
+// Tests whether we can lock and unlock the whole address space with `mlockall()` and
+// `munlockall()`.
+extern void test_mlockall_munlockall(void);
+
 // Tests whether we can allocate and free memory using `malloc()` and `free()`.
 extern void test_malloc_free(void);
 
