@@ -711,20 +711,25 @@ endif
 CODESPELL_SKIP := .git,.venv,bin,lib,logs,build,target,toolchain,sysroot-debug,sysroot-release,*.pdf,*.png,*.jpg,*.jpeg,*.ico,*.svg,*.woff,*.woff2,*.eot,*.ttf
 
 # Fixes spelling errors in source code and documentation.
+# Run codespell from the Python virtual environment (see python-init), so that
+# every host uses the version installed from requirements.txt.
 # Pass --config explicitly so that .codespellrc is always honoured,
 # even on codespell versions that do not auto-discover it (e.g. 2.2.x).
 # Avoid passing $(ALL_SOURCE_FILES) to prevent exceeding the Windows
 # command-line length limit.
-spellcheck-fix:
-	codespell --config .codespellrc -S "$(CODESPELL_SKIP)" --write-changes .
+spellcheck-fix: python-init
+	$(PYTHON_VENV_PYTHON) -m codespell_lib --config .codespellrc -S "$(CODESPELL_SKIP)" \
+		--write-changes .
 
 # Checks for spelling errors in source code and documentation.
+# Run codespell from the Python virtual environment (see python-init), so that
+# every host uses the version installed from requirements.txt.
 # Pass --config explicitly so that .codespellrc is always honoured,
 # even on codespell versions that do not auto-discover it (e.g. 2.2.x).
 # Avoid passing $(ALL_SOURCE_FILES) to prevent exceeding the Windows
 # command-line length limit.
-spellcheck:
-	codespell --config .codespellrc -S "$(CODESPELL_SKIP)" .
+spellcheck: python-init
+	$(PYTHON_VENV_PYTHON) -m codespell_lib --config .codespellrc -S "$(CODESPELL_SKIP)" .
 
 # Fixes code formatting issues.
 format: \
