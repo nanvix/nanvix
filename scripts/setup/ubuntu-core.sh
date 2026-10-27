@@ -21,6 +21,7 @@ apt-get install -y        \
     clang                 \
     cmake                 \
     codespell             \
+    cpu-checker           \
     curl                  \
     doxygen               \
     gawk                  \
@@ -30,8 +31,6 @@ apt-get install -y        \
     grub2                 \
     iproute2              \
     jq                    \
-    libvirt-clients       \
-    libvirt-daemon-system \
     mtools                \
     netcat-openbsd        \
     ninja-build           \
