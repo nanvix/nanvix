@@ -9,13 +9,13 @@ export DEBIAN_FRONTEND=noninteractive
 # Update package repository.
 apt-get update
 
-# Install build-essential by default.
+# Install build-essential on its own, without recommended packages (e.g., gnupg,
+# fakeroot, and libc-devtools), which are not needed to build Nanvix.
 apt-get install -y build-essential --no-install-recommends
 
 # Install core development packages needed to build, run, and test Nanvix.
 # Keep the following list of packages sorted alphabetically.
 apt-get install -y        \
-    build-essential       \
     bzip2                 \
     clang                 \
     codespell             \
