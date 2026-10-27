@@ -44,3 +44,21 @@ pub mod msync_flags {
     /// Perform synchronous writes.
     pub const MS_SYNC: c_int = 0x4;
 }
+
+/// Advice values for use with `madvise()`. Values match Linux.
+pub mod memory_advice {
+    use crate::ffi::c_int;
+
+    /// No special treatment.
+    pub const MADV_NORMAL: c_int = 0;
+    /// Expect page references in random order.
+    pub const MADV_RANDOM: c_int = 1;
+    /// Expect page references in sequential order.
+    pub const MADV_SEQUENTIAL: c_int = 2;
+    /// Expect access in the near future.
+    pub const MADV_WILLNEED: c_int = 3;
+    /// Do not expect access in the near future.
+    pub const MADV_DONTNEED: c_int = 4;
+    /// Contents of the pages may be discarded.
+    pub const MADV_FREE: c_int = 8;
+}

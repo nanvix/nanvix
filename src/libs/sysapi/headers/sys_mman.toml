@@ -78,6 +78,36 @@ c_value = "0x4"
 comment = "Perform synchronous writes."
 
 [[rust_constants]]
+path = "sys_mman::memory_advice::MADV_NORMAL"
+c_value = "0"
+comment = "No special treatment."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_RANDOM"
+c_value = "1"
+comment = "Expect page references in random order."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_SEQUENTIAL"
+c_value = "2"
+comment = "Expect page references in sequential order."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_WILLNEED"
+c_value = "3"
+comment = "Expect access in the near future."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_DONTNEED"
+c_value = "4"
+comment = "Do not expect access in the near future."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_FREE"
+c_value = "8"
+comment = "Contents of the pages may be discarded."
+
+[[rust_constants]]
 path = "sys_mman::MAP_FAILED"
 c_declaration = "\n/** @brief Returned by mmap() on failure. */\n#define MAP_FAILED ((void *)-1)"
 no_comment = true
