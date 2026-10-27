@@ -115,3 +115,65 @@ void test_mlock_munlock(void)
 
     fprintf(stderr, "passed\n");
 }
+
+// Tests whether we can lock and unlock the whole address space with `mlockall()` and
+// `munlockall()`.
+void test_mlockall_munlockall(void)
+{
+    fprintf(stderr, "testing mlockall() and munlockall() with anonymous memory ... ");
+
+    // Get the page size from the system.
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    assert(page_size > 0);
+    const size_t length = (size_t)page_size;
+
+    // Map a page of anonymous memory and fill it with a known pattern.
+    unsigned char *current = map_filled(length, 0xA5u);
+
+    // Locking the pages that are currently mapped must preserve their contents.
+    assert(mlockall(MCL_CURRENT) == 0);
+    assert_filled(current, length, 0xA5u);
+
+    // Pages that become mapped while future locking is in effect must be usable.
+    assert(mlockall(MCL_CURRENT | MCL_FUTURE) == 0);
+    unsigned char *future = map_filled(length, 0x5Au);
+    assert_filled(future, length, 0x5Au);
+    assert_filled(current, length, 0xA5u);
+
+    // Unlocking the whole address space must preserve the contents of the pages.
+    assert(munlockall() == 0);
+    assert_filled(current, length, 0xA5u);
+    assert_filled(future, length, 0x5Au);
+
+    // Future locking may be requested on its own, and unlocking the address space when no page is
+    // locked is not an error.
+    assert(mlockall(MCL_FUTURE) == 0);
+    assert(munlockall() == 0);
+    assert(munlockall() == 0);
+
+    // Flags must request at least one kind of locking.
+    {
+        errno = 0;
+        assert(mlockall(0) == -1);
+        assert(errno == EINVAL);
+    }
+
+    // Unknown flags are rejected, alone or combined with known ones.
+    {
+        const int unknown = ~(MCL_CURRENT | MCL_FUTURE);
+
+        errno = 0;
+        assert(mlockall(unknown) == -1);
+        assert(errno == EINVAL);
+
+        errno = 0;
+        assert(mlockall(MCL_CURRENT | unknown) == -1);
+        assert(errno == EINVAL);
+    }
+
+    // Unmap the pages.
+    assert(munmap(future, length) == 0);
+    assert(munmap(current, length) == 0);
+
+    fprintf(stderr, "passed\n");
+}

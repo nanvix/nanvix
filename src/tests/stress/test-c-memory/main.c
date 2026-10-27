@@ -65,6 +65,7 @@ int main(int argc, const char *argv[])
     test_mmap_munmap();
     test_madvise();
     test_mlock_munlock();
+    test_mlockall_munlockall();
     test_malloc_free();
     test_aligned_alloc_free();
     test_malloc_usable_size();
