@@ -24,13 +24,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 # ---------------------------------------------------------------------------
 # System packages — reuses scripts/setup/ubuntu-core.sh to avoid duplication.
 #
-# The extra packages installed here (python3-pip, sudo) are CI-container
-# specific and therefore not part of the shared setup script.
+# The extra package installed here (sudo) is CI-container specific and
+# therefore not part of the shared setup script.
 # ---------------------------------------------------------------------------
 COPY scripts/setup/ubuntu-core.sh /tmp/ubuntu-core.sh
 RUN bash /tmp/ubuntu-core.sh \
     && apt-get install -y --no-install-recommends \
-        python3-pip \
         sudo \
     && rm -rf /var/lib/apt/lists/* /tmp/ubuntu-core.sh
 
