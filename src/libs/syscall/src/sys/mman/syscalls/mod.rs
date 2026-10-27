@@ -27,6 +27,7 @@ use ::sys::{
 // Modules
 //==================================================================================================
 
+pub mod madvise;
 pub mod mlock;
 pub mod mmap;
 pub mod mprotect;

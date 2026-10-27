@@ -13,9 +13,10 @@ pub mod mprotect;
 #[cfg(feature = "syscall")]
 pub mod munmap;
 
-// `mlock()`, `munlock()`, and `msync()` are no-ops after argument validation. They share the
-// host-testable helpers below, so they are compiled under the relaxed module gate (see the parent
-// module) rather than being restricted to the `syscall` feature.
+// `madvise()`, `mlock()`, `munlock()`, and `msync()` are no-ops after argument validation. They
+// share the host-testable helpers below, so they are compiled under the relaxed module gate (see
+// the parent module) rather than being restricted to the `syscall` feature.
+pub mod madvise;
 pub mod mlock;
 pub mod msync;
 pub mod munlock;

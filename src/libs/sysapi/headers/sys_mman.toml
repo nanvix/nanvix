@@ -20,6 +20,7 @@ content_order = [
     "section:1",
     "section:2",
     "section:3",
+    "section:4",
 ]
 
 [[rust_constants]]
@@ -78,6 +79,36 @@ c_value = "0x4"
 comment = "Perform synchronous writes."
 
 [[rust_constants]]
+path = "sys_mman::memory_advice::MADV_NORMAL"
+c_value = "0"
+comment = "No special treatment."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_RANDOM"
+c_value = "1"
+comment = "Expect page references in random order."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_SEQUENTIAL"
+c_value = "2"
+comment = "Expect page references in sequential order."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_WILLNEED"
+c_value = "3"
+comment = "Expect access in the near future."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_DONTNEED"
+c_value = "4"
+comment = "Do not expect access in the near future."
+
+[[rust_constants]]
+path = "sys_mman::memory_advice::MADV_FREE"
+c_value = "8"
+comment = "Contents of the pages may be discarded."
+
+[[rust_constants]]
 path = "sys_mman::MAP_FAILED"
 c_declaration = "\n/** @brief Returned by mmap() on failure. */\n#define MAP_FAILED ((void *)-1)"
 no_comment = true
@@ -93,6 +124,7 @@ mprotect = "extern int mprotect(void *addr, size_t length, int prot);"
 mlock = "extern int mlock(const void *addr, size_t len);"
 munlock = "extern int munlock(const void *addr, size_t len);"
 msync = "extern int msync(void *addr, size_t length, int flags);"
+madvise = "extern int madvise(void *addr, size_t length, int advice);"
 
 [[sections]]
 title = "Memory Protection"
@@ -105,3 +137,7 @@ functions = ["mlock", "munlock"]
 [[sections]]
 title = "Memory Synchronization"
 functions = ["msync"]
+
+[[sections]]
+title = "Memory Advice"
+functions = ["madvise"]

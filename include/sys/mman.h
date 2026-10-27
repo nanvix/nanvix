@@ -36,6 +36,12 @@ extern "C" {
 #define MS_ASYNC 0x1 /**< Perform asynchronous writes. */
 #define MS_INVALIDATE 0x2 /**< Invalidate cached copies of mapped data. */
 #define MS_SYNC 0x4 /**< Perform synchronous writes. */
+#define MADV_NORMAL 0 /**< No special treatment. */
+#define MADV_RANDOM 1 /**< Expect page references in random order. */
+#define MADV_SEQUENTIAL 2 /**< Expect page references in sequential order. */
+#define MADV_WILLNEED 3 /**< Expect access in the near future. */
+#define MADV_DONTNEED 4 /**< Do not expect access in the near future. */
+#define MADV_FREE 8 /**< Contents of the pages may be discarded. */
 
 /** @brief Returned by mmap() on failure. */
 #define MAP_FAILED ((void *)-1)
@@ -65,6 +71,12 @@ extern int munlock(const void *addr, size_t len);
  *==================================================================================================*/
 
 extern int msync(void *addr, size_t length, int flags);
+
+/*==================================================================================================
+ * Memory Advice
+ *==================================================================================================*/
+
+extern int madvise(void *addr, size_t length, int advice);
 
 #ifdef __cplusplus
 }
