@@ -166,8 +166,11 @@ async fn ensure_kernel_binary_available(args: &Args) -> Result<String> {
             Ok(kernel_binary_path)
         },
         Err(error) => {
-            let reason: String =
-                format!("kernel binary not available locally: {kernel_binary_path}: {error}");
+            let reason: String = format!(
+                "kernel binary not available locally: {kernel_binary_path}: {error} (use {} to \
+                 set the directory containing Nanvix binaries)",
+                Args::OPT_BIN_DIRECTORY
+            );
             error!("ensure_kernel_binary_available(): {reason}");
             Err(::anyhow::anyhow!(reason))
         },
@@ -249,5 +252,6 @@ mod tests {
         let message: String = error.to_string();
         assert!(message.contains("not available locally"));
         assert!(message.contains(KERNEL_BINARY_NAME));
+        assert!(message.contains(Args::OPT_BIN_DIRECTORY));
     }
 }

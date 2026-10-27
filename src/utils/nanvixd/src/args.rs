@@ -136,7 +136,7 @@ impl Args {
     ///
     pub fn parse(args: Vec<String>) -> Result<Self> {
         let mut http_sockaddr: Option<String> = None;
-        let mut binary_directory: String = config::DEFAULT_BIN_DIRECTORY.to_string();
+        let mut binary_directory: Option<String> = None;
         let mut console_file: Option<String> = None;
         let mut ramfs_filename: Option<String> = None;
         let mut log_directory: String = DEFAULT_LOG_DIRECTORY.to_string();
@@ -182,7 +182,7 @@ impl Args {
                 },
                 Self::OPT_BIN_DIRECTORY => {
                     i += 1;
-                    binary_directory = args[i].clone();
+                    binary_directory = Some(args[i].clone());
                 },
                 Self::OPT_CONSOLE_FILE => {
                     i += 1;
@@ -361,6 +361,11 @@ impl Args {
             );
         }
 
+        // Unless overridden, use the directory that contains this executable, so that Nanvix
+        // binaries shipped alongside it are picked up regardless of the working directory.
+        let binary_directory: String =
+            binary_directory.unwrap_or_else(config::default_binary_directory);
+
         Ok(Self {
             http_sockaddr,
             binary_directory,
@@ -407,7 +412,8 @@ Usage (Interactive mode):
 Options:
   {console_file} <file>                     Redirect console output to a file.
   {ramfs_filename} <file>                   Attach a RAM filesystem image to spawned user VMs.
-  {bin_dir} <bin_dir>                       Directory containing Nanvix binaries.
+  {bin_dir} <bin_dir>                       Directory containing Nanvix binaries (Default: \
+             directory containing this executable).
   {log_dir} <log_dir>                       Directory for log files (Default: \
              {DEFAULT_LOG_DIRECTORY}).
   {snapshot} <path>                         Restore VM from snapshot instead of cold-booting .
@@ -467,6 +473,10 @@ Options:
     /// # Description
     ///
     /// Returns the binary directory path.
+    ///
+    /// This is the directory given with [`Self::OPT_BIN_DIRECTORY`], if any. Otherwise, it is the
+    /// directory that contains the running executable (see
+    /// [`config::default_binary_directory()`]).
     ///
     /// # Returns
     ///
@@ -641,6 +651,10 @@ Options:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ::std::path::{
+        Path,
+        PathBuf,
+    };
 
     fn argv(extras: &[&str]) -> Vec<String> {
         let mut v: Vec<String> = vec!["nanvixd".to_string()];
@@ -824,5 +838,23 @@ mod tests {
     fn host_filter_defaults_to_allow_all() {
         let args = Args::parse(argv(&["-allow-host-networking", "--", "/bin/foo"])).expect("parse");
         assert!(matches!(args.host_filter(), HostFilter::AllowAll));
+    }
+
+    #[test]
+    fn bin_dir_defaults_to_executable_directory() {
+        let args = Args::parse(argv(&["--", "/bin/foo"])).expect("parse");
+        let executable_path: PathBuf =
+            ::std::env::current_exe().expect("failed to get current executable path");
+        let expected: &Path = executable_path
+            .parent()
+            .expect("current executable has no parent directory");
+        assert_eq!(Path::new(args.binary_directory()), expected);
+    }
+
+    #[test]
+    fn bin_dir_flag_overrides_default() {
+        let args =
+            Args::parse(argv(&["-bin-dir", "/opt/nanvix/bin", "--", "/bin/foo"])).expect("parse");
+        assert_eq!(args.binary_directory(), "/opt/nanvix/bin");
     }
 }
