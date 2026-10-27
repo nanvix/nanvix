@@ -3,7 +3,7 @@
 # Copyright(c) 2011-2024 The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-# Prevent debconf prompts from blocking the script (e.g., grub2 install dialog).
+# Prevent debconf prompts (e.g., tzdata on fresh images) from blocking the script.
 export DEBIAN_FRONTEND=noninteractive
 
 # Update package repository.
@@ -28,15 +28,12 @@ apt-get install -y        \
     gdb-multiarch         \
     git                   \
     graphviz              \
-    grub2                 \
     iproute2              \
     jq                    \
-    mtools                \
     netcat-openbsd        \
     ninja-build           \
     pkg-config            \
     python3-venv          \
     shellcheck            \
     unzip                 \
-    wget                  \
-    xorriso
+    wget
