@@ -16,6 +16,10 @@ Run a guest application via `nanvixd` in standalone interactive mode:
 .\bin\nanvixd.exe -- .\bin\hello-rust-nostd.elf
 ```
 
+`nanvixd` loads the guest kernel (`kernel.elf`) from the directory that contains the `nanvixd.exe`
+executable, such as `bin\` in a build tree or in a sysroot, regardless of the current working
+directory. Pass `-bin-dir <dir>` to load it from a different directory.
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
