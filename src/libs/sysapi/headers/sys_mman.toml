@@ -133,6 +133,8 @@ munmap = "extern int munmap(void *addr, size_t length);"
 mprotect = "extern int mprotect(void *addr, size_t length, int prot);"
 mlock = "extern int mlock(const void *addr, size_t len);"
 munlock = "extern int munlock(const void *addr, size_t len);"
+mlockall = "extern int mlockall(int flags);"
+munlockall = "extern int munlockall(void);"
 msync = "extern int msync(void *addr, size_t length, int flags);"
 madvise = "extern int madvise(void *addr, size_t length, int advice);"
 
@@ -142,7 +144,7 @@ functions = ["mprotect"]
 
 [[sections]]
 title = "Memory Locking"
-functions = ["mlock", "munlock"]
+functions = ["mlock", "munlock", "mlockall", "munlockall"]
 
 [[sections]]
 title = "Memory Synchronization"

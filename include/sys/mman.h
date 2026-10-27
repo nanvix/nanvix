@@ -67,6 +67,8 @@ extern int mprotect(void *addr, size_t length, int prot);
 
 extern int mlock(const void *addr, size_t len);
 extern int munlock(const void *addr, size_t len);
+extern int mlockall(int flags);
+extern int munlockall(void);
 
 /*==================================================================================================
  * Memory Synchronization
