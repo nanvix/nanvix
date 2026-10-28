@@ -70,6 +70,13 @@ impl SocketListener {
     /// - On Failure: An error value.
     ///
     pub async fn accept(&self) -> Result<SocketStream> {
+        // Logs and wraps errors raised while accepting connections of any socket type.
+        let accept_error = |error: Error| -> Error {
+            let reason: String = format!("accept(): {error}");
+            error!("accept(): {reason}");
+            Error::new(error.kind(), reason)
+        };
+
         // Match socket type.
         match self {
             // TCP socket.
@@ -78,14 +85,7 @@ impl SocketListener {
                 addr: _addr,
             } => {
                 let (stream, sockaddr): (TcpStream, std::net::SocketAddr) =
-                    match listener.accept().await {
-                        Ok(res) => res,
-                        Err(error) => {
-                            let reason: String = format!("accept(): {error}");
-                            error!("accept(): {reason}");
-                            return Err(Error::new(error.kind(), reason));
-                        },
-                    };
+                    listener.accept().await.map_err(accept_error)?;
 
                 // Disable Nagle's algorithm so small IKC frames are sent immediately
                 // instead of being delayed up to 40 ms by the TCP delayed-ACK interaction.
@@ -104,14 +104,7 @@ impl SocketListener {
                 path: _path,
             } => {
                 let (stream, _sockaddr): (UnixStream, ::tokio::net::unix::SocketAddr) =
-                    match listener.accept().await {
-                        Ok(res) => res,
-                        Err(error) => {
-                            let reason: String = format!("accept(): {error}");
-                            error!("accept(): {reason}");
-                            return Err(Error::new(error.kind(), reason));
-                        },
-                    };
+                    listener.accept().await.map_err(accept_error)?;
                 Ok(SocketStream::Unix(stream))
             },
         }

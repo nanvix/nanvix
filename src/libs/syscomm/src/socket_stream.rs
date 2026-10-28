@@ -211,23 +211,20 @@ impl SocketStream {
     /// returns an error value.
     ///
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        match self {
-            SocketStream::Tcp(stream) => match stream.peer_addr() {
-                Ok(addr) => Ok(SocketAddr::Tcp(addr)),
-                Err(error) => {
-                    let reason: String = format!("peer_addr(): {error}");
-                    error!("peer_addr(): {reason}");
-                    Err(error)
-                },
-            },
+        // Get peer address.
+        let result: Result<SocketAddr> = match self {
+            SocketStream::Tcp(stream) => stream.peer_addr().map(SocketAddr::Tcp),
             #[cfg(unix)]
-            SocketStream::Unix(stream) => match stream.peer_addr() {
-                Ok(addr) => Ok(SocketAddr::Unix(addr)),
-                Err(error) => {
-                    let reason: String = format!("peer_addr(): {error}");
-                    error!("peer_addr(): {reason}");
-                    Err(error)
-                },
+            SocketStream::Unix(stream) => stream.peer_addr().map(SocketAddr::Unix),
+        };
+
+        // Parse result.
+        match result {
+            Ok(addr) => Ok(addr),
+            Err(error) => {
+                let reason: String = format!("peer_addr(): {error}");
+                error!("peer_addr(): {reason}");
+                Err(error)
             },
         }
     }
