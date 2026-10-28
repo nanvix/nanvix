@@ -29,8 +29,8 @@ use ::std::io::{
 use ::tokio::{
     io::{
         self,
+        AsyncWrite,
         AsyncWriteExt,
-        Stdout,
     },
     sync::mpsc,
 };
@@ -296,34 +296,52 @@ impl Terminal {
         });
 
         // --- Output path (current task): guest output → host stdout ---
-        // TODO (#1706): Flush conditionally based on tty semantics instead of every chunk.
-        let mut stdout: Stdout = io::stdout();
-        let mut io_error: Option<::std::io::Error> = None;
-        while let Some(data) = output_rx.recv().await {
-            if let Err(e) = stdout.write_all(&data).await {
-                if e.kind() != ErrorKind::BrokenPipe {
-                    error!("failed to write to stdout: {e}");
-                    io_error = Some(e);
-                }
-                break;
-            }
-            if let Err(e) = stdout.flush().await {
-                if e.kind() != ErrorKind::BrokenPipe {
-                    error!("failed to flush stdout: {e}");
-                    io_error = Some(e);
-                }
-                break;
-            }
-        }
+        let output_result: ::std::io::Result<()> =
+            Self::forward_output(&mut output_rx, io::stdout()).await;
 
         // Abort the input task immediately — the stdin thread blocks on read() and cannot be
         // interrupted portably, so waiting provides no benefit.
         input_handle.abort();
 
-        match io_error {
-            Some(e) => Err(e.into()),
-            None => Ok(()),
+        match output_result {
+            Ok(()) => Ok(()),
+            // The reader of host stdout went away (e.g., the other end of a pipe was closed), so
+            // there is nobody left to forward guest output to.
+            Err(e) if e.kind() == ErrorKind::BrokenPipe => Ok(()),
+            Err(e) => {
+                error!("failed to forward guest output to stdout: {e}");
+                Err(e.into())
+            },
         }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Forwards guest output to `writer` until the output stream ends.
+    ///
+    /// # Parameters
+    ///
+    /// - `output_rx`: Channel that delivers the output written by the guest.
+    /// - `writer`: Writer to which guest output is forwarded.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns empty. On failure, returns the error reported by `writer`.
+    ///
+    async fn forward_output<W>(
+        output_rx: &mut mpsc::Receiver<Vec<u8>>,
+        mut writer: W,
+    ) -> ::std::io::Result<()>
+    where
+        W: AsyncWrite + Unpin,
+    {
+        while let Some(data) = output_rx.recv().await {
+            writer.write_all(&data).await?;
+            // TODO (#1706): Flush conditionally based on tty semantics instead of every chunk.
+            writer.flush().await?;
+        }
+        Ok(())
     }
 
     ///
