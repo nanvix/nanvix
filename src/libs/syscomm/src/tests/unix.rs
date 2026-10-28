@@ -7,6 +7,7 @@
 
 use crate::{
     ReadExact,
+    SocketAddr,
     SocketListener,
     SocketStream,
     SocketStreamReader,
@@ -17,7 +18,10 @@ use crate::{
 };
 use ::std::{
     io::IoSlice,
-    path::PathBuf,
+    path::{
+        Path,
+        PathBuf,
+    },
 };
 use ::tokio::task::JoinHandle;
 
@@ -225,6 +229,100 @@ async fn unix_socket_write_all_vectored_three_slices() {
     ])
     .await
     .expect("write_all_vectored failed");
+
+    server.await.expect("server join failed");
+}
+
+#[tokio::test]
+async fn unix_socket_peer_addr_success() {
+    let mut path: PathBuf = std::env::temp_dir();
+    let now: u128 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let unique: String = format!("sock-peer-test-{}-{}", std::process::id(), now);
+    path.push(unique);
+    let path: String = path.to_string_lossy().to_string();
+
+    let listener: SocketListener = UnboundSocket::new(SocketType::Unix)
+        .bind(&path)
+        .await
+        .expect("unix bind failed");
+
+    let server: JoinHandle<SocketStream> =
+        tokio::spawn(async move { listener.accept().await.expect("accept failed") });
+
+    let client: SocketStream = UnboundSocket::new(SocketType::Unix)
+        .connect(&path)
+        .await
+        .expect("unix connect failed");
+    let server: SocketStream = server.await.expect("server join failed");
+
+    // The client is connected to the path that the listener is bound to.
+    match client.peer_addr().expect("client peer_addr failed") {
+        SocketAddr::Unix(peer) => assert_eq!(peer.as_pathname(), Some(Path::new(&path))),
+        SocketAddr::Tcp(_) => unreachable!(),
+    }
+
+    // The client is not bound to any path, so the server is connected to an unnamed peer.
+    match server.peer_addr().expect("server peer_addr failed") {
+        SocketAddr::Unix(peer) => assert!(peer.is_unnamed()),
+        SocketAddr::Tcp(_) => unreachable!(),
+    }
+}
+
+#[tokio::test]
+async fn unix_socket_shutdown_write_success() {
+    let mut path: PathBuf = std::env::temp_dir();
+    let now: u128 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let unique: String = format!("sock-shutdown-test-{}-{}", std::process::id(), now);
+    path.push(unique);
+    let path: String = path.to_string_lossy().to_string();
+
+    let listener: SocketListener = UnboundSocket::new(SocketType::Unix)
+        .bind(&path)
+        .await
+        .expect("unix bind failed");
+
+    let server: JoinHandle<()> = tokio::spawn(async move {
+        let mut stream: SocketStream = listener.accept().await.expect("accept failed");
+        let mut buf: [u8; 3] = [0u8; 3];
+        stream
+            .read_exact(&mut buf)
+            .await
+            .expect("read_exact failed");
+        assert_eq!(&buf, b"bye");
+        // The peer shut down its write half, so this read observes the end of the stream.
+        let read: usize = stream.read(&mut buf).await.expect("read failed");
+        assert_eq!(read, 0);
+        stream.write_all(b"ok").await.expect("write_all failed");
+    });
+
+    let mut client: SocketStream = UnboundSocket::new(SocketType::Unix)
+        .connect(&path)
+        .await
+        .expect("unix connect failed");
+
+    client
+        .write_all(b"bye")
+        .await
+        .expect("client write_all failed");
+    client
+        .shutdown_write()
+        .await
+        .expect("client shutdown_write failed");
+    assert!(client.write(b"!").await.is_err());
+
+    // Shutting down the write half leaves the read half open.
+    let mut buf: [u8; 2] = [0u8; 2];
+    client
+        .read_exact(&mut buf)
+        .await
+        .expect("client read_exact failed");
+    assert_eq!(&buf, b"ok");
 
     server.await.expect("server join failed");
 }

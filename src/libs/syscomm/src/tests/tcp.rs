@@ -252,3 +252,93 @@ async fn tcp_socket_write_all_vectored_three_slices() {
 
     server.await.expect("server task join failed");
 }
+
+#[tokio::test]
+async fn tcp_socket_peer_addr_success() {
+    let listener: SocketListener = UnboundSocket::new(SocketType::Tcp)
+        .bind("127.0.0.1:0")
+        .await
+        .expect("bind failed");
+
+    let bound: ::std::net::SocketAddr = match &listener {
+        SocketListener::Tcp { listener, .. } => listener.local_addr().expect("local_addr failed"),
+        _ => unreachable!(),
+    };
+
+    let server: JoinHandle<SocketStream> =
+        tokio::spawn(async move { listener.accept().await.expect("accept failed") });
+
+    let client: SocketStream = UnboundSocket::new(SocketType::Tcp)
+        .connect(&bound.to_string())
+        .await
+        .expect("connect failed");
+    let server: SocketStream = server.await.expect("server task join failed");
+
+    // The client is connected to the address that the listener is bound to.
+    match client.peer_addr().expect("client peer_addr failed") {
+        SocketAddr::Tcp(peer) => assert_eq!(peer, bound),
+        SocketAddr::Unix(_) => unreachable!(),
+    }
+
+    // The server is connected to the local address of the client.
+    let local: ::std::net::SocketAddr = match &client {
+        SocketStream::Tcp(stream) => stream.local_addr().expect("local_addr failed"),
+        _ => unreachable!(),
+    };
+    match server.peer_addr().expect("server peer_addr failed") {
+        SocketAddr::Tcp(peer) => assert_eq!(peer, local),
+        SocketAddr::Unix(_) => unreachable!(),
+    }
+}
+
+#[tokio::test]
+async fn tcp_socket_shutdown_write_success() {
+    let listener: SocketListener = UnboundSocket::new(SocketType::Tcp)
+        .bind("127.0.0.1:0")
+        .await
+        .expect("bind failed");
+
+    let bound: ::std::net::SocketAddr = match &listener {
+        SocketListener::Tcp { listener, .. } => listener.local_addr().expect("local_addr failed"),
+        _ => unreachable!(),
+    };
+
+    let server: JoinHandle<()> = tokio::spawn(async move {
+        let mut stream: SocketStream = listener.accept().await.expect("accept failed");
+        let mut buf: [u8; 3] = [0u8; 3];
+        stream
+            .read_exact(&mut buf)
+            .await
+            .expect("read_exact failed");
+        assert_eq!(&buf, b"bye");
+        // The peer shut down its write half, so this read observes the end of the stream.
+        let read: usize = stream.read(&mut buf).await.expect("read failed");
+        assert_eq!(read, 0);
+        stream.write_all(b"ok").await.expect("write_all failed");
+    });
+
+    let mut client: SocketStream = UnboundSocket::new(SocketType::Tcp)
+        .connect(&bound.to_string())
+        .await
+        .expect("connect failed");
+
+    client
+        .write_all(b"bye")
+        .await
+        .expect("client write_all failed");
+    client
+        .shutdown_write()
+        .await
+        .expect("client shutdown_write failed");
+    assert!(client.write(b"!").await.is_err());
+
+    // Shutting down the write half leaves the read half open.
+    let mut buf: [u8; 2] = [0u8; 2];
+    client
+        .read_exact(&mut buf)
+        .await
+        .expect("client read_exact failed");
+    assert_eq!(&buf, b"ok");
+
+    server.await.expect("server task join failed");
+}
