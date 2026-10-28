@@ -11,7 +11,10 @@ use ::std::io::Result;
 #[cfg(unix)]
 use ::tokio::net::unix;
 use ::tokio::{
-    io::AsyncReadExt,
+    io::{
+        AsyncRead,
+        AsyncReadExt,
+    },
     net::tcp,
 };
 
@@ -61,11 +64,7 @@ impl SocketStreamReader {
         // No tracing on data path.
 
         // Read bytes.
-        let result: Result<usize> = match self {
-            SocketStreamReader::Tcp(reader) => reader.read(buf).await,
-            #[cfg(unix)]
-            SocketStreamReader::Unix(reader) => reader.read(buf).await,
-        };
+        let result: Result<usize> = self.inner_mut().read(buf).await;
 
         // Parse result.
         match result {
@@ -75,6 +74,23 @@ impl SocketStreamReader {
                 error!("read(): {reason}");
                 Err(error)
             },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the underlying read half of a socket stream, regardless of its socket type.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a mutable reference to the underlying read half.
+    ///
+    fn inner_mut(&mut self) -> &mut (dyn AsyncRead + Send + Sync + Unpin) {
+        match self {
+            SocketStreamReader::Tcp(reader) => reader,
+            #[cfg(unix)]
+            SocketStreamReader::Unix(reader) => reader,
         }
     }
 }
@@ -104,11 +120,7 @@ impl ReadExact for SocketStreamReader {
         // No tracing on data path.
 
         // Read bytes.
-        let result: Result<usize> = match self {
-            SocketStreamReader::Tcp(stream) => stream.read_exact(buf).await,
-            #[cfg(unix)]
-            SocketStreamReader::Unix(stream) => stream.read_exact(buf).await,
-        };
+        let result: Result<usize> = self.inner_mut().read_exact(buf).await;
 
         // Parse result.
         match result {

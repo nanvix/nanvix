@@ -11,7 +11,10 @@ use ::std::io::{
     IoSlice,
     Result,
 };
-use ::tokio::io::AsyncWriteExt;
+use ::tokio::io::{
+    AsyncWrite,
+    AsyncWriteExt,
+};
 
 //==================================================================================================
 // Structures
@@ -60,11 +63,7 @@ impl SocketStreamWriter {
         // No tracing on data path.
 
         // Write bytes.
-        let result: Result<usize> = match self {
-            SocketStreamWriter::Tcp(stream) => stream.write(buf).await,
-            #[cfg(unix)]
-            SocketStreamWriter::Unix(stream) => stream.write(buf).await,
-        };
+        let result: Result<usize> = self.inner_mut().write(buf).await;
 
         // Parse result.
         match result {
@@ -102,16 +101,15 @@ impl SocketStreamWriter {
     pub async fn write_all_vectored(&mut self, bufs: &mut [IoSlice<'_>]) -> Result<()> {
         let mut slices: &mut [IoSlice<'_>] = bufs;
         while !slices.is_empty() {
-            let n: usize = match self {
-                SocketStreamWriter::Tcp(stream) => stream.write_vectored(slices).await,
-                #[cfg(unix)]
-                SocketStreamWriter::Unix(stream) => stream.write_vectored(slices).await,
-            }
-            .map_err(|error| {
-                let reason: String = format!("write_all_vectored(): {error}");
-                error!("{reason}");
-                error
-            })?;
+            let n: usize = self
+                .inner_mut()
+                .write_vectored(slices)
+                .await
+                .map_err(|error| {
+                    let reason: String = format!("write_all_vectored(): {error}");
+                    error!("{reason}");
+                    error
+                })?;
             if n == 0 {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::WriteZero,
@@ -121,6 +119,23 @@ impl SocketStreamWriter {
             IoSlice::advance_slices(&mut slices, n);
         }
         Ok(())
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the underlying write half of a socket stream, regardless of its socket type.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a mutable reference to the underlying write half.
+    ///
+    fn inner_mut(&mut self) -> &mut (dyn AsyncWrite + Send + Sync + Unpin) {
+        match self {
+            SocketStreamWriter::Tcp(writer) => writer,
+            #[cfg(unix)]
+            SocketStreamWriter::Unix(writer) => writer,
+        }
     }
 }
 
@@ -149,11 +164,7 @@ impl WriteAll for SocketStreamWriter {
         // No tracing on data path.
 
         // Write bytes.
-        let result: Result<()> = match self {
-            SocketStreamWriter::Tcp(stream) => stream.write_all(buf).await,
-            #[cfg(unix)]
-            SocketStreamWriter::Unix(stream) => stream.write_all(buf).await,
-        };
+        let result: Result<()> = self.inner_mut().write_all(buf).await;
 
         // Parse result.
         match result {
