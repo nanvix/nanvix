@@ -2,7 +2,8 @@
 # Licensed under the MIT License.
 
 name: "Cleanup Dangling Resources"
-description: "Clean up resources that may have been left behind by previous runs or crashes"
+description: "Report and clean up resources that may have been left behind by previous runs or
+  crashes"
 
 inputs:
   phase:
@@ -33,6 +34,38 @@ runs:
         if [[ ! -x "${CLEANUP_SCRIPT}" ]]; then
           echo "ERROR: Cleanup script not found or not executable: ${CLEANUP_SCRIPT}"
           exit 1
+        fi
+
+        # Report the gateway sockets that nanvixd leaked before cleaning them up. The report is a
+        # workflow annotation, and a section of the job summary, so that it shows up on the page
+        # of the workflow run, instead of being buried in the logs.
+        if [[ "${PHASE}" == "pre" ]]; then
+          LEAK_ORIGIN="left on this runner by a previous job"
+        else
+          LEAK_ORIGIN="left behind by this job"
+        fi
+        if LEAKED_SOCKETS="$("${CLEANUP_SCRIPT}" --list-sockets)"; then
+          if [[ -n "${LEAKED_SOCKETS}" ]]; then
+            mapfile -t LEAKED_SOCKET_LIST <<< "${LEAKED_SOCKETS}"
+            LEAK_SUMMARY="Found ${#LEAKED_SOCKET_LIST[@]} nanvixd gateway socket(s) ${LEAK_ORIGIN}"
+            echo "::warning title=Leaked nanvixd sockets::${LEAK_SUMMARY}: ${LEAKED_SOCKET_LIST[*]}"
+            if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+              {
+                echo "### :warning: Leaked nanvixd Gateway Sockets (${PHASE}-cleanup)"
+                echo
+                echo "${LEAK_SUMMARY}, which this step removes. nanvixd removes the gateway" \
+                  "socket of a VM whenever it tears the VM down, even when it is stopped by" \
+                  "SIGINT, SIGTERM, SIGHUP, or SIGQUIT, so a leaked socket means that nanvixd" \
+                  "was killed with SIGKILL, crashed, or was left running."
+                echo
+                for socket in "${LEAKED_SOCKET_LIST[@]}"; do
+                  echo "- \`${socket}\`"
+                done
+              } >> "${GITHUB_STEP_SUMMARY}"
+            fi
+          fi
+        else
+          echo "::warning title=Leaked nanvixd sockets::Failed to check for leaked gateway sockets."
         fi
 
         # Run full cleanup (kills processes, cleans sockets, temp dirs).
