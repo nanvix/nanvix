@@ -10,6 +10,11 @@
 //!
 //! Input and output are handled by independent async tasks so that a slow stdout write can never
 //! stall stdin forwarding.
+//!
+//! Guest output is buffered according to the tty semantics of host stdout: it is line-buffered
+//! when host stdout is a terminal, and block-buffered when it is piped or redirected to a file.
+//! Either way, buffered output is flushed as soon as no further guest output is pending, so output
+//! that the guest is waiting on is never held back.
 
 //==================================================================================================
 // Imports
@@ -17,6 +22,7 @@
 
 use ::anyhow::Result;
 use ::log::{
+    debug,
     error,
     info,
     warn,
@@ -24,6 +30,7 @@ use ::log::{
 use ::nanvix_sandbox_config::StandaloneConfig;
 use ::std::io::{
     ErrorKind,
+    IsTerminal,
     Read,
 };
 use ::tokio::{
@@ -31,6 +38,7 @@ use ::tokio::{
         self,
         AsyncWrite,
         AsyncWriteExt,
+        BufWriter,
     },
     sync::mpsc,
 };
@@ -48,6 +56,11 @@ const IO_BUFFER_SIZE: usize = 4096;
 
 /// Capacity of the bounded channel between the stdin reader thread and the async input task.
 const STDIN_CHANNEL_CAPACITY: usize = 4096;
+
+/// Capacity of the buffer that coalesces guest output before it is written to host stdout. It is
+/// large enough to absorb bursts of small guest writes, so that block-buffered output reaches host
+/// stdout in a few large writes rather than in one write per guest write.
+const STDOUT_BUFFER_SIZE: usize = 64 * 1024;
 
 //==================================================================================================
 // Host Raw Mode
@@ -142,6 +155,46 @@ impl Drop for RawModeGuard {
             unsafe {
                 ::libc::tcsetattr(::libc::STDIN_FILENO, ::libc::TCSANOW, &saved);
             }
+        }
+    }
+}
+
+//==================================================================================================
+// Output Buffering
+//==================================================================================================
+
+/// Policy that decides when buffered guest output is flushed to host stdout.
+///
+/// The policy mirrors how C stdio buffers standard output: line buffering when the stream is a
+/// terminal, so that each line is displayed as soon as it is complete, and block buffering
+/// otherwise, so that piped or redirected output is written out in a few large writes instead of
+/// one write per guest write.
+///
+/// Regardless of the policy, buffered output is also flushed whenever no further guest output is
+/// pending (see `Terminal::forward_output()`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FlushPolicy {
+    /// Flush whenever a chunk of output contains a newline (host stdout is a terminal).
+    Line,
+    /// Flush only when the buffer fills up (host stdout is a pipe or a file).
+    Block,
+}
+
+impl FlushPolicy {
+    /// Selects the policy that matches the tty semantics of host stdout.
+    fn for_host_stdout() -> Self {
+        if ::std::io::stdout().is_terminal() {
+            Self::Line
+        } else {
+            Self::Block
+        }
+    }
+
+    /// Checks whether buffered output must be flushed right after `chunk` is buffered.
+    fn flushes_after(self, chunk: &[u8]) -> bool {
+        match self {
+            Self::Line => chunk.contains(&b'\n'),
+            Self::Block => false,
         }
     }
 }
@@ -262,6 +315,9 @@ impl Terminal {
     /// stdout. This decoupling ensures that a slow stdout write (e.g., a `spawn_blocking` call
     /// on Windows piped stdout) can never stall stdin forwarding.
     ///
+    /// Guest output is buffered according to the tty semantics of host stdout (see
+    /// `FlushPolicy`).
+    ///
     /// EOF propagation is structural: when the stdin reader thread exits (EOF, error, or receiver
     /// dropped), `stdin_tx` is dropped, causing `stdin_rx.recv()` to return `None` in the input
     /// task. The input task then exits and drops `input_tx`, which signals EOF to the guest via
@@ -296,8 +352,10 @@ impl Terminal {
         });
 
         // --- Output path (current task): guest output → host stdout ---
+        let policy: FlushPolicy = FlushPolicy::for_host_stdout();
+        debug!("standalone: forwarding guest output to host stdout (policy={policy:?})");
         let output_result: ::std::io::Result<()> =
-            Self::forward_output(&mut output_rx, io::stdout()).await;
+            Self::forward_output(&mut output_rx, io::stdout(), policy).await;
 
         // Abort the input task immediately — the stdin thread blocks on read() and cannot be
         // interrupted portably, so waiting provides no benefit.
@@ -320,10 +378,17 @@ impl Terminal {
     ///
     /// Forwards guest output to `writer` until the output stream ends.
     ///
+    /// Output is staged in a buffer that is flushed according to `policy`. On top of that, the
+    /// buffer is flushed whenever no further guest output is pending. Output that the guest is
+    /// waiting on, such as a prompt, an echoed keystroke, or a reply to a peer that drives the
+    /// guest through pipes, is thus never held back: buffering only coalesces output that the
+    /// guest produces faster than it can be written out.
+    ///
     /// # Parameters
     ///
     /// - `output_rx`: Channel that delivers the output written by the guest.
     /// - `writer`: Writer to which guest output is forwarded.
+    /// - `policy`: Policy that decides when buffered output is flushed.
     ///
     /// # Returns
     ///
@@ -331,17 +396,22 @@ impl Terminal {
     ///
     async fn forward_output<W>(
         output_rx: &mut mpsc::Receiver<Vec<u8>>,
-        mut writer: W,
+        writer: W,
+        policy: FlushPolicy,
     ) -> ::std::io::Result<()>
     where
         W: AsyncWrite + Unpin,
     {
+        let mut writer: BufWriter<W> = BufWriter::with_capacity(STDOUT_BUFFER_SIZE, writer);
         while let Some(data) = output_rx.recv().await {
             writer.write_all(&data).await?;
-            // TODO (#1706): Flush conditionally based on tty semantics instead of every chunk.
-            writer.flush().await?;
+            if policy.flushes_after(&data) || output_rx.is_empty() {
+                writer.flush().await?;
+            }
         }
-        Ok(())
+        // Flush once more as the stream ends: `BufWriter` discards, rather than flushes, any
+        // output still buffered when it is dropped.
+        writer.flush().await
     }
 
     ///
