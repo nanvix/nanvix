@@ -24,7 +24,9 @@ use ::tokio::net::{
 };
 use ::tokio::{
     io::{
+        AsyncRead,
         AsyncReadExt,
+        AsyncWrite,
         AsyncWriteExt,
     },
     net::{
@@ -46,6 +48,24 @@ pub enum SocketStream {
     #[cfg(unix)]
     Unix(UnixStream),
 }
+
+//==================================================================================================
+// Traits
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Asynchronous stream that can be both read from and written to.
+///
+/// This trait is implemented by the underlying stream of every socket type, so that
+/// [`SocketStream`] can perform I/O operations through a single trait object, regardless of the
+/// socket type. It is needed because a trait object cannot combine `AsyncRead` and `AsyncWrite`
+/// directly. The `Send` and `Sync` bounds keep futures that borrow the stream thread-safe.
+///
+trait AsyncReadWrite: AsyncRead + AsyncWrite + Send + Sync + Unpin {}
+
+impl<T: AsyncRead + AsyncWrite + Send + Sync + Unpin> AsyncReadWrite for T {}
 
 //==================================================================================================
 // Implementations
@@ -106,11 +126,7 @@ impl SocketStream {
         // No tracing on data path.
 
         // Read bytes.
-        let result: Result<usize> = match self {
-            SocketStream::Tcp(stream) => stream.read(buf).await,
-            #[cfg(unix)]
-            SocketStream::Unix(stream) => stream.read(buf).await,
-        };
+        let result: Result<usize> = self.inner_mut().read(buf).await;
 
         // Parse result.
         match result {
@@ -148,11 +164,7 @@ impl SocketStream {
         // No tracing on data path.
 
         // Write bytes.
-        let result: Result<usize> = match self {
-            SocketStream::Tcp(stream) => stream.write(buf).await,
-            #[cfg(unix)]
-            SocketStream::Unix(stream) => stream.write(buf).await,
-        };
+        let result: Result<usize> = self.inner_mut().write(buf).await;
 
         // Parse result.
         match result {
@@ -176,11 +188,7 @@ impl SocketStream {
     /// transport refuses the request.
     ///
     pub async fn shutdown_write(&mut self) -> Result<()> {
-        let result: Result<()> = match self {
-            SocketStream::Tcp(stream) => stream.shutdown().await,
-            #[cfg(unix)]
-            SocketStream::Unix(stream) => stream.shutdown().await,
-        };
+        let result: Result<()> = self.inner_mut().shutdown().await;
 
         match result {
             Ok(()) => Ok(()),
@@ -203,24 +211,38 @@ impl SocketStream {
     /// returns an error value.
     ///
     pub fn peer_addr(&self) -> Result<SocketAddr> {
-        match self {
-            SocketStream::Tcp(stream) => match stream.peer_addr() {
-                Ok(addr) => Ok(SocketAddr::Tcp(addr)),
-                Err(error) => {
-                    let reason: String = format!("peer_addr(): {error}");
-                    error!("peer_addr(): {reason}");
-                    Err(error)
-                },
-            },
+        // Get peer address.
+        let result: Result<SocketAddr> = match self {
+            SocketStream::Tcp(stream) => stream.peer_addr().map(SocketAddr::Tcp),
             #[cfg(unix)]
-            SocketStream::Unix(stream) => match stream.peer_addr() {
-                Ok(addr) => Ok(SocketAddr::Unix(addr)),
-                Err(error) => {
-                    let reason: String = format!("peer_addr(): {error}");
-                    error!("peer_addr(): {reason}");
-                    Err(error)
-                },
+            SocketStream::Unix(stream) => stream.peer_addr().map(SocketAddr::Unix),
+        };
+
+        // Parse result.
+        match result {
+            Ok(addr) => Ok(addr),
+            Err(error) => {
+                let reason: String = format!("peer_addr(): {error}");
+                error!("peer_addr(): {reason}");
+                Err(error)
             },
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gets the underlying stream of a socket stream, regardless of its socket type.
+    ///
+    /// # Returns
+    ///
+    /// This function returns a mutable reference to the underlying stream.
+    ///
+    fn inner_mut(&mut self) -> &mut dyn AsyncReadWrite {
+        match self {
+            SocketStream::Tcp(stream) => stream,
+            #[cfg(unix)]
+            SocketStream::Unix(stream) => stream,
         }
     }
 }
@@ -250,11 +272,7 @@ impl ReadExact for SocketStream {
         // No tracing on data path.
 
         // Read bytes.
-        let result: Result<usize> = match self {
-            SocketStream::Tcp(stream) => stream.read_exact(buf).await,
-            #[cfg(unix)]
-            SocketStream::Unix(stream) => stream.read_exact(buf).await,
-        };
+        let result: Result<usize> = self.inner_mut().read_exact(buf).await;
 
         // Parse result.
         match result {
@@ -293,11 +311,7 @@ impl WriteAll for SocketStream {
         // No tracing on data path.
 
         // Write bytes.
-        let result: Result<()> = match self {
-            SocketStream::Tcp(stream) => stream.write_all(buf).await,
-            #[cfg(unix)]
-            SocketStream::Unix(stream) => stream.write_all(buf).await,
-        };
+        let result: Result<()> = self.inner_mut().write_all(buf).await;
 
         // Parse result.
         match result {
