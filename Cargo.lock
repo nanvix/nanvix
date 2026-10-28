@@ -2052,6 +2052,7 @@ dependencies = [
  "nanvix-sandbox-config",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "user-vm-api",
  "uservm",
