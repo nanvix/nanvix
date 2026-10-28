@@ -9,6 +9,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(feature = "syscall", feature(never_type))] // pthread requires this.
 #![cfg_attr(feature = "syscall", feature(c_variadic))] // fcntl requires this.
+#![cfg_attr(test, feature(variant_count))] // Unit tests require this.
 
 //==================================================================================================
 // Modules
@@ -916,6 +917,36 @@ impl SystemCallMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Returns the number of variants of [`SystemCallMessageKind`].
+    fn system_call_message_kind_count() -> u16 {
+        u16::try_from(mem::variant_count::<SystemCallMessageKind>())
+            .expect("number of message kinds should fit in a wire value")
+    }
+
+    /// Wire values are assigned contiguously from zero, so every value below the number of variants
+    /// must decode to the variant that it identifies. Because these values are distinct, this also
+    /// checks that the decoder does not miss any variant.
+    #[test]
+    fn system_call_message_kind_wire_values_round_trip() {
+        for value in 0..system_call_message_kind_count() {
+            let kind: SystemCallMessageKind = SystemCallMessageKind::try_from(value)
+                .unwrap_or_else(|()| panic!("wire value {value} should decode"));
+            assert_eq!(kind as u16, value, "wire value {value} decodes to {kind:?}");
+        }
+    }
+
+    /// Values at or above the number of variants are not assigned to any variant, so the decoder
+    /// must reject them.
+    #[test]
+    fn system_call_message_kind_rejects_unassigned_wire_values() {
+        for value in system_call_message_kind_count()..=u16::MAX {
+            assert!(
+                SystemCallMessageKind::try_from(value).is_err(),
+                "unassigned wire value {value} should not decode"
+            );
+        }
+    }
 
     #[test]
     fn system_call_message_request_id_round_trip() {
