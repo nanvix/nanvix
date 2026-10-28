@@ -5,7 +5,7 @@
 //!
 //! This module provides the HTTP server that listens for incoming client connections and
 //! dispatches requests to appropriate handlers. It manages the server lifecycle, handles
-//! graceful shutdown on interrupt signals, and maintains the sandbox cache for all active
+//! graceful shutdown on shutdown signals, and maintains the sandbox cache for all active
 //! instances.
 
 //==================================================================================================
@@ -14,6 +14,7 @@
 
 use crate::{
     client::HttpClient,
+    signal::ShutdownSignal,
     StandaloneState,
 };
 use ::anyhow::Result;
@@ -30,12 +31,6 @@ use ::tokio::net::{
     TcpListener,
     TcpStream,
 };
-#[cfg(unix)]
-use ::tokio::signal::unix::{
-    signal,
-    Signal,
-    SignalKind,
-};
 
 //==================================================================================================
 // Structures
@@ -47,7 +42,7 @@ use ::tokio::signal::unix::{
 /// HTTP server for the Nanvix Daemon.
 ///
 /// This structure manages the HTTP server that listens for incoming client connections,
-/// handles interrupt signals for graceful shutdown, and maintains the sandbox cache for
+/// handles shutdown signals for graceful shutdown, and maintains the sandbox cache for
 /// all active instances. It provides the main event loop for the daemon.
 ///
 pub struct HttpServer {
@@ -91,8 +86,9 @@ impl HttpServer {
     /// This method binds to the configured address, accepts incoming connections, and dispatches
     /// them to HTTP client handlers. Connections are handled sequentially.
     ///
-    /// The server runs until a shutdown signal is received (SIGINT on Unix, Ctrl-C on Windows),
-    /// at which point it performs graceful shutdown by cleaning up all active sandboxes.
+    /// The server runs until a shutdown signal is received (`SIGINT`, `SIGTERM`, `SIGHUP`, or
+    /// `SIGQUIT` on Unix, Ctrl-C on Windows), at which point it performs graceful shutdown by
+    /// cleaning up all active sandboxes.
     ///
     /// # Returns
     ///
@@ -100,23 +96,12 @@ impl HttpServer {
     /// describing what went wrong during server operation.
     ///
     pub async fn run(&mut self) -> Result<()> {
-        // Initialize shared state before binding the socket, as some setups may use socket
-        // readiness to probe nanvixd's readiness.
+        // Initialize shared state and install shutdown signal handlers before binding the socket,
+        // as some setups may use socket readiness to probe nanvixd's readiness, and they may stop
+        // nanvixd right after it becomes ready.
         let state: Arc<StandaloneState> = Arc::new(StandaloneState::new(self.config.clone()));
-        #[cfg(unix)]
-        let mut signals: Signal = signal(SignalKind::interrupt())?;
+        let mut shutdown_signal: ShutdownSignal = ShutdownSignal::new()?;
         let http_listener: TcpListener = TcpListener::bind(&self.sockaddr).await?;
-
-        // Cross-platform shutdown signal: SIGINT on Unix, Ctrl-C on Windows.
-        #[cfg(unix)]
-        let shutdown_signal = async move {
-            signals.recv().await;
-        };
-        #[cfg(windows)]
-        let shutdown_signal = async {
-            let _ = ::tokio::signal::ctrl_c().await;
-        };
-        ::tokio::pin!(shutdown_signal);
 
         loop {
             tokio::select! {
@@ -144,8 +129,8 @@ impl HttpServer {
                         },
                     }
                 },
-                _ = &mut shutdown_signal => {
-                    info!("received exit signal, stopping...");
+                signal = shutdown_signal.recv() => {
+                    info!("received {signal}, stopping...");
                     let has_vm: bool = state.has_running_vm().await;
                     info!("shutdown snapshot: has_running_vm={has_vm}");
                     state.cleanup().await;
