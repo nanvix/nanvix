@@ -219,7 +219,7 @@ pub(crate) async fn test_with_http_executor(
 /// expectations are validated later via the collected output and exit code. Any other write
 /// failure is returned as an error.
 ///
-async fn send_payload(user_vm: &mut UserVm, payload: &[u8]) -> Result<()> {
+pub(super) async fn send_payload(user_vm: &mut UserVm, payload: &[u8]) -> Result<()> {
     trace!("send_payload(): payload_len={}, payload={:?}", payload.len(), payload);
     if let Err(error) = user_vm.gateway_stream().write_all(payload).await {
         match error.kind() {
@@ -295,7 +295,7 @@ async fn close_gateway_input(user_vm: &mut UserVm) -> Result<()> {
 /// Returns the captured bytes when the read succeeds; returns an error on socket read failures,
 /// pattern mismatches, or timeout expiration.
 ///
-async fn receive_payload(
+pub(super) async fn receive_payload(
     user_vm: &mut UserVm,
     expected_pattern: Option<&[u8]>,
     timeout_duration: Duration,

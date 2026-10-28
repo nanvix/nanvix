@@ -8,6 +8,7 @@
 mod common;
 pub mod empty;
 pub mod http;
+pub mod signal;
 pub mod snapshot_restore;
 pub mod snapshot_save_exit;
 pub mod terminal;
@@ -215,6 +216,8 @@ pub enum ExecutorName {
     Empty,
     /// HTTP executor.
     Http,
+    /// Signal executor.
+    Signal,
     /// Snapshot save / restore executor.
     SnapshotRestore,
     /// Snapshot save / host-exit executor.
@@ -241,6 +244,7 @@ impl ExecutorName {
         match identifier {
             "empty" => Ok(Self::Empty),
             "http" => Ok(Self::Http),
+            "signal" => Ok(Self::Signal),
             "snapshot-restore" => Ok(Self::SnapshotRestore),
             "snapshot-save-exit" => Ok(Self::SnapshotSaveExit),
             "terminal" => Ok(Self::Terminal),
@@ -262,6 +266,7 @@ impl ExecutorName {
         match self {
             Self::Empty => "empty",
             Self::Http => "http",
+            Self::Signal => "signal",
             Self::SnapshotRestore => "snapshot-restore",
             Self::SnapshotSaveExit => "snapshot-save-exit",
             Self::Terminal => "terminal",

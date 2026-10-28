@@ -45,7 +45,10 @@ use ::reqwest::{
     },
 };
 use ::tokio::{
-    task::block_in_place,
+    task::{
+        JoinHandle,
+        block_in_place,
+    },
     time::{
         Duration,
         Instant,
@@ -67,6 +70,9 @@ pub struct UserVm {
     request_url: String,
     /// Identifier assigned to this User VM by the Nanvix Daemon.
     user_vm_id: UserVmIdentifier,
+    /// Address of the gateway endpoint of the User VM, as reported by the Nanvix Daemon.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    gateway_sockaddr: String,
     /// Socket stream wired to the User VM gateway for I/O.
     gateway_stream: GatewayStream,
     /// Milliseconds to wait after shutting down a User VM.
@@ -161,6 +167,7 @@ impl UserVm {
         Ok(Self {
             request_url,
             user_vm_id: response.user_vm_id,
+            gateway_sockaddr: response.gateway_sockaddr,
             gateway_stream,
             cleanup_uservm_sleep_duration_ms: config.cleanup_uservm_sleep_duration_ms,
             terminated: false,
@@ -324,13 +331,18 @@ impl UserVm {
     ///
     /// - `request_url`: Endpoint used to reach the Nanvix Daemon.
     /// - `user_vm_id`: Identifier of the User VM that should be terminated.
+    /// - `cleanup_delay`: Time to wait after the User VM is terminated.
     ///
     /// # Return Value
     ///
     /// Returns the exit code reported by the User VM on success; returns an error if the request
     /// or response handling fails.
     ///
-    async fn kill(&self, request_url: String, user_vm_id: UserVmIdentifier) -> Result<i32> {
+    async fn kill(
+        request_url: String,
+        user_vm_id: UserVmIdentifier,
+        cleanup_delay: Duration,
+    ) -> Result<i32> {
         trace!("kill(): user_vm_id={user_vm_id}");
 
         let client: Client = Self::build_control_plane_client()?;
@@ -403,7 +415,7 @@ impl UserVm {
             debug!("kill(): uservm {} terminated", user_vm_id);
         }
 
-        sleep(self.cleanup_delay()).await;
+        sleep(cleanup_delay).await;
 
         Ok(exit_code)
     }
@@ -429,9 +441,59 @@ impl UserVm {
     pub async fn terminate(&mut self) -> Result<i32> {
         let request_url: String = self.request_url.clone();
         let user_vm_id: UserVmIdentifier = self.user_vm_id;
-        let exit_code: i32 = self.kill(request_url, user_vm_id).await?;
+        let exit_code: i32 = Self::kill(request_url, user_vm_id, self.cleanup_delay()).await?;
         self.terminated = true;
         Ok(exit_code)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sends a KILL request for the User VM from a background task, without waiting for it to
+    /// complete.
+    ///
+    /// The Nanvix Daemon only replies to a KILL request once the workload exits, so the request
+    /// stays in flight until then. It fails if the Nanvix Daemon closes the connection first, for
+    /// instance because it shuts down.
+    ///
+    /// # Return Value
+    ///
+    /// Returns a handle to the background task, which yields the exit code reported by the User
+    /// VM, or an error if the request fails.
+    ///
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub fn spawn_kill(&self) -> JoinHandle<Result<i32>> {
+        ::tokio::spawn(Self::kill(self.request_url.clone(), self.user_vm_id, self.cleanup_delay()))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Gives up the responsibility of terminating the User VM, so that dropping this handle no
+    /// longer terminates it.
+    ///
+    /// This method should be called when the User VM is taken down by other means, such as when
+    /// the Nanvix Daemon shuts down. Terminating a User VM waits for its workload to exit, which
+    /// would block forever on a workload that waits for more input.
+    ///
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub fn disown(&mut self) {
+        self.terminated = true;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the address of the gateway endpoint of the User VM, as reported by the Nanvix
+    /// Daemon.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the gateway endpoint address (a socket path on Unix).
+    ///
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub fn gateway_sockaddr(&self) -> &str {
+        self.gateway_sockaddr.as_str()
     }
 }
 
@@ -460,8 +522,9 @@ impl Drop for UserVm {
             let request_url: String = self.request_url.clone();
             let user_vm_id: UserVmIdentifier = self.user_vm_id;
 
-            let kill_result: Result<i32> =
-                block_in_place(|| handle.block_on(self.kill(request_url, user_vm_id)));
+            let kill_result: Result<i32> = block_in_place(|| {
+                handle.block_on(Self::kill(request_url, user_vm_id, self.cleanup_delay()))
+            });
 
             match kill_result {
                 Ok(exit_code) if exit_code != 0 => {
@@ -481,9 +544,11 @@ impl Drop for UserVm {
             }
         } else {
             match ::tokio::runtime::Runtime::new() {
-                Ok(runtime) => match runtime
-                    .block_on(self.kill(self.request_url.clone(), self.user_vm_id))
-                {
+                Ok(runtime) => match runtime.block_on(Self::kill(
+                    self.request_url.clone(),
+                    self.user_vm_id,
+                    self.cleanup_delay(),
+                )) {
                     Ok(exit_code) if exit_code != 0 => {
                         debug!(
                             "drop(): user VM terminated with non-zero exit code (user_vm_id={}, \

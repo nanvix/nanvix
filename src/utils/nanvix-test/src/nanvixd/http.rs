@@ -17,6 +17,8 @@ use ::log::{
     trace,
 };
 use ::no_fail::no_fail;
+#[cfg(unix)]
+use ::std::time::Duration;
 use ::std::{
     fs::{
         File,
@@ -28,6 +30,8 @@ use ::std::{
     },
     process::Stdio,
 };
+#[cfg(unix)]
+use ::tokio::time::timeout;
 use ::tokio::{
     net::TcpStream,
     process::Command,
@@ -198,6 +202,44 @@ impl NanvixdHttp {
     ///
     fn http_address(&self) -> String {
         format!("{}:{}", self.ipv4_addr, self.port_num)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Sends a signal to the Nanvix Daemon and waits for it to exit.
+    ///
+    /// # Parameters
+    ///
+    /// - `signal`: Signal number to deliver.
+    /// - `timeout_duration`: Maximum time to wait for the Nanvix Daemon to exit.
+    ///
+    /// # Return Value
+    ///
+    /// Returns the exit code of the Nanvix Daemon; returns an error when the signal cannot be
+    /// delivered, when the Nanvix Daemon does not exit in time, or when it is terminated by a
+    /// signal, which means that it did not handle the signal.
+    ///
+    #[cfg(unix)]
+    pub async fn signal_and_wait_exit(
+        &mut self,
+        signal: ::libc::c_int,
+        timeout_duration: Duration,
+    ) -> Result<i32> {
+        self.inner.signal(signal)?;
+        match timeout(timeout_duration, self.inner.wait_exit_code()).await {
+            Ok(result) => result,
+            Err(_elapsed) => {
+                let reason: String = format!(
+                    "nanvixd did not exit after signal (signal={signal}, timeout_ms={}, \
+                     context={})",
+                    timeout_duration.as_millis(),
+                    self.inner.context_label()
+                );
+                error!("signal_and_wait_exit(): {reason}");
+                Err(::anyhow::anyhow!(reason))
+            },
+        }
     }
 }
 
