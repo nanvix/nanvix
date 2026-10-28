@@ -18,7 +18,8 @@
 #   --kill-process-group      Kill a specific process group gracefully (SIGTERM then SIGKILL).
 #   --process-group-pid PID   PID of the process group to kill (requires --kill-process-group).
 #   --graceful-timeout SEC    Timeout for graceful shutdown in seconds (default: 10).
-#   --sockets                 Clean up stale socket files (/tmp/*.socket).
+#   --sockets                 Clean up leaked gateway sockets (/tmp/nvx-standalone-gw-*.sock).
+#   --list-sockets            List leaked gateway sockets, one path per line on stdout.
 #   --temp-dirs               Clean up temporary directories (nvx:*, nanvix-test-*, etc.).
 #   --wait-port PORT          Wait for a TCP port to become available.
 #   --wait-port-timeout SEC   Maximum time to wait for port (default: 70).
@@ -38,6 +39,11 @@ readonly DEFAULT_GRACEFUL_TIMEOUT=10
 readonly DEFAULT_PORT_WAIT_TIMEOUT=70
 readonly POLL_INTERVAL_SECONDS=2
 readonly POLL_INTERVAL_DECISECONDS=1
+# Directory of the gateway sockets that nanvixd binds by default, and regular expression that
+# matches their names (nvx-standalone-gw-<pid>.sock). Matching nothing but digits for the process ID
+# ensures that listed paths never contain a newline, so they can be safely processed one per line.
+readonly GATEWAY_SOCKET_DIR="/tmp"
+readonly GATEWAY_SOCKET_NAME_REGEX="nvx-standalone-gw-[0-9]+\.sock"
 
 #===================================================================================================
 # Global Variables
@@ -49,6 +55,7 @@ DO_KILL_PROCESS_GROUP=false
 PROCESS_GROUP_PID=""
 GRACEFUL_TIMEOUT="${DEFAULT_GRACEFUL_TIMEOUT}"
 DO_SOCKETS=false
+DO_LIST_SOCKETS=false
 DO_TEMP_DIRS=false
 WAIT_PORT=""
 PORT_WAIT_TIMEOUT="${DEFAULT_PORT_WAIT_TIMEOUT}"
@@ -107,7 +114,8 @@ Options:
   --kill-process-group    Kill a specific process group gracefully
   --process-group-pid PID PID of the process group to kill
   --graceful-timeout SEC  Timeout for graceful shutdown (default: ${DEFAULT_GRACEFUL_TIMEOUT})
-  --sockets               Clean up stale socket files
+  --sockets               Clean up leaked nanvixd gateway sockets
+  --list-sockets          List leaked nanvixd gateway sockets
   --temp-dirs             Clean up temporary directories
   --wait-port PORT        Wait for a TCP port to become available
   --wait-port-timeout SEC Maximum time to wait for port (default: ${DEFAULT_PORT_WAIT_TIMEOUT})
@@ -121,6 +129,9 @@ Examples:
 
   # Clean up after a test run
   ${SCRIPT_NAME} --sockets --temp-dirs
+
+  # Check for gateway sockets leaked by nanvixd
+  ${SCRIPT_NAME} --list-sockets
 
   # Kill dangling processes and wait for port
   ${SCRIPT_NAME} --kill-processes --wait-port 9999
@@ -215,11 +226,32 @@ cleanup_kill_process_group() {
 #
 # Description
 #
-#   Cleans up stale socket files.
+#   Lists the gateway sockets that nanvixd left behind, one path per line on stdout.
+#
+#   nanvixd binds a gateway socket for each VM, and it removes the socket when it tears the VM
+#   down, including when it shuts down gracefully on SIGINT, SIGTERM, SIGHUP, or SIGQUIT. Once
+#   every nanvixd process is gone, any remaining gateway socket was leaked, which happens when
+#   nanvixd is killed with SIGKILL or crashes.
+#
+list_sockets() {
+    find "${GATEWAY_SOCKET_DIR}" -maxdepth 1 -type s -regextype posix-extended \
+        -regex "${GATEWAY_SOCKET_DIR}/${GATEWAY_SOCKET_NAME_REGEX}" 2>/dev/null | sort || true
+}
+
+#
+# Description
+#
+#   Cleans up the gateway sockets that nanvixd left behind.
 #
 cleanup_sockets() {
-    log_info "Cleaning up socket files..."
-    rm -f /tmp/*.socket 2>/dev/null || true
+    log_info "Cleaning up gateway sockets..."
+    local socket
+    while IFS= read -r socket; do
+        log_verbose "Removing ${socket}..."
+        if ! rm -f -- "${socket}" 2>/dev/null; then
+            log_warning "Failed to remove ${socket}."
+        fi
+    done < <(list_sockets)
     log_verbose "Socket cleanup completed."
 }
 
@@ -359,6 +391,10 @@ parse_arguments() {
                 DO_SOCKETS=true
                 shift
                 ;;
+            --list-sockets)
+                DO_LIST_SOCKETS=true
+                shift
+                ;;
             --temp-dirs)
                 DO_TEMP_DIRS=true
                 shift
@@ -418,6 +454,12 @@ main() {
     fi
 
     local any_action=false
+
+    # List leaked sockets before any cleanup action gets a chance to remove them.
+    if [ "${DO_LIST_SOCKETS}" = true ]; then
+        list_sockets
+        any_action=true
+    fi
 
     if [ "${DO_KILL_PROCESSES}" = true ]; then
         cleanup_kill_processes
