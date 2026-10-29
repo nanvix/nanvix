@@ -62,6 +62,10 @@ use crate::{
         WorkloadSpec,
         empty::empty,
         http::test_with_http_executor,
+        signal::{
+            SignalSpec,
+            test_with_signal_executor,
+        },
         snapshot_restore::test_with_snapshot_restore_executor,
         snapshot_save_exit::test_with_snapshot_save_exit_executor,
         terminal::test_with_terminal_executor,
@@ -479,6 +483,8 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
             build_modes: _,
             program_env,
             program_args_padding_len,
+            signal,
+            kill_in_flight,
         } = test_config;
 
         // When program_args_padding_len is set, generate a synthetic argument string.
@@ -513,7 +519,7 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
         debug!(
             "main(): running test (executor={}, name={}, iterations={}, program={:?}, \
              program_args={:?}, program_env={:?}, expected_output={:?}, expect_empty_output={}, \
-             expected_exit_code={:?}, extra_nanvixd_args={:?})",
+             expected_exit_code={:?}, extra_nanvixd_args={:?}, signal={:?}, kill_in_flight={})",
             executor,
             name,
             iterations,
@@ -523,7 +529,9 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
             expected_output,
             expect_empty_output,
             expected_exit_code,
-            extra_nanvixd_args
+            extra_nanvixd_args,
+            signal,
+            kill_in_flight
         );
 
         let executor_name: ExecutorName = ExecutorName::from_str(executor.as_str())?;
@@ -591,6 +599,70 @@ async fn run(cancellation_token: CancellationToken) -> Result<()> {
             (ExecutorName::Http, None) => {
                 let reason: String =
                     "tests entries with http executor must define the 'program' field".to_string();
+                error!("main(): {reason}");
+                return Err(::anyhow::anyhow!(reason));
+            },
+            (ExecutorName::Signal, Some(program_path)) => {
+                if !Path::new(program_path.as_str()).exists() {
+                    warn_with_policy!(
+                        "main(): skipping tests with signal executor because program path is \
+                         missing (path={})",
+                        program_path
+                    );
+                    warning::fail_if_triggered("signal executor missing program")?;
+                    continue;
+                }
+
+                let Some(signal_name) = signal.as_deref() else {
+                    let reason: String = "test entries with signal executor must define the \
+                                          'signal' field"
+                        .to_string();
+                    error!("main(): {reason}");
+                    return Err(::anyhow::anyhow!(reason));
+                };
+
+                // Each kind of signal test gets its own log directory, as tests usually share
+                // their program.
+                let log_label: String = if kill_in_flight {
+                    format!("{signal_name}-kill-in-flight")
+                } else {
+                    signal_name.to_string()
+                };
+                let log_layout: TestLogLayout = TestLogLayout::for_label(
+                    log_root,
+                    ExecutorName::Signal.to_str(),
+                    log_label.as_str(),
+                )?;
+
+                let workload: WorkloadSpec = WorkloadSpec::new(
+                    program_path.as_str(),
+                    program_args.as_deref(),
+                    program_env.as_deref(),
+                    input.as_deref(),
+                    expected_output.as_deref(),
+                    expect_empty_output,
+                    expected_exit_code,
+                );
+
+                test_with_signal_executor(
+                    &runner_config,
+                    iterations,
+                    workload,
+                    SignalSpec::new(signal_name, kill_in_flight),
+                    &log_layout,
+                    &extra_nanvixd_args,
+                    cancellation_token.clone(),
+                )
+                .await?;
+                let context: String = format!(
+                    "signal executor completed (program={}, signal={}, kill_in_flight={}, test={})",
+                    program_path, signal_name, kill_in_flight, executor
+                );
+                warning::fail_if_triggered(context.as_str())?;
+            },
+            (ExecutorName::Signal, None) => {
+                let reason: String =
+                    "test entries with signal executor must define the 'program' field".to_string();
                 error!("main(): {reason}");
                 return Err(::anyhow::anyhow!(reason));
             },

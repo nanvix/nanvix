@@ -165,6 +165,62 @@ extra_nanvixd_args = "-ramfs ./bin/standalone-rootfs.img"
 expected_output = "ok"
 
 #===================================================================================================
+# Signal Executor Tests
+#===================================================================================================
+
+# Each test signals nanvixd while a workload is running, and checks that nanvixd shuts down
+# gracefully: it must exit successfully and remove the gateway socket of the workload. The echo
+# workload keeps running after it echoes the input, waiting for more input that never arrives. With
+# kill_in_flight, a KILL request waits for the workload to exit when nanvixd is signaled, as the
+# containerd shim does to learn the exit code of the workload, and nanvixd must cancel it.
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "signal"
+name = "signal/SIGINT"
+program = "./bin/echo-rust-nostd.initrd"
+input = "hello world!\n"
+expected_output = "hello world!"
+signal = "SIGINT"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "signal"
+name = "signal/SIGTERM"
+program = "./bin/echo-rust-nostd.initrd"
+input = "hello world!\n"
+expected_output = "hello world!"
+signal = "SIGTERM"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "signal"
+name = "signal/SIGHUP"
+program = "./bin/echo-rust-nostd.initrd"
+input = "hello world!\n"
+expected_output = "hello world!"
+signal = "SIGHUP"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "signal"
+name = "signal/SIGQUIT"
+program = "./bin/echo-rust-nostd.initrd"
+input = "hello world!\n"
+expected_output = "hello world!"
+signal = "SIGQUIT"
+
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "signal"
+name = "signal/SIGTERM-kill-in-flight"
+program = "./bin/echo-rust-nostd.initrd"
+input = "hello world!\n"
+expected_output = "hello world!"
+signal = "SIGTERM"
+kill_in_flight = true
+
+#===================================================================================================
 # Terminal Executor Tests (Interactive Mode)
 #===================================================================================================
 

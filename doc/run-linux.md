@@ -266,7 +266,10 @@ curl \
 
 ### Shutting Down the Server
 
-Press `Ctrl-C` in the terminal where `nanvixd` is running.
+Press `Ctrl-C` in the terminal where `nanvixd` is running, or send it `SIGTERM` (for instance, with
+`kill <pid>`). `nanvixd` shuts down gracefully on `SIGINT`, `SIGTERM`, `SIGHUP`, and `SIGQUIT`: it
+tears down the running application and removes its gateway socket before it exits. Avoid `SIGKILL`
+(`kill -9`), which cannot be handled, and leaves the gateway socket behind.
 
 ### HTTP API Reference
 

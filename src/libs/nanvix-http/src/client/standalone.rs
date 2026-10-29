@@ -87,14 +87,35 @@ struct RunningVm {
     /// Task bridging the cross-platform gateway endpoint with the
     /// guest's IKC I/O channels.
     _gateway_bridge: JoinHandle<()>,
-    /// Path of the gateway endpoint (UDS path on Unix, named pipe path
-    /// on Windows). On Unix it is read at kill/cleanup to `unlink(2)`
-    /// the underlying socket file; on Windows the named pipe is
-    /// reclaimed automatically when the bridge task drops its server
-    /// handle, so the field is only used to return the endpoint in
-    /// the `NEW` response and is otherwise unread on that platform.
-    #[cfg_attr(windows, allow(dead_code))]
-    gateway_sockaddr: String,
+    /// Path of the gateway endpoint, held so that dropping it, along with the
+    /// rest of the VM, removes the gateway socket file on Unix: the file goes
+    /// away with the VM on every teardown path (see [`GatewayEndpointPath`]).
+    _gateway_path: GatewayEndpointPath,
+}
+
+///
+/// # Description
+///
+/// Path of the gateway endpoint bound for a running VM.
+///
+/// On Unix, the gateway endpoint is a Unix-domain socket, whose file outlives the listener that
+/// bound it. Dropping this value removes the socket file, which ties the lifetime of the file to
+/// the [`RunningVm`] that owns it: the file is removed on every path that tears the VM down,
+/// including a `KILL` request that is cancelled before the VM exits. Only the socket file that was
+/// bound is removed: if another file has replaced it at the same path, that file is left alone.
+/// This check is best effort, as it cannot be made atomic with the removal, so a file that replaces
+/// the socket right between the check and the removal is removed nonetheless. This only matters if
+/// several daemons are configured with the same gateway path, which is not supported anyway, as
+/// binding a gateway endpoint removes any file found at its path. On Windows, the gateway endpoint
+/// is a named pipe, which the OS reclaims once its last handle is closed, so dropping this value
+/// has no effect.
+///
+struct GatewayEndpointPath {
+    /// Path at which the gateway endpoint is bound.
+    path: String,
+    /// Device and inode numbers of the socket file that was bound at `path`.
+    #[cfg(unix)]
+    file_id: (u64, u64),
 }
 
 ///
@@ -139,25 +160,139 @@ impl StandaloneState {
     ///
     /// # Description
     ///
-    /// Performs cleanup by aborting the running VM if one exists.
+    /// Performs cleanup by aborting the running VM if one exists, which removes its gateway
+    /// socket.
     ///
     pub async fn cleanup(&self) {
         if let Some(vm) = self.running_vm.lock().await.take() {
             info!("cleanup(): aborting VM");
-            vm._gateway_bridge.abort();
-            vm.handle.abort_and_wait().await;
-            #[cfg(unix)]
-            if let Err(e) = ::std::fs::remove_file(&vm.gateway_sockaddr) {
-                if e.kind() != ::std::io::ErrorKind::NotFound {
-                    warn!(
-                        "cleanup(): failed to remove gateway socket {}: {e}",
-                        vm.gateway_sockaddr
-                    );
-                }
-            }
+            vm.abort_and_wait().await;
             debug!("cleanup(): VM cleaned up");
         }
     }
+}
+
+impl RunningVm {
+    ///
+    /// # Description
+    ///
+    /// Waits for the VM to exit, and then tears it down.
+    ///
+    /// The gateway bridge keeps relaying guest output until the VM exits: aborting it earlier
+    /// would drop `output_rx`, which makes the standalone I/O handler fail guest write() calls (see
+    /// `uservm::standalone::handle_write_request`), truncating logs and potentially disrupting
+    /// guest shutdown. The bridge typically exits on its own once the guest closes its I/O
+    /// channels, but it is aborted once the VM has exited, in case the host-side consumer is still
+    /// connected.
+    ///
+    /// This method takes ownership of the VM, so the path of its gateway endpoint goes out of scope
+    /// when this method completes, which removes the gateway socket: the socket is gone by the time
+    /// the caller learns that the VM exited. If this method is cancelled while it waits, the path
+    /// goes out of scope along with the rest of the VM, so the socket is removed as well.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the exit status of the VM. On failure, returns an error describing why
+    /// the VM failed.
+    ///
+    async fn wait(self) -> Result<u16> {
+        let wait_result: Result<u16> = self.handle.wait().await;
+        self._gateway_bridge.abort();
+        wait_result
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Aborts the VM along with its gateway bridge, waits for the VM to settle, and then tears it
+    /// down.
+    ///
+    /// This method takes ownership of the VM, so the path of its gateway endpoint goes out of scope
+    /// when this method completes, which removes the gateway socket.
+    ///
+    async fn abort_and_wait(self) {
+        self._gateway_bridge.abort();
+        self.handle.abort_and_wait().await;
+    }
+}
+
+impl GatewayEndpointPath {
+    ///
+    /// # Description
+    ///
+    /// Takes ownership of the gateway endpoint that was just bound at a given path.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: Path at which the gateway endpoint was bound.
+    ///
+    /// # Returns
+    ///
+    /// On success, returns the path of the gateway endpoint, which removes the endpoint from the
+    /// filesystem when dropped on Unix. On failure, returns an error if the socket file of the
+    /// endpoint cannot be inspected on Unix.
+    ///
+    fn new(path: &str) -> ::std::io::Result<Self> {
+        #[cfg(unix)]
+        let file_id: (u64, u64) = file_id(&::std::fs::symlink_metadata(path)?);
+        Ok(Self {
+            path: path.to_string(),
+            #[cfg(unix)]
+            file_id,
+        })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the path at which the gateway endpoint is bound.
+    ///
+    fn as_str(&self) -> &str {
+        self.path.as_str()
+    }
+}
+
+#[cfg(unix)]
+impl Drop for GatewayEndpointPath {
+    fn drop(&mut self) {
+        // Leave the path alone if it no longer refers to the socket file that was bound there.
+        match ::std::fs::symlink_metadata(&self.path) {
+            Ok(metadata) if file_id(&metadata) == self.file_id => {},
+            Ok(_) => {
+                warn!("drop(): gateway socket {} was replaced, leaving it in place", self.path);
+                return;
+            },
+            Err(e) if e.kind() == ::std::io::ErrorKind::NotFound => return,
+            Err(e) => {
+                warn!("drop(): failed to inspect gateway socket {} (error={e})", self.path);
+                return;
+            },
+        }
+        match ::std::fs::remove_file(&self.path) {
+            Ok(()) => debug!("drop(): removed gateway socket {}", self.path),
+            Err(e) if e.kind() == ::std::io::ErrorKind::NotFound => {},
+            Err(e) => warn!("drop(): failed to remove gateway socket {} (error={e})", self.path),
+        }
+    }
+}
+
+///
+/// # Description
+///
+/// Returns the device and inode numbers that identify a file.
+///
+/// # Parameters
+///
+/// - `metadata`: Metadata of the file.
+///
+/// # Returns
+///
+/// The device and inode numbers of the file.
+///
+#[cfg(unix)]
+fn file_id(metadata: &::std::fs::Metadata) -> (u64, u64) {
+    use ::std::os::unix::fs::MetadataExt;
+    (metadata.dev(), metadata.ino())
 }
 
 ///
@@ -268,28 +403,30 @@ impl super::HttpClient {
             Some(p) => p.to_string(),
             None => default_gateway_path(),
         };
-        let endpoint: GatewayEndpoint = match bind_gateway_endpoint(&endpoint_path).await {
-            Ok(ep) => ep,
-            Err(e) => {
-                let reason: String =
-                    format!("failed to bind gateway endpoint at {endpoint_path}: {e}");
-                error!("serve_new(): {reason}");
-                handle.abort();
-                anyhow::bail!(reason);
-            },
-        };
+        let (endpoint, gateway_path): (GatewayEndpoint, GatewayEndpointPath) =
+            match bind_gateway_endpoint(&endpoint_path).await {
+                Ok(bound) => bound,
+                Err(e) => {
+                    let reason: String =
+                        format!("failed to bind gateway endpoint at {endpoint_path}: {e}");
+                    error!("serve_new(): {reason}");
+                    handle.abort();
+                    anyhow::bail!(reason);
+                },
+            };
         debug!("serve_new(): gateway endpoint bound at {endpoint_path}");
         let gateway_bridge: JoinHandle<()> = tokio::spawn(gateway_bridge_task(endpoint, io));
+        let gateway_sockaddr: String = gateway_path.as_str().to_string();
 
         *guard = Some(RunningVm {
             handle,
             _gateway_bridge: gateway_bridge,
-            gateway_sockaddr: endpoint_path.clone(),
+            _gateway_path: gateway_path,
         });
 
         Ok(message::NewResponse {
             user_vm_id: STANDALONE_VM_ID,
-            gateway_sockaddr: endpoint_path,
+            gateway_sockaddr,
         })
     }
 
@@ -299,7 +436,8 @@ impl super::HttpClient {
     /// Handles a KILL request by waiting for the specified VM to finish.
     ///
     /// The VM is removed from the running registry and its exit status is returned. The I/O
-    /// handler task is also awaited to ensure clean shutdown.
+    /// handler task is also awaited to ensure clean shutdown, and the VM is torn down before its
+    /// exit status is returned, which removes its gateway socket.
     ///
     /// # Parameters
     ///
@@ -317,40 +455,17 @@ impl super::HttpClient {
     ) -> Result<message::KillResponse> {
         let vm: Option<RunningVm> = state.running_vm.lock().await.take();
         match vm {
-            Some(running) => {
-                // Await VM exit first so the gateway bridge keeps draining
-                // guest stdout/stderr until the guest itself terminates.
-                // Aborting the bridge prematurely drops `output_rx`, which
-                // causes the standalone I/O handler to return `-1` from
-                // guest write() calls (see `uservm::standalone::
-                // handle_write_request`), truncating logs and potentially
-                // disrupting guest shutdown.
-                let wait_result = running.handle.wait().await;
-                // Defensive cleanup: the bridge typically exits on its own
-                // once the guest closes its I/O channels, but abort it here
-                // in case the host-side consumer is still connected.
-                running._gateway_bridge.abort();
-                #[cfg(unix)]
-                if let Err(e) = ::std::fs::remove_file(&running.gateway_sockaddr) {
-                    if e.kind() != ::std::io::ErrorKind::NotFound {
-                        warn!(
-                            "serve_kill(): failed to remove gateway socket {}: {e}",
-                            running.gateway_sockaddr
-                        );
-                    }
-                }
-                match wait_result {
-                    Ok(exit_status) => {
-                        debug!("serve_kill(): VM exited (exit_status={exit_status})");
-                        Ok(message::KillResponse {
-                            exit_code: i32::from(exit_status),
-                        })
-                    },
-                    Err(error) => {
-                        error!("serve_kill(): VM failed (error={error:?})");
-                        Ok(message::KillResponse { exit_code: -1 })
-                    },
-                }
+            Some(running) => match running.wait().await {
+                Ok(exit_status) => {
+                    debug!("serve_kill(): VM exited (exit_status={exit_status})");
+                    Ok(message::KillResponse {
+                        exit_code: i32::from(exit_status),
+                    })
+                },
+                Err(error) => {
+                    error!("serve_kill(): VM failed (error={error:?})");
+                    Ok(message::KillResponse { exit_code: -1 })
+                },
             },
             None => {
                 let reason: &str = "no VM is running in standalone mode";
@@ -529,7 +644,9 @@ fn default_gateway_path() -> String {
 }
 
 #[cfg(unix)]
-async fn bind_gateway_endpoint(path: &str) -> ::anyhow::Result<GatewayEndpoint> {
+async fn bind_gateway_endpoint(
+    path: &str,
+) -> ::anyhow::Result<(GatewayEndpoint, GatewayEndpointPath)> {
     // Ensure parent directory exists (operator-supplied paths may point
     // into a per-sandbox state dir that we created earlier). Propagate
     // any failure here so the operator sees the real cause instead of a
@@ -556,6 +673,10 @@ async fn bind_gateway_endpoint(path: &str) -> ::anyhow::Result<GatewayEndpoint> 
         },
     }
     let listener = UnixListener::bind(path)?;
+    // The socket file exists from now on, so take ownership of it right
+    // away: if any of the remaining steps fails, dropping the path removes
+    // the file instead of leaking it.
+    let gateway_path: GatewayEndpointPath = GatewayEndpointPath::new(path)?;
     // Restrict the gateway socket to the owning user. Without this the socket
     // inherits the process umask (typically 0755 / 0775) and any local user can
     // connect to the guest's stdin/stdout. This is in addition to per-sandbox
@@ -566,15 +687,17 @@ async fn bind_gateway_endpoint(path: &str) -> ::anyhow::Result<GatewayEndpoint> 
         perms.set_mode(0o600);
         ::std::fs::set_permissions(path, perms)?;
     }
-    Ok(GatewayEndpoint::Unix(listener))
+    Ok((GatewayEndpoint::Unix(listener), gateway_path))
 }
 
 #[cfg(windows)]
-async fn bind_gateway_endpoint(path: &str) -> ::anyhow::Result<GatewayEndpoint> {
+async fn bind_gateway_endpoint(
+    path: &str,
+) -> ::anyhow::Result<(GatewayEndpoint, GatewayEndpointPath)> {
     let server = ServerOptions::new()
         .first_pipe_instance(true)
         .create(path)?;
-    Ok(GatewayEndpoint::Pipe { server })
+    Ok((GatewayEndpoint::Pipe { server }, GatewayEndpointPath::new(path)?))
 }
 
 ///
@@ -745,5 +868,115 @@ where
         if input_tx.send(payload).await.is_err() {
             break;
         }
+    }
+}
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use ::nanvix_sandbox_config::{
+        HostFilter,
+        NetworkingMode,
+    };
+    use ::std::path::PathBuf;
+    use ::tempfile::TempDir;
+
+    #[tokio::test]
+    async fn gateway_endpoint_path_removes_socket_on_drop() {
+        let tmp_dir: TempDir = TempDir::new().expect("failed to create temporary directory");
+        let path: PathBuf = tmp_dir.path().join("gateway.sock");
+        let path_str: &str = path.to_str().expect("temporary path is not valid UTF-8");
+        let (endpoint, gateway_path): (GatewayEndpoint, GatewayEndpointPath) =
+            bind_gateway_endpoint(path_str)
+                .await
+                .expect("failed to bind gateway endpoint");
+        assert_eq!(gateway_path.as_str(), path_str);
+        assert!(path.exists(), "gateway socket should exist once bound");
+
+        // The socket file must go away with its path, even while the listener is still open.
+        drop(gateway_path);
+        assert!(!path.exists(), "gateway socket should be removed along with its path");
+        drop(endpoint);
+    }
+
+    #[tokio::test]
+    async fn gateway_endpoint_path_leaves_replaced_socket_alone() {
+        let tmp_dir: TempDir = TempDir::new().expect("failed to create temporary directory");
+        let path: PathBuf = tmp_dir.path().join("gateway.sock");
+        let path_str: &str = path.to_str().expect("temporary path is not valid UTF-8");
+        let (old_endpoint, old_gateway_path): (GatewayEndpoint, GatewayEndpointPath) =
+            bind_gateway_endpoint(path_str)
+                .await
+                .expect("failed to bind gateway endpoint");
+        // Another daemon that is configured with the same path binds its own gateway endpoint
+        // there, which replaces the socket file.
+        let (new_endpoint, new_gateway_path): (GatewayEndpoint, GatewayEndpointPath) =
+            bind_gateway_endpoint(path_str)
+                .await
+                .expect("failed to bind replacing gateway endpoint");
+
+        drop(old_gateway_path);
+        assert!(path.exists(), "replacing gateway socket should be left alone");
+        drop(new_gateway_path);
+        assert!(!path.exists(), "gateway socket should be removed along with its path");
+        drop(old_endpoint);
+        drop(new_endpoint);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn serve_kill_removes_gateway_socket() {
+        let tmp_dir: TempDir = TempDir::new().expect("failed to create temporary directory");
+        let gateway_path: PathBuf = tmp_dir.path().join("gateway.sock");
+        // VMs fail to boot right away, as their kernel does not exist.
+        let config: StandaloneConfig = StandaloneConfig::new(
+            tmp_dir
+                .path()
+                .join("missing-kernel.elf")
+                .to_string_lossy()
+                .into_owned(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            NetworkingMode::Disabled,
+            HostFilter::default(),
+            #[cfg(feature = "gdb")]
+            None,
+            Some(gateway_path.to_string_lossy().into_owned()),
+        );
+        let state: Arc<StandaloneState> = Arc::new(StandaloneState::new(config));
+
+        let new_message: message::New = message::New {
+            tenant_id: "tenant".to_string(),
+            app_name: "app".to_string(),
+            program: tmp_dir
+                .path()
+                .join("program.elf")
+                .to_string_lossy()
+                .into_owned(),
+            program_args: String::new(),
+        };
+        let new_response: message::NewResponse = HttpClient::serve_new(state.clone(), &new_message)
+            .await
+            .expect("failed to start VM");
+        assert!(gateway_path.exists(), "gateway socket should exist while the VM is running");
+
+        let kill_message: message::Kill = message::Kill {
+            user_vm_id: new_response.user_vm_id,
+        };
+        let kill_response: message::KillResponse =
+            HttpClient::serve_kill(state.clone(), &kill_message)
+                .await
+                .expect("failed to kill VM");
+        assert_eq!(kill_response.exit_code, -1, "VM without a kernel should fail");
+        // The reply to the KILL request is built from the returned response, so the socket must
+        // be gone by the time the client learns that the VM exited.
+        assert!(!gateway_path.exists(), "gateway socket should be removed when KILL completes");
+        assert!(!state.has_running_vm().await, "VM should no longer be running");
     }
 }

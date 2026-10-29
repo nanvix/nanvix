@@ -30,8 +30,12 @@ use ::nanvixd::args::Args;
 use ::std::{
     path::Path,
     process::ExitCode,
+    time::Duration,
 };
-use ::tokio::fs;
+use ::tokio::{
+    fs,
+    runtime::Runtime,
+};
 
 //==================================================================================================
 // Constants
@@ -45,6 +49,13 @@ const MAX_EXIT_CODE: i32 = 255;
 
 /// Binary name for Kernel.
 const KERNEL_BINARY_NAME: &str = "kernel.elf";
+
+/// Maximum time to wait on exit for work that is still running on the Tokio runtime.
+///
+/// When the daemon shuts down while a VM is running, it tears the VM down, but the vCPU thread of
+/// the VM, which runs on the blocking thread pool of the runtime, keeps running the guest until
+/// the process exits. Dropping the runtime would wait for that thread forever.
+const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 //==================================================================================================
 // Standalone Functions
@@ -60,11 +71,15 @@ const KERNEL_BINARY_NAME: &str = "kernel.elf";
 /// On success, returns the workload exit code in interactive mode or success in HTTP mode.
 ///
 pub fn main() -> Result<ExitCode> {
-    let runtime: ::tokio::runtime::Runtime = ::tokio::runtime::Builder::new_multi_thread()
+    let runtime: Runtime = ::tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .map_err(|error| ::anyhow::anyhow!("failed to build tokio runtime: {error}"))?;
-    runtime.block_on(async_main())
+    let result: Result<ExitCode> = runtime.block_on(async_main());
+    // Bound the time spent waiting for leftover work, so that a VM that was torn down cannot keep
+    // the daemon alive. Work still running after the timeout ends when the process exits.
+    runtime.shutdown_timeout(RUNTIME_SHUTDOWN_TIMEOUT);
+    result
 }
 
 ///

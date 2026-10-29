@@ -18,7 +18,7 @@ Crashes or abnormal termination may leave stale resources.  Clean them up with:
 # Remove all stale Nanvix resources.
 sudo rm -rf /tmp/nvx:*
 rm -rf /tmp/nanvix-test-*
-sudo rm -f /tmp/*.socket
+rm -f /tmp/nvx-standalone-gw-*.sock
 ```
 
 There is also a cleanup script for `nanvixd` resources:
@@ -29,11 +29,16 @@ There is also a cleanup script for `nanvixd` resources:
 
 ### Resource Types
 
-| Resource           | Location            | Created By     |
-|--------------------|---------------------|----------------|
-| Temp directories   | `/tmp/nvx:*`        | `nanvixd`      |
-| Test directories   | `/tmp/nanvix-test-*`| Unit tests     |
-| Unix sockets       | `/tmp/*.socket`     | `syscomm`      |
+| Resource           | Location                        | Created By     |
+|--------------------|---------------------------------|----------------|
+| Temp directories   | `/tmp/nvx:*`                    | `nanvixd`      |
+| Test directories   | `/tmp/nanvix-test-*`            | Unit tests     |
+| Gateway sockets    | `/tmp/nvx-standalone-gw-*.sock` | `nanvixd`      |
+
+`nanvixd` removes the gateway socket of a User VM when it tears the VM down, including when it shuts
+down gracefully on `SIGINT`, `SIGTERM`, `SIGHUP`, or `SIGQUIT`, so gateway sockets leak only when
+`nanvixd` is killed with `SIGKILL` or crashes. To list leaked gateway sockets once no `nanvixd`
+process is running, use `./scripts/cleanup-nanvixd.sh --list-sockets`.
 
 ## Build Failures
 

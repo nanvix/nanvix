@@ -8,7 +8,7 @@ developing, building, or running Nanvix on Linux.
 - [Resource Leaks](#resource-leaks)
   - [Temporary Directories (`nvx:*`)](#temporary-directories-nvx)
   - [Test Directories (`nanvix-test-*`)](#test-directories-nanvix-test-)
-  - [Unix Sockets (`*.socket`)](#unix-sockets-socket)
+  - [Gateway Sockets (`nvx-standalone-gw-*.sock`)](#gateway-sockets-nvx-standalone-gw-sock)
   - [Complete Cleanup Script](#complete-cleanup-script)
 - [Cross-Platform Issues](#cross-platform-issues)
   - [Cached Build Options Stale (`./z`)](#cached-build-options-stale-z)
@@ -38,19 +38,30 @@ may leave stale resources behind that require manual cleanup.
 sudo rm -rf /tmp/nvx:*
 ```
 
-### Unix Sockets (`*.socket`)
+### Gateway Sockets (`nvx-standalone-gw-*.sock`)
 
-**Description:** Unix domain sockets used for inter-process communication between nanvixd
-components.
+**Description:** Unix domain sockets that `nanvixd` binds in HTTP mode, one for each User VM,
+through which a host-side consumer (for instance, the containerd shim or `nanvix-test`) exchanges
+the standard input and output of the guest. Unless `-gateway-sockaddr` gives another path, the
+socket of a User VM is bound at `/tmp/nvx-standalone-gw-<pid>.sock`, where `<pid>` is the process ID
+of `nanvixd`.
 
-**Location:** `/tmp/*.socket`
+**Location:** `/tmp/nvx-standalone-gw-*.sock`
 
-**Primary Cleanup:** `SocketListener::Drop` in `src/libs/syscomm/src/socket_listener.rs`
+**Primary Cleanup:** `GatewayEndpointPath::Drop` in `src/libs/nanvix-http/src/client/standalone.rs`,
+which runs whenever a User VM is torn down: when it is killed, and when `nanvixd` shuts down
+gracefully on `SIGINT`, `SIGTERM`, `SIGHUP`, or `SIGQUIT`. Gateway sockets leak only when `nanvixd`
+is killed with `SIGKILL` or crashes.
 
-**Manual Cleanup:**
+**Manual Cleanup:** Make sure that no `nanvixd` process is running first, as the commands below also
+match the sockets of running instances.
 
 ```bash
-sudo rm -f /tmp/*.socket
+# List leaked gateway sockets.
+./scripts/cleanup-nanvixd.sh --list-sockets
+
+# Remove leaked gateway sockets.
+./scripts/cleanup-nanvixd.sh --sockets
 ```
 
 ### Complete Cleanup Script
@@ -63,8 +74,8 @@ To clean all stale Nanvix resources at once:
 sudo rm -rf /tmp/nvx:*
 rm -rf /tmp/nanvix-test-*
 
-# Clean Unix sockets
-sudo rm -f /tmp/*.socket
+# Clean gateway sockets
+rm -f /tmp/nvx-standalone-gw-*.sock
 
 echo "Cleanup complete."
 ```

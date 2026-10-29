@@ -24,6 +24,12 @@ tokio = { workspace = true, features = ["full"] }
 uservm = { workspace = true }
 user-vm-api = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = { workspace = true }
+
 [features]
 default = ["microvm"]
 gdb = ["uservm/gdb", "nanvix-sandbox-config/gdb"]

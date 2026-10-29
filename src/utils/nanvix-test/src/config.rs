@@ -528,11 +528,22 @@ pub struct TestCaseConfig {
     /// When set, the runner creates a repeated-character string of exactly this many bytes and
     /// uses it as `program_args`. Mutually exclusive with `program_args`.
     pub program_args_padding_len: Option<usize>,
+    /// Name of the signal (e.g., `SIGTERM`) that the `signal` executor sends to nanvixd while the
+    /// workload is running. Required by the `signal` executor, and rejected by every other one.
+    pub signal: Option<String>,
+    /// Flag indicating that the `signal` executor keeps a KILL request in flight when it signals
+    /// nanvixd, as the containerd shim does to learn the exit code of the workload. Only
+    /// supported by the `signal` executor.
+    pub kill_in_flight: bool,
 }
 
 impl TestCaseConfig {
     /// Build modes recognized by the `build_modes` gate and by the active `BUILD_MODE` selector.
     pub const KNOWN_BUILD_MODES: [&'static str; 2] = ["debug", "release"];
+
+    /// Signals that the `signal` executor may send to nanvixd: the ones that nanvixd handles to
+    /// shut down gracefully.
+    pub const KNOWN_SIGNALS: [&'static str; 4] = ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"];
 
     ///
     /// # Description
@@ -568,6 +579,8 @@ impl TestCaseConfig {
         let program_env_field: String = format!("{entry_prefix}.program_env");
         let program_args_padding_len_field: String =
             format!("{entry_prefix}.program_args_padding_len");
+        let signal_field: String = format!("{entry_prefix}.signal");
+        let kill_in_flight_field: String = format!("{entry_prefix}.kill_in_flight");
 
         Ok(Self {
             executor: read_required_string(table, "executor", executor_field.as_str())?,
@@ -616,6 +629,13 @@ impl TestCaseConfig {
                 "program_args_padding_len",
                 program_args_padding_len_field.as_str(),
             )?,
+            signal: read_optional_string(table, "signal", signal_field.as_str())?,
+            kill_in_flight: read_bool_with_default(
+                table,
+                "kill_in_flight",
+                kill_in_flight_field.as_str(),
+                false,
+            )?,
         })
     }
 
@@ -642,9 +662,43 @@ impl TestCaseConfig {
             return Err(::anyhow::anyhow!(reason));
         }
 
-        if (self.executor == "http" || self.executor == "terminal") && self.program.is_none() {
+        if (self.executor == "http" || self.executor == "terminal" || self.executor == "signal")
+            && self.program.is_none()
+        {
             let reason: String = format!(
                 "tests[{index}] requires the 'program' field when executor is '{}'",
+                self.executor
+            );
+            return Err(::anyhow::anyhow!(reason));
+        }
+
+        match (self.executor.as_str(), self.signal.as_deref()) {
+            ("signal", None) => {
+                let reason: String =
+                    format!("tests[{index}] requires the 'signal' field when executor is 'signal'");
+                return Err(::anyhow::anyhow!(reason));
+            },
+            ("signal", Some(signal)) if !Self::KNOWN_SIGNALS.contains(&signal) => {
+                let reason: String = format!(
+                    "tests[{index}] has an unknown signal '{signal}' (known signals: {})",
+                    Self::KNOWN_SIGNALS.join(", ")
+                );
+                return Err(::anyhow::anyhow!(reason));
+            },
+            ("signal", Some(_)) | (_, None) => {},
+            (executor, Some(_)) => {
+                let reason: String = format!(
+                    "tests[{index}] cannot set 'signal' when executor is '{executor}' (only the \
+                     'signal' executor sends signals)"
+                );
+                return Err(::anyhow::anyhow!(reason));
+            },
+        }
+
+        if self.kill_in_flight && self.executor != "signal" {
+            let reason: String = format!(
+                "tests[{index}] cannot set 'kill_in_flight' when executor is '{}' (only the \
+                 'signal' executor supports it)",
                 self.executor
             );
             return Err(::anyhow::anyhow!(reason));
@@ -1790,6 +1844,8 @@ mod tests {
             build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: None,
+            signal: None,
+            kill_in_flight: false,
         };
         config.validate(0)?;
         Ok(())
@@ -1813,6 +1869,8 @@ mod tests {
             build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: None,
+            signal: None,
+            kill_in_flight: false,
         };
         config.validate(0)?;
         Ok(())
@@ -1910,6 +1968,8 @@ mod tests {
             build_modes: vec!["debug".to_string()],
             program_env: None,
             program_args_padding_len: Some(100),
+            signal: None,
+            kill_in_flight: false,
         };
         let result = config.validate(0);
         assert!(
@@ -1937,6 +1997,8 @@ mod tests {
             build_modes,
             program_env: None,
             program_args_padding_len: None,
+            signal: None,
+            kill_in_flight: false,
         }
     }
 
@@ -1994,5 +2056,88 @@ mod tests {
         table.insert("iterations".to_string(), Value::Integer(1));
         let result: Result<TestCaseConfig> = TestCaseConfig::from_table(&table, 0);
         assert!(result.is_err(), "from_table() must reject a test entry missing 'build_modes'");
+    }
+
+    /// Builds a minimal test case configuration with the given executor and `signal` field.
+    fn config_with_signal(executor: &str, signal: Option<&str>) -> TestCaseConfig {
+        let mut config: TestCaseConfig = config_with_build_modes(vec!["debug".to_string()]);
+        config.executor = executor.to_string();
+        config.name = format!("{executor}/signal");
+        config.program = Some("./bin/test-program".to_string());
+        config.signal = signal.map(str::to_string);
+        config
+    }
+
+    #[test]
+    fn from_table_parses_signal() -> Result<()> {
+        let mut table: Table = build_test_table("signal", None);
+        table.insert("program".to_string(), Value::String("./bin/test-program".to_string()));
+        table.insert("signal".to_string(), Value::String("SIGTERM".to_string()));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert_eq!(config.signal.as_deref(), Some("SIGTERM"));
+        config.validate(0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn validate_accepts_known_signals() -> Result<()> {
+        for signal in TestCaseConfig::KNOWN_SIGNALS {
+            config_with_signal("signal", Some(signal)).validate(0)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn validate_rejects_signal_executor_without_signal() {
+        let result: Result<()> = config_with_signal("signal", None).validate(0);
+        assert!(result.is_err(), "validate() must require 'signal' for the signal executor");
+    }
+
+    #[test]
+    fn validate_rejects_unknown_signal() {
+        let result: Result<()> = config_with_signal("signal", Some("SIGKILL")).validate(0);
+        assert!(result.is_err(), "validate() must reject a signal that nanvixd does not handle");
+    }
+
+    #[test]
+    fn validate_rejects_signal_executor_without_program() {
+        let mut config: TestCaseConfig = config_with_signal("signal", Some("SIGTERM"));
+        config.program = None;
+        let result: Result<()> = config.validate(0);
+        assert!(result.is_err(), "validate() must require 'program' for the signal executor");
+    }
+
+    #[test]
+    fn validate_rejects_signal_for_other_executors() {
+        let result: Result<()> = config_with_signal("http", Some("SIGTERM")).validate(0);
+        assert!(result.is_err(), "validate() must reject 'signal' for executors that ignore it");
+    }
+
+    #[test]
+    fn from_table_parses_kill_in_flight() -> Result<()> {
+        let mut table: Table = build_test_table("signal", None);
+        table.insert("program".to_string(), Value::String("./bin/test-program".to_string()));
+        table.insert("signal".to_string(), Value::String("SIGTERM".to_string()));
+        table.insert("kill_in_flight".to_string(), Value::Boolean(true));
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert!(config.kill_in_flight);
+        config.validate(0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn from_table_defaults_kill_in_flight_to_false() -> Result<()> {
+        let table: Table = build_test_table("empty", None);
+        let config: TestCaseConfig = TestCaseConfig::from_table(&table, 0)?;
+        assert!(!config.kill_in_flight);
+        Ok(())
+    }
+
+    #[test]
+    fn validate_rejects_kill_in_flight_for_other_executors() {
+        let mut config: TestCaseConfig = config_with_signal("http", None);
+        config.kill_in_flight = true;
+        let result: Result<()> = config.validate(0);
+        assert!(result.is_err(), "validate() must reject 'kill_in_flight' for other executors");
     }
 }
