@@ -77,8 +77,6 @@ R2 src/libs/multibin/src/lib.rs mod tests tests=6
 R2 src/libs/multiimage/src/lib.rs mod tests tests=10
 R2 src/libs/nanvix-oci/src/config.rs mod tests tests=6
 R2 src/libs/nanvix-terminal/src/standalone.rs mod tests tests=6
-R3 src/libs/proc/src/daemon/mod.rs code send_process_exit_notification::{ let _request: &Message = request; Ok(()) }
-R3 src/libs/proc/src/daemon/mod.rs code send_terminal_detach_notification::{ let _request: &Message = request; Ok(()) }
 R3 src/libs/sys/src/sys/ipc/request/identifier_allocator.rs fn RequestIdentifierAllocator::with_next
 R3 src/libs/sys/src/sys/ipc/request/state.rs fn RequestState::set_next_identifier
 R3 src/libs/sys/src/sys/ipc/request/state.rs fn RequestState::with_stash_capacity

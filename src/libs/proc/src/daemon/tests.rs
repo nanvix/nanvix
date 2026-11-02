@@ -5,6 +5,16 @@ use super::*;
 use ::core::mem::ManuallyDrop;
 use ::sys::ExitStatus;
 
+/// Test stand-in for the process-exit notification: accepts and discards the message.
+pub(super) fn send_process_exit_notification(_request: &Message) -> Result<(), Error> {
+    Ok(())
+}
+
+/// Test stand-in for the terminal-detach notification: accepts and discards the message.
+pub(super) fn send_terminal_detach_notification(_request: &Message) -> Result<(), Error> {
+    Ok(())
+}
+
 fn process_identity(uid: usize) -> ProcessIdentity {
     ProcessIdentity::new(UserIdentifier::from(uid), GroupIdentifier::ROOT)
 }

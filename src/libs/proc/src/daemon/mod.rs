@@ -5,6 +5,12 @@
 // Imports
 //==================================================================================================
 
+// Host unit tests cannot cross the kernel-call boundary, so they supply stand-ins.
+#[cfg(test)]
+use self::tests::{
+    send_process_exit_notification,
+    send_terminal_detach_notification,
+};
 use crate::{
     identity::ProcessIdentity,
     message,
@@ -355,31 +361,15 @@ fn lifecycle_payload<const N: usize>(
 }
 
 /// Sends a process-exit notification through the guest kernel-call boundary.
+#[cfg(not(test))]
 fn send_process_exit_notification(request: &Message) -> Result<(), Error> {
-    #[cfg(not(test))]
-    {
-        ::sys::kcall::ipc::__kcall_send(request)
-    }
-
-    #[cfg(test)]
-    {
-        let _request: &Message = request;
-        Ok(())
-    }
+    ::sys::kcall::ipc::__kcall_send(request)
 }
 
 /// Sends a controlling-terminal detachment notification to vfsd.
+#[cfg(not(test))]
 fn send_terminal_detach_notification(request: &Message) -> Result<(), Error> {
-    #[cfg(not(test))]
-    {
-        ::sys::kcall::ipc::__kcall_send(request)
-    }
-
-    #[cfg(test)]
-    {
-        let _request: &Message = request;
-        Ok(())
-    }
+    ::sys::kcall::ipc::__kcall_send(request)
 }
 
 pub struct ProcessDaemon {
