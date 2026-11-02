@@ -37,7 +37,7 @@ from .paths import (
     module_directory,
     to_posix,
 )
-from .rustlex import IDENT, STRING, LexError, Tokens, tokenize
+from .rustlex import IDENT, STRING, LexError, Tokens, normalized_tokens, tokenize
 from .scan import GatedMod, scan_rust
 
 LICENSE_HEADER = (
@@ -378,33 +378,6 @@ def _write(path: Path, content: str) -> None:
 # ---------------------------------------------------------------------------------------------
 # Verification against a revision
 # ---------------------------------------------------------------------------------------------
-
-
-_RAW_STRING = re.compile(r"^(?:b|c)?r[#\"]")
-_LINE_CONTINUATION = re.compile(r"\\\n\s*")
-
-
-def normalized_tokens(text: str) -> list[str]:
-    """Returns the token texts of Rust source, ignoring layout the formatter may change.
-
-    Formatting a dedented body may join wrapped lines, which drops trailing commas and re-wraps
-    string literals at their `\\` line continuations.
-    """
-    toks = tokenize(text)
-    out: list[str] = []
-    for i in range(len(toks)):
-        if (
-            toks.is_punct(i + 1, ")")
-            or toks.is_punct(i + 1, "]")
-            or toks.is_punct(i + 1, "}")
-        ):
-            if toks.is_punct(i, ","):
-                continue
-        word = toks.src(i)
-        if toks.kinds[i] == STRING and not _RAW_STRING.match(word):
-            word = _LINE_CONTINUATION.sub("", word)
-        out.append(word)
-    return out
 
 
 def _git_show(root: Path, rev: str, path: str) -> str | None:

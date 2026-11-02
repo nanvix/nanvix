@@ -185,3 +185,34 @@ def tokenize(text: str) -> Tokens:
             f"unclosed '{text[toks.starts[stack[-1]]]}' opened at line {line}"
         )
     return toks
+
+
+_RAW_STRING = re.compile(r"^(?:b|c)?r[#\"]")
+_LINE_CONTINUATION = re.compile(r"\\\n\s*")
+
+
+def normalized_span(toks: Tokens, first: int, last: int) -> list[str]:
+    """Returns the token texts of `toks[first..last]`, ignoring layout a formatter may change.
+
+    Formatting may join wrapped lines, which drops trailing commas and re-wraps string literals at
+    their `\\` line continuations. Comments are not tokens, so they are ignored as well.
+    """
+    out: list[str] = []
+    for i in range(first, last + 1):
+        if (
+            i < last
+            and toks.is_punct(i, ",")
+            and any(toks.is_punct(i + 1, c) for c in ")]}")
+        ):
+            continue
+        word = toks.src(i)
+        if toks.kinds[i] == STRING and not _RAW_STRING.match(word):
+            word = _LINE_CONTINUATION.sub("", word)
+        out.append(word)
+    return out
+
+
+def normalized_tokens(text: str) -> list[str]:
+    """Returns the normalized token texts of a whole source text (see `normalized_span`)."""
+    toks = tokenize(text)
+    return normalized_span(toks, 0, len(toks) - 1)

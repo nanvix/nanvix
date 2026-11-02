@@ -107,25 +107,28 @@ def parse_line(line: str) -> tuple[str, int]:
     return line, 1
 
 
-def load(path: Path) -> dict[str, int]:
-    """Loads a baseline or allowlist file; a missing file is empty."""
+def parse_text(text: str, label: str = "baseline") -> dict[str, int]:
+    """Parses the text of a baseline or allowlist file; `label` is used in error messages."""
     entries: dict[str, int] = {}
-    if not path.is_file():
-        return entries
-    for number, raw in enumerate(
-        path.read_text(encoding="utf-8").splitlines(), start=1
-    ):
+    for number, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         try:
             key, value = parse_line(line)
         except BaselineError as err:
-            raise BaselineError(f"{path}:{number}: {err}") from err
+            raise BaselineError(f"{label}:{number}: {err}") from err
         if key in entries:
-            raise BaselineError(f"{path}:{number}: duplicate entry: {key!r}")
+            raise BaselineError(f"{label}:{number}: duplicate entry: {key!r}")
         entries[key] = value
     return entries
+
+
+def load(path: Path) -> dict[str, int]:
+    """Loads a baseline or allowlist file; a missing file is empty."""
+    if not path.is_file():
+        return {}
+    return parse_text(path.read_text(encoding="utf-8"), str(path))
 
 
 def _sort_key(line: str) -> tuple[str, str]:
