@@ -1,0 +1,131 @@
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+
+name: "Test Change Review"
+
+# Flags pull requests that change existing tests. Adding tests is never flagged; modifying,
+# removing or renaming an existing test, or growing the test layout exceptions, adds the
+# `review::tests-modified` label and posts one sticky comment listing what changed. The check is
+# advisory: it never fails the pull request. See `doc/test.md` ("Flagging changes to existing
+# tests") for the rules.
+#
+# SECURITY: this workflow runs on `pull_request_target`, so it has a write token and runs in the
+# context of the base branch. It therefore must never check out, build or execute anything from
+# the pull request. The tooling comes from the base branch, and the pull request is only fetched
+# as git objects, which `scripts/flag-test-changes.py` reads through `git diff` and
+# `git cat-file`. Every value derived from the pull request reaches the shell through `env`, never
+# through `${{ }}` interpolation in a script. As the workflow definition and the script are taken
+# from the base branch, this check only takes effect once it has been merged there.
+
+on:
+  pull_request_target:
+    types:
+      - "opened"
+      - "synchronize"
+      - "reopened"
+      - "ready_for_review"
+    branches:
+      - "dev"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  REVIEW_LABEL: "review::tests-modified"
+
+jobs:
+  flag:
+    name: "Flag Changes to Existing Tests"
+    # Dependabot pull requests get a read-only token here and never touch tests.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      # The default ref of `pull_request_target` is the tip of the base branch, which is trusted.
+      # Only `scripts/` is needed, and the whole history is needed to find the merge base.
+      - name: "Checkout base branch (tooling only)"
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          sparse-checkout: scripts
+
+      - name: "Fetch pull request commits (objects only)"
+        id: fetch
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --no-recurse-submodules origin "refs/pull/${PR_NUMBER}/head"
+          echo "head_sha=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: "Compare tests against the base branch"
+        id: flag
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ steps.fetch.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          python3 ./scripts/flag-test-changes.py \
+            --base "${BASE_SHA}" \
+            --head "${HEAD_SHA}" \
+            --markdown "${RUNNER_TEMP}/test-change-comment.md" \
+            --step-summary \
+            --github-output
+
+      # The marker is `flagging.MARKER` in `scripts/testlayout/flagging.py`.
+      - name: "Find existing review comment"
+        id: comment
+        uses: peter-evans/find-comment@v4
+        with:
+          token: ${{ github.token }}
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: "github-actions[bot]"
+          body-includes: "<!-- test-change-review -->"
+
+      - name: "Post or update review comment"
+        # A clean pull request only updates a comment that an earlier push produced.
+        if: steps.flag.outputs.flagged == 'true' || steps.comment.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ github.token }}
+          comment-id: ${{ steps.comment.outputs.comment-id }}
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          body-path: ${{ runner.temp }}/test-change-comment.md
+
+      - name: "Add review label"
+        if: steps.flag.outputs.flagged == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh label create "${REVIEW_LABEL}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --color "d93f0b" \
+            --description "Existing tests were changed; review them carefully" 2>/dev/null || true
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" \
+            -f "labels[]=${REVIEW_LABEL}" > /dev/null
+
+      - name: "Remove review label"
+        if: steps.flag.outputs.flagged != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # The label is absent on most pull requests, so a failure here is expected.
+          gh api --method DELETE \
+            "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels/review%3A%3Atests-modified" \
+            > /dev/null 2>&1 || true
