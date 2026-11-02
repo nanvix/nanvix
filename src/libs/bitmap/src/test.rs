@@ -14,6 +14,15 @@ use ::sys::error::Error;
 // Unit Tests
 //==================================================================================================
 
+// Deref implementation for test support.
+impl ::core::ops::Deref for Bitmap {
+    type Target = RawArray<u8>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.bits
+    }
+}
+
 /// Helper test function that creates a [`Bitmap`] from a raw array.
 fn test_helper_create_bitmap_from_raw_array(data: &mut [u8]) -> Result<Bitmap, Error> {
     let ptr: *mut u8 = data.as_mut_ptr();

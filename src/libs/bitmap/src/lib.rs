@@ -731,14 +731,3 @@ impl Bitmap {
         (word, bit)
     }
 }
-
-// Deref implementation for test support (external to verification).
-#[cfg(test)]
-#[cfg_attr(verus_keep_ghost, verifier::external)]
-impl ::core::ops::Deref for Bitmap {
-    type Target = RawArray<u8>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.bits
-    }
-}
