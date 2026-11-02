@@ -79,20 +79,9 @@ R2 src/libs/nanvix-oci/src/config.rs mod tests tests=6
 R2 src/libs/nanvix-terminal/src/standalone.rs mod tests tests=6
 R3 src/libs/proc/src/daemon/mod.rs code send_process_exit_notification::{ let _request: &Message = request; Ok(()) }
 R3 src/libs/proc/src/daemon/mod.rs code send_terminal_detach_notification::{ let _request: &Message = request; Ok(()) }
-R2 src/libs/sys/src/sys/event/descriptor.rs mod tests tests=4
-R2 src/libs/sys/src/sys/event/information.rs mod tests tests=4
-R2 src/libs/sys/src/sys/event/mod.rs mod tests tests=1
-R2 src/libs/sys/src/sys/event/scheduling/creation.rs mod tests tests=2
-R2 src/libs/sys/src/sys/event/scheduling/event.rs mod tests tests=4
-R2 src/libs/sys/src/sys/event/scheduling/termination.rs mod tests tests=7
-R2 src/libs/sys/src/sys/event/scheduling/thread_termination.rs mod tests tests=1
-R2 src/libs/sys/src/sys/ipc/message/kernel.rs mod tests tests=2
 R3 src/libs/sys/src/sys/ipc/request/identifier_allocator.rs fn RequestIdentifierAllocator::with_next
 R3 src/libs/sys/src/sys/ipc/request/state.rs fn RequestState::set_next_identifier
 R3 src/libs/sys/src/sys/ipc/request/state.rs fn RequestState::with_stash_capacity
-R2 src/libs/sys/src/sys/ipc/typ.rs mod tests tests=3
-R2 src/libs/sys/src/sys/mm/alignment.rs mod tests tests=7
-R2 src/libs/sys/src/sys/number.rs mod tests tests=2
 R2 src/libs/syscall/src/close_route.rs mod tests tests=1
 R2 src/libs/syscall/src/fdtable.rs mod tests tests=13
 R3 src/libs/syscall/src/fdtable.rs fn clear
