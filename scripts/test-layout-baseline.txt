@@ -82,31 +82,12 @@ R3 src/libs/proc/src/daemon/mod.rs code send_terminal_detach_notification::{ let
 R3 src/libs/sys/src/sys/ipc/request/identifier_allocator.rs fn RequestIdentifierAllocator::with_next
 R3 src/libs/sys/src/sys/ipc/request/state.rs fn RequestState::set_next_identifier
 R3 src/libs/sys/src/sys/ipc/request/state.rs fn RequestState::with_stash_capacity
-R2 src/libs/syscall/src/close_route.rs mod tests tests=1
-R2 src/libs/syscall/src/fdtable.rs mod tests tests=13
 R3 src/libs/syscall/src/fdtable.rs fn clear
 R3 src/libs/syscall/src/fdtable.rs fn resolve
 R3 src/libs/syscall/src/fdtable.rs fn resolve_via_vfsd
 R3 src/libs/syscall/src/fdtable.rs static MOCK_VFSD
 R3 src/libs/syscall/src/fdtable.rs static MOCK_VFSD_INTERRUPTED
 R3 src/libs/syscall/src/fdtable.rs static MOCK_VFSD_UNAVAILABLE
-R2 src/libs/syscall/src/lib.rs mod tests tests=3
-R2 src/libs/syscall/src/message/long.rs mod tests tests=2
-R2 src/libs/syscall/src/path.rs mod tests tests=9
-R2 src/libs/syscall/src/poll/input_message.rs mod tests tests=6
-R2 src/libs/syscall/src/poll/socket_message.rs mod tests tests=2
-R2 src/libs/syscall/src/sys/mman/bindings/madvise.rs mod tests tests=3
-R2 src/libs/syscall/src/sys/mman/bindings/mlockall.rs mod tests tests=5
-R2 src/libs/syscall/src/sys/mman/bindings/mod.rs mod tests tests=9
-R2 src/libs/syscall/src/sys/mman/bindings/msync.rs mod tests tests=6
-R2 src/libs/syscall/src/sys/select/message/mod.rs mod tests tests=6
-R2 src/libs/syscall/src/sys/select/syscall/mod.rs mod tests tests=6
-R2 src/libs/syscall/src/sys/socket/mod.rs mod test tests=9
-R2 src/libs/syscall/src/unistd/bindings/getopt.rs mod tests tests=7
-R2 src/libs/syscall/src/unistd/bindings/getopt_long.rs mod tests tests=10
-R2 src/libs/syscall/src/unistd/read_backend.rs mod tests tests=3
-R2 src/libs/syscall/src/unistd/syscall/getopt.rs mod tests tests=19
-R2 src/libs/syscall/src/unistd/syscall/util.rs mod tests tests=12
 R2 src/libs/syslog-macros/src/lib.rs mod tests tests=2
 R2 src/libs/type-safe/src/vec_deque.rs mod benchmarks tests=11
 R2 src/libs/type-safe/src/vec_deque.rs mod test tests=44
