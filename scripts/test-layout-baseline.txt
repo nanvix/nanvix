@@ -82,4 +82,3 @@ R2 src/libs/type-safe/src/vec_deque.rs mod test tests=44
 R3 src/utils/gen-headers/src/main.rs fn collect_rust_symbols
 R3 src/utils/gen-headers/src/main.rs fn emit_rust_types
 R3 src/utils/gen-headers/src/main.rs fn resolve_rust_constants
-R2 src/utils/strace/src/main.rs mod tests tests=10
