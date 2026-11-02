@@ -4,6 +4,28 @@
 use super::*;
 use ::sysapi::fcntl::atflags::AT_FDCWD;
 
+impl Vfs {
+    /// Resolves a path for consumers awaiting migration to [`AnchoredPath`].
+    ///
+    /// TODO (#3101): Remove this compatibility projection after filesystem consumers accept typed
+    /// resolution results.
+    pub(crate) fn resolve_legacy(
+        &mut self,
+        path: &str,
+        cwd: &str,
+    ) -> Result<(usize, String), Fat32Error> {
+        let normalized: String = self.normalize_path(path, cwd)?;
+        let context: FatResolutionContext = self.resolve_context(normalized)?;
+        Ok((context.mount_index, context.fat_path.into_string()))
+    }
+
+    /// Returns the number of entries currently held by the path-resolution
+    /// cache. Test-only helper used to assert caching and eviction behavior.
+    pub(crate) fn resolve_cache_len(&self) -> usize {
+        self.resolve_cache.entry_count()
+    }
+}
+
 // -- normalize_path tests ----------------------------------------------------
 
 /// Tests normalizing an absolute path.

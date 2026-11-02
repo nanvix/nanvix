@@ -187,21 +187,6 @@ impl Vfs {
         Ok(context.fat_path)
     }
 
-    /// Resolves a path for consumers awaiting migration to [`AnchoredPath`].
-    ///
-    /// TODO (#3101): Remove this compatibility projection after filesystem consumers accept typed
-    /// resolution results.
-    #[cfg(test)]
-    pub(crate) fn resolve_legacy(
-        &mut self,
-        path: &str,
-        cwd: &str,
-    ) -> Result<(usize, String), Fat32Error> {
-        let normalized: String = self.normalize_path(path, cwd)?;
-        let context: FatResolutionContext = self.resolve_context(normalized)?;
-        Ok((context.mount_index, context.fat_path.into_string()))
-    }
-
     /// Resolves a normalized absolute path for a local filesystem operation.
     pub(crate) fn resolve_normalized(
         &mut self,
@@ -269,13 +254,6 @@ impl Vfs {
     /// Iterates over all mounts.
     pub fn mounts(&self) -> impl Iterator<Item = &Mount> {
         self.mounts.iter()
-    }
-
-    /// Returns the number of entries currently held by the path-resolution
-    /// cache. Test-only helper used to assert caching and eviction behavior.
-    #[cfg(test)]
-    pub(crate) fn resolve_cache_len(&self) -> usize {
-        self.resolve_cache.entry_count()
     }
 }
 

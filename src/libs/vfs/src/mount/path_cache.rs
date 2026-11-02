@@ -132,14 +132,6 @@ impl PathCache {
     pub(crate) fn clear(&mut self) {
         self.entries.clear();
     }
-
-    /// Returns the number of entries currently held by the cache.
-    ///
-    /// Test-only helper used to assert caching and eviction behavior.
-    #[cfg(test)]
-    pub(crate) fn entry_count(&self) -> usize {
-        self.entries.len()
-    }
 }
 
 //==================================================================================================

@@ -3,6 +3,15 @@
 
 use super::*;
 
+impl PathCache {
+    /// Returns the number of entries currently held by the cache.
+    ///
+    /// Test-only helper used to assert caching and eviction behavior.
+    pub(crate) fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+}
+
 /// Tests that a freshly created cache holds no entries.
 #[test]
 fn new_cache_is_empty() {
