@@ -1,7 +1,10 @@
 // Copyright(c) The Maintainers of Nanvix.
 // Licensed under the MIT License.
 
-use super::*;
+use super::{
+    tests::test_path,
+    *,
+};
 use crate::fat::RawMemoryStorage;
 use ::alloc::{
     vec,

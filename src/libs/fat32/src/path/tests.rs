@@ -19,6 +19,18 @@ fn accepts_normalized_paths() {
     }
 }
 
+/// Tests the mount-prefix scenario documented on [`FatResolvedPath::new`].
+#[test]
+fn mount_prefix_must_be_stripped_before_construction() {
+    let path: FatResolvedPath =
+        FatResolvedPath::new(String::from("directory/file")).expect("stripped path is valid");
+    assert_eq!(path.as_str(), "directory/file");
+    assert_eq!(
+        FatResolvedPath::new(String::from("/data/directory/file")),
+        Err(Fat32Error::InvalidPath),
+    );
+}
+
 #[test]
 fn rejects_unnormalized_paths() {
     for path in [

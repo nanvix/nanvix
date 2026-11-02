@@ -8,6 +8,13 @@ use ::alloc::{
     vec::Vec,
 };
 
+/// Helper: builds a checked FAT-local path from a normalized test literal.
+///
+/// Shared with the read-only tests, which import it from this module.
+pub(super) fn test_path(path: &str) -> FatResolvedPath {
+    FatResolvedPath::new(alloc::string::String::from(path)).expect("test path should be normalized")
+}
+
 /// Helper: creates formatted FAT image in a heap buffer and returns a `Fat`.
 ///
 /// The returned `Vec<u8>` must be kept alive for the lifetime of the `Fat`.

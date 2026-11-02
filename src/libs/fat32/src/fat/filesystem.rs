@@ -706,11 +706,6 @@ pub struct FatDirEntry {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-fn test_path(path: &str) -> FatResolvedPath {
-    FatResolvedPath::new(alloc::string::String::from(path)).expect("test path should be normalized")
-}
-
-#[cfg(all(test, feature = "std"))]
 #[allow(clippy::expect_used)]
 mod tests;
 

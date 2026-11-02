@@ -43,7 +43,7 @@ impl FatResolvedPath {
     /// If a FAT filesystem is mounted at `/data`, resolving the namespace path
     /// `/data/directory/file` strips the mount prefix before calling this constructor:
     ///
-    /// ```
+    /// ```ignore
     /// use ::std::string::String;
     /// use ::fat32::{
     ///     Fat32Error,
