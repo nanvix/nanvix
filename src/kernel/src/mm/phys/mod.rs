@@ -48,6 +48,8 @@ pub use self::{
     manager::PhysMemoryManager,
     upool::UserFrame,
 };
+#[cfg(feature = "test")]
+pub use test::test;
 
 //==================================================================================================
 // Standalone Functions
@@ -135,17 +137,4 @@ pub fn init(
     PhysMemoryManager::init(upool)?;
 
     Ok(())
-}
-
-//==================================================================================================
-// Standalone Functions
-//==================================================================================================
-
-#[cfg(feature = "test")]
-pub fn test() -> bool {
-    let mut passed = true;
-
-    passed &= test::test();
-
-    passed
 }

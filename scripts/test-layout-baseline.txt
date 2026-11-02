@@ -14,8 +14,6 @@ R3 src/kernel/src/kmain.rs fn test_kernel_args
 R3 src/kernel/src/macros.rs macro_rules run_test
 R3 src/kernel/src/mm/kernel_vas.rs code init::phys::test();
 R3 src/kernel/src/mm/kernel_vas.rs code init::virt::test();
-R3 src/kernel/src/mm/phys/mod.rs fn test
-R3 src/kernel/src/mm/virt/mod.rs fn test
 R3 src/kernel/src/pm/mod.rs code init::{ let passed: bool = test::test(); assert!(passe
 R3 src/kernel/src/pm/process/manager/delivery.rs fn <const CAPACITY: usize> LifecycleReservationPool<CAPACITY>::in_use
 R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::capacity_in_use
