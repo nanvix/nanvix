@@ -264,13 +264,5 @@ fn set_errno(code: c_int) {
 /// it. The shim lives in its own module so that its `#[no_mangle]` definition provides the global C
 /// symbol without colliding with the `sysapi::errno::__errno_location` import used above.
 #[cfg(all(test, feature = "std", not(target_os = "linux")))]
-mod errno_shim {
-    #[unsafe(no_mangle)]
-    extern "C" fn __errno_location() -> *mut ::sysapi::ffi::c_int {
-        thread_local! {
-            static ERRNO: ::core::cell::UnsafeCell<::sysapi::ffi::c_int> =
-                const { ::core::cell::UnsafeCell::new(0) };
-        }
-        ERRNO.with(|cell| cell.get())
-    }
-}
+#[path = "tests/errno_shim.rs"]
+mod errno_shim;

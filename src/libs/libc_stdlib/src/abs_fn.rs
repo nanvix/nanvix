@@ -43,21 +43,4 @@ pub unsafe extern "C" fn abs(j: c_int) -> c_int {
 }
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::abs;
-
-    #[test]
-    fn positive_value() {
-        assert_eq!(unsafe { abs(42) }, 42);
-    }
-
-    #[test]
-    fn negative_value() {
-        assert_eq!(unsafe { abs(-42) }, 42);
-    }
-
-    #[test]
-    fn zero_value() {
-        assert_eq!(unsafe { abs(0) }, 0);
-    }
-}
+mod tests;
