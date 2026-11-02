@@ -266,11 +266,5 @@ pub unsafe fn call_atexit_handlers() {
     }
 }
 
-/// Resets the process-exit handler registry. Used for test isolation.
-#[cfg(test)]
-fn reset_atexit_handlers() {
-    *ATEXIT_REGISTRY.lock() = AtExitRegistry::new();
-}
-
 #[cfg(all(test, feature = "std"))]
 mod tests;

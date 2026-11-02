@@ -148,44 +148,6 @@ fn append_components(src: &[u8], out: &mut [u8], len: &mut usize) -> bool {
 ///
 /// # Description
 ///
-/// Builds the lexically canonical absolute path of `path` into `out`, null-terminated. A relative
-/// `path` is resolved against the absolute `cwd`.
-///
-/// # Returns
-///
-/// The length excluding the terminator, or [`None`] if the result does not fit in `out`.
-///
-#[cfg(all(test, feature = "std"))]
-fn canonicalize(path: &[u8], cwd: &[u8], out: &mut [u8]) -> Option<usize> {
-    let mut len: usize = 0;
-
-    // A relative path is resolved against the current working directory.
-    if path.first() != Some(&b'/') && !append_components(cwd, out, &mut len) {
-        return None;
-    }
-    if !append_components(path, out, &mut len) {
-        return None;
-    }
-
-    // An empty accumulator denotes the root directory.
-    if len == 0 {
-        if out.is_empty() {
-            return None;
-        }
-        out[0] = b'/';
-        len = 1;
-    }
-
-    if len >= out.len() {
-        return None;
-    }
-    out[len] = 0;
-    Some(len)
-}
-
-///
-/// # Description
-///
 /// Builds the next path fragment to process after expanding a symbolic link.
 ///
 /// # Returns

@@ -4,6 +4,43 @@
 use super::*;
 use ::std::vec::Vec;
 
+///
+/// # Description
+///
+/// Builds the lexically canonical absolute path of `path` into `out`, null-terminated. A relative
+/// `path` is resolved against the absolute `cwd`.
+///
+/// # Returns
+///
+/// The length excluding the terminator, or [`None`] if the result does not fit in `out`.
+///
+fn canonicalize(path: &[u8], cwd: &[u8], out: &mut [u8]) -> Option<usize> {
+    let mut len: usize = 0;
+
+    // A relative path is resolved against the current working directory.
+    if path.first() != Some(&b'/') && !append_components(cwd, out, &mut len) {
+        return None;
+    }
+    if !append_components(path, out, &mut len) {
+        return None;
+    }
+
+    // An empty accumulator denotes the root directory.
+    if len == 0 {
+        if out.is_empty() {
+            return None;
+        }
+        out[0] = b'/';
+        len = 1;
+    }
+
+    if len >= out.len() {
+        return None;
+    }
+    out[len] = 0;
+    Some(len)
+}
+
 // Exercise fixed storage without calling guest-ABI lstat/readlink on the host.
 fn append_next(adapter: &mut Realpath<'_>) -> Result<usize, c_int> {
     match adapter.next_component() {

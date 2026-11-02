@@ -6,7 +6,8 @@ use super::{
     __cxa_finalize,
     atexit,
     call_atexit_handlers,
-    reset_atexit_handlers,
+    AtExitRegistry,
+    ATEXIT_REGISTRY,
     MAX_ATEXIT_HANDLERS,
 };
 use ::core::sync::atomic::{
@@ -21,6 +22,11 @@ use ::sysapi::ffi::c_void;
 
 static CALL_ORDER: AtomicUsize = AtomicUsize::new(0);
 static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Resets the process-exit handler registry. Used for test isolation.
+fn reset_atexit_handlers() {
+    *ATEXIT_REGISTRY.lock() = AtExitRegistry::new();
+}
 
 unsafe extern "C" fn plain_handler() {
     record_call(9);
