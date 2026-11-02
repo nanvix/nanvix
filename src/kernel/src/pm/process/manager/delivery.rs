@@ -6,12 +6,18 @@
 //==================================================================================================
 
 mod delivery_sequence;
+#[cfg(feature = "test")]
+mod test;
 
 //==================================================================================================
 // Imports
 //==================================================================================================
 
 pub(crate) use self::delivery_sequence::DeliverySequence;
+#[cfg(feature = "test")]
+pub(crate) use self::test::new_test_delivery_sequence;
+#[cfg(feature = "test")]
+pub(super) use self::test::test;
 use crate::{
     mm::{
         try_box,
@@ -207,20 +213,6 @@ impl<const CAPACITY: usize> LifecycleReservationPool<CAPACITY> {
     ///
     /// # Description
     ///
-    /// Reports how many slots are reserved.
-    ///
-    /// # Returns
-    ///
-    /// The number of reserved slots.
-    ///
-    #[cfg(feature = "test")]
-    fn in_use(&self) -> usize {
-        self.in_use
-    }
-
-    ///
-    /// # Description
-    ///
     /// Releases every reservation.
     ///
     /// # Returns
@@ -319,20 +311,6 @@ impl LifecycleQueue {
             head: 0,
             len: 0,
         })
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Reports how many records are buffered.
-    ///
-    /// # Returns
-    ///
-    /// The number of buffered records.
-    ///
-    #[cfg(feature = "test")]
-    fn len(&self) -> usize {
-        self.len
     }
 
     ///
@@ -562,37 +540,6 @@ impl DeliveryBroker {
         Some(sequence)
     }
 
-    /// Sets the next sequence number for an in-kernel boundary test.
-    #[cfg(feature = "test")]
-    fn set_next_sequence(&mut self, sequence: DeliverySequence) {
-        self.next_sequence = Some(sequence);
-    }
-
-    /// Reports whether the delivery sequence is exhausted.
-    #[cfg(feature = "test")]
-    fn sequence_is_exhausted(&self) -> bool {
-        self.next_sequence.is_none()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Reports the amount of lifecycle capacity currently committed or reserved.
-    ///
-    /// # Returns
-    ///
-    /// The number of lifecycle slots committed or reserved, or [`None`] if accounting overflows.
-    ///
-    #[cfg(feature = "test")]
-    pub(super) fn capacity_in_use(&self) -> Option<usize> {
-        self.creation_reservations
-            .in_use()
-            .checked_add(self.termination_reservations.in_use())
-            .and_then(|capacity| {
-                capacity.checked_add(self.thread_termination_reservations.in_use())
-            })
-    }
-
     ///
     /// # Description
     ///
@@ -800,27 +747,6 @@ impl DeliveryBroker {
     ///
     /// # Description
     ///
-    /// Releases a termination credit when a test process terminates without producing a lifecycle
-    /// record.
-    ///
-    /// # Parameters
-    ///
-    /// - `credit`: Process-termination capacity credit to release.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if lifecycle delivery was already disposed or if the reservation pool
-    /// is empty.
-    ///
-    #[cfg(feature = "test")]
-    pub(super) fn release_termination(&mut self, _credit: LifecycleTerminationCredit) {
-        assert!(!self.disposed, "lifecycle delivery used after disposal");
-        self.termination_reservations.release();
-    }
-
-    ///
-    /// # Description
-    ///
     /// Returns the sequence number of the oldest buffered lifecycle record.
     ///
     /// # Returns
@@ -902,24 +828,6 @@ impl DeliveryBroker {
     ///
     fn lifecycle_token_is_current(&self, sequence: DeliverySequence) -> bool {
         self.lifecycle_sequence() == Some(sequence)
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Exposes the lifecycle-token invariant to in-kernel tests.
-    ///
-    /// # Parameters
-    ///
-    /// - `sequence`: Delivery sequence captured by the token under test.
-    ///
-    /// # Returns
-    ///
-    /// `true` if `sequence` identifies the current lifecycle record, otherwise `false`.
-    ///
-    #[cfg(feature = "test")]
-    pub(super) fn test_lifecycle_token_is_current(&self, sequence: DeliverySequence) -> bool {
-        self.lifecycle_token_is_current(sequence)
     }
 
     ///
@@ -1060,43 +968,4 @@ impl DeliveryBroker {
     pub(super) fn take_lifecycle_wakeup_request(&mut self) -> bool {
         mem::take(&mut self.lifecycle_wakeup_pending)
     }
-}
-
-///
-/// # Description
-///
-/// Creates a delivery sequence fixture through the production owner layer for in-kernel tests.
-///
-/// # Parameters
-///
-/// - `value`: Raw value to store in the fixture.
-///
-/// # Returns
-///
-/// A delivery sequence containing `value`.
-///
-#[cfg(feature = "test")]
-pub(crate) const fn new_test_delivery_sequence(value: u64) -> DeliverySequence {
-    DeliverySequence::new(value)
-}
-
-//==================================================================================================
-// Tests
-//==================================================================================================
-
-#[cfg(feature = "test")]
-mod test;
-
-///
-/// # Description
-///
-/// Runs the delivery broker in-kernel tests.
-///
-/// # Returns
-///
-/// `true` if every test passed, `false` otherwise.
-///
-#[cfg(feature = "test")]
-pub(super) fn test() -> bool {
-    test::test()
 }

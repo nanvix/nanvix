@@ -25,6 +25,8 @@ pub(crate) mod signal;
 mod signal_test;
 mod sleeping;
 #[cfg(feature = "test")]
+mod test;
+#[cfg(feature = "test")]
 mod test_detach;
 mod zombie;
 
@@ -96,6 +98,8 @@ pub use runnable::RunnableProcess;
 pub use running::RunningProcess;
 pub use signal::exception_to_signal;
 pub use sleeping::SleepingProcess;
+#[cfg(feature = "test")]
+pub(super) use test::test;
 pub use zombie::ZombieProcess;
 pub(crate) use zombie::{
     PendingProcessTermination,
@@ -123,22 +127,6 @@ pub(crate) fn event_guard_matches(owned: &Event, requested: &Event) -> bool {
         Event::Scheduling(_) => matches!(owned, Event::Scheduling(_)),
         _ => owned == requested,
     }
-}
-
-//==================================================================================================
-// Tests
-//==================================================================================================
-
-/// Runs all in-kernel unit tests for the process state module.
-#[cfg(feature = "test")]
-pub(super) fn test() -> bool {
-    let mut passed: bool = true;
-    passed &= delivery_test::test();
-    passed &= test_detach::test();
-    passed &= signal_test::test();
-    passed &= sigframe::test();
-    passed &= kill_test::test();
-    passed
 }
 
 //==================================================================================================

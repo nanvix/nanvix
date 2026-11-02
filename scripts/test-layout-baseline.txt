@@ -14,28 +14,9 @@ R3 src/kernel/src/macros.rs macro_rules run_test
 R3 src/kernel/src/mm/kernel_vas.rs code init::phys::test();
 R3 src/kernel/src/mm/kernel_vas.rs code init::virt::test();
 R3 src/kernel/src/pm/mod.rs code init::{ let passed: bool = test::test(); assert!(passe
-R3 src/kernel/src/pm/process/manager/delivery.rs fn <const CAPACITY: usize> LifecycleReservationPool<CAPACITY>::in_use
-R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::capacity_in_use
-R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::release_termination
-R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::sequence_is_exhausted
-R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::set_next_sequence
-R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::test_lifecycle_token_is_current
-R3 src/kernel/src/pm/process/manager/delivery.rs fn LifecycleQueue::len
-R3 src/kernel/src/pm/process/manager/delivery.rs fn new_test_delivery_sequence
-R3 src/kernel/src/pm/process/manager/delivery.rs fn test
 R3 src/kernel/src/pm/process/manager/mod.rs code ProcessManager::fail_next_lifecycle_creation: bool,
 R3 src/kernel/src/pm/process/manager/mod.rs code ProcessManager::fail_next_thread_lifecycle_creation: bool,
 R3 src/kernel/src/pm/process/manager/mod.rs code check_lifecycle_creation_injection::if core::mem::take(&mut self.fail_next_lifecycle
 R3 src/kernel/src/pm/process/manager/mod.rs code new::fail_next_lifecycle_creation: false,
 R3 src/kernel/src/pm/process/manager/mod.rs code new::fail_next_thread_lifecycle_creation: false,
 R3 src/kernel/src/pm/process/manager/mod.rs code prepare_thread_lifecycle_creation::if core::mem::take(&mut self.fail_next_thread_li
-R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::current_has_special_resources
-R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::current_vmem
-R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::inject_lifecycle_creation_failure
-R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::inject_thread_lifecycle_creation_failure
-R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::queue_test_process_creation
-R3 src/kernel/src/pm/process/manager/mod.rs fn test
-R3 src/kernel/src/pm/process/mod.rs fn new_test_process_termination_credit
-R3 src/kernel/src/pm/process/mod.rs fn new_test_thread_termination_credit
-R3 src/kernel/src/pm/process/mod.rs fn test
-R3 src/kernel/src/pm/process/state/mod.rs fn test

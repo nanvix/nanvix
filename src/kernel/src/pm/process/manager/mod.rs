@@ -15,6 +15,8 @@ pub use signal::{
     SignalDeliveryOutcome,
     SyncSignalOutcome,
 };
+#[cfg(feature = "test")]
+pub(super) use test::test;
 
 #[cfg(feature = "test")]
 mod test;
@@ -161,16 +163,6 @@ use ::type_safe::NonEmptyVecDeque;
 //==================================================================================================
 
 pub use self::r#unsafe::ExceptionGuard;
-
-//==================================================================================================
-// Tests
-//==================================================================================================
-
-/// Runs all in-kernel unit tests for the process manager module.
-#[cfg(feature = "test")]
-pub(super) fn test() -> bool {
-    test::test()
-}
 
 //==================================================================================================
 // Sleep Error
@@ -561,16 +553,6 @@ impl ProcessManager {
     ///
     /// # Description
     ///
-    /// Injects one failure into the next standalone thread or `execv()` thread preparation.
-    ///
-    #[cfg(feature = "test")]
-    fn inject_thread_lifecycle_creation_failure(&mut self) {
-        self.fail_next_thread_lifecycle_creation = true;
-    }
-
-    ///
-    /// # Description
-    ///
     /// Fails once after process creation has reserved lifecycle capacity and identifiers. Compiles
     /// to a no-op outside test builds.
     ///
@@ -588,16 +570,6 @@ impl ProcessManager {
             return Err(Error::new(ErrorCode::OutOfMemory, "injected lifecycle creation failure"));
         }
         Ok(())
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Injects one failure into the next process creation, after it reserves lifecycle capacity.
-    ///
-    #[cfg(feature = "test")]
-    fn inject_lifecycle_creation_failure(&mut self) {
-        self.fail_next_lifecycle_creation = true;
     }
 
     ///
@@ -3345,35 +3317,6 @@ impl ProcessManager {
         self.running.as_ref().expect("the kernel should be running")
     }
 
-    ///
-    /// # Description
-    ///
-    /// Reports whether the currently running process owns any "special" resources, as
-    /// defined by [`crate::pm::process::state::ProcessState::has_special_resources`].
-    ///
-    /// Thin test-only accessor used by in-kernel tests; it avoids widening the visibility of
-    /// [`Self::get_running`]. The `duplicate()` kernel call reaches the same predicate
-    /// directly through its internal `get_running()` view.
-    ///
-    #[cfg(feature = "test")]
-    pub fn current_has_special_resources(&self) -> bool {
-        self.get_running().state().has_special_resources()
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns a shared reference to the currently running process's virtual address space.
-    ///
-    /// Thin test-only accessor used by in-kernel tests that need a reference [`Vmem`] to clone
-    /// from (e.g. via [`crate::mm::VirtMemoryManager::new_vmem`]). Production code paths reach
-    /// this through the internal [`Self::get_running`] view instead.
-    ///
-    #[cfg(feature = "test")]
-    pub fn current_vmem(&self) -> &Vmem {
-        self.get_running().state().vmem()
-    }
-
     fn get_running_mut(&mut self) -> &mut RunningProcess {
         // NOTE: it is safe to call unwrap because there is always a process running.
         self.running.as_mut().expect("the kernel should be running")
@@ -3869,18 +3812,6 @@ impl ProcessManager {
                 disposal.undelivered_records, disposal.retained_reservations
             );
         }
-    }
-
-    /// Queues a synthetic creation record without retaining a future termination credit.
-    #[cfg(feature = "test")]
-    pub(crate) fn queue_test_process_creation(
-        &mut self,
-        info: ProcessCreationInfo,
-    ) -> Result<(), Error> {
-        let reservation: LifecycleCreationReservation = self.delivery.try_reserve_creation()?;
-        let credit: LifecycleTerminationCredit = self.delivery.commit_creation(reservation, info);
-        self.delivery.release_termination(credit);
-        Ok(())
     }
 
     ///

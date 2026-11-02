@@ -4,6 +4,8 @@
 use super::{
     DeliveryBroker,
     DeliverySequence,
+    LifecycleQueue,
+    LifecycleReservationPool,
     LIFECYCLE_CAPACITY,
     THREAD_TERMINATION_RESERVATIONS,
 };
@@ -27,6 +29,130 @@ use ::sys::{
     },
     ExitStatus,
 };
+
+//==================================================================================================
+// Test Helpers
+//==================================================================================================
+
+impl<const CAPACITY: usize> LifecycleReservationPool<CAPACITY> {
+    ///
+    /// # Description
+    ///
+    /// Reports how many slots are reserved.
+    ///
+    /// # Returns
+    ///
+    /// The number of reserved slots.
+    ///
+    fn in_use(&self) -> usize {
+        self.in_use
+    }
+}
+
+impl LifecycleQueue {
+    ///
+    /// # Description
+    ///
+    /// Reports how many records are buffered.
+    ///
+    /// # Returns
+    ///
+    /// The number of buffered records.
+    ///
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl DeliveryBroker {
+    /// Sets the next sequence number for an in-kernel boundary test.
+    fn set_next_sequence(&mut self, sequence: DeliverySequence) {
+        self.next_sequence = Some(sequence);
+    }
+
+    /// Reports whether the delivery sequence is exhausted.
+    fn sequence_is_exhausted(&self) -> bool {
+        self.next_sequence.is_none()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports the amount of lifecycle capacity currently committed or reserved.
+    ///
+    /// # Returns
+    ///
+    /// The number of lifecycle slots committed or reserved, or [`None`] if accounting overflows.
+    ///
+    pub(in crate::pm::process::manager) fn capacity_in_use(&self) -> Option<usize> {
+        self.creation_reservations
+            .in_use()
+            .checked_add(self.termination_reservations.in_use())
+            .and_then(|capacity| {
+                capacity.checked_add(self.thread_termination_reservations.in_use())
+            })
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Releases a termination credit when a test process terminates without producing a lifecycle
+    /// record.
+    ///
+    /// # Parameters
+    ///
+    /// - `credit`: Process-termination capacity credit to release.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if lifecycle delivery was already disposed or if the reservation pool
+    /// is empty.
+    ///
+    pub(in crate::pm::process::manager) fn release_termination(
+        &mut self,
+        _credit: LifecycleTerminationCredit,
+    ) {
+        assert!(!self.disposed, "lifecycle delivery used after disposal");
+        self.termination_reservations.release();
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Exposes the lifecycle-token invariant to in-kernel tests.
+    ///
+    /// # Parameters
+    ///
+    /// - `sequence`: Delivery sequence captured by the token under test.
+    ///
+    /// # Returns
+    ///
+    /// `true` if `sequence` identifies the current lifecycle record, otherwise `false`.
+    ///
+    pub(in crate::pm::process::manager) fn test_lifecycle_token_is_current(
+        &self,
+        sequence: DeliverySequence,
+    ) -> bool {
+        self.lifecycle_token_is_current(sequence)
+    }
+}
+
+///
+/// # Description
+///
+/// Creates a delivery sequence fixture through the production owner layer for in-kernel tests.
+///
+/// # Parameters
+///
+/// - `value`: Raw value to store in the fixture.
+///
+/// # Returns
+///
+/// A delivery sequence containing `value`.
+///
+pub(crate) const fn new_test_delivery_sequence(value: u64) -> DeliverySequence {
+    DeliverySequence::new(value)
+}
 
 ///
 /// # Description
@@ -509,7 +635,7 @@ fn test_lifecycle_shutdown_disposal_accounts_undelivered_state() -> bool {
 ///
 /// `true` if every delivery broker test passes, otherwise `false`.
 ///
-pub(super) fn test() -> bool {
+pub(in crate::pm::process::manager) fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_delivery_sequence_exhaustion_is_detected);
     passed &= run_test!(test_lifecycle_reservation_ownership_is_stateful);
