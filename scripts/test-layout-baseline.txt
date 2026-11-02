@@ -9,9 +9,6 @@ R2 src/daemons/hostfsd/src/sandbox.rs mod tests tests=38
 R2 src/daemons/networkd/src/epoll.rs mod tests tests=1
 R2 src/daemons/networkd/src/framing.rs mod tests tests=3
 R2 src/daemons/networkd/src/wire.rs mod tests tests=25
-R2 src/daemons/vfsd/src/assembler.rs mod tests tests=2
-R2 src/daemons/vfsd/src/error.rs mod tests tests=1
-R2 src/daemons/vfsd/src/pending.rs mod tests tests=6
 R3 src/kernel/src/event/manager/event_sequence.rs fn EventSequence::new
 R3 src/kernel/src/event/manager/event_sequence.rs fn EventSequence::wrapping_add
 R3 src/kernel/src/event/mod.rs fn test
