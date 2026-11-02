@@ -61,14 +61,4 @@ pub unsafe extern "C" fn bzero(s: *mut c_void, n: c_size_t) {
 }
 
 #[cfg(all(test, feature = "std"))]
-mod test {
-    use super::bzero;
-    use ::std::vec::Vec;
-
-    #[test]
-    fn test_bzero_basic() {
-        let mut buf: Vec<u8> = vec![0xFF; 10];
-        unsafe { bzero(buf.as_mut_ptr().cast(), 10) };
-        assert!(buf.iter().all(|&b| b == 0), "all bytes should be zero");
-    }
-}
+mod test;
