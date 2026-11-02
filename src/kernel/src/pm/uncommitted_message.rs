@@ -2,11 +2,26 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+/// Test-only fixtures for in-kernel tests.
+#[cfg(feature = "test")]
+mod test;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
 use super::uncommitted_message_token::UncommittedMessageToken;
 use ::sys::ipc::Message;
+
+//==================================================================================================
+// Exports
+//==================================================================================================
+
+#[cfg(feature = "test")]
+pub(crate) use test::new_test_message;
 
 //==================================================================================================
 // Structures
@@ -55,26 +70,4 @@ impl UncommittedMessage {
     pub(crate) fn into_parts(self) -> (Message, UncommittedMessageToken) {
         (self.message, self.token)
     }
-}
-
-///
-/// # Description
-///
-/// Creates an uncommitted message for in-kernel tests outside the process-management module.
-///
-/// # Parameters
-///
-/// - `message`: Message selected by the test fixture.
-/// - `token`: Token associated with the selected test item.
-///
-/// # Returns
-///
-/// An uncommitted message containing `message` and `token`.
-///
-#[cfg(feature = "test")]
-pub(crate) fn new_test_message(
-    message: Message,
-    token: UncommittedMessageToken,
-) -> UncommittedMessage {
-    UncommittedMessage::new(message, token)
 }

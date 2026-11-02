@@ -4,7 +4,6 @@
 # code (scripts/migrate-inline-tests.py), then run
 # `scripts/check-test-layout.py --update-baseline`.
 # Never add an entry; put new tests in their own files instead (see doc/test.md).
-R3 src/kernel/src/ipc/mbx/mailbox.rs fn Mailbox::test_token_is_current
 R3 src/kernel/src/kmain.rs code kmain::if !crate::event::test_delivery_integration() {
 R3 src/kernel/src/kmain.rs code kmain::test();
 R3 src/kernel/src/kmain.rs code kmain::test_kernel_args(kernel_args);
@@ -39,10 +38,4 @@ R3 src/kernel/src/pm/process/manager/mod.rs fn test
 R3 src/kernel/src/pm/process/mod.rs fn new_test_process_termination_credit
 R3 src/kernel/src/pm/process/mod.rs fn new_test_thread_termination_credit
 R3 src/kernel/src/pm/process/mod.rs fn test
-R3 src/kernel/src/pm/process/state/interrupted.rs fn InterruptedProcess::thread_reason
 R3 src/kernel/src/pm/process/state/mod.rs fn test
-R3 src/kernel/src/pm/sync/condvar.rs fn Condvar::has_test_waiter
-R3 src/kernel/src/pm/sync/condvar.rs fn Condvar::stage_test_waiter
-R3 src/kernel/src/pm/thread/interrupted.rs fn InterruptedThread::reason
-R3 src/kernel/src/pm/thread/mod.rs fn <'a> ThreadRef<'a>::is_detached
-R3 src/kernel/src/pm/uncommitted_message.rs fn new_test_message
