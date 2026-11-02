@@ -77,6 +77,13 @@ Matrix coverage in GitHub Actions:
 - `lint`, `verify`, `ci-build`: `microvm` in debug and release configurations.
 - `ci-test`: same matrix.
 
+The separate `Test Change Review` workflow (`test-change-review.yml`) runs on `pull_request_target`
+for pull requests to `dev`. It runs `scripts/flag-test-changes.py`, which labels the pull request
+`review::tests-modified` and keeps one sticky comment when an existing test is modified, removed or
+renamed, or when the test layout baseline or allowlist grows. It is advisory (it never fails the
+pull request) and never checks out or runs pull request code, so keep it that way when editing it:
+pass event values through `env`, not `${{ }}` in scripts. It takes effect only once merged to `dev`.
+
 Pull requests that only change documentation (Markdown files other than the root `README.md`, or
 files under `doc/`) skip the build, test, and benchmark jobs; source checks, lint, and verify still
 run. The root `README.md` does not count as documentation because it is copied into the guest root

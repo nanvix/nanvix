@@ -144,6 +144,10 @@ The CI pipeline runs automatically on every pull request and push to `dev`. Pull
 only change documentation (Markdown files other than the root `README.md`, or files under `doc/`)
 skip the build, test, and benchmark jobs.
 
+Pull requests that modify, remove or rename an existing test are labeled `review::tests-modified`
+and receive a comment that lists the changes, so that a reviewer can look at them carefully. Adding
+tests is never flagged. See [doc/test.md](doc/test.md#flagging-changes-to-existing-tests).
+
 ## License
 
 Nanvix is licensed under the [MIT License](LICENSE.txt). By contributing, you agree that your

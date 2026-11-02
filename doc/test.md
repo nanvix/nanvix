@@ -20,6 +20,7 @@ This document guides you through testing Nanvix.
   - [Checking the Layout](#checking-the-layout)
   - [Baseline and Allowlist](#baseline-and-allowlist)
   - [Migrating Inline Tests](#migrating-inline-tests)
+  - [Flagging Changes to Existing Tests](#flagging-changes-to-existing-tests)
 
 ## Running Full CI Pipeline
 
@@ -176,3 +177,56 @@ Modules that cannot be moved mechanically (they use `include_str!`, `file!()`, `
 in another inline module, or collide with an existing file) are reported and left in place; move
 them by hand. `--verify REV` re-plans every changed file at `REV` and compares the code token by
 token, so a reviewer can trust that a migration PR only moves code.
+
+### Flagging Changes to Existing Tests
+
+Adding a test is routine. Changing a test that already exists can hide a regression (a weakened
+assertion, a removed case, a test turned into a no-op), so those changes get extra scrutiny. The
+`Test Change Review` workflow (`.github/workflows/test-change-review.yml`) runs
+`scripts/flag-test-changes.py` on every pull request to `dev`. When it finds a change to an existing
+test, it adds the `review::tests-modified` label and keeps a single comment up to date that lists
+each change. The check is advisory: it never fails the pull request, and the label and comment
+disappear when a later push no longer changes existing tests.
+
+A change is flagged when it:
+
+| Change                                                               | Flagged |
+|----------------------------------------------------------------------|---------|
+| Adds a test, a test file or a test manifest entry                    | No      |
+| Edits the body, attributes or signature of an existing test          | Yes     |
+| Inserts a statement into an existing test                            | Yes     |
+| Edits a table, constant, helper, macro or manifest entry a test uses | Yes     |
+| Removes a test, or deletes or renames a test file                    | Yes     |
+| Grows the layout [baseline or allowlist](#baseline-and-allowlist)    | Yes     |
+| Moves a test, unchanged, to another file (such as `mod tests;`)      | No      |
+| Reformats a test, reorders tests, or edits comments or docs          | No      |
+| Changes mainline code outside a test                                 | No      |
+
+The script compares the pull request with its merge base. It extracts every test item from the
+tracked test code (Rust, Python and C/C++ test files, test modules and test-only seams in mainline
+Rust, and the `test/*.toml` manifests), and fingerprints each item from its code with comments,
+whitespace and trailing commas ignored. An item that exists on both sides with the same name but a
+different fingerprint is *modified*. An item that is gone from every changed file is *removed*. An
+item that reappears unchanged in another changed file is a *move* and is not flagged, which is why
+the migration described above produces no findings. A changed file that existed before and can no
+longer be parsed is flagged as well, so that a syntax error never hides a change.
+
+Run it locally against the branch that you target:
+
+```bash
+python3 scripts/flag-test-changes.py --base origin/dev           # list findings
+python3 scripts/flag-test-changes.py --base origin/dev --json    # machine-readable report
+```
+
+Keep these limits in mind:
+
+- The check is a heuristic safety net for reviewers, not a security boundary. For example, a test
+  that is copied into a file that nothing compiles and then deleted from its original file looks
+  like a move.
+- Only the tracked languages and paths are analyzed. Test logic that lives in other files (shell
+  scripts, build files) is not.
+- The workflow runs on `pull_request_target` so that it can label pull requests from forks. It
+  therefore only reads git objects and never checks out or runs code from the pull request, and the
+  workflow and script are taken from `dev`, so a pull request cannot change how it is checked.
+  For the same reason, the check only takes effect once it has been merged into `dev`.
+- A pull request that adds `scripts/test-layout-baseline.txt` itself reports every entry as new.
