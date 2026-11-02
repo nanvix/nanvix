@@ -63,7 +63,6 @@ R1 src/libs/arch/src/x86/mem/paging/frame/number.rs 3
 R3 src/libs/bitmap/src/lib.rs impl ::core::ops::Deref for Bitmap
 R4 src/libs/bump_allocator/src/lib.rs 1
 R4 src/libs/cache/src/lib.rs 1
-R2 src/libs/koptions/src/lib.rs mod tests tests=6
 R2 src/libs/mmio-tag/src/tag.rs mod tests tests=10
 R2 src/libs/multibin/src/lib.rs mod tests tests=6
 R2 src/libs/multiimage/src/lib.rs mod tests tests=10
