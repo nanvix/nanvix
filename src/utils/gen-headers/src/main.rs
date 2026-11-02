@@ -1489,17 +1489,6 @@ fn collect_rust_fields(fields: &syn::Fields) -> Result<Vec<RustField>> {
     Ok(results)
 }
 
-/// Collects public constants and C-compatible types while preserving module paths.
-#[cfg(test)]
-fn collect_rust_symbols(
-    items: &[syn::Item],
-    module_path: &[String],
-    symbols: &mut RustSymbols,
-) -> Result<()> {
-    collect_rust_symbols_in_module(items, module_path, symbols, None, true)?;
-    apply_rust_reexports(symbols)
-}
-
 /// One flattened binding from a Rust `use` tree.
 struct RustUseBinding {
     /// Source path as written in the use tree.
@@ -2976,15 +2965,6 @@ fn validate_raw_constant_values(spec: &HeaderSpec, symbols: &RustSymbols) -> Res
     Ok(())
 }
 
-/// Resolves selected Rust constants and converts them to C macro definitions.
-#[cfg(test)]
-fn resolve_rust_constants(
-    exports: &[RustConstantExport],
-    symbols: &RustSymbols,
-) -> Result<Vec<Macro>> {
-    resolve_rust_constants_with_docs(exports, symbols, true)
-}
-
 /// Resolves selected Rust constants with a header-level documentation policy.
 fn resolve_rust_constants_with_docs(
     exports: &[RustConstantExport],
@@ -3777,17 +3757,6 @@ fn render_rust_type(
         lines.push("#endif".to_string());
     }
     Ok(lines.join("\n"))
-}
-
-/// Emits selected Rust types with forward declarations and dependency ordering.
-#[cfg(test)]
-fn emit_rust_types(
-    lines: &mut Vec<String>,
-    specs: &[RustTypeSpec],
-    symbols: &RustSymbols,
-    constant_exports: &[RustConstantExport],
-) -> Result<()> {
-    emit_rust_type_group(lines, specs, symbols, constant_exports, "", "Types", true)
 }
 
 /// Emits one named group of selected Rust types with dependency ordering.

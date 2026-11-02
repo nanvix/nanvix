@@ -24,6 +24,34 @@ fn map_type_maps_function_pointer() {
     assert_eq!(map_type(&fn_ptr), "int (*)(const void *, size_t)");
 }
 
+/// Collects public constants and C-compatible types while preserving module paths.
+fn collect_rust_symbols(
+    items: &[syn::Item],
+    module_path: &[String],
+    symbols: &mut RustSymbols,
+) -> Result<()> {
+    collect_rust_symbols_in_module(items, module_path, symbols, None, true)?;
+    apply_rust_reexports(symbols)
+}
+
+/// Resolves selected Rust constants and converts them to C macro definitions.
+fn resolve_rust_constants(
+    exports: &[RustConstantExport],
+    symbols: &RustSymbols,
+) -> Result<Vec<Macro>> {
+    resolve_rust_constants_with_docs(exports, symbols, true)
+}
+
+/// Emits selected Rust types with forward declarations and dependency ordering.
+fn emit_rust_types(
+    lines: &mut Vec<String>,
+    specs: &[RustTypeSpec],
+    symbols: &RustSymbols,
+    constant_exports: &[RustConstantExport],
+) -> Result<()> {
+    emit_rust_type_group(lines, specs, symbols, constant_exports, "", "Types", true)
+}
+
 /// Parses and translates one Rust constant expression for a unit test.
 fn translate(expression: &str) -> Result<String> {
     let expression: syn::Expr = syn::parse_str(expression)?;
