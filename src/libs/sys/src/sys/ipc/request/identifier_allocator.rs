@@ -24,11 +24,6 @@ impl RequestIdentifierAllocator {
         Self { next: 1 }
     }
 
-    #[cfg(test)]
-    pub(super) const fn with_next(next: u32) -> Self {
-        Self { next }
-    }
-
     pub(super) fn allocate(&mut self) -> RequestIdentifier {
         let identifier: RequestIdentifier = RequestIdentifier::from_raw(self.next);
         self.next = self.next.wrapping_add(1);
@@ -38,3 +33,10 @@ impl RequestIdentifierAllocator {
         identifier
     }
 }
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests;

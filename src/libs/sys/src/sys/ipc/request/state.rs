@@ -88,33 +88,6 @@ impl RequestState {
         }
     }
 
-    /// Creates an unclaimed request state with a test-specific stash capacity.
-    ///
-    /// # Parameters
-    ///
-    /// - `stash_capacity`: Maximum number of out-of-order responses retained by the state.
-    ///
-    /// # Returns
-    ///
-    /// A request state whose stash has already reserved `stash_capacity` entries.
-    #[cfg(test)]
-    pub(super) fn with_stash_capacity(stash_capacity: usize) -> Self {
-        let mut state: Self = Self::new();
-        state.stash = VecDeque::with_capacity(stash_capacity);
-        state.stash_capacity = stash_capacity;
-        state
-    }
-
-    /// Replaces the next request-identifier candidate for a test.
-    ///
-    /// # Parameters
-    ///
-    /// - `next`: Raw identifier that the allocator should consider next.
-    #[cfg(test)]
-    pub(super) fn set_next_identifier(&mut self, next: u32) {
-        self.allocator = RequestIdentifierAllocator::with_next(next);
-    }
-
     /// Returns the thread that owns this request-state entry.
     ///
     /// # Returns
@@ -540,3 +513,10 @@ pub fn has_active_requests(owner: ThreadIdentifier) -> bool {
         .find(|state| state.owner == owner)
         .is_some_and(|state| !state.is_idle())
 }
+
+//==================================================================================================
+// Unit Tests
+//==================================================================================================
+
+#[cfg(test)]
+mod tests;
