@@ -24,7 +24,7 @@
 //!
 //! ## Example
 //!
-//! ```rust
+//! ```ignore
 //! use bump_allocator::{align_up, BssStorage, BumpAllocError, FixedSizeBumpAllocator};
 //!
 //! const UNIT_SIZE: usize = 64;

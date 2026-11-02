@@ -4,6 +4,7 @@
 extern crate std;
 
 use super::{
+    align_up,
     BssStorage,
     BumpAllocError,
     FixedSizeBumpAllocator,
@@ -92,4 +93,51 @@ fn alloc_returns_exhausted_error() {
     let _ = ALLOC_C.alloc().expect("first alloc failed");
     let result = ALLOC_C.alloc();
     assert_eq!(result.unwrap_err(), BumpAllocError::Exhausted);
+}
+
+const EXAMPLE_UNIT_SIZE: usize = 64;
+const EXAMPLE_UNIT_ALIGN: usize = 64;
+const EXAMPLE_NUM_SLOTS: usize = 4;
+const EXAMPLE_STRIDE: usize = match align_up(EXAMPLE_UNIT_SIZE, EXAMPLE_UNIT_ALIGN) {
+    Some(v) => v,
+    None => panic!("stride overflow"),
+};
+const EXAMPLE_STORAGE_SIZE: usize = EXAMPLE_NUM_SLOTS * EXAMPLE_STRIDE;
+
+#[repr(align(64))]
+struct StorageD {
+    bytes: [u8; EXAMPLE_STORAGE_SIZE],
+}
+
+static mut STORAGE_D: StorageD = StorageD {
+    bytes: [0; EXAMPLE_STORAGE_SIZE],
+};
+
+struct BackendD;
+
+unsafe impl BssStorage for BackendD {
+    const NUM_UNITS: usize = EXAMPLE_NUM_SLOTS;
+    const STORAGE_SIZE: usize = EXAMPLE_STORAGE_SIZE;
+
+    fn as_mut_ptr() -> *mut u8 {
+        unsafe { core::ptr::addr_of_mut!(STORAGE_D.bytes) as *mut u8 }
+    }
+}
+
+static ALLOC_D: FixedSizeBumpAllocator<EXAMPLE_UNIT_SIZE, EXAMPLE_UNIT_ALIGN, BackendD> =
+    unsafe { FixedSizeBumpAllocator::new() };
+
+/// Mirrors the crate-level usage example, which is documentation only and is not executed.
+#[test]
+fn usage_example_allocates_raw_and_typed_slots() {
+    let slot_a: &mut [u8; EXAMPLE_UNIT_SIZE] = ALLOC_D.alloc().expect("slot a");
+    let slot_b: &mut [u8; EXAMPLE_UNIT_SIZE] = ALLOC_D.alloc().expect("slot b");
+    assert_ne!(slot_a.as_ptr(), slot_b.as_ptr());
+
+    let uninit: &mut core::mem::MaybeUninit<[u32; 16]> =
+        unsafe { ALLOC_D.alloc_as::<[u32; 16]>().expect("typed slot") };
+    uninit.write([0u32; 16]);
+    let typed: &mut [u32; 16] = unsafe { uninit.assume_init_mut() };
+    typed[0] = 42;
+    assert_eq!(typed[0], 42);
 }
