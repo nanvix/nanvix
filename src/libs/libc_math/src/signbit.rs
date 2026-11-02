@@ -48,22 +48,4 @@ pub extern "C" fn __signbitd(x: f64) -> c_int {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_signbitf() {
-        assert_eq!(__signbitf(1.0), 0);
-        assert_eq!(__signbitf(-1.0), 1);
-        assert_eq!(__signbitf(-0.0), 1);
-        assert_eq!(__signbitf(0.0), 0);
-    }
-
-    #[test]
-    fn test_signbitd() {
-        assert_eq!(__signbitd(1.0), 0);
-        assert_eq!(__signbitd(-1.0), 1);
-        assert_eq!(__signbitd(-0.0), 1);
-        assert_eq!(__signbitd(0.0), 0);
-    }
-}
+mod tests;

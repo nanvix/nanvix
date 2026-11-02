@@ -21,18 +21,4 @@ pub extern "C" fn gamma(x: f64) -> f64 {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_alias_of_lgamma() {
-        // gamma() is the legacy alias for lgamma().
-        assert_eq!(gamma(3.0), crate::lgamma::lgamma(3.0));
-        assert_eq!(gamma(5.0), crate::lgamma::lgamma(5.0));
-    }
-
-    #[test]
-    fn test_nan() {
-        assert!(gamma(f64::NAN).is_nan());
-    }
-}
+mod tests;

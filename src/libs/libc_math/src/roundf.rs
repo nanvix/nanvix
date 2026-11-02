@@ -34,26 +34,4 @@ pub extern "C" fn roundf(x: f32) -> f32 {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_round_up() {
-        assert!((roundf(2.5) - 3.0).abs() < 1e-5);
-    }
-
-    #[test]
-    fn test_round_down() {
-        assert!((roundf(2.3) - 2.0).abs() < 1e-5);
-    }
-
-    #[test]
-    fn test_negative() {
-        assert!((roundf(-2.5) - (-3.0)).abs() < 1e-5);
-    }
-
-    #[test]
-    fn test_nan() {
-        assert!(roundf(f32::NAN).is_nan());
-    }
-}
+mod tests;
