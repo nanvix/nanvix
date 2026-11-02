@@ -4,10 +4,6 @@
 # code (scripts/migrate-inline-tests.py), then run
 # `scripts/check-test-layout.py --update-baseline`.
 # Never add an entry; put new tests in their own files instead (see doc/test.md).
-R3 src/kernel/src/hal/arch/x86_64/mem/mmu/hwpt.rs fn query_user_page
-R3 src/kernel/src/hal/mem/mod.rs fn test
-R3 src/kernel/src/hal/mem/types/address/mod.rs fn test
-R3 src/kernel/src/hal/platform/microvm/pvclock.rs fn test
 R3 src/kernel/src/ipc/mbx/mailbox.rs fn Mailbox::test_token_is_current
 R3 src/kernel/src/kmain.rs code kmain::if !crate::event::test_delivery_integration() {
 R3 src/kernel/src/kmain.rs code kmain::test();

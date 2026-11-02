@@ -53,7 +53,7 @@ fn test_reconcile_snapshot_time_adopts_leading_host_sample() -> bool {
 }
 
 /// Runs all pvclock in-kernel tests.
-pub(super) fn test() -> bool {
+pub fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_reconcile_snapshot_time_clamps_lagging_host_sample);
     passed &= run_test!(test_reconcile_snapshot_time_adopts_leading_host_sample);

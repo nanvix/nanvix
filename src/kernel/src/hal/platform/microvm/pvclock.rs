@@ -300,16 +300,5 @@ pub fn boot_time_ns() -> u64 {
 #[cfg(feature = "test")]
 mod test;
 
-///
-/// # Description
-///
-/// Runs the pvclock in-kernel tests.
-///
-/// # Returns
-///
-/// `true` if every test passed, `false` otherwise.
-///
 #[cfg(feature = "test")]
-pub fn test() -> bool {
-    test::test()
-}
+pub use test::test;
