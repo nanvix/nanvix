@@ -3,6 +3,8 @@
 
 use super::*;
 
+const PI: f64 = core::f64::consts::PI;
+
 #[test]
 fn test_zero() {
     assert!((cos(0.0) - 1.0).abs() < 1e-10);

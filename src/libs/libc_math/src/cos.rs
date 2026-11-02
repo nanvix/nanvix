@@ -5,8 +5,6 @@
 // Constants
 //==================================================================================================
 
-#[cfg(test)]
-const PI: f64 = core::f64::consts::PI;
 const FRAC_PI_2: f64 = core::f64::consts::FRAC_PI_2;
 const FRAC_2_PI: f64 = core::f64::consts::FRAC_2_PI;
 
