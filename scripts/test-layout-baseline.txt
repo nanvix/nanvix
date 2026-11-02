@@ -82,9 +82,6 @@ R2 src/libs/type-safe/src/vec_deque.rs mod test tests=44
 R3 src/utils/gen-headers/src/main.rs fn collect_rust_symbols
 R3 src/utils/gen-headers/src/main.rs fn emit_rust_types
 R3 src/utils/gen-headers/src/main.rs fn resolve_rust_constants
-R2 src/utils/nanvix-bench/src/args.rs mod tests tests=7
-R2 src/utils/nanvix-bench/src/benchmarks/gateway.rs mod tests tests=3
-R2 src/utils/nanvix-bench/src/benchmarks/vmm/warm_start_vmm.rs mod tests tests=1
 R2 src/utils/nanvix-test/src/args.rs mod tests tests=15
 R2 src/utils/nanvix-test/src/config.rs mod tests tests=30
 R2 src/utils/nanvix-test/src/environment.rs mod tests tests=1
