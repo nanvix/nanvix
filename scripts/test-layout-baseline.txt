@@ -4,8 +4,6 @@
 # code (scripts/migrate-inline-tests.py), then run
 # `scripts/check-test-layout.py --update-baseline`.
 # Never add an entry; put new tests in their own files instead (see doc/test.md).
-R2 src/daemons/hostfsd/src/handler.rs mod tests tests=1
-R2 src/daemons/hostfsd/src/sandbox.rs mod tests tests=38
 R2 src/daemons/networkd/src/epoll.rs mod tests tests=1
 R2 src/daemons/networkd/src/framing.rs mod tests tests=3
 R2 src/daemons/networkd/src/wire.rs mod tests tests=25
