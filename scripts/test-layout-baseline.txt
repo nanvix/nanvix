@@ -62,7 +62,6 @@ R3 src/kernel/src/pm/uncommitted_message.rs fn new_test_message
 R1 src/libs/arch/src/x86/mem/paging/frame/number.rs 3
 R3 src/libs/bitmap/src/lib.rs impl ::core::ops::Deref for Bitmap
 R4 src/libs/bump_allocator/src/lib.rs 1
-R2 src/libs/cache/src/lib.rs mod tests tests=10
 R4 src/libs/cache/src/lib.rs 1
 R2 src/libs/cmdline/src/lib.rs mod tests tests=13
 R2 src/libs/elf/src/hash.rs mod tests tests=6
