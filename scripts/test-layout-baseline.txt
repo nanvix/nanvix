@@ -5,12 +5,6 @@
 # `scripts/check-test-layout.py --update-baseline`.
 # Never add an entry; put new tests in their own files instead (see doc/test.md).
 R3 src/kernel/src/kmain.rs code kmain::if !crate::event::test_delivery_integration() {
-R3 src/kernel/src/kmain.rs code kmain::test();
-R3 src/kernel/src/kmain.rs code kmain::test_kernel_args(kernel_args);
-R3 src/kernel/src/kmain.rs const TEST_KERNEL_ARGS_MAGIC
-R3 src/kernel/src/kmain.rs fn test
-R3 src/kernel/src/kmain.rs fn test_kernel_args
-R3 src/kernel/src/macros.rs macro_rules run_test
 R3 src/kernel/src/mm/kernel_vas.rs code init::phys::test();
 R3 src/kernel/src/mm/kernel_vas.rs code init::virt::test();
 R3 src/kernel/src/pm/mod.rs code init::{ let passed: bool = test::test(); assert!(passe

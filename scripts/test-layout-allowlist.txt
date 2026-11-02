@@ -9,3 +9,8 @@
 #   R3 <path> <kind> <name> [xN]
 # `xN` allows N occurrences of the same entry. Every entry needs a reviewer's explicit approval, and
 # an entry that no longer matches code fails the check, so remove it together with the code.
+
+# Kernel boot hooks: each statement runs an in-kernel test suite at the one point of the boot
+# sequence where the subsystem under test is initialized, so it cannot move into a test file.
+R3 src/kernel/src/kmain.rs code kmain::test::test();
+R3 src/kernel/src/kmain.rs code kmain::test::test_kernel_args(kernel_args);
