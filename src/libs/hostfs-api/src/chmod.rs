@@ -53,8 +53,7 @@ impl ChmodRequest {
         set_op_id(&mut payload, op_id);
         let fd_offset: usize = HOSTFS_DATA_START + Self::OFFSET_OF_FD;
         let mode_offset: usize = HOSTFS_DATA_START + Self::OFFSET_OF_MODE;
-        payload[fd_offset..fd_offset + Self::SIZE_OF_FD]
-            .copy_from_slice(&self.fd.to_le_bytes());
+        payload[fd_offset..fd_offset + Self::SIZE_OF_FD].copy_from_slice(&self.fd.to_le_bytes());
         payload[mode_offset..mode_offset + Self::SIZE_OF_MODE]
             .copy_from_slice(&self.mode.to_le_bytes());
         payload
@@ -80,16 +79,4 @@ impl ChmodRequest {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn request_round_trip() {
-        let request: ChmodRequest = ChmodRequest::new(17, 0o754);
-        let payload: [u8; Message::PAYLOAD_SIZE] = request.serialize(123, OperationId::new(42));
-
-        assert_eq!(ChmodRequest::decode(&payload).fd(), request.fd());
-        assert_eq!(ChmodRequest::decode(&payload).mode(), request.mode());
-        assert_eq!(crate::get_op_id(&payload), OperationId::new(42));
-    }
-}
+mod tests;

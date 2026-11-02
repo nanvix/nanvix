@@ -89,11 +89,6 @@ R2 src/libs/fat32/src/fat/storage.rs mod tests tests=21
 R2 src/libs/fat32/src/fat/time.rs mod tests tests=5
 R2 src/libs/fat32/src/path.rs mod tests tests=2
 R4 src/libs/fat32/src/path.rs 1
-R2 src/libs/hostfs-api/src/chmod.rs mod tests tests=1
-R2 src/libs/hostfs-api/src/chown.rs mod tests tests=1
-R2 src/libs/hostfs-api/src/long_msg.rs mod tests tests=4
-R2 src/libs/hostfs-api/src/path.rs mod tests tests=5
-R2 src/libs/hostfs-api/src/stat_times.rs mod tests tests=2
 R2 src/libs/koptions/src/lib.rs mod tests tests=6
 R2 src/libs/mmio-tag/src/tag.rs mod tests tests=10
 R2 src/libs/multibin/src/lib.rs mod tests tests=6
