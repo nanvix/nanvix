@@ -11,7 +11,6 @@ R3 src/kernel/src/event/mod.rs fn test_delivery_integration
 R3 src/kernel/src/hal/arch/x86_64/mem/mmu/hwpt.rs fn query_user_page
 R3 src/kernel/src/hal/mem/mod.rs fn test
 R3 src/kernel/src/hal/mem/types/address/mod.rs fn test
-R2 src/kernel/src/hal/platform/microvm/pvclock.rs mod test tests=0
 R3 src/kernel/src/hal/platform/microvm/pvclock.rs fn test
 R3 src/kernel/src/ipc/mbx/mailbox.rs fn Mailbox::test_token_is_current
 R3 src/kernel/src/kmain.rs code kmain::if !crate::event::test_delivery_integration() {
@@ -24,10 +23,8 @@ R3 src/kernel/src/macros.rs macro_rules run_test
 R3 src/kernel/src/mm/kernel_vas.rs code init::phys::test();
 R3 src/kernel/src/mm/kernel_vas.rs code init::virt::test();
 R3 src/kernel/src/mm/phys/mod.rs fn test
-R2 src/kernel/src/mm/virt/identity_map.rs mod test tests=0
 R3 src/kernel/src/mm/virt/mod.rs fn test
 R3 src/kernel/src/pm/mod.rs code init::{ let passed: bool = test::test(); assert!(passe
-R2 src/kernel/src/pm/process/manager/delivery.rs mod test tests=0
 R3 src/kernel/src/pm/process/manager/delivery.rs fn <const CAPACITY: usize> LifecycleReservationPool<CAPACITY>::in_use
 R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::capacity_in_use
 R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::release_termination
