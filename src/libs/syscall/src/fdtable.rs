@@ -20,10 +20,11 @@
 //! `vfsd`. An entry older than that ([`is_coherent`]) is treated as stale and re-resolved, so a
 //! number reused for a different backend can never be answered from an outdated entry.
 
+// Host unit tests cannot perform the real `vfsd` IPC, so they supply a stand-in.
+#[cfg(test)]
+use self::tests::resolve_via_vfsd;
 pub(crate) use crate::fd_route::Route;
 use ::alloc::collections::BTreeMap;
-#[cfg(test)]
-use ::core::sync::atomic::AtomicBool;
 use ::core::sync::atomic::{
     AtomicU64,
     Ordering,
@@ -151,12 +152,6 @@ fn is_coherent(entry_epoch: u64) -> bool {
 /// round-trips, so tight `read`/`write` loops stay local.
 pub(crate) fn resolve_result(fd: i32) -> Result<Option<Resolution>, Error> {
     Ok(resolve_for_poll(fd)?.map(|(resolution, _via_vfsd)| resolution))
-}
-
-/// Resolves a descriptor in unit tests, whose modeled authority cannot fail.
-#[cfg(test)]
-fn resolve(fd: i32) -> Option<Resolution> {
-    resolve_result(fd).expect("mock descriptor resolution should succeed")
 }
 
 /// Resolves a descriptor for `poll()`, preserving errors and direct-console fallback routing.
@@ -420,60 +415,12 @@ fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
     Ok(VfsdResolution::Hit(Resolution { route, backend_fd }))
 }
 
-/// Test stand-in for the `vfsd` resolution query.
-///
-/// Host unit tests cannot perform the real IPC. This reads the descriptor's authoritative route
-/// from [`MOCK_VFSD`], which a test populates to model `vfsd`'s table, and records it exactly as
-/// the production path would.
-#[cfg(test)]
-fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
-    if MOCK_VFSD_INTERRUPTED.load(Ordering::Relaxed) {
-        return Err(Error::new(
-            ::sys::error::ErrorCode::Interrupted,
-            "mock descriptor resolution interrupted",
-        ));
-    }
-    if MOCK_VFSD_UNAVAILABLE.load(Ordering::Relaxed) {
-        return Ok(VfsdResolution::Unavailable);
-    }
-    let Some((route, backend_fd, epoch)) = MOCK_VFSD.lock().get(&fd).copied() else {
-        return Ok(VfsdResolution::BadFile);
-    };
-    record(fd, route, backend_fd, epoch);
-    Ok(VfsdResolution::Hit(Resolution { route, backend_fd }))
-}
-
-/// Test model of `vfsd`'s authoritative slot table, consulted by the test [`resolve_via_vfsd`].
-#[cfg(test)]
-static MOCK_VFSD: Mutex<BTreeMap<i32, (Route, i32, u64)>> = Mutex::new(BTreeMap::new());
-
-/// Test switch that models an unavailable guest `vfsd`.
-#[cfg(test)]
-static MOCK_VFSD_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
-
-/// Test switch that makes the modeled `vfsd` lookup return `EINTR`.
-#[cfg(test)]
-static MOCK_VFSD_INTERRUPTED: AtomicBool = AtomicBool::new(false);
-
 /// Drops any cached resolution for `fd`.
 ///
 /// Called when a descriptor is destroyed (`close`) so a number later reused by a different backend
 /// cannot be answered from a stale entry.
 pub(crate) fn invalidate(fd: i32) {
     CACHE.lock().remove(&fd);
-}
-
-/// Drops every cached resolution and resets the coherence and mock state.
-///
-/// Restores the process-global statics to their initial values so each test starts from a pristine
-/// cache, observed generation, and modeled `vfsd` table.
-#[cfg(test)]
-fn clear() {
-    CACHE.lock().clear();
-    EXPECTED_EPOCH.store(0, Ordering::Relaxed);
-    MOCK_VFSD.lock().clear();
-    MOCK_VFSD_UNAVAILABLE.store(false, Ordering::Relaxed);
-    MOCK_VFSD_INTERRUPTED.store(false, Ordering::Relaxed);
 }
 
 //==================================================================================================

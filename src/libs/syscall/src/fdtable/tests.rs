@@ -2,6 +2,55 @@
 // Licensed under the MIT License.
 
 use super::*;
+use ::core::sync::atomic::AtomicBool;
+
+/// Test model of `vfsd`'s authoritative slot table, consulted by the test [`resolve_via_vfsd`].
+static MOCK_VFSD: Mutex<BTreeMap<i32, (Route, i32, u64)>> = Mutex::new(BTreeMap::new());
+
+/// Test switch that models an unavailable guest `vfsd`.
+static MOCK_VFSD_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+
+/// Test switch that makes the modeled `vfsd` lookup return `EINTR`.
+static MOCK_VFSD_INTERRUPTED: AtomicBool = AtomicBool::new(false);
+
+/// Test stand-in for the `vfsd` resolution query.
+///
+/// Host unit tests cannot perform the real IPC. This reads the descriptor's authoritative route
+/// from [`MOCK_VFSD`], which a test populates to model `vfsd`'s table, and records it exactly as
+/// the production path would.
+pub(super) fn resolve_via_vfsd(fd: i32) -> Result<VfsdResolution, Error> {
+    if MOCK_VFSD_INTERRUPTED.load(Ordering::Relaxed) {
+        return Err(Error::new(
+            ::sys::error::ErrorCode::Interrupted,
+            "mock descriptor resolution interrupted",
+        ));
+    }
+    if MOCK_VFSD_UNAVAILABLE.load(Ordering::Relaxed) {
+        return Ok(VfsdResolution::Unavailable);
+    }
+    let Some((route, backend_fd, epoch)) = MOCK_VFSD.lock().get(&fd).copied() else {
+        return Ok(VfsdResolution::BadFile);
+    };
+    record(fd, route, backend_fd, epoch);
+    Ok(VfsdResolution::Hit(Resolution { route, backend_fd }))
+}
+
+/// Resolves a descriptor in unit tests, whose modeled authority cannot fail.
+fn resolve(fd: i32) -> Option<Resolution> {
+    resolve_result(fd).expect("mock descriptor resolution should succeed")
+}
+
+/// Drops every cached resolution and resets the coherence and mock state.
+///
+/// Restores the process-global statics to their initial values so each test starts from a pristine
+/// cache, observed generation, and modeled `vfsd` table.
+fn clear() {
+    CACHE.lock().clear();
+    EXPECTED_EPOCH.store(0, Ordering::Relaxed);
+    MOCK_VFSD.lock().clear();
+    MOCK_VFSD_UNAVAILABLE.store(false, Ordering::Relaxed);
+    MOCK_VFSD_INTERRUPTED.store(false, Ordering::Relaxed);
+}
 
 /// Serializes the cache tests: they share the process-global [`CACHE`], [`EXPECTED_EPOCH`], and
 /// [`MOCK_VFSD`], so they must not run concurrently with one another.
