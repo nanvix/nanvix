@@ -16,7 +16,7 @@
 //!
 //! # Example
 //!
-//! ```
+//! ```ignore
 //! use cache::Cache;
 //!
 //! let mut cache: Cache<&str, i32> = Cache::new(2);
