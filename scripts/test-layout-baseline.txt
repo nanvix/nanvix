@@ -79,26 +79,6 @@ R2 src/libs/nanvix-oci/src/config.rs mod tests tests=6
 R2 src/libs/syslog-macros/src/lib.rs mod tests tests=2
 R2 src/libs/type-safe/src/vec_deque.rs mod benchmarks tests=11
 R2 src/libs/type-safe/src/vec_deque.rs mod test tests=44
-R2 src/uservm/src/args.rs mod tests tests=5
-R2 src/uservm/src/elf.rs mod tests tests=12
-R2 src/uservm/src/guest_profiler/symbols.rs mod tests tests=4
-R2 src/uservm/src/lib.rs mod tests tests=9
-R2 src/uservm/src/memory_thread.rs mod tests tests=3
-R2 src/uservm/src/orchestrator.rs mod tests tests=4
-R2 src/uservm/src/pal/linux.rs mod tests tests=15
-R2 src/uservm/src/pal/windows.rs mod ikc_tests tests=4
-R2 src/uservm/src/pal/windows.rs mod tests tests=3
-R2 src/uservm/src/standalone.rs mod tests tests=7
-R2 src/uservm/src/vmm/microvm/emulator.rs mod tests tests=4
-R2 src/uservm/src/vmm/microvm/kvm/irqchip.rs mod tests tests=2
-R2 src/uservm/src/vmm/microvm/kvm/timer.rs mod tests tests=3
-R2 src/uservm/src/vmm/microvm/kvm/vcpu/fpu.rs mod tests tests=2
-R2 src/uservm/src/vmm/microvm/kvm/vcpu/mod.rs mod tests tests=6
-R2 src/uservm/src/vmm/microvm/kvm/vcpu/msr.rs mod tests tests=12
-R2 src/uservm/src/vmm/microvm/kvm/vmem.rs mod tests tests=4
-R2 src/uservm/src/vmm/microvm/mod.rs mod tests tests=1
-R2 src/uservm/src/vmm/microvm/whp/console.rs mod tests tests=7
-R2 src/uservm/src/vmm/microvm/whp/mod.rs mod tests tests=4
 R2 src/utils/gen-headers/src/main.rs mod tests tests=26
 R3 src/utils/gen-headers/src/main.rs fn collect_rust_symbols
 R3 src/utils/gen-headers/src/main.rs fn emit_rust_types
