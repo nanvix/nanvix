@@ -132,4 +132,5 @@ they work identically to Linux. Host libraries that use `std` may need condition
 - All public items must have doc comments with
   `# Description`, `# Parameters`, `# Returns`, and
   `# Errors` sections as applicable.
-- Unit tests go in `#[cfg(test)]` modules; `expect()` is preferred over `unwrap()`.
+- Unit tests go in their own files, declared as `#[cfg(test)] mod tests;` (see `doc/test.md`,
+  "Test layout"), never inline in mainline source; `expect()` is preferred over `unwrap()`.
