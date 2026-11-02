@@ -59,7 +59,6 @@ R3 src/kernel/src/pm/sync/condvar.rs fn Condvar::stage_test_waiter
 R3 src/kernel/src/pm/thread/interrupted.rs fn InterruptedThread::reason
 R3 src/kernel/src/pm/thread/mod.rs fn <'a> ThreadRef<'a>::is_detached
 R3 src/kernel/src/pm/uncommitted_message.rs fn new_test_message
-R1 src/libs/arch/src/x86/mem/paging/frame/number.rs 3
 R3 src/libs/bitmap/src/lib.rs impl ::core::ops::Deref for Bitmap
 R4 src/libs/bump_allocator/src/lib.rs 1
 R4 src/libs/cache/src/lib.rs 1
