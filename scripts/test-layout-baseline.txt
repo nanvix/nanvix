@@ -103,7 +103,6 @@ R2 src/libs/libc_inttypes/src/strtoumax.rs mod tests tests=11
 R2 src/libs/libc_langinfo/src/catgets.rs mod test tests=3
 R2 src/libs/libc_langinfo/src/lib.rs mod windows_errno_shim tests=0
 R2 src/libs/libc_langinfo/src/nl_langinfo.rs mod test tests=6
-R2 src/libs/libc_mntent/src/parse.rs mod test tests=8
 R2 src/libs/libc_pwd/src/syscall.rs mod tests tests=4
 R2 src/libs/libc_setjmp/src/jmp_buf.rs mod test tests=4
 R2 src/libs/libc_setjmp/src/setjmp.rs mod test tests=1
