@@ -1,0 +1,11 @@
+# Allowlist of test-only seams for scripts/check-test-layout.py.
+#
+# A seam is test-only gated code that cannot live in a test file because it needs private access to
+# the code under test (for example a `#[cfg(test)]` fault-injection hook next to the code it
+# instruments). Prefer a child test module: tests.rs can already reach the private items of its
+# parent through `use super::*`.
+#
+# Format, one entry per line (kind is the item keyword, or `code` for a gated statement):
+#   R3 <path> <kind> <name> [xN]
+# `xN` allows N occurrences of the same entry. Every entry needs a reviewer's explicit approval, and
+# an entry that no longer matches code fails the check, so remove it together with the code.
