@@ -367,6 +367,11 @@ jobs:
         run: |
           ./z build -- spellcheck
 
+      - name: "Check Test Layout"
+        shell: bash
+        run: |
+          ./z build -- test-layout-check
+
   # ==========================================================================================
   # Stage 1 (parallel): Config-Dependent Source Checks (GitHub-Hosted Runners)
   # ==========================================================================================
@@ -817,6 +822,11 @@ jobs:
         shell: pwsh
         run: |
           .\z.ps1 build -- format-check
+
+      - name: "Check Test Layout"
+        shell: pwsh
+        run: |
+          .\z.ps1 build -- test-layout-check
 
   # Lint check varies by target architecture and machine type.
   windows-lint-check:

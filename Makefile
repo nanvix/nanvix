@@ -565,6 +565,7 @@ help:
 	@echo "  run-unit-tests       Run unit tests for libraries and components"
 	@echo "  run-nanvix-tests     Run system integration tests using nanvix-test"
 	@echo "  run-posix-tests      Run the ported POSIX C test suites (standalone, Linux/x86)"
+	@echo "  test-layout-check    Check that tests live in their own files, not in mainline source"
 	@echo ""
 	@echo "Execution Targets"
 	@echo "  debug    Run system in debug mode"
@@ -730,6 +731,11 @@ spellcheck-fix: python-init
 # command-line length limit.
 spellcheck: python-init
 	$(PYTHON_VENV_PYTHON) -m codespell_lib --config .codespellrc -S "$(CODESPELL_SKIP)" .
+
+# Checks that tests live in their own files instead of mainline source code (see doc/test.md).
+# The checker only uses the Python standard library, so it does not need the virtual environment.
+test-layout-check:
+	@$(PYTHON) $(SCRIPTS_DIR)/check-test-layout.py
 
 # Fixes code formatting issues.
 format: \
