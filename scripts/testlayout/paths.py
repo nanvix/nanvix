@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Path classification shared by the test-layout checker, the migration tool and the PR flagger."""
+"""Path classification shared by the test-layout checker and the PR flagger."""
 
 from __future__ import annotations
 
@@ -11,8 +11,7 @@ import re
 import subprocess
 from pathlib import Path
 
-# Repository-relative locations of the policy data files.
-BASELINE_FILE = "scripts/test-layout-baseline.txt"
+# Repository-relative location of the allowlist.
 ALLOWLIST_FILE = "scripts/test-layout-allowlist.txt"
 
 TEST_DIR_NAMES = frozenset({"tests", "test"})

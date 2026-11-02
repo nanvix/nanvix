@@ -1,19 +1,22 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Violation keys and the ratchet baseline / allowlist files.
+"""Violation keys and the allowlist file.
 
 A violation is identified by a canonical *key* and carries a *value* (a count). Keys look like
-`R2 src/a.rs mod tests`; the on-disk line format appends the value when it is meaningful:
+`R2 src/a.rs mod tests`:
 
-    R1 <path> <attributes>             test attributes outside test files
-    R2 <path> mod <name> tests=<N>     inline test-gated module holding N tests
+    R1 <path>                          test attributes outside test files
+    R2 <path> mod <name>               inline test-gated module
     R2 <path> modfile <name>           test-gated `mod x;` that does not resolve to a test file
     R2 <path> file gate                file-level test gate in a non-test file
-    R3 <path> <kind> <name> [x<N>]     test-only seam (N occurrences when more than one)
-    R4 <path> <blocks>                 executable doc-test blocks
+    R3 <path> <kind> <name>            test-only seam
+    R4 <path>                          executable doc-test blocks
     R5 <path> <kind>                   test file outside its designated location
     R6 <path> <kind>                   end-to-end manifest outside `test/`
+
+Only seams (R3) can be allowlisted. An allowlist line is the key, followed by `x<N>` when the seam
+occurs N times.
 """
 
 from __future__ import annotations
@@ -23,8 +26,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-class BaselineError(Exception):
-    """Raised when a baseline or allowlist file is malformed."""
+class AllowlistError(Exception):
+    """Raised when an allowlist file is malformed."""
 
 
 @dataclass(frozen=True)
@@ -70,45 +73,29 @@ def aggregate(violations: list[Violation]) -> dict[str, Aggregate]:
     return out
 
 
-def _is_counted_key(key: str) -> bool:
-    """Tells whether the value of a key is a count that is rendered explicitly."""
-    return key.startswith(("R1 ", "R4 "))
-
-
 def render(key: str, value: int) -> str:
-    """Renders a key and its value as a baseline line."""
-    if _is_counted_key(key):
-        return f"{key} {value}"
-    parts = key.split(" ", 3)
-    if parts[0] == "R2" and len(parts) > 3 and parts[2] == "mod":
-        return f"{key} tests={value}"
+    """Renders an allowlist entry."""
     return f"{key} x{value}" if value > 1 else key
 
 
-_R2_MOD = re.compile(r"^(R2 \S+ mod \S+) tests=(\d+)$")
-_COUNTED = re.compile(r"^((?:R1|R4) \S+) (\d+)$")
 _MULTIPLE = re.compile(r"^(.*\S) x(\d+)$")
-_KEYED = re.compile(r"^R[1-6] \S+ \S+")
+_SEAM = re.compile(r"^R3 \S+ \S+")
 
 
 def parse_line(line: str) -> tuple[str, int]:
-    """Parses one baseline line into its key and value."""
-    m = _R2_MOD.match(line)
-    if m:
-        return m.group(1), int(m.group(2))
-    m = _COUNTED.match(line)
-    if m:
-        return m.group(1), int(m.group(2))
-    if not _KEYED.match(line):
-        raise BaselineError(f"unrecognized entry: {line!r}")
+    """Parses one allowlist line into its key and value."""
+    if not _SEAM.match(line):
+        raise AllowlistError(
+            f"unrecognized entry: {line!r} (only `R3 <path> <kind> <name> [xN]` can be allowlisted)"
+        )
     m = _MULTIPLE.match(line)
-    if m and not line.startswith(("R1 ", "R4 ")):
+    if m:
         return m.group(1), int(m.group(2))
     return line, 1
 
 
-def parse_text(text: str, label: str = "baseline") -> dict[str, int]:
-    """Parses the text of a baseline or allowlist file; `label` is used in error messages."""
+def parse_text(text: str, label: str = "allowlist") -> dict[str, int]:
+    """Parses the text of an allowlist file; `label` is used in error messages."""
     entries: dict[str, int] = {}
     for number, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
@@ -116,28 +103,16 @@ def parse_text(text: str, label: str = "baseline") -> dict[str, int]:
             continue
         try:
             key, value = parse_line(line)
-        except BaselineError as err:
-            raise BaselineError(f"{label}:{number}: {err}") from err
+        except AllowlistError as err:
+            raise AllowlistError(f"{label}:{number}: {err}") from err
         if key in entries:
-            raise BaselineError(f"{label}:{number}: duplicate entry: {key!r}")
+            raise AllowlistError(f"{label}:{number}: duplicate entry: {key!r}")
         entries[key] = value
     return entries
 
 
 def load(path: Path) -> dict[str, int]:
-    """Loads a baseline or allowlist file; a missing file is empty."""
+    """Loads an allowlist file; a missing file is empty."""
     if not path.is_file():
         return {}
     return parse_text(path.read_text(encoding="utf-8"), str(path))
-
-
-def _sort_key(line: str) -> tuple[str, str]:
-    return line.split(" ", 2)[1], line
-
-
-def dump(entries: dict[str, int], header: list[str]) -> str:
-    """Serializes entries sorted by path, one per line, below a comment header."""
-    lines = sorted((render(k, v) for k, v in entries.items()), key=_sort_key)
-    out = [f"# {h}".rstrip() for h in header]
-    out.extend(lines)
-    return "\n".join(out) + "\n"

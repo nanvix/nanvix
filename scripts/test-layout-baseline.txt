@@ -1,6 +1,0 @@
-# Ratchet baseline for scripts/check-test-layout.py.
-#
-# Lists test code that still lives in mainline source. Entries may only be removed: fix the
-# code (scripts/migrate-inline-tests.py), then run
-# `scripts/check-test-layout.py --update-baseline`.
-# Never add an entry; put new tests in their own files instead (see doc/test.md).

@@ -12,8 +12,8 @@ Rules (applied outside test files):
 - R5: Python tests live under `tests/`; C/C++ tests live under `src/tests/`.
 - R6: end-to-end test manifests live under `test/`.
 
-A ratchet baseline records the violations that exist today. New violations, grown counts and stale
-baseline entries all fail the check, so the baseline can only shrink.
+Every violation fails the check. Only R3 seams can be allowlisted, and an allowlist entry whose code
+is gone fails the check as well, so the allowlist cannot silently outlive the code it covers.
 """
 
 from __future__ import annotations
@@ -21,11 +21,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import baseline as bl
+from . import violations as vl
 from .cfgexpr import CfgParseError
 from .paths import (
     ALLOWLIST_FILE,
-    BASELINE_FILE,
     C_EXTENSIONS,
     crate_roots,
     is_c_test_file,
@@ -39,17 +38,7 @@ from .paths import (
 from .rustlex import LexError
 from .scan import GatedMod, scan_rust
 
-MIGRATE_HINT = "scripts/migrate-inline-tests.py"
 DOC_HINT = "see doc/test.md ('Test layout')"
-
-BASELINE_HEADER = [
-    "Ratchet baseline for scripts/check-test-layout.py.",
-    "",
-    "Lists test code that still lives in mainline source. Entries may only be removed: fix the",
-    "code (scripts/migrate-inline-tests.py), then run",
-    "`scripts/check-test-layout.py --update-baseline`.",
-    "Never add an entry; put new tests in their own files instead (see doc/test.md).",
-]
 
 
 @dataclass
@@ -67,8 +56,7 @@ class Report:
     """Result of one policy evaluation."""
 
     findings: list[Finding] = field(default_factory=list)
-    current: dict[str, bl.Aggregate] = field(default_factory=dict)
-    baseline: dict[str, int] = field(default_factory=dict)
+    current: dict[str, vl.Aggregate] = field(default_factory=dict)
     allowlist: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -86,12 +74,12 @@ def expected_module_file(
 
 def collect_violations(
     root: Path, files: list[str] | None = None
-) -> list[bl.Violation]:
-    """Scans the repository and returns every policy violation (before baseline filtering)."""
+) -> list[vl.Violation]:
+    """Scans the repository and returns every policy violation (before allowlist filtering)."""
     names = files if files is not None else list_repo_files(root)
     known = set(names)
     roots = crate_roots(root, names)
-    out: list[bl.Violation] = []
+    out: list[vl.Violation] = []
     for path in names:
         lower = path.lower()
         if lower.endswith(".rs"):
@@ -123,11 +111,11 @@ def collect_violations(
     return out
 
 
-def _misplaced(rule: str, path: str, kind: str, message: str) -> bl.Violation:
-    return bl.Violation(rule, path, 1, f"{rule} {path} {kind}", 1, f"{rule} {message}")
+def _misplaced(rule: str, path: str, kind: str, message: str) -> vl.Violation:
+    return vl.Violation(rule, path, 1, f"{rule} {path} {kind}", 1, f"{rule} {message}")
 
 
-def _check_python(root: Path, path: str) -> list[bl.Violation]:
+def _check_python(root: Path, path: str) -> list[vl.Violation]:
     if path.startswith("tests/"):
         return []
     named = is_python_test_file(path)
@@ -143,26 +131,26 @@ def _check_python(root: Path, path: str) -> list[bl.Violation]:
 
 def _check_rust(
     root: Path, path: str, known: set[str], roots: set[str]
-) -> list[bl.Violation]:
+) -> list[vl.Violation]:
     try:
         text = (root / path).read_text(encoding="utf-8")
         result = scan_rust(text)
     except (OSError, UnicodeDecodeError) as err:
         return [
-            bl.Violation(
+            vl.Violation(
                 "R0", path, 1, f"R0 {path} read", 1, f"R0 cannot read file: {err}"
             )
         ]
     except (LexError, CfgParseError) as err:
         return [
-            bl.Violation(
+            vl.Violation(
                 "R0", path, 1, f"R0 {path} parse", 1, f"R0 cannot parse file: {err}"
             )
         ]
-    out: list[bl.Violation] = []
+    out: list[vl.Violation] = []
     if result.file_gate_line:
         out.append(
-            bl.Violation(
+            vl.Violation(
                 "R2",
                 path,
                 result.file_gate_line,
@@ -175,19 +163,20 @@ def _check_rust(
         out.extend(_check_mod(path, mod, known, roots))
     for seam in result.seams:
         out.append(
-            bl.Violation(
+            vl.Violation(
                 "R3",
                 path,
                 seam.line,
                 f"R3 {path} {seam.kind} {seam.name}",
                 1,
                 f"R3 test-only {seam.kind} '{seam.name}' in mainline source; move it into the "
-                f"child test module or list it in {ALLOWLIST_FILE}",
+                f"child test module or list it in {ALLOWLIST_FILE} "
+                "(`check-test-layout.py --print-allowlist` prints the entries)",
             )
         )
     if result.test_attr_lines:
         out.extend(
-            bl.Violation(
+            vl.Violation(
                 "R1",
                 path,
                 line,
@@ -199,7 +188,7 @@ def _check_rust(
             for line in result.test_attr_lines
         )
     out.extend(
-        bl.Violation(
+        vl.Violation(
             "R4",
             path,
             line,
@@ -215,18 +204,17 @@ def _check_rust(
 
 def _check_mod(
     path: str, mod: GatedMod, known: set[str], roots: set[str]
-) -> list[bl.Violation]:
+) -> list[vl.Violation]:
     if mod.inline:
         target = expected_module_file(path, mod.name, roots, mod.chain)
         return [
-            bl.Violation(
+            vl.Violation(
                 "R2",
                 path,
                 mod.line,
                 f"R2 {path} mod {mod.name}",
                 mod.tests,
-                f"R2 inline test module '{mod.name}' ({mod.tests} tests); move it to {target} "
-                f"with {MIGRATE_HINT} {path}",
+                f"R2 inline test module '{mod.name}' ({mod.tests} tests); move it to {target}",
             )
         ]
     candidates = module_candidates(path, mod.name, roots, mod.path_attr, mod.chain)
@@ -241,7 +229,7 @@ def _check_mod(
             "'tests/' directory"
         )
     return [
-        bl.Violation(
+        vl.Violation(
             "R2",
             path,
             mod.line,
@@ -252,19 +240,13 @@ def _check_mod(
     ]
 
 
-def evaluate(
-    violations: list[bl.Violation], baseline: dict[str, int], allow: dict[str, int]
-):
-    """Compares violations against the baseline and allowlist; returns the report."""
-    report = Report(baseline=baseline, allowlist=allow)
-    report.current = bl.aggregate(violations)
-    ratchet_hint = "run `python scripts/check-test-layout.py --update-baseline`"
+def evaluate(violations: list[vl.Violation], allow: dict[str, int]) -> Report:
+    """Compares violations against the allowlist; returns the report."""
+    report = Report(allowlist=allow)
+    report.current = vl.aggregate(violations)
     for key, agg in sorted(
         report.current.items(), key=lambda kv: (kv[1].path, kv[1].first_line)
     ):
-        if agg.rule == "R0":
-            report.findings.append(Finding(agg.path, agg.first_line, "R0", agg.message))
-            continue
         if agg.rule == "R3" and key in allow:
             if agg.value > allow[key]:
                 report.findings.append(
@@ -277,44 +259,7 @@ def evaluate(
                     )
                 )
             continue
-        allowed = baseline.get(key)
-        if allowed is None:
-            report.findings.append(
-                Finding(agg.path, agg.first_line, agg.rule, agg.message)
-            )
-        elif agg.value > allowed:
-            report.findings.append(
-                Finding(
-                    agg.path,
-                    agg.first_line,
-                    agg.rule,
-                    f"{agg.rule} count grew from {allowed} to {agg.value} for '{key}': "
-                    f"{agg.message[3:]}",
-                )
-            )
-    for key, allowed in sorted(baseline.items()):
-        agg = report.current.get(key)
-        if key in allow and key.startswith("R3 "):
-            report.findings.append(
-                Finding(
-                    _key_path(key),
-                    1,
-                    "R3",
-                    f"R3 '{key}' is both baselined and allowlisted; remove it from "
-                    f"{BASELINE_FILE} ({ratchet_hint})",
-                )
-            )
-        elif agg is None or agg.value < allowed:
-            now = 0 if agg is None else agg.value
-            report.findings.append(
-                Finding(
-                    _key_path(key),
-                    1,
-                    key.split(" ", 1)[0],
-                    f"{key.split(' ', 1)[0]} stale baseline entry '{key}' ({allowed} -> {now}): "
-                    f"the violation was fixed; {ratchet_hint} to drop it from {BASELINE_FILE}",
-                )
-            )
+        report.findings.append(Finding(agg.path, agg.first_line, agg.rule, agg.message))
     for key, allowed in sorted(allow.items()):
         agg = report.current.get(key)
         if agg is None or agg.value < allowed:
@@ -333,43 +278,24 @@ def evaluate(
 
 def _key_path(key: str) -> str:
     parts = key.split(" ", 2)
-    return parts[1] if len(parts) > 1 else BASELINE_FILE
+    return parts[1] if len(parts) > 1 else ALLOWLIST_FILE
 
 
 def check(root: Path, files: list[str] | None = None) -> Report:
     """Runs the full policy check against the repository at `root`."""
     violations = collect_violations(root, files)
-    baseline = bl.load(root / BASELINE_FILE)
-    allow = bl.load(root / ALLOWLIST_FILE)
-    return evaluate(violations, baseline, allow)
+    return evaluate(violations, vl.load(root / ALLOWLIST_FILE))
 
 
-def shrink_baseline(report: Report) -> dict[str, int]:
-    """Returns the baseline with fixed entries removed and shrunken counts lowered.
+def uncovered_seams(report: Report) -> list[str]:
+    """Returns the allowlist lines that would cover the seams the allowlist does not cover yet.
 
-    Entries are never added or raised, which keeps the ratchet one-directional.
+    A seam that is already listed with a smaller count shows up with its full, raised count, so the
+    line replaces the existing entry.
     """
-    out: dict[str, int] = {}
-    for key, allowed in report.baseline.items():
-        if key in report.allowlist and key.startswith("R3 "):
-            continue
-        agg = report.current.get(key)
-        if agg is None:
-            continue
-        out[key] = min(allowed, agg.value)
-    return out
-
-
-def write_baseline(root: Path, entries: dict[str, int]) -> None:
-    """Writes the baseline file (UTF-8, LF line endings)."""
-    with open(root / BASELINE_FILE, "w", encoding="utf-8", newline="\n") as handle:
-        handle.write(bl.dump(entries, BASELINE_HEADER))
-
-
-def shrink_baseline_file(root: Path) -> tuple[int, int]:
-    """Drops fixed entries from the baseline file; returns the entry counts before and after."""
-    report = check(root)
-    shrunk = shrink_baseline(report)
-    if shrunk != report.baseline:
-        write_baseline(root, shrunk)
-    return len(report.baseline), len(shrunk)
+    lines = [
+        vl.render(key, agg.value)
+        for key, agg in report.current.items()
+        if agg.rule == "R3" and agg.value > report.allowlist.get(key, 0)
+    ]
+    return sorted(lines, key=lambda line: (line.split(" ", 2)[1], line))

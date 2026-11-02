@@ -23,7 +23,7 @@ sys.path.insert(0, str(_SCRIPTS))
 
 from testlayout import flagging, gitdiff, testitems  # noqa: E402
 from testlayout.clex import DIRECTIVE, tokenize_c  # noqa: E402
-from testlayout.paths import ALLOWLIST_FILE, BASELINE_FILE  # noqa: E402
+from testlayout.paths import ALLOWLIST_FILE  # noqa: E402
 from testlayout.rustlex import LexError, normalized_tokens  # noqa: E402
 
 
@@ -69,7 +69,7 @@ fn two() {
 
 
 class TestNormalizedTokens(unittest.TestCase):
-    """The layout-insensitive token view shared with the migration tool."""
+    """The layout-insensitive token view of test code."""
 
     def test_trailing_commas_are_ignored(self) -> None:
         self.assertEqual(normalized_tokens("f(a, b,);"), normalized_tokens("f(a, b);"))
@@ -621,48 +621,51 @@ class TestFlagger(GitCase):
 
 
 class TestPolicyFiles(GitCase):
-    """The layout baseline and allowlist."""
+    """The layout allowlist."""
 
-    ENTRY = "R2 crates/a/src/lib.rs mod tests tests=2\n"
-
-    def test_growing_the_baseline_is_flagged(self) -> None:
-        base = self.commit({BASELINE_FILE: "# Header.\n" + self.ENTRY})
-        self.commit(
-            {
-                BASELINE_FILE: "# Header.\n"
-                + self.ENTRY.replace("tests=2", "tests=3")
-                + "R2 crates/b/src/lib.rs mod tests tests=1\n"
-            }
-        )
-        report = self.flag(base)
-        self.assertEqual(
-            self.summary(report),
-            [
-                ("policy-growth", "R2 crates/a/src/lib.rs mod tests"),
-                ("policy-growth", "R2 crates/b/src/lib.rs mod tests"),
-            ],
-        )
-        self.assertEqual({f.path for f in report.findings}, {BASELINE_FILE})
-
-    def test_shrinking_the_baseline_is_not_flagged(self) -> None:
-        base = self.commit(
-            {BASELINE_FILE: self.ENTRY + "R2 crates/b/src/lib.rs mod tests tests=1\n"}
-        )
-        self.commit({BASELINE_FILE: self.ENTRY.replace("tests=2", "tests=1")})
-        self.assertFalse(self.flag(base).flagged)
-        self.commit({BASELINE_FILE: None})
-        self.assertFalse(self.flag(base).flagged)
+    ENTRY = "R3 crates/a/src/lib.rs fn helper\n"
 
     def test_growing_the_allowlist_is_flagged(self) -> None:
         base = self.commit({ALLOWLIST_FILE: "# Header.\n"})
         self.commit({ALLOWLIST_FILE: "# Header.\n" + self.ENTRY})
         report = self.flag(base)
-        self.assertEqual([f.kind for f in report.findings], ["policy-growth"])
-        self.assertEqual(report.findings[0].path, ALLOWLIST_FILE)
+        self.assertEqual(
+            self.summary(report),
+            [("policy-growth", "R3 crates/a/src/lib.rs fn helper")],
+        )
+        self.assertEqual({f.path for f in report.findings}, {ALLOWLIST_FILE})
 
-    def test_unreadable_policy_file_is_flagged(self) -> None:
-        base = self.commit({BASELINE_FILE: self.ENTRY})
-        self.commit({BASELINE_FILE: "not a baseline line\n"})
+    def test_raising_an_entry_is_flagged(self) -> None:
+        base = self.commit({ALLOWLIST_FILE: self.ENTRY})
+        self.commit(
+            {
+                ALLOWLIST_FILE: self.ENTRY.replace("helper", "helper x3")
+                + "R3 crates/b/src/lib.rs fn other\n"
+            }
+        )
+        self.assertEqual(
+            self.summary(self.flag(base)),
+            [
+                ("policy-growth", "R3 crates/a/src/lib.rs fn helper"),
+                ("policy-growth", "R3 crates/b/src/lib.rs fn other"),
+            ],
+        )
+
+    def test_shrinking_the_allowlist_is_not_flagged(self) -> None:
+        base = self.commit(
+            {
+                ALLOWLIST_FILE: self.ENTRY.replace("helper", "helper x2")
+                + "R3 b.rs fn f\n"
+            }
+        )
+        self.commit({ALLOWLIST_FILE: self.ENTRY})
+        self.assertFalse(self.flag(base).flagged)
+        self.commit({ALLOWLIST_FILE: None})
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_unreadable_allowlist_is_flagged(self) -> None:
+        base = self.commit({ALLOWLIST_FILE: self.ENTRY})
+        self.commit({ALLOWLIST_FILE: "not an allowlist line\n"})
         self.assertEqual([f.kind for f in self.flag(base).findings], ["unparsed"])
 
 

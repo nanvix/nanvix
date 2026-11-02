@@ -13,7 +13,7 @@ pull request:
 - an item that is gone while its name lives on in the same file with different content was
   *modified*;
 - an item that is gone for good was *removed* (or *deleted* together with its file);
-- renaming a test file is flagged, and so is growing the layout baseline or allowlist.
+- renaming a test file is flagged, and so is growing the layout allowlist.
 
 The result is a heuristic safety net for reviewers, not a security boundary.
 """
@@ -24,8 +24,8 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import baseline, gitdiff
-from .paths import ALLOWLIST_FILE, BASELINE_FILE
+from . import gitdiff, violations
+from .paths import ALLOWLIST_FILE
 from .testitems import ExtractError, Item, extract, is_test_file, language
 
 # Hidden marker that identifies the sticky pull request comment.
@@ -52,8 +52,6 @@ _DETAILS = {
     POLICY_GROWTH: "the layout exceptions grew",
     UNPARSED: "the file could not be analyzed",
 }
-
-_POLICY_FILES = (BASELINE_FILE, ALLOWLIST_FILE)
 
 
 @dataclass
@@ -260,34 +258,39 @@ def _check_policy_files(
     changes: list[gitdiff.Change],
     report: Report,
 ) -> None:
-    """Flags new or raised entries of the layout baseline and allowlist."""
-    touched = {change.path for change in changes}
-    for policy in _POLICY_FILES:
-        if policy not in touched:
-            continue
-        old = blobs.read(base, policy)
-        new = blobs.read(head, policy)
-        if new is None or old == new:
-            continue
-        try:
-            before = baseline.parse_text(
-                old.decode("utf-8", "replace") if old else "", f"{policy} (base)"
+    """Flags new or raised entries of the layout allowlist."""
+    if ALLOWLIST_FILE not in {change.path for change in changes}:
+        return
+    old = blobs.read(base, ALLOWLIST_FILE)
+    new = blobs.read(head, ALLOWLIST_FILE)
+    if new is None or old == new:
+        return
+    try:
+        before = violations.parse_text(
+            old.decode("utf-8", "replace") if old else "", f"{ALLOWLIST_FILE} (base)"
+        )
+        after = violations.parse_text(new.decode("utf-8", "replace"), ALLOWLIST_FILE)
+    except violations.AllowlistError as err:
+        report.findings.append(
+            Finding(
+                UNPARSED,
+                ALLOWLIST_FILE,
+                ALLOWLIST_FILE,
+                detail=f"{_DETAILS[UNPARSED]}: {err}",
             )
-            after = baseline.parse_text(new.decode("utf-8", "replace"), policy)
-        except baseline.BaselineError as err:
-            report.findings.append(
-                Finding(UNPARSED, policy, policy, detail=f"{_DETAILS[UNPARSED]}: {err}")
-            )
+        )
+        return
+    for key, value in after.items():
+        previous = before.get(key)
+        if previous is None:
+            detail = f"entry added with a value of {value}"
+        elif value > previous:
+            detail = f"entry raised from {previous} to {value}"
+        else:
             continue
-        for key, value in after.items():
-            previous = before.get(key)
-            if previous is None:
-                detail = f"entry added with a value of {value}"
-            elif value > previous:
-                detail = f"entry raised from {previous} to {value}"
-            else:
-                continue
-            report.findings.append(Finding(POLICY_GROWTH, policy, key, detail=detail))
+        report.findings.append(
+            Finding(POLICY_GROWTH, ALLOWLIST_FILE, key, detail=detail)
+        )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -379,8 +382,8 @@ def render_markdown(
         "<details><summary>How this check works</summary>\n\n"
         "Every test is fingerprinted from its content, ignoring comments, formatting and "
         "position. A test that disappears, or whose name lives on with a different content, is "
-        "flagged; moving a test to another file is not. Growing the test layout baseline or "
-        "allowlist is flagged too. See `doc/test.md` for the details, and run "
+        "flagged; moving a test to another file is not. Growing the test layout allowlist is "
+        "flagged too. See `doc/test.md` for the details, and run "
         "`python3 scripts/flag-test-changes.py --base <base> --head <head>` to reproduce "
         "this report locally.\n\n</details>"
     )
