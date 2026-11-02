@@ -93,11 +93,12 @@ directory.
 
 `./z build -- test-layout-check` enforces this layout (rules R1-R6 in `doc/test.md`). It fails on
 inline `#[test]` functions or `mod tests { ... }` bodies, on test-only code that is not in a test
-file, on executable doc-tests, and on misplaced Python/C tests and e2e manifests. Existing
-violations are recorded in `scripts/test-layout-baseline.txt`; never add to it. To move legacy inline
-modules, use `scripts/migrate-inline-tests.py` (see `doc/test.md`, "Migrating Inline Tests").
+file, on executable doc-tests, and on misplaced Python/C tests and e2e manifests. There is no
+baseline: the only exception mechanism is `scripts/test-layout-allowlist.txt`, which holds the few
+seams (R3) that need private access and cannot move. Use `check-test-layout.py --print-allowlist`
+to get an entry, and justify it with a comment (see `doc/test.md`, "Allowlist").
 
-Changing an existing test (editing, removing or renaming it, or growing the layout baseline or
+Changing an existing test (editing, removing or renaming it, or growing the layout
 allowlist) is flagged on pull requests: the `Test Change Review` workflow adds the
 `review::tests-modified` label and posts a comment, and `scripts/flag-test-changes.py --base
 origin/dev` previews it locally. Adding tests and moving tests unchanged is not flagged. Do not

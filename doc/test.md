@@ -18,8 +18,7 @@ This document guides you through testing Nanvix.
   - [Rules](#rules)
   - [Writing Unit Tests](#writing-unit-tests)
   - [Checking the Layout](#checking-the-layout)
-  - [Baseline and Allowlist](#baseline-and-allowlist)
-  - [Migrating Inline Tests](#migrating-inline-tests)
+  - [Allowlist](#allowlist)
   - [Flagging Changes to Existing Tests](#flagging-changes-to-existing-tests)
 
 ## Running Full CI Pipeline
@@ -94,7 +93,7 @@ and makes it possible to tell, from a diff alone, whether a change touches tests
 |------|------------------------------------------------------------------------------------------------|
 | R1   | `#[test]`-style attributes (`#[test]`, `#[tokio::test]`, `#[bench]`, ...) only appear in test files. |
 | R2   | A test-only module (`#[cfg(test)]`, `#[cfg(feature = "test")]`, ...) is declared out of line (`mod tests;`) and resolves to a test file. |
-| R3   | Other test-only code in mainline source (a "seam", for example a `#[cfg(test)]` fault-injection hook) is listed in the [allowlist](#baseline-and-allowlist). `use`, `extern crate` and `mod x;` items are always allowed. |
+| R3   | Other test-only code in mainline source (a "seam", for example a `#[cfg(test)]` fault-injection hook) is listed in the [allowlist](#allowlist). `use`, `extern crate` and `mod x;` items are always allowed. |
 | R4   | Doc-tests do not run code: mark the fence `text` or `ignore`, or write a real test.              |
 | R5   | Python tests live under `tests/`. C/C++ tests live under `src/tests/`.                          |
 | R6   | End-to-end test manifests (`test-*.toml`) live under `test/`.                                   |
@@ -148,35 +147,24 @@ The check uses only the Python standard library. It also runs from the `pre-comm
 `./scripts/pipeline.sh` (step `test-layout`) and from the CI `checks` job. Pass `--format github` to
 `scripts/check-test-layout.py` to emit GitHub Actions annotations.
 
-### Baseline and Allowlist
+### Allowlist
 
-Code that predates the policy is recorded in `scripts/test-layout-baseline.txt` (a ratchet). The
-check fails on new violations, on baselined violations that grew, and on baseline entries that no
-longer apply, so the baseline can only shrink. Never add an entry: put the test in its own file.
-After fixing code, drop the entries that no longer apply with:
+The check is strict: every violation fails it. The only exception mechanism is
+`scripts/test-layout-allowlist.txt`, which lists the seams (R3) that need private access to
+mainline code and cannot move into a test file (for example a boot hook that the in-kernel test
+runner calls). Only R3 can be allowlisted; a test or a test module in mainline source never can.
 
-```bash
-python3 scripts/check-test-layout.py --update-baseline
-```
-
-`scripts/test-layout-allowlist.txt` lists the seams (R3) that a reviewer explicitly approved. Each
-entry needs a justification in the PR, and a stale entry fails the check.
-
-### Migrating Inline Tests
-
-`scripts/migrate-inline-tests.py` moves inline `#[cfg(test)] mod tests { ... }` modules into their
-own files without changing module names, so test IDs stay the same:
+Each line has the form `R3 <path> <kind> <name> [xN]`, and `#` starts a comment. A line allows up to
+`N` occurrences (default 1) of the seam. The allowlist is strict in both directions: more
+occurrences than allowed fail the check, and so does an entry that no longer matches any code. Do
+not write keys by hand. Print the lines for the seams that are not yet allowed with:
 
 ```bash
-python3 scripts/migrate-inline-tests.py --dry-run src/libs/<crate>   # preview
-python3 scripts/migrate-inline-tests.py src/libs/<crate>             # migrate, format, shrink baseline
-python3 scripts/migrate-inline-tests.py --verify origin/dev          # prove a pure migration
+python3 scripts/check-test-layout.py --print-allowlist
 ```
 
-Modules that cannot be moved mechanically (they use `include_str!`, `file!()`, `#[path]`, are nested
-in another inline module, or collide with an existing file) are reported and left in place; move
-them by hand. `--verify REV` re-plans every changed file at `REV` and compares the code token by
-token, so a reviewer can trust that a migration PR only moves code.
+Put a comment above every new entry that explains why the seam cannot live in a test file. Growing
+the allowlist is flagged for [review](#flagging-changes-to-existing-tests).
 
 ### Flagging Changes to Existing Tests
 
@@ -197,7 +185,7 @@ A change is flagged when it:
 | Inserts a statement into an existing test                            | Yes     |
 | Edits a table, constant, helper, macro or manifest entry a test uses | Yes     |
 | Removes a test, or deletes or renames a test file                    | Yes     |
-| Grows the layout [baseline or allowlist](#baseline-and-allowlist)    | Yes     |
+| Grows the layout [allowlist](#allowlist)                             | Yes     |
 | Moves a test, unchanged, to another file (such as `mod tests;`)      | No      |
 | Reformats a test, reorders tests, or edits comments or docs          | No      |
 | Changes mainline code outside a test                                 | No      |
@@ -208,7 +196,7 @@ Rust, and the `test/*.toml` manifests), and fingerprints each item from its code
 whitespace and trailing commas ignored. An item that exists on both sides with the same name but a
 different fingerprint is *modified*. An item that is gone from every changed file is *removed*. An
 item that reappears unchanged in another changed file is a *move* and is not flagged, which is why
-the migration described above produces no findings. A changed file that existed before and can no
+moving tests into their own files produces no findings. A changed file that existed before and can no
 longer be parsed is flagged as well, so that a syntax error never hides a change.
 
 Run it locally against the branch that you target:
@@ -229,4 +217,4 @@ Keep these limits in mind:
   therefore only reads git objects and never checks out or runs code from the pull request, and the
   workflow and script are taken from `dev`, so a pull request cannot change how it is checked.
   For the same reason, the check only takes effect once it has been merged into `dev`.
-- A pull request that adds `scripts/test-layout-baseline.txt` itself reports every entry as new.
+- A pull request that adds `scripts/test-layout-allowlist.txt` itself reports every entry as new.
