@@ -133,6 +133,10 @@ Tests of a crate that are not unit tests go in the crate's `tests/` directory (C
 tests) or under `src/tests/` (guest integration and stress tests). Python tests go under `tests/`,
 and end-to-end manifests under `test/`.
 
+Rustdoc runs indented code blocks as well as Rust fences. Put illustrative indented examples inside
+a `text` fence. Only plain `ignore` disables a doc-test everywhere; target-specific tags such as
+`ignore-x86_64` still leave executable tests on other targets.
+
 ### Checking the Layout
 
 ```bash
@@ -154,9 +158,9 @@ The check is strict: every violation fails it. The only exception mechanism is
 mainline code and cannot move into a test file (for example a boot hook that the in-kernel test
 runner calls). Only R3 can be allowlisted; a test or a test module in mainline source never can.
 
-Each line has the form `R3 <path> <kind> <name> [xN]`, and `#` starts a comment. A line allows up to
-`N` occurrences (default 1) of the seam. The allowlist is strict in both directions: more
-occurrences than allowed fail the check, and so does an entry that no longer matches any code. Do
+Each line has the form `R3 <path> <kind> <name> [xN]`, and `#` starts a comment. A line must match
+exactly `N` occurrences (default 1) of the seam. Adding or removing occurrences fails the check:
+lower the count after a partial removal, and delete the entry after a complete removal. Do
 not write keys by hand. Print the lines for the seams that are not yet allowed with:
 
 ```bash
@@ -193,9 +197,12 @@ A change is flagged when it:
 The script compares the pull request with its merge base. It extracts every test item from the
 tracked test code (Rust, Python and C/C++ test files, test modules and test-only seams in mainline
 Rust, and the `test/*.toml` manifests), and fingerprints each item from its code with comments,
-whitespace and trailing commas ignored. An item that exists on both sides with the same name but a
-different fingerprint is *modified*. An item that is gone from every changed file is *removed*. An
-item that reappears unchanged in another changed file is a *move* and is not flagged, which is why
+whitespace and known optional trailing commas ignored. Singleton tuple commas and unknown macro
+token trees are preserved conservatively. Execution guards on containers also contribute to their
+items' fingerprints, so disabling existing tests is flagged. An item that exists on both sides with
+the same name but a different fingerprint is *modified*. An item that is gone from every changed
+file is *removed*. An item that reappears unchanged in another changed file is a *move* and is not
+flagged, which is why
 moving tests into their own files produces no findings. A changed file that existed before and can no
 longer be parsed is flagged as well, so that a syntax error never hides a change.
 

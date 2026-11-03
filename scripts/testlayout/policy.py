@@ -269,8 +269,8 @@ def evaluate(violations: list[vl.Violation], allow: dict[str, int]) -> Report:
                     _key_path(key),
                     1,
                     "R3",
-                    f"R3 stale allowlist entry '{key}' ({allowed} -> {now}); remove it from "
-                    f"{ALLOWLIST_FILE}",
+                    f"R3 stale allowlist entry '{key}' ({allowed} -> {now}); "
+                    f"update or remove it from {ALLOWLIST_FILE}",
                 )
             )
     return report

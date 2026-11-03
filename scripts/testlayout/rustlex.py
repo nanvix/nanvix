@@ -82,7 +82,7 @@ class Tokens:
         return (
             0 <= index < len(self.kinds)
             and self.kinds[index] == PUNCT
-            and self.text[self.starts[index]] == char
+            and self.src(index) == char
         )
 
     def is_ident(self, index: int, word: str | None = None) -> bool:
@@ -190,20 +190,75 @@ def tokenize(text: str) -> Tokens:
 _RAW_STRING = re.compile(r"^(?:b|c)?r[#\"]")
 _LINE_CONTINUATION = re.compile(r"\\\n\s*")
 
+_OPTIONAL_COMMA_MACROS = frozenset(
+    {
+        "assert",
+        "assert_eq",
+        "assert_ne",
+        "debug_assert",
+        "debug_assert_eq",
+        "debug_assert_ne",
+    }
+)
+_NON_CALL_KEYWORDS = frozenset(
+    {
+        "return",
+        "break",
+        "yield",
+        "if",
+        "while",
+        "match",
+        "for",
+        "in",
+        "let",
+        "move",
+        "as",
+        "const",
+        "mut",
+        "ref",
+        "unsafe",
+        "async",
+    }
+)
+
+
+def _optional_comma(toks: Tokens, index: int) -> bool:
+    """Only removes commas whose surrounding syntax makes them optional."""
+    close = index + 1
+    if not any(toks.is_punct(close, c) for c in ")]}"):
+        return False
+    opener = toks.partner[close]
+    parent = opener
+    while parent >= 0:
+        if toks.is_punct(parent - 1, "!"):
+            if parent < 2 or toks.src(parent - 2) not in _OPTIONAL_COMMA_MACROS:
+                return False
+        if toks.is_ident(parent - 3, "macro_rules"):
+            return False
+        parent = toks.parent[parent]
+    if not toks.is_punct(close, ")"):
+        return True
+    if toks.is_punct(opener - 1, "!"):
+        return True
+    if toks.is_ident(opener - 1) and toks.src(opener - 1) not in _NON_CALL_KEYWORDS:
+        return True
+    if toks.is_punct(opener - 1, ")") or toks.is_punct(opener - 1, "]"):
+        return True
+    return any(
+        toks.is_punct(i, ",") and toks.parent[i] == opener
+        for i in range(opener + 1, index)
+    )
+
 
 def normalized_span(toks: Tokens, first: int, last: int) -> list[str]:
     """Returns the token texts of `toks[first..last]`, ignoring layout a formatter may change.
 
-    Formatting may join wrapped lines, which drops trailing commas and re-wraps string literals at
-    their `\\` line continuations. Comments are not tokens, so they are ignored as well.
+    Formatting may remove optional trailing commas and re-wrap string continuations. Singleton
+    tuple commas and unknown macro token trees are preserved. Comments are not tokens.
     """
     out: list[str] = []
     for i in range(first, last + 1):
-        if (
-            i < last
-            and toks.is_punct(i, ",")
-            and any(toks.is_punct(i + 1, c) for c in ")]}")
-        ):
+        if i < last and toks.is_punct(i, ",") and _optional_comma(toks, i):
             continue
         word = toks.src(i)
         if toks.kinds[i] == STRING and not _RAW_STRING.match(word):

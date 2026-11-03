@@ -146,7 +146,14 @@ def crate_roots(root: Path, files: list[str]) -> set[str]:
             if candidate in known:
                 roots.add(candidate)
         prefix = posixpath.normpath(posixpath.join(base, "src/bin")) + "/"
-        roots.update(f for f in files if f.startswith(prefix) and f.endswith(".rs"))
+        for file in files:
+            if not file.startswith(prefix):
+                continue
+            relative = file[len(prefix) :].split("/")
+            if (len(relative) == 1 and relative[0].endswith(".rs")) or (
+                len(relative) == 2 and relative[1] == "main.rs"
+            ):
+                roots.add(file)
         try:
             text = (root / manifest).read_text(encoding="utf-8")
         except OSError:
@@ -178,7 +185,7 @@ def module_candidates(
     if path_attr is not None:
         base = posixpath.dirname(file)
         if inline_chain:
-            base = posixpath.join(base, *inline_chain)
+            base = posixpath.join(module_directory(file, roots), *inline_chain)
         return [posixpath.normpath(posixpath.join(base, path_attr))]
     base = module_directory(file, roots)
     if inline_chain:

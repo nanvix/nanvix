@@ -138,6 +138,25 @@ class TestScan(unittest.TestCase):
         result = scan_rust("#[cfg(test)]\nmod tests;\n")
         self.assertEqual([(m.name, m.inline) for m in result.mods], [("tests", False)])
 
+    def test_multiple_cfg_attributes_are_conjoined(self) -> None:
+        """Individually broad cfg predicates can jointly imply a test build."""
+        attrs = '#[cfg(any(feature = "test", feature = "std"))]\n#[cfg(not(feature = "std"))]\n'
+        result = scan_rust(attrs + "mod checks { fn test() {} }\n")
+        self.assertEqual([m.name for m in result.mods], ["checks"])
+        result = scan_rust(attrs.replace("#[", "#![") + "fn helper() {}\n")
+        self.assertEqual(result.file_gate_line, 1)
+
+    def test_conditional_test_attributes_are_detected(self) -> None:
+        """Tests declared through nested cfg_attr attributes remain tests."""
+        for attr in (
+            "cfg_attr(test, test)",
+            "cfg_attr(test, allow(dead_code), test)",
+            "cfg_attr(test, cfg_attr(unix, tokio::test))",
+        ):
+            with self.subTest(attr=attr):
+                result = scan_rust(f"#[{attr}]\nfn example() {{}}\n")
+                self.assertEqual(result.test_attr_lines, [1])
+
     def test_path_attribute_is_recorded(self) -> None:
         """A `#[path]` attribute overrides the default location."""
         result = scan_rust('#[cfg(test)]\n#[path = "tests/x.rs"]\nmod x;\n')
@@ -200,6 +219,35 @@ class TestScan(unittest.TestCase):
             "/// ```sh\n/// echo hi\n/// ```\nfn e() {}\n"
         )
         self.assertEqual(scan_rust(text).doctest_lines, [1, 13])
+
+    def test_target_specific_doc_ignores_are_not_universal(self) -> None:
+        """A target-specific ignore leaves an executable test on other targets."""
+        for info in ("ignore-x86_64", "rust,ignore-x86_64", "rust,ignore"):
+            with self.subTest(info=info):
+                text = f"/// ```{info}\n/// assert!(true);\n/// ```\nfn f() {{}}\n"
+                expected = [] if info == "rust,ignore" else [1]
+                self.assertEqual(scan_rust(text).doctest_lines, expected)
+
+    def test_indented_doc_tests(self) -> None:
+        """Indented code blocks are tests in both line and block documentation."""
+        examples = (
+            ("///     assert!(true);\nfn f() {}\n", [1]),
+            ("/// Example.\n///\n///     assert!(true);\nfn f() {}\n", [3]),
+            ("/** Example.\n\n    assert!(true);\n*/\nfn f() {}\n", [3]),
+            ("/** Example.\n *\n *     assert!(true);\n */\nfn f() {}\n", [3]),
+        )
+        for text, expected in examples:
+            with self.subTest(text=text):
+                self.assertEqual(scan_rust(text).doctest_lines, expected)
+
+    def test_indentation_inside_paragraphs_and_text_fences_is_not_code(self) -> None:
+        """Paragraph continuations and ignored fenced contents stay non-executable."""
+        for text in (
+            "/// Paragraph\n///     continuation\nfn f() {}\n",
+            "/// ```text\n///     example\n/// ```\nfn f() {}\n",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(scan_rust(text).doctest_lines, [])
 
 
 class TestPaths(unittest.TestCase):
@@ -375,6 +423,25 @@ class TestRules(RepoCase):
         self.write("crates/a/src/foo/tests.rs", "#[test]\nfn t() {}\n")
         self.assertTrue(self.check().ok, self.check().findings)
 
+    def test_binary_children_are_not_crate_roots(self) -> None:
+        """Auto-discovery only treats binary entry points as crate roots."""
+        self.write("crates/a/src/bin/cli.rs", "mod helper;\n")
+        self.write("crates/a/src/bin/cli/helper.rs", "#[cfg(test)]\nmod tests;\n")
+        self.write("crates/a/src/bin/cli/helper/tests.rs", "#[test]\nfn t() {}\n")
+        self.write("crates/a/src/bin/tool/main.rs", "#[cfg(test)]\nmod tests;\n")
+        self.write("crates/a/src/bin/tool/tests.rs", "#[test]\nfn t() {}\n")
+        self.assertTrue(self.check().ok, self.check().findings)
+
+    def test_inline_path_attribute_uses_the_module_directory(self) -> None:
+        """A path inside an inline module is relative to that module's directory."""
+        self.write("crates/a/src/lib.rs", "mod foo;\n")
+        self.write(
+            "crates/a/src/foo.rs",
+            'mod outer {\n#[cfg(test)]\n#[path = "tests/checks.rs"]\nmod checks;\n}\n',
+        )
+        self.write("crates/a/src/foo/outer/tests/checks.rs", "#[test]\nfn t() {}\n")
+        self.assertTrue(self.check().ok, self.check().findings)
+
     def test_file_level_gate_is_flagged(self) -> None:
         """R2: a crate-level test gate in a mainline file is a violation."""
         self.write("crates/a/src/lib.rs", "pub mod x;\n")
@@ -406,6 +473,15 @@ class TestRules(RepoCase):
         findings = self.check().findings
         self.assertEqual([f.rule for f in findings], ["R3"])
         self.assertIn("stale allowlist", findings[0].message)
+
+    def test_partial_removal_requires_lowering_the_allowlist_count(self) -> None:
+        """A seam allowlist entry must match exactly, not merely bound the count."""
+        self.write("crates/a/src/lib.rs", "#[cfg(test)]\nfn helper() {}\n")
+        self.write(ALLOWLIST_FILE, "R3 crates/a/src/lib.rs fn helper x2\n")
+        findings = self.check().findings
+        self.assertEqual(len(findings), 1)
+        self.assertIn("stale allowlist", findings[0].message)
+        self.assertIn("(2 -> 1)", findings[0].message)
 
     def test_stray_test_attribute(self) -> None:
         """R1: a test attribute in a mainline file is a violation, in a test file it is not."""
