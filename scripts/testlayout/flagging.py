@@ -20,13 +20,22 @@ The result is a heuristic safety net for reviewers, not a security boundary.
 
 from __future__ import annotations
 
+import posixpath
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import gitdiff, violations
+from . import gitdiff, paths, violations
 from .paths import ALLOWLIST_FILE
-from .testitems import ExtractError, Item, extract, is_test_file, language
+from .testitems import (
+    RUST,
+    ExtractError,
+    Item,
+    extract,
+    is_test_file,
+    language,
+    rust_module_refs,
+)
 
 # Hidden marker that identifies the sticky pull request comment.
 MARKER = "<!-- test-change-review -->"
@@ -115,30 +124,96 @@ def analyze(root: Path, base: str, head: str) -> Report:
     report = Report(base=base, head=head, merge_base=merge)
     changes = gitdiff.changed_files(root, merge, head_sha)
     with gitdiff.BlobReader(root) as blobs:
-        pairs = _load_pairs(blobs, merge, head_sha, changes, report)
+        pairs = _load_pairs(root, blobs, merge, head_sha, changes, report)
         _check_policy_files(blobs, merge, head_sha, changes, report)
     _match(pairs, report)
     report.findings.sort(key=lambda f: (f.path, f.base_line, f.head_line, f.name))
     return report
 
 
-def _extract(path: str, data: bytes) -> list[Item]:
+def _extract(path: str, data: bytes, context: tuple[str, ...] = ()) -> list[Item]:
     if len(data) > MAX_FILE_BYTES:
         raise ExtractError(f"file is larger than {MAX_FILE_BYTES} bytes")
-    return extract(path, data.decode("utf-8", "replace"))
+    return extract(path, data.decode("utf-8", "replace"), context)
 
 
-def _try_extract(path: str, data: bytes | None) -> tuple[list[Item], str]:
+def _try_extract(
+    path: str, data: bytes | None, context: tuple[str, ...] = ()
+) -> tuple[list[Item], str]:
     """Extracts the items of one revision of a file; returns them and an error message."""
     if data is None:
         return [], ""
     try:
-        return _extract(path, data), ""
+        return _extract(path, data, context), ""
     except ExtractError as err:
         return [], str(err)
 
 
+def _module_contexts(
+    root: Path, blobs: gitdiff.BlobReader, revision: str, sources: dict[str, bytes]
+) -> tuple[dict[str, tuple[str, ...]], dict[str, str]]:
+    """Follows changed module declarations so unchanged moves retain their guards."""
+    rust = {path: data for path, data in sources.items() if language(path) == RUST}
+    manifests: set[str] = set()
+    for path in rust:
+        directory = posixpath.dirname(path)
+        while True:
+            manifests.add(posixpath.join(directory, "Cargo.toml"))
+            if not directory:
+                break
+            directory = posixpath.dirname(directory)
+    texts: dict[str, str] = {}
+    for manifest in sorted(manifests):
+        data = blobs.read(revision, manifest)
+        if data is not None:
+            texts[manifest] = data.decode("utf-8", "replace")
+    roots = paths.crate_roots(root, sorted({*rust, *texts}), texts.__getitem__)
+    parents: dict[str, list[tuple[str, tuple[str, ...]]]] = defaultdict(list)
+    errors: dict[str, str] = {}
+    for path, data in rust.items():
+        try:
+            if len(data) > MAX_FILE_BYTES:
+                raise ExtractError(f"file is larger than {MAX_FILE_BYTES} bytes")
+            for module in rust_module_refs(data.decode("utf-8", "replace")):
+                candidates = paths.module_candidates(
+                    path, module.name, roots, module.path, module.chain
+                )
+                found = [candidate for candidate in candidates if candidate in rust]
+                if len(found) > 1:
+                    raise ExtractError(f"ambiguous module '{module.name}'")
+                for child in found:
+                    parents[child].append((path, module.context))
+        except ExtractError as err:
+            errors[path] = str(err)
+
+    contexts: dict[str, tuple[str, ...]] = {}
+
+    def context_for(path: str, visiting: frozenset[str]) -> tuple[str, ...]:
+        if path in errors:
+            raise ExtractError(errors[path])
+        if path in contexts:
+            return contexts[path]
+        if path in visiting:
+            raise ExtractError(f"cyclic module reference to '{path}'")
+        options = {
+            context_for(parent, visiting | {path}) + context
+            for parent, context in parents[path]
+        }
+        if len(options) > 1:
+            raise ExtractError(f"multiple module guard contexts for '{path}'")
+        contexts[path] = next(iter(options), ())
+        return contexts[path]
+
+    for path in rust:
+        try:
+            context_for(path, frozenset())
+        except ExtractError as err:
+            errors[path] = str(err)
+    return contexts, errors
+
+
 def _load_pairs(
+    root: Path,
     blobs: gitdiff.BlobReader,
     base: str,
     head: str,
@@ -146,6 +221,9 @@ def _load_pairs(
     report: Report,
 ) -> list[_Pair]:
     pairs: list[_Pair] = []
+    loaded: list[tuple[gitdiff.Change, bytes | None, bytes | None]] = []
+    base_sources: dict[str, bytes] = {}
+    head_sources: dict[str, bytes] = {}
     for change in changes:
         if language(change.old_path) is None and language(change.path) is None:
             continue
@@ -164,8 +242,22 @@ def _load_pairs(
         new = blobs.read(head, change.path) if change.status != "D" else None
         if old is not None and old == new:
             continue
-        base_items, base_error = _try_extract(change.old_path, old)
-        head_items, head_error = _try_extract(change.path, new)
+        loaded.append((change, old, new))
+        if old is not None:
+            base_sources[change.old_path] = old
+        if new is not None:
+            head_sources[change.path] = new
+    base_contexts, base_errors = _module_contexts(root, blobs, base, base_sources)
+    head_contexts, head_errors = _module_contexts(root, blobs, head, head_sources)
+    for change, old, new in loaded:
+        base_items, base_error = _try_extract(
+            change.old_path, old, base_contexts.get(change.old_path, ())
+        )
+        head_items, head_error = _try_extract(
+            change.path, new, head_contexts.get(change.path, ())
+        )
+        base_error = base_error or base_errors.get(change.old_path, "")
+        head_error = head_error or head_errors.get(change.path, "")
         error = base_error or head_error
         if error and change.status != "A":
             report.findings.append(

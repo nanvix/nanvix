@@ -202,9 +202,9 @@ token trees are preserved conservatively. Execution guards on containers also co
 items' fingerprints, so disabling existing tests is flagged. An item that exists on both sides with
 the same name but a different fingerprint is *modified*. An item that is gone from every changed
 file is *removed*. An item that reappears unchanged in another changed file is a *move* and is not
-flagged, which is why
-moving tests into their own files produces no findings. A changed file that existed before and can no
-longer be parsed is flagged as well, so that a syntax error never hides a change.
+flagged. Guards on changed out-of-line module declarations follow the referenced files, so moving
+tests into their own files retains their execution context. A changed file that existed before and
+can no longer be parsed is flagged as well, so that a syntax error never hides a change.
 
 Run it locally against the branch that you target:
 

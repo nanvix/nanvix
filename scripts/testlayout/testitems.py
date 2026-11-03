@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from . import paths
+from .cfgexpr import CfgParseError
 from .clex import DIRECTIVE, directive_words, normalized_c_span, tokenize_c
 from .rustlex import IDENT, PUNCT, STRING, LexError, Tokens, normalized_span, tokenize
 from .scan import (
@@ -54,6 +55,16 @@ class Item:
     fingerprint: str
 
 
+@dataclass(frozen=True)
+class ModuleRef:
+    """An out-of-line Rust module and the guards inherited by its source file."""
+
+    name: str
+    path: str | None
+    chain: tuple[str, ...]
+    context: tuple[str, ...]
+
+
 def language(path: str) -> str | None:
     """Returns the language of a file the flagger tracks, or `None` for any other file."""
     path = paths.to_posix(path)
@@ -76,14 +87,17 @@ def is_test_file(path: str) -> bool:
     return lang is not None
 
 
-def extract(path: str, text: str) -> list[Item]:
+def extract(path: str, text: str, context: tuple[str, ...] = ()) -> list[Item]:
     """Returns the test items of a file; raises `ExtractError` if it cannot be analyzed."""
     lang = language(path)
     if lang is None:
         return []
     text = text.lstrip("\ufeff").replace("\r\n", "\n")
     if lang == RUST:
-        return _rust_items(text, paths.is_rust_test_file(path))
+        try:
+            return _rust_items(text, paths.is_rust_test_file(path), context)
+        except CfgParseError as err:
+            raise ExtractError(str(err)) from err
     if lang == PYTHON:
         return _python_items(text)
     if lang == C:
@@ -110,7 +124,7 @@ _MENTIONS_TEST = re.compile(r"test|bench")
 _RUST_CONTAINERS = frozenset({"mod", "impl", "trait", "extern_block"})
 
 
-def _rust_items(text: str, in_test_file: bool) -> list[Item]:
+def _rust_items(text: str, in_test_file: bool, context: tuple[str, ...]) -> list[Item]:
     if not in_test_file and not _MENTIONS_TEST.search(text):
         return []
     try:
@@ -120,10 +134,21 @@ def _rust_items(text: str, in_test_file: bool) -> list[Item]:
     items: list[Item] = []
     walker = _RustWalker(toks, items)
     if in_test_file or has_test_file_gate(toks):
-        walker.counted(0, len(toks), ())
+        walker.counted(0, len(toks), (), context)
     else:
-        walker.scan(0, len(toks))
+        walker.scan(0, len(toks), context)
     return items
+
+
+def rust_module_refs(text: str) -> list[ModuleRef]:
+    """Extracts module references without reading or executing their source files."""
+    try:
+        toks = tokenize(text)
+        walker = _RustWalker(toks, [])
+        walker.scan(0, len(toks))
+        return walker.modules
+    except (LexError, CfgParseError) as err:
+        raise ExtractError(str(err)) from err
 
 
 class _RustWalker:
@@ -132,6 +157,7 @@ class _RustWalker:
     def __init__(self, toks: Tokens, items: list[Item]) -> None:
         self.toks = toks
         self.items = items
+        self.modules: list[ModuleRef] = []
 
     def scan(self, lo: int, hi: int, context: tuple[str, ...] = ()) -> None:
         """Finds the test-only and test-marked units in mainline code."""
@@ -154,6 +180,10 @@ class _RustWalker:
                 i = self._unit(i, unit, hi, enclosing_items(toks, i), context) + 1
                 continue
             measured = measure_unit(toks, unit)
+            if measured.kind == "mod" and toks.is_punct(measured.end, ";"):
+                self._module(i, measured.name, enclosing_items(toks, i), context)
+                i = measured.end + 1
+                continue
             if measured.kind in _RUST_CONTAINERS and toks.is_punct(measured.end, "}"):
                 self.scan(
                     toks.partner[measured.end] + 1,
@@ -196,6 +226,8 @@ class _RustWalker:
         attrs, _ = read_attrs(self.toks, start, inner=inner)
         words: list[str] = []
         for attr in attrs[:1] if inner else attrs:
+            if attr.path == ("path",):
+                continue
             if (
                 attr.pred is not None
                 and attr.pred.op == "atom"
@@ -220,6 +252,8 @@ class _RustWalker:
         toks = self.toks
         measured = measure_unit(toks, unit)
         end = min(measured.end, hi - 1)
+        if measured.kind == "mod" and toks.is_punct(end, ";"):
+            self._module(start, measured.name, chain, context)
         if measured.kind in WIRING_KINDS:
             return end
         if (
@@ -236,6 +270,23 @@ class _RustWalker:
             return end
         self._add(start, end, chain, measured.name, context)
         return end
+
+    def _module(
+        self,
+        start: int,
+        name: str,
+        chain: tuple[tuple[str, str], ...],
+        context: tuple[str, ...],
+    ) -> None:
+        attrs, _ = read_attrs(self.toks, start)
+        self.modules.append(
+            ModuleRef(
+                name,
+                next((a.value for a in attrs if a.path == ("path",)), None),
+                tuple(item for kind, item in chain if kind == "mod"),
+                context + self._attributes(start),
+            )
+        )
 
     def _add(
         self,

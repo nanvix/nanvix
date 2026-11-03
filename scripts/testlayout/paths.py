@@ -9,6 +9,7 @@ import os
 import posixpath
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 # Repository-relative location of the allowlist.
@@ -133,7 +134,11 @@ def list_repo_files(root: Path) -> list[str]:
 _MANIFEST_PATH = re.compile(r'^\s*path\s*=\s*"([^"]+\.rs)"', re.MULTILINE)
 
 
-def crate_roots(root: Path, files: list[str]) -> set[str]:
+def crate_roots(
+    root: Path,
+    files: list[str],
+    read_text: Callable[[str], str] | None = None,
+) -> set[str]:
     """Returns the Rust files that are crate roots (their child modules live next to them)."""
     known = set(files)
     roots: set[str] = set()
@@ -155,7 +160,11 @@ def crate_roots(root: Path, files: list[str]) -> set[str]:
             ):
                 roots.add(file)
         try:
-            text = (root / manifest).read_text(encoding="utf-8")
+            text = (
+                read_text(manifest)
+                if read_text is not None
+                else (root / manifest).read_text(encoding="utf-8")
+            )
         except OSError:
             continue
         for rel in _MANIFEST_PATH.findall(text):

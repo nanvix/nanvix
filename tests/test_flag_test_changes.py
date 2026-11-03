@@ -739,6 +739,70 @@ class TestFlagger(GitCase):
         self.commit({"crates/a/src/lib.rs": "pub fn add() {}\n"})
         self.assertEqual(self.summary(self.flag(base)), [("removed", "tests")])
 
+    def test_feature_gated_inline_move_preserves_its_context(self) -> None:
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: gate + "mod tests {\n" + ONE + "}\n"})
+        self.commit({path: gate + "mod tests;\n", "crates/a/src/tests.rs": ONE})
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_changing_a_guard_while_moving_a_test_is_flagged(self) -> None:
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: gate + "mod tests {\n" + ONE + "}\n"})
+        self.commit(
+            {
+                path: gate.replace('"std"', '"other"') + "mod tests;\n",
+                "crates/a/src/tests.rs": ONE,
+            }
+        )
+        self.assertEqual(self.summary(self.flag(base)), [("removed", "tests::one")])
+
+    def test_nested_module_move_preserves_enclosing_guards(self) -> None:
+        outer = "#[cfg(unix)]\nmod outer {\n"
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: outer + gate + "mod tests {\n" + ONE + "}\n}\n"})
+        self.commit(
+            {
+                path: outer + gate + "mod tests;\n}\n",
+                "crates/a/src/outer/tests.rs": ONE,
+            }
+        )
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_explicit_module_path_is_wiring_not_an_execution_guard(self) -> None:
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: gate + "mod checks {\n" + ONE + "}\n"})
+        self.commit(
+            {
+                path: gate + '#[path = "tests/checks.rs"]\nmod checks;\n',
+                "crates/a/src/tests/checks.rs": ONE,
+            }
+        )
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_custom_crate_root_is_resolved_from_git_manifest(self) -> None:
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/entry.rs"
+        base = self.commit(
+            {
+                "crates/a/Cargo.toml": '[package]\nname = "a"\n[lib]\npath = "src/entry.rs"\n',
+                path: gate + "mod tests {\n" + ONE + "}\n",
+            }
+        )
+        self.commit({path: gate + "mod tests;\n", "crates/a/src/tests.rs": ONE})
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_cyclic_module_references_are_reported(self) -> None:
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: ONE})
+        self.commit({path: '#[cfg(test)]\n#[path = "lib.rs"]\nmod tests;\n'})
+        report = self.flag(base)
+        self.assertEqual([f.kind for f in report.findings], ["unparsed"])
+        self.assertIn("cyclic module reference", report.findings[0].detail)
+
     def test_files_that_are_not_tests_are_ignored(self) -> None:
         base = self.commit(
             {"crates/a/src/lib.rs": "pub fn add() {}\n", "README.md": "a\n"}
