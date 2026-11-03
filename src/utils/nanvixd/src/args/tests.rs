@@ -1,0 +1,209 @@
+// Copyright(c) The Maintainers of Nanvix.
+// Licensed under the MIT License.
+
+use super::*;
+use ::std::path::{
+    Path,
+    PathBuf,
+};
+
+fn argv(extras: &[&str]) -> Vec<String> {
+    let mut v: Vec<String> = vec!["nanvixd".to_string()];
+    for s in extras {
+        v.push((*s).to_string());
+    }
+    v
+}
+
+#[test]
+fn log_to_stdout_defaults_to_false() {
+    let args = Args::parse(argv(&["--", "/bin/foo"])).expect("parse");
+    assert!(!args.log_to_stdout());
+}
+
+#[test]
+fn log_to_stdout_flag_sets_true() {
+    let args = Args::parse(argv(&["-log-to-stdout", "--", "/bin/foo"])).expect("parse");
+    assert!(args.log_to_stdout());
+}
+
+#[test]
+fn log_to_stdout_composes_with_interactive_mode() {
+    let args = Args::parse(argv(&["-log-to-stdout", "--", "/bin/foo", "arg1"])).expect("parse");
+    assert!(args.log_to_stdout());
+    assert!(args.interactive_mode());
+    assert_eq!(args.program_name(), Some("/bin/foo"));
+}
+
+#[test]
+fn log_to_stdout_and_log_dir_are_mutually_exclusive() {
+    let err = Args::parse(argv(&[
+        "-log-to-stdout",
+        "-log-dir",
+        "/tmp/somewhere",
+        "--",
+        "/bin/foo",
+    ]))
+    .expect_err("parse should fail when both -log-to-stdout and -log-dir are provided");
+    let msg = format!("{err}");
+    assert!(msg.contains(Args::OPT_LOG_TO_STDOUT), "unexpected error: {msg}");
+    assert!(msg.contains(Args::OPT_LOG_DIRECTORY), "unexpected error: {msg}");
+}
+
+#[test]
+fn log_dir_alone_is_accepted() {
+    let args = Args::parse(argv(&["-log-dir", "/tmp/somewhere", "--", "/bin/foo"])).expect("parse");
+    assert!(!args.log_to_stdout());
+    assert_eq!(args.log_directory(), "/tmp/somewhere");
+}
+
+#[test]
+fn parses_http_mode_with_sockaddr() {
+    let args = Args::parse(argv(&["-http-addr", "127.0.0.1:9999"])).expect("parse");
+    assert_eq!(args.http_sockaddr(), Some("127.0.0.1:9999"));
+    assert!(!args.interactive_mode());
+    assert_eq!(args.program_name(), None);
+}
+
+#[test]
+fn parses_interactive_mode() {
+    let args = Args::parse(argv(&["--", "/bin/foo", "arg1"])).expect("parse");
+    assert_eq!(args.http_sockaddr(), None);
+    assert!(args.interactive_mode());
+    assert_eq!(args.program_name(), Some("/bin/foo"));
+}
+
+#[test]
+fn rejects_both_http_and_interactive() {
+    let res = Args::parse(argv(&["-http-addr", "127.0.0.1:9999", "--", "/bin/foo"]));
+    assert!(res.is_err(), "expected error when both modes are set");
+    let msg: String = format!("{:#}", res.err().unwrap());
+    assert!(msg.contains("cannot use both HTTP mode"), "unexpected error: {msg}");
+}
+
+#[test]
+fn rejects_neither_http_nor_interactive() {
+    let res = Args::parse(argv(&[]));
+    assert!(res.is_err(), "expected error when no mode is set");
+    let msg: String = format!("{:#}", res.err().unwrap());
+    assert!(msg.contains("must specify either HTTP mode"), "unexpected error: {msg}");
+}
+
+#[test]
+fn parses_gateway_sockaddr_flag() {
+    let args = Args::parse(argv(&[
+        "-http-addr",
+        "127.0.0.1:9999",
+        "-gateway-sockaddr",
+        "/tmp/test-gw.sock",
+    ]))
+    .expect("parse");
+    assert_eq!(args.gateway_sockaddr(), Some("/tmp/test-gw.sock"));
+}
+
+#[test]
+fn gateway_sockaddr_is_none_when_unset() {
+    let args = Args::parse(argv(&["-http-addr", "127.0.0.1:9999"])).expect("parse");
+    assert_eq!(args.gateway_sockaddr(), None);
+}
+
+#[test]
+fn rejects_gateway_sockaddr_without_value() {
+    let res = Args::parse(argv(&["-gateway-sockaddr"]));
+    assert!(res.is_err(), "expected error when -gateway-sockaddr has no value");
+    let msg: String = format!("{:#}", res.err().unwrap());
+    assert!(msg.contains("missing value for: -gateway-sockaddr"), "unexpected error: {msg}");
+}
+
+#[test]
+fn allow_host_builds_allowlist_filter() {
+    let args = Args::parse(argv(&[
+        "-allow-host-networking",
+        "-allow-host",
+        "1.2.3.4",
+        "-allow-host",
+        "10.0.0.0/8",
+        "--",
+        "/bin/foo",
+    ]))
+    .expect("parse");
+    let filter = args.host_filter();
+    assert!(filter.permits([1, 2, 3, 4]));
+    assert!(filter.permits([10, 9, 8, 7]));
+    assert!(!filter.permits([8, 8, 8, 8]));
+}
+
+#[test]
+fn block_host_builds_blocklist_filter() {
+    let args = Args::parse(argv(&[
+        "-allow-host-networking",
+        "-block-host",
+        "8.8.8.8",
+        "--",
+        "/bin/foo",
+    ]))
+    .expect("parse");
+    let filter = args.host_filter();
+    assert!(!filter.permits([8, 8, 8, 8]));
+    assert!(filter.permits([1, 2, 3, 4]));
+}
+
+#[test]
+fn allow_and_block_host_are_mutually_exclusive() {
+    let res = Args::parse(argv(&[
+        "-allow-host-networking",
+        "-allow-host",
+        "1.2.3.4",
+        "-block-host",
+        "8.8.8.8",
+        "--",
+        "/bin/foo",
+    ]));
+    let msg: String = format!("{:#}", res.expect_err("expected mutual-exclusion error"));
+    assert!(msg.contains(Args::OPT_ALLOW_HOST), "unexpected error: {msg}");
+    assert!(msg.contains(Args::OPT_BLOCK_HOST), "unexpected error: {msg}");
+}
+
+#[test]
+fn host_filter_requires_networking_enabled() {
+    let res = Args::parse(argv(&["-allow-host", "1.2.3.4", "--", "/bin/foo"]));
+    let msg: String = format!("{:#}", res.expect_err("expected requires-networking error"));
+    assert!(msg.contains(Args::OPT_ALLOW_HOST_NETWORKING), "unexpected error: {msg}");
+}
+
+#[test]
+fn rejects_invalid_host_entry() {
+    let res = Args::parse(argv(&[
+        "-allow-host-networking",
+        "-allow-host",
+        "not-an-ip",
+        "--",
+        "/bin/foo",
+    ]));
+    let msg: String = format!("{:#}", res.expect_err("expected invalid-entry error"));
+    assert!(msg.contains("invalid"), "unexpected error: {msg}");
+}
+
+#[test]
+fn host_filter_defaults_to_allow_all() {
+    let args = Args::parse(argv(&["-allow-host-networking", "--", "/bin/foo"])).expect("parse");
+    assert!(matches!(args.host_filter(), HostFilter::AllowAll));
+}
+
+#[test]
+fn bin_dir_defaults_to_executable_directory() {
+    let args = Args::parse(argv(&["--", "/bin/foo"])).expect("parse");
+    let executable_path: PathBuf =
+        ::std::env::current_exe().expect("failed to get current executable path");
+    let expected: &Path = executable_path
+        .parent()
+        .expect("current executable has no parent directory");
+    assert_eq!(Path::new(args.binary_directory()), expected);
+}
+
+#[test]
+fn bin_dir_flag_overrides_default() {
+    let args =
+        Args::parse(argv(&["-bin-dir", "/opt/nanvix/bin", "--", "/bin/foo"])).expect("parse");
+    assert_eq!(args.binary_directory(), "/opt/nanvix/bin");
+}
