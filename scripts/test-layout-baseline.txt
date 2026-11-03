@@ -1,0 +1,509 @@
+# Ratchet baseline for scripts/check-test-layout.py.
+#
+# Lists test code that still lives in mainline source. Entries may only be removed: fix the
+# code (scripts/migrate-inline-tests.py), then run
+# `scripts/check-test-layout.py --update-baseline`.
+# Never add an entry; put new tests in their own files instead (see doc/test.md).
+R2 src/daemons/hostfsd/src/handler.rs mod tests tests=1
+R2 src/daemons/hostfsd/src/sandbox.rs mod tests tests=38
+R2 src/daemons/networkd/src/epoll.rs mod tests tests=1
+R2 src/daemons/networkd/src/framing.rs mod tests tests=3
+R2 src/daemons/networkd/src/wire.rs mod tests tests=25
+R2 src/daemons/vfsd/src/assembler.rs mod tests tests=2
+R2 src/daemons/vfsd/src/error.rs mod tests tests=1
+R2 src/daemons/vfsd/src/pending.rs mod tests tests=6
+R3 src/kernel/src/event/manager/event_sequence.rs fn EventSequence::new
+R3 src/kernel/src/event/manager/event_sequence.rs fn EventSequence::wrapping_add
+R3 src/kernel/src/event/mod.rs fn test
+R3 src/kernel/src/event/mod.rs fn test_delivery_integration
+R3 src/kernel/src/hal/arch/x86_64/mem/mmu/hwpt.rs fn query_user_page
+R3 src/kernel/src/hal/mem/mod.rs fn test
+R3 src/kernel/src/hal/mem/types/address/mod.rs fn test
+R2 src/kernel/src/hal/platform/microvm/pvclock.rs mod test tests=0
+R3 src/kernel/src/hal/platform/microvm/pvclock.rs fn test
+R3 src/kernel/src/ipc/mbx/mailbox.rs fn Mailbox::test_token_is_current
+R3 src/kernel/src/kmain.rs code kmain::if !crate::event::test_delivery_integration() {
+R3 src/kernel/src/kmain.rs code kmain::test();
+R3 src/kernel/src/kmain.rs code kmain::test_kernel_args(kernel_args);
+R3 src/kernel/src/kmain.rs const TEST_KERNEL_ARGS_MAGIC
+R3 src/kernel/src/kmain.rs fn test
+R3 src/kernel/src/kmain.rs fn test_kernel_args
+R3 src/kernel/src/macros.rs macro_rules run_test
+R3 src/kernel/src/mm/kernel_vas.rs code init::phys::test();
+R3 src/kernel/src/mm/kernel_vas.rs code init::virt::test();
+R3 src/kernel/src/mm/phys/mod.rs fn test
+R2 src/kernel/src/mm/virt/identity_map.rs mod test tests=0
+R3 src/kernel/src/mm/virt/mod.rs fn test
+R3 src/kernel/src/pm/mod.rs code init::{ let passed: bool = test::test(); assert!(passe
+R2 src/kernel/src/pm/process/manager/delivery.rs mod test tests=0
+R3 src/kernel/src/pm/process/manager/delivery.rs fn <const CAPACITY: usize> LifecycleReservationPool<CAPACITY>::in_use
+R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::capacity_in_use
+R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::release_termination
+R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::sequence_is_exhausted
+R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::set_next_sequence
+R3 src/kernel/src/pm/process/manager/delivery.rs fn DeliveryBroker::test_lifecycle_token_is_current
+R3 src/kernel/src/pm/process/manager/delivery.rs fn LifecycleQueue::len
+R3 src/kernel/src/pm/process/manager/delivery.rs fn new_test_delivery_sequence
+R3 src/kernel/src/pm/process/manager/delivery.rs fn test
+R3 src/kernel/src/pm/process/manager/mod.rs code ProcessManager::fail_next_lifecycle_creation: bool,
+R3 src/kernel/src/pm/process/manager/mod.rs code ProcessManager::fail_next_thread_lifecycle_creation: bool,
+R3 src/kernel/src/pm/process/manager/mod.rs code check_lifecycle_creation_injection::if core::mem::take(&mut self.fail_next_lifecycle
+R3 src/kernel/src/pm/process/manager/mod.rs code new::fail_next_lifecycle_creation: false,
+R3 src/kernel/src/pm/process/manager/mod.rs code new::fail_next_thread_lifecycle_creation: false,
+R3 src/kernel/src/pm/process/manager/mod.rs code prepare_thread_lifecycle_creation::if core::mem::take(&mut self.fail_next_thread_li
+R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::current_has_special_resources
+R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::current_vmem
+R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::inject_lifecycle_creation_failure
+R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::inject_thread_lifecycle_creation_failure
+R3 src/kernel/src/pm/process/manager/mod.rs fn ProcessManager::queue_test_process_creation
+R3 src/kernel/src/pm/process/manager/mod.rs fn test
+R3 src/kernel/src/pm/process/mod.rs fn new_test_process_termination_credit
+R3 src/kernel/src/pm/process/mod.rs fn new_test_thread_termination_credit
+R3 src/kernel/src/pm/process/mod.rs fn test
+R3 src/kernel/src/pm/process/state/interrupted.rs fn InterruptedProcess::thread_reason
+R3 src/kernel/src/pm/process/state/mod.rs fn test
+R3 src/kernel/src/pm/sync/condvar.rs fn Condvar::has_test_waiter
+R3 src/kernel/src/pm/sync/condvar.rs fn Condvar::stage_test_waiter
+R3 src/kernel/src/pm/thread/interrupted.rs fn InterruptedThread::reason
+R3 src/kernel/src/pm/thread/mod.rs fn <'a> ThreadRef<'a>::is_detached
+R3 src/kernel/src/pm/uncommitted_message.rs fn new_test_message
+R1 src/libs/arch/src/x86/mem/paging/frame/number.rs 3
+R3 src/libs/bitmap/src/lib.rs impl ::core::ops::Deref for Bitmap
+R2 src/libs/build-utils/src/lib.rs mod tests tests=2
+R2 src/libs/bump_allocator/src/lib.rs mod tests tests=3
+R4 src/libs/bump_allocator/src/lib.rs 1
+R2 src/libs/cache/src/lib.rs mod tests tests=10
+R4 src/libs/cache/src/lib.rs 1
+R2 src/libs/cmdline/src/lib.rs mod tests tests=13
+R2 src/libs/elf/src/hash.rs mod tests tests=6
+R2 src/libs/elf/src/relocation.rs mod tests tests=5
+R2 src/libs/elf/src/symtab.rs mod tests tests=7
+R2 src/libs/error/src/lib.rs mod tests tests=5
+R2 src/libs/fat32/src/error.rs mod tests tests=3
+R2 src/libs/fat32/src/fat/error.rs mod tests tests=4
+R2 src/libs/fat32/src/fat/filesystem.rs mod readonly_tests tests=17
+R2 src/libs/fat32/src/fat/filesystem.rs mod tests tests=32
+R3 src/libs/fat32/src/fat/filesystem.rs fn test_path
+R2 src/libs/fat32/src/fat/storage.rs mod readonly_tests tests=12
+R2 src/libs/fat32/src/fat/storage.rs mod tests tests=21
+R2 src/libs/fat32/src/fat/time.rs mod tests tests=5
+R2 src/libs/fat32/src/path.rs mod tests tests=2
+R4 src/libs/fat32/src/path.rs 1
+R2 src/libs/hostfs-api/src/chmod.rs mod tests tests=1
+R2 src/libs/hostfs-api/src/chown.rs mod tests tests=1
+R2 src/libs/hostfs-api/src/long_msg.rs mod tests tests=4
+R2 src/libs/hostfs-api/src/path.rs mod tests tests=5
+R2 src/libs/hostfs-api/src/stat_times.rs mod tests tests=2
+R2 src/libs/koptions/src/lib.rs mod tests tests=6
+R2 src/libs/libc_assert/src/assert_func.rs mod tests tests=12
+R2 src/libs/libc_ctype/src/isalnum.rs mod test tests=4
+R2 src/libs/libc_ctype/src/isalpha.rs mod test tests=4
+R2 src/libs/libc_ctype/src/isascii.rs mod test tests=3
+R2 src/libs/libc_ctype/src/isblank.rs mod test tests=5
+R2 src/libs/libc_ctype/src/iscntrl.rs mod test tests=4
+R2 src/libs/libc_ctype/src/isdigit.rs mod test tests=3
+R2 src/libs/libc_ctype/src/isgraph.rs mod test tests=5
+R2 src/libs/libc_ctype/src/islower.rs mod test tests=4
+R2 src/libs/libc_ctype/src/isprint.rs mod test tests=4
+R2 src/libs/libc_ctype/src/ispunct.rs mod test tests=5
+R2 src/libs/libc_ctype/src/isspace.rs mod test tests=8
+R2 src/libs/libc_ctype/src/isupper.rs mod test tests=4
+R2 src/libs/libc_ctype/src/isxdigit.rs mod test tests=5
+R2 src/libs/libc_ctype/src/locale.rs mod test tests=2
+R2 src/libs/libc_ctype/src/toascii.rs mod test tests=4
+R2 src/libs/libc_ctype/src/tolower.rs mod test tests=4
+R2 src/libs/libc_ctype/src/toupper.rs mod test tests=4
+R2 src/libs/libc_fnmatch/src/fnmatch.rs mod test tests=13
+R2 src/libs/libc_inttypes/src/imaxabs.rs mod tests tests=4
+R2 src/libs/libc_inttypes/src/imaxdiv.rs mod tests tests=6
+R2 src/libs/libc_inttypes/src/lib.rs mod windows_errno_shim tests=0
+R2 src/libs/libc_inttypes/src/strtoimax.rs mod tests tests=15
+R2 src/libs/libc_inttypes/src/strtoumax.rs mod tests tests=11
+R2 src/libs/libc_langinfo/src/catgets.rs mod test tests=3
+R2 src/libs/libc_langinfo/src/lib.rs mod windows_errno_shim tests=0
+R2 src/libs/libc_langinfo/src/nl_langinfo.rs mod test tests=6
+R2 src/libs/libc_libgen/src/basename.rs mod test tests=5
+R2 src/libs/libc_libgen/src/dirname.rs mod test tests=5
+R2 src/libs/libc_locale/src/localeconv.rs mod test tests=4
+R2 src/libs/libc_locale/src/setlocale.rs mod test tests=6
+R2 src/libs/libc_locale/src/xlocale.rs mod test tests=4
+R2 src/libs/libc_math/src/acos.rs mod tests tests=5
+R2 src/libs/libc_math/src/acosf.rs mod tests tests=3
+R2 src/libs/libc_math/src/acosh.rs mod tests tests=4
+R2 src/libs/libc_math/src/asin.rs mod tests tests=6
+R2 src/libs/libc_math/src/asinf.rs mod tests tests=3
+R2 src/libs/libc_math/src/asinh.rs mod tests tests=5
+R2 src/libs/libc_math/src/atan.rs mod tests tests=6
+R2 src/libs/libc_math/src/atan2.rs mod tests tests=5
+R2 src/libs/libc_math/src/atan2f.rs mod tests tests=3
+R2 src/libs/libc_math/src/atanf.rs mod tests tests=3
+R2 src/libs/libc_math/src/atanh.rs mod tests tests=6
+R2 src/libs/libc_math/src/cbrt.rs mod tests tests=5
+R2 src/libs/libc_math/src/cbrtf.rs mod tests tests=3
+R2 src/libs/libc_math/src/ceil.rs mod tests tests=6
+R2 src/libs/libc_math/src/ceilf.rs mod tests tests=4
+R2 src/libs/libc_math/src/copysign.rs mod tests tests=4
+R2 src/libs/libc_math/src/copysignf.rs mod tests tests=2
+R2 src/libs/libc_math/src/cos.rs mod tests tests=6
+R3 src/libs/libc_math/src/cos.rs const PI
+R2 src/libs/libc_math/src/cosf.rs mod tests tests=3
+R2 src/libs/libc_math/src/cosh.rs mod tests tests=5
+R2 src/libs/libc_math/src/erf.rs mod tests tests=4
+R2 src/libs/libc_math/src/erfc.rs mod tests tests=5
+R2 src/libs/libc_math/src/exp.rs mod tests tests=10
+R2 src/libs/libc_math/src/exp2.rs mod tests tests=5
+R2 src/libs/libc_math/src/exp2f.rs mod tests tests=3
+R2 src/libs/libc_math/src/expf.rs mod tests tests=6
+R2 src/libs/libc_math/src/expm1.rs mod tests tests=7
+R2 src/libs/libc_math/src/fabs.rs mod tests tests=5
+R2 src/libs/libc_math/src/fabsf.rs mod tests tests=5
+R2 src/libs/libc_math/src/fenv.rs mod tests tests=3
+R2 src/libs/libc_math/src/floor.rs mod tests tests=6
+R2 src/libs/libc_math/src/floorf.rs mod tests tests=3
+R2 src/libs/libc_math/src/fma.rs mod tests tests=5
+R2 src/libs/libc_math/src/fmaf.rs mod tests tests=3
+R2 src/libs/libc_math/src/fmax.rs mod tests tests=3
+R2 src/libs/libc_math/src/fmaxf.rs mod tests tests=3
+R2 src/libs/libc_math/src/fmin.rs mod tests tests=4
+R2 src/libs/libc_math/src/fminf.rs mod tests tests=3
+R2 src/libs/libc_math/src/fmod.rs mod tests tests=10
+R2 src/libs/libc_math/src/fmodf.rs mod tests tests=3
+R2 src/libs/libc_math/src/fpclassify.rs mod tests tests=2
+R2 src/libs/libc_math/src/frexp.rs mod tests tests=5
+R2 src/libs/libc_math/src/frexpf.rs mod tests tests=3
+R2 src/libs/libc_math/src/gamma.rs mod tests tests=2
+R2 src/libs/libc_math/src/hypot.rs mod tests tests=4
+R2 src/libs/libc_math/src/hypotf.rs mod tests tests=2
+R2 src/libs/libc_math/src/isinf.rs mod tests tests=2
+R2 src/libs/libc_math/src/isnan.rs mod tests tests=2
+R2 src/libs/libc_math/src/ldexp.rs mod tests tests=5
+R2 src/libs/libc_math/src/ldexpf.rs mod tests tests=3
+R2 src/libs/libc_math/src/lgamma.rs mod tests tests=4
+R2 src/libs/libc_math/src/log.rs mod tests tests=10
+R2 src/libs/libc_math/src/log10.rs mod tests tests=4
+R2 src/libs/libc_math/src/log10f.rs mod tests tests=2
+R2 src/libs/libc_math/src/log1p.rs mod tests tests=5
+R2 src/libs/libc_math/src/log2.rs mod tests tests=5
+R2 src/libs/libc_math/src/log2f.rs mod tests tests=2
+R2 src/libs/libc_math/src/logf.rs mod tests tests=4
+R2 src/libs/libc_math/src/lrint.rs mod tests tests=3
+R2 src/libs/libc_math/src/modf.rs mod tests tests=4
+R2 src/libs/libc_math/src/modff.rs mod tests tests=3
+R2 src/libs/libc_math/src/nextafter.rs mod tests tests=5
+R2 src/libs/libc_math/src/pow.rs mod tests tests=10
+R2 src/libs/libc_math/src/powf.rs mod tests tests=3
+R2 src/libs/libc_math/src/remainder.rs mod tests tests=4
+R2 src/libs/libc_math/src/round.rs mod tests tests=5
+R2 src/libs/libc_math/src/roundf.rs mod tests tests=4
+R2 src/libs/libc_math/src/scalbn.rs mod tests tests=2
+R2 src/libs/libc_math/src/scalbnf.rs mod tests tests=1
+R2 src/libs/libc_math/src/signbit.rs mod tests tests=2
+R2 src/libs/libc_math/src/sin.rs mod tests tests=8
+R3 src/libs/libc_math/src/sin.rs const PI
+R2 src/libs/libc_math/src/sinf.rs mod tests tests=4
+R2 src/libs/libc_math/src/sinh.rs mod tests tests=5
+R2 src/libs/libc_math/src/sqrt.rs mod tests tests=7
+R2 src/libs/libc_math/src/sqrtf.rs mod tests tests=4
+R2 src/libs/libc_math/src/tan.rs mod tests tests=7
+R2 src/libs/libc_math/src/tanf.rs mod tests tests=3
+R2 src/libs/libc_math/src/tanh.rs mod tests tests=7
+R2 src/libs/libc_math/src/tgamma.rs mod tests tests=4
+R2 src/libs/libc_math/src/trunc.rs mod tests tests=7
+R2 src/libs/libc_math/src/truncf.rs mod tests tests=5
+R2 src/libs/libc_mntent/src/parse.rs mod test tests=8
+R2 src/libs/libc_pwd/src/syscall.rs mod tests tests=4
+R2 src/libs/libc_setjmp/src/jmp_buf.rs mod test tests=4
+R2 src/libs/libc_setjmp/src/setjmp.rs mod test tests=1
+R2 src/libs/libc_setjmp/src/sigjmp_buf.rs mod test tests=4
+R2 src/libs/libc_setjmp/src/sigsetjmp.rs mod test tests=1
+R2 src/libs/libc_signal/src/killpg.rs mod test tests=3
+R2 src/libs/libc_signal/src/raise.rs mod test tests=1
+R2 src/libs/libc_signal/src/signal.rs mod test tests=4
+R2 src/libs/libc_signal/src/sigpending.rs mod test tests=1
+R2 src/libs/libc_signal/src/sigprocmask.rs mod test tests=5
+R2 src/libs/libc_signal/src/sigset.rs mod test tests=8
+R2 src/libs/libc_signal/src/sigsuspend.rs mod test tests=1
+R2 src/libs/libc_stdio/src/float_fmt.rs mod tests tests=14
+R2 src/libs/libc_stdio/src/format_engine.rs mod test tests=28
+R2 src/libs/libc_stdio/src/lib.rs mod windows_errno_shim tests=0
+R2 src/libs/libc_stdio/src/streams.rs mod test tests=3
+R2 src/libs/libc_stdio/src/swprintf.rs mod test tests=2
+R2 src/libs/libc_stdio/src/ungetc.rs mod test tests=5
+R2 src/libs/libc_stdio/src/vsscanf.rs mod test tests=11
+R2 src/libs/libc_stdlib/src/abs_fn.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/aligned_alloc.rs mod tests tests=4
+R2 src/libs/libc_stdlib/src/atexit.rs mod tests tests=4
+R3 src/libs/libc_stdlib/src/atexit.rs fn reset_atexit_handlers
+R2 src/libs/libc_stdlib/src/atof.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/atoi.rs mod tests tests=5
+R2 src/libs/libc_stdlib/src/atol.rs mod tests tests=2
+R2 src/libs/libc_stdlib/src/atoll.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/bsearch.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/calloc.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/div_fn.rs mod tests tests=2
+R2 src/libs/libc_stdlib/src/env_table.rs mod test tests=24
+R2 src/libs/libc_stdlib/src/free.rs mod tests tests=1
+R2 src/libs/libc_stdlib/src/labs.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/ldiv.rs mod tests tests=2
+R2 src/libs/libc_stdlib/src/lib.rs mod errno_shim tests=0
+R2 src/libs/libc_stdlib/src/llabs.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/lldiv.rs mod tests tests=2
+R2 src/libs/libc_stdlib/src/locale.rs mod test tests=3
+R2 src/libs/libc_stdlib/src/malloc.rs mod tests tests=2
+R2 src/libs/libc_stdlib/src/malloc_usable_size.rs mod tests tests=4
+R2 src/libs/libc_stdlib/src/memalign.rs mod tests tests=5
+R2 src/libs/libc_stdlib/src/posix_memalign.rs mod tests tests=6
+R2 src/libs/libc_stdlib/src/pty.rs mod tests tests=1
+R2 src/libs/libc_stdlib/src/putenv.rs mod tests tests=4
+R2 src/libs/libc_stdlib/src/qsort.rs mod tests tests=5
+R2 src/libs/libc_stdlib/src/quick_exit.rs mod tests tests=1
+R3 src/libs/libc_stdlib/src/quick_exit.rs fn reset_at_quick_exit_handlers
+R2 src/libs/libc_stdlib/src/rand.rs mod tests tests=1
+R2 src/libs/libc_stdlib/src/realloc.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/reallocarray.rs mod tests tests=2
+R2 src/libs/libc_stdlib/src/realpath.rs mod test tests=12
+R3 src/libs/libc_stdlib/src/realpath.rs fn canonicalize
+R2 src/libs/libc_stdlib/src/secure_getenv.rs mod tests tests=1
+R2 src/libs/libc_stdlib/src/setenv.rs mod test tests=1
+R2 src/libs/libc_stdlib/src/strtod.rs mod tests tests=16
+R2 src/libs/libc_stdlib/src/strtof.rs mod tests tests=6
+R2 src/libs/libc_stdlib/src/strtol.rs mod tests tests=11
+R2 src/libs/libc_stdlib/src/strtold.rs mod tests tests=1
+R2 src/libs/libc_stdlib/src/strtoll.rs mod tests tests=5
+R2 src/libs/libc_stdlib/src/strtoul.rs mod tests tests=4
+R2 src/libs/libc_stdlib/src/strtoull.rs mod tests tests=3
+R2 src/libs/libc_stdlib/src/system.rs mod tests tests=2
+R2 src/libs/libc_stdlib/src/tmpname.rs mod test tests=5
+R2 src/libs/libc_string/src/bcmp.rs mod test tests=3
+R2 src/libs/libc_string/src/bcopy.rs mod test tests=2
+R2 src/libs/libc_string/src/bzero.rs mod test tests=1
+R2 src/libs/libc_string/src/ffs.rs mod test tests=6
+R2 src/libs/libc_string/src/locale.rs mod test tests=2
+R2 src/libs/libc_string/src/memccpy.rs mod test tests=3
+R2 src/libs/libc_string/src/memchr.rs mod test tests=3
+R2 src/libs/libc_string/src/memcmp.rs mod test tests=6
+R2 src/libs/libc_string/src/memcpy.rs mod test tests=8
+R2 src/libs/libc_string/src/memmove.rs mod test tests=5
+R2 src/libs/libc_string/src/mempcpy.rs mod test tests=3
+R2 src/libs/libc_string/src/memrchr.rs mod test tests=3
+R2 src/libs/libc_string/src/memset.rs mod test tests=7
+R2 src/libs/libc_string/src/stpcpy.rs mod test tests=3
+R2 src/libs/libc_string/src/stpncpy.rs mod test tests=3
+R2 src/libs/libc_string/src/strcasecmp.rs mod test tests=4
+R2 src/libs/libc_string/src/strcasestr.rs mod test tests=4
+R2 src/libs/libc_string/src/strcat.rs mod test tests=3
+R2 src/libs/libc_string/src/strchr.rs mod test tests=4
+R2 src/libs/libc_string/src/strchrnul.rs mod test tests=4
+R2 src/libs/libc_string/src/strcmp.rs mod test tests=5
+R2 src/libs/libc_string/src/strcpy.rs mod test tests=2
+R2 src/libs/libc_string/src/strcspn.rs mod test tests=3
+R2 src/libs/libc_string/src/strdup.rs mod test tests=2
+R2 src/libs/libc_string/src/strerror.rs mod test tests=5
+R2 src/libs/libc_string/src/strerror_r.rs mod test tests=5
+R2 src/libs/libc_string/src/strlcat.rs mod test tests=2
+R2 src/libs/libc_string/src/strlcpy.rs mod test tests=3
+R2 src/libs/libc_string/src/strlen.rs mod test tests=6
+R2 src/libs/libc_string/src/strncasecmp.rs mod test tests=4
+R2 src/libs/libc_string/src/strncat.rs mod test tests=2
+R2 src/libs/libc_string/src/strncmp.rs mod test tests=4
+R2 src/libs/libc_string/src/strncpy.rs mod test tests=3
+R2 src/libs/libc_string/src/strndup.rs mod test tests=2
+R2 src/libs/libc_string/src/strnlen.rs mod test tests=5
+R2 src/libs/libc_string/src/strpbrk.rs mod test tests=3
+R2 src/libs/libc_string/src/strrchr.rs mod test tests=3
+R2 src/libs/libc_string/src/strsep.rs mod test tests=2
+R2 src/libs/libc_string/src/strsignal.rs mod test tests=2
+R2 src/libs/libc_string/src/strspn.rs mod test tests=3
+R2 src/libs/libc_string/src/strstr.rs mod test tests=5
+R2 src/libs/libc_string/src/strtok.rs mod test tests=3
+R2 src/libs/libc_string/src/strtok_r.rs mod test tests=3
+R2 src/libs/libc_string/src/strverscmp.rs mod test tests=4
+R2 src/libs/libc_string/src/strxfrm.rs mod test tests=6
+R2 src/libs/libc_time/src/asctime.rs mod test tests=2
+R2 src/libs/libc_time/src/asctime_r.rs mod test tests=5
+R2 src/libs/libc_time/src/clock.rs mod test tests=5
+R2 src/libs/libc_time/src/ctime.rs mod test tests=2
+R2 src/libs/libc_time/src/ctime_r.rs mod test tests=3
+R2 src/libs/libc_time/src/difftime.rs mod test tests=4
+R2 src/libs/libc_time/src/gmtime.rs mod test tests=2
+R2 src/libs/libc_time/src/gmtime_r.rs mod test tests=7
+R2 src/libs/libc_time/src/locale.rs mod test tests=1
+R2 src/libs/libc_time/src/localtime.rs mod test tests=2
+R2 src/libs/libc_time/src/localtime_r.rs mod test tests=3
+R2 src/libs/libc_time/src/mktime.rs mod test tests=5
+R2 src/libs/libc_time/src/strftime.rs mod test tests=8
+R2 src/libs/libc_time/src/strptime.rs mod test tests=16
+R2 src/libs/libc_time/src/time.rs mod test tests=2
+R2 src/libs/libc_time/src/timegm.rs mod test tests=4
+R2 src/libs/libc_wchar/src/btowc.rs mod test tests=4
+R2 src/libs/libc_wchar/src/fwide.rs mod test tests=3
+R2 src/libs/libc_wchar/src/lib.rs mod windows_errno_shim tests=0
+R2 src/libs/libc_wchar/src/locale.rs mod test tests=2
+R2 src/libs/libc_wchar/src/multibyte.rs mod test tests=25
+R2 src/libs/libc_wchar/src/utf8.rs mod test tests=16
+R2 src/libs/libc_wchar/src/wcs_narrow.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcscat.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcschr.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcscmp.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wcscoll.rs mod test tests=2
+R2 src/libs/libc_wchar/src/wcscpy.rs mod test tests=2
+R2 src/libs/libc_wchar/src/wcsftime.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcslen.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcsncmp.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wcsncpy.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcspbrk.rs mod test tests=6
+R2 src/libs/libc_wchar/src/wcsrchr.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcsstr.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wcstod.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wcstof.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcstok.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcstol.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wcstold.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcstoll.rs mod test tests=2
+R2 src/libs/libc_wchar/src/wcstoul.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wcstoull.rs mod test tests=2
+R2 src/libs/libc_wchar/src/wcsxfrm.rs mod test tests=3
+R2 src/libs/libc_wchar/src/wctob.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wmemchr.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wmemcmp.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wmemcpy.rs mod test tests=2
+R2 src/libs/libc_wchar/src/wmemmove.rs mod test tests=4
+R2 src/libs/libc_wchar/src/wmemset.rs mod test tests=2
+R2 src/libs/libc_wctype/src/iswalnum.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswalpha.rs mod test tests=4
+R2 src/libs/libc_wctype/src/iswblank.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswcntrl.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswctype.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswdigit.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswgraph.rs mod test tests=4
+R2 src/libs/libc_wctype/src/iswlower.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswprint.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswpunct.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswspace.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswupper.rs mod test tests=3
+R2 src/libs/libc_wctype/src/iswxdigit.rs mod test tests=4
+R2 src/libs/libc_wctype/src/locale.rs mod test tests=2
+R2 src/libs/libc_wctype/src/towctrans.rs mod test tests=3
+R2 src/libs/libc_wctype/src/towlower.rs mod test tests=3
+R2 src/libs/libc_wctype/src/towupper.rs mod test tests=3
+R2 src/libs/libc_wctype/src/wctrans.rs mod test tests=3
+R2 src/libs/libc_wctype/src/wctype.rs mod test tests=3
+R2 src/libs/mmio-tag/src/tag.rs mod tests tests=10
+R2 src/libs/multibin/src/lib.rs mod tests tests=6
+R2 src/libs/multiimage/src/lib.rs mod tests tests=10
+R2 src/libs/nanvix-http/src/client/standalone.rs mod tests tests=3
+R2 src/libs/nanvix-http/src/server.rs mod tests tests=2
+R2 src/libs/nanvix-http/src/signal.rs mod tests tests=1
+R2 src/libs/nanvix-oci/src/config.rs mod tests tests=6
+R2 src/libs/nanvix-terminal/src/standalone.rs mod tests tests=6
+R2 src/libs/net-backend/src/error.rs mod test tests=2
+R2 src/libs/net-backend/src/filter.rs mod tests tests=12
+R2 src/libs/net-backend/src/io.rs mod test tests=2
+R2 src/libs/net-backend/src/lib.rs mod test tests=2
+R2 src/libs/net-backend/src/platform/unix.rs mod test tests=7
+R2 src/libs/net-backend/src/platform/windows.rs mod test tests=7
+R2 src/libs/net-backend/src/socket.rs mod test tests=13
+R2 src/libs/net-backend/src/types.rs mod test tests=20
+R2 src/libs/proc/src/daemon/mod.rs mod tests tests=40
+R3 src/libs/proc/src/daemon/mod.rs code send_process_exit_notification::{ let _request: &Message = request; Ok(()) }
+R3 src/libs/proc/src/daemon/mod.rs code send_terminal_detach_notification::{ let _request: &Message = request; Ok(()) }
+R2 src/libs/proc/src/identity.rs mod tests tests=3
+R2 src/libs/proc/src/message/job_control.rs mod tests tests=4
+R2 src/libs/proc/src/message/mod.rs mod tests tests=1
+R2 src/libs/proc/src/message/terminal.rs mod tests tests=2
+R2 src/libs/proc/src/message/terminal_detach.rs mod tests tests=2
+R2 src/libs/proc/src/message/wait.rs mod tests tests=2
+R2 src/libs/sys/src/sys/event/descriptor.rs mod tests tests=4
+R2 src/libs/sys/src/sys/event/information.rs mod tests tests=4
+R2 src/libs/sys/src/sys/event/mod.rs mod tests tests=1
+R2 src/libs/sys/src/sys/event/scheduling/creation.rs mod tests tests=2
+R2 src/libs/sys/src/sys/event/scheduling/event.rs mod tests tests=4
+R2 src/libs/sys/src/sys/event/scheduling/termination.rs mod tests tests=7
+R2 src/libs/sys/src/sys/event/scheduling/thread_termination.rs mod tests tests=1
+R2 src/libs/sys/src/sys/ipc/message/kernel.rs mod tests tests=2
+R3 src/libs/sys/src/sys/ipc/request/identifier_allocator.rs fn RequestIdentifierAllocator::with_next
+R3 src/libs/sys/src/sys/ipc/request/state.rs fn RequestState::set_next_identifier
+R3 src/libs/sys/src/sys/ipc/request/state.rs fn RequestState::with_stash_capacity
+R2 src/libs/sys/src/sys/ipc/typ.rs mod tests tests=3
+R2 src/libs/sys/src/sys/mm/alignment.rs mod tests tests=7
+R2 src/libs/sys/src/sys/number.rs mod tests tests=2
+R2 src/libs/syscall/src/close_route.rs mod tests tests=1
+R2 src/libs/syscall/src/fdtable.rs mod tests tests=13
+R3 src/libs/syscall/src/fdtable.rs fn clear
+R3 src/libs/syscall/src/fdtable.rs fn resolve
+R3 src/libs/syscall/src/fdtable.rs fn resolve_via_vfsd
+R3 src/libs/syscall/src/fdtable.rs static MOCK_VFSD
+R3 src/libs/syscall/src/fdtable.rs static MOCK_VFSD_INTERRUPTED
+R3 src/libs/syscall/src/fdtable.rs static MOCK_VFSD_UNAVAILABLE
+R2 src/libs/syscall/src/lib.rs mod tests tests=3
+R2 src/libs/syscall/src/message/long.rs mod tests tests=2
+R2 src/libs/syscall/src/path.rs mod tests tests=9
+R2 src/libs/syscall/src/poll/input_message.rs mod tests tests=6
+R2 src/libs/syscall/src/poll/socket_message.rs mod tests tests=2
+R2 src/libs/syscall/src/sys/mman/bindings/madvise.rs mod tests tests=3
+R2 src/libs/syscall/src/sys/mman/bindings/mlockall.rs mod tests tests=5
+R2 src/libs/syscall/src/sys/mman/bindings/mod.rs mod tests tests=9
+R2 src/libs/syscall/src/sys/mman/bindings/msync.rs mod tests tests=6
+R2 src/libs/syscall/src/sys/select/message/mod.rs mod tests tests=6
+R2 src/libs/syscall/src/sys/select/syscall/mod.rs mod tests tests=6
+R2 src/libs/syscall/src/sys/socket/mod.rs mod test tests=9
+R2 src/libs/syscall/src/unistd/bindings/getopt.rs mod tests tests=7
+R2 src/libs/syscall/src/unistd/bindings/getopt_long.rs mod tests tests=10
+R2 src/libs/syscall/src/unistd/read_backend.rs mod tests tests=3
+R2 src/libs/syscall/src/unistd/syscall/getopt.rs mod tests tests=19
+R2 src/libs/syscall/src/unistd/syscall/util.rs mod tests tests=12
+R2 src/libs/syslog-macros/src/lib.rs mod tests tests=2
+R2 src/libs/type-safe/src/vec_deque.rs mod benchmarks tests=11
+R2 src/libs/type-safe/src/vec_deque.rs mod test tests=44
+R2 src/libs/vfs/src/devfs.rs mod tests tests=7
+R2 src/libs/vfs/src/fd/mod.rs mod tests tests=86
+R2 src/libs/vfs/src/filesystem/dir_entry.rs mod tests tests=1
+R2 src/libs/vfs/src/filesystem/stat.rs mod tests tests=1
+R2 src/libs/vfs/src/identifiers.rs mod tests tests=1
+R2 src/libs/vfs/src/line_discipline/discipline.rs mod tests tests=27
+R2 src/libs/vfs/src/mount/path_cache.rs mod tests tests=7
+R3 src/libs/vfs/src/mount/path_cache.rs fn PathCache::entry_count
+R2 src/libs/vfs/src/mount/vfs.rs mod tests tests=38
+R3 src/libs/vfs/src/mount/vfs.rs fn Vfs::resolve_cache_len
+R3 src/libs/vfs/src/mount/vfs.rs fn Vfs::resolve_legacy
+R2 src/libs/vfs/src/open_options.rs mod tests tests=7
+R2 src/libs/vfs/src/path.rs mod tests tests=4
+R2 src/libs/vfs/src/pipe/pipe_end.rs mod tests tests=14
+R2 src/uservm/src/args.rs mod tests tests=5
+R2 src/uservm/src/elf.rs mod tests tests=12
+R2 src/uservm/src/guest_profiler/symbols.rs mod tests tests=4
+R2 src/uservm/src/lib.rs mod tests tests=9
+R2 src/uservm/src/memory_thread.rs mod tests tests=3
+R2 src/uservm/src/orchestrator.rs mod tests tests=4
+R2 src/uservm/src/pal/linux.rs mod tests tests=15
+R2 src/uservm/src/pal/windows.rs mod ikc_tests tests=4
+R2 src/uservm/src/pal/windows.rs mod tests tests=3
+R2 src/uservm/src/standalone.rs mod tests tests=7
+R2 src/uservm/src/vmm/microvm/emulator.rs mod tests tests=4
+R2 src/uservm/src/vmm/microvm/kvm/irqchip.rs mod tests tests=2
+R2 src/uservm/src/vmm/microvm/kvm/timer.rs mod tests tests=3
+R2 src/uservm/src/vmm/microvm/kvm/vcpu/fpu.rs mod tests tests=2
+R2 src/uservm/src/vmm/microvm/kvm/vcpu/mod.rs mod tests tests=6
+R2 src/uservm/src/vmm/microvm/kvm/vcpu/msr.rs mod tests tests=12
+R2 src/uservm/src/vmm/microvm/kvm/vmem.rs mod tests tests=4
+R2 src/uservm/src/vmm/microvm/mod.rs mod tests tests=1
+R2 src/uservm/src/vmm/microvm/whp/console.rs mod tests tests=7
+R2 src/uservm/src/vmm/microvm/whp/mod.rs mod tests tests=4
+R2 src/utils/gen-headers/src/main.rs mod tests tests=26
+R3 src/utils/gen-headers/src/main.rs fn collect_rust_symbols
+R3 src/utils/gen-headers/src/main.rs fn emit_rust_types
+R3 src/utils/gen-headers/src/main.rs fn resolve_rust_constants
+R2 src/utils/nanvix-bench/src/args.rs mod tests tests=7
+R2 src/utils/nanvix-bench/src/benchmarks/gateway.rs mod tests tests=3
+R2 src/utils/nanvix-bench/src/benchmarks/vmm/warm_start_vmm.rs mod tests tests=1
+R2 src/utils/nanvix-test/src/args.rs mod tests tests=15
+R2 src/utils/nanvix-test/src/config.rs mod tests tests=30
+R2 src/utils/nanvix-test/src/environment.rs mod tests tests=1
+R2 src/utils/nanvix-test/src/executor/mod.rs mod tests tests=14
+R2 src/utils/nanvix-test/src/executor/signal.rs mod tests tests=2
+R2 src/utils/nanvix-test/src/port.rs mod tests tests=4
+R2 src/utils/nanvix-test/src/uservm.rs mod tests tests=17
+R2 src/utils/nanvixd/src/args.rs mod tests tests=20
+R2 src/utils/nanvixd/src/config.rs mod tests tests=5
+R2 src/utils/nanvixd/src/main.rs mod tests tests=2
+R2 src/utils/strace/src/main.rs mod tests tests=10

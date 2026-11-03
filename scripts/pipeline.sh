@@ -30,8 +30,8 @@ source "${IMPORT_DIR}/logging.sh"
 # Configuration matrix for testing all supported machines.
 declare -a MACHINE_TYPES=("microvm")
 declare -a BUILD_TYPES=("debug" "release")
-declare -a STEP_TYPES=("spellcheck" "format" "lint" "build" "test")
-declare -a MACHINE_INDEPENDENT_STEPS=("spellcheck" "format")
+declare -a STEP_TYPES=("spellcheck" "test-layout" "format" "lint" "build" "test")
+declare -a MACHINE_INDEPENDENT_STEPS=("spellcheck" "test-layout" "format")
 
 # Padding to force aligned formatting.
 PADDING=60
@@ -100,6 +100,9 @@ get_make_target() {
         spellcheck)
             echo "spellcheck"
             ;;
+        test-layout)
+            echo "test-layout-check"
+            ;;
         lint)
             echo "lint-check"
             ;;
@@ -147,7 +150,7 @@ is_machine_independent() {
 #
 # Arguments
 #   $1 - Build type (debug or release).
-#   $2 - Step type (format, spellcheck, lint, build, test).
+#   $2 - Step type (format, spellcheck, test-layout, lint, build, test).
 #   $3 - Temporary file path for capturing output.
 #   $4 - Machine type (optional, empty for machine-independent steps).
 #

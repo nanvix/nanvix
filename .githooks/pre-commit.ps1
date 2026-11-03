@@ -72,6 +72,9 @@ function Invoke-Check {
         "spellcheck" {
             Write-Err "(pre-commit) Spell check failed for: $BuildType, $Machine."
         }
+        "test-layout-check" {
+            Write-Err "(pre-commit) Test layout check failed for: $BuildType, $Machine."
+        }
         default {
             Write-Err "(pre-commit) Check '$Target' failed for: $BuildType, $Machine."
         }
@@ -115,6 +118,7 @@ try {
         Invoke-Check @checkArgs -Target "format-check"
         Invoke-Check @checkArgs -Target "lint-check"
         Invoke-Check @checkArgs -Target "spellcheck"
+        Invoke-Check @checkArgs -Target "test-layout-check"
 
         Write-Success "(pre-commit) Configuration passed: $buildType, $machine."
     }

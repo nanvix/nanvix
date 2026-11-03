@@ -111,6 +111,7 @@ main() {
             print_info "  .\\z.ps1 build -- format-check"
             print_info "  .\\z.ps1 build -- lint-check"
             print_info "  .\\z.ps1 build -- spellcheck"
+            print_info "  .\\z.ps1 build -- test-layout-check"
             exit 0
             ;;
     esac
@@ -168,6 +169,13 @@ main() {
         if ! eval "${build_command} spellcheck" > "${tmpfile}" 2>&1 ; then
             cat "${tmpfile}"
             print_error "(pre-commit) Spell check failed for: ${build_type}, ${machine}."
+            exit 1
+        fi
+
+        # Run test layout check.
+        if ! eval "${build_command} test-layout-check" > "${tmpfile}" 2>&1 ; then
+            cat "${tmpfile}"
+            print_error "(pre-commit) Test layout check failed for: ${build_type}, ${machine}."
             exit 1
         fi
 

@@ -21,17 +21,18 @@ The pipeline runs all quality checks and tests across the supported configuratio
 The pipeline runs these steps in order:
 
 1. **Spell Check** — Checks spelling in source code.
-2. **Format Check** — Verifies code formatting.
-3. **Lint Check** — Runs Clippy and other linters.
-4. **Verify** — Runs Verus formal verification on annotated crates.
-5. **Build** — Compiles all targets.
-6. **Test** — Runs unit and system integration tests.
+2. **Test Layout Check** — Verifies that tests live in their own files (`test-layout-check`).
+3. **Format Check** — Verifies code formatting.
+4. **Lint Check** — Runs Clippy and other linters.
+5. **Verify** — Runs Verus formal verification on annotated crates.
+6. **Build** — Compiles all targets.
+7. **Test** — Runs unit and system integration tests.
 
 ## Configuration Matrix
 
 ### Machine-Independent Steps
 
-- `spellcheck` and `format` run once (not per-machine).
+- `spellcheck`, `test-layout` and `format` run once (not per-machine).
 
 ### Machine-Dependent Steps
 
@@ -47,6 +48,9 @@ steps for `microvm`.
 ```bash
 # Spell check.
 ./z build -- spellcheck
+
+# Test layout check (tests must live in their own files, see doc/test.md).
+./z build -- test-layout-check
 
 # Format check.
 ./z build -- format-check
@@ -69,7 +73,7 @@ pipeline, but matrix coverage is split across multiple jobs and run on pull requ
 
 Matrix coverage in GitHub Actions:
 
-- `checks`: format + spellcheck (single run).
+- `checks`: format + spellcheck + test layout (single run).
 - `lint`, `verify`, `ci-build`: `microvm` in debug and release configurations.
 - `ci-test`: same matrix.
 

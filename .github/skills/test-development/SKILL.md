@@ -12,8 +12,8 @@ unit tests, integration tests, and system tests written in Rust and C/C++.
 
 ### Unit Tests
 
-Unit tests are `#[cfg(test)]` modules within library crates. They run on the host system using
-`cargo test`.
+Unit tests are test-only modules (`#[cfg(test)] mod tests;`) of library crates, kept in their own
+files rather than inline in mainline source. They run on the host system using `cargo test`.
 
 ```bash
 ./z build -- run-unit-tests
@@ -65,24 +65,37 @@ these tests in two execution modes:
 
 ## Writing Unit Tests (Rust)
 
-Add `#[cfg(test)]` modules to library crates:
+Tests never go inline in mainline source. Declare the module out of line next to the code under
+test, and put the tests in the file that the compiler resolves for it (`src/foo/tests.rs` for
+`src/foo.rs`; `src/tests.rs` for `lib.rs`, `main.rs` and `mod.rs` files):
 
 ```rust
-//============================================================
-// Tests
-//============================================================
-
+// src/foo.rs
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod tests;
+```
 
-    #[test]
-    fn test_example() {
-        let result: u32 = some_function();
-        assert_eq!(result, 42, "expected 42");
-    }
+```rust
+// src/foo/tests.rs
+use super::*;
+
+#[test]
+fn test_example() {
+    let result: u32 = some_function();
+    assert_eq!(result, 42, "expected 42");
 }
 ```
+
+`use super::*` gives the test module access to the private items of its parent, so seams
+(test-only code in mainline source) are rarely needed. A module whose name does not mark a test file
+(for example `benchmarks`) needs `#[path = "<dir>/tests/<name>.rs"]` so that it lives in a `tests`
+directory.
+
+`./z build -- test-layout-check` enforces this layout (rules R1-R6 in `doc/test.md`). It fails on
+inline `#[test]` functions or `mod tests { ... }` bodies, on test-only code that is not in a test
+file, on executable doc-tests, and on misplaced Python/C tests and e2e manifests. Existing
+violations are recorded in `scripts/test-layout-baseline.txt`; never add to it. To move legacy inline
+modules, use `scripts/migrate-inline-tests.py` (see `doc/test.md`, "Migrating Inline Tests").
 
 Rules for tests:
 

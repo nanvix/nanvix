@@ -142,6 +142,16 @@ When spell checking flags a legitimate domain term or acronym (for example, `vas
 Virtual Address Space, or `slab`), add it to `.codespellrc` rather than rewording the code
 or documentation.
 
+### Test Layout Check
+
+```bash
+# Check that tests live in their own files instead of mainline source.
+./z build -- test-layout-check
+```
+
+The checker is `scripts/check-test-layout.py` (Python standard library only). See `doc/test.md`
+("Test layout") for the rules, the ratchet baseline and the migration tool.
+
 ## Formal Verification
 
 Nanvix uses Verus for formal verification of selected kernel crates. The expected Verus version is

@@ -101,6 +101,8 @@ A git hook (`.githooks/commit-msg`) enforces this convention automatically.
 
 - No `panic!`, `unwrap()`, or `expect()` in production code; return `Result<T, E>`.
 - In tests, prefer `expect()` over `unwrap()` for better diagnostics.
+- Tests live in their own files, never in mainline source: declare `#[cfg(test)] mod tests;` and put
+  the tests in the file that it resolves to (see [Testing](doc/test.md#test-layout)).
 - Minimize `unsafe`; document invariants with a `# Safety` section.
 - Use explicit type annotations and prefix imports with `::`.
 - Log errors before returning from error paths; keep logs single-line.
@@ -127,6 +129,7 @@ Run these before submitting a pull request:
 ./z build -- format-check    # Formatting.
 ./z build -- lint-check      # Linting.
 ./z build -- spellcheck      # Spelling.
+./z build -- test-layout-check  # Tests live in their own files (see doc/test.md).
 ./z build -- verify          # Formal verification (Verus).
 ./z build -- test            # Unit + system tests.
 ```

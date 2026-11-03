@@ -34,7 +34,9 @@ or language-specific conventions.
 ## Rust-Specific Rules
 
 - Avoid `panic!`, `unwrap()`, and `expect()` in production code; return `Result<T, E>`.
-- In `#[cfg(test)]`, `expect()` is preferred over `unwrap()` for diagnostics.
+- Tests live in their own files, never inline in mainline source (declare `#[cfg(test)] mod tests;`);
+  enforced by `./z build -- test-layout-check`.
+- In test code, `expect()` is preferred over `unwrap()` for diagnostics.
 - Prefer `#![deny(...)]` over `#![forbid(...)]` for unwrap/expect lints to allow scoped test
   exceptions.
 - Minimize `unsafe`; keep scope narrow and document pre/post conditions.
