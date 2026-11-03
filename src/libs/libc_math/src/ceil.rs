@@ -33,37 +33,4 @@ pub extern "C" fn ceil(x: f64) -> f64 {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_positive_fraction() {
-        assert!((ceil(2.3) - 3.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_negative_fraction() {
-        assert!((ceil(-2.3) - (-2.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_integer() {
-        assert!((ceil(5.0) - 5.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_zero() {
-        assert_eq!(ceil(0.0).to_bits(), 0.0_f64.to_bits());
-    }
-
-    #[test]
-    fn test_nan() {
-        assert!(ceil(f64::NAN).is_nan());
-    }
-
-    #[test]
-    fn test_infinity() {
-        assert_eq!(ceil(f64::INFINITY), f64::INFINITY);
-        assert_eq!(ceil(f64::NEG_INFINITY), f64::NEG_INFINITY);
-    }
-}
+mod tests;

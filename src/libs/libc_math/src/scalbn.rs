@@ -31,16 +31,4 @@ pub extern "C" fn scalbn(x: f64, n: c_int) -> f64 {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_basic() {
-        assert!((scalbn(1.0, 4) - 16.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_negative() {
-        assert!((scalbn(16.0, -4) - 1.0).abs() < 1e-10);
-    }
-}
+mod tests;

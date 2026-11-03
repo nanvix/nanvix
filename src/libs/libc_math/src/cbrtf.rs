@@ -44,21 +44,4 @@ pub extern "C" fn cbrtf(x: f32) -> f32 {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_perfect_cube() {
-        assert!((cbrtf(8.0) - 2.0).abs() < 1e-5);
-    }
-
-    #[test]
-    fn test_negative() {
-        assert!((cbrtf(-8.0) - (-2.0)).abs() < 1e-5);
-    }
-
-    #[test]
-    fn test_zero() {
-        assert_eq!(cbrtf(0.0), 0.0);
-    }
-}
+mod tests;

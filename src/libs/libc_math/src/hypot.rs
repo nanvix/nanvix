@@ -45,28 +45,4 @@ pub extern "C" fn hypot(x: f64, y: f64) -> f64 {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_345() {
-        assert!((hypot(3.0, 4.0) - 5.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_zero() {
-        assert!((hypot(0.0, 5.0) - 5.0).abs() < 1e-10);
-        assert!((hypot(3.0, 0.0) - 3.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_inf() {
-        assert_eq!(hypot(f64::INFINITY, 1.0), f64::INFINITY);
-        assert_eq!(hypot(1.0, f64::INFINITY), f64::INFINITY);
-    }
-
-    #[test]
-    fn test_nan() {
-        assert!(hypot(f64::NAN, 1.0).is_nan());
-    }
-}
+mod tests;

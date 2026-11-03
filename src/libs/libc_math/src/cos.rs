@@ -5,8 +5,6 @@
 // Constants
 //==================================================================================================
 
-#[cfg(test)]
-const PI: f64 = core::f64::consts::PI;
 const FRAC_PI_2: f64 = core::f64::consts::FRAC_PI_2;
 const FRAC_2_PI: f64 = core::f64::consts::FRAC_2_PI;
 
@@ -102,36 +100,4 @@ pub extern "C" fn cos(x: f64) -> f64 {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_zero() {
-        assert!((cos(0.0) - 1.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_pi_over_2() {
-        assert!((cos(FRAC_PI_2)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_pi() {
-        assert!((cos(PI) - (-1.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_pi_over_3() {
-        assert!((cos(PI / 3.0) - 0.5).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_nan() {
-        assert!(cos(f64::NAN).is_nan());
-    }
-
-    #[test]
-    fn test_infinity() {
-        assert!(cos(f64::INFINITY).is_nan());
-    }
-}
+mod tests;

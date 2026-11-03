@@ -27,11 +27,4 @@ pub extern "C" fn scalbnf(x: f32, n: c_int) -> f32 {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_basic() {
-        assert!((scalbnf(1.0, 4) - 16.0).abs() < 1e-5);
-    }
-}
+mod tests;
