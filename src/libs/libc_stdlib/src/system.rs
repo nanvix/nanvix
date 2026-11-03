@@ -50,18 +50,4 @@ pub unsafe extern "C" fn system(command: *const c_char) -> c_int {
 }
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::system;
-    use ::sysapi::ffi::c_char;
-
-    #[test]
-    fn null_command_reports_processor() {
-        assert_ne!(unsafe { system(::core::ptr::null()) }, 0);
-    }
-
-    #[test]
-    fn non_null_command_returns_error() {
-        let command = b"true\0";
-        assert_eq!(unsafe { system(command.as_ptr().cast::<c_char>()) }, -1);
-    }
-}
+mod tests;

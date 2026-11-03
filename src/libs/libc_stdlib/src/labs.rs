@@ -42,21 +42,4 @@ pub unsafe extern "C" fn labs(j: c_long) -> c_long {
 }
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::labs;
-
-    #[test]
-    fn positive_value() {
-        assert_eq!(unsafe { labs(42) }, 42);
-    }
-
-    #[test]
-    fn negative_value() {
-        assert_eq!(unsafe { labs(-42) }, 42);
-    }
-
-    #[test]
-    fn zero_value() {
-        assert_eq!(unsafe { labs(0) }, 0);
-    }
-}
+mod tests;

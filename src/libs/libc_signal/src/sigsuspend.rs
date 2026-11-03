@@ -80,13 +80,4 @@ unsafe fn sigsuspend_impl(_mask: *const sigset_t) -> c_int {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod test {
-    use super::*;
-
-    #[test]
-    fn sigsuspend_always_reports_interruption() {
-        let mask: sigset_t = 0;
-        // SAFETY: `mask` points to a valid `sigset_t` for the duration of the call.
-        assert_eq!(unsafe { sigsuspend(&mask) }, -1);
-    }
-}
+mod test;

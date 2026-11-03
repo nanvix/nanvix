@@ -54,20 +54,4 @@ pub unsafe extern "C" fn ldiv(numer: c_long, denom: c_long) -> ldiv_t {
 }
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::ldiv;
-
-    #[test]
-    fn positive_division() {
-        let result = unsafe { ldiv(17, 5) };
-        assert_eq!(result.quot, 3);
-        assert_eq!(result.rem, 2);
-    }
-
-    #[test]
-    fn negative_dividend() {
-        let result = unsafe { ldiv(-17, 5) };
-        assert_eq!(result.quot, -3);
-        assert_eq!(result.rem, -2);
-    }
-}
+mod tests;

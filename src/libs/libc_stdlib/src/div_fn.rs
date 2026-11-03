@@ -54,20 +54,4 @@ pub unsafe extern "C" fn div(numer: c_int, denom: c_int) -> div_t {
 }
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::div;
-
-    #[test]
-    fn positive_division() {
-        let result = unsafe { div(10, 3) };
-        assert_eq!(result.quot, 3);
-        assert_eq!(result.rem, 1);
-    }
-
-    #[test]
-    fn negative_dividend() {
-        let result = unsafe { div(-10, 3) };
-        assert_eq!(result.quot, -3);
-        assert_eq!(result.rem, -1);
-    }
-}
+mod tests;

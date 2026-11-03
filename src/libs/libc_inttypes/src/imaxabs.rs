@@ -24,27 +24,4 @@ pub extern "C" fn imaxabs(n: intmax_t) -> intmax_t {
 //==================================================================================================
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_positive() {
-        assert_eq!(imaxabs(42), 42);
-    }
-
-    #[test]
-    fn test_negative() {
-        assert_eq!(imaxabs(-42), 42);
-    }
-
-    #[test]
-    fn test_zero() {
-        assert_eq!(imaxabs(0), 0);
-    }
-
-    #[test]
-    fn test_min() {
-        // wrapping_abs of i64::MIN returns i64::MIN.
-        assert_eq!(imaxabs(i64::MIN), i64::MIN);
-    }
-}
+mod tests;

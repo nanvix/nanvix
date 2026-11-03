@@ -41,11 +41,4 @@ pub unsafe extern "C" fn free(ptr: *mut c_void) {
 }
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    #[test]
-    fn null_deallocation() {
-        unsafe {
-            super::free(core::ptr::null_mut());
-        }
-    }
-}
+mod tests;

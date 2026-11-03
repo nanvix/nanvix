@@ -103,30 +103,5 @@ pub unsafe extern "C" fn quick_exit(status: c_int) -> ! {
     _exit(status)
 }
 
-/// Resets the quick-exit handler table. Used for test isolation.
-#[cfg(test)]
-pub(crate) unsafe fn reset_at_quick_exit_handlers() {
-    AT_QUICK_EXIT_COUNT = 0;
-    let mut i: usize = 0;
-    while i < MAX_AT_QUICK_EXIT_HANDLERS {
-        AT_QUICK_EXIT_HANDLERS[i] = None;
-        i += 1;
-    }
-}
-
 #[cfg(all(test, feature = "std"))]
-mod tests {
-    use super::{
-        at_quick_exit,
-        reset_at_quick_exit_handlers,
-    };
-
-    unsafe extern "C" fn dummy_handler() {}
-
-    #[test]
-    fn register_handler() {
-        unsafe { reset_at_quick_exit_handlers() };
-        assert_eq!(unsafe { at_quick_exit(Some(dummy_handler)) }, 0);
-        unsafe { reset_at_quick_exit_handlers() };
-    }
-}
+mod tests;
