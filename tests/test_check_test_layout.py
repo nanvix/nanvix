@@ -17,12 +17,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 sys.path.insert(0, str(_SCRIPTS))
 
-from testlayout import baseline as bl  # noqa: E402
 from testlayout import policy  # noqa: E402
+from testlayout import violations as vl  # noqa: E402
 from testlayout.cfgexpr import is_test_only, parse_cfg_args  # noqa: E402
 from testlayout.paths import (  # noqa: E402
     ALLOWLIST_FILE,
-    BASELINE_FILE,
     is_c_test_file,
     is_python_test_file,
     is_rust_test_file,
@@ -139,6 +138,25 @@ class TestScan(unittest.TestCase):
         result = scan_rust("#[cfg(test)]\nmod tests;\n")
         self.assertEqual([(m.name, m.inline) for m in result.mods], [("tests", False)])
 
+    def test_multiple_cfg_attributes_are_conjoined(self) -> None:
+        """Individually broad cfg predicates can jointly imply a test build."""
+        attrs = '#[cfg(any(feature = "test", feature = "std"))]\n#[cfg(not(feature = "std"))]\n'
+        result = scan_rust(attrs + "mod checks { fn test() {} }\n")
+        self.assertEqual([m.name for m in result.mods], ["checks"])
+        result = scan_rust(attrs.replace("#[", "#![") + "fn helper() {}\n")
+        self.assertEqual(result.file_gate_line, 1)
+
+    def test_conditional_test_attributes_are_detected(self) -> None:
+        """Tests declared through nested cfg_attr attributes remain tests."""
+        for attr in (
+            "cfg_attr(test, test)",
+            "cfg_attr(test, allow(dead_code), test)",
+            "cfg_attr(test, cfg_attr(unix, tokio::test))",
+        ):
+            with self.subTest(attr=attr):
+                result = scan_rust(f"#[{attr}]\nfn example() {{}}\n")
+                self.assertEqual(result.test_attr_lines, [1])
+
     def test_path_attribute_is_recorded(self) -> None:
         """A `#[path]` attribute overrides the default location."""
         result = scan_rust('#[cfg(test)]\n#[path = "tests/x.rs"]\nmod x;\n')
@@ -202,6 +220,35 @@ class TestScan(unittest.TestCase):
         )
         self.assertEqual(scan_rust(text).doctest_lines, [1, 13])
 
+    def test_target_specific_doc_ignores_are_not_universal(self) -> None:
+        """A target-specific ignore leaves an executable test on other targets."""
+        for info in ("ignore-x86_64", "rust,ignore-x86_64", "rust,ignore"):
+            with self.subTest(info=info):
+                text = f"/// ```{info}\n/// assert!(true);\n/// ```\nfn f() {{}}\n"
+                expected = [] if info == "rust,ignore" else [1]
+                self.assertEqual(scan_rust(text).doctest_lines, expected)
+
+    def test_indented_doc_tests(self) -> None:
+        """Indented code blocks are tests in both line and block documentation."""
+        examples = (
+            ("///     assert!(true);\nfn f() {}\n", [1]),
+            ("/// Example.\n///\n///     assert!(true);\nfn f() {}\n", [3]),
+            ("/** Example.\n\n    assert!(true);\n*/\nfn f() {}\n", [3]),
+            ("/** Example.\n *\n *     assert!(true);\n */\nfn f() {}\n", [3]),
+        )
+        for text, expected in examples:
+            with self.subTest(text=text):
+                self.assertEqual(scan_rust(text).doctest_lines, expected)
+
+    def test_indentation_inside_paragraphs_and_text_fences_is_not_code(self) -> None:
+        """Paragraph continuations and ignored fenced contents stay non-executable."""
+        for text in (
+            "/// Paragraph\n///     continuation\nfn f() {}\n",
+            "/// ```text\n///     example\n/// ```\nfn f() {}\n",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(scan_rust(text).doctest_lines, [])
+
 
 class TestPaths(unittest.TestCase):
     """Tests for path classification and module resolution."""
@@ -254,41 +301,49 @@ class TestPaths(unittest.TestCase):
         )
 
 
-class TestBaseline(unittest.TestCase):
-    """Tests for the baseline file format."""
+class TestAllowlistFormat(unittest.TestCase):
+    """Tests for the allowlist file format."""
 
     def test_round_trip(self) -> None:
-        """Every entry kind survives rendering and parsing."""
+        """Every seam entry survives rendering and parsing."""
         entries = {
-            "R1 a/b.rs": 3,
-            "R2 a/b.rs mod tests": 12,
-            "R2 a/b.rs modfile checks": 1,
-            "R2 a/b.rs file gate": 1,
             "R3 a/b.rs fn helper": 1,
             "R3 a/b.rs code let x = 1;": 2,
-            "R4 a/b.rs": 2,
-            "R5 tools/test_x.py py": 1,
+            "R3 a/b.rs struct S::field: bool,": 3,
         }
         for key, value in entries.items():
             with self.subTest(key=key):
-                self.assertEqual(bl.parse_line(bl.render(key, value)), (key, value))
+                self.assertEqual(vl.parse_line(vl.render(key, value)), (key, value))
 
     def test_malformed_line(self) -> None:
         """Unrecognized lines are rejected."""
-        with self.assertRaises(bl.BaselineError):
-            bl.parse_line("whatever")
+        with self.assertRaises(vl.AllowlistError):
+            vl.parse_line("whatever")
+
+    def test_only_seams_can_be_allowlisted(self) -> None:
+        """Every rule other than R3 is strict: it cannot be listed."""
+        for line in (
+            "R1 a/b.rs",
+            "R2 a/b.rs mod tests",
+            "R2 a/b.rs file gate",
+            "R4 a/b.rs",
+            "R5 tools/test_x.py py",
+        ):
+            with self.subTest(line=line):
+                with self.assertRaises(vl.AllowlistError):
+                    vl.parse_line(line)
 
     def test_duplicates_are_rejected(self) -> None:
         """A key may appear only once."""
         with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp, "baseline.txt")
-            path.write_text("R2 a.rs file gate\nR2 a.rs file gate\n", encoding="utf-8")
-            with self.assertRaises(bl.BaselineError):
-                bl.load(path)
+            path = Path(tmp, "allowlist.txt")
+            path.write_text("R3 a.rs fn f\nR3 a.rs fn f\n", encoding="utf-8")
+            with self.assertRaises(vl.AllowlistError):
+                vl.load(path)
 
     def test_missing_file_is_empty(self) -> None:
-        """A file that does not exist is an empty baseline."""
-        self.assertEqual(bl.load(Path("does-not-exist.txt")), {})
+        """A file that does not exist is an empty allowlist."""
+        self.assertEqual(vl.load(Path("does-not-exist.txt")), {})
 
 
 class RepoCase(unittest.TestCase):
@@ -320,7 +375,7 @@ class RepoCase(unittest.TestCase):
 
 
 class TestRules(RepoCase):
-    """Tests for rules R1-R6 (without a baseline)."""
+    """Tests for rules R1-R6."""
 
     def test_clean_layout(self) -> None:
         """A crate with its tests in tests.rs passes."""
@@ -368,6 +423,25 @@ class TestRules(RepoCase):
         self.write("crates/a/src/foo/tests.rs", "#[test]\nfn t() {}\n")
         self.assertTrue(self.check().ok, self.check().findings)
 
+    def test_binary_children_are_not_crate_roots(self) -> None:
+        """Auto-discovery only treats binary entry points as crate roots."""
+        self.write("crates/a/src/bin/cli.rs", "mod helper;\n")
+        self.write("crates/a/src/bin/cli/helper.rs", "#[cfg(test)]\nmod tests;\n")
+        self.write("crates/a/src/bin/cli/helper/tests.rs", "#[test]\nfn t() {}\n")
+        self.write("crates/a/src/bin/tool/main.rs", "#[cfg(test)]\nmod tests;\n")
+        self.write("crates/a/src/bin/tool/tests.rs", "#[test]\nfn t() {}\n")
+        self.assertTrue(self.check().ok, self.check().findings)
+
+    def test_inline_path_attribute_uses_the_module_directory(self) -> None:
+        """A path inside an inline module is relative to that module's directory."""
+        self.write("crates/a/src/lib.rs", "mod foo;\n")
+        self.write(
+            "crates/a/src/foo.rs",
+            'mod outer {\n#[cfg(test)]\n#[path = "tests/checks.rs"]\nmod checks;\n}\n',
+        )
+        self.write("crates/a/src/foo/outer/tests/checks.rs", "#[test]\nfn t() {}\n")
+        self.assertTrue(self.check().ok, self.check().findings)
+
     def test_file_level_gate_is_flagged(self) -> None:
         """R2: a crate-level test gate in a mainline file is a violation."""
         self.write("crates/a/src/lib.rs", "pub mod x;\n")
@@ -399,6 +473,15 @@ class TestRules(RepoCase):
         findings = self.check().findings
         self.assertEqual([f.rule for f in findings], ["R3"])
         self.assertIn("stale allowlist", findings[0].message)
+
+    def test_partial_removal_requires_lowering_the_allowlist_count(self) -> None:
+        """A seam allowlist entry must match exactly, not merely bound the count."""
+        self.write("crates/a/src/lib.rs", "#[cfg(test)]\nfn helper() {}\n")
+        self.write(ALLOWLIST_FILE, "R3 crates/a/src/lib.rs fn helper x2\n")
+        findings = self.check().findings
+        self.assertEqual(len(findings), 1)
+        self.assertIn("stale allowlist", findings[0].message)
+        self.assertIn("(2 -> 1)", findings[0].message)
 
     def test_stray_test_attribute(self) -> None:
         """R1: a test attribute in a mainline file is a violation, in a test file it is not."""
@@ -454,71 +537,47 @@ class TestRules(RepoCase):
         self.assertEqual(self.rules(), ["R0"])
 
 
-class TestRatchet(RepoCase):
-    """Tests for the baseline ratchet."""
+class TestAllowlist(RepoCase):
+    """Tests for the allowlist as the only exception to the policy."""
 
     INLINE = (
         "#[cfg(test)]\nmod tests {\n #[test]\n fn t() {}\n #[test]\n fn u() {}\n}\n"
     )
 
-    def setUp(self) -> None:
-        super().setUp()
+    def test_inline_module_cannot_be_allowlisted(self) -> None:
+        """Only seams can be listed, so an inline test module always fails."""
         self.write("crates/a/src/lib.rs", self.INLINE)
-
-    def test_baselined_violation_passes(self) -> None:
-        """A violation recorded in the baseline does not fail the check."""
-        self.write(BASELINE_FILE, "R2 crates/a/src/lib.rs mod tests tests=2\n")
-        self.assertTrue(self.check().ok, self.check().findings)
-
-    def test_new_violation_fails(self) -> None:
-        """A violation that is not in the baseline fails the check."""
-        self.write(BASELINE_FILE, "# nothing baselined\n")
         self.assertEqual(self.rules(), ["R2"])
+        self.write(ALLOWLIST_FILE, "R2 crates/a/src/lib.rs mod tests\n")
+        with self.assertRaises(vl.AllowlistError):
+            self.check()
 
-    def test_growth_fails(self) -> None:
-        """Adding a test to a baselined inline module fails the check."""
-        self.write(BASELINE_FILE, "R2 crates/a/src/lib.rs mod tests tests=1\n")
-        findings = self.check().findings
-        self.assertEqual([f.rule for f in findings], ["R2"])
-        self.assertIn("grew from 1 to 2", findings[0].message)
-
-    def test_stale_entry_fails(self) -> None:
-        """A baseline entry whose violation is gone fails until it is dropped."""
+    def test_uncovered_seams_lists_missing_entries_only(self) -> None:
+        """The printed lines cover exactly the seams that are not allowed yet."""
         self.write(
-            BASELINE_FILE,
-            "R2 crates/a/src/lib.rs mod tests tests=2\nR2 crates/a/src/gone.rs mod tests tests=1\n",
+            "crates/a/src/lib.rs",
+            "#[cfg(test)]\nfn one() {}\n#[cfg(test)]\nfn two() {}\n#[cfg(test)]\nfn two() {}\n",
         )
-        findings = self.check().findings
-        self.assertEqual([f.rule for f in findings], ["R2"])
-        self.assertIn("stale baseline entry", findings[0].message)
-
-    def test_shrinking_lowers_counts_and_drops_entries(self) -> None:
-        """Shrinking never raises a count and removes fixed entries."""
-        self.write(
-            BASELINE_FILE,
-            "R2 crates/a/src/lib.rs mod tests tests=5\nR2 crates/a/src/gone.rs mod tests tests=1\n",
-        )
-        self.assertEqual(policy.shrink_baseline_file(self.root), (2, 1))
+        self.write(ALLOWLIST_FILE, "R3 crates/a/src/lib.rs fn one\n")
         self.assertEqual(
-            bl.load(self.root / BASELINE_FILE), {"R2 crates/a/src/lib.rs mod tests": 2}
+            policy.uncovered_seams(self.check()), ["R3 crates/a/src/lib.rs fn two x2"]
         )
-        self.assertTrue(self.check().ok, self.check().findings)
 
-    def test_shrinking_never_adds_entries(self) -> None:
-        """A violation that is not baselined is not added by shrinking."""
-        self.write(BASELINE_FILE, "# empty\n")
-        policy.shrink_baseline_file(self.root)
-        self.assertEqual(bl.load(self.root / BASELINE_FILE), {})
-        self.assertEqual(self.rules(), ["R2"])
+    def test_uncovered_seams_raises_a_short_entry(self) -> None:
+        """A seam listed with too small a count is printed with its full count."""
+        self.write(
+            "crates/a/src/lib.rs",
+            "#[cfg(test)]\nfn two() {}\n#[cfg(test)]\nfn two() {}\n",
+        )
+        self.write(ALLOWLIST_FILE, "R3 crates/a/src/lib.rs fn two\n")
+        self.assertEqual(
+            policy.uncovered_seams(self.check()), ["R3 crates/a/src/lib.rs fn two x2"]
+        )
 
-    def test_allowlisted_seam_must_leave_the_baseline(self) -> None:
-        """A seam cannot be both baselined and allowlisted."""
-        self.write("crates/a/src/lib.rs", "#[cfg(test)]\nfn helper() {}\n")
-        self.write(BASELINE_FILE, "R3 crates/a/src/lib.rs fn helper\n")
-        self.write(ALLOWLIST_FILE, "R3 crates/a/src/lib.rs fn helper\n")
-        findings = self.check().findings
-        self.assertEqual([f.rule for f in findings], ["R3"])
-        self.assertIn("both baselined and allowlisted", findings[0].message)
+    def test_uncovered_seams_ignores_other_rules(self) -> None:
+        """Violations that cannot be allowlisted are not offered as entries."""
+        self.write("crates/a/src/lib.rs", self.INLINE)
+        self.assertEqual(policy.uncovered_seams(self.check()), [])
 
 
 class TestCli(RepoCase):
@@ -536,14 +595,14 @@ class TestCli(RepoCase):
         return code, out.getvalue()
 
     def test_exit_codes(self) -> None:
-        """0 for a clean tree, 1 for violations, 2 for a malformed baseline."""
+        """0 for a clean tree, 1 for violations, 2 for a malformed allowlist."""
         self.write("crates/a/src/lib.rs", "pub fn f() {}\n")
         self.assertEqual(self.run_cli()[0], 0)
         self.write("crates/a/src/lib.rs", "#[cfg(test)]\nmod tests {}\n")
         code, out = self.run_cli()
         self.assertEqual(code, 1)
         self.assertIn("crates/a/src/lib.rs:1:", out)
-        self.write(BASELINE_FILE, "garbage\n")
+        self.write(ALLOWLIST_FILE, "garbage\n")
         self.assertEqual(self.run_cli()[0], 2)
 
     def test_github_format(self) -> None:
@@ -553,24 +612,22 @@ class TestCli(RepoCase):
         self.assertEqual(code, 1)
         self.assertTrue(out.startswith("::error file=crates/a/src/lib.rs,line=1,"))
 
-    def test_print_baseline_matches_current_state(self) -> None:
-        """The printed baseline makes the current tree pass."""
+    def test_print_allowlist_covers_the_seams(self) -> None:
+        """The printed lines make a tree that only has seams pass."""
         self.write(
             "crates/a/src/lib.rs",
-            "#[cfg(test)]\nmod tests {}\n#[cfg(test)]\nfn h() {}\n",
+            "#[cfg(test)]\nfn h() {}\n#[cfg(test)]\nfn g() {}\n#[cfg(test)]\nfn g() {}\n",
         )
-        code, out = self.run_cli("--print-baseline")
-        self.assertEqual(code, 0)
-        self.write(BASELINE_FILE, out)
-        self.assertEqual(self.run_cli()[0], 0)
-
-    def test_update_baseline_shrinks(self) -> None:
-        """`--update-baseline` drops fixed entries and then passes."""
-        self.write("crates/a/src/lib.rs", "pub fn f() {}\n")
-        self.write(BASELINE_FILE, "R2 crates/a/src/lib.rs mod tests tests=1\n")
         self.assertEqual(self.run_cli()[0], 1)
-        self.assertEqual(self.run_cli("--update-baseline")[0], 0)
-        self.assertEqual(bl.load(self.root / BASELINE_FILE), {})
+        code, out = self.run_cli("--print-allowlist")
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            out.splitlines(),
+            ["R3 crates/a/src/lib.rs fn g x2", "R3 crates/a/src/lib.rs fn h"],
+        )
+        self.write(ALLOWLIST_FILE, out)
+        self.assertEqual(self.run_cli()[0], 0)
+        self.assertEqual(self.run_cli("--print-allowlist")[1], "")
 
 
 if __name__ == "__main__":

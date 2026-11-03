@@ -150,7 +150,7 @@ or documentation.
 ```
 
 The checker is `scripts/check-test-layout.py` (Python standard library only). See `doc/test.md`
-("Test layout") for the rules, the ratchet baseline and the migration tool.
+("Test layout") for the rules and the allowlist of seams.
 
 ## Formal Verification
 

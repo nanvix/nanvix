@@ -7,7 +7,8 @@
 #
 # Format, one entry per line (kind is the item keyword, or `code` for a gated statement):
 #   R3 <path> <kind> <name> [xN]
-# `xN` allows N occurrences of the same entry. Every entry needs a reviewer's explicit approval, and
+# `xN` must match exactly N occurrences of the same entry. Get the keys from `check-test-layout.py
+# --print-allowlist`. Every entry needs a reviewer's explicit approval, and
 # an entry that no longer matches code fails the check, so remove it together with the code.
 
 # Kernel boot hooks: each statement runs an in-kernel test suite at the one point of the boot

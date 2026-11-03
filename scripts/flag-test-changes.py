@@ -6,7 +6,7 @@
 Flags pull requests that change existing tests.
 
 Adding tests is never flagged. Changing, removing or renaming an existing test, or growing the
-test layout baseline or allowlist, is reported so that a reviewer looks at it carefully. The check
+test layout allowlist, is reported so that a reviewer looks at it carefully. The check
 only reads git objects; it never builds or runs anything from the pull request. It is advisory, so
 the exit status is 0 whether or not anything was flagged (see `doc/test.md`).
 

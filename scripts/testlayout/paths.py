@@ -1,7 +1,7 @@
 # Copyright(c) The Maintainers of Nanvix.
 # Licensed under the MIT License.
 
-"""Path classification shared by the test-layout checker, the migration tool and the PR flagger."""
+"""Path classification shared by the test-layout checker and the PR flagger."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ import os
 import posixpath
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
-# Repository-relative locations of the policy data files.
-BASELINE_FILE = "scripts/test-layout-baseline.txt"
+# Repository-relative location of the allowlist.
 ALLOWLIST_FILE = "scripts/test-layout-allowlist.txt"
 
 TEST_DIR_NAMES = frozenset({"tests", "test"})
@@ -134,7 +134,11 @@ def list_repo_files(root: Path) -> list[str]:
 _MANIFEST_PATH = re.compile(r'^\s*path\s*=\s*"([^"]+\.rs)"', re.MULTILINE)
 
 
-def crate_roots(root: Path, files: list[str]) -> set[str]:
+def crate_roots(
+    root: Path,
+    files: list[str],
+    read_text: Callable[[str], str] | None = None,
+) -> set[str]:
     """Returns the Rust files that are crate roots (their child modules live next to them)."""
     known = set(files)
     roots: set[str] = set()
@@ -147,9 +151,20 @@ def crate_roots(root: Path, files: list[str]) -> set[str]:
             if candidate in known:
                 roots.add(candidate)
         prefix = posixpath.normpath(posixpath.join(base, "src/bin")) + "/"
-        roots.update(f for f in files if f.startswith(prefix) and f.endswith(".rs"))
+        for file in files:
+            if not file.startswith(prefix):
+                continue
+            relative = file[len(prefix) :].split("/")
+            if (len(relative) == 1 and relative[0].endswith(".rs")) or (
+                len(relative) == 2 and relative[1] == "main.rs"
+            ):
+                roots.add(file)
         try:
-            text = (root / manifest).read_text(encoding="utf-8")
+            text = (
+                read_text(manifest)
+                if read_text is not None
+                else (root / manifest).read_text(encoding="utf-8")
+            )
         except OSError:
             continue
         for rel in _MANIFEST_PATH.findall(text):
@@ -179,7 +194,7 @@ def module_candidates(
     if path_attr is not None:
         base = posixpath.dirname(file)
         if inline_chain:
-            base = posixpath.join(base, *inline_chain)
+            base = posixpath.join(module_directory(file, roots), *inline_chain)
         return [posixpath.normpath(posixpath.join(base, path_attr))]
     base = module_directory(file, roots)
     if inline_chain:

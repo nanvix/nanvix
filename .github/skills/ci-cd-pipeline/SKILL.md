@@ -80,7 +80,7 @@ Matrix coverage in GitHub Actions:
 The separate `Test Change Review` workflow (`test-change-review.yml`) runs on `pull_request_target`
 for pull requests to `dev`. It runs `scripts/flag-test-changes.py`, which labels the pull request
 `review::tests-modified` and keeps one sticky comment when an existing test is modified, removed or
-renamed, or when the test layout baseline or allowlist grows. It is advisory (it never fails the
+renamed, or when the test layout allowlist grows. It is advisory (it never fails the
 pull request) and never checks out or runs pull request code, so keep it that way when editing it:
 pass event values through `env`, not `${{ }}` in scripts. It takes effect only once merged to `dev`.
 

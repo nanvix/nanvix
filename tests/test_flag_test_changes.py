@@ -22,8 +22,8 @@ _SCRIPTS = _REPO_ROOT / "scripts"
 sys.path.insert(0, str(_SCRIPTS))
 
 from testlayout import flagging, gitdiff, testitems  # noqa: E402
-from testlayout.clex import DIRECTIVE, tokenize_c  # noqa: E402
-from testlayout.paths import ALLOWLIST_FILE, BASELINE_FILE  # noqa: E402
+from testlayout.clex import DIRECTIVE, directive_words, tokenize_c  # noqa: E402
+from testlayout.paths import ALLOWLIST_FILE  # noqa: E402
 from testlayout.rustlex import LexError, normalized_tokens  # noqa: E402
 
 
@@ -69,13 +69,42 @@ fn two() {
 
 
 class TestNormalizedTokens(unittest.TestCase):
-    """The layout-insensitive token view shared with the migration tool."""
+    """The layout-insensitive token view of test code."""
 
     def test_trailing_commas_are_ignored(self) -> None:
         self.assertEqual(normalized_tokens("f(a, b,);"), normalized_tokens("f(a, b);"))
 
     def test_comma_before_a_non_closer_is_kept(self) -> None:
         self.assertNotEqual(normalized_tokens("f(a, b);"), normalized_tokens("f(a b);"))
+
+    def test_singleton_tuple_commas_are_kept(self) -> None:
+        for text in (
+            "let value = (1,);",
+            "return (1,);",
+            "let pointer = &raw const (1,);",
+            'assert_eq!(format!("{:?}", (1,)), "(1,)");',
+        ):
+            with self.subTest(text=text):
+                self.assertNotEqual(
+                    normalized_tokens(text),
+                    normalized_tokens(text.replace("(1,)", "(1)")),
+                )
+
+    def test_unknown_macro_commas_are_kept(self) -> None:
+        for text in ("custom!(1,);", "custom!([1,]);", "custom! { value, }"):
+            with self.subTest(text=text):
+                self.assertNotEqual(
+                    normalized_tokens(text), normalized_tokens(text.replace(",", ""))
+                )
+
+    def test_optional_call_array_and_tuple_commas_are_ignored(self) -> None:
+        for before, after in (
+            ("f(1,)", "f(1)"),
+            ("[1,]", "[1]"),
+            ("(1, 2,)", "(1, 2)"),
+        ):
+            with self.subTest(before=before):
+                self.assertEqual(normalized_tokens(before), normalized_tokens(after))
 
     def test_string_continuations_are_joined(self) -> None:
         self.assertEqual(
@@ -113,6 +142,43 @@ class TestCTokenizer(unittest.TestCase):
     def test_unbalanced_brace_is_an_error(self) -> None:
         with self.assertRaises(LexError):
             tokenize_c("void f(void) {\n")
+
+    def test_multichar_operators_use_longest_match(self) -> None:
+        toks = tokenize_c("i++ + j; i + ++j; a >>= 1; x ->* member;")
+        words = [toks.src(i) for i in range(len(toks))]
+        self.assertEqual(
+            words,
+            [
+                "i",
+                "++",
+                "+",
+                "j",
+                ";",
+                "i",
+                "+",
+                "++",
+                "j",
+                ";",
+                "a",
+                ">>=",
+                "1",
+                ";",
+                "x",
+                "->*",
+                "member",
+                ";",
+            ],
+        )
+
+    def test_directive_splicing_does_not_insert_whitespace(self) -> None:
+        self.assertEqual(
+            directive_words('#define TEXT "a\\\nb"\n'),
+            directive_words('#define TEXT "ab"\n'),
+        )
+        self.assertNotEqual(
+            directive_words('#define TEXT "a\\\nb"\n'),
+            directive_words('#define TEXT "a b"\n'),
+        )
 
 
 class TestRustItems(unittest.TestCase):
@@ -190,6 +256,33 @@ class TestRustItems(unittest.TestCase):
         b = "#[test]\n#[ignore]\nfn one() {}\n"
         self.assertNotEqual(_fingerprints(RUST_TEST, a), _fingerprints(RUST_TEST, b))
 
+    def test_container_guards_affect_existing_test_fingerprints(self) -> None:
+        before = "mod suite {\n" + ONE + "}\n"
+        for guard in ("#[cfg(any())]\n", "#[cfg(unix)]\n", "#[ignore]\n"):
+            with self.subTest(guard=guard):
+                self.assertNotEqual(
+                    _fingerprints(RUST_TEST, before),
+                    _fingerprints(RUST_TEST, guard + before),
+                )
+
+    def test_inner_guards_affect_existing_test_fingerprints(self) -> None:
+        original = _items(RUST_TEST, ONE)[0].fingerprint
+        guarded = _items(RUST_TEST, "#![cfg(any())]\n" + ONE)
+        self.assertNotEqual(
+            original, next(i.fingerprint for i in guarded if i.name == "one")
+        )
+
+    def test_outer_mainline_guards_reach_nested_tests(self) -> None:
+        text = "#[cfg(unix)]\nmod outer {\n#[cfg(test)]\nmod tests {\n" + ONE + "}\n}\n"
+        self.assertNotEqual(
+            _fingerprints("crates/a/src/lib.rs", text),
+            _fingerprints("crates/a/src/lib.rs", text.replace("unix", "windows")),
+        )
+
+    def test_conditional_test_attribute_in_mainline_is_tracked(self) -> None:
+        text = "#[cfg_attr(test, test)]\nfn one() {}\n"
+        self.assertEqual(_names("crates/a/src/lib.rs", text), ["one"])
+
     def test_unbalanced_source_is_an_error(self) -> None:
         with self.assertRaises(testitems.ExtractError):
             _items(RUST_TEST, "fn broken() {\n")
@@ -230,6 +323,19 @@ if __name__ == "__main__":
         )
         self.assertEqual(
             _fingerprints(PY_TEST, self.TEXT), _fingerprints(PY_TEST, other)
+        )
+
+    def test_docstring_only_scopes_keep_valid_locations(self) -> None:
+        self.assertEqual(_items(PY_TEST, '"""Only documentation."""\n'), [])
+        text = 'class TestEmpty:\n    """Only documentation."""\n'
+        items = _items(PY_TEST, text)
+        self.assertEqual(
+            [(item.name, item.line) for item in items],
+            [("TestEmpty", 1), ("TestEmpty::pass", 2)],
+        )
+        self.assertEqual(
+            _fingerprints(PY_TEST, text),
+            _fingerprints(PY_TEST, text.replace('"""Only documentation."""', "pass")),
         )
 
     def test_assertions_are_not_ignored(self) -> None:
@@ -299,6 +405,31 @@ int main(void)
     def test_extern_c_block_is_recursed(self) -> None:
         text = 'extern "C" {\nint a(void);\nint b(void);\n}\n'
         self.assertEqual(_names(C_TEST, text), ["extern::a", "extern::b"])
+
+    def test_namespace_qualification_is_preserved(self) -> None:
+        text = "namespace outer::inner {\nvoid check() {}\n}\n"
+        self.assertEqual(_names(C_TEST, text), ["namespace outer::inner::check"])
+
+    def test_nested_and_alternate_guards_affect_their_items(self) -> None:
+        text = (
+            "#if FIRST\nvoid first() {}\n"
+            "#elif SECOND\nnamespace suite {\n#ifdef NESTED\nvoid second() {}\n#endif\n}\n"
+            "#else\nvoid last() {}\n#endif\nvoid outside() {}\n"
+        )
+        before = {item.name: item.fingerprint for item in _items(C_TEST, text)}
+        after = {
+            item.name: item.fingerprint
+            for item in _items(C_TEST, text.replace("#if FIRST", "#if OTHER"))
+        }
+        for name in ("first", "namespace suite::second", "last"):
+            self.assertNotEqual(before[name], after[name])
+        self.assertEqual(before["outside"], after["outside"])
+
+    def test_malformed_preprocessor_guards_are_reported(self) -> None:
+        for text in ("#endif\n", "#if 1\nvoid check() {}\n", "#else\n"):
+            with self.subTest(text=text):
+                with self.assertRaises(testitems.ExtractError):
+                    _items(C_TEST, text)
 
     def test_non_test_c_is_not_tracked(self) -> None:
         self.assertEqual(_items("src/libs/x/src/x.c", "int x;\n"), [])
@@ -459,6 +590,41 @@ class TestFlagger(GitCase):
         self.commit({RUST_TEST: "#[ignore]\n" + ONE})
         self.assertEqual(self.summary(self.flag(base)), [("modified", "one")])
 
+    def test_adding_a_file_guard_is_flagged(self) -> None:
+        base = self.commit({RUST_TEST: ONE})
+        self.commit({RUST_TEST: "#![cfg(any())]\n" + ONE})
+        self.assertEqual(self.summary(self.flag(base)), [("modified", "one")])
+
+    def test_disabling_a_test_module_is_flagged(self) -> None:
+        text = "#[cfg(test)]\nmod tests {\n" + ONE + "}\n"
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: text})
+        self.commit({path: "#[cfg(any())]\n" + text})
+        self.assertEqual(self.summary(self.flag(base)), [("modified", "tests::one")])
+
+    def test_adding_a_c_preprocessor_guard_is_flagged(self) -> None:
+        text = "void check(void) { assert(1); }\n"
+        base = self.commit({C_TEST: text})
+        self.commit({C_TEST: "#if 0\n" + text + "#endif\n"})
+        self.assertEqual(self.summary(self.flag(base)), [("modified", "check")])
+
+    def test_changing_a_c_preprocessor_guard_is_flagged(self) -> None:
+        text = "#if 1\nvoid check(void) { assert(1); }\n#endif\n"
+        base = self.commit({C_TEST: text})
+        self.commit({C_TEST: text.replace("#if 1", "#if 0")})
+        self.assertEqual(self.summary(self.flag(base)), [("modified", "check")])
+
+    def test_c_operator_changes_are_flagged(self) -> None:
+        text = "void check(void) { assert(i++ + j == 2); }\n"
+        base = self.commit({C_TEST: text})
+        self.commit({C_TEST: text.replace("i++ + j", "i + ++j")})
+        self.assertEqual(self.summary(self.flag(base)), [("modified", "check")])
+
+    def test_spliced_macro_value_changes_are_flagged(self) -> None:
+        base = self.commit({C_TEST: '#define TEXT "a\\\nb"\n'})
+        self.commit({C_TEST: '#define TEXT "a b"\n'})
+        self.assertEqual(self.summary(self.flag(base)), [("modified", "TEXT")])
+
     def test_editing_a_test_table_is_flagged(self) -> None:
         table = "const CASES: &[(u32, u32)] = &[(1, 2), (3, 4)];\n"
         base = self.commit({RUST_TEST: table})
@@ -573,6 +739,70 @@ class TestFlagger(GitCase):
         self.commit({"crates/a/src/lib.rs": "pub fn add() {}\n"})
         self.assertEqual(self.summary(self.flag(base)), [("removed", "tests")])
 
+    def test_feature_gated_inline_move_preserves_its_context(self) -> None:
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: gate + "mod tests {\n" + ONE + "}\n"})
+        self.commit({path: gate + "mod tests;\n", "crates/a/src/tests.rs": ONE})
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_changing_a_guard_while_moving_a_test_is_flagged(self) -> None:
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: gate + "mod tests {\n" + ONE + "}\n"})
+        self.commit(
+            {
+                path: gate.replace('"std"', '"other"') + "mod tests;\n",
+                "crates/a/src/tests.rs": ONE,
+            }
+        )
+        self.assertEqual(self.summary(self.flag(base)), [("removed", "tests::one")])
+
+    def test_nested_module_move_preserves_enclosing_guards(self) -> None:
+        outer = "#[cfg(unix)]\nmod outer {\n"
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: outer + gate + "mod tests {\n" + ONE + "}\n}\n"})
+        self.commit(
+            {
+                path: outer + gate + "mod tests;\n}\n",
+                "crates/a/src/outer/tests.rs": ONE,
+            }
+        )
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_explicit_module_path_is_wiring_not_an_execution_guard(self) -> None:
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: gate + "mod checks {\n" + ONE + "}\n"})
+        self.commit(
+            {
+                path: gate + '#[path = "tests/checks.rs"]\nmod checks;\n',
+                "crates/a/src/tests/checks.rs": ONE,
+            }
+        )
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_custom_crate_root_is_resolved_from_git_manifest(self) -> None:
+        gate = '#[cfg(all(test, feature = "std"))]\n'
+        path = "crates/a/src/entry.rs"
+        base = self.commit(
+            {
+                "crates/a/Cargo.toml": '[package]\nname = "a"\n[lib]\npath = "src/entry.rs"\n',
+                path: gate + "mod tests {\n" + ONE + "}\n",
+            }
+        )
+        self.commit({path: gate + "mod tests;\n", "crates/a/src/tests.rs": ONE})
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_cyclic_module_references_are_reported(self) -> None:
+        path = "crates/a/src/lib.rs"
+        base = self.commit({path: ONE})
+        self.commit({path: '#[cfg(test)]\n#[path = "lib.rs"]\nmod tests;\n'})
+        report = self.flag(base)
+        self.assertEqual([f.kind for f in report.findings], ["unparsed"])
+        self.assertIn("cyclic module reference", report.findings[0].detail)
+
     def test_files_that_are_not_tests_are_ignored(self) -> None:
         base = self.commit(
             {"crates/a/src/lib.rs": "pub fn add() {}\n", "README.md": "a\n"}
@@ -621,48 +851,51 @@ class TestFlagger(GitCase):
 
 
 class TestPolicyFiles(GitCase):
-    """The layout baseline and allowlist."""
+    """The layout allowlist."""
 
-    ENTRY = "R2 crates/a/src/lib.rs mod tests tests=2\n"
-
-    def test_growing_the_baseline_is_flagged(self) -> None:
-        base = self.commit({BASELINE_FILE: "# Header.\n" + self.ENTRY})
-        self.commit(
-            {
-                BASELINE_FILE: "# Header.\n"
-                + self.ENTRY.replace("tests=2", "tests=3")
-                + "R2 crates/b/src/lib.rs mod tests tests=1\n"
-            }
-        )
-        report = self.flag(base)
-        self.assertEqual(
-            self.summary(report),
-            [
-                ("policy-growth", "R2 crates/a/src/lib.rs mod tests"),
-                ("policy-growth", "R2 crates/b/src/lib.rs mod tests"),
-            ],
-        )
-        self.assertEqual({f.path for f in report.findings}, {BASELINE_FILE})
-
-    def test_shrinking_the_baseline_is_not_flagged(self) -> None:
-        base = self.commit(
-            {BASELINE_FILE: self.ENTRY + "R2 crates/b/src/lib.rs mod tests tests=1\n"}
-        )
-        self.commit({BASELINE_FILE: self.ENTRY.replace("tests=2", "tests=1")})
-        self.assertFalse(self.flag(base).flagged)
-        self.commit({BASELINE_FILE: None})
-        self.assertFalse(self.flag(base).flagged)
+    ENTRY = "R3 crates/a/src/lib.rs fn helper\n"
 
     def test_growing_the_allowlist_is_flagged(self) -> None:
         base = self.commit({ALLOWLIST_FILE: "# Header.\n"})
         self.commit({ALLOWLIST_FILE: "# Header.\n" + self.ENTRY})
         report = self.flag(base)
-        self.assertEqual([f.kind for f in report.findings], ["policy-growth"])
-        self.assertEqual(report.findings[0].path, ALLOWLIST_FILE)
+        self.assertEqual(
+            self.summary(report),
+            [("policy-growth", "R3 crates/a/src/lib.rs fn helper")],
+        )
+        self.assertEqual({f.path for f in report.findings}, {ALLOWLIST_FILE})
 
-    def test_unreadable_policy_file_is_flagged(self) -> None:
-        base = self.commit({BASELINE_FILE: self.ENTRY})
-        self.commit({BASELINE_FILE: "not a baseline line\n"})
+    def test_raising_an_entry_is_flagged(self) -> None:
+        base = self.commit({ALLOWLIST_FILE: self.ENTRY})
+        self.commit(
+            {
+                ALLOWLIST_FILE: self.ENTRY.replace("helper", "helper x3")
+                + "R3 crates/b/src/lib.rs fn other\n"
+            }
+        )
+        self.assertEqual(
+            self.summary(self.flag(base)),
+            [
+                ("policy-growth", "R3 crates/a/src/lib.rs fn helper"),
+                ("policy-growth", "R3 crates/b/src/lib.rs fn other"),
+            ],
+        )
+
+    def test_shrinking_the_allowlist_is_not_flagged(self) -> None:
+        base = self.commit(
+            {
+                ALLOWLIST_FILE: self.ENTRY.replace("helper", "helper x2")
+                + "R3 b.rs fn f\n"
+            }
+        )
+        self.commit({ALLOWLIST_FILE: self.ENTRY})
+        self.assertFalse(self.flag(base).flagged)
+        self.commit({ALLOWLIST_FILE: None})
+        self.assertFalse(self.flag(base).flagged)
+
+    def test_unreadable_allowlist_is_flagged(self) -> None:
+        base = self.commit({ALLOWLIST_FILE: self.ENTRY})
+        self.commit({ALLOWLIST_FILE: "not an allowlist line\n"})
         self.assertEqual([f.kind for f in self.flag(base).findings], ["unparsed"])
 
 

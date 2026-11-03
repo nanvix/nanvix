@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from . import paths
+from .cfgexpr import CfgParseError
 from .clex import DIRECTIVE, directive_words, normalized_c_span, tokenize_c
 from .rustlex import IDENT, PUNCT, STRING, LexError, Tokens, normalized_span, tokenize
 from .scan import (
@@ -54,6 +55,16 @@ class Item:
     fingerprint: str
 
 
+@dataclass(frozen=True)
+class ModuleRef:
+    """An out-of-line Rust module and the guards inherited by its source file."""
+
+    name: str
+    path: str | None
+    chain: tuple[str, ...]
+    context: tuple[str, ...]
+
+
 def language(path: str) -> str | None:
     """Returns the language of a file the flagger tracks, or `None` for any other file."""
     path = paths.to_posix(path)
@@ -76,14 +87,17 @@ def is_test_file(path: str) -> bool:
     return lang is not None
 
 
-def extract(path: str, text: str) -> list[Item]:
+def extract(path: str, text: str, context: tuple[str, ...] = ()) -> list[Item]:
     """Returns the test items of a file; raises `ExtractError` if it cannot be analyzed."""
     lang = language(path)
     if lang is None:
         return []
     text = text.lstrip("\ufeff").replace("\r\n", "\n")
     if lang == RUST:
-        return _rust_items(text, paths.is_rust_test_file(path))
+        try:
+            return _rust_items(text, paths.is_rust_test_file(path), context)
+        except CfgParseError as err:
+            raise ExtractError(str(err)) from err
     if lang == PYTHON:
         return _python_items(text)
     if lang == C:
@@ -110,7 +124,7 @@ _MENTIONS_TEST = re.compile(r"test|bench")
 _RUST_CONTAINERS = frozenset({"mod", "impl", "trait", "extern_block"})
 
 
-def _rust_items(text: str, in_test_file: bool) -> list[Item]:
+def _rust_items(text: str, in_test_file: bool, context: tuple[str, ...]) -> list[Item]:
     if not in_test_file and not _MENTIONS_TEST.search(text):
         return []
     try:
@@ -120,10 +134,21 @@ def _rust_items(text: str, in_test_file: bool) -> list[Item]:
     items: list[Item] = []
     walker = _RustWalker(toks, items)
     if in_test_file or has_test_file_gate(toks):
-        walker.counted(0, len(toks), ())
+        walker.counted(0, len(toks), (), context)
     else:
-        walker.scan(0, len(toks))
+        walker.scan(0, len(toks), context)
     return items
+
+
+def rust_module_refs(text: str) -> list[ModuleRef]:
+    """Extracts module references without reading or executing their source files."""
+    try:
+        toks = tokenize(text)
+        walker = _RustWalker(toks, [])
+        walker.scan(0, len(toks))
+        return walker.modules
+    except (LexError, CfgParseError) as err:
+        raise ExtractError(str(err)) from err
 
 
 class _RustWalker:
@@ -132,25 +157,50 @@ class _RustWalker:
     def __init__(self, toks: Tokens, items: list[Item]) -> None:
         self.toks = toks
         self.items = items
+        self.modules: list[ModuleRef] = []
 
-    def scan(self, lo: int, hi: int) -> None:
+    def scan(self, lo: int, hi: int, context: tuple[str, ...] = ()) -> None:
         """Finds the test-only and test-marked units in mainline code."""
         toks = self.toks
         i = lo
         while i < hi:
-            if not toks.is_punct(i, "#"):
+            if not toks.is_punct(i, "#") and not (
+                toks.is_ident(i) and toks.src(i) in ("mod", "impl", "trait", "extern")
+            ):
                 i += 1
                 continue
             if toks.is_punct(i + 1, "!") and toks.is_punct(i + 2, "["):
+                context += self._attributes(i, inner=True)
                 i = toks.partner[i + 2] + 1
                 continue
             attrs, unit = read_attrs(toks, i)
-            if unit >= hi or not (is_test_gated(attrs) or is_test_marked(attrs)):
-                i = max(unit, i + 1)
+            if unit >= hi:
+                break
+            if is_test_gated(attrs) or is_test_marked(attrs):
+                i = self._unit(i, unit, hi, enclosing_items(toks, i), context) + 1
                 continue
-            i = self._unit(i, unit, hi, enclosing_items(toks, i)) + 1
+            measured = measure_unit(toks, unit)
+            if measured.kind == "mod" and toks.is_punct(measured.end, ";"):
+                self._module(i, measured.name, enclosing_items(toks, i), context)
+                i = measured.end + 1
+                continue
+            if measured.kind in _RUST_CONTAINERS and toks.is_punct(measured.end, "}"):
+                self.scan(
+                    toks.partner[measured.end] + 1,
+                    measured.end,
+                    context + self._attributes(i),
+                )
+                i = measured.end + 1
+            else:
+                i = max(unit, i + 1)
 
-    def counted(self, lo: int, hi: int, chain: tuple[tuple[str, str], ...]) -> None:
+    def counted(
+        self,
+        lo: int,
+        hi: int,
+        chain: tuple[tuple[str, str], ...],
+        context: tuple[str, ...] = (),
+    ) -> None:
         """Records every unit of a range that is test code as a whole."""
         toks = self.toks
         i = lo
@@ -161,22 +211,49 @@ class _RustWalker:
                 and toks.is_punct(i + 2, "[")
             ):
                 end = toks.partner[i + 2]
-                self._add(i, end, chain, "#![..]")
+                self._add(i, end, chain, "#![..]", context)
+                context += self._attributes(i, inner=True)
                 i = end + 1
                 continue
             _, unit = read_attrs(toks, i)
             if unit >= hi:
-                self._add(i, hi - 1, chain, "#[..]")
+                self._add(i, hi - 1, chain, "#[..]", context)
                 break
-            i = self._unit(i, unit, hi, chain) + 1
+            i = self._unit(i, unit, hi, chain, context) + 1
+
+    def _attributes(self, start: int, *, inner: bool = False) -> tuple[str, ...]:
+        """Returns container attributes, except ordinary test-build wiring."""
+        attrs, _ = read_attrs(self.toks, start, inner=inner)
+        words: list[str] = []
+        for attr in attrs[:1] if inner else attrs:
+            if attr.path == ("path",):
+                continue
+            if (
+                attr.pred is not None
+                and attr.pred.op == "atom"
+                and attr.pred.key in ("test", 'feature="test"')
+            ):
+                continue
+            bracket = attr.line_token + (2 if inner else 1)
+            words.extend(
+                normalized_span(self.toks, attr.line_token, self.toks.partner[bracket])
+            )
+        return tuple(words)
 
     def _unit(
-        self, start: int, unit: int, hi: int, chain: tuple[tuple[str, str], ...]
+        self,
+        start: int,
+        unit: int,
+        hi: int,
+        chain: tuple[tuple[str, str], ...],
+        context: tuple[str, ...],
     ) -> int:
         """Records the unit that starts at `unit`; returns the index of its last token."""
         toks = self.toks
         measured = measure_unit(toks, unit)
         end = min(measured.end, hi - 1)
+        if measured.kind == "mod" and toks.is_punct(end, ";"):
+            self._module(start, measured.name, chain, context)
         if measured.kind in WIRING_KINDS:
             return end
         if (
@@ -185,12 +262,31 @@ class _RustWalker:
             and toks.partner[end] >= unit
         ):
             child = chain + ((measured.kind, measured.name),)
-            self.counted(toks.partner[end] + 1, end, child)
+            self.counted(
+                toks.partner[end] + 1, end, child, context + self._attributes(start)
+            )
             return end
         if end == unit and (toks.is_punct(unit, ";") or toks.is_punct(unit, ",")):
             return end
-        self._add(start, end, chain, measured.name)
+        self._add(start, end, chain, measured.name, context)
         return end
+
+    def _module(
+        self,
+        start: int,
+        name: str,
+        chain: tuple[tuple[str, str], ...],
+        context: tuple[str, ...],
+    ) -> None:
+        attrs, _ = read_attrs(self.toks, start)
+        self.modules.append(
+            ModuleRef(
+                name,
+                next((a.value for a in attrs if a.path == ("path",)), None),
+                tuple(item for kind, item in chain if kind == "mod"),
+                context + self._attributes(start),
+            )
+        )
 
     def _add(
         self,
@@ -198,6 +294,7 @@ class _RustWalker:
         end: int,
         chain: tuple[tuple[str, str], ...],
         name: str,
+        context: tuple[str, ...],
     ) -> None:
         toks = self.toks
         scope = [f"{kind}:{item}" for kind, item in chain if kind != "mod"]
@@ -207,7 +304,7 @@ class _RustWalker:
             Item(
                 _display(shown, name),
                 toks.line_of(start),
-                _digest(scope, words),
+                _digest([*scope, *context], words),
             )
         )
 
@@ -231,7 +328,9 @@ def _strip_docstrings(tree: ast.AST) -> None:
             and isinstance(first.value, ast.Constant)
             and isinstance(first.value.value, str)
         ):
-            node.body = body[1:] or [ast.Pass()]
+            node.body = body[1:]
+            if not node.body and not isinstance(node, ast.Module):
+                node.body = [ast.copy_location(ast.Pass(), first)]
 
 
 def _python_items(text: str) -> list[Item]:
@@ -307,8 +406,34 @@ def _c_items(text: str) -> list[Item]:
     except LexError as err:
         raise ExtractError(str(err)) from err
     items: list[Item] = []
-    _c_walk(toks, 0, len(toks), (), items)
+    _c_walk(toks, 0, len(toks), (), _c_conditions(toks), items)
     return items
+
+
+def _c_conditions(toks: Tokens) -> list[tuple[str, ...]]:
+    """Records the enclosing preprocessor conditions of each token."""
+    contexts: list[tuple[str, ...]] = []
+    guards: list[list[str]] = []
+    for i in range(len(toks)):
+        contexts.append(tuple(word for guard in guards for word in guard))
+        if toks.kinds[i] != DIRECTIVE:
+            continue
+        words = directive_words(toks.src(i))
+        if len(words) < 2:
+            continue
+        directive = words[1]
+        if directive in ("if", "ifdef", "ifndef"):
+            guards.append(words)
+        elif directive in ("elif", "elifdef", "elifndef", "else", "endif"):
+            if not guards:
+                raise ExtractError(f"unmatched #{directive} at line {toks.line_of(i)}")
+            if directive == "endif":
+                guards.pop()
+            else:
+                guards[-1].extend(words)
+    if guards:
+        raise ExtractError("unclosed preprocessor conditional")
+    return contexts
 
 
 def _c_container(toks: Tokens, i: int, hi: int) -> tuple[int, str] | None:
@@ -322,7 +447,7 @@ def _c_container(toks: Tokens, i: int, hi: int) -> tuple[int, str] | None:
         return i + 2, "extern"
     if toks.is_ident(i, "namespace"):
         j = i + 1
-        while j < hi and (toks.kinds[j] == IDENT or toks.is_punct(j, ":")):
+        while j < hi and (toks.kinds[j] == IDENT or toks.is_punct(j, "::")):
             j += 1
         if toks.is_punct(j, "{"):
             return j, "namespace " + "".join(toks.src(k) for k in range(i + 1, j))
@@ -387,6 +512,7 @@ def _c_walk(
     lo: int,
     hi: int,
     chain: tuple[str, ...],
+    conditions: list[tuple[str, ...]],
     out: list[Item],
 ) -> None:
     i = lo
@@ -398,7 +524,9 @@ def _c_walk(
                     Item(
                         _display(chain, words[2]),
                         toks.line_of(i),
-                        _digest(chain, normalized_c_span(toks, i, i)),
+                        _digest(
+                            (*chain, *conditions[i]), normalized_c_span(toks, i, i)
+                        ),
                     )
                 )
             i += 1
@@ -409,7 +537,9 @@ def _c_walk(
         container = _c_container(toks, i, hi)
         if container is not None:
             brace, name = container
-            _c_walk(toks, brace + 1, toks.partner[brace], chain + (name,), out)
+            _c_walk(
+                toks, brace + 1, toks.partner[brace], chain + (name,), conditions, out
+            )
             i = toks.partner[brace] + 1
             continue
         end = _c_statement_end(toks, i, hi)
@@ -417,7 +547,7 @@ def _c_walk(
             Item(
                 _display(chain, _c_name(toks, i, end)),
                 toks.line_of(i),
-                _digest(chain, normalized_c_span(toks, i, end)),
+                _digest((*chain, *conditions[i]), normalized_c_span(toks, i, end)),
             )
         )
         i = end + 1

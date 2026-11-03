@@ -5,14 +5,14 @@
 """
 Checks that tests live in their own files instead of mainline source code.
 
-The policy (rules R1-R6) is described in `doc/test.md`. Violations that predate the policy are
-recorded in `scripts/test-layout-baseline.txt`; the check fails on new violations, on baselined
-violations that grew, and on baseline entries that no longer apply, so the baseline can only shrink.
+The policy (rules R1-R6) is described in `doc/test.md`. Every violation fails the check. The only
+exceptions are test-only seams (R3) that need private access to the code they test; they are listed,
+with a reason, in `scripts/test-layout-allowlist.txt`, and an entry whose code is gone fails the
+check too.
 
 Usage:
     check-test-layout.py [--root DIR] [--format text|github]
-    check-test-layout.py --update-baseline    # drop fixed entries from the baseline
-    check-test-layout.py --print-baseline     # print every current violation as baseline lines
+    check-test-layout.py --print-allowlist    # print allowlist lines for the uncovered seams
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from testlayout import baseline as bl  # noqa: E402
 from testlayout import policy  # noqa: E402
-from testlayout.paths import ALLOWLIST_FILE, BASELINE_FILE  # noqa: E402
+from testlayout import violations as vl  # noqa: E402
+from testlayout.paths import ALLOWLIST_FILE  # noqa: E402
 
 
 def _escape(message: str) -> str:
@@ -51,32 +51,24 @@ def main(argv: list[str] | None = None) -> int:
         "--root", type=Path, default=Path(__file__).resolve().parent.parent
     )
     parser.add_argument("--format", choices=("text", "github"), default="text")
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
-        "--update-baseline", action="store_true", help="drop fixed baseline entries"
-    )
-    mode.add_argument(
-        "--print-baseline", action="store_true", help="print current violations"
+    parser.add_argument(
+        "--print-allowlist",
+        action="store_true",
+        help="print allowlist lines for the seams the allowlist does not cover",
     )
     args = parser.parse_args(argv)
     root: Path = args.root.resolve()
 
-    if args.print_baseline:
-        current = bl.aggregate(policy.collect_violations(root))
-        entries = {key: agg.value for key, agg in current.items()}
-        sys.stdout.write(bl.dump(entries, policy.BASELINE_HEADER))
-        return 0
-
     try:
         report = policy.check(root)
-    except bl.BaselineError as err:
+    except vl.AllowlistError as err:
         print(f"error: {err}", file=sys.stderr)
         return 2
 
-    if args.update_baseline:
-        before, after = policy.shrink_baseline_file(root)
-        print(f"{BASELINE_FILE}: {before} -> {after} entries")
-        report = policy.check(root)
+    if args.print_allowlist:
+        for line in policy.uncovered_seams(report):
+            print(line)
+        return 0
 
     _print_findings(report, args.format)
     if report.findings:
@@ -86,9 +78,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print(
-        f"test-layout: OK ({len(report.baseline)} baselined, {len(report.allowlist)} allowed)"
-    )
+    print(f"test-layout: OK ({len(report.allowlist)} allowed)")
     return 0
 
 

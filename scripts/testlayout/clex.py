@@ -29,7 +29,11 @@ _TOKEN = re.compile(
     | (?P<char>(?:u8|u|U|L)?'(?:[^'\\\n]|\\.)*')
     | (?P<ident>[^\W\d]\w*)
     | (?P<number>\.?\d(?:[eEpP][+-]|[\w.]|'(?=\w))*)
-    | (?P<punct>.)
+    | (?P<punct>
+        ->\* | \.\* | \.\.\. | <<= | >>= | <=> | \+\+ | -- | -> | << | >>
+        | <= | >= | == | != | && | \|\| | \+= | -= | \*= | /= | %=
+        | \^= | &= | \|= | :: | \#\# | .
+      )
     """,
     re.VERBOSE | re.DOTALL,
 )
@@ -139,7 +143,7 @@ def tokenize_c(text: str) -> Tokens:
 
 def directive_words(text: str) -> list[str]:
     """Returns the words of one preprocessor directive, without comments or continuations."""
-    body = _LINE_CONTINUATION.sub(" ", text).lstrip()[1:]
+    body = _LINE_CONTINUATION.sub("", text).lstrip()[1:]
     try:
         inner = tokenize_c(body)
     except LexError:

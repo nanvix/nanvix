@@ -57,6 +57,7 @@ class Attr:
     line_token: int
     pred: Pred | None = None
     value: str | None = None
+    nested: tuple[Attr, ...] = ()
 
 
 @dataclass
@@ -100,8 +101,19 @@ class ScanResult:
 
 def _parse_attr(toks: Tokens, hash_index: int, open_bracket: int) -> Attr:
     """Parses the attribute whose `[` is at `open_bracket`."""
-    close = toks.partner[open_bracket]
-    i = open_bracket + 1
+    return _parse_meta(toks, hash_index, open_bracket + 1, toks.partner[open_bracket])
+
+
+def _meta_end(toks: Tokens, start: int, end: int) -> int:
+    """Finds the next top-level comma or the end of an attribute argument."""
+    i = start
+    while i < end and not toks.is_punct(i, ","):
+        i = toks.partner[i] + 1 if toks.partner[i] > i else i + 1
+    return i
+
+
+def _parse_meta(toks: Tokens, hash_index: int, i: int, close: int) -> Attr:
+    """Parses an attribute, including the attributes nested inside `cfg_attr`."""
     path: list[str] = []
     while i < close and toks.kinds[i] == IDENT:
         path.append(toks.src(i))
@@ -116,6 +128,15 @@ def _parse_attr(toks: Tokens, hash_index: int, open_bracket: int) -> Attr:
     elif tuple(path) == ("path",) and toks.is_punct(i, "=") and i + 1 < close:
         if toks.kinds[i + 1] == STRING:
             attr.value = toks.src(i + 1).strip('"')
+    elif tuple(path) == ("cfg_attr",) and toks.is_punct(i, "("):
+        end = toks.partner[i]
+        cursor = _meta_end(toks, i + 1, end) + 1
+        nested: list[Attr] = []
+        while cursor < end:
+            stop = _meta_end(toks, cursor, end)
+            nested.append(_parse_meta(toks, hash_index, cursor, stop))
+            cursor = stop + 1
+        attr.nested = tuple(nested)
     return attr
 
 
@@ -347,13 +368,16 @@ def _count_tests(toks: Tokens, first: int, last: int) -> int:
 
 
 def _test_only(attrs: list[Attr]) -> bool:
-    return any(a.pred is not None and is_test_only(a.pred) for a in attrs)
+    predicates = tuple(a.pred for a in attrs if a.pred is not None)
+    return bool(predicates) and is_test_only(Pred(op="all", args=predicates))
 
 
 def scan_rust(text: str) -> ScanResult:
     """Scans Rust source text for test code embedded in mainline code."""
     toks = tokenize(text)
     res = ScanResult()
+    if has_test_file_gate(toks):
+        res.file_gate_line = toks.line_of(0)
     n = len(toks)
     i = 0
     while i < n:
@@ -361,14 +385,6 @@ def scan_rust(text: str) -> ScanResult:
             i += 1
             continue
         if toks.is_punct(i + 1, "!") and toks.is_punct(i + 2, "["):
-            attr = _parse_attr(toks, i, i + 2)
-            if (
-                toks.parent[i] == -1
-                and attr.pred is not None
-                and is_test_only(attr.pred)
-                and not res.file_gate_line
-            ):
-                res.file_gate_line = toks.line_of(i)
             i = toks.partner[i + 2] + 1
             continue
         if not toks.is_punct(i + 1, "["):
@@ -381,7 +397,7 @@ def scan_rust(text: str) -> ScanResult:
             j = toks.partner[j + 1] + 1
         if not _test_only(attrs):
             for attr in attrs:
-                if attr.path and attr.path[-1] in TEST_ATTR_LAST:
+                if is_test_marked([attr]):
                     res.test_attr_lines.append(toks.line_of(attr.line_token))
             i = j
             continue
@@ -418,38 +434,39 @@ def measure_unit(toks: Tokens, unit: int) -> Unit:
     return Unit(max(end, unit), kind, _item_name(toks, kind, kw, n - 1))
 
 
-def read_attrs(toks: Tokens, index: int) -> tuple[list[Attr], int]:
-    """Reads the outer attributes that start at `index`; returns them and the next token index."""
+def read_attrs(
+    toks: Tokens, index: int, *, inner: bool = False
+) -> tuple[list[Attr], int]:
+    """Reads consecutive outer or inner attributes and returns the next token index."""
     attrs: list[Attr] = []
-    while toks.is_punct(index, "#") and toks.is_punct(index + 1, "["):
-        attrs.append(_parse_attr(toks, index, index + 1))
-        index = toks.partner[index + 1] + 1
+    offset = 2 if inner else 1
+    while (
+        toks.is_punct(index, "#")
+        and (not inner or toks.is_punct(index + 1, "!"))
+        and toks.is_punct(index + offset, "[")
+    ):
+        attrs.append(_parse_attr(toks, index, index + offset))
+        index = toks.partner[index + offset] + 1
     return attrs, index
 
 
 def is_test_gated(attrs: list[Attr]) -> bool:
-    """Tells whether any attribute compiles its item only in test builds."""
+    """Tells whether the combined attributes compile their item only in test builds."""
     return _test_only(attrs)
 
 
 def is_test_marked(attrs: list[Attr]) -> bool:
     """Tells whether any attribute turns its function into a test or a benchmark."""
-    return any(a.path and a.path[-1] in TEST_ATTR_LAST for a in attrs)
+    return any(
+        (a.path and a.path[-1] in TEST_ATTR_LAST) or is_test_marked(list(a.nested))
+        for a in attrs
+    )
 
 
 def has_test_file_gate(toks: Tokens) -> bool:
     """Tells whether the file starts with an inner attribute that makes it test-only."""
-    i = 0
-    while (
-        toks.is_punct(i, "#")
-        and toks.is_punct(i + 1, "!")
-        and toks.is_punct(i + 2, "[")
-    ):
-        attr = _parse_attr(toks, i, i + 2)
-        if attr.pred is not None and is_test_only(attr.pred):
-            return True
-        i = toks.partner[i + 2] + 1
-    return False
+    attrs, _ = read_attrs(toks, 0, inner=True)
+    return _test_only(attrs)
 
 
 def enclosing_items(toks: Tokens, index: int) -> tuple[tuple[str, str], ...]:
@@ -531,11 +548,13 @@ def _doc_lines(comment: str) -> list[str]:
         return [body[1:] if body.startswith(" ") else body]
     inner = comment[3:-2] if comment.endswith("*/") else comment[3:]
     lines = []
-    for raw in inner.split("\n"):
+    for offset, raw in enumerate(inner.split("\n")):
         stripped = raw.lstrip()
         if stripped.startswith("*"):
             stripped = stripped[1:]
-        lines.append(stripped[1:] if stripped.startswith(" ") else stripped)
+            lines.append(stripped[1:] if stripped.startswith(" ") else stripped)
+        else:
+            lines.append(raw[1:] if offset == 0 and raw.startswith(" ") else raw)
     return lines
 
 
@@ -548,29 +567,45 @@ def is_executable_fence(info: str) -> bool:
         if tag.startswith("edition") or tag.startswith("ignore"):
             continue
         return False
-    return not any(t.startswith("ignore") for t in tags)
+    return "ignore" not in tags
 
 
 def scan_doctests(toks: Tokens) -> list[int]:
-    """Returns the lines of fenced code blocks in doc comments that rustdoc would execute."""
+    """Returns the lines of fenced or indented code blocks that rustdoc would execute."""
     found: list[int] = []
     text = toks.text
     previous_end = -1
     fence: tuple[str, int] | None = None
+    paragraph = False
+    indented = False
     for start, end in toks.doc_comments:
         if previous_end >= 0 and text[previous_end:start].strip():
             fence = None
+            paragraph = False
+            indented = False
         previous_end = end
         base_line = text.count("\n", 0, start) + 1
         for offset, line in enumerate(_doc_lines(text[start:end])):
             m = _FENCE.match(line)
-            if m is None:
+            if fence is not None:
+                if m and m[1][0] == fence[0] and len(m[1]) >= fence[1] and not m[2]:
+                    fence = None
                 continue
-            marker, info = m.group(1), m.group(2)
-            if fence is None:
+            if not line.strip():
+                paragraph = False
+                continue
+            if line.startswith(("    ", "\t")):
+                if not paragraph and not indented:
+                    found.append(base_line + offset)
+                    indented = True
+                continue
+            indented = False
+            if m:
+                marker, info = m.group(1), m.group(2)
                 fence = (marker[0], len(marker))
+                paragraph = False
                 if is_executable_fence(info):
                     found.append(base_line + offset)
-            elif marker[0] == fence[0] and len(marker) >= fence[1] and not info:
-                fence = None
+            else:
+                paragraph = True
     return found
