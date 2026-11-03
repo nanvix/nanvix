@@ -97,6 +97,13 @@ file, on executable doc-tests, and on misplaced Python/C tests and e2e manifests
 violations are recorded in `scripts/test-layout-baseline.txt`; never add to it. To move legacy inline
 modules, use `scripts/migrate-inline-tests.py` (see `doc/test.md`, "Migrating Inline Tests").
 
+Changing an existing test (editing, removing or renaming it, or growing the layout baseline or
+allowlist) is flagged on pull requests: the `Test Change Review` workflow adds the
+`review::tests-modified` label and posts a comment, and `scripts/flag-test-changes.py --base
+origin/dev` previews it locally. Adding tests and moving tests unchanged is not flagged. Do not
+weaken or delete a test to make a change pass; when a change to an existing test is justified,
+explain why in the pull request (see `doc/test.md`, "Flagging Changes to Existing Tests").
+
 Rules for tests:
 
 - `expect()` is preferred over `unwrap()` for better failure diagnostics.

@@ -55,7 +55,8 @@ When modifying or generating code, keep platform differences in mind:
 - Prefer existing project tooling and scripts over ad-hoc commands.
 - Tests (unit, integration, end-to-end) live in their own source files, never inline in mainline
   source: declare `#[cfg(test)] mod tests;` and put the tests in the file it resolves to. Enforced
-  by `scripts/check-test-layout.py`; see the `test-development` skill.
+  by `scripts/check-test-layout.py`; see the `test-development` skill. Changes to existing tests are
+  flagged for careful review by `scripts/flag-test-changes.py`.
 - Never stage or commit changes unless the user explicitly asks. Leave edits in the working
   tree for review.
 - When the user does ask to commit, follow the commit-message convention in

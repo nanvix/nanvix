@@ -390,6 +390,81 @@ def scan_rust(text: str) -> ScanResult:
     return res
 
 
+@dataclass(frozen=True)
+class Unit:
+    """The extent and identity of one item, statement, field or match arm."""
+
+    # Index of the last token of the unit.
+    end: int
+    # Kind of the item the unit declares, or `""` when it is not an item.
+    kind: str
+    # Display name: the item name, or a normalized snippet for units that are not items.
+    name: str
+
+
+def measure_unit(toks: Tokens, unit: int) -> Unit:
+    """Measures the unit that starts at token `unit` (the first token after its attributes)."""
+    n = len(toks)
+    found = _find_keyword(toks, _skip_visibility(toks, unit))
+    if found is None:
+        end = max(_skip_expression(toks, unit), unit)
+        snippet = _normalize(toks.span(unit, end))[:_SNIPPET_LENGTH].rstrip()
+        return Unit(end, "", snippet)
+    kind, kw = found
+    if kind in _BODY_ITEMS:
+        end = _skip_to_body_end(toks, kw + 1)
+    else:
+        end = _skip_to_semicolon(toks, kw + 1)
+    return Unit(max(end, unit), kind, _item_name(toks, kind, kw, n - 1))
+
+
+def read_attrs(toks: Tokens, index: int) -> tuple[list[Attr], int]:
+    """Reads the outer attributes that start at `index`; returns them and the next token index."""
+    attrs: list[Attr] = []
+    while toks.is_punct(index, "#") and toks.is_punct(index + 1, "["):
+        attrs.append(_parse_attr(toks, index, index + 1))
+        index = toks.partner[index + 1] + 1
+    return attrs, index
+
+
+def is_test_gated(attrs: list[Attr]) -> bool:
+    """Tells whether any attribute compiles its item only in test builds."""
+    return _test_only(attrs)
+
+
+def is_test_marked(attrs: list[Attr]) -> bool:
+    """Tells whether any attribute turns its function into a test or a benchmark."""
+    return any(a.path and a.path[-1] in TEST_ATTR_LAST for a in attrs)
+
+
+def has_test_file_gate(toks: Tokens) -> bool:
+    """Tells whether the file starts with an inner attribute that makes it test-only."""
+    i = 0
+    while (
+        toks.is_punct(i, "#")
+        and toks.is_punct(i + 1, "!")
+        and toks.is_punct(i + 2, "[")
+    ):
+        attr = _parse_attr(toks, i, i + 2)
+        if attr.pred is not None and is_test_only(attr.pred):
+            return True
+        i = toks.partner[i + 2] + 1
+    return False
+
+
+def enclosing_items(toks: Tokens, index: int) -> tuple[tuple[str, str], ...]:
+    """Returns the `(kind, name)` of the named items that enclose token `index`, outermost first."""
+    chain: list[tuple[str, str]] = []
+    opener = toks.parent[index] if index < len(toks) else -1
+    while opener != -1:
+        if toks.is_punct(opener, "{"):
+            kind, name = _header(toks, opener)
+            if name:
+                chain.append((kind, name))
+        opener = toks.parent[opener]
+    return tuple(reversed(chain))
+
+
 def _record_gated(
     toks: Tokens, res: ScanResult, attrs: list[Attr], start: int, unit: int
 ) -> int:
@@ -398,24 +473,16 @@ def _record_gated(
     line = toks.line_of(start)
     if unit >= n:
         return n - 1
-    k = _skip_visibility(toks, unit)
-    found = _find_keyword(toks, k)
+    measured = measure_unit(toks, unit)
+    end, kind, name = measured.end, measured.kind, measured.name
     context = _enclosing(toks, start)
 
     def qualified(name: str) -> str:
         return f"{context}::{name}" if context else name
 
-    if found is None:
-        end = _skip_expression(toks, unit)
-        snippet = _normalize(toks.span(unit, max(unit, end)))[:_SNIPPET_LENGTH].rstrip()
-        res.seams.append(Seam("code", qualified(snippet), line))
-        return max(end, unit)
-    kind, kw = found
-    name = _item_name(toks, kind, kw, n - 1)
-    if kind in _BODY_ITEMS:
-        end = _skip_to_body_end(toks, kw + 1)
-    else:
-        end = _skip_to_semicolon(toks, kw + 1)
+    if kind == "":
+        res.seams.append(Seam("code", qualified(name), line))
+        return end
     if kind == "mod":
         inline = toks.is_punct(end, "}")
         path_attr = next((a.value for a in attrs if a.value is not None), None)
