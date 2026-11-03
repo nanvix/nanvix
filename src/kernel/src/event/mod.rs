@@ -19,6 +19,11 @@ use ::sys::error::Error;
 //==================================================================================================
 
 pub use kcall::*;
+#[cfg(feature = "test")]
+pub use manager::test::{
+    test,
+    test_delivery_integration,
+};
 pub(crate) use manager::PendingDelivery;
 pub use manager::{
     EventManager,
@@ -31,24 +36,4 @@ pub use manager::{
 
 pub fn init() -> Result<(), Error> {
     manager::init()
-}
-
-///
-/// # Description
-///
-/// Runs the event subsystem in-kernel tests.
-///
-/// # Returns
-///
-/// `true` if every test passed, `false` otherwise.
-///
-#[cfg(feature = "test")]
-pub fn test() -> bool {
-    manager::test::test()
-}
-
-/// Runs ordered-delivery integration tests after process-manager initialization.
-#[cfg(feature = "test")]
-pub fn test_delivery_integration() -> bool {
-    manager::test::test_delivery_integration()
 }

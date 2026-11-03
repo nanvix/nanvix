@@ -2,6 +2,15 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+/// Macros that are only available to in-kernel tests.
+#[cfg(feature = "test")]
+#[macro_use]
+mod test;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -209,14 +218,4 @@ macro_rules! error{
 			}
 		}
 	})
-}
-
-#[cfg(feature = "test")]
-macro_rules! run_test {
-    ($test_func:ident) => {{
-        let result: bool = $test_func();
-        info!("{}: {}", if result { "passed" } else { "FAILED" }, stringify!($test_func));
-        assert!(result);
-        result
-    }};
 }

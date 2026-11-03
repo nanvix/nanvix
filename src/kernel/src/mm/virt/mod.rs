@@ -10,6 +10,8 @@ mod identity_map;
 mod kpage;
 mod manager;
 mod page_table_allocator;
+#[cfg(feature = "test")]
+mod test;
 mod vmem;
 
 use identity_map::init as identity_map_init;
@@ -40,6 +42,8 @@ use ::core::ops::{
 pub use boot_init::init;
 pub use kpage::KernelPage;
 pub use manager::VirtMemoryManager;
+#[cfg(feature = "test")]
+pub use test::test;
 pub use vmem::Vmem;
 
 //==================================================================================================
@@ -110,9 +114,4 @@ impl DerefMut for PageDirectoryStorage {
             },
         }
     }
-}
-
-#[cfg(feature = "test")]
-pub fn test() {
-    assert!(identity_map::test::test());
 }

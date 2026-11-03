@@ -2,6 +2,14 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+/// Test-only constructors and arithmetic for in-kernel tests.
+#[cfg(feature = "test")]
+mod test;
+
+//==================================================================================================
 // Event Sequence
 //==================================================================================================
 
@@ -10,24 +18,6 @@
 pub(super) struct EventSequence(u64);
 
 impl EventSequence {
-    ///
-    /// # Description
-    ///
-    /// Creates an event sequence with an explicit value for in-kernel tests.
-    ///
-    /// # Parameters
-    ///
-    /// - `value`: Raw sequence value.
-    ///
-    /// # Returns
-    ///
-    /// An event sequence containing `value`.
-    ///
-    #[cfg(feature = "test")]
-    pub(super) const fn new(value: u64) -> Self {
-        Self(value)
-    }
-
     ///
     /// # Description
     ///
@@ -53,23 +43,5 @@ impl EventSequence {
     ///
     pub(super) fn descriptor_id(self) -> usize {
         self.0 as usize
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Adds an offset using wrapping arithmetic for in-kernel boundary tests.
-    ///
-    /// # Parameters
-    ///
-    /// - `value`: Offset to add to this sequence.
-    ///
-    /// # Returns
-    ///
-    /// The event sequence produced by wrapping addition.
-    ///
-    #[cfg(feature = "test")]
-    pub(super) fn wrapping_add(self, value: u64) -> Self {
-        Self(self.0.wrapping_add(value))
     }
 }

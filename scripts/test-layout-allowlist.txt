@@ -9,3 +9,23 @@
 #   R3 <path> <kind> <name> [xN]
 # `xN` allows N occurrences of the same entry. Every entry needs a reviewer's explicit approval, and
 # an entry that no longer matches code fails the check, so remove it together with the code.
+
+# Kernel boot hooks: each statement runs an in-kernel test suite at the one point of the boot
+# sequence where the subsystem under test is initialized, so it cannot move into a test file.
+R3 src/kernel/src/kmain.rs code kmain::if !crate::event::test_delivery_integration() {
+R3 src/kernel/src/kmain.rs code kmain::test::test();
+R3 src/kernel/src/kmain.rs code kmain::test::test_kernel_args(kernel_args);
+R3 src/kernel/src/mm/kernel_vas.rs code init::phys::test();
+R3 src/kernel/src/mm/kernel_vas.rs code init::virt::test();
+R3 src/kernel/src/pm/mod.rs code init::{ let passed: bool = test::test(); assert!(passe
+
+# Kernel fault injection: the process manager fails the next lifecycle creation on demand so that
+# in-kernel tests can exercise rollback paths. The flags are private state of ProcessManager and
+# the checks sit in the middle of its creation paths, so they must stay next to the code they
+# instrument.
+R3 src/kernel/src/pm/process/manager/mod.rs code ProcessManager::fail_next_lifecycle_creation: bool,
+R3 src/kernel/src/pm/process/manager/mod.rs code ProcessManager::fail_next_thread_lifecycle_creation: bool,
+R3 src/kernel/src/pm/process/manager/mod.rs code check_lifecycle_creation_injection::if core::mem::take(&mut self.fail_next_lifecycle
+R3 src/kernel/src/pm/process/manager/mod.rs code new::fail_next_lifecycle_creation: false,
+R3 src/kernel/src/pm/process/manager/mod.rs code new::fail_next_thread_lifecycle_creation: false,
+R3 src/kernel/src/pm/process/manager/mod.rs code prepare_thread_lifecycle_creation::if core::mem::take(&mut self.fail_next_thread_li

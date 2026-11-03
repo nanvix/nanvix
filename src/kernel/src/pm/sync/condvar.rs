@@ -2,6 +2,14 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+/// Test-only helpers for in-kernel tests.
+#[cfg(feature = "test")]
+mod test;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -92,22 +100,6 @@ impl Condvar {
     ///
     pub fn reference_count(&self) -> usize {
         Arc::strong_count(&self.inner)
-    }
-
-    /// Adds a synthetic waiter for an in-kernel notification-path test.
-    #[cfg(feature = "test")]
-    pub(crate) fn stage_test_waiter(&self, tid: ThreadIdentifier) {
-        self.inner.sleeping.borrow_mut().push_back(tid);
-    }
-
-    /// Reports whether a synthetic waiter remains queued after a test notification.
-    #[cfg(feature = "test")]
-    pub(crate) fn has_test_waiter(&self, tid: ThreadIdentifier) -> bool {
-        self.inner
-            .sleeping
-            .borrow()
-            .iter()
-            .any(|waiter| *waiter == tid)
     }
 
     ///

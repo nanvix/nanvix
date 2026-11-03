@@ -2,6 +2,14 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+/// Test-only inspection helpers for in-kernel tests.
+#[cfg(feature = "test")]
+mod test;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -57,33 +65,6 @@ impl Mailbox {
             })
             .min_by_key(|(_, (sequence, _))| *sequence)
             .map(|(index, (sequence, _))| (index, *sequence))
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Reports whether a delivery sequence still identifies the oldest mailbox message eligible
-    /// for a thread. This exposes the mailbox token invariant to in-kernel tests.
-    ///
-    /// # Parameters
-    ///
-    /// - `tid`: Identifier of the receiving thread.
-    /// - `sequence`: Delivery sequence captured by the token under test.
-    ///
-    /// # Returns
-    ///
-    /// `true` if `sequence` identifies the current eligible message, otherwise `false`.
-    ///
-    #[cfg(feature = "test")]
-    pub(crate) fn test_token_is_current(
-        &self,
-        tid: ThreadIdentifier,
-        sequence: DeliverySequence,
-    ) -> bool {
-        matches!(
-            self.oldest_eligible(tid),
-            Some((_, selected_sequence)) if selected_sequence == sequence
-        )
     }
 
     ///

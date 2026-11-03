@@ -33,6 +33,8 @@ mod ready;
 mod running;
 mod sleeping;
 mod state;
+#[cfg(feature = "test")]
+mod test;
 mod zombie;
 
 //==================================================================================================
@@ -93,26 +95,6 @@ impl<'a> ThreadRef<'a> {
             ThreadRef::Sleeping(thread) => thread.thread_state(),
             ThreadRef::Interrupted(thread) => thread.thread_state(),
             ThreadRef::Zombie(thread) => thread.thread_state(),
-        }
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns whether the referenced thread is detached.
-    ///
-    /// # Return Value
-    ///
-    /// This function returns `true` if the thread is detached, `false` otherwise.
-    ///
-    #[cfg(feature = "test")]
-    pub fn is_detached(&self) -> bool {
-        match self {
-            ThreadRef::Ready(thread) => thread.is_detached(),
-            ThreadRef::Running(thread) => thread.is_detached(),
-            ThreadRef::Sleeping(thread) => thread.is_detached(),
-            ThreadRef::Interrupted(thread) => thread.is_detached(),
-            ThreadRef::Zombie(thread) => thread.is_detached(),
         }
     }
 }

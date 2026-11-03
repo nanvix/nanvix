@@ -49,7 +49,10 @@ use crate::{
 };
 use ::config::kernel::SCHEDULER_FREQ;
 use ::sys::{
-    error::ErrorCode,
+    error::{
+        Error,
+        ErrorCode,
+    },
     event::{
         ProcessCreationInfo,
         ProcessRole,
@@ -71,6 +74,68 @@ use ::sys::{
     },
     ExitStatus,
 };
+
+//==================================================================================================
+// Process Manager Test Helpers
+//==================================================================================================
+
+impl ProcessManager {
+    ///
+    /// # Description
+    ///
+    /// Injects one failure into the next standalone thread or `execv()` thread preparation.
+    ///
+    fn inject_thread_lifecycle_creation_failure(&mut self) {
+        self.fail_next_thread_lifecycle_creation = true;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Injects one failure into the next process creation, after it reserves lifecycle capacity.
+    ///
+    fn inject_lifecycle_creation_failure(&mut self) {
+        self.fail_next_lifecycle_creation = true;
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Reports whether the currently running process owns any "special" resources, as
+    /// defined by [`crate::pm::process::state::ProcessState::has_special_resources`].
+    ///
+    /// Thin test-only accessor used by in-kernel tests; it avoids widening the visibility of
+    /// [`Self::get_running`]. The `duplicate()` kernel call reaches the same predicate
+    /// directly through its internal `get_running()` view.
+    ///
+    pub fn current_has_special_resources(&self) -> bool {
+        self.get_running().state().has_special_resources()
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns a shared reference to the currently running process's virtual address space.
+    ///
+    /// Thin test-only accessor used by in-kernel tests that need a reference [`Vmem`] to clone
+    /// from (e.g. via [`crate::mm::VirtMemoryManager::new_vmem`]). Production code paths reach
+    /// this through the internal [`Self::get_running`] view instead.
+    ///
+    pub fn current_vmem(&self) -> &Vmem {
+        self.get_running().state().vmem()
+    }
+
+    /// Queues a synthetic creation record without retaining a future termination credit.
+    pub(crate) fn queue_test_process_creation(
+        &mut self,
+        info: ProcessCreationInfo,
+    ) -> Result<(), Error> {
+        let reservation: LifecycleCreationReservation = self.delivery.try_reserve_creation()?;
+        let credit: LifecycleTerminationCredit = self.delivery.commit_creation(reservation, info);
+        self.delivery.release_termination(credit);
+        Ok(())
+    }
+}
 
 //==================================================================================================
 // Test Helpers
@@ -1421,7 +1486,7 @@ fn test_capctl_allows_release_from_user_process() -> bool {
 ///
 /// `true` if every process-manager test passes, otherwise `false`.
 ///
-pub(super) fn test() -> bool {
+pub(in crate::pm::process) fn test() -> bool {
     let mut passed: bool = true;
     passed &= run_test!(test_intra_process_switch_resets_exhausted_quantum);
     passed &= run_test!(test_intra_process_switch_preserves_remaining_quantum);

@@ -2,6 +2,14 @@
 // Licensed under the MIT License.
 
 //==================================================================================================
+// Modules
+//==================================================================================================
+
+/// Test-only inspection helpers for in-kernel tests.
+#[cfg(feature = "test")]
+mod test;
+
+//==================================================================================================
 // Imports
 //==================================================================================================
 
@@ -127,20 +135,6 @@ impl InterruptedThread {
     ///
     pub fn set_killed(&mut self) {
         self.reason = InterruptReason::Killed;
-    }
-
-    ///
-    /// # Description
-    ///
-    /// Returns the reason why the thread was interrupted.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the [`InterruptReason`] of the interrupted thread.
-    ///
-    #[cfg(feature = "test")]
-    pub fn reason(&self) -> &InterruptReason {
-        &self.reason
     }
 
     ///
