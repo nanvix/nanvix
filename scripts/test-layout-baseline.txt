@@ -4,14 +4,9 @@
 # code (scripts/migrate-inline-tests.py), then run
 # `scripts/check-test-layout.py --update-baseline`.
 # Never add an entry; put new tests in their own files instead (see doc/test.md).
-R2 src/daemons/hostfsd/src/handler.rs mod tests tests=1
-R2 src/daemons/hostfsd/src/sandbox.rs mod tests tests=38
 R2 src/daemons/networkd/src/epoll.rs mod tests tests=1
 R2 src/daemons/networkd/src/framing.rs mod tests tests=3
 R2 src/daemons/networkd/src/wire.rs mod tests tests=25
-R2 src/daemons/vfsd/src/assembler.rs mod tests tests=2
-R2 src/daemons/vfsd/src/error.rs mod tests tests=1
-R2 src/daemons/vfsd/src/pending.rs mod tests tests=6
 R3 src/kernel/src/event/manager/event_sequence.rs fn EventSequence::new
 R3 src/kernel/src/event/manager/event_sequence.rs fn EventSequence::wrapping_add
 R3 src/kernel/src/event/mod.rs fn test
@@ -79,21 +74,6 @@ R2 src/libs/elf/src/hash.rs mod tests tests=6
 R2 src/libs/elf/src/relocation.rs mod tests tests=5
 R2 src/libs/elf/src/symtab.rs mod tests tests=7
 R2 src/libs/error/src/lib.rs mod tests tests=5
-R2 src/libs/fat32/src/error.rs mod tests tests=3
-R2 src/libs/fat32/src/fat/error.rs mod tests tests=4
-R2 src/libs/fat32/src/fat/filesystem.rs mod readonly_tests tests=17
-R2 src/libs/fat32/src/fat/filesystem.rs mod tests tests=32
-R3 src/libs/fat32/src/fat/filesystem.rs fn test_path
-R2 src/libs/fat32/src/fat/storage.rs mod readonly_tests tests=12
-R2 src/libs/fat32/src/fat/storage.rs mod tests tests=21
-R2 src/libs/fat32/src/fat/time.rs mod tests tests=5
-R2 src/libs/fat32/src/path.rs mod tests tests=2
-R4 src/libs/fat32/src/path.rs 1
-R2 src/libs/hostfs-api/src/chmod.rs mod tests tests=1
-R2 src/libs/hostfs-api/src/chown.rs mod tests tests=1
-R2 src/libs/hostfs-api/src/long_msg.rs mod tests tests=4
-R2 src/libs/hostfs-api/src/path.rs mod tests tests=5
-R2 src/libs/hostfs-api/src/stat_times.rs mod tests tests=2
 R2 src/libs/koptions/src/lib.rs mod tests tests=6
 R2 src/libs/mmio-tag/src/tag.rs mod tests tests=10
 R2 src/libs/multibin/src/lib.rs mod tests tests=6
@@ -162,20 +142,6 @@ R2 src/libs/syscall/src/unistd/syscall/util.rs mod tests tests=12
 R2 src/libs/syslog-macros/src/lib.rs mod tests tests=2
 R2 src/libs/type-safe/src/vec_deque.rs mod benchmarks tests=11
 R2 src/libs/type-safe/src/vec_deque.rs mod test tests=44
-R2 src/libs/vfs/src/devfs.rs mod tests tests=7
-R2 src/libs/vfs/src/fd/mod.rs mod tests tests=86
-R2 src/libs/vfs/src/filesystem/dir_entry.rs mod tests tests=1
-R2 src/libs/vfs/src/filesystem/stat.rs mod tests tests=1
-R2 src/libs/vfs/src/identifiers.rs mod tests tests=1
-R2 src/libs/vfs/src/line_discipline/discipline.rs mod tests tests=27
-R2 src/libs/vfs/src/mount/path_cache.rs mod tests tests=7
-R3 src/libs/vfs/src/mount/path_cache.rs fn PathCache::entry_count
-R2 src/libs/vfs/src/mount/vfs.rs mod tests tests=38
-R3 src/libs/vfs/src/mount/vfs.rs fn Vfs::resolve_cache_len
-R3 src/libs/vfs/src/mount/vfs.rs fn Vfs::resolve_legacy
-R2 src/libs/vfs/src/open_options.rs mod tests tests=7
-R2 src/libs/vfs/src/path.rs mod tests tests=4
-R2 src/libs/vfs/src/pipe/pipe_end.rs mod tests tests=14
 R2 src/uservm/src/args.rs mod tests tests=5
 R2 src/uservm/src/elf.rs mod tests tests=12
 R2 src/uservm/src/guest_profiler/symbols.rs mod tests tests=4
