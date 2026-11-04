@@ -56,6 +56,8 @@ Further reading: [Building](doc/build.md) | [Running](doc/run.md) | [Testing](do
 repack/rebase as needed, and update the branch with `git push --force-with-lease` before requesting
 review again.  After the PR has received reviews: fix the issues as new commits on top, without
 rewriting history, unless a maintainer explicitly asks you to rebase and force-push.
+11. Once the PR is approved and CI passes, it is added to the merge queue (**Merge when ready**),
+    which runs CI again on the PR merged with the latest `dev` before merging it.
 
 ## Commit Messages
 
@@ -140,9 +142,13 @@ Or run the full CI pipeline locally:
 ./scripts/pipeline.sh
 ```
 
-The CI pipeline runs automatically on every pull request and push to `dev`. Pull requests that
-only change documentation (Markdown files other than the root `README.md`, or files under `doc/`)
-skip the build, test, and benchmark jobs.
+The CI pipeline runs automatically on every pull request, in the merge queue, and on every push to
+`dev`. Pull requests that only change documentation (Markdown files other than the root
+`README.md`, or files under `doc/`) skip the build, test, and benchmark jobs.
+
+To merge, a pull request needs the `Required status check`, which summarizes the CI jobs, to pass
+both on the pull request and in the merge queue, and an approval from the
+[maintainers](https://github.com/orgs/nanvix/teams/maintainers) team.
 
 Pull requests that modify, remove or rename an existing test are labeled `review::tests-modified`
 and receive a comment that lists the changes, so that a reviewer can look at them carefully. Adding

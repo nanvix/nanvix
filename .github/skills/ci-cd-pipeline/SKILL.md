@@ -77,6 +77,12 @@ Matrix coverage in GitHub Actions:
 - `lint`, `verify`, `ci-build`: `microvm` in debug and release configurations.
 - `ci-test`: same matrix.
 
+Pull requests land on `dev` through a merge queue, which runs `ci.yml` again on `merge_group`
+events. The `dev` ruleset requires one check, `Required status check` (the `required-status-check`
+job), on pull requests and in the merge queue. It fails if any job that it needs fails or is
+cancelled, and in the merge queue the source check, lint, verify, build, and test jobs must also
+succeed. Add every new validation job to its `needs`, or the merge queue will not wait for it.
+
 The separate `Test Change Review` workflow (`test-change-review.yml`) runs on `pull_request_target`
 for pull requests to `dev`. It runs `scripts/flag-test-changes.py`, which labels the pull request
 `review::tests-modified` and keeps one sticky comment when an existing test is modified, removed or
