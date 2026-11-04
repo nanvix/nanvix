@@ -15,6 +15,7 @@ mod types;
 
 pub use filter::{
     HostFilter,
+    InvalidHostRule,
     Ipv4Cidr,
 };
 

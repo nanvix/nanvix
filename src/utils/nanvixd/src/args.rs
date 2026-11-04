@@ -62,12 +62,10 @@ pub struct Args {
     gdb_port: Option<u16>,
     /// Networking mode.
     networking_mode: NetworkingMode,
-    /// Allowlist of IPv4/CIDR destinations (`-allow-host`). When non-empty, only
-    /// these destinations are reachable. Mutually exclusive with `block_hosts`.
-    allow_hosts: Vec<String>,
-    /// Blocklist of IPv4/CIDR destinations (`-block-host`). When non-empty, all
-    /// destinations except these are reachable. Mutually exclusive with `allow_hosts`.
-    block_hosts: Vec<String>,
+    /// Host egress filter built from the `-allow-host` / `-block-host` rules.
+    /// Every rule is validated at parse time, so this is always the complete
+    /// policy the user asked for.
+    host_filter: HostFilter,
     /// When `true`, route nanvixd's logs to stdout instead of a auto-named file.
     log_to_stdout: bool,
     /// Optional path of the standalone gateway endpoint -- the host-side
@@ -338,6 +336,12 @@ impl Args {
             );
         }
 
+        // Build the policy only after every rule has been validated above. In
+        // allowlist mode the DNS carve-out is opted into so name resolution
+        // keeps working for the allowed hosts, matching the `-allow-host` help
+        // text.
+        let host_filter: HostFilter = HostFilter::from_lists(&allow_hosts, &block_hosts, true)?;
+
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
         // interactive mode is active if `--` separator with program name is provided.
         let http_mode: bool = http_sockaddr.is_some();
@@ -380,8 +384,7 @@ impl Args {
             #[cfg(feature = "gdb")]
             gdb_port,
             networking_mode,
-            allow_hosts,
-            block_hosts,
+            host_filter,
             log_to_stdout,
             gateway_sockaddr,
         })
@@ -629,12 +632,9 @@ Options:
     }
 
     /// Returns the host egress filter built from the `-allow-host` /
-    /// `-block-host` lists. Returns [`HostFilter::AllowAll`] when neither is set.
-    ///
-    /// In allowlist mode the DNS carve-out is opted into so name resolution
-    /// keeps working for the allowed hosts, matching the `-allow-host` help text.
+    /// `-block-host` rules. Returns [`HostFilter::AllowAll`] when neither is set.
     pub fn host_filter(&self) -> HostFilter {
-        HostFilter::from_lists(&self.allow_hosts, &self.block_hosts, true)
+        self.host_filter.clone()
     }
 
     /// When `true`, nanvixd should route its logrus output to stdout

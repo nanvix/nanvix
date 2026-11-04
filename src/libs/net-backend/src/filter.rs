@@ -73,6 +73,55 @@ impl Ipv4Cidr {
 }
 
 //==================================================================================================
+// InvalidHostRule
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Error returned when a host filter rule is not a valid IPv4 address or CIDR block.
+///
+/// Policies are built fail-closed: a single malformed rule rejects the whole policy instead of
+/// being dropped, since silently skipping a deny rule would widen egress.
+///
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvalidHostRule {
+    /// The offending rule, verbatim.
+    entry: String,
+}
+
+impl InvalidHostRule {
+    /// Returns the offending rule, verbatim.
+    pub fn entry(&self) -> &str {
+        &self.entry
+    }
+}
+
+impl ::std::fmt::Display for InvalidHostRule {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        write!(f, "invalid host rule (expected IPv4 or CIDR): {}", self.entry)
+    }
+}
+
+impl ::std::error::Error for InvalidHostRule {}
+
+///
+/// # Description
+///
+/// Parses every entry in `entries`, failing on the first malformed one.
+///
+fn parse_rules(entries: &[String]) -> Result<Vec<Ipv4Cidr>, InvalidHostRule> {
+    entries
+        .iter()
+        .map(|entry| {
+            Ipv4Cidr::parse(entry).ok_or_else(|| InvalidHostRule {
+                entry: entry.clone(),
+            })
+        })
+        .collect()
+}
+
+//==================================================================================================
 // HostFilter
 //==================================================================================================
 
@@ -122,23 +171,34 @@ impl HostFilter {
     /// Builds a filter from the allow / block entry lists.
     ///
     /// `allow` takes precedence over `block`; if both are empty, returns
-    /// [`HostFilter::AllowAll`]. Unparsable entries are skipped — callers are
-    /// expected to validate entries upstream.
+    /// [`HostFilter::AllowAll`].
     ///
     /// `exempt_dns` only applies in allowlist mode and opts into the DNS
     /// carve-out (see [`HostFilter::permits_connection`]); pass `false` for a
     /// strict allowlist. It is a no-op for block / allow-all results.
     ///
-    pub fn from_lists(allow: &[String], block: &[String], exempt_dns: bool) -> Self {
+    /// # Errors
+    ///
+    /// Every entry of both lists is validated before the filter is built.
+    /// Returns [`InvalidHostRule`] for the first entry that is not a valid
+    /// IPv4 address or CIDR block; no partially-built filter is returned.
+    ///
+    pub fn from_lists(
+        allow: &[String],
+        block: &[String],
+        exempt_dns: bool,
+    ) -> Result<Self, InvalidHostRule> {
+        let allow: Vec<Ipv4Cidr> = parse_rules(allow)?;
+        let block: Vec<Ipv4Cidr> = parse_rules(block)?;
         if !allow.is_empty() {
-            Self::Allow {
-                cidrs: allow.iter().filter_map(|e| Ipv4Cidr::parse(e)).collect(),
+            Ok(Self::Allow {
+                cidrs: allow,
                 exempt_dns,
-            }
+            })
         } else if !block.is_empty() {
-            Self::Block(block.iter().filter_map(|e| Ipv4Cidr::parse(e)).collect())
+            Ok(Self::Block(block))
         } else {
-            Self::AllowAll
+            Ok(Self::AllowAll)
         }
     }
 

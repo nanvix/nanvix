@@ -39,21 +39,21 @@ fn cidr_rejects_bad_input() {
 
 #[test]
 fn allowlist_denies_by_default() {
-    let f = HostFilter::from_lists(&["1.1.1.1".to_string()], &[], false);
+    let f = HostFilter::from_lists(&["1.1.1.1".to_string()], &[], false).unwrap();
     assert!(f.permits([1, 1, 1, 1]));
     assert!(!f.permits([8, 8, 8, 8]));
 }
 
 #[test]
 fn blocklist_allows_by_default() {
-    let f = HostFilter::from_lists(&[], &["8.8.8.8".to_string()], false);
+    let f = HostFilter::from_lists(&[], &["8.8.8.8".to_string()], false).unwrap();
     assert!(!f.permits([8, 8, 8, 8]));
     assert!(f.permits([1, 1, 1, 1]));
 }
 
 #[test]
 fn empty_is_allow_all() {
-    let f = HostFilter::from_lists(&[], &[], false);
+    let f = HostFilter::from_lists(&[], &[], false).unwrap();
     assert!(matches!(f, HostFilter::AllowAll));
     assert!(f.permits([8, 8, 8, 8]));
 }
@@ -61,13 +61,17 @@ fn empty_is_allow_all() {
 #[test]
 fn is_allow_all_reflects_filtering() {
     assert!(HostFilter::AllowAll.is_allow_all());
-    assert!(!HostFilter::from_lists(&["1.1.1.1".to_string()], &[], false).is_allow_all());
-    assert!(!HostFilter::from_lists(&[], &["8.8.8.8".to_string()], false).is_allow_all());
+    assert!(!HostFilter::from_lists(&["1.1.1.1".to_string()], &[], false)
+        .unwrap()
+        .is_allow_all());
+    assert!(!HostFilter::from_lists(&[], &["8.8.8.8".to_string()], false)
+        .unwrap()
+        .is_allow_all());
 }
 
 #[test]
 fn allowlist_exempts_dns_port_when_opted_in() {
-    let f = HostFilter::from_lists(&["1.1.1.1".to_string()], &[], true);
+    let f = HostFilter::from_lists(&["1.1.1.1".to_string()], &[], true).unwrap();
     // A resolver outside the allowlist is reachable on port 53 only.
     assert!(f.permits_connection([8, 8, 8, 8], 53));
     assert!(!f.permits_connection([8, 8, 8, 8], 443));
@@ -78,7 +82,7 @@ fn allowlist_exempts_dns_port_when_opted_in() {
 #[test]
 fn strict_allowlist_denies_dns_port() {
     // Without the opt-in carve-out, even :53 must match an allowlist block.
-    let f = HostFilter::from_lists(&["1.1.1.1".to_string()], &[], false);
+    let f = HostFilter::from_lists(&["1.1.1.1".to_string()], &[], false).unwrap();
     assert!(!f.permits_connection([8, 8, 8, 8], 53));
     assert!(f.permits_connection([1, 1, 1, 1], 53));
 }
@@ -88,7 +92,34 @@ fn dns_exemption_scoped_to_allowlist() {
     // DenyAll stays fully closed, including DNS.
     assert!(!HostFilter::DenyAll.permits_connection([8, 8, 8, 8], 53));
     // Blocklist never has the carve-out override an explicit block.
-    let f = HostFilter::from_lists(&[], &["8.8.8.8".to_string()], true);
+    let f = HostFilter::from_lists(&[], &["8.8.8.8".to_string()], true).unwrap();
     assert!(!f.permits_connection([8, 8, 8, 8], 53));
     assert!(f.permits_connection([1, 1, 1, 1], 53));
+}
+
+#[test]
+fn from_lists_rejects_malformed_allow_rule() {
+    let err = HostFilter::from_lists(&["1.1.1.1".to_string(), "nope".to_string()], &[], false)
+        .expect_err("malformed allow rule must be rejected");
+    assert_eq!(err.entry(), "nope");
+}
+
+#[test]
+fn from_lists_rejects_malformed_block_rule() {
+    // A dropped block rule would widen egress, so the whole policy must fail.
+    let err =
+        HostFilter::from_lists(&[], &["8.8.8.8".to_string(), "8.8.4.4/33".to_string()], false)
+            .expect_err("malformed block rule must be rejected");
+    assert_eq!(err.entry(), "8.8.4.4/33");
+}
+
+#[test]
+fn from_lists_validates_block_rules_alongside_allow_rules() {
+    // Block rules are validated even when the allowlist would take precedence.
+    let res = HostFilter::from_lists(&["1.1.1.1".to_string()], &["bad".to_string()], false);
+    assert_eq!(
+        res.expect_err("malformed block rule must be rejected")
+            .entry(),
+        "bad"
+    );
 }
