@@ -314,17 +314,6 @@ impl Args {
             );
         }
 
-        // Host egress filtering is all-or-list, never both: an allowlist
-        // (deny-by-default) and a blocklist (allow-by-default) express opposite
-        // postures and cannot be combined.
-        if !allow_hosts.is_empty() && !block_hosts.is_empty() {
-            anyhow::bail!(
-                "{} and {} are mutually exclusive",
-                Self::OPT_ALLOW_HOST,
-                Self::OPT_BLOCK_HOST,
-            );
-        }
-
         // A host filter is meaningless without host networking enabled -- the
         // guest has no egress to filter. Reject rather than silently ignore.
         if (!allow_hosts.is_empty() || !block_hosts.is_empty()) && !networking_mode.is_enabled() {
@@ -336,10 +325,13 @@ impl Args {
             );
         }
 
-        // Build the policy only after every rule has been validated above. In
-        // allowlist mode the DNS carve-out is opted into so name resolution
-        // keeps working for the allowed hosts, matching the `-allow-host` help
-        // text.
+        // Build the policy only after every rule has been validated above. Any
+        // `-allow-host` rule selects deny-by-default, otherwise the default is
+        // allow; `-block-host` rules always deny and override allow rules,
+        // regardless of the order in which the flags were given. With
+        // `-allow-host`, the DNS exception is opted into so name resolution keeps
+        // working for the allowed hosts, matching the help text; it never
+        // overrides a `-block-host` rule.
         let host_filter: HostFilter = HostFilter::from_lists(&allow_hosts, &block_hosts, true)?;
 
         // Determine operation mode: HTTP mode is active if -http-addr is provided,
@@ -425,10 +417,11 @@ Options:
   {allow_host_networking}                   Enable host networking for the guest (disabled when \
              omitted).
     {allow_host} <ip|cidr>                    (Repeatable) Permit egress to this IPv4/CIDR \
-             (allowlist; requires {allow_host_networking}; mutually exclusive with {block_host}; \
-             DNS on port 53 is also permitted).
-    {block_host} <ip|cidr>                    (Repeatable) Deny egress to this IPv4/CIDR \
-             (blocklist; requires {allow_host_networking}; mutually exclusive with {allow_host}).
+             (requires {allow_host_networking}). When given, all other destinations are denied \
+             except DNS on port 53.
+    {block_host} <ip|cidr>                    (Repeatable) Deny egress to this IPv4/CIDR (requires \
+             {allow_host_networking}). Always overrides {allow_host} and the DNS exception. \
+             Without {allow_host}, all other destinations are permitted.
   {log_to_stdout}                          Route nanvixd's own logrus output to stdout instead of \
              a file in {log_dir} (file logger is otherwise the default).
     {gateway_sockaddr} <path>                 Path at which to expose the gateway endpoint -- the \

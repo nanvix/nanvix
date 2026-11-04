@@ -135,6 +135,39 @@ host network stack, pass `-allow-host-networking`:
 ./bin/nanvixd.elf -allow-host-networking -console-file /dev/stdout -- ./bin/test-rust-network.elf
 ```
 
+#### Filtering Host Egress
+
+With host networking enabled, `-allow-host <ip|cidr>` and `-block-host <ip|cidr>` restrict which
+IPv4 destinations the guest may reach with `connect()` and `sendto()`. Both flags are repeatable,
+accept a single address (`a.b.c.d`) or a CIDR block (`a.b.c.d/n`), and can be combined. Every rule
+is validated up front: a malformed rule rejects the whole command line instead of being ignored.
+Denied destinations fail with `EACCES`.
+
+Each destination is evaluated with fixed precedence, independent of the order of the flags:
+
+1. A destination matching any `-block-host` rule is denied.
+2. Otherwise, a destination matching any `-allow-host` rule is permitted.
+3. Otherwise, when any `-allow-host` rule is given, connections to DNS (port 53) are permitted so
+   that name resolution keeps working.
+4. Otherwise, the default action applies: deny when any `-allow-host` rule is given, allow
+   otherwise.
+
+| Posture                | Flags                                                    |
+| ---------------------- | -------------------------------------------------------- |
+| Deny all               | omit `-allow-host-networking`                            |
+| Allow all              | `-allow-host-networking`                                 |
+| Allowlist              | `-allow-host-networking -allow-host ...`                 |
+| Blocklist              | `-allow-host-networking -block-host ...`                 |
+| Allowlist with denials | `-allow-host-networking -allow-host ... -block-host ...` |
+
+For example, to permit `10.0.0.0/8` except `10.0.0.1`:
+
+```bash
+./bin/nanvixd.elf -allow-host-networking -allow-host 10.0.0.0/8 -block-host 10.0.0.1 -console-file /dev/stdout -- ./bin/test-rust-network.elf
+```
+
+While any filter is active, non-IPv4 destinations (for example, `AF_UNIX` sockets) are denied.
+
 ### Mounting a Host Directory
 
 To make a host directory accessible to the guest at `/mnt`, use the `-mount` flag:
