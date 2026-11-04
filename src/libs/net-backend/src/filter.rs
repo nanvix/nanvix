@@ -5,9 +5,10 @@
 //!
 //! Nanvix proxies guest sockets through the host-side network daemon, so the
 //! daemon is the natural enforcement point for per-host egress policy. The types
-//! here carry a resolved IPv4/CIDR allow- or block-set (typically forwarded by a
-//! consumer such as MXC) and answer the single question the daemon asks before
-//! completing a `connect()`: *is this destination permitted?*
+//! here carry a resolved IPv4/CIDR policy -- a default action plus allow and deny
+//! rules (typically forwarded by a consumer such as MXC) -- and answer the single
+//! question the daemon asks before completing a `connect()`: *is this destination
+//! permitted?*
 
 //==================================================================================================
 // Ipv4Cidr
@@ -122,137 +123,236 @@ fn parse_rules(entries: &[String]) -> Result<Vec<Ipv4Cidr>, InvalidHostRule> {
 }
 
 //==================================================================================================
+// HostAction
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Verdict a [`HostFilter`] reaches for a destination. Also used as the action applied to
+/// destinations that match no rule.
+///
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HostAction {
+    /// Permit the destination.
+    #[default]
+    Allow,
+    /// Deny the destination.
+    Deny,
+}
+
+//==================================================================================================
 // HostFilter
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// Host network egress filter applied to guest `connect()` destinations.
+/// Host network egress policy applied to guest `connect()` / `sendto()` destinations.
 ///
-/// `AllowAll` is used when host networking is enabled with no per-host list and
-/// is the default when no explicit policy has been configured; `Allow`/`Block`
-/// carry the resolved IPv4/CIDR set.
+/// A policy composes an explicit default action with simultaneous allow and deny rule
+/// collections. Destinations are evaluated with fixed precedence:
+///
+/// 1. A destination matching any deny rule is denied.
+/// 2. Otherwise, a destination matching any allow rule is permitted.
+/// 3. Otherwise, if the DNS exception is enabled, a connection to the DNS port is permitted (see
+///    [`HostFilter::permits_connection`]).
+/// 4. Otherwise, the default action applies.
+///
+/// Deny always wins, so the verdict does not depend on the order in which rules were declared,
+/// and neither an allow rule nor the DNS exception can reopen an explicitly denied destination.
+///
+/// The legacy postures map onto this model as follows:
+///
+/// | Posture   | Default action | Allow rules | Deny rules |
+/// |-----------|----------------|-------------|------------|
+/// | allow-all | allow          | none        | none       |
+/// | deny-all  | deny           | none        | none       |
+/// | allowlist | deny           | list        | none       |
+/// | blocklist | allow          | none        | list       |
+///
+/// The [`Default`] policy is allow-all with the DNS exception disabled. It is used when host
+/// networking is enabled with no rules and when no explicit policy has been configured.
 ///
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum HostFilter {
-    /// No filtering: every destination is permitted. Used when host networking
-    /// is enabled with no per-host list, and the default when no explicit policy
-    /// has been configured.
-    #[default]
-    AllowAll,
-    /// Deny all: every destination is blocked. Must be selected explicitly by a
-    /// caller that wants a fully-closed policy.
-    DenyAll,
-    /// Allowlist: only destinations matching one of these blocks are permitted.
-    ///
-    /// `exempt_dns` opts into a DNS carve-out that additionally permits any
-    /// destination on the DNS port (see [`HostFilter::permits_connection`]).
-    /// When `false`, the allowlist is strict and even `:53` must match a block.
-    Allow {
-        /// Allowed IPv4/CIDR blocks.
-        cidrs: Vec<Ipv4Cidr>,
-        /// Whether the DNS carve-out is enabled for this allowlist.
-        exempt_dns: bool,
-    },
-    /// Blocklist: every destination is permitted except those matching a block.
-    Block(Vec<Ipv4Cidr>),
+pub struct HostFilter {
+    /// Action applied to destinations that match no rule.
+    default_action: HostAction,
+    /// Destinations permitted unless they also match a deny rule.
+    allow: Vec<Ipv4Cidr>,
+    /// Destinations that are always denied.
+    deny: Vec<Ipv4Cidr>,
+    /// Whether connections to the DNS port are permitted when no rule matches.
+    allow_dns: bool,
 }
 
 impl HostFilter {
-    /// Destination port used for DNS. Connections to this port are exempted from
-    /// the allowlist when the carve-out is opted into (see
-    /// [`HostFilter::permits_connection`]).
+    /// Destination port used for DNS. Connections to this port are permitted when the DNS
+    /// exception is enabled and no deny rule matches (see [`HostFilter::permits_connection`]).
     const DNS_PORT: u16 = 53;
 
     ///
     /// # Description
     ///
-    /// Builds a filter from the allow / block entry lists.
+    /// Builds a policy from already-parsed rules.
     ///
-    /// `allow` takes precedence over `block`; if both are empty, returns
-    /// [`HostFilter::AllowAll`].
+    /// # Parameters
     ///
-    /// `exempt_dns` only applies in allowlist mode and opts into the DNS
-    /// carve-out (see [`HostFilter::permits_connection`]); pass `false` for a
-    /// strict allowlist. It is a no-op for block / allow-all results.
+    /// - `default_action`: Action applied to destinations that match no rule.
+    /// - `allow`: Destinations permitted unless they also match a deny rule.
+    /// - `deny`: Destinations that are always denied.
+    /// - `allow_dns`: Whether to enable the DNS exception. Pass `false` unless name resolution
+    ///   must work for destinations the default action would otherwise deny.
+    ///
+    pub fn new(
+        default_action: HostAction,
+        allow: Vec<Ipv4Cidr>,
+        deny: Vec<Ipv4Cidr>,
+        allow_dns: bool,
+    ) -> Self {
+        Self {
+            default_action,
+            allow,
+            deny,
+            allow_dns,
+        }
+    }
+
+    /// Returns a policy that permits every destination.
+    pub fn allow_all() -> Self {
+        Self::default()
+    }
+
+    /// Returns a policy that denies every destination, including DNS.
+    pub fn deny_all() -> Self {
+        Self::new(HostAction::Deny, Vec::new(), Vec::new(), false)
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Builds a policy from textual allow and deny rules, each an IPv4 address (`a.b.c.d`,
+    /// implicit `/32`) or CIDR block (`a.b.c.d/n`).
+    ///
+    /// See [`HostFilter::new`] for the meaning of the parameters.
     ///
     /// # Errors
     ///
-    /// Every entry of both lists is validated before the filter is built.
-    /// Returns [`InvalidHostRule`] for the first entry that is not a valid
-    /// IPv4 address or CIDR block; no partially-built filter is returned.
+    /// Every rule is validated before the policy is built. Returns [`InvalidHostRule`] for the
+    /// first rule that is not a valid IPv4 address or CIDR block; no partially-built policy is
+    /// returned.
+    ///
+    pub fn from_rules(
+        default_action: HostAction,
+        allow: &[String],
+        deny: &[String],
+        allow_dns: bool,
+    ) -> Result<Self, InvalidHostRule> {
+        let allow: Vec<Ipv4Cidr> = parse_rules(allow)?;
+        let deny: Vec<Ipv4Cidr> = parse_rules(deny)?;
+        Ok(Self::new(default_action, allow, deny, allow_dns))
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Builds a policy from legacy allow / block lists.
+    ///
+    /// The default action is derived from the lists: a non-empty `allow` list selects
+    /// deny-by-default (allowlist posture), otherwise the default is allow (blocklist or
+    /// allow-all posture). `block` entries always become deny rules, so when both lists are
+    /// given the result is an allowlist narrowed by explicit denies.
+    ///
+    /// `exempt_dns` enables the DNS exception for the allowlist posture only; it is ignored when
+    /// `allow` is empty, where the default action already permits DNS.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`HostFilter::from_rules`].
     ///
     pub fn from_lists(
         allow: &[String],
         block: &[String],
         exempt_dns: bool,
     ) -> Result<Self, InvalidHostRule> {
-        let allow: Vec<Ipv4Cidr> = parse_rules(allow)?;
-        let block: Vec<Ipv4Cidr> = parse_rules(block)?;
-        if !allow.is_empty() {
-            Ok(Self::Allow {
-                cidrs: allow,
-                exempt_dns,
-            })
-        } else if !block.is_empty() {
-            Ok(Self::Block(block))
+        let allowlist: bool = !allow.is_empty();
+        let default_action: HostAction = if allowlist {
+            HostAction::Deny
         } else {
-            Ok(Self::AllowAll)
-        }
+            HostAction::Allow
+        };
+        Self::from_rules(default_action, allow, block, allowlist && exempt_dns)
     }
 
-    /// Returns whether a connection to `addr` (IPv4 octets) is permitted.
-    pub fn permits(&self, addr: [u8; 4]) -> bool {
-        match self {
-            Self::DenyAll => false,
-            Self::AllowAll => true,
-            Self::Allow { cidrs, .. } => cidrs.iter().any(|c| c.contains(addr)),
-            Self::Block(list) => !list.iter().any(|c| c.contains(addr)),
-        }
+    /// Returns the action applied to destinations that match no rule.
+    pub fn default_action(&self) -> HostAction {
+        self.default_action
+    }
+
+    /// Returns the allow rules.
+    pub fn allow_rules(&self) -> &[Ipv4Cidr] {
+        &self.allow
+    }
+
+    /// Returns the deny rules.
+    pub fn deny_rules(&self) -> &[Ipv4Cidr] {
+        &self.deny
+    }
+
+    /// Returns whether the DNS exception is enabled.
+    pub fn allows_dns(&self) -> bool {
+        self.allow_dns
     }
 
     ///
     /// # Description
     ///
-    /// Returns whether a connection to `addr`:`port` is permitted, applying an
-    /// opt-in DNS carve-out on top of [`HostFilter::permits`].
+    /// Evaluates the policy for `addr` (IPv4 octets) and, if known, the destination `port`.
     ///
-    /// In allowlist mode ([`HostFilter::Allow`]) the configured resolver is
-    /// usually not among the allowed destinations, yet name resolution must
-    /// succeed for those hosts to be reachable. When the allowlist opts into the
-    /// carve-out (`exempt_dns == true`), connections to the DNS port are
-    /// permitted regardless of destination IP, mirroring the always-allow `:53`
-    /// rule other Nanvix consumers (e.g. MXC's LXC and WSLC backends) install in
-    /// allowlist mode.
-    ///
-    /// The carve-out is opt-in and scoped to allowlist mode only: a strict
-    /// allowlist (`exempt_dns == false`) still requires `:53` to match a block,
-    /// it never relaxes [`HostFilter::DenyAll`] (networking off stays fully
-    /// closed), and it never overrides an explicit block in
-    /// [`HostFilter::Block`] mode. Restricting the exemption to specific resolver
-    /// IPs is left to the caller, which can encode them as allowlist blocks.
-    ///
-    pub fn permits_connection(&self, addr: [u8; 4], port: u16) -> bool {
-        if port == Self::DNS_PORT
-            && matches!(
-                self,
-                Self::Allow {
-                    exempt_dns: true,
-                    ..
-                }
-            )
-        {
-            return true;
+    fn evaluate(&self, addr: [u8; 4], port: Option<u16>) -> HostAction {
+        if self.deny.iter().any(|c| c.contains(addr)) {
+            return HostAction::Deny;
         }
-        self.permits(addr)
+        let allowed_by_rule: bool = self.allow.iter().any(|c| c.contains(addr));
+        let allowed_as_dns: bool = self.allow_dns && port == Some(Self::DNS_PORT);
+        if allowed_by_rule || allowed_as_dns {
+            HostAction::Allow
+        } else {
+            self.default_action
+        }
     }
 
-    /// Returns `true` if this filter applies no restrictions (i.e. is
-    /// [`HostFilter::AllowAll`]). Used to decide whether non-IPv4 destinations,
-    /// which `permits` cannot evaluate, should be permitted.
+    /// Returns whether a connection to `addr` (IPv4 octets) is permitted, ignoring the DNS
+    /// exception.
+    pub fn permits(&self, addr: [u8; 4]) -> bool {
+        self.evaluate(addr, None) == HostAction::Allow
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns whether a connection to `addr`:`port` is permitted, applying the DNS exception on
+    /// top of [`HostFilter::permits`].
+    ///
+    /// Under a deny-by-default policy the configured resolver is usually not among the allowed
+    /// destinations, yet name resolution must succeed for those destinations to be reachable.
+    /// When the DNS exception is enabled, connections to the DNS port are permitted regardless
+    /// of destination IP, mirroring the always-allow `:53` rule other Nanvix consumers (e.g.
+    /// MXC's LXC and WSLC backends) install in allowlist mode.
+    ///
+    /// The exception is disabled by default and is evaluated after the deny rules, so it never
+    /// overrides an explicit deny. Restricting it to specific resolver IPs is left to the
+    /// caller, which can encode them as allow rules instead.
+    ///
+    pub fn permits_connection(&self, addr: [u8; 4], port: u16) -> bool {
+        self.evaluate(addr, Some(port)) == HostAction::Allow
+    }
+
+    /// Returns `true` if this policy applies no restrictions: the default action is allow and
+    /// there are no deny rules. Used to decide whether non-IPv4 destinations, which `permits`
+    /// cannot evaluate, should be permitted.
     pub fn is_allow_all(&self) -> bool {
-        matches!(self, Self::AllowAll)
+        self.default_action == HostAction::Allow && self.deny.is_empty()
     }
 }
 

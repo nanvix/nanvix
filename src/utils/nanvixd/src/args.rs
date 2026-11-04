@@ -632,7 +632,7 @@ Options:
     }
 
     /// Returns the host egress filter built from the `-allow-host` /
-    /// `-block-host` rules. Returns [`HostFilter::AllowAll`] when neither is set.
+    /// `-block-host` rules. Returns [`HostFilter::allow_all`] when neither is set.
     pub fn host_filter(&self) -> HostFilter {
         self.host_filter.clone()
     }

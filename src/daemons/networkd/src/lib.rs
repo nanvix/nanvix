@@ -72,7 +72,7 @@ impl NetworkDaemon {
     /// Creates a new `NetworkDaemon` instance.
     ///
     /// `filter` is the host egress policy enforced on guest `connect()`
-    /// destinations. Pass [`HostFilter::AllowAll`] for unrestricted networking.
+    /// destinations. Pass [`HostFilter::allow_all`] for unrestricted networking.
     ///
     /// Returns an error if platform networking initialization fails.
     ///
@@ -241,6 +241,6 @@ impl NetworkDaemon {
 
 impl Default for NetworkDaemon {
     fn default() -> Self {
-        Self::new(HostFilter::AllowAll).expect("platform networking initialization should succeed")
+        Self::new(HostFilter::allow_all()).expect("platform networking initialization should succeed")
     }
 }

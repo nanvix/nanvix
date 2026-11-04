@@ -381,11 +381,11 @@ fn do_connect(
     // IPv4 destinations are matched against the filter. Any non-IPv4 destination
     // (e.g. AF_UNIX, which would otherwise let a guest reach host-local sockets)
     // or an unparsable address cannot be evaluated by the IPv4 filter, so it is
-    // denied whenever a filter is active and permitted only under `AllowAll`
-    // (preserving unrestricted behavior when no policy is set).
+    // denied whenever the policy restricts anything and permitted only when it
+    // is allow-all (preserving unrestricted behavior when no policy is set).
     //
-    // Connections to the DNS port are exempted in allowlist mode so name
-    // resolution works for the allowed hosts (see `HostFilter::permits_connection`).
+    // Connections to the DNS port are permitted when the policy enables the DNS
+    // exception, unless a deny rule matches (see `HostFilter::permits_connection`).
     //
     // Reject sockaddrs too short to hold a `sockaddr` before parsing. `socklen`
     // is copied out of the packed request first so the trace below does not take
@@ -520,7 +520,7 @@ fn do_sendto(
     // check performed by `do_connect()`: a `sendto()` to an arbitrary address is equivalent to a
     // `connect()` followed by a `send()`, so the same unbypassable boundary applies. IPv4
     // destinations are matched against the filter; any non-IPv4 or unparsable destination is
-    // permitted only under `AllowAll`.
+    // permitted only when the policy is allow-all.
     let permitted: bool = match SocketAddr::try_from(&request.sockaddr) {
         Ok(SocketAddr::V4(addr)) => filter.permits_connection(addr.addr().octets(), addr.port()),
         _ => filter.is_allow_all(),

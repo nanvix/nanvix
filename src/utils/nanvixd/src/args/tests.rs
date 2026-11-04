@@ -187,7 +187,7 @@ fn rejects_invalid_host_entry() {
 #[test]
 fn host_filter_defaults_to_allow_all() {
     let args = Args::parse(argv(&["-allow-host-networking", "--", "/bin/foo"])).expect("parse");
-    assert!(matches!(args.host_filter(), HostFilter::AllowAll));
+    assert_eq!(args.host_filter(), HostFilter::allow_all());
 }
 
 #[test]
