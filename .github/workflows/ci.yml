@@ -1731,6 +1731,85 @@ jobs:
             - ${{ needs.windows-benchmark-finalize.outputs.bench_url && format('[Windows]({0})', needs.windows-benchmark-finalize.outputs.bench_url) || 'Windows (skipped)' }}
 
   # ==========================================================================================
+  # Required Status Check
+  # ==========================================================================================
+
+  # The dev ruleset requires this single check, on pull requests and in the
+  # merge queue, rather than the checks of individual jobs. Add every new
+  # validation job to its needs. It must run even when the jobs that it needs
+  # fail or are skipped: a skipped job reports success to a required check.
+  required-status-check:
+    name: "Required status check"
+    needs:
+      - precheck
+      - check-runners
+      - changes
+      - benchmark-gate-linux
+      - benchmark-gate-windows
+      - checks
+      - lint
+      - verify
+      - ci-build
+      - ci-test
+      - ci-test-extras
+      - windows-format-check
+      - windows-lint-check
+      - windows-verify
+      - windows-ci-build
+      - windows-integration-test
+      - benchmark
+      - windows-benchmark
+      - benchmark-finalize
+      - windows-benchmark-finalize
+    if: ${{ always() }}
+    timeout-minutes: 5
+    runs-on: ubuntu-24.04
+    permissions: {}
+
+    steps:
+      - name: "Verify Required Jobs"
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+
+          results="$(jq -r 'to_entries[] | "\(.key) \(.value.result)"' <<< "${NEEDS}")"
+          if [[ -z "${results}" ]]; then
+            echo "::error::No job results to verify."
+            exit 1
+          fi
+
+          # Jobs may be skipped by design (documentation-only changes, drafts,
+          # branches behind dev, offline benchmark runners), but none may fail
+          # or be cancelled.
+          status=0
+          while read -r job result; do
+            echo "${job}: ${result}"
+            if [[ "${result}" != "success" && "${result}" != "skipped" ]]; then
+              echo "::error::Job '${job}' did not succeed (${result})."
+              status=1
+            fi
+          done <<< "${results}"
+
+          # The merge queue is the last gate before dev, so source checks,
+          # builds, and tests must have actually run there.
+          if [[ "${EVENT_NAME}" == "merge_group" ]]; then
+            for job in checks lint verify ci-build ci-test ci-test-extras \
+              windows-format-check windows-lint-check windows-verify \
+              windows-ci-build windows-integration-test; do
+              result="$(jq -r --arg job "${job}" '.[$job].result' <<< "${NEEDS}")"
+              if [[ "${result}" != "success" ]]; then
+                echo "::error::Job '${job}' must succeed in the merge queue (${result})."
+                status=1
+              fi
+            done
+          fi
+
+          exit "${status}"
+
+  # ==========================================================================================
   # Stage 4: Post Actions (Conditional)
   # ==========================================================================================
 
