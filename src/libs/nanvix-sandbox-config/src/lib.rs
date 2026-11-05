@@ -66,6 +66,7 @@ impl std::str::FromStr for NetworkingMode {
 // them via `nanvix::sandbox_config`.
 pub use ::net_backend::{
     HostFilter,
+    InvalidHostRule,
     Ipv4Cidr,
 };
 
