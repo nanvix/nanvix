@@ -122,7 +122,7 @@ async fn run(
         snapshot_path,
         None,
         NetworkingMode::Disabled,
-        HostFilter::AllowAll,
+        HostFilter::allow_all(),
         #[cfg(feature = "gdb")]
         gdb_port,
     );

@@ -14,6 +14,7 @@ pub mod socket;
 mod types;
 
 pub use filter::{
+    HostAction,
     HostFilter,
     InvalidHostRule,
     Ipv4Cidr,

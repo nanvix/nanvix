@@ -5,7 +5,7 @@ use super::*;
 
 #[test]
 fn deny_all_blocks_everything() {
-    let f = HostFilter::DenyAll;
+    let f = HostFilter::deny_all();
     assert!(!f.permits([0, 0, 0, 0]));
     assert!(!f.permits([8, 8, 8, 8]));
     assert!(!f.is_allow_all());
@@ -13,7 +13,7 @@ fn deny_all_blocks_everything() {
 
 #[test]
 fn default_is_allow_all() {
-    assert!(matches!(HostFilter::default(), HostFilter::AllowAll));
+    assert_eq!(HostFilter::default(), HostFilter::allow_all());
 }
 
 #[test]
@@ -54,13 +54,13 @@ fn blocklist_allows_by_default() {
 #[test]
 fn empty_is_allow_all() {
     let f = HostFilter::from_lists(&[], &[], false).unwrap();
-    assert!(matches!(f, HostFilter::AllowAll));
+    assert_eq!(f, HostFilter::allow_all());
     assert!(f.permits([8, 8, 8, 8]));
 }
 
 #[test]
 fn is_allow_all_reflects_filtering() {
-    assert!(HostFilter::AllowAll.is_allow_all());
+    assert!(HostFilter::allow_all().is_allow_all());
     assert!(!HostFilter::from_lists(&["1.1.1.1".to_string()], &[], false)
         .unwrap()
         .is_allow_all());
@@ -89,8 +89,8 @@ fn strict_allowlist_denies_dns_port() {
 
 #[test]
 fn dns_exemption_scoped_to_allowlist() {
-    // DenyAll stays fully closed, including DNS.
-    assert!(!HostFilter::DenyAll.permits_connection([8, 8, 8, 8], 53));
+    // Deny-all stays fully closed, including DNS.
+    assert!(!HostFilter::deny_all().permits_connection([8, 8, 8, 8], 53));
     // Blocklist never has the carve-out override an explicit block.
     let f = HostFilter::from_lists(&[], &["8.8.8.8".to_string()], true).unwrap();
     assert!(!f.permits_connection([8, 8, 8, 8], 53));
@@ -122,4 +122,18 @@ fn from_lists_validates_block_rules_alongside_allow_rules() {
             .entry(),
         "bad"
     );
+}
+
+#[test]
+fn from_lists_composes_allowlist_with_block_rules() {
+    let f = HostFilter::from_lists(&["10.0.0.0/8".to_string()], &["10.0.0.1".to_string()], true)
+        .unwrap();
+    assert_eq!(f.default_action(), HostAction::Deny);
+    // The block rule narrows the allowlist instead of being ignored.
+    assert!(!f.permits([10, 0, 0, 1]));
+    assert!(f.permits([10, 0, 0, 2]));
+    assert!(!f.permits([8, 8, 8, 8]));
+    // The DNS exception never reopens an explicitly denied destination.
+    assert!(!f.permits_connection([10, 0, 0, 1], 53));
+    assert!(f.permits_connection([8, 8, 8, 8], 53));
 }

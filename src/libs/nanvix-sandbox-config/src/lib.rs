@@ -65,6 +65,7 @@ impl std::str::FromStr for NetworkingMode {
 // dependency cycle. They are re-exported here so config consumers can refer to
 // them via `nanvix::sandbox_config`.
 pub use ::net_backend::{
+    HostAction,
     HostFilter,
     InvalidHostRule,
     Ipv4Cidr,
