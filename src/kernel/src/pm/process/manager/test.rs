@@ -69,8 +69,11 @@ use ::sys::{
     pm::{
         Capability,
         ProcessIdentifier,
+        SigSet,
         ThreadCreateArgs,
         ThreadIdentifier,
+        SIGTERM,
+        SIGUSR1,
     },
     ExitStatus,
 };
@@ -147,6 +150,11 @@ fn test_pid() -> ProcessIdentifier {
 
 fn test_tid() -> ThreadIdentifier {
     ThreadIdentifier::from(1000)
+}
+
+/// Returns the bit for signal `signum` (1-based) in a signal set.
+fn signal_bit(signum: usize) -> SigSet {
+    1u64 << (signum - 1)
 }
 
 ///
@@ -960,6 +968,115 @@ fn test_exec_replacement_produces_thread_termination_only() -> bool {
 ///
 /// # Description
 ///
+/// Builds a single-threaded running process, lets `seed` prepare its outgoing image, replaces that
+/// image as `execv()` does, and lets `check` inspect the resulting process.
+///
+/// # Parameters
+///
+/// - `seed`: Prepares the outgoing image (for example, its signal state) before the replacement.
+/// - `check`: Inspects the process after the replacement.
+///
+/// # Returns
+///
+/// `true` if the fixture was built and `check` passes, otherwise `false`.
+///
+fn check_exec_replacement(
+    seed: impl FnOnce(&mut RunningProcess),
+    check: impl FnOnce(&mut RunningProcess) -> bool,
+) -> bool {
+    // SAFETY: process-manager tests run on one core with interrupts disabled and hold no other
+    // reference to either global manager.
+    let pm: &ProcessManager = unsafe { ProcessManager::get() };
+    let mm: &VirtMemoryManager = unsafe { VirtMemoryManager::get() };
+    let old_vmem: Vmem = match mm.new_vmem(pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(error) => {
+            error!("failed to create outgoing exec vmem (error={error:?})");
+            return false;
+        },
+    };
+    let new_vmem: Vmem = match mm.new_vmem(pm.current_vmem()) {
+        Ok(vmem) => vmem,
+        Err(error) => {
+            error!("failed to create replacement exec vmem (error={error:?})");
+            return false;
+        },
+    };
+    let old_thread: ReadyThread = ReadyThread::new(
+        test_tid(),
+        Some(new_test_thread_termination_credit()),
+        None,
+        None,
+        None,
+        ContextInformation::default(),
+        // SAFETY: calls to FpuState::new are synchronized by the single-threaded test runner.
+        unsafe { FpuState::new() },
+    );
+    let mut process: RunnableProcess = RunnableProcess::new_uncommitted(
+        test_pid(),
+        ProcessIdentifier::from(99),
+        old_thread,
+        old_vmem,
+    );
+    process.install_termination_credit(new_test_process_termination_credit());
+    let (mut running, reason, _ctx, _user_tda) = process.run();
+    if reason.is_some() {
+        error!("outgoing exec fixture was unexpectedly interrupted");
+        return false;
+    }
+    seed(&mut running);
+
+    let new_thread: ReadyThread = ReadyThread::new(
+        ThreadIdentifier::from(1001),
+        Some(new_test_thread_termination_credit()),
+        None,
+        None,
+        None,
+        ContextInformation::default(),
+        // SAFETY: calls to FpuState::new are synchronized by the single-threaded test runner.
+        unsafe { FpuState::new() },
+    );
+    let (old_vmem, old_zombie, pending, _from_ctx, _to_ctx, _user_tda) =
+        running.replace_image(new_vmem, new_thread);
+    let passed: bool = check(&mut running);
+
+    let _ = pending.into_parts();
+    let _ = old_zombie.harvest();
+    drop(old_vmem);
+    passed
+}
+
+///
+/// # Description
+///
+/// Verifies that `execv()` hands the blocked-signal mask of the calling thread to the initial
+/// thread of the new image.
+///
+/// # Returns
+///
+/// `true` if the new image's initial thread inherits the outgoing thread's mask, otherwise `false`.
+///
+fn test_exec_replacement_inherits_signal_mask() -> bool {
+    let mask: SigSet = signal_bit(SIGUSR1) | signal_bit(SIGTERM);
+    check_exec_replacement(
+        |running| running.running_mut().thread_state_mut().set_blocked(mask),
+        |running| {
+            let blocked: SigSet = running.running_mut().thread_state().blocked();
+            if blocked != mask {
+                error!(
+                    "new image did not inherit the signal mask (blocked={blocked:#x}, \
+                     expected={mask:#x})"
+                );
+                return false;
+            }
+            true
+        },
+    )
+}
+
+///
+/// # Description
+///
 /// Verifies that older IPC is selected before a newer lifecycle record.
 ///
 /// # Returns
@@ -1497,6 +1614,7 @@ pub(in crate::pm::process) fn test() -> bool {
     passed &= run_test!(test_execv_thread_reservation_failure_rolls_back);
     passed &= run_test!(test_zombie_transitions_produce_ordered_lifecycle_records);
     passed &= run_test!(test_exec_replacement_produces_thread_termination_only);
+    passed &= run_test!(test_exec_replacement_inherits_signal_mask);
     passed &= run_test!(test_ipc_precedes_newer_lifecycle);
     passed &= run_test!(test_lifecycle_precedes_newer_ipc_after_failed_wakeup);
     passed &= run_test!(test_other_thread_ipc_does_not_block_lifecycle);
