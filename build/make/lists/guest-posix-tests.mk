@@ -40,6 +40,7 @@ ALL_POSIX_TESTS := \
 	test-c-dlfcn-startup \
 	test-c-dlfcn-weak \
 	test-c-echo \
+	test-c-exec-signals \
 	test-c-execvp \
 	test-c-file \
 	test-c-fork-pid \

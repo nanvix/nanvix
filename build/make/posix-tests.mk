@@ -376,6 +376,7 @@ clean-posix-tests:
 	$(RM_CMD) $(POSIX_TEST_RAMFS_IMG_test-c-dlfcn-initfini)
 	$(RM_CMD) $(POSIX_TEST_WEAK_IMG)
 	$(RM_CMD) $(POSIX_TEST_EXECVP_IMG)
+	$(RM_CMD) $(POSIX_TEST_EXEC_SIGNALS_IMG)
 	$(FORCE_RM_CMD) $(BINARIES_DIR)/posix-tests-ramfs-seed
 	$(FORCE_RM_CMD) $(foreach suite,$(POSIX_TEST_SOLIB_SUITES),$(BINARIES_DIR)/posix-tests-ramfs-$(suite)-seed)
 	$(FORCE_RM_CMD) $(POSIX_TEST_RUNPATH_SEED)
@@ -397,6 +398,7 @@ clean-posix-tests:
 	$(FORCE_RM_CMD) $(POSIX_TEST_INITFINI_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_WEAK_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TEST_EXECVP_SEED)
+	$(FORCE_RM_CMD) $(POSIX_TEST_EXEC_SIGNALS_SEED)
 	$(FORCE_RM_CMD) $(POSIX_TESTS_OBJDIR)
 
 #---------------------------------------------------------------------------------------------------
@@ -1490,6 +1492,30 @@ $(POSIX_TEST_EXECVP_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXECVP_SUITE).$(EXEC_FORM
 		$(POSIX_TEST_EXECVP_SEED)/bin/prog
 	$(MKRAMFS) -o $@ $(POSIX_TEST_EXECVP_SEED)
 
+#---------------------------------------------------------------------------------------------------
+# exec-signals-c: self re-exec fixture.
+#---------------------------------------------------------------------------------------------------
+#
+# test-c-exec-signals validates the signal state that execv() carries into the
+# new image. The suite is a dual-role ELF: booted in the setup role it leaves
+# signals blocked and pending and execv()s a copy of itself, which (re-exec'd
+# with argv[1]=="exec-signals-child") verifies them. The setup role execv()s
+# /bin/prog, so the suite ELF is staged a second time in this per-suite RAMFS
+# image under that path. /bin/prog IS the suite ELF, so no extra build step is
+# needed beyond copying it into the seed.
+
+POSIX_TEST_EXEC_SIGNALS_SUITE := test-c-exec-signals
+POSIX_TEST_EXEC_SIGNALS_SEED  := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_EXEC_SIGNALS_SUITE)-seed
+POSIX_TEST_EXEC_SIGNALS_IMG   := $(BINARIES_DIR)/posix-tests-ramfs-$(POSIX_TEST_EXEC_SIGNALS_SUITE).img
+
+$(POSIX_TEST_EXEC_SIGNALS_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXEC_SIGNALS_SUITE).$(EXEC_FORMAT) \
+		all-host-binaries-mkramfs
+	$(FORCE_RM_CMD) $(POSIX_TEST_EXEC_SIGNALS_SEED)
+	@$(MKDIR_CMD) $(POSIX_TEST_EXEC_SIGNALS_SEED)/bin
+	$(CP_CMD) $(BINARIES_DIR)/$(POSIX_TEST_EXEC_SIGNALS_SUITE).$(EXEC_FORMAT) \
+		$(POSIX_TEST_EXEC_SIGNALS_SEED)/bin/prog
+	$(MKRAMFS) -o $@ $(POSIX_TEST_EXEC_SIGNALS_SEED)
+
 # The per-suite boot arguments that pair each suite with its RAMFS image
 # (`-ramfs <img>`) or enable host networking (`-allow-host-networking`) now live
 # in the nanvix-test harness configs (test/test-posix.toml and
@@ -1515,14 +1541,16 @@ POSIX_TEST_DLFCN_FIXTURE_IMGS := $(POSIX_TEST_SOLIB_IMGS) $(POSIX_TEST_RUNPATH_I
 
 # These images also use shared bin/ paths and must be invalidated before an
 # incremental cross-target build can consider their cached mtimes.
-$(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG): | target-guard
+$(POSIX_TEST_RAMFS_IMG) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG) \
+		$(POSIX_TEST_EXEC_SIGNALS_IMG): | target-guard
 
 .PHONY: all-posix-test-images
 all-posix-test-images: $(POSIX_TEST_INITRDS) \
 		$(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) \
 		$(POSIX_TEST_NETWORK_HOSTFS_MARKER) \
 		$(POSIX_TEST_DLFCN_FIXTURE_IMGS) \
-		$(POSIX_TEST_EXECVP_IMG)
+		$(POSIX_TEST_EXECVP_IMG) \
+		$(POSIX_TEST_EXEC_SIGNALS_IMG)
 	@echo "All POSIX C test-suite images built."
 
 .PHONY: run-posix-tests
@@ -1553,7 +1581,7 @@ ifeq ($(filter $(TARGET),x86 x86_64),)
 run-posix-tests:
 	@echo "Skipping POSIX C test suites (no guest C toolchain for TARGET=$(TARGET))."
 else
-run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_NETWORK_HOSTFS_MARKER) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG)
+run-posix-tests: $(POSIX_HEADERS_CXX_STAMP) $(POSIX_TEST_INITRDS) $(if $(strip $(POSIX_TEST_RAMFS_SUITES)),$(POSIX_TEST_RAMFS_IMG)) $(POSIX_TEST_NETWORK_HOSTFS_MARKER) $(POSIX_TEST_DLFCN_FIXTURE_IMGS) $(POSIX_TEST_EXECVP_IMG) $(POSIX_TEST_EXEC_SIGNALS_IMG)
 	@test -f $(NANVIX_TEST_BIN) || { echo "ERROR: $(NANVIX_TEST_BIN) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(NANVIXD) || { echo "ERROR: $(NANVIXD) missing; run './z build -- all' first."; exit 1; }
 	@test -f $(KERNEL) || { echo "ERROR: $(KERNEL) missing; run './z build -- all' first."; exit 1; }
