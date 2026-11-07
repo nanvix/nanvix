@@ -105,6 +105,7 @@ extern int pthread_kill(pthread_t thread, int sig);
 extern void pthread_exit(void *retval);
 extern pthread_t pthread_self(void);
 extern int pthread_equal(pthread_t thread1, pthread_t thread2);
+extern int pthread_getschedparam(pthread_t thread, int *policy, struct sched_param *param);
 extern int pthread_setcancelstate(int state, int *oldstate);
 extern void pthread_testcancel(void);
 

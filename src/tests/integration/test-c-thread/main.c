@@ -145,6 +145,7 @@ int main(int argc, const char *argv[])
     test_pthread_attr_setstack();
     test_pthread_attr_setstacksize();
     test_pthread_getattr_np_destroy();
+    test_pthread_getschedparam();
     test_pthread_create_join();
     test_pthread_mutex_static_init();
     test_pthread_mutex_dynamic_init();
