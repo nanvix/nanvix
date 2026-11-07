@@ -30,6 +30,11 @@ use crate::{
             new_test_process_termination_credit,
             new_test_thread_termination_credit,
             state::{
+                signal::{
+                    SignalControl,
+                    SignalDisposition,
+                    SignalHandler,
+                },
                 PendingProcessTermination,
                 RunnableProcess,
                 RunningProcess,
@@ -47,6 +52,7 @@ use crate::{
         ProcessManager,
     },
 };
+use ::alloc::boxed::Box;
 use ::config::kernel::SCHEDULER_FREQ;
 use ::sys::{
     error::{
@@ -72,8 +78,11 @@ use ::sys::{
         SigSet,
         ThreadCreateArgs,
         ThreadIdentifier,
+        SIGCHLD,
         SIGTERM,
         SIGUSR1,
+        SIGUSR2,
+        SIGWINCH,
     },
     ExitStatus,
 };
@@ -1077,6 +1086,68 @@ fn test_exec_replacement_inherits_signal_mask() -> bool {
 ///
 /// # Description
 ///
+/// Returns a caught disposition whose handler lives in the outgoing image.
+///
+fn caught_disposition() -> SignalDisposition {
+    SignalDisposition::Handler(Box::new(SignalHandler {
+        entry: VirtualAddress::new(0x1000),
+        mask: 0,
+        flags: 0,
+        sigaction: 0,
+    }))
+}
+
+///
+/// # Description
+///
+/// Verifies that `execv()` preserves the signals pending against the process and against the
+/// calling thread, except those that the reset of caught dispositions leaves ignored by default.
+///
+/// # Returns
+///
+/// `true` if the new image observes the expected pending signals, otherwise `false`.
+///
+fn test_exec_replacement_preserves_pending_signals() -> bool {
+    check_exec_replacement(
+        |running| {
+            let signals: &mut SignalControl = running.state_mut().signals_mut();
+            for signum in [SIGUSR1, SIGCHLD, SIGWINCH] {
+                signals.set_disposition(signum, caught_disposition());
+            }
+            signals.post(SIGUSR1);
+            signals.post(SIGCHLD);
+            for signum in [SIGUSR2, SIGWINCH] {
+                running
+                    .running_mut()
+                    .thread_state_mut()
+                    .post_pending(signum);
+            }
+        },
+        |running| {
+            let process_pending: SigSet = running.state().signals().pending();
+            if process_pending != signal_bit(SIGUSR1) {
+                error!(
+                    "new image did not keep the pending signals of the process \
+                     (pending={process_pending:#x})"
+                );
+                return false;
+            }
+            let thread_pending: SigSet = running.running_mut().thread_state().pending();
+            if thread_pending != signal_bit(SIGUSR2) {
+                error!(
+                    "new image did not keep the pending signals of the calling thread \
+                     (pending={thread_pending:#x})"
+                );
+                return false;
+            }
+            true
+        },
+    )
+}
+
+///
+/// # Description
+///
 /// Verifies that older IPC is selected before a newer lifecycle record.
 ///
 /// # Returns
@@ -1615,6 +1686,7 @@ pub(in crate::pm::process) fn test() -> bool {
     passed &= run_test!(test_zombie_transitions_produce_ordered_lifecycle_records);
     passed &= run_test!(test_exec_replacement_produces_thread_termination_only);
     passed &= run_test!(test_exec_replacement_inherits_signal_mask);
+    passed &= run_test!(test_exec_replacement_preserves_pending_signals);
     passed &= run_test!(test_ipc_precedes_newer_lifecycle);
     passed &= run_test!(test_lifecycle_precedes_newer_ipc_after_failed_wakeup);
     passed &= run_test!(test_other_thread_ipc_does_not_block_lifecycle);

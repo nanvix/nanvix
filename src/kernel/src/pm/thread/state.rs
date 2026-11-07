@@ -459,6 +459,19 @@ impl ThreadState {
     ///
     /// # Description
     ///
+    /// Replaces the set of signals pending specifically against this thread.
+    ///
+    /// # Parameters
+    ///
+    /// - `set`: The new per-thread pending-signal set.
+    ///
+    pub(crate) fn set_pending(&mut self, set: u64) {
+        self.pending = set;
+    }
+
+    ///
+    /// # Description
+    ///
     /// Adds `signum` to the thread-directed pending set.
     ///
     /// # Parameters

@@ -142,7 +142,10 @@ impl RunningProcess {
     /// thread are swapped.
     ///
     /// The newly built thread becomes the initial thread of the new image, so it inherits the
-    /// blocked-signal mask of the outgoing (calling) thread, as POSIX requires of `execv()`.
+    /// blocked-signal mask of the outgoing (calling) thread and the signals pending against it, as
+    /// POSIX requires of `execv()`. Signals pending against the process survive as well; see
+    /// [`SignalControl::reset_for_exec`](super::signal::SignalControl::reset_for_exec) for how the
+    /// signal state of the process is reset.
     ///
     /// The newly built thread is transitioned to the running state, and the outgoing thread is
     /// retired as a zombie that retains its kernel stack and execution context until the deferred
@@ -183,11 +186,19 @@ impl RunningProcess {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
-        // Carry the calling thread's blocked-signal mask over to the initial thread of the new
-        // image. A fresh thread starts with an empty mask, which would otherwise unblock every
-        // signal across the image replacement.
+        // Reset the signal state of the process for the new image: caught handlers point at code
+        // in the old image, so they are reset to the default (SIG_IGN/SIG_DFL are preserved), and
+        // the restorer is dropped so the new image re-registers it at startup. Pending signals
+        // survive, except those that the reset leaves ignored by default.
+        let ignored: SigSet = self.state.signals_mut().reset_for_exec();
+
+        // Carry the calling thread's blocked-signal mask and pending signals over to the initial
+        // thread of the new image. A fresh thread starts with an empty mask and no pending signals,
+        // which would otherwise unblock every signal and drop those pending against the caller.
         let blocked: SigSet = self.running.thread_state().blocked();
+        let pending_signals: SigSet = self.running.thread_state().pending() & !ignored;
         new_thread.thread_state_mut().set_blocked(blocked);
+        new_thread.thread_state_mut().set_pending(pending_signals);
 
         // Transition the freshly built thread into the running state; its context is the "to"
         // side of the upcoming switch.
@@ -205,11 +216,6 @@ impl RunningProcess {
 
         // Swap in the new address space, returning the old one for deferred reclamation.
         let old_vmem: Vmem = self.state.replace_vmem(new_vmem);
-
-        // Reset signal dispositions for the new image: caught handlers point at code in the old
-        // image, so they are reset to the default (SIG_IGN/SIG_DFL are preserved), the pending set
-        // is cleared, and the restorer is dropped so the new image re-registers it at startup.
-        self.state.signals_mut().reset_for_exec();
 
         (old_vmem, old_zombie, pending, from_ctx, to_ctx, user_tda)
     }
