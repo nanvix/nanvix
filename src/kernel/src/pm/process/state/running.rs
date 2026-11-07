@@ -40,6 +40,7 @@ use ::sys::{
     mm::VirtualAddress,
     pm::{
         ProcessIdentifier,
+        SigSet,
         ThreadIdentifier,
     },
     time::SystemTime,
@@ -140,6 +141,9 @@ impl RunningProcess {
     /// The process identity and capabilities are preserved; only the address space and the running
     /// thread are swapped.
     ///
+    /// The newly built thread becomes the initial thread of the new image, so it inherits the
+    /// blocked-signal mask of the outgoing (calling) thread, as POSIX requires of `execv()`.
+    ///
     /// The newly built thread is transitioned to the running state, and the outgoing thread is
     /// retired as a zombie that retains its kernel stack and execution context until the deferred
     /// reap that runs after the context switch into the new image. The outgoing address space is
@@ -170,7 +174,7 @@ impl RunningProcess {
     pub(in crate::pm) fn replace_image(
         &mut self,
         new_vmem: Vmem,
-        new_thread: ReadyThread,
+        mut new_thread: ReadyThread,
     ) -> (
         Vmem,
         ZombieThread,
@@ -179,6 +183,12 @@ impl RunningProcess {
         *mut ContextInformation,
         Option<VirtualAddress>,
     ) {
+        // Carry the calling thread's blocked-signal mask over to the initial thread of the new
+        // image. A fresh thread starts with an empty mask, which would otherwise unblock every
+        // signal across the image replacement.
+        let blocked: SigSet = self.running.thread_state().blocked();
+        new_thread.thread_state_mut().set_blocked(blocked);
+
         // Transition the freshly built thread into the running state; its context is the "to"
         // side of the upcoming switch.
         let (new_running, _reason, to_ctx, user_tda) = new_thread.run();
