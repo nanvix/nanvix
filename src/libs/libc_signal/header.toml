@@ -452,6 +452,7 @@ functions = [
     "sigdelset",
     "sigismember",
     "sigprocmask",
+    "sigpending",
     "sigsuspend",
     "sigaction",
     "pthread_sigmask",
