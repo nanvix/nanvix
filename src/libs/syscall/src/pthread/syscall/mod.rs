@@ -38,6 +38,9 @@ mod pthread_attr_setstacksize;
 /// Implementation of `pthread_getattr_np()` system call.
 mod pthread_getattr_np;
 
+/// Implementation of `pthread_getschedparam()` system call.
+mod pthread_getschedparam;
+
 //==================================================================================================
 // Imports
 //==================================================================================================
@@ -90,6 +93,7 @@ pub use pthread_attr_getstack::*;
 pub use pthread_attr_init::*;
 pub use pthread_attr_setstacksize::*;
 pub use pthread_getattr_np::*;
+pub use pthread_getschedparam::*;
 pub use rwlock::*;
 pub use sem::*;
 pub use tda::*;
