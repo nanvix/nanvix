@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 use super::*;
+use ::nanvix::sandbox_config::HostAction;
 use ::std::path::{
     Path,
     PathBuf,
@@ -149,19 +150,54 @@ fn block_host_builds_blocklist_filter() {
 }
 
 #[test]
-fn allow_and_block_host_are_mutually_exclusive() {
+fn allow_and_block_host_compose_with_deny_precedence() {
+    let allow_first = Args::parse(argv(&[
+        "-allow-host-networking",
+        "-allow-host",
+        "10.0.0.0/8",
+        "-block-host",
+        "10.0.0.1",
+        "--",
+        "/bin/foo",
+    ]))
+    .expect("parse");
+    let block_first = Args::parse(argv(&[
+        "-allow-host-networking",
+        "-block-host",
+        "10.0.0.1",
+        "-allow-host",
+        "10.0.0.0/8",
+        "--",
+        "/bin/foo",
+    ]))
+    .expect("parse");
+    for args in [&allow_first, &block_first] {
+        let filter = args.host_filter();
+        assert_eq!(filter.default_action(), HostAction::Deny);
+        assert!(!filter.permits([10, 0, 0, 1]));
+        assert!(filter.permits([10, 0, 0, 2]));
+        assert!(!filter.permits([8, 8, 8, 8]));
+        // DNS stays reachable for the allowlist, but never through a block rule.
+        assert!(filter.permits_connection([8, 8, 8, 8], 53));
+        assert!(!filter.permits_connection([10, 0, 0, 1], 53));
+    }
+    assert_eq!(allow_first.host_filter(), block_first.host_filter());
+}
+
+#[test]
+fn rejects_invalid_block_host_entry_with_allow_host() {
     let res = Args::parse(argv(&[
         "-allow-host-networking",
         "-allow-host",
         "1.2.3.4",
         "-block-host",
-        "8.8.8.8",
+        "8.8.8.8/40",
         "--",
         "/bin/foo",
     ]));
-    let msg: String = format!("{:#}", res.expect_err("expected mutual-exclusion error"));
-    assert!(msg.contains(Args::OPT_ALLOW_HOST), "unexpected error: {msg}");
+    let msg: String = format!("{:#}", res.expect_err("expected invalid-entry error"));
     assert!(msg.contains(Args::OPT_BLOCK_HOST), "unexpected error: {msg}");
+    assert!(msg.contains("8.8.8.8/40"), "unexpected error: {msg}");
 }
 
 #[test]
