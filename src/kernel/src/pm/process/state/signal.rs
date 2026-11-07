@@ -487,20 +487,33 @@ impl SignalControl {
     /// Resets the signal control block for an `execv()` image replacement.
     ///
     /// Caught dispositions point at handler code in the outgoing image, so they are reset to the
-    /// default; [`SIG_IGN`] and [`SIG_DFL`] dispositions are preserved, as POSIX requires. The
-    /// pending set is cleared and the restorer is dropped — the freshly loaded image re-registers
-    /// its own restorer at startup.
+    /// default; [`SIG_IGN`] and [`SIG_DFL`] dispositions are preserved, as POSIX requires. Pending
+    /// signals are process state and survive the replacement, with one exception: a pending signal
+    /// whose disposition is reset to [`SIG_DFL`] and whose default action is to ignore it (for
+    /// example, `SIGCHLD`) is discarded, whether or not it is blocked, as POSIX requires whenever a
+    /// signal action is set to [`SIG_DFL`]. The restorer lives in the outgoing image, so it is
+    /// dropped — the freshly loaded image re-registers its own restorer at startup.
     ///
-    pub fn reset_for_exec(&mut self) {
-        for half in self.dispositions.iter_mut() {
-            for slot in half.iter_mut() {
-                if matches!(slot, SignalDisposition::Handler(_)) {
-                    *slot = SignalDisposition::Default;
-                }
+    /// # Returns
+    ///
+    /// The set of caught signals that the reset leaves ignored by default. Their pending instances
+    /// are discarded from the process-directed pending set; the caller must likewise discard them
+    /// from any thread-directed pending set that it carries over to the new image.
+    ///
+    pub fn reset_for_exec(&mut self) -> SigSet {
+        let mut ignored: SigSet = 0;
+        for signum in 1..=SIG_MAX {
+            if !matches!(self.disposition(signum), Some(SignalDisposition::Handler(_))) {
+                continue;
+            }
+            self.set_disposition(signum, SignalDisposition::Default);
+            if default_action(signum) == DefaultAction::Ignore {
+                ignored |= 1u64 << (signum - 1);
             }
         }
-        self.pending = 0;
+        self.pending &= !ignored;
         self.restorer = None;
+        ignored
     }
 }
 

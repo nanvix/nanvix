@@ -20,6 +20,7 @@ use crate::hal::mem::VirtualAddress;
 use ::alloc::boxed::Box;
 use ::sys::pm::{
     SigAction,
+    SigSet,
     SIGABRT,
     SIGCHLD,
     SIGCONT,
@@ -34,6 +35,7 @@ use ::sys::pm::{
     SIGTERM,
     SIGTRAP,
     SIGTSTP,
+    SIGURG,
     SIG_BLOCK,
     SIG_DFL,
     SIG_IGN,
@@ -469,6 +471,118 @@ fn test_post_rejects_out_of_range() -> bool {
 }
 
 //==================================================================================================
+// Exec Reset Tests
+//==================================================================================================
+
+///
+/// # Description
+///
+/// `reset_for_exec()` resets caught dispositions to the default, preserves ignored and default
+/// dispositions, and drops the restorer of the outgoing image.
+///
+fn test_reset_for_exec_resets_caught_dispositions() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+    control.set_disposition(SIGTERM, handler(0x1000, 0, 0, 0));
+    control.set_disposition(SIGHUP, SignalDisposition::Ignore);
+    control.set_restorer(Some(VirtualAddress::new(0x2000)));
+
+    let _ = control.reset_for_exec();
+
+    match control.disposition(SIGTERM) {
+        Some(SignalDisposition::Default) => {},
+        other => {
+            error!("a caught signal was not reset to the default (disposition={other:?})");
+            return false;
+        },
+    }
+    match control.disposition(SIGHUP) {
+        Some(SignalDisposition::Ignore) => {},
+        other => {
+            error!("an ignored signal was not preserved (disposition={other:?})");
+            return false;
+        },
+    }
+    match control.disposition(SIGQUIT) {
+        Some(SignalDisposition::Default) => {},
+        other => {
+            error!("a default signal was not preserved (disposition={other:?})");
+            return false;
+        },
+    }
+    if control.restorer().is_some() {
+        error!("the restorer of the outgoing image survived the reset");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// `reset_for_exec()` preserves the pending set, including caught signals whose default action is
+/// not to ignore them and signals whose disposition the reset does not change.
+///
+fn test_reset_for_exec_preserves_pending_signals() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+    control.set_disposition(SIGTERM, handler(0x1000, 0, 0, 0));
+    control.set_disposition(SIGCONT, handler(0x1000, 0, 0, 0));
+    control.post(SIGTERM);
+    control.post(SIGCONT);
+    control.post(SIGHUP);
+
+    let ignored: SigSet = control.reset_for_exec();
+
+    let expected: SigSet = bit(SIGTERM) | bit(SIGCONT) | bit(SIGHUP);
+    if control.pending() != expected {
+        error!(
+            "the reset did not preserve the pending set (pending={:#x}, expected={expected:#x})",
+            control.pending()
+        );
+        return false;
+    }
+    if ignored != 0 {
+        error!("the reset reported signals that it does not ignore (ignored={ignored:#x})");
+        return false;
+    }
+    true
+}
+
+///
+/// # Description
+///
+/// `reset_for_exec()` discards pending caught signals whose default action is to ignore them, as
+/// POSIX requires once their disposition becomes the default, and reports every such signal to the
+/// caller, pending or not.
+///
+fn test_reset_for_exec_discards_newly_ignored_signals() -> bool {
+    let mut control: SignalControl = SignalControl::default();
+    control.set_disposition(SIGCHLD, handler(0x1000, 0, 0, 0));
+    control.set_disposition(SIGURG, handler(0x1000, 0, 0, 0));
+    control.set_disposition(SIGTERM, handler(0x1000, 0, 0, 0));
+    control.post(SIGCHLD);
+    control.post(SIGTERM);
+
+    let ignored: SigSet = control.reset_for_exec();
+
+    let expected_ignored: SigSet = bit(SIGCHLD) | bit(SIGURG);
+    if ignored != expected_ignored {
+        error!(
+            "the reset misreported the newly ignored signals (ignored={ignored:#x}, \
+             expected={expected_ignored:#x})"
+        );
+        return false;
+    }
+    if control.pending() != bit(SIGTERM) {
+        error!(
+            "the reset did not discard the newly ignored pending signal (pending={:#x})",
+            control.pending()
+        );
+        return false;
+    }
+    true
+}
+
+//==================================================================================================
 // Test Aggregator
 //==================================================================================================
 
@@ -496,5 +610,8 @@ pub(super) fn test() -> bool {
     passed &= run_test!(test_exception_to_signal_ignores_unmapped_vectors);
     passed &= run_test!(test_post_records_pending_signal);
     passed &= run_test!(test_post_rejects_out_of_range);
+    passed &= run_test!(test_reset_for_exec_resets_caught_dispositions);
+    passed &= run_test!(test_reset_for_exec_preserves_pending_signals);
+    passed &= run_test!(test_reset_for_exec_discards_newly_ignored_signals);
     passed
 }
