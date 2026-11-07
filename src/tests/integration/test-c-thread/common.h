@@ -93,6 +93,9 @@ extern void test_pthread_mutexattr_destroy(void);
 // Tests if pthread_getattr_np() can retrieve attributes and they can be destroyed.
 extern void test_pthread_getattr_np_destroy(void);
 
+// Tests if the scheduling policy and parameters of a thread can be retrieved.
+extern void test_pthread_getschedparam(void);
+
 // Tests if pthread_attr_getstack() can retrieve stack attributes and they can be destroyed.
 extern void test_pthread_attr_getstack(void);
 
