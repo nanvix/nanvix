@@ -137,3 +137,131 @@ fn from_lists_composes_allowlist_with_block_rules() {
     assert!(!f.permits_connection([10, 0, 0, 1], 53));
     assert!(f.permits_connection([8, 8, 8, 8], 53));
 }
+
+//==================================================================================================
+// Composed policy
+//==================================================================================================
+
+/// Converts string literals into owned rule entries.
+fn rules(entries: &[&str]) -> Vec<String> {
+    entries.iter().map(|e| e.to_string()).collect()
+}
+
+/// Builds a validated policy from string-literal rules.
+fn policy(
+    default_action: HostAction,
+    allow: &[&str],
+    deny: &[&str],
+    allow_dns: bool,
+) -> HostFilter {
+    HostFilter::from_rules(default_action, &rules(allow), &rules(deny), allow_dns).unwrap()
+}
+
+#[test]
+fn empty_rules_follow_default_action() {
+    let open = policy(HostAction::Allow, &[], &[], false);
+    assert!(open.permits([8, 8, 8, 8]));
+    assert!(open.is_allow_all());
+    let closed = policy(HostAction::Deny, &[], &[], false);
+    assert!(!closed.permits([8, 8, 8, 8]));
+    assert!(!closed.is_allow_all());
+    assert_eq!(closed, HostFilter::deny_all());
+}
+
+#[test]
+fn combined_rules_fall_back_to_default_action() {
+    for default_action in [HostAction::Allow, HostAction::Deny] {
+        let f = policy(default_action, &["10.0.0.0/8"], &["10.1.0.0/16"], false);
+        assert!(f.permits([10, 2, 0, 1]));
+        assert!(!f.permits([10, 1, 0, 1]));
+        // Unmatched traffic follows the explicit default action.
+        assert_eq!(f.permits([8, 8, 8, 8]), default_action == HostAction::Allow);
+        // Deny rules always restrict, so non-IPv4 destinations are never waved through.
+        assert!(!f.is_allow_all());
+    }
+}
+
+#[test]
+fn deny_wins_on_overlap_regardless_of_order() {
+    let forward = policy(HostAction::Allow, &["1.1.1.1", "10.0.0.0/8"], &["10.0.0.0/8"], false);
+    let reverse = policy(HostAction::Allow, &["10.0.0.0/8", "1.1.1.1"], &["10.0.0.0/8"], false);
+    for f in [&forward, &reverse] {
+        assert!(!f.permits([10, 0, 0, 1]));
+        assert!(f.permits([1, 1, 1, 1]));
+    }
+    // A narrow deny carves a hole out of a broad allow, and a narrow allow cannot reopen a
+    // broad deny.
+    let narrow_deny = policy(HostAction::Deny, &["10.0.0.0/8"], &["10.0.0.1"], false);
+    assert!(!narrow_deny.permits([10, 0, 0, 1]));
+    assert!(narrow_deny.permits([10, 0, 0, 2]));
+    let broad_deny = policy(HostAction::Allow, &["10.0.0.1"], &["10.0.0.0/8"], false);
+    assert!(!broad_deny.permits([10, 0, 0, 1]));
+}
+
+#[test]
+fn duplicate_rules_do_not_change_verdicts() {
+    let single = policy(HostAction::Deny, &["1.1.1.1"], &["10.0.0.1"], false);
+    let duplicated =
+        policy(HostAction::Deny, &["1.1.1.1", "1.1.1.1/32"], &["10.0.0.1", "10.0.0.1"], false);
+    for addr in [[1, 1, 1, 1], [10, 0, 0, 1], [8, 8, 8, 8]] {
+        assert_eq!(single.permits(addr), duplicated.permits(addr));
+    }
+}
+
+#[test]
+fn zero_prefix_matches_every_address() {
+    let allow_any = policy(HostAction::Deny, &["0.0.0.0/0"], &["8.8.8.8"], false);
+    assert!(allow_any.permits([255, 255, 255, 255]));
+    assert!(allow_any.permits([0, 0, 0, 0]));
+    assert!(!allow_any.permits([8, 8, 8, 8]));
+    // A /0 deny closes every IPv4 destination, even explicitly allowed ones and DNS.
+    let deny_any = policy(HostAction::Allow, &["1.1.1.1"], &["0.0.0.0/0"], true);
+    assert!(!deny_any.permits([1, 1, 1, 1]));
+    assert!(!deny_any.permits_connection([8, 8, 8, 8], 53));
+    assert!(!deny_any.is_allow_all());
+}
+
+#[test]
+fn dns_exception_is_disabled_by_default() {
+    assert!(!HostFilter::default().allows_dns());
+    assert!(!HostFilter::allow_all().allows_dns());
+    assert!(!HostFilter::deny_all().allows_dns());
+    assert!(
+        !policy(HostAction::Deny, &["1.1.1.1"], &[], false).permits_connection([8, 8, 8, 8], 53)
+    );
+}
+
+#[test]
+fn dns_exception_permits_only_dns_port() {
+    let f = policy(HostAction::Deny, &[], &[], true);
+    assert!(f.permits_connection([8, 8, 8, 8], 53));
+    assert!(!f.permits_connection([8, 8, 8, 8], 443));
+    // permits() has no port, so it never applies the exception.
+    assert!(!f.permits([8, 8, 8, 8]));
+}
+
+#[test]
+fn dns_exception_never_overrides_deny_rule() {
+    let f = policy(HostAction::Deny, &["8.8.8.8"], &["8.8.8.8"], true);
+    assert!(!f.permits_connection([8, 8, 8, 8], 53));
+    assert!(f.permits_connection([8, 8, 4, 4], 53));
+}
+
+#[test]
+fn from_rules_rejects_malformed_rules() {
+    let err = HostFilter::from_rules(HostAction::Deny, &rules(&["1.1.1.1"]), &rules(&["x"]), false)
+        .expect_err("malformed deny rule must be rejected");
+    assert_eq!(err.entry(), "x");
+    let err = HostFilter::from_rules(HostAction::Allow, &rules(&["1.1.1.1/-1"]), &[], false)
+        .expect_err("malformed allow rule must be rejected");
+    assert_eq!(err.entry(), "1.1.1.1/-1");
+}
+
+#[test]
+fn from_lists_translates_legacy_postures() {
+    let allowlist = HostFilter::from_lists(&rules(&["1.1.1.1"]), &[], true).unwrap();
+    assert_eq!(allowlist, policy(HostAction::Deny, &["1.1.1.1"], &[], true));
+    let blocklist = HostFilter::from_lists(&[], &rules(&["8.8.8.8"]), true).unwrap();
+    assert_eq!(blocklist, policy(HostAction::Allow, &[], &["8.8.8.8"], false));
+    assert_eq!(HostFilter::from_lists(&[], &[], true).unwrap(), HostFilter::allow_all());
+}
