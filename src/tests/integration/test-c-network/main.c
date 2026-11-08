@@ -139,6 +139,7 @@ int main(int argc, const char *argv[])
 
     test_inet_sockets(sin_port, sin_addr);
     test_poll_services(sin_addr);
+    test_socket_stat();
 
     test_unix_socket_pairs();
 

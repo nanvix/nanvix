@@ -30,6 +30,8 @@ pub enum FilesystemDeviceId {
     DevFs = 4,
     /// The host-backed filesystem.
     HostFs = 5,
+    /// The socket filesystem.
+    SockFs = 6,
 }
 
 /// Fixed inode identifiers in the regular VFS namespace.

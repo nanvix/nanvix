@@ -61,4 +61,7 @@ extern void test_inet_sockets(in_port_t sin_port, struct in_addr sin_addr);
 // Tests poll() routing through hostfsd, networkd, VFSD, and all three services together.
 extern void test_poll_services(struct in_addr sin_addr);
 
+// Tests fstat() on sockets.
+extern void test_socket_stat(void);
+
 #endif
