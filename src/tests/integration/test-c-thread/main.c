@@ -134,6 +134,7 @@ int main(int argc, const char *argv[])
 
     test_pthread_self();
     test_pthread_setcancelstate();
+    test_pthread_setcanceltype();
     test_pthread_testcancel();
     test_pthread_cleanup();
     test_pthread_attr_init_destroy();

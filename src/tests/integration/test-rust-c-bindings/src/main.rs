@@ -244,6 +244,7 @@ unsafe extern "C" {
     static pthread_rwlock_wrlock: u8;
     static pthread_self: u8;
     static pthread_setcancelstate: u8;
+    static pthread_setcanceltype: u8;
     static pthread_setspecific: u8;
     static pthread_sigmask: u8;
     static pthread_testcancel: u8;
@@ -296,7 +297,7 @@ unsafe impl Sync for SymAddr {}
 
 /// Force the linker to retain all syscall symbols by referencing their addresses.
 #[used]
-static SYSCALL_SYMBOLS: [SymAddr; 137] = [
+static SYSCALL_SYMBOLS: [SymAddr; 138] = [
     SymAddr(&raw const __nanvix_sys_cached_pid),
     SymAddr(&raw const __errno_location),
     SymAddr(&raw const _exit),
@@ -393,6 +394,7 @@ static SYSCALL_SYMBOLS: [SymAddr; 137] = [
     SymAddr(&raw const pthread_rwlock_wrlock),
     SymAddr(&raw const pthread_self),
     SymAddr(&raw const pthread_setcancelstate),
+    SymAddr(&raw const pthread_setcanceltype),
     SymAddr(&raw const pthread_setspecific),
     SymAddr(&raw const pthread_sigmask),
     SymAddr(&raw const pthread_testcancel),
