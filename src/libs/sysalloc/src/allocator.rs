@@ -18,6 +18,7 @@ use ::arch::mem::{
     PAGE_ALIGNMENT,
     PAGE_SIZE,
 };
+use ::config::memory_layout::USER_HEAP_MIN_GROWTH;
 use ::core::ptr;
 use ::spin::{
     Mutex,
@@ -39,6 +40,17 @@ use ::sys::{
     },
 };
 use ::talc::*;
+
+//==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Minimum number of bytes by which the OOM handler grows a large heap (see
+/// [`USER_HEAP_MIN_GROWTH`]).
+const MIN_GROWTH: usize = USER_HEAP_MIN_GROWTH;
+
+// Heap growth increments must be page-aligned.
+static_assert::assert_eq!(MIN_GROWTH.is_multiple_of(PAGE_SIZE));
 
 //==================================================================================================
 //  Allocator
@@ -215,20 +227,28 @@ impl OomHandler for NanvixOomHandler {
                 return Err(());
             },
         };
-        let increment: usize = aligned.saturating_add(PAGE_SIZE);
+        let desired: usize = aligned.saturating_add(PAGE_SIZE);
 
-        // Attempt to grow with the overhead page. If that fails (near capacity), fall back to
-        // the exact aligned increment — existing free space inside Talc may supply the missing
-        // metadata bytes.
-        if talc.oom_handler.heap.grow(increment).is_err()
-            && talc.oom_handler.heap.grow(aligned).is_err()
-        {
-            #[cfg(feature = "warn")]
-            let _ = writeln!(
-                &mut Logger::get(module_path!(), LogLevel::Warn),
-                "failed to grow heap by {} bytes",
-                increment
-            );
+        // Prefer growing by a chunk of as many bytes as the heap has committed (i.e., doubling it),
+        // capped at MIN_GROWTH bytes. A large heap thus grows by at least MIN_GROWTH bytes, so that
+        // the allocations that follow are served from committed memory instead of each one
+        // trapping into the kernel to map a few more pages, while a small heap grows just by its
+        // size instead of committing a full chunk that a small program would never use. Skip the
+        // chunk if it does not fit within the heap capacity rather than clamping it: a clamped
+        // chunk would push the heap to capacity, where deallocations reclaim the unused tail, and
+        // the next allocation would grow it back.
+        let heap: &mut Heap = &mut talc.oom_handler.heap;
+        let chunk: usize = desired.max(heap.size().min(MIN_GROWTH));
+        let available: usize = heap.capacity().saturating_sub(heap.size());
+
+        // Attempt to grow by a chunk first. If that fails (e.g., physical memory is short), fall
+        // back to the increment with the overhead page, and then to the exact aligned increment —
+        // existing free space inside Talc may supply the missing metadata bytes.
+        let grown: bool = (chunk > desired && chunk <= available && heap.grow(chunk).is_ok())
+            || heap.grow(desired).is_ok()
+            || heap.grow(aligned).is_ok();
+        if !grown {
+            ::syslog::warn!("handle_oom(): failed to grow heap (chunk={chunk}, desired={desired})");
             return Err(());
         }
 
