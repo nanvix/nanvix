@@ -130,6 +130,7 @@ functions = [
     "pthread_equal",
     "pthread_getschedparam",
     "pthread_setcancelstate",
+    "pthread_setcanceltype",
     "pthread_testcancel",
 ]
 

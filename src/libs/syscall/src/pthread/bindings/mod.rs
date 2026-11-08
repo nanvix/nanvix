@@ -43,6 +43,7 @@ pub mod pthread_rwlock_unlock;
 pub mod pthread_rwlock_wrlock;
 pub mod pthread_self;
 pub mod pthread_setcancelstate;
+pub mod pthread_setcanceltype;
 pub mod pthread_setspecific;
 pub mod pthread_sigmask;
 pub mod pthread_testcancel;
