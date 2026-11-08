@@ -15,13 +15,26 @@ use crate::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Maximum number of bytes that a single debug kernel call writes. The kernel truncates longer
+/// buffers.
+///
+pub const MAX_DEBUG_MESSAGE_SIZE: usize = ::config::kernel::DEBUG_BUFFER_SIZE;
+
+//==================================================================================================
 // Public Standalone Functions
 //==================================================================================================
 
 ///
 /// # Description
 ///
-/// Writes a buffer to the kernel's standard output device.
+/// Writes a buffer to the kernel's standard output device. The kernel writes at most
+/// [`MAX_DEBUG_MESSAGE_SIZE`] bytes of the buffer.
 ///
 /// # Parameters
 /// - `buf` - Buffer to write.
