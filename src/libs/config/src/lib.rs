@@ -258,6 +258,33 @@ pub mod memory_layout {
 
     // Compile-time assertion: USER_HEAP_CAPACITY must be strictly less than MEMORY_SIZE.
     static_assert::assert_eq!(USER_HEAP_CAPACITY < crate::kernel::MEMORY_SIZE);
+
+    ///
+    /// # Description
+    ///
+    /// Minimum number of bytes by which a large user heap grows when it runs out of memory.
+    ///
+    /// Every heap growth maps (and zeroes) the new pages through a kernel call. To amortize that
+    /// cost, a heap that has committed at least this many bytes grows by at least this many bytes,
+    /// so a workload that allocates `N` bytes triggers roughly `N / USER_HEAP_MIN_GROWTH` heap
+    /// growths instead of one growth per allocation that does not fit into the heap. A smaller
+    /// heap grows by as many bytes as it has committed instead (i.e., it doubles), so that
+    /// programs that need just a few pages of heap do not pay for mapping a full chunk at startup.
+    ///
+    /// The trade-off is physical memory: a heap commits up to this many bytes more than it uses.
+    /// Larger values favor allocation-heavy workloads (e.g. LLM inference), while smaller values
+    /// favor many small processes. When a chunk cannot be committed, either because it would
+    /// exceed [`USER_HEAP_CAPACITY`] or because physical memory is short, the heap grows by just
+    /// what the failing allocation needs instead.
+    ///
+    /// # Notes
+    ///
+    /// - This size should be a multiple of a page size.
+    ///
+    pub const USER_HEAP_MIN_GROWTH: usize = 4 * crate::constants::MEGABYTE;
+
+    // Compile-time assertion: USER_HEAP_MIN_GROWTH must be non-zero.
+    static_assert::assert_eq!(USER_HEAP_MIN_GROWTH > 0);
 }
 
 //==================================================================================================
