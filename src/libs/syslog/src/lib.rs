@@ -18,6 +18,9 @@ extern crate log;
 // Modules
 //==================================================================================================
 
+// The standalone logger splits strings with this module, which host unit tests also exercise.
+#[cfg(any(not(feature = "std"), test))]
+mod chunks;
 #[cfg(feature = "std")]
 mod hosted;
 #[cfg(not(feature = "std"))]
