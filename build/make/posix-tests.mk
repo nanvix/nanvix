@@ -22,8 +22,9 @@
 # Pass/fail convention (matches the test-kernel exit-code signal): a suite passes
 # when its `main()` returns 0, which nanvixd propagates as its own exit code.
 # A failed `assert()` aborts (SIGABRT -> exit 134) or a non-zero return marks a
-# failure. Guest stdout is discarded in standalone mode, so the exit code
-# is authoritative.
+# failure. A suite may instead be expected to be killed by a fault (e.g.
+# test-c-mprotect exits with 4); the nanvix-test harness configs set the exit code
+# and any stdout marker that each suite must produce.
 
 #---------------------------------------------------------------------------------------------------
 # Inputs and flags (reused from guest-c-apps.mk).
@@ -435,7 +436,7 @@ $(POSIX_HEADERS_CXX_STAMP): $(POSIX_PUBLIC_HEADERS)
 
 #---------------------------------------------------------------------------------------------------
 # Boot runner: build + boot each ported suite under nanvixd in standalone mode
-# (nanvixd drives the UserVM) and assert the propagated exit code is 0.
+# (nanvixd drives the UserVM) and assert the propagated exit code of each suite.
 #---------------------------------------------------------------------------------------------------
 
 POSIX_TEST_INITRDS := $(foreach suite,$(ALL_POSIX_TESTS),$(BINARIES_DIR)/$(suite).initrd)
@@ -1557,7 +1558,7 @@ all-posix-test-images: $(POSIX_TEST_INITRDS) \
 
 # The boot runner drives the suites through the nanvix-test harness, which boots
 # each <suite>.initrd under nanvixd in standalone mode (the `terminal` executor)
-# and asserts a guest exit code of 0. The harness is cross-platform: on Linux it
+# and asserts each suite's exit code. The harness is cross-platform: on Linux it
 # launches nanvixd directly; on Windows it launches nanvixd.exe under WHP. The
 # suites build for both guest ABIs (TARGET=x86 and x86_64) and are standalone-only
 # (they bundle the guest daemons). On unsupported targets the portable suites can

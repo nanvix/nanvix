@@ -54,6 +54,7 @@ ALL_POSIX_TESTS := \
 	test-c-math \
 	test-c-memory \
 	test-c-misc \
+	test-c-mprotect \
 	test-c-netdb \
 	test-c-network \
 	test-c-noop \

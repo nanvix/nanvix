@@ -6,8 +6,10 @@
 # Mirrors test-posix.toml adapted for Windows (WHP backend, `.exe` binary, and a
 # `.`-rooted tmp_directory).
 # Each `<suite>.initrd` is booted under nanvixd in standalone mode (the `terminal`
-# executor) and the propagated guest exit code must be 0. Guest stdout is discarded
-# in standalone mode, so the exit code is authoritative and no output assertion is made.
+# executor) and the propagated guest exit code must match the suite's
+# `expected_exit_code`. Suites that must exit with 0 are checked by their exit code
+# alone. Suites that must be killed by a fault also assert a stdout marker, so that
+# a crash before the intended fault is not mistaken for a pass.
 #
 # Usage: nanvix-test.exe test/test-posix-windows.toml
 
@@ -451,3 +453,18 @@ executor = "terminal"
 name = "posix/test-c-pathconf"
 program = "./bin/test-c-pathconf.initrd"
 expected_exit_code = 0
+
+#===================================================================================================
+# Ported POSIX C Test Suites (standalone, killed by a fault)
+#===================================================================================================
+
+# test-c-mprotect drops write access to a range with mprotect(PROT_READ) and then writes to it. The
+# fault is left unhandled, so the suite must be killed with exit status 4 (EINTR). It prints "ok"
+# right before that write, so a crash in an earlier step, which also exits with status 4, fails.
+[[tests]]
+build_modes = ["debug", "release"]
+executor = "terminal"
+name = "posix/test-c-mprotect"
+program = "./bin/test-c-mprotect.initrd"
+expected_output = "ok"
+expected_exit_code = 4
