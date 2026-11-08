@@ -43,8 +43,19 @@ pub const TDA_CANCEL_STATE_SIZE: usize = core::mem::size_of::<u32>();
 /// This value must match `sysapi::pthread::PTHREAD_CANCEL_ENABLE`.
 const TDA_CANCEL_STATE_DEFAULT: u32 = 0;
 
+/// Offset of the cancellation type within the TDA header, in bytes.
+pub const TDA_CANCEL_TYPE_OFFSET: usize = TDA_CANCEL_STATE_OFFSET + TDA_CANCEL_STATE_SIZE;
+
+/// Size of the cancellation type field in the TDA header, in bytes.
+pub const TDA_CANCEL_TYPE_SIZE: usize = core::mem::size_of::<u32>();
+
+/// Default cancellation type for a newly allocated thread data area.
+///
+/// This value must match `sysapi::pthread::PTHREAD_CANCEL_DEFERRED`.
+const TDA_CANCEL_TYPE_DEFAULT: u32 = 0;
+
 /// Total size of the TDA header, in bytes.
-const TDA_HEADER_SIZE: usize = TDA_CANCEL_STATE_OFFSET + TDA_CANCEL_STATE_SIZE;
+const TDA_HEADER_SIZE: usize = TDA_CANCEL_TYPE_OFFSET + TDA_CANCEL_TYPE_SIZE;
 
 /// Sentinel value indicating the cached thread ID has not been populated yet.
 pub const TDA_TID_UNSET: u32 = 0;
@@ -112,6 +123,10 @@ extern "C" {
 ///     ↑
 /// +---------------------+ <- tda_ptr + tda_header_size (end of allocation)
 /// |                     |
+/// | Cancellation Type   | c_int slot for pthread cancellation type
+/// |                     | Initialized to PTHREAD_CANCEL_DEFERRED
+/// +---------------------+ <- tda_ptr + TDA_CANCEL_TYPE_OFFSET
+/// |                     |
 /// | Cancellation State  | c_int slot for pthread cancellation state
 /// |                     | Initialized to PTHREAD_CANCEL_ENABLE
 /// +---------------------+ <- tda_ptr + TDA_CANCEL_STATE_OFFSET
@@ -142,7 +157,7 @@ extern "C" {
 /// Low Address
 ///
 /// Where:
-/// - TDA_HEADER_SIZE = TDA_CANCEL_STATE_OFFSET + TDA_CANCEL_STATE_SIZE
+/// - TDA_HEADER_SIZE = TDA_CANCEL_TYPE_OFFSET + TDA_CANCEL_TYPE_SIZE
 /// - allocation_size = allocation_padding_size + TDA_HEADER_SIZE
 /// - allocation_padding_size = align_up(tls_size, max(PAGE_ALIGNMENT, align_of::<*mut u8>()))
 /// - tda_ptr = allocation + allocation_padding_size
@@ -224,6 +239,13 @@ pub fn alloc() -> Result<Option<*mut u8>, Error> {
         unsafe { tda_ptr.add(TDA_CANCEL_STATE_OFFSET).cast::<u32>() };
     unsafe {
         *cancellation_state_ptr = TDA_CANCEL_STATE_DEFAULT;
+    }
+
+    // Initialize the thread's cancellation type.
+    let cancellation_type_ptr: *mut u32 =
+        unsafe { tda_ptr.add(TDA_CANCEL_TYPE_OFFSET).cast::<u32>() };
+    unsafe {
+        *cancellation_type_ptr = TDA_CANCEL_TYPE_DEFAULT;
     }
 
     // Compute pointer to thread-local storage.
