@@ -7,10 +7,7 @@
 
 use crate::sys::stat::message::FileStatRequest;
 use ::sys::{
-    error::{
-        Error,
-        ErrorCode,
-    },
+    error::Error,
     ipc::{
         Message,
         RequestToken,
@@ -41,27 +38,11 @@ use sysapi::sys_stat;
 pub fn fstat(fd: i32, buf: &mut sys_stat::stat) -> Result<(), Error> {
     ::syslog::trace!("fstat(): fd={:?}", fd);
 
-    // Route by the descriptor's resolved backend. Both vfsd-served objects and
-    // console descriptors are answered by vfsd from the slot it owns; the console reports as a
-    // character device with a stable, dup-shared identity synthesized by vfsd.
-    let backend_fd: i32 = {
-        use crate::fdtable::{
-            resolve_result,
-            Route,
-        };
-        match resolve_result(fd)? {
-            // A vfsd-served object or a console descriptor: vfsd answers `fstat` from the slot
-            // it owns, addressed by the caller-facing flat descriptor. For a console this is the
-            // slot number, not the stream number used to route I/O — the slot is the operand,
-            // so a `dup`'d console descriptor shares its source's character-device identity.
-            Some(res) if matches!(res.route, Route::Vfs | Route::Console | Route::Terminal) => fd,
-            // Sockets and unroutable descriptors have no stat here.
-            _ => {
-                ::syslog::warn!("fstat(): bad file descriptor fd={fd}");
-                return Err(Error::new(ErrorCode::BadFile, "fstat: fd is not a VFS fd"));
-            },
-        }
-    };
+    // vfsd answers `fstat` for every descriptor from the slot it owns, addressed by the
+    // caller-facing flat descriptor. It synthesizes the metadata of descriptors that it does not
+    // serve I/O for: a console reports as a character device and a socket as a socket, each with
+    // an identity that descriptors duplicated from it share.
+    let backend_fd: i32 = crate::fdtable::resolve_stat(fd, "fstat")?;
 
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
     let mut message: Message =

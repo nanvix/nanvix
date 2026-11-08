@@ -253,8 +253,8 @@ pub(crate) fn resolve_socket(fd: i32, syscall_name: &str) -> Result<i32, Error> 
 }
 
 /// Resolves `fd` for an operation that `vfsd` serves on its flat slot table itself — the descriptor
-/// flag and identity queries (`fcntl(F_GETFD/F_SETFD/F_GETFL/F_SETFL)`, `fstat`) and the descriptor
-/// duplication family (`dup`/`dup2`/`fcntl(F_DUPFD)`).
+/// flag queries (`fcntl(F_GETFD/F_SETFD/F_GETFL/F_SETFL)`) and the descriptor duplication family
+/// (`dup`/`dup2`/`fcntl(F_DUPFD)`).
 ///
 /// Unlike [`resolve_vfs`], this accepts a console descriptor as well as a `vfsd`-served one, and it
 /// returns the *caller-facing flat descriptor* rather than the resolved `backend_fd`. That
@@ -274,6 +274,30 @@ pub(crate) fn resolve_table_op(fd: i32, syscall_name: &str) -> Result<i32, Error
         _ => {
             ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
             Err(Error::new(ErrorCode::BadFile, "fd is not a vfsd table descriptor"))
+        },
+    }
+}
+
+/// Resolves `fd` for `fstat` and returns the flat descriptor that `vfsd` expects.
+///
+/// `vfsd` answers `fstat` from the slot it owns for every descriptor in its table, and synthesizes
+/// the metadata of console, terminal, and socket descriptors. Like [`resolve_table_op`], this
+/// returns the *caller-facing flat descriptor* rather than the resolved `backend_fd`, because the
+/// slot is the operand: the `backend_fd` of a console is the standard stream number used to route
+/// its I/O, and that of a socket is the descriptor `networkd` assigned, so neither names the slot.
+/// Unlike [`resolve_table_op`], this accepts sockets. An unknown descriptor is rejected with
+/// `EBADF`.
+pub(crate) fn resolve_stat(fd: i32, syscall_name: &str) -> Result<i32, Error> {
+    use ::sys::error::ErrorCode;
+
+    match resolve_result(fd)? {
+        Some(Resolution {
+            route: Route::Vfs | Route::Console | Route::Terminal | Route::Socket,
+            ..
+        }) => Ok(fd),
+        None => {
+            ::syslog::warn!("{syscall_name}(): bad file descriptor fd={fd}");
+            Err(Error::new(ErrorCode::BadFile, "fd is not a valid descriptor"))
         },
     }
 }
