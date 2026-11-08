@@ -1367,6 +1367,40 @@ fn populate_console_stat_fields(
     };
 }
 
+/// Populates stat fields for a socket descriptor.
+///
+/// A socket has no name, size, or on-disk blocks: `st_mode` carries `S_IFSOCK` with every
+/// permission bit set, as Linux reports for its socket inodes, and `st_size` is `0`. `st_ino`
+/// carries the identity allocated when the socket was registered, and `st_dev` a synthetic sockfs
+/// device distinct from every other filesystem, so distinct live sockets report distinct
+/// `(st_dev, st_ino)` pairs. The identity is deliberately not the `networkd` descriptor, which
+/// `networkd` reuses once a socket is closed. Because the identity and creation time live in the
+/// open socket description, a duplicated or fork-inherited descriptor reports the same values as
+/// its source.
+fn populate_socket_stat_fields(buf: &mut ::sysapi::sys_stat::stat, socket_id: u64, created: i64) {
+    buf.st_size = 0;
+    buf.st_nlink = 1;
+    buf.st_dev = FilesystemDeviceId::SockFs.into();
+    buf.st_ino = socket_id;
+    buf.st_mode =
+        file_type::S_IFSOCK | file_mode::S_IRWXU | file_mode::S_IRWXG | file_mode::S_IRWXO;
+    buf.st_blksize = STAT_BLOCK_SIZE;
+    buf.st_blocks = 0;
+    // A socket has no on-disk metadata; report its creation instant for all three times.
+    buf.st_atim = timespec {
+        tv_sec: created,
+        tv_nsec: 0,
+    };
+    buf.st_mtim = timespec {
+        tv_sec: created,
+        tv_nsec: 0,
+    };
+    buf.st_ctim = timespec {
+        tv_sec: created,
+        tv_nsec: 0,
+    };
+}
+
 /// Gets file status for a VFS file descriptor.
 pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fat32Error> {
     let file: OpenFile = entry_arc(fd)?;
@@ -1427,11 +1461,8 @@ pub fn vfs_fstat(fd: c_int, buf: &mut ::sysapi::sys_stat::stat) -> Result<(), Fa
             TerminalDevice::Tty => *buf = devfs::tty_posix_stat(),
             TerminalDevice::Console => *buf = devfs::console_posix_stat(),
         },
-        VfsFileHandle::Socket(_) => {
-            // TODO: Report socket metadata instead of treating the descriptor as a regular file.
-            let info: filesystem::Stat =
-                filesystem::Stat::new(0, false, FAT_EPOCH_SECS, FAT_EPOCH_SECS, FAT_EPOCH_SECS);
-            buf.update_from_vfs(&info);
+        VfsFileHandle::Socket(handle) => {
+            populate_socket_stat_fields(buf, handle.socket_id(), handle.created());
         },
     }
     set_root_ownership(buf);

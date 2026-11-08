@@ -413,6 +413,12 @@ Socket creation and data I/O remain `networkd` operations. Once a socket endpoin
 `RegisterSocketRequest` adds its backend descriptor to `vfsd`'s flat descriptor table so generic
 operations such as `dup2`, fork, exec, and close have consistent lifetime semantics.
 
+`vfsd` also answers `fstat` for a socket descriptor from its slot. It reports `S_IFSOCK` with no
+size or blocks on a synthetic socket device, and the registration time for all three timestamps.
+The inode number is allocated at registration and never recycled, rather than taken from the
+`networkd` descriptor, which `networkd` reuses after a close. Descriptors duplicated from a socket
+or inherited across fork share its open description, and therefore its identity and timestamps.
+
 When the final reference disappears, `vfsd` sends an IKC `CloseRequest` to `networkd`. This close
 is best effort and fire-and-forget; the event loop recognizes and discards the later
 `CloseResponse`.

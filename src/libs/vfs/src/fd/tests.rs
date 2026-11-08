@@ -1602,6 +1602,21 @@ fn socket_handle_tracks_remote_fd() {
     assert_eq!(handle.remote_fd(), 7, "socket handle should report its networkd descriptor");
 }
 
+/// Tests that every [`SocketHandle`] receives a nonzero identity of its own, even when `networkd`
+/// assigns a later socket the descriptor of an earlier one.
+#[test]
+fn socket_handle_identity_is_unique() {
+    let first: SocketHandle = SocketHandle::new(7);
+    let reused: SocketHandle = SocketHandle::new(7);
+    assert_ne!(first.socket_id(), 0, "a socket identity is never zero");
+    assert_ne!(reused.socket_id(), 0, "a socket identity is never zero");
+    assert_ne!(
+        first.socket_id(),
+        reused.socket_id(),
+        "sockets backed by the same networkd descriptor must have distinct identities"
+    );
+}
+
 /// Tests that [`vfs_register_socket`] allocates a flat slot bound to a socket token, so the
 /// descriptor resolves to the `networkd` descriptor it routes to, is reported as a socket, and
 /// is the last reference when held alone.
@@ -2610,6 +2625,137 @@ fn fstat_console_reports_stable_character_device() {
         (dev, ino),
         "a dup'd console descriptor must share its source's identity"
     );
+
+    forget_processes(&[pid]);
+}
+
+/// Device and inode numbers that `vfs_fstat` reports for a descriptor, followed by the
+/// `(tv_sec, tv_nsec)` pairs of its access, modification, and status change times.
+type StatIdentity = ((dev_t, ino_t), [(::sysapi::sys_types::time_t, ::sysapi::ffi::c_long); 3]);
+
+/// Returns the identity and timestamps that `vfs_fstat` reports for `fd` in the current process.
+fn stat_identity(fd: c_int) -> StatIdentity {
+    let mut st: ::sysapi::sys_stat::stat = Default::default();
+    vfs_fstat(fd, &mut st).expect("fstat should succeed");
+    let times: [(::sysapi::sys_types::time_t, ::sysapi::ffi::c_long); 3] =
+        [st.st_atim, st.st_mtim, st.st_ctim].map(|time| (time.tv_sec, time.tv_nsec));
+    ((st.st_dev, st.st_ino), times)
+}
+
+/// Tests that `vfs_fstat` reports a socket descriptor as a socket rather than as a regular file:
+/// the socket type with every permission bit set, no size or blocks, the synthetic sockfs device,
+/// the identity allocated when the socket was registered, and its registration time for all three
+/// times.
+#[test]
+fn fstat_socket_reports_socket_metadata() {
+    let _guard = FORK_TEST_GUARD.lock();
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7509);
+    set_current_process(pid);
+
+    let fd: c_int = vfs_register_socket(2080).expect("register socket");
+    let file: OpenFile = entry_arc(fd).expect("the socket slot should exist");
+    let (socket_id, created): (u64, i64) = match &file.lock().handle {
+        VfsFileHandle::Socket(handle) => (handle.socket_id(), handle.created()),
+        _ => panic!("a registered socket should hold a socket handle"),
+    };
+
+    let mut st: ::sysapi::sys_stat::stat = Default::default();
+    vfs_fstat(fd, &mut st).expect("fstat socket");
+    assert_eq!(
+        st.st_mode & file_type::S_IFMT,
+        file_type::S_IFSOCK,
+        "a socket descriptor must report as a socket"
+    );
+    assert_eq!(
+        st.st_mode & !file_type::S_IFMT,
+        file_mode::S_IRWXU | file_mode::S_IRWXG | file_mode::S_IRWXO,
+        "a socket must grant every permission, as Linux sockets do"
+    );
+    assert_eq!(st.st_size, 0, "a socket has no size");
+    assert_eq!(st.st_blocks, 0, "a socket has no blocks");
+    assert_eq!(st.st_nlink, 1, "a socket has a single link");
+    assert_eq!(
+        st.st_dev,
+        FilesystemDeviceId::SockFs.into(),
+        "a socket must be on the sockfs device"
+    );
+    assert_eq!(st.st_ino, socket_id, "a socket's inode must be its registered identity");
+    for (name, time) in [
+        ("access", st.st_atim),
+        ("modification", st.st_mtim),
+        ("status change", st.st_ctim),
+    ] {
+        assert_eq!(
+            (time.tv_sec, time.tv_nsec),
+            (created, 0),
+            "a socket must report its registration time as its {name} time"
+        );
+    }
+
+    forget_processes(&[pid]);
+}
+
+/// Tests that a socket's identity and timestamps are stable across `vfs_fstat` calls and shared by
+/// every descriptor that refers to its open description: descriptors duplicated with `dup` and
+/// `dup2`, and descriptors that a child inherits across `fork`.
+#[test]
+fn fstat_socket_identity_is_shared_by_descriptors() {
+    let _guard = FORK_TEST_GUARD.lock();
+    let (parent, child): (ProcessIdentifier, ProcessIdentifier) =
+        (ProcessIdentifier::from(0x7511), ProcessIdentifier::from(0x7512));
+    set_current_process(parent);
+
+    let fd: c_int = vfs_register_socket(2081).expect("register socket");
+    let original: StatIdentity = stat_identity(fd);
+    assert_eq!(stat_identity(fd), original, "repeated fstat calls on a socket must agree");
+
+    let dup_fd: c_int = vfs_dup(fd).expect("dup socket");
+    assert_eq!(
+        stat_identity(dup_fd),
+        original,
+        "a dup'd socket descriptor must share its source's identity and times"
+    );
+    let dup2_fd: c_int = vfs_dup2(fd, dup_fd + 1).expect("dup2 socket");
+    assert_eq!(
+        stat_identity(dup2_fd),
+        original,
+        "a dup2'd socket descriptor must share its source's identity and times"
+    );
+
+    vfs_fork_clone(parent, child).expect("fork clone should succeed");
+    set_current_process(child);
+    assert_eq!(
+        stat_identity(fd),
+        original,
+        "a fork-inherited socket descriptor must share its parent's identity and times"
+    );
+
+    forget_processes(&[parent, child]);
+}
+
+/// Tests that distinct live sockets report distinct `(st_dev, st_ino)` pairs, and that a socket
+/// that reuses both the `networkd` descriptor and the flat descriptor of a closed socket does not
+/// inherit the closed socket's identity.
+#[test]
+fn fstat_distinct_sockets_have_distinct_identities() {
+    let _guard = FORK_TEST_GUARD.lock();
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x750a);
+    set_current_process(pid);
+
+    let first_fd: c_int = vfs_register_socket(2082).expect("register first socket");
+    let second_fd: c_int = vfs_register_socket(2083).expect("register second socket");
+    let (first, _): StatIdentity = stat_identity(first_fd);
+    let (second, _): StatIdentity = stat_identity(second_fd);
+    assert_ne!(first, second, "distinct live sockets must report distinct identities");
+
+    // `networkd` may assign a closed socket's descriptor to a later socket, which the lowest-free
+    // allocator also places at the closed socket's flat descriptor.
+    vfs_close(first_fd).expect("close first socket");
+    let reused_fd: c_int = vfs_register_socket(2082).expect("register reusing socket");
+    assert_eq!(reused_fd, first_fd, "the new socket should reuse the closed socket's descriptor");
+    let (reused, _): StatIdentity = stat_identity(reused_fd);
+    assert_ne!(reused, first, "a new socket must not inherit the identity of a closed socket");
+    assert_ne!(reused, second, "distinct live sockets must report distinct identities");
 
     forget_processes(&[pid]);
 }

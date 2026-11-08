@@ -19,6 +19,7 @@ fn fixed_identifiers_are_nonzero_and_unique() {
         FilesystemDeviceId::Console.into(),
         FilesystemDeviceId::DevFs.into(),
         FilesystemDeviceId::HostFs.into(),
+        FilesystemDeviceId::SockFs.into(),
     ]);
     assert_valid_namespace(&[VfsInodeId::Fallback.into()]);
     assert_valid_namespace(&[HostFsInodeId::Fallback.into()]);
