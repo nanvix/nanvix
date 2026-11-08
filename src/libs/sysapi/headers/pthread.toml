@@ -73,6 +73,14 @@ path = "pthread::PTHREAD_CANCEL_DISABLE"
 comment = "Thread cancellation is disabled."
 
 [[rust_constants]]
+path = "pthread::PTHREAD_CANCEL_DEFERRED"
+comment = "Thread cancellation is deferred."
+
+[[rust_constants]]
+path = "pthread::PTHREAD_CANCEL_ASYNCHRONOUS"
+comment = "Thread cancellation is asynchronous."
+
+[[rust_constants]]
 path = "pthread::PTHREAD_PROCESS_PRIVATE"
 comment = "Synchronization object is private to a process."
 

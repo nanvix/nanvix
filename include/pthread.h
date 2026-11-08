@@ -39,6 +39,8 @@ extern "C" {
 #define PTHREAD_CREATE_DETACHED 1 /**< Thread is created detached. */
 #define PTHREAD_CANCEL_ENABLE 0 /**< Thread cancellation is enabled. */
 #define PTHREAD_CANCEL_DISABLE 1 /**< Thread cancellation is disabled. */
+#define PTHREAD_CANCEL_DEFERRED 0 /**< Thread cancellation is deferred. */
+#define PTHREAD_CANCEL_ASYNCHRONOUS 1 /**< Thread cancellation is asynchronous. */
 #define PTHREAD_PROCESS_PRIVATE 0 /**< Synchronization object is private to a process. */
 #define PTHREAD_PROCESS_SHARED 1 /**< Synchronization object is shared between processes. */
 
