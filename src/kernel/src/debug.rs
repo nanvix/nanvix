@@ -19,12 +19,38 @@ use ::sys::{
 };
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Marker that is written after a truncated debug message.
+const TRUNCATION_MARKER: &str = "...";
+
+//==================================================================================================
 // Standalone Functions
 //==================================================================================================
 
-fn do_debug(buf: &[u8]) -> Result<(), Error> {
+///
+/// # Description
+///
+/// Writes a debug message to the kernel log.
+///
+/// # Parameters
+///
+/// - `buf`: Message to write.
+/// - `truncated`: Whether `buf` holds only the leading part of the message.
+///
+/// # Returns
+///
+/// Upon success, empty is returned. Upon failure, an error is returned instead.
+///
+fn do_debug(buf: &[u8], truncated: bool) -> Result<(), Error> {
     let message: &str = match core::str::from_utf8(buf) {
         Ok(s) => s,
+        // The cut of a truncated message may fall in the middle of its last character, which is
+        // then dropped. The first chunk holds all bytes that precede that character.
+        Err(e) if truncated && e.error_len().is_none() => {
+            buf.utf8_chunks().next().map_or("", |chunk| chunk.valid())
+        },
         Err(e) => {
             let reason: &str = "invalid UTF-8";
             error!("{reason} (error={e:?})");
@@ -35,13 +61,20 @@ fn do_debug(buf: &[u8]) -> Result<(), Error> {
     // exclusively from a single core with interrupts disabled.
     unsafe { crate::klog::puts(message) };
 
+    if truncated {
+        // SAFETY: same as above.
+        unsafe { crate::klog::puts(TRUNCATION_MARKER) };
+    }
+
     Ok(())
 }
 
 ///
 /// # Description
 ///
-/// Kernel call handler for writing a debug message from user space.
+/// Kernel call handler for writing a debug message from user space. At most `DEBUG_BUFFER_SIZE`
+/// bytes of the message are written: a longer message is truncated at a character boundary and
+/// followed by a truncation marker.
 ///
 /// # Parameters
 ///
@@ -67,12 +100,11 @@ pub fn debug(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
         return KcallResult::ok();
     }
 
-    // Sanity check message size.
-    if size > BUFFER_SIZE {
-        let reason: &str = "message too large";
-        error!("{reason}");
-        return KcallResult::Error(ErrorCode::InvalidArgument.into());
-    }
+    // Copy at most a buffer-full of the message, so that the work of this kernel call stays
+    // bounded. Truncate a longer message rather than reject it, so that its leading part still
+    // reaches the kernel log.
+    let truncated: bool = size > BUFFER_SIZE;
+    let size: usize = size.min(BUFFER_SIZE);
 
     let mut kernel_buffer: [u8; BUFFER_SIZE + 1] = [0; BUFFER_SIZE + 1];
 
@@ -85,7 +117,7 @@ pub fn debug(pid: ProcessIdentifier, arg0: u32, arg1: u32) -> KcallResult {
 
     let buf: &[u8] = unsafe { core::slice::from_raw_parts(kernel_buffer.as_ptr(), size) };
 
-    match do_debug(buf) {
+    match do_debug(buf, truncated) {
         Ok(()) => KcallResult::ok(),
         Err(e) => KcallResult::Error(e.code.into()),
     }

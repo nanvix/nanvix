@@ -22,6 +22,7 @@ use ::sys::error::{
 // Modules
 //==================================================================================================
 
+mod debug;
 mod demand_paging;
 mod detach;
 mod direction_flag;
@@ -73,6 +74,8 @@ pub fn main() -> Result<(), Error> {
     rendezvous::run()?;
 
     source_spoofing::run()?;
+
+    debug::run()?;
 
     // Return an error with the specified exit code.
     // The nvx runtime will convert this to the process exit code.

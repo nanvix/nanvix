@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::chunks::Chunks;
 use ::core::{
     fmt,
     fmt::Write,
@@ -121,6 +122,8 @@ pub const MAX_LEVEL: LogLevel = if cfg!(feature = "trace") {
 /// The `Logger` implements the [`core::fmt::Write`] trait, allowing it to be used with Rust's
 /// formatting macros.  The [`Logger::get`] method is used to create a new `Logger` instance with a
 /// given tag and log level, which prefixes each log message with the log level and module path.
+/// Strings that are longer than what a single debug kernel call writes are split across several
+/// calls, so that they reach the kernel log whole.
 ///
 /// This struct is not intended to be used directly by end users; instead, use the provided logging
 /// macros.
@@ -157,8 +160,11 @@ impl core::fmt::Debug for LogLevel {
 
 impl fmt::Write for Logger {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        let slice: &[u8] = s.as_bytes();
-        let _ = ::sys::kcall::debug::__kcall_debug(slice.as_ptr(), slice.len());
+        // The kernel writes at most `MAX_DEBUG_MESSAGE_SIZE` bytes per debug kernel call, so split
+        // longer strings across several calls.
+        for chunk in Chunks::new(s, ::sys::kcall::debug::MAX_DEBUG_MESSAGE_SIZE) {
+            let _ = ::sys::kcall::debug::__kcall_debug(chunk.as_ptr(), chunk.len());
+        }
         Ok(())
     }
 }

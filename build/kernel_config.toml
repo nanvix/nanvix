@@ -140,7 +140,8 @@ cond_open_max = 32
 # Maximum size (in bytes) of a single debug message buffer.
 # Notes:
 # - This value must be smaller than a page.
-# - The kernel debug handler rejects messages larger than this limit.
+# - The kernel debug handler truncates messages larger than this limit: it writes their leading
+#   part, cut at a character boundary, followed by a truncation marker.
 debug_buffer_size = 256
 
 # Size (in bytes) of the kernel log buffer.
