@@ -74,6 +74,9 @@ extern void test_getuid(void);
 // Tests whether we can get the current time of a clock with `clock_gettime()`.
 extern void test_clock_gettime(void);
 
+// Tests whether we can get the time of day with `gettimeofday()`.
+extern void test_gettimeofday(void);
+
 // Tests whether we can sleep for a given amount of time with `nanosleep()`.
 extern void test_nanosleep(void);
 
