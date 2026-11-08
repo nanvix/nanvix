@@ -52,6 +52,7 @@ int main(int argc, const char *argv[])
     test_user_group();
     test_clock_getres();
     test_clock_gettime();
+    test_gettimeofday();
 #ifndef __hyperlight__
     test_nanosleep();
     test_sleep();
