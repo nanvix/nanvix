@@ -8,6 +8,7 @@
 mod common;
 mod debug_console_spam;
 mod event_registration;
+mod heap_growth;
 mod heap_max_capacity;
 mod heap_reclaim;
 mod heap_shrink;
@@ -44,6 +45,8 @@ use ::sys::error::Error;
 /// `Ok(())` on success or an error if any workload fails.
 ///
 pub fn run_all() -> Result<(), Error> {
+    // Must run first, while the heap is still smaller than a growth chunk.
+    heap_growth::run_bulk_growth()?;
     zombie_join_pressure::run()?;
     thread_fan_out::run()?;
     mutex_churn::run()?;
@@ -53,6 +56,9 @@ pub fn run_all() -> Result<(), Error> {
     scheduler_pressure::run()?;
     scoreboard_backpressure::run()?;
     heap_reclaim::run()?;
+    // Runs before heap_max_capacity, which leaves the heap committed close to its capacity, so that
+    // the heap still grows by chunks before it gets close to its capacity here.
+    heap_growth::run_near_capacity()?;
     heap_max_capacity::run()?;
     heap_shrink::run()?;
     sleep_burst::run()?;
