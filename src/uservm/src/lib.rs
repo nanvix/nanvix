@@ -45,6 +45,7 @@ compile_error!("feature `gdb` requires feature `microvm`");
 //==================================================================================================
 
 pub mod args;
+pub mod backoff;
 pub mod counters;
 /// Library module for manipulating ELF binaries.
 pub mod elf;
