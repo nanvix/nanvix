@@ -31,7 +31,6 @@ use ::tokio::{
     task::JoinHandle,
     time::{
         Duration,
-        Instant,
         timeout,
     },
 };
@@ -39,9 +38,6 @@ use ::tokio::{
 //==================================================================================================
 // Constants
 //==================================================================================================
-
-// This value was chosen so it catches issues without polluting the logs with too many warnings.
-pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 
 /// Timeout for shutdown operations.
 /// After this timeout, the orchestrator retries the backend shutdown request.
@@ -112,6 +108,9 @@ pub struct Orchestrator {
     pause_initial_wait: Duration,
     /// Maximum time to wait for a reply in the pause protocol.
     pause_timeout: Duration,
+    /// Identifier of the latest pause attempt, which tells its flush report apart from late reports
+    /// of aborted attempts.
+    pause_attempt: u64,
 }
 
 //==================================================================================================
@@ -147,7 +146,8 @@ pub enum IoControlCommand {
     _PauseMicroVm,
     _CreateSnapshot(String),
     _ResumeMicroVm,
-    SystemCallFlushed,
+    /// System calls were flushed for the pause attempt with the given identifier.
+    SystemCallFlushed(u64),
     Shutdown,
 }
 
@@ -163,7 +163,9 @@ pub enum IoControlResponse {
     MicroVmPauseAborted,
     SnapshotCreated,
     FlushOutput,
-    FlushInput,
+    /// Asks for input to be flushed for the pause attempt with the given identifier, which the I/O
+    /// handler acknowledges with a `SystemCallFlushed` that carries the same identifier.
+    FlushInput(u64),
     Shutdown,
 }
 
@@ -247,6 +249,7 @@ impl Orchestrator {
             shutdown_timeout: SHUTDOWN_TIMEOUT,
             pause_initial_wait: PAUSE_INITIAL_WAIT,
             pause_timeout: PAUSE_TIMEOUT,
+            pause_attempt: 0,
         }
     }
 
@@ -507,10 +510,10 @@ impl Orchestrator {
                 }
                 Ok(Continue(()))
             },
-            IoControlCommand::SystemCallFlushed => {
-                // NOTE: this will be unreachable once the communication is fully implemented
-                // `SystemCallFlushed` should only be sent in the middle of `pause_protocol`.
-                // In fact, it should already be unreachable, but it cannot be tested ATM.
+            IoControlCommand::SystemCallFlushed(_) => {
+                // NOTE: `SystemCallFlushed` should only be sent in the middle of `pause_protocol`,
+                // but the I/O handler may still report a flush after the pause protocol gave up on
+                // it. Such late reports are ignored.
                 Ok(Continue(()))
             },
             IoControlCommand::Shutdown => {
@@ -576,10 +579,13 @@ impl Orchestrator {
     ///
     /// Attempts to pause the MicroVM and its I/O communication.
     ///
-    /// While waiting for the MicroVM to acknowledge the pause request, a warning is logged at
-    /// exponentially growing intervals. If the MicroVM does not acknowledge the request within the
-    /// pause timeout, the protocol is aborted: the request is withdrawn, the MicroVM keeps running,
-    /// and the I/O handler is told that the pause was aborted.
+    /// While waiting for a reply, a warning is logged at exponentially growing intervals. If a reply
+    /// does not arrive within the pause timeout, the protocol is aborted: the MicroVM keeps running,
+    /// and the I/O handler is told that the pause was aborted. To that end, the pause request is
+    /// withdrawn if the MicroVM does not acknowledge it, and the MicroVM is resumed if the I/O
+    /// handler does not report that system calls were flushed. Each attempt to pause the MicroVM
+    /// has its own identifier, so that a late flush report of an aborted attempt is not mistaken
+    /// for the report of a later one.
     ///
     /// # Returns
     ///
@@ -640,10 +646,19 @@ impl Orchestrator {
             .send(IoControlResponse::FlushOutput)
             .await?;
         // TODO (#945): Stop input delivery while paused and wait for acknowledgement.
+        self.pause_attempt = self.pause_attempt.wrapping_add(1);
         self.io_control_tx
-            .send(IoControlResponse::FlushInput)
+            .send(IoControlResponse::FlushInput(self.pause_attempt))
             .await?;
-        self.receive_system_call_flushed().await?;
+        if !self.receive_system_call_flushed().await? {
+            // Resume the MicroVM. Otherwise, it would remain paused after the protocol is aborted,
+            // waiting for a command that no one would send.
+            self.resume_vcpu().await?;
+            self.io_control_tx
+                .send(IoControlResponse::MicroVmPauseAborted)
+                .await?;
+            return Ok(());
+        }
         self.state = State::Paused;
         trace!("State: Running -> Paused");
         self.io_control_tx
@@ -655,35 +670,75 @@ impl Orchestrator {
     ///
     /// # Description
     ///
-    /// Attempts to receive a `SystemCallFlushed` message from the control input.
+    /// Attempts to receive a `SystemCallFlushed` message for the latest pause attempt from the
+    /// control input, within the pause timeout.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, `true` is returned if the message was received, or `false` if the pause timeout
+    /// expired first. Otherwise, an error is returned instead.
+    ///
+    async fn receive_system_call_flushed(&mut self) -> Result<bool> {
+        let mut backoff: BackoffTimeout =
+            BackoffTimeout::start(self.pause_initial_wait, self.pause_timeout);
+        loop {
+            // A message that is ready is received even if the current wait has expired, so check
+            // the deadline before each receive. Otherwise, unrelated messages, which are skipped,
+            // could keep postponing the abort.
+            let remaining: Duration = backoff.remaining();
+            if !remaining.is_zero() {
+                match timeout(remaining, self.io_control_rx.recv()).await {
+                    Ok(Some(IoControlCommand::SystemCallFlushed(attempt)))
+                        if attempt == self.pause_attempt =>
+                    {
+                        return Ok(true);
+                    },
+                    Ok(Some(_other)) => {
+                        // Ignore unrelated messages during flushing, including late flush reports
+                        // of aborted pause attempts.
+                        continue;
+                    },
+                    Ok(None) => {
+                        let reason: String =
+                            "io_control_rx closed while waiting for SystemCallFlushed".to_string();
+                        error!("receive_system_call_flushed(): {reason}");
+                        anyhow::bail!(reason)
+                    },
+                    Err(_elapsed) => {},
+                }
+            }
+            // The current wait has expired.
+            let elapsed_ms: u128 = backoff.elapsed().as_millis();
+            if !backoff.extend() {
+                error!(
+                    "receive_system_call_flushed(): system calls were not flushed within \
+                     {elapsed_ms}ms"
+                );
+                return Ok(false);
+            }
+            warn!(
+                "receive_system_call_flushed(): {}ms have passed waiting for `SystemCallFlushed`",
+                elapsed_ms
+            );
+        }
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Withdraws the pause request and tells the vCPU to resume execution.
     ///
     /// # Returns
     ///
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
-    async fn receive_system_call_flushed(&mut self) -> Result<()> {
-        let start: Instant = Instant::now();
-        let warn_interval: Duration = Duration::from_millis(TIMEOUT_WARNING_INTERVAL_IN_MS as u64);
-        loop {
-            match timeout(warn_interval, self.io_control_rx.recv()).await {
-                Ok(Some(IoControlCommand::SystemCallFlushed)) => break,
-                Ok(Some(_other)) => {
-                    // Ignore unrelated messages during flushing.
-                    continue;
-                },
-                Ok(None) => {
-                    let reason: String =
-                        "io_control_rx closed while waiting for SystemCallFlushed".to_string();
-                    error!("receive_system_call_flushed(): {reason}");
-                    anyhow::bail!(reason)
-                },
-                Err(_) => {
-                    let elapsed_ms: usize = start.elapsed().as_millis() as usize;
-                    warn!("{}ms have passed waiting for `SystemCallFlushed`", elapsed_ms);
-                    continue;
-                },
-            }
-        }
+    async fn resume_vcpu(&mut self) -> Result<()> {
+        // Write to the kernel a pause is no longer requested.
+        (self.resume_microvm)().await?;
+        // Tell microvm to resume
+        self.vcpu_control_tx
+            .send(VcpuControlCommand::Resume)
+            .await?;
         Ok(())
     }
 
@@ -697,12 +752,7 @@ impl Orchestrator {
     /// Upon success, empty is returned. Otherwise, an error is returned instead.
     ///
     async fn resume_protocol(&mut self) -> Result<()> {
-        // Write to the kernel a pause is no longer requested.
-        (self.resume_microvm)().await?;
-        // Tell microvm to resume
-        self.vcpu_control_tx
-            .send(VcpuControlCommand::Resume)
-            .await?;
+        self.resume_vcpu().await?;
         self.state = State::Running;
         trace!("State: Paused -> Running");
         Ok(())

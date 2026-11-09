@@ -11,6 +11,7 @@ use ::std::{
             Ordering,
         },
     },
+    thread,
     time::Duration,
 };
 use ::tokio::{
@@ -129,6 +130,19 @@ async fn wait_for_pause_request(pause_called: &AtomicBool) {
     .expect("pause request timed out");
 }
 
+// Utility to make the vCPU acknowledge pause requests as soon as they are made. This way, the
+// pause timeout only bounds the wait for the flush report, however tasks are scheduled.
+fn acknowledge_pause_requests_at_once(h: &mut Harness) {
+    let vcpu_resp_tx: mpsc::Sender<VcpuControlResponse> = h.vcpu_resp_tx.clone();
+    h.orchestrator.pause_microvm = Box::new(move || {
+        let vcpu_resp_tx: mpsc::Sender<VcpuControlResponse> = vcpu_resp_tx.clone();
+        Box::pin(async move {
+            vcpu_resp_tx.send(VcpuControlResponse::Paused).await?;
+            Ok(())
+        })
+    });
+}
+
 // Utility to shut down a running orchestrator through the vCPU and to check that it cleans up,
 // which also shows that it was still running.
 async fn shutdown_through_vcpu(
@@ -239,7 +253,7 @@ async fn pause_and_resume_flow() -> AnyResult<()> {
         // Allow orchestrator to send FlushOutput & FlushInput, then provide SystemCallFlushed.
         sleep(Duration::from_millis(5)).await;
         let _ = io_cmd_tx_clone
-            .send(IoControlCommand::SystemCallFlushed)
+            .send(IoControlCommand::SystemCallFlushed(1))
             .await;
     });
 
@@ -247,7 +261,7 @@ async fn pause_and_resume_flow() -> AnyResult<()> {
     let r1 = recv_io_resp(&mut h.io_resp_rx).await;
     assert!(matches!(r1, IoControlResponse::FlushOutput));
     let r2 = recv_io_resp(&mut h.io_resp_rx).await;
-    assert!(matches!(r2, IoControlResponse::FlushInput));
+    assert!(matches!(r2, IoControlResponse::FlushInput(1)));
     let r3 = recv_io_resp(&mut h.io_resp_rx).await;
     assert!(matches!(r3, IoControlResponse::MicroVmPaused));
     assert!(h.pause_called.load(Ordering::SeqCst));
@@ -290,9 +304,9 @@ async fn pause_tolerates_slow_vcpu_acknowledgement() -> AnyResult<()> {
     let r1: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
     assert!(matches!(r1, IoControlResponse::FlushOutput));
     let r2: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
-    assert!(matches!(r2, IoControlResponse::FlushInput));
+    assert!(matches!(r2, IoControlResponse::FlushInput(1)));
     h.io_cmd_tx
-        .send(IoControlCommand::SystemCallFlushed)
+        .send(IoControlCommand::SystemCallFlushed(1))
         .await?;
     let r3: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
     assert!(matches!(r3, IoControlResponse::MicroVmPaused));
@@ -322,5 +336,118 @@ async fn pause_aborts_when_vcpu_does_not_acknowledge() -> AnyResult<()> {
     assert!(h.vcpu_cmd_rx.try_recv().is_err());
 
     // Expect the orchestrator to keep running, rather than to exit and stop the memory thread.
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}
+
+#[tokio::test]
+async fn pause_resumes_vcpu_when_system_calls_are_not_flushed() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    h.orchestrator.pause_initial_wait = Duration::from_millis(1);
+    h.orchestrator.pause_timeout = Duration::from_millis(20);
+    acknowledge_pause_requests_at_once(&mut h);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Move to Running state and request pause, which the vCPU acknowledges, but never report that
+    // system calls were flushed.
+    h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+    let r1: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r1, IoControlResponse::FlushOutput));
+    let r2: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r2, IoControlResponse::FlushInput(1)));
+
+    // Expect the orchestrator to resume the vCPU, which is waiting for a command.
+    let resume_cmd: VcpuControlCommand = timeout(Duration::from_millis(500), h.vcpu_cmd_rx.recv())
+        .await?
+        .expect("vcpu command channel closed unexpectedly");
+    assert!(matches!(resume_cmd, VcpuControlCommand::Resume));
+    assert!(h.resume_called.load(Ordering::SeqCst));
+
+    // Expect the orchestrator to abort the pause protocol, rather than to tell the I/O handler that
+    // the MicroVM paused.
+    let r3: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r3, IoControlResponse::MicroVmPauseAborted));
+
+    // Expect the orchestrator to keep running, rather than to exit and stop the memory thread.
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}
+
+#[tokio::test]
+async fn pause_flush_timeout_is_not_postponed_by_unrelated_commands() -> AnyResult<()> {
+    let pause_timeout: Duration = Duration::from_millis(20);
+    let mut h: Harness = build_harness();
+    h.orchestrator.pause_initial_wait = Duration::from_millis(1);
+    h.orchestrator.pause_timeout = pause_timeout;
+    acknowledge_pause_requests_at_once(&mut h);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Move to Running state and request pause, which the vCPU acknowledges.
+    h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+    let r1: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r1, IoControlResponse::FlushOutput));
+    let r2: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r2, IoControlResponse::FlushInput(1)));
+
+    // The orchestrator now waits for the flush report on this single-threaded runtime. Block the
+    // runtime until the pause timeout expires, and only then queue unrelated commands followed by
+    // a late flush report, so that all of them are ready once the orchestrator runs again.
+    thread::sleep(pause_timeout + Duration::from_millis(100));
+    h.io_cmd_tx
+        .try_send(IoControlCommand::_StartMicroVm)
+        .expect("failed to queue unrelated command");
+    h.io_cmd_tx
+        .try_send(IoControlCommand::_StartMicroVm)
+        .expect("failed to queue unrelated command");
+    h.io_cmd_tx
+        .try_send(IoControlCommand::SystemCallFlushed(1))
+        .expect("failed to queue flush report");
+
+    // Expect the orchestrator to abort the pause protocol rather than to keep receiving the queued
+    // commands, which would eventually complete the protocol.
+    let resume_cmd: VcpuControlCommand = timeout(Duration::from_millis(500), h.vcpu_cmd_rx.recv())
+        .await?
+        .expect("vcpu command channel closed unexpectedly");
+    assert!(matches!(resume_cmd, VcpuControlCommand::Resume));
+    let r3: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r3, IoControlResponse::MicroVmPauseAborted));
+
+    // Expect the orchestrator to keep running, and to handle the remaining commands as usual.
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}
+
+#[tokio::test]
+async fn pause_ignores_late_flush_report_of_aborted_attempt() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    h.orchestrator.pause_initial_wait = Duration::from_millis(1);
+    h.orchestrator.pause_timeout = Duration::from_millis(20);
+    acknowledge_pause_requests_at_once(&mut h);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Move to Running state and request pause, whose flush is not reported in time.
+    h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+    let r1: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r1, IoControlResponse::FlushOutput));
+    let r2: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r2, IoControlResponse::FlushInput(1)));
+    let r3: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r3, IoControlResponse::MicroVmPauseAborted));
+
+    // Request pause again, and only then report the flush of the aborted attempt.
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+    let r4: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r4, IoControlResponse::FlushOutput));
+    let r5: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r5, IoControlResponse::FlushInput(2)));
+    h.io_cmd_tx
+        .send(IoControlCommand::SystemCallFlushed(1))
+        .await?;
+
+    // Expect the orchestrator not to take the late report for the flush of the second attempt,
+    // which is not reported either, and thus to abort that attempt too.
+    let r6: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r6, IoControlResponse::MicroVmPauseAborted));
+
     shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
 }
