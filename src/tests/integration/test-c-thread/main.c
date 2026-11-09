@@ -122,7 +122,10 @@ int main(int argc, const char *argv[])
     STATIC_ASSERT_SIZE(pthread_rwlock_t, sizeof(uint32_t));
 
     // Sanity check size of `pthread_rwlockattr_t` type.
-    STATIC_ASSERT_SIZE(pthread_rwlockattr_t, sizeof(int));
+    STATIC_ASSERT_SIZE(pthread_rwlockattr_t,
+                       sizeof(int) +   // is_initialized
+                           sizeof(int) // pshared
+    );
     STATIC_ASSERT_ALIGNMENT(pthread_rwlockattr_t, _Alignof(int));
 
     // Sanity check size of `sem_t` type.

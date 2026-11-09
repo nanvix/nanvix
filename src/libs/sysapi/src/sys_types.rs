@@ -364,6 +364,8 @@ impl Default for pthread_mutexattr_t {
 pub struct pthread_rwlockattr_t {
     /// Whether the attributes are initialized.
     is_initialized: c_int,
+    /// Process-sharing attribute.
+    pshared: c_int,
 }
 ::static_assert::assert_eq_size!(pthread_rwlockattr_t, pthread_rwlockattr_t::SIZE);
 ::static_assert::assert_eq_align!(pthread_rwlockattr_t, core::mem::align_of::<c_int>());
@@ -371,14 +373,39 @@ pub struct pthread_rwlockattr_t {
 impl pthread_rwlockattr_t {
     /// Size of the `is_initialized` field.
     const SIZE_OF_IS_INITIALIZED: usize = size_of::<c_int>();
+    /// Size of the `pshared` field.
+    const SIZE_OF_PSHARED: usize = size_of::<c_int>();
 
     /// Size of `pthread_rwlockattr_t` structure.
-    pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED;
+    pub const SIZE: usize = Self::SIZE_OF_IS_INITIALIZED + Self::SIZE_OF_PSHARED;
+
+    /// Returns whether the read-write lock attributes object is initialized.
+    pub fn is_initialized(&self) -> bool {
+        self.is_initialized != 0
+    }
+
+    /// Marks the read-write lock attributes object as uninitialized.
+    pub fn uninitialize(&mut self) {
+        self.is_initialized = 0;
+    }
+
+    /// Returns the process-sharing attribute.
+    pub fn pshared(&self) -> c_int {
+        self.pshared
+    }
+
+    /// Sets the process-sharing attribute.
+    pub fn set_pshared(&mut self, pshared: c_int) {
+        self.pshared = pshared;
+    }
 }
 
 impl Default for pthread_rwlockattr_t {
     fn default() -> Self {
-        Self { is_initialized: 1 }
+        Self {
+            is_initialized: 1,
+            pshared: PTHREAD_PROCESS_PRIVATE,
+        }
     }
 }
 

@@ -80,6 +80,7 @@ typedef struct {
 /** @brief Read-write lock attributes. */
 typedef struct {
     int is_initialized; /**< Whether the attributes are initialized. */
+    int pshared;        /**< Process-sharing attribute.              */
 } pthread_rwlockattr_t;
 
 /** @brief One-time initialization control. */
