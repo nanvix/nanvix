@@ -28,7 +28,7 @@ use ::syslog::trace_libcall;
 /// # Parameters
 ///
 /// - `rwlock`: Read-write lock object.
-/// - `attr`: Read-write lock attributes (currently ignored if non-null).
+/// - `attr`: Read-write lock attributes. If null, the default attributes are used.
 ///
 /// # Return Value
 ///
@@ -41,6 +41,7 @@ use ::syslog::trace_libcall;
 /// It is safe to call this function if the following conditions are met:
 ///
 /// - `rwlock` points to a valid `pthread_rwlock_t` object.
+/// - `attr` is null or points to a valid `pthread_rwlockattr_t` object.
 ///
 #[unsafe(no_mangle)]
 #[trace_libcall]
@@ -64,8 +65,10 @@ pub unsafe extern "C" fn pthread_rwlock_init(
         return ErrorCode::InvalidArgument.get();
     }
 
-    // Check if custom attributes were passed in.
-    if !attr.is_null() {
+    // Use default attributes if none were passed in.
+    let attr: pthread_rwlockattr_t = if attr.is_null() {
+        pthread_rwlockattr_t::default()
+    } else {
         // Check if `attr` is unaligned.
         if !(attr as usize).is_multiple_of(align_of::<pthread_rwlockattr_t>()) {
             ::syslog::warn!(
@@ -75,11 +78,8 @@ pub unsafe extern "C" fn pthread_rwlock_init(
             return ErrorCode::InvalidArgument.get();
         }
 
-        // TODO (#978): support custom attributes.
-        ::syslog::warn!("pthread_rwlock_init(): custom attributes not supported, ignoring");
-    }
-
-    let attr: pthread_rwlockattr_t = pthread_rwlockattr_t::default();
+        *attr
+    };
 
     // Attempt to initialize read-write lock and check for errors.
     if let Err(error) = crate::pthread::pthread_rwlock_init(&mut *rwlock, &attr) {
