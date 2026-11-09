@@ -196,6 +196,10 @@ functions = [
     "pthread_rwlock_rdlock",
     "pthread_rwlock_wrlock",
     "pthread_rwlock_unlock",
+    "pthread_rwlockattr_init",
+    "pthread_rwlockattr_destroy",
+    "pthread_rwlockattr_getpshared",
+    "pthread_rwlockattr_setpshared",
 ]
 
 [[sections]]

@@ -35,7 +35,11 @@ use ::sys::{
     },
 };
 use ::sysapi::{
-    pthread::PTHREAD_RWLOCK_INITIALIZER,
+    pthread::{
+        PTHREAD_PROCESS_PRIVATE,
+        PTHREAD_PROCESS_SHARED,
+        PTHREAD_RWLOCK_INITIALIZER,
+    },
     sys_types::{
         pthread_rwlock_t,
         pthread_rwlockattr_t,
@@ -150,10 +154,38 @@ static RWLOCKS: Lazy<Mutex<BTreeMap<usize, ReadWriteLock>>> =
 /// On success, this function returns empty. On failure, it returns an error describing the reason
 /// for the failure.
 ///
+/// # Errors
+///
+/// - `InvalidArgument`: `attr` is not initialized, `attr` holds an invalid process-sharing
+///   attribute, or `rwlock` is already initialized.
+/// - `OperationNotSupported`: `attr` requests a process-shared read-write lock.
+///
 pub fn pthread_rwlock_init(
     rwlock: &mut pthread_rwlock_t,
     attr: &pthread_rwlockattr_t,
 ) -> Result<(), Error> {
+    // Check if the read-write lock attributes object is initialized.
+    if !attr.is_initialized() {
+        let reason: &str = "read-write lock attributes are not initialized";
+        ::syslog::warn!("pthread_rwlock_init(): {reason}");
+        return Err(Error::new(ErrorCode::InvalidArgument, reason));
+    }
+
+    // Check if the process-sharing attribute is supported.
+    match attr.pshared() {
+        PTHREAD_PROCESS_PRIVATE => {},
+        PTHREAD_PROCESS_SHARED => {
+            let reason: &str = "process-shared read-write locks are not supported";
+            ::syslog::warn!("pthread_rwlock_init(): {reason}");
+            return Err(Error::new(ErrorCode::OperationNotSupported, reason));
+        },
+        pshared => {
+            let reason: &str = "invalid process-sharing attribute";
+            ::syslog::warn!("pthread_rwlock_init(): {reason} (pshared={pshared})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        },
+    }
+
     // Register read-write lock if it is not yet registered.
     if let Entry::Vacant(entry) = RWLOCKS
         .lock()

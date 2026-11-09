@@ -80,6 +80,7 @@ typedef struct {
 /** @brief Read-write lock attributes. */
 typedef struct {
     int is_initialized; /**< Whether the attributes are initialized. */
+    int pshared;        /**< Process-sharing attribute.              */
 } pthread_rwlockattr_t;
 
 /** @brief One-time initialization control. */
@@ -175,6 +176,10 @@ extern int pthread_rwlock_destroy(pthread_rwlock_t *rwlock);
 extern int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock);
 extern int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
 extern int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
+extern int pthread_rwlockattr_init(pthread_rwlockattr_t *attr);
+extern int pthread_rwlockattr_destroy(pthread_rwlockattr_t *attr);
+extern int pthread_rwlockattr_getpshared(const pthread_rwlockattr_t *attr, int *pshared);
+extern int pthread_rwlockattr_setpshared(pthread_rwlockattr_t *attr, int pshared);
 
 /*==================================================================================================
  * Thread-Specific Data
