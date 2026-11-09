@@ -117,6 +117,41 @@ async fn recv_io_resp(rx: &mut mpsc::Receiver<IoControlResponse>) -> IoControlRe
         .expect("io response channel closed")
 }
 
+// Utility to wait until the orchestrator requests the MicroVM to pause. From then on, the
+// orchestrator is running the pause protocol, so vCPU responses are handled by that protocol.
+async fn wait_for_pause_request(pause_called: &AtomicBool) {
+    timeout(Duration::from_millis(500), async {
+        while !pause_called.load(Ordering::SeqCst) {
+            sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("pause request timed out");
+}
+
+// Utility to shut down a running orchestrator through the vCPU and to check that it cleans up,
+// which also shows that it was still running.
+async fn shutdown_through_vcpu(
+    vcpu_resp_tx: &mpsc::Sender<VcpuControlResponse>,
+    mem_cmd_rx: &mut mpsc::Receiver<MemoryControlCommand>,
+    io_resp_rx: &mut mpsc::Receiver<IoControlResponse>,
+    handle: JoinHandle<Result<()>>,
+) -> AnyResult<()> {
+    vcpu_resp_tx.send(VcpuControlResponse::Shutdown).await?;
+    let mem_cmd: MemoryControlCommand = timeout(Duration::from_millis(500), mem_cmd_rx.recv())
+        .await?
+        .expect("memory control channel closed unexpectedly");
+    assert!(matches!(mem_cmd, MemoryControlCommand::Shutdown));
+    let io_resp: IoControlResponse = recv_io_resp(io_resp_rx).await;
+    assert!(matches!(io_resp, IoControlResponse::Shutdown));
+
+    let result: Result<()> = timeout(Duration::from_millis(500), handle)
+        .await?
+        .expect("orchestrator join failed");
+    assert!(result.is_ok());
+    Ok(())
+}
+
 #[tokio::test]
 async fn run_shutdown_sends_cleanup_messages() -> AnyResult<()> {
     let mut h: Harness = build_harness();
@@ -234,4 +269,58 @@ async fn pause_and_resume_flow() -> AnyResult<()> {
     let res = handle.await.expect("join failed");
     assert!(res.is_ok());
     Ok(())
+}
+
+#[tokio::test]
+async fn pause_tolerates_slow_vcpu_acknowledgement() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    h.orchestrator.pause_initial_wait = Duration::from_millis(1);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Move to Running state and request pause.
+    h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+
+    // Acknowledge the pause request only after several waits have expired.
+    wait_for_pause_request(&h.pause_called).await;
+    sleep(Duration::from_millis(20)).await;
+    h.vcpu_resp_tx.send(VcpuControlResponse::Paused).await?;
+
+    // Expect the pause protocol to carry on rather than to be aborted.
+    let r1: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r1, IoControlResponse::FlushOutput));
+    let r2: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r2, IoControlResponse::FlushInput));
+    h.io_cmd_tx
+        .send(IoControlCommand::SystemCallFlushed)
+        .await?;
+    let r3: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(r3, IoControlResponse::MicroVmPaused));
+    assert!(!h.resume_called.load(Ordering::SeqCst));
+
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}
+
+#[tokio::test]
+async fn pause_aborts_when_vcpu_does_not_acknowledge() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    h.orchestrator.pause_initial_wait = Duration::from_millis(1);
+    h.orchestrator.pause_timeout = Duration::from_millis(20);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Move to Running state and request pause, which the vCPU never acknowledges.
+    h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+
+    // Expect the orchestrator to abort the pause protocol without asking for a flush.
+    let io_resp: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(io_resp, IoControlResponse::MicroVmPauseAborted));
+    assert!(h.pause_called.load(Ordering::SeqCst));
+
+    // Expect the pause request to be withdrawn, and the vCPU to receive no command.
+    assert!(h.resume_called.load(Ordering::SeqCst));
+    assert!(h.vcpu_cmd_rx.try_recv().is_err());
+
+    // Expect the orchestrator to keep running, rather than to exit and stop the memory thread.
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
 }

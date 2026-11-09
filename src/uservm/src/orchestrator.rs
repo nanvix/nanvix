@@ -5,6 +5,7 @@
 // Imports
 //==================================================================================================
 
+use crate::backoff::BackoffTimeout;
 use ::anyhow::Result;
 use ::log::{
     debug,
@@ -45,6 +46,15 @@ pub const TIMEOUT_WARNING_INTERVAL_IN_MS: usize = 10;
 /// Timeout for shutdown operations.
 /// After this timeout, the orchestrator retries the backend shutdown request.
 pub const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(5000);
+
+/// Initial time to wait for a reply in the pause protocol.
+/// Each time a wait expires, a warning is logged and the next wait lasts twice as long, so that a
+/// slow reply is reported at exponentially growing intervals instead of flooding the logs.
+pub const PAUSE_INITIAL_WAIT: Duration = Duration::from_millis(10);
+
+/// Timeout for replies in the pause protocol.
+/// After this timeout, the orchestrator aborts the pause protocol.
+pub const PAUSE_TIMEOUT: Duration = Duration::from_millis(5000);
 
 //==================================================================================================
 // Types
@@ -98,6 +108,10 @@ pub struct Orchestrator {
     shutdown_vcpu: Box<ShutdownVcpuFn>,
     /// Maximum time to wait for the vCPU to confirm shutdown.
     shutdown_timeout: Duration,
+    /// Initial time to wait for a reply in the pause protocol.
+    pause_initial_wait: Duration,
+    /// Maximum time to wait for a reply in the pause protocol.
+    pause_timeout: Duration,
 }
 
 //==================================================================================================
@@ -145,6 +159,8 @@ pub enum IoControlCommand {
 #[derive(Debug, PartialEq)]
 pub enum IoControlResponse {
     MicroVmPaused,
+    /// The pause protocol was aborted, and the MicroVM kept running.
+    MicroVmPauseAborted,
     SnapshotCreated,
     FlushOutput,
     FlushInput,
@@ -229,6 +245,8 @@ impl Orchestrator {
             load_snapshot,
             shutdown_vcpu,
             shutdown_timeout: SHUTDOWN_TIMEOUT,
+            pause_initial_wait: PAUSE_INITIAL_WAIT,
+            pause_timeout: PAUSE_TIMEOUT,
         }
     }
 
@@ -558,18 +576,24 @@ impl Orchestrator {
     ///
     /// Attempts to pause the MicroVM and its I/O communication.
     ///
+    /// While waiting for the MicroVM to acknowledge the pause request, a warning is logged at
+    /// exponentially growing intervals. If the MicroVM does not acknowledge the request within the
+    /// pause timeout, the protocol is aborted: the request is withdrawn, the MicroVM keeps running,
+    /// and the I/O handler is told that the pause was aborted.
+    ///
     /// # Returns
     ///
-    /// Upon success, empty is returned. Otherwise, an error is returned.
+    /// Empty is returned once the MicroVM pauses or the protocol is aborted. Otherwise, an error is
+    /// returned.
     ///
     async fn pause_protocol(&mut self) -> Result<()> {
         // TODO (#945): Tell the I/O handler to flush before pausing.
         (self.pause_microvm)().await?;
         // Wait for the MicroVM to confirm it has paused without busy spinning.
-        let start: Instant = Instant::now();
-        let warn_interval: Duration = Duration::from_millis(TIMEOUT_WARNING_INTERVAL_IN_MS as u64);
+        let mut backoff: BackoffTimeout =
+            BackoffTimeout::start(self.pause_initial_wait, self.pause_timeout);
         loop {
-            match timeout(warn_interval, self.vcpu_control_rx.recv()).await {
+            match timeout(backoff.remaining(), self.vcpu_control_rx.recv()).await {
                 Ok(Some(command)) => {
                     if command == VcpuControlResponse::Paused {
                         break;
@@ -587,8 +611,21 @@ impl Orchestrator {
                     anyhow::bail!(reason)
                 },
                 Err(_error) => {
+                    let elapsed_ms: u128 = backoff.elapsed().as_millis();
+                    if !backoff.extend() {
+                        error!(
+                            "pause_protocol(): vCPU did not acknowledge the pause request within \
+                             {elapsed_ms}ms, aborting"
+                        );
+                        // Withdraw the pause request. Otherwise, the MicroVM could pause after the
+                        // protocol is aborted, when no one expects it to.
+                        (self.resume_microvm)().await?;
+                        self.io_control_tx
+                            .send(IoControlResponse::MicroVmPauseAborted)
+                            .await?;
+                        return Ok(());
+                    }
                     // Timeout elapsed; log progressively.
-                    let elapsed_ms: usize = start.elapsed().as_millis() as usize;
                     warn!(
                         "pause_protocol(): {}ms have passed waiting for `Paused` message from vCPU",
                         elapsed_ms
