@@ -176,6 +176,8 @@ extern int pthread_rwlock_destroy(pthread_rwlock_t *rwlock);
 extern int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock);
 extern int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
 extern int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
+extern int pthread_rwlockattr_init(pthread_rwlockattr_t *attr);
+extern int pthread_rwlockattr_destroy(pthread_rwlockattr_t *attr);
 
 /*==================================================================================================
  * Thread-Specific Data

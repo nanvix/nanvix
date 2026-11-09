@@ -41,6 +41,8 @@ pub mod pthread_rwlock_init;
 pub mod pthread_rwlock_rdlock;
 pub mod pthread_rwlock_unlock;
 pub mod pthread_rwlock_wrlock;
+pub mod pthread_rwlockattr_destroy;
+pub mod pthread_rwlockattr_init;
 pub mod pthread_self;
 pub mod pthread_setcancelstate;
 pub mod pthread_setcanceltype;
