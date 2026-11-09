@@ -1159,7 +1159,7 @@ jobs:
       # Ported POSIX C test suites. Boots the prebuilt <suite>.initrd images
       # (built by the Windows build job via all-posix-test-images and downloaded
       # with the artifact) directly under WHP through the nanvix-test harness,
-      # asserting each guest exit code is 0. No rebuild is needed here.
+      # asserting the expected exit code of each guest. No rebuild is needed here.
       - name: "POSIX C Suites (${{ matrix.machine-type }}, shard ${{ matrix.shard }}/4)"
         if: steps.whp-check.outputs.whp_available == 'true'
         shell: pwsh
