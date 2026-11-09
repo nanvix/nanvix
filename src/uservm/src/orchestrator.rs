@@ -365,6 +365,13 @@ impl Orchestrator {
                             info!("wait_for_shutdown(): vCPU shutdown confirmed");
                             return Ok(());
                         },
+                        Some(VcpuControlResponse::Paused) => {
+                            // The vCPU may still acknowledge a pause request after the pause
+                            // protocol gave up on it and withdrew it. Resume the vCPU, which waits for
+                            // a command, so that it observes the shutdown request.
+                            warn!("wait_for_shutdown(): vCPU paused during shutdown, resuming it");
+                            self.resume_vcpu().await?;
+                        },
                         Some(other) => {
                             warn!("wait_for_shutdown(): unexpected vCPU response: {other:?}");
                         },
@@ -539,6 +546,16 @@ impl Orchestrator {
         control_response: VcpuControlResponse,
     ) -> Result<ControlFlow<()>> {
         match control_response {
+            VcpuControlResponse::Paused if self.state == State::Running => {
+                // The vCPU may still acknowledge a pause request after the pause protocol gave up on
+                // it and withdrew it. The vCPU then waits for a command, so resume it.
+                warn!(
+                    "try_receive_from_vcpu(): vCPU paused outside of the pause protocol, resuming \
+                     it"
+                );
+                self.resume_vcpu().await?;
+                Ok(Continue(()))
+            },
             VcpuControlResponse::Paused => {
                 let reason: String =
                     "paused command should only be received during the pause protocol".to_string();

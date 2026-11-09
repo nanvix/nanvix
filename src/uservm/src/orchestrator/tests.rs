@@ -130,6 +130,19 @@ async fn wait_for_pause_request(pause_called: &AtomicBool) {
     .expect("pause request timed out");
 }
 
+// Utility to wait until the orchestrator requests the vCPU to shut down. From then on, the
+// orchestrator waits for the vCPU to confirm the shutdown, so vCPU responses are handled by that
+// wait.
+async fn wait_for_shutdown_request(shutdown_called: &AtomicBool) {
+    timeout(Duration::from_millis(500), async {
+        while !shutdown_called.load(Ordering::SeqCst) {
+            sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("shutdown request timed out");
+}
+
 // Utility to make the vCPU acknowledge pause requests as soon as they are made. This way, the
 // pause timeout only bounds the wait for the flush report, however tasks are scheduled.
 fn acknowledge_pause_requests_at_once(h: &mut Harness) {
@@ -449,5 +462,73 @@ async fn pause_ignores_late_flush_report_of_aborted_attempt() -> AnyResult<()> {
     let r6: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
     assert!(matches!(r6, IoControlResponse::MicroVmPauseAborted));
 
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}
+
+#[tokio::test]
+async fn pause_resumes_vcpu_that_acknowledges_after_abort() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    h.orchestrator.pause_initial_wait = Duration::from_millis(1);
+    h.orchestrator.pause_timeout = Duration::from_millis(20);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Move to Running state and request pause, which the vCPU acknowledges only once the pause
+    // protocol was aborted.
+    h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+    let io_resp: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(io_resp, IoControlResponse::MicroVmPauseAborted));
+    h.vcpu_resp_tx.send(VcpuControlResponse::Paused).await?;
+
+    // Expect the orchestrator to resume the vCPU, which waits for a command, and to keep running.
+    let resume_cmd: VcpuControlCommand = timeout(Duration::from_millis(500), h.vcpu_cmd_rx.recv())
+        .await?
+        .expect("vcpu command channel closed unexpectedly");
+    assert!(matches!(resume_cmd, VcpuControlCommand::Resume));
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}
+
+#[tokio::test]
+async fn pause_acknowledgement_before_start_fails() -> AnyResult<()> {
+    let h: Harness = build_harness();
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Acknowledge a pause request that was never made, before the MicroVM started.
+    h.vcpu_resp_tx.send(VcpuControlResponse::Paused).await?;
+
+    // Expect the orchestrator to treat it as a protocol violation.
+    let result: Result<()> = timeout(Duration::from_millis(500), handle)
+        .await?
+        .expect("orchestrator join failed");
+    assert!(result.is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn shutdown_resumes_vcpu_that_acknowledges_after_abort() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    h.orchestrator.pause_initial_wait = Duration::from_millis(1);
+    h.orchestrator.pause_timeout = Duration::from_millis(20);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Move to Running state and request pause, which the vCPU does not acknowledge in time.
+    h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+    let io_resp: IoControlResponse = recv_io_resp(&mut h.io_resp_rx).await;
+    assert!(matches!(io_resp, IoControlResponse::MicroVmPauseAborted));
+
+    // Request shutdown, and only then acknowledge the withdrawn pause request.
+    h.io_cmd_tx.send(IoControlCommand::Shutdown).await?;
+    wait_for_shutdown_request(&h.shutdown_called).await;
+    h.vcpu_resp_tx.send(VcpuControlResponse::Paused).await?;
+
+    // Expect the orchestrator to resume the vCPU, so that it observes the shutdown request, rather
+    // than to wait for the shutdown timeout.
+    let resume_cmd: VcpuControlCommand = timeout(Duration::from_millis(500), h.vcpu_cmd_rx.recv())
+        .await?
+        .expect("vcpu command channel closed unexpectedly");
+    assert!(matches!(resume_cmd, VcpuControlCommand::Resume));
+
+    // Expect the orchestrator to complete the shutdown once the vCPU confirms it.
     shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
 }
