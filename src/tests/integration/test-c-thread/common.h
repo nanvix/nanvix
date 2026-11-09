@@ -114,6 +114,18 @@ extern void test_pthread_rwlock_static_init(void);
 // Tests if dynamically initialized read-write locks work (init/destroy + exclusion semantics).
 extern void test_pthread_rwlock_dynamic_init(void);
 
+// Tests if read-write lock attributes can be initialized.
+extern void test_pthread_rwlockattr_init(void);
+
+// Tests if read-write lock attributes can be destroyed.
+extern void test_pthread_rwlockattr_destroy(void);
+
+// Tests if the process-sharing attribute of read-write lock attributes can be retrieved.
+extern void test_pthread_rwlockattr_getpshared(void);
+
+// Tests if the process-sharing attribute of read-write lock attributes can be set and retrieved.
+extern void test_pthread_rwlockattr_setpshared(void);
+
 // Tests if unnamed POSIX semaphores can be used for synchronization.
 extern void test_semaphore(void);
 

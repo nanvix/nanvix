@@ -242,6 +242,10 @@ unsafe extern "C" {
     static pthread_rwlock_rdlock: u8;
     static pthread_rwlock_unlock: u8;
     static pthread_rwlock_wrlock: u8;
+    static pthread_rwlockattr_destroy: u8;
+    static pthread_rwlockattr_getpshared: u8;
+    static pthread_rwlockattr_init: u8;
+    static pthread_rwlockattr_setpshared: u8;
     static pthread_self: u8;
     static pthread_setcancelstate: u8;
     static pthread_setcanceltype: u8;
@@ -297,7 +301,7 @@ unsafe impl Sync for SymAddr {}
 
 /// Force the linker to retain all syscall symbols by referencing their addresses.
 #[used]
-static SYSCALL_SYMBOLS: [SymAddr; 138] = [
+static SYSCALL_SYMBOLS: [SymAddr; 142] = [
     SymAddr(&raw const __nanvix_sys_cached_pid),
     SymAddr(&raw const __errno_location),
     SymAddr(&raw const _exit),
@@ -392,6 +396,10 @@ static SYSCALL_SYMBOLS: [SymAddr; 138] = [
     SymAddr(&raw const pthread_rwlock_rdlock),
     SymAddr(&raw const pthread_rwlock_unlock),
     SymAddr(&raw const pthread_rwlock_wrlock),
+    SymAddr(&raw const pthread_rwlockattr_destroy),
+    SymAddr(&raw const pthread_rwlockattr_getpshared),
+    SymAddr(&raw const pthread_rwlockattr_init),
+    SymAddr(&raw const pthread_rwlockattr_setpshared),
     SymAddr(&raw const pthread_self),
     SymAddr(&raw const pthread_setcancelstate),
     SymAddr(&raw const pthread_setcanceltype),
