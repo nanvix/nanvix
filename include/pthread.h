@@ -178,6 +178,8 @@ extern int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock);
 extern int pthread_rwlock_unlock(pthread_rwlock_t *rwlock);
 extern int pthread_rwlockattr_init(pthread_rwlockattr_t *attr);
 extern int pthread_rwlockattr_destroy(pthread_rwlockattr_t *attr);
+extern int pthread_rwlockattr_getpshared(const pthread_rwlockattr_t *attr, int *pshared);
+extern int pthread_rwlockattr_setpshared(pthread_rwlockattr_t *attr, int pshared);
 
 /*==================================================================================================
  * Thread-Specific Data
