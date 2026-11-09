@@ -170,6 +170,7 @@ int main(int argc, const char *argv[])
     test_pthread_rwlockattr_destroy();
     test_pthread_rwlockattr_getpshared();
     test_pthread_rwlockattr_setpshared();
+    test_pthread_rwlock_init_attr();
     test_pthread_cond_static_init();
     test_pthread_cond_timedwait();
     test_pthread_tda();

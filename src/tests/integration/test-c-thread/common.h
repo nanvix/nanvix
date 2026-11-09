@@ -126,6 +126,9 @@ extern void test_pthread_rwlockattr_getpshared(void);
 // Tests if the process-sharing attribute of read-write lock attributes can be set and retrieved.
 extern void test_pthread_rwlockattr_setpshared(void);
 
+// Tests if read-write locks can be initialized with an attributes object.
+extern void test_pthread_rwlock_init_attr(void);
+
 // Tests if unnamed POSIX semaphores can be used for synchronization.
 extern void test_semaphore(void);
 

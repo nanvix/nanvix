@@ -18,7 +18,11 @@ use ::sys::error::{
     ErrorCode,
 };
 use ::sysapi::{
-    pthread::PTHREAD_RWLOCK_INITIALIZER,
+    pthread::{
+        PTHREAD_PROCESS_PRIVATE,
+        PTHREAD_PROCESS_SHARED,
+        PTHREAD_RWLOCK_INITIALIZER,
+    },
     sys_types::{
         pthread_rwlock_t,
         pthread_rwlockattr_t,
@@ -58,10 +62,11 @@ static READER_STARTED_AFTER_WRITER: AtomicU8 = AtomicU8::new(0);
 // Standalone Functions
 //==================================================================================================
 
-/// Exercises read-write lock static and dynamic initialization.
+/// Exercises read-write lock static and dynamic initialization, with and without attributes.
 pub fn run() -> Result<(), Error> {
     test_rwlock_static_init()?;
     test_rwlock_dynamic_init()?;
+    test_rwlock_init_attr()?;
     Ok(())
 }
 
@@ -279,4 +284,54 @@ fn dyn_reader_impl() -> Result<usize, Error> {
         pthread_rwlock_unlock(&mut *ptr::addr_of_mut!(DYNAMIC_RWLOCK))?;
     }
     Ok(0)
+}
+
+//==================================================================================================
+// Init With Attributes — Attribute Validation (ports rwlock_init_attr.c)
+//==================================================================================================
+
+fn test_rwlock_init_attr() -> Result<(), Error> {
+    let mut rwlock: pthread_rwlock_t = 0;
+
+    // Uninitialized attributes must be rejected.
+    let mut attr: pthread_rwlockattr_t = pthread_rwlockattr_t::default();
+    attr.uninitialize();
+    assert_init_fails(&mut rwlock, &attr, ErrorCode::InvalidArgument);
+
+    // Process-shared read-write locks are not supported.
+    let mut attr: pthread_rwlockattr_t = pthread_rwlockattr_t::default();
+    attr.set_pshared(PTHREAD_PROCESS_SHARED);
+    assert_init_fails(&mut rwlock, &attr, ErrorCode::OperationNotSupported);
+
+    // Invalid process-sharing attributes must be rejected.
+    attr.set_pshared(-1);
+    assert_init_fails(&mut rwlock, &attr, ErrorCode::InvalidArgument);
+
+    // Failed initializations must leave the read-write lock uninitialized.
+    let destroy_result: Result<(), Error> = pthread_rwlock_destroy(&mut rwlock);
+    assert!(
+        matches!(destroy_result, Err(ref err) if err.code == ErrorCode::InvalidArgument),
+        "destroy must fail with InvalidArgument after failed initializations"
+    );
+
+    // Valid attributes must initialize the read-write lock.
+    attr.set_pshared(PTHREAD_PROCESS_PRIVATE);
+    pthread_rwlock_init(&mut rwlock, &attr)?;
+    pthread_rwlock_wrlock(&mut rwlock)?;
+    pthread_rwlock_unlock(&mut rwlock)?;
+    pthread_rwlock_destroy(&mut rwlock)?;
+
+    Ok(())
+}
+
+/// Asserts that initializing `rwlock` with `attr` fails with the `expected` error code.
+fn assert_init_fails(
+    rwlock: &mut pthread_rwlock_t,
+    attr: &pthread_rwlockattr_t,
+    expected: ErrorCode,
+) {
+    match pthread_rwlock_init(rwlock, attr) {
+        Ok(()) => panic!("init must fail with {expected:?} (attr={attr:?})"),
+        Err(err) => assert_eq!(err.code, expected, "unexpected init error (attr={attr:?})"),
+    }
 }
