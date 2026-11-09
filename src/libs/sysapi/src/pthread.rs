@@ -41,6 +41,12 @@ pub const PTHREAD_CANCEL_ENABLE: c_int = 0;
 /// Indicates that thread cancellation is disabled.
 pub const PTHREAD_CANCEL_DISABLE: c_int = 1;
 
+/// Indicates that thread cancellation requests are deferred until a cancellation point.
+pub const PTHREAD_CANCEL_DEFERRED: c_int = 0;
+
+/// Indicates that thread cancellation requests may be acted upon at any time.
+pub const PTHREAD_CANCEL_ASYNCHRONOUS: c_int = 1;
+
 /// Indicates that a synchronization object is shared only within a process.
 pub const PTHREAD_PROCESS_PRIVATE: c_int = 0;
 
