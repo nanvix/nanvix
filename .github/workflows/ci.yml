@@ -869,6 +869,28 @@ jobs:
           rustup show
           rustup component add --toolchain $toolchain clippy
 
+      # The runner image does not ship ShellCheck, which shell-lint-check needs. Install a pinned
+      # release with a verified checksum, so that new ShellCheck releases cannot break this job.
+      - name: "Install ShellCheck"
+        shell: pwsh
+        env:
+          SHELLCHECK_VERSION: "v0.11.0"
+          SHELLCHECK_SHA256: "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e"
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "shellcheck.zip"
+          $installDir = Join-Path $env:RUNNER_TEMP "shellcheck"
+          $releases = "https://github.com/koalaman/shellcheck/releases/download"
+          $asset = "shellcheck-$env:SHELLCHECK_VERSION.zip"
+          Invoke-WebRequest -Uri "$releases/$env:SHELLCHECK_VERSION/$asset" -OutFile $archive `
+            -MaximumRetryCount 3 -RetryIntervalSec 10
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $archive).Hash.ToLowerInvariant()
+          if ($hash -ne $env:SHELLCHECK_SHA256) {
+            throw "ShellCheck checksum mismatch: expected $env:SHELLCHECK_SHA256, got $hash."
+          }
+          Expand-Archive -Path $archive -DestinationPath $installDir -Force
+          & (Join-Path $installDir "shellcheck.exe") --version
+          Add-Content -Path $env:GITHUB_PATH -Value $installDir
+
       - name: "Lint"
         shell: pwsh
         run: |
