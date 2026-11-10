@@ -25,8 +25,11 @@ fi
 
 echo "Fixing shell script linting issues..."
 
-# First pass: generate diff for auto-fixable issues.
-diff_output=$(shellcheck -f diff -S warning "${shell_files[@]}" 2>/dev/null || true)
+# First pass: generate diff for auto-fixable issues. On Windows, ShellCheck writes CRLF line
+# endings, and releases before 0.11.0 also put a backslash after the a/ and b/ prefixes of the
+# diff headers. Normalize both so that the diff applies to the LF-only scripts.
+diff_output=$(shellcheck -f diff -S warning "${shell_files[@]}" 2>/dev/null \
+    | tr -d '\r' | sed -E 's#^(---|\+\+\+) ([ab])\\#\1 \2/#' || true)
 
 if [ -n "$diff_output" ]; then
     if echo "$diff_output" | git apply --allow-empty 2>/dev/null || echo "$diff_output" | patch -p1 2>/dev/null; then

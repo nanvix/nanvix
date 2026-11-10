@@ -99,10 +99,10 @@ Available build parameters:
 # Fix formatting.
 .\z.ps1 build -- format
 
-# Check linting.
+# Check linting (requires ShellCheck; see setup-windows.md).
 .\z.ps1 build -- lint-check
 
-# Fix linting.
+# Fix linting (requires ShellCheck; see setup-windows.md).
 .\z.ps1 build -- lint
 
 # Spell checking.

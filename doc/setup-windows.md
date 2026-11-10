@@ -85,7 +85,8 @@ This command validates prerequisites and configures the development environment:
 7. Checks for Visual Studio Build Tools (warns if missing).
 8. Installs LLVM/Clang via winget (if not already installed).
 9. Installs the Rust toolchain via winget (if not already installed).
-10. Configures the repository Git hooks from `.githooks`.
+10. Installs ShellCheck via winget (if not already installed).
+11. Configures the repository Git hooks from `.githooks`.
 
 > **Note:** If winget is not available, install the prerequisites manually before running setup:
 >
@@ -94,6 +95,11 @@ This command validates prerequisites and configures the development environment:
 > - GNU Make: `winget install ezwinports.make`
 > - LLVM/Clang: `winget install LLVM.LLVM`
 > - Rust: `winget install Rustlang.Rustup` (see [rustup.rs](https://rustup.rs))
+> - ShellCheck: `winget install koalaman.shellcheck`
+>
+> **Note:** ShellCheck is required only to lint shell scripts (the `lint` and `lint-check` targets;
+> the pre-commit hook runs `lint-check`). If setup cannot install it, it prints a warning and
+> continues.
 
 ---
 
