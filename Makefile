@@ -639,23 +639,15 @@ else
 endif
 
 # Fixes code linting issues.
-ifeq ($(IS_WINDOWS),yes)
-lint: rust-lint
-else
 lint: \
 	rust-lint \
 	shell-lint
-endif
 
 # Checks for linting issues in the code.
-ifeq ($(IS_WINDOWS),yes)
-lint-check: rust-lint-check python-lint
-else
 lint-check: \
 	rust-lint-check \
 	shell-lint-check \
 	python-lint
-endif
 
 # Runs clippy.
 rust-lint-check: \
@@ -851,11 +843,17 @@ gen-headers-check:
 
 # Checks for linting issues in shell scripts.
 shell-lint-check:
+	@command -v shellcheck >/dev/null 2>&1 || { \
+		echo "ERROR: shell-lint-check needs 'shellcheck' on PATH (run setup to install it)."; \
+		exit 1; \
+	}
 	@shellcheck -S warning $(SHELL_FILES)
 
 # Fixes code linting issues in shell scripts.
+# Run the script through /bin/bash rather than its shebang or a bare `bash`: on Windows, those may
+# resolve to the WSL launcher instead of the MSYS bash from Git for Windows that runs the recipes.
 shell-lint:
-	@scripts/shell-lint-fix.sh
+	@/bin/bash scripts/shell-lint-fix.sh
 
 check: \
 	check-kernel \

@@ -196,3 +196,14 @@ git status
 git config core.symlinks true
 git checkout -- .
 ```
+
+### ShellCheck Not Found
+
+**Symptom**: `lint-check` (or the pre-commit hook) fails with
+`shell-lint-check needs 'shellcheck' on PATH`.
+
+**Fix**: Re-run setup, which installs ShellCheck via winget (Chocolatey on Windows Server):
+
+```powershell
+.\z.ps1 setup
+```
