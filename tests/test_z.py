@@ -612,6 +612,119 @@ class TestPathHelpers(unittest.TestCase):
 
 
 # ===========================================================================
+# Tool Discovery: find_shellcheck
+# ===========================================================================
+
+
+class TestFindShellcheck(unittest.TestCase):
+    """Tests for find_shellcheck."""
+
+    @staticmethod
+    def _make_winget_package(local_app_data: Path) -> Path:
+        """Create a fake winget portable ShellCheck package; return its binary."""
+        package_dir = (
+            local_app_data
+            / "Microsoft"
+            / "WinGet"
+            / "Packages"
+            / "koalaman.shellcheck_Microsoft.Winget.Source_8wekyb3d8bbwe"
+        )
+        package_dir.mkdir(parents=True)
+        binary = package_dir / "shellcheck.exe"
+        binary.touch()
+        return binary
+
+    @patch("z.shutil.which", return_value="/usr/bin/shellcheck")
+    def test_returns_path_hit(self, _which: MagicMock) -> None:
+        """A ShellCheck already on PATH is returned on every platform."""
+        for plat in (_linux_plat(), _windows_plat()):
+            with self.subTest(is_windows=plat.is_windows):
+                self.assertEqual(zmod.find_shellcheck(plat), "/usr/bin/shellcheck")
+
+    @patch("z.shutil.which", return_value=None)
+    def test_linux_does_not_probe_winget(self, _which: MagicMock) -> None:
+        """On Linux, a ShellCheck missing from PATH is not found."""
+        with tempfile.TemporaryDirectory() as local_app_data:
+            self._make_winget_package(Path(local_app_data))
+            with patch.dict(os.environ, {"LOCALAPPDATA": local_app_data}):
+                self.assertIsNone(zmod.find_shellcheck(_linux_plat()))
+
+    @patch("z.shutil.which", return_value=None)
+    def test_windows_falls_back_to_winget_package(self, _which: MagicMock) -> None:
+        """On Windows, a winget package missing from PATH is found and prepended."""
+        with tempfile.TemporaryDirectory() as local_app_data:
+            binary = self._make_winget_package(Path(local_app_data))
+            env = {"LOCALAPPDATA": local_app_data, "PATH": ""}
+            with patch.dict(os.environ, env):
+                self.assertEqual(zmod.find_shellcheck(_windows_plat()), str(binary))
+                entries = os.environ["PATH"].split(os.pathsep)
+                self.assertEqual(entries[0], str(binary.parent))
+
+    @patch("z.shutil.which", return_value=None)
+    def test_windows_without_winget_package(self, _which: MagicMock) -> None:
+        """On Windows, None is returned and PATH is untouched without a package."""
+        with tempfile.TemporaryDirectory() as local_app_data:
+            env = {"LOCALAPPDATA": local_app_data, "PATH": "/usr/bin"}
+            with patch.dict(os.environ, env):
+                self.assertIsNone(zmod.find_shellcheck(_windows_plat()))
+                self.assertEqual(os.environ["PATH"], "/usr/bin")
+
+
+# ===========================================================================
+# Package Installation: _pkg_install_best_effort
+# ===========================================================================
+
+
+class TestPkgInstallBestEffort(unittest.TestCase):
+    """Tests for _pkg_install_best_effort."""
+
+    @patch("z._refresh_windows_path")
+    @patch("z.print_info")
+    @patch("z.subprocess.run", side_effect=FileNotFoundError("winget"))
+    def test_missing_package_manager_is_not_fatal(
+        self, _run: MagicMock, _info: MagicMock, mock_refresh: MagicMock
+    ) -> None:
+        """A package manager that cannot be started fails the install softly."""
+        installed = zmod._pkg_install_best_effort(
+            "ShellCheck", winget_id="koalaman.shellcheck"
+        )
+        self.assertFalse(installed)
+        mock_refresh.assert_not_called()
+
+    @patch("z._refresh_windows_path")
+    @patch("z.print_info")
+    @patch("z.subprocess.run")
+    def test_failed_install_returns_false(
+        self, mock_run: MagicMock, _info: MagicMock, mock_refresh: MagicMock
+    ) -> None:
+        """A package manager that exits with an error fails the install softly."""
+        mock_run.return_value.returncode = 1
+        installed = zmod._pkg_install_best_effort(
+            "ShellCheck", choco_id="shellcheck", use_choco=True
+        )
+        self.assertFalse(installed)
+        mock_refresh.assert_not_called()
+
+    @patch("z._refresh_windows_path")
+    @patch("z.print_info")
+    @patch("z.subprocess.run")
+    def test_successful_install_refreshes_path(
+        self, mock_run: MagicMock, _info: MagicMock, mock_refresh: MagicMock
+    ) -> None:
+        """A successful install refreshes PATH and returns True."""
+        mock_run.return_value.returncode = 0
+        installed = zmod._pkg_install_best_effort(
+            "ShellCheck", winget_id="koalaman.shellcheck"
+        )
+        self.assertTrue(installed)
+        mock_run.assert_called_once_with(
+            ["winget", "install", "koalaman.shellcheck", "--silent"],
+            stdout=subprocess.DEVNULL,
+        )
+        mock_refresh.assert_called_once_with()
+
+
+# ===========================================================================
 # Windows Pre-Build: restore_git_symlinks
 # ===========================================================================
 

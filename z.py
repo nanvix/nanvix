@@ -571,6 +571,32 @@ def find_clang(plat: PlatformInfo) -> str | None:
     return None
 
 
+def find_shellcheck(plat: PlatformInfo) -> str | None:
+    """Find the ShellCheck binary, prepending its directory to PATH if needed.
+
+    The shell lint targets (shell-lint, shell-lint-check) run ShellCheck from
+    PATH. On Windows, winget installs it as a portable package that is exposed
+    through a link in a directory winget adds to the user PATH, but shells
+    started before the install do not see that PATH update. Mirror find_make()
+    and probe the per-user winget packages directory as a fallback.
+    Returns the ShellCheck path, or None when it cannot be located.
+    """
+    shellcheck = shutil.which("shellcheck")
+    if shellcheck or not plat.is_windows:
+        return shellcheck
+
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    if local_app_data:
+        winget_dir = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+        if winget_dir.exists():
+            for package_dir in winget_dir.glob("koalaman.shellcheck*"):
+                for candidate in package_dir.rglob("shellcheck.exe"):
+                    _prepend_path(str(candidate.parent))
+                    return str(candidate)
+
+    return None
+
+
 def _require_make(plat: PlatformInfo) -> str:
     """Find Make or die."""
     make = find_make(plat)
@@ -622,6 +648,11 @@ def setup_windows_make_env(plat: PlatformInfo) -> None:
     # clang is not fatal here — posix-tests.mk emits a precise error if it is
     # genuinely required.
     find_clang(plat)
+
+    # Ensure ShellCheck is on PATH for the shell lint targets, even in shells
+    # started before setup installed it. Best-effort: only the lint targets
+    # need it, and shell-lint-check emits a precise error if it is missing.
+    find_shellcheck(plat)
 
 
 def invoke_make(
@@ -1101,7 +1132,11 @@ def _pkg_install_best_effort(
         cmd = ["winget", "install", winget_id, "--silent"]
     else:
         return False
-    rc = subprocess.run(cmd, stdout=subprocess.DEVNULL).returncode
+    try:
+        rc = subprocess.run(cmd, stdout=subprocess.DEVNULL).returncode
+    except OSError:
+        # The package manager is not installed or cannot be started.
+        return False
     if rc != 0:
         return False
     _refresh_windows_path()
@@ -1283,6 +1318,33 @@ def cmd_setup_windows(plat: PlatformInfo, config: BuildConfig) -> int:
                     "Rust toolchain still not found. Add ~/.cargo/bin to PATH manually."
                 )
     print_success("Rust toolchain: OK")
+
+    # ShellCheck: lints the repository shell scripts in the lint and lint-check
+    # targets (the pre-commit hook runs lint-check). Best-effort, like
+    # LLVM/Clang: other targets do not need it, so a failed install must not
+    # abort setup for unrelated Windows jobs; shell-lint-check emits a precise
+    # error if it is genuinely required.
+    if find_shellcheck(plat):
+        print_success("ShellCheck: OK")
+    else:
+        _pkg_install_best_effort(
+            "ShellCheck",
+            winget_id="koalaman.shellcheck",
+            choco_id="shellcheck",
+            use_choco=use_choco,
+        )
+        if find_shellcheck(plat):
+            print_success("ShellCheck: OK")
+        else:
+            print_warning(
+                "ShellCheck not found and could not be installed automatically. "
+                "It is required only to lint shell scripts (the lint and "
+                "lint-check targets and the pre-commit hook); other targets are "
+                "unaffected. Install it with 'winget install koalaman.shellcheck' "
+                "or 'choco install shellcheck', or from "
+                "https://github.com/koalaman/shellcheck/releases, and ensure it is "
+                "on PATH."
+            )
 
     # Verus (optional).
     if config.verus:

@@ -64,7 +64,8 @@ On Windows Server, this command automatically detects the server environment and
 4. Installs GNU Make via Chocolatey (if not already installed).
 5. Checks for Visual Studio Build Tools (warns if missing).
 6. Installs the Rust toolchain via rustup (if not already installed).
-7. Configures the repository Git hooks from `.githooks`.
+7. Installs ShellCheck via Chocolatey (if not already installed).
+8. Configures the repository Git hooks from `.githooks`.
 
 > **Note:** `z.ps1 setup` emits a non-fatal warning about the Windows build number being below
 > 22000. This is expected on Server 2022 and does not affect functionality.
