@@ -3,9 +3,9 @@
 
 //! FAT file handle implementation.
 //!
-//! Provides a `FatFile` type that wraps a `fatfs::File` and tracks
-//! read/write permissions. This type is deliberately marked `!Send + !Sync`
-//! to prevent accidental sharing across threads.
+//! Provides a `FatFile` type that wraps a `fatfs::File`, tracks read/write
+//! permissions, and caches the file size. This type is deliberately marked
+//! `!Send + !Sync` to prevent accidental sharing across threads.
 
 //==================================================================================================
 // Imports
@@ -79,6 +79,15 @@ macro_rules! dispatch_file {
 ///
 /// Wraps a `fatfs::File` and tracks read/write permissions.
 ///
+/// # File Size
+///
+/// fatfs exposes the size of an open file only through seeking, which walks the
+/// cluster chain of the file. This handle therefore queries the size once, the
+/// first time that it is needed, and caches it. Each `fatfs::File` works on a
+/// private copy of the directory entry of the file, so only writes and
+/// truncations through this handle change the size that it sees, and these
+/// keep the cached size up to date.
+///
 /// # Thread Safety
 ///
 /// This type is intentionally `!Send + !Sync` because file handles have
@@ -93,6 +102,8 @@ pub struct FatFile<'a> {
     can_read: bool,
     /// Whether this file is open for writing.
     can_write: bool,
+    /// Cached file size in bytes, or `None` if it must be queried by seeking.
+    cached_len: Option<u64>,
     /// Marker to make this type `!Send + !Sync`.
     _not_send_sync: PhantomData<*const ()>,
 }
@@ -114,6 +125,7 @@ impl<'a> FatFile<'a> {
             inner,
             can_read,
             can_write,
+            cached_len: None,
             _not_send_sync: PhantomData,
         }
     }
@@ -134,6 +146,9 @@ impl<'a> FatFile<'a> {
 
     /// Gets the current file size in bytes.
     ///
+    /// The first call queries the size by seeking, and later calls return the
+    /// cached size without seeking.
+    ///
     /// # Returns
     ///
     /// The file size, or an error if seeking fails.
@@ -142,13 +157,18 @@ impl<'a> FatFile<'a> {
     ///
     /// - [`Fat32Error::IoError`] if seeking fails.
     pub fn len(&mut self) -> Result<u64, Fat32Error> {
-        dispatch_file!(self, |file| {
+        if let Some(len) = self.cached_len {
+            return Ok(len);
+        }
+        let len: u64 = dispatch_file!(self, |file| {
             let current: u64 = file.seek(SeekFrom::Current(0)).map_err(map_fatfs_error)?;
             let size: u64 = file.seek(SeekFrom::End(0)).map_err(map_fatfs_error)?;
             file.seek(SeekFrom::Start(current))
                 .map_err(map_fatfs_error)?;
-            Ok(size)
-        })
+            size
+        });
+        self.cached_len = Some(len);
+        Ok(len)
     }
 
     /// Returns true if the file is empty.
@@ -200,7 +220,15 @@ impl<'a> FatFile<'a> {
         if !self.can_write {
             return Err(Fat32Error::ReadOnly);
         }
-        dispatch_file!(self, |file| { file.write(buf).map_err(map_fatfs_error) })
+        let result: Result<usize, Fat32Error> =
+            dispatch_file!(self, |file| { file.write(buf).map_err(map_fatfs_error) });
+        // A write that ends past the end of the file grows the file up to where the write ends.
+        // Drop the cached size if the write fails, so that it is queried again.
+        self.cached_len = match self.cached_len {
+            Some(len) if result.is_ok() => self.position().ok().map(|end| end.max(len)),
+            _ => None,
+        };
+        result
     }
 
     /// Seeks to a position in the file.
@@ -239,7 +267,28 @@ impl<'a> FatFile<'a> {
         if !self.can_write {
             return Err(Fat32Error::ReadOnly);
         }
-        dispatch_file!(self, |file| { file.truncate().map_err(map_fatfs_error) })
+        let result: Result<(), Fat32Error> =
+            dispatch_file!(self, |file| { file.truncate().map_err(map_fatfs_error) });
+        // Truncating sets the size of the file to the current position. Drop the cached size if
+        // the truncation fails, so that it is queried again.
+        self.cached_len = if result.is_ok() {
+            self.position().ok()
+        } else {
+            None
+        };
+        result
+    }
+
+    /// Returns the current position in the file.
+    ///
+    /// Seeking zero bytes from the current position does not walk the cluster
+    /// chain of the file, so this is cheap.
+    ///
+    /// # Errors
+    ///
+    /// - [`Fat32Error::IoError`] if seeking fails.
+    fn position(&mut self) -> Result<u64, Fat32Error> {
+        dispatch_file!(self, |file| { file.seek(SeekFrom::Current(0)).map_err(map_fatfs_error) })
     }
 }
 

@@ -189,6 +189,120 @@ fn create_new_existing_fails() {
     );
 }
 
+// -- file size tests ---------------------------------------------------------
+
+/// Tests that the size of a file grows with writes past its end, but not with writes within it.
+#[test]
+fn file_len_follows_writes() {
+    let fat: FatHandle = FatHandle::new();
+    let mut file: FatFile<'_> = fat
+        .open(&test_path("grow.txt"), true, true, true, false)
+        .expect("create should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 0, "new file should be empty");
+
+    file.write(b"hello").expect("write should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 5, "append should grow the file");
+    file.write(b" world").expect("write should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 11, "append should grow the file");
+
+    file.seek(::fatfs::SeekFrom::Start(0))
+        .expect("seek should succeed");
+    file.write(b"J").expect("write should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 11, "overwrite should keep the size");
+
+    file.seek(::fatfs::SeekFrom::Start(0))
+        .expect("seek should succeed");
+    let mut buf: [u8; 64] = [0u8; 64];
+    let n: usize = file.read(&mut buf).expect("read should succeed");
+    assert_eq!(&buf[..n], b"Jello world", "read should return the written data");
+}
+
+/// Tests that the size of a file is right when first queried after a write.
+#[test]
+fn file_len_queried_after_write() {
+    let fat: FatHandle = FatHandle::new();
+    {
+        let mut file: FatFile<'_> = fat
+            .open(&test_path("query.txt"), false, true, true, false)
+            .expect("create should succeed");
+        file.write(b"hello world").expect("write should succeed");
+        file.flush().expect("flush should succeed");
+    }
+
+    let mut file: FatFile<'_> = fat
+        .open(&test_path("query.txt"), true, true, false, false)
+        .expect("open should succeed");
+    file.write(b"J").expect("write should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 11, "overwrite should keep the size");
+}
+
+/// Tests that the size of a file follows truncations.
+#[test]
+fn file_len_follows_truncation() {
+    let fat: FatHandle = FatHandle::new();
+    let mut file: FatFile<'_> = fat
+        .open(&test_path("shrink.txt"), true, true, true, false)
+        .expect("create should succeed");
+    file.write(b"hello world").expect("write should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 11, "write should grow the file");
+
+    file.seek(::fatfs::SeekFrom::Start(5))
+        .expect("seek should succeed");
+    file.truncate().expect("truncate should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 5, "truncate should shrink the file");
+
+    file.seek(::fatfs::SeekFrom::Start(0))
+        .expect("seek should succeed");
+    file.truncate().expect("truncate should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 0, "truncate should empty the file");
+
+    file.write(b"abc").expect("write should succeed");
+    assert_eq!(file.len().expect("len should succeed"), 3, "write should grow the emptied file");
+}
+
+/// Tests that querying the size of a file between reads keeps the file position.
+#[test]
+fn file_len_keeps_position() {
+    // Spans several clusters, and does not end at a cluster boundary.
+    const FILE_SIZE: usize = 4 * 1024 + 7;
+    const CHUNK_SIZE: usize = 300;
+
+    let fat: FatHandle = FatHandle::new();
+    let data: Vec<u8> = (0..FILE_SIZE).map(|i| (i % 251) as u8).collect();
+    {
+        let mut file: FatFile<'_> = fat
+            .open(&test_path("big.bin"), false, true, true, false)
+            .expect("create should succeed");
+        let mut written: usize = 0;
+        while written < data.len() {
+            let n: usize = file.write(&data[written..]).expect("write should succeed");
+            assert!(n > 0, "write should make progress");
+            written += n;
+        }
+        file.flush().expect("flush should succeed");
+    }
+
+    let mut file: FatFile<'_> = fat
+        .open(&test_path("big.bin"), true, false, false, false)
+        .expect("open for read should succeed");
+    let mut read: Vec<u8> = Vec::new();
+    let mut buf: [u8; CHUNK_SIZE] = [0u8; CHUNK_SIZE];
+    loop {
+        let n: usize = file.read(&mut buf).expect("read should succeed");
+        // The first query happens past the start of the file, and seeks to find the size.
+        assert_eq!(
+            file.len().expect("len should succeed"),
+            FILE_SIZE as u64,
+            "size should match the written data"
+        );
+        if n == 0 {
+            break;
+        }
+        read.extend_from_slice(&buf[..n]);
+    }
+    assert_eq!(read, data, "reads should return the file contents in order");
+}
+
 // -- stat tests --------------------------------------------------------------
 
 /// Tests stat on root directory.

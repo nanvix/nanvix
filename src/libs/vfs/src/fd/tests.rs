@@ -432,6 +432,118 @@ fn renameat_uses_separate_anchors() {
     forget_processes(&[pid]);
 }
 
+/// Writes all of `data` to a descriptor, looping on short writes.
+fn write_all(fd: c_int, data: &[u8]) {
+    let mut written: usize = 0;
+    while written < data.len() {
+        let n: c_size_t = vfs_write(fd, &data[written..]).expect("write should succeed");
+        assert!(n > 0, "write should make progress");
+        written += n as usize;
+    }
+}
+
+/// Reads a descriptor in small chunks until the end of the file.
+fn read_to_end(fd: c_int) -> Vec<u8> {
+    let mut data: Vec<u8> = Vec::new();
+    let mut buf: [u8; 300] = [0u8; 300];
+    loop {
+        let n: c_size_t = vfs_read(fd, &mut buf).expect("read should succeed");
+        if n == 0 {
+            return data;
+        }
+        data.extend_from_slice(&buf[..n as usize]);
+    }
+}
+
+/// Tests reading a fragmented FAT file through a read-only descriptor, which reads the file
+/// through its cluster chain instead of in place.
+#[test]
+fn fat_descriptor_reads_fragmented_file() {
+    // Ends at a cluster boundary, so that the next write to the file allocates a new cluster.
+    const HEAD_SIZE: usize = 2048;
+    const TAIL_SIZE: usize = 2048 + 7;
+
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x740e);
+    set_current_process(pid);
+    let mount: &str = "/fragmented-read";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    // Interleave the clusters of two files, so that the first one is not contiguous.
+    let data: Vec<u8> = (0..HEAD_SIZE + TAIL_SIZE).map(|i| (i % 251) as u8).collect();
+    let create_flags: c_int = file_access_mode::O_WRONLY | file_creation_flags::O_CREAT;
+    let file: c_int = vfs_open("/fragmented-read/file", create_flags).expect("create file");
+    let other: c_int =
+        vfs_open("/fragmented-read/other", create_flags).expect("create other file");
+    write_all(file, &data[..HEAD_SIZE]);
+    write_all(other, b"interleaved");
+    write_all(file, &data[HEAD_SIZE..]);
+    vfs_close(other).expect("close other file");
+    vfs_close(file).expect("close file");
+    assert!(
+        crate::file::file_raw_region("/fragmented-read/file").is_none(),
+        "file should not be contiguous"
+    );
+
+    let fd: c_int =
+        vfs_open("/fragmented-read/file", file_access_mode::O_RDONLY).expect("open file");
+    assert_eq!(read_to_end(fd), data, "reads should return the file contents in order");
+    let mut buf: [u8; 16] = [0u8; 16];
+    assert_eq!(vfs_read(fd, &mut buf), Ok(0), "read at the end should return 0");
+    assert_eq!(vfs_lseek(fd, 0, file_seek::SEEK_END), Ok(data.len() as off_t));
+    assert_eq!(vfs_pread(fd, &mut buf, HEAD_SIZE as off_t), Ok(16));
+    assert_eq!(buf[..], data[HEAD_SIZE..HEAD_SIZE + 16], "pread should read at the offset");
+    let mut metadata: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+    vfs_fstat(fd, &mut metadata).expect("fstat file");
+    assert_eq!(metadata.st_size, data.len() as off_t, "fstat should report the file size");
+    vfs_close(fd).expect("close file");
+
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
+/// Tests that the size of a FAT file seen through a descriptor follows writes and truncations.
+#[test]
+fn fat_descriptor_size_follows_writes() {
+    let _guard = FORK_TEST_GUARD.lock();
+    if !crate::state::is_initialized() {
+        crate::state::init().expect("initialize VFS");
+    }
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x740f);
+    set_current_process(pid);
+    let mount: &str = "/size-follows-writes";
+    crate::state::create_mount(mount, crate::state::MIN_FAT_SIZE).expect("create mount");
+
+    let create_flags: c_int = file_access_mode::O_RDWR | file_creation_flags::O_CREAT;
+    let fd: c_int = vfs_open("/size-follows-writes/file", create_flags).expect("create file");
+    let mut buf: [u8; 16] = [0u8; 16];
+    assert_eq!(vfs_read(fd, &mut buf), Ok(0), "new file should be empty");
+    assert_eq!(vfs_write(fd, b"12345"), Ok(5));
+    assert_eq!(vfs_lseek(fd, 0, file_seek::SEEK_END), Ok(5), "write should grow the file");
+    assert_eq!(vfs_pwrite(fd, b"*", 9), Ok(1));
+    let mut metadata: ::sysapi::sys_stat::stat = ::sysapi::sys_stat::stat::default();
+    vfs_fstat(fd, &mut metadata).expect("fstat file");
+    assert_eq!(metadata.st_size, 10, "pwrite past the end should grow the file");
+    assert_eq!(vfs_pread(fd, &mut buf, 0), Ok(10));
+    assert_eq!(&buf[..10], b"12345\0\0\0\0*", "pwrite should fill the gap with zeros");
+
+    vfs_ftruncate(fd, 3).expect("shrink file");
+    assert_eq!(vfs_lseek(fd, 0, file_seek::SEEK_END), Ok(3), "ftruncate should shrink the file");
+    assert_eq!(vfs_pread(fd, &mut buf, 3), Ok(0), "read at the end should return 0");
+    vfs_ftruncate(fd, 6).expect("extend file");
+    assert_eq!(vfs_lseek(fd, 0, file_seek::SEEK_SET), Ok(0));
+    assert_eq!(vfs_read(fd, &mut buf), Ok(6), "ftruncate should extend the file");
+    assert_eq!(&buf[..6], b"123\0\0\0", "ftruncate should extend the file with zeros");
+    assert_eq!(vfs_read(fd, &mut buf), Ok(0), "read at the end should return 0");
+
+    vfs_close(fd).expect("close file");
+    crate::state::unmount(mount).expect("unmount filesystem");
+    forget_processes(&[pid]);
+}
+
 /// Tests opened terminal devices independently of the standard descriptor slots.
 #[test]
 fn terminal_device_open_modes() {

@@ -147,6 +147,24 @@ fn readonly_read_file() {
     assert_eq!(&buf[..n], b"hello readonly");
 }
 
+/// Tests that querying the size of a file on a read-only filesystem keeps the file position.
+#[test]
+fn readonly_file_len() {
+    let fat: ReadOnlyFatHandle = ReadOnlyFatHandle::new();
+    let mut file = fat
+        .open(&test_path("hello.txt"), true, false, false, false)
+        .expect("open for read should succeed");
+    let mut head: [u8; 5] = [0u8; 5];
+    let n: usize = file.read(&mut head).expect("read should succeed");
+    assert_eq!(&head[..n], b"hello");
+
+    assert_eq!(file.len().expect("len should succeed"), 14, "size should match written content");
+    let mut tail: [u8; 64] = [0u8; 64];
+    let n: usize = file.read(&mut tail).expect("read should succeed");
+    assert_eq!(&tail[..n], b" readonly", "querying the size should keep the position");
+    assert_eq!(file.len().expect("len should succeed"), 14, "reading should keep the size");
+}
+
 /// Tests read_dir on a read-only filesystem.
 #[test]
 fn readonly_read_dir() {
