@@ -41,6 +41,9 @@ extern "C" {
 #define SOCK_RAW 3 /**< Raw protocol interface. */
 #define SOCK_RDM 4 /**< Reliably-delivered messages. */
 #define SOCK_SEQPACKET 5 /**< Sequenced, reliable, connection-mode records. */
+#define SOCK_CLOEXEC 0x10000000 /**< Set FD_CLOEXEC on the new socket descriptor. */
+#define SOCK_NONBLOCK 0x20000000 /**< Set O_NONBLOCK on the new socket. */
+#define SOCK_CLOFORK 0x40000000 /**< Set FD_CLOFORK on the new socket descriptor. */
 #define SOL_SOCKET 0xffff /**< Options at the socket level. */
 #define SO_REUSEADDR 0x0004 /**< Reuse of local addresses is supported. */
 #define SO_KEEPALIVE 0x0008 /**< Connections are kept alive. */
