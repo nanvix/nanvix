@@ -113,12 +113,19 @@ pub(crate) fn handle_resolve_fd(source: ThreadIdentifier, msg: SystemCallMessage
 ///
 /// libposix sends this as the second step of socket creation: `networkd` owns the endpoint, and
 /// vfsd binds it to the lowest free flat descriptor so the socket joins the flat namespace like any
-/// other object. The response carries that flat descriptor and the current table generation (the
-/// coherence epoch) so the caller can seed its resolution cache with a coherent entry.
+/// other object. The slot is created with the per-descriptor flags and open-file status flags that
+/// the request carries, so the socket creation flags take effect atomically. The response carries
+/// that flat descriptor and the current table generation (the coherence epoch) so the caller can
+/// seed its resolution cache with a coherent entry.
 pub(crate) fn handle_register_socket(source: ThreadIdentifier, msg: SystemCallMessage) -> Message {
     let req: RegisterSocketRequest = RegisterSocketRequest::from_bytes(msg.payload);
     let remote_fd: i32 = req.remote_fd;
-    match ::vfs::fd::vfs_register_socket(remote_fd) {
+    let status_flags: i32 = req.status_flags;
+    let fd_flags: ::vfs::fd::FdFlags = match ::vfs::fd::FdFlags::try_from_bits(req.fd_flags) {
+        Ok(fd_flags) => fd_flags,
+        Err(e) => return build_error(source, fat32_to_error_code(&e)),
+    };
+    match ::vfs::fd::vfs_register_socket_with_flags(remote_fd, fd_flags, status_flags) {
         Ok(fd) => {
             let epoch: u64 = ::vfs::fd::vfs_current_generation();
             RegisterSocketResponse::build(

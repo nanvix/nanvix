@@ -13,6 +13,7 @@ use crate::{
             CreateSocketResponse,
         },
         AddressFamily,
+        SocketFlags,
         SocketType,
     },
     SystemCallMessage,
@@ -35,7 +36,50 @@ use ::sysapi::ffi::c_int;
 // Standalone Functions
 //==================================================================================================
 
+///
+/// # Description
+///
+/// Creates a socket with no socket creation flags.
+///
+/// # Parameters
+///
+/// - `domain`: Communication domain.
+/// - `typ`: Socket type.
+/// - `protocol`: Protocol.
+///
+/// # Returns
+///
+/// On success, the `socket()` function returns the file descriptor of the new socket. On error, it
+/// returns an error.
+///
 pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Result<c_int, Error> {
+    socket_with_flags(domain, typ, protocol, SocketFlags::default())
+}
+
+///
+/// # Description
+///
+/// Creates a socket with socket creation flags. The file descriptor of the new socket is created
+/// with the per-descriptor flags and the open file status flags that `flags` requests.
+///
+/// # Parameters
+///
+/// - `domain`: Communication domain.
+/// - `typ`: Socket type.
+/// - `protocol`: Protocol.
+/// - `flags`: Socket creation flags.
+///
+/// # Returns
+///
+/// On success, the `socket_with_flags()` function returns the file descriptor of the new socket.
+/// On error, it returns an error.
+///
+pub fn socket_with_flags(
+    domain: AddressFamily,
+    typ: SocketType,
+    protocol: Protocol,
+    flags: SocketFlags,
+) -> Result<c_int, Error> {
     let tid: ThreadIdentifier = ::sys::kcall::pm::__kcall_gettid()?;
 
     // Build request and send it.
@@ -70,7 +114,7 @@ pub fn socket(domain: AddressFamily, typ: SocketType, protocol: Protocol) -> Res
                     if remote_fd < 0 {
                         Ok(remote_fd)
                     } else {
-                        super::register_socket_slot(remote_fd)
+                        super::register_socket_slot(remote_fd, flags)
                     }
                 },
                 _ => Err(Error::new(ErrorCode::InvalidMessage, "unexpected message header")),

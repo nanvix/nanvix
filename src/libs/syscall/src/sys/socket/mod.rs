@@ -37,10 +37,25 @@ use ::sys::error::{
     ErrorCode,
 };
 use ::sysapi::{
-    ffi::c_uchar,
+    fcntl::{
+        file_descriptor_flags::{
+            FD_CLOEXEC,
+            FD_CLOFORK,
+        },
+        file_status_flags::O_NONBLOCK,
+    },
+    ffi::{
+        c_int,
+        c_uchar,
+    },
     netinet_in::{
         in_addr,
         sockaddr_in,
+        socket_flags::{
+            SOCK_CLOEXEC,
+            SOCK_CLOFORK,
+            SOCK_NONBLOCK,
+        },
     },
     sys_socket::{
         sockaddr,
@@ -109,6 +124,14 @@ cfg_if::cfg_if! {
 }
 
 //==================================================================================================
+// Constants
+//==================================================================================================
+
+/// Mask of the bits that encode the socket type in the `type` argument of `socket()` and
+/// `socketpair()`. The bits outside of it are reserved for socket creation flags.
+const SOCK_TYPE_MASK: c_int = 0xf;
+
+//==================================================================================================
 
 /// Describes protocol family of a socket.
 #[repr(i32)]
@@ -174,6 +197,93 @@ impl TryFrom<i32> for SocketType {
                 Err(Error::new(ErrorCode::BadProtocolType, "socket type not supported"))
             },
         }
+    }
+}
+
+impl SocketType {
+    ///
+    /// # Description
+    ///
+    /// Converts the `type` argument of `socket()` and `socketpair()`, which combines a socket type
+    /// with socket creation flags (`SOCK_CLOEXEC`, `SOCK_CLOFORK`, and `SOCK_NONBLOCK`).
+    ///
+    /// # Parameters
+    ///
+    /// - `typ`: Socket type, possibly combined with socket creation flags.
+    ///
+    /// # Returns
+    ///
+    /// On success, this function returns the socket type and the socket creation flags. On
+    /// failure, it returns an error instead.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::InvalidArgument`]: `typ` has a bit set that neither encodes the socket type
+    ///   nor is a supported socket creation flag.
+    /// - [`ErrorCode::BadProtocolType`]: the socket type is not supported.
+    ///
+    pub fn try_from_with_flags(typ: c_int) -> Result<(Self, SocketFlags), Error> {
+        let flags: SocketFlags = SocketFlags::try_from(typ & !SOCK_TYPE_MASK)?;
+        let typ: SocketType = SocketType::try_from(typ & SOCK_TYPE_MASK)?;
+        Ok((typ, flags))
+    }
+}
+
+/// Describes the flags that can be combined with the type of a socket when it is created.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SocketFlags(c_int);
+
+impl SocketFlags {
+    /// Socket creation flags that are supported.
+    const SUPPORTED: c_int = SOCK_CLOEXEC | SOCK_CLOFORK | SOCK_NONBLOCK;
+
+    ///
+    /// # Description
+    ///
+    /// Returns the per-descriptor flags that a socket created with these flags has.
+    ///
+    /// # Returns
+    ///
+    /// This function returns `FD_CLOEXEC` if `SOCK_CLOEXEC` is set, combined with `FD_CLOFORK` if
+    /// `SOCK_CLOFORK` is set.
+    ///
+    pub fn descriptor_flags(&self) -> c_int {
+        let mut flags: c_int = 0;
+        if self.0 & SOCK_CLOEXEC != 0 {
+            flags |= FD_CLOEXEC;
+        }
+        if self.0 & SOCK_CLOFORK != 0 {
+            flags |= FD_CLOFORK;
+        }
+        flags
+    }
+
+    ///
+    /// # Description
+    ///
+    /// Returns the open file status flags that a socket created with these flags has.
+    ///
+    /// # Returns
+    ///
+    /// This function returns `O_NONBLOCK` if `SOCK_NONBLOCK` is set, and no flags otherwise.
+    ///
+    pub fn status_flags(&self) -> c_int {
+        if self.0 & SOCK_NONBLOCK != 0 {
+            O_NONBLOCK
+        } else {
+            0
+        }
+    }
+}
+
+impl TryFrom<c_int> for SocketFlags {
+    type Error = Error;
+
+    fn try_from(flags: c_int) -> Result<Self, Self::Error> {
+        if flags & !Self::SUPPORTED != 0 {
+            return Err(Error::new(ErrorCode::InvalidArgument, "socket flags not supported"));
+        }
+        Ok(Self(flags))
     }
 }
 

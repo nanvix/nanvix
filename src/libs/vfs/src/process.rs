@@ -79,6 +79,11 @@ impl Slot {
             fd_flags: FdFlags::default(),
         }
     }
+
+    /// Creates a slot with the given descriptor flags.
+    pub(crate) fn with_fd_flags(file: OpenFile, fd_flags: FdFlags) -> Self {
+        Self { file, fd_flags }
+    }
 }
 
 /// Per-process descriptor and working-directory state.

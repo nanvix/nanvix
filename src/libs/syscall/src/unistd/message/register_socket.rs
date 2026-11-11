@@ -36,22 +36,33 @@ use ::sys::{
 /// Request message that asks vfsd to allocate a flat descriptor slot for a socket endpoint that
 /// `networkd` has already created. libposix sends this as the second step of socket creation: once
 /// `networkd` returns the endpoint's remote descriptor, vfsd hands out the lowest free flat number
-/// and binds it to a socket routing token holding `remote_fd`.
+/// and binds it to a socket routing token holding `remote_fd`. The new descriptor and its open file
+/// description are created with the requested flags in place, which is how the socket creation
+/// flags (`SOCK_CLOEXEC`, `SOCK_CLOFORK`, and `SOCK_NONBLOCK`) take effect atomically.
 ///
 #[repr(C, packed)]
 pub struct RegisterSocketRequest {
     /// The descriptor `networkd` assigned to the endpoint (its remote fd).
     pub remote_fd: i32,
+    /// Per-descriptor flags (`FD_CLOEXEC`, `FD_CLOFORK`) of the new descriptor.
+    pub fd_flags: i32,
+    /// Open file status flags (`O_NONBLOCK`) of the new open file description.
+    pub status_flags: i32,
     _padding: [u8; Self::PADDING_SIZE],
 }
 ::static_assert::assert_eq_size!(RegisterSocketRequest, SystemCallMessage::PAYLOAD_SIZE);
 
 impl RegisterSocketRequest {
-    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE - mem::size_of::<i32>();
+    pub const PADDING_SIZE: usize = SystemCallMessage::PAYLOAD_SIZE
+        - mem::size_of::<i32>()
+        - mem::size_of::<i32>()
+        - mem::size_of::<i32>();
 
-    fn new(remote_fd: i32) -> Self {
+    fn new(remote_fd: i32, fd_flags: i32, status_flags: i32) -> Self {
         Self {
             remote_fd,
+            fd_flags,
+            status_flags,
             _padding: [0; Self::PADDING_SIZE],
         }
     }
@@ -67,10 +78,13 @@ impl RegisterSocketRequest {
     pub fn build(
         tid: ThreadIdentifier,
         remote_fd: i32,
+        fd_flags: i32,
+        status_flags: i32,
         destination: ProcessIdentifier,
         message_type: MessageType,
     ) -> Message {
-        let message: RegisterSocketRequest = RegisterSocketRequest::new(remote_fd);
+        let message: RegisterSocketRequest =
+            RegisterSocketRequest::new(remote_fd, fd_flags, status_flags);
         let message: SystemCallMessage = SystemCallMessage::new(
             SystemCallMessageKind::RegisterSocketRequest,
             message.into_bytes(),
@@ -88,7 +102,12 @@ impl RegisterSocketRequest {
 impl fmt::Debug for RegisterSocketRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let remote_fd: i32 = self.remote_fd;
-        write!(f, "{{ remote_fd: {remote_fd} }}")
+        let fd_flags: i32 = self.fd_flags;
+        let status_flags: i32 = self.status_flags;
+        write!(
+            f,
+            "{{ remote_fd: {remote_fd}, fd_flags: {fd_flags}, status_flags: {status_flags} }}"
+        )
     }
 }
 

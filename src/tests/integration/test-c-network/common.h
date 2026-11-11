@@ -64,4 +64,7 @@ extern void test_poll_services(struct in_addr sin_addr);
 // Tests fstat() on sockets.
 extern void test_socket_stat(void);
 
+// Tests socket creation flags in socket() and socketpair().
+extern void test_socket_flags(struct in_addr sin_addr);
+
 #endif

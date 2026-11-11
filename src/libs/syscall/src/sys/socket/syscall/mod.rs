@@ -35,8 +35,14 @@ pub use self::{
     send::send,
     sendto::sendto,
     shutdown::shutdown,
-    socket::socket,
-    socketpair::socketpair,
+    socket::{
+        socket,
+        socket_with_flags,
+    },
+    socketpair::{
+        socketpair,
+        socketpair_with_flags,
+    },
 };
 
 //==================================================================================================
@@ -47,12 +53,15 @@ pub use self::{
 ///
 /// This is the second step of socket creation under the flat namespace: `networkd` owns the
 /// endpoint (`remote_fd`) and remains the I/O backend, while vfsd allocates the application-visible
-/// flat descriptor that routes to it. The returned flat descriptor is recorded in the resolution
-/// cache (`route = Socket`, `backend_fd = remote_fd`) so socket I/O resolves to `remote_fd` without
-/// a further `vfsd` round-trip. If the registration fails on either leg, the `networkd` endpoint is
+/// flat descriptor that routes to it. vfsd creates the slot with the descriptor and status flags
+/// that the socket creation `flags` request, so they are in place before any `fork` or `exec` can
+/// observe the descriptor. The returned flat descriptor is recorded in the resolution cache
+/// (`route = Socket`, `backend_fd = remote_fd`) so socket I/O resolves to `remote_fd` without a
+/// further `vfsd` round-trip. If the registration fails on either leg, the `networkd` endpoint is
 /// closed so a failed creation never strands an endpoint.
 pub(crate) fn register_socket_slot(
     remote_fd: ::sysapi::ffi::c_int,
+    flags: super::SocketFlags,
 ) -> Result<::sysapi::ffi::c_int, ::sys::error::Error> {
     use crate::{
         unistd::message::{
@@ -80,6 +89,8 @@ pub(crate) fn register_socket_slot(
     let mut request = RegisterSocketRequest::build(
         tid,
         remote_fd,
+        flags.descriptor_flags(),
+        flags.status_flags(),
         crate::VFS_DESTINATION,
         crate::VFS_MESSAGE_TYPE,
     );

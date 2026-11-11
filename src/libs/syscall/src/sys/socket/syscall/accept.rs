@@ -12,6 +12,7 @@ use crate::{
             AcceptSocketResponse,
         },
         SocketAddr,
+        SocketFlags,
     },
     SystemCallMessage,
     SystemCallMessageKind,
@@ -71,7 +72,8 @@ pub fn accept(sockfd: c_int) -> Result<(c_int, SocketAddr), Error> {
                     if remote_fd < 0 {
                         Ok((remote_fd, sockaddr))
                     } else {
-                        let fd: c_int = super::register_socket_slot(remote_fd)?;
+                        let fd: c_int =
+                            super::register_socket_slot(remote_fd, SocketFlags::default())?;
                         Ok((fd, sockaddr))
                     }
                 },
