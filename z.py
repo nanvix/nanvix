@@ -36,10 +36,8 @@ VALID_MESSAGE_FORMATS: tuple[str, ...] = ("json", "json-diagnostic-rendered-ansi
 DEFAULT_MACHINE = "microvm"
 DEFAULT_TARGET = "x86"
 DEFAULT_LOG_LEVEL_DEBUG = "trace"
-DEFAULT_LOG_LEVEL_RELEASE = "warn"
+DEFAULT_LOG_LEVEL_RELEASE = "error"
 DEFAULT_TIMEOUT = 600
-DEFAULT_MEMORY_SIZE = 128
-DEFAULT_IMAGE = "nanvix.img"
 DEFAULT_RUN_PROGRAM = "bin/hello-rust-nostd.elf"
 
 # Known Make variables that z.py understands and may inject.
