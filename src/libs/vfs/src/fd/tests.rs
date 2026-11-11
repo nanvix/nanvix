@@ -1756,6 +1756,72 @@ fn register_socket_allocates_flat_slot() {
     forget_processes(&[pid]);
 }
 
+/// Tests that [`vfs_register_socket_with_flags`] creates the socket slot with the requested
+/// per-descriptor flags and open-file status flags, while [`vfs_register_socket`] leaves both
+/// cleared.
+#[test]
+fn register_socket_with_flags_sets_initial_flags() {
+    use ::sysapi::fcntl::{
+        file_control_request::{
+            F_GETFD,
+            F_GETFL,
+        },
+        file_status_flags::O_NONBLOCK,
+    };
+    let _guard = FORK_TEST_GUARD.lock();
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7223);
+    set_current_process(pid);
+
+    let mut fd_flags: FdFlags = FdFlags::default();
+    fd_flags.set_close_on_exec(true);
+    fd_flags.set_close_on_fork(true);
+    let fd: c_int = vfs_register_socket_with_flags(2090, fd_flags, O_NONBLOCK)
+        .expect("register socket with flags should succeed");
+    assert_eq!(
+        vfs_resolve(fd),
+        Some((VfsRoute::Socket, 2090)),
+        "a socket slot created with flags resolves to its networkd descriptor"
+    );
+    assert_eq!(
+        vfs_fcntl(fd, F_GETFD, 0),
+        Ok(FD_CLOEXEC | FD_CLOFORK),
+        "the socket descriptor must be created with the requested descriptor flags"
+    );
+    assert_eq!(
+        vfs_fcntl(fd, F_GETFL, 0),
+        Ok(O_NONBLOCK),
+        "the socket description must be created with the requested status flags"
+    );
+
+    let plain_fd: c_int = vfs_register_socket(2091).expect("register socket should succeed");
+    assert_eq!(vfs_fcntl(plain_fd, F_GETFD, 0), Ok(0), "descriptor flags default to clear");
+    assert_eq!(vfs_fcntl(plain_fd, F_GETFL, 0), Ok(0), "status flags default to clear");
+
+    forget_processes(&[pid]);
+}
+
+/// Tests that [`vfs_register_socket_with_flags`] rejects a status flag other than `O_NONBLOCK`
+/// without allocating a descriptor.
+#[test]
+fn register_socket_with_flags_rejects_unsupported_status_flags() {
+    use ::sysapi::fcntl::file_status_flags::{
+        O_APPEND,
+        O_NONBLOCK,
+    };
+    let _guard = FORK_TEST_GUARD.lock();
+    let pid: ProcessIdentifier = ProcessIdentifier::from(0x7224);
+    set_current_process(pid);
+
+    assert_eq!(
+        vfs_register_socket_with_flags(2092, FdFlags::default(), O_NONBLOCK | O_APPEND),
+        Err(Fat32Error::InvalidArgument),
+        "a status flag other than O_NONBLOCK must be rejected"
+    );
+    assert_eq!(registry_open_fd_count(pid), 0, "a rejected registration must not allocate a slot");
+
+    forget_processes(&[pid]);
+}
+
 /// Tests that a close-on-exec socket is released at exec: its `networkd` descriptor is surfaced
 /// in [`ProcessExitReclaim::orphaned_socket_fds`] so the daemon closes the endpoint, while a
 /// non-close-on-exec socket survives at its original number.
