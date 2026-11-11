@@ -45,4 +45,5 @@ ALL_GUEST_RUST_LIBS_TEST_LIST := \
 	sys \
 	mmio-tag \
 	syscall \
+	sysapi \
 	vfs
