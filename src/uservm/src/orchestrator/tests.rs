@@ -609,3 +609,18 @@ async fn shutdown_resumes_vcpu_when_pause_request_is_not_withdrawn() -> AnyResul
     // Expect the orchestrator to complete the shutdown once the vCPU confirms it.
     shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
 }
+
+#[tokio::test]
+async fn pause_cleans_up_when_vcpu_shuts_down() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Move to Running state and request pause.
+    h.io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    h.io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+    wait_for_pause_request(&h.pause_called).await;
+
+    // Shut down the vCPU instead of acknowledging the pause request, as when the guest exits first,
+    // and expect the orchestrator to clean up at once, rather than to fail.
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}

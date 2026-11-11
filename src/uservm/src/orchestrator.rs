@@ -480,14 +480,18 @@ impl Orchestrator {
                 Ok(Continue(()))
             },
             IoControlCommand::_PauseMicroVm => {
-                if self.state == State::Running
-                    && let Err(e) = self.pause_protocol().await
-                {
-                    let reason: String = format!("PauseMicroVm: failed to pause microvm: {e:?}");
-                    error!("handle_io_control_command(): {reason}");
-                    anyhow::bail!(reason);
+                if self.state != State::Running {
+                    return Ok(Continue(()));
                 }
-                Ok(Continue(()))
+                match self.pause_protocol().await {
+                    Ok(flow) => Ok(flow),
+                    Err(e) => {
+                        let reason: String =
+                            format!("PauseMicroVm: failed to pause microvm: {e:?}");
+                        error!("handle_io_control_command(): {reason}");
+                        anyhow::bail!(reason);
+                    },
+                }
             },
             IoControlCommand::_CreateSnapshot(filepath) => {
                 if self.state == State::Paused {
@@ -623,14 +627,15 @@ impl Orchestrator {
     /// withdrawn if the MicroVM does not acknowledge it, and the MicroVM is resumed if the I/O
     /// handler does not report that system calls were flushed. Each attempt to pause the MicroVM
     /// has its own identifier, so that a late flush report of an aborted attempt is not mistaken
-    /// for the report of a later one.
+    /// for the report of a later one. The vCPU may also shut down before it pauses, for instance
+    /// because the guest exited, in which case there is nothing left to pause.
     ///
     /// # Returns
     ///
-    /// Empty is returned once the MicroVM pauses or the protocol is aborted. Otherwise, an error is
-    /// returned.
+    /// Upon success, `Continue` is returned once the MicroVM pauses or the protocol is aborted, and
+    /// `Break` once the vCPU shuts down instead of pausing. Otherwise, an error is returned.
     ///
-    async fn pause_protocol(&mut self) -> Result<()> {
+    async fn pause_protocol(&mut self) -> Result<ControlFlow<()>> {
         // TODO (#945): Tell the I/O handler to flush before pausing.
         (self.pause_microvm)().await?;
         // Wait for the MicroVM to confirm it has paused without busy spinning.
@@ -638,16 +643,16 @@ impl Orchestrator {
             BackoffTimeout::start(self.pause_initial_wait, self.pause_timeout);
         loop {
             match timeout(backoff.remaining(), self.vcpu_control_rx.recv()).await {
-                Ok(Some(command)) => {
-                    if command == VcpuControlResponse::Paused {
-                        break;
-                    } else {
-                        let reason: String = "during the pause protocol we only expect a `Paused` \
-                                              command from the vCPU"
-                            .to_string();
-                        error!("pause_protocol(): {reason}");
-                        anyhow::bail!(reason)
-                    }
+                Ok(Some(VcpuControlResponse::Paused)) => break,
+                Ok(Some(VcpuControlResponse::Shutdown)) => {
+                    info!("pause_protocol(): vCPU shut down before pausing");
+                    return Ok(Break(()));
+                },
+                Ok(Some(other)) => {
+                    let reason: String =
+                        format!("unexpected vCPU response during the pause protocol: {other:?}");
+                    error!("pause_protocol(): {reason}");
+                    anyhow::bail!(reason)
                 },
                 Ok(None) => {
                     let reason: String = "the vcpu control channel closed".to_string();
@@ -667,7 +672,7 @@ impl Orchestrator {
                         self.io_control_tx
                             .send(IoControlResponse::MicroVmPauseAborted)
                             .await?;
-                        return Ok(());
+                        return Ok(Continue(()));
                     }
                     // Timeout elapsed; log progressively.
                     warn!(
@@ -696,14 +701,14 @@ impl Orchestrator {
             self.io_control_tx
                 .send(IoControlResponse::MicroVmPauseAborted)
                 .await?;
-            return Ok(());
+            return Ok(Continue(()));
         }
         self.state = State::Paused;
         trace!("State: Running -> Paused");
         self.io_control_tx
             .send(IoControlResponse::MicroVmPaused)
             .await?;
-        Ok(())
+        Ok(Continue(()))
     }
 
     ///
