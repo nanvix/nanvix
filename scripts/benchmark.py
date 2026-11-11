@@ -46,6 +46,7 @@ BOOT_TIME_BENCH = "boot-time"
 COLD_START_BENCH = "cold-start"
 COLD_START_UVM_BENCH = "cold-start-uvm"
 SNAPSHOT_RESTORE_BENCH = "snapshot-restore"
+SYSCALL_BENCH = "syscall-bench"
 VFS_BENCH = "vfs-bench"
 WARM_START_GATEWAY_BENCH = "warm-start-gateway"
 WARM_START_VMM_BENCH = "warm-start-vmm"
@@ -83,10 +84,16 @@ PERCENTILE_BENCHMARKS = [
     SNAPSHOT_RESTORE_BENCH,
 ]
 
+# Benchmarks that report per-operation percentile tables, one table per section.
+OPERATION_BENCHMARKS = [
+    SYSCALL_BENCH,
+    VFS_BENCH,
+]
+
 # Every benchmark the standard suite runs, in display order. Used as the
 # default --benchmarks value for ci-url.
 ALL_BENCHMARKS: list[str] = (
-    PERCENTILE_BENCHMARKS + [VFS_BENCH] + list(SIZE_SWEEP_BENCHMARKS)
+    PERCENTILE_BENCHMARKS + OPERATION_BENCHMARKS + list(SIZE_SWEEP_BENCHMARKS)
 )
 
 # ======================================================================
@@ -239,10 +246,10 @@ def filter_benchmark_stdout(
 
         filtered_stdout = header + "\n" + "\n".join(data_lines)
 
-    elif benchmark == VFS_BENCH:
-        # VFS benchmark prints two tables (raw operations and paired
-        # decomposition). Each table has a header line followed by a dash
-        # separator and then data rows.  Format per data row (Rust
+    elif benchmark in OPERATION_BENCHMARKS:
+        # Operation benchmarks print one table per section (e.g. mount mode
+        # or serving component). Each table has a header line followed by a
+        # dash separator and then data rows.  Format per data row (Rust
         # `println!("{:<22} {:>8} {:>10} {:>10} {:>10}", ...)`):
         #   <operation>  <samples>  <p50>  <p95>  <p99>
         columns = ["commit", "section", "operation", "samples", "p50", "p95", "p99"]
@@ -271,7 +278,8 @@ def filter_benchmark_stdout(
 
             # Parse data rows: operation (22 chars) then numeric columns.
             # Only accept rows after a section header has been detected to
-            # avoid capturing preamble lines (e.g. FAT image statistics).
+            # avoid capturing preamble lines (e.g. FAT image statistics or
+            # batch sizes).
             parts = stripped.split()
             if current_section and len(parts) >= 4:
                 operation = parts[0]
@@ -285,8 +293,8 @@ def filter_benchmark_stdout(
                 row_count += 1
 
         if row_count == 0:
-            print("ERROR: no data parsed from vfs-bench output")
-            raise ValueError("No data in vfs-bench output")
+            print(f"ERROR: no data parsed from {benchmark} output")
+            raise ValueError(f"No data in {benchmark} output")
 
         filtered_stdout = buf.getvalue().rstrip("\r\n")
 
@@ -367,8 +375,8 @@ def read_benchmark_values_from_file(
             print(f"WARNING: could not read {file_path}: {exc}")
             result_dict = {s: NA for s in SIZE_AWARE_BENCHMARKS[benchmark]}
 
-    elif benchmark == VFS_BENCH:
-        # VFS benchmark CSV: commit,section,operation,samples,p50,p95,p99
+    elif benchmark in OPERATION_BENCHMARKS:
+        # Operation benchmark CSV: commit,section,operation,samples,p50,p95,p99
         # Return the latest commit's rows keyed by "section/operation".
         try:
             with open(file_path, "r") as fh:

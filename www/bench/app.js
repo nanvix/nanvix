@@ -216,9 +216,9 @@ function renderDeltaTable(el, caption, target, baselines) {
   el.appendChild(table);
 }
 
-/** Render a VFS operation table (operation, samples, p50, p95, p99) for the
+/** Render an operation table (operation, samples, p50, p95, p99) for the
  * target series: PR values when present, else the latest baseline commit. */
-function renderVfsTable(el, ops, srcByOp) {
+function renderOperationTable(el, ops, srcByOp) {
   const table = document.createElement("table");
   table.className = "bench-table";
   table.innerHTML =
@@ -401,7 +401,13 @@ const SIZED_BENCHMARKS = new Set([
   "warm-start-socket",
 ]);
 
-const VFS_BENCHMARKS = new Set(["vfs-bench"]);
+// Benchmarks that report per-operation latency tables
+// (commit,section,operation,samples,p50,p95,p99), mapped to the unit of their
+// latencies.
+const OPERATION_BENCHMARKS = new Map([
+  ["syscall-bench", "ns"],
+  ["vfs-bench", "\u03bcs"],
+]);
 
 // Standard benchmark suite, used to build a default history-only payload
 // when the URL has no ?d= param (i.e. what CI runs, on
@@ -411,6 +417,7 @@ const DEFAULT_BENCHMARKS = [
   "cold-start",
   "cold-start-uvm",
   "snapshot-restore",
+  "syscall-bench",
   "vfs-bench",
   "warm-start-gateway",
   "warm-start-vmm",
@@ -439,12 +446,13 @@ function defaultHistoryPayload() {
 }
 
 /**
- * Render a VFS benchmark (commit,section,operation,samples,p50,p95,p99).
+ * Render an operation benchmark (commit,section,operation,samples,p50,p95,p99)
+ * whose latencies are in `unit`.
  * One chart per section. X-axis = operations, grouped stacked bars: dev vs PR.
  * Pass an empty prRows array to render only the latest baseline commit, with
  * no separate PR series.
  */
-function renderVfs(baseline, prRows, prCommit) {
+function renderOperations(baseline, prRows, prCommit, unit) {
   destroyCharts();
 
   const hasPr = prRows.length > 0;
@@ -493,7 +501,7 @@ function renderVfs(baseline, prRows, prCommit) {
     }
 
     // Side table: target values (PR when present, else latest baseline).
-    renderVfsTable(table, ops, hasPr ? prByOp : baseByOp);
+    renderOperationTable(table, ops, hasPr ? prByOp : baseByOp);
 
     // Stacked deltas
     const devP50 = ops.map((o) => baseByOp[o]?.p50 ?? null);
@@ -553,7 +561,7 @@ function renderVfs(baseline, prRows, prCommit) {
                   const b = [baseByOp[op].p50, baseByOp[op].p95, baseByOp[op].p99][di];
                   d = ` (${formatDelta(a, b)} vs dev)`;
                 }
-                return `${who}${name}: ${a.toLocaleString()} \u03bcs${d}`;
+                return `${who}${name}: ${a.toLocaleString()} ${unit}${d}`;
               },
               afterBody(items) {
                 const op = ops[items[0].dataIndex];
@@ -565,7 +573,7 @@ function renderVfs(baseline, prRows, prCommit) {
         },
         scales: {
           x: { stacked: true, ticks: { color: "#888" }, grid: { color: "#0f3460" } },
-          y: { stacked: true, ticks: { color: "#888" }, grid: { color: "#0f3460" }, title: { display: true, text: "Latency (\u03bcs)", color: "#888" } },
+          y: { stacked: true, ticks: { color: "#888" }, grid: { color: "#0f3460" }, title: { display: true, text: `Latency (${unit})`, color: "#888" } },
         },
       },
     });
@@ -590,8 +598,8 @@ async function renderBench(benchKey, payload) {
       destroyCharts();
       return;
     }
-    if (VFS_BENCHMARKS.has(benchKey)) {
-      renderVfs(baseline, [], payload.c);
+    if (OPERATION_BENCHMARKS.has(benchKey)) {
+      renderOperations(baseline, [], payload.c, OPERATION_BENCHMARKS.get(benchKey));
     } else if (SIZED_BENCHMARKS.has(benchKey)) {
       renderSized(baseline, [], payload.c);
     } else {
@@ -610,12 +618,13 @@ async function renderBench(benchKey, payload) {
 
   const prData = decodeCsv(csvBlob);
 
-  if (VFS_BENCHMARKS.has(benchKey)) {
+  if (OPERATION_BENCHMARKS.has(benchKey)) {
     const prRows = prData.rows.filter((r) => r[0] === payload.c);
-    renderVfs(
+    renderOperations(
       baseline || { header: prData.header, rows: [] },
       prRows,
-      payload.c
+      payload.c,
+      OPERATION_BENCHMARKS.get(benchKey)
     );
   } else if (SIZED_BENCHMARKS.has(benchKey)) {
     const prRows = prData.rows.filter((r) => r[0] === payload.c);
