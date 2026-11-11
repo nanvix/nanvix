@@ -131,7 +131,7 @@ impl InterruptedThread {
     /// Overrides the interrupt reason so that the thread terminates when it is next resumed.
     ///
     /// This is used to convert an already-interrupted thread (e.g. one that timed out) into a
-    /// killed thread when its process receives a fatal signal.
+    /// killed thread when its process is terminated or exits.
     ///
     pub fn set_killed(&mut self) {
         self.reason = InterruptReason::Killed;

@@ -7,7 +7,10 @@
 
 use crate::pm::{
     process::state::{
-        interrupted::InterruptedProcess,
+        interrupted::{
+            kill_sleeping,
+            InterruptedProcess,
+        },
         runnable::RunnableProcess,
         ProcessState,
     },
@@ -94,17 +97,21 @@ impl SleepingProcess {
             .map(|thread| thread.id())
     }
 
+    ///
+    /// # Description
+    ///
+    /// Terminates a suspended process so that all of its threads exit once resumed.
+    ///
+    /// Every sleeping thread is interrupted with [`InterruptReason::Killed`] (see
+    /// [`fold_killed`](super::interrupted::fold_killed)).
+    ///
+    /// # Returns
+    ///
+    /// The interrupted process with all of its threads marked for termination.
+    ///
     pub fn terminate(self) -> InterruptedProcess {
-        let (mut sleeping_threads, sleeping_thread): (VecDeque<SleepingThread>, SleepingThread) =
-            self.sleeping_threads.pop_front();
-
-        let mut interrupted_threads: NonEmptyVecDeque<InterruptedThread> =
-            NonEmptyVecDeque::new(sleeping_thread.interrupt(InterruptReason::Killed));
-
-        while let Some(sleeping_thread) = sleeping_threads.pop_front() {
-            interrupted_threads.push_back(sleeping_thread.interrupt(InterruptReason::Killed));
-        }
-
+        let interrupted_threads: NonEmptyVecDeque<InterruptedThread> =
+            kill_sleeping(self.sleeping_threads);
         InterruptedProcess::new(self.state, interrupted_threads, self.zombie_threads)
     }
 

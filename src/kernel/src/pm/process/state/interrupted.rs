@@ -108,28 +108,17 @@ impl InterruptedProcess {
     ///
     /// Every interrupted thread has its reason overridden to [`InterruptReason::Killed`], and any
     /// remaining sleeping threads are interrupted with the same reason and folded into the
-    /// interrupted set. Because an interrupted process always retains at least one interrupted
-    /// thread, the result is again an [`InterruptedProcess`].
+    /// interrupted set (see [`fold_killed`]). Because an interrupted process always retains at
+    /// least one interrupted thread, the result is again an [`InterruptedProcess`].
     ///
     /// # Returns
     ///
     /// The interrupted process with all of its threads marked for termination.
     ///
-    pub fn terminate(mut self) -> InterruptedProcess {
-        // Convert every already-interrupted thread into a killed thread.
-        for thread in self.interrupted_threads.iter_mut() {
-            thread.set_killed();
-        }
-
-        // Interrupt any remaining sleeping threads with the killed reason and fold them into the
-        // interrupted set.
-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
-            let killed_threads: NonEmptyVecDeque<InterruptedThread> =
-                NonEmptyVecDeque::map(sleeping_threads, interrupt);
-            self.interrupted_threads.append(killed_threads);
-        }
-
-        self
+    pub fn terminate(self) -> InterruptedProcess {
+        let interrupted_threads: NonEmptyVecDeque<InterruptedThread> =
+            kill_interrupted(self.interrupted_threads, self.sleeping_threads);
+        InterruptedProcess::new(self.state, interrupted_threads, self.zombie_threads)
     }
 
     ///
@@ -218,6 +207,94 @@ impl InterruptedProcess {
     }
 }
 
-pub(super) fn interrupt(thread: SleepingThread) -> InterruptedThread {
-    thread.interrupt(InterruptReason::Killed)
+//==================================================================================================
+// Standalone Functions
+//==================================================================================================
+
+///
+/// # Description
+///
+/// Folds the blocked threads that a process carries into a terminal state into a single set of
+/// interrupted threads, every one of which exits once resumed.
+///
+/// Every already-interrupted thread has its reason overridden to [`InterruptReason::Killed`],
+/// whatever it was originally interrupted for, and every sleeping thread is interrupted with that
+/// same reason and appended to the set. An interrupted thread carried with any other reason, such
+/// as one whose timed wait expired or whose wait was interrupted by a caught signal, would
+/// otherwise complete its blocking kernel call and return to user code after its process was
+/// terminated or exited.
+///
+/// Every path that terminates a process, or that exits it, must fold the blocked threads of that
+/// process through this function or one of its non-empty variants before any of these threads can
+/// be scheduled again.
+///
+/// # Parameters
+///
+/// - `interrupted_threads`: Already-interrupted threads of the process.
+/// - `sleeping_threads`: Sleeping threads of the process.
+///
+/// # Returns
+///
+/// The killed threads, or [`None`] if the process has neither interrupted nor sleeping threads.
+///
+pub(super) fn fold_killed(
+    interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>>,
+    sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
+) -> Option<NonEmptyVecDeque<InterruptedThread>> {
+    match interrupted_threads {
+        Some(interrupted_threads) => Some(kill_interrupted(interrupted_threads, sleeping_threads)),
+        None => sleeping_threads.map(kill_sleeping),
+    }
+}
+
+///
+/// # Description
+///
+/// Variant of [`fold_killed`] for a process that is known to have interrupted threads.
+///
+/// # Parameters
+///
+/// - `interrupted_threads`: Already-interrupted threads of the process.
+/// - `sleeping_threads`: Sleeping threads of the process.
+///
+/// # Returns
+///
+/// The killed threads.
+///
+fn kill_interrupted(
+    mut interrupted_threads: NonEmptyVecDeque<InterruptedThread>,
+    sleeping_threads: Option<NonEmptyVecDeque<SleepingThread>>,
+) -> NonEmptyVecDeque<InterruptedThread> {
+    // Convert every already-interrupted thread into a killed thread.
+    for thread in interrupted_threads.iter_mut() {
+        thread.set_killed();
+    }
+
+    // Interrupt any sleeping threads with the killed reason and fold them into the set.
+    if let Some(sleeping_threads) = sleeping_threads {
+        interrupted_threads.append(kill_sleeping(sleeping_threads));
+    }
+
+    interrupted_threads
+}
+
+///
+/// # Description
+///
+/// Variant of [`fold_killed`] for a process that is known to have sleeping threads only.
+///
+/// # Parameters
+///
+/// - `sleeping_threads`: Sleeping threads of the process.
+///
+/// # Returns
+///
+/// The killed threads.
+///
+pub(super) fn kill_sleeping(
+    sleeping_threads: NonEmptyVecDeque<SleepingThread>,
+) -> NonEmptyVecDeque<InterruptedThread> {
+    NonEmptyVecDeque::map(sleeping_threads, |thread: SleepingThread| {
+        thread.interrupt(InterruptReason::Killed)
+    })
 }

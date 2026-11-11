@@ -10,7 +10,7 @@ use crate::{
     mm::Vmem,
     pm::{
         process::state::{
-            interrupted::interrupt,
+            interrupted::fold_killed,
             sleeping::SleepingProcess,
             InterruptedProcess,
             ProcessState,
@@ -299,6 +299,9 @@ impl RunningProcess {
     /// are marked for termination. Each immediate thread transition is reported through
     /// `on_thread_termination`.
     ///
+    /// Interrupted threads are marked for termination whatever they were interrupted for, so that
+    /// none of them returns to user code once resumed (see [`fold_killed`]).
+    ///
     /// # Parameters
     ///
     /// - `status`: Exit status of the process and its running thread.
@@ -351,18 +354,9 @@ impl RunningProcess {
             zombie_threads.append(more_zombie_threads);
         }
 
-        // Collect interrupted threads.
-        let mut interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>> =
-            self.interrupted_threads.take();
-
-        // Terminate all sleeping threads.
-        if let Some(sleeping_threads) = self.sleeping_threads.take() {
-            let more_interrupted_threads = NonEmptyVecDeque::map(sleeping_threads, interrupt);
-            match interrupted_threads.as_mut() {
-                None => interrupted_threads = Some(more_interrupted_threads),
-                Some(interrupted_threads) => interrupted_threads.append(more_interrupted_threads),
-            }
-        }
+        // Mark all interrupted and sleeping threads for termination.
+        let interrupted_threads: Option<NonEmptyVecDeque<InterruptedThread>> =
+            fold_killed(self.interrupted_threads.take(), self.sleeping_threads.take());
 
         if let Some(interrupted_threads) = interrupted_threads {
             let interrupted_process: InterruptedProcess = InterruptedProcess::from_sleeping(
