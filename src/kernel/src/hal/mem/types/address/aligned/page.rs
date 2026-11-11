@@ -19,6 +19,7 @@ use crate::hal::mem::{
 use ::arch::mem::{
     paging::FrameNumber,
     PAGE_ALIGNMENT,
+    PAGE_SIZE,
 };
 use ::core::ops::Deref;
 use ::sys::{
@@ -244,4 +245,96 @@ impl<T: Address> View for PageAligned<T>
     }
 }
 
+}
+
+//==================================================================================================
+// Page Range
+//==================================================================================================
+
+///
+/// # Description
+///
+/// An iterator over the page-aligned virtual addresses of a range of consecutive pages.
+///
+/// # Notes
+///
+/// A range is validated once, when it is created, so iterating over it cannot fail: the range
+/// starts at a page-aligned address, it spans a whole number of pages, and its last page lies
+/// within the virtual address space. Every address that the range yields is thus page-aligned by
+/// construction, and computing it cannot overflow.
+///
+#[derive(Clone, Debug)]
+pub struct PageRange {
+    /// Address of the first page in the range.
+    start: PageAligned<VirtualAddress>,
+    /// Number of pages in the range.
+    npages: usize,
+    /// Index of the next page to yield.
+    next: usize,
+}
+
+impl PageRange {
+    ///
+    /// # Description
+    ///
+    /// Creates a range that covers the pages of the virtual memory region that starts at `start`
+    /// and spans `size` bytes.
+    ///
+    /// # Parameters
+    ///
+    /// - `start`: Page-aligned virtual address of the first page in the range.
+    /// - `size`: Size of the range in bytes, which must be a multiple of the page size.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, the new range is returned. Upon failure, an error is returned instead.
+    ///
+    /// # Errors
+    ///
+    /// - [`ErrorCode::InvalidArgument`]: `size` is not a multiple of the page size.
+    /// - [`ErrorCode::ValueOverflow`]: The range extends beyond the end of the virtual address
+    ///   space.
+    ///
+    pub fn new(start: PageAligned<VirtualAddress>, size: usize) -> Result<Self, Error> {
+        // Check if the range does not span a whole number of pages.
+        if !size.is_multiple_of(PAGE_SIZE) {
+            let reason: &str = "range size is not a multiple of the page size";
+            error!("PageRange::new(): {reason} (start={start:?}, size={size:#x})");
+            return Err(Error::new(ErrorCode::InvalidArgument, reason));
+        }
+
+        // Check if the last page of the range lies beyond the end of the virtual address space.
+        let npages: usize = size / PAGE_SIZE;
+        let start_raw: usize = start.into_raw_value();
+        if npages > 0 && start_raw.checked_add(size - PAGE_SIZE).is_none() {
+            let reason: &str = "range extends beyond the end of the virtual address space";
+            error!("PageRange::new(): {reason} (start={start:?}, size={size:#x})");
+            return Err(Error::new(ErrorCode::ValueOverflow, reason));
+        }
+
+        Ok(Self {
+            start,
+            npages,
+            next: 0,
+        })
+    }
+}
+
+impl Iterator for PageRange {
+    type Item = PageAligned<VirtualAddress>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Check if all pages in the range have been yielded.
+        if self.next >= self.npages {
+            return None;
+        }
+
+        // The following arithmetic cannot overflow, because `PageRange::new()` checked that the
+        // last page of the range lies within the virtual address space. The resulting address is
+        // page-aligned, because it lies a whole number of pages above a page-aligned address.
+        let raw_addr: usize = self.start.into_raw_value() + self.next * PAGE_SIZE;
+        self.next += 1;
+
+        Some(PageAligned(VirtualAddress::new(raw_addr)))
+    }
 }

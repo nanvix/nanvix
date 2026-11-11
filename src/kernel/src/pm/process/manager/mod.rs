@@ -44,6 +44,7 @@ use crate::{
             AccessPermission,
             Address,
             PageAligned,
+            PageRange,
             VirtualAddress,
         },
         platform,
@@ -4251,6 +4252,21 @@ impl ProcessManager {
         mm.ctrl_upage(vmem, vaddr, access)
     }
 
+    ///
+    /// # Description
+    ///
+    /// Attaches a memory-mapped I/O region to a process. Before the region is attached, the access
+    /// permissions of the region are applied to every page in it.
+    ///
+    /// # Parameters
+    ///
+    /// - `pid`: Identifier of the process to which to attach the region.
+    /// - `region`: Memory-mapped I/O region to attach.
+    ///
+    /// # Returns
+    ///
+    /// Upon success, empty is returned. Upon failure, an error is returned instead.
+    ///
     pub fn mmio_alloc(
         &mut self,
         pid: ProcessIdentifier,
@@ -4261,30 +4277,25 @@ impl ProcessManager {
 
         // Map all pages in the MMIO region.
         let vmem: &mut Vmem = state.vmem_mut();
-        let base: usize = region.base().into_raw_value();
-        let end: usize = base.checked_add(region.size()).ok_or_else(|| {
-            let reason: &str = "mmio region end address overflow";
-            error!("{reason} (base={base:#x}, size={:#?})", region.size());
-            Error::new(ErrorCode::ValueOverflow, reason)
-        })?;
+        // An MMIO region starts at a page-aligned address and spans a whole number of pages that
+        // lie within the virtual address space. Check this once, before modifying any state, so
+        // that walking the pages of the region below cannot fail.
+        let pages: PageRange = PageRange::new(region.base(), region.size())?;
         let perm: AccessPermission = region.perm();
 
         if cfg!(feature = "nightly-performance-optimizations") {
             // Single pass: apply permission changes directly.
-            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+            for vaddr in pages {
                 vmem.kctrl(vaddr, perm, false)?;
             }
         } else {
             // Two-pass: validate that every page can be mapped before modifying any state.
-            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+            for vaddr in pages.clone() {
                 vmem.kctrl(vaddr, perm, true)?;
             }
 
             // All validations passed — apply the permission changes for real.
-            for raw_vaddr in (base..end).step_by(PAGE_SIZE) {
-                let vaddr: PageAligned<VirtualAddress> = PageAligned::from_raw_value(raw_vaddr)?;
+            for vaddr in pages {
                 vmem.kctrl(vaddr, perm, false)?;
             }
         }

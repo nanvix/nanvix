@@ -33,6 +33,9 @@ use ::core::mem::ManuallyDrop;
 /// wrapped in [`ManuallyDrop`] to allow taking ownership during [`Drop`] without requiring
 /// `Option`.
 ///
+/// The region starts at a page-aligned address and spans a whole number of pages that lie within
+/// the virtual address space, as guaranteed by the [`TruncatedMemoryRegion`] that backs it.
+///
 pub struct IoMemoryRegion {
     /// Unique tag associated with the region.
     tag: MmioTag,

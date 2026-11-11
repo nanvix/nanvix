@@ -8,6 +8,7 @@
 use crate::hal::mem::{
     Address,
     PageAligned,
+    PageRange,
     PhysicalAddress,
     VirtualAddress,
 };
@@ -559,6 +560,171 @@ fn test_page_aligned_physical_address_align_down_aligned() -> bool {
     test_align_down_aligned::<PageAligned<PhysicalAddress>>()
 }
 
+/// Tests if [`PageRange`] yields the address of every page in a range, in ascending order.
+fn test_page_range_yields_every_page() -> bool {
+    let npages: usize = 3;
+    let raw_start: usize = PAGE_SIZE;
+    let start: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_start) {
+        Ok(addr) => addr,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create address (err={:?})", err);
+            return false;
+        },
+    };
+    let pages: PageRange = match PageRange::new(start, npages * PAGE_SIZE) {
+        Ok(pages) => pages,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create page range (err={:?})", err);
+            return false;
+        },
+    };
+
+    let raw_end: usize = raw_start + npages * PAGE_SIZE;
+    let mut expected: usize = raw_start;
+    for page in pages {
+        // Check if the range yielded a page other than the expected one.
+        if expected == raw_end || page.into_raw_value() != expected {
+            error!("unexpected page (page={:?}, expected={:#x})", page, expected);
+            return false;
+        }
+        expected += PAGE_SIZE;
+    }
+
+    // Check if the range did not yield every page.
+    if expected != raw_end {
+        error!("missing pages (next={:#x}, end={:#x})", expected, raw_end);
+        return false;
+    }
+
+    true
+}
+
+/// Tests if [`PageRange`] yields no page for a range of zero bytes.
+fn test_page_range_empty() -> bool {
+    let start: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(PAGE_SIZE) {
+        Ok(addr) => addr,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create address (err={:?})", err);
+            return false;
+        },
+    };
+    match PageRange::new(start, 0) {
+        Ok(mut pages) => match pages.next() {
+            // The range is empty as expected.
+            None => true,
+            // The range yielded a page and it should not.
+            Some(page) => {
+                error!("empty range yielded a page (page={:?})", page);
+                false
+            },
+        },
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create page range (err={:?})", err);
+            false
+        },
+    }
+}
+
+/// Tests if [`PageRange`] yields the last page of the virtual address space.
+fn test_page_range_last_page() -> bool {
+    let raw_addr: usize = VirtualAddress::max_addr() & !(PAGE_SIZE - 1);
+    let start: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr) {
+        Ok(addr) => addr,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create address (err={:?})", err);
+            return false;
+        },
+    };
+    let mut pages: PageRange = match PageRange::new(start, PAGE_SIZE) {
+        Ok(pages) => pages,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create page range (err={:?})", err);
+            return false;
+        },
+    };
+
+    match pages.next() {
+        // The range yielded the last page as expected.
+        Some(page) if page == start => {},
+        // The range yielded some other page, or no page at all.
+        page => {
+            error!("unexpected page (page={:?}, expected={:?})", page, start);
+            return false;
+        },
+    }
+
+    match pages.next() {
+        // The range yielded no other page as expected.
+        None => true,
+        // The range yielded a page past the end of the virtual address space.
+        Some(page) => {
+            error!("range yielded too many pages (page={:?})", page);
+            false
+        },
+    }
+}
+
+/// Tests if [`PageRange::new()`] fails to create a range that does not span a whole number of
+/// pages.
+fn test_page_range_new_unaligned_size() -> bool {
+    let start: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(PAGE_SIZE) {
+        Ok(addr) => addr,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create address (err={:?})", err);
+            return false;
+        },
+    };
+    match PageRange::new(start, PAGE_SIZE + 1) {
+        // The range was created and it should not.
+        Ok(pages) => {
+            error!("succeeded to create a range with an unaligned size (pages={:?})", pages);
+            false
+        },
+        // The range was not created as expected.
+        Err(e) if e.code == ErrorCode::InvalidArgument => true,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("unexpected error (err={:?})", err);
+            false
+        },
+    }
+}
+
+/// Tests if [`PageRange::new()`] fails to create a range that extends beyond the end of the virtual
+/// address space.
+fn test_page_range_new_overflow() -> bool {
+    let raw_addr: usize = VirtualAddress::max_addr() & !(PAGE_SIZE - 1);
+    let start: PageAligned<VirtualAddress> = match PageAligned::from_raw_value(raw_addr) {
+        Ok(addr) => addr,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("failed to create address (err={:?})", err);
+            return false;
+        },
+    };
+    match PageRange::new(start, 2 * PAGE_SIZE) {
+        // The range was created and it should not.
+        Ok(pages) => {
+            error!("succeeded to create an overflowing range (pages={:?})", pages);
+            false
+        },
+        // The range was not created as expected.
+        Err(e) if e.code == ErrorCode::ValueOverflow => true,
+        // Some unexpected error occurred.
+        Err(err) => {
+            error!("unexpected error (err={:?})", err);
+            false
+        },
+    }
+}
+
 /// Runs all unit tests for [`VirtualAddress`].
 pub fn test() -> bool {
     let mut passed: bool = true;
@@ -615,6 +781,13 @@ pub fn test() -> bool {
     passed &= run_test!(test_page_aligned_physical_address_align_up_aligned);
     // No test_page_aligned_physical_address_align_down_unaligned: same reason as above.
     passed &= run_test!(test_page_aligned_physical_address_align_down_aligned);
+
+    // Tests for `PageRange`.
+    passed &= run_test!(test_page_range_yields_every_page);
+    passed &= run_test!(test_page_range_empty);
+    passed &= run_test!(test_page_range_last_page);
+    passed &= run_test!(test_page_range_new_unaligned_size);
+    passed &= run_test!(test_page_range_new_overflow);
 
     passed
 }
