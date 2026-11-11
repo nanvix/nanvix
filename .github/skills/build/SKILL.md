@@ -206,7 +206,8 @@ debug and release configurations. Run `./scripts/pipeline.sh` before declaring b
 Use the host-specific settings template. The Linux template invokes `./z`, while the Windows
 template routes Rust Analyzer through `./z.bat build -- check`, which runs `cargo check` on all
 crates: host crates (`uservm`, `nanvixd`, `nanvix-test`, `mkramfs`, ...) natively, and the kernel
-and guest crates by cross-compiling them.
+and guest crates by cross-compiling them. The Windows template also enables the `whp` feature, like
+Windows builds do, so that Rust Analyzer analyzes the WHP backend instead of the Linux-only KVM one.
 
 **Linux:**
 

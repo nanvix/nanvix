@@ -14,6 +14,8 @@
 //
 // Notes:
 // - Rust Analyzer routes check-on-save and build-script discovery through './z.bat build -- check'.
+// - Rust Analyzer enables the 'whp' feature, like Windows builds do. Without it, Rust Analyzer
+//   analyzes the Linux-only KVM backend of the UserVM instead of the WHP backend.
 {
     //==============================================================================================
     // Editor Settings
@@ -71,6 +73,6 @@
         "MESSAGE_FORMAT=json"
     ],
     "rust-analyzer.cargo.features": [
-        "standalone"
+        "whp"
     ]
 }

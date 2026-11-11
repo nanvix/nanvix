@@ -147,8 +147,10 @@ Choose one of the following options to set up your IDE for Nanvix development.
 ### Visual Studio Code
 
 Use the host-specific templates below. The settings template invokes `./z.bat` and routes Rust
-Analyzer build-script discovery through the Windows build workflow. The other templates add tasks
-that run `z.ps1`, debug configurations for the UserVM, and a list of recommended extensions.
+Analyzer build-script discovery through the Windows build workflow. It also enables the `whp`
+feature, like Windows builds do, so that Rust Analyzer analyzes the WHP backend of the UserVM. The
+other templates add tasks that run `z.ps1`, debug configurations for the UserVM, and a list of
+recommended extensions.
 
 ```powershell
 New-Item -ItemType Directory -Path .vscode -Force
