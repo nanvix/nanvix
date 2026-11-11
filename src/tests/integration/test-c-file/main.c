@@ -112,6 +112,13 @@ int main(int argc, const char *argv[])
     );
 #endif /* __i386__ */
 
+    // Assert that <dirent.h> and <sys/stat.h> agree on the special file types: the d_type value
+    // of each one is its file-type code, which is in the S_IFMT bits (bits 12 to 15).
+    STATIC_ASSERT(DT_MQ, S_IFMQ >> 12);
+    STATIC_ASSERT(DT_SEM, S_IFSEM >> 12);
+    STATIC_ASSERT(DT_SHM, S_IFSHM >> 12);
+    STATIC_ASSERT(DT_TMO, S_IFTMO >> 12);
+
     // Run tests.
     test_open_close();
     test_create_unlink(); // tests open() and unlink().
@@ -129,6 +136,7 @@ int main(int argc, const char *argv[])
     test_pwrite();          // requires open(), close(), read(), lseek() and unlink().
     test_fdatasync();       // requires open(), close(), read(), write(), and unlink().
     test_stat();
+    test_special_file_types();
     test_device_namespace();
     test_terminal_devices();
     test_ftruncate(); // requires open(), close(), fstat() and unlink().
