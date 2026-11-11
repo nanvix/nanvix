@@ -11,6 +11,7 @@ mod gateway;
 mod socket_echo;
 mod standalone;
 mod standalone_socket;
+mod standalone_syscall;
 mod standalone_vfs;
 
 //==================================================================================================

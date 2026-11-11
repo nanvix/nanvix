@@ -1980,6 +1980,7 @@ dependencies = [
  "rand 0.10.3",
  "reqwest",
  "serde_json",
+ "syscall-bench-common",
  "tokio",
  "user-vm-api",
  "vfs-bench-common",
