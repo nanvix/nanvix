@@ -1529,10 +1529,11 @@ $(POSIX_TEST_EXEC_SIGNALS_IMG): $(BINARIES_DIR)/$(POSIX_TEST_EXEC_SIGNALS_SUITE)
 
 # Builds every suite's bootable `<suite>.initrd` plus the RAMFS images the
 # file-system and dlopen suites need (the shared image and the per-suite
-# global/needed fixtures). This is the build-side entry point used wherever
-# `run-posix-tests` is skipped — notably Windows, where suites are booted
-# manually under WHP (see the repo notes). `run-posix-tests` depends on the same
-# set, so this also pre-stages everything the Linux runner consumes.
+# global/needed fixtures). This is the build-side entry point for flows that boot
+# the suites separately from building them — notably the Windows CI, whose build
+# jobs build the images and whose test jobs boot them with nanvix-test.
+# `run-posix-tests` depends on the same set, so this also pre-stages everything
+# that runner consumes.
 # The dlfcn shared-library fixtures build for every guest ABI: libmul and the
 # per-suite fixture `.so` follow the active TARGET, and the
 # startup/hello/searchpath suites stage the real libc.so/libm.so, which are now

@@ -564,7 +564,7 @@ help:
 	@echo "Testing Targets"
 	@echo "  run-unit-tests       Run unit tests for libraries and components"
 	@echo "  run-nanvix-tests     Run system integration tests using nanvix-test"
-	@echo "  run-posix-tests      Run the ported POSIX C test suites (standalone, Linux/x86)"
+	@echo "  run-posix-tests      Run the ported POSIX C test suites (standalone)"
 	@echo "  test-layout-check    Check that tests live in their own files, not in mainline source"
 	@echo ""
 	@echo "Execution Targets"
