@@ -156,6 +156,37 @@ fn acknowledge_pause_requests_at_once(h: &mut Harness) {
     });
 }
 
+// Utility to make the orchestrator fail to withdraw pause requests.
+fn fail_pause_withdrawals(h: &mut Harness) {
+    let resume_called: Arc<AtomicBool> = h.resume_called.clone();
+    h.orchestrator.resume_microvm = Box::new(move || {
+        let resume_called: Arc<AtomicBool> = resume_called.clone();
+        Box::pin(async move {
+            resume_called.store(true, Ordering::SeqCst);
+            Err(anyhow::anyhow!("failed to withdraw the pause request"))
+        })
+    });
+}
+
+// Utility to start and pause the MicroVM, whose vCPU must acknowledge pause requests at once.
+async fn start_and_pause_microvm(
+    io_cmd_tx: &mpsc::Sender<IoControlCommand>,
+    io_resp_rx: &mut mpsc::Receiver<IoControlResponse>,
+) -> AnyResult<()> {
+    io_cmd_tx.send(IoControlCommand::_StartMicroVm).await?;
+    io_cmd_tx.send(IoControlCommand::_PauseMicroVm).await?;
+    let r1: IoControlResponse = recv_io_resp(io_resp_rx).await;
+    assert!(matches!(r1, IoControlResponse::FlushOutput));
+    let r2: IoControlResponse = recv_io_resp(io_resp_rx).await;
+    assert!(matches!(r2, IoControlResponse::FlushInput(1)));
+    io_cmd_tx
+        .send(IoControlCommand::SystemCallFlushed(1))
+        .await?;
+    let r3: IoControlResponse = recv_io_resp(io_resp_rx).await;
+    assert!(matches!(r3, IoControlResponse::MicroVmPaused));
+    Ok(())
+}
+
 // Utility to shut down a running orchestrator through the vCPU and to check that it cleans up,
 // which also shows that it was still running.
 async fn shutdown_through_vcpu(
@@ -528,6 +559,52 @@ async fn shutdown_resumes_vcpu_that_acknowledges_after_abort() -> AnyResult<()> 
         .await?
         .expect("vcpu command channel closed unexpectedly");
     assert!(matches!(resume_cmd, VcpuControlCommand::Resume));
+
+    // Expect the orchestrator to complete the shutdown once the vCPU confirms it.
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}
+
+#[tokio::test]
+async fn shutdown_resumes_paused_vcpu() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    acknowledge_pause_requests_at_once(&mut h);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Pause the MicroVM, and then request shutdown.
+    start_and_pause_microvm(&h.io_cmd_tx, &mut h.io_resp_rx).await?;
+    h.io_cmd_tx.send(IoControlCommand::Shutdown).await?;
+
+    // Expect the orchestrator to resume the vCPU, which waits for a command, so that it observes
+    // the shutdown request, rather than to wait for the shutdown timeout.
+    let resume_cmd: VcpuControlCommand = timeout(Duration::from_millis(500), h.vcpu_cmd_rx.recv())
+        .await?
+        .expect("vcpu command channel closed unexpectedly");
+    assert!(matches!(resume_cmd, VcpuControlCommand::Resume));
+    assert!(h.shutdown_called.load(Ordering::SeqCst));
+
+    // Expect the orchestrator to complete the shutdown once the vCPU confirms it.
+    shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
+}
+
+#[tokio::test]
+async fn shutdown_resumes_vcpu_when_pause_request_is_not_withdrawn() -> AnyResult<()> {
+    let mut h: Harness = build_harness();
+    fail_pause_withdrawals(&mut h);
+    let handle: JoinHandle<Result<()>> = h.orchestrator.spawn();
+
+    // Request shutdown, and only then acknowledge a pause request, which the orchestrator fails to
+    // withdraw.
+    h.io_cmd_tx.send(IoControlCommand::Shutdown).await?;
+    wait_for_shutdown_request(&h.shutdown_called).await;
+    h.vcpu_resp_tx.send(VcpuControlResponse::Paused).await?;
+
+    // Expect the orchestrator to resume the vCPU nonetheless, so that it observes the shutdown
+    // request, rather than to give up on the shutdown.
+    let resume_cmd: VcpuControlCommand = timeout(Duration::from_millis(500), h.vcpu_cmd_rx.recv())
+        .await?
+        .expect("vcpu command channel closed unexpectedly");
+    assert!(matches!(resume_cmd, VcpuControlCommand::Resume));
+    assert!(h.resume_called.load(Ordering::SeqCst));
 
     // Expect the orchestrator to complete the shutdown once the vCPU confirms it.
     shutdown_through_vcpu(&h.vcpu_resp_tx, &mut h.mem_cmd_rx, &mut h.io_resp_rx, handle).await
