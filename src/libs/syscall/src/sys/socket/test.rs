@@ -112,3 +112,71 @@ fn test_unix_sockaddr_into_socket_addr() {
     let expected_addr: SocketAddrUnix = SocketAddrUnix::new("/tmp/socket");
     assert_eq!(expected_addr, SocketAddrUnix::try_from(&test_addr).unwrap());
 }
+
+/// Tests that a socket type with no creation flags converts to that type with no flags.
+#[test]
+fn test_socket_type_without_flags() {
+    let (typ, flags): (SocketType, SocketFlags) = SocketType::try_from_with_flags(SOCK_STREAM)
+        .expect("a socket type with no flags should be accepted");
+    assert_eq!(typ, SocketType::Stream, "the socket type should be preserved");
+    assert_eq!(flags, SocketFlags::default(), "no socket creation flags should be set");
+    assert_eq!(flags.descriptor_flags(), 0, "no descriptor flags should be requested");
+    assert_eq!(flags.status_flags(), 0, "no status flags should be requested");
+}
+
+/// Tests that each socket creation flag is split from the socket type and requests the matching
+/// descriptor or status flag of the new socket.
+#[test]
+fn test_socket_type_with_flags() {
+    let cases: [(c_int, c_int, c_int); 4] = [
+        (SOCK_CLOEXEC, FD_CLOEXEC, 0),
+        (SOCK_CLOFORK, FD_CLOFORK, 0),
+        (SOCK_NONBLOCK, 0, O_NONBLOCK),
+        (SOCK_CLOEXEC | SOCK_CLOFORK | SOCK_NONBLOCK, FD_CLOEXEC | FD_CLOFORK, O_NONBLOCK),
+    ];
+    for (socket_flags, descriptor_flags, status_flags) in cases {
+        let (typ, flags): (SocketType, SocketFlags) =
+            SocketType::try_from_with_flags(SOCK_DGRAM | socket_flags)
+                .expect("a socket type with supported flags should be accepted");
+        assert_eq!(typ, SocketType::Datagram, "flags {socket_flags:#x} should be stripped");
+        assert_eq!(
+            flags.descriptor_flags(),
+            descriptor_flags,
+            "unexpected descriptor flags for {socket_flags:#x}"
+        );
+        assert_eq!(
+            flags.status_flags(),
+            status_flags,
+            "unexpected status flags for {socket_flags:#x}"
+        );
+    }
+}
+
+/// Tests that a socket type with a bit set that is neither part of the socket type nor a supported
+/// creation flag is rejected with `EINVAL`, so callers can fall back to a socket type without it.
+#[test]
+fn test_socket_type_with_unsupported_flags() {
+    for typ in [
+        SOCK_STREAM | 0x10,
+        SOCK_STREAM | 0x0100_0000,
+        SOCK_STREAM | SOCK_CLOEXEC | 0x80,
+        -1,
+    ] {
+        let error: Error = SocketType::try_from_with_flags(typ)
+            .expect_err("a socket type with unsupported flags should be rejected");
+        assert_eq!(error.code, ErrorCode::InvalidArgument, "unexpected error for {typ:#x}");
+    }
+}
+
+/// Tests that an unsupported socket type is still rejected when combined with supported creation
+/// flags.
+#[test]
+fn test_unsupported_socket_type_with_flags() {
+    use ::sysapi::sys_socket::socket_types::SOCK_RDM;
+
+    for typ in [SOCK_RDM | SOCK_CLOEXEC, SOCK_NONBLOCK] {
+        let error: Error = SocketType::try_from_with_flags(typ)
+            .expect_err("an unsupported socket type should be rejected");
+        assert_eq!(error.code, ErrorCode::BadProtocolType, "unexpected error for {typ:#x}");
+    }
+}
