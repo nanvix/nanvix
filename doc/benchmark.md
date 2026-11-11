@@ -18,6 +18,7 @@ You will need to save this JSON file.
 - `cold-start`: spawn `nanvixd` and a user VM, then complete the first echo round trip.
 - `cold-start-uvm`: start a user VM and complete its first standalone gateway echo.
 - `snapshot-restore`: compare snapshot restore latency with cold boot.
+- `syscall-bench`: measure system call latencies inside the guest VM, both for calls that the kernel serves alone (`getppid`, `clock_gettime`, `sched_yield`) and for calls that system daemons serve (`getpgrp`, `fstat`, `stat`, `read`, `write`, `open`/`close`). Latencies are reported in nanoseconds per call.
 - `vfs-bench`: measure VFS operation latencies (stat, open/close, read, write, readdir, create/unlink, mkdir/rmdir, rename) inside the guest VM using a FAT32 image loaded into guest memory via the RAMFS region.
 - `warm-start-gateway`: measure steady-state round-trip latency through the standalone gateway.
 - `warm-start-socket`: measure TCP echo latency through guest networking.
@@ -75,6 +76,7 @@ This builds all components including `nanvix-bench.exe` with the WHP backend.
 | `boot-time`          | Start a user VM (no nanvixd)                           |
 | `cold-start`         | Spawn nanvixd + VM + echo round-trip                   |
 | `cold-start-uvm`     | Start a user VM + first gateway echo                   |
+| `syscall-bench`      | System call latencies (kernel and system daemons)      |
 | `vfs-bench`          | VFS operation latencies (FAT32 image via RAMFS region) |
 | `warm-start-gateway` | Round-trip latency through the standalone gateway      |
 | `warm-start-socket`  | TCP echo latency through guest networking              |
